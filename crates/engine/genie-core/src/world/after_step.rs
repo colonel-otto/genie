@@ -101,8 +101,7 @@ impl World {
     }
 
     /// The step's writes on other objects and on its own building: a repair's writes, the
-    /// tracker's promotions, the flares, the gate, a builder's footprint clearing and foundation
-    /// removals, and the history events.
+    /// tracker's promotions, the flares, the gate and the history events.
     fn apply_object_writes(
         &mut self,
         (p, i): (usize, usize),
@@ -119,19 +118,6 @@ impl World {
         // the gate's player opens or shuts it, in the gate's update before the rest
         if out.gate_toggle {
             self.toggle_gate(p, i)?;
-        }
-        // the objects a builder's footprint clearing deleted (FUN_1415c3620)
-        for cl in std::mem::take(&mut out.cleared) {
-            self.clear_object(cl, true)?;
-        }
-        // the foundations a builder found another player's marks on: a human owner's goes
-        // (FUN_1411ccbb0)
-        for site in std::mem::take(&mut out.site_removals) {
-            if let Some((q, _)) = self.object(site)
-                && !self.players[q].computer
-            {
-                self.remove_building(q, site)?;
-            }
         }
         // a completed castle's or wonder's history event, the owner's id as data1
         for kind in std::mem::take(&mut out.history_events) {

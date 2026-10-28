@@ -13187,8 +13187,7 @@ fn a_build_step_s_changes_reach_the_world() {
                 take(&mut c.completions),
             );
             Ok((
-                take(&mut c.cleared),
-                take(&mut c.site_removals),
+                c.w.object(601).map(|(_, u)| site_of(u)),
                 take(&mut c.evacuations),
                 take(&mut c.started),
                 c.w.object(10028).map(|(_, u)| site_of(u)),
@@ -13203,8 +13202,7 @@ fn a_build_step_s_changes_reach_the_world() {
     assert_eq!(
         nothing,
         (
-            vec![],
-            vec![],
+            Some((2, 1.0, None)),
             vec![],
             vec![],
             Some((0, 1.0, Some(0.0))),
@@ -13242,8 +13240,7 @@ fn a_build_step_s_changes_reach_the_world() {
     assert_eq!(
         recorded(&mut t, &mut step),
         (
-            vec![cleared],
-            vec![4444],
+            Some((7, 0.0, None)),
             vec![(10028, vec![9175])],
             vec![10028],
             Some((0, 56.0, Some(2.5))),
@@ -13262,6 +13259,42 @@ fn a_build_step_s_changes_reach_the_world() {
     assert!(!house.construction.unwrap().started);
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
     assert!(t.players[1].tracker.list(k.master).contains(&10028));
+}
+
+/// A Build's step deletes the objects its footprint clearing found (`FUN_1415c3620`) and
+/// removes a human owner's foundation that another player's marks lie on (`FUN_1411ccbb0`)
+/// where the builder's update runs (`record_build_step`); a computer's foundation stays.
+#[test]
+fn a_build_step_clears_and_removes_where_the_builder_runs() {
+    use crate::construction::build::Cleared;
+    use crate::construction::build::unit::record_build_step;
+    let run = |computer: bool, mut step: BuildStep| {
+        let mut t = house_builder();
+        t.players[1].computer = computer;
+        in_update(&mut t, (1, 0), 50, |_, c| {
+            record_build_step(c, 10028, &[], &mut step)?;
+            Ok([601, 10028].map(|id| c.w.object(id).map(|(_, u)| site_of(u))))
+        })
+        .map_err(|e| e.reason().to_owned())
+    };
+    let cleared = Cleared {
+        id: 601,
+        wall: false,
+        record_goes: false,
+    };
+    let clears = BuildStep {
+        cleared: vec![cleared],
+        ..BuildStep::default()
+    };
+    assert_eq!(run(false, clears).map(|s| s[0]), Ok(Some((7, 0.0, None))));
+    let removes = || BuildStep {
+        removes: Some(10028),
+        ..BuildStep::default()
+    };
+    let seen = run(false, removes()).map(|s| s[1]);
+    assert_eq!(seen, Ok(Some((7, 0.0, Some(0.0)))));
+    let seen = run(true, removes()).map(|s| s[1]);
+    assert_eq!(seen, Ok(Some((0, 1.0, Some(0.0)))));
 }
 
 /// [`house_builder`]'s house 10028 with an annex: a second house foundation 10030 (player 1's
@@ -14001,15 +14034,10 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
 
 /// What a step leaves in its Context for other objects reaches them after it: the owner's
 /// history gains the event (the owner as data1), the tracker files a promoted unit under its
-/// new master, and the footprint clearing's objects are destroyed. A human owner's foundation that another
-/// player's marks stand on goes; a computer's stays.
+/// new master.
 #[test]
 fn a_step_s_writes_reach_the_objects_it_names() {
     use crate::objects::unit::Step;
-    let site = |t: &World, id| {
-        let (_, u) = t.object(id).unwrap();
-        (u.life.state, u.life.hp, u.construction.map(|c| c.progress))
-    };
     let key = |t: &World, m| crate::players::tracker::key(t.masters.get(1), &t.lines, m).master;
     let mut t = house_builder();
     t.players[1].history.entries.push([0, 0]);
@@ -14028,30 +14056,6 @@ fn a_step_s_writes_reach_the_objects_it_names() {
         (tracker.list(key(&t, 120)), tracker.list(key(&t, 83))),
         (&[][..], &[9175][..])
     );
-
-    let after = |setup: fn(&mut World), writes: &Orders<'_>| {
-        let mut t = house_builder();
-        setup(&mut t);
-        let r = finished_with(&mut t, (1, 0), |c| {
-            writes(c);
-            Ok(Step::Stay)
-        });
-        assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
-        t
-    };
-    let cleared = crate::construction::build::Cleared {
-        id: 601,
-        wall: false,
-        record_goes: false,
-    };
-    let t = after(|_| (), &|c| c.cleared.push(cleared));
-    assert_eq!(site(&t, 601), (7, 0.0, None));
-    let t = after(|_| (), &|c| c.site_removals.push(10028));
-    assert_eq!(site(&t, 10028), (7, 0.0, Some(0.0)));
-    let t = after(|t| t.players[1].computer = true, &|c| {
-        c.site_removals.push(10028);
-    });
-    assert_eq!(site(&t, 10028), (0, 1.0, Some(0.0)));
 }
 
 /// The unit AI's orders of a step reach the unit and the units they name: a `GatherObject`'s

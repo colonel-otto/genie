@@ -497,8 +497,8 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
     })
 }
 
-/// What the Build's step changes of the world beside the builder (the caller's): the cleared
-/// objects, the footprint's removals and occupants, the constructions that started (its annexes'
+/// What the Build's step changes of the world beside the builder: the cleared objects and the
+/// footprint's removals (at once, through the world), its occupants, the constructions that started (its annexes'
 /// first: their owner watches each, `FUN_1411e5670`), the work an annex's main building takes
 /// (at once, [`World::work_building`]), and the completion (taken out of the step) with its annexes' state (at once, through the
 /// world), its tracker part and its standing sprite.
@@ -512,8 +512,17 @@ pub(crate) fn record_build_step(
     annex_ids: &[i32],
     step: &mut BuildStep,
 ) -> Result<(), GenieError> {
-    c.cleared.extend(step.cleared.iter().copied());
-    c.site_removals.extend(step.removes);
+    // the footprint clearing's deletes (the Build's set_state(7), FUN_1415c3620), then the
+    // foundation another player's marks lie on: a human owner's goes (FUN_1411ccbb0)
+    for cl in step.cleared.iter().copied() {
+        c.w.clear_object(cl, true)?;
+    }
+    if let Some(site) = step.removes
+        && let Some((q, _)) = c.w.object(site)
+        && !c.w.players[q].computer
+    {
+        c.w.remove_building(q, site)?;
+    }
     if !step.occupants.is_empty() {
         c.evacuations.push((target, step.occupants.clone()));
     }

@@ -88,8 +88,6 @@ impl World {
             ghost_deaths: Vec::new(),
             started: Vec::new(),
             unwatched: Vec::new(),
-            cleared: Vec::new(),
-            site_removals: Vec::new(),
             flares: Vec::new(),
             promotions: Vec::new(),
             evacuations: Vec::new(),

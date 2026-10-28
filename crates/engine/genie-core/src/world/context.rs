@@ -87,10 +87,6 @@ pub(crate) struct Context<'a> {
     /// The buildings that died in this update: their owner's watched list lets them go
     /// (`FUN_141091310`), the caller's.
     pub(crate) unwatched: Vec<i32>,
-    /// The objects a builder's footprint clearing deletes (the Build's `set_state(7)`,
-    /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
-    /// update ([`World::clear_object`]).
-    pub(crate) cleared: Vec<crate::construction::build::Cleared>,
     /// The tracker's promotions (`FUN_14104fb20`) of the owner's units whose master changed
     /// while the unit AI ran (the unit, its old master, its new one), the caller's after the
     /// update ([`World::track_promote`]).
@@ -99,10 +95,6 @@ pub(crate) struct Context<'a> {
     /// at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's
     /// after the update ([`World::make_flare`]).
     pub(crate) flares: Vec<(usize, [f32; 3], bool)>,
-    /// The foundations another player's marks lie on, which a builder's `set_state(7)` removes
-    /// when their owner is human ([`crate::construction::build::BuildStep::removes`]), the caller's after the
-    /// update ([`World::remove_building`]).
-    pub(crate) site_removals: Vec<i32>,
     /// The units on a foundation's footprint its builder's test met (the foundation, them):
     /// the caller sends off those the test would ([`World::evacuate`]).
     pub(crate) evacuations: Vec<(i32, Vec<i32>)>,
@@ -254,10 +246,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) remains: Option<(i16, [f32; 3], Option<u8>)>,
     /// [`Context`]'s `refund`.
     pub(in crate::world) refund: Vec<(i16, f32)>,
-    /// [`Context`]'s `cleared`.
-    pub(in crate::world) cleared: Vec<crate::construction::build::Cleared>,
-    /// [`Context`]'s `site_removals`.
-    pub(in crate::world) site_removals: Vec<i32>,
     /// [`Context`]'s `flares`.
     pub(in crate::world) flares: Vec<(usize, [f32; 3], bool)>,
     /// [`Context`]'s `promotions`.
@@ -310,8 +298,6 @@ impl Context<'_> {
             kills: std::mem::take(&mut self.kills),
             remains: self.remains.take(),
             refund: std::mem::take(&mut self.refund),
-            cleared: std::mem::take(&mut self.cleared),
-            site_removals: std::mem::take(&mut self.site_removals),
             flares: std::mem::take(&mut self.flares),
             promotions: std::mem::take(&mut self.promotions),
             building_death: self.building_death.take(),
