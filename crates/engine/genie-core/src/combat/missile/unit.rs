@@ -7,8 +7,10 @@ use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::unit_ai::ACTION_EXECUTED;
+use crate::world::World;
 use crate::world::context::Context;
-use crate::world::others::Others;
+use crate::world::others::OthersRef;
+use crate::world::player::Player;
 
 impl Unit {
     /// The missile action's update (slot 6, `FUN_140a9e6e0`). First its target and the object it
@@ -22,16 +24,12 @@ impl Unit {
     /// ([`Unit::missile_lands`]). A dead shooter's weapons going to the missile
     /// (`FUN_14113e170`), the sprite's pitch facet and the projectile types 1 and 2 are not
     /// modelled.
-    pub(crate) fn fly(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn fly(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let Some(mut missile) = self.missile.take() else {
             return Ok(());
         };
         let mut action = self.actions.take_missile();
-        let flown = self.fly_missile(&mut missile, &mut action, c, others);
+        let flown = self.fly_missile(&mut missile, &mut action, c);
         self.actions.set_missile(action);
         self.missile = Some(missile);
         flown
@@ -48,13 +46,14 @@ impl Unit {
         &self,
         action: &mut crate::combat::missile::MissileAction,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let dead = |state: u8| 2 < state && state != 6;
-        let target_state = readable(c, others, action.target).map(|(_, u, _)| u.life.state);
-        let shooter_state = others.own(action.fired_from).map(|u| u.life.state);
+        let target_state = readable(c, action.target).map(|(_, u, _)| u.life.state);
+        let shooter_state = OthersRef::of(&c.w.players, c.player)
+            .own(action.fired_from)
+            .map(|u| u.life.state);
         if action.target != -1 && target_state.is_none() {
-            if c.spatial.get(action.target).is_some() {
+            if c.w.spatial.get(action.target).is_some() {
                 return Err(GenieError::unsupported(
                     "a missile's target the slice cannot read",
                 ));
@@ -62,7 +61,7 @@ impl Unit {
             action.target = -1;
         }
         if action.fired_from != -1 && shooter_state.is_none() {
-            if c.spatial.get(action.fired_from).is_some() {
+            if c.w.spatial.get(action.fired_from).is_some() {
                 return Err(GenieError::unsupported(
                     "a missile's shooter the slice cannot read",
                 ));
@@ -71,7 +70,7 @@ impl Unit {
         }
         if action.target != -1 && target_state.is_some_and(dead) {
             let by = self.releaser(c);
-            crate::world::lets::release(c, others, action.target, by)?;
+            crate::world::lets::release(c, action.target, by)?;
             action.target = -1;
         }
         if action.fired_from != -1 && shooter_state.is_some_and(dead) {
@@ -87,10 +86,10 @@ impl Unit {
         missile: &mut crate::combat::missile::Missile,
         slot: &mut Option<crate::combat::missile::MissileAction>,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let master =
-            c.masters
+            c.w.masters
+                .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .ok_or(GenieError::unsupported(
                     "a missile of a master the slice does not have",
@@ -101,7 +100,7 @@ impl Unit {
         let Some(action) = slot.as_mut() else {
             return Ok(());
         };
-        self.missile_ends(action, c, others)?;
+        self.missile_ends(action, c)?;
         match action.state {
             crate::combat::missile::FLYING => {}
             crate::combat::missile::DONE => {
@@ -120,7 +119,7 @@ impl Unit {
         missile.flying = flying;
         let old = self.position;
         let to = [old[0] + step[0], old[1] + step[1], old[2] + step[2]];
-        let [w, h] = c.spatial.map;
+        let [w, h] = c.w.spatial.map;
         if to[0] < 0.0 || w as f32 <= to[0] || to[1] < 0.0 || h as f32 <= to[1] {
             self.life.hp = 0.0;
         }
@@ -129,27 +128,27 @@ impl Unit {
             .mover_mut()
             .ok_or(GenieError::unsupported("a missile without its moving part"))?;
         let mut at = mover.set_position(to, [w, h]);
-        let ground = c
-            .spatial
-            .terrain
-            .as_ref()
-            .ok_or(GenieError::unsupported(
-                "a missile without the map's terrain",
-            ))?
-            .ground(at[0], at[1])?;
+        let ground =
+            c.w.spatial
+                .terrain
+                .as_ref()
+                .ok_or(GenieError::unsupported(
+                    "a missile without the map's terrain",
+                ))?
+                .ground(at[0], at[1])?;
         at[2] = crate::combat::missile::grounded(at[2], ground, flying, stats.fly_mode);
         mover.mark_move(at, c.world_time);
         self.position = at;
-        c.spatial.set_position(self.id, at);
+        c.w.spatial.set_position(self.id, at);
         if matches!(stats.projectile_type, 0..=2) {
             let fired = Fired {
                 charge: missile.charge,
                 by: missile.fired_from,
             };
-            self.missile_hits(action, &stats, fired, old, c, others)?;
+            self.missile_hits(action, &stats, fired, old, c)?;
         }
         if ground == at[2] {
-            self.missile_lands(missile, slot, &stats, c, others)?;
+            self.missile_lands(missile, slot, &stats, c)?;
         }
         Ok(())
     }
@@ -173,15 +172,15 @@ impl Unit {
         fired: Fired,
         old: [f32; 3],
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         if !(0.0 < stats.radius[0] && 0.0 < stats.radius[1]) {
             return Ok(());
         }
-        let blast_level = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .map_or(0, |m| m.blast_level);
+        let blast_level =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .map_or(0, |m| m.blast_level);
         let met = self.missile_meets(stats, old, c)?;
         for &(id, player, kind, level) in &met {
             if action.state == crate::combat::missile::DONE {
@@ -195,7 +194,7 @@ impl Unit {
                     if id != action.target {
                         continue;
                     }
-                    let result = self.missile_strike(action, fired, c, others)?;
+                    let result = self.missile_strike(action, fired, c)?;
                     action.result = result;
                     if stats.vanish_mode & 1 == 0 && result != 2 {
                         self.end_missile(action);
@@ -210,7 +209,7 @@ impl Unit {
                             "a missed missile meeting another object than its target",
                         ));
                     }
-                    let result = self.missile_strike(action, fired, c, others)?;
+                    let result = self.missile_strike(action, fired, c)?;
                     action.result = result;
                     // the master's dying sprite plays there (a sprite of its own, not held)
                     if (stats.vanish_mode & 1 != 0 || result == 2) && blast_level <= level {
@@ -242,7 +241,7 @@ impl Unit {
         old: [f32; 3],
         c: &Context<'_>,
     ) -> Result<Vec<(i32, usize, u8, u8)>, GenieError> {
-        let [w, h] = c.spatial.map;
+        let [w, h] = c.w.spatial.map;
         let hold = |v: f32, size: i32| {
             if v < 0.0 {
                 0.0
@@ -262,27 +261,27 @@ impl Unit {
             from[1].max(to[1]),
         ];
         let grow = stats.radius[0];
-        c.spatial.check_known_records([
+        c.w.spatial.check_known_records([
             rect[0] - grow,
             rect[1] - grow,
             rect[2] + grow,
             rect[3] + grow,
         ])?;
-        let crossed = c
-            .spatial
-            .walk_hits(from, to, rect, grow, 1.0, Some(c.player), &[self.id])?;
+        let crossed =
+            c.w.spatial
+                .walk_hits(from, to, rect, grow, 1.0, Some(c.player), &[self.id])?;
         let mut met = Vec::new();
         for id in crossed {
-            let Some(p) = c.spatial.get(id) else {
+            let Some(p) = c.w.spatial.get(id) else {
                 continue;
             };
-            let m = c
-                .every_masters
-                .get(p.player)
-                .and_then(|m| m.get(p.master))
-                .ok_or(GenieError::unsupported(
-                    "an object a missile meets of a master the slice does not have",
-                ))?;
+            let m =
+                c.w.masters
+                    .get(p.player)
+                    .and_then(|m| m.get(p.master))
+                    .ok_or(GenieError::unsupported(
+                        "an object a missile meets of a master the slice does not have",
+                    ))?;
             if crate::combat::missile::meets_height(p.position[2], m.height, at[2], stats.radius[2])
             {
                 met.push((id, p.player, m.kind, m.blast_defense));
@@ -311,22 +310,34 @@ impl Unit {
         action: &crate::combat::missile::MissileAction,
         fired: Fired,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<u8, GenieError> {
         if fired.charge {
             return Err(GenieError::unsupported("a charge projectile's own hit"));
         }
         if action.fired_from == -1 {
-            return self.own_strike(action, fired.by, c, others);
+            return self.own_strike(action, fired.by, c);
         }
-        let mut victim = victim(c, others, action.target);
-        let shooter = others
-            .own_mut(action.fired_from)
+        let mut victim = victim(c, action.target);
+        let (p, mode_680) = (c.player, c.mode_680);
+        let World {
+            players,
+            masters,
+            spatial,
+            streams,
+            ..
+        } = &mut *c.w;
+        let Player {
+            objects,
+            attributes,
+            ..
+        } = &mut players[p];
+        let shooter = objects
+            .by_id_mut(action.fired_from)
             .ok_or(GenieError::unsupported(
                 "a missile's shooter outside its list",
             ))?;
-        let master = c
-            .masters
+        let master = masters
+            .get(p)
             .and_then(|m| m.get(shooter.life.master_id))
             .ok_or(GenieError::unsupported(
                 "a missile's shooter of a master the slice does not have",
@@ -336,8 +347,8 @@ impl Unit {
                 "a missile of a shooter with an area effect",
             ));
         }
-        let terrain = c.spatial.terrain.as_ref();
-        let mut own = victim_of(shooter, master, c.attributes, c.player, terrain, c.mode_680);
+        let terrain = spatial.terrain.as_ref();
+        let mut own = victim_of(shooter, master, attributes, p, terrain, mode_680);
         let victim = victim.as_mut().ok_or(GenieError::unsupported(
             "a missile's target the slice does not hold live",
         ))?;
@@ -347,7 +358,7 @@ impl Unit {
             missile: true,
             chance: master.hit_chance,
         };
-        let object = c.streams.get(Stream::Object);
+        let object = streams.get(Stream::Object);
         let struck = crate::combat::attack::strike(&mut own, victim, &mut c.blasted, hit, object)?;
         if let Some(target) = struck.executed {
             shooter.post_own(ACTION_EXECUTED, [600, target, 0])?;
@@ -357,7 +368,7 @@ impl Unit {
                 "a retaliation killing a missile's shooter",
             ));
         }
-        write_strike_back(c, others, victim)?;
+        write_strike_back(c, victim)?;
         Ok(struck.result)
     }
 
@@ -374,7 +385,6 @@ impl Unit {
         action: &crate::combat::missile::MissileAction,
         fired_from: i32,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<u8, GenieError> {
         if action.origin.owner != -1 {
             return Err(GenieError::unsupported(
@@ -382,7 +392,8 @@ impl Unit {
             ));
         }
         let master =
-            c.masters
+            c.w.masters
+                .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .ok_or(GenieError::unsupported(
                     "a missile of a master the slice does not have",
@@ -392,11 +403,18 @@ impl Unit {
                 "a shooterless missile with an area effect",
             ));
         }
-        let terrain = c.spatial.terrain.as_ref();
-        let mut own = victim_of(self, master, c.attributes, c.player, terrain, c.mode_680);
+        let terrain = c.w.spatial.terrain.as_ref();
+        let mut own = victim_of(
+            self,
+            master,
+            &c.w.players[c.player].attributes,
+            c.player,
+            terrain,
+            c.mode_680,
+        );
         // the missile's own part is out of the unit while it flies
         own.source.fired_from = fired_from;
-        let mut victim = victim(c, others, action.target).ok_or(GenieError::unsupported(
+        let mut victim = victim(c, action.target).ok_or(GenieError::unsupported(
             "a missile's target the slice does not hold live",
         ))?;
         let victim = &mut victim;
@@ -406,12 +424,12 @@ impl Unit {
             missile: true,
             chance: master.hit_chance,
         };
-        let object = c.streams.get(Stream::Object);
+        let object = c.w.streams.get(Stream::Object);
         let struck = crate::combat::attack::strike(&mut own, victim, &mut c.blasted, hit, object)?;
         if self.hit_back(own)?.is_some() {
             return Err(GenieError::unsupported("a retaliation killing a missile"));
         }
-        write_strike_back(c, others, victim)?;
+        write_strike_back(c, victim)?;
         Ok(struck.result)
     }
 
@@ -430,7 +448,6 @@ impl Unit {
         slot: &mut Option<crate::combat::missile::MissileAction>,
         stats: &crate::combat::missile::MissileStats,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let fired = Fired {
             charge: missile.charge,
@@ -440,18 +457,20 @@ impl Unit {
         let Some(action) = slot.as_mut() else {
             return Ok(());
         };
-        self.missile_lands_on_target(action, fired, stats, c, others)?;
+        self.missile_lands_on_target(action, fired, stats, c)?;
         if action.state == crate::combat::missile::DONE {
             return Ok(());
         }
         if action.result != 2 {
             let blaster = if !charge && action.fired_from != -1 {
-                others.own(action.fired_from).map(|u| u.life.master_id)
+                OthersRef::of(&c.w.players, c.player)
+                    .own(action.fired_from)
+                    .map(|u| u.life.master_id)
             } else {
                 Some(self.life.master_id)
             };
             let area = blaster
-                .and_then(|id| c.masters.and_then(|m| m.get(id)))
+                .and_then(|id| c.w.masters.get(c.player).and_then(|m| m.get(id)))
                 .map(|m| m.area_effect)
                 .ok_or(GenieError::unsupported(
                     "a landed missile's blast of a master the slice does not have",
@@ -462,7 +481,7 @@ impl Unit {
         }
         self.end_missile(action);
         if stats.vanish_mode & 2 == 0 {
-            self.missile_destroyed(slot, c, others)?;
+            self.missile_destroyed(slot, c)?;
         }
         Ok(())
     }
@@ -476,7 +495,6 @@ impl Unit {
         fired: Fired,
         stats: &crate::combat::missile::MissileStats,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         if action.state == crate::combat::missile::DONE
             || action.target == -1
@@ -484,14 +502,14 @@ impl Unit {
         {
             return Ok(());
         }
-        let v = victim(c, others, action.target).ok_or(GenieError::unsupported(
+        let v = victim(c, action.target).ok_or(GenieError::unsupported(
             "a missile's target the slice does not hold live",
         ))?;
         let mode = stats.hit_mode;
         if (matches!(mode, 0 | 2) || (mode == 1 && c.player != v.player))
             && crate::combat::missile::on_target(self.position, stats.radius, v.position, v.radius)
         {
-            let result = self.missile_strike(action, fired, c, others)?;
+            let result = self.missile_strike(action, fired, c)?;
             action.result = result;
             if result != 2 {
                 self.end_missile(action);
@@ -508,12 +526,11 @@ impl Unit {
         &mut self,
         slot: &mut Option<crate::combat::missile::MissileAction>,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         if let Some(a) = slot.take() {
             let by = self.releaser(c);
             for t in [a.target, a.fired_from].into_iter().filter(|&t| t != -1) {
-                crate::world::lets::release(c, others, t, by)?;
+                crate::world::lets::release(c, t, by)?;
             }
         }
         if self.life.state < 7 {
@@ -526,10 +543,13 @@ impl Unit {
             self.life.hp = 0.0;
             self.life.goto_sleep = false;
             self.life.state = 7;
-            c.spatial.sight_state(self.id, 7);
+            c.w.spatial.sight_state(self.id, 7);
             if before < 4 {
-                let master = c.masters.and_then(|m| m.get(self.life.master_id));
-                forget_resource(c.spatial, master, self.id, self.position);
+                let master =
+                    c.w.masters
+                        .get(c.player)
+                        .and_then(|m| m.get(self.life.master_id));
+                forget_resource(&mut c.w.spatial, master, self.id, self.position);
             }
         }
         Ok(())

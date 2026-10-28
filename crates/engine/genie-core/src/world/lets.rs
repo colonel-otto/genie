@@ -1,10 +1,11 @@
 //! What an object's update does to the objects its actions take and let go (slots 0x178 and
-//! 0x180) and to the building a counted builder leaves: each a call through the update's view
-//! where the game makes it (FD-045-D07). Outside an update [`World::take`], [`World::release`]
-//! and [`World::leave_builders`] run the same calls on a view of the whole world.
+//! 0x180) and to the building a counted builder leaves: each the world's call where the game
+//! makes it (FD-045-D07, D28; [`World::take`], [`World::release`], [`World::leave_builders`]),
+//! which runs [`Lets`] on a view of the whole world. The unit AI's side runs [`Lets`] on its
+//! own view.
 //!
-//! The updating object itself is outside the view (its slot holds its stand-in): a call on it
-//! goes to the world after the step (the Context's `takes`, `releases`, `builder_leaves`).
+//! The updating object itself is out of its slot (its stand-in holds it): a call on it goes to
+//! the world after the step (the Context's `takes`, `releases`, `builder_leaves`).
 
 use crate::GenieError;
 use crate::objects::lines::UnitLines;
@@ -65,52 +66,64 @@ impl World {
     }
 }
 
-impl Context<'_> {
-    /// The update's [`Lets`].
-    pub(crate) const fn lets(&mut self) -> Lets<'_> {
-        Lets {
-            player: self.player,
-            relations: self.relations,
-            masters: self.every_masters,
-            lines: self.lines,
-            tracker: self.tracker,
-            takes: &mut self.takes,
-            releases: &mut self.releases,
-            builder_leaves: &mut self.builder_leaves,
-        }
+/// Slot 0x178 on object `id`, which an action of `by` takes, from an update: the world's take
+/// ([`World::take`]); the updating object's own, which the world does not hold while it
+/// updates, waits for the world after the step.
+pub(crate) fn take(c: &mut Context<'_>, id: i32, by: Releaser) {
+    if id == c.me {
+        c.takes.push((id, by));
+    } else {
+        c.w.take(id, by);
     }
 }
 
-/// [`Lets::take`] with the update's Context.
-pub(crate) fn take(c: &mut Context<'_>, others: &mut Others<'_>, id: i32, by: Releaser) {
-    c.lets().take(others, id, by);
-}
-
-/// [`Lets::release`] with the update's Context.
+/// Slot 0x180 on object `id`, which an action of `by` lets go, from an update: the world's
+/// release ([`World::release`]); the updating object's own waits for the world after the step.
 ///
 /// # Errors
 ///
-/// [`Lets::release`]'s.
-pub(crate) fn release(
-    c: &mut Context<'_>,
-    others: &mut Others<'_>,
-    id: i32,
-    by: Releaser,
-) -> Result<(), GenieError> {
-    c.lets().release(others, id, by)
+/// [`World::release`]'s.
+pub(crate) fn release(c: &mut Context<'_>, id: i32, by: Releaser) -> Result<(), GenieError> {
+    if id == c.me {
+        c.releases.push((id, by));
+        return Ok(());
+    }
+    c.w.release(id, by)
 }
 
-/// [`Lets::torn_down`] with the update's Context.
+/// A counted builder's leave of the building a Build on `id` counted it in, from an update:
+/// the world's ([`World::leave_builders`]); one on the updating object itself, or on an annex
+/// whose main building it is, waits for the world after the step.
 ///
 /// # Errors
 ///
-/// [`Lets::torn_down`]'s.
+/// An object of a master its owner lacks.
+pub(crate) fn leave_builders(c: &mut Context<'_>, id: i32) -> Result<(), GenieError> {
+    if id == c.me || c.w.counted_building(id)? == Some(c.me) {
+        c.builder_leaves.push(id);
+        return Ok(());
+    }
+    c.w.leave_builders(id)
+}
+
+/// What an action list's teardown left the world, applied at once from an update: the
+/// buildings its counted builders leave ([`leave_builders`]), then the targets it lets go
+/// ([`release`]), as [`World::clear_actions`] applies them.
+///
+/// # Errors
+///
+/// [`leave_builders`]' and [`release`]'s.
 pub(crate) fn torn_down(
     c: &mut Context<'_>,
-    others: &mut Others<'_>,
-    pair: (Vec<i32>, Vec<(i32, Releaser)>),
+    (builder_leaves, releases): (Vec<i32>, Vec<(i32, Releaser)>),
 ) -> Result<(), GenieError> {
-    c.lets().torn_down(others, pair)
+    for id in builder_leaves {
+        leave_builders(c, id)?;
+    }
+    for (id, by) in releases {
+        release(c, id, by)?;
+    }
+    Ok(())
 }
 
 impl Lets<'_> {
@@ -185,7 +198,7 @@ impl Lets<'_> {
     }
 
     /// The builder count of the building a Build on `id` counted its builder in
-    /// ([`World::leave_builders`] through the view, `FUN_140aaddb0`): the object itself, or for
+    /// ([`World::leave_builders`] on a view, `FUN_140aaddb0`): the object itself, or for
     /// a building that is an annex its main building, counts one less (`+0x9e8`); none once the
     /// world no longer holds `id`.
     ///

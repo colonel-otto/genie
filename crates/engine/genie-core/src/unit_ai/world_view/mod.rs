@@ -8,6 +8,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
 use crate::unit_ai::task_finder::DropSite;
+use crate::world::World;
 use crate::world::lets::Lets;
 use crate::world::others::{Others, OthersRef};
 use crate::world::player::Player;
@@ -137,33 +138,29 @@ impl<'a> Foreign<'a> {
     }
 }
 
-/// What a unit's AI part reads of its owner's side ([`Unit::ai_part`]): the owner, its
-/// masters, diplomacy, attributes, civ and construction rate, and the player that took the unit
-/// over in its update (`new_owner`), whose side it reads (`RGE_Combat_Object::update` reads the
-/// owner after the change; [`owner_view`] gives its objects).
-#[derive(Clone)]
-pub(crate) struct OwnerView<'a> {
+/// What a unit's AI part reads of its owner's side ([`Unit::ai_part`]): the owner, its civ,
+/// construction rate and AI settings, and the player that took the unit over in its update
+/// (`new_owner`), whose side it reads (`RGE_Combat_Object::update` reads the owner after the
+/// change; [`owner_view`] gives its objects). Its masters, diplomacy and attributes are the
+/// world's (the side's diplomacy: [`OwnerView::relations`]).
+#[derive(Clone, Copy)]
+pub(crate) struct OwnerView {
     pub(crate) player: usize,
     pub(crate) new_owner: Option<usize>,
-    pub(crate) masters: Option<&'a Masters>,
-    pub(crate) relations: std::borrow::Cow<'a, [u8]>,
-    pub(crate) attributes: std::borrow::Cow<'a, [f32]>,
     pub(crate) civ: u8,
     pub(crate) construction_rate: f32,
     pub(crate) ai_settings: crate::world::player::AiSettings,
 }
 
-impl<'a> OwnerView<'a> {
-    /// The owner's side: player `new`'s when the unit changed hands to it in its update (its
-    /// diplomacy and attributes copied out of `others`), else the updating player's (`c`).
-    pub(crate) fn of<'c: 'a>(c: &Context<'c>, others: OthersRef<'_>, new: Option<usize>) -> Self {
-        let Some((new, q)) = new.and_then(|new| Some((new, others.players().player(new)?))) else {
+impl OwnerView {
+    /// The owner's side: player `new`'s when the unit changed hands to it in its update, else
+    /// the updating player's (`c`).
+    pub(crate) fn of(c: &Context<'_>, new: Option<usize>) -> Self {
+        let taker = new.filter(|&n| n != c.player);
+        let Some((new, q)) = taker.and_then(|n| Some((n, c.w.players.get(n)?))) else {
             return Self {
                 player: c.player,
                 new_owner: None,
-                masters: c.masters,
-                relations: std::borrow::Cow::Borrowed(c.relations),
-                attributes: std::borrow::Cow::Borrowed(c.attributes),
                 civ: c.civ,
                 construction_rate: c.construction_rate,
                 ai_settings: c.ai_settings,
@@ -172,13 +169,15 @@ impl<'a> OwnerView<'a> {
         Self {
             player: new,
             new_owner: Some(new),
-            masters: c.every_masters.get(new),
-            relations: std::borrow::Cow::Owned(q.relations.clone()),
-            attributes: std::borrow::Cow::Owned(q.attributes.clone()),
             civ: q.civ,
             construction_rate: q.construction_rate,
             ai_settings: q.ai_settings,
         }
+    }
+
+    /// The side's diplomacy (`player+0x260`).
+    pub(crate) fn relations(self, w: &World) -> &[u8] {
+        &w.players[self.player].relations
     }
 }
 
@@ -186,7 +185,11 @@ impl<'a> OwnerView<'a> {
 /// for a unit player `new` took over in its update, that player's live list as its own and the
 /// old owner's among the others' ([`OthersRef::changed_hands`]).
 pub(crate) fn owner_view<'v>(others: &'v Others<'_>, new: Option<usize>) -> OthersRef<'v> {
-    let view = others.view();
+    changed_view(others.view(), new)
+}
+
+/// `view` as the unit AI of a unit player `new` took over reads it ([`owner_view`]).
+pub(crate) fn changed_view(view: OthersRef<'_>, new: Option<usize>) -> OthersRef<'_> {
     match new.and_then(|new| Some((new, view.players().player(new)?))) {
         Some((new, q)) => view.changed_hands(new, &q.objects),
         None => view,

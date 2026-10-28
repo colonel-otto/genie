@@ -474,18 +474,19 @@ impl Unit {
             m.shows_standing();
         }
         if self.sprite.is_some() {
-            let standing = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .map(|m| m.standing_sprite)
-                .and_then(|id| c.graphics.get(&id).copied())
-                .ok_or(GenieError::unsupported(
-                    "an explorer without its standing sprite",
-                ))?;
+            let standing =
+                c.w.masters
+                    .get(c.player)
+                    .and_then(|m| m.get(self.life.master_id))
+                    .map(|m| m.standing_sprite)
+                    .and_then(|id| c.w.graphics.get(&id).copied())
+                    .ok_or(GenieError::unsupported(
+                        "an explorer without its standing sprite",
+                    ))?;
             crate::combat::attack::set_sprite(
                 &mut self.sprite,
                 standing,
-                c.streams.get(Stream::Sprite),
+                c.w.streams.get(Stream::Sprite),
             );
         }
         Ok(())

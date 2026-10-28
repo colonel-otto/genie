@@ -10,7 +10,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::Search;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::context::Context;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::OthersRef;
 use crate::world::{SEARCH_AGAIN, SEARCH_NEEDED};
 
 impl Unit {
@@ -19,28 +19,20 @@ impl Unit {
     /// ([`Unit::hunt_search_notify`]), the unit takes the sprite it stands with (slot 0x68 with
     /// `FUN_140ac5210`'s) and the timer starts at −10 s. A hunt of class 10 would end its search
     /// (`set_state` 2), not modelled.
-    pub(crate) fn hunt_set_search(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn hunt_set_search(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.target_class != 10 {
             let target = std::mem::replace(&mut hunt.target, -1);
-            self.hunt_release(c, others, [target])?;
+            self.hunt_release(c, [target])?;
         }
-        self.hunt_search_state(c, others)
+        self.hunt_search_state(c)
     }
 
     /// The Hunt's `set_state(3)` itself (`0x140ac60e0` case 3; its target stays): the unit AI is
     /// told ([`Unit::hunt_search_notify`]), the unit takes the sprite it stands with and the timer
     /// starts at −10 s. A human player's hunt of class 10 is done instead (`set_state` 2: the
     /// target and the second target go), a computer player's would end (1), not modelled.
-    pub(crate) fn hunt_search_state(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn hunt_search_state(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let task = hunt.task;
         if hunt.target_class == 10 {
@@ -52,11 +44,11 @@ impl Unit {
             }
             let released = hunt.set_done();
             self.hunt_stand(c, &task)?;
-            self.hunt_release(c, others, released)?;
+            self.hunt_release(c, released)?;
             return Ok(());
         }
         hunt.timer = SEARCH_AGAIN;
-        self.hunt_search_notify(c, others.view())?;
+        self.hunt_search_notify(c)?;
         self.hunt_stand(c, &task)
     }
 
@@ -67,19 +59,20 @@ impl Unit {
         c: &mut Context<'_>,
         task: &crate::gathering::hunt::HuntTask,
     ) -> Result<(), GenieError> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
         let stand = crate::gathering::hunt::stand_sprite(
             task,
             master.standing_sprite,
             self.life.attribute_type,
             self.life.amount,
-            c.graphics,
+            &c.w.graphics,
         );
         if let Some(s) = stand {
-            crate::combat::attack::set_sprite(&mut self.sprite, s, c.streams.get(Stream::Sprite));
+            crate::combat::attack::set_sprite(&mut self.sprite, s, c.w.streams.get(Stream::Sprite));
         }
         Ok(())
     }
@@ -93,12 +86,11 @@ impl Unit {
     pub(crate) fn hunt_release<const N: usize>(
         &self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         ids: [i32; N],
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         for id in ids.into_iter().filter(|&id| id != -1) {
-            crate::world::lets::release(c, others, id, by)?;
+            crate::world::lets::release(c, id, by)?;
         }
         Ok(())
     }
@@ -108,32 +100,30 @@ impl Unit {
     /// and its drop site: the second target; −1 for a master without drop sites (`+0x7a0`); else
     /// the closest (`FUN_1411671e0` as `set_state(8)` searches, [`Unit::drop_site`]), with none
     /// found 0, and the hunt's class goes (−1).
-    pub(crate) fn hunt_search_notify(
-        &mut self,
-        c: &mut Context<'_>,
-        others: OthersRef<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn hunt_search_notify(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        let others = OthersRef::of(&c.w.players, c.player);
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_none_or(|&d| d == -1) {
             -1
         } else {
             let mut w = DropWorld {
-                masters: c.masters,
-                spatial: c.spatial,
-                zones: c.zones,
-                pathing: c.pathing,
-                object: c.streams.get(Stream::Object),
+                masters: c.w.masters.get(c.player),
+                spatial: &c.w.spatial,
+                zones: &mut c.w.zones,
+                pathing: &mut c.w.pathing,
+                object: c.w.streams.get(Stream::Object),
                 world_time: c.world_time,
                 computer: c.computer,
                 construction_rate: c.construction_rate,
-                groups: c.groups,
+                groups: &c.w.groups,
             };
             let (site, _) = self.drop_site(&mut w, others, -1, crate::gathering::hunt::SEARCH)?;
             if site == -1 {
@@ -168,43 +158,37 @@ impl Unit {
     ///
     /// [`HuntAction::retarget`]: crate::gathering::hunt::HuntAction::retarget
     /// [`HuntAction::search_walk`]: crate::gathering::hunt::HuntAction::search_walk
-    pub(crate) fn hunt_after_drop(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
-        let _ = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?;
+    pub(crate) fn hunt_after_drop(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        let _ =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
         if self.actions.hunt().expect("the caller's hunt").target != -1 {
-            return self.hunt_back_to_target(c, others);
+            return self.hunt_back_to_target(c);
         }
-        if self.hunt_drop_orders(c, others)? {
+        if self.hunt_drop_orders(c)? {
             return Ok(());
         }
-        let (found, kind) = self.hunt_next_search(c, others.view())?;
+        let (found, kind) = self.hunt_next_search(c)?;
         if found == -1 {
             return self.hunt_found_nothing(c, kind);
         }
-        self.hunt_take_found(c, others, found)
+        self.hunt_take_found(c, found)
     }
 
     /// [`Unit::hunt_after_drop`] with a target: the drop site goes (`FUN_140a7a190` with none)
     /// and the hunt walks back to it (`set_state(4)`, [`crate::gathering::hunt::HuntAction::chase`]
     /// with the hunter's engagement and arms). A chase that starts arrived, or fails, is not
     /// modelled.
-    fn hunt_back_to_target(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    fn hunt_back_to_target(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?;
-        let v = victim(c, others, hunt.target).ok_or(GenieError::unsupported(
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
+        let v = victim(c, hunt.target).ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold live",
         ))?;
         let quarry = crate::gathering::hunt::Quarry {
@@ -220,10 +204,10 @@ impl Unit {
             drop_site: false,
         };
         let (me_at, them) = (
-            c.spatial
+            c.w.spatial
                 .get_known(self.id)?
                 .ok_or(GenieError::unsupported("a hunter without a place"))?,
-            c.spatial
+            c.w.spatial
                 .get_known(v.id)?
                 .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
         );
@@ -239,12 +223,12 @@ impl Unit {
         let moving = hunt
             .task
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
-        let arms = crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+        let arms = crate::combat::attack::arms(master, &c.w.graphics, hunt.task.sprites, moving);
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let site = std::mem::replace(&mut hunt.carry_to, -1);
         let by = self.releaser(c);
         if site != -1 {
-            crate::world::lets::release(c, others, site, by)?;
+            crate::world::lets::release(c, site, by)?;
         }
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -270,15 +254,11 @@ impl Unit {
     /// `FUN_140c64b50`) and the hunt ends (`set_state(1)`; its update returns 1 and the action
     /// list removes it, its teardown letting the drop site go): its unit AI runs the queued
     /// order. True when it ends.
-    fn hunt_drop_orders(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<bool, GenieError> {
+    fn hunt_drop_orders(&mut self, c: &mut Context<'_>) -> Result<bool, GenieError> {
         let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
-        let spatial: &Spatial = c.spatial;
+        let spatial: &Spatial = &c.w.spatial;
         let gone = |id: i32| match spatial.get(id) {
             None => true,
             Some(_) => spatial
@@ -295,7 +275,7 @@ impl Unit {
         ai.end_order_and_action()?;
         let mut hunt = self.actions.take_hunt().expect("the caller's hunt");
         hunt.tear_down(self.body.mover_mut())?;
-        self.hunt_release(c, others, [hunt.target, hunt.carry_to])?;
+        self.hunt_release(c, [hunt.target, hunt.carry_to])?;
         Ok(true)
     }
 
@@ -305,11 +285,7 @@ impl Unit {
     /// point; the probe of 4533's call); a hunt of class 10 searches nothing; any other class
     /// `ClosestObject` ([`Unit::hunt_closest_object`]). The object found (-1 for none) and the
     /// kind.
-    fn hunt_next_search(
-        &mut self,
-        c: &mut Context<'_>,
-        others: OthersRef<'_>,
-    ) -> Result<(i32, i8), GenieError> {
+    fn hunt_next_search(&mut self, c: &mut Context<'_>) -> Result<(i32, i8), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let ai = self.ai.as_ref().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
@@ -328,10 +304,10 @@ impl Unit {
         let found = if kind == -1 && hunt.target_class == 10 {
             -1
         } else if kind == -1 {
-            self.hunt_closest_object(c, others, class)?
+            self.hunt_closest_object(c, class)?
         } else {
             let cap = if kind == 0 { 2 } else { -1 };
-            self.resource_search(c, others, kind as u8, cap)?
+            self.resource_search(c, kind as u8, cap)?
         };
         Ok((found, kind))
     }
@@ -341,21 +317,18 @@ impl Unit {
     /// sight plus a tile, at least its search radius, plus the civilian's growth); its alert
     /// follows the enemies found. A unit in a pasture (`FUN_1411c7670`) and a class-10 searcher
     /// are not modelled. The object found, -1 for none.
-    fn hunt_closest_object(
-        &mut self,
-        c: &mut Context<'_>,
-        others: OthersRef<'_>,
-        class: i32,
-    ) -> Result<i32, GenieError> {
+    fn hunt_closest_object(&mut self, c: &mut Context<'_>, class: i32) -> Result<i32, GenieError> {
+        let others = OthersRef::of(&c.w.players, c.player);
         if self.my_pasture != -1 {
             return Err(GenieError::unsupported(
                 "a hunter tending a pasture (FUN_1411c7670)",
             ));
         }
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
         let mover = self.body.mover().ok_or(crate::world::HUNTER_UNMOVING)?;
         let radius =
             crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
@@ -381,14 +354,14 @@ impl Unit {
             group: self.group.id,
             action_state: self.actions.hunt().expect("the caller's hunt").state,
         };
-        let spatial: &Spatial = c.spatial;
+        let spatial: &Spatial = &c.w.spatial;
         let mut plan = Planning {
-            pathing: c.pathing,
+            pathing: &mut c.w.pathing,
             now: c.world_time,
             computer: c.computer,
-            object: c.streams.get(Stream::Object),
+            object: c.w.streams.get(Stream::Object),
             construction_rate: c.construction_rate,
-            groups: c.groups,
+            groups: &c.w.groups,
         };
         let master_id = self.life.master_id;
         let mut reach = |id: i32, range: f32| {
@@ -447,31 +420,30 @@ impl Unit {
     /// of its own player's directly, never listed). A farm found is not modelled. A hunt that
     /// fails at once takes the standing sprite (slot 0x68 with `FUN_140ac5210`'s: the unit
     /// carries nothing now).
-    fn hunt_take_found(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        found: i32,
-    ) -> Result<(), GenieError> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?;
-        let (owner, t) = others.find(found).ok_or(GenieError::unsupported(
-            "a hunt's new target the slice does not hold",
-        ))?;
-        let t_master = c
-            .every_masters
-            .get(owner)
-            .and_then(|m| m.get(t.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a hunt's target of a master the slice does not have",
-            ))?;
-        let relations = c
-            .spatial
-            .relations
-            .get(c.player)
-            .map_or(&[][..], |r| &r[..]);
+    fn hunt_take_found(&mut self, c: &mut Context<'_>, found: i32) -> Result<(), GenieError> {
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
+        let (owner, t) =
+            OthersRef::of(&c.w.players, c.player)
+                .find(found)
+                .ok_or(GenieError::unsupported(
+                    "a hunt's new target the slice does not hold",
+                ))?;
+        let t_master =
+            c.w.masters
+                .get(owner)
+                .and_then(|m| m.get(t.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a hunt's target of a master the slice does not have",
+                ))?;
+        let relations =
+            c.w.spatial
+                .relations
+                .get(c.player)
+                .map_or(&[][..], |r| &r[..]);
         if matches!(t.life.master_id, 1893 | 1897) {
             return Err(GenieError::unsupported(
                 "a hunt finding a farm (FUN_1411c7670)",
@@ -490,10 +462,10 @@ impl Unit {
             drop_site: false,
         };
         let (me_at, them) = (
-            c.spatial
+            c.w.spatial
                 .get_known(self.id)?
                 .ok_or(GenieError::unsupported("a hunter without a place"))?,
-            c.spatial
+            c.w.spatial
                 .get_known(found)?
                 .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
         );
@@ -512,7 +484,7 @@ impl Unit {
                 .walk_sprite_id(self.life.attribute_type, self.life.amount);
             (h.task.sprites, moving)
         });
-        let arms = crate::combat::attack::arms(master, c.graphics, sprites, moving);
+        let arms = crate::combat::attack::arms(master, &c.w.graphics, sprites, moving);
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let held = self.life.amount;
         let by = self.releaser(c);
@@ -535,10 +507,10 @@ impl Unit {
                     &arms,
                     &mut self.sprite,
                     &mut self.body,
-                    c.streams.get(Stream::Sprite),
+                    c.w.streams.get(Stream::Sprite),
                 )?;
             }
-            crate::world::lets::take(c, others, found, by);
+            crate::world::lets::take(c, found, by);
         }
         self.hunt_failed_sprite(c)
     }
@@ -557,21 +529,18 @@ impl Unit {
             m.shows_standing();
         }
         if self.sprite.is_some() {
-            let master = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
-            let standing =
-                c.graphics
-                    .get(&master.standing_sprite)
-                    .copied()
-                    .ok_or(GenieError::unsupported(
-                        "a hunter without its standing sprite",
-                    ))?;
+            let master =
+                c.w.masters
+                    .get(c.player)
+                    .and_then(|m| m.get(self.life.master_id))
+                    .ok_or(crate::world::HUNTER_MASTER)?;
+            let standing = c.w.graphics.get(&master.standing_sprite).copied().ok_or(
+                GenieError::unsupported("a hunter without its standing sprite"),
+            )?;
             crate::combat::attack::set_sprite(
                 &mut self.sprite,
                 standing,
-                c.streams.get(Stream::Sprite),
+                c.w.streams.get(Stream::Sprite),
             );
         }
         Ok(())
@@ -587,25 +556,21 @@ impl Unit {
     ///
     /// [`HuntAction::set_drop`]: crate::gathering::hunt::HuntAction::set_drop
     /// [`drop_site_search`]: crate::gathering::drop_sites::drop_site_search
-    pub(crate) fn hunt_drop_off(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn hunt_drop_off(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let w = DropWorld {
-            masters: c.masters,
-            spatial: c.spatial,
-            zones: c.zones,
-            pathing: c.pathing,
-            object: c.streams.get(Stream::Object),
+            masters: c.w.masters.get(c.player),
+            spatial: &c.w.spatial,
+            zones: &mut c.w.zones,
+            pathing: &mut c.w.pathing,
+            object: c.w.streams.get(Stream::Object),
             world_time: c.world_time,
             computer: c.computer,
             construction_rate: c.construction_rate,
-            groups: c.groups,
+            groups: &c.w.groups,
         };
-        if let Some(site) = self.drop_off_in(w, others.view())? {
+        if let Some(site) = self.drop_off_in(w, OthersRef::of(&c.w.players, c.player))? {
             let by = self.releaser(c);
-            crate::world::lets::take(c, others, site, by);
+            crate::world::lets::take(c, site, by);
         }
         Ok(())
     }

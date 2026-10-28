@@ -10,7 +10,7 @@ use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
 use crate::world::context::Context;
-use crate::world::others::Others;
+use crate::world::others::OthersRef;
 use crate::world::{BUILDING_KIND, World};
 
 impl World {
@@ -163,45 +163,40 @@ impl KillLeft {
 
 /// The object `id` a hit of the updating unit can read ([`victim`]) with its owner and master:
 /// one of any list, live or asleep, of a master its owner has.
-pub(crate) fn readable<'o>(
-    c: &Context<'o>,
-    others: &'o Others<'_>,
-    id: i32,
-) -> Option<(usize, &'o Unit, &'o Master)> {
-    let (p, u, _) = others.locate(id)?;
-    let master = c.every_masters.get(p)?.get(u.life.master_id)?;
+pub(crate) fn readable<'o>(c: &'o Context<'_>, id: i32) -> Option<(usize, &'o Unit, &'o Master)> {
+    let (p, u, _) = c.w.locate(id)?;
+    let master = c.w.masters.get(p)?.get(u.life.master_id)?;
     Some((p, u, master))
 }
 
-/// What a hit of the updating unit reads of object `id` ([`World::victim`] through the update's
-/// view `others`): an object [`readable`] by the hit.
-pub(crate) fn victim(c: &Context<'_>, others: &Others<'_>, id: i32) -> Option<Victim> {
-    let (p, u, master) = readable(c, others, id)?;
-    let view = others.view();
+/// What a hit of the updating unit reads of object `id` ([`World::victim`] from the update):
+/// an object [`readable`] by the hit.
+pub(crate) fn victim(c: &Context<'_>, id: i32) -> Option<Victim> {
+    let (p, u, master) = readable(c, id)?;
+    let view = OthersRef::of(&c.w.players, c.player);
     let attributes = if p == c.player {
-        c.attributes
+        &c.w.players[c.player].attributes[..]
     } else {
         &view.players().player(p)?.attributes[..]
     };
     let sides = SideWorld {
         player: c.player,
-        relations: c.relations,
+        relations: &c.w.players[c.player].relations,
         foreign: view.players(),
-        drop_sites: c.drop_sites,
+        drop_sites: &c.w.drop_sites,
     };
     Some(victim_in(
         u,
         (p, master, attributes),
         (c.player, &sides),
-        c.spatial,
+        &c.w.spatial,
         c.mode_680,
     ))
 }
 
-/// The hit's changes on its victim `v`, written back through the update's view `others` where
-/// the hit ran. An object asleep (a tree a blast reached) takes its hit points and what it
+/// The hit's changes on its victim `v`, written back to the world where the hit ran. An object asleep (a tree a blast reached) takes its hit points and what it
 /// holds; below 1 hit point (COMISS/JBE: a NaN sleeps on) the hit wakes it (`FUN_14119deb0`
-/// with 0, [`Others::wake`]) to take the rest. A live one takes its hit points, what it holds,
+/// with 0, [`World::wake_sleeper`]) to take the rest. A live one takes its hit points, what it holds,
 /// its sleep flag, its decay, its powerups and charge, a struck building's
 /// `damaged_lately_timer`, the damage notifies (500) to its unit AI, and a struck building's
 /// annexes take its hit points (`+0xbc0`..). Returns its kill and razings for the caller
@@ -212,7 +207,6 @@ pub(crate) fn victim(c: &Context<'_>, others: &Others<'_>, id: i32) -> Option<Vi
 /// A notify its unit AI's queue does not take.
 pub(crate) fn write_back(
     c: &mut Context<'_>,
-    others: &mut Others<'_>,
     v: &mut Victim,
 ) -> Result<Option<KillLeft>, GenieError> {
     let damaged = std::mem::take(&mut v.damaged);
@@ -225,19 +219,19 @@ pub(crate) fn write_back(
             .map(|b| std::mem::take(&mut b.razed))
             .unwrap_or_default(),
     };
-    let Some((_, _, sleeps)) = others.locate(v.id) else {
+    let Some((_, _, sleeps)) = c.w.locate(v.id) else {
         return Ok(None);
     };
     if sleeps {
-        let (_, u) = others.get_mut(v.id).expect("located");
+        let (_, u) = c.w.object_mut(v.id).expect("located");
         u.life.hp = v.hp;
         u.life.amount = v.amount;
         if crate::math::fmath::at_most_or_unordered(1.0, v.hp) {
             return Ok(None);
         }
-        let _ = others.wake(v.id, c.tracker, (c.every_masters, c.lines));
+        let _ = c.w.wake_sleeper(v.id);
     }
-    let (_, u) = others.get_mut(v.id).expect("located");
+    let (_, u) = c.w.object_mut(v.id).expect("located");
     u.life.hp = v.hp;
     u.life.amount = v.amount;
     u.life.goto_sleep = v.goto_sleep;
@@ -267,8 +261,8 @@ pub(crate) fn write_back(
         }
     }
     for &a in struck.map_or(&[][..], |b| &b.annexes) {
-        if let Some((_, _, false)) = others.locate(a) {
-            let (_, x) = others.get_mut(a).expect("located");
+        if let Some((_, _, false)) = c.w.locate(a) {
+            let (_, x) = c.w.object_mut(a).expect("located");
             x.life.hp = v.hp;
         }
     }
@@ -300,16 +294,15 @@ impl Struck {
 /// A notify a unit AI's queue does not take.
 pub(crate) fn write_struck(
     c: &mut Context<'_>,
-    others: &mut Others<'_>,
     mut blasted: Vec<Victim>,
     v: &mut Victim,
 ) -> Result<Struck, GenieError> {
     let mut blast = Vec::new();
     for b in &mut blasted {
-        blast.extend(write_back(c, others, b)?);
+        blast.extend(write_back(c, b)?);
     }
     c.blasted = blasted;
-    let target = write_back(c, others, v)?;
+    let target = write_back(c, v)?;
     Ok(Struck { blast, target })
 }
 
@@ -319,13 +312,9 @@ pub(crate) fn write_struck(
 /// # Errors
 ///
 /// A notify a unit AI's queue does not take.
-pub(crate) fn write_strike_back(
-    c: &mut Context<'_>,
-    others: &mut Others<'_>,
-    v: &mut Victim,
-) -> Result<(), GenieError> {
+pub(crate) fn write_strike_back(c: &mut Context<'_>, v: &mut Victim) -> Result<(), GenieError> {
     let blasted = std::mem::take(&mut c.blasted);
-    write_struck(c, others, blasted, v)?.file(c, None);
+    write_struck(c, blasted, v)?.file(c, None);
     Ok(())
 }
 

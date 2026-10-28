@@ -20,18 +20,19 @@ impl Unit {
             return Ok(true);
         }
         if std::mem::take(&mut self.default_make) {
-            let task = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .and_then(Master::default_task)
-                .copied()
-                .ok_or(GenieError::unsupported(
-                    "a Make whose master the slice does not have",
-                ))?;
+            let task =
+                c.w.masters
+                    .get(c.player)
+                    .and_then(|m| m.get(self.life.master_id))
+                    .and_then(Master::default_task)
+                    .copied()
+                    .ok_or(GenieError::unsupported(
+                        "a Make whose master the slice does not have",
+                    ))?;
             self.actions
                 .set_make(Some(crate::gathering::make::MakeAction::start(
                     task,
-                    c.attributes,
+                    &c.w.players[c.player].attributes,
                     &mut crate::gathering::make::Held {
                         attribute_type: &mut self.life.attribute_type,
                         amount: &mut self.life.amount,

@@ -7,14 +7,14 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Step, Unit};
 use crate::unit_ai::unit::AiResume;
 use crate::world::context::{Context, ObjectOutputs};
-use crate::world::others::Others;
 use crate::world::{PlayerFrame, World, scenario_mode, standard_mode};
 
 impl World {
     /// One object's step with its Context (`f`: the unit's update, or one part of its unit AI
-    /// for a command): object `i` of player `p` leaves its list, `f` gets it, the Context and the
-    /// rest of the list (the objects it makes join the list at their making). Returns `f`'s result (an error of the sight's registry first), what the Context
-    /// gathered for the world ([`World::step_object`]).
+    /// for a command): object `i` of player `p` leaves its list (its stand-in holds the slot),
+    /// and `f` gets it and the Context, which holds the world (FD-045-D28; the objects it
+    /// makes join the list at their making). Returns `f`'s result (an error of the sight's
+    /// registry first) and what the Context gathered for the world ([`World::step_object`]).
     #[allow(clippy::too_many_lines)]
     pub(super) fn run_object(
         &mut self,
@@ -22,7 +22,7 @@ impl World {
         (dt, turn): (u32, Option<u32>),
         frame: &PlayerFrame,
         resume: Option<AiResume>,
-        f: impl FnOnce(&mut Unit, &mut Context<'_>, &mut Others<'_>) -> Result<Step, GenieError>,
+        f: impl FnOnce(&mut Unit, &mut Context<'_>) -> Result<Step, GenieError>,
     ) -> (Result<Step, GenieError>, ObjectOutputs) {
         // the unit AI's target as its update starts, read before the unit leaves its list: a unit
         // may be its own target (an unload's)
@@ -51,22 +51,28 @@ impl World {
             }
             None => Vec::new(),
         };
-        let (before, rest) = self.players.split_at_mut(p);
-        let (player, after) = rest.split_first_mut().expect("the player updating");
-
+        let player = &self.players[p];
+        let (computer, construction_rate, civ) =
+            (player.computer, player.construction_rate, player.civ);
+        let (ai_settings, sharing, resources) =
+            (player.ai_settings, player.sharing, player.resources);
+        let settings = &self.settings;
+        let (farm_stops, predator_hunts_end) =
+            (settings.walkable_farms, settings.predator_hunts_end());
+        let (carry_rule, game_mode) = (settings.carry_rule(), settings.game_mode);
+        let (tick, world_time, mode_680, player_turn) =
+            (self.ticks, self.world_time, self.mode_680, self.player_turn);
+        let me = unit.id;
         let mut c = Context {
+            w: self,
+            me,
             dt,
             dt_seconds: seconds(dt),
-            tick: self.ticks,
+            tick,
             turn,
-            world_time: self.world_time,
-            computer: player.computer,
-            streams: &mut self.streams,
-            spatial: &mut self.spatial,
-            pathing: &mut self.pathing,
-            groups: &self.groups,
-            construction_rate: player.construction_rate,
-            masters: self.masters.get(p),
+            world_time,
+            computer,
+            construction_rate,
             ai_target,
             blasted,
             kills: Vec::new(),
@@ -86,34 +92,26 @@ impl World {
             flares: Vec::new(),
             promotions: Vec::new(),
             evacuations: Vec::new(),
-            recycling: &mut self.recycling,
-            mode_1: self.mode_680 == 1,
+            mode_1: mode_680 == 1,
             player: p,
-            civ: player.civ,
-            ai_settings: player.ai_settings,
-            sharing: player.sharing,
-            farm_stops: self.settings.walkable_farms,
-            predator_hunts_end: self.settings.predator_hunts_end(),
-            attributes: &player.attributes,
-            resources: player.resources,
-            graphics: &self.graphics,
-            drop_sites: &self.drop_sites,
-            every_masters: &self.masters,
+            civ,
+            ai_settings,
+            sharing,
+            farm_stops,
+            predator_hunts_end,
+            resources,
             attribute_97: &frame.attribute_97,
             game_status: &frame.game_status,
-            player_turn: self.player_turn,
-            player_time: &self.player_time,
+            player_turn,
             computers: &frame.computers,
             dodge_chances: &frame.dodge_chances,
             keep_distance_chances: &frame.keep_distance_chances,
             attribute_204: frame.attribute_204,
-            mode_680: self.mode_680,
-            carry_rule: self.settings.carry_rule(),
-            scenario: scenario_mode(self.settings.game_mode),
-            standard: standard_mode(self.settings.game_mode),
+            mode_680,
+            carry_rule,
+            scenario: scenario_mode(game_mode),
+            standard: standard_mode(game_mode),
             sight_takers: &frame.sight_takers,
-            tracker: &mut player.tracker,
-            lines: &self.lines,
             attribute_adds: Vec::new(),
             history_events: Vec::new(),
             techs_done: Vec::new(),
@@ -134,24 +132,20 @@ impl World {
             transport_moves: Vec::new(),
             starts: Vec::new(),
             main_works: Vec::new(),
-            relations: &player.relations,
             leads: None,
-            zones: &mut self.zones,
         };
-        let lists = (&mut player.objects, &mut player.sleeping);
-        let mut others = Others::new((p, unit.id), lists, (before, after));
-        let mut result = f(&mut unit, &mut c, &mut others);
+        let mut result = f(&mut unit, &mut c);
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);
         }
-        let out = c.outputs(unit.id);
+        let out = c.outputs(me);
         if let Some(e) = self.spatial.take_sight_unsupported()
             && result.is_ok()
         {
             result = Err(e);
         }
-        self.spatial.set_gait(unit.id, unit.gait());
-        player.objects[i] = unit;
+        self.spatial.set_gait(me, unit.gait());
+        self.players[p].objects[i] = unit;
         (result, out)
     }
 
@@ -175,10 +169,9 @@ impl World {
         ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
     ) -> Result<(), GenieError> {
         let frame = self.player_frame();
-        let (step, ..) =
-            self.step_object((p, i), (0, None, false), &frame, None, |unit, c, others| {
-                unit.run_ai(c, others, f).map(|()| Step::Stay)
-            })?;
+        let (step, ..) = self.step_object((p, i), (0, None, false), &frame, None, |unit, c| {
+            unit.run_ai(c, f).map(|()| Step::Stay)
+        })?;
         match step {
             Step::Stay => Ok(()),
             _ => Err(GenieError::unsupported(

@@ -14,7 +14,7 @@ use crate::objects::masters::Master;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{Unit, annexes_of};
 use crate::world::context::Context;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::OthersRef;
 use crate::world::{
     BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, MONASTERY,
     VILLAGER_CLASS,
@@ -30,12 +30,13 @@ impl Unit {
     /// of at least 1, [`World::toggle_gate`]) and its close timer is 0; an open one (a height
     /// below the epsilon) with nothing in it starts its close timer at 0.5 s, or runs it down by
     /// the world's dt, and at 0 shuts (slot 0x338, `FUN_1416193e0`: a height of at most 0).
-    pub(crate) fn gate_update(
-        &mut self,
-        c: &mut Context<'_>,
-        others: OthersRef<'_>,
-    ) -> Result<(), GenieError> {
-        let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+    pub(crate) fn gate_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        let others = OthersRef::of(&c.w.players, c.player);
+        let Some(master) =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+        else {
             return Ok(());
         };
         let transforms = master
@@ -84,8 +85,11 @@ impl Unit {
         c: &Context<'_>,
         others: OthersRef<'_>,
     ) -> Result<(usize, usize), GenieError> {
-        let (units, allied) =
-            gate_units(c.spatial, self.id, &annexes_of(self.id, others.own_iter()))?;
+        let (units, allied) = gate_units(
+            &c.w.spatial,
+            self.id,
+            &annexes_of(self.id, others.own_iter()),
+        )?;
         Ok((units.len(), allied))
     }
 
@@ -105,7 +109,11 @@ impl Unit {
         else {
             return Ok(());
         };
-        let Some(m) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+        let Some(m) =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+        else {
             return Ok(());
         };
         let foundation = m.building.as_ref().map_or(-1, |b| b.foundation_terrain);
@@ -132,7 +140,7 @@ impl Unit {
             terrain_bonus: m.terrain_bonus,
             mode_680: c.mode_680,
         };
-        c.spatial
+        c.w.spatial
             .terrain
             .as_mut()
             .ok_or(GenieError::unsupported(
@@ -149,11 +157,7 @@ impl Unit {
     /// (`FUN_1411cc430`); this one completes a building made without a build time (a death
     /// spawn's). The walls' branch's facet and the other branch's work before it are not modelled
     /// for such a building.
-    pub(crate) fn complete_on_update(
-        &mut self,
-        c: &mut Context<'_>,
-        others: OthersRef<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn complete_on_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         self.farm_stage(c)?;
         let due = self.life.state == 0
             && self
@@ -162,11 +166,15 @@ impl Unit {
         if !due {
             return Ok(());
         }
-        let master = c.masters.and_then(|m| m.get(self.life.master_id));
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id));
         let walls = master.is_some_and(|m| m.class == 27 || m.id == 70);
         if !walls && self.annex_of.is_some() {
             return Ok(());
         }
+        let others = OthersRef::of(&c.w.players, c.player);
         let annexed = others.own_iter().any(|u| u.annex_of == Some(self.id));
         let Some(construction) = self.construction.as_mut() else {
             return Ok(());
@@ -184,8 +192,8 @@ impl Unit {
                 annexed,
                 attribute_204: c.attribute_204,
                 mode_680: c.mode_680,
-                farm_bonus: farm_bonus(c.attributes),
-                masters: c.masters,
+                farm_bonus: farm_bonus(&c.w.players[c.player].attributes),
+                masters: c.w.masters.get(c.player),
                 computer: c.computer,
                 ai: self.ai.is_some(),
                 main: self.annex_of.is_some(),
@@ -195,21 +203,29 @@ impl Unit {
             chain: crate::construction::build::WorkChain::default(),
             main_builders: None,
         };
-        let built = Construction::complete(&mut site, c.spatial, c.pathing)?;
-        if let Some(m) = c.masters.and_then(|m| m.get(self.life.master_id)) {
+        let built = Construction::complete(&mut site, &mut c.w.spatial, &mut c.w.pathing)?;
+        if let Some(m) =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+        {
             crate::construction::build::show_built(
                 &mut self.sprite,
                 m,
                 self.build_frame,
-                c.graphics,
-                c.streams.get(Stream::Sprite),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
             );
         }
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
-        let k = crate::players::tracker::key(c.masters, c.lines, self.life.master_id);
-        c.tracker.complete(self.id, k);
+        let k = crate::players::tracker::key(
+            c.w.masters.get(c.player),
+            &c.w.lines,
+            self.life.master_id,
+        );
+        c.w.players[c.player].tracker.complete(self.id, k);
         // its set_state(2) took its annexes along first (FUN_1411dbb70)
-        for annex in c.spatial.annexes_of(self.id) {
+        for annex in c.w.spatial.annexes_of(self.id) {
             c.annex_states.push((annex, 2));
         }
         c.attribute_adds.extend(built.attributes);
@@ -242,15 +258,15 @@ impl Unit {
     /// master's hit points (slot 0x110, [`Unit::heal`]); with villagers inside, a damaged
     /// building with a `garrison_repair_rate` repairs itself at a cost (`FUN_1411d33e0`, not
     /// modelled). Its `damaged_lately_timer` (`+0x30d`) loses one when whole seconds passed.
-    pub(crate) fn building_seconds(
-        &mut self,
-        c: &Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn building_seconds(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         if self.life.state != 2 {
             return Ok(());
         }
-        let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+        let Some(master) =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+        else {
             return Ok(());
         };
         let Some(bm) = master.building else {
@@ -264,7 +280,7 @@ impl Unit {
                 "a damaged building lets its garrison out (a fifth of its hit points)",
             ));
         }
-        if c.attributes.get(BUILDING_TERRAIN) == Some(&f32::from(master.id)) {
+        if c.w.players[c.player].attributes.get(BUILDING_TERRAIN) == Some(&f32::from(master.id)) {
             return Err(GenieError::unsupported(
                 "a building whose master attribute 255 names (FUN_1411c39b0)",
             ));
@@ -283,13 +299,14 @@ impl Unit {
             ));
         }
         for &id in self.garrison.iter().rev() {
-            let Some(u) = others.own(id) else {
+            let Some(u) = OthersRef::of(&c.w.players, c.player).own(id) else {
                 continue;
             };
-            let kind = c
-                .masters
-                .and_then(|m| m.get(u.life.master_id))
-                .map(|m| m.kind);
+            let kind =
+                c.w.masters
+                    .get(c.player)
+                    .and_then(|m| m.get(u.life.master_id))
+                    .map(|m| m.kind);
             if kind == Some(70) && 0 < u.raider_countdown {
                 return Err(GenieError::unsupported(
                     "a unit inside whose raider_build_countdown runs (FUN_1411e7220)",
@@ -299,11 +316,12 @@ impl Unit {
         let rate = bm.garrison_heal_rate;
         let mut villagers = 0;
         for &id in &self.garrison {
-            let Some(u) = others.own_mut(id) else {
+            let Some(u) = c.w.players[c.player].objects.by_id_mut(id) else {
                 continue;
             };
             let m =
-                c.masters
+                c.w.masters
+                    .get(c.player)
                     .and_then(|m| m.get(u.life.master_id))
                     .ok_or(GenieError::unsupported(
                         "a unit inside of a master the slice does not have",
@@ -523,26 +541,33 @@ impl Unit {
     /// that blasts at its death ([`blasts_at_death`]) blasts about its place (slot 0x848,
     /// `FUN_14107f690`, [`crate::combat::damage::blast`]: itself left out, no main target, the factor
     /// 1, the hit info `FUN_140aa8720` gives) over the objects its caller gathered
-    /// ([`Context::blasted`], written back through the update's view `others` right after it,
+    /// ([`Context::blasted`], written back to the world right after it,
     /// [`write_back`]); its death follows in the static update. Its own part of the blast is
     /// written back ([`Unit::hit_back`]); a kill of it changes nothing, as it dies anyway.
     ///
     /// # Errors
     ///
     /// What the blast does not model.
-    pub(crate) fn death_blast(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
-        let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+    pub(crate) fn death_blast(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        let Some(master) =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+        else {
             return Ok(());
         };
         if !blasts_at_death(master, &self.life) {
             return Ok(());
         }
-        let terrain = c.spatial.terrain.as_ref();
-        let mut own = victim_of(self, master, c.attributes, c.player, terrain, c.mode_680);
+        let terrain = c.w.spatial.terrain.as_ref();
+        let mut own = victim_of(
+            self,
+            master,
+            &c.w.players[c.player].attributes,
+            c.player,
+            terrain,
+            c.mode_680,
+        );
         let mut targets: Vec<&mut Victim> = c.blasted.iter_mut().collect();
         let _ = crate::combat::damage::blast(
             &mut own,
@@ -554,7 +579,7 @@ impl Unit {
         )?;
         let mut blasted = std::mem::take(&mut c.blasted);
         for v in &mut blasted {
-            let left = write_back(c, others, v)?;
+            let left = write_back(c, v)?;
             c.kills.extend(left);
         }
         c.blasted = blasted;

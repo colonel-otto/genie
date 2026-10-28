@@ -14,7 +14,6 @@ use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_o
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
 use crate::world::context::Context;
-use crate::world::others::Others;
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
 /// caller: the action is not quiet (`+0x60` 0, its constructors' `FUN_140a73e90` with 1), so the
@@ -381,16 +380,15 @@ impl Unit {
     pub(crate) fn artifact_part(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         me: Me,
     ) -> Result<Option<Captured>, GenieError> {
         let by = self.releaser(c);
         if c.tick <= 1 {
             return Ok(None);
         }
-        self.artifact_enter_part(c, others, me, by)?;
-        let new = self.artifact_walk_and_check(c, others, me, by)?;
-        self.artifact_handover(c, others, new)
+        self.artifact_enter_part(c, me, by)?;
+        let new = self.artifact_walk_and_check(c, me, by)?;
+        self.artifact_handover(c, new)
     }
 
     /// The Artifact's Enter sub-action (an enter command's, `FUN_1410847e0`) updates first
@@ -401,7 +399,6 @@ impl Unit {
     pub(crate) fn artifact_enter_part(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<(), GenieError> {
@@ -410,7 +407,7 @@ impl Unit {
         };
         let own = self.actions.take_enter();
         self.actions.set_enter(Some(e));
-        let updated = self.enter_update(c, others, me);
+        let updated = self.enter_update(c, me);
         let after = self.actions.take_enter();
         self.actions.set_enter(own);
         updated?;
@@ -420,7 +417,7 @@ impl Unit {
             } else {
                 art.goal = None;
                 if let Some(t) = art.drop_target() {
-                    crate::world::lets::release(c, others, t, by)?;
+                    crate::world::lets::release(c, t, by)?;
                 }
             }
         }
@@ -437,7 +434,6 @@ impl Unit {
     pub(crate) fn artifact_walk_and_check(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<Option<Handover>, GenieError> {
@@ -452,16 +448,16 @@ impl Unit {
             m.stop()?;
         }
         if let Some(t) = ended.and_then(|e| e.released) {
-            crate::world::lets::release(c, others, t, by)?;
+            crate::world::lets::release(c, t, by)?;
         }
-        let capture = c
-            .spatial
-            .sight
-            .as_ref()
-            .and_then(|v| v.seer(self.id))
-            .map(|s| s.capture);
+        let capture =
+            c.w.spatial
+                .sight
+                .as_ref()
+                .and_then(|v| v.seer(self.id))
+                .map(|s| s.capture);
         let searches = !(self.combat && capture == Some(0));
-        let spatial: &Spatial = c.spatial;
+        let spatial: &Spatial = &c.w.spatial;
         let (attribute_97, game_status) = (c.attribute_97, c.game_status);
         let id = self.id;
         let new = artifact.step(dt, searches, &mut || {
@@ -469,7 +465,7 @@ impl Unit {
         })?;
         if let Some(Handover::Taken { gone, .. }) = new {
             if let Some(t) = gone.released {
-                crate::world::lets::release(c, others, t, by)?;
+                crate::world::lets::release(c, t, by)?;
             }
             if gone.stops
                 && let Some(m) = self.body.mover_mut()
@@ -490,12 +486,11 @@ impl Unit {
     pub(crate) fn artifact_handover(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         new: Option<Handover>,
     ) -> Result<Option<Captured>, GenieError> {
         match new {
             Some(Handover::Taken { new, .. }) => {
-                let (main, also) = self.capture(c, others, new)?;
+                let (main, also) = self.capture(c, new)?;
                 Ok(Some(Captured {
                     new,
                     main,
@@ -505,7 +500,7 @@ impl Unit {
             }
             Some(Handover::ToGaia) => {
                 let class = self.placed_class(c)?;
-                self.capture_stop(c, others, class)?;
+                self.capture_stop(c, class)?;
                 let main = self.change_owner(c, 0)?;
                 let building = std::mem::take(&mut c.building_handover);
                 Ok((main || building).then(|| Captured {

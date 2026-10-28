@@ -305,7 +305,7 @@ pub(crate) fn missed_passes(
         return true;
     }
     let other = id != target;
-    c.spatial.allied_with(c.player, player)
+    c.w.spatial.allied_with(c.player, player)
         || (other && player == 0 && 15 < kind)
         || (other && level < blast_level)
 }

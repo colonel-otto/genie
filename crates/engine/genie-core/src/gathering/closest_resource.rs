@@ -256,11 +256,10 @@ impl Unit {
     pub(crate) fn resource_search(
         &self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
         kind: u8,
         cap: i32,
     ) -> Result<i32, GenieError> {
-        self.resource_search_from(c, others, kind, cap, -1)
+        self.resource_search_from(c, kind, cap, -1)
     }
 
     /// [`Unit::resource_search`] from the drop site `site` (−1 for none;
@@ -270,11 +269,11 @@ impl Unit {
     pub(crate) fn resource_search_from(
         &self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
         kind: u8,
         cap: i32,
         site: i32,
     ) -> Result<i32, GenieError> {
+        let others = OthersRef::of(&c.w.players, c.player);
         let current = self
             .ai
             .as_ref()
@@ -284,18 +283,18 @@ impl Unit {
             .current_target;
         let mut w = ResourceWorld {
             player: c.player,
-            spatial: c.spatial,
-            zones: c.zones,
+            spatial: &c.w.spatial,
+            zones: &mut c.w.zones,
             foreign: others.players(),
-            every: c.every_masters,
-            masters: c.masters,
+            every: &c.w.masters,
+            masters: c.w.masters.get(c.player),
             plan: Planning {
-                pathing: c.pathing,
+                pathing: &mut c.w.pathing,
                 now: c.world_time,
                 computer: c.computer,
-                object: c.streams.get(Stream::Object),
+                object: c.w.streams.get(Stream::Object),
                 construction_rate: c.construction_rate,
-                groups: c.groups,
+                groups: &c.w.groups,
             },
         };
         let search = (current, 2, crate::unit_ai::NO_POINT);

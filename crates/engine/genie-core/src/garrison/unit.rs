@@ -13,7 +13,7 @@ use crate::pathing::Pathing;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::{Actor, DropSite};
 use crate::world::context::Context;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads of its
@@ -24,59 +24,65 @@ impl Unit {
     /// update's `set_state(1)`, with an enter again ([`crate::garrison::EnterStep::again`]); a
     /// wait's standing sprite; the transport's move, the caller's after the update
     /// ([`Context::transport_moves`]).
-    pub(crate) fn enter_update(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        me: Me,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn enter_update(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
         let enter = self
             .actions
             .enter()
             .copied()
             .expect("checked by the caller");
-        let found = others.find(enter.target);
+        let found = OthersRef::of(&c.w.players, c.player).find(enter.target);
         // the units inside the target, any player's (its slot 0x498)
         let inside_of = |others: OthersRef<'_>, id: i32| {
             others.every().filter(|u| u.life.inside == Some(id)).count()
         };
         let (building, walking, meeting) = match found {
             Some((tp, t)) => {
-                let master = c
-                    .every_masters
-                    .get(tp)
-                    .and_then(|m| m.get(t.life.master_id))
-                    .ok_or(GenieError::unsupported(
-                        "an Enter's building of a master the slice lacks",
-                    ))?;
-                let room = inside_of(others.view(), t.id) < usize::from(master.garrison);
+                let master =
+                    c.w.masters
+                        .get(tp)
+                        .and_then(|m| m.get(t.life.master_id))
+                        .ok_or(GenieError::unsupported(
+                            "an Enter's building of a master the slice lacks",
+                        ))?;
+                let room = inside_of(OthersRef::of(&c.w.players, c.player), t.id)
+                    < usize::from(master.garrison);
                 let (mut view, walking, meeting) = crate::garrison::enter_view(
-                    c.spatial,
-                    c.zones,
-                    c.every_masters,
+                    &c.w.spatial,
+                    &mut c.w.zones,
+                    &c.w.masters,
                     self,
                     (t, master, room),
                     enter.range,
                 )?;
                 // FUN_141663dc0 with allies, or Gaia's
-                view.allied =
-                    tp == 0 || crate::unit_ai::task_finder::allied(c.relations, c.player, tp, true);
+                view.allied = tp == 0
+                    || crate::unit_ai::task_finder::allied(
+                        &c.w.players[c.player].relations,
+                        c.player,
+                        tp,
+                        true,
+                    );
                 (Some(view), walking, meeting)
             }
             None => (None, (0.0, 0.0), Ok(([0.0; 2], 0))),
         };
-        let ship = found.map(|(_, t)| t);
         // the MoveTo's give-up waits for a human player's villager (by its unit AI's stance)
-        let villager = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .is_some_and(|m| m.class == 4);
+        let villager =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .is_some_and(|m| m.class == 4);
         let gives_up = (
             villager && !c.computer,
             self.ai.as_ref().map_or(0, |ai| ai.stance),
         );
-        let walk = c.walk(self.body.mover_mut(), me);
-        let step = self.actions.enter_mut().expect("checked above").update(
+        let (p, pace) = (c.player, c.pace());
+        let enter_action = self.actions.enter_mut().expect("checked above");
+        let (walk, beside) = c.w.walk_beside(pace, self.body.mover_mut(), me);
+        let ship = OthersRef::of(beside.players, p)
+            .find(enter.target)
+            .map(|(_, t)| t);
+        let step = enter_action.update(
             walk,
             building,
             walking,
@@ -93,20 +99,26 @@ impl Unit {
             c.transport_moves.push((enter.target, to));
         }
         if step.waits {
-            self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+            self.shows_standing_sprite(
+                c.w.masters.get(c.player),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
+            )?;
         }
         if step.enter {
-            let (tp, building) = others.find(enter.target).expect("the update found it");
-            let inside = inside_of(others.view(), enter.target);
+            let (tp, building) = OthersRef::of(&c.w.players, c.player)
+                .find(enter.target)
+                .expect("the update found it");
+            let inside = inside_of(OthersRef::of(&c.w.players, c.player), enter.target);
             let mut w = EnterWorld {
-                spatial: c.spatial,
-                pathing: c.pathing,
-                masters: c.masters,
-                target_masters: c.every_masters.get(tp),
-                graphics: c.graphics,
-                sprite_rng: c.streams.get(Stream::Sprite),
-                drop_sites: c.drop_sites,
-                attributes: c.attributes,
+                spatial: &mut c.w.spatial,
+                pathing: &mut c.w.pathing,
+                masters: c.w.masters.get(c.player),
+                target_masters: c.w.masters.get(tp),
+                graphics: &c.w.graphics,
+                sprite_rng: c.w.streams.get(Stream::Sprite),
+                drop_sites: &c.w.drop_sites,
+                attributes: &c.w.players[c.player].attributes,
                 civ: c.civ,
                 sharing: c.sharing,
                 player: c.player,
@@ -134,7 +146,7 @@ impl Unit {
             let firepower = w.firepower;
             c.left_group = w.left_group.map(|g| (g, enter.target));
             // its building, any player's, gains the unit at once (the enter's slot 0x1c0)
-            if let Some((_, b)) = others.get_mut(enter.target) {
+            if let Some((_, b)) = c.w.object_mut(enter.target) {
                 b.firepower += firepower;
                 b.garrison.push(self.id);
             }
@@ -145,7 +157,7 @@ impl Unit {
             // (slot 0x180)
             if let Some(e) = self.actions.take_enter() {
                 let by = self.releaser(c);
-                crate::world::lets::release(c, others, e.target, by)?;
+                crate::world::lets::release(c, e.target, by)?;
             }
         }
         Ok(())
@@ -165,10 +177,11 @@ impl Unit {
         c: &mut Context<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::garrison::transport::NO_MASTER)?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::garrison::transport::NO_MASTER)?;
         let (radius, restriction) = (master.radius, master.terrain_restriction);
         let t = self.actions.transport_mut().expect("checked by the caller");
         let ask = match t.move_to {
@@ -179,18 +192,21 @@ impl Unit {
             _ => crate::movement::PathAsk::default(),
         };
         let walked = t.walk(Some(c.walk(self.body.mover_mut(), me)), ask)?;
-        let position = c.spatial.get(self.id).map_or(self.position, |p| p.position);
+        let position =
+            c.w.spatial
+                .get(self.id)
+                .map_or(self.position, |p| p.position);
         let ship = crate::garrison::transport::Ship {
             position,
             radius,
             loaded: !self.garrison.is_empty(),
-            map: c.spatial.map,
+            map: c.w.spatial.map,
             moves: self.body.mover().is_some_and(|m| m.stats.speed != 0.0),
         };
         let mut shore = crate::garrison::transport::MapShore::new(
-            c.spatial,
-            c.zones,
-            c.pathing,
+            &c.w.spatial,
+            &mut c.w.zones,
+            &mut c.w.pathing,
             restriction,
             position,
         )?;
@@ -201,7 +217,11 @@ impl Unit {
             m.stop()?;
         }
         if step.changed.stands {
-            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+            self.show_standing(
+                c.w.masters.get(c.player),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
+            )?;
         }
         if step.failed {
             self.post_own(
@@ -536,11 +556,7 @@ pub(crate) struct EnterWorld<'a> {
 impl Unit {
     /// The inside update of an object inside another (`FUN_140a98790`), which runs in place of
     /// its actions' update.
-    pub(crate) fn inside_update(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn inside_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         // RGE_Action_Object::update: the actions of an object inside another do not update; its
         // inside update (FUN_140a98790) deletes its top action (FUN_140a78480 -> FUN_140a784a0:
         // a dead target let go, the sub-actions' end; then the action's teardown, which lets its
@@ -557,7 +573,7 @@ impl Unit {
                     m.stop()?;
                 }
                 let by = self.releaser(c);
-                crate::world::lets::release(c, others, e.target, by)?;
+                crate::world::lets::release(c, e.target, by)?;
             } else if self.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE) {
                 // the Artifact goes (FUN_140a73fc0): its target is let go, then its sub-actions
                 // go (an Enter's teardown lets its building go; a walking MoveTo's stops the
@@ -566,7 +582,7 @@ impl Unit {
                 let by = self.releaser(c);
                 let (released, gone) = art.tear_down();
                 for t in [released, gone.released].into_iter().flatten() {
-                    crate::world::lets::release(c, others, t, by)?;
+                    crate::world::lets::release(c, t, by)?;
                 }
                 if gone.stops
                     && let Some(m) = self.body.mover_mut()
@@ -582,7 +598,7 @@ impl Unit {
                 let by = self.releaser(c);
                 let (mut releases, mut leaves) = (Vec::new(), Vec::new());
                 self.clear_own_actions(&mut releases, &mut leaves, by)?;
-                crate::world::lets::torn_down(c, others, (leaves, releases))?;
+                crate::world::lets::torn_down(c, (leaves, releases))?;
             }
         }
         Ok(())

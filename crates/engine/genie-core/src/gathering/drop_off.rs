@@ -9,7 +9,7 @@ use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::context::Context;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The Gather's state 8 after the deposit without a target (`0x140a8e1d0` case 7; its drop
@@ -23,33 +23,24 @@ impl Unit {
     /// one a Gather with its point would walk there to search again (`set_state(11)`, not
     /// modelled, or 0xf3 for a farmer); without a point a computer player's Gather is done, a
     /// human's idles (`set_state(2)`).
-    pub(crate) fn gather_after_drop(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn gather_after_drop(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let by = self.releaser(c);
-        if self.after_drop_orders(c, others, by)? {
+        if self.after_drop_orders(c, by)? {
             return Ok(());
         }
-        let found = self.after_drop_search(c, others.view())?;
+        let found = self.after_drop_search(c)?;
         if found == -1 {
-            return self.after_drop_nothing(c, others, by);
+            return self.after_drop_nothing(c, by);
         }
-        self.after_drop_retarget(c, others, found, by)
+        self.after_drop_retarget(c, found, by)
     }
 
     /// The unit AI's queued orders after the drop: the orders on targets gone (a target the world
     /// does not hold, or one its sight sees past state 5) leave (`FUN_140c5de60`); with orders
     /// left the AI ends its order and action and the Gather is done (its drop site let go). True
     /// when it is.
-    fn after_drop_orders(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        by: Releaser,
-    ) -> Result<bool, GenieError> {
-        let spatial: &Spatial = c.spatial;
+    fn after_drop_orders(&mut self, c: &mut Context<'_>, by: Releaser) -> Result<bool, GenieError> {
+        let spatial: &Spatial = &c.w.spatial;
         let gone = |id: i32| match spatial.get(id) {
             None => true,
             Some(_) => spatial
@@ -70,7 +61,7 @@ impl Unit {
         let mut gather = self.actions.take_gather().expect("the caller's gather");
         gather.tear_down(self.body.mover_mut())?;
         if gather.carry_to != -1 {
-            crate::world::lets::release(c, others, gather.carry_to, by)?;
+            crate::world::lets::release(c, gather.carry_to, by)?;
         }
         Ok(true)
     }
@@ -79,11 +70,7 @@ impl Unit {
     /// workers, state 2, no point) for the gather group (slot 0x1b0, the civilian's) of its target
     /// class (the AI's `+0x58`, else the Gather's `mTargetType`); -1 for none, a class of no
     /// group, or a unit without a unit AI.
-    fn after_drop_search(
-        &self,
-        c: &mut Context<'_>,
-        others: OthersRef<'_>,
-    ) -> Result<i32, GenieError> {
+    fn after_drop_search(&self, c: &mut Context<'_>) -> Result<i32, GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
         let Some(ai) = self.ai.as_ref() else {
             return Ok(-1);
@@ -102,19 +89,14 @@ impl Unit {
         if kind == -1 {
             return Ok(-1);
         }
-        self.resource_search(c, others, kind as u8, -1)
+        self.resource_search(c, kind as u8, -1)
     }
 
     /// Nothing found after the drop: a Gather with its point walks there to search again
     /// (`set_state(11)` within the task's range; a farmer's 0xf3 is not modelled); without one
     /// (`LAB_140a8ed55`) a computer player's Gather is done, a human's idles (`set_state(2)`: its
     /// targets and point cleared, its sprite [`Unit::idle_sprite`]'s). Its drop site is let go.
-    fn after_drop_nothing(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        by: Releaser,
-    ) -> Result<(), GenieError> {
+    fn after_drop_nothing(&mut self, c: &mut Context<'_>, by: Releaser) -> Result<(), GenieError> {
         let farm_waits = crate::gathering::gather::waits_for_a_farm(
             self.life.master_id,
             self.actions.gather().map_or(-1, |g| g.target_type),
@@ -150,12 +132,12 @@ impl Unit {
                 crate::combat::attack::set_sprite(
                     &mut self.sprite,
                     g,
-                    c.streams.get(Stream::Sprite),
+                    c.w.streams.get(Stream::Sprite),
                 );
             }
         }
         if carry_to != -1 {
-            crate::world::lets::release(c, others, carry_to, by)?;
+            crate::world::lets::release(c, carry_to, by)?;
         }
         Ok(())
     }
@@ -167,15 +149,16 @@ impl Unit {
         c: &Context<'_>,
     ) -> Result<Option<crate::objects::sprite::Graphic>, GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::GATHERER_MASTER)?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::GATHERER_MASTER)?;
         let standing = (0 <= master.standing_sprite)
-            .then(|| c.graphics.get(&master.standing_sprite).copied())
+            .then(|| c.w.graphics.get(&master.standing_sprite).copied())
             .flatten();
         let carrying = (0 <= gather.task.sprites[3])
-            .then(|| c.graphics.get(&gather.task.sprites[3]).copied())
+            .then(|| c.w.graphics.get(&gather.task.sprites[3]).copied())
             .flatten();
         Ok(match carrying {
             Some(g)
@@ -195,22 +178,23 @@ impl Unit {
     fn after_drop_retarget(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         found: i32,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        let (owner, resource) = self.found_resource(c, others.view(), found)?;
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::GATHERER_MASTER)?;
+        let (owner, resource) =
+            self.found_resource(c, OthersRef::of(&c.w.players, c.player), found)?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::GATHERER_MASTER)?;
         let (computer, farm_stops, held) = (c.computer, c.farm_stops, self.life.amount);
         let rate = crate::gathering::gather::StopRate {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
             productivity: crate::gathering::gather::productivity_of(
                 self.actions.gather().map_or(-1, |g| g.task.productivity),
-                c.attributes,
+                &c.w.players[c.player].attributes,
             ),
         };
         let (Some(gather), Some(mover)) = (self.actions.gather_mut(), self.body.mover_mut()) else {
@@ -219,7 +203,7 @@ impl Unit {
             ));
         };
         let old = [gather.target, gather.carry_to];
-        let rng = c.streams.get(Stream::Action);
+        let rng = c.w.streams.get(Stream::Action);
         let _ = gather.retarget(
             &resource,
             c.player,
@@ -235,18 +219,21 @@ impl Unit {
                 continue;
             }
             if old != -1 {
-                crate::world::lets::release(c, others, old, by)?;
+                crate::world::lets::release(c, old, by)?;
             }
             if new == -1 {
                 continue;
             }
             if owner == c.player && new == found {
                 // one of its own player's: allied, never listed
-                let u = others.own_mut(found).expect("found above");
+                let u = c.w.players[c.player]
+                    .objects
+                    .by_id_mut(found)
+                    .expect("found above");
                 u.taken(false, by.id);
             } else {
                 let by = self.releaser(c);
-                crate::world::lets::take(c, others, new, by);
+                crate::world::lets::take(c, new, by);
             }
         }
         Ok(())
@@ -264,17 +251,18 @@ impl Unit {
         let (owner, t) = others.find(found).ok_or(GenieError::unsupported(
             "a gather's new target the slice does not hold",
         ))?;
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::GATHERER_MASTER)?;
-        let t_master = c
-            .every_masters
-            .get(owner)
-            .and_then(|m| m.get(t.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a gather's target of a master the slice does not have",
-            ))?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::GATHERER_MASTER)?;
+        let t_master =
+            c.w.masters
+                .get(owner)
+                .and_then(|m| m.get(t.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a gather's target of a master the slice does not have",
+                ))?;
         Ok((
             owner,
             crate::gathering::gather::Resource {
@@ -296,25 +284,21 @@ impl Unit {
     /// ([`Unit::drop_site`]) becomes its second target (`FUN_140a7a190`: slot 0x178) and a quiet
     /// `MoveTo` walks there ([`crate::gathering::gather::GatherAction::set_drop`]). Without one the unit AI's
     /// part (notify 0x203) is not modelled.
-    pub(crate) fn gather_drop_off(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn gather_drop_off(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let w = DropWorld {
-            masters: c.masters,
-            spatial: c.spatial,
-            zones: c.zones,
-            pathing: c.pathing,
-            object: c.streams.get(Stream::Object),
+            masters: c.w.masters.get(c.player),
+            spatial: &c.w.spatial,
+            zones: &mut c.w.zones,
+            pathing: &mut c.w.pathing,
+            object: c.w.streams.get(Stream::Object),
             world_time: c.world_time,
             computer: c.computer,
             construction_rate: c.construction_rate,
-            groups: c.groups,
+            groups: &c.w.groups,
         };
-        if let Some(site) = self.gather_drop_off_in(w, others.view())? {
+        if let Some(site) = self.gather_drop_off_in(w, OthersRef::of(&c.w.players, c.player))? {
             let by = self.releaser(c);
-            crate::world::lets::take(c, others, site, by);
+            crate::world::lets::take(c, site, by);
         }
         Ok(())
     }

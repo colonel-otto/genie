@@ -9,7 +9,6 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
 use crate::world::context::Context;
-use crate::world::others::Others;
 
 /// A group member's own move's reasons slot 0x5e0 tells apart (`FUN_141017590`): moved aside,
 /// and none.
@@ -29,26 +28,26 @@ impl Unit {
         // RGE_Moving_Object::update counts the last human order time down before its velocity
         // step
         if self.body.mover().is_some() {
-            self.count_down_human_order(c.dt, c.spatial);
+            self.count_down_human_order(c.dt, &mut c.w.spatial);
         }
         // the velocity step (FUN_140f9ba80) runs for a unit with velocity data (+0x868)
         let group = match self.body.mover().and_then(|m| m.velocity.as_ref()) {
-            Some(_) => self.group_speed(c.groups, c.masters)?,
+            Some(_) => self.group_speed(&c.w.groups, c.w.masters.get(c.player))?,
             None => None,
         };
         if let Some(mover) = self.body.mover_mut() {
             let at = mover.step_velocity(
                 self.position,
                 c.dt_seconds,
-                c.spatial.map,
-                c.spatial.terrain.as_ref(),
+                c.w.spatial.map,
+                c.w.spatial.terrain.as_ref(),
                 (c.world_time, group),
             );
             if at != self.position {
                 self.position = at;
-                c.spatial.set_position(self.id, at);
-                if let Some(p) = c.spatial.get(self.id) {
-                    c.pathing.moved(self.id, p, mover.is_moving());
+                c.w.spatial.set_position(self.id, at);
+                if let Some(p) = c.w.spatial.get(self.id) {
+                    c.w.pathing.moved(self.id, p, mover.is_moving());
                 }
             }
             // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
@@ -102,19 +101,48 @@ impl Unit {
     /// The unit's own `MoveTo` in its update (`0x140aa2a70`): its update, then a give-up, a moved
     /// target, and its end (done or failed), which posts the notify, lets the target go and stops
     /// the unit.
-    pub(crate) fn move_to_part(
+    pub(crate) fn move_to_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+        let step = self.own_move_step(c, me)?;
+        if step.gave_up {
+            let villager =
+                c.w.masters
+                    .get(c.player)
+                    .and_then(|m| m.get(self.life.master_id))
+                    .is_some_and(|m| m.class == 4);
+            let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
+            self.own_move_gave_up(
+                villager && !c.computer,
+                stance,
+                (
+                    c.w.masters.get(c.player),
+                    &c.w.graphics,
+                    c.w.streams.get(Stream::Sprite),
+                ),
+            )?;
+        }
+        if step.target_moved {
+            self.post_own(TARGET_MOVED, [0, 0, 0])?;
+        }
+        if step.done || step.failed {
+            self.own_move_end(c, step.failed)?;
+        }
+        Ok(())
+    }
+
+    /// The own `MoveTo`'s update (`0x140aa2a70`): its state 3 asks the unit's AI for a path to
+    /// its point (the goal, or the target's place); none without a `MoveTo`.
+    fn own_move_step(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         me: Me,
-    ) -> Result<(), GenieError> {
-        let step = match self.actions.move_to_mut() {
+    ) -> Result<crate::movement::move_to::MoveStep, GenieError> {
+        Ok(match self.actions.move_to_mut() {
             Some(move_to) => {
                 // its state 3 reads the unit's AI for the path it asks (0x140aa2a70), with its
                 // point: the goal, or the target's place (a target gone fails the update first)
                 let point = match (move_to.target, move_to.goal) {
                     (-1, goal) => goal.map(|p| [p[0], p[1]]),
-                    (id, _) => c.spatial.get(id).map(|t| [t.position[0], t.position[1]]),
+                    (id, _) => c.w.spatial.get(id).map(|t| [t.position[0], t.position[1]]),
                 };
                 let ask = match point {
                     Some(p) if move_to.state == MoveTo::Start => {
@@ -126,46 +154,34 @@ impl Unit {
                 move_to.update(c.walk(self.body.mover_mut(), me), ask)?
             }
             None => crate::movement::move_to::MoveStep::default(),
+        })
+    }
+
+    /// The own `MoveTo`'s end, done or `failed`: the notify, the target let go and the unit
+    /// stopped.
+    fn own_move_end(&mut self, c: &mut Context<'_>, failed: bool) -> Result<(), GenieError> {
+        // its update in state 1 posts its completion (0x1fa with the move action value; an
+        // own MoveTo is never quiet), in state 13 its failure (0x1f9) and returns 3; the
+        // action list removes it (FUN_140a98e20): its teardown (0x140aa1f30) stops the unit
+        // (slot 0x5d0)
+        let notify = if failed {
+            crate::unit_ai::ACTION_FAILED
+        } else {
+            ACTION_COMPLETED
         };
-        if step.gave_up {
-            let villager = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .is_some_and(|m| m.class == 4);
-            let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
-            self.own_move_gave_up(
-                villager && !c.computer,
-                stance,
-                (c.masters, c.graphics, c.streams.get(Stream::Sprite)),
-            )?;
+        self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
+        // ... and the base teardown (FUN_140a73fc0) lets its target go (slot 0x180)
+        if let Some(t) = self
+            .actions
+            .take_move_to()
+            .map(|m| m.target)
+            .filter(|&t| t != -1)
+        {
+            let by = self.releaser(c);
+            crate::world::lets::release(c, t, by)?;
         }
-        if step.target_moved {
-            self.post_own(TARGET_MOVED, [0, 0, 0])?;
-        }
-        if step.done || step.failed {
-            // its update in state 1 posts its completion (0x1fa with the move action value; an
-            // own MoveTo is never quiet), in state 13 its failure (0x1f9) and returns 3; the
-            // action list removes it (FUN_140a98e20): its teardown (0x140aa1f30) stops the unit
-            // (slot 0x5d0)
-            let notify = if step.failed {
-                crate::unit_ai::ACTION_FAILED
-            } else {
-                ACTION_COMPLETED
-            };
-            self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
-            // ... and the base teardown (FUN_140a73fc0) lets its target go (slot 0x180)
-            if let Some(t) = self
-                .actions
-                .take_move_to()
-                .map(|m| m.target)
-                .filter(|&t| t != -1)
-            {
-                let by = self.releaser(c);
-                crate::world::lets::release(c, others, t, by)?;
-            }
-            if let Some(m) = self.body.mover_mut() {
-                m.stop()?;
-            }
+        if let Some(m) = self.body.mover_mut() {
+            m.stop()?;
         }
         Ok(())
     }
@@ -196,10 +212,11 @@ impl Unit {
                         .is_some_and(|ai| !matches!(ai.current_order, 711 | 733));
                     // the motion step giving up: a human player's villager waits once, any
                     // other unit's MoveTo fails (LAB_140aa320c)
-                    let villager = c
-                        .masters
-                        .and_then(|m| m.get(self.life.master_id))
-                        .is_some_and(|m| m.class == 4);
+                    let villager =
+                        c.w.masters
+                            .get(c.player)
+                            .and_then(|m| m.get(self.life.master_id))
+                            .is_some_and(|m| m.class == 4);
                     let waits = villager && !c.computer;
                     let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
                     let goal = crate::movement::move_to::Goal::Point(explore.point);
@@ -234,7 +251,7 @@ impl Unit {
                 mover.stats.speed,
                 [mover.stats.radius[0], mover.stats.radius[1]],
             );
-            let map = c.spatial.map;
+            let map = c.w.spatial.map;
             let (walk, action) = c.walk_with(Some(&mut *mover), me, Stream::Action);
             let sky = crate::movement::fly::Sky {
                 speed,

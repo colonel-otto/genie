@@ -4,6 +4,7 @@ use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
 use crate::ownership::capture::{CAPTURE_KEEPS_ACTION, LIVESTOCK};
 use crate::world::World;
+use crate::world::others::OthersRef;
 use crate::world::tests::{forage_world, in_update};
 
 /// [`forage_world`]'s forager walking to (40, 80) on the bush 600, its unit AI on a gather
@@ -30,9 +31,11 @@ fn stopped(mut t: World, class: i16) -> Result<(Unit, Vec<i32>), GenieError> {
     for b in &mut t.players[0].objects {
         b.workers = 1;
     }
-    let released = in_update(&mut t, (1, 0), 50, |u, c, others| {
-        u.capture_stop(c, others, class)?;
-        let gone = others.view().foreign_iter().filter(|(_, b)| b.workers == 0);
+    let released = in_update(&mut t, (1, 0), 50, |u, c| {
+        u.capture_stop(c, class)?;
+        let gone = OthersRef::of(&c.w.players, c.player)
+            .foreign_iter()
+            .filter(|(_, b)| b.workers == 0);
         Ok(gone.map(|(_, b)| b.id).collect())
     })?;
     Ok((t.players[1].objects.swap_remove(0), released))

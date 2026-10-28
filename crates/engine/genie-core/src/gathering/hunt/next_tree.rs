@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::world::context::Context;
-use crate::world::others::Others;
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The hunt's search for another target (`FUN_140ac4670`) when the class its unit AI targets
@@ -21,7 +21,6 @@ impl Unit {
     pub(crate) fn hunt_tree_search(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         within: Option<f32>,
         near: Option<f32>,
     ) -> Result<bool, GenieError> {
@@ -38,13 +37,16 @@ impl Unit {
             return Ok(false);
         }
         let site = hunt.carry_to;
-        let found = self.resource_search_from(c, others.view(), 0, 2, site)?;
+        let found = self.resource_search_from(c, 0, 2, site)?;
         if found == -1 {
             return Ok(false);
         }
-        let (tp, t) = others.find(found).ok_or(GenieError::unsupported(
-            "a hunt's next tree the slice does not hold",
-        ))?;
+        let (tp, t) =
+            OthersRef::of(&c.w.players, c.player)
+                .find(found)
+                .ok_or(GenieError::unsupported(
+                    "a hunt's next tree the slice does not hold",
+                ))?;
         if let Some(near) = near {
             let (dx, dz, dy) = (
                 self.position[0] - t.position[0],
@@ -55,20 +57,20 @@ impl Unit {
                 return Ok(false);
             }
         }
-        let t_master = c
-            .every_masters
-            .get(tp)
-            .and_then(|m| m.get(t.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a hunt's next tree of a master the slice lacks",
-            ))?;
-        let own = c
-            .spatial
-            .relations
-            .get(c.player)
-            .ok_or(GenieError::unsupported(
-                "a hunter's player without relations",
-            ))?;
+        let t_master =
+            c.w.masters
+                .get(tp)
+                .and_then(|m| m.get(t.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a hunt's next tree of a master the slice lacks",
+                ))?;
+        let own =
+            c.w.spatial
+                .relations
+                .get(c.player)
+                .ok_or(GenieError::unsupported(
+                    "a hunter's player without relations",
+                ))?;
         let quarry = crate::gathering::hunt::Quarry {
             id: found,
             position: t.position,
@@ -81,13 +83,14 @@ impl Unit {
             top_action: t.top_action_kind(),
             drop_site: false,
         };
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let at = |id| {
-            c.spatial
+            c.w.spatial
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
@@ -106,7 +109,7 @@ impl Unit {
         let moving = hunt
             .task
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
-        let arms = crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+        let arms = crate::combat::attack::arms(master, &c.w.graphics, hunt.task.sprites, moving);
         let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         if let Some(arrived) = hunt.retarget(
             &quarry,
@@ -122,13 +125,13 @@ impl Unit {
                     &arms,
                     &mut self.sprite,
                     &mut self.body,
-                    c.streams.get(Stream::Sprite),
+                    c.w.streams.get(Stream::Sprite),
                 )?;
             }
             // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
-            self.hunt_release(c, others, [old])?;
+            self.hunt_release(c, [old])?;
             let by = self.releaser(c);
-            crate::world::lets::take(c, others, found, by);
+            crate::world::lets::take(c, found, by);
         }
         Ok(true)
     }

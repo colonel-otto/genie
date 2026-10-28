@@ -153,7 +153,9 @@ impl Unit {
         Releaser {
             id: self.id,
             class: c
+                .w
                 .masters
+                .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .map_or(-1, |m| m.class),
             player: c.player,

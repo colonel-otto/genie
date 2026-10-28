@@ -8,8 +8,9 @@ use crate::movement::Me;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
+use crate::world::World;
 use crate::world::context::Context;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it
@@ -18,27 +19,33 @@ impl Unit {
     /// [`crate::construction::repair::repair_unit`]) paid from the player's resources. Its changes
     /// go to the objects ([`repair_write_back`]), the payments join the attribute adds, then what
     /// the step leaves ([`Unit::after_repair_step`]).
-    pub(crate) fn repair_part(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        me: Me,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn repair_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
         let Some(target) = self.actions.repair().map(|r| r.target) else {
             return Ok(());
         };
-        let own = repair_master(c.every_masters, c.player, self)
+        let own = repair_master(&c.w.masters, c.player, self)
             .ok_or(GenieError::missing_data("a repairer's master"))?;
         let RepairReads {
             repairee,
             counted_in,
             mut set,
-        } = repair_reads(c, others.view(), target)?;
+        } = repair_reads(c, OthersRef::of(&c.w.players, c.player), target)?;
         let original = set.clone();
-        let masters = c
+        let (own_radius, own_class) = (own.radius, own.class);
+        let (restriction, rate) = (
+            usize::try_from(own.terrain_restriction).ok(),
+            self.work_rate_powerup + own.work_rate,
+        );
+        let (player, resources, pace) = (c.player, c.resources, c.pace());
+        let (scenario, now, computer) = (c.scenario, c.world_time, c.computer);
+        let (my_id, stance) = (self.id, self.ai.as_ref().map_or(0, |ai| ai.stance));
+        let repair_action = self.actions.repair_mut().expect("checked above");
+        let (walk, beside) = c.w.walk_beside(pace, self.body.mover_mut(), me);
+        let masters = beside
             .masters
+            .get(player)
             .ok_or(GenieError::missing_data("a repairer's player's masters"))?;
-        let mut paid = PaidAttributes::new(c.resources, c.attributes);
+        let mut paid = PaidAttributes::new(resources, &beside.players[player].attributes);
         let target_kind = set.first().map_or(0, |o| o.kind);
         let mut repair = |amount: f32| -> Result<u8, GenieError> {
             if set.is_empty() {
@@ -61,8 +68,6 @@ impl Unit {
                 )),
             }
         };
-        let restriction = usize::try_from(own.terrain_restriction).ok();
-        let (my_radius, my_id) = (own.radius, self.id);
         let mut can_path = |spatial: &Spatial| -> Result<bool, GenieError> {
             let terrain = spatial
                 .terrain
@@ -74,27 +79,26 @@ impl Unit {
                 my_id,
                 target,
                 terrain.restriction_mask(r),
-                my_radius[0],
+                own_radius[0],
                 crate::construction::repair::REACH,
             )
         };
         let view = crate::construction::repair::RepairView {
             target: repairee,
-            radius: own.radius,
-            scenario: c.scenario,
-            rate: self.work_rate_powerup + own.work_rate,
+            radius: own_radius,
+            scenario,
+            rate,
             repairers: counted_in.map(|(_, n)| n),
-            now: c.world_time,
-            waits: own.class == 4 && !c.computer,
-            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            now,
+            waits: own_class == 4 && !computer,
+            stance,
             can_path: &mut can_path,
             repair: &mut repair,
         };
-        let repair_action = self.actions.repair_mut().expect("checked above");
-        let step = repair_action.update(c.walk(self.body.mover_mut(), me), view)?;
-        repair_write_back(others, &set, &original);
+        let step = repair_action.update(walk, view)?;
         c.attribute_adds.extend(paid.adds);
-        self.after_repair_step(c, others, (target, target_kind, counted_in), step)
+        repair_write_back(c.w, &set, &original);
+        self.after_repair_step(c, (target, target_kind, counted_in), step)
     }
 
     /// What the Repair's step leaves besides the repair (`step`; `target` of type `target_kind`,
@@ -104,32 +108,35 @@ impl Unit {
     fn after_repair_step(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         (target, target_kind, counted_in): (i32, u8, Option<(i32, u8)>),
         step: crate::construction::repair::RepairStep,
     ) -> Result<(), GenieError> {
         if step.restored
             && 0x45 < target_kind
-            && let Some((_, u)) = others.get_mut(target)
+            && let Some((_, u)) = c.w.object_mut(target)
         {
             u.armor_removed = [0; 2];
         }
         if step.repairers != 0
             && let Some((id, _)) = counted_in
-            && let Some((_, u)) = others.get_mut(id)
+            && let Some((_, u)) = c.w.object_mut(id)
         {
             let n = u.repairers_mut();
             *n = n.wrapping_add_signed(step.repairers);
         }
         let by = self.releaser(c);
         if step.released {
-            crate::world::lets::release(c, others, target, by)?;
+            crate::world::lets::release(c, target, by)?;
         }
         for kind in &step.notifies {
             self.post_own(*kind, [crate::construction::repair::REPAIR_ACTION, 0, 0])?;
         }
         if step.stands {
-            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+            self.show_standing(
+                c.w.masters.get(c.player),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
+            )?;
         }
         if step.done {
             // the action list removes it; its destructor (FUN_140ad8fd0) finds it out of the
@@ -137,7 +144,7 @@ impl Unit {
             let holds = self.actions.repair().map_or(-1, |r| r.target);
             self.actions.set_repair(None);
             if holds != -1 {
-                crate::world::lets::release(c, others, holds, by)?;
+                crate::world::lets::release(c, holds, by)?;
             }
         }
         Ok(())
@@ -207,7 +214,7 @@ impl Unit {
     ) -> Option<crate::unit_ai::TopTarget> {
         let id = self.top_target().filter(|&t| t != -1)?;
         let (owner, u) = others.find(id)?;
-        let m = c.every_masters.get(owner)?.get(u.life.master_id)?;
+        let m = c.w.masters.get(owner)?.get(u.life.master_id)?;
         Some(crate::unit_ai::TopTarget {
             id,
             kind: m.kind,
@@ -281,13 +288,18 @@ fn repair_reads(
     let Some((q, t)) = held(target).filter(|_| target != -1) else {
         return Ok(reads);
     };
-    let tm = repair_master(c.every_masters, q, t)
+    let tm = repair_master(&c.w.masters, q, t)
         .ok_or(GenieError::missing_data("a repaired object's master"))?;
     reads.repairee = Some(Repairee {
         state: t.life.state,
         hp: t.life.hp,
         owner: q,
-        allied: crate::unit_ai::task_finder::allied(c.relations, c.player, q, true),
+        allied: crate::unit_ai::task_finder::allied(
+            &c.w.players[c.player].relations,
+            c.player,
+            q,
+            true,
+        ),
         position: t.position,
         radius: tm.radius,
         class: tm.class,
@@ -302,7 +314,7 @@ fn repair_reads(
     if let Some((_, k)) = held(counting) {
         reads.counted_in = Some((counting, k.repairers()));
     }
-    for id in reached_ids(c.spatial, t, target, building) {
+    for id in reached_ids(&c.w.spatial, t, target, building) {
         let Some(o) = held(id) else {
             continue;
         };
@@ -336,10 +348,10 @@ fn repaired(
     (oq, o): (usize, &Unit),
     id: i32,
 ) -> Result<crate::construction::repair::Repaired, GenieError> {
-    let om = repair_master(c.every_masters, oq, o)
+    let om = repair_master(&c.w.masters, oq, o)
         .ok_or(GenieError::missing_data("a repaired object's master"))?;
     let attributes: &[f32] = if oq == c.player {
-        c.attributes
+        &c.w.players[c.player].attributes
     } else {
         others
             .players()
@@ -348,7 +360,7 @@ fn repaired(
     };
     let rate = |k: usize| attributes.get(k).copied().unwrap_or(0.0);
     let annexes = if om.kind == 80 && o.annex_of.is_none() {
-        let mut a = c.spatial.annexes_of(id);
+        let mut a = c.w.spatial.annexes_of(id);
         a.sort_unstable();
         a
     } else {
@@ -374,7 +386,7 @@ fn repaired(
 /// The repair's changes to the objects it reached (`set` against `original`): each takes its
 /// hit points at once, any player's.
 fn repair_write_back(
-    others: &mut Others<'_>,
+    w: &mut World,
     set: &[crate::construction::repair::Repaired],
     original: &[crate::construction::repair::Repaired],
 ) {
@@ -382,7 +394,7 @@ fn repair_write_back(
         if now == was {
             continue;
         }
-        if let Some((_, u)) = others.get_mut(now.id) {
+        if let Some((_, u)) = w.object_mut(now.id) {
             u.life.hp = now.hp;
             u.hp_powerups = now.hp_powerups;
         }

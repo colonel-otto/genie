@@ -1,5 +1,7 @@
-//! The world's objects as one object's update reaches them (FD-045-D19): [`Others`] to change
-//! the owner's other objects, [`OthersRef`] to read them, both by id.
+//! The world's objects by id as an update reaches them (FD-045-D19, D28): [`OthersRef`] to read
+//! them (the owner's live list and the other players' lists), [`Others`] to change them while
+//! the unit AI runs, and the world's own lookups for the update itself, which holds the world
+//! ([`World::locate`], [`World::wake_sleeper`], [`World::take_out_own`]).
 //!
 //! The game reaches another object by its id (`FUN_1415417a0`, the table at `world+0x168`); a
 //! caller asks for the owner's own object ([`OthersRef::own`]), another player's
@@ -9,8 +11,10 @@ use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
 use crate::objects::object_list::ObjectList;
 use crate::objects::unit::{TAKEN_OUT, Unit};
+use crate::orders::Place;
 use crate::players::tracker::{Tracker, key};
 use crate::unit_ai::world_view::Foreign;
+use crate::world::World;
 use crate::world::player::Player;
 
 /// The objects besides the one that updates, to read: its owner's other live objects in their
@@ -198,16 +202,6 @@ impl<'a> Others<'a> {
         id == self.me
     }
 
-    /// [`OthersRef::own`].
-    pub(crate) fn own(&self, id: i32) -> Option<&Unit> {
-        self.view().own(id)
-    }
-
-    /// [`OthersRef::own_iter`].
-    pub(crate) fn own_iter(&self) -> impl Iterator<Item = &Unit> {
-        self.view().own_iter()
-    }
-
     /// [`OthersRef::find`].
     pub(crate) fn find(&self, id: i32) -> Option<(usize, &Unit)> {
         self.view().find(id)
@@ -304,34 +298,46 @@ impl<'a> Others<'a> {
         }
         false
     }
+}
 
-    /// An object the update made (a missile) joins the end of the owner's live list (slot
-    /// 0x2d0 at its making).
-    pub(crate) fn add(&mut self, unit: Unit) {
-        self.own.push(unit);
+impl World {
+    /// Object `id` of any list with its owner and whether it sleeps: what the world's table by
+    /// id (`FUN_1415417a0`) gives.
+    pub(crate) fn locate(&self, id: i32) -> Option<(usize, &Unit, bool)> {
+        match self.place(id)? {
+            Place::Live(p, i) => Some((p, &self.players[p].objects[i], false)),
+            Place::Sleeping(p, i) => Some((p, &self.players[p].sleeping[i], true)),
+        }
     }
 
-    /// The owner's live object `id` out of its slot (its stand-in, [`TAKEN_OUT`], holds it),
-    /// for a call on it that reaches the view as the updating object's do: the slot and the
-    /// object, which [`Others::put_back_own`] returns.
-    pub(crate) fn take_out_own(&mut self, id: i32) -> Option<(usize, Unit)> {
-        let i = self.own.position_of(id)?;
-        Some((i, std::mem::replace(&mut self.own[i], Unit::taken_out())))
+    /// The sleeping object `id` wakes (`FUN_14119deb0` with 0): it leaves its player's sleeping
+    /// list for the end of the live one, no longer flagged to sleep, and the remove and add
+    /// (slots 0x2d8, 0x2d0) file it last in its player's tracker. False when no sleeping list
+    /// holds it.
+    pub(crate) fn wake_sleeper(&mut self, id: i32) -> bool {
+        let Some(Place::Sleeping(p, i)) = self.place(id) else {
+            return false;
+        };
+        let mut woken = self.players[p].sleeping.swap_remove(i);
+        woken.life.goto_sleep = false;
+        let master = woken.life.master_id;
+        self.players[p].objects.push(woken);
+        self.track_relist(p, id, master);
+        true
     }
 
-    /// The object [`Others::take_out_own`] took out of slot `slot` goes back to it.
-    pub(crate) fn put_back_own(&mut self, slot: usize, unit: Unit) {
-        self.own[slot] = unit;
+    /// Player `p`'s live object `id` out of its slot (its stand-in, [`TAKEN_OUT`], holds it),
+    /// for a call on it that reaches the world as the updating object's do: the slot and the
+    /// object, which [`World::put_back_own`] returns.
+    pub(crate) fn take_out_own(&mut self, p: usize, id: i32) -> Option<(usize, Unit)> {
+        let own = &mut self.players[p].objects;
+        let i = own.position_of(id)?;
+        Some((i, std::mem::replace(&mut own[i], Unit::taken_out())))
     }
 
-    /// The owner's live object `id`, to change.
-    pub(crate) fn own_mut(&mut self, id: i32) -> Option<&mut Unit> {
-        self.own.by_id_mut(id)
-    }
-
-    /// The owner's live objects in their list's order, the updating one aside, to change.
-    pub(crate) fn own_iter_mut(&mut self) -> impl Iterator<Item = &mut Unit> {
-        self.own.iter_mut().filter(|u| u.id != TAKEN_OUT)
+    /// The object [`World::take_out_own`] took out of player `p`'s slot `slot` goes back to it.
+    pub(crate) fn put_back_own(&mut self, p: usize, slot: usize, unit: Unit) {
+        self.players[p].objects[slot] = unit;
     }
 }
 
@@ -401,17 +407,9 @@ mod tests {
         let (mut own, mut before, mut after) = world();
         let mut asleep = ObjectList::from(vec![unit(13)]);
         let mut others = Others::new((1, 11), (&mut own, &mut asleep), (&mut before, &mut after));
-        let ids: Vec<i32> = others.own_iter().map(|u| u.id).collect();
+        let ids: Vec<i32> = others.view().own_iter().map(|u| u.id).collect();
         assert_eq!(ids, [10, 12]);
-        for u in others.own_iter_mut() {
-            u.life.hp += 1.0;
-        }
-        if let Some(u) = others.own_mut(10) {
-            u.life.hp = 9.0;
-        }
-        assert!(others.own_mut(20).is_none());
-        assert_eq!(others.own(10).map(|u| u.life.hp), Some(9.0));
-        for (id, owner) in [(12, 1), (13, 1), (2, 0), (20, 2)] {
+        for (id, owner) in [(10, 1), (12, 1), (13, 1), (2, 0), (20, 2)] {
             let (q, u) = others.get_mut(id).expect("any list's object");
             u.life.hp = 4.0;
             assert_eq!(q, owner);
@@ -421,35 +419,12 @@ mod tests {
             others.view().get(13).is_none(),
             "a read leaves the owner's sleepers out"
         );
+        assert_eq!(others.view().own(10).map(|u| u.life.hp), Some(4.0));
         assert_eq!(others.view().find(2).map(|(_, u)| u.life.hp), Some(4.0));
         assert_eq!(others.find(12).map(|(_, u)| u.life.hp), Some(4.0));
         assert_eq!(others.find(20).map(|(q, _)| q), Some(2));
         assert_eq!(others.view().foreign(10).map(|(q, _)| q), None);
         assert_eq!(own[1].id, TAKEN_OUT, "the stand-in stays as it was");
-    }
-
-    /// An own object out of its slot ([`Others::take_out_own`]) is out of the view as the
-    /// updating one is, its stand-in in its place, until it goes back.
-    #[test]
-    fn an_own_object_taken_out_leaves_the_view_until_it_goes_back() {
-        let (mut own, mut before, mut after) = world();
-        let mut asleep = ObjectList::default();
-        let mut others = Others::new((1, 11), (&mut own, &mut asleep), (&mut before, &mut after));
-        assert!(others.take_out_own(20).is_none(), "another player's");
-        let (slot, mut u) = others.take_out_own(12).expect("the owner's");
-        assert_eq!((slot, u.id), (2, 12));
-        assert_eq!(
-            others.find(12).map(|(q, _)| q),
-            Some(2),
-            "the other player's 12 only"
-        );
-        u.life.hp = 8.0;
-        others.put_back_own(slot, u);
-        assert_eq!(others.own(12).map(|u| u.life.hp), Some(8.0));
-        assert_eq!(
-            own.iter().map(|u| u.id).collect::<Vec<_>>(),
-            [10, TAKEN_OUT, 12]
-        );
     }
 
     #[test]
@@ -488,7 +463,10 @@ mod tests {
         assert!(others.wake(2, &mut tracker, (&[], &lines)));
         assert!(!others.wake(20, &mut tracker, (&[], &lines)), "20 is awake");
         assert_eq!(others.locate(13).map(|(q, _, s)| (q, s)), Some((1, false)));
-        assert_eq!(others.own(13).map(|u| u.life.goto_sleep), Some(false));
+        assert_eq!(
+            others.view().own(13).map(|u| u.life.goto_sleep),
+            Some(false)
+        );
         let ids = |l: &ObjectList| l.iter().map(|u| u.id).collect::<Vec<_>>();
         assert_eq!(
             (ids(&own), ids(&asleep)),

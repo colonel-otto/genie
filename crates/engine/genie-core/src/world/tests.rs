@@ -3394,12 +3394,12 @@ pub(crate) fn in_update<R>(
     t: &mut World,
     (p, i): (usize, usize),
     dt: u32,
-    f: impl FnOnce(&mut Unit, &mut context::Context<'_>, &mut Others<'_>) -> Result<R, GenieError>,
+    f: impl FnOnce(&mut Unit, &mut context::Context<'_>) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
     let frame = t.player_frame();
     let mut answer = None;
-    let _ = t.step_object((p, i), (dt, None, false), &frame, None, |u, c, o| {
-        answer = Some(f(u, c, o)?);
+    let _ = t.step_object((p, i), (dt, None, false), &frame, None, |u, c| {
+        answer = Some(f(u, c)?);
         Ok(crate::objects::unit::Step::Stay)
     })?;
     Ok(answer.unwrap())
@@ -3429,7 +3429,7 @@ fn notified(t: &World, kind: i32) -> Vec<[i32; 3]> {
 /// The hunter's part of the update in its hunt's state ([`Unit::hunt_part`]) with `dt`, the
 /// hunter as a combat object and its lost tree as the update reads them.
 fn hunt_part_of(t: &mut World, dt: u32) -> Result<(), GenieError> {
-    in_update(t, (1, 0), dt, |unit, c, others| {
+    in_update(t, (1, 0), dt, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
@@ -3438,7 +3438,7 @@ fn hunt_part_of(t: &mut World, dt: u32) -> Result<(), GenieError> {
         };
         let mut own = unit.own_victim(c);
         let tree_lost = unit.tree_lost();
-        unit.hunt_part(c, others, me, &mut own, tree_lost)
+        unit.hunt_part(c, me, &mut own, tree_lost)
     })
 }
 
@@ -3709,7 +3709,7 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
     (v.life.attribute_type, v.life.amount) = (15, 5.0);
     v.position = [31.9, 89.5, 0.0];
     t.spatial.set_position(9175, [31.9, 89.5, 0.0]);
-    let left = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+    let left = in_update(&mut t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
@@ -3718,8 +3718,10 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
         };
         let mut own = unit.own_victim(c);
         let tree_lost = unit.tree_lost();
-        unit.hunt_part(c, others, me, &mut own, tree_lost)?;
-        Ok(others.view().find(500).map(|(_, deer)| deer.life.amount))
+        unit.hunt_part(c, me, &mut own, tree_lost)?;
+        Ok(OthersRef::of(&c.w.players, c.player)
+            .find(500)
+            .map(|(_, deer)| deer.life.amount))
     });
     assert!(
         left.as_ref()
@@ -3737,8 +3739,8 @@ fn a_gathering_hunt_whose_target_left_searches_without_reading_one() {
     let mut t = hunter_in(|h| (h.state, h.attack, h.move_to) = (GATHER, None, None));
     let _ = t.players[0].objects.remove(0);
     let _ = t.spatial.leave(500);
-    let r = in_update(&mut t, (1, 0), 50, |unit, c, others| {
-        unit.hunt_targets(c, others)?;
+    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
+        unit.hunt_targets(c)?;
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
@@ -3746,7 +3748,7 @@ fn a_gathering_hunt_whose_target_left_searches_without_reading_one() {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let mut own = unit.own_victim(c);
-        unit.hunt_part(c, others, me, &mut own, false)
+        unit.hunt_part(c, me, &mut own, false)
     });
     assert_eq!(r, Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
@@ -3968,12 +3970,12 @@ fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
         class: 9,
         player: 0,
     };
-    let deferred = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+    let deferred = in_update(&mut t, (1, 0), 50, |unit, c| {
         let by = unit.releaser(c);
         for id in [520, 521, 530, 9999, unit.id] {
-            take(c, others, id, by);
+            take(c, id, by);
         }
-        take(c, others, 530, gaia);
+        take(c, 530, gaia);
         Ok(c.takes.iter().map(|&(id, _)| id).collect::<Vec<_>>())
     });
     assert_eq!(deferred, Ok(vec![t.players[1].objects[0].id]));
@@ -4000,20 +4002,20 @@ fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
 /// pair applies leaves before releases ([`crate::world::lets::torn_down`]).
 #[test]
 fn an_update_s_release_and_builder_leave_change_the_objects_at_once() {
-    use crate::world::lets::{release, torn_down};
+    use crate::world::lets::{leave_builders, release, torn_down};
     let mut t = lets_world();
     for id in [520, 521] {
         let u = t.object_mut(id).unwrap().1;
         (u.workers, u.builders) = (2, 3);
     }
-    let deferred = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+    let deferred = in_update(&mut t, (1, 0), 50, |unit, c| {
         let by = unit.releaser(c);
         for id in [520, 521, 9999, unit.id] {
-            release(c, others, id, by)?;
+            release(c, id, by)?;
         }
-        c.lets().leave_builders(others, 520)?;
-        c.lets().leave_builders(others, 530)?;
-        torn_down(c, others, (vec![521], vec![(520, by)]))?;
+        leave_builders(c, 520)?;
+        leave_builders(c, 530)?;
+        torn_down(c, (vec![521], vec![(520, by)]))?;
         Ok(c.releases.iter().map(|&(id, _)| id).collect::<Vec<_>>())
     });
     assert_eq!(deferred, Ok(vec![t.players[1].objects[0].id]));
@@ -4051,6 +4053,30 @@ fn outside_an_update_the_lets_run_on_the_whole_world() {
     assert_eq!(t.object(520).map(|(_, u)| u.builders), Some(1));
 }
 
+/// A player's live object out of its slot ([`World::take_out_own`]) is out of the world's
+/// lookups as an updating one is, its stand-in in its place, until it goes back
+/// ([`World::put_back_own`]); the sleeping object wakes once ([`World::wake_sleeper`]).
+#[test]
+fn an_own_object_taken_out_leaves_the_world_until_it_goes_back() {
+    let mut t = lets_world();
+    let id = t.players[1].objects[0].id;
+    assert!(t.take_out_own(0, id).is_none(), "another player's");
+    let (slot, mut u) = t.take_out_own(1, id).expect("the owner's");
+    assert_eq!((slot, u.id), (0, id));
+    assert!(t.object(id).is_none() && t.locate(id).is_none());
+    assert_eq!(t.players[1].objects[0].id, crate::objects::unit::TAKEN_OUT);
+    u.life.hp = 8.0;
+    t.put_back_own(1, slot, u);
+    assert_eq!(
+        t.locate(id).map(|(q, u, s)| (q, u.life.hp, s)),
+        Some((1, 8.0, false))
+    );
+    assert_eq!(t.locate(521).map(|(q, _, s)| (q, s)), Some((0, true)));
+    assert!(t.wake_sleeper(521));
+    assert!(!t.wake_sleeper(521), "awake already");
+    assert_eq!(t.locate(521).map(|(q, _, s)| (q, s)), Some((0, false)));
+}
+
 /// The unit AI's stop (`Effect::Stop`, [`Unit::stop_action`]): the forager's Gather goes and
 /// its bush counts a worker less within the update, through the view, not after the step.
 #[test]
@@ -4065,9 +4091,11 @@ fn a_unit_ai_s_stop_lets_its_target_go_within_the_update() {
     };
     t.order_work(1, 0, &work).unwrap();
     assert_eq!(t.players[0].objects[0].workers, 1);
-    let seen = in_update(&mut t, (1, 0), 50, |unit, c, others| {
-        unit.stop_action(c, others)?;
-        let bush = others.find(600).map(|(_, b)| b.workers);
+    let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
+        unit.stop_action(c)?;
+        let bush = OthersRef::of(&c.w.players, c.player)
+            .find(600)
+            .map(|(_, b)| b.workers);
         Ok((bush, c.releases.len(), unit.actions.gather().is_some()))
     });
     assert_eq!(seen, Ok((Some(0), 0, false)));
@@ -4081,8 +4109,8 @@ fn a_unit_ai_s_stop_lets_its_target_go_within_the_update() {
 #[test]
 fn a_hunt_that_lost_its_tree_takes_the_next_one() {
     let search = |t: &mut World, within, near| {
-        in_update(t, (1, 0), 50, |unit, c, others| {
-            unit.hunt_tree_search(c, others, within, near)
+        in_update(t, (1, 0), 50, |unit, c| {
+            unit.hunt_tree_search(c, within, near)
         })
     };
     let mut t = lumber_world(31.5);
@@ -4107,11 +4135,7 @@ fn a_hunt_that_lost_its_tree_takes_the_next_one() {
 /// searches (state 3, its timer at -10 s) with its target kept.
 #[test]
 fn a_hunt_whose_attack_failed_takes_a_near_tree_or_searches() {
-    let failed = |t: &mut World| {
-        in_update(t, (1, 0), 50, |unit, c, others| {
-            unit.hunt_attack_failed(c, others)
-        })
-    };
+    let failed = |t: &mut World| in_update(t, (1, 0), 50, Unit::hunt_attack_failed);
     let mut t = lumber_world(31.5);
     assert_eq!(failed(&mut t), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
@@ -4439,15 +4463,15 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
         let v = &mut t.players[1].objects[0];
         v.position = [29.5, 89.5, 0.0];
         v.actions.set_enter(Some(e));
-        in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        in_update(&mut t, (1, 0), 50, |unit, c| {
             let me = crate::movement::Me {
                 id: unit.id,
                 position: unit.position,
                 group: unit.group.id,
                 action_state: unit.top_action().map_or(0, |a| a.state),
             };
-            unit.enter_update(c, others, me)?;
-            let (_, house) = others.view().find(10028).unwrap();
+            unit.enter_update(c, me)?;
+            let (_, house) = OthersRef::of(&c.w.players, c.player).find(10028).unwrap();
             Ok((unit.life.inside, house.garrison.clone()))
         })
     };
@@ -5152,7 +5176,7 @@ fn life_part(
             .cloned()
             .chain([master, left]),
     );
-    in_update(&mut t, (1, 0), 50, |unit, c, _| {
+    in_update(&mut t, (1, 0), 50, |unit, c| {
         part(unit, c)?;
         Ok((c.attribute_adds.clone(), c.remains))
     })
@@ -5840,8 +5864,8 @@ fn gate_update_of(
     let g = &mut t.players[1].objects[0];
     (g.life.master_id, g.gate) = (master, gate);
     setup(&mut t);
-    let toggle = in_update(&mut t, (1, 0), 50, |unit, c, others| {
-        unit.gate_update(c, others.view())?;
+    let toggle = in_update(&mut t, (1, 0), 50, |unit, c| {
+        unit.gate_update(c)?;
         Ok(std::mem::take(&mut c.gate_toggle))
     })?;
     Ok((toggle, t.players[1].objects[0].gate))
@@ -8772,8 +8796,8 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
 /// The hit `v` written back where it ran, in the update of object `i` of player `p` (through
 /// its view, [`crate::combat::victims::write_back`]); its kill and razings follow the update.
 fn write_hit(t: &mut World, (p, i): (usize, usize), mut v: crate::combat::damage::Victim) {
-    in_update(t, (p, i), 0, |_, c, others| {
-        let left = crate::combat::victims::write_back(c, others, &mut v)?;
+    in_update(t, (p, i), 0, |_, c| {
+        let left = crate::combat::victims::write_back(c, &mut v)?;
         c.kills.extend(left);
         Ok(())
     })
@@ -10623,7 +10647,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
 fn helper_free_of(owner: usize, helper: Unit, groups: &crate::groups::UnitGroups) -> bool {
     help_view(helper, None, groups, |side| {
         let scout = side.masters.and_then(|m| m.get(448)).unwrap().clone();
-        let helper = side.others.own_iter().next().unwrap();
+        let helper = side.others.view().own_iter().next().unwrap();
         side.helper_free(owner, helper, &scout, 50).unwrap()
     })
 }
@@ -11756,11 +11780,16 @@ fn a_fired_missile_joins_its_owner_s_list_at_its_making() {
     for _ in 0..5 {
         t.tick(100);
     }
-    let made = in_update(&mut t, (1, 0), 100, |unit, c, others| {
-        let _ = unit.update(c, others)?;
-        let k = crate::players::tracker::key(c.masters, c.lines, 363);
-        let listed = others.own(-1).map(|m| m.life.master_id);
-        Ok((listed, c.tracker.list(k.master).contains(&-1)))
+    let made = in_update(&mut t, (1, 0), 100, |unit, c| {
+        let _ = unit.update(c)?;
+        let k = crate::players::tracker::key(c.w.masters.get(c.player), &c.w.lines, 363);
+        let listed = OthersRef::of(&c.w.players, c.player)
+            .own(-1)
+            .map(|m| m.life.master_id);
+        Ok((
+            listed,
+            c.w.players[c.player].tracker.list(k.master).contains(&-1),
+        ))
     });
     assert_eq!(made, Ok((Some(363), true)));
     let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
@@ -12210,10 +12239,7 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
     let v = &mut t.players[1].objects[0];
     v.actions.gather_mut().unwrap().target = -1;
     v.ai.as_mut().unwrap().orders = vec![order(600), order(601)];
-    in_update(&mut t, (1, 0), 50, |unit, c, others| {
-        unit.gather_after_drop(c, others)
-    })
-    .unwrap();
+    in_update(&mut t, (1, 0), 50, Unit::gather_after_drop).unwrap();
     let v = &t.players[1].objects[0];
     assert!(v.actions.gather().is_none());
     let ai = v.ai.as_ref().unwrap();
@@ -12226,14 +12252,14 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
 
 /// The forager's Gather update alone (`gather_update`, 50 ms).
 fn gather_step(t: &mut World) -> Result<(), GenieError> {
-    in_update(t, (1, 0), 50, |unit, c, others| {
+    in_update(t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.gather_update(c, others, me)
+        unit.gather_update(c, me)
     })
 }
 
@@ -12256,14 +12282,18 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
         for id in [600, 700] {
             t.object_mut(id).unwrap().1.workers = 1;
         }
-        let seen = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
             let by = unit.releaser(c);
             c.build_command = built;
-            let r = unit.gather_next(c, others, next, old, by);
+            let r = unit.gather_next(c, next, old, by);
             // the objects let go, as the update leaves them
             let released = [600, 700]
                 .into_iter()
-                .filter(|&id| others.find(id).is_some_and(|(_, u)| u.workers == 0))
+                .filter(|&id| {
+                    OthersRef::of(&c.w.players, c.player)
+                        .find(id)
+                        .is_some_and(|(_, u)| u.workers == 0)
+                })
                 .collect();
             Ok((r, released, c.build_command.take(), c.reseed.take()))
         })
@@ -12367,14 +12397,14 @@ fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
     let mut t = house_builder();
     let v = &mut t.players[1].objects[0];
     (v.life.attribute_type, v.life.amount) = held;
-    in_update(&mut t, (1, 0), 50, |unit, c, others| {
+    in_update(&mut t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.build_drop_off(c, others, me)
+        unit.build_drop_off(c, me)
     })
     .unwrap();
     let v = &t.players[1].objects[0];
@@ -12507,14 +12537,14 @@ type OwnMoved = (
 
 /// The villager's update's `MoveTo` part ([`Unit::move_to_part`]) in `t`.
 fn own_move(t: &mut World) -> OwnMoved {
-    let r = in_update(t, (1, 0), 50, |unit, c, others| {
+    let r = in_update(t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
             group: unit.group.id,
             action_state: unit.actions.move_to().map_or(0, |m| m.state.number()),
         };
-        unit.move_to_part(c, others, me)
+        unit.move_to_part(c, me)
     });
     let v = &t.players[1].objects[0];
     let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
@@ -12599,7 +12629,7 @@ fn flown(move_to: MoveTo, setup: impl FnOnce(&mut Unit)) -> Flown {
         task,
     }));
     setup(v);
-    let r = in_update(&mut t, (1, 0), 50, |unit, c, _| {
+    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
@@ -12641,7 +12671,7 @@ fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> E
     let (mut explore, _) = crate::movement::explore::ExploreAction::new([40.5, 89.5, 0.0]);
     set(&mut explore);
     t.players[1].objects[0].actions.set_explore(Some(explore));
-    let r = in_update(&mut t, (1, 0), 50, |unit, c, _| {
+    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
@@ -12746,10 +12776,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
     v.actions.hunt_mut().unwrap().target = -1;
     v.ai.as_mut().unwrap().target_type = -1;
     setup(v);
-    in_update(&mut t, (1, 0), 50, |unit, c, others| {
-        unit.hunt_after_drop(c, others)
-    })
-    .unwrap();
+    in_update(&mut t, (1, 0), 50, Unit::hunt_after_drop).unwrap();
     t
 }
 
@@ -12825,7 +12852,7 @@ fn a_hunter_that_finds_nothing_after_the_drop_walks_to_its_point() {
 /// in its context: the objects let go, the work command and the attributes added; and the
 /// notifies its unit AI heard.
 fn after_build(t: &mut World, step: BuildStep) -> AfterBuild {
-    in_update(t, (1, 0), 50, |unit, c, others| {
+    in_update(t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
@@ -12833,7 +12860,7 @@ fn after_build(t: &mut World, step: BuildStep) -> AfterBuild {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let by = unit.releaser(c);
-        unit.after_build_step(c, others, me, (10028, Some(70), by), step)?;
+        unit.after_build_step(c, me, (10028, Some(70), by), step)?;
         let released = c.releases.iter().map(|&(id, _)| id).collect();
         let heard = unit.ai.as_ref().unwrap().notifies.iter();
         Ok(AfterBuild {
@@ -12954,9 +12981,9 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
     (b.target, b.move_to) = (700, None);
     t.players[1].objects[2].workers = 1;
     setup(&mut t);
-    let r = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
         let by = unit.releaser(c);
-        unit.build_search(c, others, (700, Some(109), by))?;
+        unit.build_search(c, (700, Some(109), by))?;
         let heard = unit.ai.as_ref().unwrap().notifies.iter();
         Ok((
             c.work_order.take().map(|w| (w.target, w.point)),
@@ -12999,9 +13026,9 @@ fn a_builder_finds_more_work_around_the_building_it_finished() {
         assert_eq!(t.players[1].objects[2].workers, 0);
     }
     let mut t = house_builder();
-    let r = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
         let by = unit.releaser(c);
-        unit.build_search(c, others, (700, None, by))
+        unit.build_search(c, (700, None, by))
     });
     assert_eq!(
         r.unwrap_err().reason(),
@@ -13021,8 +13048,8 @@ fn a_build_step_s_changes_reach_the_world() {
     use crate::construction::build::{Built, Cleared};
     use std::mem::take;
     let recorded = |t: &mut World, step: &mut BuildStep| {
-        in_update(t, (1, 0), 50, |_, c, others| {
-            record_build_step(c, others, 10028, &[], step);
+        in_update(t, (1, 0), 50, |_, c| {
+            record_build_step(c, 10028, &[], step);
             let built = (
                 take(&mut c.history_events),
                 take(&mut c.attribute_adds),
@@ -13125,8 +13152,8 @@ fn completed_house(setup: fn(&mut Unit)) -> (World, Completed) {
     let k = h.construction.as_mut().unwrap();
     k.progress = f32::from(k.build_time);
     setup(h);
-    let r = in_update(&mut t, (1, 1), 50, |unit, c, others| {
-        unit.complete_on_update(c, others.view())?;
+    let r = in_update(&mut t, (1, 1), 50, |unit, c| {
+        unit.complete_on_update(c)?;
         Ok((
             std::mem::take(&mut c.attribute_adds),
             std::mem::take(&mut c.started),
@@ -13180,9 +13207,7 @@ fn centre_seconds(setup: impl FnOnce(&mut World)) -> Result<(f32, u32), GenieErr
     t.players[1].objects[2].garrison = vec![9175];
     t.players[1].objects[0].life.hp = 10.0;
     setup(&mut t);
-    in_update(&mut t, (1, 2), 50, |unit, c, others| {
-        unit.building_seconds(c, others)
-    })?;
+    in_update(&mut t, (1, 2), 50, Unit::building_seconds)?;
     let hp = t.players[1].objects[0].life.hp;
     Ok((hp, t.players[1].objects[2].garrison_time))
 }
@@ -13281,14 +13306,14 @@ fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
     t.order_work(1, 0, &work).unwrap();
     let mut states = vec![t.players[1].objects[0].actions.repair().map(|r| r.state)];
     for _ in 0..n {
-        in_update(t, (1, 0), 50, |unit, c, others| {
+        in_update(t, (1, 0), 50, |unit, c| {
             let me = crate::movement::Me {
                 id: unit.id,
                 position: unit.position,
                 group: unit.group.id,
                 action_state: unit.top_action().map_or(0, |a| a.state),
             };
-            unit.repair_part(c, others, me)
+            unit.repair_part(c, me)
         })
         .unwrap();
         let state = t.players[1].objects[0].actions.repair().map(|r| r.state);
@@ -13490,14 +13515,14 @@ fn repaired_by(n: usize) -> [(f32, f32); 2] {
     }
     let update = |t: &mut World| {
         for &i in &repairers {
-            in_update(t, (1, i), 50, |unit, c, others| {
+            in_update(t, (1, i), 50, |unit, c| {
                 let me = crate::movement::Me {
                     id: unit.id,
                     position: unit.position,
                     group: unit.group.id,
                     action_state: unit.top_action().map_or(0, |a| a.state),
                 };
-                unit.repair_part(c, others, me)
+                unit.repair_part(c, me)
             })
             .unwrap();
         }
@@ -13606,14 +13631,14 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
         count: 8,
         flag_1: false,
     });
-    in_update(&mut t, (1, 0), 50, |unit, c, others| {
+    in_update(&mut t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.build_drop_off(c, others, me)
+        unit.build_drop_off(c, me)
     })
     .unwrap();
     let mut seen = Vec::new();
@@ -13651,7 +13676,7 @@ fn finished_with(
     step: impl FnOnce(&mut context::Context<'_>) -> Result<crate::objects::unit::Step, GenieError>,
 ) -> Result<crate::objects::unit::Step, GenieError> {
     let frame = t.player_frame();
-    t.step_object((p, i), (50, None, false), &frame, None, |_, c, _| step(c))
+    t.step_object((p, i), (50, None, false), &frame, None, |_, c| step(c))
         .map(|(step, ..)| step)
 }
 
@@ -13750,11 +13775,11 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
         flags: 0,
     };
     let _ = t.graphics.insert(id, shown);
-    let seen = in_update(&mut t, (1, 1), 0, |unit, c, others| {
+    let seen = in_update(&mut t, (1, 1), 0, |unit, c| {
         unit.life.hp = 3.0;
-        unit.died(c, others, 1)?;
-        let (_, annex) = others.view().find(700).unwrap();
-        Ok((annex.annex_of, annex.life.hp, c.spatial.annexes_of(10028)))
+        unit.died(c, 1)?;
+        let (_, annex) = OthersRef::of(&c.w.players, c.player).find(700).unwrap();
+        Ok((annex.annex_of, annex.life.hp, c.w.spatial.annexes_of(10028)))
     });
     assert_eq!(
         seen.map_err(|e| e.reason().to_owned()),

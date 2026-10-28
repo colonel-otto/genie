@@ -8,26 +8,26 @@ use crate::objects::lifecycle::death_parts::{built_death, combat_dies, farm_bonu
 use crate::objects::masters::Master;
 use crate::objects::unit::{NO_DYING_SPRITE, Unit};
 use crate::world::context::Context;
-use crate::world::others::Others;
 
 impl Unit {
     /// The death's `set_state(3)` (from `before`, the state the object had) and the static
     /// update's dying sprite after it (slot 0x7a0, then slot 0x68, `FUN_141217000`). A building's
-    /// (`FUN_1411dbb70`) first lets its annexes go (each takes its hit points at once, through
-    /// the update's view `others`) and sets their states (the caller's after the update), then a
+    /// (`FUN_1411dbb70`) first lets its annexes go (each takes its hit points at once, in the
+    /// world) and sets their states (the caller's after the update), then a
     /// built one dies ([`built_death`]) and a foundation runs the completion's first part and its
     /// construction's start ([`Unit::foundation_died`]); then the combat object's
     /// (`FUN_14121cc40`, [`combat_dies`]), whose refund from state 2 ([`refund_of`]) the caller
     /// takes from its owner's attributes; then the base one's (`FUN_14119d710`, whose storage and
     /// sight are the caller's). An animated or moving object (types 20 to 69) shows its
     /// master's dying sprite. Not held: the particles and the sounds.
-    pub(crate) fn died(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        before: u8,
-    ) -> Result<(), GenieError> {
-        let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+    pub(crate) fn died(&mut self, c: &mut Context<'_>, before: u8) -> Result<(), GenieError> {
+        // its master as the death starts: the world's calls below change other objects
+        let Some(master) =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .cloned()
+        else {
             if self.life.dying_sprite.is_some() {
                 return Err(GenieError::unsupported(
                     "a dying object of a master the slice does not have",
@@ -35,14 +35,15 @@ impl Unit {
             }
             return Ok(());
         };
+        let master = &master;
         if master.kind == 80 {
             // the static update's death (0x14118ad50) lets the annexes go before its set_state(3):
             // each slot (`+0xbc0`..) clears and its annex's `+0xbb8` with it, and each annex takes
             // the building's hit points (`+0x278`), so it dies in its own update; the set_state
             // (FUN_1411dbb70) then finds no annex to take along
-            for annex in c.spatial.annexes_of(self.id) {
-                c.spatial.set_annex(annex, None);
-                if let Some((_, a)) = others.get_mut(annex) {
+            for annex in c.w.spatial.annexes_of(self.id) {
+                c.w.spatial.set_annex(annex, None);
+                if let Some((_, a)) = c.w.object_mut(annex) {
                     a.annex_of = None;
                     a.life.hp = self.life.hp;
                 }
@@ -51,7 +52,7 @@ impl Unit {
                 let death = built_death(self, master, c.computer)?;
                 c.attribute_adds.extend(death.adds);
                 c.unwatched.push(self.id);
-                if let (Some(v), Some(at)) = (c.spatial.sight.as_mut(), death.unlink) {
+                if let (Some(v), Some(at)) = (c.w.spatial.sight.as_mut(), death.unlink) {
                     v.unlink_building(at, master.radius);
                 }
                 c.building_death = Some(death.building);
@@ -67,16 +68,16 @@ impl Unit {
                 && self.life.dying_sprite.is_some()
                 && let Some(id) = crate::objects::sprite::dying(master, None)
             {
-                let g = c.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
+                let g = c.w.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
                 crate::combat::attack::set_sprite(
                     &mut self.sprite,
                     g,
-                    c.streams.get(Stream::Sprite),
+                    c.w.streams.get(Stream::Sprite),
                 );
             }
             return Ok(());
         }
-        combat_dies(self, master, c.spatial, c.pathing)?;
+        combat_dies(self, master, &mut c.w.spatial, &mut c.w.pathing)?;
         if before == 2 {
             c.refund = refund_of(master, self.annex_of);
         }
@@ -92,8 +93,8 @@ impl Unit {
             crate::objects::sprite::dying(master, look)
         };
         if let Some(id) = shown {
-            let g = c.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
-            crate::combat::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
+            let g = c.w.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
+            crate::combat::attack::set_sprite(&mut self.sprite, g, c.w.streams.get(Stream::Sprite));
         }
         Ok(())
     }
@@ -119,8 +120,8 @@ impl Unit {
             annexed: false,
             attribute_204: false,
             mode_680: c.mode_680,
-            farm_bonus: farm_bonus(c.attributes),
-            masters: c.masters,
+            farm_bonus: farm_bonus(&c.w.players[c.player].attributes),
+            masters: c.w.masters.get(c.player),
             computer: c.computer,
             ai: self.ai.is_some(),
             main: self.annex_of.is_some(),
@@ -129,8 +130,12 @@ impl Unit {
         };
         let part = completion.first_part(construction)?;
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
-        let k = crate::players::tracker::key(c.masters, c.lines, self.life.master_id);
-        c.tracker.complete(self.id, k);
+        let k = crate::players::tracker::key(
+            c.w.masters.get(c.player),
+            &c.w.lines,
+            self.life.master_id,
+        );
+        c.w.players[c.player].tracker.complete(self.id, k);
         c.attribute_adds.extend(part.attributes);
         if part.pasture {
             c.pastures.push(self.id);
@@ -142,8 +147,8 @@ impl Unit {
             self.id,
             construction,
             self.body.mover_mut(),
-            c.spatial,
-            c.pathing,
+            &mut c.w.spatial,
+            &mut c.w.pathing,
             c.world_time,
         )?;
         if started {

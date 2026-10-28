@@ -3,21 +3,25 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::victims::KillLeft;
-use crate::map::spatial::Spatial;
-use crate::math::rng::{Stream, Streams, Well512};
+use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::Walk;
 use crate::movement::{Me, Mover, Planning};
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
-use crate::objects::sprite::Graphic;
-use crate::pathing::Pathing;
 use crate::unit_ai::AiMove;
-use crate::unit_ai::task_finder::DropSite;
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::{AiStart, AiWork};
-use crate::world::{BuildingDeath, Recycling};
+use crate::world::player::Player;
+use crate::world::{BuildingDeath, World};
 
 pub(crate) struct Context<'a> {
+    /// The world the update reaches (FD-045-D28): its objects by id, every player and the
+    /// world's parts. The updating object is out of its slot (its stand-in, which no lookup by
+    /// id finds), so a call on another object is the world's routine at once, and a call on
+    /// the updating object itself goes to this Context for after the step.
+    pub(crate) w: &'a mut World,
+    /// The updating object's id.
+    pub(crate) me: i32,
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
     pub(crate) dt: u32,
     pub(crate) dt_seconds: f32,
@@ -27,17 +31,8 @@ pub(crate) struct Context<'a> {
     pub(crate) turn: Option<u32>,
     pub(crate) world_time: u32,
     pub(crate) computer: bool,
-    pub(crate) streams: &'a mut Streams,
-    /// Every object's place, which a walker reads and its moves update.
-    pub(crate) spatial: &'a mut Spatial,
-    /// The planners and the mesh, which a walker's path request uses.
-    pub(crate) pathing: &'a mut Pathing,
-    /// The world's unit groups, which a walker's long path reads.
-    pub(crate) groups: &'a crate::groups::UnitGroups,
     /// The owner's construction rate (attribute 195).
     pub(crate) construction_rate: f32,
-    /// The owner's masters, which an attack reads.
-    pub(crate) masters: Option<&'a Masters>,
     /// The unit AI's current target as its target block reads it ([`World::seen`]).
     pub(crate) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
     /// The objects about the target of a unit with an area effect (or about the unit, for its
@@ -113,20 +108,12 @@ pub(crate) struct Context<'a> {
     /// The units on a foundation's footprint its builder's test met (the foundation, them):
     /// the caller sends off those the test would ([`World::evacuate`]).
     pub(crate) evacuations: Vec<(i32, Vec<i32>)>,
-    /// The world's reusable ids and pools.
-    pub(crate) recycling: &'a mut Recycling,
     /// The game's setting at `+0x680` is 1 ([`World::mode_680`]).
     pub(crate) mode_1: bool,
-    /// The owner's attributes, which a gatherer's productivity reads.
-    pub(crate) attributes: &'a [f32],
     /// The owner's food, wood, stone and gold ([`Player::resources`]), which a repair pays from.
     ///
     /// [`Player::resources`]: crate::world::player::Player::resources
     pub(crate) resources: [f32; 4],
-    /// The graphics, for the sprites a hunter takes.
-    pub(crate) graphics: &'a std::collections::BTreeMap<i16, Graphic>,
-    /// The drop-site table, whose livestock entries a hunt leads its livestock to.
-    pub(crate) drop_sites: &'a [DropSite],
     /// The owner's id and civ (`player+0x738`).
     pub(crate) player: usize,
     pub(crate) civ: u8,
@@ -138,15 +125,12 @@ pub(crate) struct Context<'a> {
     pub(crate) farm_stops: bool,
     /// The game's setting [`crate::world::settings::Settings::predator_hunts_end`].
     pub(crate) predator_hunts_end: bool,
-    /// Every player's masters and attribute 97 (by player), for a capture.
-    pub(crate) every_masters: &'a [Masters],
+    /// Every player's attribute 97 (by player), for a capture.
     pub(crate) attribute_97: &'a [f32],
     /// Every player's game status (`+0x89`), which the Artifact's owner search reads.
     pub(crate) game_status: &'a [u8],
-    /// The player whose turn this tick is (`world+0x188`), every player's accumulated time
-    /// (`world+0x18c`, as it stands when the object updates) and computer flag.
+    /// The player whose turn this tick is (`world+0x188`) and every player's computer flag.
     pub(crate) player_turn: usize,
-    pub(crate) player_time: &'a [u32],
     pub(crate) computers: &'a [bool],
     /// Each player's `chance_to_dodge_missiles` ([`crate::world::Player::dodge_chance`]).
     pub(crate) dodge_chances: &'a [u8],
@@ -167,10 +151,6 @@ pub(crate) struct Context<'a> {
     /// ([`crate::vision::visibility::sight_taker`]).
     pub(crate) standard: bool,
     pub(crate) sight_takers: &'a [(bool, bool)],
-    /// The owner's object tracker, which a completion's first part (`FUN_1411c6bd0`) moves a
-    /// building in, and the unit lines its keys read ([`crate::players::tracker`]).
-    pub(crate) tracker: &'a mut crate::players::tracker::Tracker,
-    pub(crate) lines: &'a crate::objects::lines::UnitLines,
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
     pub(crate) attribute_adds: Vec<(i16, f32)>,
@@ -229,13 +209,9 @@ pub(crate) struct Context<'a> {
     /// seconds; [`crate::construction::build::Worked::Main`]), which the caller runs after the update
     /// ([`World::work_building`]).
     pub(crate) main_works: Vec<(i32, f32)>,
-    /// The owner's diplomacy (`player+0x260`), which the unit's task search reads.
-    pub(crate) relations: &'a [u8],
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
     /// update ([`World::lead_herd`]).
     pub(crate) leads: Option<(i32, i32)>,
-    /// The map's zone maps, which an auto scout's search reads.
-    pub(crate) zones: &'a mut crate::pathing::zones::Zones,
 }
 
 /// What an object's step gathered in its Context for the world to apply after it
@@ -365,6 +341,72 @@ impl Context<'_> {
     }
 }
 
+/// What a walk takes of the update beside the world: the dt in seconds, the world's time, and
+/// the owner's computer flag and construction rate.
+#[derive(Clone, Copy)]
+pub(crate) struct Pace {
+    pub(crate) dt: f32,
+    pub(crate) now: u32,
+    pub(crate) computer: bool,
+    pub(crate) construction_rate: f32,
+}
+
+/// The world's parts beside a walk ([`World::walk_beside`]), which an update reads and changes
+/// while its unit walks.
+pub(crate) struct Beside<'b> {
+    pub(crate) players: &'b mut Vec<Player>,
+    pub(crate) masters: &'b [Masters],
+}
+
+impl World {
+    /// A walk at `pace` ([`Context::walk`]) and the world's parts beside it, each its own
+    /// borrow.
+    pub(crate) fn walk_beside<'b>(
+        &'b mut self,
+        pace: Pace,
+        mover: Option<&'b mut Mover>,
+        me: Me,
+    ) -> (Walk<'b>, Beside<'b>) {
+        let Self {
+            players,
+            masters,
+            spatial,
+            pathing,
+            groups,
+            streams,
+            ..
+        } = self;
+        let walk = Walk {
+            mover,
+            me,
+            dt: pace.dt,
+            world: spatial,
+            plan: Some(Planning {
+                pathing,
+                now: pace.now,
+                computer: pace.computer,
+                object: streams.get(Stream::Object),
+                construction_rate: pace.construction_rate,
+                groups,
+            }),
+        };
+        let beside = Beside { players, masters };
+        (walk, beside)
+    }
+}
+
+impl Context<'_> {
+    /// What a walk takes of the update beside the world ([`World::walk_beside`]).
+    pub(crate) const fn pace(&self) -> Pace {
+        Pace {
+            dt: self.dt_seconds,
+            now: self.world_time,
+            computer: self.computer,
+            construction_rate: self.construction_rate,
+        }
+    }
+}
+
 impl Context<'_> {
     /// A walk and the Sprite stream, for an attacker's update.
     pub(crate) fn walk_and_sprites<'b>(
@@ -372,20 +414,20 @@ impl Context<'_> {
         mover: Option<&'b mut Mover>,
         me: Me,
     ) -> (Walk<'b>, &'b mut Well512) {
-        let (object, sprite) = self.streams.two(Stream::Object, Stream::Sprite);
+        let (object, sprite) = self.w.streams.two(Stream::Object, Stream::Sprite);
         (
             Walk {
                 mover,
                 me,
                 dt: self.dt_seconds,
-                world: self.spatial,
+                world: &mut self.w.spatial,
                 plan: Some(Planning {
-                    pathing: self.pathing,
+                    pathing: &mut self.w.pathing,
                     now: self.world_time,
                     computer: self.computer,
                     object,
                     construction_rate: self.construction_rate,
-                    groups: self.groups,
+                    groups: &self.w.groups,
                 }),
             },
             sprite,
@@ -399,21 +441,22 @@ impl Context<'_> {
         me: Me,
     ) -> (Walk<'b>, &'b mut Well512, &'b mut Well512) {
         let [object, sprite, action] =
-            self.streams
+            self.w
+                .streams
                 .three(Stream::Object, Stream::Sprite, Stream::Action);
         (
             Walk {
                 mover,
                 me,
                 dt: self.dt_seconds,
-                world: self.spatial,
+                world: &mut self.w.spatial,
                 plan: Some(Planning {
-                    pathing: self.pathing,
+                    pathing: &mut self.w.pathing,
                     now: self.world_time,
                     computer: self.computer,
                     object,
                     construction_rate: self.construction_rate,
-                    groups: self.groups,
+                    groups: &self.w.groups,
                 }),
             },
             sprite,
@@ -428,20 +471,20 @@ impl Context<'_> {
         me: Me,
         other: Stream,
     ) -> (Walk<'b>, &'b mut Well512) {
-        let (object, other) = self.streams.two(Stream::Object, other);
+        let (object, other) = self.w.streams.two(Stream::Object, other);
         (
             Walk {
                 mover,
                 me,
                 dt: self.dt_seconds,
-                world: self.spatial,
+                world: &mut self.w.spatial,
                 plan: Some(Planning {
-                    pathing: self.pathing,
+                    pathing: &mut self.w.pathing,
                     now: self.world_time,
                     computer: self.computer,
                     object,
                     construction_rate: self.construction_rate,
-                    groups: self.groups,
+                    groups: &self.w.groups,
                 }),
             },
             other,
@@ -454,14 +497,14 @@ impl Context<'_> {
             mover,
             me,
             dt: self.dt_seconds,
-            world: self.spatial,
+            world: &mut self.w.spatial,
             plan: Some(Planning {
-                pathing: self.pathing,
+                pathing: &mut self.w.pathing,
                 now: self.world_time,
                 computer: self.computer,
-                object: self.streams.get(Stream::Object),
+                object: self.w.streams.get(Stream::Object),
                 construction_rate: self.construction_rate,
-                groups: self.groups,
+                groups: &self.w.groups,
             }),
         }
     }

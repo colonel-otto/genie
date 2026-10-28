@@ -15,7 +15,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::TREE_NEAR;
 use crate::world::context::Context;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The hunt's strike in the hunter's update (`0x140ac7a00`'s states 4, 6, 7, 10 and 12): what
@@ -26,29 +26,35 @@ impl Unit {
     pub(crate) fn hunt_strike(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         me: Me,
         own: &mut Option<Victim>,
         tree_lost: bool,
     ) -> Result<(), GenieError> {
         let computer = c.computer;
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
         let action = self.actions.hunt().copied().expect("the caller's test");
-        let mut victim = hunt_victim(c, others, &action)?;
+        let mut victim = hunt_victim(c, &action)?;
         let own = own.take().ok_or(crate::world::HUNTER_MASTER)?;
-        let herd = self.herd_for(c, others.view(), &action, master, &victim)?;
+        let herd = self.herd_for(
+            c,
+            OthersRef::of(&c.w.players, c.player),
+            &action,
+            master,
+            &victim,
+        )?;
         let hunt = self.actions.hunt_mut().expect("the caller's test");
         // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
         let productivity = usize::try_from(hunt.task.productivity)
             .ok()
-            .and_then(|i| c.attributes.get(i))
+            .and_then(|i| c.w.players[c.player].attributes.get(i))
             .copied()
             .filter(|&v| 0.0 < v)
             .unwrap_or(1.0);
-        let g = |id: i16| (0 <= id).then(|| c.graphics.get(&id).copied()).flatten();
+        let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
         let sprites = HuntSprites {
             moving: g(hunt.task.sprites[0]),
             working: g(hunt.task.sprites[2]),
@@ -63,7 +69,7 @@ impl Unit {
             productivity,
             target_class: victim.class,
             target_storage: victim.storage,
-            stops_decay: c.attributes.get(292) == Some(&1.0),
+            stops_decay: c.w.players[c.player].attributes.get(292) == Some(&1.0),
             ai_class: self.ai.as_ref().map(|ai| ai.target_type),
             sprites,
             tree_searched: tree_lost,
@@ -81,12 +87,17 @@ impl Unit {
             .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
         let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
         let world_time = c.world_time;
-        let standing = c.graphics.get(&master.standing_sprite).copied();
-        let volleys = c
-            .masters
-            .is_some_and(|m| crate::combat::attack::volleys(master, m));
-        let swing_sprites =
-            crate::combat::attack::swing_sprites(self.abilities.look.as_ref(), master, c.graphics);
+        let standing = c.w.graphics.get(&master.standing_sprite).copied();
+        let volleys =
+            c.w.masters
+                .get(c.player)
+                .is_some_and(|m| crate::combat::attack::volleys(master, m));
+        let swing_sprites = crate::combat::attack::swing_sprites(
+            self.abilities.look.as_ref(),
+            master,
+            &c.w.graphics,
+        );
+        let (reload, hit_chance) = (master.reload, master.hit_chance);
         let (walk, sprite_rng) = c.walk_and_sprites(self.body.mover_mut(), me);
         let mut strike = Strike {
             sprite: &mut self.sprite,
@@ -94,8 +105,8 @@ impl Unit {
             volleys,
             attack_timer: &mut self.attack_timer,
             reload_worldtime: &mut self.reload_worldtime,
-            reload: self.reload_stinger + (master.reload - self.reload_powerup),
-            hit_chance: master.hit_chance,
+            reload: self.reload_stinger + (reload - self.reload_powerup),
+            hit_chance,
             victim: &mut victim,
             blasted: &mut blasted,
             sprite_rng,
@@ -125,9 +136,9 @@ impl Unit {
         let leads = gather.leads.map(|site| (hunt.target, site));
         let fired = strike.fire.map(|target| Aimed::at(target, strike.victim));
         let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
-        let struck = write_struck(c, others, blasted, &mut victim)?;
+        let struck = write_struck(c, blasted, &mut victim)?;
         if let Some(aimed) = fired {
-            self.volley(c, others, aimed)?;
+            self.volley(c, aimed)?;
         }
         if let Some(target) = executed {
             self.post_own(ACTION_EXECUTED, [600, target, 0])?;
@@ -137,16 +148,16 @@ impl Unit {
         }
         struck.file(c, self.hit_back(own)?.map(|k| KillLeft::own(self.id, k)));
         if full {
-            self.hunt_drop_off(c, others)?;
+            self.hunt_drop_off(c)?;
         }
         if searches {
-            self.hunt_set_search(c, others)?;
+            self.hunt_set_search(c)?;
         }
         if let Some(target) = let_go {
-            self.hunt_release(c, others, [target])?;
+            self.hunt_release(c, [target])?;
         }
         if attack_failed {
-            self.hunt_attack_failed(c, others)?;
+            self.hunt_attack_failed(c)?;
         }
         c.leads = leads;
         Ok(())
@@ -157,11 +168,7 @@ impl Unit {
     /// 0) takes the next tree within 5 of it ([`Unit::hunt_tree_search`]); any other, or one
     /// that finds none, searches (`set_state(3)` with the target kept,
     /// [`Unit::hunt_search_state`]).
-    pub(crate) fn hunt_attack_failed(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn hunt_attack_failed(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let tree = self.ai.as_ref().is_some_and(|ai| {
             let class = if ai.target_type == -1 {
                 self.actions
@@ -172,13 +179,13 @@ impl Unit {
             };
             class == crate::gathering::hunt::TREE_CLASS
         });
-        if tree && self.hunt_tree_search(c, others, None, Some(TREE_NEAR))? {
+        if tree && self.hunt_tree_search(c, None, Some(TREE_NEAR))? {
             return Ok(());
         }
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         hunt.tear_down(self.body.mover_mut())?;
         hunt.state = crate::gathering::hunt::SEARCH;
-        self.hunt_search_state(c, others)
+        self.hunt_search_state(c)
     }
 
     /// What `set_state(6)` on live livestock reads (`0x140ac60e0` case 6), and the lead's update
@@ -201,7 +208,7 @@ impl Unit {
             return Ok(None);
         }
         let at = |id| {
-            c.spatial
+            c.w.spatial
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
@@ -218,12 +225,12 @@ impl Unit {
         let moving = action
             .task
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
-        let arms = crate::combat::attack::arms(master, c.graphics, action.task.sprites, moving);
+        let arms = crate::combat::attack::arms(master, &c.w.graphics, action.task.sprites, moving);
         let own = them.player == c.player;
         let drop_site = if !own {
             None
         } else if action.drop_site != -1 {
-            let site = c.spatial.get(action.drop_site);
+            let site = c.w.spatial.get(action.drop_site);
             site.map(|s| {
                 let d = footprint_gap_squared(them.position, them.radius, s.position, s.radius);
                 (action.drop_site, d)
@@ -234,12 +241,12 @@ impl Unit {
                     "a computer player's hunt of its livestock (its drop-site search)",
                 ));
             }
-            let sites: Vec<i16> = c
-                .drop_sites
-                .iter()
-                .filter(|d| d.livestock)
-                .map(|d| d.building)
-                .collect();
+            let sites: Vec<i16> =
+                c.w.drop_sites
+                    .iter()
+                    .filter(|d| d.livestock)
+                    .map(|d| d.building)
+                    .collect();
             nearest_drop_site(others, &sites, them.position)
                 .map(|(id, _)| -> Result<(i32, f32), GenieError> {
                     let s = at(id)?;
@@ -263,7 +270,7 @@ impl Unit {
             arms,
             idle,
             special_graphic: if master.kind == 70 && master.special_graphic {
-                Some(c.graphics.get(&master.special_sprite).copied().ok_or(
+                Some(c.w.graphics.get(&master.special_sprite).copied().ok_or(
                     GenieError::unsupported("a special graphic the data file does not have"),
                 )?)
             } else {
@@ -273,14 +280,10 @@ impl Unit {
     }
 }
 
-/// The object the hunt's strike reads through the update's view ([`victim`]): its target, else
+/// The object the hunt's strike reads of the world ([`victim`]): its target, else
 /// its Attack's. A hunt whose start dropped its target (gone or past state 6) and holds no
 /// Attack reads none (state 7's end without a target): a stand-in no object holds.
-fn hunt_victim(
-    c: &Context<'_>,
-    others: &Others<'_>,
-    action: &HuntAction,
-) -> Result<Victim, GenieError> {
+fn hunt_victim(c: &Context<'_>, action: &HuntAction) -> Result<Victim, GenieError> {
     let target = match action.target {
         -1 => action.attack.map_or(-1, |a| a.target),
         t => t,
@@ -290,7 +293,7 @@ fn hunt_victim(
             id: -1,
             ..Victim::default()
         }),
-        t => victim(c, others, t).ok_or(GenieError::unsupported(
+        t => victim(c, t).ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         )),
     }

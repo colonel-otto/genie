@@ -1669,8 +1669,8 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
         ..crate::unit_ai::UnitAi::default()
     });
     let at = centre.position;
-    in_update(&mut t, (1, 2), 50, |u, c, o| {
-        u.attack_part(c, o, me(700, at), None)
+    in_update(&mut t, (1, 2), 50, |u, c| {
+        u.attack_part(c, me(700, at), None)
     })
     .unwrap();
     let centre = &t.players[1].objects[2];
@@ -1693,8 +1693,8 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
         .actions
         .set_attack(Some(own_attack(77, 1, 0.0)));
     let at = t.players[1].objects[0].position;
-    let r = in_update(&mut t, (1, 0), 50, |u, c, o| {
-        u.attack_part(c, o, me(9175, at), None)
+    let r = in_update(&mut t, (1, 0), 50, |u, c| {
+        u.attack_part(c, me(9175, at), None)
     });
     assert_eq!(
         r.unwrap_err().reason(),

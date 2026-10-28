@@ -6,7 +6,6 @@ use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::{Step, Unit};
 use crate::world::context::Context;
-use crate::world::others::Others;
 
 impl Unit {
     /// The life cycle's part of the update: the storage that a dying object's player loses
@@ -14,11 +13,7 @@ impl Unit {
     /// (`FUN_14119d710`, [`Unit::state_set_off`]): the death, the ghost, the annexes' states,
     /// the sight, the remains and the death spawn. [`Step::Leave`] when the object leaves the
     /// world.
-    pub(crate) fn life_step(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<Step, GenieError> {
+    pub(crate) fn life_step(&mut self, c: &mut Context<'_>) -> Result<Step, GenieError> {
         self.dying_storage_leaves(c);
         let before = self.life.state;
         if before == 4 && self.sprite.is_none() {
@@ -30,15 +25,16 @@ impl Unit {
         let animating = self
             .sprite
             .is_some_and(|s| s.animate != 0 && s.graphic.flags & 1 != 0);
-        let leaves = if self
-            .life
-            .update(c.dt_seconds, c.streams.get(Stream::Object), animating)?
-        {
-            Step::Leave
-        } else {
-            Step::Stay
-        };
-        self.state_set_off(c, others, before)?;
+        let leaves =
+            if self
+                .life
+                .update(c.dt_seconds, c.w.streams.get(Stream::Object), animating)?
+            {
+                Step::Leave
+            } else {
+                Step::Stay
+            };
+        self.state_set_off(c, before)?;
         Ok(leaves)
     }
 
@@ -50,7 +46,11 @@ impl Unit {
         if !(self.life.is_alive() && self.life.hp < 1.0) {
             return;
         }
-        if let Some(m) = c.masters.and_then(|m| m.get(self.life.master_id)) {
+        if let Some(m) =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+        {
             for &(attribute, amount, kind) in &m.storage {
                 if matches!(kind, 2 | 16) && 0 <= attribute {
                     c.attribute_adds.push((attribute, -amount));
@@ -68,13 +68,14 @@ impl Unit {
     pub(crate) fn state_set_off(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         before: u8,
     ) -> Result<(), GenieError> {
         let after = self.life.state;
         if before <= 2 && 3 <= after {
-            self.died(c, others, before)?;
-            if c.masters
+            self.died(c, before)?;
+            if c.w
+                .masters
+                .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .is_some_and(|m| m.ghost_on_death == crate::vision::ghost::LEAVES_GHOSTS)
             {
@@ -99,11 +100,13 @@ impl Unit {
         if 3 < after
             && after != before
             && !(before == 4 && after == 5)
-            && c.masters
+            && c.w
+                .masters
+                .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .is_some_and(|m| m.kind == 80)
         {
-            for annex in c.spatial.annexes_of(self.id) {
+            for annex in c.w.spatial.annexes_of(self.id) {
                 c.annex_states.push((annex, after));
             }
         }
@@ -117,14 +120,17 @@ impl Unit {
             return;
         }
         if before <= 2 && 3 <= after {
-            c.spatial.sight_state(self.id, 3);
+            c.w.spatial.sight_state(self.id, 3);
         }
         if after != 3 {
-            c.spatial.sight_state(self.id, after);
+            c.w.spatial.sight_state(self.id, after);
         }
         if before < 4 && 6 < after {
-            let master = c.masters.and_then(|m| m.get(self.life.master_id));
-            forget_resource(c.spatial, master, self.id, self.position);
+            let master =
+                c.w.masters
+                    .get(c.player)
+                    .and_then(|m| m.get(self.life.master_id));
+            forget_resource(&mut c.w.spatial, master, self.id, self.position);
         }
     }
 
@@ -133,13 +139,14 @@ impl Unit {
     /// left it ([`crate::objects::facing::facet_of_angle`]).
     pub(crate) fn dying_sprite_ended(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         self.body.set_anim_speed(0.0);
-        let kind = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .map(|m| m.kind)
-            .ok_or(GenieError::unsupported(
-                "a dead object of a master the slice does not have",
-            ))?;
+        let kind =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.kind)
+                .ok_or(GenieError::unsupported(
+                    "a dead object of a master the slice does not have",
+                ))?;
         if kind < 80 && 0 <= self.life.remains {
             let facet = self
                 .body
@@ -155,13 +162,14 @@ impl Unit {
     /// moving object's override gives it the dead object's facet and that facet's angle). The
     /// spawn's sprite from slot 0x7a8 (the master's undead sprite) is not held.
     pub(crate) fn death_spawn_comes(&self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        let spawn = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .map(|m| m.death_spawns[0])
-            .ok_or(GenieError::unsupported(
-                "a dead object of a master the slice does not have",
-            ))?;
+        let spawn =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.death_spawns[0])
+                .ok_or(GenieError::unsupported(
+                    "a dead object of a master the slice does not have",
+                ))?;
         let facet = self
             .body
             .mover()

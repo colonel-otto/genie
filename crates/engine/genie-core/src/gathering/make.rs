@@ -182,9 +182,13 @@ impl Unit {
     /// out, and the end.
     pub(crate) fn make_part(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         if let Some(make) = self.actions.make_mut() {
-            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
-                GenieError::unsupported("a Make of a master the slice does not have"),
-            )?;
+            let master =
+                c.w.masters
+                    .get(c.player)
+                    .and_then(|m| m.get(self.life.master_id))
+                    .ok_or(GenieError::unsupported(
+                        "a Make of a master the slice does not have",
+                    ))?;
             let farm = Farm {
                 master_id: master.id,
                 kind: master.kind,

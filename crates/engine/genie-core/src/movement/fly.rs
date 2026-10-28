@@ -293,21 +293,22 @@ impl Unit {
                 "a player's bird's default Fly (its task's +0x15)",
             ));
         }
-        let fly_mode = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .map(|m| m.fly_mode)
-            .ok_or(GenieError::unsupported(
-                "a bird of a master the slice does not have",
-            ))?;
+        let fly_mode =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.fly_mode)
+                .ok_or(GenieError::unsupported(
+                    "a bird of a master the slice does not have",
+                ))?;
         self.actions.set_fly(Some(Fly::start(
             task,
             self.position,
-            c.streams.get(Stream::Action),
+            c.w.streams.get(Stream::Action),
         )));
         if fly_mode == 1 {
             self.position[2] = HEIGHT;
-            c.spatial.set_position(self.id, self.position);
+            c.w.spatial.set_position(self.id, self.position);
             // the position setter marks the move (`+0x824`, `+0x870`)
             if let Some(m) = self.body.mover_mut() {
                 m.mark_move(self.position, c.world_time);

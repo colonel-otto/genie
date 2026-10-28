@@ -15,7 +15,6 @@ use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
 use crate::world::context::Context;
-use crate::world::others::Others;
 
 impl Unit {
     /// The unit's own part of its hit, written back: what a retaliation or reflected damage left
@@ -54,11 +53,7 @@ impl Unit {
     /// The action list's deletion of the unit's own Attack (`FUN_140a98e20`): its teardown (a
     /// `MoveTo`'s stops the unit) and the base teardown (`FUN_140a73fc0`), which lets its target,
     /// then its second target go (slot 0x180).
-    pub(crate) fn delete_attack(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn delete_attack(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let Some(mut a) = self.actions.take_attack() else {
             return Ok(());
         };
@@ -66,7 +61,7 @@ impl Unit {
         let by = self.releaser(c);
         for t in [a.target, a.target2] {
             if t != -1 {
-                crate::world::lets::release(c, others, t, by)?;
+                crate::world::lets::release(c, t, by)?;
             }
         }
         Ok(())
@@ -87,16 +82,12 @@ impl Unit {
     /// 2133..2135, classes 35 and 64 alive), a charge (charge types 6 and 7) and a target of a
     /// computer player (its notify 0x214). Not held: the local player's statistics
     /// (`FUN_140a4ba80`).
-    pub(crate) fn volley(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        aimed: Aimed,
-    ) -> Result<(), GenieError> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::ATTACKER_MASTER)?;
+    pub(crate) fn volley(&mut self, c: &mut Context<'_>, aimed: Aimed) -> Result<(), GenieError> {
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::ATTACKER_MASTER)?;
         if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135) || matches!(master.class, 35 | 64))
             && self.life.state == 2
         {
@@ -120,7 +111,7 @@ impl Unit {
             let mut all = true;
             if master.combat_ability & 0x10 == 0 {
                 let k = if 0.0 < x_spread || 0.0 < y_spread {
-                    let draw = c.streams.get(Stream::Object).rand15() as i32;
+                    let draw = c.w.streams.get(Stream::Object).rand15() as i32;
                     (draw * 2) / 0x7fff + 1
                 } else {
                     1
@@ -151,13 +142,13 @@ impl Unit {
             }
             let [x_spread, y_spread, _] = master.volley_spread;
             for _ in 0..extra {
-                let object = c.streams.get(Stream::Object);
+                let object = c.w.streams.get(Stream::Object);
                 let (x, y) = (object.rand15(), object.rand15());
                 let scatter = [
                     crate::combat::missile::scatter(x, x_spread),
                     crate::combat::missile::scatter(y, y_spread),
                 ];
-                self.volley_missile(c, others, &aimed, scatter)?;
+                self.volley_missile(c, &aimed, scatter)?;
             }
         }
         if (extra != 0 || missile) && c.computers.get(aimed.player).copied().unwrap_or(false) {
@@ -166,7 +157,7 @@ impl Unit {
             ));
         }
         if first && missile {
-            self.fire(c, others, &aimed)?;
+            self.fire(c, &aimed)?;
         }
         Ok(())
     }
@@ -180,15 +171,11 @@ impl Unit {
     /// 559). Not modelled: a target of a computer player, which a shooter whose blast does not
     /// spare friends notifies (0x20f). Not held: the damaged flag of masters 83, 293, 122 and 216
     /// (`+0x683`).
-    pub(crate) fn fire(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        aimed: &Aimed,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn fire(&mut self, c: &mut Context<'_>, aimed: &Aimed) -> Result<(), GenieError> {
         self.attack_count += 1;
         let master =
-            c.masters
+            c.w.masters
+                .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .ok_or(GenieError::unsupported(
                     "a ranged unit of a master the slice does not have",
@@ -216,13 +203,14 @@ impl Unit {
             },
             attack_count: self.attack_count,
         };
-        self.launch(c, others, aimed, &shot)?;
+        let (weapon_range, blast_level) = (master.weapon_range, master.blast_level);
+        self.launch(c, aimed, &shot)?;
         if !matches!(self.life.master_id, 73 | 559) {
             self.post_own(ACTION_EXECUTED, [600, aimed.target, 0])?;
         }
         // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
         // spare friends
-        let spares_friends = !(1.0 < master.weapon_range && master.blast_level & 4 == 0);
+        let spares_friends = !(1.0 < weapon_range && blast_level & 4 == 0);
         if !spares_friends && c.computers.get(aimed.player).copied().unwrap_or(false) {
             return Err(GenieError::unsupported(
                 "a missile fired at a computer player's object (its notify 0x20f)",
@@ -243,13 +231,13 @@ impl Unit {
     pub(crate) fn volley_missile(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         aimed: &Aimed,
         scatter: [f32; 2],
     ) -> Result<(), GenieError> {
-        let masters = c
-            .masters
-            .ok_or(GenieError::unsupported("a volley without the masters"))?;
+        let masters =
+            c.w.masters
+                .get(c.player)
+                .ok_or(GenieError::unsupported("a volley without the masters"))?;
         let master = masters
             .get(self.life.master_id)
             .ok_or(GenieError::unsupported(
@@ -305,7 +293,7 @@ impl Unit {
             },
             attack_count: 0,
         };
-        self.launch(c, others, aimed, &shot)?;
+        self.launch(c, aimed, &shot)?;
         if !matches!(self.life.master_id, 73 | 559) {
             self.post_own(ACTION_EXECUTED, [600, -1, 0])?;
         }
@@ -331,16 +319,16 @@ impl Unit {
     pub(crate) fn launch(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         aimed: &Aimed,
         shot: &Shot,
     ) -> Result<(), GenieError> {
-        let made = c
-            .masters
-            .and_then(|m| m.get(shot.made))
-            .ok_or(GenieError::unsupported(
-                "a missile its player's masters do not have",
-            ))?;
+        let made =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(shot.made))
+                .ok_or(GenieError::unsupported(
+                    "a missile its player's masters do not have",
+                ))?;
         let stats = made.missile_stats.ok_or(GenieError::unsupported(
             "a missile master without its flight",
         ))?;
@@ -352,21 +340,21 @@ impl Unit {
         let moving = made.moving.ok_or(GenieError::unsupported(
             "a missile master that does not move",
         ))?;
-        let (id, flying) = if let Some(pooled) = c.recycling.missiles.pop() {
+        let (id, flying) = if let Some(pooled) = c.w.recycling.missiles.pop() {
             pooled
         } else {
-            let id = c.recycling.next_id;
-            c.recycling.next_id -= 1;
+            let id = c.w.recycling.next_id;
+            c.w.recycling.next_id -= 1;
             (id, true)
         };
         // the setups' draws: static (its sprite, its facet), then moving (its angle)
         let standing = (0 <= made.standing_sprite)
-            .then(|| c.graphics.get(&made.standing_sprite).copied())
+            .then(|| c.w.graphics.get(&made.standing_sprite).copied())
             .flatten();
         if let Some(g) = standing {
-            let _ = ActiveSprite::start(g, c.streams.get(Stream::Sprite));
+            let _ = ActiveSprite::start(g, c.w.streams.get(Stream::Sprite));
             if g.flags & 4 != 0 && 1 < g.facets {
-                let _ = c.streams.get(Stream::Object).rand15();
+                let _ = c.w.streams.get(Stream::Object).rand15();
             }
         }
         let facets = standing.map(|g| crate::objects::facing::SpriteFacets {
@@ -375,7 +363,7 @@ impl Unit {
         });
         let mut angle = 0.0;
         if let Some(f) = facets.filter(|_| crate::objects::facing::draws_angle(facets)) {
-            let r = c.streams.get(Stream::Object).rand15();
+            let r = c.w.streams.get(Stream::Object).rand15();
             angle = crate::objects::facing::drawn_angle(r, f);
         }
         let mut mover = Mover {
@@ -401,16 +389,16 @@ impl Unit {
             in_the_way: Vec::new(),
             sprite_facets: facets,
         };
-        let mut position = mover.set_position(shot.at, c.spatial.map);
+        let mut position = mover.set_position(shot.at, c.w.spatial.map);
         if !flying {
-            let ground = c
-                .spatial
-                .terrain
-                .as_ref()
-                .ok_or(GenieError::unsupported(
-                    "a missile without the map's terrain",
-                ))?
-                .ground(position[0], position[1])?;
+            let ground =
+                c.w.spatial
+                    .terrain
+                    .as_ref()
+                    .ok_or(GenieError::unsupported(
+                        "a missile without the map's terrain",
+                    ))?
+                    .ground(position[0], position[1])?;
             position[2] =
                 crate::combat::missile::grounded(position[2], ground, false, stats.fly_mode);
         }
@@ -434,9 +422,9 @@ impl Unit {
                 },
             ),
         };
-        c.spatial.insert(id, placed);
-        c.pathing.moved(id, &placed, false);
-        if let Some(v) = c.spatial.sight.as_mut() {
+        c.w.spatial.insert(id, placed);
+        c.w.pathing.moved(id, &placed, false);
+        if let Some(v) = c.w.spatial.sight.as_mut() {
             v.add_seer(
                 id,
                 Seer {
@@ -488,7 +476,7 @@ impl Unit {
             met: Vec::new(),
         };
         let point = {
-            let draws = c.streams.get(Stream::Action);
+            let draws = c.w.streams.get(Stream::Action);
             crate::combat::missile::aim(
                 action.point,
                 position,
@@ -539,17 +527,17 @@ impl Unit {
         };
         // it joins the end of its owner's list (slot 0x2d0, which files it in the tracker);
         // then its action takes the target and the shooter
-        c.tracker.add(
+        c.w.players[c.player].tracker.add(
             id,
-            crate::players::tracker::key(c.masters, c.lines, made.id),
+            crate::players::tracker::key(c.w.masters.get(c.player), &c.w.lines, made.id),
         );
-        others.add(missile);
+        c.w.players[c.player].objects.push(missile);
         let missile = Releaser {
             id,
             class: made.class,
             player: c.player,
         };
-        crate::world::lets::take(c, others, aimed.target, missile);
+        crate::world::lets::take(c, aimed.target, missile);
         if shot.shooter {
             // the shooter, of the missile's own player: never listed
             self.taken(false, id);

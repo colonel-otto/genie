@@ -10,28 +10,23 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::Effect;
 use crate::unit_ai::world_view::AiWork;
 use crate::world::context::Context;
-use crate::world::others::Others;
 
 impl Unit {
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
     /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
     /// [`crate::combat::attack::set_sprite`]) where the slice holds its sprite.
-    pub(crate) fn stop_action(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let by = self.releaser(c);
-        let sprite = c.streams.get(Stream::Sprite);
+        let sprite = c.w.streams.get(Stream::Sprite);
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.stop_with(
             (&mut releases, &mut leaves),
             by,
-            c.masters,
-            c.graphics,
+            c.w.masters.get(c.player),
+            &c.w.graphics,
             sprite,
         )?;
-        crate::world::lets::torn_down(c, others, (leaves, releases))
+        crate::world::lets::torn_down(c, (leaves, releases))
     }
 
     /// [`Unit::stop_action`] on the parts of the world it changes: the targets its actions let
@@ -223,14 +218,13 @@ impl Unit {
         effects: Vec<Effect>,
         class: Option<i16>,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         for e in effects {
             match e {
-                Effect::Stop => self.stop_action(c, others)?,
+                Effect::Stop => self.stop_action(c)?,
                 Effect::CapHumanOrder(cap) => {
                     self.last_human_order = self.last_human_order.min(cap);
-                    c.spatial.set_gait(self.id, self.gait());
+                    c.w.spatial.set_gait(self.id, self.gait());
                 }
                 Effect::Move(_) | Effect::RestorePatrol => {
                     let class = class.ok_or(GenieError::unsupported(
@@ -241,7 +235,7 @@ impl Unit {
                         _ => self.restore_patrol(),
                     };
                     if let Some(m) = m {
-                        self.ai_move(m, class, c, others)?;
+                        self.ai_move(m, class, c)?;
                     }
                 }
                 Effect::MoveAside(m) => c.move_aside.push(m),
@@ -280,7 +274,7 @@ impl Unit {
                     target,
                     state,
                     range,
-                } => self.move_to_object((target, state), range, c, others)?,
+                } => self.move_to_object((target, state), range, c)?,
             }
         }
         Ok(())

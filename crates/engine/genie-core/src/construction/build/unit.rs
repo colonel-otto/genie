@@ -15,14 +15,15 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::death_parts::{clear_look_of, farm_bonus};
+use crate::objects::object_list::ObjectList;
 use crate::objects::release::Releaser;
-use crate::objects::unit::Unit;
+use crate::objects::unit::{TAKEN_OUT, Unit};
 use crate::unit_ai::BUILD_ACTION;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::context::Context;
-use crate::world::others::{Others, OthersRef};
-use crate::world::{BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_NEEDED};
+use crate::world::others::OthersRef;
+use crate::world::{BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_NEEDED, World};
 
 /// What the Build's update reads of the world besides its foundation, as the update starts.
 struct BuildReads {
@@ -45,62 +46,68 @@ struct BuildReads {
 impl Unit {
     /// The Build's part of the builder's update (`RGE_Action_Object::update` on its Build, the
     /// action's slot 6): nothing without a Build.
-    pub(crate) fn build_part(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut Others<'_>,
-        me: Me,
-    ) -> Result<(), GenieError> {
-        let looks = self.clearing_looks(c, others.view());
+    pub(crate) fn build_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+        let looks = self.clearing_looks(c, OthersRef::of(&c.w.players, c.player));
         let by = self.releaser(c);
         let Some(action) = self.actions.build().copied() else {
             return Ok(());
         };
         let target = action.target;
-        let annexed = others.own_iter().any(|u| u.annex_of == Some(target));
-        let reads = self.build_reads(c, others.view(), action)?;
-        let annex_ids = c.spatial.annexes_of(target);
+        let annexed = OthersRef::of(&c.w.players, c.player)
+            .own_iter()
+            .any(|u| u.annex_of == Some(target));
+        let reads = self.build_reads(c, OthersRef::of(&c.w.players, c.player), action)?;
+        let annex_ids = c.w.spatial.annexes_of(target);
+        let class =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .map_or(-1, |m| m.class);
+        // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
+        let held_kind = self.life.attribute_type;
+        let attributes = c.w.players[c.player].attributes.len();
+        let has_kind = usize::try_from(held_kind).is_ok_and(|k| k < attributes);
+        let drop_site = drop_site_master(c, reads.built) && has_kind;
+        let farm_bonus = farm_bonus(&c.w.players[c.player].attributes);
+        let (player, pace) = (c.player, c.pace());
+        let (attribute_204, mode_680, computer, now) =
+            (c.attribute_204, c.mode_680, c.computer, c.world_time);
+        let build = self.actions.build_mut().expect("above");
+        let (walk, beside) = c.w.walk_beside(pace, self.body.mover_mut(), me);
         let template = Completion {
             master: None,
             annexed,
-            attribute_204: c.attribute_204,
-            mode_680: c.mode_680,
-            farm_bonus: farm_bonus(c.attributes),
-            masters: c.masters,
-            computer: c.computer,
+            attribute_204,
+            mode_680,
+            farm_bonus,
+            masters: beside.masters.get(player),
+            computer,
             ai: false,
             main: false,
-            now: c.world_time,
+            now,
             rice: false,
         };
-        let site = build_site(others, target, &annex_ids, template, reads.main_work)?;
-        let class = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .map_or(-1, |m| m.class);
-        // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
-        let held_kind = self.life.attribute_type;
-        let has_kind = usize::try_from(held_kind).is_ok_and(|k| k < c.attributes.len());
+        let own = &mut beside.players[player].objects;
+        let site = build_site(own, target, &annex_ids, template, reads.main_work)?;
         let builder = Builder {
             class,
             master: self.life.master_id,
             held: self.life.amount,
             held_kind,
-            drop_site: drop_site_master(c, reads.built) && has_kind,
+            drop_site,
             ai: self.ai.as_mut(),
             waits: &mut self.footprint_waits,
             build_targets: &reads.build_targets,
             look: Looks(&|id| looks.get(&id).copied()),
             walk_target_state: reads.walk_target_state,
             deposit: reads.deposit,
-            attributes: c.attributes.len(),
+            attributes,
             gone_orders: &reads.gone_orders,
             stack_made: reads.stack_made,
         };
-        let build = self.actions.build_mut().expect("above");
-        let mut step = build.update(c.walk(self.body.mover_mut(), me), site, builder)?;
-        record_build_step(c, others, target, &annex_ids, &mut step);
-        self.after_build_step(c, others, me, (target, reads.built, by), step)
+        let mut step = build.update(walk, site, builder)?;
+        record_build_step(c, target, &annex_ids, &mut step);
+        self.after_build_step(c, me, (target, reads.built, by), step)
     }
 
     /// What the footprint clearing of the Build's `set_state(7)` reads (`FUN_1415c3620`) of the
@@ -118,9 +125,9 @@ impl Unit {
         {
             let [fx, fy, _] = f.position;
             let reach = crate::construction::build::CLEARING_REACH + 1.0;
-            for (id, _) in c
-                .spatial
-                .objects_within(fx - reach, fy - reach, fx + reach, fy + reach)
+            for (id, _) in
+                c.w.spatial
+                    .objects_within(fx - reach, fy - reach, fx + reach, fy + reach)
             {
                 let (owner, u) = if id == self.id {
                     (c.player, self)
@@ -129,7 +136,7 @@ impl Unit {
                 } else {
                     continue;
                 };
-                if let Some(l) = clear_look_of(u, c.every_masters.get(owner)) {
+                if let Some(l) = clear_look_of(u, c.w.masters.get(owner)) {
                     let _ = looks.insert(id, l);
                 }
             }
@@ -162,7 +169,7 @@ impl Unit {
         let (deposit, gone_orders) = if action.state == DROP {
             (
                 self.build_deposit(c, others, action.site)?,
-                self.gone_drop_orders(c.spatial),
+                self.gone_drop_orders(&c.w.spatial),
             )
         } else {
             (None, Vec::new())
@@ -186,28 +193,33 @@ impl Unit {
         others: OthersRef<'_>,
         site: i32,
     ) -> Result<Option<(u8, DropOff)>, GenieError> {
-        let Some(s) = c.spatial.get(site).filter(|_| site != -1) else {
+        let Some(s) = c.w.spatial.get(site).filter(|_| site != -1) else {
             return Ok(None);
         };
-        let me_at = c
-            .spatial
-            .get_known(self.id)?
-            .ok_or(GenieError::unsupported("a builder without a place"))?;
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::OBJECT_MASTER)?;
+        let me_at =
+            c.w.spatial
+                .get_known(self.id)?
+                .ok_or(GenieError::unsupported("a builder without a place"))?;
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::OBJECT_MASTER)?;
         let actor = Actor {
             id: self.id,
             master,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),
-            attribute_95: c.attributes.get(95).copied().unwrap_or(0.0),
+            attribute_95: c.w.players[c.player]
+                .attributes
+                .get(95)
+                .copied()
+                .unwrap_or(0.0),
             civ: c.civ,
         };
         Ok(state_of(site, others).map(|state| {
             let drop = DropOff {
-                takes: crate::unit_ai::task_finder::drops_at(c.drop_sites, s.master, &actor),
+                takes: crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, s.master, &actor),
                 gap_squared: footprint_gap_squared(
                     me_at.position,
                     me_at.radius,
@@ -246,7 +258,6 @@ impl Unit {
     pub(crate) fn after_build_step(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         me: Me,
         (target, built, by): (i32, Option<i16>, Releaser),
         step: BuildStep,
@@ -255,7 +266,7 @@ impl Unit {
         // 1 and 1, then the builder carries nothing, FUN_14119d310)
         if let Some((kind, amount)) = step.dropped {
             give_load(
-                (&c.spatial.relations, c.sharing),
+                (&c.w.spatial.relations, c.sharing),
                 c.player,
                 &mut c.attribute_adds,
                 kind,
@@ -269,7 +280,7 @@ impl Unit {
             self.body.set_anim_speed(0.0);
         }
         if let Some(s) = step.site_let_go {
-            crate::world::lets::release(c, others, s, by)?;
+            crate::world::lets::release(c, s, by)?;
         }
         if step.done {
             // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
@@ -281,28 +292,32 @@ impl Unit {
                 .map_or((false, -1), |b| (b.target != -1, b.site));
             self.actions.set_build(None);
             if holds {
-                crate::world::lets::release(c, others, target, by)?;
+                crate::world::lets::release(c, target, by)?;
             }
             if second != -1 {
-                crate::world::lets::release(c, others, second, by)?;
+                crate::world::lets::release(c, second, by)?;
             }
         }
         if step.released {
-            crate::world::lets::release(c, others, target, by)?;
+            crate::world::lets::release(c, target, by)?;
         }
         self.post_build_notifies(&step)?;
         if step.stands {
-            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+            self.show_standing(
+                c.w.masters.get(c.player),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
+            )?;
         }
         if step.works_it {
             // slot 0x7e8 on the building it built, at its place (the caller's work command)
-            let point = c
-                .spatial
-                .get(target)
-                .ok_or(GenieError::unsupported(
-                    "a builder's building without a place",
-                ))?
-                .position;
+            let point =
+                c.w.spatial
+                    .get(target)
+                    .ok_or(GenieError::unsupported(
+                        "a builder's building without a place",
+                    ))?
+                    .position;
             c.work_order = Some(crate::orders::Work {
                 target,
                 point,
@@ -312,10 +327,10 @@ impl Unit {
             });
         }
         if step.search {
-            self.build_search(c, others, (target, built, by))?;
+            self.build_search(c, (target, built, by))?;
         }
         if step.drop_off {
-            self.build_drop_off(c, others, me)?;
+            self.build_drop_off(c, me)?;
         }
         Ok(())
     }
@@ -341,21 +356,24 @@ impl Unit {
     pub(crate) fn build_search(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         (target, built, by): (i32, Option<i16>, Releaser),
     ) -> Result<(), GenieError> {
         let built = built.ok_or(GenieError::unsupported(
             "a builder's building the slice does not hold",
         ))?;
-        if let Some(work) = self.more_work(c, others.view(), target, built)? {
+        if let Some(work) = self.more_work(c, target, built)? {
             c.work_order = Some(work);
         } else {
             if let Some(b) = self.actions.build_mut() {
                 b.no_more_work()?;
             }
-            crate::world::lets::release(c, others, target, by)?;
+            crate::world::lets::release(c, target, by)?;
             self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
-            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+            self.show_standing(
+                c.w.masters.get(c.player),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
+            )?;
         }
         Ok(())
     }
@@ -389,15 +407,15 @@ fn main_work_of(others: OthersRef<'_>, target: i32) -> Result<Option<MainWork>, 
 /// building annex counts its builders in (`FUN_140aaddb0`, `+0xbb8`). None when this player does
 /// not hold the foundation.
 fn build_site<'u>(
-    others: &'u mut Others<'_>,
+    own: &'u mut ObjectList,
     target: i32,
     annex_ids: &[i32],
     template: Completion<'u>,
     main_work: Option<MainWork>,
 ) -> Result<Option<Site<'u>>, GenieError> {
     let masters = template.masters;
-    let counted_main = others
-        .own(target)
+    let counted_main = own
+        .by_id(target)
         .filter(|u| {
             masters
                 .and_then(|m| m.get(u.life.master_id))
@@ -407,7 +425,7 @@ fn build_site<'u>(
     let mut main_builders = None;
     let mut site = None;
     let mut starts = Vec::new();
-    for u in others.own_iter_mut() {
+    for u in own.iter_mut().filter(|u| u.id != TAKEN_OUT) {
         if u.id == target {
             site = Some(u);
             continue;
@@ -472,7 +490,8 @@ fn build_site<'u>(
 fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
     built.is_some_and(|m| {
         DROP_SITE_MASTERS.contains(&m)
-            || c.drop_sites
+            || c.w
+                .drop_sites
                 .iter()
                 .any(|d| d.building == m && (d.civs.is_empty() || d.civs.contains(&c.civ)))
     })
@@ -485,7 +504,6 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 /// annexes' state.
 pub(crate) fn record_build_step(
     c: &mut Context<'_>,
-    others: &mut Others<'_>,
     target: i32,
     annex_ids: &[i32],
     step: &mut BuildStep,
@@ -496,8 +514,9 @@ pub(crate) fn record_build_step(
         c.evacuations.push((target, step.occupants.clone()));
     }
     for id in annex_ids.iter().copied().chain([target]) {
-        if let Some(cons) = others
-            .own_mut(id)
+        if let Some(cons) = c.w.players[c.player]
+            .objects
+            .by_id_mut(id)
             .and_then(|u| u.construction.as_mut())
             .filter(|cons| cons.started)
         {
@@ -511,22 +530,35 @@ pub(crate) fn record_build_step(
     if let Some(built) = step.completed.take() {
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0); the
         // foundation is the builder's player's
-        if let Some(u) = others.own_mut(target) {
-            let k = crate::players::tracker::key(c.masters, c.lines, u.life.master_id);
-            c.tracker.complete(target, k);
+        let p = c.player;
+        if let Some(master_id) = c.w.players[p]
+            .objects
+            .by_id(target)
+            .map(|u| u.life.master_id)
+        {
+            let k = crate::players::tracker::key(c.w.masters.get(p), &c.w.lines, master_id);
+            c.w.players[p].tracker.complete(target, k);
             // its set_state(2)'s standing sprite (FUN_1411dbb70)
-            if let Some(m) = c.masters.and_then(|m| m.get(u.life.master_id)) {
+            let World {
+                players,
+                masters,
+                graphics,
+                streams,
+                ..
+            } = &mut *c.w;
+            let master = masters.get(p).and_then(|m| m.get(master_id));
+            if let (Some(u), Some(m)) = (players[p].objects.by_id_mut(target), master) {
                 crate::construction::build::show_built(
                     &mut u.sprite,
                     m,
                     u.build_frame,
-                    c.graphics,
-                    c.streams.get(Stream::Sprite),
+                    graphics,
+                    streams.get(Stream::Sprite),
                 );
             }
         }
         // its set_state(2) took its annexes along first (FUN_1411dbb70)
-        for annex in c.spatial.annexes_of(target) {
+        for annex in c.w.spatial.annexes_of(target) {
             c.annex_states.push((annex, 2));
         }
         c.history_events.extend(built.history);

@@ -7,7 +7,7 @@ use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::ownership::change::change_hands;
 use crate::world::context::Context;
-use crate::world::others::Others;
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,
@@ -22,23 +22,22 @@ impl Unit {
     pub(crate) fn capture(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         new: usize,
     ) -> Result<(bool, Vec<i32>), GenieError> {
         let class = self.placed_class(c)?;
-        self.capture_stop(c, others, class)?;
+        self.capture_stop(c, class)?;
         let changed = self.change_owner(c, new)?;
         // the scan reads the owner after the change: the old one when `new` lacks the master
         let mut taken = Vec::new();
         if class == LIVESTOCK && (if changed { new } else { c.player }) != 0 {
-            scan_livestock(c, others, self.position, new, &mut taken)?;
+            scan_livestock(c, self.position, new, &mut taken)?;
         }
         Ok((changed, taken))
     }
 
     /// The master class the world files the captured object under.
     pub(crate) fn placed_class(&self, c: &Context<'_>) -> Result<i16, GenieError> {
-        c.spatial
+        c.w.spatial
             .get(self.id)
             .map(|p| p.class)
             .ok_or(GenieError::unsupported(
@@ -61,7 +60,6 @@ impl Unit {
     pub(crate) fn capture_stop(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut Others<'_>,
         class: i16,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
@@ -76,15 +74,19 @@ impl Unit {
                     .stop()?;
             }
             for t in [gone.released, released].into_iter().flatten() {
-                crate::world::lets::release(c, others, t, by)?;
+                crate::world::lets::release(c, t, by)?;
             }
-            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+            self.show_standing(
+                c.w.masters.get(c.player),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
+            )?;
         } else {
             // any other top action's slot 0x38 is the base's false for what an animal or an
             // artifact holds (a `MoveTo` of its own), and the list goes
             let (mut releases, mut leaves) = (Vec::new(), Vec::new());
             self.tear_down_actions(&mut releases, &mut leaves, by)?;
-            crate::world::lets::torn_down(c, others, (leaves, releases))?;
+            crate::world::lets::torn_down(c, (leaves, releases))?;
         }
         let top = self.top_action_kind().map_or(-1, i32::from);
         let trading = top == TRADE_ACTION
@@ -99,7 +101,7 @@ impl Unit {
             let place = ([self.position[0], self.position[1]], class);
             ai.stop_with(false, Some(place), &mut fx)?;
             ai.forget_targets();
-            self.apply(fx, Some(class), c, others)?;
+            self.apply(fx, Some(class), c)?;
         }
         Ok(())
     }
@@ -134,16 +136,17 @@ impl Unit {
         c: &mut Context<'_>,
         new: usize,
     ) -> Result<(), GenieError> {
-        let master = self
-            .own_master
-            .as_deref()
-            .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
+        let master = self.own_master.as_deref().or_else(|| {
+            c.w.masters
+                .get(c.player)
+                .and_then(|ms| ms.get(self.life.master_id))
+        });
         if master.is_some_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
             return Err(HANDS_LEFT);
         }
         let _ = self.change_owner(c, new)?;
         self.capture_flag = 0;
-        if let Some(s) = c.spatial.sight.as_mut().and_then(|v| v.seer_mut(self.id)) {
+        if let Some(s) = c.w.spatial.sight.as_mut().and_then(|v| v.seer_mut(self.id)) {
             s.capture = 0;
         }
         Ok(())
@@ -158,22 +161,24 @@ impl Unit {
         c: &mut Context<'_>,
         new: usize,
     ) -> Result<bool, GenieError> {
-        let master = self
-            .own_master
-            .as_deref()
-            .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
+        let master = self.own_master.as_deref().or_else(|| {
+            c.w.masters
+                .get(c.player)
+                .and_then(|ms| ms.get(self.life.master_id))
+        });
         if master.is_some_and(|m| m.kind == crate::objects::masters::master_type::BUILDING) {
             c.building_handover = true;
             return Ok(c
-                .every_masters
+                .w
+                .masters
                 .get(new)
                 .is_some_and(|m| m.get(self.life.master_id).is_some()));
         }
         change_hands(
             self,
             (c.player, new),
-            c.every_masters,
-            c.spatial,
+            &c.w.masters,
+            &mut c.w.spatial,
             c.world_time,
         )
     }
@@ -208,26 +213,26 @@ pub(crate) const CAPTURE_KEEPS_ACTION: i32 = 0x2c2;
 /// in turn, with its own scan. Two on one tile would need the tile's object list order.
 pub(crate) fn scan_livestock(
     c: &mut Context<'_>,
-    others: &mut Others<'_>,
     at: [f32; 3],
     new: usize,
     taken: &mut Vec<i32>,
 ) -> Result<(), GenieError> {
     let (tx, ty) = (at[0] as i32, at[1] as i32);
-    let [w, h] = c.spatial.map;
+    let [w, h] = c.w.spatial.map;
     for x in (tx - 3).max(0)..=(tx + 3).min(w - 1) {
         for y in (ty - 3).max(0)..=(ty + 3).min(h - 1) {
-            if !c.spatial.sees_tile(new, x, y) {
+            if !c.w.spatial.sees_tile(new, x, y) {
                 continue;
             }
-            let on: Vec<i32> = others
+            let on: Vec<i32> = OthersRef::of(&c.w.players, c.player)
                 .own_iter()
                 .filter(|u| {
                     u.life.state == 2
                         && u.position[0] as i32 == x
                         && u.position[1] as i32 == y
                         && !taken.contains(&u.id)
-                        && c.spatial
+                        && c.w
+                            .spatial
                             .get(u.id)
                             .is_some_and(|p| p.class == LIVESTOCK && p.player == 0)
                 })
@@ -237,17 +242,19 @@ pub(crate) fn scan_livestock(
                 [] => {}
                 [id] => {
                     // out of its slot while its stop reaches the view, as the updating object
-                    let (slot, mut unit) = others.take_out_own(id).expect("the scan's own object");
+                    let (slot, mut unit) =
+                        c.w.take_out_own(c.player, id)
+                            .expect("the scan's own object");
                     let done = (|| {
-                        unit.capture_stop(c, others, LIVESTOCK)?;
+                        unit.capture_stop(c, LIVESTOCK)?;
                         unit.change_owner(c, new)
                     })();
                     let position = unit.position;
-                    others.put_back_own(slot, unit);
+                    c.w.put_back_own(c.player, slot, unit);
                     // without the master the animal stays Gaia's, which scans nothing
                     if done? {
                         taken.push(id);
-                        scan_livestock(c, others, position, new, taken)?;
+                        scan_livestock(c, position, new, taken)?;
                     }
                 }
                 _ => {

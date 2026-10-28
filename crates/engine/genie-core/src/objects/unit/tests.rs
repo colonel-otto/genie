@@ -5,6 +5,7 @@ use crate::objects::layers::{Animated, Body};
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
+use crate::world::others::OthersRef;
 use crate::world::tests::{forage_world, in_update};
 
 /// A graphic of sixteen facets, its sequence flag bit 1 set (`flag_1`).
@@ -79,7 +80,7 @@ fn an_animated_object_s_sprite_runs_by_the_update_s_dt() {
         // a static object has no animation speed, so no clock
         u.body = speed.map_or(Body::Static, |speed| Body::Animated(Animated { speed }));
         let before = u.sprite;
-        in_update(&mut t, (1, 0), 50, |u, c, _| {
+        in_update(&mut t, (1, 0), 50, |u, c| {
             u.animate(c);
             Ok(())
         })
@@ -130,11 +131,11 @@ fn after_its_actions_a_unit_takes_the_world_s_place_and_pauses_the_units_it_met(
     t.players[0].objects[0].body.put_mover(Some(met));
     let mover = t.players[1].objects[0].body.mover_mut().unwrap();
     mover.pauses = vec![(600, 0.5), (601, 0.5), (4242, 0.5)];
-    let paused = in_update(&mut t, (1, 0), 50, |u, c, others| {
-        u.after_actions(c, others)?;
-        let (_, bush) = others.view().find(600).unwrap();
+    let paused = in_update(&mut t, (1, 0), 50, |u, c| {
+        u.after_actions(c)?;
+        let (_, bush) = OthersRef::of(&c.w.players, c.player).find(600).unwrap();
         let level = bush.body.mover().unwrap().paths[0].pause_time;
-        Ok((level, c.spatial.gait(600).and_then(|g| g.pause)))
+        Ok((level, c.w.spatial.gait(600).and_then(|g| g.pause)))
     })
     .unwrap();
     assert_eq!(paused, (0.5, Some(0.5)));

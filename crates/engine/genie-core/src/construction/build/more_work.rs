@@ -22,7 +22,6 @@ impl Unit {
     pub(crate) fn more_work(
         &self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
         building: i32,
         built: i16,
     ) -> Result<Option<crate::orders::Work>, GenieError> {
@@ -30,7 +29,8 @@ impl Unit {
         use crate::math::image::gather_search::{REACH_CAP, REACH_FLOOR};
         /// The reach a line of sight below the floor takes (the Build's immediate 4.0).
         const REACH_LOW: f32 = 4.0;
-        let masters = c.masters.ok_or(GenieError::unsupported(
+        let others = OthersRef::of(&c.w.players, c.player);
+        let masters = c.w.masters.get(c.player).ok_or(GenieError::unsupported(
             "a builder without its player's masters",
         ))?;
         let master = masters
@@ -41,11 +41,11 @@ impl Unit {
         let site = masters.get(built).ok_or(GenieError::unsupported(
             "a building of a master the slice does not have",
         ))?;
-        let at = *c.spatial.get(building).ok_or(GenieError::unsupported(
+        let at = *c.w.spatial.get(building).ok_or(GenieError::unsupported(
             "a builder's building without a place",
         ))?;
         let entry =
-            crate::unit_ai::task_finder::drop_site(c.drop_sites, built, master.class, c.civ);
+            crate::unit_ai::task_finder::drop_site(&c.w.drop_sites, built, master.class, c.civ);
         let los = site.line_of_sight;
         let held = if REACH_FLOOR <= los { los } else { REACH_LOW };
         let reach = if held <= REACH_CAP { held } else { REACH_CAP };
@@ -60,7 +60,7 @@ impl Unit {
             .mover()
             .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let restriction = mover.stats.restriction;
-        let (player, me_id, every) = (c.player, self.id, c.every_masters);
+        let (player, me_id, every) = (c.player, self.id, &c.w.masters);
         let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
             let m = every
                 .get(owner)
@@ -83,7 +83,7 @@ impl Unit {
             })
         };
         let me = candidate(me_id, player, self, self.position)?;
-        let spatial: &Spatial = c.spatial;
+        let spatial: &Spatial = &c.w.spatial;
         let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
             spatial
                 .objects_on(x, y)
@@ -98,18 +98,16 @@ impl Unit {
                 })
                 .collect()
         };
-        let found =
-            {
-                let planner = c.pathing.planner(restriction, spatial.tiles()).ok_or(
-                    GenieError::unsupported("a builder's restriction without a planner"),
-                )?;
-                let width = i64::from(planner.level_sizes().0[0]);
-                let cells = planner.level(0);
-                let blocked = move |x: i32, y: i32| {
-                    cells[(width * i64::from(y) + i64::from(x)) as usize][0] == 0
-                };
-                gather_search::more_work(entry, &builder, spatial.map, Some(&blocked), &objects)?
-            };
+        let found = {
+            let planner = c.w.pathing.planner(restriction, spatial.tiles()).ok_or(
+                GenieError::unsupported("a builder's restriction without a planner"),
+            )?;
+            let width = i64::from(planner.level_sizes().0[0]);
+            let cells = planner.level(0);
+            let blocked =
+                move |x: i32, y: i32| cells[(width * i64::from(y) + i64::from(x)) as usize][0] == 0;
+            gather_search::more_work(entry, &builder, spatial.map, Some(&blocked), &objects)?
+        };
         let Some(found) = found else {
             return Ok(None);
         };
@@ -119,8 +117,8 @@ impl Unit {
             ));
         }
         let (kind, cap) = gather_search::gather_group(found.attribute);
-        let target = self.resource_search(c, others, kind, cap)?;
-        let spatial: &Spatial = c.spatial;
+        let target = self.resource_search(c, kind, cap)?;
+        let spatial: &Spatial = &c.w.spatial;
         let target = if target != -1 && spatial.get(target).is_some() {
             target
         } else {
