@@ -2,14 +2,12 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, ATTACK_MOVE, ATTACK_ORDER, AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER,
-    BOAR_LURING_ACTION, BUILD_ORDER, CIVILIAN, CLASS_18, CONVERT_ACTION, DEFEND_ORDER,
-    DEFENDLESS_MASTER, Effect, FOLLOW_ORDER, FOUNDATION_ORDER, HEAL_ACTION, HUNT_ORDER, LiveTop,
-    MOVE_ORDER, ORDER_ON_TARGET, ORDER_ON_TARGET_2, OUTSIDE_ORDER, PendingTop, QueuedOrder,
-    REPAIR_ACTION, REPAIR_ORDER, RUN_AWAY_ORDER, SCOUT_ACTION, SOLDIER_AI, STOP_ORDER,
-    Surroundings, TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS, UnitAi, UnitCommand, UnitSeen, UnitSide,
-    WAIT_ACTION, WAIT_SOLIDIFY_ACTION, order_move,
+    ATTACK_ACTION, AUTO_SCOUT_ACTION, BOAR_LURING_ACTION, CIVILIAN, CLASS_18, CONVERT_ACTION,
+    DEFENDLESS_MASTER, Effect, HEAL_ACTION, LiveTop, OUTSIDE_ORDER, PendingTop, QueuedOrder,
+    REPAIR_ACTION, SCOUT_ACTION, SOLDIER_AI, Surroundings, TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS,
+    UnitAi, UnitCommand, UnitSeen, UnitSide, WAIT_ACTION, WAIT_SOLIDIFY_ACTION, order_move,
 };
 
 impl UnitAi {
@@ -87,61 +85,57 @@ impl UnitAi {
         // `bVar2`: the attack move's attack, whose tail makes the order 700
         let mut attack_move = false;
         let taken = match o.order {
-            ATTACK_ORDER
-            | DEFEND_ORDER
-            | RUN_AWAY_ORDER
-            | crate::unit_ai::ai_kinds::ORDER_SEEK_AND_DESTROY
-            | crate::unit_ai::ai_kinds::ORDER_ATTACK_ROUNDUP
-            | ATTACK_MOVE => self.combat_order(o, world, ai, fx, &mut attack_move)?,
-            BUILD_ORDER
-            | crate::unit_ai::ai_kinds::ORDER_HEAL
-            | crate::unit_ai::ai_kinds::ORDER_CONVERT
-            | REPAIR_ORDER
-            | crate::unit_ai::ai_kinds::ORDER_GATHER
-            | HUNT_ORDER
-            | crate::unit_ai::ai_kinds::ORDER_AUTO_BOAR_LURING
-            | FOUNDATION_ORDER => self.work_order(o, world, fx)?,
-            FOLLOW_ORDER
-            | crate::unit_ai::ai_kinds::ORDER_TRANSPORT
-            | crate::garrison::ENTER_ORDER
-            | crate::unit_ai::ai_kinds::ORDER_UNLOAD
-            | crate::unit_ai::ai_kinds::ORDER_UNLOAD_OVER_WALL => {
-                self.object_move_order(o, world, fx)?
-            }
-            crate::unit_ai::ai_kinds::ORDER_EXPLORE => {
-                self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx)
-            }
-            STOP_ORDER => {
+            OrderKind::Attack
+            | OrderKind::Defend
+            | OrderKind::RunAway
+            | OrderKind::SeekAndDestroy
+            | OrderKind::AttackRoundup
+            | OrderKind::AttackMove => self.combat_order(o, world, ai, fx, &mut attack_move)?,
+            OrderKind::Build
+            | OrderKind::Heal
+            | OrderKind::Convert
+            | OrderKind::Repair
+            | OrderKind::Gather
+            | OrderKind::Hunt
+            | OrderKind::AutoBoarLuring
+            | OrderKind::Foundation => self.work_order(o, world, fx)?,
+            OrderKind::Follow
+            | OrderKind::Transport
+            | OrderKind::Enter
+            | OrderKind::Unload
+            | OrderKind::UnloadOverWall => self.object_move_order(o, world, fx)?,
+            OrderKind::Explore => self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx),
+            OrderKind::Stop => {
                 self.remove_target();
                 self.stop_with(true, place, fx)?;
                 true
             }
-            MOVE_ORDER | crate::unit_ai::ai_kinds::ORDER_GROUP_GATHER => {
+            OrderKind::Move | OrderKind::GroupGather => {
                 let m = self.move_to(order_move(o));
                 fx.extend(m.map(Effect::Move));
                 m.is_some()
             }
-            crate::unit_ai::ai_kinds::ORDER_EXPLORE_AND_DESTROY => {
+            OrderKind::ExploreAndDestroy => {
                 self.explore_and_destroy([tile(o.point[0]), tile(o.point[1])], true, fx)
             }
-            crate::unit_ai::ai_kinds::ORDER_WAIT => {
+            OrderKind::Wait => {
                 // case 0x2d8: the wait's action value, leaving a patrol order, then the order
                 // itself; the tail finds it the AI's already
                 self.current_action = WAIT_ACTION;
                 self.leave_patrol_timers(ai);
-                self.current_order = crate::unit_ai::ai_kinds::ORDER_WAIT;
+                self.current_order = Some(OrderKind::Wait);
                 true
             }
-            crate::unit_ai::ai_kinds::ORDER_SCOUT => {
+            OrderKind::Scout => {
                 let explored = self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx);
                 self.set_action(SCOUT_ACTION);
                 explored
             }
-            ORDER_ON_TARGET | ORDER_ON_TARGET_2 => {
+            OrderKind::OnTarget | OrderKind::OnTarget2 => {
                 let (at, side, _) = world.ok_or(OUTSIDE_ORDER)?;
                 return self.order_on_target(o, class, at, side, ai, fx);
             }
-            AUTO_SCOUT_ORDER => {
+            OrderKind::AutoScout => {
                 let explored = self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx);
                 self.set_action(AUTO_SCOUT_ACTION);
                 explored
@@ -152,7 +146,7 @@ impl UnitAi {
         if !taken {
             return Ok(0);
         }
-        Ok(self.order_tail(o.order, o.priority, class, attack_move, ai))
+        Ok(self.order_tail(Some(o.order), o.priority, class, attack_move, ai))
     }
 
     /// [`UnitAi::process_order`]'s combat cases: the attack, the defence (a master that cannot
@@ -169,8 +163,8 @@ impl UnitAi {
         let (at, side, computer) = world.ok_or(OUTSIDE_ORDER)?;
         let tile = |v: f32| crate::math::conversions::cvttss2si(v);
         Ok(match o.order {
-            ATTACK_ORDER => self.attack_slot(o.target, true, at, side, fx)?,
-            DEFEND_ORDER => {
+            OrderKind::Attack => self.attack_slot(o.target, true, at, side, fx)?,
+            OrderKind::Defend => {
                 if at.master == DEFENDLESS_MASTER {
                     return Ok(false);
                 }
@@ -180,15 +174,13 @@ impl UnitAi {
                     self.defend_object(o.target, o.range, true, at, side)?
                 }
             }
-            RUN_AWAY_ORDER => self.run_away(true, at, computer, ai, side, fx)?,
-            crate::unit_ai::ai_kinds::ORDER_SEEK_AND_DESTROY => {
+            OrderKind::RunAway => self.run_away(true, at, computer, ai, side, fx)?,
+            OrderKind::SeekAndDestroy => {
                 let tiles = [tile(o.point[0]), tile(o.point[1])];
                 self.seek_and_destroy(o.target, tiles, true, at, side, fx)?
             }
-            crate::unit_ai::ai_kinds::ORDER_ATTACK_ROUNDUP => {
-                self.attack_roundup(o.target, at, side, fx)?
-            }
-            ATTACK_MOVE => {
+            OrderKind::AttackRoundup => self.attack_roundup(o.target, at, side, fx)?,
+            OrderKind::AttackMove => {
                 if o.target != -1 && matches!(at.class, TREBUCHET_CLASS | TREBUCHET_PACKED_CLASS) {
                     *attack_move = true;
                     self.attack_slot(o.target, true, at, side, fx)?
@@ -214,30 +206,24 @@ impl UnitAi {
     ) -> Result<bool, GenieError> {
         let (at, side, _) = world.ok_or(OUTSIDE_ORDER)?;
         Ok(match o.order {
-            BUILD_ORDER => self.build_object(o.target, true, at, side, fx)?,
-            crate::unit_ai::ai_kinds::ORDER_HEAL
-            | crate::unit_ai::ai_kinds::ORDER_CONVERT
-            | REPAIR_ORDER => {
+            OrderKind::Build => self.build_object(o.target, true, at, side, fx)?,
+            OrderKind::Heal | OrderKind::Convert | OrderKind::Repair => {
                 let (action, command) = match o.order {
-                    crate::unit_ai::ai_kinds::ORDER_HEAL => {
-                        (HEAL_ACTION, UnitCommand::Heal(o.target))
-                    }
-                    crate::unit_ai::ai_kinds::ORDER_CONVERT => {
-                        (CONVERT_ACTION, UnitCommand::Convert(o.target))
-                    }
+                    OrderKind::Heal => (HEAL_ACTION, UnitCommand::Heal(o.target)),
+                    OrderKind::Convert => (CONVERT_ACTION, UnitCommand::Convert(o.target)),
                     _ => (REPAIR_ACTION, UnitCommand::Repair(o.target)),
                 };
                 self.work_object(o.target, true, action, command, at, side)?
             }
-            crate::unit_ai::ai_kinds::ORDER_GATHER => self.gather_order(o.target, at, side, fx)?,
-            HUNT_ORDER | crate::unit_ai::ai_kinds::ORDER_AUTO_BOAR_LURING => {
+            OrderKind::Gather => self.gather_order(o.target, at, side, fx)?,
+            OrderKind::Hunt | OrderKind::AutoBoarLuring => {
                 let hunts = self.hunt_order(o.target, at, side, fx)?;
-                if o.order == crate::unit_ai::ai_kinds::ORDER_AUTO_BOAR_LURING {
+                if o.order == OrderKind::AutoBoarLuring {
                     self.set_action(BOAR_LURING_ACTION);
                 }
                 hunts
             }
-            FOUNDATION_ORDER => {
+            OrderKind::Foundation => {
                 let waits = self.wait_for_foundation(o.target, true, side)?;
                 self.set_action(WAIT_SOLIDIFY_ACTION);
                 waits
@@ -256,12 +242,11 @@ impl UnitAi {
     ) -> Result<bool, GenieError> {
         let (at, side, _) = world.ok_or(OUTSIDE_ORDER)?;
         Ok(match o.order {
-            FOLLOW_ORDER => self.follow_object(o.target, o.range, true, at, side, fx)?,
-            crate::unit_ai::ai_kinds::ORDER_TRANSPORT => self.transport_to(o.point, true, side)?,
-            crate::garrison::ENTER_ORDER => self.enter_object(o.target, true, at, side)?,
-            crate::unit_ai::ai_kinds::ORDER_UNLOAD
-            | crate::unit_ai::ai_kinds::ORDER_UNLOAD_OVER_WALL => {
-                let over_wall = o.order == crate::unit_ai::ai_kinds::ORDER_UNLOAD_OVER_WALL;
+            OrderKind::Follow => self.follow_object(o.target, o.range, true, at, side, fx)?,
+            OrderKind::Transport => self.transport_to(o.point, true, side)?,
+            OrderKind::Enter => self.enter_object(o.target, true, at, side)?,
+            OrderKind::Unload | OrderKind::UnloadOverWall => {
+                let over_wall = o.order == OrderKind::UnloadOverWall;
                 self.unload_at([o.point[0], o.point[1]], true, over_wall, at, side)?
             }
             _ => false,
@@ -278,25 +263,25 @@ impl UnitAi {
     /// for the stop. Returns 1.
     pub(crate) fn order_tail(
         &mut self,
-        order: i32,
+        order: Option<OrderKind>,
         priority: i32,
         class: i16,
         attack_move: bool,
         ai: &mut Well512,
     ) -> u32 {
-        if order == STOP_ORDER {
+        if order == Some(OrderKind::Stop) {
             self.leave_patrol_timers(ai);
-            self.current_order = -1;
+            self.current_order = None;
             self.order_priority = -1;
             return 1;
         }
-        let new = if order == crate::unit_ai::ai_kinds::ORDER_ATTACK_ROUNDUP || attack_move {
+        let new = if order == Some(OrderKind::AttackRoundup) || attack_move {
             self.leave_patrol_timers(ai);
-            ATTACK_ORDER
-        } else if order == ATTACK_ORDER && class == CLASS_18 {
+            Some(OrderKind::Attack)
+        } else if order == Some(OrderKind::Attack) && class == CLASS_18 {
             self.leave_patrol_timers(ai);
             self.current_target = -1;
-            -1
+            None
         } else {
             if self.current_order != order {
                 self.leave_patrol_timers(ai);

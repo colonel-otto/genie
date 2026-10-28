@@ -8,6 +8,7 @@ use crate::movement::{Me, Planning, footprint_gap};
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::context::Context;
 use crate::world::others::OthersRef;
@@ -57,8 +58,12 @@ impl Unit {
         let Some(ai) = self.ai.as_mut() else {
             return Ok(false);
         };
-        ai.orders
-            .retain(|o| !(matches!(o.order, 0x2c5 | 0x2c9 | 0x2db) && gone(o.target)));
+        ai.orders.retain(|o| {
+            !(matches!(
+                o.order,
+                OrderKind::Gather | OrderKind::Hunt | OrderKind::OnTarget
+            ) && gone(o.target))
+        });
         if ai.orders.is_empty() {
             return Ok(false);
         }

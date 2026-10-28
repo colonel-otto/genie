@@ -142,8 +142,10 @@ impl UnitAi {
     ) -> Result<bool, GenieError> {
         self.cap_human_order(fx);
         if at.class == CLASS_KING {
-            let led =
-                at.master != KING_UNLED && !at.garrisoned && self.current_order == -1 && computer;
+            let led = at.master != KING_UNLED
+                && !at.garrisoned
+                && self.current_order.is_none()
+                && computer;
             if led {
                 return Err(GenieError::unsupported(
                     "a computer player's king's idle check (FUN_140c16930, slot 0x7e8)",

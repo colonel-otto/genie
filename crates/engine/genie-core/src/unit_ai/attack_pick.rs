@@ -1,6 +1,7 @@
 //! Which object a unit may attack: the attack search, its picks and each type's rules.
 
 use crate::GenieError;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ARTIFACT_AI, BOAR_AI, BUILDING_AI, CIVILIAN, FISHING_AI, OrderRecord, SIEGE_AI, SIEGE_TOWER_AI,
     TRADE_AI, TRANSPORT_AI, civilian_may_attack, defend_patrol_range, lion_may_attack,
@@ -224,7 +225,7 @@ pub struct Seeker {
     /// `+0x1ac`, `+0x1b0`.
     pub state_position: [f32; 2],
     /// `+0x3c`.
-    pub order: i32,
+    pub order: Option<OrderKind>,
     /// `+0x44`.
     pub action: i32,
     /// `+0x48`.
@@ -247,7 +248,7 @@ impl Seeker {
     /// unit groups): with an order, or without one in a stance below 2.
     #[must_use]
     pub const fn can_move(&self) -> bool {
-        self.order != -1 || self.stance <= 1
+        self.order.is_some() || self.stance <= 1
     }
 }
 
@@ -439,9 +440,9 @@ pub(super) fn stance_reaches(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
     let d2 = point_gap_squared(s.state_position, t.position, t.radius);
     let reach = me.range_against()? + STANCE_RANGE_GROWTH;
     match s.stance {
-        2 if s.order != 0x2bd && reach * reach < d2 => return Ok(false),
+        2 if !matches!(s.order, Some(OrderKind::Defend)) && reach * reach < d2 => return Ok(false),
         1 => {
-            if matches!(s.order, 0x2c7 | 0x2dd) || s.patrol_path {
+            if matches!(s.order, Some(OrderKind::Patrol | OrderKind::AttackMove)) || s.patrol_path {
                 defend_patrol_range()?;
             }
             let reach = reach + DEFEND_GROWTH;

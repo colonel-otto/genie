@@ -3,6 +3,7 @@ use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
 use crate::ownership::capture::{CAPTURE_KEEPS_ACTION, LIVESTOCK};
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::tests::{forage_world, in_update};
@@ -21,7 +22,7 @@ fn walking_forager() -> World {
         wait: MoveWait::default(),
     }));
     let ai = u.ai.as_mut().unwrap();
-    (ai.current_order, ai.current_action, ai.current_target) = (610, 510, 600);
+    (ai.current_order, ai.current_action, ai.current_target) = (Some(OrderKind::Move), 510, 600);
     t
 }
 
@@ -54,18 +55,21 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (-1, -1, -1)
+        (None, -1, -1)
     );
-    assert_eq!((ai.last_order, ai.last_action), (610, 510));
+    assert_eq!(
+        (ai.last_order, ai.last_action),
+        (Some(OrderKind::Move), 510)
+    );
     // livestock's unit AI, and one on action 0x2c2, keep their order and target
     let (u, _) = stopped(walking_forager(), LIVESTOCK).unwrap();
     assert_eq!(u.actions.move_to().copied(), None);
     let kept = |ai: &crate::unit_ai::UnitAi| (ai.current_order, ai.current_target);
-    assert_eq!(kept(u.ai.as_ref().unwrap()), (610, 600));
+    assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
     let mut t = walking_forager();
     t.players[1].objects[0].ai.as_mut().unwrap().current_action = CAPTURE_KEEPS_ACTION;
     let (u, _) = stopped(t, 4).unwrap();
-    assert_eq!(kept(u.ai.as_ref().unwrap()), (610, 600));
+    assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
 }
 
 /// `FUN_14108c050` with an Artifact on top: its slot 0x38 keeps the action, drops its walking

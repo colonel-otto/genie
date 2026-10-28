@@ -114,7 +114,7 @@ impl Attack {
         self.target = -1;
         self.point = [NONE; 3];
         let human = s.own.player != 0 && !s.computer;
-        if human && s.ai_order.is_none_or(|o| o != -1 && s.queue_empty) {
+        if human && s.ai_order.is_none_or(|o| o.is_some() && s.queue_empty) {
             let speed = walk.mover.as_ref().map_or(0.0, |m| m.stats.speed);
             if s.stance == 0 && 0.0 < speed && s.own.class != VILLAGER {
                 return Err(GenieError::unsupported(

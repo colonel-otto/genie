@@ -5,12 +5,12 @@ use crate::GenieError;
 use crate::groups::update::{
     ACTION_KIND, ATTACK_ACTION, BUILD, CHOSEN_ACTION, COMBAT_KIND, DELIVER_RELIC, FARTHEST,
     MONASTERY, MOVING_KIND, NO_COMMAND, PICK_UP_RELIC, RELIC_ACTION, RELIC_CLASS,
-    RELIC_DELIVERY_ACTION, RELIC_PICKUP_ACTION, Shown, TARGET_ORDER, TRADE_BOAT, TRADE_CART,
-    TRADE_CART_SPRITES,
+    RELIC_DELIVERY_ACTION, RELIC_PICKUP_ACTION, Shown, TRADE_BOAT, TRADE_CART, TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
@@ -247,7 +247,8 @@ impl World {
                 None => false,
             };
             if g.current_command == PICK_UP_RELIC
-                && (ai.current_order == TARGET_ORDER || ai.current_action == RELIC_ACTION)
+                && (ai.current_order == Some(OrderKind::OnTarget)
+                    || ai.current_action == RELIC_ACTION)
                 && ((picks && relic) || (delivers && (relic || target.is_none())))
             {
                 return Ok(true);
@@ -274,7 +275,8 @@ impl World {
                 .world_object(ai.current_target)
                 .is_some_and(|t| t.master_id() == MONASTERY);
             if g.current_command == DELIVER_RELIC
-                && (ai.current_order == TARGET_ORDER || ai.current_action == RELIC_ACTION)
+                && (ai.current_order == Some(OrderKind::OnTarget)
+                    || ai.current_action == RELIC_ACTION)
                 && monastery
                 && (delivers || picks)
             {
@@ -522,12 +524,15 @@ impl Unit {
             }
         }
         if let Some(ai) = u.ai.as_ref() {
-            let mut action = ai.current_action;
+            let action = ai.current_action;
             if action != crate::unit_ai::GROUP_ASIDE_ACTION {
-                if action == CHOSEN_ACTION {
-                    action = ai.current_order;
-                }
-                if action != -1 {
+                // on the chosen action the order decides
+                let busy = if action == CHOSEN_ACTION {
+                    ai.current_order.is_some()
+                } else {
+                    action != -1
+                };
+                if busy {
                     return Ok(false);
                 }
             }

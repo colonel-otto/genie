@@ -2,6 +2,7 @@ use super::*;
 use crate::commands::{GatherPoint, UnitList, UnloadCommand};
 use crate::objects::masters::BuildingMaster;
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::world::Player;
 
 pub(crate) const TC: i16 = 109;
@@ -1244,7 +1245,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
     v.body.put_mover(Some(walker));
     v.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 8,
-        current_order: -1,
+        current_order: None,
         current_action: -1,
         current_target: -1,
         ..crate::unit_ai::UnitAi::default()
@@ -1444,7 +1445,7 @@ pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
     v.position = [at[0], at[1], 0.0];
     v.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 8,
-        current_order: -1,
+        current_order: None,
         current_action: -1,
         current_target: -1,
         ..crate::unit_ai::UnitAi::default()
@@ -1604,7 +1605,7 @@ fn a_garrison_through_the_unit_ais_queues_their_enter_orders() {
         v.ai.as_ref().unwrap().orders,
         [crate::unit_ai::QueuedOrder {
             issuer: 1000,
-            order: ENTER_ORDER,
+            order: OrderKind::Enter,
             priority: 100,
             target: 100,
             target_owner: 1,
@@ -1658,7 +1659,7 @@ fn a_garrison_into_a_transport_pairs_the_units_whose_class_has_the_flags() {
                 .collect::<Vec<_>>()
         })
     };
-    assert_eq!(orders(&t, 1000), Some(vec![(ENTER_ORDER, 200)]));
+    assert_eq!(orders(&t, 1000), Some(vec![(OrderKind::Enter, 200)]));
     assert_eq!(orders(&t, 1001), Some(vec![]));
     // a transport beyond the town bell's reach (param_6 1) pairs nothing
     let mut t = sized_world(40, 40);
@@ -1672,7 +1673,7 @@ fn a_garrison_into_a_transport_pairs_the_units_whose_class_has_the_flags() {
     t.shelter(1, &[1000], &shelters, true, true).unwrap();
     assert_eq!(orders(&t, 1000), Some(vec![]));
     t.shelter(1, &[1000], &shelters, false, true).unwrap();
-    assert_eq!(orders(&t, 1000), Some(vec![(ENTER_ORDER, 200)]));
+    assert_eq!(orders(&t, 1000), Some(vec![(OrderKind::Enter, 200)]));
     // with no unit the transport is never asked
     assert_eq!(t.garrison_order(1, &[], 200, false, false), Ok(()));
 }
@@ -1757,7 +1758,7 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
     let ai = t.object(1000).unwrap().1.ai.clone().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (ENTER_ORDER, ENTER_ACTION, 200)
+        (Some(OrderKind::Enter), ENTER_ACTION, 200)
     );
 }
 
@@ -1886,7 +1887,7 @@ fn coast_world(ship: [f32; 2]) -> World {
     s.body.put_mover(Some(mover));
     s.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 11,
-        current_order: -1,
+        current_order: None,
         current_action: -1,
         current_target: -1,
         ..crate::unit_ai::UnitAi::default()
@@ -1955,7 +1956,7 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     let ai = ship.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (crate::unit_ai::ai_kinds::ORDER_UNLOAD, 0x26d, 200)
+        (Some(OrderKind::Unload), 0x26d, 200)
     );
     // the villager inside stays there
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
@@ -2056,7 +2057,6 @@ fn work_at(target: i32, point: [f32; 3]) -> crate::orders::Work {
 /// water under the point gives no task, so the ship just moves.
 #[test]
 fn a_work_command_on_a_land_point_makes_a_transport_that_sails_there() {
-    use crate::unit_ai::ai_kinds::ORDER_TRANSPORT;
     let (mut t, idx) = transport_task_world();
     t.order_work(1, idx, &work_at(-1, [17.5, 10.5, 0.0]))
         .unwrap();
@@ -2075,7 +2075,7 @@ fn a_work_command_on_a_land_point_makes_a_transport_that_sails_there() {
     let ai = ship.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (ORDER_TRANSPORT, transport::TRANSPORT_ACTION, -1)
+        (Some(OrderKind::Transport), transport::TRANSPORT_ACTION, -1)
     );
     t.order_work(1, idx, &work_at(-1, [18.5, 11.5, 0.0]))
         .unwrap();

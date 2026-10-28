@@ -387,7 +387,7 @@ impl UnitAi {
             return Ok(0);
         };
         fx.push(Effect::Move(m));
-        Ok(self.order_tail(o.order, o.priority, class, false, ai))
+        Ok(self.order_tail(Some(o.order), o.priority, class, false, ai))
     }
 
     /// Slot 0x1b0 by the unit AI's type: the kind of resource of a target class. The civilian's
@@ -457,7 +457,7 @@ impl UnitAi {
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
-        if 2 < unit_state || order.order == -1 {
+        if 2 < unit_state {
             return Ok(());
         }
         self.order_now(order, None, Some(place), None, ai, fx)
@@ -479,7 +479,7 @@ impl UnitAi {
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
-        if 2 < at.state || order.order == -1 {
+        if 2 < at.state {
             return Ok(());
         }
         let place = ([at.position[0], at.position[1]], at.class);

@@ -293,8 +293,9 @@ pub struct Strike<'a> {
     pub queue_empty: bool,
     /// The world's time (`FUN_1415300d0`), which a facing over time reads.
     pub world_time: u32,
-    /// The unit AI's order (`+0x3c`, `FUN_140c4cc20`), None without a unit AI.
-    pub ai_order: Option<i32>,
+    /// The unit AI's order (`+0x3c`, `FUN_140c4cc20`; its None the field's −1), None without a
+    /// unit AI.
+    pub ai_order: Option<Option<crate::unit_ai::OrderKind>>,
     /// The unit AI's factory type, None without a unit AI.
     pub ai_type: Option<u32>,
     /// The unit's player is a computer (`player+0x10 == 3`, `FUN_141659cf0`).

@@ -7,6 +7,7 @@ use crate::garrison::{
     WHOLE_SHARE_CLASS,
 };
 use crate::orders::BUILDING;
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 /// UNLOAD's point without one (`DAT_14330ec20`).
@@ -283,7 +284,7 @@ impl World {
         };
         let order = crate::unit_ai::QueuedOrder {
             issuer: player as i32,
-            order: crate::unit_ai::ai_kinds::ORDER_UNLOAD,
+            order: OrderKind::Unload,
             priority: 100,
             target: id,
             target_owner: player as i32,

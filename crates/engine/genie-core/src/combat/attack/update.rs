@@ -175,7 +175,7 @@ impl Attack {
             return Ok(Some(0));
         }
         if !seen && matches!(self.state, MOVE | GOTO_SEEN) {
-            if s.own.player == 0 || s.ai_order.is_some_and(|o| o == -1 || !s.queue_empty) {
+            if s.own.player == 0 || s.ai_order.is_some_and(|o| o.is_none() || !s.queue_empty) {
                 return self.out_of_sight(walk, s).map(Some);
             }
             if self.state != GOTO_SEEN {

@@ -3,12 +3,13 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    AfterWork, BUILD_ORDER, BUILDER_UNMOVING, BuildAction, BuildStep, Builder, DONE, Dropped, FARM,
-    FINISHED, FISH_TRAP, FISHING_SHIPS, HALTED, IDLE, LAST_TAKEN, Load, MOVE, NO_TARGET_POINT,
-    SITE_GONE, Site, VILLAGER, WORK, drop_done_orders,
+    AfterWork, BUILDER_UNMOVING, BuildAction, BuildStep, Builder, DONE, Dropped, FARM, FINISHED,
+    FISH_TRAP, FISHING_SHIPS, HALTED, IDLE, LAST_TAKEN, Load, MOVE, NO_TARGET_POINT, SITE_GONE,
+    Site, VILLAGER, WORK, drop_done_orders,
 };
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveTo, Walk};
+use crate::unit_ai::OrderKind;
 
 impl BuildAction {
     /// The prelude of every `set_state` (`0x140aae200`): a builder counted among the builders
@@ -109,7 +110,7 @@ impl BuildAction {
             "a builder without a unit AI after its work",
         ))?;
         if works_it {
-            ai.orders.retain(|o| o.order != BUILD_ORDER);
+            ai.orders.retain(|o| o.order != OrderKind::Build);
             return Ok(AfterWork::WorksIt);
         }
         // FUN_140c5dcd0 (the building just completed is in state 2 now)

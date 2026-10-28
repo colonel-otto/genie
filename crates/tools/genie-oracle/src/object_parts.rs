@@ -2,8 +2,12 @@
 
 use crate::masters::MasterTable;
 use crate::vec3;
+use genie_core::GenieError;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
-use genie_save::generated::world::{PlayerObjects, RgeStaticObject};
+use genie_core::unit_ai::OrderKind;
+use genie_save::generated::world::{
+    PlayerObjects, RgeStaticObject, TribeCombatObject, UnitAiModule,
+};
 
 /// The object's lifecycle fields. An object with its own master takes every master value from it;
 /// otherwise the death sprite and spawns come from its player's master in the save, and the decay
@@ -79,12 +83,21 @@ pub(super) fn lifecycle(
     }
 }
 
-pub(super) fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
-    let combat = object.combat()?;
-    let ai = combat.unit_ai()?;
-    Some(genie_core::unit_ai::UnitAi {
+/// A combat object's unit AI as the save holds it, None without one.
+///
+/// # Errors
+///
+/// An order value no order holds ([`OrderKind::try_from`]), in the current or last order, the
+/// history or a queue.
+pub(super) fn unit_ai(
+    object: &genie_save::Object,
+) -> Result<Option<genie_core::unit_ai::UnitAi>, GenieError> {
+    let Some((combat, ai)) = object.combat().and_then(|c| Some((c, c.unit_ai()?))) else {
+        return Ok(None);
+    };
+    Ok(Some(genie_core::unit_ai::UnitAi {
         ai_type: combat.need_unit_ai as u32,
-        current_order: ai.current_order_value,
+        current_order: OrderKind::of_field(ai.current_order_value)?,
         order_priority: ai.current_order_priority_value,
         current_action: ai.current_action_value,
         current_target: ai.current_target_value,
@@ -96,7 +109,7 @@ pub(super) fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai
         ],
         desired_distance: ai.desired_target_distance_value,
         defend_target: ai.defend_target_value,
-        last_order: ai.last_order_value,
+        last_order: OrderKind::of_field(ai.last_order_value)?,
         last_action: ai.last_action_value,
         last_target: ai.last_target_value,
         last_target_type: ai.last_target_type_value,
@@ -114,73 +127,22 @@ pub(super) fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai
         retarget_disabled: ai.disable_retargeting,
         alert_mode: ai.alert_mode_value != 0,
         time_since_enemy: ai.time_since_enemy_sighting,
-        // the saved patrol (its path's points in the game's layout, length and flags)
-        patrol_path: ai
-            .patrol_path
-            .as_deref()
-            .map(|p| genie_core::unit_ai::PatrolPath {
-                path: genie_core::pathing::tile_path::Path {
-                    points: p.m_waypoints.iter().map(vec3).collect(),
-                    length: p.path_length_value,
-                },
-                flags: p.flags_m_bits,
-            }),
+        patrol_path: patrol_path(ai),
         patrol_waypoint: ai.patrol_current_waypoint,
         stop_after_kill: ai.stop_after_target_killed_value != 0,
-        home: combat
-            .tribe_elephant_unit_ai_module
-            .as_deref()
-            .map(|e| genie_core::unit_ai::Home {
-                origin: [e.origin_x, e.origin_y, e.origin_z],
-                furious: e.furious != 0,
-                go_home: false,
-            }),
+        home: home(combat),
         hunted: None,
         last_update_time: ai.last_update_time_value,
         attackers: ai.temp_int.clone(),
-        // the order history in the save's order, the newest first (the load appends each at the
-        // tail, `0x140c4efc0`)
-        order_history: ai
-            .oh
-            .iter()
-            .map(|e| genie_core::unit_ai::OrderRecord {
-                order: e.new_oh_order,
-                action: e.new_oh_action,
-                time: e.new_oh_time,
-                position: vec3(&e.new_oh_position),
-                target: e.new_oh_target_id,
-                category: e.new_oh_target_attack_category,
-                target_position: vec3(&e.new_oh_target_position),
-            })
-            .collect(),
+        order_history: order_history(ai)?,
         retries: ai
             .retarget_entries
             .iter()
             .map(|e| (e.target_id, e.timeout))
             .collect(),
         best_this_update: ai.best_unit_to_attack_this_update,
-        orders: ai
-            .temp_order
-            .iter()
-            .map(genie_core::unit_ai::QueuedOrder::from_bytes)
-            .collect(),
-        building_orders: combat
-            .tribe_tower_unit_ai_module
-            .as_deref()
-            .map(|t| &t.saved_order)
-            .or_else(|| {
-                combat
-                    .tribe_building_unit_ai_module
-                    .as_deref()
-                    .map(|b| &b.saved_order)
-            })
-            .map(|orders| {
-                orders
-                    .iter()
-                    .map(genie_core::unit_ai::QueuedOrder::from_bytes)
-                    .collect()
-            })
-            .unwrap_or_default(),
+        orders: queue(&ai.temp_order)?,
+        building_orders: queue(building_orders(combat))?,
         notifies: ai
             .temp_notify
             .iter()
@@ -194,5 +156,83 @@ pub(super) fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai
         processing: false,
         buffered: Vec::new(),
         commanded: false,
-    })
+    }))
 }
+
+/// The saved patrol: its path's points in the game's layout, its length and flags.
+fn patrol_path(ai: &UnitAiModule) -> Option<genie_core::unit_ai::PatrolPath> {
+    ai.patrol_path
+        .as_deref()
+        .map(|p| genie_core::unit_ai::PatrolPath {
+            path: genie_core::pathing::tile_path::Path {
+                points: p.m_waypoints.iter().map(vec3).collect(),
+                length: p.path_length_value,
+            },
+            flags: p.flags_m_bits,
+        })
+}
+
+/// An animal's home: its origin and fury (the elephant unit AI's).
+fn home(combat: &TribeCombatObject) -> Option<genie_core::unit_ai::Home> {
+    combat
+        .tribe_elephant_unit_ai_module
+        .as_deref()
+        .map(|e| genie_core::unit_ai::Home {
+            origin: [e.origin_x, e.origin_y, e.origin_z],
+            furious: e.furious != 0,
+            go_home: false,
+        })
+}
+
+/// The order history in the save's order, the newest first (the load appends each at the tail,
+/// `0x140c4efc0`).
+///
+/// # Errors
+///
+/// A record's order value no order holds.
+fn order_history(ai: &UnitAiModule) -> Result<Vec<genie_core::unit_ai::OrderRecord>, GenieError> {
+    ai.oh
+        .iter()
+        .map(|e| {
+            Ok(genie_core::unit_ai::OrderRecord {
+                order: OrderKind::of_field(e.new_oh_order)?,
+                action: e.new_oh_action,
+                time: e.new_oh_time,
+                position: vec3(&e.new_oh_position),
+                target: e.new_oh_target_id,
+                category: e.new_oh_target_attack_category,
+                target_position: vec3(&e.new_oh_target_position),
+            })
+        })
+        .collect()
+}
+
+/// A tower's or another building's saved orders, none for any other object.
+fn building_orders(combat: &TribeCombatObject) -> &[[u8; 52]] {
+    combat
+        .tribe_tower_unit_ai_module
+        .as_deref()
+        .map(|t| &t.saved_order)
+        .or_else(|| {
+            combat
+                .tribe_building_unit_ai_module
+                .as_deref()
+                .map(|b| &b.saved_order)
+        })
+        .map_or(&[], Vec::as_slice)
+}
+
+/// A saved order queue's records.
+///
+/// # Errors
+///
+/// A record's order value no order holds.
+fn queue(records: &[[u8; 52]]) -> Result<Vec<genie_core::unit_ai::QueuedOrder>, GenieError> {
+    records
+        .iter()
+        .map(genie_core::unit_ai::QueuedOrder::from_bytes)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests;

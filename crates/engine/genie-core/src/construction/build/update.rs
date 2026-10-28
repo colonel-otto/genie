@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    ARRIVED, AfterWork, BUILD_ORDER, BUILDER_UNMOVING, BuildAction, BuildStep, BuildTask, Builder,
-    CLASS_39, CLEAR, DONE, DROP, FAILED, FINISHED, HALTED, IDLE, Load, Looks, MASTER_621,
-    MASTER_1889, MOVE, PLACE, Site, VILLAGER, WAIT, WALK_POINT, WORK,
+    ARRIVED, AfterWork, BUILDER_UNMOVING, BuildAction, BuildStep, BuildTask, Builder, CLASS_39,
+    CLEAR, DONE, DROP, FAILED, FINISHED, HALTED, IDLE, Load, Looks, MASTER_621, MASTER_1889, MOVE,
+    PLACE, Site, VILLAGER, WAIT, WALK_POINT, WORK,
 };
 use crate::movement::move_to::{
     Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
 };
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 
 impl BuildAction {
@@ -385,7 +386,7 @@ pub(super) fn drop_done_orders(
     build_targets: &[(i32, Option<u8>)],
 ) {
     ai.orders.retain(|o| {
-        if o.order != BUILD_ORDER {
+        if o.order != OrderKind::Build {
             return true;
         }
         let state = match site {

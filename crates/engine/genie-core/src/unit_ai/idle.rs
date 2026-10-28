@@ -2,13 +2,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ARTIFACT_AI, ATTACK_MOVE, AttackAsk, BOAR_AI, CIVILIAN, DEFEND_ORDER, ENEMY_SIGHTING_GAP,
-    Effect, FISHING_AI, FISHING_CARED, Found, Memory, PATROL, Pick, SHIP_EVADE_REACH, SIEGE_AI,
-    SIEGE_CARED, SIEGE_TOWER_AI, SOLDIER_AI, SOLDIER_CARED, SOLDIER_IDLE_MASTER, Search, Seeker,
-    Surroundings, TOWER_AI, TOWER_CARED, TRADE_AI, TRADE_BOAT_CLASS, TRADE_CART_CARED,
-    TRADE_SHIP_CARED, UnitAi, UnitSide, attack_search_radius, civilian_search_radius,
-    computer_idle_check, search_radius,
+    ARTIFACT_AI, AttackAsk, BOAR_AI, CIVILIAN, ENEMY_SIGHTING_GAP, Effect, FISHING_AI,
+    FISHING_CARED, Found, Memory, Pick, SHIP_EVADE_REACH, SIEGE_AI, SIEGE_CARED, SIEGE_TOWER_AI,
+    SOLDIER_AI, SOLDIER_CARED, SOLDIER_IDLE_MASTER, Search, Seeker, Surroundings, TOWER_AI,
+    TOWER_CARED, TRADE_AI, TRADE_BOAT_CLASS, TRADE_CART_CARED, TRADE_SHIP_CARED, UnitAi, UnitSide,
+    attack_search_radius, civilian_search_radius, computer_idle_check, search_radius,
 };
 
 impl UnitAi {
@@ -165,16 +165,22 @@ impl UnitAi {
             target = self.siege_best(at, computer, side)?;
         }
         if target != -1 {
-            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+            if matches!(
+                self.current_order,
+                Some(OrderKind::Patrol | OrderKind::AttackMove)
+            ) {
                 self.save_patrol(side);
             }
             if self.attack_object(target, true, false, at, side, fx)? {
-                if self.current_order != DEFEND_ORDER {
-                    self.set_order_with(-1, false, ai);
+                if self.current_order != Some(OrderKind::Defend) {
+                    self.set_order_with(None, false, ai);
                 }
                 return Ok(true);
             }
-            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+            if matches!(
+                self.current_order,
+                Some(OrderKind::Patrol | OrderKind::AttackMove)
+            ) {
                 self.zero_patrol();
             }
         }
@@ -204,7 +210,10 @@ impl UnitAi {
             memory: Memory::default(),
         })?;
         self.attack_search_alert(found, computer)?;
-        if !matches!(self.current_order, PATROL | ATTACK_MOVE) {
+        if !matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) {
             let _ = self.walk_back(at, fx);
         }
         Ok(())
@@ -249,7 +258,10 @@ impl UnitAi {
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> bool {
-        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+        if matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) {
             return false;
         }
         if !computer {
@@ -331,24 +343,33 @@ impl UnitAi {
         };
         if target != -1 {
             // "I need to save the patrol information in case the attack works."
-            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+            if matches!(
+                self.current_order,
+                Some(OrderKind::Patrol | OrderKind::AttackMove)
+            ) {
                 self.save_patrol(side);
             }
             // slot 0xb8 forced (FUN_140c17550: the base's, then the unit's group);
             // with retargeting on and off order 0x2bd the order goes (FUN_140c64b60 with -1, 0)
             if self.attack_slot(target, false, at, side, fx)? {
-                if self.retarget_disabled == 0 && self.current_order != 0x2bd {
-                    self.set_order_with(-1, false, ai);
+                if self.retarget_disabled == 0 && self.current_order != Some(OrderKind::Defend) {
+                    self.set_order_with(None, false, ai);
                 }
                 return Ok(true);
             }
             // "Attack failed, so I'm nuking the saved patrol information."
-            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+            if matches!(
+                self.current_order,
+                Some(OrderKind::Patrol | OrderKind::AttackMove)
+            ) {
                 self.zero_patrol();
             }
         }
         // "I have a patrol order, so I'm stopping here."
-        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+        if matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) {
             return Ok(false);
         }
         // "I'm in Defend or StandGround, returning to state pos.": the walk back's result does
@@ -383,7 +404,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
-        if self.current_order == DEFEND_ORDER {
+        if self.current_order == Some(OrderKind::Defend) {
             return Err(GenieError::unsupported(
                 "a defend order's search (its target's objects)",
             ));
@@ -409,7 +430,10 @@ impl UnitAi {
         if found.fresh {
             self.alert_mode = false;
         }
-        if !matches!(self.current_order, PATROL | ATTACK_MOVE) {
+        if !matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) {
             let _ = self.walk_back(at, fx);
         }
         if at.task_0x69 {

@@ -7,7 +7,7 @@ use crate::orders::{
     Followed, GUARD_RANGE, LIVESTOCK, MOVING, Place, VILLAGER, follow_axis, follow_spread,
     ignore_unit,
 };
-use crate::unit_ai::MOVE_ORDER;
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
@@ -96,7 +96,7 @@ impl World {
         let [x, y, z] = t.position;
         let order = crate::unit_ai::QueuedOrder {
             issuer: -1,
-            order: crate::unit_ai::DEFEND_ORDER,
+            order: OrderKind::Defend,
             priority: 100,
             target,
             target_owner: tp as i32,
@@ -211,7 +211,7 @@ impl World {
         i: usize,
         followed: Followed,
     ) -> Result<(), GenieError> {
-        use crate::unit_ai::{FOLLOW_ACTION, FOLLOW_ORDER};
+        use crate::unit_ai::FOLLOW_ACTION;
         self.leave_group_of(loose[i], followed.id)?;
         if self.follower(loose[i])?.is_none() {
             return Ok(());
@@ -222,7 +222,7 @@ impl World {
         let rng = self.streams.get(Stream::Ai);
         if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
             if !taken {
-                ai.set_order(FOLLOW_ORDER, rng);
+                ai.set_order(Some(OrderKind::Follow), rng);
                 ai.set_action(FOLLOW_ACTION);
             }
             let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
@@ -264,7 +264,7 @@ impl World {
         }
         let rng = self.streams.get(Stream::Ai);
         if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
-            ai.set_order(MOVE_ORDER, rng);
+            ai.set_order(Some(OrderKind::Move), rng);
             ai.set_action(MOVE_ACTION);
             let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
             ai.set_target(t, class, at);

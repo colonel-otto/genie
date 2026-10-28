@@ -20,9 +20,7 @@ pub(super) const PRIORITY_0_MASTERS: [i16; 8] = [35, 422, 548, 1258, 1744, 1746,
 pub(super) const BOAT_HUNTERS: [i16; 3] = [82, 45, 109];
 /// The moving targets past which the current target and the closest moving one answer.
 pub(super) const FEW_MOVING: i32 = 5;
-/// The orders of the defend patrol (`0x2dd`) and class 13 (siege), whose units keep the walls'
-/// owner flag.
-pub(super) const DEFEND_PATROL: i32 = 0x2dd;
+/// Class 13 (siege), whose units keep the walls' owner flag on the attack move order (`0x2dd`).
 pub(super) const SIEGE: i16 = 13;
 /// The retarget entries' times: a moving object's 1 s, another's 2 s.
 pub(super) const RETRY_MOVING: u32 = 1000;
@@ -201,7 +199,8 @@ fn current_target(
 /// Whether the unit attacks walls: its targets' classes name a wall or a gate, or its owner's
 /// flag allows them outside the defend patrol of a unit that is no siege.
 const fn attacks_walls(me: &Searcher) -> bool {
-    let defending = me.order == DEFEND_PATROL && me.class != SIEGE;
+    let defending =
+        matches!(me.order, Some(crate::unit_ai::OrderKind::AttackMove)) && me.class != SIEGE;
     matches!(me.target_types[0], 27 | 39)
         || matches!(me.target_types[1], 27 | 39)
         || (me.walls_allowed && !defending)

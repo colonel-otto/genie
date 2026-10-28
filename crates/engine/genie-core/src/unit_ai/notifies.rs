@@ -59,7 +59,9 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         let completed = self.notifies.iter().any(|n| {
-            n.kind == ACTION_COMPLETED && self.current_order == -1 && self.current_action == n.p[0]
+            n.kind == ACTION_COMPLETED
+                && self.current_order.is_none()
+                && self.current_action == n.p[0]
         });
         if completed {
             self.remove_target();

@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::GatherPoint;
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
 
 /// records/425906646's update 1883: a TC's gather point on a tree that is gone; its new
@@ -404,7 +405,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()] = 3.0;
         p.objects[2].ai = Some(UnitAi {
             ai_type: 3,
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             ..UnitAi::default()
@@ -434,7 +435,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     let mut t = world();
     let order = crate::unit_ai::QueuedOrder {
         issuer: 1,
-        order: crate::unit_ai::MOVE_ORDER,
+        order: OrderKind::Move,
         priority: 5,
         target: -1,
         target_owner: -1,
@@ -462,13 +463,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
             .iter()
             .map(|o| (o.order, o.priority, o.point, o.range, o.ready))
             .collect::<Vec<_>>(),
-        [(
-            crate::unit_ai::MOVE_ORDER,
-            100,
-            [40.0, 80.0, 0.0],
-            0.0,
-            true
-        )]
+        [(OrderKind::Move, 100, [40.0, 80.0, 0.0], 0.0, true)]
     );
     let mut t = world();
     t.players[1].computer = true;
@@ -567,7 +562,7 @@ fn a_second_pass_between_walled_corners_tries_the_bottom_right_corner() {
 fn queued_move() -> crate::unit_ai::QueuedOrder {
     crate::unit_ai::QueuedOrder {
         issuer: 1,
-        order: crate::unit_ai::MOVE_ORDER,
+        order: OrderKind::Move,
         priority: 5,
         target: -1,
         target_owner: -1,
@@ -599,7 +594,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (crate::unit_ai::MOVE_ORDER, crate::unit_ai::MOVE_ACTION, -1)
+        (Some(OrderKind::Move), crate::unit_ai::MOVE_ACTION, -1)
     );
     assert_eq!(ai.target_point, [40.0, 80.0, 0.0]);
     assert_eq!(ai.orders, []);
@@ -637,7 +632,7 @@ fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
     let u = &t.players[1].objects[0];
     assert_eq!(u.body.mover().unwrap().waiting, 1);
     assert_eq!(u.actions.move_to().copied(), None);
-    assert_eq!(u.ai.as_ref().unwrap().current_order, -1);
+    assert_eq!(u.ai.as_ref().unwrap().current_order, None);
     // a second walk finds the first's `MoveTo`
     let mut t = crate::world::tests::forage_world();
     t.gather_move(1, 0, [40.0, 80.0, 0.0], true).unwrap();

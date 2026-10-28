@@ -3,12 +3,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, ATTACK_ACTION,
-    ATTACK_ORDER, BREAK, BUILD_ACTION, DAMAGED, DEAD, Effect, GO_ON, HUNT_ACTION,
-    LION_ATTACKED_TIMEOUT, MISSILE_WARNING, MOVE_ASIDE_ACTION, NO_LONGER_ON_ME, Notify, OTHER_LOAD,
-    PACKED_UNIT_CLASS, PASTURE_BUILT, REQUIRES_SEARCH, SENT_OFF, Surroundings, TARGET_MOVED,
-    UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner, back_up, dodges, top_target_after,
+    ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, ATTACK_ACTION, BREAK,
+    BUILD_ACTION, DAMAGED, DEAD, Effect, GO_ON, HUNT_ACTION, LION_ATTACKED_TIMEOUT,
+    MISSILE_WARNING, MOVE_ASIDE_ACTION, NO_LONGER_ON_ME, Notify, OTHER_LOAD, PACKED_UNIT_CLASS,
+    PASTURE_BUILT, REQUIRES_SEARCH, SENT_OFF, Surroundings, TARGET_MOVED, UnitAi, UnitSide,
+    VILLAGER_NOTIFY, alert_owner, back_up, dodges, top_target_after,
 };
 
 impl UnitAi {
@@ -430,7 +431,7 @@ impl UnitAi {
             // "I am a defensive building and my current target has been destroyed, purging
             // attack order.": a target gone or dead (above state 2) is forgotten
             // (`FUN_140c5e1e0`) and the current action stops (slot 0xb0 with 1)
-            ACTION_COMPLETED if n.p[0] == 600 && self.current_order == ATTACK_ORDER => {
+            ACTION_COMPLETED if n.p[0] == 600 && self.current_order == Some(OrderKind::Attack) => {
                 let gone = self.current_target == -1 || at.target.is_none_or(|t| 2 < t.state);
                 if gone {
                     self.remove_target();

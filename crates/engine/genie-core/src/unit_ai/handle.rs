@@ -2,10 +2,11 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, ARTIFACT_AI,
-    ARTIFACT_CARED, ATTACK_ORDER, DAMAGED, Effect, FISHING_AI, GO_ON, GROUP_ASIDE_ACTION,
-    IN_THE_WAY, MISSILE_WARNING, Memory, NO_LONGER_ON_ME, Notify, OWNER_CHANGED, Pick, SENT_OFF,
+    ARTIFACT_CARED, DAMAGED, Effect, FISHING_AI, GO_ON, GROUP_ASIDE_ACTION, IN_THE_WAY,
+    MISSILE_WARNING, Memory, NO_LONGER_ON_ME, Notify, OWNER_CHANGED, Pick, SENT_OFF,
     SENT_OFF_GROUP, SIEGE_AI, SIEGE_TOWER_AI, Search, Surroundings, TARGET_MOVED, TRADE_AI, UnitAi,
     UnitSide, search_radius,
 };
@@ -78,13 +79,11 @@ impl UnitAi {
             | 0x278
             | 699
             | 0x2be => false,
-            ACTION_FAILED | ACTION_COMPLETED | ACTION_INVALIDATED => {
-                if self.current_order == -1 {
-                    self.current_action == n.p[0]
-                } else {
-                    self.current_action + 100 == self.current_order
-                }
-            }
+            ACTION_FAILED | ACTION_COMPLETED | ACTION_INVALIDATED => self
+                .current_order
+                .map_or(self.current_action == n.p[0], |o| {
+                    o.owns(self.current_action)
+                }),
             // "Target is still visible.": the world holds the target, which its owner sees
             TARGET_MOVED => !at
                 .target
@@ -217,8 +216,10 @@ impl UnitAi {
             // readyToAttack's target out of reach (0x1fd): a unit on the attack order that cannot
             // move (FUN_140fdd080: a master of type 30 and up with speed) gives the order up
             0x1fd => {
-                if self.current_order == ATTACK_ORDER && !(29 < at.kind && 0.0 < at.speed) {
-                    self.current_order = -1;
+                if self.current_order == Some(OrderKind::Attack)
+                    && !(29 < at.kind && 0.0 < at.speed)
+                {
+                    self.current_order = None;
                 }
                 Ok(GO_ON)
             }

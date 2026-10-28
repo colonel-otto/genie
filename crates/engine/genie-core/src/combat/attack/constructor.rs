@@ -325,7 +325,7 @@ pub fn engagement(
         speed,
         range: master.weapon_range,
         min_range: master.min_range,
-        can_move: ai.is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1),
+        can_move: ai.is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1),
         stance: ai.map_or(0, |ai| ai.stance),
         state_position: ai.map_or([0.0; 2], |ai| ai.state_position),
         world_time,

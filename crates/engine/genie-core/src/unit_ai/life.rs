@@ -3,14 +3,14 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::movement::PathAsk;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, ATTACK_MOVE, AiMove, BOAR_AI, CLASS_KING,
-    COMPUTER_SOLDIER_IDLE_TIMEOUT, DESIRED_DISTANCE, Effect, Found, HUMAN_ORDER_CAP,
-    HUNTED_IDLE_TIMEOUT, Home, Hunted, IDLE_TIMEOUT, LION_IDLE_TIMEOUT, MOVE_ACTION, MOVE_ORDER,
-    Memory, NewObject, ORDER_HISTORY, OrderRecord, PATROL, PATROL_TURN_REACH, PRIEST_IDLE_TIMEOUT,
-    SIEGE_IDLE_TIMEOUT, SOLDIER_AI, SOLDIER_IDLE_TIMEOUT, Surroundings, TOWER_AI,
-    TOWER_IDLE_TIMEOUT, UnitAi, UnitSeen, UnitSide, adjusted_idle_timeout, notify_capacity,
-    siege_stance, soldier_stance,
+    ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, AiMove, BOAR_AI, CLASS_KING, COMPUTER_SOLDIER_IDLE_TIMEOUT,
+    DESIRED_DISTANCE, Effect, Found, HUMAN_ORDER_CAP, HUNTED_IDLE_TIMEOUT, Home, Hunted,
+    IDLE_TIMEOUT, LION_IDLE_TIMEOUT, MOVE_ACTION, Memory, NewObject, ORDER_HISTORY, OrderRecord,
+    PATROL_TURN_REACH, PRIEST_IDLE_TIMEOUT, SIEGE_IDLE_TIMEOUT, SOLDIER_AI, SOLDIER_IDLE_TIMEOUT,
+    Surroundings, TOWER_AI, TOWER_IDLE_TIMEOUT, UnitAi, UnitSeen, UnitSide, adjusted_idle_timeout,
+    notify_capacity, siege_stance, soldier_stance,
 };
 
 impl UnitAi {
@@ -127,7 +127,7 @@ impl UnitAi {
         let retarget_timer = 750 + ai.rand15() % 500;
         Self {
             ai_type,
-            current_order: -1,
+            current_order: None,
             order_priority: -1,
             current_action: -1,
             current_target: -1,
@@ -135,7 +135,7 @@ impl UnitAi {
             target_point: [-1.0; 3],
             desired_distance: DESIRED_DISTANCE,
             defend_target: -1,
-            last_order: -1,
+            last_order: None,
             last_action: -1,
             last_target: -1,
             last_target_type: -1,
@@ -278,14 +278,14 @@ impl UnitAi {
         fx.push(Effect::RestorePatrol);
         if at.group.is_none() {
             let (order, other) = if at.attack_moving {
-                (ATTACK_MOVE, PATROL)
+                (OrderKind::AttackMove, OrderKind::Patrol)
             } else {
-                (PATROL, ATTACK_MOVE)
+                (OrderKind::Patrol, OrderKind::AttackMove)
             };
-            if self.current_order == other && self.adjusted_idle_timeout == 750 {
+            if self.current_order == Some(other) && self.adjusted_idle_timeout == 750 {
                 self.update_adjusted_idle_timeout(ai);
             }
-            self.current_order = order;
+            self.current_order = Some(order);
         }
         self.secondary_timer = 750;
         true
@@ -307,7 +307,10 @@ impl UnitAi {
                 ..PathAsk::default()
             };
         };
-        let patrolling = matches!(ai.current_order, PATROL | ATTACK_MOVE);
+        let patrolling = matches!(
+            ai.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        );
         let mut ask = PathAsk {
             ends_in_range: !patrolling,
             ..PathAsk::default()
@@ -327,7 +330,7 @@ impl UnitAi {
         ask.attack_move = ai
             .patrol_path
             .is_none()
-            .then_some(ai.current_order == ATTACK_MOVE);
+            .then_some(ai.current_order == Some(OrderKind::AttackMove));
         ask
     }
 
@@ -342,7 +345,7 @@ impl UnitAi {
     }
 
     /// The order setter with its history ([`UnitAi::set_order_with`] with 1).
-    pub(crate) fn set_order(&mut self, order: i32, ai: &mut Well512) {
+    pub(crate) fn set_order(&mut self, order: Option<OrderKind>, ai: &mut Well512) {
         self.set_order_with(order, true, ai);
     }
 
@@ -350,9 +353,14 @@ impl UnitAi {
     /// idle timeout of exactly 750 (slot 0x1a8) and caps the secondary timer at 750, the
     /// compare signed (`0x2ee < (int)+0x16c`); with `history` (its third argument) the order
     /// before becomes the last (`+0x64`), else the last stays; then the order.
-    pub(crate) fn set_order_with(&mut self, order: i32, history: bool, ai: &mut Well512) {
-        let leaving = |o| self.current_order == o && order != o;
-        if leaving(PATROL) || leaving(ATTACK_MOVE) {
+    pub(crate) fn set_order_with(
+        &mut self,
+        order: Option<OrderKind>,
+        history: bool,
+        ai: &mut Well512,
+    ) {
+        let leaving = |o| self.current_order == Some(o) && order != Some(o);
+        if leaving(OrderKind::Patrol) || leaving(OrderKind::AttackMove) {
             if self.adjusted_idle_timeout == 750 {
                 self.update_adjusted_idle_timeout(ai);
             }
@@ -378,7 +386,7 @@ impl UnitAi {
         }
         self.cap_patrol_secondary();
         self.last_order = self.current_order;
-        self.current_order = -1;
+        self.current_order = None;
         self.set_action(-1);
         Ok(())
     }
@@ -420,7 +428,7 @@ impl UnitAi {
     /// 0). The order history (`FUN_140c42080`) is not held.
     pub fn notify_work(
         &mut self,
-        order: i32,
+        order: Option<OrderKind>,
         action: i32,
         target: Option<(i32, i32)>,
         point: [f32; 3],
@@ -448,7 +456,7 @@ impl UnitAi {
         ai: &mut Well512,
     ) {
         if moved {
-            self.set_order(MOVE_ORDER, ai);
+            self.set_order(Some(OrderKind::Move), ai);
             self.set_action(MOVE_ACTION);
             self.forget_targets();
         }
@@ -460,7 +468,7 @@ impl UnitAi {
     /// (`FUN_140c64b60`) and action (`FUN_140c64b50`), then no target and the cell on the ground
     /// (`FUN_140c64be0`); the target it had becomes its last as [`UnitAi::set_target`] does.
     pub fn notify_grid_move(&mut self, cell: [f32; 2], ai: &mut Well512) {
-        self.set_order(MOVE_ORDER, ai);
+        self.set_order(Some(OrderKind::Move), ai);
         self.set_action(MOVE_ACTION);
         self.set_target(-1, -1, [cell[0], cell[1], 0.0]);
     }
@@ -484,7 +492,10 @@ impl UnitAi {
     /// `FUN_140c41e50`: the unit's last human order time drops to `FUN_140fe0d10`'s 5000, not on
     /// orders 701, 711, 712 and 733.
     pub(super) fn cap_human_order(&self, fx: &mut Vec<Effect>) {
-        if !matches!(self.current_order, 0x2bd | 0x2c7 | 0x2c8 | 0x2dd) {
+        if !matches!(
+            self.current_order,
+            Some(OrderKind::Defend | OrderKind::Patrol | OrderKind::Follow | OrderKind::AttackMove)
+        ) {
             fx.push(Effect::CapHumanOrder(HUMAN_ORDER_CAP));
         }
     }

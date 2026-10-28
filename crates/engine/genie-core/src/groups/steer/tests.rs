@@ -22,7 +22,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
         id,
         position: [x, y, 0.0],
         ai: Some(UnitAi {
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             ..UnitAi::default()

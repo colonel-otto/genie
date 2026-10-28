@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 
 use crate::GenieError;
 use crate::construction::build::{
-    AnnexStart, BUILD_ORDER, BuildAction, BuildStep, Builder, ClearLook, Completion, DROP,
-    DROPPED_ORDERS, Looks, MainWork, NO_CONSTRUCTION, NOT_HELD, Site, WorkChain,
+    AnnexStart, BuildAction, BuildStep, Builder, ClearLook, Completion, DROP, DROPPED_ORDERS,
+    Looks, MainWork, NO_CONSTRUCTION, NOT_HELD, Site, WorkChain,
 };
 use crate::gathering::hunt::DropOff;
 use crate::map::spatial::Spatial;
@@ -19,6 +19,7 @@ use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{TAKEN_OUT, Unit};
 use crate::unit_ai::BUILD_ACTION;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::context::Context;
@@ -163,7 +164,7 @@ impl Unit {
         let build_targets: Vec<(i32, Option<u8>)> = self.ai.as_ref().map_or_else(Vec::new, |ai| {
             ai.orders
                 .iter()
-                .filter(|o| o.order == BUILD_ORDER)
+                .filter(|o| o.order == OrderKind::Build)
                 .map(|o| {
                     let state = others.own(o.target).map(|u| u.life.state);
                     (o.target, state)

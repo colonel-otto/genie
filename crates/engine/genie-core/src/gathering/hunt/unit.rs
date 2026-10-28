@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::Search;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::context::Context;
@@ -267,8 +268,12 @@ impl Unit {
                 .and_then(|v| v.seer(id))
                 .is_some_and(|s| 5 < s.state),
         };
-        ai.orders
-            .retain(|o| !(matches!(o.order, 0x2c5 | 0x2c9 | 0x2db) && gone(o.target)));
+        ai.orders.retain(|o| {
+            !(matches!(
+                o.order,
+                OrderKind::Gather | OrderKind::Hunt | OrderKind::OnTarget
+            ) && gone(o.target))
+        });
         if ai.orders.is_empty() {
             return Ok(false);
         }

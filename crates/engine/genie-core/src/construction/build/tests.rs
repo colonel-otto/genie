@@ -1,5 +1,6 @@
 use super::*;
 use crate::movement::move_to::Walk;
+use crate::unit_ai::OrderKind;
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments), by
 /// the quarter its step points into: up-left, down-left, and the rest.
@@ -2352,7 +2353,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     let mut world = Spatial::default();
     world.insert(10028, house());
     let mut ai = UnitAi {
-        current_order: BUILD_ORDER,
+        current_order: Some(OrderKind::Build),
         current_action: 602,
         ..UnitAi::default()
     };
@@ -2399,7 +2400,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     assert_eq!(step.dropped, Some((0, 7.0)));
     assert!(step.done && step.released && step.stands);
     assert_eq!((b.state, b.target, b.added), (DONE, -1, false));
-    assert_eq!((ai.current_order, ai.current_action), (-1, -1));
+    assert_eq!((ai.current_order, ai.current_action), (None, -1));
     assert_eq!(construction.builders, 0);
 }
 
@@ -2968,8 +2969,8 @@ fn a_builder_without_a_foundation_after_its_drop_off() {
         ..crate::unit_ai::QueuedOrder::default()
     };
     let mut ai = UnitAi {
-        current_order: 0x2c9,
-        orders: vec![order(0x2c9, 77), order(0x2be, 78)],
+        current_order: Some(OrderKind::Hunt),
+        orders: vec![order(OrderKind::Hunt, 77), order(OrderKind::Build, 78)],
         ..UnitAi::default()
     };
     let mut b = lone();
@@ -2979,12 +2980,12 @@ fn a_builder_without_a_foundation_after_its_drop_off() {
         Some(&mut ai),
         &[77],
     );
-    assert_eq!(ai.orders, vec![order(0x2be, 78)]);
-    assert_eq!(ai.current_order, -1);
+    assert_eq!(ai.orders, vec![order(OrderKind::Build, 78)]);
+    assert_eq!(ai.current_order, None);
     assert!(step.done && step.stands);
     assert_eq!((b.state, step.dropped), (DONE, Some((1, 10.0))));
     let mut empty = UnitAi {
-        orders: vec![order(0x2db, 77)],
+        orders: vec![order(OrderKind::OnTarget, 77)],
         ..UnitAi::default()
     };
     let mut b = lone();

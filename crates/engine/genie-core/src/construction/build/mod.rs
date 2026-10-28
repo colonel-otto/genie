@@ -17,6 +17,7 @@ use crate::map::spatial::Obstruction;
 use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::Master;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 
 mod clearing;
@@ -642,7 +643,8 @@ const DROP_WAIT: f32 = -3.0;
 const DROP_REACH: f32 = crate::math::image::build::DROP_REACH;
 /// The orders whose targets gone the unit AI drops after a drop-off (`FUN_140c5de60`: the bits
 /// of `0x400011` over `order - 0x2c5`).
-pub(crate) const DROPPED_ORDERS: [i32; 3] = [0x2c5, 0x2c9, 0x2db];
+pub(crate) const DROPPED_ORDERS: [OrderKind; 3] =
+    [OrderKind::Gather, OrderKind::Hunt, OrderKind::OnTarget];
 /// The point a `MoveTo` without a target walks to (`FUN_140aa0df0` leaves its zeroed `+0x38`).
 const NO_TARGET_POINT: [f32; 3] = [0.0; 3];
 /// The buildings' master type (80).
@@ -657,9 +659,6 @@ pub(crate) const RICE_PASTURE: i16 = 0x765;
 const CLASS_39: i16 = 39;
 const FISH_TRAP: i16 = 199;
 const FARM: i16 = 49;
-/// The build order (`0x2be`), which the end of the work drops from the AI's queue once its
-/// foundation is gone or built (`FUN_140c5dcd0`).
-const BUILD_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_BUILD;
 
 #[cfg(test)]
 mod stack_tests {

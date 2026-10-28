@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ARTIFACT_AI, ATTACK_ACTION, CIVILIAN, Effect, Notify, PENDING_BEFORE_ATTACK, QueuedOrder,
     SIEGE_AI, SIEGE_TOWER_AI, Surroundings, UnitAi, UnitSide, civilian_may_attack, lion_may_attack,
@@ -30,11 +31,11 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         if let Some(unit) = keep_from
-            && self.current_order != -1
+            && let Some(current) = self.current_order
         {
             let kept = QueuedOrder {
                 issuer: unit,
-                order: self.current_order,
+                order: current,
                 priority: self.order_priority,
                 target: self.current_target,
                 target_owner: -1,
@@ -47,7 +48,7 @@ impl UnitAi {
             self.insert_order(kept, true);
         }
         self.insert_order(order, true);
-        if order.order != crate::unit_ai::ai_kinds::ORDER_ATTACK_ROUNDUP {
+        if order.order != OrderKind::AttackRoundup {
             self.remove_target();
             self.stop_with(true, place, fx)?;
         }

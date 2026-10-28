@@ -31,11 +31,16 @@ pub(super) fn unit(
     let saved = object
         .actions()
         .is_some_and(|a| a.entries().next().is_some());
+    // an order value no order holds: the object's first unmodelled part
+    let (ai, ai_read) = match unit_ai(object) {
+        Ok(ai) => (ai, Ok(())),
+        Err(e) => (None, Err(e)),
+    };
     let mut unit = Unit {
         id: s.id,
         position: [s.t_x, s.t_y, s.t_z],
         life: lifecycle(object, s, objects, civ, masters),
-        ai: unit_ai(object),
+        ai,
         construction: construction(object, s, objects),
         work_rate_powerup: object.combat().map_or(0.0, |c| c.work_rate_powerup),
         attackable: s.unit_attackable_flag != 0,
@@ -240,7 +245,7 @@ pub(super) fn unit(
     }
     let production = production(object).map(|p| unit.production = p);
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.body.put_mover(m));
-    unit.unmodelled_action = imported.and(production).and(moving).err();
+    unit.unmodelled_action = ai_read.and(imported).and(production).and(moving).err();
     unit
 }
 

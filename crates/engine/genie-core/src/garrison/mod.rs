@@ -80,8 +80,6 @@ const CLASS_FLAGS: [u32; 64] = crate::math::image::garrison::CLASS_FLAGS;
 /// The class flags a unit garrisons a transport with (`FUN_14120eb10`, `FUN_141621220`).
 const TRANSPORTED: u32 = 0x10002;
 
-/// The unit AI's order of entering (`0x2cd`), which the garrison work notifies.
-pub const ENTER_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_ENTER;
 /// The unit AI's action value of entering (`0x269`), which the garrison work notifies and the
 /// Enter's notifies carry.
 pub const ENTER_ACTION: i32 = 0x269;

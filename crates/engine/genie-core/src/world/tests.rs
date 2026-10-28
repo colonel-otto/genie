@@ -28,12 +28,13 @@ use crate::objects::unit::{Unit, loses_actions};
 use crate::ownership::artifact::Artifact;
 use crate::ownership::capture::LIVESTOCK;
 use crate::ownership::change::change_hands;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::{
     SideWorld, TaskWorld, task_search, task_target_with, wait_progress,
 };
 use crate::unit_ai::task_finder::{Actor, Diplomacy};
 use crate::unit_ai::world_view::{DropWorld, Foreign, Wait, patrol_information};
-use crate::unit_ai::{BUILD_ORDER, Notify, OWNER_CHANGED, UnitAi};
+use crate::unit_ai::{Notify, OWNER_CHANGED, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::checkpoint::TopAction;
 use crate::world::lets::Lets;
@@ -56,7 +57,7 @@ fn player(objects: Vec<Option<UnitAi>>) -> Player {
 fn building() -> UnitAi {
     UnitAi {
         ai_type: 17,
-        current_order: -1,
+        current_order: None,
         current_action: -1,
         current_target: -1,
         adjusted_idle_timeout: 3000,
@@ -451,8 +452,10 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
     let table = Masters::new([master(74, 6), master(4, 0)]);
     t.masters = vec![table.clone(), table.clone(), table];
     t.world_time = 4321;
-    t.remember_order(1, 0, (700, 600)).unwrap();
-    t.remember_order(1, 1, (700, 600)).unwrap();
+    t.remember_order(1, 0, (Some(OrderKind::Attack), 600))
+        .unwrap();
+    t.remember_order(1, 1, (Some(OrderKind::Attack), 600))
+        .unwrap();
     let history = |i: usize| {
         t.players[1].objects[i]
             .ai
@@ -464,7 +467,7 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
     assert_eq!(
         history(0),
         [crate::unit_ai::OrderRecord {
-            order: 700,
+            order: Some(OrderKind::Attack),
             action: 600,
             time: 4321,
             position: [10.0, 11.0, 0.0],
@@ -1302,7 +1305,7 @@ fn build_world() -> World {
         // a villager's unit AI (type 8) without an order or action
         ai: Some(UnitAi {
             ai_type: 8,
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             ..UnitAi::default()
@@ -1431,7 +1434,7 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
     let mut t = build_world();
     let queued_move = crate::unit_ai::QueuedOrder {
         issuer: 1,
-        order: crate::unit_ai::MOVE_ORDER,
+        order: OrderKind::Move,
         priority: 100,
         target: -1,
         target_owner: -1,
@@ -1484,7 +1487,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
         },
         ai: Some(UnitAi {
             ai_type: 8,
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             ..UnitAi::default()
@@ -1536,8 +1539,8 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
             .and_then(|ai| ai.orders.first().copied())
             .map(|o| (o.issuer, o.order, o.target, o.target_owner))
     };
-    assert_eq!(order(2), Some((2, BUILD_ORDER, 10028, 1)));
-    assert_eq!(order(1), Some((1, BUILD_ORDER, 10028, 1)));
+    assert_eq!(order(2), Some((2, OrderKind::Build, 10028, 1)));
+    assert_eq!(order(1), Some((1, OrderKind::Build, 10028, 1)));
 }
 
 /// A world of player 1's villager 9175 (master 83, which has no Build task) beside its
@@ -1556,7 +1559,7 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
         },
         ai: Some(UnitAi {
             ai_type: crate::unit_ai::CIVILIAN,
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             last_target: -1,
@@ -1884,7 +1887,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
         (
-            crate::unit_ai::ai_kinds::ORDER_REPAIR,
+            Some(OrderKind::Repair),
             crate::construction::repair::REPAIR_ACTION,
             10028
         )
@@ -1991,7 +1994,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (BUILD_ORDER, crate::unit_ai::BUILD_ACTION, 10028)
+        (Some(OrderKind::Build), crate::unit_ai::BUILD_ACTION, 10028)
     );
     assert_eq!(t.players[1].objects[1].workers, 1);
 }
@@ -2109,7 +2112,7 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
     use crate::unit_ai::QueuedOrder;
     let order = |target| QueuedOrder {
         issuer: 1,
-        order: 0x2db,
+        order: OrderKind::OnTarget,
         priority: 3,
         target,
         target_owner: 1,
@@ -2130,7 +2133,7 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.order_priority, ai.current_target),
-        (BUILD_ORDER, 3, 10028)
+        (Some(OrderKind::Build), 3, 10028)
     );
     let mut t = sent_off_world(vec![]);
     t.order_on_target(1, 0, order(9175)).unwrap();
@@ -2139,7 +2142,7 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
     assert_eq!(
         v.ai.as_ref()
             .map(|ai| (ai.current_order, ai.order_priority)),
-        Some((-1, 3))
+        Some((None, 3))
     );
     assert!(t.order_on_target(1, 0, order(4444)).is_err());
     t.players[1].objects[0].ai = None;
@@ -2297,11 +2300,7 @@ fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (
-            crate::unit_ai::ai_kinds::ORDER_GATHER,
-            crate::unit_ai::GATHER_ACTION,
-            600
-        )
+        (Some(OrderKind::Gather), crate::unit_ai::GATHER_ACTION, 600)
     );
     let workers = |t: &World| {
         (
@@ -2340,7 +2339,7 @@ fn the_unit_ai_s_gather_command_starts_a_gather_or_retargets_its_own() {
     assert_eq!(v.life.master_id, 120);
     let g = v.actions.gather().copied().unwrap();
     assert_eq!((g.target, g.state, g.task.id), (600, 4, 2));
-    assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(-1));
+    assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(None));
     t.gather_command(1, 0, 601).unwrap();
     assert_eq!(
         t.players[1].objects[0].actions.gather().map(|g| g.target),
@@ -2419,7 +2418,7 @@ fn a_work_command_without_a_task_moves_the_unit_there() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (crate::unit_ai::MOVE_ORDER, crate::unit_ai::MOVE_ACTION, 700)
+        (Some(OrderKind::Move), crate::unit_ai::MOVE_ACTION, 700)
     );
     let mut t = forage_world();
     t.order_work(1, 0, &work(-1)).unwrap();
@@ -2427,14 +2426,14 @@ fn a_work_command_without_a_task_moves_the_unit_there() {
     assert!(v.actions.move_to().is_some());
     assert_eq!(
         v.ai.as_ref().map(|ai| ai.current_order),
-        Some(crate::unit_ai::MOVE_ORDER)
+        Some(Some(OrderKind::Move))
     );
     let mut t = forage_world();
     t.players[1].objects[0].life.state = 1;
     t.order_work(1, 0, &work(700)).unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.actions.move_to().copied(), None);
-    assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(-1));
+    assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(None));
     let mut t = forage_world();
     t.masters[1].get_mut(120).unwrap().moving = None;
     let before = t.players[1].objects[0].clone();
@@ -2631,7 +2630,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
         .orders
         .push(crate::unit_ai::QueuedOrder {
             issuer: 1,
-            order: crate::unit_ai::MOVE_ORDER,
+            order: OrderKind::Move,
             priority: 100,
             target: -1,
             target_owner: -1,
@@ -2769,7 +2768,7 @@ fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
     let mut t = sent_off_world(vec![]);
     let order = QueuedOrder {
         issuer: 1,
-        order: 0x2db,
+        order: OrderKind::OnTarget,
         priority: 3,
         target: 10028,
         target_owner: 1,
@@ -2981,7 +2980,7 @@ fn cart_world() -> World {
         },
         body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         ai: Some(UnitAi {
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             ..UnitAi::default()
@@ -3385,7 +3384,7 @@ fn a_work_command_on_another_deer_moves_the_hunt_there() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (crate::unit_ai::HUNT_ORDER, crate::unit_ai::HUNT_ACTION, 501)
+        (Some(OrderKind::Hunt), crate::unit_ai::HUNT_ACTION, 501)
     );
     assert_eq!(
         (
@@ -4210,7 +4209,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     use crate::unit_ai::QueuedOrder;
     let order = QueuedOrder {
         issuer: 1,
-        order: crate::unit_ai::ai_kinds::ORDER_REPAIR,
+        order: OrderKind::Repair,
         priority: 100,
         target: 10028,
         target_owner: 1,
@@ -4552,7 +4551,7 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
     use crate::unit_ai::QueuedOrder;
     let order = QueuedOrder {
         issuer: 1,
-        order: crate::garrison::ENTER_ORDER,
+        order: OrderKind::Enter,
         priority: 100,
         target: 10028,
         target_owner: 1,
@@ -4595,10 +4594,10 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
 /// wait, the unit AI's action value staying 0x27a.
 #[test]
 fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
-    use crate::unit_ai::{FOUNDATION_ORDER, QueuedOrder, WAIT_SOLIDIFY_ACTION};
+    use crate::unit_ai::{QueuedOrder, WAIT_SOLIDIFY_ACTION};
     let order = QueuedOrder {
         issuer: 1,
-        order: FOUNDATION_ORDER,
+        order: OrderKind::Foundation,
         priority: 100,
         target: 10028,
         target_owner: 1,
@@ -4617,7 +4616,11 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_action, ai.last_action, ai.current_order),
-        (WAIT_SOLIDIFY_ACTION, WAIT_SOLIDIFY_ACTION, FOUNDATION_ORDER)
+        (
+            WAIT_SOLIDIFY_ACTION,
+            WAIT_SOLIDIFY_ACTION,
+            Some(OrderKind::Foundation)
+        )
     );
     assert_eq!(ai.orders, vec![]);
     // player 0's update, then player 1's: the wait reads 0 build points and stays
@@ -4645,10 +4648,10 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
 /// order: its secondary timer capped at 750 and an adjusted idle timeout of 750 redrawn.
 #[test]
 fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
-    use crate::unit_ai::{BUILD_ACTION, PATROL, QueuedOrder};
+    use crate::unit_ai::{BUILD_ACTION, QueuedOrder};
     let order = QueuedOrder {
         issuer: 1,
-        order: BUILD_ORDER,
+        order: OrderKind::Build,
         priority: 100,
         target: 10028,
         target_owner: 1,
@@ -4661,7 +4664,7 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
     let mut t = sent_off_world(vec![]);
     {
         let ai = t.players[1].objects[0].ai.as_mut().unwrap();
-        ai.current_order = PATROL;
+        ai.current_order = Some(OrderKind::Patrol);
         ai.secondary_timer = 900;
         ai.adjusted_idle_timeout = 750;
         ai.idle_timeout = 3000;
@@ -4687,7 +4690,7 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
             ai.current_action,
             ai.current_target
         ),
-        (BUILD_ORDER, 100, BUILD_ACTION, 10028)
+        (Some(OrderKind::Build), 100, BUILD_ACTION, 10028)
     );
     assert_eq!(ai.secondary_timer, 750);
     assert_ne!(ai.adjusted_idle_timeout, 750);
@@ -4797,7 +4800,7 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
         ai.orders,
         [crate::unit_ai::QueuedOrder {
             issuer: 1,
-            order: 0x325,
+            order: OrderKind::OnTarget2,
             priority: 100,
             target: 10028,
             target_owner: 1,
@@ -8245,7 +8248,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
     let torch = Unit {
         ai: Some(UnitAi {
             ai_type: crate::unit_ai::ARTIFACT_AI,
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             idle_timeout: 5000,
@@ -8384,7 +8387,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
     let torch = Unit {
         ai: Some(UnitAi {
             ai_type: crate::unit_ai::ARTIFACT_AI,
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             idle_timeout: 5000,
@@ -9238,7 +9241,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
     tc.life.master_id = 109;
     tc.ai = Some(UnitAi {
         ai_type: 17,
-        current_order: -1,
+        current_order: None,
         current_action: -1,
         current_target: -1,
         last_target: -1,
@@ -9277,7 +9280,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
         .iter()
         .map(|o| (o.order, o.target, o.point, o.priority, o.ready))
         .collect();
-    let at = |x, y| (crate::unit_ai::MOVE_ORDER, -1, [x, y, -1.0], -1, false);
+    let at = |x, y| (OrderKind::Move, -1, [x, y, -1.0], -1, false);
     assert_eq!(steps, vec![at(30.5, 40.5), at(50.0, 60.0), at(70.0, 80.0)]);
     t.tick_with(
         25,
@@ -10418,7 +10421,7 @@ fn scout_attack_on(
     };
     let ai = UnitAi {
         stance: 2,
-        current_order: -1,
+        current_order: None,
         ai_type: 13,
         ..UnitAi::default()
     };
@@ -10605,7 +10608,7 @@ fn attack_by(
     };
     let ai = UnitAi {
         stance: 2,
-        current_order: -1,
+        current_order: None,
         ai_type: 13,
         ..UnitAi::default()
     };
@@ -10912,7 +10915,7 @@ fn helper_free_of(owner: usize, helper: Unit, groups: &crate::groups::UnitGroups
 fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
     let idle = UnitAi {
         ai_type: 13,
-        current_order: -1,
+        current_order: None,
         current_action: -1,
         current_target: -1,
         stance: 0,
@@ -10925,7 +10928,7 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
             ..idle.clone()
         },
         UnitAi {
-            current_order: 700,
+            current_order: Some(OrderKind::Attack),
             ..idle.clone()
         },
         UnitAi {
@@ -10948,14 +10951,14 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
 fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
     let idle = UnitAi {
         ai_type: 13,
-        current_order: -1,
+        current_order: None,
         current_action: -1,
         current_target: -1,
         stance: 0,
         ..UnitAi::default()
     };
     let busy = UnitAi {
-        current_order: 700,
+        current_order: Some(OrderKind::Attack),
         current_action: 600,
         ..idle.clone()
     };
@@ -11095,7 +11098,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
                     },
                     ai: Some(UnitAi {
                         ai_type: 8,
-                        current_order: -1,
+                        current_order: None,
                         current_action: -1,
                         current_target: -1,
                         ..UnitAi::default()
@@ -11179,7 +11182,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
                         },
                         ai: Some(UnitAi {
                             ai_type: 8,
-                            current_order: -1,
+                            current_order: None,
                             current_action: -1,
                             current_target: -1,
                             ..UnitAi::default()
@@ -11316,7 +11319,7 @@ fn reseed_world() -> World {
         actions: ActionList::default().with_gather(Some(gather)),
         ai: Some(UnitAi {
             ai_type: 8,
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             ..UnitAi::default()
@@ -11526,7 +11529,7 @@ fn a_reseed_s_placement_passes_over_the_old_farm() {
 #[test]
 fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     let unready = crate::unit_ai::QueuedOrder {
-        order: crate::unit_ai::MOVE_ORDER,
+        order: OrderKind::Move,
         ready: false,
         ..crate::unit_ai::QueuedOrder::default()
     };
@@ -11550,7 +11553,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
                     },
                     ai: Some(UnitAi {
                         ai_type: 8,
-                        current_order: crate::unit_ai::MOVE_ORDER,
+                        current_order: Some(OrderKind::Move),
                         current_action: -1,
                         current_target: -1,
                         orders: vec![unready],
@@ -11583,11 +11586,8 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     assert_eq!(t.players[1].unsupported, None);
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();
     let queue: Vec<_> = ai.orders.iter().map(|o| (o.order, o.ready)).collect();
-    assert_eq!(
-        queue,
-        [(crate::unit_ai::MOVE_ORDER, true), (BUILD_ORDER, true)]
-    );
-    assert_eq!(ai.current_order, crate::unit_ai::MOVE_ORDER);
+    assert_eq!(queue, [(OrderKind::Move, true), (OrderKind::Build, true)]);
+    assert_eq!(ai.current_order, Some(OrderKind::Move));
     // BUILD_WALL's line of one tile the same (0x140e7be4b)
     wall.run(&Command::BuildWall(BuildWallCommand {
         player: 1,
@@ -11602,10 +11602,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     assert_eq!(wall.players[1].unsupported, None);
     let ai = wall.players[1].objects[0].ai.as_ref().unwrap();
     let queue: Vec<_> = ai.orders.iter().map(|o| (o.order, o.ready)).collect();
-    assert_eq!(
-        queue,
-        [(crate::unit_ai::MOVE_ORDER, true), (BUILD_ORDER, true)]
-    );
+    assert_eq!(queue, [(OrderKind::Move, true), (OrderKind::Build, true)]);
 }
 
 /// `ClosestResourceObject`'s point (`FUN_140c49760`): without a site the search starts from the
@@ -12521,7 +12518,7 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
     assert!(t.players[1].objects[0].actions.gather().is_none());
     let order = |target| crate::unit_ai::QueuedOrder {
         issuer: 1,
-        order: 0x2c5,
+        order: OrderKind::Gather,
         priority: 100,
         target,
         target_owner: 0,
@@ -12550,7 +12547,7 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
         ai.orders.iter().map(|o| o.target).collect::<Vec<_>>(),
         [601]
     );
-    assert_eq!((ai.current_order, ai.current_action), (-1, -1));
+    assert_eq!((ai.current_order, ai.current_action), (None, -1));
 }
 
 /// The forager's Gather update alone (`gather_update`, 50 ms).
@@ -13120,7 +13117,7 @@ fn a_hunter_without_its_deer_after_the_drop_takes_the_closest_one() {
 fn a_hunter_with_a_queued_order_after_the_drop_ends_its_hunt() {
     let order = |target: i32| crate::unit_ai::QueuedOrder {
         issuer: 1,
-        order: 0x2c9,
+        order: OrderKind::Hunt,
         priority: 100,
         target,
         target_owner: 0,
@@ -14285,7 +14282,7 @@ fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
     };
     let order = crate::unit_ai::QueuedOrder {
         issuer: 1,
-        order: crate::unit_ai::ORDER_ON_TARGET,
+        order: OrderKind::OnTarget,
         priority: 100,
         target: 600,
         target_owner: 0,
@@ -14430,7 +14427,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     let queued: Vec<_> = ai.orders.iter().map(|o| (o.order, o.target)).collect();
     assert_eq!(
         (ai.current_target, queued),
-        (700, vec![(crate::unit_ai::ORDER_ON_TARGET, 600)])
+        (700, vec![(OrderKind::OnTarget, 600)])
     );
 }
 
@@ -15249,7 +15246,7 @@ fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
     use crate::vision::registry::Record;
     let idle = UnitAi {
         ai_type: 13,
-        current_order: -1,
+        current_order: None,
         current_action: -1,
         current_target: -1,
         stance: 0,
@@ -15282,7 +15279,7 @@ fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
         crate::unit_ai::helper_answers()
     );
     let busy = UnitAi {
-        current_order: 700,
+        current_order: Some(OrderKind::Attack),
         ..idle.clone()
     };
     assert_eq!(call(helper_scout(busy, None), Some(lists())), Ok(()));

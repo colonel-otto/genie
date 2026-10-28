@@ -3,6 +3,7 @@
 
 use crate::{listed, path_level, top_action, vec3};
 use genie_core::objects::unit::Unit;
+use genie_core::unit_ai::OrderKind;
 use genie_core::world::World;
 use genie_save::generated::world::Path;
 
@@ -85,7 +86,8 @@ impl AiRow {
         let f = |v: &dyn std::fmt::Debug| format!("{v:?}");
         Self {
             fields: vec![
-                ("current_order", f(&ai.current_order)),
+                // the orders as the save holds them, none as −1
+                ("current_order", f(&OrderKind::field(ai.current_order))),
                 ("current_order_priority", f(&ai.order_priority)),
                 ("current_action", f(&ai.current_action)),
                 ("current_target", f(&ai.current_target)),
@@ -93,7 +95,7 @@ impl AiRow {
                 ("current_target_point", f(&ai.target_point)),
                 ("desired_target_distance", f(&ai.desired_distance)),
                 ("defend_target", f(&ai.defend_target)),
-                ("last_order", f(&ai.last_order)),
+                ("last_order", f(&OrderKind::field(ai.last_order))),
                 ("last_action", f(&ai.last_action)),
                 ("last_target", f(&ai.last_target)),
                 ("last_target_type", f(&ai.last_target_type)),
@@ -168,11 +170,11 @@ impl AiRow {
                 ),
                 (
                     "orders",
-                    f(&ai
-                        .temp_order
+                    ai.temp_order
                         .iter()
                         .map(genie_core::unit_ai::QueuedOrder::from_bytes)
-                        .collect::<Vec<_>>()),
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_or_else(|e| e.to_string(), |o| f(&o)),
                 ),
                 (
                     "notifies",

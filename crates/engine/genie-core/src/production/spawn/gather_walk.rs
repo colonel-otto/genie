@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
 use crate::production::spawn::{BUILDING, VILLAGER};
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
@@ -57,7 +58,7 @@ impl World {
                 ai.orders.clear();
             }
             ai.notify_work(
-                crate::unit_ai::MOVE_ORDER,
+                Some(OrderKind::Move),
                 crate::unit_ai::MOVE_ACTION,
                 None,
                 point,

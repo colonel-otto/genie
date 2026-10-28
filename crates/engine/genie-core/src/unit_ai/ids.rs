@@ -70,13 +70,6 @@ pub(super) const BOAR_WANDER: u32 = 7;
 pub(super) const BOAR_STEP: u32 = 6;
 pub(super) const BOAR_OFFSET: i32 = 3;
 pub(super) const AI_MOVE_RANGE: f32 = 0.5;
-/// The move order and action values (`0x2c6`, `0x262`), which moves set.
-pub const MOVE_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_MOVEMENT;
-/// `0x321`: `AUTO_SCOUT`'s order.
-pub const AUTO_SCOUT_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_AUTO_SCOUT;
-/// `0x2c2`: the stop order ("I have a stop order.", after "SO Call 6"), which `AUTO_SCOUT` gives a
-/// unit already scouting.
-pub const STOP_ORDER: i32 = 0x2c2;
 /// `0x2bd`: the auto scout's action value, which the order's case sets after the explore's.
 pub const AUTO_SCOUT_ACTION: i32 = 0x2bd;
 /// `0x25d`: the explore's action value (slot 0x100).
@@ -100,13 +93,8 @@ pub(super) const SHEPHERD_ACTION: i32 = 0x278;
 /// not know it ([`Surroundings::anim_speed`]).
 pub(super) const NO_ANIM_SPEED: GenieError =
     GenieError::unsupported("a moving villager's damage notify without its animation speed");
-/// The follow order (`0x2c8`, "I have a follow order for Unit #%d" in slot 73) and its action
-/// value (`0x264`), which FOLLOW gives.
-pub const FOLLOW_ORDER: i32 = 0x2c8;
 /// The follow action value (`0x264`).
 pub const FOLLOW_ACTION: i32 = 0x264;
-/// The defend order (`0x2bd`, "I have a defend order for Unit #%d" in slot 73).
-pub const DEFEND_ORDER: i32 = 0x2bd;
 /// The defend's action value (`0x259`, slots 0x170 and 0x178).
 pub(super) const DEFEND_ACTION: i32 = 0x259;
 /// The target point's x that marks it unset (`DAT_14330ec20`, −1), which the defend order fills.
@@ -135,13 +123,6 @@ pub(super) const fn order_move(o: &QueuedOrder) -> AiMove {
         walk: true,
     }
 }
-/// The run away order (`0x2c3`, "I have a runAway order").
-pub(super) const RUN_AWAY_ORDER: i32 = 0x2c3;
-/// The repair order (`0x2ce`).
-pub(super) const REPAIR_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_REPAIR;
-/// The second value of the order on a target (`0x325`), which shares `0x2db`'s case: the way
-/// back to work after a drop-off (`FUN_140c41ab0`).
-pub(crate) const ORDER_ON_TARGET_2: i32 = 0x325;
 /// The heal's action value (`0x25b`, slot 0xe0).
 pub(super) const HEAL_ACTION: i32 = 0x25b;
 /// The conversion's action value (`0x25c`, slot 0xd8).
@@ -214,8 +195,6 @@ pub(super) const ENDED_ACTIONS: [i32; 9] =
     [600, 0x261, 0x262, 0x265, 0x269, 0x26b, 0x26c, 0x2be, 0x2bf];
 /// The attack action value.
 pub(super) const ATTACK_ACTION: i32 = 600;
-/// The attack order (`0x2bc`), which a work command's attack notifies (kind 9).
-pub(super) const ATTACK_ORDER: i32 = 700;
 /// A human player's unit on the attack order with a range above this does not retarget
 /// (processMisc).
 pub(super) const RETARGET_RANGE: f32 = crate::math::image::unit_ai::RETARGET_RANGE;

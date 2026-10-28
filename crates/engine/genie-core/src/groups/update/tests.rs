@@ -2,6 +2,7 @@ use crate::groups::{Member, UnitGroup, UnitGroups};
 use crate::movement::GroupSpeed;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::world::{Player, World};
 
@@ -11,7 +12,7 @@ fn soldier(id: i32, x: f32, y: f32) -> Unit {
         id,
         position: [x, y, 0.0],
         ai: Some(UnitAi {
-            current_order: -1,
+            current_order: None,
             current_action: -1,
             current_target: -1,
             ..UnitAi::default()
@@ -292,7 +293,7 @@ fn relic_carriers_keep_their_command_pending() {
     let mut m = soldier(41, 7.0, 7.0);
     m.life.master_id = 104;
     t.players[0].objects.extend([r, m]);
-    let ai = |t: &mut World, order: i32, action: i32, target: i32| {
+    let ai = |t: &mut World, order: Option<OrderKind>, action: i32, target: i32| {
         let a = t.players[1].objects[0].ai.as_mut().unwrap();
         a.current_order = order;
         a.current_action = action;
@@ -300,17 +301,17 @@ fn relic_carriers_keep_their_command_pending() {
     };
     t.groups.get_mut(1).unwrap().current_command = 0x84;
     set_masters(&mut t, vec![task(0x84)]);
-    ai(&mut t, 0x2db, -1, 40);
+    ai(&mut t, Some(OrderKind::OnTarget), -1, 40);
     assert!(t.target_pending(1).unwrap());
-    ai(&mut t, -1, 0x277, 40);
+    ai(&mut t, None, 0x277, 40);
     assert!(t.target_pending(1).unwrap());
-    ai(&mut t, -1, -1, 40);
+    ai(&mut t, None, -1, 40);
     assert!(!t.target_pending(1).unwrap());
-    ai(&mut t, 0x2db, -1, -1);
+    ai(&mut t, Some(OrderKind::OnTarget), -1, -1);
     assert!(!t.target_pending(1).unwrap());
     set_masters(&mut t, vec![task(0x88)]);
     assert!(t.target_pending(1).unwrap());
-    ai(&mut t, 0x2db, -1, 41);
+    ai(&mut t, Some(OrderKind::OnTarget), -1, 41);
     assert!(!t.target_pending(1).unwrap());
     // the delivery: on the monastery, with either task
     t.groups.get_mut(1).unwrap().current_command = 0x88;
@@ -320,7 +321,7 @@ fn relic_carriers_keep_their_command_pending() {
     set_masters(&mut t, vec![task(5)]);
     assert!(!t.target_pending(1).unwrap());
     set_masters(&mut t, vec![task(0x88)]);
-    ai(&mut t, 0x2db, -1, 40);
+    ai(&mut t, Some(OrderKind::OnTarget), -1, 40);
     assert!(!t.target_pending(1).unwrap());
 }
 
@@ -331,20 +332,20 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     let mut t = world();
     assert!(t.member_idle(10).unwrap());
     assert!(!t.member_idle(99).unwrap());
-    let ai = |t: &mut World, order: i32, action: i32| {
+    let ai = |t: &mut World, order: Option<OrderKind>, action: i32| {
         let a = t.players[1].objects[0].ai.as_mut().unwrap();
         a.current_order = order;
         a.current_action = action;
     };
-    ai(&mut t, -1, 0x2c6);
+    ai(&mut t, None, 0x2c6);
     assert!(!t.member_idle(10).unwrap());
-    ai(&mut t, 7, 0x2c0);
+    ai(&mut t, Some(OrderKind::Wait), 0x2c0);
     assert!(t.member_idle(10).unwrap());
-    ai(&mut t, -1, 0x25b);
+    ai(&mut t, None, 0x25b);
     assert!(t.member_idle(10).unwrap());
-    ai(&mut t, 0x2c6, 0x25b);
+    ai(&mut t, Some(OrderKind::Move), 0x25b);
     assert!(!t.member_idle(10).unwrap());
-    ai(&mut t, -1, -1);
+    ai(&mut t, None, -1);
     t.players[1].objects[0].ai = None;
     assert!(t.member_idle(10).unwrap());
     // an Attack in state 2 is not free, in states 3 and 13 it is; a state 4 is not

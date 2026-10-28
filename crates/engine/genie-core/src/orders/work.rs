@@ -8,9 +8,10 @@ use crate::objects::masters::Master;
 use crate::orders::{
     ATTACK_TASK, BUILDING, GARRISON, MASTER_84, MASTER_1808, VILLAGER, Work, own_order_target,
 };
+use crate::unit_ai::HUNT_ACTION;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, enabled};
-use crate::unit_ai::{HUNT_ACTION, HUNT_ORDER, MOVE_ORDER};
 use crate::world::World;
 
 impl World {
@@ -150,14 +151,14 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             ai.last_retarget_time = world_time;
             ai.notify_work(
-                700,
+                Some(OrderKind::Attack),
                 600,
                 Some((target, class)),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (700, 600))?;
+            self.remember_order(player, idx, (Some(OrderKind::Attack), 600))?;
         }
         Ok(true)
     }
@@ -450,14 +451,14 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                HUNT_ORDER,
+                Some(OrderKind::Hunt),
                 HUNT_ACTION,
                 Some((target, class)),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (HUNT_ORDER, HUNT_ACTION))?;
+            self.remember_order(player, idx, (Some(OrderKind::Hunt), HUNT_ACTION))?;
         }
         Ok(())
     }
@@ -483,7 +484,7 @@ impl World {
             let unit = &mut self.players[player].objects[idx];
             if let Some(ai) = unit.ai.as_mut() {
                 ai.notify_work(
-                    crate::unit_ai::ai_kinds::ORDER_GATHER,
+                    Some(OrderKind::Gather),
                     crate::unit_ai::GATHER_ACTION,
                     Some((target, class)),
                     point,
@@ -493,10 +494,7 @@ impl World {
                 self.remember_order(
                     player,
                     idx,
-                    (
-                        crate::unit_ai::ai_kinds::ORDER_GATHER,
-                        crate::unit_ai::GATHER_ACTION,
-                    ),
+                    (Some(OrderKind::Gather), crate::unit_ai::GATHER_ACTION),
                 )?;
             }
         }
@@ -588,9 +586,9 @@ impl World {
             ))
         };
         let (order, action) = if alive {
-            (MOVE_ORDER, crate::unit_ai::MOVE_ACTION)
+            (Some(OrderKind::Move), crate::unit_ai::MOVE_ACTION)
         } else {
-            (-1, -1)
+            (None, -1)
         };
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {

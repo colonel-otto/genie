@@ -29,9 +29,6 @@ const RELIC_DELIVERY_ACTION: i16 = 0x88;
 const RELIC_CLASS: i16 = 0x2a;
 /// The monastery's master id (`FUN_141017850`'s test of the target's master).
 const MONASTERY: i16 = 104;
-/// The unit AI's order on a target (`+0x3c`) and its action on a relic (`+0x44`) that
-/// `FUN_141017c70` and `FUN_141017850` read.
-const TARGET_ORDER: i32 = crate::unit_ai::ORDER_ON_TARGET;
 const RELIC_ACTION: i32 = 0x277;
 /// The unit AI's action that defers to its order (`FUN_141017f00`).
 const CHOSEN_ACTION: i32 = 0x25b;

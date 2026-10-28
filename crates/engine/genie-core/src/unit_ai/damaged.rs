@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ACTION_COMPLETED, BREAK, BUILD_ACTION, CLASS_10, DEAD, EXPLORE_ACTION, Effect,
     FISHING_BUILD_FAR, FISHING_BUILDS, FISHING_CARED, FOUNDATION_REACH, GO_ON, HUNT_ACTION,
@@ -84,9 +85,9 @@ impl UnitAi {
         // "I have a GAIA attacker" (or a harmless one): with an order not on the attacker, the current order goes back
         // into the queue at once (slot 0x30) and the order becomes the attack (700,
         // `FUN_140c64b60` with 0: the last order kept) at priority 100
-        if self.current_order != -1 && n.caller != self.current_target {
+        if self.current_order.is_some() && n.caller != self.current_target {
             self.requeue_current(at, side, computer, ai_rng, fx)?;
-            self.set_order_with(crate::unit_ai::ai_kinds::ORDER_ATTACK, false, ai_rng);
+            self.set_order_with(Some(OrderKind::Attack), false, ai_rng);
             self.order_priority = 100;
         }
         // slot 0xb8 forced, the civilian's
@@ -115,21 +116,17 @@ impl UnitAi {
         let state = held_action_state(at.action_state)?;
         let gathers = matches!(
             order,
-            crate::unit_ai::ai_kinds::ORDER_HUNT
-                | crate::unit_ai::ai_kinds::ORDER_GATHER
-                | crate::unit_ai::ai_kinds::ORDER_AUTO_BOAR_LURING
+            Some(OrderKind::Hunt | OrderKind::Gather | OrderKind::AutoBoarLuring)
         );
-        let moves = matches!(
-            order,
-            crate::unit_ai::ai_kinds::ORDER_MOVEMENT | crate::unit_ai::ai_kinds::ORDER_ENTER
-        ) && 0.0 < at.anim_speed.ok_or(NO_ANIM_SPEED)?;
+        let moves = matches!(order, Some(OrderKind::Move | OrderKind::Enter))
+            && 0.0 < at.anim_speed.ok_or(NO_ANIM_SPEED)?;
         Ok(moves
-            || order == crate::unit_ai::ai_kinds::ORDER_ATTACK
+            || order == Some(OrderKind::Attack)
             || (gathers
                 && state == 12
                 && at.target.is_some_and(|t| t.class == CLASS_10)
                 && attacker.owner == 0)
-            || order == crate::unit_ai::ai_kinds::ORDER_REPAIR
+            || order == Some(OrderKind::Repair)
             || (fierce && gathers && state < 16 && (0x9110u32 >> state) & 1 != 0))
     }
 
@@ -168,7 +165,7 @@ impl UnitAi {
         }
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
-        if self.current_order != -1 {
+        if self.current_order.is_some() {
             return Ok(GO_ON);
         }
         let held_by_group = at.group.is_some_and(|g| !g.idle) && !computer;
@@ -256,7 +253,7 @@ impl UnitAi {
         }
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
-        if self.current_order != -1 {
+        if self.current_order.is_some() {
             return Ok(GO_ON);
         }
         if self.current_action != MOVE_ACTION {
@@ -295,7 +292,7 @@ impl UnitAi {
         }
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
-        if self.current_order != -1 {
+        if self.current_order.is_some() {
             return Ok(GO_ON);
         }
         if self.current_action != MOVE_ACTION {
@@ -363,9 +360,13 @@ impl UnitAi {
     /// ready): a unit above state 2 or without an order takes none; else the order goes to the
     /// queue's end ([`UnitAi::queue_order`]).
     pub(super) fn queue_current(&mut self, at: &Surroundings) -> Result<(), GenieError> {
+        // without an order the queue takes none, whatever the state
+        let Some(order) = self.current_order else {
+            return Ok(());
+        };
         let record = QueuedOrder {
             issuer: at.id,
-            order: self.current_order,
+            order,
             priority: self.order_priority,
             target: self.current_target,
             target_owner: -1,
@@ -478,12 +479,12 @@ impl UnitAi {
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
-        if 2 < at.state || self.current_order == -1 {
+        let Some(order) = self.current_order.filter(|_| at.state <= 2) else {
             return Ok(());
-        }
+        };
         let record = QueuedOrder {
             issuer: at.id,
-            order: self.current_order,
+            order,
             priority: self.order_priority,
             target: self.current_target,
             target_owner: -1,

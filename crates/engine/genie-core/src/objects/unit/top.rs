@@ -77,7 +77,9 @@ impl Unit {
                 "unit AI",
                 format_args!(
                     "order {} action {} target {}",
-                    ai.current_order, ai.current_action, ai.current_target
+                    crate::unit_ai::OrderKind::field(ai.current_order),
+                    ai.current_action,
+                    ai.current_target
                 ),
             );
         }

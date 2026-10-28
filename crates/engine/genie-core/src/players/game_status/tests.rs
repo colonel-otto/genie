@@ -3,6 +3,7 @@ use crate::objects::actions::ActionList;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::world::Player;
 
@@ -40,7 +41,7 @@ fn game() -> World {
     let tc = Unit {
         id: 9,
         ai: Some(UnitAi {
-            current_order: -1,
+            current_order: None,
             current_action: 0x26b,
             current_target: -1,
             ..UnitAi::default()
@@ -268,7 +269,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     let hunter = Unit {
         id: 20,
         ai: Some(UnitAi {
-            current_order: 0x2c9,
+            current_order: Some(OrderKind::Hunt),
             current_action: 0x265,
             current_target: -1,
             ..UnitAi::default()

@@ -3,11 +3,12 @@
 
 use crate::GenieError;
 use crate::garrison::{
-    ENTER, ENTER_ACTION, ENTER_ORDER, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, NO_MASTERS,
-    UNPLACED, UNREACHED, Walking, enter_view, ship_reaches,
+    ENTER, ENTER_ACTION, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, NO_MASTERS, UNPLACED,
+    UNREACHED, Walking, enter_view, ship_reaches,
 };
 use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
@@ -26,14 +27,14 @@ impl World {
         let (action, target, class) = self.new_enter(player, idx, target, task)?;
         if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
             ai.notify_work(
-                ENTER_ORDER,
+                Some(OrderKind::Enter),
                 ENTER_ACTION,
                 Some((target, class)),
                 point,
                 clears,
                 self.streams.get(crate::math::rng::Stream::Ai),
             )?;
-            self.remember_order(player, idx, (ENTER_ORDER, ENTER_ACTION))?;
+            self.remember_order(player, idx, (Some(OrderKind::Enter), ENTER_ACTION))?;
         }
         self.install_enter(player, idx, target, action, task)
     }

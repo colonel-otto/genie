@@ -3,8 +3,9 @@
 
 use crate::GenieError;
 use crate::math::fmath::Vec3;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    Attacker, BUILDING_AI, CIVILIAN, DEFEND_GROWTH, DEFEND_ORDER, LION_AI, PREDATOR_AI, PRIEST_AI,
+    Attacker, BUILDING_AI, CIVILIAN, DEFEND_GROWTH, LION_AI, PREDATOR_AI, PRIEST_AI,
     PRIORITY_3_CLASSES, SIEGE_AI, SOLDIER_AI, Seeker, TOWER_AI, Target,
 };
 
@@ -352,11 +353,13 @@ pub(super) fn siege_in_reach(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
         range += GAIA_TARGET_REACH;
     }
     match s.stance {
-        2 if s.order != DEFEND_ORDER && !crate::math::fmath::at_most_or_unordered(gap, range) => {
+        2 if s.order != Some(OrderKind::Defend)
+            && !crate::math::fmath::at_most_or_unordered(gap, range) =>
+        {
             Ok(false)
         }
         1 => {
-            if matches!(s.order, 0x2c7 | 0x2dd) || s.patrol_path {
+            if matches!(s.order, Some(OrderKind::Patrol | OrderKind::AttackMove)) || s.patrol_path {
                 defend_patrol_range()?;
             }
             // `JA` rejects: an unordered gap passes

@@ -2,9 +2,10 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_MOVE, AiMove, CLASS_18, ENDED_ACTIONS, Effect, GO_ON, MOVE_ACTION, Notify, PATROL,
-    PRODUCED, QueuedOrder, Surroundings, UnitAi, UnitSide, WALK_BACK, point_gap_squared,
+    AiMove, CLASS_18, ENDED_ACTIONS, Effect, GO_ON, MOVE_ACTION, Notify, PRODUCED, QueuedOrder,
+    Surroundings, UnitAi, UnitSide, WALK_BACK, point_gap_squared,
 };
 
 impl UnitAi {
@@ -30,15 +31,15 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
-        if order != -1 {
+        if order.is_some() {
             self.state_position = [at.position[0], at.position[1]];
-            if order == crate::unit_ai::ai_kinds::ORDER_SCOUT {
+            if order == Some(OrderKind::Scout) {
                 return Err(GenieError::unsupported(
                     "a failed action on the scout order (the player's slot 0x2e8 with 0x211)",
                 ));
             }
         }
-        if p0 == 600 && (order == 700 || action == 600) {
+        if p0 == 600 && (order == Some(OrderKind::Attack) || action == 600) {
             let produced = self.process_idle(at, computer, ai, side, fx)?;
             if produced {
                 return Ok(PRODUCED);
@@ -52,23 +53,19 @@ impl UnitAi {
             self.stop_current(true, at, fx)?;
             return Ok(GO_ON);
         }
-        let own = if order == -1 {
-            action == p0
-        } else {
-            action + 100 == order
-        };
+        let own = order.map_or(action == p0, |o| o.owns(action));
         if own {
             self.remove_target();
             self.stop_current(true, at, fx)?;
             return Ok(GO_ON);
         }
         match (order, p0) {
-            (0x2d4, 0x262) => {
+            (Some(OrderKind::GroupGather), 0x262) => {
                 self.remove_target();
                 self.stop_current(false, at, fx)?;
                 return Ok(GO_ON);
             }
-            (0x2bd, 0x262) => {
+            (Some(OrderKind::Defend), 0x262) => {
                 self.set_action(-1);
                 return Ok(GO_ON);
             }
@@ -103,7 +100,7 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
-        if (order == 700 || n.p[2] == 0x202) && p0 == 600 {
+        if (order == Some(OrderKind::Attack) || n.p[2] == 0x202) && p0 == 600 {
             if self.retarget_disabled != 0 {
                 return Err(GenieError::unsupported(
                     "an invalidated attack with retargeting off (+0x1d6)",
@@ -122,15 +119,15 @@ impl UnitAi {
             self.stop_current(true, at, fx)?;
             return Ok(GO_ON);
         }
-        let own = if order == -1 {
+        let own = if order.is_none() {
             action == p0
         } else {
-            if matches!(order, 0x2d4 | 0x2bd) && p0 == 0x262 {
+            if matches!(order, Some(OrderKind::GroupGather | OrderKind::Defend)) && p0 == 0x262 {
                 return Err(GenieError::unsupported(
                     "an invalidated action 0x262 on order 0x2d4 or 0x2bd",
                 ));
             }
-            action + 100 == order
+            order.is_some_and(|o| o.owns(action))
         };
         if own || p0 == 600 {
             self.remove_target();
@@ -160,17 +157,17 @@ impl UnitAi {
         let p1 = n.p[0];
         let order = self.current_order;
         let action = self.current_action;
-        if order != -1 || at.group.is_some_and(|g| g.commanded) {
+        if order.is_some() || at.group.is_some_and(|g| g.commanded) {
             self.state_position = [at.position[0], at.position[1]];
         }
-        if order == -1 {
+        if order.is_none() {
             if action == p1 || p1 == 600 {
                 self.remove_target();
                 self.stop_current(true, at, fx)?;
             }
             return Ok(GO_ON);
         }
-        if order == 700 && p1 == 600 {
+        if order == Some(OrderKind::Attack) && p1 == 600 {
             if self.process_idle(at, computer, ai_rng, side, fx)? {
                 return Ok(PRODUCED);
             }
@@ -178,22 +175,22 @@ impl UnitAi {
             self.stop_current(false, at, fx)?;
             return Ok(GO_ON);
         }
-        if action == p1 && action + 100 == order {
+        if action == p1 && order.is_some_and(|o| o.owns(action)) {
             self.remove_target();
             self.stop_current(true, at, fx)?;
             return Ok(GO_ON);
         }
         match (order, p1) {
-            (0x2d4, MOVE_ACTION) => {
+            (Some(OrderKind::GroupGather), MOVE_ACTION) => {
                 self.remove_target();
                 self.stop_current(false, at, fx)?;
                 return Ok(GO_ON);
             }
-            (0x2bd, MOVE_ACTION) => {
+            (Some(OrderKind::Defend), MOVE_ACTION) => {
                 self.set_action(-1);
                 return Ok(GO_ON);
             }
-            (0x2c8, MOVE_ACTION) if action == 0x2bf => {
+            (Some(OrderKind::Follow), MOVE_ACTION) if action == 0x2bf => {
                 self.set_action(-1);
                 return Ok(GO_ON);
             }
@@ -263,10 +260,13 @@ impl UnitAi {
             return Err(GenieError::unsupported("a stop on a patrol order"));
         }
         self.last_action = action;
-        if !keep_order || action + 100 == order || matches!(order, PATROL | ATTACK_MOVE) {
+        if !keep_order
+            || order.is_some_and(|o| o.owns(action))
+            || matches!(order, Some(OrderKind::Patrol | OrderKind::AttackMove))
+        {
             self.cap_patrol_secondary();
             self.last_order = order;
-            self.current_order = -1;
+            self.current_order = None;
             self.order_priority = -1;
             let (position, class) = place.ok_or(GenieError::unsupported(
                 "a stop ending an order without the unit's place",
@@ -332,29 +332,44 @@ impl UnitAi {
     /// The order check of a unit that is not busy: an order of these values the unit can give up
     /// (`FUN_140c4eea0` with 0) ends, its target removed (`FUN_140c5e1e0`), the patrol order 733
     /// resetting its timers ([`UnitAi::leave_patrol_timers`]); its priority and the last order
-    /// stay. The patrol order 711 is not among them.
+    /// stay. The patrol order 711 is not among them. The game's switch also lists `0x269`,
+    /// `0x2cf` and `0x2d0`, which no order holds ([`OrderKind`]).
     pub(super) fn check_order(&mut self, at: &Surroundings, ai: &mut Well512) {
         let ends = matches!(
             self.current_order,
-            0x269 | 700 | 0x2c5 | 0x2c6 | 0x2c9 | 0x2cf | 0x2d0 | 0x2dd | 0x322
+            Some(
+                OrderKind::Attack
+                    | OrderKind::Gather
+                    | OrderKind::Move
+                    | OrderKind::Hunt
+                    | OrderKind::AttackMove
+                    | OrderKind::AutoBoarLuring
+            )
         );
         if ends && self.can_order(at, false) {
             self.remove_target();
             self.leave_patrol_timers(ai);
-            self.current_order = -1;
+            self.current_order = None;
         }
     }
 
     /// On a patrol order (711, 733) with an adjusted idle timeout of exactly 750: leaving the
     /// order redraws it (slot 0x1a8), which draws from the AI stream.
     pub(super) const fn patrol_redraws(&self) -> bool {
-        matches!(self.current_order, PATROL | ATTACK_MOVE) && self.adjusted_idle_timeout == 750
+        matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) && self.adjusted_idle_timeout == 750
     }
 
     /// The rest of leaving a patrol order (711, 733) once the redraw is not due
     /// ([`UnitAi::patrol_redraws`]): the secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
     pub(super) const fn cap_patrol_secondary(&mut self) {
-        if matches!(self.current_order, PATROL | ATTACK_MOVE) && 750 < self.secondary_timer as i32 {
+        if matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) && 750 < self.secondary_timer as i32
+        {
             self.secondary_timer = 750;
         }
     }
@@ -363,7 +378,10 @@ impl UnitAi {
     /// order by hand: an adjusted idle timeout of exactly 750 is redrawn (slot 0x1a8) and the
     /// secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
     pub(super) fn leave_patrol_timers(&mut self, ai: &mut Well512) {
-        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+        if matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) {
             if self.adjusted_idle_timeout == 750 {
                 self.update_adjusted_idle_timeout(ai);
             }
@@ -417,7 +435,9 @@ impl UnitAi {
     /// Slot 0x28 (`FUN_140c55c90`, every type's; slot 0x30, `FUN_140c563d0`, takes 14 arguments
     /// and passes it the order's x and y as the shown point and its last argument's low byte as
     /// the ready flag), an order for the
-    /// queue: a unit in a state above 2 takes none (false), an order of kind −1 neither (true);
+    /// queue: a unit in a state above 2 takes none (false); an order of kind −1 neither (true),
+    /// which no [`QueuedOrder`] holds: its callers without an order ([`UnitAi::queue_current`])
+    /// stop first;
     /// an order that is not immediate goes into the queue (`FUN_140c42640`: before the first
     /// queued order when `in_front`, else after the last). An immediate one, which keeps or drops
     /// the current order and runs the queue at once, is not modelled.
@@ -431,9 +451,7 @@ impl UnitAi {
         if 2 < unit_state {
             return Ok(false);
         }
-        if order.order == -1 {
-            return Ok(true);
-        }
+
         if immediate {
             // the immediate branch is [`UnitAi::order_now`], which reads the unit's id and place
             // and gives effects; [`UnitAi::take_order_now`] is its entry

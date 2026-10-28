@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
@@ -255,7 +256,7 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             let order = crate::unit_ai::QueuedOrder {
                 issuer: id,
-                order: crate::unit_ai::ORDER_ON_TARGET,
+                order: OrderKind::OnTarget,
                 priority: 100,
                 target,
                 target_owner: owner as i32,
@@ -316,7 +317,7 @@ impl World {
         ai.insert_order(
             crate::unit_ai::QueuedOrder {
                 issuer: p as i32,
-                order: crate::unit_ai::ORDER_ON_TARGET_2,
+                order: OrderKind::OnTarget2,
                 priority: 100,
                 target: id,
                 target_owner: owner,

@@ -2,13 +2,14 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, ATTACK_MOVE, ATTACK_ORDER, AiMove, AttackAsk, BUILDING_KIND, CLASS_3, CLASS_20,
-    CLASS_52, DEFEND_LEASH, DEFEND_ORDER, DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_ORDER,
-    FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW, GROUP_ASIDE_ACTION, GroupState, INVALID_POINT,
-    MOVE_ACTION, MOVE_ASIDE_ACTION, PATROL, Pick, RETARGET_RANGE, RETARGET_REACH, RetargetSearch,
-    SINGLE_VOLLEY, STAND_GROUND_PATROL_LEASH, STAND_GROUND_SLACK, Search, Surroundings, UnitAi,
-    UnitSide, group_lets_idle, held_action_state, patrol_distance, point_gap_squared,
+    ATTACK_ACTION, AiMove, AttackAsk, BUILDING_KIND, CLASS_3, CLASS_20, CLASS_52, DEFEND_LEASH,
+    DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW,
+    GROUP_ASIDE_ACTION, GroupState, INVALID_POINT, MOVE_ACTION, MOVE_ASIDE_ACTION, Pick,
+    RETARGET_RANGE, RETARGET_REACH, RetargetSearch, SINGLE_VOLLEY, STAND_GROUND_PATROL_LEASH,
+    STAND_GROUND_SLACK, Search, Surroundings, UnitAi, UnitSide, group_lets_idle, held_action_state,
+    patrol_distance, point_gap_squared,
 };
 
 impl UnitAi {
@@ -82,10 +83,13 @@ impl UnitAi {
     }
 
     /// The idle part's patrol branch (`0x140c67f0b`): a patrol order (`0x2c7`, `0x2dd`), or a
-    /// group that patrols ([`GroupState::patrol`]) off order `0x326`.
+    /// group that patrols ([`GroupState::patrol`]) off order `0x326`, which no order holds
+    /// ([`OrderKind`]).
     pub(super) fn patrols(&self, group: Option<GroupState>) -> bool {
-        matches!(self.current_order, PATROL | ATTACK_MOVE)
-            || group.is_some_and(|g| g.patrol && self.current_order != 0x326)
+        matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) || group.is_some_and(|g| g.patrol)
     }
 
     /// The idle part past slot 72's test of a unit of class 3 or 52 on the make action (`0x26b`,
@@ -177,15 +181,14 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        let order = match (self.current_order, self.current_action) {
-            (-1, -1) => -1,
-            (-1, action) => action + 100,
-            (order, _) => order,
-        };
-        if order == DEFEND_ORDER && self.defend_misc(at, computer, ai, side, fx)? {
+        // without an order, the order whose own action the current one is (`action + 100`)
+        let order = self
+            .current_order
+            .or_else(|| OrderKind::of_action(self.current_action));
+        if order == Some(OrderKind::Defend) && self.defend_misc(at, computer, ai, side, fx)? {
             return Ok(false);
         }
-        if order == FOLLOW_ORDER && self.follow(at, fx)? {
+        if order == Some(OrderKind::Follow) && self.follow(at, fx)? {
             return Ok(false);
         }
         if self.leash_ends(at, ai, fx)? {
@@ -223,10 +226,14 @@ impl UnitAi {
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        // the leashes (unless on orders 0x2c7, 0x2dd and 0x323, or in a group that patrols:
-        // FUN_141017c30, FUN_141017c40), measured from the unit's footprint (FUN_140a847c0)
+        // the leashes (unless on orders 0x2c7, 0x2dd and 0x323, which no order holds, or in a
+        // group that patrols: FUN_141017c30, FUN_141017c40), measured from the unit's footprint
+        // (FUN_140a847c0)
         let leashed = matches!(self.stance, 1 | 2)
-            && !matches!(self.current_order, 0x2c7 | 0x2dd | 0x323)
+            && !matches!(
+                self.current_order,
+                Some(OrderKind::Patrol | OrderKind::AttackMove)
+            )
             && !at.group.is_some_and(|g| g.patrol);
         // with patrol information (+0x1c0) the leash is the distance from where the unit last
         // moved to (slot 0x520) to the patrol's path (FUN_140f95e10): beyond it the unit stops
@@ -342,7 +349,7 @@ impl UnitAi {
             Self::world_object(found.id, at, side)?
         };
         if !keeps
-            && self.current_order == ATTACK_ORDER
+            && self.current_order == Some(OrderKind::Attack)
             && let (Some(n), Some(c)) = (new, current)
             && c.state == 2
             && crate::unit_ai::best_target::category(n.master, n.class)
@@ -393,7 +400,7 @@ impl UnitAi {
         action_state: Option<u8>,
         attack_listed: Option<bool>,
     ) -> Result<Option<RetargetSearch>, GenieError> {
-        let attack_order = self.current_order == ATTACK_ORDER;
+        let attack_order = self.current_order == Some(OrderKind::Attack);
         if attack_order && RETARGET_RANGE < weapon_range && !computer {
             return Ok(None);
         }
@@ -420,7 +427,7 @@ impl UnitAi {
             return Ok(None);
         }
         // a unit in stand ground or no attack with an order goes no further
-        if 1 < self.stance && self.current_order != -1 {
+        if 1 < self.stance && self.current_order.is_some() {
             return Ok(None);
         }
         // "I have an game attack action without an order ... inAttackWorkState"
@@ -444,7 +451,7 @@ impl UnitAi {
         at: &Surroundings,
         fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
-        if self.current_order == ATTACK_ORDER && self.current_target == -1 {
+        if self.current_order == Some(OrderKind::Attack) && self.current_target == -1 {
             self.stop_current(false, at, fx)?;
         }
         Ok(())
@@ -497,7 +504,7 @@ impl UnitAi {
                 self.remove_target();
                 self.stop_current(true, at, fx)?;
                 self.leave_patrol_timers(ai);
-                self.current_order = -1;
+                self.current_order = None;
                 return Ok(true);
             }
             defended = held;
@@ -562,7 +569,7 @@ impl UnitAi {
                 self.defend_target = -1;
                 self.remove_target();
                 self.stop_current(true, at, fx)?;
-                self.current_order = -1;
+                self.current_order = None;
                 return Ok(true);
             }
         };

@@ -7,6 +7,7 @@ use crate::movement::move_to::MoveTo;
 use crate::movement::{GroupSpeed, Me};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
 use crate::world::context::Context;
@@ -195,10 +196,12 @@ impl Unit {
                 crate::movement::explore::WALK => {
                     // the MoveTo's update code (FUN_140a992b0): 1 once it arrived or without
                     // one, 3 once it failed (quiet: no notify)
-                    let quiet = self
-                        .ai
-                        .as_ref()
-                        .is_some_and(|ai| !matches!(ai.current_order, 711 | 733));
+                    let quiet = self.ai.as_ref().is_some_and(|ai| {
+                        !matches!(
+                            ai.current_order,
+                            Some(OrderKind::Patrol | OrderKind::AttackMove)
+                        )
+                    });
                     // the motion step giving up: a human player's villager waits once, any
                     // other unit's MoveTo fails (LAB_140aa320c)
                     let villager =

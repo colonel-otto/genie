@@ -11,6 +11,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveTo;
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::world::context::Context;
 
 /// The Explore action's type.
@@ -258,8 +259,6 @@ pub fn unexplored_area(
     Ok(best.map(|(p, _)| p))
 }
 
-/// The order of an explore to a target point (`0x2da`): the search looks within 7 tiles of it.
-const EXPLORE_POINT_ORDER: i32 = 0x2da;
 /// How far past its line of sight the search looks, and about an explore's target point, in tiles.
 const SEARCH_PAST_SIGHT: i32 = 3;
 const SEARCH_ABOUT_POINT: i32 = 7;
@@ -272,7 +271,7 @@ pub struct Seeker {
     /// Its master's line of sight (`+0x5d0`).
     pub line_of_sight: f32,
     /// The unit AI's current order (`+0x3c`).
-    pub order: i32,
+    pub order: Option<OrderKind>,
     /// The unit AI's target point (`+0x50`, `+0x54`; x is −1 without one).
     pub target_point: [f32; 2],
     /// The owner is a computer player (`FUN_141659cf0`, `player+0x10 == 3`).
@@ -303,7 +302,7 @@ pub fn closest_undiscovered(
     let (mut x0, mut x1) = ((ux - reach) as i32, (reach + ux) as i32);
     let (mut y0, mut y1) = ((uy - reach) as i32, (reach + uy) as i32);
     let [px, py] = seeker.target_point;
-    if seeker.order == EXPLORE_POINT_ORDER {
+    if seeker.order == Some(OrderKind::Scout) {
         (x0, x1) = (
             px as i32 - SEARCH_ABOUT_POINT,
             px as i32 + SEARCH_ABOUT_POINT,
@@ -700,7 +699,7 @@ mod tests {
         let seeker = Seeker {
             at: [20.5, 92.5, 0.0],
             line_of_sight: 4.0,
-            order: -1,
+            order: None,
             target_point: [NO_POINT, NO_POINT],
             computer: false,
         };

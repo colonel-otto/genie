@@ -11,6 +11,7 @@
 use crate::GenieError;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::TaskTarget;
 use crate::world::World;
 
@@ -35,8 +36,6 @@ pub(crate) use self::actions::{SwitchWorld, switch_master};
 use self::points::{centroid, follow_axis, follow_spread, grid_point, offset_point};
 #[cfg(test)]
 use crate::gathering::hunt::HUNT;
-#[cfg(test)]
-use crate::unit_ai::MOVE_ORDER;
 
 /// INTERACT's fields past its units (`+0x4`..`+0x16`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -473,7 +472,7 @@ pub(crate) fn set_stance(
 ) -> Result<(), GenieError> {
     ai.stance = state;
     ai.state_position = place.0;
-    if state == 3 && (ai.current_order == 700 || ai.current_action == 600) {
+    if state == 3 && (ai.current_order == Some(OrderKind::Attack) || ai.current_action == 600) {
         ai.stop_with(true, Some(place), fx)?;
         ai.remove_target();
     }

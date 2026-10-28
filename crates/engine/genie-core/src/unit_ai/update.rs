@@ -3,12 +3,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, ATTACK_MOVE, AfterOrder, AiMove, BREAK, BUILD_ORDER, CIVILIAN_CARED,
-    COMBAT_KIND, DEAD, Effect, GATHER_ACTION, GO_ON, Gatherable, GroupState, HUNT_ACTION,
-    LIVE_TARGET_ACTIONS, Memory, NO_POINT, Notify, ORDER_ON_TARGET, PATROL, Pick, ResourceSearch,
-    Retarget, Search, Surroundings, TRADE_ACTION, UnitAi, UnitSide, changes_actions, civilian_kind,
-    civilian_search_radius, retarget_kind, top_target_after,
+    ATTACK_ACTION, AfterOrder, AiMove, BOAR_LURING_ACTION, BREAK, CIVILIAN_CARED, COMBAT_KIND,
+    DEAD, Effect, GATHER_ACTION, GO_ON, Gatherable, GroupState, HUNT_ACTION, LIVE_TARGET_ACTIONS,
+    Memory, NO_POINT, Notify, Pick, ResourceSearch, Retarget, Search, Surroundings, TRADE_ACTION,
+    UnitAi, UnitSide, changes_actions, civilian_kind, civilian_search_radius, retarget_kind,
+    top_target_after,
 };
 
 impl UnitAi {
@@ -46,7 +47,7 @@ impl UnitAi {
         self.keep_attackers(at, side);
         // a unit with an order, or in a group with a command (`+0x3a8`), keeps its place as its
         // state position (0x140c674c9)
-        if self.current_order != -1 || at.group.is_some_and(|g| g.commanded) {
+        if self.current_order.is_some() || at.group.is_some_and(|g| g.commanded) {
             self.state_position = [at.position[0], at.position[1]];
         }
         self.secondary_timer = self.secondary_timer.saturating_sub(dt);
@@ -63,7 +64,7 @@ impl UnitAi {
         let busy = (at.busy && !stopped) || self.commanded;
         if !busy {
             self.reset_ended_action(at);
-            if self.current_order != -1 {
+            if self.current_order.is_some() {
                 self.check_order(at, ai);
             }
         }
@@ -151,7 +152,7 @@ impl UnitAi {
             }
             // the priest's checks but on the order on a target and for a computer player's
             Retarget::Priest => {
-                if self.current_order != ORDER_ON_TARGET && !computer {
+                if self.current_order != Some(OrderKind::OnTarget) && !computer {
                     let _ = self.retarget_check(world_time, computer, at, ai, side, fx)?;
                 }
             }
@@ -237,11 +238,11 @@ impl UnitAi {
         &mut self,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
-        if self.current_order == BUILD_ORDER {
+        if self.current_order == Some(OrderKind::Build) {
             return Ok(());
         }
         for k in (0..self.orders.len()).rev() {
-            if self.orders[k].order == BUILD_ORDER
+            if self.orders[k].order == OrderKind::Build
                 && side
                     .seen_unit(self.orders[k].target)?
                     .is_none_or(|u| u.state != 0)
@@ -318,7 +319,7 @@ impl UnitAi {
                         self.stop_after_kill = false;
                         if action == ATTACK_ACTION {
                             self.next_after_kill(at, computer, ai, side, fx)?;
-                        } else if action != HUNT_ACTION && action != BUILD_ORDER {
+                        } else if action != HUNT_ACTION && action != BOAR_LURING_ACTION {
                             self.remove_target();
                             self.stop_current(true, at, fx)?;
                         }
@@ -328,25 +329,20 @@ impl UnitAi {
                 // `FUN_141017c30`), FUN_140c41690 tests the target's range; for a player that
                 // is not a computer (FUN_141659cf0) it answers 0 at once
                 if computer
-                    && (matches!(self.current_order, PATROL | ATTACK_MOVE)
-                        || at.group.is_some_and(|g| g.patrol))
+                    && (matches!(
+                        self.current_order,
+                        Some(OrderKind::Patrol | OrderKind::AttackMove)
+                    ) || at.group.is_some_and(|g| g.patrol))
                 {
                     return Err(GenieError::unsupported(
                         "the patrol range of a unit AI's target",
                     ));
                 }
-                // order 0x262, which is MOVE's action value
-                if computer
-                    && (0..100).contains(&self.order_priority)
-                    && self.current_order == 0x262
-                {
-                    return Err(GenieError::unsupported(
-                        "a computer's order priority by its target's distance",
-                    ));
-                }
+                // a computer's order 0x262 (MOVE's action value) of priority 0..100 rechecks its
+                // target's distance: no order holds 0x262 ([`OrderKind`])
             }
         }
-        if self.current_action == BUILD_ORDER {
+        if self.current_action == BOAR_LURING_ACTION {
             return Err(GenieError::unsupported("action 0x2be's target check"));
         }
         Ok(())
@@ -565,7 +561,7 @@ impl UnitAi {
         }
         self.leave_patrol_timers(ai);
         self.last_order = self.current_order;
-        self.current_order = -1;
+        self.current_order = None;
         self.order_priority = -1;
         Ok(())
     }

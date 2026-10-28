@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::layers::{Animated, Body};
+use crate::unit_ai::OrderKind;
 
 /// `FUN_140a82ae0` case 6 after the hit: a ranged unit whose attack timer ran out is done
 /// without a target and ready again past its interrupt frame (its firing frame without one);
@@ -445,7 +446,7 @@ impl Rig {
             posted: Vec::new(),
             queue_empty: true,
             world_time: 0,
-            ai_order: Some(-1),
+            ai_order: Some(None),
             ai_type: None,
             computer: false,
             armed: true,
@@ -895,7 +896,7 @@ fn an_attack_waits_where_it_last_saw_its_target_and_follows_it_seen_again() {
             ..Victim::default()
         });
         let mut s = rig.strike();
-        s.ai_order = Some(700);
+        s.ai_order = Some(Some(OrderKind::Attack));
         s.own.source.weapon_range = 3.0;
         let mut a = soldier_attack(7, 1.0, 0.0, seen_at);
         (a.state, a.seen, a.move_to) = (state, seen_at, Some(MoveTo::Moving));
@@ -1972,7 +1973,7 @@ fn on_target<R>(
         ..Victim::default()
     });
     let mut s = rig.strike();
-    s.ai_order = Some(700);
+    s.ai_order = Some(Some(OrderKind::Attack));
     let mut a = soldier_attack(7, 1.0, 0.0, at);
     (a.state, a.seen, a.sub_action) = (attack_state, at, sub);
     let r = f(&mut a, &mut walk, &mut s);
@@ -1986,7 +1987,7 @@ fn on_target<R>(
 fn an_attack_whose_target_died_lets_it_go_and_ends() {
     let dead = |player| (player, 6, 3, [11.0, 10.0, 0.0]);
     let ((code, let_go), a) = on_target(dead(0), true, (READY, false), |a, w, s| {
-        s.ai_order = Some(-1);
+        s.ai_order = Some(None);
         (a.target_died(w, s).unwrap(), s.let_go)
     });
     assert_eq!((code, let_go, a.state), (5, Some(7), DONE));

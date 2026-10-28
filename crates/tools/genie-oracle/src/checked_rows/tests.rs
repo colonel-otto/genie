@@ -1,5 +1,6 @@
-use crate::checked_rows::{MoveRow, Same};
+use crate::checked_rows::{AiRow, MoveRow, Same};
 use genie_core::movement::PathData;
+use genie_core::unit_ai::{OrderKind, QueuedOrder, UnitAi};
 
 /// A path level with a value in every field.
 fn path() -> PathData {
@@ -113,4 +114,51 @@ fn floats_are_the_same_by_their_bits() {
     let mut positive = movement();
     positive.angle = 0.0;
     assert!(!negative.same(&positive));
+}
+
+/// A row's field by its name.
+fn field(row: &AiRow, name: &str) -> String {
+    row.fields
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default()
+}
+
+/// The slice's orders read as the save holds them: none as the field's −1, a queued order as
+/// its record.
+#[test]
+fn an_ai_row_names_the_orders_as_the_save_does() {
+    let mut record = [0u8; 52];
+    record[4..8].copy_from_slice(&0x2c5i32.to_le_bytes());
+    let saved = genie_save::generated::world::UnitAiModule {
+        current_order_value: -1,
+        last_order_value: 0x2c9,
+        temp_order: vec![record],
+        ..Default::default()
+    };
+    let ai = UnitAi {
+        current_order: None,
+        last_order: Some(OrderKind::Hunt),
+        orders: vec![QueuedOrder::from_bytes(&record).unwrap()],
+        ..UnitAi::default()
+    };
+    let (row, save) = (AiRow::of(&ai, false), AiRow::saved(&saved, None, false));
+    for name in ["current_order", "last_order", "orders"] {
+        assert_eq!(field(&row, name), field(&save, name), "{name}");
+    }
+    assert_eq!(field(&save, "current_order"), "-1");
+}
+
+/// A saved queue with an order no case names shows the error, which no slice row equals.
+#[test]
+fn a_saved_queue_with_an_unknown_order_shows_the_error() {
+    let mut record = [0u8; 52];
+    record[4..8].copy_from_slice(&0x262i32.to_le_bytes());
+    let saved = genie_save::generated::world::UnitAiModule {
+        temp_order: vec![record],
+        ..Default::default()
+    };
+    let orders = field(&AiRow::saved(&saved, None, false), "orders");
+    assert!(orders.contains("an order value no case"), "{orders}");
 }

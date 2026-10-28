@@ -7,7 +7,7 @@ use crate::garrison::transport::{
 };
 use crate::math::rng::Stream;
 use crate::objects::masters::{Task, TaskId};
-use crate::unit_ai::ai_kinds::ORDER_TRANSPORT;
+use crate::unit_ai::OrderKind;
 
 /// The market (`0x60f0` raw), whose own trade units the work command never retakes.
 const MARKET: i16 = 84;
@@ -110,14 +110,14 @@ impl crate::world::World {
         let unit = &mut self.players[p].objects[i];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                ORDER_TRANSPORT,
+                Some(OrderKind::Transport),
                 TRANSPORT_ACTION,
                 named,
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(p, i, (ORDER_TRANSPORT, TRANSPORT_ACTION))?;
+            self.remember_order(p, i, (Some(OrderKind::Transport), TRANSPORT_ACTION))?;
         }
         Ok(())
     }

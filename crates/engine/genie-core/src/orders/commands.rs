@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::orders::{AUTO_SCOUT_CLASS, BUILDING, Place, lock_gate, set_stance};
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
@@ -108,9 +109,7 @@ impl World {
     /// a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown at
     /// (−1, −1) and ready. Its sound and the UI's flags are not held.
     pub(crate) fn auto_scout(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
-        use crate::unit_ai::{
-            AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, Effect, QueuedOrder, STOP_ORDER,
-        };
+        use crate::unit_ai::{AUTO_SCOUT_ACTION, Effect, QueuedOrder};
         let cap = if self.players[player].computer {
             500
         } else {
@@ -151,9 +150,9 @@ impl World {
             let order = QueuedOrder {
                 issuer: p as i32,
                 order: if ai.current_action == AUTO_SCOUT_ACTION {
-                    STOP_ORDER
+                    OrderKind::Stop
                 } else {
-                    AUTO_SCOUT_ORDER
+                    OrderKind::AutoScout
                 },
                 priority: 100,
                 target: -1,

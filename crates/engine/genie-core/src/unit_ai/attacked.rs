@@ -3,12 +3,12 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, ATTACK_MOVE, AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, AiMove, AttackAsk, BREAK,
-    DEAD, EXPLORE_ACTION, Effect, FOUNDATION_ORDER, GO_ON, MOVE_ACTION, MOVE_ASIDE_ACTION,
-    NEVER_KILLED, Named, Notify, ORDER_ON_TARGET, PATROL, PREY_CLASS, Pick, QueuedOrder,
-    RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide, VILLAGER_CLASS,
-    alert_owner, closest_undiscovered_tile, top_target_after,
+    ATTACK_ACTION, AUTO_SCOUT_ACTION, AiMove, AttackAsk, BREAK, DEAD, EXPLORE_ACTION, Effect,
+    GO_ON, MOVE_ACTION, MOVE_ASIDE_ACTION, NEVER_KILLED, Named, Notify, PREY_CLASS, Pick,
+    QueuedOrder, RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide,
+    VILLAGER_CLASS, alert_owner, closest_undiscovered_tile, top_target_after,
 };
 
 impl UnitAi {
@@ -98,7 +98,7 @@ impl UnitAi {
         }
         if self.best_this_update == -1
             && self.current_target == -1
-            && self.current_order == -1
+            && self.current_order.is_none()
             && self.current_action == -1
         {
             // "BUTA returned -1 and I'm idle without a target": COMISS, JBE (a NaN runs)
@@ -128,15 +128,18 @@ impl UnitAi {
         if self.current_action == ATTACK_ACTION && self.current_target == attacker_id {
             return true;
         }
-        if !computer && !matches!(self.current_order, -1 | PATROL | ATTACK_MOVE) {
+        if !computer
+            && !matches!(
+                self.current_order,
+                None | Some(OrderKind::Patrol | OrderKind::AttackMove)
+            )
+        {
             return true;
         }
         if !computer && held_by_group {
             return true;
         }
-        computer
-            && self.current_order == crate::unit_ai::ai_kinds::ORDER_EXPLORE
-            && attacker.owner != 0
+        computer && matches!(self.current_order, Some(OrderKind::Explore)) && attacker.owner != 0
     }
 
     /// [`UnitAi::damaged`]'s step 4's search, `bestUnitToAttack` into
@@ -241,13 +244,16 @@ impl UnitAi {
         let t = side.duel(target.id)?;
         // "my current target cannot damage me": UCOMISS, JP, JNZ (exactly 0)
         if (t.attacks == 0.0 || t.harms == 0.0) && !t.converts {
-            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+            if matches!(
+                self.current_order,
+                Some(OrderKind::Patrol | OrderKind::AttackMove)
+            ) {
                 self.save_patrol(side);
             }
             self.ask_for_help(attacker_id, at, true, side)?;
             if self.attack_slot(attacker_id, true, at, side, fx)? {
                 self.leave_patrol_timers(ai_rng);
-                self.current_order = -1;
+                self.current_order = None;
             }
         }
         let target_time = if 0.0 < t.harmed {
@@ -280,12 +286,15 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
-        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+        if matches!(
+            self.current_order,
+            Some(OrderKind::Patrol | OrderKind::AttackMove)
+        ) {
             self.save_patrol(side);
         }
         if self.attack_slot(attacker, true, at, side, fx)? {
             self.leave_patrol_timers(ai_rng);
-            self.current_order = -1;
+            self.current_order = None;
         }
         Ok(BREAK)
     }
@@ -309,7 +318,7 @@ impl UnitAi {
         if !boar
             && at.unit(n.p[0]).is_some()
             && self.retarget_disabled == 0
-            && self.current_order == -1
+            && self.current_order.is_none()
             && self.stance == 0
         {
             // slot 0xb8 forced, by the type
@@ -351,7 +360,7 @@ impl UnitAi {
             && off.class == VILLAGER_CLASS
             && let (Some(site), Some(target)) = (off.site, off.action_target)
         {
-            let order = |o: &Named, order: i32| QueuedOrder {
+            let order = |o: &Named, order: OrderKind| QueuedOrder {
                 issuer: off.player,
                 order,
                 priority: 100,
@@ -363,8 +372,8 @@ impl UnitAi {
                 ready: true,
                 target_type: o.master,
             };
-            self.insert_order(order(&site, FOUNDATION_ORDER), true);
-            self.insert_order(order(&target, ORDER_ON_TARGET), false);
+            self.insert_order(order(&site, OrderKind::Foundation), true);
+            self.insert_order(order(&target, OrderKind::OnTarget), false);
         }
         Ok(GO_ON)
     }
@@ -429,10 +438,10 @@ impl UnitAi {
             return Ok(BREAK);
         }
         match self.current_order {
-            crate::unit_ai::ai_kinds::ORDER_SCOUT => Err(GenieError::unsupported(
+            Some(OrderKind::Scout) => Err(GenieError::unsupported(
                 "a scout that finds no undiscovered tile (the player's slot 0x2e8 with 0x211)",
             )),
-            AUTO_SCOUT_ORDER => {
+            Some(OrderKind::AutoScout) => {
                 let Some([x, y]) = side.seek_beyond_sight(ai_rng)? else {
                     // the player's scout map, from the tiles it sees; on the auto scout's action
                     // the AI's slot 0x40 hands the notify to the owner (slot 0x2e8 with 0x202,

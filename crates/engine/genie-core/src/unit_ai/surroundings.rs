@@ -362,10 +362,6 @@ pub(super) const CLASS_18: i16 = 18;
 /// A patrol's path goes back and forth when its point is at least this far from the unit
 /// (`0x140aa2a70`, `DAT_142eb1c98`).
 pub(super) const PATROL_TURN_REACH: f32 = crate::math::image::unit_ai::PATROL_TURN_REACH;
-/// The patrol orders, the patrol's (`0x2c7`) and the attack move's (`0x2dd`), whose ends reset
-/// the idle and secondary timers.
-pub(crate) const PATROL: i32 = 0x2c7;
-pub(crate) const ATTACK_MOVE: i32 = 0x2dd;
 /// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
 /// `-0xe78` raw).
 pub(super) const CLASS_3: i16 = 3;

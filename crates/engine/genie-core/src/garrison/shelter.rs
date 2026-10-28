@@ -3,12 +3,12 @@
 
 use crate::GenieError;
 use crate::garrison::{
-    COMBAT_KIND, COMPUTER_IDS, ENTER_ORDER, FAR, GATE_CLASS, HUMAN_IDS, MASTER_1808, NEARBY,
-    TOWN_BELL_REACH, TRANSPORTED, VILLAGER_CLASS, VILLAGER_KIND, class_has_flags,
-    has_garrison_task,
+    COMBAT_KIND, COMPUTER_IDS, FAR, GATE_CLASS, HUMAN_IDS, MASTER_1808, NEARBY, TOWN_BELL_REACH,
+    TRANSPORTED, VILLAGER_CLASS, VILLAGER_KIND, class_has_flags, has_garrison_task,
 };
 use crate::movement::footprint_gap_squared;
 use crate::orders::{BUILDING, GARRISON, Work};
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 /// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
@@ -371,7 +371,7 @@ impl World {
                 let state = unit.life.state;
                 let order = crate::unit_ai::QueuedOrder {
                     issuer: id,
-                    order: ENTER_ORDER,
+                    order: OrderKind::Enter,
                     priority: 100,
                     target: building,
                     target_owner: owner as i32,

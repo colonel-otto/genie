@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
@@ -120,7 +121,7 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                crate::unit_ai::BUILD_ORDER,
+                Some(OrderKind::Build),
                 crate::unit_ai::BUILD_ACTION,
                 Some((target, class)),
                 point,
@@ -130,7 +131,7 @@ impl World {
             self.remember_order(
                 player,
                 idx,
-                (crate::unit_ai::BUILD_ORDER, crate::unit_ai::BUILD_ACTION),
+                (Some(OrderKind::Build), crate::unit_ai::BUILD_ACTION),
             )?;
         }
         self.clear_actions(player, idx)?;
@@ -192,7 +193,7 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                crate::unit_ai::ai_kinds::ORDER_REPAIR,
+                Some(OrderKind::Repair),
                 crate::construction::repair::REPAIR_ACTION,
                 Some((target, class)),
                 point,
@@ -203,7 +204,7 @@ impl World {
                 player,
                 idx,
                 (
-                    crate::unit_ai::ai_kinds::ORDER_REPAIR,
+                    Some(OrderKind::Repair),
                     crate::construction::repair::REPAIR_ACTION,
                 ),
             )?;
@@ -268,7 +269,7 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                crate::unit_ai::ai_kinds::ORDER_REPAIR,
+                Some(OrderKind::Repair),
                 crate::construction::repair::REPAIR_ACTION,
                 Some((target, class)),
                 point,
@@ -279,7 +280,7 @@ impl World {
                 player,
                 idx,
                 (
-                    crate::unit_ai::ai_kinds::ORDER_REPAIR,
+                    Some(OrderKind::Repair),
                     crate::construction::repair::REPAIR_ACTION,
                 ),
             )?;
@@ -363,7 +364,7 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                crate::unit_ai::BUILD_ORDER,
+                Some(OrderKind::Build),
                 crate::unit_ai::BUILD_ACTION,
                 Some((target, class)),
                 point,
@@ -373,7 +374,7 @@ impl World {
             self.remember_order(
                 player,
                 idx,
-                (crate::unit_ai::BUILD_ORDER, crate::unit_ai::BUILD_ACTION),
+                (Some(OrderKind::Build), crate::unit_ai::BUILD_ACTION),
             )?;
         }
         Ok(())

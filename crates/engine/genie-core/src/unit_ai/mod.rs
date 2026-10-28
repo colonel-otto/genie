@@ -31,6 +31,7 @@ mod idle_animals;
 mod ids;
 mod life;
 mod notifies;
+mod order_kind;
 mod order_kinds;
 mod process_order;
 mod retarget;
@@ -77,30 +78,30 @@ pub(crate) use self::cared::{search_area, search_radius};
 #[cfg(test)]
 use self::ids::DEFENSIVE_MASTERS;
 use self::ids::{
-    AI_MOVE_RANGE, ARTIFACT_IDLE_TIMEOUT, ATTACK_ACTION, ATTACK_ORDER, BOAR_HOME, BOAR_LEASH,
-    BOAR_LEASH_DRAW, BOAR_LURING_ACTION, BOAR_OFFSET, BOAR_STEP, BOAR_WANDER, CLASS_KING,
-    CLASS_VILLAGER, COMPUTER_SOLDIER_IDLE_TIMEOUT, CONVERT_ACTION, DEFEND_ACTION, DEFEND_SLACK,
-    DEFENDLESS_MASTER, DESIRED_DISTANCE, ENDED_ACTIONS, EXPLORE_DESTROY_ACTION, EXPLORE_Z,
-    FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW, FOUNDATION_REACH, HEAL_ACTION, HUNTED_HOME,
-    HUNTED_IDLE_TIMEOUT, HUNTED_SIGHT_GROWTH, HUNTED_STEP, IDLE_TIMEOUT, INVALID_POINT, KING_UNLED,
+    AI_MOVE_RANGE, ARTIFACT_IDLE_TIMEOUT, ATTACK_ACTION, BOAR_HOME, BOAR_LEASH, BOAR_LEASH_DRAW,
+    BOAR_LURING_ACTION, BOAR_OFFSET, BOAR_STEP, BOAR_WANDER, CLASS_KING, CLASS_VILLAGER,
+    COMPUTER_SOLDIER_IDLE_TIMEOUT, CONVERT_ACTION, DEFEND_ACTION, DEFEND_SLACK, DEFENDLESS_MASTER,
+    DESIRED_DISTANCE, ENDED_ACTIONS, EXPLORE_DESTROY_ACTION, EXPLORE_Z, FOLLOW_SLACK_HIGH,
+    FOLLOW_SLACK_LOW, FOUNDATION_REACH, HEAL_ACTION, HUNTED_HOME, HUNTED_IDLE_TIMEOUT,
+    HUNTED_SIGHT_GROWTH, HUNTED_STEP, IDLE_TIMEOUT, INVALID_POINT, KING_UNLED,
     LION_ATTACKED_TIMEOUT, LION_IDLE_TIMEOUT, LION_SIGHT_DIVISOR, LION_SIGHT_SHARE, NO_ANIM_SPEED,
-    OUTSIDE_ORDER, PRIEST_IDLE_TIMEOUT, REPAIR_ACTION, REPAIR_ORDER, RETARGET_RANGE,
-    RETARGET_REACH, RUN_AWAY_ORDER, Retarget, RetargetSearch, SCOUT_ACTION, SEEK_ACTION,
-    SHEPHERD_ACTION, SIEGE_IDLE_TIMEOUT, SOLDIER_IDLE_MASTER, SOLDIER_IDLE_TIMEOUT,
-    TOWER_IDLE_TIMEOUT, TRANSPORT_ACTION, TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS, UNLOAD_ACTION,
-    UNLOAD_OVER_WALL_ACTION, VILLAGER_NOTIFY, WAIT_ACTION, WALK_BACK, closest_undiscovered_tile,
-    dodges, held_action_state, order_move, retarget_kind, siege_stance, soldier_stance,
+    OUTSIDE_ORDER, PRIEST_IDLE_TIMEOUT, REPAIR_ACTION, RETARGET_RANGE, RETARGET_REACH, Retarget,
+    RetargetSearch, SCOUT_ACTION, SEEK_ACTION, SHEPHERD_ACTION, SIEGE_IDLE_TIMEOUT,
+    SOLDIER_IDLE_MASTER, SOLDIER_IDLE_TIMEOUT, TOWER_IDLE_TIMEOUT, TRANSPORT_ACTION,
+    TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS, UNLOAD_ACTION, UNLOAD_OVER_WALL_ACTION,
+    VILLAGER_NOTIFY, WAIT_ACTION, WALK_BACK, closest_undiscovered_tile, dodges, held_action_state,
+    order_move, retarget_kind, siege_stance, soldier_stance,
 };
 pub use self::ids::{
-    AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, DEFEND_ORDER, EXPLORE_ACTION, FOLLOW_ACTION, FOLLOW_ORDER,
-    HUMAN_ORDER_CAP, MOVE_ACTION, MOVE_ORDER, NewObject, STOP_ORDER, factory_type,
+    AUTO_SCOUT_ACTION, EXPLORE_ACTION, FOLLOW_ACTION, HUMAN_ORDER_CAP, MOVE_ACTION, NewObject,
+    factory_type,
 };
-pub(crate) use self::ids::{ORDER_ON_TARGET_2, alert_owner, helper_answers};
+pub(crate) use self::ids::{alert_owner, helper_answers};
+pub use self::order_kind::OrderKind;
 pub(crate) use self::side::UNMODELLED_COMMAND;
 pub use self::side::{
     Gatherable, NO_POINT, Named, OffFootprint, ResourceSearch, TargetFlags, UnitCommand, UnitSide,
 };
-pub(crate) use self::surroundings::{ATTACK_MOVE, PATROL};
 pub use self::surroundings::{
     AiMove, Duel, Found, GroupState, Home, Seen, Surroundings, TopTarget, UnitSeen, flood_search,
     no_search,
@@ -187,9 +188,6 @@ pub const DAMAGED: i32 = ai_kinds::NOTIFY_DAMAGED;
 /// Notify 699: an object no longer acts on the unit (its action let the unit go, `FUN_141086e60`).
 pub const NO_LONGER_ON_ME: i32 = ai_kinds::NOTIFY_NO_LONGER_ON_ME;
 
-/// `0x2db`: the order an INTERACT queues on its target (slot 0x230 runs it as the unit's slot
-/// 0x128 on the target, case `0x2db`/`0x325` of `FUN_140c5c170`, which logs no line to name it).
-pub const ORDER_ON_TARGET: i32 = 0x2db;
 /// A unit sent off a foundation's footprint (`FUN_14123bb20`): the foundation master's radii
 /// times 100 and the foundation ([`UnitAi::sent_off`]).
 pub const SENT_OFF: i32 = 0x216;
@@ -211,9 +209,6 @@ const STILL: f32 = crate::math::image::unit_ai::STILL;
 const NEVER_KILLED: f32 = crate::math::image::unit_ai::NEVER_KILLED;
 /// The action value of a unit moving off a footprint with a group.
 pub const GROUP_ASIDE_ACTION: i32 = 0x2c0;
-/// The order on a foundation a villager sent off its footprint takes up again (slot 0x108,
-/// `FUN_140c5c170` case 0x2de).
-pub const FOUNDATION_ORDER: i32 = 0x2de;
 /// The action value of a unit waiting for a foundation (slot 0x108, `FUN_140c68a60`, and the
 /// order switch's case 0x2de); the full update's reset of ended actions leaves it.
 pub const WAIT_SOLIDIFY_ACTION: i32 = 0x27a;
@@ -299,8 +294,8 @@ pub const fn notify_capacity(ai_type: u32, count: usize) -> usize {
 pub struct QueuedOrder {
     /// `+0x0`: the issuing player.
     pub issuer: i32,
-    /// `+0x4`: the order value (`0x2c6` a move, `0x2db` an order on a target).
-    pub order: i32,
+    /// `+0x4`: the order (a move, an order on a target, …).
+    pub order: OrderKind,
     /// `+0x8`: below 100 it waits while the unit AI has an action.
     pub priority: i32,
     /// `+0xc`, `+0x10`: the target and its owner (−1 for none; "T", "`TOwner`" in the log line of
@@ -322,13 +317,16 @@ pub struct QueuedOrder {
 
 impl QueuedOrder {
     /// The record as the save holds it (`+0x2d`..`+0x2f` are padding).
-    #[must_use]
-    pub fn from_bytes(b: &[u8; 52]) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// An order value no order holds ([`OrderKind::try_from`]).
+    pub fn from_bytes(b: &[u8; 52]) -> Result<Self, GenieError> {
         let w = |i: usize| i32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
         let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
-        Self {
+        Ok(Self {
             issuer: w(0),
-            order: w(4),
+            order: OrderKind::try_from(w(4))?,
             priority: w(8),
             target: w(12),
             target_owner: w(16),
@@ -337,7 +335,7 @@ impl QueuedOrder {
             shown: [f(36), f(40)],
             ready: b[44] != 0,
             target_type: w(48),
-        }
+        })
     }
 }
 
@@ -458,7 +456,7 @@ pub struct UnitAi {
     /// The factory's type (`has_ai` in the save), which picks the class.
     pub ai_type: u32,
     /// `+0x3c`, −1 for none.
-    pub current_order: i32,
+    pub current_order: Option<OrderKind>,
     /// `+0x40`, the current order's priority (−1 for none): a queued order sets it.
     pub order_priority: i32,
     /// `+0x44`, −1 for none.
@@ -476,7 +474,7 @@ pub struct UnitAi {
     pub defend_target: i32,
     /// `+0x64`, `+0x68`, `+0x6c`, `+0x70`: the order, action, target and target class before the
     /// current ones.
-    pub last_order: i32,
+    pub last_order: Option<OrderKind>,
     /// `+0x68`: the action before the current one.
     pub last_action: i32,
     /// `+0x6c`: the target before the current one.
@@ -571,8 +569,8 @@ pub struct UnitAi {
 /// An order on a target in a unit AI's history (`FUN_140c42080`, a node of `+0x78`'s list).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct OrderRecord {
-    /// The order (`mOrder`).
-    pub order: i32,
+    /// The order (`mOrder`), None for the −1 of an order recorded without one.
+    pub order: Option<OrderKind>,
     /// The action (`mAction`).
     pub action: i32,
     /// The world time it was given (`mTime`).
@@ -605,12 +603,8 @@ pub struct Hunted {
 /// The engine's error ([`genie_error::GenieError`]), here for the modules' imports.
 use crate::GenieError;
 
-/// The build order (`0x2be`) and the build action value (`0x25a`) of a villager's unit AI.
-pub const BUILD_ORDER: i32 = 702;
 /// The build action value (`0x25a`).
 pub const BUILD_ACTION: i32 = 602;
-/// The hunt order (`0x2c9`) and action value (`0x265`) of a villager's unit AI.
-pub const HUNT_ORDER: i32 = 713;
 /// The hunt action value (`0x265`).
 pub const HUNT_ACTION: i32 = 613;
 /// The gather action value (`0x261`), which a Gather's notifies carry.

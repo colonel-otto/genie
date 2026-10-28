@@ -8,9 +8,10 @@ use crate::orders::{
     BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };
+use crate::unit_ai::HUNT_ACTION;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
-use crate::unit_ai::{HUNT_ACTION, MOVE_ORDER};
 use crate::world::World;
 
 impl World {
@@ -81,7 +82,7 @@ impl World {
                 target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
             let queued = crate::unit_ai::QueuedOrder {
                 issuer: issuer as i32,
-                order: MOVE_ORDER,
+                order: OrderKind::Move,
                 priority: 100,
                 target: if target.is_some() { order.target } else { -1 },
                 target_owner,

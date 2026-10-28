@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 /// A unit's radius in a formation where its master has no full footprint (`FUN_141025920`,
@@ -17,9 +18,8 @@ const MAX_MEMBERS: usize = 70;
 /// `FUN_14102d710` with 10), then, as every full array, to twice their capacity.
 const FIRST_CAPACITY: i32 = 10;
 /// The unit AI's actions and orders `AddUnit` clears (`FUN_1410083c0`): actions 0x259, 0x2bf and
-/// 0x2c0, orders 0x2bd, 0x323 and 0x324.
+/// 0x2c0, the defend order (and orders 0x323 and 0x324, which no order holds, [`OrderKind`]).
 const CLEARED_ACTIONS: [i32; 3] = [0x259, 0x2bf, 0x2c0];
-const CLEARED_ORDERS: [i32; 3] = [0x2bd, 0x323, 0x324];
 
 /// What a group reads of a unit's master for its formation.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -362,10 +362,10 @@ impl World {
         u.group.id = group;
         if let Some(ai) = u.ai.as_mut() {
             if CLEARED_ACTIONS.contains(&ai.current_action)
-                || CLEARED_ORDERS.contains(&ai.current_order)
+                || ai.current_order == Some(OrderKind::Defend)
             {
                 ai.set_action(-1);
-                ai.set_order(-1, ai_rng);
+                ai.set_order(None, ai_rng);
             }
             ai.orders.clear();
         }

@@ -6,10 +6,11 @@ use crate::commands::FOUNDATION_GONE;
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
+use crate::unit_ai::BUILD_ACTION;
+use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::{TaskWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::task_finder::{Actor, TaskTarget};
 use crate::unit_ai::world_view::Wait;
-use crate::unit_ai::{BUILD_ACTION, BUILD_ORDER};
 use crate::world::{STATIC_TYPES_END, World};
 
 impl World {
@@ -221,7 +222,7 @@ impl World {
         let state = unit.life.state;
         let order = crate::unit_ai::QueuedOrder {
             issuer: q as i32,
-            order: BUILD_ORDER,
+            order: OrderKind::Build,
             priority: 100,
             target: foundation,
             target_owner: fp as i32,
@@ -269,14 +270,14 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                BUILD_ORDER,
+                Some(OrderKind::Build),
                 BUILD_ACTION,
                 Some((foundation, site_class)),
                 [position[0], position[1], 0.0],
                 true,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (BUILD_ORDER, BUILD_ACTION))?;
+            self.remember_order(player, idx, (Some(OrderKind::Build), BUILD_ACTION))?;
         }
         // the install (slot 0x808): the action list clears (its actions' teardowns), then
         // holds the Build

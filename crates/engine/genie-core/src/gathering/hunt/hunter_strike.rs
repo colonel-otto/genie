@@ -84,7 +84,7 @@ impl Unit {
         let can_move = self
             .ai
             .as_ref()
-            .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
+            .is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1);
         let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
         let world_time = c.world_time;
         let standing = c.w.graphics.get(&master.standing_sprite).copied();

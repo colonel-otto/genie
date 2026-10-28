@@ -194,7 +194,7 @@ fn soldier() -> Searcher {
         id: 1,
         target: -1,
         target_types: [-1, -1],
-        order: -1,
+        order: None,
         action: -1,
         master: 74,
         class: 6,

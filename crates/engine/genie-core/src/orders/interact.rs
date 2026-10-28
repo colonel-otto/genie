@@ -6,6 +6,7 @@ use crate::orders::{
     CLASS_54, Interact, MOVING, MoveOrder, Place, Split, Work, grid_point, ignore_unit,
     offset_point, readiness, set_differentiator_groups,
 };
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
@@ -107,7 +108,7 @@ impl World {
             target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
         let queued = crate::unit_ai::QueuedOrder {
             issuer: issuer as i32,
-            order: crate::unit_ai::ORDER_ON_TARGET,
+            order: OrderKind::OnTarget,
             priority: 100,
             target: if target.is_some() { order.target } else { -1 },
             target_owner,

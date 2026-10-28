@@ -233,7 +233,7 @@ impl<'u> UnitView<'u, '_> {
             position: unit.position,
             radius: master.radius,
         };
-        let can_move = ai.current_order != -1 || ai.stance <= 1;
+        let can_move = ai.current_order.is_some() || ai.stance <= 1;
         let attack = unit.actions.attack_mut().expect("the caller's own Attack");
         let w = attack.work(Some(target_mark), main, &wielder, |_| can_move);
         let by = Releaser {
@@ -338,7 +338,7 @@ impl<'u> UnitView<'u, '_> {
             own,
             executed: None,
             fire: None,
-            can_move: ai.current_order != -1 || ai.stance <= 1,
+            can_move: ai.current_order.is_some() || ai.stance <= 1,
             stance: ai.stance,
             state_position: ai.state_position,
             posted: Vec::new(),

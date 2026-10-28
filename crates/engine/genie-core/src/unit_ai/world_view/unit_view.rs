@@ -59,7 +59,7 @@ impl UnitView<'_, '_> {
                 let busy = u.top_action_kind().is_some() || u.unmodelled_action.is_some();
                 if ai.current_action != -1
                     || busy
-                    || ai.current_order != -1
+                    || ai.current_order.is_some()
                     || !ai.orders.is_empty()
                     || ai.current_target != -1
                 {

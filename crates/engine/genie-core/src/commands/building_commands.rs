@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::commands::gather_point::GatherPointCommand;
 use crate::commands::research::ResearchCommand;
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
+use crate::unit_ai::OrderKind;
 use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, World};
 
 impl World {
@@ -95,9 +96,9 @@ impl World {
             Ok(crate::unit_ai::QueuedOrder {
                 issuer: player as i32,
                 order: if target < 0 {
-                    crate::unit_ai::MOVE_ORDER
+                    OrderKind::Move
                 } else {
-                    crate::unit_ai::ORDER_ON_TARGET
+                    OrderKind::OnTarget
                 },
                 priority: -1,
                 target,
@@ -133,7 +134,7 @@ impl World {
                 let mut first = step(self, g.target, [g.point[0], g.point[1]])?;
                 if first.target == -1 && g.target != -1 {
                     first.target = g.target;
-                    first.order = crate::unit_ai::ORDER_ON_TARGET;
+                    first.order = OrderKind::OnTarget;
                 }
                 queued.push(first);
             }

@@ -9,6 +9,7 @@ use crate::movement::move_to::Walk;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::BUILDING;
+use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 /// Where an attack task's target aims ([`World::attack_aim`]).
@@ -55,7 +56,7 @@ pub(super) fn ready_at_start(
         action_state: crate::combat::attack::READY,
     };
     let ai = unit.ai.as_ref();
-    let can_move = ai.is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
+    let can_move = ai.is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1);
     let stance = ai.map_or(0, |ai| ai.stance);
     let state_position = ai.map_or([0.0; 2], |ai| ai.state_position);
     let queue_empty = ai.is_some_and(|ai| ai.orders.is_empty());
@@ -346,14 +347,14 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             ai.last_retarget_time = world_time;
             ai.notify_work(
-                700,
+                Some(OrderKind::Attack),
                 600,
                 Some((target, aim.class)),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (700, 600))?;
+            self.remember_order(player, idx, (Some(OrderKind::Attack), 600))?;
         }
         Ok(())
     }
