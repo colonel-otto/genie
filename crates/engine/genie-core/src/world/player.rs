@@ -263,6 +263,30 @@ impl Player {
         }
     }
 
+    /// Takes `amount` of attribute `kind`, at least 0 left (slot 0xf8 with the amount negated,
+    /// then slot 0xf0 with 0 below 0).
+    ///
+    /// # Errors
+    ///
+    /// [`Player::add_attribute`]'s.
+    pub fn take_at_least_zero(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
+        self.add_attribute(kind, -amount)?;
+        if let Some(v) = usize::try_from(kind).ok().and_then(|i| self.value_mut(i))
+            && *v < 0.0
+        {
+            *v = 0.0;
+        }
+        Ok(())
+    }
+
+    /// Attribute `i`'s value: food, wood, stone and gold are `resources`.
+    fn value_mut(&mut self, i: usize) -> Option<&mut f32> {
+        match i {
+            0..=3 => self.resources.get_mut(i),
+            _ => self.attributes.get_mut(i),
+        }
+    }
+
     /// [`Player::add_attribute`] for each of `adds`, in order.
     ///
     /// # Errors

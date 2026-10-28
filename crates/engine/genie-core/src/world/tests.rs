@@ -5178,8 +5178,13 @@ fn life_part(
     );
     in_update(&mut t, (1, 0), 50, |unit, c| {
         let before = attribute_values(c.w, 1);
+        let ids: Vec<i32> = c.w.players[1].objects.iter().map(|u| u.id).collect();
         part(unit, c)?;
-        Ok((gained(c.w, 1, &before), c.remains))
+        let own = c.w.players[1].objects.iter();
+        let made = own
+            .filter(|u| !ids.contains(&u.id))
+            .map(|u| (u.life.master_id, u.position));
+        Ok((gained(c.w, 1, &before), made.collect()))
     })
 }
 
@@ -5207,9 +5212,9 @@ fn gained(t: &World, p: usize, before: &[f32]) -> Vec<(i16, f32)> {
     changed.map(|(i, (a, b))| (i as i16, a - b)).collect()
 }
 
-/// What [`life_part`] gives: the owner's attribute changes within the update and the
-/// Context's remains.
-type LifeLeft = (Vec<(i16, f32)>, Option<(i16, [f32; 3], Option<u8>)>);
+/// What [`life_part`] gives within the update: the owner's attribute changes and the objects
+/// it made (master, place).
+type LifeLeft = (Vec<(i16, f32)>, Vec<(i16, [f32; 3])>);
 
 /// The life cycle's `set_state(3)` storage (`FUN_1411a56c0` with 0): a live object below one
 /// hit point gives back each storage entry of kind 2 or 16 with an attribute (the amount
@@ -5233,9 +5238,10 @@ fn a_dying_object_gives_back_its_storage_of_kinds_2_and_16() {
 }
 
 /// The dying sprite's end (`RGE_Animated_Object::update`, [`Unit::dying_sprite_ended`]): the
-/// animation stops and a unit (type below 80) leaves its remains (here 99) at its place with
-/// the facet its angle gives; without remains (−1) or as a building none. A dead object's death
-/// spawn ([`Unit::death_spawn_comes`]) comes the same way. A master the player lacks fails.
+/// animation stops and a unit (type below 80) leaves its remains (here 99) at its place within
+/// its update (the dead unit lent to the world); without remains (−1) or as a building none. A
+/// dead object's death spawn ([`Unit::death_spawn_comes`]) comes the same way. A master the
+/// player lacks fails.
 #[test]
 fn a_dead_object_leaves_its_remains_and_its_death_spawn() {
     let ended = |kind: u8, remains: i16| {
@@ -5248,19 +5254,11 @@ fn a_dead_object_leaves_its_remains_and_its_death_spawn() {
         )
     };
     let v = forage_world().players[1].objects[0].clone();
-    let mover = v.body.mover().unwrap();
-    let facet = crate::objects::facing::facet_of_angle(mover.angle, mover.stats.facets).0;
-    assert_eq!(
-        ended(70, 99).unwrap().1,
-        Some((99, v.position, Some(facet)))
-    );
-    assert_eq!(ended(70, -1).unwrap().1, None);
-    assert_eq!(ended(80, 99).unwrap().1, None);
-    let spawned = life_part(
-        |m, _| m.death_spawns = [99, -1],
-        |u, c| u.death_spawn_comes(c),
-    );
-    assert_eq!(spawned.unwrap().1, Some((99, v.position, Some(facet))));
+    assert_eq!(ended(70, 99).unwrap().1, [(99, v.position)]);
+    assert_eq!(ended(70, -1).unwrap().1, []);
+    assert_eq!(ended(80, 99).unwrap().1, []);
+    let spawned = life_part(|m, _| m.death_spawns = [99, -1], Unit::death_spawn_comes);
+    assert_eq!(spawned.unwrap().1, [(99, v.position)]);
     let lacking = life_part(|_, v| v.life.master_id = 999, Unit::dying_sprite_ended);
     assert_eq!(
         lacking.unwrap_err().reason(),
@@ -14369,16 +14367,31 @@ fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
     assert_eq!(moved(&mut t, 4242), Err(unreached));
 }
 
-/// A step that fails stops what follows it: what its Context gathered does not apply (a dead
-/// unit's refund), and the first effect that fails stops the ones after it (a refund of a
-/// negative attribute stops the next one); a step that holds applies it.
+/// The updating unit's own kill with what a razing hit counted: player 1's attribute 98 by
+/// each of `adds` (attribute, amount).
+fn own_razing(adds: &[(i16, f32)]) -> crate::combat::victims::KillLeft {
+    crate::combat::victims::KillLeft {
+        id: 9175,
+        kill: None,
+        razed: vec![crate::combat::damage::Razed {
+            attacker_player: 1,
+            owner: 1,
+            event: None,
+            adds: adds.iter().map(|&(a, v)| (1, a, v)).collect(),
+        }],
+    }
+}
+
+/// A step that fails stops what follows it: what its Context gathered does not apply (its own
+/// kill's razing counts), and the first effect that fails stops the ones after it (a count of
+/// a negative attribute stops the next one); a step that holds applies it.
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
     use crate::objects::unit::Step;
     let mut t = house_builder();
     t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.refund = vec![(98, 5.0)];
+        c.kills.push(own_razing(&[(98, -5.0)]));
         Err(GenieError::unsupported("the step's own gap"))
     });
     assert_eq!(
@@ -14390,7 +14403,7 @@ fn a_step_that_fails_stops_what_follows_it() {
     let mut t = house_builder();
     t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.refund = vec![(-1, 5.0), (98, 5.0)];
+        c.kills.push(own_razing(&[(-1, 5.0), (98, -5.0)]));
         Ok(Step::Stay)
     });
     assert_eq!(
@@ -14401,7 +14414,7 @@ fn a_step_that_fails_stops_what_follows_it() {
     let mut t = house_builder();
     t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.refund = vec![(98, 5.0)];
+        c.kills.push(own_razing(&[(98, -5.0)]));
         Ok(Step::Stay)
     });
     assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
@@ -14487,38 +14500,62 @@ fn a_completion_s_parts_reach_their_owner() {
     );
 }
 
-/// What a step's deaths set off reaches the world: a dead building's count leaves its attribute
-/// (at least 0 left), and a dying sprite's remains are a new object of the owner at their place.
+/// A built building's death in its own update (`FUN_1411dbb70`, state 3 from 2), each part
+/// within the update in the game's order: its owner's watched list lets it go, a castle's count
+/// (attribute 134, held at 0) and its paid cost (98 alone for a castle, the combat object's
+/// `FUN_14121cc40`) leave the owner, and as the last building of its master it withdraws the
+/// master's technology from state 3 (`FUN_141166ab0`'s scan over the owner's objects, the
+/// castle lent to the world). Another castle standing keeps the technology.
 #[test]
-fn a_step_s_deaths_reach_the_world() {
-    use crate::objects::unit::Step;
-    let stay = |t: &mut World, orders: &Orders<'_>| {
-        finished_with(t, (1, 0), |c| {
-            orders(c);
-            Ok(Step::Stay)
+fn a_built_building_s_death_reaches_its_owner_within_its_update() {
+    use crate::technology::{TechDef, TechState};
+    let died = |another: bool| {
+        let mut t = enter_world(vec![], 5);
+        for masters in &mut t.masters {
+            let mut castle = Master {
+                id: 82,
+                death_sprite: -1,
+                cost: vec![(2, 650, true)],
+                ..masters.get(70).unwrap().clone()
+            };
+            let b = castle.building.as_mut().unwrap();
+            (b.tech, b.destruction_sprite) = (0, -1);
+            *masters = Masters::new(masters.iter().cloned().chain([castle]));
+        }
+        t.players[1].objects[1].life.master_id = 82;
+        if another {
+            let mut other = t.players[1].objects[1].clone();
+            other.id = 10031;
+            t.players[1].objects.push(other);
+        }
+        t.techs = vec![TechDef::default()];
+        t.players[1].techs = vec![TechState {
+            state: 3,
+            ..TechState::default()
+        }];
+        let owner = &mut t.players[1];
+        owner.attributes.resize(250, 0.0);
+        (
+            owner.attributes[134],
+            owner.attributes[98],
+            owner.attributes[165],
+        ) = (0.5, 1000.0, 1000.0);
+        t.players[1].watched.push(crate::vision::ghost::Watched {
+            id: 10028,
+            cell: crate::vision::ghost::Cell::Tile(0),
+            bits: 0,
+        });
+        in_update(&mut t, (1, 1), 0, |unit, c| {
+            unit.life.state = 3;
+            unit.died(c, 2)?;
+            let a = &c.w.players[1].attributes;
+            let withdrawn = c.w.players[1].techs[0].state != 3;
+            Ok((watches(c.w, 1, 10028), [a[134], a[98], a[165]], withdrawn))
         })
         .map_err(|e| e.reason().to_owned())
     };
-    let mut t = house_builder();
-    t.players[1].attributes[4] = 0.5;
-    let died = BuildingDeath {
-        count: Some(4),
-        tech: None,
-    };
-    assert_eq!(
-        stay(&mut t, &|c| c.building_death = Some(died)),
-        Ok(Step::Stay)
-    );
-    assert_eq!(t.players[1].attributes[4], 0.0);
-
-    let mut t = house_builder();
-    let remains = |c: &mut context::Context<'_>| c.remains = Some((70, [25.0, 89.5, 0.0], None));
-    assert_eq!(stay(&mut t, &remains), Ok(Step::Stay));
-    let new = &t.players[1].objects[3];
-    assert_eq!(
-        (new.life.master_id, new.position, new.life.state),
-        (70, [25.0, 89.5, 0.0], 0)
-    );
+    assert_eq!(died(false), Ok((0, [0.0, 350.0, 1000.0], true)));
+    assert_eq!(died(true), Ok((0, [0.0, 350.0, 1000.0], false)));
 }
 
 /// The world's update runs the builder of the walk-and-build test the same way the object's

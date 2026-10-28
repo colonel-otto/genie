@@ -83,8 +83,11 @@ impl Unit {
                 .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .is_some_and(|m| m.ghost_on_death == crate::vision::ghost::LEAVES_GHOSTS)
+                && c.w.game_state != 2
             {
-                c.ghost_deaths.push(self.id);
+                // the ghosts of the death (FUN_14118e990), the object lent to the world
+                let (p, id) = (c.player, self.id);
+                c.lend(self, |w| w.ghosts_at_death(p, id))?;
             }
         }
         self.annexes_follow(c, before, after)?;
@@ -171,7 +174,8 @@ impl Unit {
                 .body
                 .mover()
                 .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
-            c.remains = Some((self.life.remains, self.position, facet));
+            let (p, remains, at) = (c.player, self.life.remains, self.position);
+            c.lend(self, |w| w.remains(p, remains, at, facet))?;
         }
         Ok(())
     }
@@ -180,7 +184,7 @@ impl Unit {
     /// `FUN_1411a5090`: the master's `death_spawn_obj_id` makes an object at its place; a
     /// moving object's override gives it the dead object's facet and that facet's angle). The
     /// spawn's sprite from slot 0x7a8 (the master's undead sprite) is not held.
-    pub(crate) fn death_spawn_comes(&self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn death_spawn_comes(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let spawn =
             c.w.masters
                 .get(c.player)
@@ -193,7 +197,7 @@ impl Unit {
             .body
             .mover()
             .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
-        c.remains = Some((spawn, self.position, facet));
-        Ok(())
+        let (p, at) = (c.player, self.position);
+        c.lend(self, |w| w.remains(p, spawn, at, facet))
     }
 }

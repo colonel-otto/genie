@@ -8,7 +8,7 @@ use crate::unit_ai::AfterOrder;
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::{AiStart, AiWork};
 use crate::world::context::{Context, ObjectOutputs};
-use crate::world::{BuildingDeath, LEAVES_ITS_LIST, Player, PlayerFrame, World};
+use crate::world::{LEAVES_ITS_LIST, PlayerFrame, World};
 
 /// What an object's step left for its list's loop ([`World::step_object`]).
 pub(super) struct Stepped {
@@ -35,21 +35,11 @@ fn in_list<T>(
     effect().map(drop)
 }
 
-/// Takes `amount` of attribute `kind` from `owner`, at least 0 left (slot 0xf8, then slot 0xf0
-/// with 0).
-fn take_at_least_zero(owner: &mut Player, kind: i16, amount: f32) -> Result<(), GenieError> {
-    owner.add_attribute(kind, -amount)?;
-    if owner.attributes[kind as usize] < 0.0 {
-        owner.attributes[kind as usize] = 0.0;
-    }
-    Ok(())
-}
-
 impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
     /// AI for a command) and what follows it: what its Context gathered, applied in the order the
-    /// game's update makes them (the deaths and remains, the regeneration, passive
-    /// abilities and production of a full update, the unit AI's works, moves, waits and order on
+    /// game's update makes them (the regeneration, passive abilities and production of a full
+    /// update, the unit AI's works, moves, waits and order on
     /// a target, the own kill, the takes and releases). Returns the step, the resume of a unit AI
     /// part the update stopped before, the tail after an order on a target and the object's
     /// slot, which it looks up by id after each part that may move it.
@@ -72,7 +62,6 @@ impl World {
         let step = step?;
         // the tail after an order on a target, which stops the unit AI's rest
         let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);
-        self.apply_deaths(p, &mut out)?;
         let own_update = full && out.ai_resume.is_none();
         let at = (p, self.slot_of(p, id)?, id);
         self.finish_own_update(at, (dt, own_update), &out, after_order, &step)?;
@@ -96,48 +85,6 @@ impl World {
         self.players[p].objects.position_of(id).ok_or_else(|| {
             GenieError::unreachable("a stepped object left its list in its step").with("object", id)
         })
-    }
-
-    /// What the step's deaths set off: the watched lists, the ghosts, a dead building's count
-    /// and technology, a dead object's refund, and the remains of a dying sprite's end. A
-    /// started construction's watch (`FUN_1411e5670`) is its site's, at once.
-    fn apply_deaths(&mut self, p: usize, out: &mut ObjectOutputs) -> Result<(), GenieError> {
-        // a dead building leaves its owner's watched list (FUN_141091310), then the
-        // ghosts of a death (FUN_14118e990, while the game state is not 2)
-        for id in std::mem::take(&mut out.unwatched) {
-            self.unwatch(p, id);
-        }
-        for id in std::mem::take(&mut out.ghost_deaths) {
-            if self.game_state != 2 {
-                self.ghosts_at_death(p, id)?;
-            }
-        }
-        // a dead building's count leaves its attribute, at least 0 (FUN_1411dbb70)
-        if let Some(BuildingDeath {
-            count: Some(kind), ..
-        }) = out.building_death
-        {
-            take_at_least_zero(&mut self.players[p], kind, 1.0)?;
-        }
-        // a dead unit's paid cost leaves attributes 98 and 164 (a building's 98 and 165),
-        // each at least 0 (FUN_14121cc40: slots 0xf8, then 0xf0 with 0)
-        for (kind, cost) in std::mem::take(&mut out.refund) {
-            take_at_least_zero(&mut self.players[p], kind, cost)?;
-        }
-        // the last building of a master with a technology withdraws it (FUN_141166ab0,
-        // FUN_1413d4ec0), after the combat part's state 3
-        if let Some(BuildingDeath {
-            tech: Some((master, tech)),
-            ..
-        }) = out.building_death
-        {
-            self.withdraw_tech(p, master, tech)?;
-        }
-        // the remains of a dying sprite's end, a new object of the owner (FUN_1411a4e90)
-        if let Some((master, at, facet)) = out.remains {
-            self.remains(p, master, at, facet)?;
-        }
-        Ok(())
     }
 
     /// The parts of the object's own update after its actions, once, with the update's unit AI

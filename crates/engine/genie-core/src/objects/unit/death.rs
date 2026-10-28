@@ -36,6 +36,8 @@ impl Unit {
             return Ok(());
         };
         let master = &master;
+        // the last building of a master with a technology withdraws it, after the combat part
+        let mut tech = None;
         if master.kind == 80 {
             // the static update's death (0x14118ad50) lets the annexes go before its set_state(3):
             // each slot (`+0xbc0`..) clears and its annex's `+0xbb8` with it, and each annex takes
@@ -49,13 +51,19 @@ impl Unit {
                 }
             }
             if before == 2 {
+                // FUN_1411dbb70 to state 3 from 2: the storage leaves (FUN_1411e63f0), the owner's
+                // watched list lets it go (FUN_141091310), the tiles unlink (FUN_140f65580), and
+                // a monastery's, wonder's or castle's count leaves, at least 0 left
                 let death = built_death(self, master, c.computer)?;
                 c.w.players[c.player].add_attributes(death.adds)?;
-                c.unwatched.push(self.id);
+                c.w.unwatch(c.player, self.id);
                 if let (Some(v), Some(at)) = (c.w.spatial.sight.as_mut(), death.unlink) {
                     v.unlink_building(at, master.radius);
                 }
-                c.building_death = Some(death.building);
+                if let Some(kind) = death.building.count {
+                    c.w.players[c.player].take_at_least_zero(kind, 1.0)?;
+                }
+                tech = death.building.tech;
             } else if before == 0 {
                 self.foundation_died(c, master)?;
             }
@@ -79,7 +87,18 @@ impl Unit {
         }
         combat_dies(self, master, &mut c.w.spatial, &mut c.w.pathing)?;
         if before == 2 {
-            c.refund = refund_of(master, self.annex_of);
+            // FUN_14121cc40: the paid cost leaves attributes 98 and 164 (a building's 98 and
+            // 165), each at least 0 (slots 0xf8, then 0xf0 with 0)
+            let owner = &mut c.w.players[c.player];
+            for (kind, cost) in refund_of(master, self.annex_of) {
+                owner.take_at_least_zero(kind, cost)?;
+            }
+        }
+        if let Some((m, t)) = tech {
+            // FUN_141166ab0 finds no other of the master standing (the building lent to the
+            // world for the scan), then FUN_1413d4ec0
+            let p = c.player;
+            c.lend(self, |w| w.withdraw_tech(p, m, t))?;
         }
         // the static update's sprite after the death (0x14118ad50): a building's by its build
         // points (its destruction sprite unbuilt), any other combat object's slot 0x7a0's

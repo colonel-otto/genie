@@ -12,8 +12,8 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::{AiStart, AiWork};
+use crate::world::World;
 use crate::world::player::Player;
-use crate::world::{BuildingDeath, World};
 
 pub(crate) struct Context<'a> {
     /// The world the update reaches (FD-045-D28): its objects by id, every player and the
@@ -45,16 +45,6 @@ pub(crate) struct Context<'a> {
     /// after the update ([`World::kill_left`]); another object's kill reaches the world at the
     /// hit.
     pub(crate) kills: Vec<KillLeft>,
-    /// What the unit's death leaves for the caller: the remains its dying sprite's end makes
-    /// (`FUN_1411a4e90`: the master, the place and the dead object's facet) and the paid cost its
-    /// owner takes back (attributes 98 and 164).
-    pub(crate) remains: Option<(i16, [f32; 3], Option<u8>)>,
-    pub(crate) refund: Vec<(i16, f32)>,
-    /// What a built building's death takes from its owner before its combat part's refund: the
-    /// counts of the monastery, the wonder and the castle (slot 0xf8, then slot 0xf0 with 0 for
-    /// a value below 0), and its master's technology (`+0x98c`) the caller withdraws when no
-    /// other building of the master stands ([`World::withdraw_tech`]).
-    pub(crate) building_death: Option<BuildingDeath>,
     /// The unit's update stopped before its unit AI for the caller's work order
     /// ([`Unit::ai_part`]); given back, the update runs only that part.
     pub(crate) ai_resume: Option<AiResume>,
@@ -76,12 +66,6 @@ pub(crate) struct Context<'a> {
     /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
     /// building: the caller runs the group's removeUnit ([`World::remove_unit`]).
     pub(crate) left_group: Option<(i32, i32)>,
-    /// The objects whose master leaves ghosts that died in this update ([`crate::vision::ghost`]), the
-    /// caller's.
-    pub(crate) ghost_deaths: Vec<i32>,
-    /// The buildings that died in this update: their owner's watched list lets them go
-    /// (`FUN_141091310`), the caller's.
-    pub(crate) unwatched: Vec<i32>,
     /// The game's setting at `+0x680` is 1 ([`World::mode_680`]).
     pub(crate) mode_1: bool,
     /// The owner's id and civ (`player+0x738`).
@@ -185,12 +169,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) transport_unload: bool,
     /// [`Context`]'s `kills`.
     pub(in crate::world) kills: Vec<KillLeft>,
-    /// [`Context`]'s `remains`.
-    pub(in crate::world) remains: Option<(i16, [f32; 3], Option<u8>)>,
-    /// [`Context`]'s `refund`.
-    pub(in crate::world) refund: Vec<(i16, f32)>,
-    /// [`Context`]'s `building_death`.
-    pub(in crate::world) building_death: Option<BuildingDeath>,
     /// [`Context`]'s `ai_resume`.
     pub(in crate::world) ai_resume: Option<AiResume>,
     /// [`Context`]'s `releases`.
@@ -201,10 +179,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) left_group: Option<(i32, i32, i32)>,
     /// [`Context`]'s `takes`.
     pub(in crate::world) takes: Vec<(i32, Releaser)>,
-    /// [`Context`]'s `ghost_deaths`.
-    pub(in crate::world) ghost_deaths: Vec<i32>,
-    /// [`Context`]'s `unwatched`.
-    pub(in crate::world) unwatched: Vec<i32>,
 }
 
 impl Context<'_> {
@@ -222,16 +196,11 @@ impl Context<'_> {
             work_order: self.work_order.take(),
             transport_unload: std::mem::take(&mut self.transport_unload),
             kills: std::mem::take(&mut self.kills),
-            remains: self.remains.take(),
-            refund: std::mem::take(&mut self.refund),
-            building_death: self.building_death.take(),
             ai_resume: self.ai_resume.take(),
             releases: std::mem::take(&mut self.releases),
             builder_leaves: std::mem::take(&mut self.builder_leaves),
             left_group: self.left_group.take().map(|(g, b)| (g, id, b)),
             takes: std::mem::take(&mut self.takes),
-            ghost_deaths: std::mem::take(&mut self.ghost_deaths),
-            unwatched: std::mem::take(&mut self.unwatched),
         }
     }
 }
