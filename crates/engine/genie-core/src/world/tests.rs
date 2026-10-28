@@ -28,6 +28,7 @@ use crate::unit_ai::world_view::{DropWorld, Foreign, Wait, patrol_information};
 use crate::unit_ai::{BUILD_ORDER, Notify, OWNER_CHANGED, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::checkpoint::TopAction;
+use crate::world::others::{Others, OthersRef};
 use crate::world::player::Player;
 
 fn player(objects: Vec<Option<UnitAi>>) -> Player {
@@ -1720,15 +1721,19 @@ fn a_wait_reads_its_foundation_s_build_points_wherever_it_is() {
         after: none,
         left: None,
     };
-    assert_eq!(wait_progress(10028, &t.players[1].objects, own), Some(0.0));
-    assert_eq!(wait_progress(77, &t.players[1].objects, own), None);
+    let own = OthersRef::new(1, &t.players[1].objects, own);
+    assert_eq!(wait_progress(10028, own), Some(0.0));
+    assert_eq!(wait_progress(77, own), None);
     // another player's (player 0 updating, player 1 after it)
     let other = Foreign {
         before: none,
         after: &players[1..],
         left: None,
     };
-    assert_eq!(wait_progress(10028, &[], other), Some(0.0));
+    assert_eq!(
+        wait_progress(10028, OthersRef::new(0, &[], other)),
+        Some(0.0)
+    );
 }
 
 /// `FUN_1411cc430` on an annex whose main building is in state 0 with a hit point (the
@@ -3385,7 +3390,7 @@ pub(crate) fn in_update<R>(
     t: &mut World,
     (p, i): (usize, usize),
     dt: u32,
-    f: impl FnOnce(&mut Unit, &mut context::Context<'_>, &mut Vec<Unit>) -> Result<R, GenieError>,
+    f: impl FnOnce(&mut Unit, &mut context::Context<'_>, &mut Others<'_>) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
     let frame = t.player_frame();
     let mut answer = None;
@@ -3855,7 +3860,7 @@ fn lumber_world(near: f32) -> World {
 fn a_hunt_that_lost_its_tree_takes_the_next_one() {
     let search = |t: &mut World, within, near| {
         in_update(t, (1, 0), 50, |unit, c, others| {
-            unit.hunt_tree_search(c, others, within, near)
+            unit.hunt_tree_search(c, others.view(), within, near)
         })
     };
     let mut t = lumber_world(31.5);
@@ -5542,7 +5547,7 @@ fn gate_update_of(
     (g.life.master_id, g.gate) = (master, gate);
     setup(&mut t);
     let toggle = in_update(&mut t, (1, 0), 50, |unit, c, others| {
-        unit.gate_update(c, others)?;
+        unit.gate_update(c, others.view())?;
         Ok(std::mem::take(&mut c.gate_toggle))
     })?;
     Ok((toggle, t.players[1].objects[0].gate))
@@ -7480,7 +7485,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
             construction_rate: 1.0,
             groups: &t.groups,
         };
-        hunter.drop_off_in(world, &others)
+        hunter.drop_off_in(world, OthersRef::alone(1, &others))
     };
     assert_eq!(drop_off(&mut hunter, &mut t), Ok(Some(9149)));
     let hunt = hunter.actions.hunt().copied().unwrap();
@@ -9813,7 +9818,15 @@ fn scout_attack_on(
             sprite: &mut sprite,
             world_time: 0,
             construction_rate: 1.0,
-            others: &[],
+            others: OthersRef::new(
+                1,
+                &[],
+                Foreign {
+                    before: &players,
+                    after: &[],
+                    left: None,
+                },
+            ),
             zones: &mut zones,
             foreign: Foreign {
                 before: &players,
@@ -9994,7 +10007,15 @@ fn attack_by(
             sprite: &mut sprite,
             world_time: 0,
             construction_rate: 1.0,
-            others: &[],
+            others: OthersRef::new(
+                1,
+                &[],
+                Foreign {
+                    before: &players,
+                    after: &[],
+                    left: None,
+                },
+            ),
             zones: &mut zones,
             foreign: Foreign {
                 before: &players,
@@ -10184,7 +10205,15 @@ fn help_view<R>(
         sprite: &mut sprite,
         world_time: 0,
         construction_rate: 1.0,
-        others: &others,
+        others: OthersRef::new(
+            1,
+            &others,
+            Foreign {
+                before: &players,
+                after: &[],
+                left: None,
+            },
+        ),
         zones: &mut zones,
         foreign: Foreign {
             before: &players,
@@ -10227,8 +10256,8 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
 fn helper_free_of(owner: usize, helper: Unit, groups: &crate::groups::UnitGroups) -> bool {
     help_view(helper, None, groups, |side| {
         let scout = side.masters.and_then(|m| m.get(448)).unwrap().clone();
-        side.helper_free(owner, &side.others[0], &scout, 50)
-            .unwrap()
+        let helper = side.others.own_iter().next().unwrap();
+        side.helper_free(owner, helper, &scout, 50).unwrap()
     })
 }
 
@@ -11626,7 +11655,7 @@ fn foraging() -> World {
 /// `n` of the forager's whole updates (50 ms each), up to the first after which `stop` holds.
 fn forage_until(t: &mut World, n: usize, stop: impl Fn(&World) -> bool) {
     for _ in 0..n {
-        let _ = in_update(t, (1, 0), 50, |unit, c, others| unit.update(c, others)).unwrap();
+        let _ = in_update(t, (1, 0), 50, Unit::update).unwrap();
         if stop(t) {
             return;
         }
@@ -11837,7 +11866,7 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
         let seen = in_update(&mut t, (1, 0), 50, |unit, c, others| {
             let by = unit.releaser(c);
             c.build_command = built;
-            let r = unit.gather_next(c, others, next, old, by);
+            let r = unit.gather_next(c, others.view(), next, old, by);
             let released = c.releases.drain(..).map(|(id, _)| id).collect();
             Ok((r, released, c.build_command.take(), c.reseed.take()))
         })
@@ -11948,7 +11977,7 @@ fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.build_drop_off(c, others, me)
+        unit.build_drop_off(c, others.view(), me)
     })
     .unwrap();
     let v = &t.players[1].objects[0];
@@ -12019,8 +12048,8 @@ fn drop_site_sought(
         construction_rate: 1.0,
         groups: &t.groups,
     };
-    let objects = &t.players[1].objects;
-    objects[0].drop_site_with(&mut world, objects, 0, args)
+    let objects = OthersRef::of(&t.players, 1);
+    t.players[1].objects[0].drop_site_with(&mut world, objects, 0, args)
 }
 
 /// The drop-site search from a unit (`FUN_1411671e0`): the nearer town centre wins by path (its
@@ -12701,7 +12730,7 @@ fn completed_house(setup: fn(&mut Unit)) -> (World, Completed) {
     k.progress = f32::from(k.build_time);
     setup(h);
     let r = in_update(&mut t, (1, 1), 50, |unit, c, others| {
-        unit.complete_on_update(c, others)?;
+        unit.complete_on_update(c, others.view())?;
         Ok((
             std::mem::take(&mut c.attribute_adds),
             std::mem::take(&mut c.started),
@@ -13133,7 +13162,7 @@ fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
     v.actions.build_mut().unwrap().task.work_value = 1.0;
     let mut seen = Vec::new();
     for n in 0..520 {
-        let _ = in_update(&mut t, (1, 0), 50, |unit, c, others| unit.update(c, others)).unwrap();
+        let _ = in_update(&mut t, (1, 0), 50, Unit::update).unwrap();
         let b = t.players[1].objects[0].actions.build().copied().unwrap();
         let house = t.players[1].objects[1].life.state;
         let now = (b.state, b.move_to, house);
@@ -13190,12 +13219,12 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.build_drop_off(c, others, me)
+        unit.build_drop_off(c, others.view(), me)
     })
     .unwrap();
     let mut seen = Vec::new();
     for n in 0..350 {
-        let _ = in_update(&mut t, (1, 0), 50, |unit, c, others| unit.update(c, others)).unwrap();
+        let _ = in_update(&mut t, (1, 0), 50, Unit::update).unwrap();
         let v = &t.players[1].objects[0];
         let b = v.actions.build().copied().unwrap();
         let now = (b.state, b.move_to, b.site, v.life.amount);

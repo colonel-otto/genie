@@ -24,6 +24,7 @@
 
 pub mod checkpoint;
 pub(crate) mod context;
+pub(crate) mod others;
 pub(crate) mod player;
 
 use crate::GenieError;

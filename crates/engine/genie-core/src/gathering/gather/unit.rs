@@ -11,6 +11,7 @@ use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 
 impl Unit {
     /// The Build's `set_state(8)` from its update (case 7 searching again): the drop-site table's
@@ -24,7 +25,7 @@ impl Unit {
     pub(crate) fn build_drop_off(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
@@ -37,12 +38,7 @@ impl Unit {
                 .and_then(|m| Some((m, m.get(self.life.master_id)?)))
                 .ok_or(crate::world::OBJECT_MASTER)?;
             let at = [self.position[0], self.position[1]];
-            let look = |id: i32| {
-                others
-                    .iter()
-                    .find(|u| u.id == id)
-                    .map(|u| (u.life.state, u.position))
-            };
+            let look = |id: i32| others.own(id).map(|u| (u.life.state, u.position));
             let found = crate::orders::nearest_table_site(
                 (c.drop_sites, c.civ, c.tracker),
                 (at, self.life.attribute_type, own.class),
@@ -57,11 +53,7 @@ impl Unit {
                         if t == unit.id {
                             return Some((player, unit));
                         }
-                        others
-                            .iter()
-                            .find(|u| u.id == t)
-                            .map(|u| (player, u))
-                            .or_else(|| foreign.find(t))
+                        others.find(t)
                     };
                     let every = c.every_masters;
                     let task = match (
@@ -124,18 +116,18 @@ impl Unit {
     pub(crate) fn gather_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
-        self.gather_check_targets(c, others, by)?;
+        self.gather_check_targets(c, others.view(), by)?;
         let view = self.gather_view(c)?;
         if self.actions.gather().expect("the caller's gather").state
             == crate::gathering::gather::DROP
         {
             return self.gather_drop_update(c, others, me, view, by);
         }
-        self.gather_work_update(c, others, me, view, by)
+        self.gather_work_update(c, others.view(), me, view, by)
     }
 
     /// The Gather's update's check of its targets: a target the world does not hold goes, one
@@ -144,7 +136,7 @@ impl Unit {
     fn gather_check_targets(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         by: Releaser,
     ) -> Result<(), GenieError> {
         let gather = self.actions.gather_mut().expect("the caller's gather");
@@ -172,7 +164,7 @@ impl Unit {
         }
         let site = gather.carry_to;
         let held = c.spatial.get(site).is_some();
-        let (kept, let_go) = second_target_checked(site, held, state_of(site, others, c.foreign));
+        let (kept, let_go) = second_target_checked(site, held, state_of(site, others));
         gather.carry_to = kept;
         if let Some(t) = let_go {
             c.releases.push((t, by));
@@ -232,7 +224,7 @@ impl Unit {
     fn gather_drop_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
         view: GatherView,
         by: Releaser,
@@ -269,7 +261,7 @@ impl Unit {
                 self.gather_load_dropped(c, others, by, (kind, amount), radius)
             }
             // set_state(8) again: the drop site kept or searched
-            Dropped::Again => self.gather_drop_off(c, others),
+            Dropped::Again => self.gather_drop_off(c, others.view()),
             // set_state(2): the target, then the drop site go (slot 0x68, FUN_140a7a190)
             Dropped::Idle => {
                 for id in before.into_iter().filter(|&id| id != -1) {
@@ -318,7 +310,7 @@ impl Unit {
     fn gather_load_dropped(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         by: Releaser,
         (kind, amount): (i16, f32),
         radius: [f32; 2],
@@ -357,7 +349,7 @@ impl Unit {
     fn gather_work_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         me: Me,
         view: GatherView,
         by: Releaser,
@@ -411,7 +403,7 @@ impl Unit {
     pub(crate) fn gather_next(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         next: crate::gathering::gather::Next,
         (old_target, old_second): (i32, i32),
         by: Releaser,
@@ -456,7 +448,7 @@ impl Unit {
     pub(crate) fn gather_search(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);

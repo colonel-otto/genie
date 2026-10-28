@@ -9,6 +9,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::Search;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 use crate::world::{SEARCH_AGAIN, SEARCH_NEEDED};
 
 impl Unit {
@@ -20,7 +21,7 @@ impl Unit {
     pub(crate) fn hunt_set_search(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.target_class != 10 {
@@ -37,7 +38,7 @@ impl Unit {
     pub(crate) fn hunt_search_state(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let task = hunt.task;
@@ -97,7 +98,7 @@ impl Unit {
     pub(crate) fn hunt_search_notify(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
@@ -157,7 +158,7 @@ impl Unit {
     pub(crate) fn hunt_after_drop(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let _ = c
             .masters
@@ -169,7 +170,7 @@ impl Unit {
         if self.hunt_drop_orders(c)? {
             return Ok(());
         }
-        let (found, kind) = self.hunt_next_search(c, others)?;
+        let (found, kind) = self.hunt_next_search(c, others.view())?;
         if found == -1 {
             return self.hunt_found_nothing(c, kind);
         }
@@ -286,7 +287,7 @@ impl Unit {
     fn hunt_next_search(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(i32, i8), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let ai = self.ai.as_ref().ok_or(GenieError::unsupported(
@@ -322,7 +323,7 @@ impl Unit {
     fn hunt_closest_object(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         class: i32,
     ) -> Result<i32, GenieError> {
         if self.my_pasture != -1 {
@@ -373,20 +374,13 @@ impl Unit {
             mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
         };
         let mut no_attack = crate::unit_ai::NoAttack;
-        let foreign = c.foreign;
-        let moving = |id: i32| herded(others, foreign, id);
+        let moving = |id: i32| herded(others, id);
         let shuns = |_: &Placed| -> Result<bool, GenieError> {
             Err(GenieError::unsupported(
                 "a class-10 searcher in a hunt's search",
             ))
         };
-        let farm = |id: i32| {
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .or_else(|| foreign.find(id).map(|(_, u)| u))
-                .map(|u| (u.workers, u.pasture))
-        };
+        let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
         let result = spatial.search(
             self.id,
             c.player,
@@ -435,20 +429,16 @@ impl Unit {
     fn hunt_take_found(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         found: i32,
     ) -> Result<(), GenieError> {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::world::HUNTER_MASTER)?;
-        let foreign = c.foreign;
-        let (owner, t) = match others.iter().find(|u| u.id == found) {
-            Some(t) => (c.player, t),
-            None => foreign.find(found).ok_or(GenieError::unsupported(
-                "a hunt's new target the slice does not hold",
-            ))?,
-        };
+        let (owner, t) = others.find(found).ok_or(GenieError::unsupported(
+            "a hunt's new target the slice does not hold",
+        ))?;
         let t_master = c
             .every_masters
             .get(owner)
@@ -529,10 +519,7 @@ impl Unit {
             }
             if owner == c.player {
                 // one of its own player's: allied, never listed
-                let u = others
-                    .iter_mut()
-                    .find(|u| u.id == found)
-                    .expect("found above");
+                let u = others.own_mut(found).expect("found above");
                 u.taken(false, by.id);
             } else {
                 c.takes.push((found, by));
@@ -588,7 +575,7 @@ impl Unit {
     pub(crate) fn hunt_drop_off(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.masters,

@@ -14,6 +14,7 @@ use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_o
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
 use crate::world::context::Context;
+use crate::world::others::Others;
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
 /// caller: the action is not quiet (`+0x60` 0, its constructors' `FUN_140a73e90` with 1), so the
@@ -380,7 +381,7 @@ impl Unit {
     pub(crate) fn artifact_part(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
     ) -> Result<Option<Captured>, GenieError> {
         let by = self.releaser(c);
@@ -400,7 +401,7 @@ impl Unit {
     pub(crate) fn artifact_enter_part(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<(), GenieError> {
@@ -488,7 +489,7 @@ impl Unit {
     pub(crate) fn artifact_handover(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         new: Option<Handover>,
     ) -> Result<Option<Captured>, GenieError> {
         match new {

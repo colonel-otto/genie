@@ -46,11 +46,7 @@ impl<'u> UnitView<'u> {
         if id == self.unit.id {
             return Some((self.player, &*self.unit));
         }
-        self.others
-            .iter()
-            .find(|u| u.id == id)
-            .map(|u| (self.player, u))
-            .or_else(|| self.foreign.find(id))
+        self.others.find(id)
     }
 
     /// Slot 0x380's search without a Build on top: the foundation (None when the world does not
@@ -201,7 +197,7 @@ impl<'u> UnitView<'u> {
                 if p.player != player {
                     return None;
                 }
-                let u = others.iter().find(|u| u.id == id)?;
+                let u = others.own(id)?;
                 let kind = masters.and_then(|m| m.get(u.life.master_id))?.kind;
                 (80 <= kind && u.life.state == 0).then_some(id)
             })
@@ -226,16 +222,12 @@ impl<'u> UnitView<'u> {
             .ok_or(GenieError::unsupported(
                 "a unit sent off of a master the slice does not have",
             ))?;
-        let (player, others, foreign) = (self.player, self.others, &self.foreign);
+        let (player, others) = (self.player, self.others);
         let named = |id: i32| {
             let found = if id == unit.id {
                 Some((player, unit))
             } else {
-                others
-                    .iter()
-                    .find(|u| u.id == id)
-                    .map(|u| (player, u))
-                    .or_else(|| foreign.find(id))
+                others.find(id)
             };
             found.map(|(p, u)| crate::unit_ai::Named {
                 id,

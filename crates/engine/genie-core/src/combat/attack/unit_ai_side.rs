@@ -186,11 +186,7 @@ impl<'u> UnitView<'u> {
         ai: &UnitAi,
     ) -> Result<(), GenieError> {
         let mark = |id: i32, p: &Placed| -> Result<crate::combat::attack::Mark, GenieError> {
-            let (_, u) = self
-                .foreign
-                .find(id)
-                .or_else(|| self.others.iter().find(|u| u.id == id).map(|u| (0, u)))
-                .ok_or(NOT_HELD)?;
+            let u = self.others.get(id).ok_or(NOT_HELD)?;
             let m = self
                 .every
                 .get(p.player)
@@ -206,18 +202,7 @@ impl<'u> UnitView<'u> {
             })
         };
         let target_mark = mark(target, t)?;
-        let main = match self
-            .foreign
-            .find(target)
-            .map(|(_, u)| u.annex_of)
-            .or_else(|| {
-                self.others
-                    .iter()
-                    .find(|u| u.id == target)
-                    .map(|u| u.annex_of)
-            })
-            .flatten()
-        {
+        let main = match self.others.get(target).and_then(|u| u.annex_of) {
             Some(m) => match self.spatial.get(m).copied() {
                 Some(p) => Some(mark(m, &p)?),
                 None => None,
@@ -256,11 +241,11 @@ impl<'u> UnitView<'u> {
     /// sleeping objects, or the old owner's of a unit taken over in its update, whose attributes
     /// it does not hold).
     fn victim_of_target(&self, id: i32) -> Option<Victim> {
-        let (q, t, attributes) = if let Some(t) = self.others.iter().find(|u| u.id == id) {
-            (self.player, t, self.attributes)
+        let (q, t) = self.others.find(id)?;
+        let attributes = if self.others.own(id).is_some() {
+            self.attributes
         } else {
-            let (q, t) = self.foreign.find(id)?;
-            (q, t, &self.foreign.player(q)?.attributes[..])
+            &self.foreign.player(q)?.attributes[..]
         };
         let master = self.every.get(q)?.get(t.life.master_id)?;
         let dip = SideWorld {

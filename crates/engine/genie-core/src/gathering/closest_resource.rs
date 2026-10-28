@@ -9,6 +9,7 @@ use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::{Foreign, UnitView};
 use crate::world::context::Context;
+use crate::world::others::OthersRef;
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
 pub(crate) struct ResourceWorld<'a, 'b> {
@@ -43,7 +44,7 @@ pub(crate) fn search_origin(point: [f32; 2], has_site: bool, unit: [f32; 3]) -> 
 pub(crate) fn closest_resource_of(
     unit: &Unit,
     c: &mut ResourceWorld<'_, '_>,
-    others: &[Unit],
+    others: OthersRef<'_>,
     (kind, cap, site): (u8, i32, i32),
     (current, min_state, point): (i32, u8, [f32; 2]),
 ) -> Result<(i32, Option<i32>), GenieError> {
@@ -54,14 +55,14 @@ pub(crate) fn closest_resource_of(
         None
     } else {
         // the unit itself (a mule cart searches from its own place) or another object
-        let (sp, s) = std::iter::once(unit)
-            .chain(others.iter())
-            .find(|u| u.id == site)
-            .map(|u| (c.player, u))
-            .or_else(|| c.foreign.find(site))
-            .ok_or(GenieError::unsupported(
-                "a resource search's drop site the slice does not hold",
-            ))?;
+        let (sp, s) = if site == unit.id {
+            Some((c.player, unit))
+        } else {
+            others.find(site)
+        }
+        .ok_or(GenieError::unsupported(
+            "a resource search's drop site the slice does not hold",
+        ))?;
         let m = c
             .every
             .get(sp)
@@ -109,7 +110,7 @@ pub(crate) fn closest_resource_of(
         "a resource search without movement state",
     ))?;
     let mask = mover.stats.restriction_mask;
-    let (player, me_id, foreign, every) = (c.player, unit.id, c.foreign, c.every);
+    let (player, me_id, every) = (c.player, unit.id, c.every);
     let candidate = |id: i32, owner: usize, u: &Unit, position: [f32; 3]| {
         let m = every
             .get(owner)
@@ -140,14 +141,9 @@ pub(crate) fn closest_resource_of(
                 if id == me_id {
                     return Ok(me);
                 }
-                let (owner, u) = others
-                    .iter()
-                    .find(|u| u.id == id)
-                    .map(|u| (player, u))
-                    .or_else(|| foreign.find(id))
-                    .ok_or(GenieError::unsupported(
-                        "an object on a tile the slice does not hold",
-                    ))?;
+                let (owner, u) = others.find(id).ok_or(GenieError::unsupported(
+                    "an object on a tile the slice does not hold",
+                ))?;
                 candidate(id, owner, u, p.position)
             })
             .collect()
@@ -186,18 +182,13 @@ pub(crate) fn closest_resource_of(
 
 /// `ClosestObject`'s "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
 /// (slot 0x530 107) with a point (slot 0x288, the action's `+0x38`, not −1).
-pub(crate) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
-    let foreign = || foreign.find(id).map(|(_, u)| u);
-    others
-        .iter()
-        .find(|u| u.id == id)
-        .or_else(foreign)
-        .is_some_and(|u| {
-            u.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE)
-                && u.actions
-                    .artifact()
-                    .is_some_and(|a| a.goal.is_some_and(|g| g[0] != -1.0))
-        })
+pub(crate) fn herded(others: OthersRef<'_>, id: i32) -> bool {
+    others.get(id).is_some_and(|u| {
+        u.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE)
+            && u.actions
+                .artifact()
+                .is_some_and(|a| a.goal.is_some_and(|g| g[0] != -1.0))
+    })
 }
 
 impl UnitView<'_> {
@@ -233,15 +224,9 @@ impl UnitView<'_> {
         if id == -1 {
             return Ok(None);
         }
-        let (owner, u) = self
-            .others
-            .iter()
-            .find(|u| u.id == id)
-            .map(|u| (self.player, u))
-            .or_else(|| self.foreign.find(id))
-            .ok_or(GenieError::unsupported(
-                "a resource found that the slice does not hold",
-            ))?;
+        let (owner, u) = self.others.find(id).ok_or(GenieError::unsupported(
+            "a resource found that the slice does not hold",
+        ))?;
         let class = self
             .every
             .get(owner)
@@ -267,7 +252,7 @@ impl Unit {
     pub(crate) fn resource_search(
         &self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         kind: u8,
         cap: i32,
     ) -> Result<i32, GenieError> {
@@ -281,7 +266,7 @@ impl Unit {
     pub(crate) fn resource_search_from(
         &self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         kind: u8,
         cap: i32,
         site: i32,

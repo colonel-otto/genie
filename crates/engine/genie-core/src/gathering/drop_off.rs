@@ -9,6 +9,7 @@ use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 
 impl Unit {
     /// The Gather's state 8 after the deposit without a target (`0x140a8e1d0` case 7; its drop
@@ -25,13 +26,13 @@ impl Unit {
     pub(crate) fn gather_after_drop(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         if self.after_drop_orders(c, by)? {
             return Ok(());
         }
-        let found = self.after_drop_search(c, others)?;
+        let found = self.after_drop_search(c, others.view())?;
         if found == -1 {
             return self.after_drop_nothing(c, by);
         }
@@ -73,7 +74,11 @@ impl Unit {
     /// workers, state 2, no point) for the gather group (slot 0x1b0, the civilian's) of its target
     /// class (the AI's `+0x58`, else the Gather's `mTargetType`); -1 for none, a class of no
     /// group, or a unit without a unit AI.
-    fn after_drop_search(&self, c: &mut Context<'_>, others: &[Self]) -> Result<i32, GenieError> {
+    fn after_drop_search(
+        &self,
+        c: &mut Context<'_>,
+        others: OthersRef<'_>,
+    ) -> Result<i32, GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
         let Some(ai) = self.ai.as_ref() else {
             return Ok(-1);
@@ -180,11 +185,11 @@ impl Unit {
     fn after_drop_retarget(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         found: i32,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        let (owner, resource) = self.found_resource(c, others, found)?;
+        let (owner, resource) = self.found_resource(c, others.view(), found)?;
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -227,10 +232,7 @@ impl Unit {
             }
             if owner == c.player && new == found {
                 // one of its own player's: allied, never listed
-                let u = others
-                    .iter_mut()
-                    .find(|u| u.id == found)
-                    .expect("found above");
+                let u = others.own_mut(found).expect("found above");
                 u.taken(false, by.id);
             } else {
                 c.takes.push((new, self.releaser(c)));
@@ -245,15 +247,12 @@ impl Unit {
     fn found_resource(
         &self,
         c: &Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         found: i32,
     ) -> Result<(usize, crate::gathering::gather::Resource), GenieError> {
-        let (owner, t) = match others.iter().find(|u| u.id == found) {
-            Some(t) => (c.player, t),
-            None => c.foreign.find(found).ok_or(GenieError::unsupported(
-                "a gather's new target the slice does not hold",
-            ))?,
-        };
+        let (owner, t) = others.find(found).ok_or(GenieError::unsupported(
+            "a gather's new target the slice does not hold",
+        ))?;
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -289,7 +288,7 @@ impl Unit {
     pub(crate) fn gather_drop_off(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.masters,
@@ -313,7 +312,7 @@ impl Unit {
     pub(crate) fn gather_drop_off_in(
         &mut self,
         mut c: DropWorld<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<Option<i32>, GenieError> {
         if self.life.amount <= 0.0 {
             return Err(GenieError::unsupported(
@@ -338,7 +337,7 @@ impl Unit {
     pub(crate) fn drop_off_in(
         &mut self,
         mut c: DropWorld<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<Option<i32>, GenieError> {
         if self.life.amount <= 0.0 {
             return Err(GenieError::unsupported(
@@ -370,7 +369,7 @@ impl Unit {
     pub(crate) fn drop_site(
         &self,
         c: &mut DropWorld<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         carry_to: i32,
         state: u8,
     ) -> Result<(i32, f32), GenieError> {
@@ -391,7 +390,7 @@ impl Unit {
             site = match self.drop_site_from(c, others, state, true)? {
                 Some(s) => Some(s),
                 None => drop_site_search(
-                    others,
+                    others.own_iter(),
                     masters,
                     sites,
                     self.position,
@@ -422,7 +421,7 @@ impl Unit {
     pub(crate) fn drop_site_from(
         &self,
         c: &mut DropWorld<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         state: u8,
         outside: bool,
     ) -> Result<Option<i32>, GenieError> {
@@ -440,7 +439,7 @@ impl Unit {
     pub(crate) fn drop_site_with(
         &self,
         c: &mut DropWorld<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         state: u8,
         (outside, by_path, at_work): (bool, bool, i16),
     ) -> Result<Option<i32>, GenieError> {
@@ -488,7 +487,7 @@ impl Unit {
             by_path,
         };
         drop_site_search(
-            others,
+            others.own_iter(),
             masters,
             &master.drop_sites,
             self.position,

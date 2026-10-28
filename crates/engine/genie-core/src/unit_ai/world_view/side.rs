@@ -25,12 +25,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .map(|m| m.class)
             .ok_or(crate::world::OBJECT_MASTER)?;
         let at = [self.unit.position[0], self.unit.position[1]];
-        let look = |id: i32| {
-            self.others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (u.life.state, u.position))
-        };
+        let look = |id: i32| self.others.own(id).map(|u| (u.life.state, u.position));
         Ok(crate::orders::nearest_table_site(
             (self.drop_sites, self.civ, self.tracker),
             (at, self.unit.life.attribute_type, class),
@@ -81,14 +76,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let lists = self.spatial.searched().ok_or(GenieError::unsupported(
             "a search that reads the registry's last answer (before any query)",
         ))?;
-        let (others, foreign, player) = (self.others, self.foreign, self.player);
-        let find = |id: i32| {
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (player, u))
-                .or_else(|| foreign.find(id))
-        };
+        let others = self.others;
+        let find = |id: i32| others.find(id);
         let gaia_attacker = find(attacker).is_some_and(|(owner, _)| owner == 0);
         let me = self.unit.id;
         let my_radius = self
@@ -154,10 +143,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         };
         let (owner, u) = self
             .others
-            .iter()
-            .find(|u| u.id == id)
-            .map(|u| (self.player, u))
-            .or_else(|| self.foreign.find(id))
+            .find(id)
             .ok_or(GenieError::unsupported("an object the slice does not hold"))?;
         let m = self
             .every
@@ -258,7 +244,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             now: self.world_time,
             mode_680: self.mode_680,
         };
-        let (others, foreign, every) = (self.others, self.foreign, self.every);
+        let (others, every) = (self.others, self.every);
         // ClosestObject's reachability check (slot 0x3d0) walks the unit's paths
         let mut plan = Planning {
             pathing: self.pathing,
@@ -282,7 +268,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             ))?;
             m.reaches_object(&walker, spatial, &mut plan, id, range, master_id)
         };
-        let moving = |id: i32| herded(others, foreign, id);
+        let moving = |id: i32| herded(others, id);
         // a class-10 searcher passes master 440 and the masters with object flag 0x10
         let shuns = |p: &Placed| {
             let m = every.get(p.player).and_then(|ms| ms.get(p.master)).ok_or(
@@ -291,13 +277,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             Ok(p.master == PETARD || m.object_flags & 0x10 != 0)
         };
         // a farm's workers (`+0x644`) and its pasture (`+0x790`)
-        let farm = |id: i32| {
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .or_else(|| foreign.find(id).map(|(_, u)| u))
-                .map(|u| (u.workers, u.pasture))
-        };
+        let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
         spatial.search(
             unit.id,
             self.player,
@@ -316,8 +296,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         seeker: &crate::unit_ai::Seeker,
     ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
         let picker = self.picker(Some(*seeker));
-        let held =
-            self.foreign.find(target).is_some() || self.others.iter().any(|u| u.id == target);
+        let held = self.others.get(target).is_some();
         if !held {
             return Ok(None);
         }
@@ -538,12 +517,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let Some(seen) = self.seen_unit(id)? else {
             return Ok(None);
         };
-        let u = self
-            .others
-            .iter()
-            .find(|u| u.id == id)
-            .or_else(|| self.foreign.find(id).map(|(_, u)| u))
-            .expect("seen_unit found it");
+        let u = self.others.get(id).expect("seen_unit found it");
         let kind = self
             .every
             .get(seen.owner)

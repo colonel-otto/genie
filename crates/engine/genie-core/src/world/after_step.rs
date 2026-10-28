@@ -53,7 +53,11 @@ impl World {
         (dt, turn, full): (u32, Option<u32>, bool),
         frame: &PlayerFrame,
         resume: Option<AiResume>,
-        f: impl FnOnce(&mut Unit, &mut Context<'_>, &mut Vec<Unit>) -> Result<Step, GenieError>,
+        f: impl FnOnce(
+            &mut Unit,
+            &mut Context<'_>,
+            &mut crate::world::others::Others<'_>,
+        ) -> Result<Step, GenieError>,
     ) -> Result<(Step, Option<AiResume>, Option<AfterOrder>), GenieError> {
         let id = self.players[p].objects[i].id;
         let (step, mut out, mut victim) = self.run_object((p, i), (dt, turn), frame, resume, f);

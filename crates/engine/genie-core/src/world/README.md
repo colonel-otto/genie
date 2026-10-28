@@ -35,6 +35,7 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 | [`forced.rs`](forced.rs) | The forced replay (dev only): the game's state after a tick (`GameState`) and the step that forces it on the world. |
 | [`mod.rs`](mod.rs) | The world: its state and its tick. |
 | [`object_step.rs`](object_step.rs) | One object's step with its context (`World::run_object`) and a unit AI run outside its update. |
+| [`others.rs`](others.rs) | The world's objects as one object's update reaches them (FD-045-D19): `Others` to change the owner's other objects, `OthersRef` to read them, both by id. |
 | [`player.rs`](player.rs) | A player (`Player`): its objects, attributes and formations, and the stop of its update. |
 | [`settings.rs`](settings.rs) | The game options the simulation reads: the object `FUN_140c87b90` returns (`GameOptions`, 0x1088 bytes), which the header saves and its load `FUN_141305310` fills. |
 | [`setup.rs`](setup.rs) | The world as the header save holds it (`World::new`): the next object id, the planners and the shape mesh the game's load builds. |

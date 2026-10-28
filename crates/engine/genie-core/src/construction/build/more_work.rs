@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::objects::unit::Unit;
 use crate::world::context::Context;
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The Build's case 0xdf once its work ended without queued orders (`0x140ab0b43`): the
@@ -21,7 +22,7 @@ impl Unit {
     pub(crate) fn more_work(
         &self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         building: i32,
         built: i16,
     ) -> Result<Option<crate::orders::Work>, GenieError> {
@@ -59,7 +60,7 @@ impl Unit {
             .mover()
             .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let restriction = mover.stats.restriction;
-        let (player, me_id, foreign, every) = (c.player, self.id, c.foreign, c.every_masters);
+        let (player, me_id, every) = (c.player, self.id, c.every_masters);
         let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
             let m = every
                 .get(owner)
@@ -90,14 +91,9 @@ impl Unit {
                     if id == me_id {
                         return Ok(me);
                     }
-                    let (owner, u) = others
-                        .iter()
-                        .find(|u| u.id == id)
-                        .map(|u| (player, u))
-                        .or_else(|| foreign.find(id))
-                        .ok_or(GenieError::unsupported(
-                            "an object on a tile the slice does not hold",
-                        ))?;
+                    let (owner, u) = others.find(id).ok_or(GenieError::unsupported(
+                        "an object on a tile the slice does not hold",
+                    ))?;
                     candidate(id, owner, u, p.position)
                 })
                 .collect()

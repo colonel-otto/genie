@@ -248,9 +248,9 @@ pub(crate) fn hunt_walk_sprite(
 
 /// A building's annexes among `objects` (`+0xbc0`.., the save's linked object ids), in id order,
 /// as the building made them.
-pub(crate) fn annexes_of(id: i32, objects: &[Unit]) -> Vec<i32> {
+pub(crate) fn annexes_of<'a>(id: i32, objects: impl IntoIterator<Item = &'a Unit>) -> Vec<i32> {
     let mut annexes: Vec<i32> = objects
-        .iter()
+        .into_iter()
         .filter(|u| u.annex_of == Some(id))
         .map(|u| u.id)
         .collect();

@@ -14,6 +14,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::TREE_NEAR;
 use crate::world::context::Context;
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The hunt's strike in the hunter's update (`0x140ac7a00`'s states 4, 6, 7, 10 and 12): what
@@ -24,7 +25,7 @@ impl Unit {
     pub(crate) fn hunt_strike(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         me: Me,
         own: &mut Option<Victim>,
         tree_lost: bool,
@@ -186,7 +187,7 @@ impl Unit {
     fn herd_for(
         &self,
         c: &Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         action: &HuntAction,
         master: &Master,
         victim: &Victim,
@@ -249,10 +250,7 @@ impl Unit {
                 .transpose()?
         };
         // the animal's top action without a target or a point (slots 0x190, 0x288)
-        let animal = others
-            .iter()
-            .find(|u| u.id == action.target)
-            .or_else(|| c.foreign.find(action.target).map(|(_, u)| u));
+        let animal = others.get(action.target);
         let idle = match animal {
             Some(u) => u.top_action_idle()?,
             None => false,

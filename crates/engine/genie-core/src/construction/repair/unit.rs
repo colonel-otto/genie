@@ -9,8 +9,9 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::release::release_own;
 use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
-use crate::unit_ai::world_view::{Foreign, RepairWrite};
+use crate::unit_ai::world_view::RepairWrite;
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 
 impl Unit {
     /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it
@@ -22,7 +23,7 @@ impl Unit {
     pub(crate) fn repair_part(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
         let Some(target) = self.actions.repair().map(|r| r.target) else {
@@ -34,7 +35,7 @@ impl Unit {
             repairee,
             counted_in,
             mut set,
-        } = repair_reads(c, others, target)?;
+        } = repair_reads(c, others.view(), target)?;
         let original = set.clone();
         let masters = c
             .masters
@@ -106,12 +107,12 @@ impl Unit {
     fn after_repair_step(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         (target, target_kind, counted_in): (i32, u8, Option<(i32, u8)>),
         step: crate::construction::repair::RepairStep,
     ) -> Result<(), GenieError> {
         if step.restored && 0x45 < target_kind {
-            if let Some(u) = others.iter_mut().find(|u| u.id == target) {
+            if let Some(u) = others.own_mut(target) {
                 u.armor_removed = [0; 2];
             } else {
                 c.repair_writes.push(RepairWrite {
@@ -125,7 +126,7 @@ impl Unit {
         if step.repairers != 0
             && let Some((id, _)) = counted_in
         {
-            if let Some(u) = others.iter_mut().find(|u| u.id == id) {
+            if let Some(u) = others.own_mut(id) {
                 let n = u.repairers_mut();
                 *n = n.wrapping_add_signed(step.repairers);
             } else {
@@ -139,7 +140,7 @@ impl Unit {
         }
         let by = self.releaser(c);
         if step.released {
-            if others.iter().any(|u| u.id == target) {
+            if others.own(target).is_some() {
                 release_own(others, c.masters, target, by)?;
             } else {
                 c.releases.push((target, by));
@@ -157,7 +158,7 @@ impl Unit {
             let holds = self.actions.repair().map_or(-1, |r| r.target);
             self.actions.set_repair(None);
             if holds != -1 {
-                if others.iter().any(|u| u.id == holds) {
+                if others.own(holds).is_some() {
                     release_own(others, c.masters, holds, by)?;
                 } else {
                     c.releases.push((holds, by));
@@ -227,14 +228,10 @@ impl Unit {
     pub(crate) fn top_target_seen(
         &self,
         c: &Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Option<crate::unit_ai::TopTarget> {
         let id = self.top_target().filter(|&t| t != -1)?;
-        let (owner, u) = others
-            .iter()
-            .find(|u| u.id == id)
-            .map(|u| (c.player, u))
-            .or_else(|| c.foreign.find(id))?;
+        let (owner, u) = others.find(id)?;
         let m = c.every_masters.get(owner)?.get(u.life.master_id)?;
         Some(crate::unit_ai::TopTarget {
             id,
@@ -284,20 +281,6 @@ struct RepairReads {
     set: Vec<crate::construction::repair::Repaired>,
 }
 
-/// The object `id` of the unit's player's list `others` or of another player's, with its owner.
-fn held_object<'u>(
-    others: &'u [Unit],
-    player: usize,
-    foreign: Foreign<'u>,
-    id: i32,
-) -> Option<(usize, &'u Unit)> {
-    others
-        .iter()
-        .find(|u| u.id == id)
-        .map(|u| (player, u))
-        .or_else(|| foreign.find(id))
-}
-
 /// Object `u`'s master: its own (`+0x6c0`), else player `q`'s of its id.
 fn repair_master(every: &[Masters], q: usize, u: &Unit) -> Option<Master> {
     u.own_master
@@ -308,14 +291,18 @@ fn repair_master(every: &[Masters], q: usize, u: &Unit) -> Option<Master> {
 
 /// What the Repair's update reads of its `target` ([`RepairReads`]): nothing for a target the
 /// world does not hold.
-fn repair_reads(c: &Context<'_>, others: &[Unit], target: i32) -> Result<RepairReads, GenieError> {
+fn repair_reads(
+    c: &Context<'_>,
+    others: OthersRef<'_>,
+    target: i32,
+) -> Result<RepairReads, GenieError> {
     use crate::construction::repair::Repairee;
     let mut reads = RepairReads {
         repairee: None,
         counted_in: None,
         set: Vec::new(),
     };
-    let held = |id: i32| held_object(others, c.player, c.foreign, id);
+    let held = |id: i32| others.find(id);
     let Some((q, t)) = held(target).filter(|_| target != -1) else {
         return Ok(reads);
     };
@@ -410,7 +397,7 @@ fn repaired(
 /// ([`Context::repair_writes`]).
 fn repair_write_back(
     c: &mut Context<'_>,
-    others: &mut [Unit],
+    others: &mut Others<'_>,
     set: &[crate::construction::repair::Repaired],
     original: &[crate::construction::repair::Repaired],
 ) {
@@ -418,7 +405,7 @@ fn repair_write_back(
         if now == was {
             continue;
         }
-        if let Some(u) = others.iter_mut().find(|u| u.id == now.id) {
+        if let Some(u) = others.own_mut(now.id) {
             u.life.hp = now.hp;
             u.hp_powerups = now.hp_powerups;
         } else {

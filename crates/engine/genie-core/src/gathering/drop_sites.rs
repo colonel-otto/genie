@@ -6,6 +6,7 @@ use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning, footprint_gap_squared};
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
+use crate::world::others::OthersRef;
 
 /// The unit a drop-site search goes from ([`drop_site_search`]).
 pub(crate) struct Seeker<'a, 'b> {
@@ -137,8 +138,8 @@ pub(crate) fn counted(code: u8, by_path: bool, fishing: bool, near: impl FnOnce(
 /// point [`NO_POINT`] on both axes takes the first object of a master in `sites` in state 2; a
 /// point at or below it on either axis has no zone and goes by the squared distance. The first
 /// of equals wins.
-pub(crate) fn drop_site_search(
-    units: &[Unit],
+pub(crate) fn drop_site_search<'u>(
+    units: impl IntoIterator<Item = &'u Unit>,
     masters: &Masters,
     sites: &[i16],
     at: [f32; 3],
@@ -223,12 +224,12 @@ pub(crate) const NO_DROP_DISTANCE: f32 = crate::math::image::turn::NO_DROP_DISTA
 /// order) of a master in `sites` and in state 2, the one nearest `at` (its centre's squared
 /// distance, the first of equals), with that distance.
 pub(crate) fn nearest_drop_site(
-    others: &[Unit],
+    others: OthersRef<'_>,
     sites: &[i16],
     at: [f32; 3],
 ) -> Option<(i32, f32)> {
     let mut best: Option<(i32, f32)> = None;
-    for o in others {
+    for o in others.own_iter() {
         if !sites.contains(&o.life.master_id) || o.life.state != 2 {
             continue;
         }

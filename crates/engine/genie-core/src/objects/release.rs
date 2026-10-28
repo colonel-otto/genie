@@ -8,21 +8,19 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::world::World;
 use crate::world::context::Context;
+use crate::world::others::Others;
 
 /// Slot 0x180 (`World::release`) on an object of the unit's own live list, from inside the unit's
 /// update ([`released`]; the releaser's own player is allied).
 pub(crate) fn release_own(
-    others: &mut [Unit],
+    others: &mut Others<'_>,
     masters: Option<&Masters>,
     id: i32,
     by: Releaser,
 ) -> Result<(), GenieError> {
-    let u = others
-        .iter_mut()
-        .find(|u| u.id == id)
-        .ok_or(GenieError::unsupported(
-            "a release of an object not in the unit's live list",
-        ))?;
+    let u = others.own_mut(id).ok_or(GenieError::unsupported(
+        "a release of an object not in the unit's live list",
+    ))?;
     let kind = masters
         .and_then(|m| m.get(u.life.master_id))
         .ok_or(GenieError::unsupported(

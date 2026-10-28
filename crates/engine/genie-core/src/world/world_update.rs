@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::commands::Command;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::seconds;
-use crate::objects::unit::Step;
+use crate::objects::unit::{Step, Unit};
 use crate::ownership::capture::Captured;
 use crate::unit_ai::unit::AiResume;
 use crate::world::{PlayerFrame, World};
@@ -254,7 +254,7 @@ impl World {
                 (dt, turn, true),
                 &frame,
                 resume.take(),
-                |unit, c, objects| unit.update(c, objects),
+                Unit::update,
             );
             i = match stepped {
                 Ok((Step::Stay, Some(ai_resume), _)) => {

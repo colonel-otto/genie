@@ -46,14 +46,8 @@ impl UnitView<'_> {
         m: &crate::objects::masters::Master,
         attacker: i32,
     ) -> Result<bool, GenieError> {
-        let (others, foreign, player) = (self.others, self.foreign, self.player);
-        let find = |id: i32| {
-            others
-                .iter()
-                .find(|o| o.id == id)
-                .map(|o| (player, o))
-                .or_else(|| foreign.find(id))
-        };
+        let others = self.others;
+        let find = |id: i32| others.find(id);
         let master_of =
             |q: usize, o: &Unit| self.every.get(q).and_then(|ms| ms.get(o.life.master_id));
         let Some(ai) = u.ai.as_ref() else {

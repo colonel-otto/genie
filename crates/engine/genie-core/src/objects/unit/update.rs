@@ -9,15 +9,16 @@ use crate::objects::unit::{Step, Unit, loses_actions};
 use crate::unit_ai::task_finder::world::wait_progress;
 use crate::unit_ai::unit::AiResume;
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 
 impl Unit {
     pub(crate) fn update(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<Step, GenieError> {
         if let Some(resume) = c.ai_resume.take() {
-            return self.ai_part(c, others, resume);
+            return self.ai_part(c, others.view(), resume);
         }
         let Some(leaves) = self.update_to_actions(c, others)? else {
             return Ok(Step::Sleep);
@@ -35,7 +36,7 @@ impl Unit {
             c.ai_resume = Some(resume);
             return Ok(Step::Stay);
         }
-        self.ai_part(c, others, resume)
+        self.ai_part(c, others.view(), resume)
     }
 
     /// `RGE_Static_Object::update` and the combat object's steps before the actions: the death
@@ -45,15 +46,15 @@ impl Unit {
     pub(crate) fn update_to_actions(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<Option<Step>, GenieError> {
         self.death_blast(c)?;
         if self.go_to_sleep()? {
             return Ok(None);
         }
         self.take_sprite_facets();
-        self.gate_update(c, others)?;
-        self.complete_on_update(c, others)?;
+        self.gate_update(c, others.view())?;
+        self.complete_on_update(c, others.view())?;
         self.building_seconds(c, others)?;
         self.run_down_attack_timers(c);
         self.motion_step(c)?;
@@ -71,7 +72,7 @@ impl Unit {
     pub(crate) fn update_actions(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let started = self.start_default_task(c)?;
         let captured = if started {
@@ -92,7 +93,7 @@ impl Unit {
     fn update_head(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let me = Me {
             id: self.id,
@@ -108,7 +109,7 @@ impl Unit {
             Some(Action::Enter(_)) => self.enter_update(c, others, me),
             Some(Action::Transport(_)) => self.transport_update(c, me),
             Some(Action::WaitSolidify(_)) => {
-                self.wait_solidify_part(c, others);
+                self.wait_solidify_part(others.view());
                 Ok(())
             }
             Some(Action::Missile(_)) => self.fly(c, others),
@@ -130,9 +131,9 @@ impl Unit {
     /// The wait for a foundation in its update (`FUN_140ae8b70`) on its build points, none when
     /// the world does not hold it; its 1 removes it (`FUN_140a98e20`: the base teardown lets no
     /// target go, and no action follows it, the wait having replaced the list).
-    fn wait_solidify_part(&mut self, c: &Context<'_>, others: &[Self]) {
+    fn wait_solidify_part(&mut self, others: OthersRef<'_>) {
         if let Some(w) = self.actions.wait_solidify()
-            && w.update(wait_progress(w.target, others, c.foreign))
+            && w.update(wait_progress(w.target, others))
         {
             self.actions.set_wait_solidify(None);
         }
@@ -144,10 +145,10 @@ impl Unit {
     fn hunter_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
-        self.hunt_targets(c, others)?;
+        self.hunt_targets(c, others.view())?;
         let mut own = self.own_victim(c);
         let tree_lost = self.tree_lost();
         self.hunt_part(c, others, me, &mut own, tree_lost)

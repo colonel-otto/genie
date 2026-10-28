@@ -9,6 +9,7 @@ use crate::objects::unit::{Step, Unit};
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::context::{Context, ObjectOutputs};
+use crate::world::others::Others;
 use crate::world::{PlayerFrame, World, scenario_mode, standard_mode};
 
 impl World {
@@ -24,7 +25,7 @@ impl World {
         (dt, turn): (u32, Option<u32>),
         frame: &PlayerFrame,
         resume: Option<AiResume>,
-        f: impl FnOnce(&mut Unit, &mut Context<'_>, &mut Vec<Unit>) -> Result<Step, GenieError>,
+        f: impl FnOnce(&mut Unit, &mut Context<'_>, &mut Others<'_>) -> Result<Step, GenieError>,
     ) -> (Result<Step, GenieError>, ObjectOutputs, Option<Victim>) {
         // the unit AI's target as its update starts, read before the unit leaves its list: a unit
         // may be its own target (an unload's)
@@ -53,6 +54,11 @@ impl World {
         };
         let (before, rest) = self.players.split_at_mut(p);
         let (player, after) = rest.split_first_mut().expect("the player updating");
+        let foreign = Foreign {
+            before,
+            after,
+            left: None,
+        };
         let mut c = Context {
             dt,
             dt_seconds: seconds(dt),
@@ -142,13 +148,10 @@ impl World {
             relations: &player.relations,
             leads: None,
             zones: &mut self.zones,
-            foreign: Foreign {
-                before,
-                after,
-                left: None,
-            },
+            foreign,
         };
-        let mut result = f(&mut unit, &mut c, &mut player.objects);
+        let mut others = Others::new(p, &mut player.objects, foreign);
+        let mut result = f(&mut unit, &mut c, &mut others);
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);
         }
@@ -191,13 +194,10 @@ impl World {
         ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
     ) -> Result<(), GenieError> {
         let frame = self.player_frame();
-        let (step, ..) = self.step_object(
-            (p, i),
-            (0, None, false),
-            &frame,
-            None,
-            |unit, c, objects| unit.run_ai(c, objects, f).map(|()| Step::Stay),
-        )?;
+        let (step, ..) =
+            self.step_object((p, i), (0, None, false), &frame, None, |unit, c, others| {
+                unit.run_ai(c, others.view(), f).map(|()| Step::Stay)
+            })?;
         match step {
             Step::Stay => Ok(()),
             _ => Err(GenieError::unsupported(

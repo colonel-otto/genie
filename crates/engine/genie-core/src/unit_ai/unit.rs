@@ -10,6 +10,7 @@ use crate::unit_ai::Notify;
 use crate::unit_ai::world_view::{OwnerView, UnitView};
 use crate::unit_ai::{Effect, Surroundings, UnitAi};
 use crate::world::context::Context;
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The end of [`Unit::update`] after the actions: `RGE_Action_Object::update`'s end
@@ -19,7 +20,7 @@ impl Unit {
     pub(crate) fn ai_part(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         resume: AiResume,
     ) -> Result<Step, GenieError> {
         let AiResume {
@@ -161,7 +162,7 @@ impl Unit {
     pub(crate) fn surroundings(
         &self,
         c: &Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         view: &OwnerView<'_>,
         (master, class): (Option<&Master>, Option<i16>),
         (player, busy, interruptible): (usize, bool, bool),
@@ -331,7 +332,7 @@ impl Unit {
     pub(crate) fn run_ai(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         f: impl FnOnce(
             &mut UnitAi,
             &Surroundings,
@@ -416,12 +417,7 @@ impl Unit {
         ids.dedup();
         let mut seen = Vec::new();
         for id in ids {
-            let found = view
-                .others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (view.player, u))
-                .or_else(|| view.foreign.find(id));
+            let found = view.others.find(id);
             let (Some((owner, u)), Some(p)) = (found, c.spatial.get(id)) else {
                 continue;
             };

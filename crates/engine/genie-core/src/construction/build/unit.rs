@@ -21,6 +21,7 @@ use crate::unit_ai::BUILD_ACTION;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 use crate::world::{BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_NEEDED};
 
 /// What the Build's update reads of the world besides its foundation, as the update starts.
@@ -47,17 +48,17 @@ impl Unit {
     pub(crate) fn build_part(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
-        let looks = self.clearing_looks(c, others);
+        let looks = self.clearing_looks(c, others.view());
         let by = self.releaser(c);
         let Some(action) = self.actions.build().copied() else {
             return Ok(());
         };
         let target = action.target;
-        let annexed = others.iter().any(|u| u.annex_of == Some(target));
-        let reads = self.build_reads(c, others, action)?;
+        let annexed = others.own_iter().any(|u| u.annex_of == Some(target));
+        let reads = self.build_reads(c, others.view(), action)?;
         let annex_ids = c.spatial.annexes_of(target);
         let template = Completion {
             master: None,
@@ -105,14 +106,14 @@ impl Unit {
     /// What the footprint clearing of the Build's `set_state(7)` reads (`FUN_1415c3620`) of the
     /// objects on the tiles about a desolid foundation, as the update starts: none for a builder
     /// in another state or at another foundation.
-    fn clearing_looks(&self, c: &Context<'_>, others: &[Self]) -> BTreeMap<i32, ClearLook> {
+    fn clearing_looks(&self, c: &Context<'_>, others: OthersRef<'_>) -> BTreeMap<i32, ClearLook> {
         let mut looks = BTreeMap::new();
         if let Some(f) = self
             .actions
             .build()
             .copied()
             .filter(|b| matches!(b.state, 6 | 222))
-            .and_then(|b| others.iter().find(|u| u.id == b.target))
+            .and_then(|b| others.own(b.target))
             .filter(|u| u.construction.is_some_and(|k| k.desolid))
         {
             let [fx, fy, _] = f.position;
@@ -123,10 +124,8 @@ impl Unit {
             {
                 let (owner, u) = if id == self.id {
                     (c.player, self)
-                } else if let Some(u) = others.iter().find(|u| u.id == id) {
-                    (c.player, u)
-                } else if let Some((q, u)) = c.foreign.find(id) {
-                    (q, u)
+                } else if let Some(found) = others.find(id) {
+                    found
                 } else {
                     continue;
                 };
@@ -142,33 +141,20 @@ impl Unit {
     fn build_reads(
         &self,
         c: &Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         action: BuildAction,
     ) -> Result<BuildReads, GenieError> {
         let target = action.target;
-        let built = others
-            .iter()
-            .find(|u| u.id == target)
-            .map(|u| u.life.master_id);
-        let stack_made = others
-            .iter()
-            .find(|u| u.id == target)
-            .and_then(|u| u.stack_made);
+        let built = others.own(target).map(|u| u.life.master_id);
+        let stack_made = others.own(target).and_then(|u| u.stack_made);
         let walk_target = action.walk_target;
-        let walk_target_state = others
-            .iter()
-            .find(|u| u.id == walk_target)
-            .or_else(|| c.foreign.find(walk_target).map(|(_, u)| u))
-            .map(|u| u.life.state);
+        let walk_target_state = others.get(walk_target).map(|u| u.life.state);
         let build_targets: Vec<(i32, Option<u8>)> = self.ai.as_ref().map_or_else(Vec::new, |ai| {
             ai.orders
                 .iter()
                 .filter(|o| o.order == BUILD_ORDER)
                 .map(|o| {
-                    let state = others
-                        .iter()
-                        .find(|u| u.id == o.target)
-                        .map(|u| u.life.state);
+                    let state = others.own(o.target).map(|u| u.life.state);
                     (o.target, state)
                 })
                 .collect()
@@ -197,7 +183,7 @@ impl Unit {
     fn build_deposit(
         &self,
         c: &Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         site: i32,
     ) -> Result<Option<(u8, DropOff)>, GenieError> {
         let Some(s) = c.spatial.get(site).filter(|_| site != -1) else {
@@ -219,7 +205,7 @@ impl Unit {
             attribute_95: c.attributes.get(95).copied().unwrap_or(0.0),
             civ: c.civ,
         };
-        Ok(state_of(site, others, c.foreign).map(|state| {
+        Ok(state_of(site, others).map(|state| {
             let drop = DropOff {
                 takes: crate::unit_ai::task_finder::drops_at(c.drop_sites, s.master, &actor),
                 gap_squared: footprint_gap_squared(
@@ -260,7 +246,7 @@ impl Unit {
     pub(crate) fn after_build_step(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
         (target, built, by): (i32, Option<i16>, Releaser),
         step: BuildStep,
@@ -330,7 +316,7 @@ impl Unit {
             self.build_search(c, others, (target, built, by))?;
         }
         if step.drop_off {
-            self.build_drop_off(c, others, me)?;
+            self.build_drop_off(c, others.view(), me)?;
         }
         Ok(())
     }
@@ -356,13 +342,13 @@ impl Unit {
     pub(crate) fn build_search(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         (target, built, by): (i32, Option<i16>, Releaser),
     ) -> Result<(), GenieError> {
         let built = built.ok_or(GenieError::unsupported(
             "a builder's building the slice does not hold",
         ))?;
-        if let Some(work) = self.more_work(c, others, target, built)? {
+        if let Some(work) = self.more_work(c, others.view(), target, built)? {
             c.work_order = Some(work);
         } else {
             if let Some(b) = self.actions.build_mut() {
@@ -379,14 +365,13 @@ impl Unit {
 /// `FUN_1411cc430`'s way to the building that takes the work: while the foundation `target` is
 /// an annex of a main building in state 0 with at least 1 hit point (COMISS: a NaN too), that
 /// main building, the last one found.
-fn main_work_of(others: &[Unit], target: i32) -> Result<Option<MainWork>, GenieError> {
+fn main_work_of(others: OthersRef<'_>, target: i32) -> Result<Option<MainWork>, GenieError> {
     let mut worked = target;
     let mut main_work = None;
     while let Some(m) = others
-        .iter()
-        .find(|u| u.id == worked)
+        .own(worked)
         .and_then(|u| u.annex_of)
-        .and_then(|m| others.iter().find(|u| u.id == m))
+        .and_then(|m| others.own(m))
         .filter(|m| m.life.state == 0 && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp))
     {
         worked = m.id;
@@ -405,7 +390,7 @@ fn main_work_of(others: &[Unit], target: i32) -> Result<Option<MainWork>, GenieE
 /// building annex counts its builders in (`FUN_140aaddb0`, `+0xbb8`). None when this player does
 /// not hold the foundation.
 fn build_site<'u>(
-    others: &'u mut [Unit],
+    others: &'u mut Others<'_>,
     target: i32,
     annex_ids: &[i32],
     template: Completion<'u>,
@@ -413,8 +398,7 @@ fn build_site<'u>(
 ) -> Result<Option<Site<'u>>, GenieError> {
     let masters = template.masters;
     let counted_main = others
-        .iter()
-        .find(|u| u.id == target)
+        .own(target)
         .filter(|u| {
             masters
                 .and_then(|m| m.get(u.life.master_id))
@@ -424,7 +408,7 @@ fn build_site<'u>(
     let mut main_builders = None;
     let mut site = None;
     let mut starts = Vec::new();
-    for u in others.iter_mut() {
+    for u in others.own_iter_mut() {
         if u.id == target {
             site = Some(u);
             continue;
@@ -502,7 +486,7 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 /// annexes' state.
 pub(crate) fn record_build_step(
     c: &mut Context<'_>,
-    others: &mut [Unit],
+    others: &mut Others<'_>,
     target: i32,
     annex_ids: &[i32],
     step: &mut BuildStep,
@@ -514,8 +498,7 @@ pub(crate) fn record_build_step(
     }
     for id in annex_ids.iter().copied().chain([target]) {
         if let Some(cons) = others
-            .iter_mut()
-            .find(|u| u.id == id)
+            .own_mut(id)
             .and_then(|u| u.construction.as_mut())
             .filter(|cons| cons.started)
         {
@@ -529,7 +512,7 @@ pub(crate) fn record_build_step(
     if let Some(built) = step.completed.take() {
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0); the
         // foundation is the builder's player's
-        if let Some(u) = others.iter_mut().find(|u| u.id == target) {
+        if let Some(u) = others.own_mut(target) {
             let k = crate::players::tracker::key(c.masters, c.lines, u.life.master_id);
             c.tracker.complete(target, k);
             // its set_state(2)'s standing sprite (FUN_1411dbb70)

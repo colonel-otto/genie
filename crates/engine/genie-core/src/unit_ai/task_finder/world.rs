@@ -7,6 +7,7 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::world_view::Foreign;
+use crate::world::others::OthersRef;
 use crate::world::player::Player;
 
 /// The terrain the task finder's general search reads at `point` (`FUN_1411a8ba0`,
@@ -67,23 +68,17 @@ impl Diplomacy for SideWorld<'_> {
 /// sent the unit off (the unit AI's notify 0x216), whose build points are its construction's;
 /// the world never gives its id to another object, so an object without a construction is not
 /// met.
-pub(crate) fn wait_progress(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option<f32> {
+pub(crate) fn wait_progress(id: i32, others: OthersRef<'_>) -> Option<f32> {
     others
-        .iter()
-        .find(|u| u.id == id)
-        .or_else(|| foreign.find(id).map(|(_, u)| u))
+        .get(id)
         .and_then(|u| u.construction.map(|k| k.progress))
 }
 
 /// The state (`+0x640`) of object `id` among its owner's other objects and the other players'
 /// lists: None when they do not hold it (the unit itself, or one of its owner's sleeping objects:
 /// static objects only, never a drop site, which the callers ask for).
-pub(crate) fn state_of(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option<u8> {
-    others
-        .iter()
-        .find(|u| u.id == id)
-        .or_else(|| foreign.find(id).map(|(_, u)| u))
-        .map(|u| u.life.state)
+pub(crate) fn state_of(id: i32, others: OthersRef<'_>) -> Option<u8> {
+    others.get(id).map(|u| u.life.state)
 }
 
 /// What the task finder reads of object `id`, as `find` holds the objects (with their owners)

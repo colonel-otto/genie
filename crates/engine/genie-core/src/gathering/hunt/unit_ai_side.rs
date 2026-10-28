@@ -139,11 +139,7 @@ impl<'u> UnitView<'u> {
             if id == unit.id {
                 return Some((player, unit));
             }
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (player, u))
-                .or_else(|| foreign.find(id))
+            others.find(id)
         };
         let (tp, t) = find(target).ok_or(crate::orders::HUNT_TARGET_GONE)?;
         let t_master = self

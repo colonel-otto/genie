@@ -7,6 +7,7 @@ use crate::movement::Mover;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::Foreign;
+use crate::world::others::OthersRef;
 
 /// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0 (`COMISS`), from +0.
 pub(super) fn attacks(m: &crate::objects::masters::Master) -> f32 {
@@ -39,7 +40,7 @@ pub(crate) struct WorldPicker<'a> {
     /// Its owner.
     pub(crate) player: usize,
     /// The owner's other objects.
-    pub(crate) others: &'a [Unit],
+    pub(crate) others: OthersRef<'a>,
     /// The other players' lists.
     pub(crate) foreign: Foreign<'a>,
     /// The world's objects.
@@ -71,10 +72,10 @@ impl WorldPicker<'_> {
     ) -> Option<(usize, &Unit, &[f32], &crate::objects::masters::Master)> {
         let (q, u, attributes) = if id == self.me {
             (self.player, self.unit, self.attributes)
-        } else if let Some(u) = self.others.iter().find(|u| u.id == id) {
+        } else if let Some(u) = self.others.own(id) {
             (self.player, u, self.attributes)
         } else {
-            let (q, u) = self.foreign.find(id)?;
+            let (q, u) = self.others.foreign(id)?;
             (q, u, &self.foreign.player(q)?.attributes[..])
         };
         let master = match u.own_master.as_deref() {
@@ -213,16 +214,7 @@ impl WorldPicker<'_> {
 
     /// The object `id` as the attack tests read it, and whether it moves (slot 0x208 above 0).
     pub(crate) fn target(&self, id: i32) -> Result<(crate::unit_ai::Target, bool), GenieError> {
-        let (owner, t) = self
-            .foreign
-            .find(id)
-            .or_else(|| {
-                self.others
-                    .iter()
-                    .find(|u| u.id == id)
-                    .map(|u| (self.player, u))
-            })
-            .ok_or(NOT_HELD)?;
+        let (owner, t) = self.others.find(id).ok_or(NOT_HELD)?;
         let m = self
             .every
             .get(owner)

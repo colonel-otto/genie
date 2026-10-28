@@ -146,12 +146,12 @@ fn after_its_actions_a_unit_takes_the_world_s_place_and_hands_its_pauses_on() {
 #[test]
 fn the_update_up_to_the_actions_ends_for_a_sleeper() {
     let mut t = forage_world();
-    let step = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_to_actions(c, o)).unwrap();
+    let step = in_update(&mut t, (1, 0), 50, Unit::update_to_actions).unwrap();
     assert!(step.is_some());
     let bush = &mut t.players[0].objects[0];
     bush.life.class = Class::Static;
     bush.life.goto_sleep = true;
-    let step = in_update(&mut t, (0, 0), 50, |u, c, o| u.update_to_actions(c, o)).unwrap();
+    let step = in_update(&mut t, (0, 0), 50, Unit::update_to_actions).unwrap();
     assert_eq!(step, None);
     assert!(!t.players[0].objects[0].life.goto_sleep);
 }
@@ -161,17 +161,17 @@ fn the_update_up_to_the_actions_ends_for_a_sleeper() {
 #[test]
 fn the_actions_update_runs_the_action_held() {
     let mut t = forage_world();
-    let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
+    let captured = in_update(&mut t, (1, 0), 50, Unit::update_actions).unwrap();
     assert!(captured.is_none());
     t.players[1].objects[0]
         .actions
         .set_wait_solidify(Some(gone_foundation()));
-    let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
+    let captured = in_update(&mut t, (1, 0), 50, Unit::update_actions).unwrap();
     assert!(captured.is_none());
     assert_eq!(t.players[1].objects[0].actions.wait_solidify(), None);
     t.gather_command(1, 0, 600).unwrap();
     let before = t.players[1].objects[0].actions.gather().copied();
-    let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
+    let captured = in_update(&mut t, (1, 0), 50, Unit::update_actions).unwrap();
     assert!(captured.is_none());
     let after = t.players[1].objects[0].actions.gather().copied();
     assert_eq!(after.map(|g| g.target), Some(600));
@@ -201,7 +201,7 @@ fn the_list_s_update_runs_its_head_only() {
     );
     let before = unit.actions.gather().copied();
     assert_eq!(
-        in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)),
+        in_update(&mut t, (1, 0), 50, Unit::update_actions),
         Ok(None)
     );
     let unit = &t.players[1].objects[0];
@@ -219,7 +219,7 @@ fn an_object_inside_another_runs_its_inside_update() {
     let at = t.players[1].objects[0].position;
     t.players[1].objects[0].life.inside = Some(700);
     assert_eq!(
-        in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)),
+        in_update(&mut t, (1, 0), 50, Unit::update_actions),
         Ok(None)
     );
     let unit = &t.players[1].objects[0];
@@ -229,7 +229,7 @@ fn an_object_inside_another_runs_its_inside_update() {
     unit.life.inside = None;
     unit.default_artifact = true;
     assert_eq!(
-        in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)),
+        in_update(&mut t, (1, 0), 50, Unit::update_actions),
         Ok(None)
     );
     assert_eq!(

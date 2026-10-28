@@ -7,6 +7,7 @@ use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::ownership::change::change_hands;
 use crate::world::context::Context;
+use crate::world::others::Others;
 
 impl Unit {
     /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,
@@ -21,7 +22,7 @@ impl Unit {
     pub(crate) fn capture(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         new: usize,
     ) -> Result<(bool, Vec<i32>), GenieError> {
         let class = self.placed_class(c)?;
@@ -204,7 +205,7 @@ pub(crate) const CAPTURE_KEEPS_ACTION: i32 = 0x2c2;
 /// in turn, with its own scan. Two on one tile would need the tile's object list order.
 pub(crate) fn scan_livestock(
     c: &mut Context<'_>,
-    others: &mut [Unit],
+    others: &mut Others<'_>,
     at: [f32; 3],
     new: usize,
     taken: &mut Vec<i32>,
@@ -216,10 +217,9 @@ pub(crate) fn scan_livestock(
             if !c.spatial.sees_tile(new, x, y) {
                 continue;
             }
-            let on: Vec<usize> = others
-                .iter()
-                .enumerate()
-                .filter(|(_, u)| {
+            let on: Vec<i32> = others
+                .own_iter()
+                .filter(|u| {
                     u.life.state == 2
                         && u.position[0] as i32 == x
                         && u.position[1] as i32 == y
@@ -228,18 +228,17 @@ pub(crate) fn scan_livestock(
                             .get(u.id)
                             .is_some_and(|p| p.class == LIVESTOCK && p.player == 0)
                 })
-                .map(|(i, _)| i)
+                .map(|u| u.id)
                 .collect();
             match on[..] {
                 [] => {}
-                [k] => {
-                    let mut unit = std::mem::take(&mut others[k]);
+                [id] => {
+                    let unit = others.own_mut(id).expect("the scan's own object");
                     let done = (|| {
                         unit.capture_stop(c, LIVESTOCK)?;
                         unit.change_owner(c, new)
                     })();
-                    let (id, position) = (unit.id, unit.position);
-                    others[k] = unit;
+                    let position = unit.position;
                     // without the master the animal stays Gaia's, which scans nothing
                     if done? {
                         taken.push(id);

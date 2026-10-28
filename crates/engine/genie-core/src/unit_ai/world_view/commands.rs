@@ -3,10 +3,10 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning};
-use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::{AiStart, EnterOrder, RepairOrder, UnitView};
+use crate::world::others::OthersRef;
 
 impl UnitView<'_> {
     /// The unit's repair command (slot 0x378, `FUN_141217c00`, forced) on `target`: an object the
@@ -24,11 +24,7 @@ impl UnitView<'_> {
             if id == unit.id {
                 return Some((player, unit));
             }
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (player, u))
-                .or_else(|| foreign.find(id))
+            others.find(id)
         };
         let Some((_, t_unit)) = find(target) else {
             return Ok(false);
@@ -106,11 +102,7 @@ impl UnitView<'_> {
             if id == unit.id {
                 return Some((player, unit));
             }
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (player, u))
-                .or_else(|| foreign.find(id))
+            others.find(id)
         };
         let Some((tp, t_unit)) = find(target) else {
             return Ok(false);
@@ -243,9 +235,9 @@ pub(crate) const TOWN_CENTRES: [i16; 2] = [109, 444];
 /// master (`player+0x18`, `FUN_14104f560`: those of master 109, then 444), as its tile. The
 /// index's order within a master is not held: two objects of the first master found are not
 /// modelled.
-pub(crate) fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, GenieError> {
+pub(crate) fn town_centre(units: OthersRef<'_>) -> Result<Option<[i32; 2]>, GenieError> {
     for master in TOWN_CENTRES {
-        let mut found = units.iter().filter(|u| u.life.master_id == master);
+        let mut found = units.own_iter().filter(|u| u.life.master_id == master);
         let Some(first) = found.next() else { continue };
         if found.next().is_some() {
             return Err(GenieError::unsupported(

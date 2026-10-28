@@ -9,6 +9,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
 use crate::unit_ai::task_finder::DropSite;
+use crate::world::others::OthersRef;
 use crate::world::player::Player;
 
 mod commands;
@@ -135,31 +136,11 @@ pub(crate) struct Foreign<'a> {
     pub(crate) before: &'a [Player],
     pub(crate) after: &'a [Player],
     /// The live list of the player whose list is out, once its object changed hands: that
-    /// object's AI part reads it as another player's ([`OwnerView`]).
+    /// object's AI part reads it as another player's ([`OthersRef::changed_hands`]).
     pub(crate) left: Option<(usize, &'a [Unit])>,
 }
 
 impl<'a> Foreign<'a> {
-    /// The object `id` in another player's live or sleeping list, with that player.
-    pub(crate) fn find(&self, id: i32) -> Option<(usize, &'a Unit)> {
-        let skip = self.before.len() + 1;
-        let before = self.before.iter().enumerate();
-        let after = self.after.iter().enumerate().map(|(q, p)| (q + skip, p));
-        before
-            .chain(after)
-            .find_map(|(q, p)| {
-                p.objects
-                    .iter()
-                    .chain(&p.sleeping)
-                    .find(|u| u.id == id)
-                    .map(|u| (q, u))
-            })
-            .or_else(|| {
-                let (q, list) = self.left?;
-                list.iter().find(|u| u.id == id).map(|u| (q, u))
-            })
-    }
-
     /// Player `q`, unless it is the one whose list is out.
     pub(crate) fn player(&self, q: usize) -> Option<&'a Player> {
         let own = self.before.len();
@@ -179,7 +160,7 @@ impl<'a> Foreign<'a> {
 #[derive(Clone, Copy)]
 pub(crate) struct OwnerView<'a> {
     pub(crate) player: usize,
-    pub(crate) others: &'a [Unit],
+    pub(crate) others: OthersRef<'a>,
     pub(crate) foreign: Foreign<'a>,
     pub(crate) masters: Option<&'a Masters>,
     pub(crate) relations: &'a [u8],
@@ -192,7 +173,7 @@ pub(crate) struct OwnerView<'a> {
 impl<'a> OwnerView<'a> {
     /// The owner's side: player `new`'s when the unit changed hands to it in its update, else
     /// the updating player's (`c`, its other objects `others`).
-    pub(crate) fn of<'c: 'a>(c: &Context<'c>, others: &'a [Unit], new: Option<usize>) -> Self {
+    pub(crate) fn of<'c: 'a>(c: &Context<'c>, others: OthersRef<'a>, new: Option<usize>) -> Self {
         let own = Self {
             player: c.player,
             others,
@@ -209,11 +190,8 @@ impl<'a> OwnerView<'a> {
         };
         Self {
             player: new,
-            others: &q.objects,
-            foreign: Foreign {
-                left: Some((c.player, others)),
-                ..c.foreign
-            },
+            others: others.changed_hands(new, &q.objects),
+            foreign: c.foreign,
             masters: c.every_masters.get(new),
             relations: &q.relations,
             attributes: &q.attributes,
@@ -250,7 +228,7 @@ pub(crate) struct UnitView<'u> {
     /// The owner's construction rate.
     pub(crate) construction_rate: f32,
     /// The owner's other objects.
-    pub(crate) others: &'u [Unit],
+    pub(crate) others: OthersRef<'u>,
     /// The map's terrain zones, which an explorer's search reads.
     pub(crate) zones: &'u mut crate::pathing::zones::Zones,
     /// The other players' lists.

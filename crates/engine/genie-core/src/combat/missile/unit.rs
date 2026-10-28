@@ -8,6 +8,7 @@ use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 
 impl Unit {
     /// The missile action's update (slot 6, `FUN_140a9e6e0`). First its target and the object it
@@ -24,7 +25,7 @@ impl Unit {
     pub(crate) fn fly(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let Some(mut missile) = self.missile.take() else {
             return Ok(());
@@ -47,17 +48,14 @@ impl Unit {
         &self,
         action: &mut crate::combat::missile::MissileAction,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         let dead = |state: u8| 2 < state && state != 6;
         let target_state = match c.victim.as_deref() {
             Some(v) if v.id == action.target => Some(v.state),
             _ => None,
         };
-        let shooter_state = others
-            .iter()
-            .find(|u| u.id == action.fired_from)
-            .map(|u| u.life.state);
+        let shooter_state = others.own(action.fired_from).map(|u| u.life.state);
         if action.target != -1 && target_state.is_none() {
             if c.spatial.get(action.target).is_some() {
                 return Err(GenieError::unsupported(
@@ -91,7 +89,7 @@ impl Unit {
         missile: &mut crate::combat::missile::Missile,
         slot: &mut Option<crate::combat::missile::MissileAction>,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let master =
             c.masters
@@ -105,7 +103,7 @@ impl Unit {
         let Some(action) = slot.as_mut() else {
             return Ok(());
         };
-        self.missile_ends(action, c, others)?;
+        self.missile_ends(action, c, others.view())?;
         match action.state {
             crate::combat::missile::FLYING => {}
             crate::combat::missile::DONE => {
@@ -177,7 +175,7 @@ impl Unit {
         fired: Fired,
         old: [f32; 3],
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         if !(0.0 < stats.radius[0] && 0.0 < stats.radius[1]) {
             return Ok(());
@@ -315,7 +313,7 @@ impl Unit {
         action: &crate::combat::missile::MissileAction,
         fired: Fired,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<u8, GenieError> {
         if fired.charge {
             return Err(GenieError::unsupported("a charge projectile's own hit"));
@@ -324,8 +322,7 @@ impl Unit {
             return self.own_strike(action, fired.by, c);
         }
         let shooter = others
-            .iter_mut()
-            .find(|u| u.id == action.fired_from)
+            .own_mut(action.fired_from)
             .ok_or(GenieError::unsupported(
                 "a missile's shooter outside its list",
             ))?;
@@ -438,7 +435,7 @@ impl Unit {
         slot: &mut Option<crate::combat::missile::MissileAction>,
         stats: &crate::combat::missile::MissileStats,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let fired = Fired {
             charge: missile.charge,
@@ -481,10 +478,7 @@ impl Unit {
         }
         if action.result != 2 {
             let blaster = if !charge && action.fired_from != -1 {
-                others
-                    .iter()
-                    .find(|u| u.id == action.fired_from)
-                    .map(|u| u.life.master_id)
+                others.own(action.fired_from).map(|u| u.life.master_id)
             } else {
                 Some(self.life.master_id)
             };

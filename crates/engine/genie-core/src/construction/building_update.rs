@@ -14,6 +14,7 @@ use crate::objects::masters::Master;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{Unit, annexes_of};
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 use crate::world::{
     BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, MONASTERY,
     VILLAGER_CLASS,
@@ -32,7 +33,7 @@ impl Unit {
     pub(crate) fn gate_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
             return Ok(());
@@ -81,9 +82,10 @@ impl Unit {
     pub(crate) fn gate_count(
         &self,
         c: &Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(usize, usize), GenieError> {
-        let (units, allied) = gate_units(c.spatial, self.id, &annexes_of(self.id, others))?;
+        let (units, allied) =
+            gate_units(c.spatial, self.id, &annexes_of(self.id, others.own_iter()))?;
         Ok((units.len(), allied))
     }
 
@@ -150,7 +152,7 @@ impl Unit {
     pub(crate) fn complete_on_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
     ) -> Result<(), GenieError> {
         self.farm_stage(c)?;
         let due = self.life.state == 0
@@ -165,7 +167,7 @@ impl Unit {
         if !walls && self.annex_of.is_some() {
             return Ok(());
         }
-        let annexed = others.iter().any(|u| u.annex_of == Some(self.id));
+        let annexed = others.own_iter().any(|u| u.annex_of == Some(self.id));
         let Some(construction) = self.construction.as_mut() else {
             return Ok(());
         };
@@ -243,7 +245,7 @@ impl Unit {
     pub(crate) fn building_seconds(
         &mut self,
         c: &Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         if self.life.state != 2 {
             return Ok(());
@@ -280,16 +282,15 @@ impl Unit {
                 "a monastery's relics' goods (its seconds)",
             ));
         }
-        let inside = |id: i32, others: &[Self]| others.iter().position(|u| u.id == id);
         for &id in self.garrison.iter().rev() {
-            let Some(i) = inside(id, others) else {
+            let Some(u) = others.own(id) else {
                 continue;
             };
             let kind = c
                 .masters
-                .and_then(|m| m.get(others[i].life.master_id))
+                .and_then(|m| m.get(u.life.master_id))
                 .map(|m| m.kind);
-            if kind == Some(70) && 0 < others[i].raider_countdown {
+            if kind == Some(70) && 0 < u.raider_countdown {
                 return Err(GenieError::unsupported(
                     "a unit inside whose raider_build_countdown runs (FUN_1411e7220)",
                 ));
@@ -298,20 +299,20 @@ impl Unit {
         let rate = bm.garrison_heal_rate;
         let mut villagers = 0;
         for &id in &self.garrison {
-            let Some(i) = inside(id, others) else {
+            let Some(u) = others.own_mut(id) else {
                 continue;
             };
-            let m = c
-                .masters
-                .and_then(|m| m.get(others[i].life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a unit inside of a master the slice does not have",
-                ))?;
+            let m =
+                c.masters
+                    .and_then(|m| m.get(u.life.master_id))
+                    .ok_or(GenieError::unsupported(
+                        "a unit inside of a master the slice does not have",
+                    ))?;
             if m.class == VILLAGER_CLASS {
                 villagers += 1;
             }
-            if 0.0 < rate && others[i].life.hp < f32::from(m.hit_points) {
-                others[i].heal(m, rate)?;
+            if 0.0 < rate && u.life.hp < f32::from(m.hit_points) {
+                u.heal(m, rate)?;
             }
         }
         if 0 < villagers

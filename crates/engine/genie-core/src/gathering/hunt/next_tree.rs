@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::world::context::Context;
+use crate::world::others::OthersRef;
 
 impl Unit {
     /// The hunt's search for another target (`FUN_140ac4670`) when the class its unit AI targets
@@ -20,7 +21,7 @@ impl Unit {
     pub(crate) fn hunt_tree_search(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: OthersRef<'_>,
         within: Option<f32>,
         near: Option<f32>,
     ) -> Result<bool, GenieError> {
@@ -41,14 +42,9 @@ impl Unit {
         if found == -1 {
             return Ok(false);
         }
-        let (tp, t) = others
-            .iter()
-            .find(|u| u.id == found)
-            .map(|u| (c.player, u))
-            .or_else(|| c.foreign.find(found))
-            .ok_or(GenieError::unsupported(
-                "a hunt's next tree the slice does not hold",
-            ))?;
+        let (tp, t) = others.find(found).ok_or(GenieError::unsupported(
+            "a hunt's next tree the slice does not hold",
+        ))?;
         if let Some(near) = near {
             let (dx, dz, dy) = (
                 self.position[0] - t.position[0],

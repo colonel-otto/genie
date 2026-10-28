@@ -78,11 +78,7 @@ impl UnitView<'_> {
             if id == unit.id {
                 return Some((player, unit));
             }
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (player, u))
-                .or_else(|| foreign.find(id))
+            others.find(id)
         };
         let (Some(t), Some(general)) = (
             task_target_with(target, 1, &find, self.every)?,

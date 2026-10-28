@@ -8,6 +8,7 @@ use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
+use crate::world::others::OthersRef;
 
 impl World {
     /// A mule cart's completion (`FUN_1411c6bd0`'s tail, a building whose master has a task of
@@ -126,12 +127,13 @@ impl World {
                     groups: &self.groups,
                 },
             };
+            let others = OthersRef::new(p, &player.objects, w.foreign);
             let mut found = Vec::new();
             for kind in kinds {
                 let (f, _) = closest_resource_of(
                     &cart,
                     &mut w,
-                    &player.objects,
+                    others,
                     (kind, -1, id),
                     (current, 0, crate::unit_ai::NO_POINT),
                 )?;

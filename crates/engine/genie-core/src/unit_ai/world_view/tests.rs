@@ -1,4 +1,5 @@
 use super::*;
+use crate::world::others::OthersRef;
 
 /// Slot 0x228 (`FUN_141084070`): the attacks above 0 add up in their order from +0; none
 /// (or none above 0) is +0.
@@ -75,17 +76,18 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         firepower: 0.0,
         capture: 0,
     };
+    let foreign = Foreign {
+        before: &before,
+        after: &after,
+        left: None,
+    };
     let picker = WorldPicker {
         attacker: &attacker,
         seeker: None,
         me: 123,
         player: 1,
-        others: &[],
-        foreign: Foreign {
-            before: &before,
-            after: &after,
-            left: None,
-        },
+        others: OthersRef::new(1, &[], foreign),
+        foreign,
         spatial: &spatial,
         every: &every,
         restriction: -1,
@@ -172,17 +174,18 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         firepower: 0.0,
         capture: 0,
     };
+    let foreign = Foreign {
+        before: &before,
+        after: &after,
+        left: None,
+    };
     let picker = WorldPicker {
         attacker: &attacker,
         seeker: None,
         me: 123,
         player: 1,
-        others: &others,
-        foreign: Foreign {
-            before: &before,
-            after: &after,
-            left: None,
-        },
+        others: OthersRef::new(1, &others, foreign),
+        foreign,
         spatial: &spatial,
         every: &every,
         restriction: -1,
@@ -300,17 +303,18 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         firepower: 0.0,
         capture: 0,
     };
+    let foreign = Foreign {
+        before: &before,
+        after: &after,
+        left: None,
+    };
     let mut picker = WorldPicker {
         attacker: &attacker,
         seeker: None,
         me: 123,
         player: 1,
-        others: &[],
-        foreign: Foreign {
-            before: &before,
-            after: &after,
-            left: None,
-        },
+        others: OthersRef::new(1, &[], foreign),
+        foreign,
         spatial: &spatial,
         every: &every,
         restriction: -1,

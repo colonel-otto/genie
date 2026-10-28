@@ -13,6 +13,7 @@ use crate::pathing::Pathing;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::{Actor, DropSite};
 use crate::world::context::Context;
+use crate::world::others::{Others, OthersRef};
 
 impl Unit {
     /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads of its
@@ -26,7 +27,7 @@ impl Unit {
     pub(crate) fn enter_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &mut Others<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
         let enter = self
@@ -34,20 +35,10 @@ impl Unit {
             .enter()
             .copied()
             .expect("checked by the caller");
-        let found = others
-            .iter()
-            .find(|u| u.id == enter.target)
-            .map(|t| (c.player, t))
-            .or_else(|| c.foreign.find(enter.target));
+        let found = others.find(enter.target);
         // the units inside the target, any player's (its slot 0x498)
-        let foreign = c.foreign;
-        let inside_of = |others: &[Self], id: i32| {
-            let inside = |u: &&Self| u.life.inside == Some(id);
-            let theirs: usize = (0..foreign.before.len() + 1 + foreign.after.len())
-                .filter_map(|q| foreign.player(q))
-                .map(|p| p.objects.iter().chain(&p.sleeping).filter(inside).count())
-                .sum();
-            others.iter().filter(inside).count() + theirs
+        let inside_of = |others: OthersRef<'_>, id: i32| {
+            others.every().filter(|u| u.life.inside == Some(id)).count()
         };
         let (building, walking, meeting) = match found {
             Some((tp, t)) => {
@@ -58,7 +49,7 @@ impl Unit {
                     .ok_or(GenieError::unsupported(
                         "an Enter's building of a master the slice lacks",
                     ))?;
-                let room = inside_of(others, t.id) < usize::from(master.garrison);
+                let room = inside_of(others.view(), t.id) < usize::from(master.garrison);
                 let (mut view, walking, meeting) = crate::garrison::enter_view(
                     c.spatial,
                     c.zones,
@@ -105,13 +96,8 @@ impl Unit {
             self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         }
         if step.enter {
-            let (tp, building) = others
-                .iter()
-                .find(|u| u.id == enter.target)
-                .map(|t| (c.player, t))
-                .or_else(|| c.foreign.find(enter.target))
-                .expect("the update found it");
-            let inside = inside_of(others, enter.target);
+            let (tp, building) = others.find(enter.target).expect("the update found it");
+            let inside = inside_of(others.view(), enter.target);
             let mut w = EnterWorld {
                 spatial: c.spatial,
                 pathing: c.pathing,
@@ -147,7 +133,7 @@ impl Unit {
             }
             let firepower = w.firepower;
             c.left_group = w.left_group.map(|g| (g, enter.target));
-            if let Some(b) = others.iter_mut().find(|u| u.id == enter.target) {
+            if let Some(b) = others.own_mut(enter.target) {
                 b.firepower += firepower;
                 b.garrison.push(self.id);
             } else {
