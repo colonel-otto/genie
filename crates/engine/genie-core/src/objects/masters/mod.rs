@@ -149,6 +149,17 @@ impl Master {
             _ => (false, None),
         }
     }
+
+    /// The unit AI type the factory (`FUN_141215a90`) gives a new object of this master, by
+    /// the master's id `id` ([`crate::unit_ai::factory_type`]).
+    #[must_use]
+    pub const fn unit_ai_type(&self, id: i16) -> Option<u32> {
+        let missile = match self.volley_missile {
+            Some(m) => m,
+            None => -1,
+        };
+        crate::unit_ai::factory_type(self.class, id, missile, self.combat_level)
+    }
 }
 
 /// What a building's completion (`FUN_1411dbb70` with 2) reads of its master, the `.dat`'s type

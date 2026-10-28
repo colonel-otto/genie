@@ -4,8 +4,7 @@ use crate::GenieError;
 use crate::world::World;
 
 /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` at `position` (state
-/// 0, hit points 1), with a unit AI of the given type if its class gets one; `Err` when the slice
-/// cannot tell. The player pays the master's cost, and each builder, in packet order, takes the
+/// 0, hit points 1), with the unit AI the factory gives its master. The player pays the master's cost, and each builder, in packet order, takes the
 /// master it builds with and starts a Build action (`World::masters`). The slice takes the
 /// placement as given: the recording's game accepted it.
 #[derive(Clone, Debug, PartialEq)]
@@ -14,8 +13,6 @@ pub struct BuildCommand {
     pub player: usize,
     /// The foundation's master.
     pub master: i16,
-    /// The unit AI type its class gets, if any, or why the slice cannot tell.
-    pub unit_ai: Result<Option<u32>, GenieError>,
     /// Where it is placed.
     pub position: [f32; 3],
     /// The units told to build it, in packet order.
@@ -49,7 +46,7 @@ impl BuildCommand {
         if !w.build_allowed(player, master, [self.position[0], self.position[1]])? {
             return Ok(());
         }
-        let (id, position) = w.found(player, master, self.unit_ai.clone(), self.position)?;
+        let (id, position) = w.found(player, master, self.position)?;
         if let Some((_, u)) = w.object_mut(id) {
             u.build_frame = self.frame;
         }

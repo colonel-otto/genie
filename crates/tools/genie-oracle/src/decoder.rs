@@ -374,9 +374,9 @@ fn go_back_to_work_ids(rest: &[u8]) -> Vec<i32> {
 /// into the slice's stops its player (byte 1 of the `raw` packet is the issuing comm player).
 fn single_command(packet: &Packet, raw: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
     Some(match packet {
-        Packet::Build(build) => build_command(build, sections),
+        Packet::Build(build) => build_command(build),
         Packet::MultiQueue(queue) => queue_command(queue, sections),
-        Packet::BuildWall(c) => build_wall_command(c, sections),
+        Packet::BuildWall(c) => build_wall_command(c),
         // RESEARCH (0x65): the handler reads the building count at +0x8 as a short
         Packet::Research(c) => Command::Research(ResearchCommand {
             player: c.commp_id as usize,

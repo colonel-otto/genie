@@ -10,7 +10,7 @@ use genie_core::commands::{
 use genie_rec::de;
 use genie_rec::de::Op;
 use genie_save::PlayerSection;
-use genie_save::generated::world::{Master, PlayerObjects};
+use genie_save::generated::world::Master;
 
 /// One frame of the body (FD-007's per-frame record order): the op-2 record that starts a tick, its
 /// dt and, every interval, a checkpoint, then the op-1 commands the tick runs after its `SeedAll`.
@@ -206,18 +206,9 @@ pub(super) fn queue_buildings(packet: &de::command::MultiQueue) -> Vec<i32> {
 /// BUILD (`FUN_140e7a400`): `num` builders put a foundation of master `o_id` at (`x`, `y`); the
 /// builder ids follow. The handler reads the master as an i16 (`+0x10`). The slice takes z = 0:
 /// the game sets it from the terrain, so a foundation on raised terrain shows in word 7.
-pub(super) fn build_command(
-    packet: &de::command::Build,
-    sections: &[PlayerSection<'_>],
-) -> Command {
+pub(super) fn build_command(packet: &de::command::Build) -> Command {
     let player = packet.commp_id as usize;
     let master = packet.o_id as i16;
-    let unit_ai = sections.get(player).map_or(
-        Err(GenieError::unsupported(
-            "BUILD names a player the save does not have",
-        )),
-        |section| new_unit_ai(section.objects(), master),
-    );
     if packet.num == LAST_COMMANDED {
         return Command::Unmodelled {
             player,
@@ -227,7 +218,6 @@ pub(super) fn build_command(
     Command::Build(BuildCommand {
         player,
         master,
-        unit_ai,
         position: [packet.x, packet.y, 0.0],
         builders: packet
             .ids
@@ -244,10 +234,7 @@ pub(super) fn build_command(
 /// `BUILD_WALL` (0x69): the wall's master at `+0x10`, the line's tiles at `+0x8`..`+0xe`, the
 /// target at `+0x14`, the queue flags at `+0x1a` and `+0x1b`, the builders (at most a human
 /// player's 60, `FUN_140e6b250`).
-pub(super) fn build_wall_command(
-    packet: &de::command::BuildWall,
-    sections: &[PlayerSection<'_>],
-) -> Command {
+pub(super) fn build_wall_command(packet: &de::command::BuildWall) -> Command {
     let player = packet.commp_id as usize;
     let master = packet.o_id as i16;
     if packet.num == LAST_COMMANDED {
@@ -256,16 +243,9 @@ pub(super) fn build_wall_command(
             why: GenieError::unsupported("BUILD_WALL by the last commanded units"),
         };
     }
-    let unit_ai = sections.get(player).map_or(
-        Err(GenieError::unsupported(
-            "BUILD_WALL names a player the save does not have",
-        )),
-        |section| new_unit_ai(section.objects(), master),
-    );
     Command::BuildWall(BuildWallCommand {
         player,
         master,
-        unit_ai,
         from: [packet.x1, packet.y1],
         to: [packet.x2, packet.y2],
         target: packet.q_id,
@@ -278,39 +258,6 @@ pub(super) fn build_wall_command(
         queued: packet.field_0x1a != 0,
         commits: packet.field_0x1b == 0,
     })
-}
-
-/// The unit AI a new object of `master` gets (`FUN_141215a90`, genie-core's
-/// [`genie_core::unit_ai::factory_type`]): by its class (the master's fifth saved short), its id,
-/// its volley missile (the tribe combat master's `volley_missile_id`, the game's `+0x8d4`: a
-/// building with one gets the tower's unit AI and its fourth draw) and its combat level.
-pub(super) fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, GenieError> {
-    let m = objects.master(master).ok_or(GenieError::unsupported(
-        "BUILD of a master the player does not have",
-    ))?;
-    let static_part = m.static_part().ok_or(GenieError::unsupported(
-        "BUILD of a master without a static part",
-    ))?;
-    let class = static_part.read_temp_5;
-    // the factory (`FUN_141215a90`) gives a building with a volley missile (the master's
-    // `+0x8d4`, `volley_missile_id`) the tower's unit AI, as genie-core's `factory_type` does
-    let volley = m
-        .tribe_master_combat_object
-        .as_deref()
-        .or_else(|| {
-            m.tribe_master_building_object
-                .as_deref()
-                .map(|b| &b.tribe_master_combat_object)
-        })
-        .and_then(|c| i16::try_from(c.volley_missile_id).ok())
-        .unwrap_or(-1);
-    // the class-10 choice reads the master's combat level (`+0x62c`, FUN_140fde4f0)
-    Ok(genie_core::unit_ai::factory_type(
-        class,
-        master,
-        volley,
-        static_part.combat_level,
-    ))
 }
 
 pub(super) fn combat_master(

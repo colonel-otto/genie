@@ -15,16 +15,17 @@ use crate::world::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889,
 
 impl World {
     /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108,
-    /// [`World::make_building`]), then the player pays the master's cost (each entry flagged
+    /// [`World::make_building`], with the unit AI type the factory gives its master,
+    /// [`Master::unit_ai_type`]), then the player pays the master's cost (each entry flagged
     /// paid). Its id and position.
     pub(crate) fn found(
         &mut self,
         player: usize,
         master: i16,
-        unit_ai: Result<Option<u32>, GenieError>,
         position: [f32; 3],
     ) -> Result<(i32, [f32; 3]), GenieError> {
-        let made = self.make_building(player, master, unit_ai, position)?;
+        let unit_ai = self.master_of(player, master)?.unit_ai_type(master);
+        let made = self.make_building(player, master, Ok(unit_ai), position)?;
         let cost = self.master_of(player, master)?.cost.clone();
         let owner = &mut self.players[player];
         for &(resource, amount, paid) in &cost {
@@ -364,12 +365,7 @@ impl World {
             // the .dat's annexes are buildings (type 80): another type's master has no building
             // part, which the constructor below refuses
             let [ox, oy] = building.annex_offsets[slot];
-            let ai = Ok(crate::unit_ai::factory_type(
-                am.class,
-                annex,
-                am.volley_missile.unwrap_or(-1),
-                am.combat_level,
-            ));
+            let ai = Ok(am.unit_ai_type(annex));
             let at = [position[0] + ox, position[1] + oy, given_z];
             let (aid, at) = self.make_building(player, annex, ai, at)?;
             self.link_annex(player, id, aid, &made, &am)?;

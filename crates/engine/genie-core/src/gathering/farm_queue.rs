@@ -286,12 +286,7 @@ impl World {
             }
         }
         let made = self.master_of(p, master)?;
-        let ai = Ok(crate::unit_ai::factory_type(
-            made.class,
-            master,
-            made.volley_missile.unwrap_or(-1),
-            made.combat_level,
-        ));
+        let ai = Ok(made.unit_ai_type(master));
         let at = [farm[0], farm[1], 0.0];
         let (foundation, _) = self.make_building(p, master, ai, at)?;
         if from_queue {

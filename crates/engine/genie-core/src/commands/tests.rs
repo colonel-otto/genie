@@ -22,7 +22,6 @@ fn one_of_each(p: usize) -> Vec<Command> {
         Command::Build(BuildCommand {
             player: p,
             master: 70,
-            unit_ai: Ok(None),
             position: [0.0; 3],
             builders: ids.clone(),
             queued: false,
@@ -32,7 +31,6 @@ fn one_of_each(p: usize) -> Vec<Command> {
         Command::BuildWall(BuildWallCommand {
             player: p,
             master: 72,
-            unit_ai: Ok(None),
             from: [0, 0],
             to: [1, 1],
             target: -1,

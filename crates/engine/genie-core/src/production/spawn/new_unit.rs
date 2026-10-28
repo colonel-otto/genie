@@ -10,7 +10,7 @@ use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::production::IN_PRODUCTION;
 use crate::production::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
-use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi, factory_type};
+use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::World;
 
@@ -269,13 +269,7 @@ impl World {
                 ]
             })
         });
-        let ai_type = factory_type(
-            made.class,
-            master,
-            made.volley_missile.unwrap_or(-1),
-            made.combat_level,
-        )
-        .ok_or(GenieError::unsupported(
+        let ai_type = made.unit_ai_type(master).ok_or(GenieError::unsupported(
             "a new combat unit without a unit AI",
         ))?;
         let new_object = self.new_object(p, master, made, position)?;

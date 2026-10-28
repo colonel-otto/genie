@@ -1342,7 +1342,6 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
         &[Command::Build(BuildCommand {
             player: 1,
             master: 70,
-            unit_ai: Ok(None),
             position: [30.0, 88.0, 0.0],
             builders: vec![9175, 9181],
             queued: false,
@@ -1412,7 +1411,6 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
     t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
-        unit_ai: Ok(None),
         position: [30.0, 88.0, 0.0],
         builders: vec![9175],
         queued: false,
@@ -1482,7 +1480,6 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
     t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
-        unit_ai: Ok(None),
         position: [30.0, 88.0, 0.0],
         builders: vec![9618, 9175],
         queued: true,
@@ -4957,7 +4954,6 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
         &[Command::Build(BuildCommand {
             player: 0,
             master: 70,
-            unit_ai: Ok(Some(17)),
             position: [10.0, 10.0, 0.0],
             builders: vec![],
             queued: false,
@@ -11071,7 +11067,6 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
     t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
-        unit_ai: Ok(None),
         position: [30.0, 88.0, 0.0],
         builders: vec![9175],
         queued: false,
@@ -11167,7 +11162,6 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
         t.run(&Command::Build(BuildCommand {
             player: 1,
             master: 70,
-            unit_ai: Ok(None),
             position: [30.0, 88.0, 0.0],
             builders: vec![9175],
             queued: false,
@@ -11525,7 +11519,6 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
-        unit_ai: Ok(None),
         position: [30.0, 88.0, 0.0],
         builders: vec![9175],
         queued: false,
@@ -11544,7 +11537,6 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     wall.run(&Command::BuildWall(BuildWallCommand {
         player: 1,
         master: 70,
-        unit_ai: Ok(None),
         from: [30, 88],
         to: [30, 88],
         target: -1,
@@ -11747,7 +11739,6 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
         Command::Build(BuildCommand {
             player: 1,
             master: 70,
-            unit_ai: Ok(None),
             position: [30.0, 88.0, 0.0],
             builders,
             queued: false,

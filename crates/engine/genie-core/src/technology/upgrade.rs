@@ -508,13 +508,9 @@ impl World {
     fn new_unit_ai(&mut self, p: usize, place: Place, new: &Master) -> Result<(), GenieError> {
         let position = self.object_at(place).position;
         let made = self.new_object(p, new.id, new, position)?;
-        let ai = crate::unit_ai::factory_type(
-            new.class,
-            new.id,
-            new.volley_missile.unwrap_or(-1),
-            new.combat_level,
-        )
-        .and_then(|t| crate::unit_ai::UnitAi::constructed(t, &made, self.streams.get(Stream::Ai)));
+        let ai = new.unit_ai_type(new.id).and_then(|t| {
+            crate::unit_ai::UnitAi::constructed(t, &made, self.streams.get(Stream::Ai))
+        });
         self.object_at_mut(place).ai = ai;
         Ok(())
     }

@@ -1173,3 +1173,20 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
     assert_eq!(pick(293), Ok(Some((212, 101))));
     assert_eq!(pick(118), Ok(Some((118, 101))));
 }
+
+#[test]
+fn a_master_s_unit_ai_type_reads_its_class_volley_missile_and_combat_level() {
+    let master = |class, volley_missile, combat_level| Master {
+        class,
+        combat_level,
+        volley_missile,
+        ..Master::default()
+    };
+    // a building without a volley missile, with one (the tower's), and a boar's combat level
+    assert_eq!(master(3, None, 0).unit_ai_type(70), Some(17));
+    assert_eq!(master(3, Some(5), 0).unit_ai_type(79), Some(0xf));
+    assert_eq!(master(10, None, 1).unit_ai_type(48), Some(4));
+    assert_eq!(master(10, None, 0).unit_ai_type(126), Some(5));
+    // the factory's own ids first
+    assert_eq!(master(3, None, 0).unit_ai_type(1105), Some(0x12));
+}

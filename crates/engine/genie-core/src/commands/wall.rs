@@ -47,8 +47,6 @@ pub struct BuildWallCommand {
     pub player: usize,
     /// The wall's master (`+0x10`).
     pub master: i16,
-    /// The unit AI type its class gets, if any, or why the slice cannot tell.
-    pub unit_ai: Result<Option<u32>, GenieError>,
     /// The line's first tile (`+0x8`, `+0xa`).
     pub from: [u16; 2],
     /// The line's last tile (`+0xc`, `+0xe`).
@@ -279,12 +277,7 @@ impl World {
                 if !self.affords(player, w.master)? {
                     break;
                 }
-                placed.push(self.found(
-                    player,
-                    w.master,
-                    w.unit_ai.clone(),
-                    [at[0], at[1], 0.0],
-                )?);
+                placed.push(self.found(player, w.master, [at[0], at[1], 0.0])?);
             }
         }
         Ok(placed)
