@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::BUILDING;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -2957,7 +2958,7 @@ fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
         (7, duel(false, 5.0, 10.0, 50.0)),
     ];
     let wonder = UnitSeen {
-        master: crate::world::WONDER,
+        master: WONDER,
         ..foe(9, 3)
     };
     assert_eq!(run(&at, foe(7, 6), wonder, fair.clone()).0, GO_ON);

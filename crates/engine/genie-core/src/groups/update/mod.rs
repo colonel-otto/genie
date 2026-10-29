@@ -25,8 +25,6 @@ const DELIVER_RELIC: i32 = 0x88;
 /// argument, as the commands).
 const RELIC_PICKUP_ACTION: i16 = 0x84;
 const RELIC_DELIVERY_ACTION: i16 = 0x88;
-/// The monastery's master id (`FUN_141017850`'s test of the target's master).
-const MONASTERY: i16 = 104;
 /// The nearest member's target starts this far (`FUN_141007ca0`, `DAT_14330ebf4`).
 const FARTHEST: f32 = crate::math::image::group::FARTHEST;
 /// A follow (`mCurrentCommand` 2).

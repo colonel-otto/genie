@@ -6,9 +6,10 @@ use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::gather::HuntOrder;
-use crate::orders::{ATTACK_TASK, MASTER_84, Work};
+use crate::orders::{ATTACK_TASK, Work};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -346,7 +347,7 @@ impl World {
         (target, point, clears): (i32, [f32; 3], bool),
     ) -> Result<(), GenieError> {
         let t = self.task_target(target, 0)?;
-        if t.master.id == MASTER_84 && t.player == player {
+        if t.master.id == MARKET && t.player == player {
             return Err(GenieError::unsupported(
                 "a hunt sent to its player's master 84",
             ));
@@ -378,7 +379,7 @@ impl World {
         (target, point, clears): (i32, [f32; 3], bool),
     ) -> Result<bool, GenieError> {
         let t = self.task_target(target, 0)?;
-        if t.master.id == MASTER_84 && t.player == player {
+        if t.master.id == MARKET && t.player == player {
             return Err(GenieError::unsupported(
                 "a gather sent to its player's master 84",
             ));

@@ -4,10 +4,11 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     Avoided, EPSILON, LONG_PATH_MOVER, LongWalker, Me, Mover, PUSHED, PathAsk, PathData, Planning,
-    REACH_NEAR, REACH_SHORT, ShortAsk, USER_WAYPOINT_MIDDLE, WIDE_CLASS, WIDE_MASTER, WIDE_RANGE,
-    footprint_gap, footprint_gap_squared, lowered_units, overlap, pause_rank, point_or_zero,
-    point_or_zero_of, vector,
+    REACH_NEAR, REACH_SHORT, ShortAsk, USER_WAYPOINT_MIDDLE, WIDE_CLASS, WIDE_RANGE, footprint_gap,
+    footprint_gap_squared, lowered_units, overlap, pause_rank, point_or_zero, point_or_zero_of,
+    vector,
 };
+use crate::objects::masters::ids::ID_45;
 use crate::pathing::tile_path::{Path, Request};
 use crate::{GenieError, math::fmath};
 
@@ -77,7 +78,7 @@ impl Mover {
         let placed = target_placed(world, target)?;
         let target_id = target.unwrap_or(-1);
         let target_radius = placed.map_or(0.0, |t| t.radius[0]);
-        let bonus = placed.is_some_and(|t| t.master == WIDE_MASTER || t.class == WIDE_CLASS);
+        let bonus = placed.is_some_and(|t| t.master == ID_45 || t.class == WIDE_CLASS);
         let mut path = Path::default();
         if let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) {
             let req = Request {

@@ -3,12 +3,13 @@
 
 use crate::GenieError;
 use crate::groups::update::{
-    BUILD, DELIVER_RELIC, FARTHEST, MONASTERY, NO_COMMAND, PICK_UP_RELIC, RELIC_DELIVERY_ACTION,
+    BUILD, DELIVER_RELIC, FARTHEST, NO_COMMAND, PICK_UP_RELIC, RELIC_DELIVERY_ACTION,
     RELIC_PICKUP_ACTION, Shown, TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;

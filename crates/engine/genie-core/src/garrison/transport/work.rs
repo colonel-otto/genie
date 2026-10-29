@@ -4,12 +4,11 @@
 use crate::GenieError;
 use crate::garrison::transport::{Changed, MapShore, Ship, TRANSPORT, TransportAction};
 use crate::math::rng::Stream;
+use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::{Task, TaskId};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 
-/// The market (`0x60f0` raw), whose own trade units the work command never retakes.
-const MARKET: i16 = 84;
 /// The trade cart's and the trade boat's classes (`FUN_141195400`, `FUN_141195490`).
 const TRADE_CLASSES: [i16; 2] = [19, 2];
 

@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::FISH_TRAP;
 use crate::vision::registry::UnitUpdate;
 
 /// The record cells (FD-030-D03) give every query the objects whose record is filed in a

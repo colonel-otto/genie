@@ -2,10 +2,10 @@
 //! `UNIT_ORDER`'s cancel of one, five or some.
 
 use crate::GenieError;
+use crate::objects::masters::ids::VILLAGER_FEMALE;
+use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
-use crate::players::game_status::{
-    CURRENT_AGE, ONE_UNIT_AGE, ONE_UNIT_MODE, VILLAGER_FEMALE, VILLAGER_MALE,
-};
+use crate::players::game_status::{CURRENT_AGE, ONE_UNIT_AGE, ONE_UNIT_MODE};
 use crate::production::{Making, refund, refund_research};
 use crate::world::World;
 

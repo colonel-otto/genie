@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::BUILDING;
@@ -10,7 +11,6 @@ use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::Finding;
 use crate::unit_ai::task_finder::TaskTarget;
 use crate::unit_ai::task_finder::first;
-use crate::unit_ai::task_finder::id;
 use crate::unit_ai::task_finder::wanted;
 
 /// The trade task's action type (`0x6f`).
@@ -34,7 +34,7 @@ pub(super) fn on_target<'m>(
     if t.player == actor.player && t.master.kind == BUILDING && t.state == 0 {
         return Ok(Finding::Answer(build_task(list, t, filter)));
     }
-    if t.master.id == id::ID_199 {
+    if t.master.id == ids::FISH_TRAP {
         return Err(GenieError::unsupported("the task finder on master 199"));
     }
     // LAB_141279cfa -> LAB_1412796b4: garrisoning, repairing, task 0x6f
@@ -61,7 +61,7 @@ pub(super) fn on_target<'m>(
 /// last loop): the first task of type 0x6f for the target's master or its class that the
 /// filter takes; none goes on to the finder's tail.
 fn trade_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&'m Task> {
-    let trades = t.state < 3 && (t.master.id == id::ID_45 || t.master.id == id::ID_84);
+    let trades = t.state < 3 && (t.master.id == ids::ID_45 || t.master.id == ids::MARKET);
     trades
         .then(|| {
             first(list, |task| {

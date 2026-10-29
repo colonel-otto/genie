@@ -141,8 +141,6 @@ fn players_seen(found: &[Vec<Record>; 5]) -> u32 {
 /// The pastures, whose workers and livestock `ClosestObject` counts (`FUN_140c488b0`, raw
 /// `0x6801`, `0x6805`).
 const PASTURES: [i16; 2] = [1893, 1897];
-/// The fish trap (raw `0x6163`), which only the fishing ships gather from (`FUN_1411945a0`).
-const FISH_TRAP: i16 = 199;
 /// The fishing ships' masters (`FUN_1411945a0`: 13, 2356, 2171).
 const TRAPPERS: [i16; 3] = [13, 2356, 2171];
 

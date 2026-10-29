@@ -8,17 +8,14 @@ use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
+use crate::objects::masters::ids::VILLAGER_FEMALE;
+use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
 use crate::objects::release::Releaser;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::world::SideWorld;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{NOT_HELD, UnitView};
-
-/// The villagers a villager's attack command switches to by its task swap group (its player's
-/// master table's entries at `+0x298` and `+0x928`).
-const VILLAGER_MALE: i16 = 83;
-const VILLAGER_FEMALE: i16 = 293;
 
 impl UnitView<'_, '_> {
     /// The attack command (slot 0x338, `FUN_14120cea0`; classes 51 and 54 are not modelled) ->

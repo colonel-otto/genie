@@ -51,9 +51,6 @@ const PASSABLE: f32 = crate::math::image::spawn::PASSABLE;
 /// How far inside its far edges a box's last tile lies (`DAT_142eb1e9c`).
 const INSIDE: f32 = crate::math::image::spawn::INSIDE;
 
-/// The relic's master, which always stays (`FUN_141194e80`).
-const RELIC: i16 = 285;
-
 /// A new moving object's right vector's z (`FUN_1411580a0` reads `DAT_14330ec20`).
 pub(crate) const START_RIGHT_Z: f32 = crate::math::image::spawn::START_RIGHT_Z;
 /// The player's attribute a new soldier's unit AI reads: the current age (`player+0x100` at

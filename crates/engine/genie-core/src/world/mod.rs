@@ -32,6 +32,8 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::objects::masters::Masters;
+use crate::objects::masters::ids::VILLAGER_FEMALE;
+use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::sprite::Graphic;
 use crate::pathing::Pathing;
 use crate::unit_ai::task_finder::DropSite;
@@ -139,11 +141,6 @@ pub(crate) const BUILDING_COST: i16 = 247;
 /// calls of `FUN_140f7d310`: Gaia's entries `+0x298` and `+0x10b8`).
 const PLANNED_MASTERS: [i16; 2] = [83, 535];
 
-/// The masters whose death lowers a count of their owner's (`FUN_1411dbb70`, raw `0x6104`,
-/// `0x61b0`, `0x60ee`): the monastery's ([`MONASTERY`]) in attribute 52, the wonder's in 42,
-/// the castle's in 134.
-pub(crate) const WONDER: i16 = 276;
-pub(crate) const CASTLE: i16 = 82;
 pub(crate) const MONASTERIES: i16 = 52;
 pub(crate) const WONDERS: i16 = 42;
 pub(crate) const CASTLES: i16 = 134;
@@ -161,22 +158,13 @@ pub(crate) struct BuildingDeath {
     pub(crate) tech: Option<(i16, i16)>,
 }
 
-/// The villager master QUEUE draws a sex for (`0x53`), and the generic villager id that becomes
-/// 0x53 first (`0x712`), both in `FUN_1411cbc40`.
-pub(crate) const VILLAGER: i16 = 0x53;
-/// The farm, which BUILD places as the rice farm on mangrove or rice farm terrain.
-pub(crate) const FARM: i16 = 50;
 pub(crate) const RICE_FARM: i16 = 1187;
 pub(crate) const VILLAGER_ANY: i16 = 0x712;
-/// The female villager master (`0x125`).
-const VILLAGER_FEMALE: i16 = 0x125;
 /// The attribute naming a building master that changes the terrain around its buildings
 /// (`FUN_1411c39b0`, the player's attribute 255).
 pub(crate) const BUILDING_TERRAIN: usize = 255;
 /// A building at most this share of its hit points lets its garrison out (`DAT_142eae8d0`).
 pub(crate) const EJECT_SHARE: f32 = crate::math::image::turn::EJECT_SHARE;
-/// The monastery (master 104, `0x6104` raw), whose relics give goods every second.
-pub(crate) const MONASTERY: i16 = 104;
 /// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
 pub(crate) const PETARD: i16 = 440;
 /// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:
@@ -206,14 +194,11 @@ pub(crate) const SPEED_EPSILON: f32 = crate::math::image::turn::SPEED_EPSILON;
 /// A building attacks with a firepower above this (`FUN_14120ea30`).
 pub(crate) const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWER;
 
-/// The pasture master whose foundation keeps its snow and whose stack unit depends on the rice
-/// terrain under it (1889).
-pub(crate) const PASTURE_1889: i16 = 1889;
 /// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
 /// modulo 100.
 pub(crate) const fn villager(draw: u64) -> i16 {
     if draw.wrapping_mul(100) % 100 < 50 {
-        VILLAGER
+        VILLAGER_MALE
     } else {
         VILLAGER_FEMALE
     }

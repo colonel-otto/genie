@@ -8,6 +8,7 @@
 //! minimap) are not held.
 
 use crate::GenieError;
+use crate::objects::masters::ids::TOWN_CENTRE;
 
 /// What the `.dat` says of a terrain (its record at map `+0x6238`, 0x1f0 bytes each).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -143,9 +144,6 @@ fn slope_share(shape: u8, fx: f32, fy: f32) -> f32 {
         _ => 0.0,
     }
 }
-
-/// The town centre's master (109), whose foundation terrain leaves its gap (`FUN_1411ddd90`).
-const TOWN_CENTRE: i16 = 109;
 
 /// What a completed building's foundation reads of it (`FUN_1411ddd90`).
 #[derive(Clone, Copy, Debug, PartialEq)]

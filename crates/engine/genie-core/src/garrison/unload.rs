@@ -2,9 +2,10 @@
 
 use crate::GenieError;
 use crate::commands::unload::UnloadCommand;
-use crate::garrison::{MASTER_1808, SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
+use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 

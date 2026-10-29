@@ -4,12 +4,13 @@
 use crate::GenieError;
 use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
-    HALTED, MAX_WAITS, PLACE, SITE_GONE, WAIT, WONDER, WONDER_RATE, footprint_clearing,
+    HALTED, MAX_WAITS, PLACE, SITE_GONE, WAIT, WONDER_RATE, footprint_clearing,
 };
 use crate::movement::footprint_gap;
 use crate::movement::move_to::MoveTo;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::WONDER;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 

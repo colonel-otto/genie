@@ -7,6 +7,7 @@ use crate::commands::research::ResearchCommand;
 use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE};
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Masters, player_master};
@@ -14,7 +15,7 @@ use crate::orders::Place;
 use crate::production::Production;
 use crate::world::player::POPULATION;
 use crate::world::{
-    COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, VILLAGER, VILLAGER_ANY, World, villager,
+    COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, VILLAGER_ANY, World, villager,
 };
 
 impl World {
@@ -273,12 +274,16 @@ impl World {
         tech: i16,
         button: i32,
     ) -> Result<bool, GenieError> {
-        let mut master = if unit == VILLAGER_ANY { VILLAGER } else { unit };
+        let mut master = if unit == VILLAGER_ANY {
+            VILLAGER_MALE
+        } else {
+            unit
+        };
         let mut count = count;
-        if master == VILLAGER {
+        if master == VILLAGER_MALE {
             master = villager(self.streams.get(Stream::Action).raw64());
             if 0 < count.wrapping_sub(1) as i16 {
-                let _ = self.queue_at(player, i, VILLAGER, count - 1, -1, button)?;
+                let _ = self.queue_at(player, i, VILLAGER_MALE, count - 1, -1, button)?;
             }
             count = 1;
         }

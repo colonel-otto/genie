@@ -48,9 +48,6 @@ const MOST: i16 = 0x7ffe;
 /// The master whose footprint sight is a circle (`FUN_141192560`: id 112).
 const CIRCLE_MASTER: i16 = 112;
 
-/// The master whose sight the AI players' market lists follow (`FUN_1411d0190`: id 84).
-const MARKET: i16 = 84;
-
 /// `DAT_142eb99cc`: a footprint's high edge, less this, is its last tile.
 const EDGE: f32 = crate::math::image::visibility::EDGE;
 

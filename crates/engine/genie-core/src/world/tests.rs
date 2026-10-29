@@ -24,6 +24,7 @@ use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
 use crate::objects::masters::class;
+use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::object_list::ObjectList;
@@ -12073,8 +12074,8 @@ fn a_reseed_without_a_farm_to_make_makes_nothing() {
 fn a_fishing_ship_reseeds_a_fish_trap() {
     let ship = |t: &mut World| {
         let trap = Master {
-            id: crate::gathering::farm_queue::FISH_TRAP,
-            base_id: crate::gathering::farm_queue::FISH_TRAP,
+            id: FISH_TRAP,
+            base_id: FISH_TRAP,
             ..t.masters[1].get(50).unwrap().clone()
         };
         let ms = &mut t.masters[1];
@@ -12094,7 +12095,7 @@ fn a_fishing_ship_reseeds_a_fish_trap() {
     let trap = p.objects.last().unwrap();
     assert_eq!(
         (trap.life.master_id, trap.position()),
-        (crate::gathering::farm_queue::FISH_TRAP, [30.5, 88.5, 0.0])
+        (FISH_TRAP, [30.5, 88.5, 0.0])
     );
     let mut t = reseed_world();
     ship(&mut t);

@@ -10,22 +10,18 @@
 
 use crate::GenieError;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::FARM;
+use crate::objects::masters::ids::FISH_TRAP;
+use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::player_master;
 use crate::production::{cost_test, pay, refund_master};
 use crate::world::World;
 
 /// A queue takes a purchase only below this count (`0x28`).
 pub const QUEUE_LIMIT: i32 = 40;
-/// The fish trap (master 199, its master table's `+0x638`).
-pub const FISH_TRAP: i16 = 199;
-/// The farm a mill's queue buys (`0x32`, GAME 0xd and 0xe).
-pub const FARM: i16 = 0x32;
 /// The pasture a mill's queue buys (`0x761`, GAME 0x15 and 0x16).
 pub const PASTURE: i16 = 0x761;
 
-/// The town centre (621, `0x26d`), whose availability also counts the town centres standing
-/// against attribute 218 (`FUN_141663f80`).
-const TOWN_CENTRE_621: i16 = 0x26d;
 const TOWN_CENTRE_LIMIT: usize = 218;
 /// A reseeding gatherer's farm spot of none (`DAT_14330ec20`, −1.0, read at `0x140a8aa9e`).
 const NO_FARM: f32 = crate::math::image::farm_queue::NO_FARM;

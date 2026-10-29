@@ -1,5 +1,6 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
+use crate::objects::masters::ids::WONDER;
 use genie_diff::Diff;
 
 use crate::GenieError;
@@ -14,8 +15,8 @@ use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::ownership::capture::Captured;
 use crate::production::Production;
 use crate::unit_ai::UnitAi;
+use crate::world::Gate;
 use crate::world::step::Step;
-use crate::world::{Gate, WONDER};
 
 mod death;
 mod default_task;

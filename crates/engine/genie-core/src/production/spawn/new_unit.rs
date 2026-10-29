@@ -7,6 +7,7 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MONASTERY;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::production::IN_PRODUCTION;
@@ -133,8 +134,6 @@ impl World {
         queue: &[crate::unit_ai::QueuedOrder],
         z: f32,
     ) -> Result<(), GenieError> {
-        /// The monastery, which a unit carrying a relic's order keeps (`FUN_141188e10`).
-        const MONASTERY: i16 = 104;
         /// The target type whose queued order keeps a monastery's (`FUN_140c417f0` with 0x2a).
         const RELIC_TYPE: i32 = 0x2a;
         let master = self.players[p].objects[new].life.master_id;

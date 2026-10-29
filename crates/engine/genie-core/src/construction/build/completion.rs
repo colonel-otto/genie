@@ -4,9 +4,10 @@
 use crate::GenieError;
 use crate::construction::build::construction::{completion_counts, hand_storage, lay_foundation};
 use crate::construction::build::{
-    MASTER_1889, NO_CONSTRUCTION, NOT_HELD, RICE_PASTURE, StackUnit, held, show_built,
+    NO_CONSTRUCTION, NOT_HELD, RICE_PASTURE, StackUnit, held, show_built,
 };
 use crate::map::spatial::Placed;
+use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::{BuildingMaster, Master};
 
 impl crate::world::World {
@@ -209,7 +210,7 @@ impl crate::world::World {
 /// The master a completed building's stack unit takes (`+0x986`): [`RICE_PASTURE`] for master
 /// 1889 on mangrove or rice terrain (`rice`, `+0xcd0`), else its own.
 const fn stack_master(master: &Master, building: &BuildingMaster, rice: bool) -> i16 {
-    if master.id == MASTER_1889 && 0 <= building.stack_unit && rice {
+    if master.id == PASTURE_1889 && 0 <= building.stack_unit && rice {
         RICE_PASTURE
     } else {
         building.stack_unit

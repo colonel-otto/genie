@@ -19,6 +19,7 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, Vec3};
 use crate::objects::layers::Animated;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::ID_45;
 use crate::objects::unit::Unit;
 use genie_diff::Diff;
 
@@ -316,9 +317,6 @@ const REACH_SHORT: f32 = crate::math::image::movement::REACH_SHORT;
 const REACH_NEAR: f32 = crate::math::image::movement::REACH_NEAR;
 /// The master the long pather lets move without a speed (`FUN_140f9eb70`, raw id `0x2a`).
 pub(crate) const LONG_PATH_MOVER: i16 = 42;
-/// A target of this master (raw `0x60c9`) or class gives the tile planner of a reach test this
-/// much more range (`FUN_140fa0370`, `DAT_142eb1c98`).
-const WIDE_MASTER: i16 = 45;
 const WIDE_CLASS: i16 = 33;
 const WIDE_RANGE: f32 = crate::math::image::movement::WIDE_RANGE;
 /// A long path's stretch is checked for walls with the unit's radius times this
@@ -469,7 +467,7 @@ impl PathData {
 /// near.
 fn far_waypoint(way: f32, target: Option<(f32, i16)>) -> bool {
     target.map_or(CLOSE <= way, |(gap, master)| {
-        CLOSE <= gap || master == WIDE_MASTER
+        CLOSE <= gap || master == ID_45
     })
 }
 

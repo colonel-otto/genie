@@ -9,6 +9,8 @@ use crate::gathering::hunt::HUNT;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MASTER_1808;
+use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::{GARRISON, own_order_target};
@@ -173,10 +175,6 @@ impl TownBell {
     }
 }
 
-/// The town centre, whose bell the command rings (`0x6109` raw).
-const TOWN_CENTRE: i16 = 109;
-/// The master that answers the bell besides the villagers (`0x710`).
-const MASTER_1808: i16 = 0x710;
 /// The town bell's reach ([`crate::garrison::TOWN_BELL_REACH`]).
 const REACH: f32 = crate::garrison::TOWN_BELL_REACH;
 /// A record's point on neither axis (`DAT_14330ec20`).

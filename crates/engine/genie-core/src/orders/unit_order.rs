@@ -5,8 +5,9 @@ use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::objects::masters::master_type::BUILDING;
-use crate::orders::{HERD_MOST, NO_POINT, Place, TOWN_CENTRE};
+use crate::orders::{HERD_MOST, NO_POINT, Place};
 use crate::players::PlayerId;
 use crate::world::World;
 

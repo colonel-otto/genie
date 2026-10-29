@@ -106,13 +106,9 @@ const fn packs(class: i16, reach: Option<(bool, bool)>, targetless: bool, comput
         }
     }
 }
-/// The town centre (master 109, `0x6109` raw), to which livestock's `MoveTo` goes as to a point
-/// (`FUN_140aa0df0`).
-const TOWN_CENTRE: i16 = 109;
 /// A hunt sends at most this many animals of a herd to its drop site (`FUN_140ac4c60`'s list,
 /// `DAT_143e55e20`).
 const HERD_MOST: usize = 16;
-const MASTER_84: i16 = 84;
 const MASTER_1893: i16 = 1893;
 /// The class of the farms and a pasture's livestock (`0x31`), which a full pasture's search
 /// names.

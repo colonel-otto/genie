@@ -11,17 +11,16 @@ use crate::objects::lifecycle::Lifecycle;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::HOUSE;
+use crate::objects::masters::ids::MONASTERY;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, annexes_of};
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use crate::world::{
-    BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, MONASTERY,
+    BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT,
 };
-
-/// The house's master id (`0x46`), whose update takes the walls' branch ([`walls_branch`]).
-const HOUSE: i16 = 70;
 
 /// `TRIBE_Building_Object::update`'s walls' branch (`0x1411c9000`): a master of class 27 (a
 /// wall) or the house runs only its damage frames by its hit points and its combat update; no

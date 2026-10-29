@@ -6,14 +6,11 @@
 //! player's slot 0x1c0 with master 697 ([`World::remains`]).
 
 use crate::GenieError;
+use crate::objects::masters::ids::CASTLE;
+use crate::objects::masters::ids::KING;
 use crate::world::World;
 
-/// The castle (`0x52`), and the building of the content mode 1 (`0xd1`) that stands for it
-/// (`FUN_140fe0ec0`).
-const CASTLE: i16 = 0x52;
 const CASTLE_MODE_1: i16 = 0xd1;
-/// The king (`0x1b2`), whom the treason reveals.
-const KING: i16 = 0x1b2;
 /// The flare each ally gets at a king (`0x2b9`).
 const FLARE4: i16 = 0x2b9;
 /// The gold (attribute 3) the treason costs: 400 (`DAT_142eb5bd4`, read at `0x141620446`), 200

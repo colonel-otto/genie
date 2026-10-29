@@ -3,6 +3,7 @@ use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::objects::masters::class;
+use crate::objects::masters::ids::ID_45;
 
 const DT: f32 = 0.02;
 
@@ -846,7 +847,7 @@ fn a_far_waypoint_or_a_target_of_master_45_takes_the_long_pather() {
     assert!(far_waypoint(1.0, None) && !far_waypoint(0.5, None));
     assert!(far_waypoint(0.0, Some((1.0, 4))));
     assert!(!far_waypoint(30.0, Some((0.5, 4))));
-    assert!(far_waypoint(30.0, Some((0.5, WIDE_MASTER))));
+    assert!(far_waypoint(30.0, Some((0.5, ID_45))));
     assert!(!far_waypoint(30.0, Some((f32::NAN, 4))));
 }
 

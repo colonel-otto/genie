@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::masters::ids::{RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
 use crate::objects::masters::{Master, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::technology::EffectCommand;
@@ -168,11 +169,6 @@ impl World {
         at: i16,
         count: i16,
     ) -> Result<(), GenieError> {
-        /// The male and female villagers' masters.
-        const MALE_VILLAGER: i16 = 0x53;
-        const FEMALE_VILLAGER: i16 = 0x125;
-        /// The relic's master, which the world counts.
-        const RELIC: i16 = 0x11d;
         let has = |q: usize, id: i16| self.masters.get(q).is_some_and(|m| m.get(id).is_some());
         let building =
             player_master(&self.masters, p, at).is_some_and(|m| m.kind == master_type::BUILDING);
@@ -194,12 +190,12 @@ impl World {
                 return Ok(());
             }
             for _ in 0..count {
-                let made = if master == MALE_VILLAGER {
+                let made = if master == VILLAGER_MALE {
                     let r = self.streams.get(Stream::Player).rand15() as i32;
                     if 49 < r % 100 {
-                        FEMALE_VILLAGER
+                        VILLAGER_FEMALE
                     } else {
-                        MALE_VILLAGER
+                        VILLAGER_MALE
                     }
                 } else {
                     master

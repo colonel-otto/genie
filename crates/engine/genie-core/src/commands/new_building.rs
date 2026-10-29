@@ -9,11 +9,13 @@ use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::class;
+use crate::objects::masters::ids::FARM;
+use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
-use crate::world::{BUILDING_COST, FARM, Gate, PASTURE_1889, World};
+use crate::world::{BUILDING_COST, Gate, World};
 
 impl World {
     /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108,

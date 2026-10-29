@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::construction::build::{
     ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLEAR, DONE, DROP, FAILED,
-    FINISHED, HALTED, IDLE, MASTER_621, MASTER_1889, MOVE, PLACE, WAIT, WALK_POINT, WORK,
+    FINISHED, HALTED, IDLE, MOVE, PLACE, WAIT, WALK_POINT, WORK,
 };
 use crate::movement::move_to::{
     Goal, MoveDefaults, MoveTo, MoveWait, Sprites, start_walk_shown, walk_or_give_up,
@@ -12,6 +12,8 @@ use crate::movement::move_to::{
 use crate::movement::{Me, PathAsk};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::PASTURE_1889;
+use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::OrderKind;
@@ -163,7 +165,7 @@ impl BuildAction {
         let site = Self::site_unit(c, reads);
         let pasture = site
             .and_then(|u| u.master(&c.w.masters, c.player).ok())
-            .is_some_and(|m| m.id == MASTER_1889);
+            .is_some_and(|m| m.id == PASTURE_1889);
         let built = site.is_some_and(|u| u.life.state != 0);
         if computer || !pasture || !built {
             return Ok(false);
@@ -214,7 +216,7 @@ impl BuildAction {
             return Ok(None);
         }
         let master = site.master(&c.w.masters, c.player).ok();
-        let special = master.is_some_and(|m| m.id == MASTER_621 || m.class == class::GATE);
+        let special = master.is_some_and(|m| m.id == TOWN_CENTRE_621 || m.class == class::GATE);
         let unbuilt = site
             .construction
             .is_some_and(|k| k.progress < f32::from(k.build_time));

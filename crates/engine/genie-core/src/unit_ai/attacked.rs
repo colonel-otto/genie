@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::WONDER;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -231,7 +232,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {
         let attacker_id = attacker.id;
-        if target.master == crate::world::WONDER
+        if target.master == WONDER
             || (target.class == 52 && attacker.class == 52)
             || attacker.kind == 60
             || (attacker.class == 52

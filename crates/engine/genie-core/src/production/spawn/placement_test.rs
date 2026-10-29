@@ -3,9 +3,10 @@
 
 use crate::GenieError;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::RELIC;
 use crate::objects::masters::master_type::BUILDING;
 use crate::production::spawn::{
-    BuildSite, INSIDE, PASSABLE, REACH, RELIC, Tested, hill_fails, placement_terrains,
+    BuildSite, INSIDE, PASSABLE, REACH, Tested, hill_fails, placement_terrains,
 };
 
 /// An object near a candidate, as the placement test and the blocker test read it.

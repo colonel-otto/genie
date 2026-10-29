@@ -69,12 +69,6 @@ const MILL: i32 = 68;
 const KING: i32 = 434;
 /// The town centres' masters (`FUN_141658970`'s and `FUN_141658a30`'s keys 0x6d and 0x1bc).
 const TOWN_CENTRES: [i32; 2] = [109, 444];
-/// The wonder's master (`0x61b0` raw, `0x14163bb68`).
-const WONDER: i16 = 276;
-/// The builder's master (`FUN_141625a20`'s 0x76).
-const BUILDER: i16 = 118;
-/// The town centre a builder may place (`FUN_141625a20`'s 0x26d).
-const BUILDABLE_TOWN_CENTRE: i16 = 621;
 /// The classes that never keep their player (`0x48000800`: other 11, walls 27, flags 30).
 const UNKEPT_LOW: u32 = 0x4800_0800;
 /// The classes that never keep their player (`0x140204a000384006`: 1, 2, 14, 19, 20, 21, 37,

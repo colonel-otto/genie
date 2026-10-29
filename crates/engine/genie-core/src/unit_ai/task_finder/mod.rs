@@ -14,24 +14,13 @@
 
 use crate::GenieError;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::task_finder::target_steps::on_target;
 
 mod target_steps;
 pub(crate) mod world;
-
-/// Master ids (encoded `+0x609c`).
-mod id {
-    pub const ID_45: i16 = 45; // 0x60c9
-    pub const ID_84: i16 = 84; // 0x60f0
-    pub const ID_109: i16 = 109; // 0x6109
-    pub const ID_199: i16 = 199; // 0x6163
-    pub const ID_448: i16 = 448; // 0x625c
-    pub const ID_546: i16 = 546; // 0x62be
-    pub const ID_1105: i16 = 1105; // 0x64ed
-    pub const ID_1808: i16 = 1808; // 0x67ac
-}
 
 /// The task types the general search leaves out (`FUN_14109f8c0`: 151, 152, 154, 155, 157, 160).
 const fn special_type(t: i16) -> bool {
@@ -364,7 +353,7 @@ fn garrison_task<'m>(
         && t.player != 0
         && t.state == 2
         && t.master.kind == BUILDING
-        && (list.kind == 70 || list.id == id::ID_1808)
+        && (list.kind == 70 || list.id == ids::MASTER_1808)
         && t.master.garrison != 0
     {
         let garrison_type = t.master.building.map_or(0, |b| b.garrison_type);
@@ -455,13 +444,14 @@ fn finder_head<'m>(
     // LAB_141278e9f: the monk tasks for carried relics and conversions of villagers
     let (held_kind, _) = actor.held;
     if held_kind == 0x39
-        && target
-            .is_some_and(|t| t.state == 2 && t.player == actor.player && t.master.id == id::ID_109)
+        && target.is_some_and(|t| {
+            t.state == 2 && t.player == actor.player && t.master.id == ids::TOWN_CENTRE
+        })
         && let Some(task) = first(list, |task| task.action_type == 0x87)
     {
         return Ok(Finding::Answer(Some(task)));
     }
-    let monk_master = own.id == id::ID_448 || own.id == id::ID_546;
+    let monk_master = own.id == ids::ID_448 || own.id == ids::ID_546;
     if actor.attribute_95 == 2.0
         && monk_master
         && target.is_some_and(|t| t.master.class == class::VILLAGER)
@@ -521,7 +511,7 @@ fn finder_tail<'m>(
     }
     let mut inside = false;
     if let Some(t) = target {
-        if own.class == class::SIEGE && own.id == id::ID_1105 {
+        if own.class == class::SIEGE && own.id == ids::ID_1105 {
             return Err(GenieError::unsupported("the task finder for master 1105"));
         }
         // LAB_14127ba9e: a list with task 13 takes it, under that filter alone, for an own,
@@ -1040,7 +1030,7 @@ mod tests {
             finder_head(&wolf, &actor(&wolf, (-1, 0.0)), Some(&prey), -1, &Alone),
             Ok(Finding::Answer(None))
         );
-        let monastery = master(id::ID_109, BUILDING, class::BUILDING, vec![]);
+        let monastery = master(ids::TOWN_CENTRE, BUILDING, class::BUILDING, vec![]);
         let carrier = actor(&villager, (0x39, 1.0));
         assert_eq!(
             finder_head(
@@ -1052,7 +1042,7 @@ mod tests {
             ),
             Ok(Finding::Answer(Some(&villager.tasks[0])))
         );
-        let monk = master(id::ID_448, 70, class::MONK, vec![]);
+        let monk = master(ids::ID_448, 70, class::MONK, vec![]);
         let converting = Actor {
             attribute_95: 2.0,
             ..actor(&monk, (-1, 0.0))
@@ -1107,9 +1097,9 @@ mod tests {
             on_target(&builder, &a, &building(&house, 2, 2), -1, &Alone),
             Ok(Finding::Next)
         );
-        let m199 = master(id::ID_199, BUILDING, class::BUILDING, vec![]);
+        let m199 = master(ids::FISH_TRAP, BUILDING, class::BUILDING, vec![]);
         assert!(on_target(&builder, &a, &building(&m199, 2, 2), -1, &Alone).is_err());
-        let m45 = master(id::ID_45, 70, 6, vec![]);
+        let m45 = master(ids::ID_45, 70, 6, vec![]);
         assert_eq!(
             on_target(&builder, &a, &building(&m45, 2, 2), -1, &Alone),
             Ok(Finding::Next)
@@ -1120,7 +1110,7 @@ mod tests {
             19,
             vec![
                 task(0x6f, 7, -1, 1.0),
-                task(0x6f, -1, id::ID_84, 1.0),
+                task(0x6f, -1, ids::MARKET, 1.0),
                 task(0x6f, 6, -1, 1.0),
             ],
         );
@@ -1138,7 +1128,7 @@ mod tests {
             on_target(&trader, &cart, &dock, 5, &Alone),
             Ok(Finding::Next)
         );
-        let market = master(id::ID_84, BUILDING, 7, vec![]);
+        let market = master(ids::MARKET, BUILDING, 7, vec![]);
         assert_eq!(
             on_target(&trader, &cart, &building(&market, 2, 2), -1, &Alone),
             Ok(Finding::Answer(Some(&trader.tasks[0])))
@@ -1290,7 +1280,7 @@ mod tests {
             master(9, 70, 6, vec![task(0x69, -1, -1, 0.0)]),
             master(9, 70, class::CLASS_43, vec![]),
             master(9, 70, class::CLASS_53, vec![]),
-            master(id::ID_1105, 70, class::SIEGE, vec![]),
+            master(ids::ID_1105, 70, class::SIEGE, vec![]),
         ] {
             assert!(tail(&list, &own, -1).is_err(), "{}", list.id);
         }

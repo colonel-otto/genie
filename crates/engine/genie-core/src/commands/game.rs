@@ -6,7 +6,8 @@
 //! handlers are named at each.
 
 use crate::GenieError;
-use crate::gathering::farm_queue::{FARM, PASTURE};
+use crate::gathering::farm_queue::PASTURE;
+use crate::objects::masters::ids::FARM;
 use crate::players::PlayerId;
 use crate::world::World;
 
@@ -304,6 +305,8 @@ const TREASON_COST: f32 = crate::math::image::turn::TREASON_COST;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ids::CASTLE;
+    use crate::objects::masters::ids::FISH_TRAP;
     use crate::test_ids::player_id;
     use crate::world::Player;
 
@@ -360,13 +363,13 @@ mod tests {
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
         assert_eq!(t.players[1].pending_debit[GOLD], 0.0);
         let castle = Master {
-            id: crate::world::CASTLE,
+            id: CASTLE,
             class: 52,
             ..Master::default()
         };
         t.masters = vec![Masters::new([]), Masters::new([castle])];
-        t.track_add(1, 500, crate::world::CASTLE);
-        t.track_complete(1, 500, crate::world::CASTLE);
+        t.track_add(1, 500, CASTLE);
+        t.track_complete(1, 500, CASTLE);
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
         assert_eq!(t.players[1].pending_debit[GOLD], -TREASON_COST);
     }
@@ -376,7 +379,6 @@ mod tests {
     /// a player outside the world changes nothing.
     #[test]
     fn the_queue_sub_commands_buy_and_give_back_for_their_player() {
-        use crate::gathering::farm_queue::FISH_TRAP;
         use crate::objects::masters::{Master, Masters, master_type};
         let costing = |id, wood| Master {
             id,

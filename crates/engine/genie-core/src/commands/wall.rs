@@ -17,6 +17,7 @@ use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
 use crate::objects::ObjectId;
+use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{MasterId, player_master};
 use crate::orders::Place;
@@ -34,8 +35,6 @@ const BUILDER_TYPE: u8 = 0x27;
 /// The villagers' class (`FUN_141195750`: the master's class is 4), tested by the wall's train
 /// locations.
 const CIVILIAN: i16 = 4;
-/// The builder the train locations name for every villager (`FUN_141262270`: `0x76`).
-const BUILDER: i16 = 118;
 /// The action type of the task another unit builds with (`FUN_141262270`: `0x65`).
 const BUILD_TASK: i16 = 0x65;
 /// The builders the game's sort (`FUN_140e6eee0`) orders by insertion: 0x100 bytes of 8-byte

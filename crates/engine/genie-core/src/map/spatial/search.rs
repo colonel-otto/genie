@@ -3,11 +3,12 @@
 
 use crate::GenieError;
 use crate::map::spatial::{
-    AttackField, CLOSEST_RANGE, ClosestChecks, FISH_TRAP, FarmLook, Filter, LIVESTOCK_CLASS,
-    PASTURE_CLASS, PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED, Spatial,
-    TESTED_KINDS, TRAPPERS, players_seen, record_meets_segment, tile_record_id,
+    AttackField, CLOSEST_RANGE, ClosestChecks, FarmLook, Filter, LIVESTOCK_CLASS, PASTURE_CLASS,
+    PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED, Spatial, TESTED_KINDS, TRAPPERS,
+    players_seen, record_meets_segment, tile_record_id,
 };
 use crate::objects::masters::class;
+use crate::objects::masters::ids::FISH_TRAP;
 use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
 use crate::vision::registry::VisibleQuery;

@@ -11,6 +11,7 @@ use crate::construction::build::held;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -27,9 +28,6 @@ const DELETABLE_TYPE: u8 = 70;
 
 /// A player's game status once it lost (`+0x89`).
 const LOST: u8 = 2;
-
-/// A town centre's master whose delete also tells the world's `+0x820` (`FUN_1414615d0`).
-const TOWN_CENTRE_621: i16 = 621;
 
 /// A capture flag (`+0x924`) under which no delete takes the object.
 const BEING_CAPTURED: u8 = 2;

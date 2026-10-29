@@ -13,6 +13,7 @@
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::master_type;
 use crate::world::World;
 
@@ -23,9 +24,6 @@ pub(crate) const REVEAL_UNITS: GenieError =
 
 /// The attribute naming the units a player reveals to the others (204, `+0x660`).
 const REVEAL_UNIT: usize = 204;
-/// The market (master 84), whose owner's diplomacy change toward a computer player shows it to
-/// that player's tile list.
-const MARKET: i16 = 84;
 /// The relation of an ally (0) and of a neutral (1); the stances an ally (4) and a neutral (3)
 /// take, and an enemy's (2).
 const ALLY: u8 = 0;

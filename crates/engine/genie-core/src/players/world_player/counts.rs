@@ -1,10 +1,11 @@
 //! The counts the update reads: the town centres, the trainable and the upgradable masters,
 //! and where a master trains.
 
+use crate::objects::masters::ids::BUILDER;
+use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::player_master;
 use crate::players::world_player::{
-    AGES, BUILDABLE_TOWN_CENTRE, BUILDER, BUILDING_CLASS, RESEARCHED, TOWN_CENTRES, TreeQuery,
-    attribute, full_tree_civ, get,
+    AGES, BUILDING_CLASS, RESEARCHED, TOWN_CENTRES, TreeQuery, attribute, full_tree_civ, get,
 };
 use crate::world::World;
 
@@ -73,7 +74,7 @@ impl World {
         }
         if building == BUILDER {
             let a = &self.players[p].attributes;
-            let centre = masters.get(BUILDABLE_TOWN_CENTRE);
+            let centre = masters.get(TOWN_CENTRE_621);
             if get(a, attribute::NO_TOWN_CENTRE) == 0.0
                 && centre.is_some_and(|c| !c.disabled && !c.available)
                 && (self.town_centre_count(p) as f32) < get(a, attribute::TOWN_CENTRE_LIMIT)
@@ -165,7 +166,7 @@ impl World {
         }
         if building == BUILDER {
             let a = &player.attributes;
-            let centre = masters.get(BUILDABLE_TOWN_CENTRE);
+            let centre = masters.get(TOWN_CENTRE_621);
             if get(a, attribute::NO_TOWN_CENTRE) == 0.0
                 && centre.is_some_and(|c| !c.disabled && c.available)
                 && (self.town_centre_count(p) as f32) < get(a, attribute::TOWN_CENTRE_LIMIT)

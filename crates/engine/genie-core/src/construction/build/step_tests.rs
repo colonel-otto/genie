@@ -11,6 +11,7 @@ use crate::objects::layers::Body;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::Masters;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -96,7 +97,7 @@ fn site_world(class: i16, at: [f32; 3], build: BuildAction) -> World {
     let mut masters = crate::world::tests::builder_masters();
     let others = [
         house_as(&masters, 562, 3),
-        house_as(&masters, MASTER_1889, 3),
+        house_as(&masters, PASTURE_1889, 3),
         house_as(&masters, 1584, class::GATE),
         house_as(&masters, 68, 3),
         house_as(&masters, 50, class::FARM),
@@ -837,7 +838,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     };
     let mut t = site_world(class::VILLAGER, [12.0, 10.5, 0.0], b);
     let h = own(&mut t, HOUSE);
-    h.life.master_id = MASTER_1889;
+    h.life.master_id = PASTURE_1889;
     h.life.state = 2;
     h.construction = Some(Construction {
         build_time: 20,

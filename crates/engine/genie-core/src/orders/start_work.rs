@@ -21,13 +21,13 @@ use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::masters::class;
+use crate::objects::masters::ids::FISH_TRAP;
 use crate::orders::Work;
 use crate::world::World;
 
 /// The game mode that puts the villagers to work at the start (`+0x34` 13, Empire Wars).
 pub const EMPIRE_WARS: i32 = 13;
 
-const FISH_TRAP: i16 = 199;
 /// The gather groups the resource search tries, in order (0 to 4).
 const GROUPS: u8 = 5;
 /// The distance a group's answer must be below (the pass's 99).

@@ -12,6 +12,7 @@ use crate::movement::move_to::{
 };
 use crate::movement::{Mover, PathAsk, footprint_gap};
 use crate::objects::masters::Master;
+use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite, sprite_id, standing, walking};
 use genie_diff::Diff;
 
@@ -54,8 +55,6 @@ pub(crate) const TARGET_LACKING: GenieError =
 /// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
 /// (`FUN_140aa0df0`, `DAT_142eae8d0`).
 const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET;
-/// The town centre's master (`FUN_140aa0df0`'s `0x6109` raw), to which livestock walks beside.
-const TOWN_CENTRE: i16 = 109;
 
 /// `FUN_140aa0df0`'s test of a `MoveTo`'s target object of master `master` in `state`:
 /// livestock (`livestock`, the unit's class 58) moving to a town centre (master 109) holds none,

@@ -3,10 +3,11 @@
 
 use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
+use crate::objects::masters::ids::WONDER;
 use crate::players::world_player::{
     ALIVE_STORE_MODE, BUILDING_CLASS, COMPUTER_TYPE, GAIA_TYPE, HUMAN_TYPE, KING, PACKED_CLASS,
     PERCENT, POPULATION_STORAGE, SECOND, TOWER_CLASS, UNKEPT_HIGH, UNKEPT_LOW, UNPACKED_CLASS,
-    WONDER, attribute, get, set,
+    attribute, get, set,
 };
 use crate::world::World;
 

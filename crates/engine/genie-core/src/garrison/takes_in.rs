@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::garrison::{CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
@@ -27,7 +28,6 @@ pub fn class_has_flags(class: i16, flags: u32) -> bool {
 pub(super) const MASTER_1263: i16 = 1263;
 pub(super) const MASTER_775: i16 = 775;
 pub(super) const MASTER_1715: i16 = 1715;
-pub(super) const MASTER_1808: i16 = 1808;
 pub(super) const MASTER_1811: i16 = 1811;
 pub(super) const MASTER_1822: i16 = 1822;
 

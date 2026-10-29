@@ -3,12 +3,13 @@
 
 use crate::GenieError;
 use crate::garrison::{
-    COMPUTER_IDS, FAR, HUMAN_IDS, MASTER_1808, NEARBY, TOWN_BELL_REACH, TRANSPORTED,
-    class_has_flags, has_garrison_task,
+    COMPUTER_IDS, FAR, HUMAN_IDS, NEARBY, TOWN_BELL_REACH, TRANSPORTED, class_has_flags,
+    has_garrison_task,
 };
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::{GARRISON, Work};

@@ -8,6 +8,8 @@ use crate::combat::damage::{
     effective, elevation_factor, facing_offset, hp_floor, lose, special_charge_ready,
 };
 use crate::objects::masters::class;
+use crate::objects::masters::ids::CASTLE;
+use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::BUILDING;
 
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
@@ -113,8 +115,8 @@ pub(super) fn take_building(
     if 0 < t.player && ONE > t.hp {
         let (ap, q) = (src.player, t.player);
         let event = match t.master_id {
-            crate::world::CASTLE => Some(crate::players::history::CASTLE_DESTROYED),
-            crate::world::WONDER => Some(crate::players::history::WONDER_DESTROYED),
+            CASTLE => Some(crate::players::history::CASTLE_DESTROYED),
+            WONDER => Some(crate::players::history::WONDER_DESTROYED),
             _ => None,
         };
         let mut adds = Vec::new();

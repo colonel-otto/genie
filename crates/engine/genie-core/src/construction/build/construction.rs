@@ -4,13 +4,16 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    CASTLE_WONDER_COST, CASTLES_BUILT, Construction, RICE_PASTURE, SITE_GONE, STARTED, WONDER,
+    CASTLE_WONDER_COST, CASTLES_BUILT, Construction, RICE_PASTURE, SITE_GONE, STARTED,
     WONDERS_BUILT,
 };
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
+use crate::objects::masters::ids::CASTLE;
+use crate::objects::masters::ids::MONASTERY;
+use crate::objects::masters::ids::WONDER;
 use crate::pathing::Pathing;
-use crate::world::{CASTLE, CASTLES, MONASTERIES, MONASTERY, WONDERS};
+use crate::world::{CASTLES, MONASTERIES, WONDERS};
 
 /// The completion's storage ([`crate::world::World::complete_building`]): its master's entries of modes 4, 8 and 64 go to its
 /// owner (slot 0xf8, into `attributes`), those of mode 16 to its own `store` (`FUN_1411abad0`: an

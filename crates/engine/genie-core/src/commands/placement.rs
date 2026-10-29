@@ -2,8 +2,9 @@
 //! builders, the placement test and the payment.
 
 use crate::GenieError;
+use crate::objects::masters::ids::FARM;
 use crate::objects::masters::player_master;
-use crate::world::{FARM, RICE_FARM, World};
+use crate::world::{RICE_FARM, World};
 
 impl World {
     /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is

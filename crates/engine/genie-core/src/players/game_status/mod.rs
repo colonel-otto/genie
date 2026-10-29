@@ -37,10 +37,6 @@ const TRADE_ACTION: i16 = 0x6f;
 const KEEPING_TYPES: [i16; 2] = [0x7c, 0x7d];
 /// The buildings a stop leaves alone (`FUN_1411e6290`).
 const UNSTOPPED_BUILDINGS: [i16; 4] = [50, 199, 276, 1187];
-/// The villager's masters, whose two sexes a cancel of five counts as one kind
-/// (`FUN_1411d66b0`, `FUN_1411d61e0`).
-const VILLAGER_MALE: i16 = 0x53;
-const VILLAGER_FEMALE: i16 = 0x125;
 /// The game mode whose QUEUE trains one military unit at a time early on (16, the settings'
 /// `+0x34`).
 const ONE_UNIT_MODE: i32 = 16;

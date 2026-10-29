@@ -4,12 +4,13 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::CASTLE;
+use crate::objects::masters::ids::MONASTERY;
+use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
-use crate::world::{
-    BuildingDeath, CASTLE, CASTLES, MONASTERIES, MONASTERY, RESTORED_FOUNDATION, WONDER, WONDERS,
-};
+use crate::world::{BuildingDeath, CASTLES, MONASTERIES, RESTORED_FOUNDATION, WONDERS};
 
 /// The owner's attributes 237, 238 and 239: a built farm's bonus ([`Completion::farm_bonus`]);
 /// −1 for those the player has not got.

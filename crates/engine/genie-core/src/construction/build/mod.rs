@@ -383,9 +383,6 @@ const FISHING_SHIPS: [i16; 3] = [13, 2356, 2171];
 const EXTRA_BUILDER: f32 = crate::math::image::build::EXTRA_BUILDER;
 /// The progress a started foundation holds before its first work (`0x2edbe6ff`, about 1e-10).
 const STARTED: u32 = 0x2edb_e6ff;
-/// The Wonder's master (`0x114`), whose construction rate the player's attribute raises at most to
-/// `DAT_142ed66b4`.
-const WONDER: i16 = 0x114;
 const WONDER_RATE: f32 = crate::math::image::build::WONDER_RATE;
 /// The castles and the wonders their owner built (attributes 173 and 174: their completion adds
 /// 1, their death takes nothing), and the attribute their paid cost goes to rather than 98 and
@@ -430,14 +427,8 @@ pub(crate) const DROPPED_ORDERS: [OrderKind; 3] =
     [OrderKind::Gather, OrderKind::Hunt, OrderKind::OnTarget];
 /// The point a `MoveTo` without a target walks to (`FUN_140aa0df0` leaves its zeroed `+0x38`).
 const NO_TARGET_POINT: [f32; 3] = [0.0; 3];
-/// The masters and the class the end of the work treats apart: 621 and 1889 among the
-/// foundations, class 39 among the builders, 1893 and 1897 (`id - 0x765 & !4 == 0`), the fish
-/// trap 199 and farms (class 49, `FUN_141194b20`).
-const MASTER_621: i16 = 621;
-pub(crate) const MASTER_1889: i16 = 1889;
 /// The pasture master 1889's stack unit on mangrove or rice terrain (`0x765`).
 pub(crate) const RICE_PASTURE: i16 = 0x765;
-const FISH_TRAP: i16 = 199;
 
 #[cfg(test)]
 mod stack_tests {

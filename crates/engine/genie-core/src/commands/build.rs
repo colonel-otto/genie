@@ -5,6 +5,7 @@ use crate::commands::UnitList;
 use crate::map::Point;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ids::HOUSE;
 use crate::players::PlayerId;
 use crate::world::World;
 
@@ -90,7 +91,6 @@ impl BuildCommand {
     /// `+0x18` for a house (master 70) of civ 12 when it is 0x2c9 to 0x2ce, else −1.
     #[must_use]
     pub fn sprite_override_of(&self, civ: u8) -> i32 {
-        const HOUSE: i16 = 0x46;
         const CIV: u8 = 0xc;
         let kept = self.sprite_override.wrapping_sub(0x2c9).cast_unsigned() <= 5;
         if self.sprite_override != -1 && kept && self.master.get() == HOUSE && civ == CIV {

@@ -17,6 +17,7 @@
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::MASTER_1808;
 use crate::vision::registry::MASK;
 use crate::world::World;
 
@@ -27,8 +28,6 @@ pub const LEAVES_GHOSTS: u8 = 2;
 /// The classes a building's watch leaves out (`FUN_1411cc980`) and the gates' class, whose annex
 /// stays watched.
 const UNWATCHED_CLASSES: [i16; 2] = [51, 54];
-/// The master a building's watch leaves out (`FUN_1411cc980`).
-const UNWATCHED_MASTER: i16 = 1808;
 /// The originals whose ghost's leaving changes the local player's terrain (`FUN_141090ad0`).
 const TERRAIN_ORIGINALS: [i16; 2] = [357, 1188];
 /// The type from which an object's entry and its ghost follow its footprint's UMV entry
@@ -219,7 +218,7 @@ impl World {
         !UNWATCHED_CLASSES.contains(&m.class)
             && !u.construction.is_some_and(|c| c.desolid)
             && (!annex || m.class == class::GATE)
-            && m.id != UNWATCHED_MASTER
+            && m.id != MASTER_1808
     }
 
     /// A building whose construction started (`FUN_1411e5670`): its owner watches it
@@ -1071,7 +1070,7 @@ mod tests {
             ..Master::default()
         };
         let skipped = Master {
-            id: UNWATCHED_MASTER,
+            id: MASTER_1808,
             kind: 80,
             class: 3,
             ..Master::default()
@@ -1097,7 +1096,7 @@ mod tests {
             g,
             a,
             object(12, 276, 2, [0.5, 0.5, 0.0]),
-            object(13, UNWATCHED_MASTER, 2, [0.5, 1.5, 0.0]),
+            object(13, MASTER_1808, 2, [0.5, 1.5, 0.0]),
         ]);
         let mut foundation = object(14, HOUSE, 2, [0.5, 3.5, 0.0]);
         foundation.construction = Some(crate::construction::build::Construction {
