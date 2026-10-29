@@ -14209,7 +14209,7 @@ fn a_wall_or_a_house_counts_no_whole_seconds() {
 
 /// [`repair_world`] on [`open_map`] with the repairer 9175 (a mover) at `at` and the house
 /// 10028 at (30, 88) placed, the player holding 100 of each resource, the mesh built.
-fn repairing(at: [f32; 3]) -> World {
+pub(crate) fn repairing(at: [f32; 3]) -> World {
     let mut t = repair_world();
     open_map(&mut t);
     t.spatial.relations = vec![vec![0, 3], vec![3, 0]];

@@ -7,11 +7,11 @@
 //! The work of one update is the unit's work rate times the task's work value times the world's
 //! dt, of which each repairer past the first adds half ([`work_amount`]). The target's own repair
 //! (a building's slot 0x8c8, `FUN_1411d37d0`; a unit's, `FUN_1412143b0`) pays a share of its
-//! master's cost ([`crate::production::pay`]) and heals it (`FUN_141193b30`); the caller runs it
-//! ([`RepairView::repair`]), since it reaches other objects and the player's resources.
+//! master's cost ([`crate::production::pay`]) and heals it (`FUN_141193b30`) over the objects it
+//! reaches ([`repair_target`]).
 
 use crate::GenieError;
-use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait, Sprites};
+use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait};
 use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
 use genie_diff::Diff;
@@ -24,8 +24,7 @@ pub use self::action::work_amount;
 pub use self::payment::{
     BUILDING_REPAIR_COST, Payer, Repaired, UNIT_REPAIR_COST, repair_building, repair_unit,
 };
-#[cfg(test)]
-use crate::movement::move_to::Walk;
+pub(crate) use self::unit::repair_target;
 
 /// The Repair action's type, which word 9 adds, and its tasks' action type.
 pub const REPAIR: i16 = 0x6a;
@@ -145,71 +144,37 @@ pub struct Repairee {
     pub moves: bool,
 }
 
-/// What a Repair's update reads of the world and runs on it.
-pub struct RepairView<'a> {
+/// The object `FUN_140ad9050` counts a Repair's repairers in (the target, an annex's main
+/// building) and their count (`+0x9e8`), None without one.
+pub(crate) type CountedIn = Option<(i32, u8)>;
+
+/// What a Repair's update reads as it starts, each constant through the update: its target,
+/// the object its repairers count in, and the repairer's own values ([`Unit::repair_reads`]).
+///
+/// [`Unit::repair_reads`]: crate::objects::unit::Unit::repair_reads
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RepairReads {
     /// The target, None when the world holds no object of its id.
-    pub target: Option<Repairee>,
-    /// The repairer's place and its master's radii.
-    pub radius: [f32; 2],
+    pub(crate) target: Option<Repairee>,
+    /// The object `FUN_140ad9050` counts the repairers in and their count.
+    pub(crate) counted_in: CountedIn,
+    /// The repairer's master's radii.
+    pub(crate) radius: [f32; 2],
     /// The game mode is one of `FUN_141302540`'s ([`crate::world::scenario_mode`]).
-    pub scenario: bool,
-    /// The repairer's work rate: its `mWorkRatePowerup` (`+0xa30`, slot 0x6e8) plus its master's
-    /// `work_rate` (`+0x798`), in that order.
-    pub rate: f32,
-    /// The repairers of the object `FUN_140ad9050` gives (its `+0x9e8`), None without one.
-    pub repairers: Option<u8>,
-    /// The world's time, which a turn toward the target reads.
-    pub now: u32,
-    /// The motion step giving up makes the `MoveTo` wait once (a human player's villager), and
-    /// the unit AI's stance, which sets the wait ([`MoveWait::give_up`]).
-    pub waits: bool,
-    /// The unit AI's stance (`+0x1a9`).
-    pub stance: u8,
-    /// The sprites its `MoveTo`s take when the task gives none, as the update starts.
-    pub defaults: MoveDefaults,
+    pub(crate) scenario: bool,
+    /// The repairer's work rate: its `mWorkRatePowerup` (`+0xa30`, slot 0x6e8) plus its
+    /// master's `work_rate` (`+0x798`), in that order.
+    pub(crate) rate: f32,
+    /// The motion step giving up makes the `MoveTo` wait once (a human player's villager).
+    pub(crate) waits: bool,
+    /// The unit AI's stance (`+0x1a9`), which sets the wait ([`MoveWait::give_up`]).
+    pub(crate) stance: u8,
+    /// The sprites its `MoveTo`s take when the task gives none.
+    pub(crate) defaults: MoveDefaults,
     /// The master's standing sprite (`+0x470`), which slot 0x68 shows for none.
-    pub standing: Option<i16>,
-    /// The unit's sprite, the Sprite stream and the sprites' table, which its states show
-    /// sprites with (slot 0x68).
-    pub sprites: Sprites<'a>,
-    /// The unit's quick path to the target within [`REACH`] (slot 0x3e0, `canQuickPath`) over
-    /// the world's objects.
-    pub can_path: &'a mut dyn FnMut(&crate::map::spatial::Spatial) -> Result<bool, GenieError>,
-    /// The target's repair by `amount` (a building's or a combat unit's slot 0x8c8, any other's
-    /// slot 0x110): 0 to go on, 1 once it holds its most hit points, 2 when the player cannot pay.
-    pub repair: &'a mut dyn FnMut(f32) -> Result<u8, GenieError>,
-}
-
-impl std::fmt::Debug for RepairView<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RepairView")
-            .field("target", &self.target)
-            .field("rate", &self.rate)
-            .field("repairers", &self.repairers)
-            .finish_non_exhaustive()
-    }
-}
-
-/// What a Repair's update leaves to its unit and player.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RepairStep {
-    /// The update returned 1 or 3: the action list removes the action, whose destructor
-    /// (`FUN_140ad8fd0`) leaves its target's repairers ([`RepairStep::repairers`]).
-    pub done: bool,
-    /// The action let its target go (slot 0x68 with none, `FUN_140ada470` -> `FUN_140a7a230`:
-    /// the target's slot 0x180): the caller's.
-    pub released: bool,
-    /// The notifies the unit's slot 0x328 posts to its unit AI, each with the repair's action
-    /// value ([`ActionKind::Repair`], 0, 0), in order: 0x1fa its end, 0x202 its search, 0x1f9 its
-    /// failure, 0x1fb the player's want of resources.
-    pub notifies: Vec<i32>,
-    /// The unit takes its master's standing sprite (slot 0x68 with `+0x470`): the caller's.
-    pub stands: bool,
-    /// What the action did to its target's repairers (`+0x9e8` of `FUN_140ad9050`'s object).
-    pub repairers: i8,
-    /// The repair took the target to its most hit points, and a target of a type above 69 has
-    /// the armor its charge's hits took back (`FUN_1412066a0`: `+0x9e4` zeroed): the caller's.
-    pub restored: bool,
+    pub(crate) standing: Option<i16>,
+    /// The master's terrain restriction, whose mask its quick path takes.
+    pub(crate) restriction: Option<usize>,
 }
 
 #[cfg(test)]

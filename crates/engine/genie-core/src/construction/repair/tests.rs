@@ -1,6 +1,6 @@
 use super::*;
-use crate::map::spatial::Spatial;
 use crate::movement::Me;
+use crate::objects::teardown::HeadCode;
 
 const TASK: RepairTask = RepairTask {
     id: 7,
@@ -189,89 +189,83 @@ fn a_siege_unit_s_repair_pays_its_unit_share() {
     );
 }
 
-fn me() -> Me {
-    Me {
-        id: 9,
-        group: -1,
-        action_state: 0,
+/// Within the Repair's reach of the house 10028 (its footprint touching the house's).
+const NEAR: [f32; 3] = [30.0, 89.2, 0.0];
+/// 0.3 tiles off the house: out of reach, and no quick path closer.
+const OFF: [f32; 3] = [29.5, 89.5, 0.0];
+
+/// [`crate::world::tests::repairing`] with the repairer 9175 at `at` on its work command's
+/// Repair of the house 10028 (300 of 550 hit points), the Repair then set by `set`; its master
+/// 118 with the standing sprite 5 and the walking sprite 20, the sprites' table [`graphics`],
+/// the repairer showing its standing sprite.
+fn repair_at(at: [f32; 3], set: impl FnOnce(&mut RepairAction)) -> crate::world::World {
+    let mut t = crate::world::tests::repairing(at);
+    t.graphics = graphics();
+    for masters in &mut t.masters {
+        let m = masters.get_mut(118).unwrap();
+        (m.standing_sprite, m.move_sprite) = (5, 20);
     }
-}
-
-fn walk<'a>(world: &'a mut Spatial, body: &'a mut crate::objects::layers::Body) -> Walk<'a> {
-    Walk {
-        body,
-        me: me(),
-        dt: 0.05,
-        world,
-        plan: None,
-    }
-}
-
-fn ward(x: f32) -> Repairee {
-    Repairee {
-        state: 2,
-        hp: 300.0,
-        owner: 1,
-        allied: true,
-        position: [x, 10.0, 0.0],
-        radius: [1.0, 1.0],
-        class: 3,
-        moves: false,
-    }
-}
-
-/// One update of `r` with the target `target`, the repairers `repairers`, a quick path
-/// `paths` and the repair's answer `answer` (recording its amounts).
-fn update(
-    r: &mut RepairAction,
-    target: Option<Repairee>,
-    args: (Option<u8>, bool, u8),
-    amounts: &mut Vec<f32>,
-) -> RepairStep {
-    update_shown(r, target, args, amounts, &mut None)
-}
-
-/// [`update`] by a repairer showing `sprite`, its master's standing sprite 5 and the sprites'
-/// table [`graphics`].
-fn update_shown(
-    r: &mut RepairAction,
-    target: Option<Repairee>,
-    (repairers, paths, answer): (Option<u8>, bool, u8),
-    amounts: &mut Vec<f32>,
-    sprite: &mut Option<crate::objects::sprite::ActiveSprite>,
-) -> RepairStep {
-    let mut world = Spatial::default();
-    let mut body = crate::objects::layers::Body::new(
-        [10.0, 10.0, 0.0],
-        None,
-        Some(crate::gathering::hunt::tests::walker()),
-    );
-    let mut can_path = |_: &Spatial| Ok(paths);
-    let mut repair = |a: f32| {
-        amounts.push(a);
-        Ok(answer)
+    let work = crate::orders::Work {
+        target: 10028,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
     };
-    let (graphics, mut rng) = (graphics(), crate::math::rng::Well512::default());
-    let view = RepairView {
-        target,
-        radius: [0.2, 0.2],
-        scenario: false,
-        rate: 1.0,
-        repairers,
-        now: 0,
-        waits: false,
-        stance: 0,
-        defaults: DEFAULTS,
-        standing: Some(5),
-        sprites: Sprites {
-            sprite,
-            rng: &mut rng,
-            graphics: &graphics,
-        },
-        can_path: &mut can_path,
-        repair: &mut repair,
-    };
-    r.update(walk(&mut world, &mut body), view).unwrap()
+    t.order_work(1, 0, &work).unwrap();
+    let v = &mut t.players[1].objects[0];
+    let standing = graphics()[&5];
+    v.sprite = Some(crate::objects::sprite::ActiveSprite::start(
+        standing,
+        &mut crate::math::rng::Well512::default(),
+    ));
+    set(v.actions.repair_mut().unwrap());
+    t
+}
+
+/// The map's terrain of class 4 (`terrain_class` of flags 0x20), the tiles' class: the
+/// repairer's master's restriction then passes them, so its quick path reaches the house.
+fn passable(t: &mut crate::world::World) {
+    t.spatial.terrain.as_mut().unwrap().terrains[0].flags = 0x20;
+}
+
+/// The repairer's Repair part of 50 ms through its step (`Unit::repair_part`): its code.
+fn repaired(t: &mut crate::world::World) -> Result<HeadCode, GenieError> {
+    crate::world::tests::in_update(t, (1, 0), 50, |unit, c| {
+        let me = Me {
+            id: unit.id,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        unit.repair_part(c, me)
+    })
+}
+
+/// The repairer's Repair after its update.
+fn repair_of(t: &crate::world::World) -> RepairAction {
+    *t.players[1].objects[0].actions.repair().unwrap()
+}
+
+/// The notifies the repairer's unit AI heard, each with the repair's action value.
+fn heard(t: &crate::world::World) -> Vec<i32> {
+    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    let repair = crate::unit_ai::ActionKind::Repair.value();
+    ai.notifies
+        .iter()
+        .inspect(|n| assert_eq!(n.p, [repair, 0, 0]))
+        .map(|n| n.kind)
+        .collect()
+}
+
+/// The repairer's sprite.
+fn sprite_of(t: &crate::world::World) -> Option<i16> {
+    t.players[1].objects[0].sprite.map(|s| s.graphic.id)
+}
+
+/// The house's hit points, repairers and holders (its slot 0x180 count).
+fn the_house(t: &crate::world::World) -> (f32, u8, i32) {
+    let h = t.object(10028).unwrap().1;
+    (h.life.hp, h.repairers(), h.workers)
 }
 
 /// The sprite its `MoveTo` shows: the task's moving sprite, else the default of its
@@ -302,159 +296,111 @@ fn a_repair_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
 #[test]
 fn a_repairer_shows_its_task_s_sprites_as_it_faces_and_works() {
     for (task, sprites) in [(SHOWING, [3, 4]), (TASK, [5, 5])] {
-        let mut amounts = Vec::new();
-        let mut sprite = None;
-        let mut r = RepairAction {
-            move_to: Some(MoveTo::Arrived),
-            ..RepairAction::start(20, [11.0, 10.0, 0.0], task, 0.0)
-        };
-        let args = (Some(0), true, 0);
-        let _ = update_shown(&mut r, Some(ward(11.0)), args, &mut amounts, &mut sprite);
+        let mut t = repair_at(NEAR, |r| {
+            (r.move_to, r.task) = (Some(MoveTo::Arrived), task);
+        });
+        assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         assert_eq!(
-            (r.state, sprite.map(|s| s.graphic.id)),
+            (repair_of(&t).state, sprite_of(&t)),
             (FACE, Some(sprites[0]))
         );
-        let _ = update_shown(&mut r, Some(ward(11.0)), args, &mut amounts, &mut sprite);
+        assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         assert_eq!(
-            (r.state, sprite.map(|s| s.graphic.id)),
+            (repair_of(&t).state, sprite_of(&t)),
             (WORK, Some(sprites[1]))
         );
     }
 }
 
 /// The walk to the point starts its quiet `MoveTo`, which shows its sprite before the motion
-/// step (`0x140aa29e0`'s `set_state(4)`).
+/// step (`0x140aa29e0`'s `set_state(4)`): the task's moving sprite, else the master's walking
+/// one (`FUN_140aa0d30`'s default).
 #[test]
 fn a_repair_s_walk_to_its_point_shows_its_sprite_as_it_starts() {
-    use crate::map::spatial::Tiles;
     for (task, shown) in [(TASK, 20), (SHOWING, 3)] {
-        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
-        let mut pathing =
-            crate::pathing::Pathing::new([20, 20], vec![0; 400], vec![vec![1.0]; 8], 0);
-        pathing.start_mesh(20);
-        let (mut object, groups) = (
-            crate::math::rng::Well512::default(),
-            crate::groups::UnitGroups::default(),
-        );
-        let mut body = crate::objects::layers::Body::new(
-            [2.5, 2.5, 0.0],
-            None,
-            Some(crate::gathering::hunt::tests::walker()),
-        );
-        body.mover_mut().unwrap().moved_at = [2.5, 2.5, 0.0];
-        let walk = Walk {
-            body: &mut body,
-            me: me(),
-            dt: 0.05,
-            world: &mut world,
-            plan: Some(crate::movement::Planning {
-                pathing: &mut pathing,
-                now: 0,
-                computer: false,
-                object: &mut object,
-                construction_rate: 1.0,
-                groups: &groups,
-            }),
-        };
-        let mut r = RepairAction::start(-1, [11.0, 10.0, 0.0], task, 0.0);
-        let _ = r.take_point([11.5, 10.5, 0.0], None).unwrap();
-        let (graphics, mut rng, mut sprite) =
-            (graphics(), crate::math::rng::Well512::default(), None);
-        let (mut can_path, mut repair) = (|_: &Spatial| Ok(true), |_: f32| Ok(0));
-        let view = RepairView {
-            target: None,
-            radius: [0.2, 0.2],
-            scenario: false,
-            rate: 1.0,
-            repairers: None,
-            now: 0,
-            waits: false,
-            stance: 0,
-            defaults: DEFAULTS,
-            standing: Some(5),
-            sprites: Sprites {
-                sprite: &mut sprite,
-                rng: &mut rng,
-                graphics: &graphics,
-            },
-            can_path: &mut can_path,
-            repair: &mut repair,
-        };
-        let _ = r.update(walk, view).unwrap();
-        assert_eq!(r.move_to, Some(MoveTo::Moving));
-        assert_eq!(sprite.map(|s| s.graphic.id), Some(shown));
+        let mut t = repair_at(NEAR, |r| r.task = task);
+        let v = &mut t.players[1].objects[0];
+        let mover = v.body.mover_mut();
+        let r = v.actions.repair_mut().unwrap();
+        let _ = r.take_point([35.5, 95.5, 0.0], mover).unwrap();
+        assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+        assert_eq!(repair_of(&t).move_to, Some(MoveTo::Moving));
+        assert_eq!(sprite_of(&t), Some(shown));
     }
 }
 
 /// A target the world no longer holds, another player's or a dead one ends the Repair
-/// (`set_state(1)`: notify 0x1fa, the standing sprite); the next update removes it.
+/// (`set_state(1)`: notify 0x1fa, the standing sprite, the target let go); the next update
+/// removes it.
 #[test]
 fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
-    let mut amounts = Vec::new();
-    for target in [
-        None,
-        Some(Repairee {
-            allied: false,
-            owner: 2,
-            ..ward(11.0)
-        }),
-        Some(Repairee {
-            state: 3,
-            ..ward(11.0)
-        }),
-        Some(Repairee {
-            hp: 0.25,
-            ..ward(11.0)
-        }),
-    ] {
-        let mut r = RepairAction::start(20, [11.0, 10.0, 0.0], TASK, 0.0);
-        let step = update(&mut r, target, (None, true, 0), &mut amounts);
+    type Change = fn(&mut crate::world::World);
+    let cases: [(Change, bool); 4] = [
+        (|t| drop(t.players[1].objects.remove(1)), false),
+        (|t| t.players[1].objects[1].life.state = 3, true),
+        (|t| t.players[1].objects[1].life.hp = 0.25, true),
+        (
+            |t| {
+                let house = t.players[1].objects.remove(1);
+                t.players.push(crate::world::Player {
+                    objects: vec![house].into(),
+                    attributes: vec![0.0; 300],
+                    relations: vec![1, 0, 0],
+                    ..crate::world::Player::default()
+                });
+                t.players[1].relations = vec![1, 0, 3];
+                t.masters.push(t.masters[1].clone());
+            },
+            true,
+        ),
+    ];
+    for (change, held) in cases {
+        let mut t = repair_at(NEAR, |r| r.move_to = Some(MoveTo::Arrived));
+        change(&mut t);
+        assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+        let r = repair_of(&t);
         assert_eq!((r.state, r.target), (DONE, -1));
-        assert_eq!(step.notifies, vec![crate::unit_ai::ACTION_COMPLETED]);
-        assert!(step.stands && !step.done);
-        assert_eq!(step.released, target.is_some());
-        let step = update(&mut r, None, (None, true, 0), &mut amounts);
-        assert!(step.done);
+        assert_eq!(heard(&t), [crate::unit_ai::ACTION_COMPLETED]);
+        assert_eq!(sprite_of(&t), Some(5));
+        if held {
+            assert_eq!(the_house(&t).2, 0, "the house let go");
+        }
+        assert_eq!(repaired(&mut t), Ok(HeadCode::Deletes));
     }
-    // Gaia's object is repaired
-    let mut r = RepairAction {
-        state: FACE,
-        move_to: None,
-        ..RepairAction::start(20, [11.0, 10.0, 0.0], TASK, 0.0)
-    };
-    let gaia = Repairee {
-        allied: false,
-        owner: 0,
-        ..ward(11.0)
-    };
-    let step = update(&mut r, Some(gaia), (Some(0), true, 0), &mut amounts);
-    assert_eq!((r.state, step.repairers), (WORK, 1));
+}
+
+/// Gaia's object is repaired: the repairer faces it, then works and joins its repairers.
+#[test]
+fn gaia_s_object_is_repaired() {
+    let mut t = repair_at(NEAR, |r| (r.state, r.move_to) = (FACE, None));
+    let house = t.players[1].objects.remove(1);
+    t.players[0].objects.push(house);
+    t.players[0].attributes = vec![0.0; 300];
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    assert_eq!((repair_of(&t).state, the_house(&t).1), (WORK, 1));
 }
 
 /// State 4 once the `MoveTo` ended: within reach the unit faces the target (6); out of reach
 /// it waits (10) with a quick path to it, else fails (13), whose update posts 0x1f9.
 #[test]
 fn a_repairer_at_its_target_faces_it_or_waits_or_fails() {
-    let mut amounts = Vec::new();
-    let arrived = || RepairAction {
-        move_to: Some(MoveTo::Arrived),
-        ..RepairAction::start(20, [11.0, 10.0, 0.0], TASK, 0.0)
-    };
-    let mut r = arrived();
-    let _ = update(&mut r, Some(ward(11.0)), (Some(0), true, 0), &mut amounts);
+    let arrived = |r: &mut RepairAction| r.move_to = Some(MoveTo::Arrived);
+    let mut t = repair_at(NEAR, arrived);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    let r = repair_of(&t);
     assert_eq!((r.state, r.move_to), (FACE, None));
-    let mut r = arrived();
-    let step = update(&mut r, Some(ward(20.0)), (Some(0), true, 0), &mut amounts);
-    assert_eq!((r.state, r.timer, step.stands), (WAIT, 1.0, true));
-    let mut r = arrived();
-    let _ = update(&mut r, Some(ward(20.0)), (Some(0), false, 0), &mut amounts);
-    assert_eq!(r.state, FAILED);
-    let step = update(&mut r, Some(ward(20.0)), (Some(0), false, 0), &mut amounts);
-    assert_eq!(
-        (r.state, step.notifies, step.done, step.stands),
-        (HALTED, vec![crate::unit_ai::ACTION_FAILED], true, true)
-    );
-    assert_eq!(amounts, Vec::<f32>::new());
+    let mut t = repair_at([30.0, 95.0, 0.0], arrived);
+    passable(&mut t);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    let r = repair_of(&t);
+    assert_eq!((r.state, r.timer, sprite_of(&t)), (WAIT, 1.0, Some(5)));
+    let mut t = repair_at(OFF, arrived);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    assert_eq!(repair_of(&t).state, FAILED);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Deletes));
+    assert_eq!(repair_of(&t).state, HALTED);
+    assert_eq!(heard(&t), [crate::unit_ai::ACTION_FAILED]);
+    assert_eq!(the_house(&t).0, 300.0);
 }
 
 /// State 7: each update's work goes to the target's repair; full (1) the Repair ends, its
@@ -462,34 +408,63 @@ fn a_repairer_at_its_target_faces_it_or_waits_or_fails() {
 /// posts 0x1fb and ends it too; a target that walked out of reach sends the unit walking.
 #[test]
 fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
-    let working = || RepairAction {
-        state: WORK,
-        move_to: None,
-        counted: true,
-        ..RepairAction::start(20, [11.0, 10.0, 0.0], TASK, 0.0)
-    };
-    let mut amounts = Vec::new();
-    let mut r = working();
-    let step = update(&mut r, Some(ward(11.0)), (Some(2), true, 0), &mut amounts);
-    assert_eq!((r.state, step.repairers), (WORK, 0));
-    assert_eq!(amounts, vec![work_amount(1.0, 0.5, 0.05, Some(2))]);
-    let step = update(&mut r, Some(ward(11.0)), (Some(2), true, 1), &mut amounts);
-    assert_eq!((r.state, step.repairers, step.restored), (DONE, -1, true));
-    assert_eq!(step.notifies, vec![crate::unit_ai::ACTION_COMPLETED]);
-    let mut r = working();
-    let step = update(&mut r, Some(ward(11.0)), (Some(1), true, 2), &mut amounts);
+    let working = |r: &mut RepairAction| (r.state, r.move_to) = (WORK, None);
+    let mut t = repair_at(NEAR, working);
+    t.players[1].objects[1]
+        .construction
+        .as_mut()
+        .unwrap()
+        .builders = 1;
+    t.players[1].objects[0]
+        .actions
+        .repair_mut()
+        .unwrap()
+        .counted = true;
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    assert_eq!(repair_of(&t).state, WORK);
     assert_eq!(
-        step.notifies,
-        vec![
+        the_house(&t),
+        (300.0 + work_amount(1.0, 0.5, 0.05, Some(1)), 1, 1)
+    );
+    let h = &mut t.players[1].objects[1];
+    (h.life.hp, h.armor_removed) = (549.99, [3, 4]);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    assert_eq!(repair_of(&t).state, DONE);
+    assert_eq!(the_house(&t), (550.0, 0, 0));
+    assert_eq!(t.players[1].objects[1].armor_removed, [0, 0]);
+    assert_eq!(heard(&t), [crate::unit_ai::ACTION_COMPLETED]);
+    // the player without the wood the building repair cost asks
+    let mut t = repair_at(NEAR, working);
+    t.players[1].attributes.resize(300, 0.0);
+    t.players[1].attributes[BUILDING_REPAIR_COST] = 1.0;
+    t.players[1].resources = [0.0; 4];
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    assert_eq!(
+        heard(&t),
+        [
             crate::unit_ai::ACTION_INVALIDATED,
             crate::unit_ai::ACTION_COMPLETED
         ]
     );
-    let mut r = working();
-    let _ = update(&mut r, Some(ward(20.0)), (Some(1), true, 0), &mut amounts);
+    assert_eq!(the_house(&t).0, 300.0);
+    // the house moved out of reach: the repairer walks again, no longer counted
+    let mut t = repair_at(NEAR, working);
+    t.players[1].objects[1]
+        .construction
+        .as_mut()
+        .unwrap()
+        .builders = 1;
+    t.players[1].objects[0]
+        .actions
+        .repair_mut()
+        .unwrap()
+        .counted = true;
+    t.players[1].objects[1].place_for_test([30.0, 80.0, 0.0]);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    let r = repair_of(&t);
     assert_eq!(
-        (r.state, r.move_to, r.counted),
-        (MOVE, Some(MoveTo::Start), false)
+        (r.state, r.move_to, r.counted, the_house(&t).1),
+        (MOVE, Some(MoveTo::Start), false, 0)
     );
 }
 
@@ -497,20 +472,19 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
 /// or waits a second again.
 #[test]
 fn a_waiting_repairer_looks_again_each_second() {
-    let mut amounts = Vec::new();
-    let mut r = RepairAction {
-        state: WAIT,
-        move_to: None,
-        timer: 0.1,
-        ..RepairAction::start(20, [11.0, 10.0, 0.0], TASK, 0.0)
-    };
-    let _ = update(&mut r, Some(ward(20.0)), (Some(0), true, 0), &mut amounts);
-    assert_eq!((r.state, r.timer), (WAIT, 0.1 - 0.05));
-    let _ = update(&mut r, Some(ward(20.0)), (Some(0), true, 0), &mut amounts);
-    assert_eq!((r.state, r.timer), (WAIT, 1.0));
-    r.timer = 0.0;
-    let _ = update(&mut r, Some(ward(11.0)), (Some(0), true, 0), &mut amounts);
-    assert_eq!(r.state, FACE);
+    let waiting = |r: &mut RepairAction| (r.state, r.move_to, r.timer) = (WAIT, None, 0.1);
+    let mut t = repair_at([30.0, 95.0, 0.0], waiting);
+    passable(&mut t);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    assert_eq!(
+        (repair_of(&t).state, repair_of(&t).timer),
+        (WAIT, 0.1 - 0.05)
+    );
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    assert_eq!((repair_of(&t).state, repair_of(&t).timer), (WAIT, 1.0));
+    let mut t = repair_at(NEAR, |r| (r.state, r.move_to, r.timer) = (WAIT, None, 0.0));
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    assert_eq!(repair_of(&t).state, FACE);
 }
 
 /// Slot 8 (`FUN_140ad9700`): the point, the target let go (a counted repairer leaving its
@@ -532,11 +506,15 @@ fn a_move_sends_the_repairer_to_its_point() {
         (r.state, r.target, r.goal, r.counted),
         (WALK_POINT, -1, Some([30.0, 5.0, 0.0]), false)
     );
-    let mut amounts = Vec::new();
-    r.move_to = Some(MoveTo::Arrived);
-    let step = update(&mut r, None, (None, true, 0), &mut amounts);
+    let mut t = repair_at(NEAR, |a| *a = r);
+    t.players[1].objects[0]
+        .actions
+        .repair_mut()
+        .unwrap()
+        .move_to = Some(MoveTo::Arrived);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(
-        (r.state, step.notifies),
+        (repair_of(&t).state, heard(&t)),
         (DONE, vec![crate::unit_ai::ACTION_COMPLETED])
     );
 }

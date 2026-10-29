@@ -2,15 +2,14 @@
 
 use crate::GenieError;
 use crate::construction::repair::payment::PaidAttributes;
+use crate::construction::repair::{CountedIn, RepairReads, Repairee};
 use crate::map::spatial::Spatial;
-use crate::math::rng::Stream;
 use crate::movement::Me;
-use crate::movement::move_to::{MoveDefaults, Sprites};
+use crate::movement::move_to::MoveDefaults;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
-use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiMove;
 use crate::world::World;
 use crate::world::others::OthersRef;
@@ -19,149 +18,47 @@ use crate::world::step::Step;
 
 impl Unit {
     /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it
-    /// reads of its target ([`repair_reads`]), the unit's work rate and quick path, and the
-    /// target's repair over the objects it reaches ([`crate::construction::repair::repair_building`],
-    /// [`crate::construction::repair::repair_unit`]) paid from the player's resources. Its changes
-    /// go to the objects ([`repair_write_back`]), the payments join the attribute adds, then what
-    /// the step leaves ([`Unit::after_repair_step`]).
+    /// reads as it starts ([`Unit::repair_reads`]), on the Repair copied out of the action list
+    /// and put back after it; its code (the end's 1). Nothing without a Repair.
     pub(crate) fn repair_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
-        let Some(target) = self.actions.repair().map(|r| r.target) else {
+        let Some(mut repair) = self.actions.repair().copied() else {
             return Ok(HeadCode::Keeps);
         };
-        let own = repair_master(&c.w.masters, c.player, self)
-            .ok_or(GenieError::missing_data("a repairer's master"))?;
-        let RepairReads {
-            repairee,
-            counted_in,
-            mut set,
-        } = repair_reads(c, OthersRef::of(&c.w.players, c.player), target)?;
-        let original = set.clone();
-        let (own_radius, own_class) = (own.radius, own.class);
-        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-        let defaults = MoveDefaults::of(&own, self.abilities.look.as_ref());
-        let standing = sprite_id(own.standing_sprite);
-        let (restriction, rate) = (
-            usize::try_from(own.terrain_restriction).ok(),
-            self.work_rate_powerup + own.work_rate,
-        );
-        let (player, pace) = (c.player, c.pace());
-        // what the owner holds now: the update may have paid or gained before the repair
-        let resources = c.w.players[player].resources;
-        let (scenario, now, computer) = (
-            scenario_mode(c.w.settings.game_mode),
-            c.w.world_time,
-            c.w.players[c.player].computer,
-        );
-        let (my_id, stance) = (self.id, self.ai.as_ref().map_or(0, |ai| ai.stance));
-        let repair_action = self.actions.repair_mut().expect("checked above");
-        let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
-        let masters = beside
-            .masters
-            .get(player)
-            .ok_or(GenieError::missing_data("a repairer's player's masters"))?;
-        let mut paid = PaidAttributes::new(resources, &beside.players[player].attributes);
-        let target_kind = set.first().map_or(0, |o| o.kind);
-        let mut repair = |amount: f32| -> Result<u8, GenieError> {
-            if set.is_empty() {
-                return Err(GenieError::unreachable(
-                    "a Repair working on an object the world does not hold",
-                ));
-            }
-            let mut payer = crate::construction::repair::Payer {
-                masters,
-                attributes: &mut paid,
-            };
-            match target_kind {
-                80 => crate::construction::repair::repair_building(
-                    &mut set, 0, amount, true, &mut payer,
-                ),
-                70 => crate::construction::repair::repair_unit(&mut set, 0, amount, &mut payer),
-                // the task finder repairs buildings and combat units of its classes alone
-                _ => Err(GenieError::unreachable(
-                    "a repaired object of a type below 70 (slot 0x110)",
-                )),
-            }
-        };
-        let mut can_path = |spatial: &Spatial| -> Result<bool, GenieError> {
-            let terrain = spatial
-                .terrain
-                .as_ref()
-                .ok_or(crate::pathing::hull_path::NO_TERRAIN)?;
-            let r = restriction.ok_or(crate::pathing::hull_path::NO_RESTRICTION)?;
-            crate::pathing::hull_path::quick_reach(
-                spatial,
-                my_id,
-                target,
-                terrain.restriction_mask(r),
-                own_radius[0],
-                crate::construction::repair::REACH,
-            )
-        };
-        let view = crate::construction::repair::RepairView {
-            target: repairee,
-            radius: own_radius,
-            scenario,
-            rate,
-            repairers: counted_in.map(|(_, n)| n),
-            now,
-            waits: own_class == 4 && !computer,
-            stance,
-            defaults,
-            standing,
-            sprites: Sprites {
-                sprite: &mut self.sprite,
-                rng: beside.sprite_rng,
-                graphics: beside.graphics,
-            },
-            can_path: &mut can_path,
-            repair: &mut repair,
-        };
-        let step = repair_action.update(walk, view)?;
-        c.w.players[player].add_attributes(paid.adds)?;
-        repair_write_back(c.w, &set, &original);
-        self.after_repair_step(c, (target, target_kind, counted_in), step)
-    }
-
-    /// What the Repair's step leaves besides the repair (`step`; `target` of type `target_kind`,
-    /// `counted_in` the object whose repairers count the unit): a target of a type above 69 has
-    /// its armor back (`FUN_1412066a0`), the repairers change, the target is let go, the unit AI
-    /// hears the notifies and the unit stands; its code (the end's 1).
-    fn after_repair_step(
-        &mut self,
-        c: &mut Step<'_>,
-        (target, target_kind, counted_in): (i32, u8, Option<(i32, u8)>),
-        step: crate::construction::repair::RepairStep,
-    ) -> Result<HeadCode, GenieError> {
-        if step.restored
-            && 0x45 < target_kind
-            && let Some((_, u)) = c.w.object_mut(target)
-        {
-            u.armor_removed = [0; 2];
-        }
-        if step.repairers != 0
-            && let Some((id, _)) = counted_in
-            && let Some((_, u)) = c.w.object_mut(id)
-        {
-            let n = u.repairers_mut();
-            *n = n.wrapping_add_signed(step.repairers);
-        }
-        let by = self.releaser(c);
-        if step.released {
-            crate::world::lets::release(c, target, by)?;
-        }
-        for kind in &step.notifies {
-            self.post_own(*kind, [ActionKind::Repair.value(), 0, 0])?;
-        }
-        if step.stands {
-            self.show_standing(
-                c.w.masters.get(c.player),
-                &c.w.graphics,
-                c.w.streams.get(Stream::Sprite),
-            )?;
+        let reads = self.repair_reads(c, repair.target)?;
+        let repaired = repair.update(c, self, me, &reads);
+        if let Some(r) = self.actions.repair_mut() {
+            *r = repair;
         }
         // its end's 1 deletes it; the destructor (FUN_140ad8fd0) finds it out of the repairers
         // (set_state left them) and lets the target it still holds go
-        Ok(HeadCode::ended(step.done))
+        repaired
+    }
+
+    /// What the Repair's update reads as it starts ([`RepairReads`]): its `target` and the
+    /// object its repairers count in, as the world holds them (none for a target it does not
+    /// hold), the repairer's master's radii, work rate, sprites and terrain restriction, the
+    /// game mode, the owner's type and the unit AI's stance.
+    pub(crate) fn repair_reads(
+        &self,
+        c: &Step<'_>,
+        target: i32,
+    ) -> Result<RepairReads, GenieError> {
+        let own = repair_master(&c.w.masters, c.player, self)
+            .ok_or(GenieError::missing_data("a repairer's master"))?;
+        let (repairee, counted_in) = repairee_of(c, OthersRef::of(&c.w.players, c.player), target)?;
+        Ok(RepairReads {
+            target: repairee,
+            counted_in,
+            radius: own.radius,
+            scenario: scenario_mode(c.w.settings.game_mode),
+            rate: self.work_rate_powerup + own.work_rate,
+            waits: own.class == 4 && !c.w.players[c.player].computer,
+            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
+            defaults: MoveDefaults::of(&own, self.abilities.look.as_ref()),
+            standing: sprite_id(own.standing_sprite),
+            restriction: usize::try_from(own.terrain_restriction).ok(),
+        })
     }
 
     /// `+0x9e8` (`num_builders`): a building's in its construction, any other's its own.
@@ -266,42 +163,26 @@ impl Unit {
     }
 }
 
-/// What the Repair's update reads of its target ([`Unit::repair_part`]).
-struct RepairReads {
-    /// The target as the update reads it, None when the world holds no object of its id.
-    repairee: Option<crate::construction::repair::Repairee>,
-    /// The object `FUN_140ad9050` counts the repairers in (the target, an annex's main building)
-    /// and their count.
-    counted_in: Option<(i32, u8)>,
-    /// The objects the repair reaches ([`reached_ids`]), as the repair reads and changes them.
-    set: Vec<crate::construction::repair::Repaired>,
-}
-
 /// Object `u`'s master: its own (`+0x6c0`), else player `q`'s of its id.
 fn repair_master(every: &[Masters], q: usize, u: &Unit) -> Option<Master> {
     u.master(every, q).ok().cloned()
 }
 
-/// What the Repair's update reads of its `target` ([`RepairReads`]): nothing for a target the
-/// world does not hold.
-fn repair_reads(
+/// The Repair's `target` as its update reads it ([`Repairee`]) and the object `FUN_140ad9050`
+/// counts its repairers in (the target, an annex's main building) with their count: none for a
+/// target the world does not hold.
+fn repairee_of(
     c: &Step<'_>,
     others: OthersRef<'_>,
     target: i32,
-) -> Result<RepairReads, GenieError> {
-    use crate::construction::repair::Repairee;
-    let mut reads = RepairReads {
-        repairee: None,
-        counted_in: None,
-        set: Vec::new(),
-    };
+) -> Result<(Option<Repairee>, CountedIn), GenieError> {
     let held = |id: i32| others.find(id);
     let Some((q, t)) = held(target).filter(|_| target != -1) else {
-        return Ok(reads);
+        return Ok((None, None));
     };
     let tm = repair_master(&c.w.masters, q, t)
         .ok_or(GenieError::missing_data("a repaired object's master"))?;
-    reads.repairee = Some(Repairee {
+    let repairee = Repairee {
         state: t.life.state,
         hp: t.life.hp,
         owner: q,
@@ -315,23 +196,73 @@ fn repair_reads(
         radius: tm.radius,
         class: tm.class,
         moves: 29 < tm.kind && tm.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
-    });
-    let building = tm.kind == 80;
-    let counting = if building {
+    };
+    let counting = if tm.kind == 80 {
         t.annex_of.unwrap_or(target)
     } else {
         target
     };
-    if let Some((_, k)) = held(counting) {
-        reads.counted_in = Some((counting, k.repairers()));
+    let counted_in = held(counting).map(|(_, k)| (counting, k.repairers()));
+    Ok((Some(repairee), counted_in))
+}
+
+/// The repair of `target` by `amount` (a building's or a combat unit's slot 0x8c8, any other's
+/// slot 0x110) over the objects it reaches ([`reached_ids`]) as they stand, paid from what the
+/// repairer's player holds now: each object it changed takes its hit points at once, the
+/// payment joins the player's attributes. Returns the code (0 to go on, 1 once the target
+/// holds its most hit points, 2 when the player cannot pay) and the target's master's type.
+///
+/// # Errors
+///
+/// A target the world does not hold or of a type below 70, an object of a master the slice
+/// lacks, and an attribute the player has not got.
+pub(crate) fn repair_target(
+    c: &mut Step<'_>,
+    target: i32,
+    amount: f32,
+) -> Result<(u8, u8), GenieError> {
+    let player = c.player;
+    let mut set = Vec::new();
+    let others = OthersRef::of(&c.w.players, player);
+    if let Some((q, t)) = others.find(target).filter(|_| target != -1) {
+        let tm = repair_master(&c.w.masters, q, t)
+            .ok_or(GenieError::missing_data("a repaired object's master"))?;
+        for id in reached_ids(&c.w.spatial, t, target, tm.kind == 80) {
+            let Some(o) = others.find(id) else {
+                continue;
+            };
+            set.push(repaired(c, others, o, id)?);
+        }
     }
-    for id in reached_ids(&c.w.spatial, t, target, building) {
-        let Some(o) = held(id) else {
-            continue;
-        };
-        reads.set.push(repaired(c, others, o, id)?);
+    let original = set.clone();
+    let kind = set.first().map_or(0, |o| o.kind);
+    if set.is_empty() {
+        return Err(GenieError::unreachable(
+            "a Repair working on an object the world does not hold",
+        ));
     }
-    Ok(reads)
+    let masters =
+        c.w.masters
+            .get(player)
+            .ok_or(GenieError::missing_data("a repairer's player's masters"))?;
+    // what the owner holds now: the update may have paid or gained before the repair
+    let owner = &c.w.players[player];
+    let mut paid = PaidAttributes::new(owner.resources, &owner.attributes);
+    let mut payer = crate::construction::repair::Payer {
+        masters,
+        attributes: &mut paid,
+    };
+    let answer = match kind {
+        80 => crate::construction::repair::repair_building(&mut set, 0, amount, true, &mut payer),
+        70 => crate::construction::repair::repair_unit(&mut set, 0, amount, &mut payer),
+        // the task finder repairs buildings and combat units of its classes alone
+        _ => Err(GenieError::unreachable(
+            "a repaired object of a type below 70 (slot 0x110)",
+        )),
+    }?;
+    c.w.players[player].add_attributes(paid.adds)?;
+    repair_write_back(c.w, &set, &original);
+    Ok((answer, kind))
 }
 
 /// The objects a repair of `target` (`t`) reaches, in order: the target; for a building, an
