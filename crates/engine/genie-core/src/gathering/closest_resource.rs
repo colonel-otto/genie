@@ -49,7 +49,7 @@ pub(crate) fn closest_resource_of(
     (kind, cap, site): (u8, i32, i32),
     (current, min_state, point): (i32, u8, [f32; 2]),
 ) -> Result<(i32, Option<i32>), GenieError> {
-    use crate::gathering::gather_search::{self, Candidate};
+    use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
     /// The site masters whose search starts from their footprint in any zone.
     const DOCKS: [i16; 2] = [45, 2172];
     let site = if site == -1 || c.spatial.get(site).is_none() {
@@ -158,12 +158,16 @@ pub(crate) fn closest_resource_of(
         site.as_ref(),
         kind,
         cap,
-        c.spatial.map,
-        c.spatial,
-        &|spatial, x, y| spatial.explored(player, x, y),
-        &|spatial, x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
-        &objects,
-        &mut |spatial, id| mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id),
+        ResourceWorld {
+            map: c.spatial.map,
+            world: c.spatial,
+            explored: &|spatial, x, y| spatial.explored(player, x, y),
+            passable: &|spatial, x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
+            objects: &objects,
+            reach: &mut |spatial, id| {
+                mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id)
+            },
+        },
     )
 }
 

@@ -15,6 +15,40 @@ use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 
+/// What a gather's start takes besides its mover and stream ([`GatherAction::start`]'s
+/// arguments).
+#[derive(Debug)]
+pub struct GatherStart<'a> {
+    /// The target.
+    pub target: &'a Resource,
+    /// The owner.
+    pub player: usize,
+    /// The owner's type test (`FUN_141659cf0`).
+    pub computer: bool,
+    /// The game settings' test `FUN_141302150`.
+    pub carry_rule: bool,
+    /// What the gatherer carries, its resource kind and amount.
+    pub held: &'a mut (i16, f32),
+}
+
+/// What a gather's retarget takes besides its mover and stream ([`GatherAction::retarget`]'s
+/// arguments).
+#[derive(Clone, Copy, Debug)]
+pub struct GatherRetarget<'a> {
+    /// The work command's new target.
+    pub target: &'a Resource,
+    /// The owner.
+    pub player: usize,
+    /// The owner's type test (`FUN_141659cf0`).
+    pub computer: bool,
+    /// What the gatherer carries.
+    pub held: f32,
+    /// The game's farm setting: a stop farm or a fish trap keeps its place as the farm's.
+    pub farm_stops: bool,
+    /// What times a farm's stops.
+    pub rate: StopRate,
+}
+
 /// What the constructor reads to time a farm's stops: the gatherer's work rate (its master's
 /// `+0x798` plus its powerup, slot 0x6e8), its capacity (`+0x61c`) and the player's attribute the
 /// task's `attribute_type2` names (none: 1.0).
@@ -159,17 +193,19 @@ impl GatherAction {
     /// # Errors
     ///
     /// What the start does not model.
-    #[allow(clippy::too_many_arguments)]
     pub fn start(
         &mut self,
-        target: &Resource,
-        player: usize,
-        computer: bool,
-        carry_rule: bool,
-        held: &mut (i16, f32),
+        start: GatherStart<'_>,
         mover: &mut Mover,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
+        let GatherStart {
+            target,
+            player,
+            computer,
+            carry_rule,
+            held,
+        } = start;
         let kind = self.task.resource;
         let both_food = food(kind) && food(held.0);
         let drops = computer && held.1 == 0.0;
@@ -221,17 +257,20 @@ impl GatherAction {
     /// # Errors
     ///
     /// What it does not model; a unit that cannot move.
-    #[allow(clippy::too_many_arguments)]
     pub fn retarget(
         &mut self,
-        target: &Resource,
-        player: usize,
-        computer: bool,
-        held: f32,
-        (farm_stops, rate): (bool, StopRate),
+        retarget: GatherRetarget<'_>,
         mover: &mut Mover,
         rng: &mut Well512,
     ) -> Result<bool, GenieError> {
+        let GatherRetarget {
+            target,
+            player,
+            computer,
+            held,
+            farm_stops,
+            rate,
+        } = retarget;
         self.worked = false;
         if target.id == self.target {
             match self.state {

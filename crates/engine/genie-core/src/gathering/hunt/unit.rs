@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::victims::victim;
 use crate::gathering::closest_resource::herded;
+use crate::gathering::hunt::HuntRetarget;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
@@ -471,10 +472,12 @@ impl Unit {
             ));
         };
         if let Some(arrived) = hunt.retarget(
-            &quarry,
-            c.player,
-            held,
-            drops_here,
+            HuntRetarget {
+                target: &quarry,
+                player: c.player,
+                held,
+                drops_here,
+            },
             &engagement,
             arms,
             mover,

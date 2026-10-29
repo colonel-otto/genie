@@ -25,7 +25,9 @@ mod update;
 mod work;
 
 pub use self::point_walks::waits_for_a_farm;
-pub use self::start::{MoveTarget, StopRate, productivity_of, stop_point};
+pub use self::start::{
+    GatherRetarget, GatherStart, MoveTarget, StopRate, productivity_of, stop_point,
+};
 use self::work::food;
 #[cfg(test)]
 use crate::GenieError;

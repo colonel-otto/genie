@@ -805,11 +805,13 @@ fn a_forager_walks_to_its_bush() {
     assert_eq!((g.stops, g.gather_at, g.target_type), (1, [-1.0; 2], 7));
     let mut held = (2, 0.0);
     g.start(
-        &bush(),
-        7,
-        false,
-        false,
-        &mut held,
+        GatherStart {
+            target: &bush(),
+            player: 7,
+            computer: false,
+            carry_rule: false,
+            held: &mut held,
+        },
         &mut mover,
         &mut Well512::default(),
     )
@@ -822,11 +824,13 @@ fn a_forager_walks_to_its_bush() {
     let mut g = GatherAction::new(task(), &bush(), true, rate()).unwrap();
     let mut held = (15, 3.0);
     g.start(
-        &bush(),
-        7,
-        false,
-        false,
-        &mut held,
+        GatherStart {
+            target: &bush(),
+            player: 7,
+            computer: false,
+            carry_rule: false,
+            held: &mut held,
+        },
         &mut mover,
         &mut Well512::default(),
     )
@@ -850,11 +854,14 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
     let mut g = walking(WALK);
     assert_eq!(
         g.retarget(
-            &bush(),
-            7,
-            false,
-            0.0,
-            (true, rate()),
+            GatherRetarget {
+                target: &bush(),
+                player: 7,
+                computer: false,
+                held: 0.0,
+                farm_stops: true,
+                rate: rate()
+            },
             &mut mover,
             &mut Well512::default()
         ),
@@ -877,11 +884,14 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
         let mut g = walking(state);
         assert_eq!(
             g.retarget(
-                &bush(),
-                7,
-                computer,
-                0.0,
-                (true, rate()),
+                GatherRetarget {
+                    target: &bush(),
+                    player: 7,
+                    computer,
+                    held: 0.0,
+                    farm_stops: true,
+                    rate: rate()
+                },
                 &mut mover,
                 &mut Well512::default()
             ),
@@ -898,11 +908,14 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
     let mut g = walking(WALK);
     assert_eq!(
         g.retarget(
-            &mill,
-            7,
-            false,
-            3.0,
-            (true, rate()),
+            GatherRetarget {
+                target: &mill,
+                player: 7,
+                computer: false,
+                held: 3.0,
+                farm_stops: true,
+                rate: rate()
+            },
             &mut mover,
             &mut Well512::default()
         ),

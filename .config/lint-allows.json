@@ -154,12 +154,8 @@
  },
  "clippy::too_many_arguments": {
   "crates/engine/genie-core/src/combat/missile/mod.rs": 1,
-  "crates/engine/genie-core/src/gathering/gather/start.rs": 2,
-  "crates/engine/genie-core/src/gathering/gather_search.rs": 2,
-  "crates/engine/genie-core/src/gathering/hunt/start.rs": 3,
   "crates/engine/genie-core/src/groups/command.rs": 1,
   "crates/engine/genie-core/src/map/spatial/grid.rs": 1,
-  "crates/engine/genie-core/src/orders/gather.rs": 1,
   "crates/engine/genie-core/src/pathing/tile_path/search.rs": 1,
   "crates/engine/genie-core/src/vision/registry.rs": 2,
   "crates/engine/genie-core/src/vision/visibility/sight.rs": 1,

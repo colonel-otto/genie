@@ -277,6 +277,31 @@ pub type ObjectsOn<'a, W> = dyn Fn(&W, i32, i32) -> Result<Vec<Candidate>, Genie
 /// See [`Explored`].
 pub type Reaches<'a, W> = dyn FnMut(&mut W, i32) -> Result<bool, GenieError> + 'a;
 
+/// What [`closest_resource`] and [`closest_resource_at`] read of the world `W` (`FUN_140c49760`'s
+/// arguments past the unit, the site and the kind).
+pub struct ResourceWorld<'a, W> {
+    /// The map's size.
+    pub map: [i32; 2],
+    /// The spatial index the reads take, which the reachability check writes scratch in.
+    pub world: &'a mut W,
+    /// Whether the player has explored a tile.
+    pub explored: &'a Explored<'a, W>,
+    /// Whether the unit can stand on a tile (`FUN_141185690`).
+    pub passable: &'a Passable<'a, W>,
+    /// The objects on a tile.
+    pub objects: &'a ObjectsOn<'a, W>,
+    /// Whether the unit reaches an object (slot 0x3d0 with the range 0).
+    pub reach: &'a mut Reaches<'a, W>,
+}
+
+impl<W> std::fmt::Debug for ResourceWorld<'_, W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResourceWorld")
+            .field("map", &self.map)
+            .finish_non_exhaustive()
+    }
+}
+
 /// `ClosestResourceObject` (`FUN_140c49760`) with no point (`param_7`, `param_8` −1: the unit's
 /// place), no drop site (`param_3` −1) and `param_6` 2: the closest object of gather group `kind`
 /// that the unit reaches (`reach`, slot 0x3d0 with the range 0: `FUN_14152b6e0` holds in the
@@ -298,31 +323,13 @@ pub type Reaches<'a, W> = dyn FnMut(&mut W, i32) -> Result<bool, GenieError> + '
 ///
 /// A unit with a pasture of its own, or a tile whose order of objects decides (two candidates,
 /// or another object beside one that fails the first test).
-#[allow(clippy::too_many_arguments)]
 pub fn closest_resource<W>(
     seeker: &Seeker,
     kind: u8,
     max_workers: i32,
-    map: [i32; 2],
-    world: &mut W,
-    explored: &Explored<'_, W>,
-    passable: &Passable<'_, W>,
-    objects: &ObjectsOn<'_, W>,
-    reach: &mut Reaches<'_, W>,
+    reads: ResourceWorld<'_, W>,
 ) -> Result<i32, GenieError> {
-    closest_resource_at(
-        seeker,
-        None,
-        kind,
-        max_workers,
-        map,
-        world,
-        explored,
-        passable,
-        objects,
-        reach,
-    )
-    .map(|(id, _)| id)
+    closest_resource_at(seeker, None, kind, max_workers, reads).map(|(id, _)| id)
 }
 
 /// [`closest_resource`] from a drop site (`param_3`, None for −1 or a site not found), with what
@@ -344,22 +351,24 @@ pub fn closest_resource<W>(
 /// # Errors
 ///
 /// As [`closest_resource`].
-#[allow(clippy::too_many_arguments)]
 pub fn closest_resource_at<W>(
     seeker: &Seeker,
     site: Option<&SearchSite>,
     kind: u8,
     max_workers: i32,
-    map: [i32; 2],
-    world: &mut W,
-    explored: &Explored<'_, W>,
-    passable: &Passable<'_, W>,
-    objects: &ObjectsOn<'_, W>,
-    reach: &mut Reaches<'_, W>,
+    reads: ResourceWorld<'_, W>,
 ) -> Result<(i32, Option<i32>), GenieError> {
     /// The fallback's steps before it has one (`1000000`).
     const NO_STEPS: i32 = 1_000_000;
     const TILE_CENTRE: f32 = crate::math::image::gather_search::TILE_CENTRE;
+    let ResourceWorld {
+        map,
+        world,
+        explored,
+        passable,
+        objects,
+        reach,
+    } = reads;
     if seeker.state < seeker.min_state {
         return Ok((-1, None));
     }
@@ -802,14 +811,16 @@ mod tests {
             &seeker,
             0,
             2,
-            [40, 40],
-            &mut (),
-            &|&(), _, _| Ok(true),
-            &|&(), x, y| !tree_at(x, y),
-            &objects,
-            &mut |&mut (), id| {
-                asked.push(id);
-                Ok(true)
+            ResourceWorld {
+                map: [40, 40],
+                world: &mut (),
+                explored: &|&(), _, _| Ok(true),
+                passable: &|&(), x, y| !tree_at(x, y),
+                objects: &objects,
+                reach: &mut |&mut (), id| {
+                    asked.push(id);
+                    Ok(true)
+                },
             },
         )
         .unwrap();
@@ -823,12 +834,14 @@ mod tests {
             &busy,
             0,
             2,
-            [40, 40],
-            &mut (),
-            &|&(), _, _| Ok(true),
-            &|&(), x, y| !tree_at(x, y),
-            &objects,
-            &mut |&mut (), _| Ok(true),
+            ResourceWorld {
+                map: [40, 40],
+                world: &mut (),
+                explored: &|&(), _, _| Ok(true),
+                passable: &|&(), x, y| !tree_at(x, y),
+                objects: &objects,
+                reach: &mut |&mut (), _| Ok(true),
+            },
         )
         .unwrap();
         assert_eq!(found, 1);
@@ -871,12 +884,14 @@ mod tests {
                 site,
                 0,
                 2,
-                [40, 40],
-                &mut (),
-                &|&(), _, _| Ok(true),
-                &|&(), x, y| !blocked(x, y),
-                &objects,
-                &mut |&mut (), _| Ok(true),
+                ResourceWorld {
+                    map: [40, 40],
+                    world: &mut (),
+                    explored: &|&(), _, _| Ok(true),
+                    passable: &|&(), x, y| !blocked(x, y),
+                    objects: &objects,
+                    reach: &mut |&mut (), _| Ok(true),
+                },
             )
             .unwrap()
         };
@@ -935,12 +950,14 @@ mod tests {
             None,
             0,
             max_workers,
-            [40, 40],
-            &mut (),
-            explored,
-            &|&(), _, _| true,
-            &objects,
-            &mut |&mut (), id| Ok(reach.contains(&id)),
+            ResourceWorld {
+                map: [40, 40],
+                world: &mut (),
+                explored,
+                passable: &|&(), _, _| true,
+                objects: &objects,
+                reach: &mut |&mut (), id| Ok(reach.contains(&id)),
+            },
         )
     }
 

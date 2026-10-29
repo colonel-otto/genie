@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::construction::build::BUILD;
+use crate::gathering::hunt::HuntMove;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveTo, MoveToAction, ai_sprite, object_sprite, point_sprite};
 use crate::objects::masters::Masters;
@@ -191,7 +192,18 @@ impl Unit {
                     ));
                 };
                 let old = hunt.target;
-                if !hunt.take_move(None, point, player, held, false, my_pasture, 0.0, mover)? {
+                if !hunt.take_move(
+                    HuntMove {
+                        target: None,
+                        point,
+                        player,
+                        held,
+                        drops_here: false,
+                        my_pasture,
+                        gap: 0.0,
+                    },
+                    mover,
+                )? {
                     return Ok(PointMove::Declined);
                 }
                 Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))

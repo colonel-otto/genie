@@ -2,7 +2,8 @@
 
 use crate::GenieError;
 use crate::combat::attack::{Arms, Engagement};
-use crate::gathering::hunt::{HuntAction, HuntTask, Quarry};
+use crate::gathering::gather::{GatherRetarget, GatherStart};
+use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
 use crate::unit_ai::ActionKind;
@@ -10,6 +11,25 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
+
+/// The Hunt a work command starts ([`World::start_hunt`]'s arguments).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct HuntOrder {
+    /// The hunter's player.
+    pub(super) player: usize,
+    /// The hunter's index in the player's objects.
+    pub(super) idx: usize,
+    /// The target.
+    pub(super) target: i32,
+    /// The task.
+    pub(super) task: HuntTask,
+    /// The command's point.
+    pub(super) point: [f32; 3],
+    /// The install clears the action list.
+    pub(super) clears: bool,
+    /// The work command's unit AI notify runs.
+    pub(super) notify: bool,
+}
 
 impl World {
     /// The Gather's slot 0x48 (`0x140a903a0`) on the work command's new target
@@ -92,11 +112,14 @@ impl World {
         let (old_target, old_second) = (gather.target, gather.carry_to);
         let rng = self.streams.get(Stream::Action);
         let took = gather.retarget(
-            &resource,
-            player,
-            computer,
-            held,
-            (farm_stops, rate),
+            GatherRetarget {
+                target: &resource,
+                player,
+                computer,
+                held,
+                farm_stops,
+                rate,
+            },
             mover,
             rng,
         )?;
@@ -222,13 +245,15 @@ impl World {
         };
         let (old_target, old_second) = (hunt.target, hunt.carry_to);
         if !hunt.take_move(
-            quarry.as_ref(),
-            point,
-            player,
-            held,
-            quarry.as_ref().is_some_and(|q| q.drop_site),
-            my_pasture,
-            gap,
+            HuntMove {
+                target: quarry.as_ref(),
+                point,
+                player,
+                held,
+                drops_here: quarry.as_ref().is_some_and(|q| q.drop_site),
+                my_pasture,
+                gap,
+            },
             mover,
         )? {
             return Ok(false);
@@ -356,7 +381,15 @@ impl World {
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let rng = self.streams.get(Stream::Action);
         gather.start(
-            &resource, player, computer, carry_rule, &mut held, mover, rng,
+            GatherStart {
+                target: &resource,
+                player,
+                computer,
+                carry_rule,
+                held: &mut held,
+            },
+            mover,
+            rng,
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;
         let drops = gather.target == -1 && gather.carry_to == target;
@@ -423,17 +456,16 @@ impl World {
     /// The Hunt from the factory (`FUN_140aca4b0` case 0x6e): the action takes its target (slot
     /// 0x178); the work command's unit AI notify (`FUN_14106e4e0`, `notify`) sets the hunt order;
     /// the install (`FUN_14106e990`) clears the action list and starts the hunt.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn start_hunt(
-        &mut self,
-        player: usize,
-        idx: usize,
-        target: i32,
-        task: HuntTask,
-        point: [f32; 3],
-        clears: bool,
-        notify: bool,
-    ) -> Result<(), GenieError> {
+    pub(super) fn start_hunt(&mut self, order: HuntOrder) -> Result<(), GenieError> {
+        let HuntOrder {
+            player,
+            idx,
+            target,
+            task,
+            point,
+            clears,
+            notify,
+        } = order;
         let mut quarry = self.quarry(player, target)?;
         quarry.drop_site = self.drops_at_main(player, idx, target)?;
         self.take(target, self.releaser(player, idx));
@@ -458,12 +490,14 @@ impl World {
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
-            task,
-            &quarry,
-            player,
-            computer,
-            carry_rule,
-            &mut held,
+            HuntStart {
+                task,
+                target: &quarry,
+                player,
+                computer,
+                carry_rule,
+                held: &mut held,
+            },
             &engagement,
             arms,
             mover,

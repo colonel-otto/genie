@@ -17,7 +17,7 @@
 //! cart's own search for resources ([`World::cart_work_search`]).
 
 use crate::GenieError;
-use crate::gathering::gather_search::{self, Candidate};
+use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::orders::Work;
@@ -249,13 +249,17 @@ impl World {
             None,
             kind,
             -1,
-            self.spatial.map,
-            &mut self.spatial,
-            &|spatial, x, y| spatial.explored(p, x, y),
-            &|spatial, x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
-            &objects,
-            &mut |spatial, id| {
-                mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id)
+            ResourceWorld {
+                map: self.spatial.map,
+                world: &mut self.spatial,
+                explored: &|spatial, x, y| spatial.explored(p, x, y),
+                passable: &|spatial, x, y| {
+                    spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0)
+                },
+                objects: &objects,
+                reach: &mut |spatial, id| {
+                    mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id)
+                },
             },
         )
     }

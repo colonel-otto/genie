@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::drop_sites::{Seeker, drop_site_search};
+use crate::gathering::gather::GatherRetarget;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning, footprint_gap};
@@ -207,11 +208,14 @@ impl Unit {
         let old = [gather.target, gather.carry_to];
         let rng = c.w.streams.get(Stream::Action);
         let _ = gather.retarget(
-            &resource,
-            c.player,
-            computer,
-            held,
-            (farm_stops, rate),
+            GatherRetarget {
+                target: &resource,
+                player: c.player,
+                computer,
+                held,
+                farm_stops,
+                rate,
+            },
             mover,
             rng,
         )?;

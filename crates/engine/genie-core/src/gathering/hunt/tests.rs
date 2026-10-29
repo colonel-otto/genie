@@ -227,12 +227,14 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
     let mut mover = walker();
     let mut held = (-1, 0.0);
     let (hunt, _) = HuntAction::start(
-        CHOP,
-        &tree(),
-        2,
-        false,
-        false,
-        &mut held,
+        HuntStart {
+            task: CHOP,
+            target: &tree(),
+            player: 2,
+            computer: false,
+            carry_rule: false,
+            held: &mut held,
+        },
         &engagement(),
         ARMS,
         &mut mover,
@@ -262,19 +264,32 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
     let mut mover = walker();
     let mut held = (-1, 0.0);
     let (mut hunt, _) = HuntAction::start(
-        CHOP,
-        &tree(),
-        2,
-        false,
-        false,
-        &mut held,
+        HuntStart {
+            task: CHOP,
+            target: &tree(),
+            player: 2,
+            computer: false,
+            carry_rule: false,
+            held: &mut held,
+        },
         &engagement(),
         ARMS,
         &mut mover,
     )
     .unwrap();
     let retarget = |hunt: &mut HuntAction, q: &Quarry, e: &Engagement, m: &mut Mover| {
-        hunt.retarget(q, 2, 0.0, false, e, ARMS, m).unwrap()
+        hunt.retarget(
+            HuntRetarget {
+                target: q,
+                player: 2,
+                held: 0.0,
+                drops_here: false,
+            },
+            e,
+            ARMS,
+            m,
+        )
+        .unwrap()
     };
     assert_eq!(
         retarget(&mut hunt, &tree(), &engagement(), &mut mover),
@@ -308,12 +323,14 @@ fn a_hunt_s_new_target_clears_its_lead() {
     let mut mover = walker();
     let mut held = (-1, 0.0);
     let (mut hunt, _) = HuntAction::start(
-        CHOP,
-        &tree(),
-        2,
-        false,
-        false,
-        &mut held,
+        HuntStart {
+            task: CHOP,
+            target: &tree(),
+            player: 2,
+            computer: false,
+            carry_rule: false,
+            held: &mut held,
+        },
         &engagement(),
         ARMS,
         &mut mover,
@@ -332,11 +349,31 @@ fn a_hunt_s_new_target_clears_its_lead() {
     };
     // its own target changes nothing
     let _ = hunt
-        .retarget(&tree(), 2, 0.0, false, &engagement(), ARMS, &mut mover)
+        .retarget(
+            HuntRetarget {
+                target: &tree(),
+                player: 2,
+                held: 0.0,
+                drops_here: false,
+            },
+            &engagement(),
+            ARMS,
+            &mut mover,
+        )
         .unwrap();
     assert_eq!(hunt.lead, led);
     let _ = hunt
-        .retarget(&other, 2, 0.0, false, &engagement(), ARMS, &mut mover)
+        .retarget(
+            HuntRetarget {
+                target: &other,
+                player: 2,
+                held: 0.0,
+                drops_here: false,
+            },
+            &engagement(),
+            ARMS,
+            &mut mover,
+        )
         .unwrap();
     assert_eq!((hunt.target, hunt.lead), (9366, Lead::NEW));
 }
@@ -346,12 +383,14 @@ fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
     let start = |held: (i16, f32), carry_rule: bool| {
         let mut held = held;
         let _ = HuntAction::start(
-            CHOP,
-            &tree(),
-            2,
-            false,
-            carry_rule,
-            &mut held,
+            HuntStart {
+                task: CHOP,
+                target: &tree(),
+                player: 2,
+                computer: false,
+                carry_rule,
+                held: &mut held,
+            },
             &engagement(),
             ARMS,
             &mut walker(),
@@ -455,12 +494,14 @@ fn a_hunt_on_a_live_ally_fails() {
     };
     let mut held = (-1, 0.0);
     let (hunt, _) = HuntAction::start(
-        CHOP,
-        &ally,
-        2,
-        false,
-        false,
-        &mut held,
+        HuntStart {
+            task: CHOP,
+            target: &ally,
+            player: 2,
+            computer: false,
+            carry_rule: false,
+            held: &mut held,
+        },
         &engagement(),
         ARMS,
         &mut walker(),
@@ -486,12 +527,14 @@ fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
     for (q, range) in [(dead, CHOP.range), (sheep, 1.5)] {
         let mut held = (-1, 0.0);
         let (hunt, _) = HuntAction::start(
-            CHOP,
-            &q,
-            2,
-            false,
-            false,
-            &mut held,
+            HuntStart {
+                task: CHOP,
+                target: &q,
+                player: 2,
+                computer: false,
+                carry_rule: false,
+                held: &mut held,
+            },
             &engagement(),
             ARMS,
             &mut walker(),

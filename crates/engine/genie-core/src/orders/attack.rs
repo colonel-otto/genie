@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::combat::attack::{Attack, AttackReads, Fight};
+use crate::gathering::hunt::HuntRetarget;
 use crate::math::rng::Stream;
 use crate::orders::BUILDING;
 use crate::unit_ai::ActionKind;
@@ -245,10 +246,12 @@ impl World {
         };
         let unit_player = player;
         if let Some(arrived) = hunt.retarget(
-            &quarry,
-            unit_player,
-            held,
-            drops_here,
+            HuntRetarget {
+                target: &quarry,
+                player: unit_player,
+                held,
+                drops_here,
+            },
             &engagement,
             arms,
             mover,

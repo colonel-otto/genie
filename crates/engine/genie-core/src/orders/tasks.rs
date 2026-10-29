@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Stream;
+use crate::orders::gather::HuntOrder;
 use crate::orders::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -28,11 +29,11 @@ impl World {
         let task = self
             .find_work_task(player, idx, target, -1, true)?
             .ok_or(NO_HUNT_TASK)?;
-        self.start_hunt(
+        self.start_hunt(HuntOrder {
             player,
             idx,
             target,
-            HuntTask {
+            task: HuntTask {
                 id: task.id,
                 range: task.work_range,
                 resource: task.attribute_type,
@@ -42,9 +43,9 @@ impl World {
                 kind4: task.attribute_type4,
             },
             point,
-            false,
-            false,
-        )
+            clears: false,
+            notify: false,
+        })
     }
 
     /// The unit's gather command (object slot 0x368, `FUN_141085030`) forced on `target`, as the

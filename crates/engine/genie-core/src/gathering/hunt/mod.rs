@@ -32,7 +32,7 @@ use self::drop_off::DROP_WAIT;
 pub use self::drop_off::Dropped;
 pub use self::sprites::{HuntSprites, walk_sprite};
 pub(crate) use self::sprites::{asked_drop_off, resource_kind, stand_sprite};
-pub use self::start::{PointWalk, PointWalker};
+pub use self::start::{HuntMove, HuntRetarget, HuntStart, PointWalk, PointWalker};
 #[cfg(test)]
 use crate::combat::damage::Victim;
 #[cfg(test)]

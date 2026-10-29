@@ -42,6 +42,56 @@ pub enum PointWalk {
     Search,
 }
 
+/// What a hunt's start takes besides its attack and its mover ([`HuntAction::start`]'s arguments).
+#[derive(Debug)]
+pub struct HuntStart<'a> {
+    /// The task.
+    pub task: HuntTask,
+    /// The target.
+    pub target: &'a Quarry,
+    /// The owner.
+    pub player: usize,
+    /// The owner's type test (`FUN_141659cf0`).
+    pub computer: bool,
+    /// The game settings' test `FUN_141302150`.
+    pub carry_rule: bool,
+    /// What the hunter carries, its resource kind and amount.
+    pub held: &'a mut (i16, f32),
+}
+
+/// What a hunt's retarget takes besides its attack and its mover ([`HuntAction::retarget`]'s
+/// arguments).
+#[derive(Clone, Copy, Debug)]
+pub struct HuntRetarget<'a> {
+    /// The work command's new target.
+    pub target: &'a Quarry,
+    /// The owner.
+    pub player: usize,
+    /// What the hunter carries.
+    pub held: f32,
+    /// The target is a drop site of the hunter's master.
+    pub drops_here: bool,
+}
+
+/// A move a hunt may take ([`HuntAction::take_move`]'s arguments before the mover).
+#[derive(Clone, Copy, Debug)]
+pub struct HuntMove<'a> {
+    /// The move's target (none for a point).
+    pub target: Option<&'a Quarry>,
+    /// The move's point.
+    pub point: [f32; 3],
+    /// The owner.
+    pub player: usize,
+    /// What the hunter carries.
+    pub held: f32,
+    /// The target is a drop site of the hunter's master.
+    pub drops_here: bool,
+    /// The pasture the unit is on (`mMyPastureId`, −1 for none).
+    pub my_pasture: i32,
+    /// The gap to a drop site target.
+    pub gap: f32,
+}
+
 impl HuntAction {
     /// The factory's constructor (`FUN_140ac2dd0`; its target's add, slot 0x178, is the caller's)
     /// and the install's start (slot 5 with 1, `0x140ac49b0`): a hunter carrying another food
@@ -51,18 +101,20 @@ impl HuntAction {
     /// (`set_state` 12). `computer` is the owner's type test (`FUN_141659cf0`); `carry_rule` the
     /// game settings' test `FUN_141302150`, with which a hunter drops another resource it carries
     /// (a computer player's does when it carries none).
-    #[allow(clippy::too_many_arguments)]
     pub fn start(
-        task: HuntTask,
-        target: &Quarry,
-        player: usize,
-        computer: bool,
-        carry_rule: bool,
-        held: &mut (i16, f32),
+        start: HuntStart<'_>,
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
     ) -> Result<(Self, bool), GenieError> {
+        let HuntStart {
+            task,
+            target,
+            player,
+            computer,
+            carry_rule,
+            held,
+        } = start;
         let mut hunt = Self {
             target: target.id,
             state: 0,
@@ -169,17 +221,19 @@ impl HuntAction {
     /// the new) and the hunt starts over at `set_state(4)`. Its own target changes nothing. Some
     /// when it took the target, true when its Attack's `MoveTo` starts arrived (the caller shows
     /// the idle sprite, [`crate::combat::attack::show_arrived`]).
-    #[allow(clippy::too_many_arguments)]
     pub fn retarget(
         &mut self,
-        target: &Quarry,
-        player: usize,
-        held: f32,
-        drops_here: bool,
+        retarget: HuntRetarget<'_>,
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
     ) -> Result<Option<bool>, GenieError> {
+        let HuntRetarget {
+            target,
+            player,
+            held,
+            drops_here,
+        } = retarget;
         if target.kind == BUILDING && target.top_action == Some(FARM_AT_WORK) {
             return Err(GenieError::unsupported(
                 "a hunt sent to a farm at work (set_state 15)",
@@ -213,18 +267,16 @@ impl HuntAction {
     /// `set_state(8)`. Any other target, or a point: the point is the move's, `+0x68` −1, the
     /// target goes and `set_state(15)`: a quiet `MoveTo` to the point within the task's range
     /// (`FUN_140aa0d30`).
-    #[allow(clippy::too_many_arguments)]
-    pub fn take_move(
-        &mut self,
-        target: Option<&Quarry>,
-        point: [f32; 3],
-        player: usize,
-        held: f32,
-        drops_here: bool,
-        my_pasture: i32,
-        gap: f32,
-        mover: &mut Mover,
-    ) -> Result<bool, GenieError> {
+    pub fn take_move(&mut self, take: HuntMove<'_>, mover: &mut Mover) -> Result<bool, GenieError> {
+        let HuntMove {
+            target,
+            point,
+            player,
+            held,
+            drops_here,
+            my_pasture,
+            gap,
+        } = take;
         if target.is_none() && self.task.range != 0.0 {
             return Ok(false);
         }

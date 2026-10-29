@@ -2,6 +2,7 @@
 //! (trees): the closest tree from the hunt's drop site, which the hunt then takes.
 
 use crate::GenieError;
+use crate::gathering::hunt::HuntRetarget;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
@@ -107,10 +108,12 @@ impl Unit {
         let arms = crate::combat::attack::arms(master, &c.w.graphics, hunt.task.sprites, moving);
         let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         if let Some(arrived) = hunt.retarget(
-            &quarry,
-            c.player,
-            self.life.amount,
-            drops_here,
+            HuntRetarget {
+                target: &quarry,
+                player: c.player,
+                held: self.life.amount,
+                drops_here,
+            },
             &engagement,
             arms,
             mover,

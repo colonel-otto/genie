@@ -5,6 +5,7 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
+use crate::orders::gather::HuntOrder;
 use crate::orders::{ATTACK_TASK, BUILDING, MASTER_84, VILLAGER, Work};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -417,11 +418,11 @@ impl World {
         match task.action_type {
             crate::garrison::ENTER => self.start_enter(player, idx, target, task, point, clears),
             ATTACK_TASK => self.start_attack(player, idx, target, task, point, clears),
-            HUNT => self.start_hunt(
+            HUNT => self.start_hunt(HuntOrder {
                 player,
                 idx,
                 target,
-                HuntTask {
+                task: HuntTask {
                     id: task.id,
                     range: task.work_range,
                     resource: task.attribute_type,
@@ -432,8 +433,8 @@ impl World {
                 },
                 point,
                 clears,
-                true,
-            ),
+                notify: true,
+            }),
             crate::construction::build::BUILD => {
                 self.start_build(player, idx, target, task, point, clears)
             }
