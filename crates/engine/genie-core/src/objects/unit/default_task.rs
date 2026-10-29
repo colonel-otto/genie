@@ -32,10 +32,7 @@ impl Unit {
                 .set_make(Some(crate::gathering::make::MakeAction::start(
                     task,
                     &c.w.players[c.player].attributes,
-                    &mut crate::gathering::make::Held {
-                        attribute_type: &mut self.life.attribute_type,
-                        amount: &mut self.life.amount,
-                    },
+                    &mut self.life,
                 )));
             return Ok(true);
         }
