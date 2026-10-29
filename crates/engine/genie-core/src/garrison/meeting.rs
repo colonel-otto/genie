@@ -72,38 +72,62 @@ pub fn meet_at(t: &MeetingTarget) -> MeetAt {
     MeetAt::ActionPoint
 }
 
-/// `FUN_141157840` (a unit's slot 0x428, its last argument 1): from tile `from` (a transport's)
-/// toward tile `to` (the unit's) in twice as many steps as the longer axis's tiles (the `y`
-/// axis only when it is strictly longer), each step adding the whole difference over the step
-/// count in floats, the first new tile on the way that `lands` (its tile and the float place
-/// reached: a beach in the unit's zone where the unit could stand, slot 0x278) is where the two
-/// meet. None when the tiles are one, or no tile lands.
-pub fn landing_tile(
-    from: [i32; 2],
-    to: [i32; 2],
-    mut lands: impl FnMut([i32; 2], [f32; 2]) -> Result<bool, GenieError>,
-) -> Result<Option<[i32; 2]>, GenieError> {
-    let (dx, dy) = (to[0].wrapping_sub(from[0]), to[1].wrapping_sub(from[1]));
-    let (fx, fy) = (dx as f32, dy as f32);
-    if fx == 0.0 && fy == 0.0 {
-        return Ok(None);
-    }
-    let longer = if fy.abs() <= fx.abs() { dx } else { dy };
-    let steps = cvttss2si(longer as f32).wrapping_abs().wrapping_mul(2);
-    let (mut x, mut y) = (from[0] as f32, from[1] as f32);
-    let mut last = [-999, -999];
-    for _ in 0..steps.max(0) {
-        x += fx / steps as f32;
-        y += fy / steps as f32;
-        let tile = [cvttss2si(x), cvttss2si(y)];
-        if tile != last {
-            last = tile;
-            if lands(tile, [x, y])? {
-                return Ok(Some(tile));
-            }
+/// `FUN_141157840`'s walk (a unit's slot 0x428, its last argument 1): from tile `from` (a
+/// transport's) toward tile `to` (the unit's) in twice as many steps as the longer axis's tiles
+/// (the `y` axis only when it is strictly longer), each step adding the whole difference over
+/// the step count in floats. It yields each new tile on the way with the float place reached
+/// there; the first that lands (a beach in the unit's zone where the unit could stand, slot
+/// 0x278: [`shore`]) is where the two meet. Nothing when the tiles are one.
+#[derive(Clone, Debug)]
+pub struct LandingWalk {
+    /// The difference over the step count, x and y.
+    step: [f32; 2],
+    /// The float place reached.
+    at: [f32; 2],
+    /// The steps left.
+    left: i32,
+    /// The tile last yielded (-999, -999 before the first).
+    last: [i32; 2],
+}
+
+impl LandingWalk {
+    /// The walk from tile `from` toward tile `to`.
+    #[must_use]
+    pub fn new(from: [i32; 2], to: [i32; 2]) -> Self {
+        let (dx, dy) = (to[0].wrapping_sub(from[0]), to[1].wrapping_sub(from[1]));
+        let (fx, fy) = (dx as f32, dy as f32);
+        let longer = if fy.abs() <= fx.abs() { dx } else { dy };
+        let steps = cvttss2si(longer as f32).wrapping_abs().wrapping_mul(2);
+        let left = if fx == 0.0 && fy == 0.0 {
+            0
+        } else {
+            steps.max(0)
+        };
+        Self {
+            step: [fx / steps as f32, fy / steps as f32],
+            at: [from[0] as f32, from[1] as f32],
+            left,
+            last: [-999, -999],
         }
     }
-    Ok(None)
+}
+
+impl Iterator for LandingWalk {
+    type Item = ([i32; 2], [f32; 2]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while 0 < self.left {
+            self.left -= 1;
+            self.at[0] += self.step[0];
+            self.at[1] += self.step[1];
+            let tile = [cvttss2si(self.at[0]), cvttss2si(self.at[1])];
+            if tile != self.last {
+                self.last = tile;
+                return Some((tile, self.at));
+            }
+        }
+        None
+    }
 }
 
 /// `FUN_140a85c30`'s tile test for a range of at most 1 to a target with speed: about the tiles
@@ -262,7 +286,7 @@ fn shore_or_beach(
     Ok((t.position, 0))
 }
 
-/// The shore on the way from the target's tile to the unit's ([`landing_tile`]): a beach
+/// The shore on the way from the target's tile to the unit's ([`LandingWalk`]): a beach
 /// ([`crate::map::terrain::Terrain::beach`]) whose zone for the unit's restriction
 /// (`FUN_1411958c0`: 0 for a tile below 0) is the zone of the unit's own tile (`FUN_14118eea0`),
 /// where the unit could stand (slot 0x278, [`crate::map::spatial::Spatial::point_clear`] with
@@ -289,16 +313,16 @@ fn shore(
     let map = zones.of(w, h, &terrain.kinds, values);
     let own = map.zone(cvttss2si(ux), cvttss2si(uy));
     let from = [cvttss2si(t.position[0]), cvttss2si(t.position[1])];
-    landing_tile(from, [cvttss2si(ux), cvttss2si(uy)], |[x, y], [fx, fy]| {
+    for (tile @ [x, y], place) in LandingWalk::new(from, [cvttss2si(ux), cvttss2si(uy)]) {
         if !terrain.beach(x, y) {
-            return Ok(false);
+            continue;
         }
         let zone = if x < 0 || y < 0 { 0 } else { map.zone(x, y) };
-        if zone != own {
-            return Ok(false);
+        if zone == own && spatial.point_clear(id, place, stats.radius[0], stats.restriction_mask)? {
+            return Ok(Some(tile));
         }
-        spatial.point_clear(id, [fx, fy], stats.radius[0], stats.restriction_mask)
-    })
+    }
+    Ok(None)
 }
 
 /// What `FUN_140a85c30`'s tile test ([`walled_off`]) reads.

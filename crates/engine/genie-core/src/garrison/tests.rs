@@ -629,14 +629,13 @@ fn the_landing_walk_steps_twice_per_tile_of_the_longer_axis() {
     // FUN_141157840 from (79, 92) to (83, 86): the y axis is longer (6), 12 steps of
     // (1/3, -1/2) in floats (79 + 3 steps is 80.00001); the tiles in the order they are
     // first reached
-    let mut seen = Vec::new();
-    let found = landing_tile([79, 92], [83, 86], |tile, _| {
-        seen.push(tile);
-        Ok(false)
-    });
-    assert_eq!(found, Ok(None));
+    let tiles = |from, to| {
+        LandingWalk::new(from, to)
+            .map(|(t, _)| t)
+            .collect::<Vec<_>>()
+    };
     assert_eq!(
-        seen,
+        tiles([79, 92], [83, 86]),
         [
             [79, 91],
             [80, 90],
@@ -648,25 +647,12 @@ fn the_landing_walk_steps_twice_per_tile_of_the_longer_axis() {
             [83, 86],
         ]
     );
-    // the first that lands is the meeting tile, with the float place reached there
-    let found = landing_tile([79, 92], [83, 86], |tile, [x, y]| {
-        if tile == [81, 89] {
-            assert_eq!([x, y], [81.000_015, 89.0]);
-        }
-        Ok(tile == [81, 89])
-    });
-    assert_eq!(found, Ok(Some([81, 89])));
+    // each with the float place reached there
+    let at = LandingWalk::new([79, 92], [83, 86]).find(|&(t, _)| t == [81, 89]);
+    assert_eq!(at, Some(([81, 89], [81.000_015, 89.0])));
     // equal axes: x is the longer (`<=`); one tile: none
-    let mut seen = Vec::new();
-    let _ = landing_tile([0, 0], [-2, 2], |tile, _| {
-        seen.push(tile);
-        Ok(false)
-    });
-    assert_eq!(seen, [[0, 0], [-1, 1], [-2, 2]]);
-    assert_eq!(
-        landing_tile([5, 5], [5, 5], |_, _| panic!("no step")),
-        Ok(None)
-    );
+    assert_eq!(tiles([0, 0], [-2, 2]), [[0, 0], [-1, 1], [-2, 2]]);
+    assert_eq!(tiles([5, 5], [5, 5]), Vec::<[i32; 2]>::new());
 }
 
 /// A map of `size` tiles whose `blocked` tiles hold a terrain class outside the walker's mask
