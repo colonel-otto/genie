@@ -22,12 +22,14 @@ impl UnitAi {
         &mut self,
         at: &Surroundings,
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
-    ) -> bool {
-        self.cap_human_order(fx);
+        side: &mut dyn UnitSide,
+    ) -> Result<bool, GenieError> {
+        self.cap_human_order(side, ai)?;
         let (produced, moved) = self.boar_wander(at, ai);
-        fx.extend(moved.map(Effect::Move));
-        produced
+        if let Some(m) = moved {
+            side.effect_now(Effect::Move(m), self, ai)?;
+        }
+        Ok(produced)
     }
 
     /// [`UnitAi::boar_idle`] past its cap: whether it produced an action, and its move.
@@ -121,14 +123,13 @@ impl UnitAi {
         other: [f32; 3],
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         let [x, y, z] = at.position;
         let reach = at.speed * EVADE_REACH;
         let (dx, dy) = (other[0] - x, other[1] - y);
         let d = crate::math::fmath::sqrt(dy * dy + dx * dx);
         let point = [x - (dx / d) * reach, y - (dy / d) * reach, z];
-        let _ = self.evasive_move(point, (true, false), at, ai, side, fx)?;
+        let _ = self.evasive_move(point, (true, false), at, ai, side)?;
         Ok(true)
     }
 
@@ -138,9 +139,8 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        self.cap_human_order(fx);
+        self.cap_human_order(side, ai)?;
         if at.class == CLASS_KING {
             let led = at.master != KING_UNLED
                 && !at.garrisoned
@@ -153,7 +153,7 @@ impl UnitAi {
             }
             return Ok(false);
         }
-        self.hunted_wander(at, ai, side, fx)
+        self.hunted_wander(at, ai, side)
     }
 
     /// [`UnitAi::hunted_idle`] for an animal that is not a king: its move, if any.
@@ -162,7 +162,6 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         let h = self.hunted.ok_or(GenieError::unsupported(
             "a hunted animal without its origin",
@@ -178,7 +177,9 @@ impl UnitAi {
         if 0.0 < leash {
             let gap = point_gap_squared([h.origin[0], h.origin[1]], at.position, at.size);
             if leash < gap {
-                fx.extend(self.move_to(go_home).map(Effect::Move));
+                if let Some(m) = self.move_to(go_home) {
+                    side.effect_now(Effect::Move(m), self, ai)?;
+                }
                 return Ok(true);
             }
         }
@@ -214,14 +215,16 @@ impl UnitAi {
             let other = found
                 .position
                 .ok_or(GenieError::unsupported("a found object without its place"))?;
-            return self.evade(at, other, ai, side, fx);
+            return self.evade(at, other, ai, side);
         }
         let r = ai.rand15();
         if r.is_multiple_of(BOAR_WANDER) {
             let dx = x - h.origin[0];
             let dy = y - h.origin[1];
             if HUNTED_HOME < dy * dy + dx * dx {
-                fx.extend(self.move_to(go_home).map(Effect::Move));
+                if let Some(m) = self.move_to(go_home) {
+                    side.effect_now(Effect::Move(m), self, ai)?;
+                }
                 return Ok(true);
             }
             let step = |ai: &mut Well512| {
@@ -238,7 +241,9 @@ impl UnitAi {
                 point: [x + sx, sy + y, z],
                 ..go_home
             });
-            fx.extend(wander.map(Effect::Move));
+            if let Some(m) = wander {
+                side.effect_now(Effect::Move(m), self, ai)?;
+            }
             return Ok(true);
         }
         Ok(false)
@@ -259,9 +264,8 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        self.cap_human_order(fx);
+        self.cap_human_order(side, ai)?;
         self.set_idle_timeout(LION_IDLE_TIMEOUT, ai);
         let sight = at.los + HUNTED_SIGHT_GROWTH;
         let radius = if sight <= at.search_radius {
@@ -314,7 +318,7 @@ impl UnitAi {
         if 0.0 <= reach && reach * reach < t.gap_squared {
             return Ok(false);
         }
-        let _ = self.attack_object(found.id, false, false, at, side, fx)?;
+        let _ = self.attack_object(found.id, false, false, at, side)?;
         Ok(true)
     }
 }

@@ -28,7 +28,6 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         let class_20 = busy && at.class == CLASS_20;
         if !class_20
@@ -39,11 +38,11 @@ impl UnitAi {
         {
             // slot 0x240 with 1; the idle part reads no result
             self.idle_timer = 0;
-            let _ = self.process_idle(at, computer, ai, side, fx)?;
+            let _ = self.process_idle(at, computer, ai, side)?;
             return Ok(());
         }
         if self.patrols(group) {
-            return self.patrol_idle_part(at, computer, ai, side, fx);
+            return self.patrol_idle_part(at, computer, ai, side);
         }
         if matches!(at.class, CLASS_3 | CLASS_52)
             && matches!(
@@ -51,7 +50,7 @@ impl UnitAi {
                 Some(ActionKind::Make | ActionKind::Research)
             )
         {
-            return self.making_idle_part(at, computer, ai, side, fx);
+            return self.making_idle_part(at, computer, ai, side);
         }
         self.idle_part_end(at.class, at.player, group)
     }
@@ -68,7 +67,6 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         if self.secondary_timer != 0 {
             return Ok(());
@@ -77,13 +75,10 @@ impl UnitAi {
         if self.adjusted_idle_timeout == 750 {
             self.update_adjusted_idle_timeout(ai);
         }
-        if self
-            .top_target_live(at, fx, side)?
-            .is_some_and(|t| t.kind == BUILDING_KIND)
-        {
+        if Self::top_target_live(at, side)?.is_some_and(|t| t.kind == BUILDING_KIND) {
             return Ok(());
         }
-        let _ = self.process_idle(at, computer, ai, side, fx)?;
+        let _ = self.process_idle(at, computer, ai, side)?;
         Ok(())
     }
 
@@ -108,7 +103,6 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         if self.current_target != -1
             && at.kind == BUILDING_KIND
@@ -121,7 +115,7 @@ impl UnitAi {
             return Ok(());
         }
         self.idle_timer = 0;
-        self.process_idle(at, computer, ai, side, fx).map(|_| ())
+        self.process_idle(at, computer, ai, side).map(|_| ())
     }
 
     /// The idle part past slot 72: the patrol branch ([`UnitAi::patrols`]) and class 3's and
@@ -188,19 +182,18 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         // without an order, the order whose own action the current one is (`action + 100`)
         let order = self
             .current_order
             .or_else(|| self.current_action.and_then(ActionKind::order));
-        if order == Some(OrderKind::Defend) && self.defend_misc(at, computer, ai, side, fx)? {
+        if order == Some(OrderKind::Defend) && self.defend_misc(at, computer, ai, side)? {
             return Ok(false);
         }
-        if order == Some(OrderKind::Follow) && self.follow(at, fx)? {
+        if order == Some(OrderKind::Follow) && self.follow(at, side, ai)? {
             return Ok(false);
         }
-        if self.leash_ends(at, ai, fx)? {
+        if self.leash_ends(at, ai, side)? {
             return Ok(false);
         }
         if self.retarget_disabled != 0 {
@@ -216,7 +209,7 @@ impl UnitAi {
         if let Some(search) =
             self.retarget_outcome(target, at.weapon_range, computer, at.action_state, listed)?
         {
-            let _ = self.retarget_search(search, computer, at, side, fx)?;
+            let _ = self.retarget_search(search, computer, at, side, ai)?;
         }
         Ok(true)
     }
@@ -233,7 +226,7 @@ impl UnitAi {
         &mut self,
         at: &Surroundings,
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
         // the leashes (unless on orders 0x2c7, 0x2dd and 0x323, which no order holds, or in a
         // group that patrols: FUN_141017c30, FUN_141017c40), measured from the unit's footprint
@@ -256,9 +249,9 @@ impl UnitAi {
                 STAND_GROUND_PATROL_LEASH
             };
             if leash < patrol_distance(&saved.path.points, at.moved_at)? {
-                self.stop_current(true, at, fx)?;
+                self.stop_current(true, at, side, ai)?;
                 self.remove_target();
-                let _ = self.restore_patrol(at, ai, fx);
+                let _ = self.restore_patrol(at, ai, side)?;
                 return Ok(true);
             }
             if self.stance == 1 {
@@ -271,9 +264,9 @@ impl UnitAi {
             // too far out, returning."), then on to the retarget check
             let gap = point_gap_squared(self.state_position, at.position, at.size);
             if DEFEND_LEASH < gap {
-                self.stop_current(true, at, fx)?;
+                self.stop_current(true, at, side, ai)?;
                 self.remove_target();
-                let _ = self.walk_back(at, fx);
+                let _ = self.walk_back(at, side, ai)?;
             }
         }
         if leashed
@@ -289,9 +282,9 @@ impl UnitAi {
             // and slot 73 returns 10 ("We're too far out, returning.", "SO Call 40.")
             let gap = point_gap_squared(self.state_position, at.position, at.size);
             if at.weapon_range + STAND_GROUND_SLACK < gap && self.current_action.is_some() {
-                self.stop_current(true, at, fx)?;
+                self.stop_current(true, at, side, ai)?;
                 self.remove_target();
-                let _ = self.walk_back(at, fx);
+                let _ = self.walk_back(at, side, ai)?;
                 return Ok(true);
             }
         }
@@ -316,7 +309,7 @@ impl UnitAi {
         computer: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let current = if self.current_target == -1 {
             None
@@ -391,7 +384,7 @@ impl UnitAi {
         if id == -1 || id == self.current_target {
             return Ok(9);
         }
-        let _ = self.attack_slot(id, false, at, side, fx)?;
+        let _ = self.attack_slot(id, false, at, side, rng)?;
         Ok(10)
     }
 
@@ -461,10 +454,11 @@ impl UnitAi {
     pub(super) fn civilian_misc(
         &mut self,
         at: &Surroundings,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
     ) -> Result<(), GenieError> {
         if self.current_order == Some(OrderKind::Attack) && self.current_target == -1 {
-            self.stop_current(false, at, fx)?;
+            self.stop_current(false, at, side, rng)?;
         }
         Ok(())
     }
@@ -495,7 +489,6 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         let target = self.defend_target;
         let mut defended = None;
@@ -514,7 +507,7 @@ impl UnitAi {
             if ends {
                 self.defend_target = -1;
                 self.remove_target();
-                self.stop_current(true, at, fx)?;
+                self.stop_current(true, at, side, ai)?;
                 self.leave_patrol_timers(ai);
                 self.current_order = None;
                 return Ok(true);
@@ -522,7 +515,7 @@ impl UnitAi {
             defended = held;
         }
         let toward_it = self.current_action == Some(ActionKind::Move)
-            && self.top_target_live(at, fx, side)?.map_or(-1, |t| t.id) == self.defend_target;
+            && Self::top_target_live(at, side)?.map_or(-1, |t| t.id) == self.defend_target;
         if matches!(
             self.current_action,
             Some(ActionKind::Attack | ActionKind::MoveAside)
@@ -541,7 +534,7 @@ impl UnitAi {
         if reach * reach < gap {
             if let Some(t) = defended {
                 let range = self.desired_distance;
-                self.move_to_object(target, (t.state, t.class, t.position), range, fx);
+                self.move_to_object(target, (t.state, t.class, t.position), range, side, ai)?;
             } else {
                 let m = self.move_to(AiMove {
                     point: self.target_point,
@@ -549,7 +542,9 @@ impl UnitAi {
                     force: true,
                     walk: false,
                 });
-                fx.extend(m.map(Effect::Move));
+                if let Some(m) = m {
+                    side.effect_now(Effect::Move(m), self, ai)?;
+                }
             }
             return Ok(true);
         }
@@ -557,10 +552,10 @@ impl UnitAi {
             && let Some(attacker) = side.defended_attacker(target)?
         {
             if attacker != -1 {
-                let _ = self.attack_slot(attacker, true, at, side, fx)?;
+                let _ = self.attack_slot(attacker, true, at, side, ai)?;
                 return Ok(true);
             }
-            return self.process_idle(at, computer, ai, side, fx);
+            return self.process_idle(at, computer, ai, side);
         }
         Ok(false)
     }
@@ -577,14 +572,15 @@ impl UnitAi {
     pub(super) fn follow(
         &mut self,
         at: &Surroundings,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let target = match at.target {
             Some(t) if t.state <= 2 && t.visible => t,
             _ => {
                 self.defend_target = -1;
                 self.remove_target();
-                self.stop_current(true, at, fx)?;
+                self.stop_current(true, at, side, rng)?;
                 self.current_order = None;
                 return Ok(true);
             }
@@ -616,7 +612,7 @@ impl UnitAi {
         let range = self.desired_distance;
         if range * range < gap {
             let held = (target.state, target.class, target.position);
-            self.move_to_object(self.current_target, held, range, fx);
+            self.move_to_object(self.current_target, held, range, side, rng)?;
             return Ok(true);
         }
         Ok(false)
@@ -633,15 +629,21 @@ impl UnitAi {
         id: i32,
         (state, class, position): (u8, i16, [f32; 3]),
         range: f32,
-        fx: &mut Vec<Effect>,
-    ) {
-        fx.push(Effect::MoveToObject {
-            target: id,
-            state,
-            range,
-        });
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
+    ) -> Result<(), GenieError> {
+        side.effect_now(
+            Effect::MoveToObject {
+                target: id,
+                state,
+                range,
+            },
+            self,
+            rng,
+        )?;
         self.set_action(Some(ActionKind::Move));
         self.target_at(id, Some(i32::from(class)), position);
+        Ok(())
     }
 
     /// The boar's end of its full update: without a target it is no longer furious.

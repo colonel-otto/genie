@@ -26,9 +26,10 @@ TEST_FILE = re.compile(r"^(tests?|.*_tests)\.rs$")
 
 
 def first_sentence(text: str) -> str:
-    """The first sentence of a file's module doc (`//!` lines), on one line."""
+    """The first sentence of a file's module doc (`//!` lines, after a test-only file's
+    `#![cfg(test)]`), on one line."""
     lines = []
-    for line in text.split("\n"):
+    for line in text.lstrip().removeprefix("#![cfg(test)]").split("\n"):
         if line.startswith("//!"):
             body = line[3:].strip()
             if not body:

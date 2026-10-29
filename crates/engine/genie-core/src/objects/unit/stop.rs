@@ -7,7 +7,7 @@ use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
-use crate::unit_ai::{AfterOrder, AiCommand, Effect};
+use crate::unit_ai::{AiCommand, Effect};
 use crate::world::step::Step;
 
 impl Unit {
@@ -137,61 +137,56 @@ impl Unit {
         torn.let_go(c, self, by)
     }
 
-    /// Its unit AI's effects, in order; an order on a target runs at once, on the unit lent back to
-    /// its slot ([`World::order_on_target`]). Returns the full update's rest after that order
-    /// ([`Effect::AfterOrder`]), which the caller runs ([`Unit::ai_part`]).
+    /// A call its unit AI makes on it ([`Effect`]), at once where the AI makes it
+    /// ([`crate::unit_ai::UnitSide::effect_now`]: the unit holds its AI meanwhile); `class` is its
+    /// master's, which a move reads. An order on a target runs on the unit lent back to its slot
+    /// ([`World::order_on_target`]).
     ///
     /// # Errors
     ///
-    /// The first effect's.
+    /// The call's.
     ///
     /// [`World::order_on_target`]: crate::world::World::order_on_target
-    pub(crate) fn apply(
+    pub(crate) fn run_effect(
         &mut self,
-        effects: Vec<Effect>,
+        e: Effect,
         class: Option<i16>,
         c: &mut Step<'_>,
-    ) -> Result<Option<AfterOrder>, GenieError> {
-        let mut rest = None;
-        for e in effects {
-            match e {
-                Effect::Stop => self.stop_action(c)?,
-                Effect::CapHumanOrder(cap) => {
-                    self.last_human_order = self.last_human_order.min(cap);
-                    c.w.spatial.set_gait(self.id, self.gait());
-                }
-                Effect::Move(_) | Effect::RestorePatrol => {
-                    let class = class.ok_or(GenieError::unsupported(
-                        "an AI move of a master the slice does not have",
-                    ))?;
-                    let m = match e {
-                        Effect::Move(m) => Some(m),
-                        _ => self.restore_patrol(),
-                    };
-                    if let Some(m) = m {
-                        self.ai_move(m, class, c)?;
-                    }
-                }
-                Effect::OrderOnTarget(order) => {
-                    c.lend_at(self, |w, p, i| w.order_on_target(p, i, order))?;
-                }
-                Effect::AfterOrder(after) => rest = Some(after),
-                Effect::Command(command) => self.ai_command(command, c)?,
-                Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
-                Effect::Explore(point) => self.explore_to(point, c)?,
-                Effect::MoveToObject {
-                    target,
-                    state,
-                    range,
-                } => self.move_to_object((target, state), range, c)?,
+    ) -> Result<(), GenieError> {
+        match e {
+            Effect::Stop => self.stop_action(c),
+            Effect::CapHumanOrder(cap) => {
+                self.last_human_order = self.last_human_order.min(cap);
+                c.w.spatial.set_gait(self.id, self.gait());
+                Ok(())
             }
+            Effect::Move(_) | Effect::RestorePatrol => {
+                let class = class.ok_or(GenieError::unsupported(
+                    "an AI move of a master the slice does not have",
+                ))?;
+                let m = match e {
+                    Effect::Move(m) => Some(m),
+                    _ => self.restore_patrol(),
+                };
+                m.map_or(Ok(()), |m| self.ai_move(m, class, c))
+            }
+            Effect::OrderOnTarget(order) => {
+                c.lend_at(self, |w, p, i| w.order_on_target(p, i, order))
+            }
+            Effect::Command(command) => self.ai_command(command, c),
+            Effect::ChangeOwner(new) => self.ai_change_owner(new, c),
+            Effect::Explore(point) => self.explore_to(point, c),
+            Effect::MoveToObject {
+                target,
+                state,
+                range,
+            } => self.move_to_object((target, state), range, c),
         }
-        Ok(rest)
     }
 
     /// The unit's own command its unit AI gives ([`AiCommand`]), at once on the unit lent back
-    /// to its slot ([`Step::lend_at`]): a move off a footprint, `HuntObject`'s stop and hunt
-    /// command, `GatherObject`'s gather command, a work (slot 0x7e8), `BuildObject`'s build
+    /// to its slot ([`Step::lend_at`]): a move off a footprint, `HuntObject`'s hunt command,
+    /// `GatherObject`'s gather command, a work (slot 0x7e8), `BuildObject`'s build
     /// command or a drop elsewhere.
     ///
     /// # Errors

@@ -156,7 +156,7 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         let place = ([unit.position()[0], unit.position()[1]], class);
         if let Some(ai) = unit.ai.as_mut()
-            && ai.clear_notifies_at(world_time, place)?
+            && ai.clear_notifies_at(world_time, place, self.streams.get(Stream::Ai))?
         {
             // the completion's stop (slot 0xb0 with 1): the unit's stopAction at once
             self.command_stop(player, idx)?;

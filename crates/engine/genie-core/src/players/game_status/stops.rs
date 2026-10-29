@@ -95,9 +95,9 @@ impl World {
         if class == LIVESTOCK || ai.current_action == Some(ActionKind::HeroPower) || trading {
             return Ok(());
         }
-        let mut fx = Vec::new();
-        ai.stop_with(false, Some(place), &mut fx)?;
-        for e in fx {
+        let mut calls = crate::unit_ai::DeferredCalls::default();
+        ai.stop_with(false, Some(place), &mut calls, self.streams.get(Stream::Ai))?;
+        for e in calls.0 {
             match e {
                 Effect::Stop => self.command_stop(p, idx)?,
                 _ => return Err(GenieError::unsupported("a stop's effect not modelled")),

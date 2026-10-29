@@ -11,10 +11,9 @@ use crate::map::spatial::Placed;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::masters::player_master;
-use crate::objects::release::Releaser;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, WorldPicker, patrol_information, town_centre};
-use crate::unit_ai::{AiMove, Search, UnitAi};
+use crate::unit_ai::{Search, UnitAi};
 use crate::world::PETARD;
 
 impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
@@ -331,31 +330,44 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         self.unit.under_attack = value;
     }
 
-    fn stop(&mut self) -> Result<(), GenieError> {
-        let masters = self.c.w.masters.get(self.player);
-        let by = Releaser {
-            id: self.unit.id,
-            class: self
-                .unit
-                .master(&self.c.w.masters, self.player)
-                .map_or(-1, |m| m.class),
-            player: self.player,
-        };
-        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
-        self.unit.stop_with(
-            (&mut releases, &mut leaves),
-            by,
-            masters,
-            &self.c.w.graphics,
-            self.c.w.streams.get(Stream::Sprite),
-        )?;
-        self.torn_down((leaves, releases))
+    /// The unit's call its unit AI makes, at once ([`Unit::run_effect`]): the notifies held for
+    /// the AI are posted to it first (as the game posted them where they happened), then the
+    /// call runs on the unit holding the AI, with the AI stream the world's for it.
+    ///
+    /// [`Unit::run_effect`]: crate::objects::unit::Unit::run_effect
+    fn effect_now(
+        &mut self,
+        e: crate::unit_ai::Effect,
+        ai: &mut UnitAi,
+        rng: &mut Well512,
+    ) -> Result<(), GenieError> {
+        let held = self.c.side_notifies.take().unwrap_or_default();
+        let posted = held
+            .into_iter()
+            .try_for_each(|(n, state)| ai.post(n, state));
+        self.unit.ai = Some(std::mem::take(ai));
+        std::mem::swap(self.c.w.streams.get(Stream::Ai), rng);
+        let class = self
+            .unit
+            .master(&self.c.w.masters, self.c.player)
+            .ok()
+            .map(|m| m.class);
+        let done = posted.and_then(|()| self.unit.run_effect(e, class, self.c));
+        std::mem::swap(self.c.w.streams.get(Stream::Ai), rng);
+        self.c.side_notifies = Some(Vec::new());
+        *ai = self.unit.ai.take().ok_or_else(|| {
+            GenieError::unreachable("a call of the unit AI took the unit's AI")
+                .with("object", self.unit.id)
+        })?;
+        done
     }
 
-    fn cap_human_order(&mut self, cap: u32) -> Result<(), GenieError> {
-        self.unit.last_human_order = self.unit.last_human_order.min(cap);
-        self.c.w.spatial.set_gait(self.unit.id, self.unit.gait());
-        Ok(())
+    fn busy_now(&mut self) -> Result<bool, GenieError> {
+        Ok(self.unit.top_action_kind().is_some() || self.unit.unmodelled_action.is_some())
+    }
+
+    fn interruptible_now(&mut self) -> Result<bool, GenieError> {
+        self.unit.interruptible()
     }
 
     fn seek_unexplored(
@@ -440,57 +452,6 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
 
     fn builds(&self, foundation: i32) -> Result<bool, GenieError> {
         self.builds_on(foundation)
-    }
-
-    fn build_now(&mut self, foundation: i32) -> Result<(), GenieError> {
-        self.start_build_now(foundation)
-    }
-
-    fn hunt_now(&mut self, target: i32, ai: &UnitAi) -> Result<(), GenieError> {
-        self.start_hunt_now(target, ai)
-    }
-
-    /// The unit's slot 0x340 on its unit AI's move at once ([`Unit::ai_move_with`]; a Transport
-    /// on top sails there, [`Unit::transport_sail`]), its releases and its standing sprite as
-    /// the move after the update gives them.
-    ///
-    /// [`Unit::ai_move_with`]: crate::objects::unit::Unit::ai_move_with
-    /// [`Unit::transport_sail`]: crate::objects::unit::Unit::transport_sail
-    fn ai_move_now(&mut self, m: AiMove) -> Result<(), GenieError> {
-        let class = self.unit.master(&self.c.w.masters, self.player)?.class;
-        let by = Releaser {
-            id: self.unit.id,
-            class,
-            player: self.player,
-        };
-        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
-        let sails = self.unit.ai_move_with(
-            m,
-            (class, self.player),
-            (&mut releases, &mut leaves, by),
-            (
-                self.c.w.masters.get(self.player),
-                &self.c.w.graphics,
-                self.c.w.streams.get(Stream::Sprite),
-            ),
-        )?;
-        self.torn_down((leaves, releases))?;
-        if sails {
-            self.unit.transport_sail(
-                m.point,
-                (
-                    &self.c.w.spatial,
-                    &mut self.c.w.zones,
-                    &mut self.c.w.pathing,
-                ),
-                (
-                    self.c.w.masters.get(self.player),
-                    &self.c.w.graphics,
-                    self.c.w.streams.get(Stream::Sprite),
-                ),
-            )?;
-        }
-        Ok(())
     }
 
     fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {

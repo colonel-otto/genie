@@ -9,7 +9,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, PREY_CLASS, Pick,
     QueuedOrder, RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide,
-    VILLAGER_CLASS, alert_owner, closest_undiscovered_tile, top_target_after,
+    VILLAGER_CLASS, alert_owner, closest_undiscovered_tile,
 };
 
 impl UnitAi {
@@ -59,12 +59,11 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let attacker_id = n.caller;
         let known = self.attackers.binary_search(&attacker_id).is_ok();
         self.retries.clear();
-        if known && top_target_after(fx, side)?.is_some() {
+        if known && side.top_target_now()?.is_some() {
             return Ok(GO_ON);
         }
         // slot 0x48's notify and the alert 0x201 reach the same owner
@@ -72,7 +71,7 @@ impl UnitAi {
         let _ = self.add_attacker(attacker_id);
         side.set_under_attack(true);
         if n.p[1] < 1 {
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
         let Some(attacker) = Self::world_object(attacker_id, at, side)? else {
@@ -106,13 +105,13 @@ impl UnitAi {
             if at.speed < STILL {
                 return Ok(GO_ON);
             }
-            let ran = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            let ran = self.run_away(true, at, computer, ai_rng, side)?;
             return Ok(if ran { BREAK } else { GO_ON });
         }
         if self.best_this_update != attacker_id {
             return Ok(GO_ON);
         }
-        self.answer_attacker(&attacker, current, at, computer, ai_rng, side, fx)
+        self.answer_attacker(&attacker, current, at, computer, ai_rng, side)
     }
 
     /// [`UnitAi::damaged`]'s step 3 after the call for help: true when the unit ignores
@@ -198,16 +197,15 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let attacker_id = attacker.id;
         let reaches = side.reaches(attacker_id, at.weapon_range)?;
         let Some(target) = current else {
             if reaches {
-                return self.strike_back(attacker_id, at, ai_rng, side, fx);
+                return self.strike_back(attacker_id, at, ai_rng, side);
             }
             if self.current_action != Some(ActionKind::Move) {
-                let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+                let _ = self.run_away(true, at, computer, ai_rng, side)?;
             }
             return Ok(BREAK);
         };
@@ -216,11 +214,11 @@ impl UnitAi {
         }
         if !computer {
             if matches!(target.class, 3 | 27 | 52) {
-                return self.strike_back(attacker_id, at, ai_rng, side, fx);
+                return self.strike_back(attacker_id, at, ai_rng, side);
             }
             return Ok(GO_ON);
         }
-        self.computer_weighs(attacker, &target, at, ai_rng, side, fx)
+        self.computer_weighs(attacker, &target, at, ai_rng, side)
     }
 
     /// The damage case's end for a computer player's unit ([`UnitAi::damaged`]'s step 6) that
@@ -232,7 +230,6 @@ impl UnitAi {
         at: &Surroundings,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let attacker_id = attacker.id;
         if target.master == crate::world::WONDER
@@ -254,7 +251,7 @@ impl UnitAi {
                 self.save_patrol(side);
             }
             self.ask_for_help(attacker_id, at, true, side)?;
-            if self.attack_slot(attacker_id, true, at, side, fx)? {
+            if self.attack_slot(attacker_id, true, at, side, ai_rng)? {
                 self.leave_patrol_timers(ai_rng);
                 self.current_order = None;
             }
@@ -272,7 +269,7 @@ impl UnitAi {
         };
         // "my current target will take longer to kill"
         if !t.converts && (attacker_time < target_time || a.converts) {
-            let _ = self.strike_back(attacker_id, at, ai_rng, side, fx)?;
+            let _ = self.strike_back(attacker_id, at, ai_rng, side)?;
         }
         Ok(GO_ON)
     }
@@ -287,7 +284,6 @@ impl UnitAi {
         at: &Surroundings,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         if matches!(
             self.current_order,
@@ -295,7 +291,7 @@ impl UnitAi {
         ) {
             self.save_patrol(side);
         }
-        if self.attack_slot(attacker, true, at, side, fx)? {
+        if self.attack_slot(attacker, true, at, side, ai_rng)? {
             self.leave_patrol_timers(ai_rng);
             self.current_order = None;
         }
@@ -315,7 +311,7 @@ impl UnitAi {
         n: Notify,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let boar = at.class == 10 && at.combat_level == 1;
         if !boar
@@ -325,7 +321,7 @@ impl UnitAi {
             && self.stance == 0
         {
             // slot 0xb8 forced, by the type
-            let _ = self.attack_slot(n.p[0], false, at, side, fx)?;
+            let _ = self.attack_slot(n.p[0], false, at, side, rng)?;
         }
         Ok(GO_ON)
     }
@@ -344,7 +340,7 @@ impl UnitAi {
         &mut self,
         n: Notify,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let radius = [n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE];
         let off = side.off_footprint(n.p[2], radius)?;
@@ -356,8 +352,9 @@ impl UnitAi {
                     force: true,
                     walk: off.class != PREY_CLASS,
                 },
-                fx,
-            );
+                side,
+                rng,
+            )?;
         }
         if !off.computer
             && off.class == VILLAGER_CLASS
@@ -388,14 +385,18 @@ impl UnitAi {
     /// The caller's slot 0x340 is `FUN_1410866e0`, which always gives 1, but for classes 51 and
     /// 54 (`FUN_141216c50`, their packing), which it does not run. The move gives the unit its
     /// `MoveTo` at once: the update's later checks see it busy. True when it moves.
-    pub(super) fn move_aside(&mut self, m: AiMove, fx: &mut Vec<Effect>) -> bool {
+    pub(super) fn move_aside(
+        &mut self,
+        m: AiMove,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
+    ) -> Result<bool, GenieError> {
         if !m.force && self.current_action.is_some() {
-            return false;
+            return Ok(false);
         }
-        fx.push(Effect::Command(AiCommand::MoveAside(m)));
+        side.effect_now(Effect::Command(AiCommand::MoveAside(m)), self, rng)?;
         self.set_action(Some(ActionKind::MoveAside));
-        self.commanded = true;
-        true
+        Ok(true)
     }
 
     /// The action values of an explorer (the base handler's case 0x202, a bit test of the action
@@ -434,14 +435,13 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let action = self.current_action;
         if action != Some(ActionKind::AutoScout) {
             closest_undiscovered_tile()?;
         }
         if let Some([x, y]) = side.seek_unexplored(self, ai_rng)? {
-            let _ = self.explore_at(x, y, true, fx);
+            let _ = self.explore_at(x, y, true, side, ai_rng)?;
             self.last_action = self.current_action;
             self.current_action = action;
             return Ok(BREAK);
@@ -465,14 +465,14 @@ impl UnitAi {
                     return Ok(BREAK);
                 };
                 if self.current_action == Some(ActionKind::AutoScout) {
-                    let _ = self.explore_at(x, y, true, fx);
+                    let _ = self.explore_at(x, y, true, side, ai_rng)?;
                 }
                 self.current_action = action;
                 Ok(BREAK)
             }
             _ => {
                 self.remove_target();
-                self.stop_current(true, at, fx)?;
+                self.stop_current(true, at, side, ai_rng)?;
                 Ok(GO_ON)
             }
         }

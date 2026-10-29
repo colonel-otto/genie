@@ -1,0 +1,297 @@
+#![cfg(test)]
+//! The tests' sides that record the unit's calls ([`UnitSide::effect_now`]): a list of them
+//! standing for a side without a unit, and [`With`] around another test side.
+
+use crate::GenieError;
+use crate::math::rng::Well512;
+use crate::unit_ai::{
+    AiCommand, Attacked, Duel, Effect, Found, Gatherable, OffFootprint, PatrolPath, ResourceSearch,
+    Search, Seeker, Surroundings, TargetFlags, UnitAi, UnitCommand, UnitSeen, UnitSide,
+};
+
+/// What calls leave of the unit's top action's target ([`top_after`]).
+#[derive(Clone, Copy)]
+enum TopLeft {
+    /// None of them replaces the actions.
+    Untouched,
+    /// A stop, or an action without an object.
+    NoObject,
+    /// An action on the object.
+    On(i32),
+}
+
+/// What the calls `fx` leave of the unit's top action, the last that replaces its actions
+/// deciding: a stop leaves none, a move to a point or an explore one without an object, a move
+/// to an object, a hunt, gather, build, work or drop one on it.
+fn top_after(fx: &[Effect]) -> TopLeft {
+    fx.iter()
+        .rev()
+        .find_map(|e| match *e {
+            Effect::Stop
+            | Effect::Move(_)
+            | Effect::Command(AiCommand::MoveAside(_))
+            | Effect::Explore(_)
+            | Effect::RestorePatrol => Some(TopLeft::NoObject),
+            Effect::MoveToObject { target, .. }
+            | Effect::Command(
+                AiCommand::HuntObject(target)
+                | AiCommand::GatherObject(target)
+                | AiCommand::BuildObject(target)
+                | AiCommand::DropElsewhere { site: target, .. }
+                | AiCommand::WorkOn { target, .. },
+            ) => Some(TopLeft::On(target)),
+            Effect::CapHumanOrder(_) | Effect::OrderOnTarget(_) | Effect::ChangeOwner(_) => None,
+        })
+        .unwrap_or(TopLeft::Untouched)
+}
+
+/// Whether the calls `fx` leave the unit an action: the last that changes its actions decides
+/// (a stop leaves none); None when none of them changes them.
+fn busy_after(fx: &[Effect]) -> Option<bool> {
+    fx.iter().rev().find_map(|e| match e {
+        Effect::Stop => Some(false),
+        Effect::CapHumanOrder(_) | Effect::OrderOnTarget(_) | Effect::ChangeOwner(_) => None,
+        _ => Some(true),
+    })
+}
+
+const NO_WORLD: GenieError = GenieError::unsupported("a test side without the world");
+
+/// A side without a unit or the world that keeps the unit's calls in their order; the unit's
+/// action list is as they leave it.
+impl UnitSide for Vec<Effect> {
+    fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+        Err(NO_WORLD)
+    }
+
+    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+        Err(NO_WORLD)
+    }
+
+    fn set_under_attack(&mut self, _: bool) {}
+
+    fn effect_now(&mut self, e: Effect, _: &mut UnitAi, _: &mut Well512) -> Result<(), GenieError> {
+        self.push(e);
+        Ok(())
+    }
+
+    fn busy_now(&mut self) -> Result<bool, GenieError> {
+        Ok(busy_after(self).unwrap_or(false))
+    }
+
+    fn interruptible_now(&mut self) -> Result<bool, GenieError> {
+        Ok(true)
+    }
+
+    fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
+        Ok(match top_after(self) {
+            TopLeft::On(target) => Some(target),
+            TopLeft::NoObject | TopLeft::Untouched => None,
+        })
+    }
+
+    fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+        Err(NO_WORLD)
+    }
+
+    fn seek_unexplored(
+        &mut self,
+        _: &UnitAi,
+        _: &mut Well512,
+    ) -> Result<Option<[i32; 2]>, GenieError> {
+        Err(NO_WORLD)
+    }
+
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+        Err(NO_WORLD)
+    }
+
+    fn make_scout_map(&mut self) -> Result<(), GenieError> {
+        Err(NO_WORLD)
+    }
+
+    fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+        None
+    }
+}
+
+/// A test side `side` whose unit's calls are kept in `fx`, in their order; the unit's action
+/// list is as they leave it, else as a command `side` took (an attack, a unit command, a wait
+/// for a foundation) leaves it, else as the update read it at its start (`busy`,
+/// `interruptible`, the top action's target `top`).
+pub(super) struct With<'s> {
+    side: &'s mut dyn UnitSide,
+    fx: &'s mut Vec<Effect>,
+    busy: bool,
+    interruptible: bool,
+    top: Option<i32>,
+    commanded: bool,
+}
+
+impl<'s> With<'s> {
+    /// `side` keeping the calls in `fx`, with a unit without an action.
+    pub(super) fn new(side: &'s mut dyn UnitSide, fx: &'s mut Vec<Effect>) -> Self {
+        Self {
+            side,
+            fx,
+            busy: false,
+            interruptible: false,
+            top: None,
+            commanded: false,
+        }
+    }
+
+    /// [`With::new`] with a unit whose action list stands as `at` read it.
+    pub(super) fn at(
+        side: &'s mut dyn UnitSide,
+        fx: &'s mut Vec<Effect>,
+        at: &Surroundings,
+    ) -> Self {
+        Self {
+            busy: at.busy,
+            interruptible: at.interruptible,
+            top: at.top_target.map(|t| t.id),
+            ..Self::new(side, fx)
+        }
+    }
+}
+
+impl UnitSide for With<'_> {
+    fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
+        self.side.closest(search)
+    }
+
+    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<Attacked, GenieError> {
+        let attacked = self.side.attack(target, force, ai)?;
+        self.commanded |= attacked.attacks;
+        Ok(attacked)
+    }
+
+    fn set_under_attack(&mut self, value: bool) {
+        self.side.set_under_attack(value);
+    }
+
+    fn effect_now(&mut self, e: Effect, _: &mut UnitAi, _: &mut Well512) -> Result<(), GenieError> {
+        self.fx.push(e);
+        Ok(())
+    }
+
+    fn busy_now(&mut self) -> Result<bool, GenieError> {
+        Ok(busy_after(self.fx).unwrap_or(self.commanded || self.busy))
+    }
+
+    fn interruptible_now(&mut self) -> Result<bool, GenieError> {
+        Ok(self.interruptible || self.fx.contains(&Effect::Stop))
+    }
+
+    fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
+        self.side.table_drop_site()
+    }
+
+    fn builds(&self, foundation: i32) -> Result<bool, GenieError> {
+        self.side.builds(foundation)
+    }
+
+    fn may_attack(
+        &mut self,
+        target: i32,
+        seeker: &Seeker,
+    ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+        self.side.may_attack(target, seeker)
+    }
+
+    fn seek_unexplored(
+        &mut self,
+        ai: &UnitAi,
+        rng: &mut Well512,
+    ) -> Result<Option<[i32; 2]>, GenieError> {
+        self.side.seek_unexplored(ai, rng)
+    }
+
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+        self.side.seek_beyond_sight(rng)
+    }
+
+    fn make_scout_map(&mut self) -> Result<(), GenieError> {
+        self.side.make_scout_map()
+    }
+
+    fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+        self.side.patrol_information()
+    }
+
+    fn foundation_search(&mut self) -> Result<i32, GenieError> {
+        self.side.foundation_search()
+    }
+
+    fn reaches(&mut self, target: i32, range: f32) -> Result<bool, GenieError> {
+        self.side.reaches(target, range)
+    }
+
+    fn off_footprint(&mut self, site: i32, radius: [f32; 2]) -> Result<OffFootprint, GenieError> {
+        self.side.off_footprint(site, radius)
+    }
+
+    fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, GenieError> {
+        self.side.can_stand(point)
+    }
+
+    fn call_for_help(&mut self, attacker: i32) -> Result<(), GenieError> {
+        self.side.call_for_help(attacker)
+    }
+
+    fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
+        self.side.seen_unit(id)
+    }
+
+    fn duel(&mut self, other: i32) -> Result<Duel, GenieError> {
+        self.side.duel(other)
+    }
+
+    fn harmless(&mut self, attacker: i32) -> Result<bool, GenieError> {
+        self.side.harmless(attacker)
+    }
+
+    fn defended_attacker(&mut self, target: i32) -> Result<Option<i32>, GenieError> {
+        self.side.defended_attacker(target)
+    }
+
+    fn closest_resource(
+        &mut self,
+        search: ResourceSearch,
+    ) -> Result<Option<Gatherable>, GenieError> {
+        self.side.closest_resource(search)
+    }
+
+    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, GenieError> {
+        self.side.master_class(player, master)
+    }
+
+    fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {
+        let waits = self.side.wait_solidify(target)?;
+        self.commanded |= waits;
+        Ok(waits)
+    }
+
+    fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
+        match top_after(self.fx) {
+            TopLeft::On(target) => Ok(Some(target)),
+            TopLeft::NoObject => Ok(None),
+            TopLeft::Untouched => Ok(self.side.top_target_now()?.or(self.top)),
+        }
+    }
+
+    fn target_flags(&mut self, id: i32) -> Result<Option<TargetFlags>, GenieError> {
+        self.side.target_flags(id)
+    }
+
+    fn command(&mut self, command: UnitCommand) -> Result<bool, GenieError> {
+        let takes = self.side.command(command)?;
+        self.commanded |= takes;
+        Ok(takes)
+    }
+
+    fn group_attack_stop(&mut self) -> Result<(), GenieError> {
+        self.side.group_attack_stop()
+    }
+}

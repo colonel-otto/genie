@@ -3,8 +3,7 @@
 
 use crate::GenieError;
 use crate::math::fmath::Vec3;
-use crate::unit_ai::AiCommand;
-use crate::unit_ai::{Effect, Search, UnitSide};
+use crate::unit_ai::Search;
 use genie_diff::Diff;
 
 /// What a [`Search`] answers: the object picked (−1 for none) and whether the lists it read hold
@@ -372,71 +371,6 @@ pub(super) const CLASS_3: i16 = 3;
 pub(super) const BUILDING_KIND: u8 = 80;
 /// The combat type (`0x46`), from which on the full update's tail reads a target's `+0x924`.
 pub(super) const COMBAT_KIND: u8 = 70;
-
-/// Whether the effect replaces or ends the unit's actions.
-pub(super) const fn changes_actions(e: &Effect) -> bool {
-    !matches!(
-        e,
-        Effect::CapHumanOrder(_) | Effect::AfterOrder(_) | Effect::ChangeOwner(_)
-    )
-}
-
-/// Slot 400 as the full update's tail reads it: the target of the unit's top action after the
-/// [`Effect`]s pending in `fx`, the last that replaces its actions deciding (a stop leaves none,
-/// slot 0x3c0; a move to a point, slots 0x340, 0x148, `restorePatrolInformation`, or an explore,
-/// slot 0x398, an action without an object; a move to an object, slot 0x348, holds it, as do a
-/// hunt, gather and build, slots 0x360, 0x368, 0x380); without one the unit's now
-/// ([`UnitSide::top_target_now`]).
-pub(super) fn top_target_after(
-    fx: &[Effect],
-    side: &mut dyn UnitSide,
-) -> Result<Option<i32>, GenieError> {
-    match PendingTop::of(fx) {
-        PendingTop::Replaced(target) => Ok(target),
-        PendingTop::Unchanged => side.top_target_now(),
-    }
-}
-
-/// What the [`Effect`]s pending in an update leave of the unit's top action
-/// ([`top_target_after`]'s rule).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PendingTop {
-    /// None of them replaces its actions.
-    Unchanged,
-    /// The last that replaces them leaves this target (None: no action, or one without an
-    /// object).
-    Replaced(Option<i32>),
-}
-
-impl PendingTop {
-    /// The top action's target the effects `fx` leave.
-    pub(super) fn of(fx: &[Effect]) -> Self {
-        for e in fx.iter().rev() {
-            match *e {
-                Effect::Stop
-                | Effect::Move(_)
-                | Effect::Command(AiCommand::MoveAside(_))
-                | Effect::Explore(_)
-                | Effect::RestorePatrol => return Self::Replaced(None),
-                Effect::MoveToObject { target, .. }
-                | Effect::Command(
-                    AiCommand::HuntObject(target)
-                    | AiCommand::GatherObject(target)
-                    | AiCommand::BuildObject(target)
-                    | AiCommand::DropElsewhere { site: target, .. }
-                    | AiCommand::WorkOn { target, .. },
-                ) => {
-                    return Self::Replaced(Some(target));
-                }
-                Effect::CapHumanOrder(_)
-                | Effect::OrderOnTarget(_)
-                | Effect::AfterOrder(_)
-                | Effect::ChangeOwner(_) => {}
-            }
-        }
-        Self::Unchanged
-    }
-}
 
 /// A building on its make action without a missile and with at most this firepower forgets its
 /// target (`DAT_14330eb8c`).

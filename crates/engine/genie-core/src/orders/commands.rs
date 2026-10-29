@@ -60,9 +60,9 @@ impl World {
             let unit = &mut self.players[p].objects[idx];
             let place = ([unit.position()[0], unit.position()[1]], class);
             let ai = unit.ai.as_mut().expect("checked above");
-            let mut fx = Vec::new();
-            set_stance(ai, state, place, &mut fx)?;
-            for e in fx {
+            let mut calls = crate::unit_ai::DeferredCalls::default();
+            set_stance(ai, state, place, &mut calls, self.streams.get(Stream::Ai))?;
+            for e in calls.0 {
                 match e {
                     crate::unit_ai::Effect::Stop => self.command_stop(p, idx)?,
                     _ => {
@@ -176,15 +176,15 @@ impl World {
                 ready: true,
                 target_type: -1,
             };
-            let mut fx = Vec::new();
+            let mut calls = crate::unit_ai::DeferredCalls::default();
             ai.take_order_now(
                 state,
                 order,
                 ([position[0], position[1]], class),
                 self.streams.get(Stream::Ai),
-                &mut fx,
+                &mut calls,
             )?;
-            for e in fx {
+            for e in calls.0 {
                 match e {
                     Effect::Stop => self.command_stop(p, idx)?,
                     Effect::Explore(point) => self.command_explore(p, idx, point)?,

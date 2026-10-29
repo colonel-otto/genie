@@ -96,7 +96,8 @@ pub(crate) use self::ids::{alert_owner, helper_answers};
 pub use self::order_kind::OrderKind;
 pub(crate) use self::side::UNMODELLED_COMMAND;
 pub use self::side::{
-    Gatherable, NO_POINT, Named, OffFootprint, ResourceSearch, TargetFlags, UnitCommand, UnitSide,
+    DeferredCalls, Gatherable, NO_POINT, Named, OffFootprint, ResourceSearch, TargetFlags,
+    UnitCommand, UnitSide,
 };
 pub use self::surroundings::{
     AiMove, Duel, Found, GroupState, Home, Seen, Surroundings, TopTarget, UnitSeen, flood_search,
@@ -104,8 +105,7 @@ pub use self::surroundings::{
 };
 use self::surroundings::{
     BUILDING_KIND, CLASS_3, CLASS_10, CLASS_18, CLASS_20, CLASS_52, COMBAT_KIND, LiveTop,
-    PATROL_TURN_REACH, PendingTop, SINGLE_VOLLEY, changes_actions, group_lets_idle,
-    top_target_after,
+    PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_idle,
 };
 #[cfg(test)]
 use crate::math::rng::Well512;
@@ -190,10 +190,6 @@ pub const NO_LONGER_ON_ME: i32 = ai_kinds::NOTIFY_NO_LONGER_ON_ME;
 pub const SENT_OFF: i32 = 0x216;
 /// A unit sent off a footprint with a group (`FUN_14123bb20`'s group move).
 pub const SENT_OFF_GROUP: i32 = 0x21b;
-/// An attack command after effects the unit AI's run left pending that the slice cannot run
-/// before it (a hunt command, a move, …): their unit parts would precede the command.
-pub(crate) const PENDING_BEFORE_ATTACK: GenieError =
-    GenieError::unsupported("an attack command after a stop with other effects pending");
 /// `0x20f`: a missile's warning, which a shot whose blast does not spare friends sends its
 /// target when a computer player owns it (`FUN_141081020`).
 const MISSILE_WARNING: i32 = 0x20f;
@@ -326,7 +322,8 @@ impl QueuedOrder {
     }
 }
 
-/// What the unit AI does to its unit, in the order it does it.
+/// A call the unit AI makes on its unit, at once where the game's AI calls the unit's slot
+/// ([`UnitSide::effect_now`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Effect {
     /// stopAction (the unit's slot 0x3c0, `FUN_14108c160`): its action list goes
@@ -338,12 +335,9 @@ pub enum Effect {
     /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
     CapHumanOrder(u32),
     /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
-    /// then the order's priority becomes the AI's (`World::order_on_target`, at once on the
-    /// unit back in its slot).
+    /// then the order's priority becomes the AI's (`World::order_on_target`, on the unit back in
+    /// its slot); the full update's rest then reads what it gave the AI ([`AfterOrder`]).
     OrderOnTarget(QueuedOrder),
-    /// The full update's tail that reads what the order on a target before it gave the AI
-    /// ([`UnitAi::after_order`]), which the unit's update runs next, in the same update.
-    AfterOrder(AfterOrder),
     /// The unit's explore (slot 0x398, `FUN_141084db0`, with its argument 4 set) to the point
     /// (x, y): its Explore takes the point (slot 0x48), else a new Explore to it (`FUN_140a87d30`
     /// at the unit's height) replaces its actions (`FUN_140a98620`, slot 0x808).
@@ -363,10 +357,10 @@ pub enum Effect {
     },
     /// The unit's ownership change (its slot 0x70, `FUN_14120f800` for a combat unit,
     /// `FUN_1411cd860` for a building) to the player, which the artifact's processIdle asks of
-    /// it (`FUN_140c1e410`); the unit runs it as it applies the effects.
+    /// it (`FUN_140c1e410`); the unit runs it at once.
     ChangeOwner(usize),
     /// A command of the unit's own that the AI gives it ([`AiCommand`]), which the unit runs at
-    /// once as it applies the effects.
+    /// once.
     Command(AiCommand),
     /// `restorePatrolInformation`'s unit part (`FUN_140c5e5b0`): the unit's own waypoints go
     /// (slot 0x450) and become the saved patrol's points (slot 0x448 each), and the unit moves to
@@ -375,15 +369,14 @@ pub enum Effect {
 }
 
 /// A command of the unit's own that its unit AI gives ([`Effect::Command`]): one of the unit's
-/// slots, which the unit runs at once on itself lent back to its slot as it applies the
-/// effects, in their order (a later one's stop tears down the action an earlier one made).
+/// slots, which the unit runs at once on itself lent back to its slot.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AiCommand {
     /// Slot 0x148 (`FUN_140c4d0d0`) forced: the unit's slot 0x340 to the point
     /// ([`crate::world::World::move_aside`]).
     MoveAside(AiMove),
-    /// `HuntObject`'s unit part (`FUN_140c4e220`): the unit's `stopAction` (the AI's slot 0xb0 with
-    /// 1, slot 0x3c0), then its hunt command on the target (object slot 0x360,
+    /// `HuntObject`'s unit part (`FUN_140c4e220`), after the AI's stop (slot 0xb0 with 1, the
+    /// unit's `stopAction` at once): its hunt command on the target (object slot 0x360,
     /// `FUN_1412151f0`, forced; [`crate::world::World::hunt_command`]).
     HuntObject(i32),
     /// `GatherObject`'s unit part (slot 0xd0, `FUN_140c4dd50`, forced): the unit's gather command
@@ -424,15 +417,6 @@ pub struct AfterOrder {
     pub busy: bool,
     /// The unit's group as the update read it ([`Surroundings::group`]).
     pub group: Option<GroupState>,
-}
-
-/// The first move among a full update's effects.
-#[must_use]
-pub fn first_move(effects: &[Effect]) -> Option<AiMove> {
-    effects.iter().find_map(|e| match e {
-        Effect::Move(m) => Some(*m),
-        _ => None,
-    })
 }
 
 /// A unit AI's saved patrol (`+0x1c0`, a `Path` of its own): a copy of its unit's top path
@@ -544,16 +528,11 @@ pub struct UnitAi {
     pub processing: bool,
     /// The buffered notifies (the game's buffer is global; one unit AI processes at a time).
     pub buffered: Vec<Notify>,
-    /// This update gave the unit an action of its own (the attack command, from `AttackObject`):
-    /// its action list is no longer as [`Surroundings::busy`] read it. Not saved: genie's flag
-    /// within one update, cleared at its start.
+    /// This update's order queue ran an order on a target ([`Effect::OrderOnTarget`]): the update
+    /// ends there and its rest runs with what the order gave the AI ([`AfterOrder`]). Not saved:
+    /// genie's flag within one update, cleared at its start.
     #[diff(unsaved)]
-    pub commanded: bool,
-    /// This update's stop ran at once, ahead of a command that runs at once
-    /// ([`UnitAi::run_pending`]): the action list emptied as a pending [`Effect::Stop`] would.
-    /// Not saved: genie's flag within one update, cleared at its start.
-    #[diff(unsaved)]
-    pub stopped_at_once: bool,
+    pub ordered_on_target: bool,
     /// `+0xc0`, the attackers (count `+0xc8`): a set of object ids kept sorted
     /// (`FUN_140b43f30`), which a boar's damage notify adds to and the full update prunes; the
     /// save's `numberUnits` and `tempInt`.
@@ -609,5 +588,7 @@ pub struct Hunted {
 /// The engine's error ([`genie_error::GenieError`]), here for the modules' imports.
 use crate::GenieError;
 
+#[cfg(test)]
+mod test_sides;
 #[cfg(test)]
 mod tests;

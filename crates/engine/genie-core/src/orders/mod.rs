@@ -473,13 +473,14 @@ fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
 /// A unit AI's slot 0x1c0 (`FUN_140c64d50`): the stance (`+0x1a9`) takes `state` and the stance's
 /// place (`+0x1ac`, `+0x1b0`) the unit's (`place`, with its master's class); `NoAttack` (3) on a
 /// unit AI that attacks (its order 700 or its action 600) stops the action (slot 0xb0 with 1,
-/// [`crate::unit_ai::UnitAi::stop_with`], whose stopAction the caller runs) and forgets the
-/// target (`FUN_140c5e1e0`).
+/// [`crate::unit_ai::UnitAi::stop_with`], whose stopAction goes to the unit's `side`, with the AI
+/// stream `rng`) and forgets the target (`FUN_140c5e1e0`).
 pub(crate) fn set_stance(
     ai: &mut crate::unit_ai::UnitAi,
     state: u8,
     place: ([f32; 2], i16),
-    fx: &mut Vec<crate::unit_ai::Effect>,
+    side: &mut dyn crate::unit_ai::UnitSide,
+    rng: &mut crate::math::rng::Well512,
 ) -> Result<(), GenieError> {
     ai.stance = state;
     ai.state_position = place.0;
@@ -487,7 +488,7 @@ pub(crate) fn set_stance(
         && (ai.current_order == Some(OrderKind::Attack)
             || ai.current_action == Some(ActionKind::Attack))
     {
-        ai.stop_with(true, Some(place), fx)?;
+        ai.stop_with(true, Some(place), side, rng)?;
         ai.remove_target();
     }
     Ok(())

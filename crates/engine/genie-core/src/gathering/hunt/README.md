@@ -40,12 +40,11 @@ hunts its own livestock can lead the animal toward the drop site first (state 10
 | [`start.rs`](start.rs) | The Hunt's start, its chase and retarget, a move's target and the walk to a point (states 11 and 15). |
 | [`tests.rs`](tests.rs) | Tests. |
 | [`unit.rs`](unit.rs) | A hunter's search, its walk after a drop and its drop-off. |
-| [`unit_ai_side.rs`](unit_ai_side.rs) | The hunt the unit AI commands while it runs (`crate::unit_ai::UnitSide::hunt_now` through its view, `UnitView`): `HuntObject`'s unit part at once and its plan. |
 | [`update.rs`](update.rs) | One update (slot 6, `0x140ac7a00`), a target lost on the way and the attack on live livestock (state 12). |
 <!-- /files -->
 
 ## How it connects
 
 <!-- uses -->
-- Uses: [`combat`](../../combat/), [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`orders`](../../orders/), [`unit_ai`](../../unit_ai/), [`world`](../../world/).
+- Uses: [`combat`](../../combat/), [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`unit_ai`](../../unit_ai/), [`world`](../../world/).
 <!-- /uses -->

@@ -25,7 +25,6 @@ pub(crate) mod next_tree;
 mod sprites;
 mod start;
 pub(crate) mod unit;
-mod unit_ai_side;
 mod update;
 
 #[cfg(test)]

@@ -1,29 +1,13 @@
-//! What the unit AI asks of a build while it runs (through its view, [`UnitView`]): the build
-//! command at once, the builder's search for another foundation, and a unit's spot off a
-//! foundation's footprint.
+//! What the unit AI asks of a build while it runs (through its view, [`UnitView`]): whether the
+//! build command takes a foundation, the builder's search for another foundation, and a unit's
+//! spot off a foundation's footprint.
 
 use crate::GenieError;
-use crate::objects::masters::Master;
-use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
 use crate::unit_ai::world_view::owner_view;
-
-/// What slot 0x380 finds on a foundation without a Build on top ([`UnitView::build_found`]).
-struct BuildFound {
-    /// The task slot 0x820 found.
-    task: crate::objects::masters::Task,
-    /// The master the switch gives; None keeps the unit's own.
-    switch: Option<Master>,
-    /// The unit's master, a copy: the switch changes the unit, which may hold it.
-    own: Master,
-    /// The foundation's master's radius.
-    site_radius: [f32; 2],
-    /// The foundation's place.
-    at: [f32; 3],
-}
 
 impl UnitView<'_, '_> {
     /// Slot 0x380's answer (forced) on `foundation` without its effects, which `BuildObject`
@@ -37,7 +21,7 @@ impl UnitView<'_, '_> {
         if self.unit.top_action_kind() == Some(crate::construction::build::BUILD) {
             return Ok(true);
         }
-        Ok(self.build_found(foundation)?.is_some())
+        self.build_found(foundation)
     }
 
     /// Object `id` as slot 0x380 finds it (`FUN_1415417a0`): the unit, the player's live list,
@@ -50,15 +34,14 @@ impl UnitView<'_, '_> {
         owner_view(&self.c.w.players, self.c.player, self.new_owner).find(id)
     }
 
-    /// Slot 0x380's search without a Build on top: the foundation (None when the world does not
+    /// Slot 0x380's search without a Build on top: the foundation (false when the world does not
     /// hold it), then slot 0x820 with any action type and the switch ([`task_search`] on the
-    /// foundation and its main building); None without a task.
-    fn build_found(&self, foundation: i32) -> Result<Option<BuildFound>, GenieError> {
+    /// foundation and its main building); false without a task.
+    fn build_found(&self, foundation: i32) -> Result<bool, GenieError> {
         let find = |id: i32| self.find_object(id);
-        let Some((fp, f)) = find(foundation) else {
-            return Ok(None);
+        let Some((_, f)) = find(foundation) else {
+            return Ok(false);
         };
-        let site_radius = f.master(&self.c.w.masters, fp)?.radius;
         let (Some(t), Some(general)) = (
             task_target_with(foundation, 1, &find, &self.c.w.masters)?,
             task_target_with(foundation, 2, &find, &self.c.w.masters)?,
@@ -93,66 +76,7 @@ impl UnitView<'_, '_> {
         };
         // slot 0x820's point: the foundation's place
         let terrain = point_terrain(self.c.w.spatial.terrain.as_ref(), f.position());
-        let found = task_search(masters, &actor, &t, &general, terrain, -1, &dip)?;
-        Ok(found.map(|(task, switch)| BuildFound {
-            task,
-            switch: switch.cloned(),
-            own: own.clone(),
-            site_radius,
-            at: f.position(),
-        }))
-    }
-
-    /// The build command at once ([`World::build_command`]'s path without a Build on top, which
-    /// a stop before it leaves none): slot 0x820 with any action type and the switch
-    /// ([`UnitView::build_found`]) finds a task, else nothing (slot 0x380's 0); the switch (slot
-    /// 0x90 with 0: the actions go, then the master change at once,
-    /// [`UnitView::switch_unit_master`]); a Build on the task (`FUN_140aad4e0`, the footprints'
-    /// gap, the task's range and work value, the builder's work rate with the unit's powerup)
-    /// takes the foundation (slot 0x178) and replaces the actions (slot 0x808). A Build on top
-    /// (its slot 0x48) is not modelled here.
-    pub(crate) fn start_build_now(&mut self, foundation: i32) -> Result<(), GenieError> {
-        use crate::construction::build::{BUILD, BuildAction, BuildTask};
-        if self.unit.top_action_kind() == Some(BUILD) {
-            return Err(crate::unit_ai::PENDING_BEFORE_ATTACK);
-        }
-        let Some(BuildFound {
-            task,
-            switch,
-            own,
-            site_radius,
-            at: f_at,
-        }) = self.build_found(foundation)?
-        else {
-            return Ok(());
-        };
-        let player = self.player;
-        let unit = &*self.unit;
-        let builder = switch.as_ref().unwrap_or(&own);
-        let gap =
-            crate::movement::footprint_gap(unit.position(), builder.radius, f_at, site_radius);
-        let build = BuildAction::start(
-            foundation,
-            f_at,
-            gap,
-            BuildTask::of(&task, builder.work_rate + unit.work_rate_powerup),
-        );
-        let id = unit.id;
-        if let Some(next) = &switch {
-            self.switch_unit_master(&own, next.id)?;
-        }
-        let by = Releaser {
-            id,
-            class: builder.class,
-            player,
-        };
-        self.take(foundation, by);
-        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
-        self.unit
-            .tear_down_actions(&mut releases, &mut leaves, by)?;
-        self.torn_down((leaves, releases))?;
-        self.unit.actions.set_build(Some(build));
-        Ok(())
+        Ok(task_search(masters, &actor, &t, &general, terrain, -1, &dip)?.is_some())
     }
 
     /// `FUN_140c1c7c0`: the flood ([`crate::unit_ai::flood_search`]) from the unit's tile over the

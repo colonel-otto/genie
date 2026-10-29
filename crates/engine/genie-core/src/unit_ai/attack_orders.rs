@@ -3,11 +3,10 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ARTIFACT_AI, CIVILIAN, Effect, Notify, PENDING_BEFORE_ATTACK, QueuedOrder, SIEGE_AI,
-    SIEGE_TOWER_AI, Surroundings, UnitAi, UnitSide, civilian_may_attack, lion_may_attack,
+    ARTIFACT_AI, CIVILIAN, Notify, QueuedOrder, SIEGE_AI, SIEGE_TOWER_AI, Surroundings, UnitAi,
+    UnitSide, civilian_may_attack, lion_may_attack,
 };
 
 impl UnitAi {
@@ -28,9 +27,9 @@ impl UnitAi {
         order: QueuedOrder,
         keep_from: Option<i32>,
         place: Option<([f32; 2], i16)>,
-        world: Option<(&Surroundings, &mut dyn UnitSide, bool)>,
+        world: Option<(&Surroundings, bool)>,
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
         if let Some(unit) = keep_from
             && let Some(current) = self.current_order
@@ -52,14 +51,14 @@ impl UnitAi {
         self.insert_order(order, true);
         if order.order != OrderKind::AttackRoundup {
             self.remove_target();
-            self.stop_with(true, place, fx)?;
+            self.stop_with(true, place, side, ai)?;
         }
         match &world {
-            Some((at, _, _)) => self.end_notifies(0, at, fx)?,
+            Some((at, _)) => self.end_notifies(0, at, side, ai)?,
             None => self.clear_notifies(0)?,
         }
         let front = self.orders[0];
-        if self.process_order(&front, world, place, ai, fx)? != 0xe {
+        if self.process_order(&front, world, place, ai, side)? != 0xe {
             let _ = self.orders.remove(0);
         }
         Ok(())
@@ -90,7 +89,6 @@ impl UnitAi {
         any: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
             return Ok(false);
@@ -98,7 +96,7 @@ impl UnitAi {
         let Some((class, position)) = self.attack_check(target, any, at, side)? else {
             return Ok(false);
         };
-        if !self.attack_command(target, force, at, side, fx)? {
+        if !self.attack_command(target, force, at, side)? {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Attack));
@@ -146,77 +144,21 @@ impl UnitAi {
     }
 
     /// The unit's attack command (slot 0x338, [`UnitSide::attack`]) on `target`, `force`d or not,
-    /// as `AttackObject`, `attackRoundupObject` and seek and destroy give it: a stop the
-    /// processing made before (slot 0x3c0, a pending [`Effect::Stop`]) emptied the action list
-    /// before the command fills it, so it runs first ([`UnitSide::stop`]), with the caps on the
-    /// last human order time before it ([`UnitSide::cap_human_order`]) in their order. The notifies the
-    /// command posts (the unit's slot 0x328 -> the AI's slot 0x38) go into the queue, or the
-    /// buffer while it is full. True when the unit attacks: it then holds an action of its own
-    /// ([`UnitAi::commanded`]).
+    /// as `AttackObject`, `attackRoundupObject` and seek and destroy give it, at once. The
+    /// notifies the command posts (the unit's slot 0x328 -> the AI's slot 0x38) go into the
+    /// queue, or the buffer while it is full. True when the unit attacks.
     pub(super) fn attack_command(
         &mut self,
         target: i32,
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        self.run_pending(side, fx)?;
         let attacked = side.attack(target, force, self)?;
         for (kind, p) in attacked.posted {
             self.post(Notify::own(at.id, kind, p), at.state)?;
         }
-        if attacked.attacks {
-            self.commanded = true;
-        }
         Ok(attacked.attacks)
-    }
-
-    /// The effects the AI's processing left pending before a command of the unit that runs at
-    /// once (slot 0x338's attack, 0x388's wait for a foundation, 0x378's repair, 0x3a0's enter,
-    /// 0x3a8's unload): a pending stop (slot 0x3c0, [`Effect::Stop`]) emptied the action list
-    /// before the command fills it, so the effects before it run first, in order
-    /// ([`UnitSide::stop`], the caps on the last human order time, a requeued build or hunt
-    /// order's command, whose action the command replaces, a move); the stop then counts as the
-    /// update's ([`UnitAi::stopped_at_once`]). Other effects beside a stop are not modelled.
-    ///
-    /// # Errors
-    ///
-    /// Other effects pending beside a stop, and what the side's calls do not model.
-    pub(super) fn run_pending(
-        &mut self,
-        side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
-    ) -> Result<(), GenieError> {
-        if !fx.contains(&Effect::Stop) {
-            return Ok(());
-        }
-        if fx.iter().any(|e| {
-            !matches!(
-                e,
-                Effect::Stop
-                    | Effect::CapHumanOrder(_)
-                    | Effect::Command(AiCommand::BuildObject(_) | AiCommand::HuntObject(_))
-                    | Effect::Move(_)
-            )
-        }) {
-            return Err(PENDING_BEFORE_ATTACK.with("effects", format!("{fx:?}")));
-        }
-        for e in std::mem::take(fx) {
-            match e {
-                Effect::CapHumanOrder(cap) => side.cap_human_order(cap)?,
-                Effect::Command(AiCommand::BuildObject(foundation)) => {
-                    side.build_now(foundation)?;
-                }
-                Effect::Command(AiCommand::HuntObject(quarry)) => {
-                    side.hunt_now(quarry, self)?;
-                }
-                Effect::Move(m) => side.ai_move_now(m)?,
-                _ => side.stop()?,
-            }
-        }
-        self.stopped_at_once = true;
-        Ok(())
     }
 
     /// The civilian's `AttackObject` (slot 0xb8, `FUN_140c17370`) with its force flag 1, as every
@@ -230,7 +172,7 @@ impl UnitAi {
         target: i32,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let t = match at.unit(target) {
             Some(t) => *t,
@@ -240,10 +182,10 @@ impl UnitAi {
             },
         };
         if matches!(t.class, 9 | 10 | 15) {
-            self.hunt_object(target, i32::from(t.class), t.position, at, fx)?;
+            self.hunt_object(target, i32::from(t.class), t.position, at, side, rng)?;
             return Ok(true);
         }
-        self.attack_object(target, true, false, at, side, fx)
+        self.attack_object(target, true, false, at, side)
     }
 
     /// The attackers' upkeep of the full update (`0x140c6741b`): with none, a unit under attack

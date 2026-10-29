@@ -75,12 +75,12 @@ impl UnitAi {
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         if (!force && self.current_action == Some(ActionKind::Build)) || !side.builds(target)? {
             return Ok(false);
         }
-        fx.push(Effect::Command(AiCommand::BuildObject(target)));
+        side.effect_now(Effect::Command(AiCommand::BuildObject(target)), self, rng)?;
         self.set_action(Some(ActionKind::Build));
         match Self::world_object(target, at, side)? {
             Some(t) => self.set_target(target, i32::from(t.class), t.position),
@@ -101,16 +101,13 @@ impl UnitAi {
         force: bool,
         (action, command): (ActionKind, UnitCommand),
         (at, side): (&Surroundings, &mut dyn UnitSide),
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action == Some(action) {
             return Ok(false);
         }
-        self.run_pending(side, fx)?;
         if !side.command(command)? {
             return Ok(false);
         }
-        self.commanded = true;
         self.set_action(Some(action));
         match Self::world_object(target, at, side)? {
             Some(t) => self.set_target(target, i32::from(t.class), t.position),
@@ -128,7 +125,7 @@ impl UnitAi {
         target: i32,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let Some(t) = Self::world_object(target, at, side)? else {
             return Ok(false);
@@ -139,8 +136,9 @@ impl UnitAi {
                 position: t.position,
                 class: t.class,
             },
-            fx,
-        );
+            side,
+            rng,
+        )?;
         Ok(true)
     }
 
@@ -153,13 +151,13 @@ impl UnitAi {
         target: i32,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let Some(t) = Self::world_object(target, at, side)? else {
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, rng)?;
             return Ok(false);
         };
-        self.hunt_object(target, i32::from(t.class), t.position, at, fx)?;
+        self.hunt_object(target, i32::from(t.class), t.position, at, side, rng)?;
         Ok(true)
     }
 
@@ -176,7 +174,7 @@ impl UnitAi {
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
             return Ok(false);
@@ -194,7 +192,13 @@ impl UnitAi {
                 position: t.position,
                 ..Seen::default()
             };
-            self.move_to_object(target, (seen.state, seen.class, seen.position), range, fx);
+            self.move_to_object(
+                target,
+                (seen.state, seen.class, seen.position),
+                range,
+                side,
+                rng,
+            )?;
         }
         Ok(true)
     }
@@ -209,7 +213,6 @@ impl UnitAi {
         target: i32,
         force: bool,
         (at, side): (&Surroundings, &mut dyn UnitSide),
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         let held = Self::world_object(target, at, side)?;
         if self.ai_type == CIVILIAN && held.is_none() {
@@ -218,11 +221,9 @@ impl UnitAi {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
-        self.run_pending(side, fx)?;
         if !side.command(UnitCommand::Enter(target))? {
             return Ok(false);
         }
-        self.commanded = true;
         self.set_action(Some(ActionKind::Enter));
         self.target_at(target, held.map(|t| i32::from(t.class)), [-1.0; 3]);
         Ok(true)
@@ -259,17 +260,14 @@ impl UnitAi {
         point: [f32; 2],
         (force, over_wall): (bool, bool),
         (at, side): (&Surroundings, &mut dyn UnitSide),
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
         let to = [point[0], point[1], at.position[2]];
-        self.run_pending(side, fx)?;
         if !side.command(UnitCommand::Unload { to, over_wall })? {
             return Ok(false);
         }
-        self.commanded = true;
         self.set_action(Some(if over_wall {
             ActionKind::UnloadOverWall
         } else {
@@ -290,12 +288,11 @@ impl UnitAi {
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
-        if !self.attack_command(target, force, at, side, fx)? {
+        if !self.attack_command(target, force, at, side)? {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::SeekAndDestroy));
@@ -312,22 +309,24 @@ impl UnitAi {
         &mut self,
         tile: [i32; 2],
         force: bool,
-        fx: &mut Vec<Effect>,
-    ) -> bool {
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
-            return false;
+            return Ok(false);
         }
         let point = [tile[0] as f32, tile[1] as f32];
-        fx.push(Effect::Explore(point));
+        side.effect_now(Effect::Explore(point), self, rng)?;
         self.set_action(Some(ActionKind::ExploreAndDestroy));
         self.target_at(-1, None, [point[0], point[1], EXPLORE_Z]);
-        true
+        Ok(true)
     }
 
     /// Slot 0x230's case for the order on a target (`0x2db`, `0x325`): on a target the world holds,
     /// the unit's slot 0x128 on it at its place, then the tail with the order value the AI holds
-    /// after it ("the order the work gave"), both the caller's ([`Effect::OrderOnTarget`],
-    /// `World::order_on_target`). On a gone target: without its type (`+0x30` −1), the move to
+    /// after it ("the order the work gave"), both at once on the unit ([`Effect::OrderOnTarget`],
+    /// `World::order_on_target`), which ends the full update before its rest
+    /// ([`UnitAi::ordered_on_target`]). On a gone target: without its type (`+0x30` −1), the move to
     /// the order's point within its range (slot 0x130, forced and walking) and, taken, the tail
     /// with the order on a target. With its type (the class of that master of the target's
     /// owner `+0x10`, `FUN_14152fe40`, [`UnitSide::master_class`]; without an owner the type is
@@ -342,10 +341,10 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         if Self::world_object(o.target, at, side)?.is_some() {
-            fx.push(Effect::OrderOnTarget(*o));
+            side.effect_now(Effect::OrderOnTarget(*o), self, ai)?;
+            self.ordered_on_target = true;
             return Ok(1);
         }
         if o.target_type != -1 {
@@ -375,10 +374,14 @@ impl UnitAi {
             // the world holds what the search found: the move after a found object it does not
             // hold cannot run
             if let Some(g) = found {
-                fx.push(Effect::Command(AiCommand::WorkOn {
-                    target: g.id,
-                    point: g.position,
-                }));
+                side.effect_now(
+                    Effect::Command(AiCommand::WorkOn {
+                        target: g.id,
+                        point: g.position,
+                    }),
+                    self,
+                    ai,
+                )?;
             }
             return Ok(0);
         }
@@ -390,7 +393,7 @@ impl UnitAi {
         }) else {
             return Ok(0);
         };
-        fx.push(Effect::Move(m));
+        side.effect_now(Effect::Move(m), self, ai)?;
         Ok(self.order_tail(Some(o.order), o.priority, class, false, ai))
     }
 
@@ -419,16 +422,13 @@ impl UnitAi {
         target: i32,
         force: bool,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
-        self.run_pending(side, fx)?;
         if !side.wait_solidify(target)? {
             return Ok(false);
         }
-        self.commanded = true;
         self.set_action(Some(ActionKind::WaitSolidify));
         Ok(true)
     }
@@ -437,15 +437,22 @@ impl UnitAi {
     /// the unit's explore to the point (slot 0x398, [`Effect::Explore`], which takes it); the AI
     /// then holds the explore's action value and the point without a target (`FUN_140c64c10`
     /// with −1, which leaves the target class), at height [`EXPLORE_Z`].
-    pub(super) fn explore_at(&mut self, x: i32, y: i32, again: bool, fx: &mut Vec<Effect>) -> bool {
+    pub(super) fn explore_at(
+        &mut self,
+        x: i32,
+        y: i32,
+        again: bool,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
+    ) -> Result<bool, GenieError> {
         if !again && self.current_action.is_some() {
-            return false;
+            return Ok(false);
         }
         let point = [x as f32, y as f32];
-        fx.push(Effect::Explore(point));
+        side.effect_now(Effect::Explore(point), self, rng)?;
         self.last_action = self.current_action.replace(ActionKind::Explore);
         self.target_at(-1, None, [point[0], point[1], EXPLORE_Z]);
-        true
+        Ok(true)
     }
 
     /// Slot 0x28 (`FUN_140c55c90`) with Immediate set and inFront clear: for a unit in state 2 or
@@ -462,19 +469,19 @@ impl UnitAi {
         order: QueuedOrder,
         place: ([f32; 2], i16),
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
         if 2 < unit_state {
             return Ok(());
         }
-        self.order_now(order, None, Some(place), None, ai, fx)
+        self.order_now(order, None, Some(place), None, ai, side)
     }
 
     /// Slot 0x28 (`FUN_140c55c90`) with Immediate set and inFront clear, from outside the unit
-    /// AI's update with what it reads of its unit and the world (`world`: the surroundings, the
+    /// AI's update with what it reads of its unit and the world (the surroundings `at`, the
     /// side, the owner's computer flag): for a unit in state 2 or below and an order (not −1),
     /// [`UnitAi::order_now`] without keeping the current order, the order run at once with
-    /// `world` ([`UnitAi::process_order`]). `ai` is the AI stream.
+    /// them ([`UnitAi::process_order`]). `ai` is the AI stream.
     ///
     /// # Errors
     ///
@@ -484,12 +491,11 @@ impl UnitAi {
         order: QueuedOrder,
         (at, side, computer): (&Surroundings, &mut dyn UnitSide, bool),
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         if 2 < at.state {
             return Ok(());
         }
         let place = ([at.position[0], at.position[1]], at.class);
-        self.order_now(order, None, Some(place), Some((at, side, computer)), ai, fx)
+        self.order_now(order, None, Some(place), Some((at, computer)), ai, side)
     }
 }

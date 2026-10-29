@@ -44,7 +44,7 @@ use crate::unit_ai::task_finder::world::{
 };
 use crate::unit_ai::task_finder::{Actor, Diplomacy};
 use crate::unit_ai::world_view::{DropWorld, Foreign, Wait, patrol_information};
-use crate::unit_ai::{Notify, OWNER_CHANGED, UnitAi};
+use crate::unit_ai::{Effect, Notify, OWNER_CHANGED, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::checkpoint::TopAction;
 use crate::world::others::OthersRef;
@@ -2780,10 +2780,14 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
     assert!(t.start_work(1).is_err());
 }
 
-/// The forager's unit AI run outside its update giving `effects` ([`World::run_unit_ai`]):
-/// they apply in order ([`Unit::apply`], then the orders [`World::finish_object`] runs).
-fn with_effects(t: &mut World, effects: Vec<crate::unit_ai::Effect>) -> Result<(), GenieError> {
-    t.run_unit_ai((1, 0), move |_, _, _, _, _| Ok(effects))
+/// The forager's unit AI run outside its update making the calls `effects` on its unit
+/// ([`World::run_unit_ai`]): each at once, in order ([`crate::unit_ai::UnitSide::effect_now`]).
+fn with_effects(t: &mut World, effects: Vec<Effect>) -> Result<(), GenieError> {
+    t.run_unit_ai((1, 0), move |ai, _, side, _, rng| {
+        effects
+            .into_iter()
+            .try_for_each(|e| side.effect_now(e, ai, rng))
+    })
 }
 
 /// The unit AI's explore (slot 0x398, `FUN_141084db0`) of the idle forager: a new Explore to
@@ -3008,7 +3012,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
     let mut found = None;
     t.run_unit_ai((1, 0), |_, _, side, _, _| {
         found = Some(side.off_footprint(10028, [1.0, 1.0])?);
-        Ok(Vec::new())
+        Ok(())
     })
     .unwrap();
     let off = found.unwrap();
@@ -3043,7 +3047,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
     let mut found = None;
     t.run_unit_ai((1, 0), |_, _, side, _, _| {
         found = Some(side.off_footprint(10028, [1.0, 1.0])?);
-        Ok(Vec::new())
+        Ok(())
     })
     .unwrap();
     assert_eq!(found.unwrap().spot, Some([30.5, 89.5]));
@@ -3060,7 +3064,7 @@ fn an_explored_map_leaves_the_auto_scout_nothing_to_seek() {
     let mut found = Some(None);
     t.run_unit_ai((1, 0), |ai, _, side, _, rng| {
         found = Some(side.seek_unexplored(ai, rng)?);
-        Ok(Vec::new())
+        Ok(())
     })
     .unwrap();
     assert_eq!(found, Some(None));
@@ -3086,7 +3090,7 @@ fn the_unit_ai_s_resource_search_finds_the_nearest_bush_it_reaches() {
         let mut found = None;
         t.run_unit_ai((1, 0), |_, _, side, _, _| {
             found = Some(side.closest_resource(s)?);
-            Ok(Vec::new())
+            Ok(())
         })
         .unwrap();
         found.unwrap().map(|g| (g.id, g.class))
@@ -5169,18 +5173,11 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
         ai.idle_timeout = 3000;
     }
     let draws = t.streams.get(Stream::Ai).draws;
-    // the unit AI runs the order (slot 0x230) and gives the build command, which runs after it
+    // the unit AI runs the order (slot 0x230) and gives the build command, which runs at once
     t.run_unit_ai((1, 0), |ai, at, side, _, rng| {
-        let mut fx = Vec::new();
-        let r = ai.process_order(&order, Some((at, side, false)), None, rng, &mut fx)?;
+        let r = ai.process_order(&order, Some((at, false)), None, rng, side)?;
         assert_eq!(r, 1);
-        assert_eq!(
-            fx,
-            [crate::unit_ai::Effect::Command(AiCommand::BuildObject(
-                10028
-            ))]
-        );
-        Ok(fx)
+        Ok(())
     })
     .unwrap();
     let v = &t.players[1].objects[0];
@@ -5233,7 +5230,7 @@ fn the_unit_ai_s_view_answers_the_build_command_before_it_runs() {
         let mut answer = None;
         t.run_unit_ai((1, 0), |_, _, side, _, _| {
             answer = Some(side.builds(foundation)?);
-            Ok(Vec::new())
+            Ok(())
         })
         .unwrap();
         answer.unwrap()
@@ -5264,9 +5261,8 @@ fn the_build_command_at_once_matches_the_one_after_the_update() {
     let mut later = sent_off_world(vec![]);
     let mut now = later.clone();
     let _ = later.build_command(1, 0, 10028).unwrap();
-    now.run_unit_ai((1, 0), |_, _, side, _, _| {
-        side.build_now(10028)?;
-        Ok(Vec::new())
+    now.run_unit_ai((1, 0), |ai, _, side, _, rng| {
+        side.effect_now(Effect::Command(AiCommand::BuildObject(10028)), ai, rng)
     })
     .unwrap();
     let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
@@ -5364,9 +5360,8 @@ fn the_ai_move_at_once_matches_the_one_after_the_update() {
         walk: false,
     };
     later.move_aside(1, 0, m).unwrap();
-    now.run_unit_ai((1, 0), |_, _, side, _, _| {
-        side.ai_move_now(m)?;
-        Ok(Vec::new())
+    now.run_unit_ai((1, 0), |ai, _, side, _, rng| {
+        side.effect_now(Effect::Move(m), ai, rng)
     })
     .unwrap();
     let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
@@ -5439,10 +5434,8 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
     let mut now = later.clone();
     later.hunt_command(1, 0, 500).unwrap();
-    let ai = now.players[1].objects[0].ai.clone().unwrap();
-    now.run_unit_ai((1, 0), |_, _, side, _, _| {
-        side.hunt_now(500, &ai)?;
-        Ok(Vec::new())
+    now.run_unit_ai((1, 0), |ai, _, side, _, rng| {
+        side.effect_now(Effect::Command(AiCommand::HuntObject(500)), ai, rng)
     })
     .unwrap();
     let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
@@ -14708,10 +14701,12 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
 fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     use crate::gathering::gather::Next;
     use crate::unit_ai::Effect;
-    // the effects applied in the unit's step, and its top action right after them
+    // the calls run in the unit's step, and its top action right after them
     let applied = |t: &mut World, effects: Vec<Effect>| {
         in_update(t, (1, 0), 50, |unit, c| {
-            let _ = unit.apply(effects, None, c)?;
+            for e in effects {
+                unit.run_effect(e, None, c)?;
+            }
             Ok(unit.top_action_kind())
         })
         .map_err(|e| e.reason().to_owned())

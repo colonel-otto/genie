@@ -40,7 +40,7 @@ build time completes the building.
 | [`step_tests.rs`](step_tests.rs) | Tests: The Build's update on the step (`BuildAction::update` through `Unit::build_part`), on World fixtures: the state of the builder, its foundation and the world after each update. |
 | [`tests.rs`](tests.rs) | Tests. |
 | [`unit.rs`](unit.rs) | The builder's part of its update: what the Build action reads as it starts (its foundation, the foundation's annexes and main building, the builder and its unit AI's orders), the action's update on the Build copied out of the action list, and the work's part that runs on the world: the foundation's work, its starts and its completion. |
-| [`unit_ai_side.rs`](unit_ai_side.rs) | What the unit AI asks of a build while it runs (through its view, `UnitView`): the build command at once, the builder's search for another foundation, and a unit's spot off a foundation's footprint. |
+| [`unit_ai_side.rs`](unit_ai_side.rs) | What the unit AI asks of a build while it runs (through its view, `UnitView`): whether the build command takes a foundation, the builder's search for another foundation, and a unit's spot off a foundation's footprint. |
 | [`update.rs`](update.rs) | The Build action's start (state 4 toward the foundation) and its update, which runs the action's state; the AI's build orders whose foundation is gone. |
 | [`walk_ends.rs`](walk_ends.rs) | The ends of the builder's walk: at its end, failed, its foundation lost; the walk to a point (state 11). |
 | [`world_side.rs`](world_side.rs) | The construction's parts that run on the whole world (`crate::world::World`), outside a builder's update: a building's work and completion, its storage's leave, the built object's stacking and its new objects. |

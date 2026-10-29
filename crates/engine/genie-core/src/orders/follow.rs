@@ -136,9 +136,7 @@ impl World {
                 ..order
             };
             self.run_unit_ai((p, idx), |ai, at, side, computer, rng| {
-                let mut fx = Vec::new();
-                ai.take_order_now_with(order, (at, side, computer), rng, &mut fx)?;
-                Ok(fx)
+                ai.take_order_now_with(order, (at, side, computer), rng)
             })?;
         }
         Ok(())
@@ -323,7 +321,7 @@ impl World {
         }
         let place = ([unit.position()[0], unit.position()[1]], class);
         if let Some(ai) = unit.ai.as_mut()
-            && ai.clear_notifies_at(world_time, place)?
+            && ai.clear_notifies_at(world_time, place, self.streams.get(Stream::Ai))?
         {
             // the completion's stop (slot 0xb0 with 1): the unit's stopAction at once
             self.command_stop(player, idx)?;

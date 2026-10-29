@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
-use crate::unit_ai::{AiMove, Attacked, Duel, Found, PatrolPath, Search, Seeker, UnitAi, UnitSeen};
+use crate::unit_ai::{Attacked, Duel, Effect, Found, PatrolPath, Search, Seeker, UnitAi, UnitSeen};
 
 /// The caller's answer to a [`Search`].
 /// What the unit AI asks of its unit and the world while it runs, each answered at once (the game
@@ -28,26 +28,45 @@ pub trait UnitSide {
     /// The unit's `+0x685`, `underAttackValue`, becomes `value` (`FUN_14119d2d0`).
     fn set_under_attack(&mut self, value: bool);
 
-    /// The unit's stopAction (slot 0x3c0) as the unit AI calls it, ahead of a command that
-    /// follows it while the AI processes its notifies (an [`Effect::Stop`] otherwise waits for
-    /// the AI's update to end).
+    /// The unit's call its unit AI makes ([`Effect`]: its stop, a move, a command of its own), at
+    /// once where the game's AI calls the unit's slot. The call runs on the unit holding its AI as
+    /// it stands (`ai`, which the call reads and changes as the game's does) and with the AI
+    /// stream (`rng`), from which the routines it runs draw as the game's do.
     ///
     /// # Errors
     ///
-    /// What the stop does not model.
-    ///
-    /// [`Effect::Stop`]: crate::unit_ai::Effect::Stop
-    fn stop(&mut self) -> Result<(), GenieError>;
+    /// A side without its unit, and what the call does not model.
+    fn effect_now(
+        &mut self,
+        _e: Effect,
+        _ai: &mut UnitAi,
+        _rng: &mut Well512,
+    ) -> Result<(), GenieError> {
+        Err(WITHOUT_UNIT)
+    }
 
-    /// `FUN_140c41e50`'s cap on the unit's last human order time (`+0x650`, [`Effect::CapHumanOrder`])
-    /// run at once, ahead of a stop that runs at once ([`UnitSide::stop`]).
+    /// The unit's slot 0x430 as it stands now (`FUN_14106d0e0`; its slot 0x818, `FUN_14106d100`,
+    /// is 0): its action list holds an action, the stops and commands its AI made in the update
+    /// included ([`Surroundings::busy`] at the update's start).
     ///
     /// # Errors
     ///
     /// A side without its unit.
     ///
-    /// [`Effect::CapHumanOrder`]: crate::unit_ai::Effect::CapHumanOrder
-    fn cap_human_order(&mut self, _cap: u32) -> Result<(), GenieError> {
+    /// [`Surroundings::busy`]: crate::unit_ai::Surroundings::busy
+    fn busy_now(&mut self) -> Result<bool, GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
+    /// The unit's slot 0x2d0 as it stands now: its top action may be interrupted
+    /// ([`Surroundings::interruptible`] at the update's start).
+    ///
+    /// # Errors
+    ///
+    /// A side without its unit, and an action whose slot 0x2d0 the slice does not model.
+    ///
+    /// [`Surroundings::interruptible`]: crate::unit_ai::Surroundings::interruptible
+    fn interruptible_now(&mut self) -> Result<bool, GenieError> {
         Err(WITHOUT_UNIT)
     }
 
@@ -68,44 +87,6 @@ pub trait UnitSide {
     ///
     /// A side without its unit, and what the task search does not model.
     fn builds(&self, _foundation: i32) -> Result<bool, GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    /// The unit's build command (slot 0x380, forced) on `foundation` run at once
-    /// ([`AiCommand::BuildObject`]), ahead of a command that follows it in the same AI run (an
-    /// attack command replacing the Build it makes).
-    ///
-    /// # Errors
-    ///
-    /// A side without its unit, and what the build command does not model.
-    ///
-    /// [`AiCommand::BuildObject`]: crate::unit_ai::AiCommand::BuildObject
-    fn build_now(&mut self, _foundation: i32) -> Result<(), GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    /// `HuntObject`'s unit part run at once ([`AiCommand::HuntObject`]): its stopAction, then its
-    /// hunt command on `target` (slot 0x360, forced), ahead of a command that follows it in the
-    /// same AI run; `ai` is the unit AI as it stands.
-    ///
-    /// # Errors
-    ///
-    /// A side without its unit, and what the hunt command does not model.
-    ///
-    /// [`AiCommand::HuntObject`]: crate::unit_ai::AiCommand::HuntObject
-    fn hunt_now(&mut self, _target: i32, _ai: &UnitAi) -> Result<(), GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    /// The unit's slot 0x340 on a move its unit AI gave ([`Effect::Move`]) run at once, ahead of
-    /// a command that follows it in the same AI run.
-    ///
-    /// # Errors
-    ///
-    /// A side without its unit, and what the move does not model.
-    ///
-    /// [`Effect::Move`]: crate::unit_ai::Effect::Move
-    fn ai_move_now(&mut self, _m: AiMove) -> Result<(), GenieError> {
         Err(WITHOUT_UNIT)
     }
 
@@ -358,6 +339,55 @@ pub trait UnitSide {
     }
 }
 
+/// The side of a unit AI that a world routine runs on the world's object in its slot, outside
+/// the unit's update (a stance, `AUTO_SCOUT`'s order, a stop of the game's status): the unit's
+/// calls ([`UnitSide::effect_now`]) are kept in their order, for the routine to run after the
+/// AI's; it answers no search.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DeferredCalls(pub Vec<Effect>);
+
+impl UnitSide for DeferredCalls {
+    fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
+    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
+    fn set_under_attack(&mut self, _: bool) {}
+
+    fn effect_now(&mut self, e: Effect, _: &mut UnitAi, _: &mut Well512) -> Result<(), GenieError> {
+        self.0.push(e);
+        Ok(())
+    }
+
+    fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
+    fn seek_unexplored(
+        &mut self,
+        _: &UnitAi,
+        _: &mut Well512,
+    ) -> Result<Option<[i32; 2]>, GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
+    fn make_scout_map(&mut self) -> Result<(), GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
+    /// The world's object holds its path, which the routine does not pass: none.
+    fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+        None
+    }
+}
+
 /// A unit AI's call on its unit from a side that holds none (a search's closure).
 pub(super) const WITHOUT_UNIT: GenieError =
     GenieError::unsupported("a unit AI's call on its unit from a side without it");
@@ -489,10 +519,6 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, GenieError>> UnitSide for F {
     }
 
     fn set_under_attack(&mut self, _: bool) {}
-
-    fn stop(&mut self) -> Result<(), GenieError> {
-        Err(WITHOUT_UNIT)
-    }
 
     fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
         Err(GenieError::unsupported("an attack test without the world"))

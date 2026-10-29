@@ -1475,15 +1475,29 @@ fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
         ..crate::unit_ai::UnitAi::default()
     };
     let mut ai = attacking;
-    let mut fx = Vec::new();
-    set_stance(&mut ai, 1, ([3.0, 4.0], 6), &mut fx).unwrap();
+    let mut fx: Vec<crate::unit_ai::Effect> = Vec::new();
+    set_stance(
+        &mut ai,
+        1,
+        ([3.0, 4.0], 6),
+        &mut fx,
+        &mut crate::math::rng::Well512::default(),
+    )
+    .unwrap();
     assert_eq!((ai.stance, ai.state_position), (1, [3.0, 4.0]));
     assert_eq!(
         (ai.current_action, ai.current_target),
         (Some(ActionKind::Attack), 40)
     );
     assert_eq!(fx, []);
-    set_stance(&mut ai, 3, ([3.0, 5.0], 6), &mut fx).unwrap();
+    set_stance(
+        &mut ai,
+        3,
+        ([3.0, 5.0], 6),
+        &mut fx,
+        &mut crate::math::rng::Well512::default(),
+    )
+    .unwrap();
     assert_eq!(ai.stance, 3);
     // order 700 is the action's (600 + 100): the stop ends it, the state position the place
     assert_eq!((ai.current_order, ai.current_action), (None, None));

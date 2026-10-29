@@ -248,10 +248,15 @@ impl World {
         let unit = &mut self.players[up].objects[ui];
         let place = ([unit.position()[0], unit.position()[1]], made.class);
         if let Some(ai) = unit.ai.as_mut() {
-            let mut fx = Vec::new();
+            let mut calls = crate::unit_ai::DeferredCalls::default();
             let stance = ai.stance;
-            crate::orders::set_stance(ai, stance, place, &mut fx)?;
-            for _ in fx.iter().filter(|e| **e == crate::unit_ai::Effect::Stop) {
+            let rng = self.streams.get(crate::math::rng::Stream::Ai);
+            crate::orders::set_stance(ai, stance, place, &mut calls, rng)?;
+            for _ in calls
+                .0
+                .iter()
+                .filter(|e| **e == crate::unit_ai::Effect::Stop)
+            {
                 self.command_stop(up, ui)?;
             }
         }
@@ -307,9 +312,7 @@ impl World {
             return Ok(());
         }
         self.run_unit_ai((player, idx), |ai, at, side, computer, rng| {
-            let mut fx = Vec::new();
-            ai.take_order_now_with(order, (at, side, computer), rng, &mut fx)?;
-            Ok(fx)
+            ai.take_order_now_with(order, (at, side, computer), rng)
         })
     }
 

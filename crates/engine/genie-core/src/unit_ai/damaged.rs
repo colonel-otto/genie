@@ -47,10 +47,9 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
         let Some(attacker) = at.unit(n.caller).copied() else {
@@ -81,20 +80,20 @@ impl UnitAi {
                 return Ok(BREAK);
             }
             self.queue_current(at)?;
-            self.stop_current(true, at, fx)?;
-            let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            self.stop_current(true, at, side, ai_rng)?;
+            let _ = self.run_away(true, at, computer, ai_rng, side)?;
             return Ok(BREAK);
         }
         // "I have a GAIA attacker" (or a harmless one): with an order not on the attacker, the current order goes back
         // into the queue at once (slot 0x30) and the order becomes the attack (700,
         // `FUN_140c64b60` with 0: the last order kept) at priority 100
         if self.current_order.is_some() && n.caller != self.current_target {
-            self.requeue_current(at, side, computer, ai_rng, fx)?;
+            self.requeue_current(at, side, computer, ai_rng)?;
             self.set_order_with(Some(OrderKind::Attack), false, ai_rng);
             self.order_priority = 100;
         }
         // slot 0xb8 forced, the civilian's
-        let _ = self.civilian_attack(n.caller, at, side, fx)?;
+        let _ = self.civilian_attack(n.caller, at, side, ai_rng)?;
         self.stop_after_kill = true;
         Ok(BREAK)
     }
@@ -155,11 +154,10 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         alert_owner(computer)?;
         if n.p[1] < 1 {
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
         let new = self.attackers.binary_search(&n.caller).is_err();
@@ -176,7 +174,7 @@ impl UnitAi {
             return Ok(GO_ON);
         }
         if !at.busy || held_action_state(at.action_state)? == 2 {
-            let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            let _ = self.run_away(true, at, computer, ai_rng, side)?;
         }
         Ok(BREAK)
     }
@@ -206,7 +204,8 @@ impl UnitAi {
     pub(super) fn trader_search(
         &mut self,
         at: &Surroundings,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         if self.current_action == Some(ActionKind::Trade) {
             return Err(GenieError::unsupported(
@@ -217,7 +216,7 @@ impl UnitAi {
             closest_undiscovered_tile()?;
         }
         self.remove_target();
-        self.stop_current(true, at, fx)?;
+        self.stop_current(true, at, side, rng)?;
         Ok(GO_ON)
     }
 
@@ -240,11 +239,10 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
             alert_owner(computer)?;
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
         if self.attackers.is_empty() || computer {
@@ -261,9 +259,9 @@ impl UnitAi {
         }
         if self.current_action != Some(ActionKind::Move) {
             self.queue_current(at)?;
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai_rng)?;
         }
-        let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+        let _ = self.run_away(true, at, computer, ai_rng, side)?;
         Ok(BREAK)
     }
 
@@ -282,11 +280,10 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         alert_owner(computer)?;
         if n.p[1] < 1 {
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
         let new = self.attackers.binary_search(&n.caller).is_err();
@@ -300,8 +297,8 @@ impl UnitAi {
         }
         if self.current_action != Some(ActionKind::Move) {
             self.queue_current(at)?;
-            self.stop_current(true, at, fx)?;
-            let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            self.stop_current(true, at, side, ai_rng)?;
+            let _ = self.run_away(true, at, computer, ai_rng, side)?;
         }
         Ok(BREAK)
     }
@@ -319,7 +316,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let mut best = (-1, FISHING_BUILD_FAR);
         for class in FISHING_BUILDS {
@@ -345,7 +342,7 @@ impl UnitAi {
             }
         }
         if best.0 != -1 && side.reaches(best.0, FOUNDATION_REACH)? {
-            let _ = self.build_object(best.0, true, at, side, fx)?;
+            let _ = self.build_object(best.0, true, at, side, rng)?;
             return Ok(BREAK);
         }
         if computer {
@@ -398,7 +395,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let new = self.attackers.binary_search(&n.caller).is_err();
         alert_owner(computer)?;
@@ -409,7 +406,7 @@ impl UnitAi {
             self.ask_for_help(n.caller, at, computer, side)?;
         }
         if n.p[1] < 1 {
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, rng)?;
             return Ok(DEAD);
         }
         let _ = self.add_attacker(n.caller);
@@ -442,29 +439,23 @@ impl UnitAi {
     }
 
     /// `HuntObject` (slot 0xc8, `FUN_140c4e220`) forced on `target` (its master's `class` and its
-    /// `point`): the current action stops (slot 0xb0 with 1) and the unit's hunt command runs on the
-    /// target ([`AiCommand::HuntObject`], which carries the stop); taken as done (the caller stops on
-    /// a failure): the hunt action value (`0x265`) becomes current, the stopped one the last, the
-    /// target with its class and point (the last ones kept), and the AI counts as commanded.
+    /// `point`): the current action stops at once (slot 0xb0 with 1, [`UnitAi::stop_current`]),
+    /// then the unit's hunt command runs on the target ([`AiCommand::HuntObject`]); taken as done
+    /// (the caller stops on a failure): the hunt action value (`0x265`) becomes current, the
+    /// stopped one the last, the target with its class and point (the last ones kept).
     pub(super) fn hunt_object(
         &mut self,
         target: i32,
         class: i32,
         point: [f32; 3],
         at: &Surroundings,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
     ) -> Result<(), GenieError> {
-        self.stop_current(true, at, fx)?;
-        // the unit's stopAction goes with its hunt command, which runs it first
-        if fx.pop() != Some(Effect::Stop) {
-            return Err(GenieError::unsupported(
-                "a HuntObject whose stop the slice did not make",
-            ));
-        }
-        fx.push(Effect::Command(AiCommand::HuntObject(target)));
+        self.stop_current(true, at, side, rng)?;
+        side.effect_now(Effect::Command(AiCommand::HuntObject(target)), self, rng)?;
         self.set_action(Some(ActionKind::Hunt));
         self.set_target(target, class, point);
-        self.commanded = true;
         Ok(())
     }
 
@@ -480,7 +471,6 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         computer: bool,
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         let Some(order) = self.current_order.filter(|_| at.state <= 2) else {
             return Ok(());
@@ -502,9 +492,9 @@ impl UnitAi {
             record,
             Some(at.id),
             Some(place),
-            Some((at, side, computer)),
+            Some((at, computer)),
             ai,
-            fx,
+            side,
         )
     }
 }

@@ -10,7 +10,7 @@ use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
 use crate::unit_ai::Notify;
 use crate::unit_ai::world_view::{OwnerView, UnitView, changed_view};
-use crate::unit_ai::{AfterOrder, Effect, Surroundings, UnitAi};
+use crate::unit_ai::{AfterOrder, Surroundings, UnitAi};
 use crate::world::others::OthersRef;
 use crate::world::scenario_mode;
 use crate::world::standard_mode;
@@ -20,10 +20,10 @@ impl Unit {
     /// The end of [`Unit::update`] after the actions (`captured`: the Artifact's capture, `leaves`:
     /// the step its life step left): `RGE_Action_Object::update`'s end (`FUN_141163080`: the
     /// action object's shape), `RGE_Combat_Object::update`'s sight mask, then the unit AI's full
-    /// update on its owner's turn, else its check between turns, and the effects it has on the
-    /// unit ([`Unit::ai_run`]); an order on a target the full update took runs at once, then the
-    /// update's rest after it ([`crate::unit_ai::UnitAi::after_order`]), as the game runs both
-    /// inside the update (slot 0x230). Then the step the update ends with.
+    /// update on its owner's turn, else its check between turns, its calls on the unit at once
+    /// ([`Unit::ai_run`]); after an order on a target the full update took, the update's rest
+    /// ([`crate::unit_ai::UnitAi::after_order`]), as the game runs both inside the update (slot
+    /// 0x230). Then the step the update ends with.
     pub(crate) fn ai_part(
         &mut self,
         c: &mut Step<'_>,
@@ -254,13 +254,13 @@ impl Unit {
 
     /// The unit's AI run outside its update (a command's immediate order): `f` gets the AI, what
     /// it reads of the unit and the world ([`Unit::surroundings`], as the updating player's own
-    /// unit), its side ([`Unit::with_side`]), the owner's computer flag and the AI stream; its
-    /// effects then apply as the AI part's do ([`Unit::apply`]).
+    /// unit), its side ([`Unit::with_side`], whose calls on the unit run at once), the owner's
+    /// computer flag and the AI stream.
     ///
     /// # Errors
     ///
     /// A unit without a unit AI, slot 0x2d0 and the surroundings' parts the slice does not model,
-    /// and what `f` and the effects do not.
+    /// and what `f` and its calls do not.
     pub(crate) fn run_ai(
         &mut self,
         c: &mut Step<'_>,
@@ -270,7 +270,7 @@ impl Unit {
             &mut dyn crate::unit_ai::UnitSide,
             bool,
             &mut Well512,
-        ) -> Result<Vec<Effect>, GenieError>,
+        ) -> Result<(), GenieError>,
     ) -> Result<(), GenieError> {
         let Some(ai_type) = self.ai.as_ref().map(|ai| ai.ai_type) else {
             return Err(GenieError::unreachable(
@@ -291,22 +291,20 @@ impl Unit {
             scenario_mode(c.w.settings.game_mode),
             at.capture,
         );
-        let effects = self.with_side(c, &view, attacker, (player, computer), |ai, side, rng| {
+        self.with_side(c, &view, attacker, (player, computer), |ai, side, rng| {
             f(ai, &at, side, computer, rng)
-        })?;
-        // a command's run is no full update: it takes no order on a target, which leaves no rest
-        self.apply(effects, class, c).map(drop)
+        })
     }
 
     /// One pass of the unit AI ([`Unit::ai_part`]) as the player `captured` names (its new
     /// owner's for a main capture, else the owner's): on the owner's turn the full update, or with
     /// `after` its rest after an order on a target ([`crate::unit_ai::UnitAi::after_order`]),
-    /// else its check between turns; then its effects on the unit ([`Unit::apply`]). Returns the
-    /// rest an order on a target the full update took leaves ([`Effect::AfterOrder`]).
+    /// else its check between turns, its calls on the unit at once. Returns the rest an order on
+    /// a target the full update took leaves ([`AfterOrder`]).
     ///
     /// # Errors
     ///
-    /// The unit AI's, its surroundings' and its effects'.
+    /// The unit AI's, its surroundings' and its calls'.
     fn ai_run(
         &mut self,
         c: &mut Step<'_>,
@@ -375,7 +373,7 @@ impl Unit {
             scenario_mode(c.w.settings.game_mode),
             at.capture,
         );
-        let effects = self.with_side(
+        self.with_side(
             c,
             &view,
             attacker,
@@ -383,15 +381,14 @@ impl Unit {
             |ai, side, ai_stream| {
                 // an order on a target comes only from a full update, on the owner's turn
                 match (turn, after) {
-                    (Some(_), Some(after)) => {
-                        ai.after_order(after, world_time, computer, &at, ai_stream, side)
-                    }
+                    (Some(_), Some(after)) => ai
+                        .after_order(after, world_time, computer, &at, ai_stream, side)
+                        .map(|()| None),
                     (Some(dt), None) => ai.update(dt, world_time, computer, &at, ai_stream, side),
-                    (None, _) => ai.off_turn(&at, side, computer, ai_stream),
+                    (None, _) => ai.off_turn(&at, side, computer, ai_stream).map(|()| None),
                 }
             },
-        )?;
-        self.apply(effects, class, c)
+        )
     }
 
     /// The objects its unit AI names besides its target, as the world's table holds them

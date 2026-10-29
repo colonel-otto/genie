@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::DeferredCalls;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, Effect, GO_ON, NO_LONGER_ON_ME, Notify,
     PRODUCED, Surroundings, UnitAi, UnitSide,
@@ -21,7 +22,6 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let mut result = GO_ON;
         while !self.notifies.is_empty() && result == GO_ON {
@@ -29,12 +29,12 @@ impl UnitAi {
             let mut i = 0;
             while i < self.notifies.len() {
                 let n = self.notifies[i];
-                result = self.handle(n, dt, at, computer, ai_rng, side, fx)?;
+                result = self.handle(n, dt, at, computer, ai_rng, side)?;
                 if result == DEAD {
                     // "I'm dead, purging notifyQueue and returning FALSE.": the full update ends
                     self.processing = false;
                     self.flush_buffered();
-                    self.end_notifies(dt, at, fx)?;
+                    self.end_notifies(dt, at, side, ai_rng)?;
                     return Ok(DEAD);
                 }
                 if result == BREAK || result == PRODUCED {
@@ -43,7 +43,7 @@ impl UnitAi {
                 i += 1;
             }
             if result == GO_ON {
-                self.end_notifies(dt, at, fx)?;
+                self.end_notifies(dt, at, side, ai_rng)?;
             }
             self.processing = false;
             self.flush_buffered();
@@ -52,30 +52,38 @@ impl UnitAi {
     }
 
     /// `FUN_140c5dc10`: a completion of the current action (with no order) stops it
-    /// (`FUN_140c5e1e0`, slot 0xb0 with 1); then the notifies go and `+0x15c` takes `time`.
+    /// (`FUN_140c5e1e0`, slot 0xb0 with 1, [`UnitAi::completes`]); then the notifies go and
+    /// `+0x15c` takes `time`.
     pub fn end_notifies(
         &mut self,
         time: u32,
         at: &Surroundings,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
     ) -> Result<(), GenieError> {
-        let completed = self.notifies.iter().any(|n| {
-            n.kind == ACTION_COMPLETED
-                && self.current_order.is_none()
-                && ActionKind::field(self.current_action) == n.p[0]
-        });
-        if completed {
+        if self.completes() {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, rng)?;
         }
         self.last_update_time = time;
         self.notifies.clear();
         Ok(())
     }
 
+    /// A notify of the current action's completion is queued while the AI has no order
+    /// ([`UnitAi::end_notifies`] then stops the action).
+    fn completes(&self) -> bool {
+        self.notifies.iter().any(|n| {
+            n.kind == ACTION_COMPLETED
+                && self.current_order.is_none()
+                && ActionKind::field(self.current_action) == n.p[0]
+        })
+    }
+
     /// `FUN_140c5dc10` from outside the full update for a unit at `place` (its place and its
     /// master's class, which a stop ending an order reads): true when a completion stopped the
-    /// action (slot 0xb0 with 1), whose stopAction (slot 0x3c0) the caller runs on the unit then.
+    /// action (slot 0xb0 with 1), whose stopAction (slot 0x3c0) the caller runs on the unit then
+    /// ([`DeferredCalls`]); `rng` is the AI stream.
     ///
     /// # Errors
     ///
@@ -84,27 +92,32 @@ impl UnitAi {
         &mut self,
         time: u32,
         place: ([f32; 2], i16),
+        rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let at = Surroundings {
             position: [place.0[0], place.0[1], 0.0],
             class: place.1,
             ..Surroundings::default()
         };
-        let mut fx = Vec::new();
-        self.end_notifies(time, &at, &mut fx)?;
-        Ok(fx.contains(&Effect::Stop))
+        let mut calls = DeferredCalls::default();
+        self.end_notifies(time, &at, &mut calls, rng)?;
+        Ok(calls.0.contains(&Effect::Stop))
     }
 
     /// `FUN_140c5dc10` from outside the full update (a MOVE, an ownership change: `time` is the
     /// world time), where a completion it would stop on is not modelled.
+    ///
+    /// # Errors
+    ///
+    /// A completion that would stop the action.
     pub fn clear_notifies(&mut self, time: u32) -> Result<(), GenieError> {
-        let mut fx = Vec::new();
-        self.end_notifies(time, &Surroundings::default(), &mut fx)?;
-        if !fx.is_empty() {
+        if self.completes() {
             return Err(GenieError::unsupported(
                 "a completion stopping the action outside the full update",
             ));
         }
+        self.last_update_time = time;
+        self.notifies.clear();
         Ok(())
     }
 

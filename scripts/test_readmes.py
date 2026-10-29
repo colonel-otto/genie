@@ -32,6 +32,10 @@ class Sentences(unittest.TestCase):
         self.assertEqual(rd.first_sentence("use a::B;\n"), "")
         self.assertEqual(rd.first_sentence("//! The map | where.\n"), "The map \\| where.")
 
+    def test_a_test_only_file_s_doc_follows_its_cfg(self):
+        text = "#![cfg(test)]\n//! The tests' sides. More.\n\nuse a::B;\n"
+        self.assertEqual(rd.first_sentence(text), "The tests' sides.")
+
     def test_intra_doc_links_lose_their_brackets(self):
         text = "//! The pather ([`crate::movement::reaches`]) and [the map](crate::map::Spatial).\n"
         self.assertEqual(rd.first_sentence(text), "The pather (`crate::movement::reaches`) and the map.")

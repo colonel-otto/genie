@@ -94,13 +94,15 @@ impl Unit {
             && let Some(ai) = self.ai.as_mut()
             && ai.current_action != Some(ActionKind::HeroPower)
         {
-            let mut fx = Vec::new();
+            let mut calls = crate::unit_ai::DeferredCalls::default();
             let [x, y, _] = self.body.position();
             let place = ([x, y], class);
-            ai.stop_with(false, Some(place), &mut fx)?;
+            let rng = c.w.streams.get(Stream::Ai);
+            ai.stop_with(false, Some(place), &mut calls, rng)?;
             ai.forget_targets();
-            // a stop takes no order on a target, which leaves no rest
-            let _ = self.apply(fx, Some(class), c)?;
+            for e in calls.0 {
+                self.run_effect(e, Some(class), c)?;
+            }
         }
         Ok(())
     }

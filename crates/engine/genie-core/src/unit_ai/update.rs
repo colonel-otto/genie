@@ -9,8 +9,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     AfterOrder, AiMove, BREAK, CIVILIAN_CARED, COMBAT_KIND, DEAD, Effect, GO_ON, Gatherable,
     GroupState, LIVE_TARGET_ACTIONS, Memory, NO_POINT, Notify, Pick, ResourceSearch, Retarget,
-    Search, Surroundings, UnitAi, UnitSide, changes_actions, civilian_kind, civilian_search_radius,
-    retarget_kind, top_target_after,
+    Search, Surroundings, UnitAi, UnitSide, civilian_kind, civilian_search_radius, retarget_kind,
 };
 
 impl UnitAi {
@@ -21,8 +20,9 @@ impl UnitAi {
     /// slot 0x238, then `FUN_140c5dc10`), the reset of an action value whose actions ended, the
     /// order check of a unit no longer busy, the order queue ([`UnitAi::run_orders`]), slot 73's
     /// retarget check, the idle part (slot 72 once the idle timer passes its timeout), the
-    /// look-around check. What it does to the unit comes back as [`Effect`]s, which the caller
-    /// applies in order. A unit in a group ([`Surroundings::group`]) keeps its state position
+    /// look-around check. What it does to the unit are calls on its side at once
+    /// ([`UnitSide::effect_now`]); an order on a target ends it, returning the rest, which the
+    /// caller runs after the order ([`UnitAi::after_order`]). A unit in a group ([`Surroundings::group`]) keeps its state position
     /// while the group has a command, runs its order queue only while the group is idle, its idle
     /// check only while the group is idle and the unit still, and takes the patrol branches while
     /// the group patrols. Its start lets the expired retarget entries go
@@ -36,16 +36,14 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-    ) -> Result<Vec<Effect>, GenieError> {
+    ) -> Result<Option<AfterOrder>, GenieError> {
         let retarget = retarget_kind(self.ai_type)?;
-        self.commanded = false;
-        self.stopped_at_once = false;
+        self.ordered_on_target = false;
         self.best_this_update = -1;
         // the full update's start: the time since the last enemy sighting grows by the world's dt
         self.time_since_enemy += at.dt_seconds;
-        let mut fx = Vec::new();
         self.expire_retries(world_time, &mut |id| Self::world_object(id, at, side))?;
-        self.target_block(at, computer, ai, side, &mut fx)?;
+        self.target_block(at, computer, ai, side)?;
         self.keep_attackers(at, side);
         // a unit with an order, or in a group with a command (`+0x3a8`), keeps its place as its
         // state position (0x140c674c9)
@@ -55,45 +53,40 @@ impl UnitAi {
         self.secondary_timer = self.secondary_timer.saturating_sub(dt);
         self.look_around_timer = self.look_around_timer.wrapping_add(dt);
         self.idle_timer = self.idle_timer.wrapping_add(dt);
-        let result = self.process_notifies(dt, at, computer, ai, side, &mut fx)?;
+        let result = self.process_notifies(dt, at, computer, ai, side)?;
         if result == DEAD {
-            self.boar_tail(at, computer, ai, side, &mut fx)?;
-            return Ok(fx);
+            self.boar_tail(at, computer, ai, side)?;
+            return Ok(None);
         }
-        self.end_notifies(dt, at, &mut fx)?;
-        // slot 0x430 again: a stop emptied the action list, a command filled it
-        let stopped = fx.contains(&Effect::Stop) || self.stopped_at_once;
-        let busy = (at.busy && !stopped) || self.commanded;
+        self.end_notifies(dt, at, side, ai)?;
+        // slot 0x430 again: the update's stops emptied the action list, its commands filled it
+        let busy = side.busy_now()?;
         if !busy {
             self.reset_ended_action(at);
             if self.current_order.is_some() {
                 self.check_order(at, ai);
             }
         }
-        let interruptible = at.interruptible || stopped;
+        // slot 0x2d0 as the action list stands, which only a queue with orders reads
         if self.current_action.is_none()
-            && (!busy || interruptible)
+            && (!busy || (!self.orders.is_empty() && side.interruptible_now()?))
             && result != 0xd
             && self.can_order(at, false)
             && at.group.is_none_or(|g| g.idle)
             && !at.garrisoned
         {
-            self.run_orders(at, side, computer, ai, &mut fx)?;
+            self.run_orders(at, side, computer, ai)?;
         }
-        // an order on a target runs its work here (slot 0x230's case 0x2db, the unit's slot
-        // 0x128): the unit runs it, then the rest of the update, which reads what it gave the
-        // AI ([`UnitAi::after_order`])
-        if fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_))) {
-            fx.push(Effect::AfterOrder(AfterOrder {
+        // an order on a target ran its work here (slot 0x230's case 0x2db, the unit's slot
+        // 0x128): the rest of the update reads what it gave the AI ([`UnitAi::after_order`])
+        if self.ordered_on_target {
+            return Ok(Some(AfterOrder {
                 busy,
                 group: at.group,
             }));
-            return Ok(fx);
         }
-        self.update_tail(
-            retarget, world_time, computer, busy, at.group, at, ai, side, &mut fx,
-        )?;
-        Ok(fx)
+        self.update_tail(retarget, world_time, computer, busy, at.group, at, ai, side)?;
+        Ok(None)
     }
 
     /// The full update's rest after the order on a target it took ([`AfterOrder`]), which the
@@ -114,9 +107,8 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-    ) -> Result<Vec<Effect>, GenieError> {
+    ) -> Result<(), GenieError> {
         let retarget = retarget_kind(self.ai_type)?;
-        let mut fx = Vec::new();
         self.update_tail(
             retarget,
             world_time,
@@ -126,9 +118,7 @@ impl UnitAi {
             at,
             ai,
             side,
-            &mut fx,
-        )?;
-        Ok(fx)
+        )
     }
 
     /// The full update after its order queue (`0x140c66b10` from its slot 73 call on): slot 73
@@ -147,33 +137,31 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         match retarget {
             Retarget::Base => {
-                let _ = self.retarget_check(world_time, computer, at, ai, side, fx)?;
+                let _ = self.retarget_check(world_time, computer, at, ai, side)?;
             }
             // the priest's checks but on the order on a target and for a computer player's
             Retarget::Priest => {
                 if self.current_order != Some(OrderKind::OnTarget) && !computer {
-                    let _ = self.retarget_check(world_time, computer, at, ai, side, fx)?;
+                    let _ = self.retarget_check(world_time, computer, at, ai, side)?;
                 }
             }
-            Retarget::Civilian => self.civilian_misc(at, fx)?,
+            Retarget::Civilian => self.civilian_misc(at, side, ai)?,
             Retarget::Never => {}
-            Retarget::Artifact => self.artifact_misc(at, side, fx)?,
+            Retarget::Artifact => self.artifact_misc(at, side, ai)?,
         }
-        self.idle_part(busy, group, at, computer, ai, side, fx)?;
+        self.idle_part(busy, group, at, computer, ai, side)?;
         self.look_around(computer, ai)?;
-        self.top_target_tail(at, side, fx)?;
+        self.top_target_tail(at, side, ai)?;
         self.drop_started_builds(side)?;
-        self.boar_tail(at, computer, ai, side, fx)
+        self.boar_tail(at, computer, ai, side)
     }
 
     /// The full update's tail on the target of its unit's top action (slot 400 at `0x140c684fc`,
-    /// after the look-around check), as the action list stands after the update's commands: the
-    /// last of the [`Effect`]s pending that replaces the actions decides, else the unit's now
-    /// ([`top_target_after`]). A Gaia unit
+    /// after the look-around check), as the action list stands after the update's stops and
+    /// commands ([`UnitSide::top_target_now`]). A Gaia unit
     /// whose target is a Gaia object of type 70 or above that another player can take more than
     /// once (`+0x924` 2) lets it go ("Tasking GAIA unit to stop attacking an object which can be
     /// captured multiple times"): the target goes (`FUN_140c5e1e0`) and the action stops (slot
@@ -181,32 +169,14 @@ impl UnitAi {
     /// (`+0x689` 0), or cannot be attacked (`+0x68a` 0) while the action value is the attack's
     /// (600), does the same ("Tasking unit to stop attacking an object which has no targeting
     /// flag enabled") but on the trade action (`0x267`); it reads the action value the first
-    /// stop left. A stop after a command the caller gives only once the update ends (a hunt,
-    /// gather or build, [`AiCommand::HuntObject`], [`AiCommand::GatherObject`],
-    /// [`AiCommand::BuildObject`]) would reach the unit before the command: not modelled.
+    /// stop left.
     pub(super) fn top_target_tail(
         &mut self,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<(), GenieError> {
-        let id = top_target_after(fx, side)?;
-        // a hunt, gather or build the caller gives once the update ends (after the stops)
-        let deferred = fx
-            .iter()
-            .rev()
-            .find(|e| changes_actions(e))
-            .is_some_and(|e| {
-                matches!(
-                    e,
-                    Effect::Command(
-                        AiCommand::HuntObject(_)
-                            | AiCommand::GatherObject(_)
-                            | AiCommand::BuildObject(_)
-                            | AiCommand::WorkOn { .. }
-                    )
-                )
-            });
+        let id = side.top_target_now()?;
         let Some(t) = id.map(|id| side.target_flags(id)).transpose()?.flatten() else {
             return Ok(());
         };
@@ -220,18 +190,13 @@ impl UnitAi {
         let untargeted = t.pasture == -1
             && (t.untargetable || (!t.attackable && action == Some(ActionKind::Attack)))
             && action != Some(ActionKind::Trade);
-        if deferred && (captured_again || untargeted) {
-            return Err(GenieError::unsupported(
-                "a stop of the full update's tail after a command the caller gives later",
-            ));
-        }
         if captured_again {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, rng)?;
         }
         if untargeted {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, rng)?;
         }
         Ok(())
     }
@@ -267,14 +232,13 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         if let Some(home) = self.home
             && !home.furious
             && self.adjusted_idle_timeout < self.idle_timer
         {
             self.idle_timer = 0;
-            let _ = self.process_idle(at, computer, ai, side, fx)?;
+            let _ = self.process_idle(at, computer, ai, side)?;
         }
         self.calm_down();
         Ok(())
@@ -297,7 +261,6 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         if self.current_target != -1 && at.garrisoned {
             self.current_target = -1;
@@ -325,11 +288,11 @@ impl UnitAi {
                     {
                         self.stop_after_kill = false;
                         if action == Some(ActionKind::Attack) {
-                            self.next_after_kill(at, computer, ai, side, fx)?;
+                            self.next_after_kill(at, computer, ai, side)?;
                         } else if !matches!(action, Some(ActionKind::Hunt | ActionKind::BoarLuring))
                         {
                             self.remove_target();
-                            self.stop_current(true, at, fx)?;
+                            self.stop_current(true, at, side, ai)?;
                         }
                     }
                 }
@@ -373,7 +336,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let mut class = n.p[1];
         if class == -1 {
@@ -384,7 +347,7 @@ impl UnitAi {
         }
         if class == -1 {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, rng)?;
             return Ok(GO_ON);
         }
         let kind = civilian_kind(class);
@@ -439,7 +402,14 @@ impl UnitAi {
         if class == 49 {
             return Err(GenieError::unsupported("a hunter's search finding a farm"));
         }
-        self.hunt_object(found.id, i32::from(found.class), found.position, at, fx)?;
+        self.hunt_object(
+            found.id,
+            i32::from(found.class),
+            found.position,
+            at,
+            side,
+            rng,
+        )?;
         Ok(BREAK)
     }
 
@@ -460,7 +430,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let mut class = self.target_type;
         if class == -1 {
@@ -471,7 +441,7 @@ impl UnitAi {
         }
         if class == -1 {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, rng)?;
             return Ok(GO_ON);
         }
         let kind = civilian_kind(class);
@@ -524,23 +494,32 @@ impl UnitAi {
         let Some(found) = found else {
             if computer {
                 self.remove_target();
-                self.stop_current(true, at, fx)?;
+                self.stop_current(true, at, side, rng)?;
             }
             return Ok(GO_ON);
         };
-        self.gather_object(found, fx);
+        self.gather_object(found, side, rng)?;
         Ok(BREAK)
     }
 
     /// `GatherObject` (slot 0xd0, `FUN_140c4dd50`) forced on what the search found: the unit's
     /// gather command runs on it ([`AiCommand::GatherObject`]); taken as done (the caller stops on a
     /// failure): the gather action value (`0x261`) becomes current, the last the one before, the
-    /// target with its class and place (the last ones kept), and the AI counts as commanded.
-    pub(super) fn gather_object(&mut self, found: Gatherable, fx: &mut Vec<Effect>) {
-        fx.push(Effect::Command(AiCommand::GatherObject(found.id)));
+    /// target with its class and place (the last ones kept).
+    pub(super) fn gather_object(
+        &mut self,
+        found: Gatherable,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
+    ) -> Result<(), GenieError> {
+        side.effect_now(
+            Effect::Command(AiCommand::GatherObject(found.id)),
+            self,
+            rng,
+        )?;
         self.set_action(Some(ActionKind::Gather));
         self.set_target(found.id, i32::from(found.class), found.position);
-        self.commanded = true;
+        Ok(())
     }
 
     /// The target block's attack whose target died (`0x140c66b10`): processIdle (slot 0x240 with
@@ -555,9 +534,8 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
-        let produced = self.process_idle(at, computer, ai, side, fx)?;
+        let produced = self.process_idle(at, computer, ai, side)?;
         if !produced {
             let m = self.move_to(AiMove {
                 point: self.target_point,
@@ -565,7 +543,9 @@ impl UnitAi {
                 force: true,
                 walk: false,
             });
-            fx.extend(m.map(Effect::Move));
+            if let Some(m) = m {
+                side.effect_now(Effect::Move(m), self, ai)?;
+            }
         }
         self.leave_patrol_timers(ai);
         self.last_order = self.current_order;

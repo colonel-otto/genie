@@ -29,7 +29,6 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
         if order.is_some() {
@@ -43,7 +42,7 @@ impl UnitAi {
         let attack = ActionKind::Attack.value();
         if p0 == attack && (order == Some(OrderKind::Attack) || action == Some(ActionKind::Attack))
         {
-            let produced = self.process_idle(at, computer, ai, side, fx)?;
+            let produced = self.process_idle(at, computer, ai, side)?;
             if produced {
                 return Ok(PRODUCED);
             }
@@ -53,20 +52,20 @@ impl UnitAi {
                 ));
             }
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai)?;
             return Ok(GO_ON);
         }
         let own = order.map_or_else(|| ActionKind::field(action) == p0, |o| o.owns(action));
         if own {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai)?;
             return Ok(GO_ON);
         }
         let moved = p0 == ActionKind::Move.value();
         match order {
             Some(OrderKind::GroupGather) if moved => {
                 self.remove_target();
-                self.stop_current(false, at, fx)?;
+                self.stop_current(false, at, side, ai)?;
                 return Ok(GO_ON);
             }
             Some(OrderKind::Defend) if moved => {
@@ -77,7 +76,7 @@ impl UnitAi {
         }
         if p0 == attack {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai)?;
         }
         Ok(GO_ON)
     }
@@ -101,7 +100,6 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
         let attack = ActionKind::Attack.value();
@@ -111,7 +109,7 @@ impl UnitAi {
                     "an invalidated attack with retargeting off (+0x1d6)",
                 ));
             }
-            let produced = self.process_idle(at, computer, ai, side, fx)?;
+            let produced = self.process_idle(at, computer, ai, side)?;
             if produced {
                 return Ok(GO_ON);
             }
@@ -121,7 +119,7 @@ impl UnitAi {
                 ));
             }
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai)?;
             return Ok(GO_ON);
         }
         let own = if order.is_none() {
@@ -138,7 +136,7 @@ impl UnitAi {
         };
         if own || p0 == attack {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai)?;
         }
         Ok(GO_ON)
     }
@@ -159,7 +157,6 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let p1 = n.p[0];
         let order = self.current_order;
@@ -171,28 +168,28 @@ impl UnitAi {
         if order.is_none() {
             if ActionKind::field(action) == p1 || p1 == attack {
                 self.remove_target();
-                self.stop_current(true, at, fx)?;
+                self.stop_current(true, at, side, ai_rng)?;
             }
             return Ok(GO_ON);
         }
         if order == Some(OrderKind::Attack) && p1 == attack {
-            if self.process_idle(at, computer, ai_rng, side, fx)? {
+            if self.process_idle(at, computer, ai_rng, side)? {
                 return Ok(PRODUCED);
             }
             self.remove_target();
-            self.stop_current(false, at, fx)?;
+            self.stop_current(false, at, side, ai_rng)?;
             return Ok(GO_ON);
         }
         if ActionKind::field(action) == p1 && order.is_some_and(|o| o.owns(action)) {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai_rng)?;
             return Ok(GO_ON);
         }
         let moved = p1 == ActionKind::Move.value();
         match order {
             Some(OrderKind::GroupGather) if moved => {
                 self.remove_target();
-                self.stop_current(false, at, fx)?;
+                self.stop_current(false, at, side, ai_rng)?;
                 return Ok(GO_ON);
             }
             Some(OrderKind::Defend) if moved => {
@@ -207,7 +204,7 @@ impl UnitAi {
         }
         if p1 == attack {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai_rng)?;
         }
         Ok(GO_ON)
     }
@@ -246,12 +243,14 @@ impl UnitAi {
         &mut self,
         keep_order: bool,
         at: &Surroundings,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
     ) -> Result<(), GenieError> {
         self.stop_with(
             keep_order,
             Some(([at.position[0], at.position[1]], at.class)),
-            fx,
+            side,
+            rng,
         )
     }
 
@@ -261,7 +260,8 @@ impl UnitAi {
         &mut self,
         keep_order: bool,
         place: Option<([f32; 2], i16)>,
-        fx: &mut Vec<Effect>,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
     ) -> Result<(), GenieError> {
         let action = self.current_action;
         let order = self.current_order;
@@ -284,7 +284,7 @@ impl UnitAi {
                 self.state_position = position;
             }
         }
-        fx.push(Effect::Stop);
+        side.effect_now(Effect::Stop, self, rng)?;
         self.current_action = None;
         self.stop_after_kill = false;
         Ok(())
@@ -309,21 +309,29 @@ impl UnitAi {
     /// move the action value becomes the move's (`0x262`, the old one the last); the target
     /// stays. The move gives the unit its `MoveTo` at once: the update's later checks see it
     /// busy. True when it walks.
-    pub(super) fn walk_back(&mut self, at: &Surroundings, fx: &mut Vec<Effect>) -> bool {
+    pub(super) fn walk_back(
+        &mut self,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
+    ) -> Result<bool, GenieError> {
         let gap = point_gap_squared(self.state_position, at.position, at.size);
         if !crate::math::fmath::below_or_unordered(WALK_BACK, gap) {
-            return false;
+            return Ok(false);
         }
         let [x, y] = self.state_position;
-        fx.push(Effect::Move(AiMove {
-            point: [x, y, at.position[2]],
-            range: WALK_BACK,
-            force: true,
-            walk: false,
-        }));
+        side.effect_now(
+            Effect::Move(AiMove {
+                point: [x, y, at.position[2]],
+                range: WALK_BACK,
+                force: true,
+                walk: false,
+            }),
+            self,
+            rng,
+        )?;
         self.set_action(Some(ActionKind::Move));
-        self.commanded = true;
-        true
+        Ok(true)
     }
 
     /// The reset at the full update once the unit's actions ended (the unit's slot 0x430 false):
@@ -430,18 +438,17 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         computer: bool,
         ai: &mut Well512,
-    ) -> Result<Vec<Effect>, GenieError> {
-        let mut fx = Vec::new();
+    ) -> Result<(), GenieError> {
         if !self.notifies.is_empty() || self.orders.is_empty() {
-            return Ok(fx);
+            return Ok(());
         }
         if (self.current_action.is_some() || at.busy) && !at.interruptible {
-            return Ok(fx);
+            return Ok(());
         }
         if self.can_order(at, false) {
-            self.run_orders(at, side, computer, ai, &mut fx)?;
+            self.run_orders(at, side, computer, ai)?;
         }
-        Ok(fx)
+        Ok(())
     }
 
     /// Slot 0x28 (`FUN_140c55c90`, every type's; slot 0x30, `FUN_140c563d0`, takes 14 arguments
@@ -496,7 +503,6 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         computer: bool,
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
     ) -> Result<(), GenieError> {
         let mut k = 0;
         while k < self.orders.len() {
@@ -504,7 +510,7 @@ impl UnitAi {
                 return Ok(());
             }
             let order = self.orders[k];
-            let r = self.process_order(&order, Some((at, &mut *side, computer)), None, ai, fx)?;
+            let r = self.process_order(&order, Some((at, computer)), None, ai, side)?;
             if r == 0xe {
                 k += 1;
                 continue;

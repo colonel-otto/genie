@@ -113,7 +113,7 @@ impl World {
             &mut dyn crate::unit_ai::UnitSide,
             bool,
             &mut crate::math::rng::Well512,
-        ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
+        ) -> Result<(), GenieError>,
     ) -> Result<(), GenieError> {
         let stepped = self.step_object((p, i), (0, None, false), |unit, c| {
             unit.run_ai(c, f).map(|()| Outcome::Stay)

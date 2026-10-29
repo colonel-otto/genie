@@ -10,7 +10,7 @@ use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, BREAK, DAMAGED, DEAD,
     Effect, GO_ON, LION_ATTACKED_TIMEOUT, MISSILE_WARNING, NO_LONGER_ON_ME, Notify, OTHER_LOAD,
     PACKED_UNIT_CLASS, PASTURE_BUILT, REQUIRES_SEARCH, SENT_OFF, Surroundings, TARGET_MOVED,
-    UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner, back_up, dodges, top_target_after,
+    UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner, back_up, dodges,
 };
 
 impl UnitAi {
@@ -26,12 +26,11 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            DAMAGED => self.hunted_damaged(n, time, at, computer, ai_rng, side, fx),
+            DAMAGED => self.hunted_damaged(n, time, at, computer, ai_rng, side),
             0x20f => Ok(GO_ON),
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -49,10 +48,9 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            DAMAGED => self.boar_damaged(n, time, at, ai_rng, side, fx),
+            DAMAGED => self.boar_damaged(n, time, at, ai_rng, side),
             ACTION_COMPLETED => {
                 if self.current_action == Some(ActionKind::MoveAside) {
                     self.idle_timeout = self.adjusted_idle_timeout.wrapping_add(1);
@@ -61,10 +59,10 @@ impl UnitAi {
                         home.go_home = true;
                     }
                 }
-                self.base_notify(n, time, at, computer, ai_rng, side, fx)
+                self.base_notify(n, time, at, computer, ai_rng, side)
             }
             0x20f => Ok(GO_ON),
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -81,7 +79,6 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
             ACTION_COMPLETED => {
@@ -89,12 +86,12 @@ impl UnitAi {
                     // FUN_140c41bc0 with 1000: the idle timeout, then slot 0x1a8
                     self.set_idle_timeout(LION_ATTACKED_TIMEOUT, ai_rng);
                     self.remove_target();
-                    self.stop_current(true, at, fx)?;
+                    self.stop_current(true, at, side, ai_rng)?;
                 }
-                self.base_notify(n, time, at, computer, ai_rng, side, fx)
+                self.base_notify(n, time, at, computer, ai_rng, side)
             }
-            TARGET_MOVED => self.lion_target_moved(n, time, at, computer, ai_rng, side, fx),
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            TARGET_MOVED => self.lion_target_moved(n, time, at, computer, ai_rng, side),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -113,7 +110,6 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         // "Target is still visible, tracking.": a target the world holds within the
         // lion's line of sight (FUN_14118f8c0 against its sight squared: COMISS, JC
@@ -129,15 +125,15 @@ impl UnitAi {
             && !crate::math::fmath::below_or_unordered(at.los * at.los, gap)
             && flags & 0x10 == 0
         {
-            let _ = self.attack_object(self.current_target, true, false, at, side, fx)?;
+            let _ = self.attack_object(self.current_target, true, false, at, side)?;
             return Ok(BREAK);
         }
         // "Target is invalid or no longer visible, stopping pursuit.": the target
         // goes, the action stops (slot 0xb0 with 1) and slot 0x48 hands the notify
         // to the owner (not held)
         self.remove_target();
-        self.stop_current(true, at, fx)?;
-        self.base_notify(n, time, at, computer, ai_rng, side, fx)
+        self.stop_current(true, at, side, ai_rng)?;
+        self.base_notify(n, time, at, computer, ai_rng, side)
     }
 
     /// The villager's handler (`FUN_140c22bf0`; the notifies it has no case for go to the base
@@ -163,7 +159,6 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
             ACTION_INVALIDATED | TARGET_MOVED | REQUIRES_SEARCH
@@ -175,40 +170,38 @@ impl UnitAi {
                     self.post(failed, at.state)?;
                     return Ok(GO_ON);
                 }
-                self.base_notify(n, time, at, computer, ai_rng, side, fx)
+                self.base_notify(n, time, at, computer, ai_rng, side)
             }
             ACTION_INVALIDATED | TARGET_MOVED | REQUIRES_SEARCH => {
-                self.villager_search(n, at, computer, side, fx)
+                self.villager_search(n, at, computer, side, ai_rng)
             }
             // a completion or a failure of its action (0x1fa, 0x1f9) stops it
             ACTION_COMPLETED | ACTION_FAILED => {
                 if ActionKind::field(self.current_action) == n.p[0] {
                     self.remove_target();
-                    self.stop_current(true, at, fx)?;
+                    self.stop_current(true, at, side, ai_rng)?;
                 }
                 Ok(GO_ON)
             }
             ACTION_EXECUTED if computer => Err(GenieError::unsupported(
                 "a computer villager's executed action",
             )),
-            ACTION_EXECUTED => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            ACTION_EXECUTED => self.base_notify(n, time, at, computer, ai_rng, side),
             // a missile's warning it does not dodge (the player's `+0xe10`) is its damage
             MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
-            DAMAGED | MISSILE_WARNING => {
-                self.villager_damaged(n, time, at, computer, ai_rng, side, fx)
-            }
+            DAMAGED | MISSILE_WARNING => self.villager_damaged(n, time, at, computer, ai_rng, side),
             // off the build or the hunt action, the object its action made (a pasture,
             // `p[1]`) which the world holds: the unit works it at its place (slot 0x7e8,
             // the caller's)
-            PASTURE_BUILT => self.work_on_made(n, at, side, fx),
+            PASTURE_BUILT => self.work_on_made(n, at, side, ai_rng),
             // a load of another resource asked off (FUN_141658e20 from its place, its slot
             // 0x128 on the site, its slot 0x30 back to its action's target: the caller's)
-            OTHER_LOAD => Self::drop_other_load(side, fx),
+            OTHER_LOAD => self.drop_other_load(side, ai_rng),
             // its own cases the slice does not model; any other is the base handler's
             0x217..=0x21a => {
                 Err(VILLAGER_NOTIFY.with("notify", format!("{:#x} {:?}", n.kind, n.p)))
             }
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -216,19 +209,23 @@ impl UnitAi {
     /// action made (a pasture, `p[1]`) which the world holds: the unit works it at its place
     /// (slot 0x7e8, the caller's).
     pub(super) fn work_on_made(
-        &self,
+        &mut self,
         n: Notify,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         if (n.p[0] == ActionKind::Build.value() || n.p[0] == ActionKind::Hunt.value())
             && let Some(made) = Self::world_object(n.p[1], at, side)?
         {
-            fx.push(Effect::Command(AiCommand::WorkOn {
-                target: made.id,
-                point: made.position,
-            }));
+            side.effect_now(
+                Effect::Command(AiCommand::WorkOn {
+                    target: made.id,
+                    point: made.position,
+                }),
+                self,
+                rng,
+            )?;
         }
         Ok(GO_ON)
     }
@@ -237,12 +234,17 @@ impl UnitAi {
     /// its slot 0x128 on the site, its slot 0x30 back to its action's target: the caller's):
     /// slot 0x190 first, its top action's target, then the drop site the table names.
     pub(super) fn drop_other_load(
+        &mut self,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let back = top_target_after(fx, side)?;
+        let back = side.top_target_now()?;
         if let Some(site) = side.table_drop_site()? {
-            fx.push(Effect::Command(AiCommand::DropElsewhere { site, back }));
+            side.effect_now(
+                Effect::Command(AiCommand::DropElsewhere { site, back }),
+                self,
+                rng,
+            )?;
         }
         Ok(GO_ON)
     }
@@ -260,14 +262,13 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
             MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
             DAMAGED | MISSILE_WARNING => {
-                self.transport_damaged(n, time, at, computer, ai_rng, side, fx)
+                self.transport_damaged(n, time, at, computer, ai_rng, side)
             }
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -282,15 +283,12 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            REQUIRES_SEARCH => self.trader_search(at, fx),
+            REQUIRES_SEARCH => self.trader_search(at, side, ai_rng),
             MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
-            DAMAGED | MISSILE_WARNING => {
-                self.trade_damaged(n, time, at, computer, ai_rng, side, fx)
-            }
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            DAMAGED | MISSILE_WARNING => self.trade_damaged(n, time, at, computer, ai_rng, side),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -305,17 +303,14 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
             REQUIRES_SEARCH if self.current_action == Some(ActionKind::Build) => {
-                self.fishing_builder_search(at, computer, side, fx)
+                self.fishing_builder_search(at, computer, side, ai_rng)
             }
             MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
-            DAMAGED | MISSILE_WARNING => {
-                self.fishing_damaged(n, time, at, computer, ai_rng, side, fx)
-            }
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            DAMAGED | MISSILE_WARNING => self.fishing_damaged(n, time, at, computer, ai_rng, side),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -332,11 +327,10 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
             DAMAGED if at.class == PACKED_UNIT_CLASS && computer => {
-                self.packed_damaged(n, time, at, computer, ai_rng, side, fx)
+                self.packed_damaged(n, time, at, computer, ai_rng, side)
             }
             0x1fe => back_up(),
             ACTION_EXECUTED if computer && self.keeps_distance(at, ai_rng) => {
@@ -346,7 +340,7 @@ impl UnitAi {
                     Ok(GO_ON)
                 }
             }
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -362,18 +356,17 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
             alert_owner(computer)?;
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
         if at.unit(n.caller).is_none() {
             return Ok(GO_ON);
         }
-        self.stop_current(true, at, fx)?;
-        let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+        self.stop_current(true, at, side, ai_rng)?;
+        let _ = self.run_away(true, at, computer, ai_rng, side)?;
         Ok(BREAK)
     }
 
@@ -388,7 +381,6 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
             0x1fe => back_up(),
@@ -398,7 +390,7 @@ impl UnitAi {
             0x202 if self.current_action == Some(ActionKind::Heal) => {
                 Err(GenieError::unsupported("a healer's search notify"))
             }
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -413,7 +405,6 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
             // "I'm dead, I give up.": the owner's alert (slot 0x2e8 with 0x209: a human
@@ -423,12 +414,12 @@ impl UnitAi {
             // case follows
             DAMAGED if n.p[1] < 1 => {
                 alert_owner(computer)?;
-                self.end_notifies(time, at, fx)?;
+                self.end_notifies(time, at, side, ai_rng)?;
                 Ok(DEAD)
             }
             DAMAGED => {
                 alert_owner(at.guest_computer)?;
-                self.damaged(n, time, at, computer, ai_rng, side, fx)
+                self.damaged(n, time, at, computer, ai_rng, side)
             }
             // "I am a defensive building and my current target has been destroyed, purging
             // attack order.": a target gone or dead (above state 2) is forgotten
@@ -437,11 +428,11 @@ impl UnitAi {
                 let gone = self.current_target == -1 || at.target.is_none_or(|t| 2 < t.state);
                 if gone {
                     self.remove_target();
-                    self.stop_current(true, at, fx)?;
+                    self.stop_current(true, at, side, ai_rng)?;
                 }
                 Ok(GO_ON)
             }
-            _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            _ => self.base_notify(n, time, at, computer, ai_rng, side),
         }
     }
 
@@ -456,10 +447,9 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            DAMAGED => self.building_damaged(n, time, at, computer, side, fx),
+            DAMAGED => self.building_damaged(n, time, at, computer, side, ai_rng),
             // "Unit #%d is attacking me": it joins the attackers and the unit is under attack
             600 => {
                 let _ = self.add_attacker(n.caller);
@@ -473,7 +463,7 @@ impl UnitAi {
                 }
                 Ok(GO_ON)
             }
-            0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, computer, ai_rng, side),
             _ => Ok(GO_ON),
         }
     }
@@ -490,10 +480,9 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            SENT_OFF => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            SENT_OFF => self.base_notify(n, time, at, computer, ai_rng, side),
             0x202 => Err(GenieError::unsupported(
                 "a livestock's notify 0x202 (its settings' test)",
             )),

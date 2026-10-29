@@ -9,9 +9,8 @@ use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
-    /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::AiCommand::HuntObject`], after the
-    /// unit's update): its stopAction (slot 0x3c0: the action list cleared,
-    /// [`World::clear_actions`], and in state 2 the standing sprite), then its hunt command (object
+    /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::AiCommand::HuntObject`], after
+    /// the AI's stop, slot 0xb0 with 1, which stopped the unit at once): its hunt command (object
     /// slot 0x360, `FUN_1412151f0`, forced): with no action left slot 0x820 finds the task
     /// ([`World::find_work_task`] with any filter and the master switch) and a new Hunt on it,
     /// whatever its action type or requirement (`FUN_140ac2dd0`), replaces the unit's actions
@@ -24,10 +23,6 @@ impl World {
         idx: usize,
         target: i32,
     ) -> Result<(), GenieError> {
-        self.clear_actions(player, idx)?;
-        if self.players[player].objects[idx].life.state == 2 {
-            self.standing_sprite(player, idx)?;
-        }
         let (_, t) = self.object(target).ok_or(HUNT_TARGET_GONE)?;
         let point = t.position();
         let task = self

@@ -23,22 +23,21 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match self.ai_type {
-            2 => self.hunted_notify(n, time, at, computer, ai_rng, side, fx),
-            4 => self.boar_notify(n, time, at, computer, ai_rng, side, fx),
-            5 => self.lion_notify(n, time, at, computer, ai_rng, side, fx),
-            8 => self.villager_notify(n, time, at, computer, ai_rng, side, fx),
-            11 | SIEGE_TOWER_AI => self.transport_notify(n, time, at, computer, ai_rng, side, fx),
-            TRADE_AI => self.trader_notify(n, time, at, computer, ai_rng, side, fx),
-            FISHING_AI => self.fishing_notify(n, time, at, computer, ai_rng, side, fx),
-            SIEGE_AI => self.siege_notify(n, time, at, computer, ai_rng, side, fx),
-            13 => self.soldier_notify(n, time, at, computer, ai_rng, side, fx),
-            15 => self.tower_notify(n, time, at, computer, ai_rng, side, fx),
-            17 => self.building_notify(n, time, at, computer, ai_rng, side, fx),
-            19 => self.livestock_notify(n, time, at, computer, ai_rng, side, fx),
-            ARTIFACT_AI => self.artifact_notify(n, time, at, computer, ai_rng, side, fx),
+            2 => self.hunted_notify(n, time, at, computer, ai_rng, side),
+            4 => self.boar_notify(n, time, at, computer, ai_rng, side),
+            5 => self.lion_notify(n, time, at, computer, ai_rng, side),
+            8 => self.villager_notify(n, time, at, computer, ai_rng, side),
+            11 | SIEGE_TOWER_AI => self.transport_notify(n, time, at, computer, ai_rng, side),
+            TRADE_AI => self.trader_notify(n, time, at, computer, ai_rng, side),
+            FISHING_AI => self.fishing_notify(n, time, at, computer, ai_rng, side),
+            SIEGE_AI => self.siege_notify(n, time, at, computer, ai_rng, side),
+            13 => self.soldier_notify(n, time, at, computer, ai_rng, side),
+            15 => self.tower_notify(n, time, at, computer, ai_rng, side),
+            17 => self.building_notify(n, time, at, computer, ai_rng, side),
+            19 => self.livestock_notify(n, time, at, computer, ai_rng, side),
+            ARTIFACT_AI => self.artifact_notify(n, time, at, computer, ai_rng, side),
             _ => Err(GenieError::unsupported(
                 "the notify handler of a unit-AI type not modelled",
             )),
@@ -64,7 +63,6 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let stops = match n.kind {
             500
@@ -90,7 +88,7 @@ impl UnitAi {
                 .target
                 .is_some_and(|t| self.current_target != -1 && t.sight == 0xf),
             SENT_OFF | SENT_OFF_GROUP => {
-                return self.base_notify(n, time, at, computer, ai_rng, side, fx);
+                return self.base_notify(n, time, at, computer, ai_rng, side);
             }
             600 => {
                 let _ = self.add_attacker(n.caller);
@@ -101,7 +99,7 @@ impl UnitAi {
         };
         if stops {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, ai_rng)?;
         }
         Ok(GO_ON)
     }
@@ -119,7 +117,7 @@ impl UnitAi {
         &mut self,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let found = side.closest(&Search {
             at: [at.position[0], at.position[1]],
@@ -143,7 +141,7 @@ impl UnitAi {
             && let Some(u) = side.seen_unit(found.id)?
             && u.owner != at.player
         {
-            fx.push(Effect::ChangeOwner(u.owner));
+            side.effect_now(Effect::ChangeOwner(u.owner), self, rng)?;
             return Ok(true);
         }
         Ok(false)
@@ -157,11 +155,11 @@ impl UnitAi {
         &mut self,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<(), GenieError> {
-        if self.artifact_idle(at, side, fx)? {
+        if self.artifact_idle(at, side, rng)? {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, rng)?;
             self.idle_timer = 0;
         }
         Ok(())
@@ -180,27 +178,26 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            ACTION_COMPLETED => self.action_completed(n, at, computer, ai_rng, side, fx),
-            ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, side, fx),
-            ACTION_INVALIDATED => self.action_invalidated(n, at, computer, ai_rng, side, fx),
+            ACTION_COMPLETED => self.action_completed(n, at, computer, ai_rng, side),
+            ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, side),
+            ACTION_INVALIDATED => self.action_invalidated(n, at, computer, ai_rng, side),
             crate::movement::explore::WANTS_POINT if self.explorer() => {
-                self.seek_unexplored(at, computer, ai_rng, side, fx)
+                self.seek_unexplored(at, computer, ai_rng, side)
             }
             OWNER_CHANGED => {
-                fx.push(Effect::Stop);
+                side.effect_now(Effect::Stop, self, ai_rng)?;
                 self.remove_target();
-                self.stop_current(true, at, fx)?;
-                self.end_notifies(time, at, fx)?;
+                self.stop_current(true, at, side, ai_rng)?;
+                self.end_notifies(time, at, side, ai_rng)?;
                 self.orders.clear();
                 Ok(GO_ON)
             }
             // a MoveTo's moved target: with a saved patrol processIdle runs (slot 0x240 with 1),
             // its result unread
             TARGET_MOVED if self.patrol_path.is_some() => {
-                let _ = self.process_idle(at, computer, ai_rng, side, fx)?;
+                let _ = self.process_idle(at, computer, ai_rng, side)?;
                 Ok(GO_ON)
             }
             // a moved target, then the kinds "I'm ignoring that." and the action values
@@ -224,9 +221,9 @@ impl UnitAi {
                 }
                 Ok(GO_ON)
             }
-            DAMAGED | MISSILE_WARNING => self.damaged(n, time, at, computer, ai_rng, side, fx),
-            IN_THE_WAY => self.in_the_way(n, at, side, fx),
-            SENT_OFF => self.sent_off(n, side, fx),
+            DAMAGED | MISSILE_WARNING => self.damaged(n, time, at, computer, ai_rng, side),
+            IN_THE_WAY => self.in_the_way(n, at, side, ai_rng),
+            SENT_OFF => self.sent_off(n, side, ai_rng),
             // a unit of a group sent off a footprint: the action value 0x2c0
             SENT_OFF_GROUP => {
                 self.set_action(Some(ActionKind::GroupAside));

@@ -28,10 +28,9 @@ impl UnitAi {
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
         // an animal that is not Gaia's alerts its owner (slot 0x2e8 with 0x201)
@@ -43,7 +42,7 @@ impl UnitAi {
         // the game also tests the action values 0x25f and 0x268 here, which no unit AI holds
         // ([`ActionKind`])
         let uncon = at.class != CLASS_KING;
-        let _ = self.run_away(uncon, at, computer, ai_rng, side, fx)?;
+        let _ = self.run_away(uncon, at, computer, ai_rng, side)?;
         Ok(BREAK)
     }
 
@@ -62,13 +61,12 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         // the siege unit's slot 0x160 (FUN_140c2a8f0): with a top action's target or of class 54
         // it does not run; a computer player's first lets the units inside it go
         // (FUN_141225c40 with −1, −1)
         if self.ai_type == SIEGE_AI {
-            if at.class == 54 || self.top_target_live(at, fx, side)?.is_some() {
+            if at.class == 54 || Self::top_target_live(at, side)?.is_some() {
                 return Ok(false);
             }
             if computer {
@@ -123,7 +121,7 @@ impl UnitAi {
                 ey = self.state_position[1] - (vy / d) * RUN_LEASH;
             }
         }
-        self.evasive_move([ex, ey, z], (true, true), at, ai, side, fx)
+        self.evasive_move([ex, ey, z], (true, true), at, ai, side)
     }
 
     /// `evasiveMoveTo` (the unit AI's slot 0x150, `FUN_140c4d140`) to `point` with its flags
@@ -141,7 +139,6 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !uncon && self.current_action.is_some() {
             return Ok(false);
@@ -189,10 +186,11 @@ impl UnitAi {
             force: true,
             walk: false,
         });
-        fx.extend(m.map(Effect::Move));
+        if let Some(m) = m {
+            side.effect_now(Effect::Move(m), self, ai)?;
+        }
         // the move (slot 0x340) gives the unit its MoveTo at once: the update's later checks see
         // it busy
-        self.commanded = true;
         Ok(true)
     }
 
@@ -212,10 +210,9 @@ impl UnitAi {
         at: &Surroundings,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
-            self.end_notifies(time, at, fx)?;
+            self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
         let _ = self.add_attacker(n.caller);
@@ -226,10 +223,10 @@ impl UnitAi {
         };
         let villager = attacker.class == CLASS_VILLAGER;
         let furious = if self.current_action == Some(ActionKind::Attack) {
-            let _ = self.attack_object(target, false, false, at, side, fx)?;
+            let _ = self.attack_object(target, false, false, at, side)?;
             true
         } else {
-            let _ = self.attack_object(target, true, false, at, side, fx)?;
+            let _ = self.attack_object(target, true, false, at, side)?;
             self.idle_timer = 0;
             villager
         };
@@ -313,18 +310,18 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-        fx: &mut Vec<Effect>,
+        rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         match self.current_action {
-            Some(ActionKind::Hunt) => return self.hunter_search(n, at, computer, side, fx),
+            Some(ActionKind::Hunt) => return self.hunter_search(n, at, computer, side, rng),
             Some(ActionKind::Shepherd) => {
                 return Err(VILLAGER_NOTIFY.with("action", ActionKind::Shepherd.value()));
             }
-            Some(ActionKind::Gather) => return self.gatherer_search(n, at, computer, side, fx),
+            Some(ActionKind::Gather) => return self.gatherer_search(n, at, computer, side, rng),
             Some(ActionKind::Build) => {
                 let found = side.foundation_search()?;
                 if found != -1 && side.reaches(found, FOUNDATION_REACH)? {
-                    let _ = self.build_object(found, true, at, side, fx)?;
+                    let _ = self.build_object(found, true, at, side, rng)?;
                     return Ok(BREAK);
                 }
                 if computer {
@@ -332,7 +329,7 @@ impl UnitAi {
                         "a computer builder without a foundation",
                     ));
                 }
-                fx.push(Effect::Stop);
+                side.effect_now(Effect::Stop, self, rng)?;
                 return Ok(BREAK);
             }
             Some(ActionKind::Explore) => closest_undiscovered_tile()?,
@@ -350,7 +347,7 @@ impl UnitAi {
             )
         {
             self.remove_target();
-            self.stop_current(true, at, fx)?;
+            self.stop_current(true, at, side, rng)?;
         }
         Ok(GO_ON)
     }

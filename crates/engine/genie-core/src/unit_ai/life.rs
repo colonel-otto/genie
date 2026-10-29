@@ -168,8 +168,7 @@ impl UnitAi {
             notify_capacity: notify_capacity(ai_type, 0),
             processing: false,
             buffered: Vec::new(),
-            commanded: false,
-            stopped_at_once: false,
+            ordered_on_target: false,
             attackers: Vec::new(),
             order_history: Vec::new(),
             retries: Vec::new(),
@@ -272,12 +271,12 @@ impl UnitAi {
         &mut self,
         at: &Surroundings,
         ai: &mut Well512,
-        fx: &mut Vec<Effect>,
-    ) -> bool {
+        side: &mut dyn UnitSide,
+    ) -> Result<bool, GenieError> {
         if self.patrol_path.is_none() {
-            return false;
+            return Ok(false);
         }
-        fx.push(Effect::RestorePatrol);
+        side.effect_now(Effect::RestorePatrol, self, ai)?;
         if at.group.is_none() {
             let (order, other) = if at.attack_moving {
                 (OrderKind::AttackMove, OrderKind::Patrol)
@@ -290,7 +289,7 @@ impl UnitAi {
             self.current_order = Some(order);
         }
         self.secondary_timer = 750;
-        true
+        Ok(true)
     }
 
     /// What a `MoveTo`'s update in state 3 (`0x140aa2a70`) reads of its unit's AI for the path
@@ -493,12 +492,17 @@ impl UnitAi {
 
     /// `FUN_140c41e50`: the unit's last human order time drops to `FUN_140fe0d10`'s 5000, not on
     /// orders 701, 711, 712 and 733.
-    pub(super) fn cap_human_order(&self, fx: &mut Vec<Effect>) {
+    pub(super) fn cap_human_order(
+        &mut self,
+        side: &mut dyn UnitSide,
+        rng: &mut Well512,
+    ) -> Result<(), GenieError> {
         if !matches!(
             self.current_order,
             Some(OrderKind::Defend | OrderKind::Patrol | OrderKind::Follow | OrderKind::AttackMove)
         ) {
-            fx.push(Effect::CapHumanOrder(HUMAN_ORDER_CAP));
+            side.effect_now(Effect::CapHumanOrder(HUMAN_ORDER_CAP), self, rng)?;
         }
+        Ok(())
     }
 }
