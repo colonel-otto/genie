@@ -7,7 +7,7 @@
 
 use crate::GenieError;
 use crate::gathering::closest_resource::herded;
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::masters::player_master;
@@ -284,16 +284,16 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         };
         // a farm's workers (`+0x644`) and its pasture (`+0x790`)
         let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
-        self.c.w.spatial.search(
-            unit.id,
-            self.player,
+        self.c.w.spatial.search(SearchQuery {
+            me: unit.id,
+            player: self.player,
             search,
-            &mut picker,
-            &mut reach,
-            &moving,
-            &shuns,
-            &farm,
-        )
+            attack: &mut picker,
+            reach: &mut reach,
+            moving: &moving,
+            shuns: &shuns,
+            farm: &farm,
+        })
     }
 
     fn may_attack(

@@ -3,7 +3,7 @@
 use crate::GenieError;
 use crate::combat::victims::victim;
 use crate::gathering::closest_resource::herded;
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
@@ -362,16 +362,16 @@ impl Unit {
             ))
         };
         let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
-        let result = c.w.spatial.search(
-            self.id,
-            c.player,
-            &search,
-            &mut no_attack,
-            &mut reach,
-            &moving,
-            &shuns,
-            &farm,
-        )?;
+        let result = c.w.spatial.search(SearchQuery {
+            me: self.id,
+            player: c.player,
+            search: &search,
+            attack: &mut no_attack,
+            reach: &mut reach,
+            moving: &moving,
+            shuns: &shuns,
+            farm: &farm,
+        })?;
         // FUN_140c63e20's alert: enemies found set the alert mode and its time again
         let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",

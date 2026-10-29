@@ -155,18 +155,17 @@ impl Spatial {
     /// answers for a found object whether a class-10 searcher passes it ([`Spatial::closest_object`]).
     ///
     /// [`SearchCache`]: crate::map::spatial::SearchCache
-    #[allow(clippy::too_many_arguments)]
-    pub fn search(
-        &mut self,
-        me: i32,
-        player: usize,
-        search: &Search<'_>,
-        attack: &mut dyn crate::unit_ai::AttackPicker,
-        reach: &mut Reach<'_>,
-        moving: &dyn Fn(i32) -> bool,
-        shuns: &dyn Fn(&Placed) -> Result<bool, GenieError>,
-        farm: &FarmLook<'_>,
-    ) -> Result<Found, GenieError> {
+    pub fn search(&mut self, query: SearchQuery<'_>) -> Result<Found, GenieError> {
+        let SearchQuery {
+            me,
+            player,
+            search,
+            attack,
+            reach,
+            moving,
+            shuns,
+            farm,
+        } = query;
         let _ = self.sight.as_ref().ok_or(GenieError::unsupported(
             "a search without the players' sight",
         ))?;
@@ -363,7 +362,6 @@ impl Spatial {
         player: usize,
         filter: Filter,
         reach: &mut Reach<'_>,
-        checks: ClosestChecks<'_>,
     ) -> Result<(i32, f32), GenieError> {
         let at = self.objects.get(&me);
         let searcher = Searcher {
@@ -429,6 +427,33 @@ impl Spatial {
             world: self,
         };
         crate::unit_ai::best_target::best_unit_to_attack(&me, &ask.ask(), &lists, &mut field)
+    }
+}
+
+/// What a unit AI's search takes ([`Spatial::search`]): the searcher, its [`Search`], and the
+/// callers' answers for what the search reads of the world beyond the spatial index.
+pub struct SearchQuery<'a> {
+    /// The searching object.
+    pub me: i32,
+    /// Its player.
+    pub player: usize,
+    /// What it searches for.
+    pub search: &'a Search<'a>,
+    /// An attack pick's reads of the unit and the objects.
+    pub attack: &'a mut dyn crate::unit_ai::AttackPicker,
+    /// The reachability of a found object (slot 0x3d0).
+    pub reach: &'a mut Reach<'a>,
+    /// Whether livestock is moving (slot 0x288 not −1 and slot 0x530 107).
+    pub moving: &'a dyn Fn(i32) -> bool,
+    /// Whether a class-10 searcher passes a found object.
+    pub shuns: &'a dyn Fn(&Placed) -> Result<bool, GenieError>,
+    /// A farm's workers and pasture.
+    pub farm: &'a FarmLook<'a>,
+}
+
+impl std::fmt::Debug for SearchQuery<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SearchQuery").finish_non_exhaustive()
     }
 }
 

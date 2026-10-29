@@ -29,6 +29,7 @@ pub use self::pather::{Hit, SmoothingWalls, tile_record_id};
 use self::pather::{WalkTest, record_meets_segment};
 #[cfg(test)]
 use self::pather::{box_meets_segment, ccw};
+pub use self::search::SearchQuery;
 
 /// The range of `ClosestObject`'s reachability check (`FUN_140c488b0`, `DAT_142eb5690`).
 const CLOSEST_RANGE: f32 = crate::math::image::spatial::CLOSEST_RANGE;

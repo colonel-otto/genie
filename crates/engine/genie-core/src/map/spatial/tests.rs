@@ -163,16 +163,16 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
     let no_farm = |_: i32| None;
     let mut search = |s: &mut Spatial, at| {
         let f = s
-            .search(
-                9,
-                2,
-                &look(at),
-                &mut never,
-                &mut reach,
-                &still,
-                &none,
-                &no_farm,
-            )
+            .search(SearchQuery {
+                me: 9,
+                player: 2,
+                search: &look(at),
+                attack: &mut never,
+                reach: &mut reach,
+                moving: &still,
+                shuns: &none,
+                farm: &no_farm,
+            })
             .unwrap();
         (f.enemies, f.fresh)
     };
