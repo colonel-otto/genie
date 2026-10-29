@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ACTION_COMPLETED, BREAK, CLASS_10, DEAD, Effect, FISHING_BUILD_FAR, FISHING_BUILDS,
@@ -310,7 +311,7 @@ impl UnitAi {
     /// own foundations (relation 3, state 0, reachable) of each class of [`FISHING_BUILDS`] over
     /// its search ([`FISHING_CARED`], its radius grown by its `+0x1e8`, 7); the nearest by the
     /// distance each answers, below [`FISHING_BUILD_FAR`], that the unit reaches within
-    /// `FOUNDATION_REACH` (slot 0x3d0) it builds (slot 0xf0 with 1, [`Effect::BuildObject`]) and
+    /// `FOUNDATION_REACH` (slot 0x3d0) it builds (slot 0xf0 with 1, [`AiCommand::BuildObject`]) and
     /// the processing breaks. Else a human player's ship goes on (2); a computer player's posts
     /// itself its build's completion (slot 0x328: `0x1fa` with `0x25a`) first.
     pub(super) fn fishing_builder_search(
@@ -442,7 +443,7 @@ impl UnitAi {
 
     /// `HuntObject` (slot 0xc8, `FUN_140c4e220`) forced on `target` (its master's `class` and its
     /// `point`): the current action stops (slot 0xb0 with 1) and the unit's hunt command runs on the
-    /// target ([`Effect::HuntObject`], which carries the stop); taken as done (the caller stops on
+    /// target ([`AiCommand::HuntObject`], which carries the stop); taken as done (the caller stops on
     /// a failure): the hunt action value (`0x265`) becomes current, the stopped one the last, the
     /// target with its class and point (the last ones kept), and the AI counts as commanded.
     pub(super) fn hunt_object(
@@ -460,7 +461,7 @@ impl UnitAi {
                 "a HuntObject whose stop the slice did not make",
             ));
         }
-        fx.push(Effect::HuntObject(target));
+        fx.push(Effect::Command(AiCommand::HuntObject(target)));
         self.set_action(Some(ActionKind::Hunt));
         self.set_target(target, class, point);
         self.commanded = true;

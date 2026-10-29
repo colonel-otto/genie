@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::fmath::Vec3;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::{Effect, Search, UnitSide};
 use genie_diff::Diff;
 
@@ -414,15 +415,19 @@ impl PendingTop {
             match *e {
                 Effect::Stop
                 | Effect::Move(_)
-                | Effect::MoveAside(_)
+                | Effect::Command(AiCommand::MoveAside(_))
                 | Effect::Explore(_)
                 | Effect::RestorePatrol => return Self::Replaced(None),
                 Effect::MoveToObject { target, .. }
-                | Effect::HuntObject(target)
-                | Effect::GatherObject(target)
-                | Effect::BuildObject(target)
-                | Effect::DropElsewhere { site: target, .. }
-                | Effect::WorkOn { target, .. } => return Self::Replaced(Some(target)),
+                | Effect::Command(
+                    AiCommand::HuntObject(target)
+                    | AiCommand::GatherObject(target)
+                    | AiCommand::BuildObject(target)
+                    | AiCommand::DropElsewhere { site: target, .. }
+                    | AiCommand::WorkOn { target, .. },
+                ) => {
+                    return Self::Replaced(Some(target));
+                }
                 Effect::CapHumanOrder(_)
                 | Effect::OrderOnTarget(_)
                 | Effect::AfterOrder(_)

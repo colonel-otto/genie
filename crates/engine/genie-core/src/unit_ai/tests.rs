@@ -1,4 +1,5 @@
 use super::*;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 
 /// A side whose searches find nothing (`Found::NONE`).
@@ -487,12 +488,12 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
     assert_eq!(side.1, vec![(10028, [1.0, 1.5])]);
     assert_eq!(
         fx,
-        vec![Effect::MoveAside(AiMove {
+        vec![Effect::Command(AiCommand::MoveAside(AiMove {
             point: [29.5, 89.5, 2.0],
             range: 0.0,
             force: true,
             walk: true,
-        })]
+        }))]
     );
     assert_eq!(
         (ai.current_action, ai.last_action),
@@ -543,12 +544,12 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
         .unwrap();
     assert_eq!(
         fx,
-        vec![Effect::MoveAside(AiMove {
+        vec![Effect::Command(AiCommand::MoveAside(AiMove {
             point: [164.5, 51.5, 0.0],
             range: 0.0,
             force: true,
             walk: false,
-        })]
+        }))]
     );
     assert_eq!(
         (u.current_action, u.last_action),
@@ -630,7 +631,7 @@ fn sent_off_queue() -> UnitAi {
 
 /// Case 0x2be, the build (`FUN_140c5c170`): `BuildObject` forced (slot 0xf0, `FUN_140c47d80`)
 /// gives the unit its build command, which the caller runs after the update in the order the
-/// AI gave it ([`Effect::BuildObject`]), and at once makes the build the AI's action and the
+/// AI gave it ([`AiCommand::BuildObject`]), and at once makes the build the AI's action and the
 /// foundation its target at its place with its class; the tail takes the order and its
 /// priority (428326873's villager 8766 at update 1804, whose hunt after it must come later).
 #[test]
@@ -675,7 +676,10 @@ fn the_build_order_builds_and_takes_the_order_at_once() {
             &mut fx,
         )
         .unwrap();
-    assert_eq!((r, fx), (1, vec![Effect::BuildObject(10028)]));
+    assert_eq!(
+        (r, fx),
+        (1, vec![Effect::Command(AiCommand::BuildObject(10028))])
+    );
     assert_eq!(
         (
             ai.current_action,
@@ -993,7 +997,13 @@ fn a_gatherer_without_a_class_stops_and_one_on_a_farm_searches_for_another() {
     };
     let mut u = gatherer(-1, -1);
     let (r, fx) = search(&mut u, &mut farm, 49, false);
-    assert_eq!((r, fx), (Ok(BREAK), vec![Effect::GatherObject(12557)]));
+    assert_eq!(
+        (r, fx),
+        (
+            Ok(BREAK),
+            vec![Effect::Command(AiCommand::GatherObject(12557))]
+        )
+    );
     let mut none = ResourceSide {
         closest: Some(found_at(-1)),
         ..ResourceSide::default()
@@ -1063,7 +1073,13 @@ fn a_villager_searches_by_its_action() {
     };
     let mut u = villager(Some(ActionKind::Build));
     let (r, fx) = run(&mut u, &mut building((10028, true)), false);
-    assert_eq!((r, fx), (Ok(BREAK), vec![Effect::BuildObject(10028)]));
+    assert_eq!(
+        (r, fx),
+        (
+            Ok(BREAK),
+            vec![Effect::Command(AiCommand::BuildObject(10028))]
+        )
+    );
     assert_eq!((u.current_target, u.target_type), (10028, 3));
     for foundation in [(10028, false), (-1, false)] {
         let mut u = villager(Some(ActionKind::Build));
@@ -1116,7 +1132,7 @@ fn a_build_object_whose_build_command_answers_0_changes_nothing() {
         u.build_object(10028, true, &at, &mut side, &mut fx),
         Ok(true)
     );
-    assert_eq!(fx, vec![Effect::BuildObject(10028)]);
+    assert_eq!(fx, vec![Effect::Command(AiCommand::BuildObject(10028))]);
     assert_eq!(
         (u.current_action, u.current_target),
         (Some(ActionKind::Build), 10028)
@@ -1157,7 +1173,7 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
         Ok(BREAK)
     );
     assert_eq!(side.searches, vec![(1, -1, 31247, 28202)]);
-    assert_eq!(fx, vec![Effect::GatherObject(28200)]);
+    assert_eq!(fx, vec![Effect::Command(AiCommand::GatherObject(28200))]);
     assert_eq!(
         (ai.current_target, ai.last_target, ai.target_point),
         (28200, 28202, [111.5, 16.5, 0.0])
@@ -1214,7 +1230,7 @@ fn a_hunter_of_a_kind_searches_by_it_from_its_drop_site() {
         Ok(BREAK)
     );
     assert_eq!(side.searches, vec![(0, 2, 31247, 28301)]);
-    assert_eq!(fx, vec![Effect::HuntObject(28300)]);
+    assert_eq!(fx, vec![Effect::Command(AiCommand::HuntObject(28300))]);
     assert_eq!(ai.current_target, 28300);
     let mut ai = UnitAi {
         ai_type: CIVILIAN,
@@ -6499,7 +6515,7 @@ fn a_villager_hunts_an_animal_and_attacks_another_object() {
         u.civilian_attack(9731, &at(0), &mut side, &mut fx),
         Ok(true)
     );
-    assert_eq!(fx, vec![Effect::HuntObject(9731)]);
+    assert_eq!(fx, vec![Effect::Command(AiCommand::HuntObject(9731))]);
     assert_eq!(
         (u.current_action, u.current_target),
         (Some(ActionKind::Hunt), 9731)
@@ -6936,7 +6952,7 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
 
 /// Slot 0x148 (`FUN_140c4d0d0`): unforced, a unit AI with an action value takes no move off
 /// a footprint; forced, or without one, the unit's slot 0x340 gets the move
-/// ([`Effect::MoveAside`]) and the action value becomes 0x2bf, the old one the last.
+/// ([`AiCommand::MoveAside`]) and the action value becomes 0x2bf, the old one the last.
 #[test]
 fn a_move_off_a_footprint_needs_force_or_no_action() {
     let m = |force| AiMove {
@@ -6954,7 +6970,7 @@ fn a_move_off_a_footprint_needs_force_or_no_action() {
     assert!(!u.move_aside(m(false), &mut fx));
     assert_eq!((fx.len(), u.current_action), (0, Some(ActionKind::Gather)));
     assert!(u.move_aside(m(true), &mut fx));
-    assert_eq!(fx, vec![Effect::MoveAside(m(true))]);
+    assert_eq!(fx, vec![Effect::Command(AiCommand::MoveAside(m(true)))]);
     assert_eq!(
         (u.last_action, u.current_action, u.current_target),
         (Some(ActionKind::Gather), Some(ActionKind::MoveAside), 40)
@@ -6962,7 +6978,7 @@ fn a_move_off_a_footprint_needs_force_or_no_action() {
     let mut idle_unit = idle(8);
     let mut fx = Vec::new();
     assert!(idle_unit.move_aside(m(false), &mut fx));
-    assert_eq!(fx, vec![Effect::MoveAside(m(false))]);
+    assert_eq!(fx, vec![Effect::Command(AiCommand::MoveAside(m(false)))]);
 }
 
 /// Slot 0x130 (`FUN_140c55620`): unforced, a unit AI with an action value takes no move;
@@ -8450,7 +8466,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
         u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
         Ok(BREAK)
     );
-    assert_eq!(fx, vec![Effect::BuildObject(42)]);
+    assert_eq!(fx, vec![Effect::Command(AiCommand::BuildObject(42))]);
     let groups: Vec<i32> = side
         .searched
         .iter()
@@ -9192,7 +9208,7 @@ fn the_tail_reads_the_top_target_the_update_s_commands_left() {
     // after a hunt the caller gives once the update ends, the stop would reach the unit
     // first
     let mut u = on_target(Some(ActionKind::Hunt));
-    let mut fx = vec![Effect::HuntObject(600)];
+    let mut fx = vec![Effect::Command(AiCommand::HuntObject(600))];
     assert!(u.top_target_tail(&at, &mut side, &mut fx).is_err());
     // no top action, or one the world no longer holds: nothing
     let mut u = on_target(Some(ActionKind::Gather));
@@ -9696,7 +9712,10 @@ fn the_attack_order_attacks_by_the_unit_ai_s_type_and_becomes_the_ai_s() {
     let mut u = idle(CIVILIAN);
     let mut side = OrderSide::holding(&[(71, 9), (72, 6)]);
     let (r, fx, _) = run_order(&mut u, queued(OrderKind::Attack, 71), 4, &mut side);
-    assert_eq!((r, fx), (Ok(1), vec![Effect::HuntObject(71)]));
+    assert_eq!(
+        (r, fx),
+        (Ok(1), vec![Effect::Command(AiCommand::HuntObject(71))])
+    );
     assert_eq!(
         (u.current_order, u.current_action),
         (Some(OrderKind::Attack), Some(ActionKind::Hunt))
@@ -9942,7 +9961,10 @@ fn the_gather_and_hunt_orders_work_an_object_the_world_holds() {
     let mut u = idle(CIVILIAN);
     let gather = OrderKind::Gather;
     let (r, fx, _) = run_order(&mut u, queued(gather, 70), 4, &mut side);
-    assert_eq!((r, fx), (Ok(1), vec![Effect::GatherObject(70)]));
+    assert_eq!(
+        (r, fx),
+        (Ok(1), vec![Effect::Command(AiCommand::GatherObject(70))])
+    );
     assert_eq!(
         (
             u.current_order,
@@ -9962,7 +9984,10 @@ fn the_gather_and_hunt_orders_work_an_object_the_world_holds() {
         ..idle(CIVILIAN)
     };
     let (r, fx, _) = run_order(&mut u, queued(OrderKind::Hunt, 70), 4, &mut side);
-    assert_eq!((r, fx), (Ok(1), vec![Effect::HuntObject(70)]));
+    assert_eq!(
+        (r, fx),
+        (Ok(1), vec![Effect::Command(AiCommand::HuntObject(70))])
+    );
     assert_eq!(
         (u.current_order, u.current_action),
         (Some(OrderKind::Hunt), Some(ActionKind::Hunt))
@@ -10310,10 +10335,10 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
         (r, fx),
         (
             Ok(0),
-            vec![Effect::WorkOn {
+            vec![Effect::Command(AiCommand::WorkOn {
                 target: 80,
                 point: [13.5, 31.5, 0.0],
-            }]
+            })]
         )
     );
     assert_eq!(u, before);
@@ -10476,7 +10501,7 @@ fn the_attack_command_runs_a_pending_stop_first() {
         Ok(true)
     );
     assert_eq!((fx, side.stops, u.commanded), (Vec::new(), 2, true));
-    let mut fx = vec![Effect::Stop, Effect::GatherObject(1)];
+    let mut fx = vec![Effect::Stop, Effect::Command(AiCommand::GatherObject(1))];
     assert!(u.attack_command(70, true, &at, &mut side, &mut fx).is_err());
 }
 
@@ -10546,10 +10571,10 @@ fn a_villager_drops_another_resource_at_the_table_s_building() {
     assert_eq!(r, Ok(GO_ON));
     assert_eq!(
         fx,
-        [Effect::DropElsewhere {
+        [Effect::Command(AiCommand::DropElsewhere {
             site: 45,
             back: Some(77)
-        }]
+        })]
     );
     let mut none = Recorder::default();
     let mut fx = Vec::new();
@@ -10580,10 +10605,10 @@ fn a_villager_works_the_pasture_it_built() {
         assert_eq!(r, Ok(GO_ON));
         assert_eq!(
             fx,
-            [Effect::WorkOn {
+            [Effect::Command(AiCommand::WorkOn {
                 target: 15342,
                 point: [136.0, 72.0, 0.0]
-            }]
+            })]
         );
     }
     let other = Notify::own(15295, PASTURE_BUILT, [ActionKind::Gather.value(), 15342, 0]);

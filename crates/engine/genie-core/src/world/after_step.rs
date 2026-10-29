@@ -6,7 +6,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
 use crate::unit_ai::AfterOrder;
 use crate::unit_ai::unit::AiResume;
-use crate::unit_ai::world_view::{AiStart, AiWork};
+use crate::unit_ai::world_view::AiStart;
 use crate::world::step::{ObjectOutputs, Step};
 use crate::world::{LEAVES_ITS_LIST, World};
 
@@ -39,8 +39,8 @@ impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
     /// AI for a command) and what follows it: what its `Step` gathered, applied in the order the
     /// game's update makes them (the regeneration, passive abilities and production of a full
-    /// update, the unit AI's works, moves, waits and order on
-    /// a target, the own kill, the takes and releases). Returns the step, the resume of a unit AI
+    /// update, a builder's work order, the unit AI's waits and order on a target, the own kill,
+    /// the takes and releases). Returns the step, the resume of a unit AI
     /// part the update stopped before, the tail after an order on a target and the object's
     /// slot, which it looks up by id after each part that may move it.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
@@ -64,7 +64,7 @@ impl World {
         let own_update = full && out.ai_resume.is_none();
         let at = (p, self.slot_of(p, id)?, id);
         self.finish_own_update(at, (dt, own_update), after_order, &outcome)?;
-        self.apply_ai_works((p, self.slot_of(p, id)?), &mut out, &outcome)?;
+        self.apply_work_order((p, self.slot_of(p, id)?), &mut out, &outcome)?;
         self.apply_ai_starts((p, self.slot_of(p, id)?), &mut out, &outcome)?;
         self.apply_hits_and_releases(&mut out)?;
         Ok(Stepped {
@@ -121,9 +121,9 @@ impl World {
         Ok(())
     }
 
-    /// The unit AI's works in the order it gave them: a builder's work, the hunts, gathers,
-    /// builds and works, and the moves off footprints.
-    fn apply_ai_works(
+    /// A builder's work found in its Build's update (slot 0x7e8 from case 0xdf, [`Step`]'s
+    /// `work_order`), given before the update's unit AI part resumes.
+    fn apply_work_order(
         &mut self,
         (p, i): (usize, usize),
         out: &mut ObjectOutputs,
@@ -136,36 +136,11 @@ impl World {
                 || self.order_work(p, i, &work),
             )?;
         }
-        // the unit AI's HuntObjects (the unit's stop, then its hunt command),
-        // GatherObjects (its gather command), BuildObjects (its build command) and works
-        // (slot 0x7e8), in the order it gave them
-        for work in std::mem::take(&mut out.works) {
-            if !matches!(outcome, Outcome::Stay) {
-                return Err(GenieError::unsupported(
-                    "a HuntObject or GatherObject of a unit that leaves its list",
-                ));
-            }
-            match work {
-                AiWork::Hunt(target) => self.hunt_command(p, i, target),
-                AiWork::Gather(target) => self.gather_command(p, i, target),
-                AiWork::Work(work) => self.order_work(p, i, &work),
-                AiWork::Build(foundation) => self.build_command(p, i, foundation).map(drop),
-                AiWork::DropElsewhere(site, back) => self.drop_elsewhere(p, i, site, back),
-            }?;
-        }
-        // the unit AI's moves off footprints (slot 0x148)
-        for m in std::mem::take(&mut out.move_aside) {
-            in_list(
-                outcome,
-                GenieError::unsupported("a move off a footprint of a unit that leaves its list"),
-                || self.move_aside(p, i, m),
-            )?;
-        }
         Ok(())
     }
 
-    /// The unit AI's starts after its works: the waits and repairs, a Gather's build command and
-    /// reseed, and the order on a target.
+    /// The unit AI's starts: the waits and repairs, a Gather's build command and reseed, and the
+    /// order on a target.
     fn apply_ai_starts(
         &mut self,
         (p, i): (usize, usize),

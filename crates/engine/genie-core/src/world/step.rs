@@ -9,9 +9,8 @@ use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
-use crate::unit_ai::AiMove;
 use crate::unit_ai::unit::AiResume;
-use crate::unit_ai::world_view::{AiStart, AiWork};
+use crate::unit_ai::world_view::AiStart;
 use crate::world::World;
 
 pub(crate) struct Step<'a> {
@@ -72,19 +71,12 @@ pub(crate) struct Step<'a> {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// The unit AI's `HuntObject`s, `GatherObject`s and works (slot 0x7e8) in the order it gave
-    /// them, whose unit parts the caller runs after the update in that order ([`AiWork`]): a
-    /// later one's stop tears down the action an earlier one made.
-    pub(crate) works: Vec<AiWork>,
     /// The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on
     /// a target not built yet), which the caller runs after the update ([`World::build_command`]).
     pub(crate) build_command: Option<i32>,
     /// A Gather's walk back to reseed ended (state 0xf2, whether it arrived), which the caller
     /// reseeds after the update ([`World::reseed_after_walk`]).
     pub(crate) reseed: Option<bool>,
-    /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
-    /// runs after the update ([`World::move_aside`]).
-    pub(crate) move_aside: Vec<AiMove>,
     /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
     /// which the caller makes the unit's after the update, in order.
     pub(crate) starts: Vec<AiStart>,
@@ -98,14 +90,10 @@ pub(crate) struct ObjectOutputs {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// [`Step`]'s `works`.
-    pub(in crate::world) works: Vec<AiWork>,
     /// [`Step`]'s `build_command`.
     pub(in crate::world) build_command: Option<i32>,
     /// [`Step`]'s `reseed`.
     pub(in crate::world) reseed: Option<bool>,
-    /// [`Step`]'s `move_aside`.
-    pub(in crate::world) move_aside: Vec<AiMove>,
     /// [`Step`]'s `starts`.
     pub(in crate::world) starts: Vec<AiStart>,
     /// [`Step`]'s `work_order`.
@@ -127,10 +115,8 @@ impl Step<'_> {
     pub(in crate::world) fn outputs(&mut self) -> ObjectOutputs {
         ObjectOutputs {
             ordered: self.order_on_target.take(),
-            works: std::mem::take(&mut self.works),
             build_command: self.build_command.take(),
             reseed: self.reseed.take(),
-            move_aside: std::mem::take(&mut self.move_aside),
             starts: std::mem::take(&mut self.starts),
             work_order: self.work_order.take(),
             kills: std::mem::take(&mut self.kills),
@@ -224,6 +210,26 @@ impl Step<'_> {
         })?;
         *me = own.take_out(i);
         answer
+    }
+
+    /// [`Step::lend`] for a world routine on the updating object by its slot: `f` gets the world,
+    /// the object's player and its index in the owner's live list.
+    ///
+    /// # Errors
+    ///
+    /// `f`'s and the lend's.
+    pub(crate) fn lend_at<R>(
+        &mut self,
+        me: &mut Unit,
+        f: impl FnOnce(&mut World, usize, usize) -> Result<R, GenieError>,
+    ) -> Result<R, GenieError> {
+        let (p, id) = (self.player, self.me);
+        self.lend(me, |w| {
+            let i = w.players[p].objects.position_of(id).ok_or_else(|| {
+                GenieError::unreachable("a lent object left its list").with("object", id)
+            })?;
+            f(w, p, i)
+        })
     }
 
     /// The owner's slot 0xf8 with 1 and 1 on a unit's load (`FUN_141616820`,

@@ -165,10 +165,20 @@ def world_outputs(files: dict[str, str], src_link: str) -> list[str]:
 
 
 def unit_ai_effects(files: dict[str, str], src_link: str) -> list[str]:
+    """A row per variant of `Effect`; `Effect::Command` gives a row per variant of `AiCommand`
+    in its place."""
     rows = ["| Effect | What it does | Game | Named in |", "| --- | --- | --- | --- |"]
-    for name, doc in variants_of(files["unit_ai/mod.rs"], "Effect"):
-        named = files_matching(files, re.compile(rf"\bEffect::{name}\b"))
-        rows.append(f"| `{name}` | {sentence(doc)} | {game_refs(doc)} | {links(named, src_link)} |")
+    unit_ai = files["unit_ai/mod.rs"]
+    for name, doc in variants_of(unit_ai, "Effect"):
+        kinds = (
+            [(f"AiCommand::{c}", cdoc) for c, cdoc in variants_of(unit_ai, "AiCommand")]
+            if name == "Command"
+            else [(f"Effect::{name}", doc)]
+        )
+        for path, kdoc in kinds:
+            named = files_matching(files, re.compile(rf"\b{path}\b"))
+            shown = path.removeprefix("Effect::")
+            rows.append(f"| `{shown}` | {sentence(kdoc)} | {game_refs(kdoc)} | {links(named, src_link)} |")
     return rows
 
 
@@ -215,7 +225,8 @@ def inventory(src: Path, src_link: str) -> str:
             "",
             "## The unit AI's effects",
             "",
-            "The variants of `unit_ai::Effect`: what the unit AI does to its own unit, in its order.",
+            "The variants of `unit_ai::Effect`: what the unit AI does to its own unit, in its order;",
+            "a command of the unit's own (`Effect::Command`) by the variants of `unit_ai::AiCommand`.",
             "",
             *effects,
             "",

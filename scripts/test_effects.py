@@ -56,11 +56,19 @@ pub enum Effect {
     Stop,
     /// The AI's move (slot 0x130), which the unit takes.
     Move(AiMove),
+    /// A command of the unit's own.
+    Command(AiCommand),
     /// The AI's move to an object.
     MoveToObject {
         /// The target.
         target: i32,
     },
+}
+
+/// A command of the unit's own that its AI gives.
+pub enum AiCommand {
+    /// The hunt command (object slot 0x360) on the target.
+    HuntObject(i32),
 }
 '''
 
@@ -91,6 +99,7 @@ READER = '''\
 fn after(step: BuildStep) {
     let _ = step.occupants;
     let _ = Effect::Move(m);
+    let _ = Effect::Command(AiCommand::HuntObject(1));
 }
 '''
 
@@ -127,7 +136,7 @@ class Parsing(unittest.TestCase):
 
     def test_an_enum_s_variants_keep_their_docs_and_skip_their_fields(self):
         variants = ef.variants_of(UNIT_AI, "Effect")
-        self.assertEqual([n for n, _ in variants], ["Stop", "Move", "MoveToObject"])
+        self.assertEqual([n for n, _ in variants], ["Stop", "Move", "Command", "MoveToObject"])
         self.assertEqual(variants[1][1], ["The AI's move (slot 0x130), which the unit takes."])
 
     def test_a_doc_s_game_routines_are_named_once_in_order(self):
@@ -152,9 +161,20 @@ class Inventory(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             text = ef.inventory(crate(Path(d)), "SRC")
         out = rows(text, "The unit AI's effects")
-        self.assertEqual([r.split(" | ")[0] for r in out], ["| `Stop`", "| `Move`", "| `MoveToObject`"])
+        self.assertEqual(
+            [r.split(" | ")[0] for r in out],
+            ["| `Stop`", "| `Move`", "| `AiCommand::HuntObject`", "| `MoveToObject`"],
+        )
         self.assertTrue(out[0].endswith("[`construction/build.rs`](SRC/construction/build.rs) |"))
         self.assertTrue(out[1].endswith("[`construction/unit.rs`](SRC/construction/unit.rs) |"))
+
+    def test_a_unit_ai_command_has_a_row_of_its_own_in_its_variant_s_place(self):
+        with tempfile.TemporaryDirectory() as d:
+            text = ef.inventory(crate(Path(d)), "SRC")
+        hunt = rows(text, "The unit AI's effects")[2]
+        self.assertIn("The hunt command (object slot 0x360) on the target.", hunt)
+        self.assertIn("`slot 0x360`", hunt)
+        self.assertTrue(hunt.endswith("[`construction/unit.rs`](SRC/construction/unit.rs) |"))
 
     def test_a_hand_off_is_a_field_its_doc_gives_the_caller(self):
         with tempfile.TemporaryDirectory() as d:
@@ -164,7 +184,7 @@ class Inventory(unittest.TestCase):
         self.assertIn("`BuildStep` | `occupants` |", out[0])
         self.assertIn("`FUN_14123bb20`", out[0])
         self.assertTrue(out[0].endswith("[`construction/unit.rs`](SRC/construction/unit.rs) |"))
-        self.assertIn("2 world outputs, 3 unit AI effects and 1 hand-offs", text)
+        self.assertIn("2 world outputs, 4 unit AI effects and 1 hand-offs", text)
 
 
 class Check(unittest.TestCase):

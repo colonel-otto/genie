@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::{
     AiMove, CIVILIAN, EXPLORE_Z, Effect, FISHING_AI, Gatherable, QueuedOrder, ResourceSearch, Seen,
     Surroundings, UnitAi, UnitCommand, UnitSide, civilian_kind,
@@ -59,7 +60,7 @@ impl UnitAi {
     /// `BuildObject` (slot 0xf0, `FUN_140c47d80`) on foundation `target`, `force`d or off the
     /// build action value (`0x25a`): the unit's build command (slot 0x380, forced as every
     /// caller passes it), which the caller runs after the update in its order
-    /// ([`Effect::BuildObject`]); its 0 ([`UnitSide::builds`]: the foundation gone, no task)
+    /// ([`AiCommand::BuildObject`]); its 0 ([`UnitSide::builds`]: the foundation gone, no task)
     /// leaves the AI as it was. Then the build action value (the last keeping the old) and the
     /// foundation as the target at its place with its class as the world holds it, else class −1
     /// at (0, 0, 0) (the target and class before becoming the last). True when it builds.
@@ -79,7 +80,7 @@ impl UnitAi {
         if (!force && self.current_action == Some(ActionKind::Build)) || !side.builds(target)? {
             return Ok(false);
         }
-        fx.push(Effect::BuildObject(target));
+        fx.push(Effect::Command(AiCommand::BuildObject(target)));
         self.set_action(Some(ActionKind::Build));
         match Self::world_object(target, at, side)? {
             Some(t) => self.set_target(target, i32::from(t.class), t.position),
@@ -119,7 +120,7 @@ impl UnitAi {
 
     /// `GatherObject` (slot 0xd0, `FUN_140c4dd50`) forced on the order's `target`: the unit's
     /// gather command (slot 0x368, `FUN_141085030`) takes no object the world does not hold (0);
-    /// on one it holds it runs after the update ([`Effect::GatherObject`], which fails without a
+    /// on one it holds it runs after the update ([`AiCommand::GatherObject`], which fails without a
     /// task: the caller stops then) and the AI holds the gather ([`UnitAi::gather_object`]).
     pub(super) fn gather_order(
         &mut self,
@@ -328,7 +329,7 @@ impl UnitAi {
     /// owner `+0x10`, `FUN_14152fe40`, [`UnitSide::master_class`]; without an owner the type is
     /// the class), the unit AI's slot 0x1b0 gives a kind of resource
     /// ([`UnitAi::resource_kind`]) and slot 0x88 the closest object of it to the order's shown
-    /// point (`+0x24`, `+0x28`), which the unit works (slot 0x7e8, [`Effect::WorkOn`]); either
+    /// point (`+0x24`, `+0x28`), which the unit works (slot 0x7e8, [`AiCommand::WorkOn`]); either
     /// way the order is not taken (0).
     pub(super) fn order_on_target(
         &mut self,
@@ -370,10 +371,10 @@ impl UnitAi {
             // the world holds what the search found: the move after a found object it does not
             // hold cannot run
             if let Some(g) = found {
-                fx.push(Effect::WorkOn {
+                fx.push(Effect::Command(AiCommand::WorkOn {
                     target: g.id,
                     point: g.position,
-                });
+                }));
             }
             return Ok(0);
         }

@@ -43,23 +43,6 @@ pub(crate) struct DropWorld<'a> {
     pub groups: &'a crate::groups::UnitGroups,
 }
 
-/// A unit command a unit AI's update gave that the caller runs after it ([`Step::works`]).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum AiWork {
-    /// `HuntObject`'s unit part on the target: the stop, then the hunt command
-    /// ([`World::hunt_command`]).
-    Hunt(i32),
-    /// `GatherObject`'s gather command on the target ([`World::gather_command`]).
-    Gather(i32),
-    /// The unit's slot 0x7e8 on an object at a point ([`World::order_work`]).
-    Work(crate::orders::Work),
-    /// `BuildObject`'s unit part: the build command on the foundation ([`World::build_command`]).
-    Build(i32),
-    /// The villager's case 0x21c: its load to the drop-site table's building
-    /// ([`World::drop_elsewhere`]).
-    DropElsewhere(i32, Option<i32>),
-}
-
 /// What the unit's slot 0x388 (`FUN_141226fc0`) found while its unit AI ran
 /// ([`crate::unit_ai::UnitSide::wait_solidify`]): the foundation, the task its slot 0x820 found
 /// on it and the master the search switches the unit to (slot 0x90; None when its own master's

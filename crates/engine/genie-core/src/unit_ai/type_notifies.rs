@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, BREAK, DAMAGED, DEAD,
@@ -224,10 +225,10 @@ impl UnitAi {
         if (n.p[0] == ActionKind::Build.value() || n.p[0] == ActionKind::Hunt.value())
             && let Some(made) = Self::world_object(n.p[1], at, side)?
         {
-            fx.push(Effect::WorkOn {
+            fx.push(Effect::Command(AiCommand::WorkOn {
                 target: made.id,
                 point: made.position,
-            });
+            }));
         }
         Ok(GO_ON)
     }
@@ -241,7 +242,7 @@ impl UnitAi {
     ) -> Result<u32, GenieError> {
         let back = top_target_after(fx, side)?;
         if let Some(site) = side.table_drop_site()? {
-            fx.push(Effect::DropElsewhere { site, back });
+            fx.push(Effect::Command(AiCommand::DropElsewhere { site, back }));
         }
         Ok(GO_ON)
     }

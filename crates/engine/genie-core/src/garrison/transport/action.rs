@@ -187,7 +187,7 @@ impl TransportAction {
     }
 
     /// State 6's unload (`FUN_140aa3ba0`) in the update: [`World::transport_unload`] on the
-    /// unit lent back to its slot ([`Step::lend`]) with this copy of its Transport, which then
+    /// unit lent back to its slot ([`Step::lend_at`]) with this copy of its Transport, which then
     /// is the one the unload left.
     ///
     /// # Errors
@@ -197,13 +197,7 @@ impl TransportAction {
         if let Some(own) = unit.actions.transport_mut() {
             *own = *self;
         }
-        let (p, me) = (c.player, c.me);
-        c.lend(unit, |w| {
-            let i = w.players[p].objects.position_of(me).ok_or_else(|| {
-                GenieError::unreachable("a lent transport left its list").with("object", me)
-            })?;
-            w.transport_unload(p, i)
-        })?;
+        c.lend_at(unit, World::transport_unload)?;
         *self = *unit.actions.transport().ok_or(NO_TRANSPORT)?;
         Ok(())
     }

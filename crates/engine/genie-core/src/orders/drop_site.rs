@@ -199,7 +199,7 @@ impl World {
         }
     }
 
-    /// The villager's case 0x21c ([`crate::unit_ai::Effect::DropElsewhere`]) for the unit at
+    /// The villager's case 0x21c ([`crate::unit_ai::AiCommand::DropElsewhere`]) for the unit at
     /// (`p`, `idx`) with the drop-site table's building `site` (`FUN_141658e20`) and the target
     /// its top action had (`back`, slot 0x190: the action's target id, `+0x30`, that the world
     /// holds): it works on the site at its place (slot 0x128: the carried-resource test, any task,

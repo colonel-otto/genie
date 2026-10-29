@@ -68,10 +68,8 @@ impl World {
             taken_over: None,
             building_handover: false,
             order_on_target: None,
-            works: Vec::new(),
             build_command: None,
             reseed: None,
-            move_aside: Vec::new(),
             starts: Vec::new(),
         };
         let mut result = f(&mut unit, &mut c);

@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ARTIFACT_AI, CIVILIAN, Effect, Notify, PENDING_BEFORE_ATTACK, QueuedOrder, SIEGE_AI,
@@ -166,8 +167,7 @@ impl UnitAi {
                     e,
                     Effect::Stop
                         | Effect::CapHumanOrder(_)
-                        | Effect::BuildObject(_)
-                        | Effect::HuntObject(_)
+                        | Effect::Command(AiCommand::BuildObject(_) | AiCommand::HuntObject(_))
                         | Effect::Move(_)
                 )
             }) {
@@ -178,8 +178,12 @@ impl UnitAi {
             for e in std::mem::take(fx) {
                 match e {
                     Effect::CapHumanOrder(cap) => side.cap_human_order(cap)?,
-                    Effect::BuildObject(foundation) => side.build_now(foundation)?,
-                    Effect::HuntObject(quarry) => side.hunt_now(quarry, self)?,
+                    Effect::Command(AiCommand::BuildObject(foundation)) => {
+                        side.build_now(foundation)?;
+                    }
+                    Effect::Command(AiCommand::HuntObject(quarry)) => {
+                        side.hunt_now(quarry, self)?;
+                    }
                     Effect::Move(m) => side.ai_move_now(m)?,
                     _ => side.stop()?,
                 }

@@ -335,9 +335,6 @@ pub enum Effect {
     Stop,
     /// The AI's move (slot 0x130), which the unit takes (its slot 0x340).
     Move(AiMove),
-    /// Slot 0x148 (`FUN_140c4d0d0`) forced: the unit's slot 0x340 to the point, which the caller
-    /// runs after the update ([`crate::world::World::move_aside`]).
-    MoveAside(AiMove),
     /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
     CapHumanOrder(u32),
     /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
@@ -350,14 +347,6 @@ pub enum Effect {
     /// (x, y): its Explore takes the point (slot 0x48), else a new Explore to it (`FUN_140a87d30`
     /// at the unit's height) replaces its actions (`FUN_140a98620`, slot 0x808).
     Explore([f32; 2]),
-    /// `HuntObject`'s unit part (`FUN_140c4e220`): the unit's `stopAction` (the AI's slot 0xb0 with
-    /// 1, slot 0x3c0), then its hunt command on the target (object slot 0x360,
-    /// `FUN_1412151f0`, forced; the caller's, `World::hunt_command`, after the update).
-    HuntObject(i32),
-    /// `GatherObject`'s unit part (slot 0xd0, `FUN_140c4dd50`, forced): the unit's gather command
-    /// on the target (object slot 0x368, `FUN_141085030`, forced; the caller's,
-    /// `World::gather_command`, after the update).
-    GatherObject(i32),
     /// The AI's move to an object (slot 0x138, `FUN_140c55490`, with its fourth argument 1): the
     /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
     /// `MoveTo` to the target within `range` showing the master's running sprite (the walking one
@@ -371,18 +360,41 @@ pub enum Effect {
         /// The range within which the `MoveTo` arrives.
         range: f32,
     },
-    /// `BuildObject`'s unit part (the AI's slot 0xf0, `FUN_140c47d80`): the unit's build command
-    /// (slot 0x380) on the foundation, which the caller runs after the update in the order the AI
-    /// gave it with its hunts, gathers and works (`World::build_command`); the AI's part, the
-    /// build action and the foundation as its target, is done at once ([`UnitAi::build_object`]).
-    BuildObject(i32),
     /// The unit's ownership change (its slot 0x70, `FUN_14120f800` for a combat unit,
     /// `FUN_1411cd860` for a building) to the player, which the artifact's processIdle asks of
     /// it (`FUN_140c1e410`); the unit runs it as it applies the effects.
     ChangeOwner(usize),
+    /// A command of the unit's own that the AI gives it ([`AiCommand`]), which the unit runs at
+    /// once as it applies the effects.
+    Command(AiCommand),
+    /// `restorePatrolInformation`'s unit part (`FUN_140c5e5b0`): the unit's own waypoints go
+    /// (slot 0x450) and become the saved patrol's points (slot 0x448 each), and the unit moves to
+    /// its waypoint (slot 0x340: range 0, forced, running).
+    RestorePatrol,
+}
+
+/// A command of the unit's own that its unit AI gives ([`Effect::Command`]): one of the unit's
+/// slots, which the unit runs at once on itself lent back to its slot as it applies the
+/// effects, in their order (a later one's stop tears down the action an earlier one made).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AiCommand {
+    /// Slot 0x148 (`FUN_140c4d0d0`) forced: the unit's slot 0x340 to the point
+    /// ([`crate::world::World::move_aside`]).
+    MoveAside(AiMove),
+    /// `HuntObject`'s unit part (`FUN_140c4e220`): the unit's `stopAction` (the AI's slot 0xb0 with
+    /// 1, slot 0x3c0), then its hunt command on the target (object slot 0x360,
+    /// `FUN_1412151f0`, forced; [`crate::world::World::hunt_command`]).
+    HuntObject(i32),
+    /// `GatherObject`'s unit part (slot 0xd0, `FUN_140c4dd50`, forced): the unit's gather command
+    /// on the target (object slot 0x368, `FUN_141085030`, forced;
+    /// [`crate::world::World::gather_command`]).
+    GatherObject(i32),
+    /// `BuildObject`'s unit part (the AI's slot 0xf0, `FUN_140c47d80`): the unit's build command
+    /// (slot 0x380) on the foundation ([`crate::world::World::build_command`]); the AI's part,
+    /// the build action and the foundation as its target, is its own ([`UnitAi::build_object`]).
+    BuildObject(i32),
     /// The unit's slot 0x7e8 (`FUN_141227190`) on object `target` at `point`, with the
-    /// carried-resource test, any task and `+0xa14` 0 (the caller's, `World::order_work`, after
-    /// the update with the AI's hunts and gathers in their order).
+    /// carried-resource test, any task and `+0xa14` 0 ([`crate::world::World::order_work`]).
     WorkOn {
         /// The object.
         target: i32,
@@ -391,18 +403,14 @@ pub enum Effect {
     },
     /// The villager's case 0x21c ([`OTHER_LOAD`]) with the drop-site table's building for its load
     /// ([`UnitSide::table_drop_site`]): the unit's slot 0x128 on it at its place, then its unit
-    /// AI's order back to the target its top action had before (slot 0x190), if any (the
-    /// caller's, `World::drop_elsewhere`).
+    /// AI's order back to the target its top action had before (slot 0x190), if any
+    /// ([`crate::world::World::drop_elsewhere`]).
     DropElsewhere {
         /// The drop site.
         site: i32,
         /// The top action's target before the work.
         back: Option<i32>,
     },
-    /// `restorePatrolInformation`'s unit part (`FUN_140c5e5b0`): the unit's own waypoints go
-    /// (slot 0x450) and become the saved patrol's points (slot 0x448 each), and the unit moves to
-    /// its waypoint (slot 0x340: range 0, forced, running).
-    RestorePatrol,
 }
 
 /// What a full update that took an order on a target ([`Effect::OrderOnTarget`]) leaves for

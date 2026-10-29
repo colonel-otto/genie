@@ -37,6 +37,7 @@ use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
 use crate::test_ids::unit_list;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::{
     SideWorld, TaskWorld, task_search, task_target_with, wait_progress,
@@ -2845,10 +2846,10 @@ fn the_unit_ai_s_moves_and_works_apply_in_order() {
     assert_eq!(t.players[0].objects[0].workers, 0);
     with_effects(
         &mut t,
-        vec![Effect::WorkOn {
+        vec![Effect::Command(AiCommand::WorkOn {
             target: 601,
             point: [36.5, 89.5, 0.0],
-        }],
+        })],
     )
     .unwrap();
     let v = &t.players[1].objects[0];
@@ -2882,7 +2883,7 @@ fn the_unit_ai_s_moves_and_works_apply_in_order() {
 fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
     use crate::unit_ai::{AfterOrder, AiMove, Effect, QueuedOrder};
     let mut t = hunt_world();
-    with_effects(&mut t, vec![Effect::HuntObject(500)]).unwrap();
+    with_effects(&mut t, vec![Effect::Command(AiCommand::HuntObject(500))]).unwrap();
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.target),
         Some(500)
@@ -2890,7 +2891,7 @@ fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
     with_effects(&mut t, vec![Effect::Stop]).unwrap();
     assert_eq!(t.players[1].objects[0].top_action_kind(), None);
     let mut t = sent_off_world(vec![]);
-    with_effects(&mut t, vec![Effect::BuildObject(10028)]).unwrap();
+    with_effects(&mut t, vec![Effect::Command(AiCommand::BuildObject(10028))]).unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
     assert_eq!(v.actions.build().map(|b| b.target), Some(10028));
@@ -4922,7 +4923,12 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
         let mut fx = Vec::new();
         let r = ai.process_order(&order, Some((at, side, false)), None, rng, &mut fx)?;
         assert_eq!(r, 1);
-        assert_eq!(fx, [crate::unit_ai::Effect::BuildObject(10028)]);
+        assert_eq!(
+            fx,
+            [crate::unit_ai::Effect::Command(AiCommand::BuildObject(
+                10028
+            ))]
+        );
         Ok(fx)
     })
     .unwrap();
@@ -14517,7 +14523,6 @@ type Orders<'a> = dyn Fn(&mut step::Step<'_>) + 'a;
 #[test]
 fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
     use crate::objects::unit::Outcome;
-    use crate::unit_ai::world_view::AiWork;
     let work = crate::orders::Work {
         target: 600,
         point: [32.5, 89.5, 0.0],
@@ -14537,12 +14542,6 @@ fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
         ready: true,
         target_type: 7,
     };
-    let aside = crate::unit_ai::AiMove {
-        point: [25.0, 89.5, 0.0],
-        range: 0.0,
-        force: false,
-        walk: false,
-    };
     let leaving = |orders: &Orders<'_>| {
         let mut t = house_builder();
         finished_with(&mut t, (1, 0), |c| {
@@ -14553,18 +14552,10 @@ fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
     };
     assert_eq!(leaving(&|_| ()), Ok(Outcome::Leave));
     let gap = |reason: &str| Err(reason.to_owned());
-    let cases: [(&Orders<'_>, _); 6] = [
+    let cases: [(&Orders<'_>, _); 4] = [
         (
             &|c| c.work_order = Some(work),
             gap("a builder's work order of a unit that leaves its list"),
-        ),
-        (
-            &|c| c.works.push(AiWork::Gather(600)),
-            gap("a HuntObject or GatherObject of a unit that leaves its list"),
-        ),
-        (
-            &|c| c.move_aside.push(aside),
-            gap("a move off a footprint of a unit that leaves its list"),
         ),
         (
             &|c| c.build_command = Some(10028),
@@ -14617,13 +14608,22 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
 }
 
 /// The unit AI's orders of a step reach the unit and the units they name: a `GatherObject`'s
-/// gather command takes the bush, a reseed without a farm lets it go, a build command gives the
-/// builder its Build, a drop elsewhere sends the unit to the drop site with the order back to its
-/// target queued.
+/// gather command takes the bush at once (the Gather is the unit's while its update runs), a
+/// reseed without a farm lets it go, a build command gives the builder its Build, a drop
+/// elsewhere sends the unit to the drop site with the order back to its target queued, and a
+/// move off a footprint gives it a `MoveTo` at once.
 #[test]
 fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     use crate::objects::unit::Outcome;
-    use crate::unit_ai::world_view::AiWork;
+    use crate::unit_ai::Effect;
+    // the effects applied in the unit's step, and its top action right after them
+    let applied = |t: &mut World, effects: Vec<Effect>| {
+        in_update(t, (1, 0), 50, |unit, c| {
+            unit.apply(effects, None, c)?;
+            Ok(unit.top_action_kind())
+        })
+        .map_err(|e| e.reason().to_owned())
+    };
     let stay = |t: &mut World, orders: &Orders<'_>| {
         finished_with(t, (1, 0), |c| {
             orders(c);
@@ -14633,8 +14633,8 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     };
     let mut t = house_builder();
     assert_eq!(
-        stay(&mut t, &|c| c.works.push(AiWork::Gather(600))),
-        Ok(Outcome::Stay)
+        applied(&mut t, vec![Effect::Command(AiCommand::GatherObject(600))]),
+        Ok(Some(crate::gathering::gather::GATHER))
     );
     let gatherer = &t.players[1].objects[0];
     assert_eq!(
@@ -14666,13 +14666,28 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     );
 
     let mut t = house_builder();
-    let drop = AiWork::DropElsewhere(700, Some(600));
-    assert_eq!(stay(&mut t, &|c| c.works.push(drop)), Ok(Outcome::Stay));
+    let drop = Effect::Command(AiCommand::DropElsewhere {
+        site: 700,
+        back: Some(600),
+    });
+    assert!(applied(&mut t, vec![drop]).is_ok());
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();
     let queued: Vec<_> = ai.orders.iter().map(|o| (o.order, o.target)).collect();
     assert_eq!(
         (ai.current_target, queued),
         (700, vec![(OrderKind::OnTarget, 600)])
+    );
+
+    let mut t = house_builder();
+    let aside = crate::unit_ai::AiMove {
+        point: [25.0, 89.5, 0.0],
+        range: 0.0,
+        force: false,
+        walk: false,
+    };
+    assert_eq!(
+        applied(&mut t, vec![Effect::Command(AiCommand::MoveAside(aside))]),
+        Ok(Some(crate::movement::move_to::MOVE_TO))
     );
 }
 

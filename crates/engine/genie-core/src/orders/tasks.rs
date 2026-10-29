@@ -9,7 +9,7 @@ use crate::unit_ai::OrderKind;
 use crate::world::World;
 
 impl World {
-    /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::Effect::HuntObject`], after the
+    /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::AiCommand::HuntObject`], after the
     /// unit's update): its stopAction (slot 0x3c0: the action list cleared,
     /// [`World::clear_actions`], and in state 2 the standing sprite), then its hunt command (object
     /// slot 0x360, `FUN_1412151f0`, forced): with no action left slot 0x820 finds the task
@@ -53,7 +53,7 @@ impl World {
     }
 
     /// The unit's gather command (object slot 0x368, `FUN_141085030`) forced on `target`, as the
-    /// unit AI's `GatherObject` runs it ([`crate::unit_ai::Effect::GatherObject`], after the
+    /// unit AI's `GatherObject` runs it ([`crate::unit_ai::AiCommand::GatherObject`], after the
     /// unit's update): slot 0x820 finds the task ([`World::find_work_task`] with any filter and
     /// the master switch);
     /// the unit's top Gather on the task found takes the target (its slot 0x48 with the target's

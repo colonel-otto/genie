@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, PREY_CLASS, Pick,
@@ -382,7 +383,7 @@ impl UnitAi {
 
     /// Slot 0x148 (`FUN_140c4d0d0`), the move off a footprint: with its force flag (`m.force`)
     /// or without an action value, the unit's slot 0x340 takes the move with the same
-    /// arguments ([`Effect::MoveAside`], which the caller runs after the update); on its 1 the
+    /// arguments ([`AiCommand::MoveAside`], which the caller runs after the update); on its 1 the
     /// action value becomes [`ActionKind::MoveAside`], the old one the last, and the target stays.
     /// The caller's slot 0x340 is `FUN_1410866e0`, which always gives 1, but for classes 51 and
     /// 54 (`FUN_141216c50`, their packing), which it does not run. The move gives the unit its
@@ -391,7 +392,7 @@ impl UnitAi {
         if !m.force && self.current_action.is_some() {
             return false;
         }
-        fx.push(Effect::MoveAside(m));
+        fx.push(Effect::Command(AiCommand::MoveAside(m)));
         self.set_action(Some(ActionKind::MoveAside));
         self.commanded = true;
         true

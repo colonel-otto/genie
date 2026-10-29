@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     AfterOrder, AiMove, BREAK, CIVILIAN_CARED, COMBAT_KIND, DEAD, Effect, GO_ON, Gatherable,
@@ -179,8 +180,8 @@ impl UnitAi {
     /// (600), does the same ("Tasking unit to stop attacking an object which has no targeting
     /// flag enabled") but on the trade action (`0x267`); it reads the action value the first
     /// stop left. A stop after a command the caller gives only once the update ends (a hunt,
-    /// gather or build, [`Effect::HuntObject`], [`Effect::GatherObject`],
-    /// [`Effect::BuildObject`]) would reach the unit before the command: not modelled.
+    /// gather or build, [`AiCommand::HuntObject`], [`AiCommand::GatherObject`],
+    /// [`AiCommand::BuildObject`]) would reach the unit before the command: not modelled.
     pub(super) fn top_target_tail(
         &mut self,
         at: &Surroundings,
@@ -196,10 +197,12 @@ impl UnitAi {
             .is_some_and(|e| {
                 matches!(
                     e,
-                    Effect::HuntObject(_)
-                        | Effect::GatherObject(_)
-                        | Effect::BuildObject(_)
-                        | Effect::WorkOn { .. }
+                    Effect::Command(
+                        AiCommand::HuntObject(_)
+                            | AiCommand::GatherObject(_)
+                            | AiCommand::BuildObject(_)
+                            | AiCommand::WorkOn { .. }
+                    )
                 )
             });
         let Some(t) = id.map(|id| side.target_flags(id)).transpose()?.flatten() else {
@@ -528,11 +531,11 @@ impl UnitAi {
     }
 
     /// `GatherObject` (slot 0xd0, `FUN_140c4dd50`) forced on what the search found: the unit's
-    /// gather command runs on it ([`Effect::GatherObject`]); taken as done (the caller stops on a
+    /// gather command runs on it ([`AiCommand::GatherObject`]); taken as done (the caller stops on a
     /// failure): the gather action value (`0x261`) becomes current, the last the one before, the
     /// target with its class and place (the last ones kept), and the AI counts as commanded.
     pub(super) fn gather_object(&mut self, found: Gatherable, fx: &mut Vec<Effect>) {
-        fx.push(Effect::GatherObject(found.id));
+        fx.push(Effect::Command(AiCommand::GatherObject(found.id)));
         self.set_action(Some(ActionKind::Gather));
         self.set_target(found.id, i32::from(found.class), found.position);
         self.commanded = true;

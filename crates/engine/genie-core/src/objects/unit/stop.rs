@@ -7,8 +7,7 @@ use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
-use crate::unit_ai::Effect;
-use crate::unit_ai::world_view::AiWork;
+use crate::unit_ai::{AiCommand, Effect};
 use crate::world::step::Step;
 
 impl Unit {
@@ -164,7 +163,6 @@ impl Unit {
                         self.ai_move(m, class, c)?;
                     }
                 }
-                Effect::MoveAside(m) => c.move_aside.push(m),
                 Effect::OrderOnTarget(order) => {
                     if c.order_on_target.replace((order, None)).is_some() {
                         return Err(GenieError::unsupported(
@@ -178,22 +176,7 @@ impl Unit {
                     ))?;
                     *tail = Some(after);
                 }
-                Effect::HuntObject(target) => c.works.push(AiWork::Hunt(target)),
-                Effect::GatherObject(target) => c.works.push(AiWork::Gather(target)),
-                Effect::WorkOn { target, point } => {
-                    // slot 0x7e8 with the carried-resource test, any task, +0xa14 0
-                    c.works.push(AiWork::Work(crate::orders::Work {
-                        target,
-                        point,
-                        carry_test: true,
-                        filter: -1,
-                        notified: false,
-                    }));
-                }
-                Effect::BuildObject(target) => c.works.push(AiWork::Build(target)),
-                Effect::DropElsewhere { site, back } => {
-                    c.works.push(AiWork::DropElsewhere(site, back));
-                }
+                Effect::Command(command) => self.ai_command(command, c)?,
                 Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject {
@@ -204,5 +187,41 @@ impl Unit {
             }
         }
         Ok(())
+    }
+
+    /// The unit's own command its unit AI gives ([`AiCommand`]), at once on the unit lent back
+    /// to its slot ([`Step::lend_at`]): a move off a footprint, `HuntObject`'s stop and hunt
+    /// command, `GatherObject`'s gather command, a work (slot 0x7e8), `BuildObject`'s build
+    /// command or a drop elsewhere.
+    ///
+    /// # Errors
+    ///
+    /// The command's and the lend's.
+    fn ai_command(&mut self, command: AiCommand, c: &mut Step<'_>) -> Result<(), GenieError> {
+        match command {
+            AiCommand::MoveAside(m) => c.lend_at(self, |w, p, i| w.move_aside(p, i, m)),
+            AiCommand::HuntObject(target) => {
+                c.lend_at(self, |w, p, i| w.hunt_command(p, i, target))
+            }
+            AiCommand::GatherObject(target) => {
+                c.lend_at(self, |w, p, i| w.gather_command(p, i, target))
+            }
+            AiCommand::WorkOn { target, point } => {
+                let work = crate::orders::Work {
+                    target,
+                    point,
+                    carry_test: true,
+                    filter: -1,
+                    notified: false,
+                };
+                c.lend_at(self, |w, p, i| w.order_work(p, i, &work))
+            }
+            AiCommand::BuildObject(target) => {
+                c.lend_at(self, |w, p, i| w.build_command(p, i, target).map(drop))
+            }
+            AiCommand::DropElsewhere { site, back } => {
+                c.lend_at(self, |w, p, i| w.drop_elsewhere(p, i, site, back))
+            }
+        }
     }
 }

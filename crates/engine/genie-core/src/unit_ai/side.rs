@@ -72,19 +72,19 @@ pub trait UnitSide {
     }
 
     /// The unit's build command (slot 0x380, forced) on `foundation` run at once
-    /// ([`Effect::BuildObject`]), ahead of a command that follows it in the same AI run (an
+    /// ([`AiCommand::BuildObject`]), ahead of a command that follows it in the same AI run (an
     /// attack command replacing the Build it makes).
     ///
     /// # Errors
     ///
     /// A side without its unit, and what the build command does not model.
     ///
-    /// [`Effect::BuildObject`]: crate::unit_ai::Effect::BuildObject
+    /// [`AiCommand::BuildObject`]: crate::unit_ai::AiCommand::BuildObject
     fn build_now(&mut self, _foundation: i32) -> Result<(), GenieError> {
         Err(WITHOUT_UNIT)
     }
 
-    /// `HuntObject`'s unit part run at once ([`Effect::HuntObject`]): its stopAction, then its
+    /// `HuntObject`'s unit part run at once ([`AiCommand::HuntObject`]): its stopAction, then its
     /// hunt command on `target` (slot 0x360, forced), ahead of a command that follows it in the
     /// same AI run; `ai` is the unit AI as it stands.
     ///
@@ -92,7 +92,7 @@ pub trait UnitSide {
     ///
     /// A side without its unit, and what the hunt command does not model.
     ///
-    /// [`Effect::HuntObject`]: crate::unit_ai::Effect::HuntObject
+    /// [`AiCommand::HuntObject`]: crate::unit_ai::AiCommand::HuntObject
     fn hunt_now(&mut self, _target: i32, _ai: &UnitAi) -> Result<(), GenieError> {
         Err(WITHOUT_UNIT)
     }
