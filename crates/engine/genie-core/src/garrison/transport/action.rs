@@ -9,7 +9,11 @@ use crate::garrison::transport::{
 };
 use crate::math::conversions::cvttss2si;
 use crate::movement::PathAsk;
-use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_asked, walk_or_give_up};
+use crate::movement::move_to::{
+    Goal, MoveDefaults, MoveTo, Shown, Walk, start_walk_shown, walk_or_give_up,
+};
+use crate::objects::masters::{Master, TaskId};
+use crate::objects::sprite::sprite_id;
 
 impl TransportAction {
     /// The unload command's constructor (`FUN_140aa3ab0` with no task, `+0x48`): its point the
@@ -23,7 +27,7 @@ impl TransportAction {
     /// task of type 12 at the work command's point `at` (`+0x38`..`+0x40`): state 0 and `+0x34`
     /// −1 (the base's, `FUN_140a73e90`), `+0x68` clear.
     #[must_use]
-    pub const fn on_task(task: Option<crate::objects::masters::TaskId>, at: [f32; 3]) -> Self {
+    pub const fn on_task(task: Option<TaskId>, at: [f32; 3]) -> Self {
         Self {
             state: 0,
             mode: -1,
@@ -214,24 +218,55 @@ impl TransportAction {
         self.set_state(IDLE, ship, shore)
     }
 
+    /// The sprite its `set_state` (`0x140aa42a0`, states 4 and 11) gives its `MoveTo`
+    /// (`FUN_140aa0d30`): its task's moving sprite (`+0x40`), without a task the master's
+    /// walking sprite (`+0x748`); for none the constructor's default from `defaults`.
+    ///
+    /// # Errors
+    ///
+    /// A task the unit's master (`master`) lacks.
+    pub fn move_shown(
+        &self,
+        master: &Master,
+        defaults: MoveDefaults,
+    ) -> Result<Option<i16>, GenieError> {
+        let given = match self.task {
+            Some(TaskId(id)) => {
+                let task = master.tasks.iter().find(|t| t.id == id).ok_or_else(|| {
+                    GenieError::missing_data("a Transport's task its master lacks").with("task", id)
+                })?;
+                sprite_id(task.sprites[0])
+            }
+            None => sprite_id(master.move_sprite),
+        };
+        Ok(defaults.to_point(given))
+    }
+
     /// The update of its `MoveTo` sub-action (`FUN_140a992b0`) with `walk` and what the unit's
     /// AI asks of the path (`ask`, `0x140aa2a70` in state 3), as [`crate::ownership::artifact::Artifact`]
-    /// runs its own: state 3 asks for its path to the point within [`MOVE_RANGE`] (quiet), state
-    /// 4 moves, a motion step that gives up fails it (`set_state(13)`: only a human player's
-    /// villager waits); its code: 1 once it ended at the point, 3 once it failed, 1 without one
-    /// ("There is no list"), else 0.
+    /// runs its own: state 3 asks for its path to the point within [`MOVE_RANGE`] (quiet) and
+    /// shows its sprite (`shown`, [`TransportAction::move_shown`]), state 4 moves, a motion step
+    /// that gives up fails it (`set_state(13)`: only a human player's villager waits); its code:
+    /// 1 once it ended at the point, 3 once it failed, 1 without one ("There is no list"), else
+    /// 0.
     ///
     /// # Errors
     ///
     /// A walk the `MoveTo` needs and has not got, and what the motion step does not model.
-    pub fn walk(&mut self, walk: Option<Walk<'_>>, ask: PathAsk) -> Result<u8, GenieError> {
+    pub fn walk(
+        &mut self,
+        walk: Option<Walk<'_>>,
+        ask: PathAsk,
+        shown: Option<Shown<'_>>,
+    ) -> Result<u8, GenieError> {
         let need = || GenieError::unreachable("a sailing Transport without its walk");
         match self.move_to {
             None | Some(MoveTo::Arrived) => return Ok(1),
             Some(MoveTo::Failed) => return Ok(3),
             Some(MoveTo::Start) => {
                 let goal = Goal::Point(self.point);
-                let state = start_walk_asked(walk.ok_or_else(need)?, goal, MOVE_RANGE, true, ask)?;
+                let walk = walk.ok_or_else(need)?;
+                let state = start_walk_shown(walk, (goal, MOVE_RANGE, true), ask, shown)?;
                 self.move_to = Some(state.unwrap_or(MoveTo::Failed));
             }
             Some(MoveTo::Moving) => {

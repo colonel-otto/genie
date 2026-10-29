@@ -213,13 +213,21 @@ impl Unit {
         c: &mut Context<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::garrison::transport::NO_MASTER)?;
+        let master = self
+            .own_master
+            .as_deref()
+            .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id))
+            .ok_or(crate::garrison::transport::NO_MASTER)?;
         let (radius, restriction) = (master.radius, master.terrain_restriction);
         let t = self.actions.transport_mut().expect("checked by the caller");
+        // the sprite its MoveTo's start shows (FUN_140aa0d30's default for none)
+        let move_shown = match t.move_to {
+            Some(MoveTo::Start) => {
+                let defaults = MoveDefaults::of(master, self.abilities.look.as_ref());
+                Some(t.move_shown(master, defaults)?)
+            }
+            _ => None,
+        };
         let ask = match t.move_to {
             Some(MoveTo::Start) => {
                 let [x, y, _] = self.body.position();
@@ -228,7 +236,14 @@ impl Unit {
             }
             _ => crate::movement::PathAsk::default(),
         };
-        let walked = t.walk(Some(c.walk(&mut self.body, me)), ask)?;
+        let (walk, beside) = c.w.walk_beside(c.pace(), &mut self.body, me);
+        let mut sprites = Sprites {
+            sprite: &mut self.sprite,
+            rng: beside.sprite_rng,
+            graphics: beside.graphics,
+        };
+        let shown = move_shown.map(|id| sprites.shown(id)).transpose()?;
+        let walked = t.walk(Some(walk), ask, shown)?;
         let position = self.body.position();
         let ship = crate::garrison::transport::Ship {
             position,

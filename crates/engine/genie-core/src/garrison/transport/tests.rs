@@ -39,7 +39,7 @@ fn coast(near: bool) -> Coast {
 
 /// One update as the unit's runs it: the `MoveTo` (none walking here), then the state.
 fn run(t: &mut TransportAction, s: &Ship, c: &mut Coast) -> Result<TransportStep, GenieError> {
-    let walked = t.walk(None, PathAsk::default())?;
+    let walked = t.walk(None, PathAsk::default(), None)?;
     t.update(walked, s, c)
 }
 
@@ -308,17 +308,79 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     let mut rig = WalkRig::on_the_path();
     rig.mover_mut().paths.clear();
     let mut t = sailing(Some(MoveTo::Start));
-    assert_eq!(t.walk(Some(rig.walk(SAIL)), ask), Ok(0));
+    // its start shows its sprite before the motion step
+    let graphic = crate::objects::sprite::Graphic {
+        id: 3,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let graphics = std::collections::BTreeMap::from([(3, graphic)]);
+    let (mut sprite, mut rng) = (None, Well512::default());
+    let mut sprites = crate::movement::move_to::Sprites {
+        sprite: &mut sprite,
+        rng: &mut rng,
+        graphics: &graphics,
+    };
+    let shown = Some(sprites.shown(Some(3)).unwrap());
+    assert_eq!(t.walk(Some(rig.walk(SAIL)), ask, shown), Ok(0));
     assert_eq!(t.move_to, Some(MoveTo::Moving));
     assert_eq!(rig.mover_mut().paths.len(), 2);
+    assert_eq!(sprite.map(|s| s.graphic.id), Some(3));
     let mut rig = WalkRig::on_the_path();
     let mut t = sailing(Some(MoveTo::Moving));
-    assert_eq!(t.walk(Some(rig.walk(SAIL)), ask), Ok(0));
+    assert_eq!(t.walk(Some(rig.walk(SAIL)), ask, None), Ok(0));
     assert_eq!(t.move_to, Some(MoveTo::Moving));
-    assert!(sailing(Some(MoveTo::Start)).walk(None, ask).is_err());
-    assert!(sailing(Some(MoveTo::Moving)).walk(None, ask).is_err());
+    assert!(sailing(Some(MoveTo::Start)).walk(None, ask, None).is_err());
+    assert!(sailing(Some(MoveTo::Moving)).walk(None, ask, None).is_err());
     let mut t = sailing(Some(MoveTo::Waiting));
-    assert!(t.walk(Some(rig.walk(SAIL)), ask).is_err());
+    assert!(t.walk(Some(rig.walk(SAIL)), ask, None).is_err());
+}
+
+/// The sprite its `MoveTo` shows (`0x140aa42a0` gives `FUN_140aa0d30` one): its task's moving
+/// sprite, without a task the master's walking sprite, for none the constructor's default; a
+/// task the master lacks is an error.
+#[test]
+fn a_transport_s_move_to_shows_its_task_s_or_its_master_s_sprite() {
+    use crate::objects::masters::{Master, Task, TaskId};
+    let master = Master {
+        move_sprite: 7,
+        tasks: vec![
+            Task {
+                id: 4,
+                sprites: [3, -1, -1, -1],
+                ..Task::default()
+            },
+            Task {
+                id: 5,
+                ..Task::default()
+            },
+        ],
+        ..Master::default()
+    };
+    let defaults = crate::movement::move_to::MoveDefaults {
+        point: Some(20),
+        object: Some(21),
+    };
+    let on = |task| TransportAction::on_task(task, [28.0, 89.0, 0.0]);
+    assert_eq!(
+        on(Some(TaskId(4))).move_shown(&master, defaults),
+        Ok(Some(3))
+    );
+    assert_eq!(
+        on(Some(TaskId(5))).move_shown(&master, defaults),
+        Ok(Some(20))
+    );
+    assert_eq!(on(None).move_shown(&master, defaults), Ok(Some(7)));
+    let walkless = Master {
+        move_sprite: -1,
+        ..master.clone()
+    };
+    assert_eq!(on(None).move_shown(&walkless, defaults), Ok(Some(20)));
+    assert!(on(Some(TaskId(6))).move_shown(&master, defaults).is_err());
 }
 
 fn rng() -> Well512 {

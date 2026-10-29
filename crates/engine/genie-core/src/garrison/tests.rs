@@ -72,6 +72,10 @@ fn garrison_masters() -> Masters {
             class: 20,
             object_flags: 1,
             garrison: 1,
+            // no sprites (the world's sprites' table is empty)
+            standing_sprite: -1,
+            move_sprite: -1,
+            run_sprite: -1,
             ..Master::default()
         },
         Master {
