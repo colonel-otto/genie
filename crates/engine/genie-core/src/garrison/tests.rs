@@ -2082,7 +2082,9 @@ fn a_villager_meets_a_sailing_transport_where_it_sails() {
     ship.actions.set_transport(Some(transport::TransportAction {
         state: transport::SAIL,
         point: [9.5, 19.5, 0.0],
-        move_to: Some(MoveTo::Start),
+        move_to: Some(crate::movement::move_to::MoveToAction::sub_in(
+            MoveTo::Start,
+        )),
         ..transport::TransportAction::new([5.5, 30.5, 0.0])
     }));
     t.garrison_order(
@@ -2218,7 +2220,13 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     let ship = t.object(200).unwrap().1;
     let tr = ship.actions.transport().copied().expect("the Transport");
     assert_eq!(
-        (tr.state, tr.mode, tr.point, tr.move_to, tr.retarget),
+        (
+            tr.state,
+            tr.mode,
+            tr.point,
+            tr.move_to.map(|m| m.state),
+            tr.retarget
+        ),
         (
             transport::SAIL_TO_UNLOAD,
             1,
@@ -2337,7 +2345,13 @@ fn a_work_command_on_a_land_point_makes_a_transport_that_sails_there() {
     let ship = t.object(200).unwrap().1;
     let tr = ship.actions.transport().copied().expect("the Transport");
     assert_eq!(
-        (tr.state, tr.mode, tr.task, tr.point, tr.move_to),
+        (
+            tr.state,
+            tr.mode,
+            tr.task,
+            tr.point,
+            tr.move_to.map(|m| m.state)
+        ),
         (
             transport::SAIL,
             -1,
@@ -2470,7 +2484,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
             tr.state,
             tr.mode,
             tr.point,
-            tr.move_to,
+            tr.move_to.map(|m| m.state),
             ship.actions.move_to().copied()
         ),
         (
@@ -2526,7 +2540,7 @@ fn a_transport_without_a_drop_location_sails_on_to_a_new_point() {
     assert_eq!(tr.state, transport::SAIL_TO_UNLOAD);
     if 15.0 <= x {
         // the first draw is on land: the MoveTo's point is the shore on the way to it
-        assert_eq!(tr.move_to, Some(MoveTo::Start));
+        assert_eq!(tr.move_to.map(|m| m.state), Some(MoveTo::Start));
         assert!(tr.point[0] < 15.0, "{:?} from ({x}, {y})", tr.point);
     }
 }
@@ -3022,7 +3036,7 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
         .copied()
         .unwrap();
     assert_eq!(
-        (tr.state, tr.move_to),
+        (tr.state, tr.move_to.map(|m| m.state)),
         (transport::SAIL_TO_UNLOAD, Some(MoveTo::Moving))
     );
     // an unload far from the point's land cannot unload: the owner hears it (a human's

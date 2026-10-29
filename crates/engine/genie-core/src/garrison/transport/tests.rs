@@ -1,4 +1,5 @@
 use super::*;
+use crate::movement::move_to::{MoveTo, MoveToAction};
 
 /// A map of zones by column (the tile's x over 10) and terrain flags by a closure; the shore
 /// point the planner gives, recorded.
@@ -38,7 +39,7 @@ fn coast(near: bool) -> Coast {
 }
 
 /// The sprite a hull shows first, and its master's standing sprite.
-const SHOWN: crate::objects::sprite::Graphic = crate::objects::sprite::Graphic {
+const SHOWN: Graphic = Graphic {
     id: 1,
     frames: 10,
     facets: 16,
@@ -47,8 +48,7 @@ const SHOWN: crate::objects::sprite::Graphic = crate::objects::sprite::Graphic {
     replay_delay: 0.0,
     flags: 1,
 };
-const STANDING: crate::objects::sprite::Graphic =
-    crate::objects::sprite::Graphic { id: 300, ..SHOWN };
+const STANDING: Graphic = Graphic { id: 300, ..SHOWN };
 
 /// The transport's unit as the update's effects read it: a mover in motion (its animation at
 /// speed 1), a sprite ([`SHOWN`]) and a unit AI that takes its notifies (state 2).
@@ -101,7 +101,7 @@ fn run_on(
     unit: &mut crate::objects::unit::Unit,
     computer: bool,
 ) -> Result<Updated, GenieError> {
-    let walked = match t.move_to {
+    let walked = match t.move_to.map(|m| m.state) {
         Some(MoveTo::Failed) => 3,
         Some(MoveTo::Start | MoveTo::Moving | MoveTo::Waiting) => 0,
         None | Some(MoveTo::Arrived) => 1,
@@ -133,6 +133,7 @@ fn ship(loaded: bool) -> Ship {
         loaded,
         map: [40, 30],
         moves: true,
+        move_sprite: None,
     }
 }
 
@@ -146,7 +147,10 @@ fn a_new_transport_sails_to_its_own_place_and_a_start_off_the_map_idles() {
     // on the way, none here, so the place itself
     let changed = t.start(true, &s, &mut c);
     assert_eq!(changed, Changed::default());
-    assert_eq!((t.state, t.move_to), (SAIL, Some(MoveTo::Start)));
+    assert_eq!(
+        (t.state, t.move_to.map(|m| m.state)),
+        (SAIL, Some(MoveTo::Start))
+    );
     assert_eq!(c.asked, [([12.5, 8.5], [12.5, 8.5])]);
     // a NaN point sails too (COMISS/JA, JBE)
     let mut nan = TransportAction::new([f32::NAN, 1.0, 0.0]);
@@ -173,12 +177,12 @@ fn a_sail_takes_the_shore_point_and_drops_its_old_move_to() {
     let changed = t.set_state(SAIL_TO_UNLOAD, &s, &mut c);
     assert!(changed.stopped && !changed.stands);
     assert_eq!(t.point, [19.5, 8.5, 0.0]);
-    assert_eq!(t.move_to, Some(MoveTo::Start));
+    assert_eq!(t.move_to.map(|m| m.state), Some(MoveTo::Start));
     assert_eq!(c.asked[1], ([12.5, 8.5], [25.0, 8.0]));
     // a unit without speed: its quiet MoveTo fails at its start
     let still = Ship { moves: false, ..s };
     let _ = t.set_state(SAIL, &still, &mut c);
-    assert_eq!(t.move_to, Some(MoveTo::Failed));
+    assert_eq!(t.move_to.map(|m| m.state), Some(MoveTo::Failed));
 }
 
 #[test]
@@ -194,7 +198,7 @@ fn a_move_sails_to_its_point_and_a_stop_idles() {
     let changed = t.move_to([25.0, 8.0, 2.0], &s, &mut c);
     assert_eq!(changed, Changed::default());
     assert_eq!(
-        (t.state, t.mode, t.point, t.move_to),
+        (t.state, t.mode, t.point, t.move_to.map(|m| m.state)),
         (SAIL, 0, [19.5, 8.5, 2.0], Some(MoveTo::Start))
     );
     assert_eq!(c.asked, [([12.5, 8.5], [25.0, 8.0])]);
@@ -347,7 +351,7 @@ fn a_sail_ends_with_its_move_to_and_a_failed_one_returns_3() {
     // state 11 with an ended MoveTo: idle, the MoveTo gone (its teardown stops the unit)
     let mut t = TransportAction {
         state: SAIL,
-        move_to: Some(MoveTo::Arrived),
+        move_to: Some(MoveToAction::sub_in(MoveTo::Arrived)),
         ..TransportAction::new(s.position)
     };
     let (
@@ -361,7 +365,7 @@ fn a_sail_ends_with_its_move_to_and_a_failed_one_returns_3() {
     // a failed MoveTo (code 3) ends a sail to unload too
     let mut t = TransportAction {
         state: SAIL_TO_UNLOAD,
-        move_to: Some(MoveTo::Failed),
+        move_to: Some(MoveToAction::sub_in(MoveTo::Failed)),
         ..TransportAction::new(s.position)
     };
     let _ = run(&mut t, &s, &mut c);
@@ -415,8 +419,13 @@ fn a_sail_ends_with_its_move_to_and_a_failed_one_returns_3() {
 #[test]
 fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     use crate::combat::attack::tests::Rig;
-    let sailing = |move_to| TransportAction {
-        move_to,
+    let graphic = Graphic { id: 3, ..SHOWN };
+    // its MoveTo to the point with the sprite its maker resolved
+    let sailing = |state: Option<MoveTo>| TransportAction {
+        move_to: state.map(|state| MoveToAction {
+            state,
+            ..MoveToAction::sub_to_point([35.5, 88.5, 0.0], MOVE_RANGE, Some(graphic))
+        }),
         point: [35.5, 88.5, 0.0],
         ..TransportAction::new([28.0, 89.0, 0.0])
     };
@@ -425,7 +434,6 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
         group: -1,
         action_state: SAIL,
     };
-    let graphic = crate::objects::sprite::Graphic { id: 3, ..SHOWN };
     let rig = || {
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         assert_eq!(rig.t.graphics.insert(3, graphic), None);
@@ -436,11 +444,8 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     let mut walker = rig();
     walker.mover_mut().paths.clear();
     let mut t = sailing(Some(MoveTo::Start));
-    assert_eq!(
-        walker.run(100, |c, u, _, _| t.walk(c, u, me, Some(3))),
-        Ok(0)
-    );
-    assert_eq!(t.move_to, Some(MoveTo::Moving));
+    assert_eq!(walker.run(100, |c, u, _, _| t.walk(c, u, me)), Ok(0));
+    assert_eq!(t.move_to.map(|m| m.state), Some(MoveTo::Moving));
     assert_eq!(walker.mover().paths.len(), 2);
     assert_eq!(
         (walker.sprite(), walker.posted()),
@@ -448,13 +453,19 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     );
     let mut walker = rig();
     let mut t = sailing(Some(MoveTo::Moving));
-    assert_eq!(walker.run(100, |c, u, _, _| t.walk(c, u, me, None)), Ok(0));
+    assert_eq!(walker.run(100, |c, u, _, _| t.walk(c, u, me)), Ok(0));
     assert_eq!(
-        (t.move_to, walker.posted()),
+        (t.move_to.map(|m| m.state), walker.posted()),
         (Some(MoveTo::Moving), in_the_way)
     );
+    // a waiting MoveTo (only a human's villager waits; a saved one) runs its timer: no walk
+    let mut walker = rig();
     let mut t = sailing(Some(MoveTo::Waiting));
-    assert!(rig().run(100, |c, u, _, _| t.walk(c, u, me, None)).is_err());
+    assert_eq!(walker.run(100, |c, u, _, _| t.walk(c, u, me)), Ok(0));
+    assert_eq!(
+        (t.move_to.map(|m| m.state), walker.posted()),
+        (Some(MoveTo::Waiting), vec![])
+    );
     // the ended, the failed and a missing MoveTo walk nothing
     for (move_to, code) in [
         (Some(MoveTo::Arrived), 1),
@@ -463,10 +474,7 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     ] {
         let mut walker = rig();
         let mut t = sailing(move_to);
-        assert_eq!(
-            walker.run(100, |c, u, _, _| t.walk(c, u, me, None)),
-            Ok(code)
-        );
+        assert_eq!(walker.run(100, |c, u, _, _| t.walk(c, u, me)), Ok(code));
         assert_eq!(walker.posted(), vec![]);
     }
 }
@@ -496,22 +504,16 @@ fn a_transport_s_move_to_shows_its_task_s_or_its_master_s_sprite() {
         point: Some(20),
         object: Some(21),
     };
-    let on = |task| TransportAction::on_task(task, [28.0, 89.0, 0.0]);
-    assert_eq!(
-        on(Some(TaskId(4))).move_shown(&master, defaults),
-        Ok(Some(3))
-    );
-    assert_eq!(
-        on(Some(TaskId(5))).move_shown(&master, defaults),
-        Ok(Some(20))
-    );
-    assert_eq!(on(None).move_shown(&master, defaults), Ok(Some(7)));
+    let on = |task, master: &Master| TransportAction::move_shown(task, master, defaults);
+    assert_eq!(on(Some(TaskId(4)), &master), Ok(Some(3)));
+    assert_eq!(on(Some(TaskId(5)), &master), Ok(Some(20)));
+    assert_eq!(on(None, &master), Ok(Some(7)));
     let walkless = Master {
         move_sprite: -1,
         ..master.clone()
     };
-    assert_eq!(on(None).move_shown(&walkless, defaults), Ok(Some(20)));
-    assert!(on(Some(TaskId(6))).move_shown(&master, defaults).is_err());
+    assert_eq!(on(None, &walkless), Ok(Some(20)));
+    assert!(on(Some(TaskId(6)), &master).is_err());
 }
 
 fn rng() -> Well512 {

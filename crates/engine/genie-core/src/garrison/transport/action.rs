@@ -10,9 +10,8 @@ use crate::garrison::transport::{
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
-use crate::movement::move_to::{
-    Goal, MoveDefaults, MoveTo, Sprites, start_walk_shown, walk_or_give_up,
-};
+use crate::movement::PathAsk;
+use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToAction, Shown};
 use crate::objects::masters::{Master, TaskId};
 use crate::objects::sprite::{Graphic, new_sprite, sprite_id};
 use crate::objects::unit::Unit;
@@ -78,10 +77,15 @@ impl TransportAction {
                     self.point[0] = sx;
                     self.point[1] = sy;
                 }
-                self.move_to = Some(if ship.moves {
+                // the list's start (`0x140aa2100`): a point is never within its start's gap
+                let state = if ship.moves {
                     MoveTo::Start
                 } else {
                     MoveTo::Failed
+                };
+                self.move_to = Some(MoveToAction {
+                    state,
+                    ..MoveToAction::sub_to_point(self.point, MOVE_RANGE, ship.move_sprite)
                 });
             }
             _ => {}
@@ -165,8 +169,8 @@ impl TransportAction {
         me: Me,
         r: &TransportReads,
     ) -> Result<u8, GenieError> {
-        let walked = self.walk(c, unit, me, r.move_sprite)?;
-        let ship = Ship::of(unit, r.radius, c.w.spatial.map);
+        let walked = self.walk(c, unit, me)?;
+        let ship = Ship::of(unit, r.radius, c.w.spatial.map, r.move_sprite);
         let computer = c.w.players[c.player].computer;
         let World {
             spatial,
@@ -287,19 +291,19 @@ impl TransportAction {
         self.set_state(IDLE, ship, shore)
     }
 
-    /// The sprite its `set_state` (`0x140aa42a0`, states 4 and 11) gives its `MoveTo`
-    /// (`FUN_140aa0d30`): its task's moving sprite (`+0x40`), without a task the master's
-    /// walking sprite (`+0x748`); for none the constructor's default from `defaults`.
+    /// The sprite the `set_state` (`0x140aa42a0`, states 4 and 11) of a Transport on `task` gives
+    /// its `MoveTo` (`FUN_140aa0d30`): the task's moving sprite (`+0x40`), without a task the
+    /// master's walking sprite (`+0x748`); for none the constructor's default from `defaults`.
     ///
     /// # Errors
     ///
     /// A task the unit's master (`master`) lacks.
     pub fn move_shown(
-        &self,
+        task: Option<TaskId>,
         master: &Master,
         defaults: MoveDefaults,
     ) -> Result<Option<i16>, GenieError> {
-        let given = match self.task {
+        let given = match task {
             Some(TaskId(id)) => {
                 let task = master.tasks.iter().find(|t| t.id == id).ok_or_else(|| {
                     GenieError::missing_data("a Transport's task its master lacks").with("task", id)
@@ -311,55 +315,44 @@ impl TransportAction {
         Ok(defaults.to_point(given))
     }
 
-    /// The update of its `MoveTo` sub-action (`FUN_140a992b0`) on the step, as
-    /// [`crate::ownership::artifact::Artifact`] runs its own: state 3 asks for its path to the
-    /// point within [`MOVE_RANGE`] (quiet), by what the unit's AI asks of the path
-    /// (`0x140aa2a70`, [`UnitAi::path_ask`]), and shows its sprite (`move_sprite`,
-    /// [`TransportAction::move_shown`]); state 4 moves; the units in the way go to the unit AI
-    /// at once (notify 0x215); a motion step that gives up fails it (`set_state(13)`: only a
-    /// human player's villager waits). Its code: 1 once it ended at the point, 3 once it
-    /// failed, 1 without one ("There is no list"), else 0.
+    /// The update of its `MoveTo` sub-action (`FUN_140a992b0`) on the step
+    /// ([`MoveToAction::sub_update`]): state 3 asks for its path by what the unit's AI asks of
+    /// the path (`0x140aa2a70`, [`UnitAi::path_ask`]) and shows its sprite; state 4 moves; after
+    /// either the units in the way go to the unit AI at once (notify 0x215). A motion step that
+    /// gives up fails it (`set_state(13)`: only a human player's villager waits). Its code: 1
+    /// once it ended at the point, 3 once it failed, 1 without one ("There is no list"), else 0.
     ///
     /// # Errors
     ///
-    /// A sprite the table lacks, and what the motion step does not model.
+    /// What the motion step does not model, and the notify's.
     pub(crate) fn walk(
         &mut self,
         c: &mut Step<'_>,
         unit: &mut Unit,
         me: Me,
-        move_sprite: Option<i16>,
     ) -> Result<u8, GenieError> {
-        let start = match self.move_to {
-            None | Some(MoveTo::Arrived) => return Ok(1),
-            Some(MoveTo::Failed) => return Ok(3),
-            Some(MoveTo::Waiting) => {
-                return Err(GenieError::unreachable(
-                    "a Transport's MoveTo waiting (only a villager's waits)",
-                ));
-            }
-            Some(MoveTo::Start) => true,
-            Some(MoveTo::Moving) => false,
+        let Some(move_to) = &mut self.move_to else {
+            return Ok(1);
         };
-        let state = if start {
+        let start = move_to.state == MoveTo::Start;
+        let walks = start || move_to.state == MoveTo::Moving;
+        let ask = if start {
             let [x, y, _] = unit.body.position();
-            let ask = UnitAi::path_ask(unit.ai.as_mut(), [x, y], [self.point[0], self.point[1]]);
-            let (walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-            let mut sprites = Sprites {
-                sprite: &mut unit.sprite,
-                rng: beside.sprite_rng,
-                graphics: beside.graphics,
-            };
-            let shown = sprites.shown(move_sprite)?;
-            let goal = Goal::Point(self.point);
-            start_walk_shown(walk, (goal, MOVE_RANGE, true), ask, Some(shown))?
+            UnitAi::path_ask(unit.ai.as_mut(), [x, y], [self.point[0], self.point[1]])
         } else {
-            let (walk, _) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-            walk_or_give_up(walk)?
+            PathAsk::default()
         };
-        unit.post_in_the_way()?;
-        self.move_to = Some(state.unwrap_or(MoveTo::Failed));
-        Ok(0)
+        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
+        let shown = start.then_some(Shown {
+            sprite: &mut unit.sprite,
+            rng: beside.sprite_rng,
+            graphic: move_to.sprite,
+        });
+        let code = move_to.sub_update(&mut walk, ask, GiveUp::default(), shown)?;
+        if walks {
+            unit.post_in_the_way()?;
+        }
+        Ok(code)
     }
 
     /// `FUN_140aa3f40` (HD's `next_to_drop_off_terrain`), without a task (`+0x48`; a task whose
@@ -435,14 +428,21 @@ pub(crate) fn stand(
 
 impl Ship {
     /// What the Transport reads of `unit` of master radii `radius` on a map of `map` tiles: its
-    /// place, whether an object is inside it and whether it has speed.
-    pub(crate) fn of(unit: &Unit, radius: [f32; 2], map: [i32; 2]) -> Self {
+    /// place, whether an object is inside it and whether it has speed; a `MoveTo` it makes
+    /// takes `move_sprite`.
+    pub(crate) fn of(
+        unit: &Unit,
+        radius: [f32; 2],
+        map: [i32; 2],
+        move_sprite: Option<Graphic>,
+    ) -> Self {
         Self {
             position: unit.position(),
             radius,
             loaded: !unit.garrison.is_empty(),
             map,
             moves: unit.body.mover().is_some_and(|m| m.stats.speed != 0.0),
+            move_sprite,
         }
     }
 }

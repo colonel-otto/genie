@@ -14,7 +14,8 @@
 //! (HD's `next_to_drop_off_terrain`).
 
 use crate::GenieError;
-use crate::movement::move_to::MoveTo;
+use crate::movement::move_to::MoveToAction;
+use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
 
 mod action;
@@ -98,8 +99,9 @@ pub struct TransportAction {
     pub mode: i32,
     /// `+0x38`..`+0x40`: where it sails or unloads; x [`NONE`] for nowhere.
     pub point: [f32; 3],
-    /// Its quiet `MoveTo` sub-action's state, which walks to the point within [`MOVE_RANGE`].
-    pub move_to: Option<MoveTo>,
+    /// Its `MoveTo` sub-action to the point within [`MOVE_RANGE`]: quiet, with the sprite
+    /// [`Ship::move_sprite`] (`set_state` 4 and 11).
+    pub move_to: Option<MoveToAction>,
     /// `+0x68`: the unload found no drop location and the action sails to a new point.
     pub retarget: bool,
     /// `+0x48`: the task it works on, none from the unload command (the work command's
@@ -120,6 +122,9 @@ pub struct Ship {
     pub map: [i32; 2],
     /// It has speed (slot 0x208, `UCOMISS` with 0: a NaN has), which its `MoveTo` needs.
     pub moves: bool,
+    /// The sprite a `MoveTo` that `set_state` makes takes (`+0x58`): the one
+    /// [`TransportAction::move_shown`] gives for the Transport's task, from the sprites' table.
+    pub move_sprite: Option<Graphic>,
 }
 
 /// What the Transport reads of the map about its unit (the caller's).
@@ -162,11 +167,10 @@ pub(crate) struct TransportReads {
     pub(crate) radius: [f32; 2],
     /// The master's terrain restriction (`+0x606`).
     pub(crate) restriction: i16,
-    /// The sprite its `MoveTo`'s start shows ([`TransportAction::move_shown`]); none in the
-    /// other states.
-    pub(crate) move_sprite: Option<i16>,
+    /// The sprite a `MoveTo` the update's `set_state` makes takes ([`Ship::move_sprite`]).
+    pub(crate) move_sprite: Option<Graphic>,
     /// The master's standing sprite (`+0x470`), which state 2 shows.
-    pub(crate) standing: Option<crate::objects::sprite::Graphic>,
+    pub(crate) standing: Option<Graphic>,
 }
 
 /// What a state of the update asks of its caller ([`TransportAction::state_update`]).

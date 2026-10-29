@@ -860,7 +860,11 @@ fn a_transport_takes_its_base_alone() {
     .transport()
     .copied()
     .unwrap();
-    assert_eq!((t.state, t.mode, t.move_to), (2, -1, Some(MoveTo::Moving)));
+    let m = t.move_to.unwrap();
+    assert_eq!(
+        (t.state, t.mode, m.state, m.quiet),
+        (2, -1, MoveTo::Moving, true)
+    );
     assert!(!t.retarget);
     assert_eq!(
         imported(TRANSPORT, transport(with_sub(base(2), 4, explore(base(3))))).unwrap_err(),

@@ -494,7 +494,10 @@ fn import_transport(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError
             state: base.state,
             mode: base.target2_id,
             point: saved.point(),
-            move_to: sub.map(sub_state).transpose()?,
+            // its quiet MoveTo to the point (`0x140aa42a0`: `FUN_140a7a170` with 1)
+            move_to: sub
+                .map(|s| saved_move_to(s, saved.graphics, true))
+                .transpose()?,
             retarget: false,
             // the save writes the task's id, −1 for none
             task: (base.short_val != -1)

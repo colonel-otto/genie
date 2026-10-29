@@ -9,8 +9,8 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToAction, Shown, graphic_of};
+use crate::movement::{Me, PathAsk};
 use crate::objects::masters::Master;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::{Unit, object_master};
@@ -194,7 +194,7 @@ impl ExploreAction {
                     rng: beside.sprite_rng,
                     graphic: move_to.sprite,
                 });
-                move_to.sub_update(&mut walk, gives_up, shown)?
+                move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown)?
             }
             None => 1,
         };

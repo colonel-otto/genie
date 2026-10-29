@@ -395,7 +395,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     }
     assert_eq!(of(Action::Explore(explore)), walking);
     let mut transport = crate::garrison::transport::TransportAction::new([1.0, 2.0, 0.0]);
-    transport.move_to = Some(MoveTo::Moving);
+    transport.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Transport(transport)), walking);
     let wait = crate::construction::wait_solidify::WaitSolidify {
         state: 0,

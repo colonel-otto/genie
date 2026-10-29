@@ -11,12 +11,23 @@ use crate::math::conversions::cvttss2si;
 /// The transports' parts that reach the world: the unload command's install, the unload and the
 /// units put ashore.
 impl crate::world::World {
-    /// What the Transport of player `p`'s object at `i` reads of it ([`Ship`]): its place, its
-    /// master's radii, whether an object is inside it, the map's size and whether it has speed.
-    pub(super) fn ship(&self, p: usize, i: usize) -> Result<Ship, GenieError> {
+    /// What the Transport on `task` of player `p`'s object at `i` reads of it ([`Ship`]): its
+    /// place, its master's radii, whether an object is inside it, the map's size, whether it has
+    /// speed and the sprite a `MoveTo` it makes takes.
+    ///
+    /// # Errors
+    ///
+    /// A unit of a master the slice does not have, and the sprite's.
+    pub(super) fn ship(
+        &self,
+        p: usize,
+        i: usize,
+        task: Option<crate::objects::masters::TaskId>,
+    ) -> Result<Ship, GenieError> {
         let unit = &self.players[p].objects[i];
         let master = unit.master(&self.masters, p)?;
-        Ok(Ship::of(unit, master.radius, self.spatial.map))
+        let move_sprite = unit.transport_move_sprite(master, task, &self.graphics)?;
+        Ok(Ship::of(unit, master.radius, self.spatial.map, move_sprite))
     }
 
     /// The unit's unload command (slot 0x3a8, `FUN_14108d050`) at `to` for player `p`'s object at
@@ -41,7 +52,13 @@ impl crate::world::World {
         if !existing {
             self.clear_actions(p, i)?;
         }
-        let ship = self.ship(p, i)?;
+        // a new Transport has no task (`TransportAction::new`)
+        let task = self.players[p].objects[i]
+            .actions
+            .transport()
+            .filter(|_| existing)
+            .and_then(|t| t.task);
+        let ship = self.ship(p, i, task)?;
         let restriction = self.players[p].objects[i]
             .master(&self.masters, p)?
             .terrain_restriction;
@@ -149,7 +166,7 @@ impl crate::world::World {
         };
         let count = self.unload_all(p, i, zone)?;
         let computer = self.players[p].computer;
-        let ship = self.ship(p, i)?;
+        let ship = self.ship(p, i, t.task)?;
         let mut changes = Vec::new();
         if count == 0 {
             let terrain = self

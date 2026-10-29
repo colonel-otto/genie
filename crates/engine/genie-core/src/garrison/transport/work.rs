@@ -33,7 +33,8 @@ impl crate::world::World {
         self.notify_transport((p, i), (target, point), clears)?;
         self.clear_actions(p, i)?;
         let mut t = TransportAction::on_task(Some(TaskId(task.id)), point);
-        let changed = self.with_shore(p, i, |ship, shore| Ok(t.start(true, ship, shore)))?;
+        let changed =
+            self.with_shore(p, i, t.task, |ship, shore| Ok(t.start(true, ship, shore)))?;
         self.players[p].objects[i].actions.set_transport(Some(t));
         self.transport_changed(p, i, changed)
     }
@@ -70,7 +71,9 @@ impl crate::world::World {
             .ok_or(GenieError::unreachable(
                 "a Transport on top without its action",
             ))?;
-        let changed = self.with_shore(p, i, |ship, shore| t.work(point, by_self, ship, shore))?;
+        let changed = self.with_shore(p, i, t.task, |ship, shore| {
+            t.work(point, by_self, ship, shore)
+        })?;
         self.players[p].objects[i].actions.set_transport(Some(t));
         self.transport_changed(p, i, changed)?;
         self.notify_transport((p, i), (target, point), clears)?;
@@ -120,17 +123,18 @@ impl crate::world::World {
         Ok(())
     }
 
-    /// `f` on the Transport's view of player `p`'s object at `i` ([`World::ship`]) and of the
-    /// map ([`MapShore`] with the unit's terrain restriction).
+    /// `f` on the view of the Transport on `task` of player `p`'s object at `i` ([`World::ship`])
+    /// and of the map ([`MapShore`] with the unit's terrain restriction).
     ///
     /// [`World`]: crate::world::World
     fn with_shore(
         &mut self,
         p: usize,
         i: usize,
+        task: Option<TaskId>,
         f: impl FnOnce(&Ship, &mut MapShore<'_>) -> Result<Changed, GenieError>,
     ) -> Result<Changed, GenieError> {
-        let ship = self.ship(p, i)?;
+        let ship = self.ship(p, i, task)?;
         let restriction = self.players[p].objects[i]
             .master(&self.masters, p)?
             .terrain_restriction;

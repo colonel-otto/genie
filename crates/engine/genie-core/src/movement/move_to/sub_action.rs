@@ -37,8 +37,9 @@ impl MoveToAction {
 
     /// Its update as an action's sub-action (`0x140aa2a70`, which the action's sub-action list
     /// runs, `FUN_140a992b0`) and the code the action reads: a start asks for its path toward
-    /// its target or point within its range (a `MoveTo` that waited once, `+0x6c` 1, counts as
-    /// having asked again, 2), shows its sprite (`shown`, [`start_walk_shown`]) and walks; a
+    /// its target or point within its range by what the unit's AI asks (`ask`; a `MoveTo` that
+    /// waited once, `+0x6c` 1, counts as having asked again, 2), shows its sprite (`shown`,
+    /// [`start_walk_shown`]) and walks; a
     /// move runs the motion step ([`walk_or_give_up`]). The motion step giving up makes it wait
     /// or fail ([`MoveWait::give_up`] with `gives_up`). A wait adds the walk's dt onto its timer
     /// and at its delay asks again (`set_state(3)`; `COMISS`, `JC`: a NaN timer waits on). The
@@ -50,6 +51,7 @@ impl MoveToAction {
     pub fn sub_update(
         &mut self,
         walk: &mut Walk<'_>,
+        ask: PathAsk,
         gives_up: GiveUp,
         shown: Option<Shown<'_>>,
     ) -> Result<u8, GenieError> {
@@ -61,7 +63,6 @@ impl MoveToAction {
                 }
                 let goal = self.walks_to()?;
                 self.state = MoveTo::Moving;
-                let ask = PathAsk::default();
                 let started =
                     start_walk_shown(walk.reborrow(), (goal, self.range, self.quiet), ask, shown)?;
                 self.state = started.unwrap_or_else(|| self.wait.give_up(waits, stance));
@@ -83,5 +84,15 @@ impl MoveToAction {
             MoveTo::Failed => 3,
             MoveTo::Arrived => 1,
         })
+    }
+
+    /// A quiet sub-action `MoveTo` in `state` to (0, 0, 0) without a sprite, for a test that
+    /// reads only the state.
+    #[cfg(test)]
+    pub(crate) const fn sub_in(state: MoveTo) -> Self {
+        Self {
+            state,
+            ..Self::sub_to_point([0.0; 3], 0.0, None)
+        }
     }
 }
