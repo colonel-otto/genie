@@ -36,7 +36,7 @@ impl Unit {
         // a builder's work found in its Build's update (slot 0x7e8 from case 0xdf) runs inside the
         // action update; the caller gives it (`World::order_work`) and then runs the rest of this
         // update ([`Unit::ai_part`])
-        if c.work_order.is_some() || c.transport_unload {
+        if c.work_order.is_some() {
             c.ai_resume = Some(resume);
             return Ok(Outcome::Stay);
         }

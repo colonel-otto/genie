@@ -2923,9 +2923,39 @@ fn transport_ticked(
     t
 }
 
+/// The unload is the Transport's own call (`FUN_140aa3ba0` in its state 6): the villager is
+/// ashore and the Transport idles while the ship's update still runs, before its unit AI part.
+#[test]
+fn a_transport_unloads_inside_its_own_update() {
+    let mut t = coast_world([14.5, 10.5]);
+    t.build_mesh();
+    UnloadCommand {
+        player: player_id(1),
+        units: unit_list(object_ids([200])),
+        point: Point::new(15.5, 10.5),
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    }
+    .run(&mut t)
+    .unwrap();
+    let i = t.players[1].objects.position_of(200).unwrap();
+    let seen = crate::world::tests::in_update(&mut t, (1, i), 100, |unit, c| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let _ = unit.transport_update(c, me)?;
+        let inside = c.w.object(1000).map(|(_, u)| u.life.inside);
+        Ok((inside, unit.actions.transport().map(|t| t.state)))
+    });
+    assert_eq!(seen, Ok((Some(None), Some(transport::IDLE))));
+}
+
 /// The Transport's update in the ship's (`transport_update`): beside the shore (state 6, the
-/// land within 2 of its tile) the update asks for the unload, which the caller runs after the
-/// actions: the villager goes ashore and the Transport idles. A failed one (state 13) tells
+/// land within 2 of its tile) the update unloads: the villager goes ashore and the Transport
+/// idles. A failed one (state 13) tells
 /// the unit AI (0x1f9 with the transport action value), idles and leaves the list; a done one
 /// (state 1) leaves it quietly.
 #[test]

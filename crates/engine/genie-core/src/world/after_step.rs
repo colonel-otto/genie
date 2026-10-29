@@ -63,7 +63,7 @@ impl World {
         let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);
         let own_update = full && out.ai_resume.is_none();
         let at = (p, self.slot_of(p, id)?, id);
-        self.finish_own_update(at, (dt, own_update), &out, after_order, &outcome)?;
+        self.finish_own_update(at, (dt, own_update), after_order, &outcome)?;
         self.apply_ai_works((p, self.slot_of(p, id)?), &mut out, &outcome)?;
         self.apply_ai_starts((p, self.slot_of(p, id)?), &mut out, &outcome)?;
         self.apply_hits_and_releases(&mut out)?;
@@ -89,12 +89,11 @@ impl World {
 
     /// The parts of the object's own update after its actions, once, with the update's unit AI
     /// part (`own_update`): the regeneration, the passive abilities with the hit point powerup
-    /// check, and a building's production. Then the Transport's unload.
+    /// check, and a building's production.
     fn finish_own_update(
         &mut self,
         (p, i, id): (usize, usize, i32),
         (dt, own_update): (u32, bool),
-        out: &ObjectOutputs,
         after_order: Option<AfterOrder>,
         outcome: &Outcome,
     ) -> Result<(), GenieError> {
@@ -118,10 +117,6 @@ impl World {
         // unit AI's rest, when an order on a target stopped it)
         if matches!(outcome, Outcome::Stay) && own_update && after_order.is_none() {
             self.produce(p, i, seconds(dt))?;
-        }
-        // the Transport's unload in its update, before the unit AI part
-        if out.transport_unload {
-            in_list(outcome, LEAVES_ITS_LIST, || self.transport_unload(p, i))?;
         }
         Ok(())
     }

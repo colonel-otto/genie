@@ -68,9 +68,6 @@ pub(crate) struct Step<'a> {
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`World::order_work`]).
     pub(crate) work_order: Option<crate::orders::Work>,
-    /// The Transport's unload in its state 6 (`FUN_140aa3ba0`), which the caller runs after the
-    /// actions and before the unit AI part ([`World::transport_unload`]).
-    pub(crate) transport_unload: bool,
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
     /// runs after the update ([`World::order_on_target`]), and the full update's tail that reads
     /// what the order gave ([`crate::unit_ai::UnitAi::after_order`]).
@@ -117,8 +114,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) starts: Vec<AiStart>,
     /// [`Step`]'s `work_order`.
     pub(in crate::world) work_order: Option<crate::orders::Work>,
-    /// [`Step`]'s `transport_unload`.
-    pub(in crate::world) transport_unload: bool,
     /// [`Step`]'s `kills`.
     pub(in crate::world) kills: Vec<KillLeft>,
     /// [`Step`]'s `ai_resume`.
@@ -145,7 +140,6 @@ impl Step<'_> {
             move_aside: std::mem::take(&mut self.move_aside),
             starts: std::mem::take(&mut self.starts),
             work_order: self.work_order.take(),
-            transport_unload: std::mem::take(&mut self.transport_unload),
             kills: std::mem::take(&mut self.kills),
             ai_resume: self.ai_resume.take(),
             releases: std::mem::take(&mut self.releases),

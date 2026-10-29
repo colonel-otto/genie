@@ -30,6 +30,9 @@ use crate::math::rng::Well512;
 
 /// The Transport action's type, which word 9 adds.
 pub const TRANSPORT: i16 = 12;
+/// A Transport's update without its action in the unit's list.
+pub(crate) const NO_TRANSPORT: GenieError =
+    GenieError::unreachable("a Transport's update without its action");
 
 /// The action's point while it has none (`DAT_14330ec20`).
 pub const NONE: f32 = crate::math::image::transport::NONE;

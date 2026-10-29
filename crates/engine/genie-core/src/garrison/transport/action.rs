@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::transport::{
-    Changed, DONE, FAILED, IDLE, LAND_FLAGS, MOVE_RANGE, MapShore, NEAR, NONE, SAIL,
+    Changed, DONE, FAILED, IDLE, LAND_FLAGS, MOVE_RANGE, MapShore, NEAR, NO_TRANSPORT, NONE, SAIL,
     SAIL_TO_UNLOAD, SHORE_MARGIN, Ship, Shore, TransportAction, TransportReads, UNLOAD,
     UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
 };
@@ -152,8 +152,8 @@ impl TransportAction {
     /// One update (slot 6, `FUN_140aa4640`) of `unit`'s Transport on the step, the action copied
     /// out of its list: its `MoveTo` first ([`TransportAction::walk`]), then its state with the
     /// map about the unit where the walk left it ([`TransportAction::state_update`]). Returns
-    /// the update's code, whose 1 or 3 deletes it; an unload is the caller's after the actions
-    /// ([`Step`]'s `transport_unload`).
+    /// the update's code, whose 1 or 3 deletes it. State 6's unload runs where the update
+    /// reaches it ([`TransportAction::unload`]).
     ///
     /// # Errors
     ///
@@ -180,10 +180,32 @@ impl TransportAction {
         match self.state_update(walked, (&ship, &mut shore), unit, look, computer)? {
             Updated::Code(code) => Ok(code),
             Updated::Unload => {
-                c.transport_unload = true;
+                self.unload(c, unit)?;
                 Ok(0)
             }
         }
+    }
+
+    /// State 6's unload (`FUN_140aa3ba0`) in the update: [`World::transport_unload`] on the
+    /// unit lent back to its slot ([`Step::lend`]) with this copy of its Transport, which then
+    /// is the one the unload left.
+    ///
+    /// # Errors
+    ///
+    /// The unload's and the lend's, or a unit whose Transport the unload took.
+    fn unload(&mut self, c: &mut Step<'_>, unit: &mut Unit) -> Result<(), GenieError> {
+        if let Some(own) = unit.actions.transport_mut() {
+            *own = *self;
+        }
+        let (p, me) = (c.player, c.me);
+        c.lend(unit, |w| {
+            let i = w.players[p].objects.position_of(me).ok_or_else(|| {
+                GenieError::unreachable("a lent transport left its list").with("object", me)
+            })?;
+            w.transport_unload(p, i)
+        })?;
+        *self = *unit.actions.transport().ok_or(NO_TRANSPORT)?;
+        Ok(())
     }
 
     /// The update's state after its `MoveTo`'s (`walked`, the code of [`TransportAction::walk`],

@@ -22,9 +22,6 @@ fn units_inside(others: OthersRef<'_>, id: i32) -> usize {
     others.every().filter(|u| u.life.inside == Some(id)).count()
 }
 
-/// A Transport's update without its action: the caller's test.
-const NO_TRANSPORT: GenieError = GenieError::unreachable("a Transport's update without its action");
-
 impl Unit {
     /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads as it
     /// starts ([`Unit::enter_reads`]), on the Enter copied out of the action list and put back
@@ -190,7 +187,10 @@ impl Unit {
         c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
-        let mut t = *self.actions.transport().ok_or(NO_TRANSPORT)?;
+        let mut t = *self
+            .actions
+            .transport()
+            .ok_or(crate::garrison::transport::NO_TRANSPORT)?;
         let master = object_master(
             self.own_master.as_deref(),
             (self.id, self.life.master_id),

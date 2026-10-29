@@ -65,7 +65,6 @@ impl World {
             left_group: None,
             player: p,
             work_order: None,
-            transport_unload: false,
             ai_resume: resume,
             taken_over: None,
             building_handover: false,
