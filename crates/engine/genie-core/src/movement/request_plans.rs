@@ -7,9 +7,10 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::Vec3;
 use crate::movement::{
-    AfterRequest, CLOSE, DETOUR, EPSILON, FAR, Goal, LONG, LONG_PATHER, Me, Mover, PathData,
-    Planning, RANGE_FLOOR, SHORT_PATHER, SHORT_REACH, TARGET_SHORT_REACH, TILE_PATHER,
-    far_waypoint, footprint_gap, ground, ground_line, point_or_zero, short_range, too_short,
+    AfterRequest, CLOSE, DETOUR, EPSILON, FAR, Goal, LONG, LONG_PATHER, LongAsk, Me, Mover,
+    PathData, Planning, RANGE_FLOOR, SHORT_PATHER, SHORT_REACH, ShortAsk, TARGET_SHORT_REACH,
+    TILE_PATHER, TileAsk, far_waypoint, footprint_gap, ground, ground_line, point_or_zero,
+    short_range, too_short,
 };
 use crate::pathing::tile_path::Path;
 
@@ -168,17 +169,14 @@ impl Mover {
             .target
             .filter(|_| !target_moves)
             .map_or(0.0, |t| t.radius[0]);
+        let ask = TileAsk {
+            to: w.waypoint,
+            radii: target_radius + w.radius,
+            range: w.range,
+            target: w.goal.target,
+        };
         let r = self
-            .tile_plan(
-                me,
-                world,
-                plan,
-                w.waypoint,
-                target_radius + w.radius,
-                w.range,
-                w.goal.target,
-                &mut np.path,
-            )?
+            .tile_plan(me, world, plan, ask, &mut np.path)?
             .expect("the planner exists");
         if r == 3 || r == 4 || r == 0 {
             return Ok(());
@@ -214,16 +212,14 @@ impl Mover {
     ) -> Result<u8, GenieError> {
         let line = ground_line(self.moved_at, w.waypoint);
         let ignore = self.ignore_list(me, world, plan, w.goal.target, w.target_id, line)?;
-        let r = self.short_path(
-            me,
-            world,
-            plan,
-            w.waypoint,
-            short_range(near, w.range),
-            w.target_id,
-            (&ignore, w.include),
-            &mut np.path,
-        )?;
+        let ask = ShortAsk {
+            to: w.waypoint,
+            range: short_range(near, w.range),
+            target: w.target_id,
+            ignore: &ignore,
+            include: w.include,
+        };
+        let r = self.short_path(me, world, plan, ask, &mut np.path)?;
         np.path.measure();
         np.new.created = plan.now;
         self.give_ignored(&mut np.new, plan.now);
@@ -363,17 +359,13 @@ impl Mover {
         }
         np.planned = false;
         let target = w.goal.target.map(|t| (w.target_id, t));
-        let Some((reached, farther)) = self.long_plan(
-            me,
-            world,
-            plan,
-            w.waypoint,
-            w.distance,
-            w.range,
+        let ask = LongAsk {
+            waypoint: w.waypoint,
+            way: w.distance,
+            range: w.range,
             target,
-            &mut np.path,
-        )?
-        else {
+        };
+        let Some((reached, farther)) = self.long_plan(me, world, plan, ask, &mut np.path)? else {
             return Ok(Some(AfterRequest::Paused));
         };
         np.new.created = plan.now;
@@ -402,17 +394,13 @@ impl Mover {
             .filter(|t| t.speed <= 0.0)
             .map_or(0.0, |t| t.radius[0]);
         let mut other = Path::default();
-        let Some(r) = self.tile_plan(
-            me,
-            world,
-            plan,
-            w.waypoint,
-            target_radius + w.radius,
-            w.range,
-            w.goal.target,
-            &mut other,
-        )?
-        else {
+        let ask = TileAsk {
+            to: w.waypoint,
+            radii: target_radius + w.radius,
+            range: w.range,
+            target: w.goal.target,
+        };
+        let Some(r) = self.tile_plan(me, world, plan, ask, &mut other)? else {
             return Ok(());
         };
         let last = point_or_zero(&other, other.points.len() as i32 - 1);

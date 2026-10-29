@@ -40,14 +40,16 @@ mod waypoint;
 #[cfg(test)]
 use self::long_walk::old_pather_for;
 pub(crate) use self::long_walk::{
-    LongWalker, Walker, long_path_for, lowered_units, short_path_for, short_path_including,
-    tile_plan_for,
+    LongWalker, ShortAsk, TileAsk, Walker, long_path_for, lowered_units, short_path_for,
+    short_path_including, tile_plan_for,
 };
+use self::path_end::ReachAsk;
 #[cfg(test)]
 use self::path_points::TWO_PI;
 pub use self::path_points::{
     Planning, Turning, footprint_gap, footprint_gap_squared, turn_rate, turning,
 };
+use self::request::LongAsk;
 #[cfg(test)]
 use crate::math::rng::Well512;
 #[cfg(test)]

@@ -9,7 +9,9 @@ use crate::groups::motion::{
 };
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
-use crate::movement::{LongWalker, PathData, long_path_for, short_path_for, tile_plan_for};
+use crate::movement::{
+    LongWalker, PathData, TileAsk, long_path_for, short_path_for, tile_plan_for,
+};
 use crate::pathing::tile_path::Path;
 
 /// What the request plans toward: the walked level's number, range and target, its waypoint,
@@ -177,8 +179,12 @@ fn tile_plan(
         target.map(|_| leg.target_id),
         spatial,
         &mut planning,
-        (leg.waypoint, radii, leg.range),
-        target,
+        TileAsk {
+            to: leg.waypoint,
+            radii,
+            range: leg.range,
+            target,
+        },
         &mut plan.path,
     )?;
     match r {

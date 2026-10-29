@@ -1422,7 +1422,18 @@ fn a_long_plan_reaches_its_waypoint_stops_short_or_ends_at_a_band() {
         };
         let mut m = builder_9177().placed([28.0, 89.0, 0.0]);
         let mut path = Path::default();
-        let r = m.long_plan(&me, &mut world, &plan, waypoint, way, 0.0, None, &mut path);
+        let r = m.long_plan(
+            &me,
+            &mut world,
+            &plan,
+            LongAsk {
+                waypoint,
+                way,
+                range: 0.0,
+                target: None,
+            },
+            &mut path,
+        );
         (r, path.points, path.length)
     };
     let open = vec![4; 120 * 120];

@@ -33,6 +33,32 @@ pub enum GroupSpeed {
     OwnMove(f32),
 }
 
+/// What the walk along the level's path takes of the step ([`Mover::walk`]'s arguments after
+/// the unit).
+#[derive(Debug)]
+pub(super) struct WalkStep<'a> {
+    /// The step's time.
+    pub(super) dt: f32,
+    /// The world's spatial index.
+    pub(super) world: &'a mut Spatial,
+    /// The world's unit groups (none for a walk without the world's planners).
+    pub(super) groups: Option<&'a crate::groups::UnitGroups>,
+    /// The world's pathers (none likewise).
+    pub(super) pathing: Option<&'a mut Pathing>,
+    /// The goal the level walks to.
+    pub(super) goal: Goal<'a>,
+    /// The world's time.
+    pub(super) now: u32,
+    /// Whether the unit's player is a computer.
+    pub(super) computer: bool,
+    /// The objects the old pather tests even moving.
+    pub(super) include: &'a mut Vec<i32>,
+    /// The waypoint once it is not left behind (`local_1860`).
+    pub(super) walked: &'a mut Vec3,
+    /// The direction the unit turns to (slot 0x610).
+    pub(super) heading: &'a mut Vec3,
+}
+
 impl Mover {
     /// Slot 0x5e0 (`FUN_14114f300`): the forward speed the velocity step takes toward `wanted`
     /// (the acceleration times dt plus the speed). A unit its group steers (`group`) takes the
@@ -400,13 +426,18 @@ impl Mover {
             let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
             let step = self.walk(
                 me,
-                dt,
-                (world, groups),
-                pathing,
-                goal,
-                (now, computer),
-                &mut include,
-                (&mut walked, &mut heading),
+                WalkStep {
+                    dt,
+                    world,
+                    groups,
+                    pathing,
+                    goal,
+                    now,
+                    computer,
+                    include: &mut include,
+                    walked: &mut walked,
+                    heading: &mut heading,
+                },
             )?;
             if let Next::Done(m) = step {
                 return Ok(m);
@@ -422,18 +453,19 @@ impl Mover {
     /// unit stops, the step returns 2). A walk that may meet an obstruction is not modelled.
     /// `walked` takes the waypoint once it is not left behind (`local_1860`). `groups` are the
     /// world's unit groups (none for a walk without the world's planners).
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn walk(
-        &mut self,
-        me: &Me,
-        dt: f32,
-        (world, groups): (&mut Spatial, Option<&crate::groups::UnitGroups>),
-        pathing: Option<&mut Pathing>,
-        goal: Goal<'_>,
-        (now, computer): (u32, bool),
-        include: &mut Vec<i32>,
-        (walked, heading): (&mut Vec3, &mut Vec3),
-    ) -> Result<Next, GenieError> {
+    pub(super) fn walk(&mut self, me: &Me, step: WalkStep<'_>) -> Result<Next, GenieError> {
+        let WalkStep {
+            dt,
+            world,
+            groups,
+            pathing,
+            goal,
+            now,
+            computer,
+            include,
+            walked,
+            heading,
+        } = step;
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
         // (slot 0x638) and its query (FUN_14114cc60) start at +0x824, where the unit last moved to

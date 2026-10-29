@@ -2,11 +2,10 @@
 //! and a blocked start.
 
 use crate::map::spatial::{Placed, Spatial};
-use crate::math::fmath::Vec3;
 use crate::movement::{
-    AfterRequest, CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, SHORT_PATHER,
-    SPLIT, STUCK_PAUSE, Walker, footprint_gap_squared, owner_number, short_path_including, split,
-    tile_plan_for,
+    AfterRequest, CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, ReachAsk,
+    SHORT_PATHER, SPLIT, STUCK_PAUSE, ShortAsk, TileAsk, Walker, footprint_gap_squared,
+    owner_number, short_path_including, split, tile_plan_for,
 };
 use crate::pathing::hull_path::HullPather;
 use crate::pathing::tile_path::{Path, Request};
@@ -258,16 +257,12 @@ impl Mover {
     /// The short pather (`FUN_140f9e540`) from the unit to `to` with the ignore and include
     /// lists `lists`, the owner's number for the player ([`short_path_including`]), into `out`;
     /// returns its result (0 in range, 1 reached, 2 partial, 3 blocked, 4 invalid).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn short_path(
         &self,
         me: &Me,
         world: &mut Spatial,
         plan: &mut Planning<'_>,
-        to: Vec3,
-        range: f32,
-        target: i32,
-        lists: (&[i32], &[i32]),
+        ask: ShortAsk<'_>,
         out: &mut Path,
     ) -> Result<u8, GenieError> {
         let walker = self.walker(me.id);
@@ -277,8 +272,7 @@ impl Mover {
             [self.moved_at[0], self.moved_at[1]],
             world,
             plan,
-            (to, range, target),
-            lists,
+            ask,
             owner_number(world, me.id),
             out,
         )
@@ -299,16 +293,12 @@ impl Mover {
     /// (`+0x658`): 3, a box, for the obstruction types 2, 10, 11 and 13 (`FUN_141056460`).
     ///
     /// [`Pathing::smoothing_ignore`]: crate::pathing::Pathing::smoothing_ignore
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn tile_plan(
         &self,
         me: &Me,
         world: &mut Spatial,
         plan: &mut Planning<'_>,
-        to: Vec3,
-        radii: f32,
-        range: f32,
-        target: Option<&Placed>,
+        ask: TileAsk<'_>,
         out: &mut Path,
     ) -> Result<Option<u8>, GenieError> {
         // the smoothing's ignore list: the unit and the level's target object (the planner's
@@ -325,8 +315,7 @@ impl Mover {
             level_target,
             world,
             plan,
-            (to, radii, range),
-            target,
+            ask,
             out,
         )
     }
@@ -343,7 +332,13 @@ impl Mover {
         range: f32,
         master: i16,
     ) -> Result<bool, GenieError> {
-        self.reach_test(me, world, plan, to, None, range, master)
+        let ask = ReachAsk {
+            to,
+            target: None,
+            range,
+            master,
+        };
+        self.reach_test(me, world, plan, ask)
     }
 
     /// Slot 0x3d0 of the unit (`FUN_14114fea0` -> `FUN_140fa0370` with the target object): whether
@@ -362,7 +357,13 @@ impl Mover {
             return Ok(false);
         };
         let to = [t.position[0], t.position[1]];
-        self.reach_test(me, world, plan, to, Some(target), range, master)
+        let ask = ReachAsk {
+            to,
+            target: Some(target),
+            range,
+            master,
+        };
+        self.reach_test(me, world, plan, ask)
     }
 
     /// Slot 0x3e8 of the unit (`FUN_14114f790`): the length of its short path to object `target`

@@ -13,6 +13,20 @@ use crate::movement::{
 };
 use crate::pathing::tile_path::Path;
 
+/// What the long pather is asked for a far waypoint ([`Mover::long_plan`]'s arguments after the
+/// planning state).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct LongAsk<'a> {
+    /// The waypoint (x, height, y).
+    pub(super) waypoint: Vec3,
+    /// The unit's ground distance to it.
+    pub(super) way: f32,
+    /// How near the waypoint counts.
+    pub(super) range: f32,
+    /// The target object, its id and record.
+    pub(super) target: Option<(i32, &'a Placed)>,
+}
+
 impl Mover {
     /// The motion step's path request for the level it walks, in state 2 (`0x141150f00`, its
     /// `_Memory[10] == 2` block): unless the unit is in range of its target (state 4) or on its
@@ -195,18 +209,20 @@ impl Mover {
     /// than the unit is (on the ground) empties, its end's gap to the waypoint returned; else
     /// its stretches are checked for walls ([`Mover::walled_off`]). Returns whether it reached
     /// the goal and that gap.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn long_plan(
         &mut self,
         me: &Me,
         world: &mut Spatial,
         plan: &Planning<'_>,
-        waypoint: Vec3,
-        way: f32,
-        range: f32,
-        target: Option<(i32, &Placed)>,
+        ask: LongAsk<'_>,
         path: &mut Path,
     ) -> Result<Option<(bool, Option<f32>)>, GenieError> {
+        let LongAsk {
+            waypoint,
+            way,
+            range,
+            target,
+        } = ask;
         let master = world.get(me.id).map_or(-1, |p| p.master);
         let walker = LongWalker {
             id: me.id,

@@ -362,6 +362,7 @@ impl Spatial {
         player: usize,
         filter: Filter,
         reach: &mut Reach<'_>,
+        checks: ClosestChecks<'_>,
     ) -> Result<(i32, f32), GenieError> {
         let at = self.objects.get(&me);
         let searcher = Searcher {

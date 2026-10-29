@@ -4,7 +4,7 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     Avoided, EPSILON, LONG_PATH_MOVER, LongWalker, Me, Mover, PUSHED, PathAsk, PathData, Planning,
-    REACH_NEAR, REACH_SHORT, USER_WAYPOINT_MIDDLE, WIDE_CLASS, WIDE_MASTER, WIDE_RANGE,
+    REACH_NEAR, REACH_SHORT, ShortAsk, USER_WAYPOINT_MIDDLE, WIDE_CLASS, WIDE_MASTER, WIDE_RANGE,
     footprint_gap, footprint_gap_squared, lowered_units, overlap, pause_rank, point_or_zero,
     point_or_zero_of, vector,
 };
@@ -15,6 +15,19 @@ use crate::{GenieError, math::fmath};
 /// [`Mover::avoid`]'s first loop (its tests against −0xea9, −0xe91, −0xe85 and −0xe78 at
 /// 0x141154411..0x1411544bc, decoded by + 0xeac): buildings (3), walls (27), gates (39) and 52.
 const KEPT_BY_MEMBERS: [i16; 4] = [3, 27, 39, 52];
+
+/// What a reach test asks of the unit ([`Mover::reach_test`]'s arguments after the world).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ReachAsk {
+    /// The goal (x, y on the map).
+    pub(super) to: [f32; 2],
+    /// The target object's id.
+    pub(super) target: Option<i32>,
+    /// How near the goal counts.
+    pub(super) range: f32,
+    /// The unit's master's id.
+    pub(super) master: i16,
+}
 
 impl Mover {
     /// `FUN_140fa0370`: both ends lie on the map. With a planner for its restriction, the tile
@@ -31,17 +44,19 @@ impl Mover {
     /// planner's other arguments unset: no path, the reach within a tile, no player's objects); a
     /// nearer one is not reached. `master` is the unit's master's id (42 moves for the long
     /// pather without a speed).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn reach_test(
         &self,
         me: &Me,
         world: &mut Spatial,
         plan: &mut Planning<'_>,
-        to: [f32; 2],
-        target: Option<i32>,
-        range: f32,
-        master: i16,
+        ask: ReachAsk,
     ) -> Result<bool, GenieError> {
+        let ReachAsk {
+            to,
+            target,
+            range,
+            master,
+        } = ask;
         // FUN_14114fea0 and FUN_14114ffc0 hand the unit's +0x824 (x, height, y) as the start
         let [x, y, height_at] = self.moved_at;
         let [w, h] = world.map;
@@ -87,8 +102,14 @@ impl Mover {
             let height = placed.map_or(0.0, |t| t.position[2]);
             let line = ([x, height_at], [to[0], height]);
             let ignore = self.ignore_list(me, world, plan, placed, target_id, line)?;
-            let lists = (&ignore[..], &[][..]);
-            if self.short_path(me, world, plan, goal, range, target_id, lists, &mut path)? < 2 {
+            let ask = ShortAsk {
+                to: goal,
+                range,
+                target: target_id,
+                ignore: &ignore,
+                include: &[],
+            };
+            if self.short_path(me, world, plan, ask, &mut path)? < 2 {
                 return Ok(true);
             }
         }

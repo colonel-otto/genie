@@ -196,7 +196,7 @@ pub(super) fn split(path: &mut Path, i: i32) {
 /// What the motion step knows of where the walked level goes: its target, the gap to it
 /// (`fVar38`, far without one) and the gap to where the top level's path ends, or the target's
 /// (`fVar40`).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct Goal<'w> {
     pub(super) target: Option<&'w Placed>,
     pub(super) gap: f32,

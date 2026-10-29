@@ -149,6 +149,35 @@ pub(crate) fn long_path_for(
     crate::pathing::long_path::path(world.tiles(), world.map, &req, walker.position[2])
 }
 
+/// What the tile pathfinder is asked besides its walker ([`tile_plan_for`]'s arguments).
+#[derive(Clone, Copy, Debug)]
+pub struct TileAsk<'a> {
+    /// The goal (x, height, y).
+    pub to: Vec3,
+    /// The walker's and the target's radii added.
+    pub radii: f32,
+    /// How near the goal counts.
+    pub range: f32,
+    /// The target object's record.
+    pub target: Option<&'a Placed>,
+}
+
+/// What the short pather is asked besides its walker ([`short_path_including`]'s goal and
+/// lists, `FUN_140f9e540`'s arguments 3 to 5 and 6 to 9).
+#[derive(Clone, Copy, Debug)]
+pub struct ShortAsk<'a> {
+    /// The goal (x, height, y).
+    pub to: Vec3,
+    /// How near the goal counts.
+    pub range: f32,
+    /// The target object (-1 for none).
+    pub target: i32,
+    /// The objects the pather ignores.
+    pub ignore: &'a [i32],
+    /// The objects the old pather tests even moving.
+    pub include: &'a [i32],
+}
+
 /// The tile pathfinder (`FUN_140f7c530`) for `walker` from `from` (x, y on the map) to `to`,
 /// its walker's and the target's radii `radii` added, within `range`; appended to `out`,
 /// smoothed with the obstruction manager's segment test for the walker (the records of the
@@ -161,17 +190,21 @@ pub(crate) fn long_path_for(
 /// # Errors
 ///
 /// What the planner does not model.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn tile_plan_for(
     walker: Walker,
     from: [f32; 2],
     level_target: Option<i32>,
     world: &mut Spatial,
     plan: &mut Planning<'_>,
-    (to, radii, range): (Vec3, f32, f32),
-    target: Option<&Placed>,
+    ask: TileAsk<'_>,
     out: &mut Path,
 ) -> Result<Option<u8>, GenieError> {
+    let TileAsk {
+        to,
+        radii,
+        range,
+        target,
+    } = ask;
     let target_box = target
         .and_then(|t| t.obstruction)
         .is_some_and(|o| matches!(o.kind, 2 | 10 | 11 | 13));
@@ -289,7 +322,15 @@ pub(crate) fn short_path_for(
     out: &mut Path,
 ) -> Result<u8, GenieError> {
     let player = owner_number(world, walker.id);
-    short_path_including(walker, from, world, plan, goal, (ignore, &[]), player, out)
+    let (to, range, target) = goal;
+    let ask = ShortAsk {
+        to,
+        range,
+        target,
+        ignore,
+        include: &[],
+    };
+    short_path_including(walker, from, world, plan, ask, player, out)
 }
 
 /// The owner's number (`+0x718` of the object's player, `+0x138`) the short pather takes for
@@ -315,17 +356,22 @@ pub(super) fn owner_number(world: &Spatial, id: i32) -> i32 {
 /// # Errors
 ///
 /// What the pathers do not model, or the new pather without the game's mesh.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn short_path_including(
     walker: Walker,
     from: [f32; 2],
     world: &mut Spatial,
     plan: &mut Planning<'_>,
-    (to, range, target): (Vec3, f32, i32),
-    (ignore, include): (&[i32], &[i32]),
+    ask: ShortAsk<'_>,
     player: i32,
     out: &mut Path,
 ) -> Result<u8, GenieError> {
+    let ShortAsk {
+        to,
+        range,
+        target,
+        ignore,
+        include,
+    } = ask;
     let [x, y] = from;
     let target_object = match target {
         -1 => None,
