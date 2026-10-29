@@ -57,21 +57,12 @@ impl World {
                 continue;
             }
             let class = master.class;
-            let unit = &mut self.players[p].objects[idx];
+            let unit = &self.players[p].objects[idx];
             let place = ([unit.position()[0], unit.position()[1]], class);
-            let ai = unit.ai.as_mut().expect("checked above");
-            let mut calls = crate::unit_ai::DeferredCalls::default();
-            set_stance(ai, state, place, &mut calls, self.streams.get(Stream::Ai))?;
-            for e in calls.0 {
-                match e {
-                    crate::unit_ai::Effect::Stop => self.command_stop(p, idx)?,
-                    _ => {
-                        return Err(GenieError::unsupported(
-                            "a stance's stop effect not modelled",
-                        ));
-                    }
-                }
-            }
+            // slot 0x1c0, its stop a call on the unit at once
+            self.run_ai_calls((p, idx), |ai, side, rng| {
+                set_stance(ai, state, place, side, rng)
+            })?;
         }
         Ok(())
     }
@@ -120,7 +111,7 @@ impl World {
         player: PlayerId,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        use crate::unit_ai::{Effect, QueuedOrder};
+        use crate::unit_ai::QueuedOrder;
         let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let cap = if self.players[player].computer {
@@ -157,12 +148,14 @@ impl World {
                 continue;
             }
             let class = master.class;
-            let unit = &mut self.players[p].objects[idx];
             let (state, position) = (unit.life.state, unit.position());
-            let ai = unit.ai.as_mut().expect("checked above");
+            let scouts = unit
+                .ai
+                .as_ref()
+                .is_some_and(|ai| ai.current_action == Some(ActionKind::AutoScout));
             let order = QueuedOrder {
                 issuer: p as i32,
-                order: if ai.current_action == Some(ActionKind::AutoScout) {
+                order: if scouts {
                     OrderKind::Stop
                 } else {
                     OrderKind::AutoScout
@@ -176,25 +169,10 @@ impl World {
                 ready: true,
                 target_type: -1,
             };
-            let mut calls = crate::unit_ai::DeferredCalls::default();
-            ai.take_order_now(
-                state,
-                order,
-                ([position[0], position[1]], class),
-                self.streams.get(Stream::Ai),
-                &mut calls,
-            )?;
-            for e in calls.0 {
-                match e {
-                    Effect::Stop => self.command_stop(p, idx)?,
-                    Effect::Explore(point) => self.command_explore(p, idx, point)?,
-                    _ => {
-                        return Err(GenieError::unsupported(
-                            "an order effect of AUTO_SCOUT not modelled",
-                        ));
-                    }
-                }
-            }
+            // the order at once, its calls on the unit at once
+            self.run_ai_calls((p, idx), |ai, side, rng| {
+                ai.take_order_now(state, order, ([position[0], position[1]], class), rng, side)
+            })?;
         }
         Ok(())
     }
@@ -369,66 +347,6 @@ impl World {
     /// world holds none; the list keeps the ids' count.
     pub(crate) fn lookup(&self, ids: &[i32]) -> Vec<Option<Place>> {
         ids.iter().map(|&id| self.place(id)).collect()
-    }
-
-    /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: the action list empties
-    /// (`FUN_140a98620`, [`World::clear_actions`]) and a unit in state 2 takes its standing
-    /// sprite (slot 0x798, then slot 0x68) where the slice holds its sprite.
-    pub(crate) fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
-        if self.players[p].objects[idx].unmodelled_action.is_some() {
-            return Err(GenieError::unsupported(
-                "a command's stop of an action in the command phase",
-            ));
-        }
-        self.clear_actions(p, idx)?;
-        if self.players[p].objects[idx].life.state == 2 {
-            self.standing_sprite(p, idx)?;
-        }
-        Ok(())
-    }
-
-    /// The unit's explore (slot 0x398) in the command phase: a unit without an Explore takes a
-    /// new one ([`crate::movement::explore::ExploreAction::new`]) at its height; its `set_state`'s notify and
-    /// standing sprite follow.
-    pub(super) fn command_explore(
-        &mut self,
-        p: usize,
-        idx: usize,
-        point: [f32; 2],
-    ) -> Result<(), GenieError> {
-        use crate::movement::explore::{ExploreAction, Owner, WANTS_POINT};
-        let unit = &mut self.players[p].objects[idx];
-        if unit.actions.explore().is_some() || unit.top_action().is_some() {
-            return Err(GenieError::unsupported(
-                "a command's explore of a unit with an action",
-            ));
-        }
-        let (e, owner) = ExploreAction::new([point[0], point[1], unit.position()[2]]);
-        unit.actions.set_explore(Some(e));
-        match owner {
-            Owner::Nothing => return Ok(()),
-            Owner::WantsPoint => {
-                let (id, state) = (unit.id, unit.life.state);
-                if let Some(ai) = unit.ai.as_mut() {
-                    let n = crate::unit_ai::Notify::own(
-                        id,
-                        WANTS_POINT,
-                        [ActionKind::Explore.value(), 0, 0],
-                    );
-                    ai.post(n, state)?;
-                }
-            }
-            Owner::Standing => {}
-            Owner::Stopped => {
-                return Err(GenieError::unsupported(
-                    "an Explore's set_state 2 (slots 0x68)",
-                ));
-            }
-        }
-        {
-            self.standing_sprite(p, idx)?;
-        }
-        Ok(())
     }
 
     /// Slot 0x68 with the master's standing sprite (`+0x470`): the unit's top speed is the

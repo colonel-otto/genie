@@ -8,7 +8,6 @@ use crate::players::game_status::{
     FISHING_BOAT, KEEPING_TYPES, LIVESTOCK, TRADE_ACTION, TRADE_CART, UNSTOPPED_BUILDINGS, VILLAGER,
 };
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::Effect;
 use crate::world::World;
 
 impl World {
@@ -89,24 +88,18 @@ impl World {
         let trading = unit.top_action_kind() == Some(TRADE_ACTION)
             && crate::math::fmath::below_or_unordered(0.0, unit.life.amount)
             && unit.life.attribute_type != -1;
-        let Some(ai) = unit.ai.as_mut() else {
+        let Some(ai) = unit.ai.as_ref() else {
             return Ok(());
         };
         if class == LIVESTOCK || ai.current_action == Some(ActionKind::HeroPower) || trading {
             return Ok(());
         }
-        let mut calls = crate::unit_ai::DeferredCalls::default();
-        ai.stop_with(false, Some(place), &mut calls, self.streams.get(Stream::Ai))?;
-        for e in calls.0 {
-            match e {
-                Effect::Stop => self.command_stop(p, idx)?,
-                _ => return Err(GenieError::unsupported("a stop's effect not modelled")),
-            }
-        }
-        if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
+        // slot 0xb0 with 0, its stopAction a call on the unit at once
+        self.run_ai_calls((p, idx), |ai, side, rng| {
+            ai.stop_with(false, Some(place), side, rng)?;
             ai.forget_targets();
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     /// The top action's slot 0x38 before the stop clears the list (`FUN_140a97770`): false

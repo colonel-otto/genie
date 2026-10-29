@@ -91,18 +91,19 @@ impl Unit {
             && self.life.attribute_type != -1;
         if class != LIVESTOCK
             && !trading
-            && let Some(ai) = self.ai.as_mut()
-            && ai.current_action != Some(ActionKind::HeroPower)
+            && self
+                .ai
+                .as_ref()
+                .is_some_and(|ai| ai.current_action != Some(ActionKind::HeroPower))
         {
-            let mut calls = crate::unit_ai::DeferredCalls::default();
             let [x, y, _] = self.body.position();
             let place = ([x, y], class);
-            let rng = c.w.streams.get(Stream::Ai);
-            ai.stop_with(false, Some(place), &mut calls, rng)?;
-            ai.forget_targets();
-            for e in calls.0 {
-                self.run_effect(e, Some(class), c)?;
-            }
+            // slot 0xb0 with 0, its stopAction a call on the unit at once
+            self.run_calls(c, |ai, side, rng| {
+                ai.stop_with(false, Some(place), side, rng)?;
+                ai.forget_targets();
+                Ok(())
+            })?;
         }
         Ok(())
     }

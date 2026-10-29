@@ -96,8 +96,7 @@ pub(crate) use self::ids::{alert_owner, helper_answers};
 pub use self::order_kind::OrderKind;
 pub(crate) use self::side::UNMODELLED_COMMAND;
 pub use self::side::{
-    DeferredCalls, Gatherable, NO_POINT, Named, OffFootprint, ResourceSearch, TargetFlags,
-    UnitCommand, UnitSide,
+    Gatherable, NO_POINT, Named, OffFootprint, ResourceSearch, TargetFlags, UnitCommand, UnitSide,
 };
 pub use self::surroundings::{
     AiMove, Duel, Found, GroupState, Home, Seen, Surroundings, TopTarget, UnitSeen, flood_search,

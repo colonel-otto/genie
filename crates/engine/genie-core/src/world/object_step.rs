@@ -87,6 +87,34 @@ impl World {
         Ok(())
     }
 
+    /// Runs `f` on the unit AI of object `i` of player `p` for a world routine outside its update
+    /// that gives the AI only the unit's place (a stance, a stop of the game's status, a let-out
+    /// or an unload, a move's cleared notifies): the object's step ([`World::step_object`]
+    /// without the update's own parts) whose only part is the AI's run with its side
+    /// ([`Unit::run_calls`]: its calls on the unit at once). Returns `f`'s answer.
+    ///
+    /// # Errors
+    ///
+    /// A unit without a unit AI, and what the AI's run and its calls do not model.
+    pub(crate) fn run_ai_calls<R>(
+        &mut self,
+        (p, i): (usize, usize),
+        f: impl FnOnce(
+            &mut crate::unit_ai::UnitAi,
+            &mut dyn crate::unit_ai::UnitSide,
+            &mut crate::math::rng::Well512,
+        ) -> Result<R, GenieError>,
+    ) -> Result<R, GenieError> {
+        let mut answer = None;
+        let _ = self.step_object((p, i), (0, None, false), |unit, c| {
+            answer = Some(unit.run_calls(c, f)?);
+            Ok(Outcome::Stay)
+        })?;
+        answer.ok_or(GenieError::unreachable(
+            "a world routine's unit AI run without its answer",
+        ))
+    }
+
     /// Runs `f` on the unit AI of object `i` of player `p` outside its update (a command's
     /// immediate order, `FUN_140c55c90`): the object's step ([`World::step_object`] without the
     /// update's own parts) whose only part is the AI's run with what it reads of the world

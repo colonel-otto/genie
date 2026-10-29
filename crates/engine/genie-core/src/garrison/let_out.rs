@@ -257,20 +257,13 @@ impl World {
             // without a unit AI stays where it came out
             let unit = &mut self.players[up].objects[ui];
             let place = ([unit.position()[0], unit.position()[1]], class);
-            if let Some(ai) = unit.ai.as_mut() {
-                let mut calls = crate::unit_ai::DeferredCalls::default();
-                let rng = self.streams.get(crate::math::rng::Stream::Ai);
-                ai.stop_with(true, Some(place), &mut calls, rng)?;
-                ai.remove_target();
-                let stance = ai.stance;
-                crate::orders::set_stance(ai, stance, place, &mut calls, rng)?;
-                for _ in calls
-                    .0
-                    .iter()
-                    .filter(|e| **e == crate::unit_ai::Effect::Stop)
-                {
-                    self.command_stop(up, ui)?;
-                }
+            if unit.ai.is_some() {
+                self.run_ai_calls((up, ui), |ai, side, rng| {
+                    ai.stop_with(true, Some(place), side, rng)?;
+                    ai.remove_target();
+                    let stance = ai.stance;
+                    crate::orders::set_stance(ai, stance, place, side, rng)
+                })?;
             }
             return Ok(true);
         }

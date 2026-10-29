@@ -5221,6 +5221,26 @@ fn a_build_command_without_its_foundation_or_a_task_does_nothing() {
     assert_eq!(t.players[1].objects[0].life.master_id, 118);
 }
 
+/// A world routine's unit AI run (a stance's, a game status's or a let-out's stop,
+/// `World::run_ai_calls`): the AI's calls run on the unit at once, so the AI reads the action
+/// list a stop left before it returns, and the unit is back in its slot after it.
+#[test]
+fn a_world_routine_s_unit_ai_calls_run_on_the_unit_at_once() {
+    let mut t = sent_off_world(vec![]);
+    let (explore, _) = crate::movement::explore::ExploreAction::new([10.0, 10.0, 0.0]);
+    t.players[1].objects[0].actions.set_explore(Some(explore));
+    let seen = t
+        .run_ai_calls((1, 0), |ai, side, rng| {
+            let before = side.busy_now()?;
+            ai.stop_with(true, None, side, rng)?;
+            Ok((before, side.busy_now()?))
+        })
+        .unwrap();
+    assert_eq!(seen, (true, false));
+    let v = &t.players[1].objects[0];
+    assert_eq!((v.id, v.top_action().is_none()), (9175, true));
+}
+
 /// The unit AI reads its target where it runs (`FUN_1415417a0` on `+0x48`), not as the unit's
 /// step began: a target the update changed (the Build's work order on a resource) is the new
 /// one, and a unit that is its own target reads itself out of its slot.

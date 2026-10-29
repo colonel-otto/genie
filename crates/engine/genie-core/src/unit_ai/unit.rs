@@ -122,13 +122,7 @@ impl Unit {
             kind: master.map_or(0, |m| m.kind),
             ranged: master.is_some_and(|m| 0 <= m.missile),
             firepower: self.firepower,
-            capture: c
-                .w
-                .spatial
-                .sight
-                .as_ref()
-                .and_then(|v| v.seer(self.id))
-                .map_or(0, |s| s.capture),
+            capture: self.capture_kind(c),
             master: self.life.master_id,
             scenario: scenario_mode(c.w.settings.game_mode),
             task_0x69: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x69)),
@@ -280,6 +274,52 @@ impl Unit {
         self.with_side(c, &view, attacker, (player, computer), |ai, side, rng| {
             f(ai, &at, side, computer, rng)
         })
+    }
+
+    /// The unit's AI run by a world routine that gives it only the unit's place (a stance, a
+    /// stop of the game's status, a let-out, an unload, a capture's stop): `f` gets the AI, its
+    /// side ([`Unit::with_side`], whose calls on the unit run at once, the updating player's) and
+    /// the AI stream.
+    ///
+    /// # Errors
+    ///
+    /// A unit without a unit AI, and what `f` and its calls do not model.
+    pub(crate) fn run_calls<R>(
+        &mut self,
+        c: &mut Step<'_>,
+        f: impl FnOnce(
+            &mut UnitAi,
+            &mut dyn crate::unit_ai::UnitSide,
+            &mut Well512,
+        ) -> Result<R, GenieError>,
+    ) -> Result<R, GenieError> {
+        let Some(ai_type) = self.ai.as_ref().map(|ai| ai.ai_type) else {
+            return Err(GenieError::unreachable(
+                "a unit AI's run of a unit without one",
+            ));
+        };
+        let master = self.master(&c.w.masters, c.player).ok();
+        let (player, computer) = (c.player, c.w.players[c.player].computer);
+        let view = OwnerView::of(c, None);
+        let attacker = self.attacker_of(
+            ai_type,
+            master,
+            (player, computer),
+            scenario_mode(c.w.settings.game_mode),
+            self.capture_kind(c),
+        );
+        self.with_side(c, &view, attacker, (player, computer), |ai, side, rng| {
+            f(ai, side, rng)
+        })
+    }
+
+    /// The capture kind its seer has in the players' sight (0 without one).
+    fn capture_kind(&self, c: &Step<'_>) -> u8 {
+        c.w.spatial
+            .sight
+            .as_ref()
+            .and_then(|v| v.seer(self.id))
+            .map_or(0, |s| s.capture)
     }
 
     /// One pass of the unit AI ([`Unit::ai_part`]) as the player `captured` names (its new

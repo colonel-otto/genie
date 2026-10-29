@@ -339,55 +339,6 @@ pub trait UnitSide {
     }
 }
 
-/// The side of a unit AI that a world routine runs on the world's object in its slot, outside
-/// the unit's update (a stance, `AUTO_SCOUT`'s order, a stop of the game's status): the unit's
-/// calls ([`UnitSide::effect_now`]) are kept in their order, for the routine to run after the
-/// AI's; it answers no search.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct DeferredCalls(pub Vec<Effect>);
-
-impl UnitSide for DeferredCalls {
-    fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    fn set_under_attack(&mut self, _: bool) {}
-
-    fn effect_now(&mut self, e: Effect, _: &mut UnitAi, _: &mut Well512) -> Result<(), GenieError> {
-        self.0.push(e);
-        Ok(())
-    }
-
-    fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    fn make_scout_map(&mut self) -> Result<(), GenieError> {
-        Err(WITHOUT_UNIT)
-    }
-
-    /// The world's object holds its path, which the routine does not pass: none.
-    fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
-        None
-    }
-}
-
 /// A unit AI's call on its unit from a side that holds none (a search's closure).
 pub(super) const WITHOUT_UNIT: GenieError =
     GenieError::unsupported("a unit AI's call on its unit from a side without it");

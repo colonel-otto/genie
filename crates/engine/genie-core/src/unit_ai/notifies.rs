@@ -3,10 +3,9 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::DeferredCalls;
 use crate::unit_ai::{
-    ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, Effect, GO_ON, NO_LONGER_ON_ME, Notify,
-    PRODUCED, Surroundings, UnitAi, UnitSide,
+    ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, GO_ON, NO_LONGER_ON_ME, Notify, PRODUCED,
+    Surroundings, UnitAi, UnitSide,
 };
 
 impl UnitAi {
@@ -81,9 +80,9 @@ impl UnitAi {
     }
 
     /// `FUN_140c5dc10` from outside the full update for a unit at `place` (its place and its
-    /// master's class, which a stop ending an order reads): true when a completion stopped the
-    /// action (slot 0xb0 with 1), whose stopAction (slot 0x3c0) the caller runs on the unit then
-    /// ([`DeferredCalls`]); `rng` is the AI stream.
+    /// master's class, which a stop ending an order reads): a completion stops the action (slot
+    /// 0xb0 with 1), whose stopAction (slot 0x3c0) is a call on the unit's `side` at once; `rng`
+    /// is the AI stream.
     ///
     /// # Errors
     ///
@@ -92,16 +91,15 @@ impl UnitAi {
         &mut self,
         time: u32,
         place: ([f32; 2], i16),
+        side: &mut dyn UnitSide,
         rng: &mut Well512,
-    ) -> Result<bool, GenieError> {
+    ) -> Result<(), GenieError> {
         let at = Surroundings {
             position: [place.0[0], place.0[1], 0.0],
             class: place.1,
             ..Surroundings::default()
         };
-        let mut calls = DeferredCalls::default();
-        self.end_notifies(time, &at, &mut calls, rng)?;
-        Ok(calls.0.contains(&Effect::Stop))
+        self.end_notifies(time, &at, side, rng)
     }
 
     /// `FUN_140c5dc10` from outside the full update (a MOVE, an ownership change: `time` is the

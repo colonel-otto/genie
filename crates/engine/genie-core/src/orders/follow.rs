@@ -320,11 +320,11 @@ impl World {
             return Ok(false);
         }
         let place = ([unit.position()[0], unit.position()[1]], class);
-        if let Some(ai) = unit.ai.as_mut()
-            && ai.clear_notifies_at(world_time, place, self.streams.get(Stream::Ai))?
-        {
-            // the completion's stop (slot 0xb0 with 1): the unit's stopAction at once
-            self.command_stop(player, idx)?;
+        if unit.ai.is_some() {
+            // a completion's stop (slot 0xb0 with 1): the unit's stopAction at once
+            self.run_ai_calls((player, idx), |ai, side, rng| {
+                ai.clear_notifies_at(world_time, place, side, rng)
+            })?;
         }
         let unit = &mut self.players[player].objects[idx];
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
