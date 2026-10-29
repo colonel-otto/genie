@@ -37,10 +37,93 @@ fn coast(near: bool) -> Coast {
     }
 }
 
-/// One update as the unit's runs it: the `MoveTo` (none walking here), then the state.
-fn run(t: &mut TransportAction, s: &Ship, c: &mut Coast) -> Result<TransportStep, GenieError> {
-    let walked = t.walk(None, PathAsk::default(), None)?;
-    t.update(walked, s, c)
+/// The sprite a hull shows first, and its master's standing sprite.
+const SHOWN: crate::objects::sprite::Graphic = crate::objects::sprite::Graphic {
+    id: 1,
+    frames: 10,
+    facets: 16,
+    speed_multiplier: 1.0,
+    frame_duration: 0.1,
+    replay_delay: 0.0,
+    flags: 1,
+};
+const STANDING: crate::objects::sprite::Graphic =
+    crate::objects::sprite::Graphic { id: 300, ..SHOWN };
+
+/// The transport's unit as the update's effects read it: a mover in motion (its animation at
+/// speed 1), a sprite ([`SHOWN`]) and a unit AI that takes its notifies (state 2).
+fn hull() -> crate::objects::unit::Unit {
+    let mut mover = crate::gathering::hunt::tests::walker();
+    mover.animated.speed = 1.0;
+    let mut unit = crate::objects::unit::Unit {
+        id: 9,
+        body: crate::objects::layers::Body::new([12.5, 8.5, 0.0], None, Some(mover)),
+        sprite: Some(crate::objects::sprite::ActiveSprite::start(
+            SHOWN,
+            &mut Well512::default(),
+        )),
+        ai: Some(crate::unit_ai::UnitAi::default()),
+        ..crate::objects::unit::Unit::default()
+    };
+    unit.life.state = 2;
+    unit
+}
+
+/// What a state change left the hull ([`left`]).
+#[derive(Debug, PartialEq)]
+struct Left {
+    /// Stopped: its animation at speed 0.
+    stopped: bool,
+    /// Standing: the standing sprite shown.
+    stands: bool,
+    /// The notifies it posted: kind and parameters.
+    posted: Vec<(i32, [i32; 3])>,
+}
+
+/// What a state change left `unit`.
+fn left(unit: &crate::objects::unit::Unit) -> Left {
+    Left {
+        stopped: unit.body.anim_speed() == Some(0.0),
+        stands: unit.sprite.map(|s| s.graphic.id) == Some(STANDING.id),
+        posted: unit.ai.as_ref().map_or_else(Vec::new, |ai| {
+            ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
+        }),
+    }
+}
+
+/// One update's state as the unit's runs it after its `MoveTo`, which walks nowhere here
+/// (none or ended: 1; failed: 3), for a human player, or a `computer` one whose AI would hear
+/// the owner's alert (not modelled: an error).
+fn run_on(
+    t: &mut TransportAction,
+    s: &Ship,
+    c: &mut Coast,
+    unit: &mut crate::objects::unit::Unit,
+    computer: bool,
+) -> Result<Updated, GenieError> {
+    let walked = match t.move_to {
+        Some(MoveTo::Failed) => 3,
+        Some(MoveTo::Start | MoveTo::Moving | MoveTo::Waiting) => 0,
+        None | Some(MoveTo::Arrived) => 1,
+    };
+    let look = (Some(STANDING), &mut Well512::default());
+    t.state_update(walked, (s, c), unit, look, computer)
+}
+
+/// [`run_on`] on a fresh [`hull`] of a human player: the update's answer and what it left.
+fn run(t: &mut TransportAction, s: &Ship, c: &mut Coast) -> (Result<Updated, GenieError>, Left) {
+    let mut unit = hull();
+    let r = run_on(t, s, c, &mut unit, false);
+    (r, left(&unit))
+}
+
+/// The owner's alert, which a computer player's AI would hear ([`run_on`]).
+fn alerts(t: &TransportAction, s: &Ship, c: &mut Coast) -> bool {
+    let mut t = *t;
+    run_on(&mut t, s, c, &mut hull(), true).is_err_and(|e| {
+        e.reason()
+            == "a computer player's AI hearing its unit's alert (slot 0x2e8, then slot 0x3c8)"
+    })
 }
 
 fn ship(loaded: bool) -> Ship {
@@ -192,40 +275,35 @@ fn the_shore_search_looks_about_the_footprint_for_the_point_s_zone_or_land() {
 #[test]
 fn an_unload_out_of_reach_or_beside_no_shore_tells_the_owner_unless_over_water() {
     let s = ship(true);
-    let mut t = TransportAction::new(s.position);
-    t.state = UNLOAD;
-    t.point = [25.0, 3.0, 0.0];
-    t.retarget = true;
+    let unloading = || TransportAction {
+        state: UNLOAD,
+        point: [25.0, 3.0, 0.0],
+        ..TransportAction::new(s.position)
+    };
     // not near the point's zone: the owner hears it, +0x68 clears, the action idles
-    let step = run(&mut t, &s, &mut coast(false)).unwrap();
-    assert!(step.cannot_unload && !step.unload && step.changed.stands);
-    assert_eq!((t.state, t.retarget, step.code), (IDLE, false, 0));
+    let mut t = TransportAction {
+        retarget: true,
+        ..unloading()
+    };
+    assert!(alerts(&t, &s, &mut coast(false)));
+    let (r, Left { stands, .. }) = run(&mut t, &s, &mut coast(false));
+    assert_eq!((r, stands), (Ok(Updated::Code(0)), true));
+    assert_eq!((t.state, t.retarget), (IDLE, false));
     // near, but zone 3 is not beside the footprint: over land at the point it tells the
     // owner, over water it waits silently
-    let mut t = TransportAction {
-        state: UNLOAD,
-        point: [25.0, 3.0, 0.0],
-        ..TransportAction::new(s.position)
-    };
-    let step = run(&mut t, &s, &mut coast(true)).unwrap();
-    assert!(step.cannot_unload);
+    assert!(alerts(&unloading(), &s, &mut coast(true)));
     let mut wet = coast(true);
     wet.flags = |_, _| 1;
-    let mut t = TransportAction {
-        state: UNLOAD,
-        point: [25.0, 3.0, 0.0],
-        ..TransportAction::new(s.position)
-    };
-    let step = run(&mut t, &s, &mut wet).unwrap();
-    assert!(!step.cannot_unload && step.changed.stands);
+    assert!(!alerts(&unloading(), &s, &mut wet));
+    let (r, Left { stands, .. }) = run(&mut unloading(), &s, &mut wet);
+    assert_eq!((r, stands), (Ok(Updated::Code(0)), true));
     // empty: nothing to unload, the action idles
-    let mut t = TransportAction {
-        state: UNLOAD,
-        point: [25.0, 3.0, 0.0],
-        ..TransportAction::new(s.position)
-    };
-    let step = run(&mut t, &ship(false), &mut coast(true)).unwrap();
-    assert!(!step.cannot_unload && !step.unload);
+    let mut t = unloading();
+    assert!(!alerts(&t, &ship(false), &mut coast(true)));
+    assert_eq!(
+        run(&mut t, &ship(false), &mut coast(true)).0,
+        Ok(Updated::Code(0))
+    );
     assert_eq!(t.state, IDLE);
 }
 
@@ -238,8 +316,13 @@ fn an_unload_beside_the_shore_is_the_caller_s_then_idles_unless_it_sails_on() {
         point: [17.0, 3.0, 0.0],
         ..TransportAction::new(s.position)
     };
-    let step = run(&mut t, &s, &mut c).unwrap();
-    assert!(step.unload && !step.cannot_unload);
+    let (
+        r,
+        Left {
+            stopped, stands, ..
+        },
+    ) = run(&mut t, &s, &mut c);
+    assert_eq!((r, stopped, stands), (Ok(Updated::Unload), false, false));
     assert_eq!(t.state, UNLOAD);
     assert!(t.unloaded(&s, &mut c).stands);
     assert_eq!(t.state, IDLE);
@@ -259,85 +342,133 @@ fn a_sail_ends_with_its_move_to_and_a_failed_one_returns_3() {
         state: SAIL_TO_UNLOAD,
         ..TransportAction::new(s.position)
     };
-    let step = run(&mut t, &s, &mut c).unwrap();
-    assert_eq!((t.state, step.code), (UNLOAD, 0));
+    assert_eq!(run(&mut t, &s, &mut c).0, Ok(Updated::Code(0)));
+    assert_eq!(t.state, UNLOAD);
     // state 11 with an ended MoveTo: idle, the MoveTo gone (its teardown stops the unit)
     let mut t = TransportAction {
         state: SAIL,
         move_to: Some(MoveTo::Arrived),
         ..TransportAction::new(s.position)
     };
-    let step = run(&mut t, &s, &mut c).unwrap();
+    let (
+        _,
+        Left {
+            stopped, stands, ..
+        },
+    ) = run(&mut t, &s, &mut c);
     assert_eq!(t.state, IDLE);
-    assert!(step.changed.stopped && step.changed.stands);
+    assert!(stopped && stands);
     // a failed MoveTo (code 3) ends a sail to unload too
     let mut t = TransportAction {
         state: SAIL_TO_UNLOAD,
         move_to: Some(MoveTo::Failed),
         ..TransportAction::new(s.position)
     };
-    let _ = run(&mut t, &s, &mut c).unwrap();
+    let _ = run(&mut t, &s, &mut c);
     assert_eq!(t.state, UNLOAD);
-    // state 13: the unit hears it failed, the action idles and returns 3
+    // state 13: the unit's AI hears it failed, the action idles and returns 3
     let mut t = TransportAction {
         state: FAILED,
         ..TransportAction::new(s.position)
     };
-    let step = run(&mut t, &s, &mut c).unwrap();
-    assert!(step.failed);
-    assert_eq!((t.state, step.code), (IDLE, 3));
+    let (r, Left { stands, posted, .. }) = run(&mut t, &s, &mut c);
+    let failed = (
+        crate::unit_ai::ACTION_FAILED,
+        [crate::unit_ai::ActionKind::Transport.value(), 0, 0],
+    );
+    assert_eq!(
+        (r, stands, posted),
+        (Ok(Updated::Code(3)), true, vec![failed])
+    );
+    assert_eq!(t.state, IDLE);
     // state 1 is done; an idle one does nothing
     t.state = DONE;
-    assert_eq!(run(&mut t, &s, &mut c).unwrap().code, 1);
+    assert_eq!(run(&mut t, &s, &mut c).0, Ok(Updated::Code(1)));
     t.state = IDLE;
-    assert_eq!(run(&mut t, &s, &mut c).unwrap(), TransportStep::default());
+    let (
+        r,
+        Left {
+            stopped,
+            stands,
+            posted,
+        },
+    ) = run(&mut t, &s, &mut c);
+    assert_eq!(r, Ok(Updated::Code(0)));
+    assert!(!stopped && !stands && posted.is_empty());
+    // a hull showing a sprite without its standing one: not modelled
+    let mut t = TransportAction {
+        state: FAILED,
+        ..TransportAction::new(s.position)
+    };
+    let mut unit = hull();
+    let look = (None, &mut Well512::default());
+    assert!(
+        t.state_update(1, (&s, &mut c), &mut unit, look, false)
+            .is_err()
+    );
 }
 
-/// `FUN_140a992b0` as a Transport runs it: a start asks for its path to the point (the
-/// planner gives the walker its two paths), a move walks on; without the walk either is
-/// an error, and a waiting `MoveTo` (only a villager's waits) is not a ship's.
+/// `FUN_140a992b0` as a Transport runs it on the step: a start asks for its path to the point
+/// (the planner gives the walker its two paths) and shows its sprite before the motion step,
+/// a move walks on; the units in the way go to the unit AI at once; a waiting `MoveTo` (only a
+/// villager's waits) is not a ship's.
 #[test]
 fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
-    use crate::movement::tests::WalkRig;
+    use crate::combat::attack::tests::Rig;
     let sailing = |move_to| TransportAction {
         move_to,
         point: [35.5, 88.5, 0.0],
         ..TransportAction::new([28.0, 89.0, 0.0])
     };
-    let ask = PathAsk::default();
-    let mut rig = WalkRig::on_the_path();
-    rig.mover_mut().paths.clear();
+    let me = crate::movement::Me {
+        id: 9177,
+        group: -1,
+        action_state: SAIL,
+    };
+    let graphic = crate::objects::sprite::Graphic { id: 3, ..SHOWN };
+    let rig = || {
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
+        assert_eq!(rig.t.graphics.insert(3, graphic), None);
+        rig.mover_mut().in_the_way = vec![77];
+        rig
+    };
+    let in_the_way = vec![(crate::unit_ai::IN_THE_WAY, [77, -1, -1])];
+    let mut walker = rig();
+    walker.mover_mut().paths.clear();
     let mut t = sailing(Some(MoveTo::Start));
-    // its start shows its sprite before the motion step
-    let graphic = crate::objects::sprite::Graphic {
-        id: 3,
-        frames: 10,
-        facets: 16,
-        speed_multiplier: 1.0,
-        frame_duration: 0.1,
-        replay_delay: 0.0,
-        flags: 1,
-    };
-    let graphics = std::collections::BTreeMap::from([(3, graphic)]);
-    let (mut sprite, mut rng) = (None, Well512::default());
-    let mut sprites = crate::movement::move_to::Sprites {
-        sprite: &mut sprite,
-        rng: &mut rng,
-        graphics: &graphics,
-    };
-    let shown = Some(sprites.shown(Some(3)).unwrap());
-    assert_eq!(t.walk(Some(rig.walk(SAIL)), ask, shown), Ok(0));
+    assert_eq!(
+        walker.run(100, |c, u, _, _| t.walk(c, u, me, Some(3))),
+        Ok(0)
+    );
     assert_eq!(t.move_to, Some(MoveTo::Moving));
-    assert_eq!(rig.mover_mut().paths.len(), 2);
-    assert_eq!(sprite.map(|s| s.graphic.id), Some(3));
-    let mut rig = WalkRig::on_the_path();
+    assert_eq!(walker.mover().paths.len(), 2);
+    assert_eq!(
+        (walker.sprite(), walker.posted()),
+        (Some(3), in_the_way.clone())
+    );
+    let mut walker = rig();
     let mut t = sailing(Some(MoveTo::Moving));
-    assert_eq!(t.walk(Some(rig.walk(SAIL)), ask, None), Ok(0));
-    assert_eq!(t.move_to, Some(MoveTo::Moving));
-    assert!(sailing(Some(MoveTo::Start)).walk(None, ask, None).is_err());
-    assert!(sailing(Some(MoveTo::Moving)).walk(None, ask, None).is_err());
+    assert_eq!(walker.run(100, |c, u, _, _| t.walk(c, u, me, None)), Ok(0));
+    assert_eq!(
+        (t.move_to, walker.posted()),
+        (Some(MoveTo::Moving), in_the_way)
+    );
     let mut t = sailing(Some(MoveTo::Waiting));
-    assert!(t.walk(Some(rig.walk(SAIL)), ask, None).is_err());
+    assert!(rig().run(100, |c, u, _, _| t.walk(c, u, me, None)).is_err());
+    // the ended, the failed and a missing MoveTo walk nothing
+    for (move_to, code) in [
+        (Some(MoveTo::Arrived), 1),
+        (Some(MoveTo::Failed), 3),
+        (None, 1),
+    ] {
+        let mut walker = rig();
+        let mut t = sailing(move_to);
+        assert_eq!(
+            walker.run(100, |c, u, _, _| t.walk(c, u, me, None)),
+            Ok(code)
+        );
+        assert_eq!(walker.posted(), vec![]);
+    }
 }
 
 /// The sprite its `MoveTo` shows (`0x140aa42a0` gives `FUN_140aa0d30` one): its task's moving

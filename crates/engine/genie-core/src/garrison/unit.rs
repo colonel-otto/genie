@@ -5,7 +5,7 @@ use crate::gathering::gather::unit::give_load;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
-use crate::movement::move_to::{MoveDefaults, MoveTo, Sprites};
+use crate::movement::move_to::{MoveDefaults, MoveTo};
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
@@ -13,7 +13,6 @@ use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::pathing::Pathing;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::{Actor, DropSite};
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
@@ -22,6 +21,9 @@ use crate::world::step::Step;
 fn units_inside(others: OthersRef<'_>, id: i32) -> usize {
     others.every().filter(|u| u.life.inside == Some(id)).count()
 }
+
+/// A Transport's update without its action: the caller's test.
+const NO_TRANSPORT: GenieError = GenieError::unreachable("a Transport's update without its action");
 
 impl Unit {
     /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads as it
@@ -179,89 +181,39 @@ impl Unit {
         Ok(())
     }
 
-    /// The Transport's update ([`crate::garrison::transport::TransportAction::update`]): its `MoveTo` first
-    /// ([`crate::garrison::transport::TransportAction::walk`], by what the unit's AI asks of the path in
-    /// its state 3, `0x140aa2a70`), then its state with the map about the unit where the walk
-    /// left it ([`crate::garrison::transport::MapShore`]). Then its step: the unit stops and takes its
-    /// standing sprite ([`Unit::show_standing`]), a failure notifies its unit AI (0x1f9 with
-    /// the transport's action value), the owner hears that it cannot unload
-    /// ([`crate::unit_ai::alert_owner`]), the unload is the caller's before the unit AI part
-    /// ([`Step::transport_unload`]); its code, whose 1 or 3 deletes it.
+    /// The Transport's update ([`crate::garrison::transport::TransportAction::update`] on the
+    /// step, the action copied out of its list and written back after): what it reads of the
+    /// unit's master ([`crate::garrison::transport::TransportReads`]: the sprite its `MoveTo`'s
+    /// start shows, `FUN_140aa0d30`'s default for none); its code, whose 1 or 3 deletes it.
     pub(crate) fn transport_update(
         &mut self,
         c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
+        let mut t = *self.actions.transport().ok_or(NO_TRANSPORT)?;
         let master = object_master(
             self.own_master.as_deref(),
             (self.id, self.life.master_id),
             c.w.masters.get(c.player),
         )?;
-        let (radius, restriction) = (master.radius, master.terrain_restriction);
-        let t = self.actions.transport_mut().expect("checked by the caller");
-        // the sprite its MoveTo's start shows (FUN_140aa0d30's default for none)
-        let move_shown = match t.move_to {
+        let move_sprite = match t.move_to {
             Some(MoveTo::Start) => {
                 let defaults = MoveDefaults::of(master, self.abilities.look.as_ref());
-                Some(t.move_shown(master, defaults)?)
+                t.move_shown(master, defaults)?
             }
             _ => None,
         };
-        let ask = match t.move_to {
-            Some(MoveTo::Start) => {
-                let [x, y, _] = self.body.position();
-                let (at, to) = ([x, y], [t.point[0], t.point[1]]);
-                UnitAi::path_ask(self.ai.as_mut(), at, to)
-            }
-            _ => crate::movement::PathAsk::default(),
+        let reads = crate::garrison::transport::TransportReads {
+            radius: master.radius,
+            restriction: master.terrain_restriction,
+            move_sprite,
+            standing: c.w.graphics.get(&master.standing_sprite).copied(),
         };
-        let (walk, beside) = c.w.walk_beside(c.pace(), &mut self.body, me);
-        let mut sprites = Sprites {
-            sprite: &mut self.sprite,
-            rng: beside.sprite_rng,
-            graphics: beside.graphics,
-        };
-        let shown = move_shown.map(|id| sprites.shown(id)).transpose()?;
-        let walked = t.walk(Some(walk), ask, shown)?;
-        let position = self.body.position();
-        let ship = crate::garrison::transport::Ship {
-            position,
-            radius,
-            loaded: !self.garrison.is_empty(),
-            map: c.w.spatial.map,
-            moves: self.body.mover().is_some_and(|m| m.stats.speed != 0.0),
-        };
-        let mut shore = crate::garrison::transport::MapShore::new(
-            &c.w.spatial,
-            &mut c.w.zones,
-            &mut c.w.pathing,
-            restriction,
-            position,
-        )?;
-        let step = t.update(walked, &ship, &mut shore)?;
-        if step.changed.stopped
-            && let Some(m) = self.body.mover_mut()
-        {
-            m.stop()?;
+        let code = t.update(c, self, me, &reads)?;
+        if let Some(own) = self.actions.transport_mut() {
+            *own = t;
         }
-        if step.changed.stands {
-            self.show_standing(
-                c.w.masters.get(c.player),
-                &c.w.graphics,
-                c.w.streams.get(Stream::Sprite),
-            )?;
-        }
-        if step.failed {
-            self.post_own(
-                crate::unit_ai::ACTION_FAILED,
-                [ActionKind::Transport.value(), 0, 0],
-            )?;
-        }
-        if step.cannot_unload {
-            crate::unit_ai::alert_owner(c.w.players[c.player].computer)?;
-        }
-        c.transport_unload = step.unload;
-        Ok(HeadCode::of(step.code))
+        Ok(HeadCode::of(code))
     }
 
     /// The Transport's slot 8 on a move to `point` ([`crate::garrison::transport::TransportAction::move_to`])

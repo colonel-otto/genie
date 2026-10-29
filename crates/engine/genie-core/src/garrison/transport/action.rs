@@ -3,17 +3,22 @@
 
 use crate::GenieError;
 use crate::garrison::transport::{
-    Changed, DONE, FAILED, IDLE, LAND_FLAGS, MOVE_RANGE, NEAR, NONE, SAIL, SAIL_TO_UNLOAD,
-    SHORE_MARGIN, Ship, Shore, TransportAction, TransportStep, UNLOAD, UNLOAD_REACH_SQUARED,
-    WATER_FLAGS,
+    Changed, DONE, FAILED, IDLE, LAND_FLAGS, MOVE_RANGE, MapShore, NEAR, NONE, SAIL,
+    SAIL_TO_UNLOAD, SHORE_MARGIN, Ship, Shore, TransportAction, TransportReads, UNLOAD,
+    UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
 };
 use crate::math::conversions::cvttss2si;
-use crate::movement::PathAsk;
+use crate::math::rng::{Stream, Well512};
+use crate::movement::Me;
 use crate::movement::move_to::{
-    Goal, MoveDefaults, MoveTo, Shown, Walk, start_walk_shown, walk_or_give_up,
+    Goal, MoveDefaults, MoveTo, Sprites, start_walk_shown, walk_or_give_up,
 };
 use crate::objects::masters::{Master, TaskId};
-use crate::objects::sprite::sprite_id;
+use crate::objects::sprite::{Graphic, new_sprite, sprite_id};
+use crate::objects::unit::Unit;
+use crate::unit_ai::{ActionKind, UnitAi};
+use crate::world::World;
+use crate::world::step::Step;
 
 impl TransportAction {
     /// The unload command's constructor (`FUN_140aa3ab0` with no task, `+0x48`): its point the
@@ -144,42 +149,86 @@ impl TransportAction {
         Ok(self.set_state(state, ship, shore))
     }
 
-    /// One update (slot 6, `FUN_140aa4640`) after its `MoveTo`'s (`walked`, the code of
-    /// [`TransportAction::walk`], which only states 4 and 11 read). State 1 is done (1). States 4
-    /// and 11: any end of the `MoveTo` (codes 1 to 5; without one the list answers 1) unloads
-    /// (4: `set_state(6)`) or idles (11: `set_state(2)`). State 13 tells the unit
-    /// it failed ([`TransportStep::failed`]), idles and returns 3. State 6 unloads:
+    /// One update (slot 6, `FUN_140aa4640`) of `unit`'s Transport on the step, the action copied
+    /// out of its list: its `MoveTo` first ([`TransportAction::walk`]), then its state with the
+    /// map about the unit where the walk left it ([`TransportAction::state_update`]). Returns
+    /// the update's code, whose 1 or 3 deletes it; an unload is the caller's after the actions
+    /// ([`Step`]'s `transport_unload`).
+    ///
+    /// # Errors
+    ///
+    /// What the map reads, the `MoveTo` and the state's effects give.
+    pub(crate) fn update(
+        &mut self,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        r: &TransportReads,
+    ) -> Result<u8, GenieError> {
+        let walked = self.walk(c, unit, me, r.move_sprite)?;
+        let ship = Ship::of(unit, r.radius, c.w.spatial.map);
+        let computer = c.w.players[c.player].computer;
+        let World {
+            spatial,
+            zones,
+            pathing,
+            streams,
+            ..
+        } = &mut *c.w;
+        let mut shore = MapShore::new(spatial, zones, pathing, r.restriction, ship.position)?;
+        let look = (r.standing, streams.get(Stream::Sprite));
+        match self.state_update(walked, (&ship, &mut shore), unit, look, computer)? {
+            Updated::Code(code) => Ok(code),
+            Updated::Unload => {
+                c.transport_unload = true;
+                Ok(0)
+            }
+        }
+    }
+
+    /// The update's state after its `MoveTo`'s (`walked`, the code of [`TransportAction::walk`],
+    /// which only states 4 and 11 read), its effects on `unit` at once: a state change stops it
+    /// and state 2 shows the standing sprite (`look`: the master's and the Sprite stream,
+    /// [`stand`]). State 1 is done (1). States 4 and 11: any end of the `MoveTo` (codes 1 to 5;
+    /// without one the list answers 1) unloads (4: `set_state(6)`) or idles (11:
+    /// `set_state(2)`). State 13 tells the unit's AI it failed (0x1f9 with the Transport's action
+    /// value, slot 0x328), idles and returns 3. State 6 unloads:
     /// - with a point, its zone's tile ([`Shore::zone`]) must lie within [`NEAR`] of the unit
-    ///   ([`Shore::near`]), else the owner hears that it cannot unload there
-    ///   ([`TransportStep::cannot_unload`]); `+0x68` clears either way.
+    ///   ([`Shore::near`]), else the owner hears that it cannot unload there (0x207, its slot
+    ///   0x2e8: [`crate::unit_ai::alert_owner`] for a `computer` player); `+0x68` clears either
+    ///   way.
     /// - with units inside, a unit beside the shore ([`TransportAction::next_to_shore`]) unloads
-    ///   ([`TransportStep::unload`], the caller's, then [`TransportAction::unloaded`]); one that
-    ///   is not, over water at the point (`FUN_1413fbf30`, `FUN_1413fc2b0`: the terrain table's
-    ///   bits 0 to 2 at the point's tile) waits there, else the owner hears that it cannot unload.
+    ///   ([`Updated::Unload`]); one that is not, over water at the point (`FUN_1413fbf30`,
+    ///   `FUN_1413fc2b0`: the terrain table's bits 0 to 2 at the point's tile) waits there, else
+    ///   the owner hears that it cannot unload.
     /// - unless the unload sails on (`+0x68`), the action idles (`set_state(2)`).
     ///
     /// # Errors
     ///
-    /// What the map reads and the `MoveTo` give.
-    pub fn update(
+    /// What the map reads give, the notify's, a computer player's alert and a standing sprite
+    /// the unit lacks.
+    pub(crate) fn state_update(
         &mut self,
         walked: u8,
-        ship: &Ship,
-        shore: &mut impl Shore,
-    ) -> Result<TransportStep, GenieError> {
-        let mut step = TransportStep::default();
-        match self.state {
-            DONE => step.code = 1,
-            SAIL_TO_UNLOAD | SAIL => {
-                if (1..=5).contains(&walked) {
-                    let next = if self.state == SAIL { IDLE } else { UNLOAD };
-                    step.changed = self.set_state(next, ship, shore);
-                }
+        (ship, shore): (&Ship, &mut impl Shore),
+        unit: &mut Unit,
+        look: (Option<Graphic>, &mut Well512),
+        computer: bool,
+    ) -> Result<Updated, GenieError> {
+        let (changed, code) = match self.state {
+            DONE => return Ok(Updated::Code(1)),
+            SAIL_TO_UNLOAD | SAIL if (1..=5).contains(&walked) => {
+                let next = if self.state == SAIL { IDLE } else { UNLOAD };
+                (self.set_state(next, ship, shore), 0)
             }
             FAILED => {
-                step.failed = true;
-                step.changed = self.set_state(IDLE, ship, shore);
-                step.code = 3;
+                let changed = self.set_state(IDLE, ship, shore);
+                stand(unit, changed, look)?;
+                unit.post_own(
+                    crate::unit_ai::ACTION_FAILED,
+                    [ActionKind::Transport.value(), 0, 0],
+                )?;
+                return Ok(Updated::Code(3));
             }
             UNLOAD => {
                 let [x, y, _] = self.point;
@@ -191,25 +240,29 @@ impl TransportAction {
                     self.retarget = false;
                     reaches = shore.near(zone as u8, NEAR)?;
                 }
-                if !reaches {
-                    step.cannot_unload = true;
-                } else if ship.loaded {
+                let mut cannot_unload = !reaches;
+                if reaches && ship.loaded {
                     if self.next_to_shore(ship, shore)? {
-                        step.unload = true;
-                        return Ok(step);
+                        return Ok(Updated::Unload);
                     }
                     let over_water = x != NONE
                         && shore.flags(cvttss2si(x) as i16, cvttss2si(y) as i16) & WATER_FLAGS != 0;
-                    step.cannot_unload = !over_water;
+                    cannot_unload = !over_water;
                 }
-                step.changed = self.unloaded(ship, shore);
+                let changed = self.unloaded(ship, shore);
+                stand(unit, changed, look)?;
+                if cannot_unload {
+                    crate::unit_ai::alert_owner(computer)?;
+                }
+                return Ok(Updated::Code(0));
             }
-            _ => {}
-        }
-        Ok(step)
+            _ => (Changed::default(), 0),
+        };
+        stand(unit, changed, look)?;
+        Ok(Updated::Code(code))
     }
 
-    /// The end of state 6's update after the unload ([`TransportStep::unload`]): unless the
+    /// The end of state 6's update after the unload ([`Updated::Unload`]): unless the
     /// unload sails on (`+0x68`), `set_state(2)`.
     pub fn unloaded(&mut self, ship: &Ship, shore: &mut impl Shore) -> Changed {
         if self.retarget {
@@ -242,43 +295,54 @@ impl TransportAction {
         Ok(defaults.to_point(given))
     }
 
-    /// The update of its `MoveTo` sub-action (`FUN_140a992b0`) with `walk` and what the unit's
-    /// AI asks of the path (`ask`, `0x140aa2a70` in state 3), as [`crate::ownership::artifact::Artifact`]
-    /// runs its own: state 3 asks for its path to the point within [`MOVE_RANGE`] (quiet) and
-    /// shows its sprite (`shown`, [`TransportAction::move_shown`]), state 4 moves, a motion step
-    /// that gives up fails it (`set_state(13)`: only a human player's villager waits); its code:
-    /// 1 once it ended at the point, 3 once it failed, 1 without one ("There is no list"), else
-    /// 0.
+    /// The update of its `MoveTo` sub-action (`FUN_140a992b0`) on the step, as
+    /// [`crate::ownership::artifact::Artifact`] runs its own: state 3 asks for its path to the
+    /// point within [`MOVE_RANGE`] (quiet), by what the unit's AI asks of the path
+    /// (`0x140aa2a70`, [`UnitAi::path_ask`]), and shows its sprite (`move_sprite`,
+    /// [`TransportAction::move_shown`]); state 4 moves; the units in the way go to the unit AI
+    /// at once (notify 0x215); a motion step that gives up fails it (`set_state(13)`: only a
+    /// human player's villager waits). Its code: 1 once it ended at the point, 3 once it
+    /// failed, 1 without one ("There is no list"), else 0.
     ///
     /// # Errors
     ///
-    /// A walk the `MoveTo` needs and has not got, and what the motion step does not model.
-    pub fn walk(
+    /// A sprite the table lacks, and what the motion step does not model.
+    pub(crate) fn walk(
         &mut self,
-        walk: Option<Walk<'_>>,
-        ask: PathAsk,
-        shown: Option<Shown<'_>>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        move_sprite: Option<i16>,
     ) -> Result<u8, GenieError> {
-        let need = || GenieError::unreachable("a sailing Transport without its walk");
-        match self.move_to {
+        let start = match self.move_to {
             None | Some(MoveTo::Arrived) => return Ok(1),
             Some(MoveTo::Failed) => return Ok(3),
-            Some(MoveTo::Start) => {
-                let goal = Goal::Point(self.point);
-                let walk = walk.ok_or_else(need)?;
-                let state = start_walk_shown(walk, (goal, MOVE_RANGE, true), ask, shown)?;
-                self.move_to = Some(state.unwrap_or(MoveTo::Failed));
-            }
-            Some(MoveTo::Moving) => {
-                let state = walk_or_give_up(walk.ok_or_else(need)?)?;
-                self.move_to = Some(state.unwrap_or(MoveTo::Failed));
-            }
             Some(MoveTo::Waiting) => {
                 return Err(GenieError::unreachable(
                     "a Transport's MoveTo waiting (only a villager's waits)",
                 ));
             }
-        }
+            Some(MoveTo::Start) => true,
+            Some(MoveTo::Moving) => false,
+        };
+        let state = if start {
+            let [x, y, _] = unit.body.position();
+            let ask = UnitAi::path_ask(unit.ai.as_mut(), [x, y], [self.point[0], self.point[1]]);
+            let (walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
+            let mut sprites = Sprites {
+                sprite: &mut unit.sprite,
+                rng: beside.sprite_rng,
+                graphics: beside.graphics,
+            };
+            let shown = sprites.shown(move_sprite)?;
+            let goal = Goal::Point(self.point);
+            start_walk_shown(walk, (goal, MOVE_RANGE, true), ask, Some(shown))?
+        } else {
+            let (walk, _) = c.w.walk_beside(c.pace(), &mut unit.body, me);
+            walk_or_give_up(walk)?
+        };
+        unit.post_in_the_way()?;
+        self.move_to = Some(state.unwrap_or(MoveTo::Failed));
         Ok(0)
     }
 
@@ -317,5 +381,52 @@ impl TransportAction {
             }
         }
         Ok(false)
+    }
+}
+
+/// A state change's effects on the unit at once ([`Changed`]): its `MoveTo`'s teardown stops it
+/// (slot 0x5d0), then state 2 shows its master's standing sprite (slot 0x68 with `+0x470`,
+/// [`Unit::show_standing`]: the top speed is the standing sprite's and, where the slice holds
+/// its sprite, the sprite starts on the Sprite stream; `look`).
+///
+/// # Errors
+///
+/// The stop's, and a unit whose sprite the slice holds without its standing sprite.
+pub(crate) fn stand(
+    unit: &mut Unit,
+    changed: Changed,
+    (standing, rng): (Option<Graphic>, &mut Well512),
+) -> Result<(), GenieError> {
+    if changed.stopped
+        && let Some(m) = unit.body.mover_mut()
+    {
+        m.stop()?;
+    }
+    if !changed.stands {
+        return Ok(());
+    }
+    if let Some(m) = unit.body.mover_mut() {
+        m.shows_standing();
+    }
+    if unit.sprite.is_some() {
+        let standing = standing.ok_or(GenieError::unsupported(
+            "a stopped unit without its standing sprite",
+        ))?;
+        new_sprite(&mut unit.sprite, unit.body.move_stats_mut(), standing, rng);
+    }
+    Ok(())
+}
+
+impl Ship {
+    /// What the Transport reads of `unit` of master radii `radius` on a map of `map` tiles: its
+    /// place, whether an object is inside it and whether it has speed.
+    pub(crate) fn of(unit: &Unit, radius: [f32; 2], map: [i32; 2]) -> Self {
+        Self {
+            position: unit.position(),
+            radius,
+            loaded: !unit.garrison.is_empty(),
+            map,
+            moves: unit.body.mover().is_some_and(|m| m.stats.speed != 0.0),
+        }
     }
 }

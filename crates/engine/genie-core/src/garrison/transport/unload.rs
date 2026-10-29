@@ -16,13 +16,7 @@ impl crate::world::World {
     pub(super) fn ship(&self, p: usize, i: usize) -> Result<Ship, GenieError> {
         let unit = &self.players[p].objects[i];
         let master = unit.master(&self.masters, p)?;
-        Ok(Ship {
-            position: unit.position(),
-            radius: master.radius,
-            loaded: !unit.garrison.is_empty(),
-            map: self.spatial.map,
-            moves: unit.body.mover().is_some_and(|m| m.stats.speed != 0.0),
-        })
+        Ok(Ship::of(unit, master.radius, self.spatial.map))
     }
 
     /// The unit's unload command (slot 0x3a8, `FUN_14108d050`) at `to` for player `p`'s object at
@@ -117,7 +111,7 @@ impl crate::world::World {
     }
 
     /// The unload of the Transport of player `p`'s object at `i` in its update's state 6
-    /// (`FUN_140aa3ba0`, [`TransportStep::unload`]): the units inside go ashore in the zone of
+    /// (`FUN_140aa3ba0`, [`Updated::Unload`]): the units inside go ashore in the zone of
     /// the point's tile ([`Shore::zone`]; any zone without a point) ([`World::unload_all`]).
     /// With none ashore the point moves ([`retry_point`], the Action stream) and the Transport
     /// sails there to unload (`set_state(4)`, then `+0x68`) when a draw found land, else the
@@ -131,7 +125,7 @@ impl crate::world::World {
     /// A map without its terrain, a computer player's AI hearing it, and what the units put
     /// ashore do not model.
     ///
-    /// [`TransportStep::unload`]: crate::garrison::transport::TransportStep::unload
+    /// [`Updated::Unload`]: crate::garrison::transport::Updated::Unload
     pub(crate) fn transport_unload(&mut self, p: usize, i: usize) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[i];
         let t = unit

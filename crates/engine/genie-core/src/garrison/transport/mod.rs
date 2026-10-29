@@ -26,8 +26,6 @@ pub(crate) use self::shore::MapShore;
 pub use self::shore::{Around, find_drop_location, retry_point};
 #[cfg(test)]
 use crate::math::rng::Well512;
-#[cfg(test)]
-use crate::movement::PathAsk;
 
 /// The Transport action's type, which word 9 adds.
 pub const TRANSPORT: i16 = 12;
@@ -153,19 +151,28 @@ pub struct Changed {
     pub stands: bool,
 }
 
-/// What an update leaves to its caller ([`TransportAction::update`]).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TransportStep {
+/// What the Transport's update reads of its unit's master ([`TransportAction::update`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TransportReads {
+    /// The master's radii (x, y).
+    pub(crate) radius: [f32; 2],
+    /// The master's terrain restriction (`+0x606`).
+    pub(crate) restriction: i16,
+    /// The sprite its `MoveTo`'s start shows ([`TransportAction::move_shown`]); none in the
+    /// other states.
+    pub(crate) move_sprite: Option<i16>,
+    /// The master's standing sprite (`+0x470`), which state 2 shows.
+    pub(crate) standing: Option<crate::objects::sprite::Graphic>,
+}
+
+/// What a state of the update asks of its caller ([`TransportAction::state_update`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Updated {
     /// The update's code: 1 done, 3 failed (the action list removes it), else 0.
-    pub code: u8,
-    /// What its state changes left ([`Changed`]).
-    pub changed: Changed,
-    /// State 13: the unit's notify 0x1f9 with [`ActionKind::Transport`] (slot 0x328, to its unit AI).
-    pub failed: bool,
-    /// The owner hears 0x207 (its slot 0x2e8 with [`ActionKind::Transport`]): no unload there.
-    pub cannot_unload: bool,
-    /// The unload (`FUN_140aa3ba0`) is the caller's, then [`TransportAction::unloaded`].
-    pub unload: bool,
+    Code(u8),
+    /// State 6 unloads (`FUN_140aa3ba0`, the caller's after the actions), then
+    /// [`TransportAction::unloaded`]; its code is 0.
+    Unload,
 }
 
 #[cfg(test)]
