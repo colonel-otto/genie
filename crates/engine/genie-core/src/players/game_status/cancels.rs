@@ -10,6 +10,10 @@ use crate::players::game_status::{ONE_UNIT_AGE, ONE_UNIT_MODE};
 use crate::production::{Making, refund, refund_research};
 use crate::world::World;
 
+/// A cancel finds the building without the production it cancels from.
+const NO_PRODUCTION: GenieError =
+    GenieError::unreachable("a cancelled queue entry of a building without production");
+
 impl World {
     /// `FUN_1411cff00`, the cancel of the whole queue of the building at `idx` of player `p`,
     /// entry by entry. A unit entry: each unit gets its refund ([`refund`]) and the tracker its
@@ -170,7 +174,11 @@ impl World {
             return self.cancel_some(p, idx, (-1, count), e as i32, entry.tech);
         }
         let owner = &mut self.players[p];
-        let queue = &mut owner.objects[idx].production.as_mut().expect("above").queue;
+        let queue = &mut owner.objects[idx]
+            .production
+            .as_mut()
+            .ok_or(NO_PRODUCTION)?
+            .queue;
         queue.slots[e].count -= 1;
         queue.total -= 1;
         queue.changes = queue.changes.wrapping_add(1);
@@ -221,27 +229,28 @@ impl World {
         index: u32,
         e: usize,
     ) -> Result<(), GenieError> {
-        fn queue(t: &World, p: usize, idx: usize) -> &crate::production::Queue {
-            &t.players[p].objects[idx]
+        fn queue(t: &World, p: usize, idx: usize) -> Result<&crate::production::Queue, GenieError> {
+            Ok(&t.players[p].objects[idx]
                 .production
                 .as_ref()
-                .expect("the caller's production")
-                .queue
+                .ok_or(NO_PRODUCTION)?
+                .queue)
         }
-        let first = queue(self, p, idx).slots[e];
+        let first = queue(self, p, idx)?.slots[e];
         let kind = first.master;
         let mut e = e as i32;
         let mut left = first.count.min(5);
         let mut master = kind;
         let mut gone: u16 = 0;
-        let mut n = queue(self, p, idx).count;
+        let mut n = queue(self, p, idx)?.count;
         loop {
             if n == 0 {
                 return Ok(());
             }
             let Some(slot) = usize::try_from(e)
                 .ok()
-                .map(|e| queue(self, p, idx).slots[e])
+                .map(|e| queue(self, p, idx).map(|q| q.slots[e]))
+                .transpose()?
             else {
                 return Ok(());
             };
@@ -256,7 +265,7 @@ impl World {
             let take = if left <= slot.count { left } else { slot.count };
             self.cancel_some(p, idx, (master, take), index as i32, -1)?;
             gone = gone.wrapping_add(take as u16);
-            let q = queue(self, p, idx);
+            let q = queue(self, p, idx)?;
             let at = q.slots[e as usize];
             n = q.count;
             if at.tech != -1 || i32::from(n) - 1 < e {
@@ -329,7 +338,7 @@ impl World {
         let queue = &mut self.players[p].objects[idx]
             .production
             .as_mut()
-            .expect("above")
+            .ok_or(NO_PRODUCTION)?
             .queue;
         queue.slots[i].count = queue.slots[i].count.wrapping_sub(take);
         queue.total = queue.total.wrapping_sub(take);

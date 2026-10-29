@@ -10,6 +10,10 @@ use crate::players::game_status::{KEEPING_TYPES, UNSTOPPED_BUILDINGS};
 use crate::unit_ai::ActionKind;
 use crate::world::World;
 
+/// A halt of a top action finds the unit without that action.
+const NO_TOP_ACTION: GenieError =
+    GenieError::unreachable("a halted unit without the top action it halts");
+
 impl World {
     /// `FUN_141613ed0`: a defeated player's objects in its live list's order. A villager, a
     /// fishing boat and an explorer (unit AI action `0x2bd` or 605) empty their ignore lists
@@ -143,7 +147,7 @@ impl World {
                 "a computer player's hunt stopped (set_state 1)",
             ));
         }
-        let hunt = unit.actions.hunt_mut().expect("its top action");
+        let hunt = unit.actions.hunt_mut().ok_or(NO_TOP_ACTION)?;
         hunt.tear_down(unit.body.mover_mut())?;
         hunt.state = crate::gathering::hunt::IDLE;
         let sprite = crate::gathering::hunt::stand_sprite(
@@ -205,7 +209,7 @@ impl World {
             crate::construction::repair::REPAIR => self.halt_repair(p, idx)?,
             crate::combat::attack::ATTACK => {
                 let unit = &mut self.players[p].objects[idx];
-                let attack = unit.actions.attack_mut().expect("its top action");
+                let attack = unit.actions.attack_mut().ok_or(NO_TOP_ACTION)?;
                 attack.halt(
                     &mut unit.body,
                     &mut unit.sprite,
@@ -233,7 +237,7 @@ impl World {
         by: Releaser,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        let gather = unit.actions.gather_mut().expect("its top action");
+        let gather = unit.actions.gather_mut().ok_or(NO_TOP_ACTION)?;
         let stand = crate::gathering::hunt::stand_sprite(
             &gather.task,
             standing,
@@ -264,7 +268,7 @@ impl World {
         by: Releaser,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        let build = unit.actions.build_mut().expect("its top action");
+        let build = unit.actions.build_mut().ok_or(NO_TOP_ACTION)?;
         let foundation = build.target;
         let (counted, targets) = build.halt(unit.body.mover_mut())?;
         if counted {
@@ -283,7 +287,7 @@ impl World {
     /// out of its target's repairers, the standing sprite; the target stays.
     pub(super) fn halt_repair(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        let repair = unit.actions.repair_mut().expect("its top action");
+        let repair = unit.actions.repair_mut().ok_or(NO_TOP_ACTION)?;
         let target = repair.target;
         if repair.halt(unit.body.mover_mut())? {
             self.leave_builders(target)?;
@@ -300,7 +304,7 @@ impl World {
         by: Releaser,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        let artifact = unit.actions.artifact_mut().expect("its top action");
+        let artifact = unit.actions.artifact_mut().ok_or(NO_TOP_ACTION)?;
         let (gone, released) = artifact.stop();
         if gone.stops {
             unit.body
