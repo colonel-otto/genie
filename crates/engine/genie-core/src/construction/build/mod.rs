@@ -97,6 +97,9 @@ pub struct BuildAction {
     /// The sprite its `MoveTo` was made with (`+0x58` as the constructor takes it): the task's
     /// moving sprite, on a drop-off the drop task's carrying one first; None for none, for which
     /// the constructor takes its default ([`BuildAction::move_shown`]).
+    #[diff(
+        gap = "the game's MoveTo keeps the resolved sprite (+0x58, FUN_140aa0df0), genie the argument"
+    )]
     pub move_sprite: Option<i16>,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site of its drop-off (state 8,
     /// `set_state(8)`'s search), −1 for none.
