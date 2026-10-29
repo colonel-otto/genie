@@ -103,10 +103,24 @@ data-oriented architect makes it.
 
 ### Newtypes (C-NEWTYPE)
 
-Give every value with a meaning its own type: an object id, a player, a master, a master
-class, a fixed-point position, a tile. Then a swapped argument does not compile. A raw number
-stays only inside a type's own arithmetic and at the boundaries: the save reader, the `.dat`
-reader, the recording's commands and the oracle's import.
+A parameter or a field accepts exactly the values that are meant for it. So give every value
+with a meaning its own type, not a raw primitive:
+
+- **Ids and indices:** an object (`target: i32` becomes `ObjectId`), a player (`bp: usize`
+  becomes `PlayerId`), a master, a master class, a task.
+- **Quantities with a unit:** a duration in seconds (`reload: f32`), a distance or a range, a
+  speed, an angle.
+- **Places and extents:** a point on the map (`at: [f32; 3]` becomes `Vec3`), a footprint's
+  radii (`radius: [f32; 2]`), a tile, a fixed-point position.
+
+Then a swapped argument does not compile, and a reader traces a value through the code by its
+type. A raw number stays only inside a type's own arithmetic and at the boundaries: the save
+reader, the `.dat` reader, the recording's commands and the oracle's import.
+
+If two parameters hold the same kind of value in different roles, one type is correct for
+both. `me: &Master` and `target: &Master` are both masters, and either one is a valid master
+in either place. The names keep these roles apart. A reload time and a range only share the
+primitive `f32`: they are two kinds of value and need two types.
 
 - Keep the value private: a tuple struct whose field is not `pub`.
 - Set the value only through constructors that check it: `TryFrom`, or `of_field` for a raw
@@ -115,6 +129,10 @@ reader, the recording's commands and the oracle's import.
 - Let the type hold only what it names. No `ObjectId` is −1. No `MasterId` is negative.
 - Derive what the value allows: `Clone`, `Copy`, `Debug`, `PartialEq`, `Eq`, `PartialOrd`,
   `Ord`, `Hash` (C-COMMON-TRAITS). Give a mask type `Binary` and `LowerHex` (C-NUM-FMT).
+- Give a quantity type the operations that its meaning has, and no others: a duration plus a
+  duration is a duration, a point minus a point is an offset.
+- Keep the game's arithmetic in a quantity type. Each operator does the one `f32` operation
+  that the game does, in the game's order (C-OVERLOAD). A newtype changes no bit.
 
 ```rust
 /// An object's id (`+0x8`). Every field that names an object takes −1 for none, so no id
@@ -125,6 +143,40 @@ pub struct ObjectId(
     #[getset(get_copy = "pub")]
     i32,
 );
+```
+
+### Parse, don't validate
+
+A validation checks a raw value and passes the same raw value on. Every later reader must then
+trust the check, or do it again, and nothing stops a caller that skipped it. A parse checks the
+raw value once and returns a type that can hold only valid values. Later code takes that type,
+so it cannot receive an unchecked value, and the compiler holds the check in place. (Alexis
+King, "Parse, don't validate", 2019.)
+
+- Parse raw input into its type at the boundary that reads it: the save reader, the `.dat`
+  reader, the command codec, the oracle's import. The parse returns a `Result`. An invalid
+  value is an error there, with its context (section 7).
+- After the boundary, pass the parsed type. Do not pass the raw value with a check beside it.
+- Write no `is_valid` function that returns a `bool` for later code to trust. Write a
+  constructor that returns the type or an error (`TryFrom`, `of_field`).
+- Put the check into the shape of the type. A required value is `T`, not `Option<T>`. A closed
+  set is an enum. A list that is never empty holds its first element on its own.
+- Check a value once. A function that receives the parsed type does not check it again.
+
+```rust
+// Validate: the raw id travels on, and every reader must remember the check.
+fn is_object(id: i32) -> bool {
+    id != -1
+}
+
+// Parse: the check makes the type, and the type travels on. `attack` cannot receive −1.
+fn attack(target: ObjectId) {}
+
+fn command(raw: i32) -> Result<(), GenieError> {
+    let target = ObjectId::try_from(raw)?;
+    attack(target);
+    Ok(())
+}
 ```
 
 ### `Option`, enums and flags
