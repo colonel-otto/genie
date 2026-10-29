@@ -6,6 +6,7 @@ use crate::movement::{Me, Mover};
 use crate::objects::actions::Action;
 use crate::objects::lifecycle::Class;
 use crate::objects::teardown::HeadCode;
+use crate::objects::unit::object_master;
 use crate::objects::unit::{Step, Unit, loses_actions};
 use crate::unit_ai::task_finder::world::wait_progress;
 use crate::unit_ai::unit::AiResume;
@@ -213,12 +214,18 @@ impl Unit {
     pub(crate) fn animate(&mut self, c: &mut Context<'_>) {
         if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.body.anim_speed()) {
             sprite.update(c.dt_seconds, speed);
-            if let Some(master) =
-                c.w.masters
-                    .get(c.player)
-                    .and_then(|m| m.get(self.life.master_id))
-            {
-                self.idle_swap(master, &c.w.graphics, c.w.streams.get(Stream::Sprite));
+            if let Ok(master) = object_master(
+                self.own_master.as_deref(),
+                (self.id, self.life.master_id),
+                c.w.masters.get(c.player),
+            ) {
+                let (standing, second) = (master.standing_sprite, master.standing_sprite_2);
+                self.idle_swap(
+                    standing,
+                    second,
+                    &c.w.graphics,
+                    c.w.streams.get(Stream::Sprite),
+                );
             }
         }
     }
@@ -269,11 +276,10 @@ impl Unit {
     /// [`Unit::ai_part`]'s first step: the pathing grid takes a unit of a master of kind 40 or
     /// more where it stands, moving or not.
     pub(crate) fn refresh_pathing(&self, c: &mut Context<'_>) {
-        if let Some(m) =
-            c.w.masters
-                .get(c.player)
-                .and_then(|ms| ms.get(self.life.master_id))
-                .filter(|m| 40 <= m.kind)
+        if let Some(m) = self
+            .master(&c.w.masters, c.player)
+            .ok()
+            .filter(|m| 40 <= m.kind)
             && let Some(p) = c.w.spatial.get(self.id).copied()
         {
             let moving = self.body.mover().is_some_and(Mover::is_moving);

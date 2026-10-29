@@ -206,11 +206,7 @@ impl World {
             crate::unit_ai::task_finder::allied(&self.players[owner].relations, owner, q, true)
         };
         if let Some((q, u)) = self.object(id) {
-            let m = u
-                .own_master
-                .as_deref()
-                .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
-                .ok_or(crate::construction::build::NOT_HELD)?;
+            let m = u.master(&self.masters, q)?;
             return Ok(Some(Bystander {
                 id,
                 player: q,
@@ -225,7 +221,7 @@ impl World {
         }
         for (q, player) in self.players.iter().enumerate() {
             if let Some(g) = player.ghosts.iter().find(|g| g.id == id) {
-                let m = self.master_of(q, crate::vision::ghost::GHOST_MASTER)?;
+                let m = self.master(q, crate::vision::ghost::GHOST_MASTER)?;
                 return Ok(Some(Bystander {
                     id,
                     player: q,
@@ -256,11 +252,7 @@ impl World {
         let Some((q, u)) = self.object(b.id) else {
             return Err(crate::construction::build::NOT_HELD);
         };
-        let m = u
-            .own_master
-            .as_deref()
-            .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
-            .ok_or(crate::construction::build::NOT_HELD)?;
+        let m = u.master(&self.masters, q)?;
         let mut v = crate::combat::victims::victim_of(
             u,
             m,

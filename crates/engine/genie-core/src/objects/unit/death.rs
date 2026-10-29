@@ -22,12 +22,7 @@ impl Unit {
     /// master's dying sprite. Not held: the particles and the sounds.
     pub(crate) fn died(&mut self, c: &mut Context<'_>, before: u8) -> Result<(), GenieError> {
         // its master as the death starts: the world's calls below change other objects
-        let Some(master) =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .cloned()
-        else {
+        let Some(master) = self.master(&c.w.masters, c.player).ok().cloned() else {
             if self.life.dying_sprite.is_some() {
                 return Err(GenieError::unsupported(
                     "a dying object of a master the slice does not have",

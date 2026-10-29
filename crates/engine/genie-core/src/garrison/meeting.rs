@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::garrison::{EnterAction, EnterTarget, SIEGE_CLASS};
 use crate::math::conversions::cvttss2si;
 use crate::movement::footprint_gap_squared;
-use crate::objects::masters::{Master, Masters};
+use crate::objects::masters::{Master, Masters, player_master};
 use crate::orders::BUILDING;
 
 /// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up
@@ -261,7 +261,7 @@ pub(crate) fn enter_reach(
             |x, y| {
                 let mut n = 0;
                 for (_, o) in spatial.objects_on(x, y) {
-                    let m = masters.get(o.player).and_then(|m| m.get(o.master)).ok_or(
+                    let m = player_master(masters, o.player, o.master).ok_or(
                         GenieError::unsupported("an object on a tile of a master the slice lacks"),
                     )?;
                     n += usize::from(m.kind == BUILDING);

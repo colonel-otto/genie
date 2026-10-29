@@ -73,7 +73,7 @@ impl World {
     /// world's leave of the place that the slice does not model.
     pub(crate) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
         self.track_remove(p, gone.id, gone.life.master_id);
-        let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
+        let master = gone.master(&self.masters, p).ok();
         forget_resource(&mut self.spatial, master, gone.id, gone.position());
         if let Some(m) = master.filter(|m| 70 <= m.kind) {
             count_class(&mut self.players[p].attributes, m, -1.0);
@@ -98,9 +98,8 @@ impl World {
         };
         let unit = &self.players[p].objects[i];
         let Some(master) = unit
-            .own_master
-            .as_deref()
-            .or_else(|| self.masters.get(p).and_then(|m| m.get(unit.life.master_id)))
+            .master(&self.masters, p)
+            .ok()
             .filter(|m| matches!(m.kind, 70 | 80))
             .cloned()
         else {
@@ -117,10 +116,8 @@ impl World {
         };
         let unit = &self.players[p].objects[i];
         let combat = unit
-            .own_master
-            .as_deref()
-            .or_else(|| self.masters.get(p).and_then(|m| m.get(unit.life.master_id)))
-            .is_some_and(|m| matches!(m.kind, 70 | 80));
+            .master(&self.masters, p)
+            .is_ok_and(|m| matches!(m.kind, 70 | 80));
         if combat {
             self.players[p].objects[i].clamp_hp_powerup();
         }
@@ -152,12 +149,7 @@ impl Unit {
     pub(crate) fn releaser(&self, c: &Context<'_>) -> Releaser {
         Releaser {
             id: self.id,
-            class: c
-                .w
-                .masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .map_or(-1, |m| m.class),
+            class: self.master(&c.w.masters, c.player).map_or(-1, |m| m.class),
             player: c.player,
         }
     }

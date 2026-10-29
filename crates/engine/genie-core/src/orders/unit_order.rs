@@ -23,12 +23,12 @@ impl World {
     ) -> Result<(), GenieError> {
         let by = self.releaser(player, idx);
         let unit = &self.players[player].objects[idx];
-        let livestock = self.master_of(player, unit.life.master_id)?.class == LIVESTOCK;
+        let livestock = unit.master(&self.masters, player)?.class == LIVESTOCK;
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an Artifact's move to an object the slice does not hold",
         ))?;
         let alive = t.life.state < 7;
-        let t_master = self.master_of(tp, t.life.master_id)?;
+        let t_master = t.master(&self.masters, tp)?;
         let to_building = livestock && t_master.kind == BUILDING;
         let to_town_centre = livestock && t_master.id == TOWN_CENTRE;
         let at = self
@@ -116,7 +116,7 @@ impl World {
                     let u = &self.players[q].objects[i];
                     if q != p
                         || u.life.state != 2
-                        || self.master_of(q, u.life.master_id)?.class != LIVESTOCK
+                        || u.master(&self.masters, q)?.class != LIVESTOCK
                         || !u.top_action_idle()?
                         || listed.contains(&id)
                     {
@@ -175,7 +175,7 @@ impl World {
                 return Err(GenieError::unsupported("a cancel at a sleeping object"));
             };
             let unit = &self.players[p].objects[idx];
-            if unit.life.state != 2 || self.master_of(p, unit.life.master_id)?.kind < 80 {
+            if unit.life.state != 2 || unit.master(&self.masters, p)?.kind < 80 {
                 continue;
             }
             self.cancel_queued(p, idx, index, all)?;
@@ -221,7 +221,7 @@ impl World {
             // any player's unit the world holds: the command's list (`FUN_140e6b750`) and the
             // order filter none by owner
             let unit = &self.players[p].objects[idx];
-            let kind = self.master_of(p, unit.life.master_id)?.kind;
+            let kind = unit.master(&self.masters, p)?.kind;
             if unit.life.state != 2 || kind < 40 || unit.life.amount <= 0.0 {
                 continue;
             }

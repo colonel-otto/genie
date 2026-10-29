@@ -91,7 +91,7 @@ impl World {
             .object(id)
             .map(|(_, u)| (u.position(), u.life.master_id))
             .ok_or(GenieError::unreachable("a pasture its completion names"))?;
-        let radius_x = self.master_of(p, master)?.radius[0];
+        let radius_x = self.master(p, master)?.radius[0];
         let mut points = edge_points(at, radius_x);
         let owner = &self.players[p];
         let count = cvttss2si(Attributes::get(owner, PASTURE_LIVESTOCK)?);
@@ -176,13 +176,13 @@ impl World {
             return Ok(-1);
         }
         let unit = &self.players[p].objects[idx];
-        let reach = self.master_of(p, unit.life.master_id)?.radius;
+        let reach = unit.master(&self.masters, p)?.radius;
         let mut tended = Vec::new();
         for &id in &b.livestock {
             let Some((r, l)) = self.object(id) else {
                 continue;
             };
-            let radius = self.master_of(r, l.life.master_id)?.radius;
+            let radius = l.master(&self.masters, r)?.radius;
             let gap = crate::movement::footprint_gap_squared(
                 l.position(),
                 radius,
@@ -230,7 +230,7 @@ impl World {
             },
         );
         let building = match self.object(named) {
-            Some((q, b)) => self.master_of(q, b.life.master_id)?.kind == BUILDING,
+            Some((q, b)) => b.master(&self.masters, q)?.kind == BUILDING,
             None => false,
         };
         if building && let Some((_, b)) = self.object_mut(named) {

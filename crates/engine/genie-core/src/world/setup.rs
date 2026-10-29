@@ -105,10 +105,9 @@ impl World {
                 if u.life.inside.is_some() || 7 <= u.life.state {
                     continue;
                 }
-                let (Some(placed), Some(m)) = (
-                    self.spatial.get(u.id),
-                    self.masters.get(q).and_then(|m| m.get(u.life.master_id)),
-                ) else {
+                let (Some(placed), Some(m)) =
+                    (self.spatial.get(u.id), u.master(&self.masters, q).ok())
+                else {
                     continue;
                 };
                 let moving = u.body.mover().is_some_and(Mover::is_moving);

@@ -227,7 +227,7 @@ impl Unit {
     ) -> Option<crate::unit_ai::TopTarget> {
         let id = self.top_target().filter(|&t| t != -1)?;
         let (owner, u) = others.find(id)?;
-        let m = c.w.masters.get(owner)?.get(u.life.master_id)?;
+        let m = u.master(&c.w.masters, owner).ok()?;
         Some(crate::unit_ai::TopTarget {
             id,
             kind: m.kind,
@@ -278,10 +278,7 @@ struct RepairReads {
 
 /// Object `u`'s master: its own (`+0x6c0`), else player `q`'s of its id.
 fn repair_master(every: &[Masters], q: usize, u: &Unit) -> Option<Master> {
-    u.own_master
-        .as_deref()
-        .or_else(|| every.get(q)?.get(u.life.master_id))
-        .cloned()
+    u.master(every, q).ok().cloned()
 }
 
 /// What the Repair's update reads of its `target` ([`RepairReads`]): nothing for a target the

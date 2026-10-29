@@ -1,6 +1,7 @@
 //! A building's production list and its make action (`TRIBE_Action_Make_Obj`).
 
 use crate::GenieError;
+use crate::objects::masters::player_master;
 use crate::production::{IN_PRODUCTION, MakeObj, Making, QUEUED, housed, population};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
@@ -68,10 +69,7 @@ impl World {
         if production.action.is_none() {
             let first = *production.queue.first().expect("an entry");
             let making = if first.tech == -1 {
-                let pop = self
-                    .masters
-                    .get(p)
-                    .and_then(|m| m.get(first.master))
+                let pop = player_master(&self.masters, p, first.master)
                     .map_or(0.0, |m| population(&m.storage));
                 if housed(&self.players[p].attributes, pop)? {
                     if self.players[p].computer {
@@ -117,10 +115,7 @@ impl World {
             return Ok(());
         };
         if first.tech == -1 {
-            let pop = self
-                .masters
-                .get(p)
-                .and_then(|m| m.get(first.master))
+            let pop = player_master(&self.masters, p, first.master)
                 .map_or(0.0, |m| population(&m.storage));
             self.players[p].add_attribute(QUEUED, -pop)?;
         }
@@ -153,7 +148,7 @@ impl World {
         let mut making = making;
         match &mut making {
             Making::Unit(make) => {
-                if let Some(m) = self.masters.get(p).and_then(|m| m.get(make.master)) {
+                if let Some(m) = player_master(&self.masters, p, make.master) {
                     let pop = population(&m.storage);
                     self.players[p].add_attribute(IN_PRODUCTION, pop)?;
                     make.state = MakeObj::MAKING;
@@ -231,9 +226,9 @@ impl World {
             MakeObj::MAKING => {}
             _ => return Ok(0),
         }
-        let site = self.master_of(p, building.life.master_id)?;
+        let site = building.master(&self.masters, p)?;
         let rate = building.work_rate_powerup + site.work_rate;
-        let made = self.masters.get(p).and_then(|m| m.get(make.master));
+        let made = player_master(&self.masters, p, make.master);
         let time = f32::from(make.time(made, building.life.master_id));
         let progress = rate * dt_seconds + make.progress;
         if let Some(Some(Making::Unit(m))) = self.players[p].objects[i]
@@ -289,7 +284,7 @@ impl World {
             Making::Research(r) => return self.research_destroyed(p, i, &r),
         };
         if matches!(make.state, MakeObj::MAKING | 2) && self.game_state == 0 {
-            let made = self.masters.get(p).and_then(|m| m.get(make.master));
+            let made = player_master(&self.masters, p, make.master);
             let pop = made.map_or(0.0, |m| population(&m.storage));
             let refund = (!make.paid).then(|| made.cloned()).flatten();
             let owner = &mut self.players[p];

@@ -140,7 +140,7 @@ impl World {
         p: usize,
         u: &crate::objects::unit::Unit,
     ) -> Result<(bool, u8), GenieError> {
-        if self.master_of(p, u.life.master_id)?.kind < ACTION_KIND {
+        if u.master(&self.masters, p)?.kind < ACTION_KIND {
             return Ok((false, 0));
         }
         if let Some(e) = u.unmodelled_action.clone() {

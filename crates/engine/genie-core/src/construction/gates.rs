@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::objects::masters::player_master;
 use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, World};
 
 /// The units in gate `gate` (`FUN_1411d0570`): the obstruction manager's query from its first
@@ -81,12 +82,10 @@ impl World {
         (0..owner.objects.len())
             .rev()
             .filter(|&i| {
-                masters
-                    .and_then(|m| m.get(owner.objects[i].life.master_id))
-                    .is_some_and(|m| {
-                        m.class == crate::map::spatial::GATE_CLASS
-                            && m.building.as_ref().is_some_and(|b| 0 <= b.transform_unit)
-                    })
+                owner.objects[i].master_in(masters).is_ok_and(|m| {
+                    m.class == crate::map::spatial::GATE_CLASS
+                        && m.building.as_ref().is_some_and(|b| 0 <= b.transform_unit)
+                })
             })
             .collect()
     }
@@ -97,14 +96,10 @@ impl World {
     /// (`FUN_141663dc0`, `FUN_141663d90`; a player counts itself).
     pub(crate) fn gate_passes(&self, q: usize, i: usize, p: usize) -> bool {
         let gate = &self.players[q].objects[i];
-        let transforming = self
-            .masters
-            .get(q)
-            .and_then(|m| m.get(gate.life.master_id))
-            .is_some_and(|m| {
-                m.class == crate::map::spatial::GATE_CLASS
-                    && m.building.as_ref().is_some_and(|b| b.transform_unit != -1)
-            });
+        let transforming = gate.master(&self.masters, q).is_ok_and(|m| {
+            m.class == crate::map::spatial::GATE_CLASS
+                && m.building.as_ref().is_some_and(|b| b.transform_unit != -1)
+        });
         gate.life.state < 3
             && transforming
             && !gate.gate.is_some_and(|g| g.locked)
@@ -177,7 +172,7 @@ impl World {
                 }
                 let gate = &self.players[q].objects[i];
                 let (id, master) = (gate.id, gate.life.master_id);
-                let Some(m) = self.masters.get(q).and_then(|t| t.get(master)) else {
+                let Some(m) = player_master(&self.masters, q, master) else {
                     continue;
                 };
                 let record = crate::map::spatial::Obstruction {

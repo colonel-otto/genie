@@ -2,7 +2,7 @@
 //! setters and the side effects of allied vision and the farms' food.
 
 use crate::GenieError;
-use crate::objects::masters::master_type;
+use crate::objects::masters::{master_type, player_master};
 use crate::world::World;
 
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
@@ -70,7 +70,7 @@ impl World {
             let kind = self
                 .object(id)
                 .map(|(_, u)| u.life.master_id)
-                .and_then(|m| self.masters.get(p).and_then(|t| t.get(m)))
+                .and_then(|m| player_master(&self.masters, p, m))
                 .map(|m| m.kind);
             if matches!(kind, Some(master_type::COMBAT | master_type::BUILDING)) {
                 self.garrison_volleys(p, id, after)?;
@@ -202,7 +202,7 @@ impl World {
             let Some((q, u)) = self.object(id) else {
                 continue;
             };
-            if self.master_of(q, u.life.master_id)?.kind < master_type::ACTION {
+            if u.master(&self.masters, q)?.kind < master_type::ACTION {
                 continue;
             }
             let (_, u) = self.object_mut(id).expect("found above");

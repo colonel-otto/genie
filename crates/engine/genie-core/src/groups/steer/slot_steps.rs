@@ -260,7 +260,7 @@ impl World {
             let (p, u) = self.object(id).expect("placed");
             (p, u.life.master_id)
         };
-        let kind = self.master_of(p, master_id)?.kind;
+        let kind = self.master(p, master_id)?.kind;
         let u = match place {
             crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
             crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],

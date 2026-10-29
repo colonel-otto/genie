@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::objects::masters::{Master, master_type};
+use crate::objects::masters::{Master, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::technology::EffectCommand;
 use crate::technology::effect::kind;
@@ -128,10 +128,9 @@ impl World {
 
     /// The master object `u` of player `p` reads: its own, else its player's.
     pub(super) fn master_read(&self, p: usize, u: &Unit) -> Result<Master, GenieError> {
-        u.own_master.as_deref().map_or_else(
-            || self.master_of(p, u.life.master_id).cloned(),
-            |m| Ok(m.clone()),
-        )
+        u.own_master
+            .as_deref()
+            .map_or_else(|| u.master(&self.masters, p).cloned(), |m| Ok(m.clone()))
     }
 
     /// An object of master `old` past its use (slot 0xa8 false) in an upgrade: a master of its own
@@ -139,11 +138,7 @@ impl World {
     /// (`FUN_141201d50`: unless it has one, a copy of `old`'s death spawn, `+0x5e4`, of type 10 to
     /// 40, 70 or 80, from its player's table; its slot 0xa8, the graphics, is not simulation).
     pub(super) fn own_and_dead_master(&mut self, p: usize, i: usize, old: &Master) {
-        let dead = self
-            .masters
-            .get(p)
-            .and_then(|m| m.get(old.death_spawns[0]))
-            .cloned();
+        let dead = player_master(&self.masters, p, old.death_spawns[0]).cloned();
         let u = &mut self.players[p].objects[i];
         if u.own_master.is_none() {
             u.own_master = Some(Box::new(old.clone()));
@@ -179,11 +174,8 @@ impl World {
         /// The relic's master, which the world counts.
         const RELIC: i16 = 0x11d;
         let has = |q: usize, id: i16| self.masters.get(q).is_some_and(|m| m.get(id).is_some());
-        let building = self
-            .masters
-            .get(p)
-            .and_then(|m| m.get(at))
-            .is_some_and(|m| m.kind == master_type::BUILDING);
+        let building =
+            player_master(&self.masters, p, at).is_some_and(|m| m.kind == master_type::BUILDING);
         if !building || !(has(p, master) || has(0, master)) || count <= 0 {
             return Ok(());
         }

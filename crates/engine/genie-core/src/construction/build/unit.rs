@@ -2,6 +2,7 @@
 //! foundation's annexes and main building, the builder and its unit AI's orders; the action's
 //! update; and what its step changes in the world.
 
+use crate::objects::unit::object_master;
 use crate::unit_ai::ActionKind;
 use std::collections::BTreeMap;
 
@@ -64,11 +65,7 @@ impl Unit {
             .any(|u| u.annex_of == Some(target));
         let reads = self.build_reads(c, OthersRef::of(&c.w.players, c.player), action)?;
         let annex_ids = c.w.spatial.annexes_of(target);
-        let class =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .map_or(-1, |m| m.class);
+        let class = self.master(&c.w.masters, c.player).map_or(-1, |m| m.class);
         // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
         let held_kind = self.life.attribute_type;
         let attributes = c.w.players[c.player].attributes.len();
@@ -79,13 +76,12 @@ impl Unit {
         let (attribute_204, mode_680, computer, now) =
             (c.attribute_204, c.mode_680, c.computer, c.world_time);
         // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-        let defaults =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .map_or_else(MoveDefaults::default, |m| {
-                    MoveDefaults::of(m, self.abilities.look.as_ref())
-                });
+        let defaults = self
+            .master(&c.w.masters, c.player)
+            .ok()
+            .map_or_else(MoveDefaults::default, |m| {
+                MoveDefaults::of(m, self.abilities.look.as_ref())
+            });
         let build = self.actions.build_mut().expect("above");
         let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
         let template = Completion {
@@ -220,11 +216,7 @@ impl Unit {
             c.w.spatial
                 .get_known(self.id)?
                 .ok_or(GenieError::unsupported("a builder without a place"))?;
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::OBJECT_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let actor = Actor {
             id: self.id,
             master,
@@ -422,11 +414,7 @@ fn build_site<'u>(
     let masters = template.masters;
     let counted_main = own
         .by_id(target)
-        .filter(|u| {
-            masters
-                .and_then(|m| m.get(u.life.master_id))
-                .is_some_and(|m| m.kind == BUILDING_KIND)
-        })
+        .filter(|u| u.master_in(masters).is_ok_and(|m| m.kind == BUILDING_KIND))
         .and_then(|u| u.annex_of);
     let mut main_builders = None;
     let mut site = None;
@@ -444,8 +432,8 @@ fn build_site<'u>(
         if main_work.is_some() || !annex_ids.contains(&u.id) {
             continue;
         }
-        let Some(am) = masters
-            .and_then(|m| m.get(u.life.master_id))
+        let Some(am) = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters)
+            .ok()
             .filter(|m| BUILDING_KIND <= m.kind)
         else {
             continue;
@@ -465,7 +453,7 @@ fn build_site<'u>(
     // the slot order: the constructor made them, and their ids, in it
     starts.sort_by_key(|a| a.id);
     Ok(site.and_then(|u| {
-        let master = masters.and_then(|m| m.get(u.life.master_id));
+        let master = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters).ok();
         let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
         Some(Site {
             id: u.id,
@@ -578,8 +566,13 @@ pub(crate) fn record_build_step(
                 streams,
                 ..
             } = &mut *c.w;
-            let master = masters.get(p).and_then(|m| m.get(master_id));
-            if let (Some(u), Some(m)) = (players[p].objects.by_id_mut(target), master) {
+            if let Some(u) = players[p].objects.by_id_mut(target)
+                && let Ok(m) = object_master(
+                    u.own_master.as_deref(),
+                    (u.id, u.life.master_id),
+                    masters.get(p),
+                )
+            {
                 crate::construction::build::show_built(
                     &mut u.sprite,
                     u.body.move_stats_mut(),

@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::map::spatial::Placed;
 use crate::objects::lifecycle::death_parts::clear_look_of;
-use crate::objects::masters::Master;
+use crate::objects::masters::{Master, player_master};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
 use crate::vision::visibility::{BuildingSight, Seer, capture_kind};
@@ -27,7 +27,7 @@ impl World {
         let (site_owner, site) = self.object(foundation).ok_or(GenieError::unsupported(
             "a footprint's foundation the slice does not hold",
         ))?;
-        let radius = self.master_of(site_owner, site.life.master_id)?.radius;
+        let radius = site.master(&self.masters, site_owner)?.radius;
         let p = [
             (radius[0] * RADIUS_SCALE) as i32,
             (radius[1] * RADIUS_SCALE) as i32,
@@ -38,7 +38,7 @@ impl World {
             let Some((owner, u)) = self.object(id) else {
                 continue;
             };
-            let master = self.master_of(owner, u.life.master_id)?;
+            let master = u.master(&self.masters, owner)?;
             if master.kind < 30 || u.life.state != 2 || u.top_target() == Some(foundation) {
                 continue;
             }
@@ -160,7 +160,7 @@ impl World {
         let Some(&(_, laid)) = LAID.iter().find(|(m, _)| *m == master) else {
             return Ok(());
         };
-        let m = self.master_of(player, master)?;
+        let m = self.master(player, master)?;
         if m.build_time <= 0 {
             return Ok(());
         }
@@ -199,7 +199,7 @@ impl World {
         at: [f32; 2],
         trees: bool,
     ) -> Result<(), GenieError> {
-        let Some(m) = self.masters.get(player).and_then(|m| m.get(master)) else {
+        let Some(m) = player_master(&self.masters, player, master) else {
             return Ok(());
         };
         let site = crate::construction::build::ClearingSite {

@@ -92,10 +92,11 @@ impl UnitView<'_, '_> {
         ) else {
             return Ok(false);
         };
-        let (masters, own) = self
-            .masters
-            .and_then(|m| Some((m, m.get(unit.life.master_id)?)))
+        let masters = self
+            .every
+            .get(self.player)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
+        let own = unit.master(self.every, self.player)?;
         let actor = Actor {
             id: unit.id,
             master: own,

@@ -165,7 +165,7 @@ impl World {
                 i += 1;
                 continue;
             };
-            let master = self.master_of(p, u.life.master_id)?;
+            let master = u.master(&self.masters, p)?;
             let unit = FormationUnit::of(master);
             let ai =
                 u.ai.as_ref()
@@ -228,10 +228,10 @@ impl World {
                 }
                 let radius = match object {
                     crate::groups::WorldObject::Unit(p, u) => {
-                        FormationUnit::of(self.master_of(p, u.life.master_id)?).radius
+                        FormationUnit::of(u.master(&self.masters, p)?).radius
                     }
                     crate::groups::WorldObject::Ghost(p, _) => {
-                        FormationUnit::of(self.master_of(p, object.master_id())?).radius
+                        FormationUnit::of(self.master(p, object.master_id())?).radius
                     }
                 };
                 if k == 0 || widest < radius {
@@ -323,7 +323,7 @@ impl World {
                 break;
             }
             if let Some((p, u)) = self.object(m.id) {
-                let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
+                let unit = FormationUnit::of(u.master(&self.masters, p)?);
                 let s = unit.radius * crate::math::image::group::SPACING_FACTOR;
                 if spacing <= s && s != spacing {
                     spacing = s;
@@ -418,7 +418,7 @@ impl World {
                 "a computer player's group member's search (its cared classes)",
             ));
         }
-        let master = self.master_of(p, u.life.master_id)?;
+        let master = u.master(&self.masters, p)?;
         let attack_priority = master.attack_priority;
         let (classes, radius) = crate::unit_ai::search_area(
             ai_type,
@@ -461,7 +461,7 @@ impl World {
                     continue;
                 }
                 if list == 3 {
-                    let class = self.master_of(object.player(), object.master_id())?.class;
+                    let class = self.master(object.player(), object.master_id())?.class;
                     if !crate::unit_ai::type_attacks_neutral(ai_type, attack_priority, class) {
                         continue;
                     }
@@ -494,7 +494,7 @@ impl World {
         object: crate::groups::WorldObject<'_>,
         target: Option<crate::groups::WorldObject<'_>>,
     ) -> Result<f32, GenieError> {
-        let master = self.master_of(object.player(), object.master_id())?;
+        let master = self.master(object.player(), object.master_id())?;
         if !COMBAT_KINDS.contains(&master.kind) {
             return Ok(0.0);
         }
@@ -513,7 +513,7 @@ impl World {
         if !matches!(master.charge_type, 6 | 7) {
             return Ok(range);
         }
-        let tm = self.master_of(t.player(), t.master_id())?;
+        let tm = self.master(t.player(), t.master_id())?;
         let works = crate::combat::damage::charge_works(
             master.charge_target,
             master.charge_type,
@@ -553,7 +553,7 @@ impl World {
             return Ok(false);
         }
         let (p, u) = self.object(view.id).expect("the member is held");
-        if self.master_of(p, u.life.master_id)?.kind >= ACTION_KIND {
+        if u.master(&self.masters, p)?.kind >= ACTION_KIND {
             if let Some(e) = u.unmodelled_action.clone() {
                 return Err(e);
             }

@@ -141,7 +141,7 @@ impl World {
         let world_time = self.world_time;
         self.attack_notifies(player, idx, (target, &aim), point, clears)?;
         self.clear_actions(player, idx)?;
-        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
+        let master = self.players[player].objects[idx].master(&self.masters, player)?;
         // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
         let arms =
             crate::combat::attack::arms(master, &self.graphics, task.sprites, task.sprites[0]);
@@ -305,7 +305,7 @@ impl World {
         let (owner, t) = self.object(target).ok_or(GenieError::unsupported(
             "an attack task's target the slice does not hold",
         ))?;
-        let tm = self.master_of(owner, t.life.master_id)?;
+        let tm = t.master(&self.masters, owner)?;
         let aimed = if tm.kind == BUILDING {
             t.annex_of.unwrap_or(target)
         } else {
@@ -320,7 +320,7 @@ impl World {
             fog_visibility: tm.fog_visibility,
             aimed,
             at: a.position(),
-            aimed_class: i32::from(self.master_of(ap, a.life.master_id)?.class),
+            aimed_class: i32::from(a.master(&self.masters, ap)?.class),
         })
     }
 
@@ -385,8 +385,8 @@ impl World {
         let arms = self.arms(player, idx, &task)?;
         // FUN_14109d4f0: the target's master is one of the unit's master's drop sites
         let target_master = self.object(target).map(|(_, t)| t.life.master_id);
-        let drops_here = self
-            .master_of(player, self.players[player].objects[idx].life.master_id)?
+        let drops_here = self.players[player].objects[idx]
+            .master(&self.masters, player)?
             .drop_sites
             .iter()
             .any(|&d| Some(d) == target_master);

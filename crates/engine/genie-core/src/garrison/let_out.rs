@@ -54,7 +54,7 @@ impl World {
     ) -> Result<bool, GenieError> {
         let b = &self.players[player].objects[building];
         let bid = b.id;
-        let bm = self.master_of(player, b.life.master_id)?.clone();
+        let bm = b.master(&self.masters, player)?.clone();
         let gather = b.gather_point;
         // the spot's goal (`FUN_1411d12d0` with x −1): without a gather point the first location
         // of the building unit AI's command queue (slot 0x218, then slot 0x220), else a gather
@@ -76,7 +76,7 @@ impl World {
         // the unit is any player's (an ally's too): its own player's masters and orders
         let (up, ui) = self.live_inside(id)?;
         let unit = &self.players[up].objects[ui];
-        let made = self.master_of(up, unit.life.master_id)?.clone();
+        let made = unit.master(&self.masters, up)?.clone();
         if bm.class == SIEGE_CLASS {
             return Err(SIEGE_UNLOAD);
         }
@@ -131,7 +131,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let b = &self.players[player].objects[container];
         let (bid, id) = (b.id, self.players[up].objects[ui].id);
-        let bm = self.master_of(player, b.life.master_id)?.clone();
+        let bm = b.master(&self.masters, player)?.clone();
         // the container's slot 0x1c8 (`FUN_141217910`, a building's through `FUN_1411d6ad0`): a
         // unit (type 70) takes its share off the volleys (the container's rate by its player's
         // masters, the unit's share by its own)

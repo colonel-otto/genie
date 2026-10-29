@@ -6,7 +6,7 @@
 
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
-use crate::objects::masters::{Master, Task, master_type};
+use crate::objects::masters::{Master, Task, master_type, player_master};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::Place;
@@ -251,8 +251,8 @@ impl World {
         }
         let class_changed = master_type::COMBAT <= kind
             && class_changes(
-                self.masters.get(p).and_then(|m| m.get(new.id)),
-                self.masters.get(p).and_then(|m| m.get(old.id)),
+                player_master(&self.masters, p, new.id),
+                player_master(&self.masters, p, old.id),
             );
         if master_type::COMBAT <= kind {
             let u = self.object_at_mut(place);

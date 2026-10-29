@@ -2,7 +2,7 @@
 //! the combat unit's and the building's.
 
 use crate::GenieError;
-use crate::objects::masters::{Master, Masters, master_type};
+use crate::objects::masters::{Master, Masters, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::technology::effect::Change;
 use crate::world::World;
@@ -72,10 +72,7 @@ impl World {
         let mut pending = Vec::new();
         if master_type::BUILDING <= master.kind {
             let stack = master.building.as_ref().map_or(-1, |b| b.stack_unit);
-            let key = self
-                .masters
-                .get(p)
-                .and_then(|m| m.get(stack))
+            let key = player_master(&self.masters, p, stack)
                 .filter(|s| {
                     s.kind == master_type::BUILDING
                         && s.building
@@ -107,7 +104,7 @@ impl World {
         let Some((owner, u)) = self.object(id) else {
             return Ok(false);
         };
-        let master = self.master_of(owner, u.life.master_id)?.clone();
+        let master = u.master(&self.masters, owner)?.clone();
         match master.kind {
             master_type::BUILDING => {
                 self.change_building(owner, id, &master, change, v, attribute)?;

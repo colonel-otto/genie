@@ -479,15 +479,14 @@ impl Unit {
             m.shows_standing();
         }
         if self.sprite.is_some() {
-            let standing =
-                c.w.masters
-                    .get(c.player)
-                    .and_then(|m| m.get(self.life.master_id))
-                    .map(|m| m.standing_sprite)
-                    .and_then(|id| c.w.graphics.get(&id).copied())
-                    .ok_or(GenieError::unsupported(
-                        "an explorer without its standing sprite",
-                    ))?;
+            let standing = self
+                .master(&c.w.masters, c.player)
+                .ok()
+                .map(|m| m.standing_sprite)
+                .and_then(|id| c.w.graphics.get(&id).copied())
+                .ok_or(GenieError::unsupported(
+                    "an explorer without its standing sprite",
+                ))?;
             crate::objects::sprite::new_sprite(
                 &mut self.sprite,
                 self.body.move_stats_mut(),

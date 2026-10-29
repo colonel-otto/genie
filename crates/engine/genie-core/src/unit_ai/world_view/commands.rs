@@ -41,10 +41,11 @@ impl UnitView<'_, '_> {
                 .push(AiStart::Repair(RepairOrder::Retake(target)));
             return Ok(true);
         }
-        let masters = self.masters.ok_or(crate::world::UNIT_AI_MASTER)?;
-        let own = masters
-            .get(unit.life.master_id)
+        let masters = self
+            .every
+            .get(self.player)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
+        let own = unit.master(self.every, self.player)?;
         let switch = crate::construction::repair::REPAIRERS
             .iter()
             .find(|&&(group, _)| group == own.task_by_group)
@@ -118,10 +119,11 @@ impl UnitView<'_, '_> {
         };
         let under_artifact =
             unit.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE);
-        let masters = self.masters.ok_or(crate::world::UNIT_AI_MASTER)?;
-        let own = masters
-            .get(unit.life.master_id)
+        let masters = self
+            .every
+            .get(self.player)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
+        let own = unit.master(self.every, self.player)?;
         let (Some(t), Some(general)) = (
             task_target_with(target, 1, &find, self.every)?,
             task_target_with(target, 2, &find, self.every)?,
@@ -159,11 +161,9 @@ impl UnitView<'_, '_> {
             return Ok(false);
         };
         // the constructor's target: a building's annex enters its main building
-        let building = self
-            .every
-            .get(tp)
-            .and_then(|m| m.get(t_unit.life.master_id))
-            .is_some_and(|m| m.kind == crate::orders::BUILDING);
+        let building = t_unit
+            .master(self.every, tp)
+            .is_ok_and(|m| m.kind == crate::orders::BUILDING);
         let entered = if building {
             t_unit.annex_of.unwrap_or(target)
         } else {
@@ -182,12 +182,7 @@ impl UnitView<'_, '_> {
     /// What an explorer's searches ask of the world, the map's size and the unit's line of sight.
     pub(crate) fn scout_area(&mut self) -> Result<(ScoutArea<'_>, [i32; 2], f32), GenieError> {
         let unit = &*self.unit;
-        let master = self
-            .masters
-            .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "an auto scout of a master the slice does not have",
-            ))?;
+        let master = unit.master(self.every, self.player)?;
         let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "an auto scout without movement state",
         ))?;

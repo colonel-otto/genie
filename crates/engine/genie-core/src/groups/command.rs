@@ -131,7 +131,7 @@ impl World {
     pub fn horde_units_only(&self, g: &UnitGroup) -> Result<bool, GenieError> {
         for m in &g.members {
             if let Some((p, u)) = self.object(m.id) {
-                let master = self.master_of(p, u.life.master_id)?;
+                let master = u.master(&self.masters, p)?;
                 if 69 < master.kind && master.formation_category != 0 {
                     return Ok(false);
                 }

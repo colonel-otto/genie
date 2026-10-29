@@ -43,11 +43,9 @@ impl World {
             .filter(|&t| self.victim(t, p).is_some());
         let blasted = match target {
             Some(t) => self.blasted(&unit, p, t),
-            None if self
-                .masters
-                .get(p)
-                .and_then(|m| m.get(unit.life.master_id))
-                .is_some_and(|m| blasts_at_death(m, &unit.life)) =>
+            None if unit
+                .master(&self.masters, p)
+                .is_ok_and(|m| blasts_at_death(m, &unit.life)) =>
             {
                 self.blasted(&unit, p, -1)
             }

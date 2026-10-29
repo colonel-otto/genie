@@ -158,11 +158,7 @@ impl Unit {
         c: &Context<'_>,
     ) -> Result<Option<crate::objects::sprite::Graphic>, GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::GATHERER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let standing = (0 <= master.standing_sprite)
             .then(|| c.w.graphics.get(&master.standing_sprite).copied())
             .flatten();
@@ -192,11 +188,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let (owner, resource) =
             self.found_resource(c, OthersRef::of(&c.w.players, c.player), found)?;
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::GATHERER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let (computer, farm_stops, held) = (c.computer, c.farm_stops, self.life.amount);
         let rate = crate::gathering::gather::StopRate {
             work_rate: self.work_rate_powerup + master.work_rate,
@@ -260,18 +252,8 @@ impl Unit {
         let (owner, t) = others.find(found).ok_or(GenieError::unsupported(
             "a gather's new target the slice does not hold",
         ))?;
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::GATHERER_MASTER)?;
-        let t_master =
-            c.w.masters
-                .get(owner)
-                .and_then(|m| m.get(t.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a gather's target of a master the slice does not have",
-                ))?;
+        let master = self.master(&c.w.masters, c.player)?;
+        let t_master = t.master(&c.w.masters, owner)?;
         Ok((
             owner,
             crate::gathering::gather::Resource {
@@ -383,10 +365,7 @@ impl Unit {
         carry_to: i32,
         state: u8,
     ) -> Result<(i32, f32), GenieError> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::world::GATHERER_MASTER)?;
+        let master = self.master_in(c.masters)?;
         let mover = self
             .body
             .mover()
@@ -456,9 +435,7 @@ impl Unit {
         let masters = c.masters.ok_or(GenieError::unsupported(
             "a drop-off of a player without masters",
         ))?;
-        let master = masters
-            .get(self.life.master_id)
-            .ok_or(crate::world::GATHERER_MASTER)?;
+        let master = self.master_in(Some(masters))?;
         let mover = self
             .body
             .mover()

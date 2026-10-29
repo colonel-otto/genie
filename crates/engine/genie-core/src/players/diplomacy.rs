@@ -188,7 +188,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        let master = self.master_of(p, u.life.master_id)?;
+        let master = u.master(&self.masters, p)?;
         let (kind, class, master_id) = (master.kind, master.class, master.id);
         if kind != master_type::COMBAT && kind != master_type::BUILDING {
             return Ok(());
@@ -237,7 +237,7 @@ impl World {
         if hp != q {
             return Ok(());
         }
-        let holder_master = self.master_of(hp, h.life.master_id)?;
+        let holder_master = h.master(&self.masters, hp)?;
         if holder_master.kind == master_type::BUILDING {
             let hi = self.live_index(hp, holder)?;
             if !self.let_out(hp, hi, id, [NO_POINT; 2], (None, true))? {

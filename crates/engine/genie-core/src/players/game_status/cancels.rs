@@ -2,6 +2,7 @@
 //! `UNIT_ORDER`'s cancel of one, five or some.
 
 use crate::GenieError;
+use crate::objects::masters::player_master;
 use crate::players::game_status::{
     CURRENT_AGE, ONE_UNIT_AGE, ONE_UNIT_MODE, VILLAGER_FEMALE, VILLAGER_MALE,
 };
@@ -53,7 +54,7 @@ impl World {
     ) -> Result<(), GenieError> {
         use crate::production::{QUEUED, population};
         let class = self.tracker_key(p, e.master).class;
-        let master = self.masters.get(p).and_then(|m| m.get(e.master)).cloned();
+        let master = player_master(&self.masters, p, e.master).cloned();
         let owner = &mut self.players[p];
         for _ in 0..count.max(0) {
             if let Some(m) = &master {
@@ -190,11 +191,7 @@ impl World {
         entry: &crate::production::Entry,
     ) -> Result<(), GenieError> {
         let class = self.tracker_key(p, entry.master).class;
-        let master = self
-            .masters
-            .get(p)
-            .and_then(|m| m.get(entry.master))
-            .cloned();
+        let master = player_master(&self.masters, p, entry.master).cloned();
         let owner = &mut self.players[p];
         if let Some(m) = &master {
             refund(m, &entry.costs, owner)?;

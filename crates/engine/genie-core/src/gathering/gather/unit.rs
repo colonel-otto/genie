@@ -32,11 +32,11 @@ impl Unit {
         let task_range = build.task.range;
         let view = OthersRef::of(&c.w.players, c.player);
         let search = if 0.0 < self.life.amount {
-            let (masters, own) =
+            let masters =
                 c.w.masters
                     .get(c.player)
-                    .and_then(|m| Some((m, m.get(self.life.master_id)?)))
                     .ok_or(crate::world::OBJECT_MASTER)?;
+            let own = self.master_in(Some(masters))?;
             let at = [self.position()[0], self.position()[1]];
             let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
             let found = crate::orders::nearest_table_site(
@@ -184,11 +184,7 @@ impl Unit {
     /// above 0), the stance, and the player's farm settings.
     fn gather_view(&self, c: &Context<'_>) -> Result<GatherView, GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::GATHERER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
         let task = gather.task;
         Ok(GatherView {
@@ -288,11 +284,7 @@ impl Unit {
         let Some(s) = c.w.spatial.get_known(site)? else {
             return Ok(None);
         };
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::GATHERER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let actor = Actor {
             id: self.id,
             master,
@@ -443,11 +435,7 @@ impl Unit {
         let others = OthersRef::of(&c.w.players, c.player);
         let gather = self.actions.gather().expect("the caller's gather");
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::GATHERER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_some_and(|&d| d != -1) {

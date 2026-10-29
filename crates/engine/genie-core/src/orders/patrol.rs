@@ -239,7 +239,7 @@ impl World {
                 i += 1;
                 continue;
             };
-            let master = self.master_of(p, u.life.master_id)?;
+            let master = u.master(&self.masters, p)?;
             if master.kind < 70 || master.formation_category == 0 || split.far.contains(&id) {
                 i += 1;
                 continue;
@@ -322,7 +322,7 @@ impl World {
         {
             return Err(ATTACK_MOVE_QUEUED);
         }
-        let kind = self.master_of(p, u.life.master_id)?.kind;
+        let kind = u.master(&self.masters, p)?.kind;
         self.leave_group_of(id, -1)?;
         let (_, u) = self.object_mut(id).expect("the unit found above");
         if let Some(m) = u.body.mover_mut() {

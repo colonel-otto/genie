@@ -11,7 +11,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::objects::ObjectId;
-use crate::objects::masters::Master;
+use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -335,11 +335,19 @@ impl World {
         }
     }
 
-    pub(crate) fn master_of(&self, player: usize, master: i16) -> Result<&Master, GenieError> {
-        self.masters
-            .get(player)
-            .and_then(|m| m.get(master))
-            .ok_or(crate::world::OBJECT_MASTER)
+    /// Player `player`'s master `master` ([`player_master`]), which the caller's object or
+    /// command has.
+    ///
+    /// # Errors
+    ///
+    /// A player without a table or a table without the master ([`crate::world::OBJECT_MASTER`],
+    /// with the player and the master).
+    pub(crate) fn master(&self, player: usize, master: i16) -> Result<&Master, GenieError> {
+        player_master(&self.masters, player, master).ok_or_else(|| {
+            crate::world::OBJECT_MASTER
+                .with("player", player)
+                .with("master", master)
+        })
     }
 
     /// What the task finder reads of object `id`; an annex stands for its main building (`+0xbb8`),
@@ -355,7 +363,7 @@ impl World {
         let (player, u) = self
             .object(id)
             .ok_or(GenieError::unsupported("a target the slice does not hold"))?;
-        let master = self.master_of(player, u.life.master_id)?;
+        let master = u.master(&self.masters, player)?;
         let [powerup, max_powerup] = u.hp_powerups;
         Ok(TaskTarget {
             id,

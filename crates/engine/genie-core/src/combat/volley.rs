@@ -7,10 +7,11 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::{Class, Lifecycle};
-use crate::objects::masters::Master;
+use crate::objects::masters::{Master, player_master};
 use crate::objects::release::Releaser;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
+use crate::objects::unit::object_master;
 use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
@@ -89,11 +90,11 @@ impl Unit {
     /// computer player (its notify 0x214). Not held: the local player's statistics
     /// (`FUN_140a4ba80`).
     pub(crate) fn volley(&mut self, c: &mut Context<'_>, aimed: Aimed) -> Result<(), GenieError> {
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::ATTACKER_MASTER)?;
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )?;
         if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135) || matches!(master.class, 35 | 64))
             && self.life.state == 2
         {
@@ -107,6 +108,9 @@ impl Unit {
             ));
         }
         let missile = 0 <= master.missile;
+        // what the rest reads of the master, before the notify changes the unit
+        let notifies = matches!(master.id, 73 | 559);
+        let (trebuchet, [x_spread, y_spread, _]) = (master.class == 54, master.volley_spread);
         let (first, extra) = if master.max_volley == 0 {
             (true, 0)
         } else {
@@ -132,7 +136,7 @@ impl Unit {
             }
             if all {
                 self.next_volley = 0;
-                if matches!(master.id, 73 | 559) {
+                if notifies {
                     self.post_own(ACTION_EXECUTED, [600, -1, 0])?;
                 }
             }
@@ -142,7 +146,6 @@ impl Unit {
             // a target of a player but Gaia: its player makes a flare (master 112, slot 0x1c0)
             // at the attacker's place, which lasts twice as long from a trebuchet (class 54:
             // its amount, +0x310, doubled)
-            let (trebuchet, [x_spread, y_spread, _]) = (master.class == 54, master.volley_spread);
             if 0 < aimed.player {
                 c.w.make_flare(aimed.player, self.position(), trebuchet)?;
             }
@@ -178,13 +181,7 @@ impl Unit {
     /// (`+0x683`).
     pub(crate) fn fire(&mut self, c: &mut Context<'_>, aimed: &Aimed) -> Result<(), GenieError> {
         self.attack_count += 1;
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a ranged unit of a master the slice does not have",
-                ))?;
+        let master = self.master(&c.w.masters, c.player)?;
         if matches!(master.charge_type, 6 | 7) {
             return Err(GenieError::unsupported(
                 "a charge projectile (charge types 6 and 7, slot 0x2f8)",
@@ -243,11 +240,7 @@ impl Unit {
             c.w.masters
                 .get(c.player)
                 .ok_or(GenieError::unsupported("a volley without the masters"))?;
-        let master = masters
-            .get(self.life.master_id)
-            .ok_or(GenieError::unsupported(
-                "a ranged unit of a master the slice does not have",
-            ))?;
+        let master = self.master_in(Some(masters))?;
         let facing = self
             .body
             .mover()
@@ -327,13 +320,9 @@ impl Unit {
         aimed: &Aimed,
         shot: &Shot,
     ) -> Result<(), GenieError> {
-        let made =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(shot.made))
-                .ok_or(GenieError::unsupported(
-                    "a missile its player's masters do not have",
-                ))?;
+        let made = player_master(&c.w.masters, c.player, shot.made).ok_or(
+            GenieError::unsupported("a missile its player's masters do not have"),
+        )?;
         let stats = made.missile_stats.ok_or(GenieError::unsupported(
             "a missile master without its flight",
         ))?;

@@ -273,7 +273,7 @@ impl World {
                 .lead_object(m)
                 .filter(crate::groups::WorldObject::moves)
         {
-            let master = self.master_of(lead.player(), lead.master_id())?;
+            let master = self.master(lead.player(), lead.master_id())?;
             let mask = self.master_mask(lead.player(), lead.master_id())?;
             let members: Vec<i32> = g.members.iter().map(|mb| mb.id).collect();
             if self.spatial.point_clear_among(
@@ -330,7 +330,7 @@ impl World {
                 if !in_front.is_empty()
                     || ground_squared(u.moved_vector().xhy(), front) <= nearest_d
                     || {
-                        let r = self.master_of(p, u.life.master_id)?.radius[0];
+                        let r = u.master(&self.masters, p)?.radius[0];
                         beside <= (r + r) * (r + r)
                     } =>
             {
@@ -357,7 +357,7 @@ impl World {
     /// map without its terrain.
     pub(crate) fn master_mask(&self, p: usize, master: i16) -> Result<u8, GenieError> {
         let restriction =
-            usize::try_from(self.master_of(p, master)?.terrain_restriction).map_err(|_| {
+            usize::try_from(self.master(p, master)?.terrain_restriction).map_err(|_| {
                 GenieError::unsupported("a terrain mask of a master without a restriction")
             })?;
         Ok(self

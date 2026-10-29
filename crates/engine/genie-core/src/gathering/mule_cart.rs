@@ -86,7 +86,7 @@ impl World {
                 "a mule cart's search without its movement state (a moving building's setup)",
             ));
         }
-        let master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
+        let master = self.players[p].objects[idx].master(&self.masters, p)?;
         let mut kinds = Vec::new();
         let mut class = -1;
         for t in &master.tasks {
@@ -144,7 +144,7 @@ impl World {
         })();
         let idx = self.put_back_own(p, cart)?;
         let found = result?;
-        let cart_master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
+        let cart_master = self.players[p].objects[idx].master(&self.masters, p)?;
         let at = self.players[p].objects[idx].position();
         let mut best: Option<(i32, [f32; 3])> = None;
         let mut best_d = CART_REACH;

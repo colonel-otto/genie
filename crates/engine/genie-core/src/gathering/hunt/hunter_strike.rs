@@ -12,6 +12,7 @@ use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
+use crate::objects::unit::object_master;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::TREE_NEAR;
 use crate::world::context::Context;
@@ -31,11 +32,11 @@ impl Unit {
         tree_lost: bool,
     ) -> Result<(), GenieError> {
         let computer = c.computer;
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )?;
         let action = self.actions.hunt().copied().expect("the caller's test");
         let mut victim = hunt_victim(c, &action)?;
         let own = own.take().ok_or(crate::world::HUNTER_MASTER)?;

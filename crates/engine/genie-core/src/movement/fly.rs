@@ -294,14 +294,13 @@ impl Unit {
                 "a player's bird's default Fly (its task's +0x15)",
             ));
         }
-        let fly_mode =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .map(|m| m.fly_mode)
-                .ok_or(GenieError::unsupported(
-                    "a bird of a master the slice does not have",
-                ))?;
+        let fly_mode = self
+            .master(&c.w.masters, c.player)
+            .ok()
+            .map(|m| m.fly_mode)
+            .ok_or(GenieError::unsupported(
+                "a bird of a master the slice does not have",
+            ))?;
         self.actions.set_fly(Some(Fly::start(
             task,
             self.position(),

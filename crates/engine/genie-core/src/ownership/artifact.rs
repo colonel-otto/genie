@@ -475,13 +475,10 @@ impl Unit {
         }
         let (dt, pace) = (c.dt, c.pace());
         // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-        let defaults = self
-            .own_master
-            .as_deref()
-            .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id))
-            .map_or_else(MoveDefaults::default, |m| {
-                MoveDefaults::of(m, self.abilities.look.as_ref())
-            });
+        let defaults = self.master(&c.w.masters, c.player).map_or_else(
+            |_| MoveDefaults::default(),
+            |m| MoveDefaults::of(m, self.abilities.look.as_ref()),
+        );
         let artifact = self.actions.artifact_mut().expect("checked above");
         let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
         let mut sprites = Sprites {

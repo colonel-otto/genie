@@ -17,7 +17,7 @@ use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
 use crate::objects::ObjectId;
-use crate::objects::masters::MasterId;
+use crate::objects::masters::{MasterId, player_master};
 use crate::orders::Place;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -224,7 +224,7 @@ impl World {
         if w.q_id != -1 {
             return Ok(());
         }
-        let Some(site) = self.masters.get(player).and_then(|m| m.get(master)) else {
+        let Some(site) = player_master(&self.masters, player, master) else {
             return Ok(());
         };
         if site.kind != BUILDING {
@@ -309,7 +309,7 @@ impl World {
             let Some((owner, u)) = self.object(id) else {
                 continue;
             };
-            let r = self.master_of(owner, u.life.master_id)?.radius;
+            let r = u.master(&self.masters, owner)?.radius;
             let gap = |end: u16, at: f32, r: f32| {
                 let g = ((f32::from(end) + HALF) - at).abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
@@ -387,7 +387,7 @@ impl World {
         let Some((owner, u)) = self.object(id) else {
             return Ok(false);
         };
-        let m = self.master_of(owner, u.life.master_id)?;
+        let m = u.master(&self.masters, owner)?;
         if m.kind <= BUILDER_TYPE {
             return Ok(false);
         }

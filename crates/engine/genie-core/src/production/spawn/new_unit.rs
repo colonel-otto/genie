@@ -51,7 +51,7 @@ impl World {
             ));
         }
         let building = &self.players[p].objects[i];
-        let made = self.master_of(p, master)?.clone();
+        let made = self.master(p, master)?.clone();
         if made.recyclable {
             return Err(GenieError::unsupported(
                 "a new object of a recyclable master (a negative id)",
@@ -106,7 +106,7 @@ impl World {
         // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
         let now = self.players[p].objects[new].life.master_id;
         if self
-            .master_of(p, now)?
+            .master(p, now)?
             .tasks
             .iter()
             .any(|t| t.action_type == 0x9c)
@@ -146,7 +146,7 @@ impl World {
                 let ai = self.players[p].objects[new].ai.as_ref();
                 let keeps = tm == MONASTERY
                     && ai.is_some_and(|ai| ai.orders.iter().any(|q| q.target_type == RELIC_TYPE));
-                let t_master = self.master_of(tp, tm)?;
+                let t_master = self.master(tp, tm)?;
                 if !keeps
                     && 70 <= t_master.kind
                     && t_master.garrison != 0

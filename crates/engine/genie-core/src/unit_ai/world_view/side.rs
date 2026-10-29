@@ -10,6 +10,7 @@ use crate::gathering::closest_resource::herded;
 use crate::map::spatial::Placed;
 use crate::math::rng::Well512;
 use crate::movement::{Me, Planning, footprint_gap_squared};
+use crate::objects::masters::player_master;
 use crate::objects::release::Releaser;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{
@@ -21,8 +22,9 @@ use crate::world::PETARD;
 impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
         let class = self
-            .masters
-            .and_then(|m| m.get(self.unit.life.master_id))
+            .unit
+            .master(self.every, self.player)
+            .ok()
             .map(|m| m.class)
             .ok_or(crate::world::OBJECT_MASTER)?;
         let at = [self.unit.position()[0], self.unit.position()[1]];
@@ -86,8 +88,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let gaia_attacker = find(attacker).is_some_and(|(owner, _)| owner == 0);
         let me = self.unit.id;
         let my_radius = self
-            .masters
-            .and_then(|ms| ms.get(self.unit.life.master_id))
+            .unit
+            .master(self.every, self.player)
+            .ok()
             .map(|m| m.radius)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
         for r in lists[1].iter().chain(&lists[2]) {
@@ -100,13 +103,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             if u.ai.is_none() || 3 <= u.life.state {
                 continue;
             }
-            let m = self
-                .every
-                .get(owner)
-                .and_then(|ms| ms.get(u.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a helper of a master the slice does not have",
-                ))?;
+            let m = u.master(self.every, owner)?;
             let class = i64::from(m.class);
             let no_help = (0..=0x27).contains(&class) && (NO_HELP_CLASSES >> class) & 1 != 0;
             if no_help || m.id == SIEGE_TOWER {
@@ -151,15 +148,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             .others
             .find(id)
             .ok_or(GenieError::unsupported("an object the slice does not hold"))?;
-        let m = self
-            .every
-            .get(owner)
-            .and_then(|ms| ms.get(u.life.master_id))
-            .ok_or(crate::world::OBJECT_MASTER)?;
-        let me = self
-            .masters
-            .and_then(|ms| ms.get(self.unit.life.master_id))
-            .ok_or(crate::world::UNIT_AI_MASTER)?;
+        let m = u.master(self.every, owner)?;
+        let me = self.unit.master(self.every, self.player)?;
         Ok(Some(crate::unit_ai::UnitSeen {
             id,
             class: m.class,
@@ -244,8 +234,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             spatial: self.spatial,
             every: self.every,
             restriction: self
-                .masters
-                .and_then(|m| m.get(self.unit.life.master_id))
+                .unit
+                .master(self.every, self.player)
                 .map_or(-1, |m| m.terrain_restriction),
             unit: &*self.unit,
             attributes: self.attributes,
@@ -280,9 +270,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let moving = |id: i32| herded(others, id);
         // a class-10 searcher passes master 440 and the masters with object flag 0x10
         let shuns = |p: &Placed| {
-            let m = every.get(p.player).and_then(|ms| ms.get(p.master)).ok_or(
-                GenieError::unsupported("a found object of a master the slice does not have"),
-            )?;
+            let m = player_master(every, p.player, p.master).ok_or(GenieError::unsupported(
+                "a found object of a master the slice does not have",
+            ))?;
             Ok(p.master == PETARD || m.object_flags & 0x10 != 0)
         };
         // a farm's workers (`+0x644`) and its pasture (`+0x790`)
@@ -332,11 +322,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     }
 
     fn stop(&mut self) -> Result<(), GenieError> {
-        let masters = self.masters;
+        let masters = self.every.get(self.player);
         let by = Releaser {
             id: self.unit.id,
-            class: masters
-                .and_then(|m| m.get(self.unit.life.master_id))
+            class: self
+                .unit
+                .master(self.every, self.player)
                 .map_or(-1, |m| m.class),
             player: self.player,
         };
@@ -455,11 +446,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     /// [`Unit::ai_move_with`]: crate::objects::unit::Unit::ai_move_with
     /// [`Unit::transport_sail`]: crate::objects::unit::Unit::transport_sail
     fn ai_move_now(&mut self, m: AiMove) -> Result<(), GenieError> {
-        let class = self
-            .masters
-            .and_then(|ms| ms.get(self.unit.life.master_id))
-            .ok_or(crate::world::UNIT_AI_MASTER)?
-            .class;
+        let class = self.unit.master(self.every, self.player)?.class;
         let by = Releaser {
             id: self.unit.id,
             class,
@@ -470,14 +457,14 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             m,
             (class, self.player),
             (&mut releases, &mut leaves, by),
-            (self.masters, self.graphics, self.sprite),
+            (self.every.get(self.player), self.graphics, self.sprite),
         )?;
         self.lets.torn_down(self.others, (leaves, releases))?;
         if sails {
             self.unit.transport_sail(
                 m.point,
                 (self.spatial, self.zones, self.pathing),
-                (self.masters, self.graphics, self.sprite),
+                (self.every.get(self.player), self.graphics, self.sprite),
             )?;
         }
         Ok(())
@@ -539,10 +526,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let u = owner_view(self.others, self.new_owner)
             .get(id)
             .expect("seen_unit found it");
-        let kind = self
-            .every
-            .get(seen.owner)
-            .and_then(|ms| ms.get(u.life.master_id))
+        let kind = u
+            .master(self.every, seen.owner)
             .expect("seen_unit found its master")
             .kind;
         Ok(Some(crate::unit_ai::TargetFlags {

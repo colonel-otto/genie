@@ -26,7 +26,7 @@ impl World {
         way_back: bool,
     ) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[idx];
-        let master = self.master_of(p, unit.life.master_id)?;
+        let master = unit.master(&self.masters, p)?;
         let (kind, class, at) = (
             master.kind,
             master.class,
@@ -76,7 +76,7 @@ impl World {
         idx: usize,
     ) -> Result<Option<i32>, GenieError> {
         let unit = &self.players[p].objects[idx];
-        let master = self.master_of(p, unit.life.master_id)?;
+        let master = unit.master(&self.masters, p)?;
         let seeks = master.kind < crate::garrison::COMBAT_KIND
             || (!master.drop_sites.iter().any(|&d| d == 45 || d == 2172)
                 && !matches!(master.class, 21 | 2));
@@ -153,7 +153,7 @@ impl World {
             unit.life.attribute_type,
             [unit.position()[0], unit.position()[1]],
         );
-        let class = self.master_of(p, unit.life.master_id)?.class;
+        let class = unit.master(&self.masters, p)?.class;
         let search = if 0.0 < amount {
             match self.table_drop_site(p, at, held, class) {
                 None => DropSearch::Nothing,
@@ -285,7 +285,7 @@ impl World {
         let mut bell = self.players[p].objects[idx].town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
             let (op, o) = self.object(t)?;
-            let m = self.master_of(op, o.life.master_id).ok()?;
+            let m = o.master(&self.masters, op).ok()?;
             Some(RecordTarget {
                 id: t,
                 building: m.kind == BUILDING,
@@ -299,7 +299,7 @@ impl World {
         let target = match found {
             Some(f) => {
                 let (op, o) = self.object(f.id).expect("the lookup found it");
-                let master = self.master_of(op, o.life.master_id)?.id;
+                let master = o.master(&self.masters, op)?.id;
                 (
                     f.id,
                     i32::from(master),

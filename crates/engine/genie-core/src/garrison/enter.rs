@@ -132,7 +132,7 @@ impl World {
         let target = self
             .object(target)
             .and_then(|(tp, t)| {
-                let kind = self.masters.get(tp)?.get(t.life.master_id)?.kind;
+                let kind = t.master(&self.masters, tp).ok()?.kind;
                 Some(if kind == BUILDING {
                     t.annex_of.unwrap_or(target)
                 } else {
@@ -141,7 +141,7 @@ impl World {
             })
             .ok_or(GenieError::unsupported("an Enter whose building is gone"))?;
         let (tp, t) = self.object(target).expect("found above");
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         let (class, height) = (i32::from(tm.class), t.position()[2]);
         let (at, _) = self.enter_meeting(player, idx, target)?;
         let action = EnterAction::new(target, [at[0], at[1], height], task);
@@ -268,7 +268,7 @@ impl World {
     ) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), GenieError>), GenieError> {
         let id = self.players[player].objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
-        let tm = self.master_of(tp, t.life.master_id)?.clone();
+        let tm = t.master(&self.masters, tp)?.clone();
         let room = self.has_room(tp, t, Some(id))?;
         let t = match self.place(target) {
             Some(crate::orders::Place::Live(p, i)) => &self.players[p].objects[i],
@@ -417,11 +417,11 @@ impl World {
         let Some(crate::orders::Place::Live(tp, ti)) = self.place(target) else {
             return Err(ENTER_SLEEPING);
         };
-        let me = self
-            .master_of(player, self.players[player].objects[idx].life.master_id)?
+        let me = self.players[player].objects[idx]
+            .master(&self.masters, player)?
             .clone();
-        let bm = self
-            .master_of(tp, self.players[tp].objects[ti].life.master_id)?
+        let bm = self.players[tp].objects[ti]
+            .master(&self.masters, tp)?
             .clone();
         let mut unit = self.players[player].objects.take_out(idx);
         let mut adds = Vec::new();

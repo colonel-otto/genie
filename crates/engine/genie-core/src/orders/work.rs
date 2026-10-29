@@ -43,7 +43,7 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold",
         ))?;
-        let class = i32::from(self.master_of(tp, t.life.master_id)?.class);
+        let class = i32::from(t.master(&self.masters, tp)?.class);
         let world_time = self.world_time;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
@@ -78,7 +78,7 @@ impl World {
     ) -> Result<bool, GenieError> {
         let unit = &self.players[player].objects[idx];
         let owner = &self.players[player];
-        let master = self.master_of(player, unit.life.master_id)?;
+        let master = unit.master(&self.masters, player)?;
         let actor = Actor {
             id: unit.id,
             master,
@@ -118,8 +118,8 @@ impl World {
         task: &crate::objects::masters::Task,
     ) -> Result<(), GenieError> {
         let food = |k: i16| k == 0 || (15..=17).contains(&k);
-        let class = self
-            .master_of(player, self.players[player].objects[idx].life.master_id)?
+        let class = self.players[player].objects[idx]
+            .master(&self.masters, player)?
             .class;
         let unit = &mut self.players[player].objects[idx];
         if matches!(task.action_type, GATHER | HUNT) {
@@ -162,7 +162,7 @@ impl World {
             return Ok(());
         }
         // FUN_140c64e50: a unit of a type below 70 always clears its AI's notifies
-        let clears = notified || self.master_of(player, unit.life.master_id)?.kind < 70;
+        let clears = notified || unit.master(&self.masters, player)?.kind < 70;
         let found = self.work_task(player, idx, (target, point), filter)?;
         let Some((with, task)) = found else {
             if filter != -1 {
@@ -225,7 +225,7 @@ impl World {
         let owner = &self.players[player];
         let actor = Actor {
             id: unit.id,
-            master: self.master_of(player, unit.life.master_id)?,
+            master: unit.master(&self.masters, player)?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
@@ -468,7 +468,7 @@ impl World {
         (clears, notified): (bool, bool),
     ) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];
-        let master = self.master_of(player, unit.life.master_id)?;
+        let master = unit.master(&self.masters, player)?;
         if !master.moving.is_some_and(|m| 0.0 < m.speed) {
             return Ok(());
         }
@@ -482,10 +482,7 @@ impl World {
             let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
                 "a work command's target the slice does not hold",
             ))?;
-            Some((
-                target,
-                i32::from(self.master_of(tp, t.life.master_id)?.class),
-            ))
+            Some((target, i32::from(t.master(&self.masters, tp)?.class)))
         };
         let (order, action) = if alive {
             (Some(OrderKind::Move), Some(ActionKind::Move))
@@ -533,7 +530,7 @@ impl World {
         change: bool,
     ) -> Result<Option<crate::objects::masters::Task>, GenieError> {
         let unit = &self.players[player].objects[idx];
-        let own = self.master_of(player, unit.life.master_id)?;
+        let own = unit.master(&self.masters, player)?;
         let owner = &self.players[player];
         let actor = Actor {
             id: unit.id,
@@ -588,7 +585,7 @@ impl World {
             return Ok(None);
         };
         if change {
-            if self.master_of(player, with)?.kind == BUILDING {
+            if self.master(player, with)?.kind == BUILDING {
                 self.transform_building(player, idx, with)?;
             } else {
                 self.change_master(player, idx, with)?;

@@ -34,7 +34,7 @@ impl World {
         let Some((tp, t)) = self.object(target) else {
             return Ok(());
         };
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         let followed = Followed {
             id: target,
             place: [t.position()[0], t.position()[1]],
@@ -93,7 +93,7 @@ impl World {
         let Some((tp, t)) = self.object(target) else {
             return Ok(());
         };
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         let [x, y, z] = t.position();
         let order = crate::unit_ai::QueuedOrder {
             issuer: -1,
@@ -161,7 +161,7 @@ impl World {
         let Some((p, u)) = self.object(id) else {
             return Ok(None);
         };
-        let master = self.master_of(p, u.life.master_id)?;
+        let master = u.master(&self.masters, p)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         let moves = MOVING <= master.kind && crate::math::fmath::below_or_unordered(0.0, speed);
         Ok(moves.then_some([u.position()[0], u.position()[1]]))
@@ -307,8 +307,8 @@ impl World {
         a14: bool,
     ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
-        let class = self
-            .master_of(player, self.players[player].objects[idx].life.master_id)?
+        let class = self.players[player].objects[idx]
+            .master(&self.masters, player)?
             .class;
         let villager = class == VILLAGER;
         let unit = &mut self.players[player].objects[idx];
@@ -344,17 +344,17 @@ impl World {
         }
         // FUN_140aa0df0 makes the MoveTo first, which takes its target (slot 0x178, quiet 0);
         // slot 0x808 then clears the list (the old actions' teardowns) and starts it
-        let livestock = self.master_of(player, unit.life.master_id)?.class == LIVESTOCK;
+        let livestock = unit.master(&self.masters, player)?.class == LIVESTOCK;
         let (tp, t) = self
             .object(target)
             .ok_or(crate::movement::move_to::TARGET_LACKING)?;
         let t_state = t.life.state;
-        let t_master = self.master_of(tp, t.life.master_id)?.id;
+        let t_master = t.master(&self.masters, tp)?.id;
         if crate::movement::move_to::holds_object(livestock, t_master, t_state) {
             self.take(target, self.releaser(player, idx));
         }
         self.clear_actions(player, idx)?;
-        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
+        let master = self.players[player].objects[idx].master(&self.masters, player)?;
         let range = crate::movement::move_to::object_range(0.0, Some(master));
         let sprite = crate::movement::move_to::object_sprite(master)
             .and_then(|id| self.graphics.get(&id).copied());

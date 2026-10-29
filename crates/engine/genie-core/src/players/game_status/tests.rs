@@ -396,11 +396,11 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     tc.queue = queue(&[villager(83, 3, 46.0), villager(293, 4, 46.0)]);
     t.players[1].attributes[80] = 7.0;
     t.masters[1] = Masters::new([
-        t.master_of(1, 109).unwrap().clone(),
-        t.master_of(1, 83).unwrap().clone(),
+        t.master(1, 109).unwrap().clone(),
+        t.master(1, 83).unwrap().clone(),
         Master {
             id: 293,
-            ..t.master_of(1, 83).unwrap().clone()
+            ..t.master(1, 83).unwrap().clone()
         },
     ]);
     t.cancel_order(&object_ids([9]), 0, true).unwrap();

@@ -4,6 +4,16 @@ use crate::GenieError;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskOn, find_task};
 
+/// Player `player`'s master `id` in `every`, the world's masters: one table per player, as the
+/// game's player holds its masters' pointers (`player+0x28`); none where the player has no
+/// table or its table no such master (a null pointer there). The one lookup of a master by its
+/// player and id: an object's master goes through [`crate::objects::unit::Unit::master`], an
+/// invariant one through [`crate::world::World::master`].
+#[must_use]
+pub fn player_master(every: &[Masters], player: usize, id: i16) -> Option<&Master> {
+    every.get(player)?.get(id)
+}
+
 impl Masters {
     /// The masters, by their ids.
     pub fn new(masters: impl IntoIterator<Item = Master>) -> Self {

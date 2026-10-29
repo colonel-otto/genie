@@ -177,10 +177,7 @@ impl World {
     /// world holds it; None for an object the world does not hold.
     pub(super) fn work_target(&self, id: i32) -> Option<WorkTarget> {
         let (q, u) = self.object(id)?;
-        let m = u
-            .own_master
-            .as_deref()
-            .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))?;
+        let m = u.master(&self.masters, q).ok()?;
         Some(WorkTarget {
             hp: u.life.hp,
             storage: m.storage.first().map_or(0.0, |s| s.1),

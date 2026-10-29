@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::objects::lifecycle::death_parts::count_class;
-use crate::objects::masters::{Master, Masters};
+use crate::objects::masters::{Master, Masters, player_master};
 use crate::objects::unit::Unit;
 use crate::ownership::capture::LIVESTOCK;
 use crate::unit_ai::OWNER_CHANGED;
@@ -103,7 +103,7 @@ impl World {
         let u = &self.players[old].objects[idx];
         let master = match u.own_master.as_deref() {
             Some(m) => m.clone(),
-            None => self.master_of(old, u.life.master_id)?.clone(),
+            None => u.master(&self.masters, old)?.clone(),
         };
         let (state, held, amount) = (u.life.state, u.life.attribute_type, u.life.amount);
         let built = u
@@ -213,7 +213,7 @@ impl World {
             let Some((q, a)) = self.object(annex) else {
                 continue;
             };
-            if self.master_of(q, a.life.master_id)?.kind != BUILDING_KIND {
+            if a.master(&self.masters, q)?.kind != BUILDING_KIND {
                 continue;
             }
             let annex_watched = self.players[old].watched.iter().any(|w| w.id == annex);
@@ -384,7 +384,7 @@ pub(crate) fn change_hands(
     world_time: u32,
 ) -> Result<bool, GenieError> {
     spatial.records_owner(u.id, new)?;
-    let Some(to) = masters.get(new).and_then(|m| m.get(u.life.master_id)) else {
+    let Some(to) = player_master(masters, new, u.life.master_id) else {
         return Ok(false);
     };
     let old_table = masters.get(old);

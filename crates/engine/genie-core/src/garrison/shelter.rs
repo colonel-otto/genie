@@ -67,14 +67,14 @@ impl World {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            if 70 <= self.master_of(p, u.life.master_id)?.kind {
+            if 70 <= u.master(&self.masters, p)?.kind {
                 units.push(id);
             }
         }
         let shelters = if nearby {
             self.shelters_near(tp, target, target_master)?
         } else {
-            let tm = self.master_of(tp, target_master)?;
+            let tm = self.master(tp, target_master)?;
             if tm.kind < BUILDING {
                 Shelters {
                     buildings: Vec::new(),
@@ -129,7 +129,7 @@ impl World {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            let m = self.master_of(p, u.life.master_id)?;
+            let m = u.master(&self.masters, p)?;
             if m.class == VILLAGER_CLASS && m.kind == VILLAGER_KIND {
                 units.push(id);
             }
@@ -139,7 +139,7 @@ impl World {
         }
         let mut buildings = Vec::new();
         for b in &self.players[player].objects {
-            let m = self.master_of(player, b.life.master_id)?;
+            let m = b.master(&self.masters, player)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
             if b.life.state == 2 && b.life.inside.is_none() && m.kind == BUILDING && takes_villagers
             {
@@ -183,7 +183,7 @@ impl World {
             if crate::math::fmath::below_or_unordered(NEARBY, gap) {
                 continue;
             }
-            let om = self.master_of(op, o.life.master_id)?;
+            let om = o.master(&self.masters, op)?;
             if om.kind < BUILDING {
                 shelters.transports.push(id);
             } else if om.class != GATE_CLASS && o.annex_of.is_none() {
@@ -240,7 +240,7 @@ impl World {
             let (bp, b) = self
                 .object(building)
                 .ok_or(GenieError::unsupported("a garrison's building is gone"))?;
-            let bm = self.master_of(bp, b.life.master_id)?;
+            let bm = b.master(&self.masters, bp)?;
             capacities.push((bm.kind == BUILDING, i32::from(bm.garrison), bm.class));
         }
         let first_transport = shelters.buildings.len();
@@ -248,7 +248,7 @@ impl World {
             let (p, u) = self
                 .object(id)
                 .ok_or(GenieError::unsupported("a garrison's unit is gone"))?;
-            let own = self.master_of(p, u.life.master_id)?;
+            let own = u.master(&self.masters, p)?;
             let (copy, master, class) = (own.copy_id, own.id, own.class);
             // COMISS reach, gap; JBE: a gap at the reach or past it, or a NaN, pairs nothing
             let gap_to = |shelter: i32| -> Result<f32, GenieError> {
@@ -272,7 +272,7 @@ impl World {
                 // FUN_1415c9240 reads the commanding player's master of the unit's master id
                 // (its slot unchecked: one the player lacks would crash the game)
                 let (_, _, transport_class) = capacities[first_transport + k];
-                let list = self.master_of(player, master)?;
+                let list = self.master(player, master)?;
                 if has_garrison_task(&list.tasks, GARRISON, transport_class) {
                     let gap = gap_to(transport)?;
                     if gap < reach {
@@ -328,7 +328,7 @@ impl World {
         player: usize,
         master: i16,
     ) -> Result<bool, GenieError> {
-        if self.master_of(bp, b.life.master_id)?.kind < COMBAT_KIND {
+        if b.master(&self.masters, bp)?.kind < COMBAT_KIND {
             return Ok(false);
         }
         self.takes_in(b.id, player, master)
@@ -374,7 +374,7 @@ impl World {
                 ));
             };
             let unit = &self.players[p].objects[idx];
-            let kind = self.master_of(p, unit.life.master_id)?.kind;
+            let kind = unit.master(&self.masters, p)?.kind;
             if (2 < unit.life.state && unit.life.state != 6) || kind < 70 {
                 continue;
             }

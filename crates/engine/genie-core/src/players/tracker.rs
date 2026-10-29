@@ -326,11 +326,7 @@ impl crate::world::World {
                         }
                     }
                 }
-                let building = self
-                    .masters
-                    .get(p)
-                    .and_then(|m| m.get(u.life.master_id))
-                    .is_some_and(|m| m.kind == BUILDING);
+                let building = u.master(&self.masters, p).is_ok_and(|m| m.kind == BUILDING);
                 if building
                     && u.construction
                         .is_some_and(|c| f32::from(c.build_time) <= c.progress)
@@ -387,7 +383,7 @@ impl crate::world::World {
         let mut tracker = std::mem::take(&mut self.players[p].tracker);
         let class_of = |id: i32| {
             let (q, u) = self.object(id)?;
-            Some(self.masters.get(q)?.get(u.life.master_id)?.class)
+            Some(u.master(&self.masters, q).ok()?.class)
         };
         tracker.move_all(i32::from(from), i32::from(to), old_class, &class_of);
         self.players[p].tracker = tracker;

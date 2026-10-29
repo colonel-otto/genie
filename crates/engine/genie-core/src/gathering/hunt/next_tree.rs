@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
+use crate::objects::unit::object_master;
 use crate::world::context::Context;
 use crate::world::others::OthersRef;
 
@@ -57,13 +58,7 @@ impl Unit {
                 return Ok(false);
             }
         }
-        let t_master =
-            c.w.masters
-                .get(tp)
-                .and_then(|m| m.get(t.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a hunt's next tree of a master the slice lacks",
-                ))?;
+        let t_master = t.master(&c.w.masters, tp)?;
         let own =
             c.w.spatial
                 .relations
@@ -83,11 +78,11 @@ impl Unit {
             top_action: t.top_action_kind(),
             drop_site: false,
         };
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )?;
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let at = |id| {
             c.w.spatial

@@ -7,7 +7,7 @@ use crate::commands::research::ResearchCommand;
 use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE};
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
-use crate::objects::masters::Masters;
+use crate::objects::masters::{Masters, player_master};
 use crate::orders::Place;
 use crate::production::Production;
 use crate::world::player::POPULATION;
@@ -189,10 +189,8 @@ impl World {
         };
         let is_building = |id: i32| {
             self.object(id).is_some_and(|(q, u)| {
-                self.masters
-                    .get(q)
-                    .and_then(|m| m.get(u.life.master_id))
-                    .is_some_and(|m| m.kind == BUILDING_KIND)
+                u.master(&self.masters, q)
+                    .is_ok_and(|m| m.kind == BUILDING_KIND)
             })
         };
         let building = ObjectId::field(r.building);
@@ -234,10 +232,7 @@ impl World {
         let mut queued = 0.0f32;
         for e in &queue.slots[..entries] {
             if e.master != -1 {
-                let time = self
-                    .masters
-                    .get(p)
-                    .and_then(|m| m.get(e.master))
+                let time = player_master(&self.masters, p, e.master)
                     .and_then(|m| m.train_locations.first())
                     .map_or(0, |l| l.time);
                 queued += (i32::from(e.count) * i32::from(time)) as f32;

@@ -17,10 +17,10 @@ struct BuildFound<'u> {
     task: crate::objects::masters::Task,
     /// The master the switch gives; None keeps the unit's own.
     switch: Option<&'u Master>,
-    /// The unit's own master.
-    own: &'u Master,
-    /// The foundation's master.
-    site: &'u Master,
+    /// The unit's master, a copy: the switch changes the unit, which may hold it.
+    own: Master,
+    /// The foundation's master's radius.
+    site_radius: [f32; 2],
     /// The foundation's place.
     at: [f32; 3],
 }
@@ -58,23 +58,19 @@ impl<'u> UnitView<'u, '_> {
         let Some((fp, f)) = find(foundation) else {
             return Ok(None);
         };
-        let every: &'u [crate::objects::masters::Masters] = self.every;
-        let site = every
-            .get(fp)
-            .and_then(|m| m.get(f.life.master_id))
-            .ok_or(crate::world::OBJECT_MASTER)?;
+        let site_radius = f.master(self.every, fp)?.radius;
         let (Some(t), Some(general)) = (
             task_target_with(foundation, 1, &find, self.every)?,
             task_target_with(foundation, 2, &find, self.every)?,
         ) else {
             return Err(crate::commands::FOUNDATION_GONE);
         };
-        let masters: &'u crate::objects::masters::Masters =
-            self.masters.ok_or(crate::world::UNIT_AI_MASTER)?;
-        let unit = &*self.unit;
-        let own = masters
-            .get(unit.life.master_id)
+        let masters: &'u crate::objects::masters::Masters = self
+            .every
+            .get(self.player)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
+        let unit = &*self.unit;
+        let own = unit.master(self.every, self.player)?;
         let actor = Actor {
             id: unit.id,
             master: own,
@@ -95,8 +91,8 @@ impl<'u> UnitView<'u, '_> {
         Ok(found.map(|(task, switch)| BuildFound {
             task,
             switch,
-            own,
-            site,
+            own: own.clone(),
+            site_radius,
             at: f.position(),
         }))
     }
@@ -118,7 +114,7 @@ impl<'u> UnitView<'u, '_> {
             task,
             switch,
             own,
-            site,
+            site_radius,
             at: f_at,
         }) = self.build_found(foundation)?
         else {
@@ -126,9 +122,9 @@ impl<'u> UnitView<'u, '_> {
         };
         let player = self.player;
         let unit = &*self.unit;
-        let builder = switch.unwrap_or(own);
+        let builder = switch.unwrap_or(&own);
         let gap =
-            crate::movement::footprint_gap(unit.position(), builder.radius, f_at, site.radius);
+            crate::movement::footprint_gap(unit.position(), builder.radius, f_at, site_radius);
         let build = BuildAction::start(
             foundation,
             f_at,
@@ -152,7 +148,7 @@ impl<'u> UnitView<'u, '_> {
                 graphics: self.graphics,
                 sprite: self.sprite,
             };
-            let switched = crate::orders::switch_master(unit, own, next, world)?;
+            let switched = crate::orders::switch_master(unit, &own, next, world)?;
             self.attribute_adds.extend(switched.leaving);
             if switched.promoted {
                 self.lets.promote(id, own.id, next.id);
@@ -178,22 +174,17 @@ impl<'u> UnitView<'u, '_> {
     /// more in state 0 of the unit's player); −1 for none.
     pub(crate) fn own_foundation_near(&self) -> Result<i32, GenieError> {
         let unit = &*self.unit;
-        let master = self
-            .masters
-            .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a builder of a master the slice does not have",
-            ))?;
+        let master = unit.master(self.every, self.player)?;
         let r = if master.search_radius <= master.line_of_sight {
             master.line_of_sight
         } else {
             master.search_radius
         } as i32;
         let (ux, uy) = (unit.position()[0] as i32, unit.position()[1] as i32);
-        let (player, others, masters, spatial) = (
+        let (player, others, every, spatial) = (
             self.player,
             owner_view(self.others, self.new_owner),
-            self.masters,
+            self.every,
             &*self.spatial,
         );
         let foundation_on = |x: i32, y: i32| -> Option<i32> {
@@ -202,7 +193,7 @@ impl<'u> UnitView<'u, '_> {
                     return None;
                 }
                 let u = others.own(id)?;
-                let kind = masters.and_then(|m| m.get(u.life.master_id))?.kind;
+                let kind = u.master(every, player).ok()?.kind;
                 (80 <= kind && u.life.state == 0).then_some(id)
             })
         };
@@ -220,12 +211,7 @@ impl<'u> UnitView<'u, '_> {
         radius: [f32; 2],
     ) -> Result<crate::unit_ai::OffFootprint, GenieError> {
         let unit = &*self.unit;
-        let master = self
-            .masters
-            .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a unit sent off of a master the slice does not have",
-            ))?;
+        let master = unit.master(self.every, self.player)?;
         let (player, others) = (self.player, owner_view(self.others, self.new_owner));
         let named = |id: i32| {
             let found = if id == unit.id {

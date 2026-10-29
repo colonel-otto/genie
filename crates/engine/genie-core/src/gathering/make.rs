@@ -13,6 +13,7 @@ use crate::GenieError;
 use crate::objects::masters::Task;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::objects::unit::object_master;
 use crate::world::context::Context;
 use genie_diff::Diff;
 
@@ -186,13 +187,11 @@ impl Unit {
         let Some(make) = self.actions.make_mut() else {
             return Ok(HeadCode::Keeps);
         };
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a Make of a master the slice does not have",
-                ))?;
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )?;
         let farm = Farm {
             master_id: master.id,
             kind: master.kind,

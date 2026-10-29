@@ -73,7 +73,7 @@ impl World {
                     let (cp, cu) = self.object(c).ok_or(GenieError::unreachable(
                         "a unit inside an object the world does not hold",
                     ))?;
-                    Some((c, self.master_of(cp, cu.life.master_id)?.kind))
+                    Some((c, cu.master(&self.masters, cp)?.kind))
                 }
                 None => None,
             };
@@ -87,7 +87,7 @@ impl World {
                 continue;
             }
             let unit = &self.players[player].objects[idx];
-            let master = self.master_of(player, unit.life.master_id)?;
+            let master = unit.master(&self.masters, player)?;
             if master.kind < BUILDING {
                 let transport = container
                     .filter(|&(_, kind)| COMBAT_KIND <= kind)
@@ -126,9 +126,7 @@ impl World {
         };
         let _ = self.let_out(cp, ci, id, point, (None, true))?;
         let (up, ui) = self.live_inside(id)?;
-        let kind = self
-            .master_of(up, self.players[up].objects[ui].life.master_id)?
-            .kind;
+        let kind = self.players[up].objects[ui].master(&self.masters, up)?.kind;
         let u = &mut self.players[up].objects[ui];
         if COMBAT_KIND <= kind {
             u.town_bell.flag = false;
@@ -181,9 +179,7 @@ impl World {
             }
             let _ = self.let_out(player, idx, inside, point, (None, sound))?;
             let (up, ui) = self.live_inside(inside)?;
-            let kind = self
-                .master_of(up, self.players[up].objects[ui].life.master_id)?
-                .kind;
+            let kind = self.players[up].objects[ui].master(&self.masters, up)?.kind;
             let u = &mut self.players[up].objects[ui];
             // a unit (type 70) is no longer under the town bell (`+0x9dc`)
             if 70 <= kind {
@@ -226,7 +222,7 @@ impl World {
         if unit.life.state != 2 {
             return Ok(());
         }
-        let made = self.master_of(ip, unit.life.master_id)?.clone();
+        let made = unit.master(&self.masters, ip)?.clone();
         let Some(crate::orders::Place::Live(hp, hi)) = self.place(holder) else {
             return Err(GenieError::unreachable(
                 "a transport that holds units outside the live lists",
@@ -234,7 +230,7 @@ impl World {
         };
         let h = &self.players[hp].objects[hi];
         let at = h.position();
-        let [rx, ry] = self.master_of(hp, h.life.master_id)?.radius;
+        let [rx, ry] = h.master(&self.masters, hp)?.radius;
         let around = crate::garrison::transport::Around {
             center: [at[0], at[1]],
             radius: [rx + rx, ry + ry],
@@ -288,7 +284,7 @@ impl World {
             m.ignore_units.clear();
         }
         let unit = &self.players[player].objects[idx];
-        let master = self.master_of(player, unit.life.master_id)?;
+        let master = unit.master(&self.masters, player)?;
         // UCOMISS with −1, JP and JNZ: a NaN coordinate is not −1
         let to = if master.class != BUILDING_CLASS && point == [NO_POINT, NO_POINT] {
             [unit.position()[0], unit.position()[1]]
@@ -339,7 +335,7 @@ impl World {
                 ));
             };
             let b = &self.players[p].objects[idx];
-            if self.master_of(p, b.life.master_id)?.kind != BUILDING {
+            if b.master(&self.masters, p)?.kind != BUILDING {
                 continue;
             }
             let mut i = b.garrison.len();
@@ -353,7 +349,7 @@ impl World {
                 let Some((up, u)) = self.object(inside) else {
                     continue;
                 };
-                let m = self.master_of(up, u.life.master_id)?;
+                let m = u.master(&self.masters, up)?;
                 if 70 <= m.kind && (m.class == VILLAGER_CLASS || m.id == MASTER_1808) {
                     let _ = self.back_to_work(Some((p, idx)), inside)?;
                 }
@@ -391,7 +387,7 @@ impl World {
         let mut bell = self.players[up].objects[ui].town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
             let (op, o) = self.object(t)?;
-            let m = self.master_of(op, o.life.master_id).ok()?;
+            let m = o.master(&self.masters, op).ok()?;
             Some(RecordTarget {
                 id: t,
                 building: m.kind == BUILDING,
@@ -442,13 +438,13 @@ impl World {
         param: i32,
     ) -> Result<bool, GenieError> {
         let id = unit.id;
-        let master = self.master_of(player, unit.life.master_id)?;
+        let master = unit.master(&self.masters, player)?;
         let class = master.class;
         // the object `param` names, for flags 4 to 6: its master, and whether it is the unit's
         // player's (or the world does not hold it)
         let named = if matches!(flag, 4..=6) {
             self.object(param)
-                .map(|(p, o)| self.master_of(p, o.life.master_id).map(|m| (p, m)))
+                .map(|(p, o)| o.master(&self.masters, p).map(|m| (p, m)))
                 .transpose()?
         } else {
             None

@@ -100,10 +100,7 @@ pub(crate) fn task_target_with<'a>(
     let Some((player, u)) = find(id) else {
         return Ok(None);
     };
-    let master = every
-        .get(player)
-        .and_then(|m| m.get(u.life.master_id))
-        .ok_or(crate::world::OBJECT_MASTER)?;
+    let master = u.master(every, player)?;
     let [powerup, max_powerup] = u.hp_powerups;
     Ok(Some(TaskTarget {
         id,

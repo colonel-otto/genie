@@ -104,9 +104,6 @@ pub(crate) const HUNTER_MASTER: GenieError =
 /// An object of a master the slice does not have.
 pub(crate) const OBJECT_MASTER: GenieError =
     GenieError::unsupported("an object of a master the slice does not have");
-/// A gatherer of a master the slice does not have.
-pub(crate) const GATHERER_MASTER: GenieError =
-    GenieError::unsupported("a gatherer of a master the slice does not have");
 /// An attacker of a master the slice does not have.
 pub(crate) const ATTACKER_MASTER: GenieError =
     GenieError::unsupported("an attacker of a master the slice does not have");

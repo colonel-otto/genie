@@ -43,7 +43,7 @@ impl World {
         let Some(object) = object else {
             return Ok(-1);
         };
-        let master = self.master_of(object.player(), object.master_id())?;
+        let master = self.master(object.player(), object.master_id())?;
         Ok(sub_formation(master.kind, master.hero_flag, master.formation_category).unwrap_or(-1))
     }
 
@@ -73,8 +73,7 @@ impl World {
                 continue;
             }
             if sub_category != -1
-                && i32::from(self.master_of(object.player(), object.master_id())?.id)
-                    != sub_category
+                && i32::from(self.master(object.player(), object.master_id())?.id) != sub_category
             {
                 continue;
             }
@@ -393,7 +392,7 @@ impl World {
                     continue;
                 }
                 if sub_category != -1
-                    && i32::from(self.master_of(object.player(), object.master_id())?.id)
+                    && i32::from(self.master(object.player(), object.master_id())?.id)
                         != sub_category
                 {
                     continue;

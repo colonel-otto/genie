@@ -7,7 +7,8 @@ use crate::construction::build::{
     BUILDING_TYPE, Built, CLASS_39, Completion, Construction, Site, StackUnit, WorkChain,
     show_built,
 };
-use crate::objects::masters::Master;
+use crate::objects::masters::{Master, player_master};
+use crate::objects::unit::object_master;
 use crate::orders::Place;
 
 impl crate::world::World {
@@ -87,11 +88,7 @@ impl crate::world::World {
         let place = self.place(id).ok_or(NOT_HELD)?;
         let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
         let master = held(&mut self.players, place).life.master_id;
-        let volley = self
-            .masters
-            .get(p)
-            .and_then(|m| m.get(master))
-            .map_or(0.0, |m| m.volley_fire);
+        let volley = player_master(&self.masters, p, master).map_or(0.0, |m| m.volley_fire);
         let now = self.world_time;
         let u = held(&mut self.players, place);
         let Some(c) = u.construction.as_mut() else {
@@ -159,7 +156,7 @@ impl crate::world::World {
                     continue;
                 };
                 let desolid = a.construction.is_some_and(|c| c.desolid);
-                if self.master_of(q, a.life.master_id)?.kind < 80 || !desolid {
+                if a.master(&self.masters, q)?.kind < 80 || !desolid {
                     continue;
                 }
                 self.clear_foundations_under(annex)?;
@@ -217,7 +214,7 @@ impl crate::world::World {
         let masters = self.masters.get(p);
         let u = held(&mut self.players, place);
         let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
-        let master = masters.and_then(|m| m.get(u.life.master_id));
+        let master = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters).ok();
         let construction = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
         let mut site = Site {
             id,
@@ -245,7 +242,11 @@ impl crate::world::World {
         };
         let built = Construction::complete(&mut site, &mut self.spatial, &mut self.pathing)?;
         let u = held(&mut self.players, place);
-        if let Some(m) = self.masters.get(p).and_then(|m| m.get(u.life.master_id)) {
+        if let Ok(m) = object_master(
+            u.own_master.as_deref(),
+            (u.id, u.life.master_id),
+            self.masters.get(p),
+        ) {
             show_built(
                 &mut u.sprite,
                 u.body.move_stats_mut(),
@@ -341,7 +342,7 @@ impl crate::world::World {
                 .unwrap_or_default(),
             old.gather_point,
         );
-        let old_class = self.master_of(p, old.life.master_id)?.class;
+        let old_class = old.master(&self.masters, p)?.class;
         let old_lock = old.gate.map(|g| g.locked);
         // its attacking units (+0xce0) the world still holds each hear of the new object (their
         // slot 0x140), which is not modelled
@@ -362,7 +363,7 @@ impl crate::world::World {
             b.stack_made = Some(new);
         }
         let (q, nu) = self.object(new).ok_or(NOT_HELD)?;
-        let new_master = self.master_of(q, nu.life.master_id)?;
+        let new_master = nu.master(&self.masters, q)?;
         let mut point = None;
         let building_made = new_master.kind == BUILDING_TYPE;
         let gate_lock = (building_made && old_class == CLASS_39 && new_master.class == CLASS_39)
@@ -432,7 +433,7 @@ impl crate::world::World {
         at: [f32; 3],
         flagged: bool,
     ) -> Result<Option<i32>, GenieError> {
-        let Some(made) = self.masters.get(p).and_then(|m| m.get(master)).cloned() else {
+        let Some(made) = player_master(&self.masters, p, master).cloned() else {
             return Ok(None);
         };
         // a combat unit (type 70, an effect's spawn): the master's slot 0x40 there, its footprint

@@ -34,11 +34,9 @@ impl World {
             let Some((owner, unit)) = self.object(id) else {
                 continue;
             };
-            let building = self
-                .masters
-                .get(owner)
-                .and_then(|m| m.get(unit.life.master_id))
-                .is_some_and(|m| m.kind == BUILDING_TYPE);
+            let building = unit
+                .master(&self.masters, owner)
+                .is_ok_and(|m| m.kind == BUILDING_TYPE);
             if building {
                 sum += unit.livestock_summation;
             }

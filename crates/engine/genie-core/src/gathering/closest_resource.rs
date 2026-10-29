@@ -64,13 +64,7 @@ pub(crate) fn closest_resource_of(
         .ok_or(GenieError::unsupported(
             "a resource search's drop site the slice does not hold",
         ))?;
-        let m = c
-            .every
-            .get(sp)
-            .and_then(|m| m.get(s.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a resource search's drop site of a master the slice lacks",
-            ))?;
+        let m = s.master(c.every, sp)?;
         let footprint = DOCKS.contains(&m.id) || {
             let restriction = unit
                 .body
@@ -102,21 +96,14 @@ pub(crate) fn closest_resource_of(
     let masters = c.masters.ok_or(GenieError::unsupported(
         "a resource search without its player's masters",
     ))?;
-    let master = masters
-        .get(unit.life.master_id)
-        .ok_or(GenieError::unsupported(
-            "a searcher of a master the slice does not have",
-        ))?;
+    let master = unit.master_in(Some(masters))?;
     let mover = unit.body.mover().ok_or(GenieError::unsupported(
         "a resource search without movement state",
     ))?;
     let mask = mover.stats.restriction_mask;
     let (player, me_id, every) = (c.player, unit.id, c.every);
     let candidate = |id: i32, owner: usize, u: &Unit, position: [f32; 3]| {
-        let m = every
-            .get(owner)
-            .and_then(|m| m.get(u.life.master_id))
-            .ok_or(crate::world::OBJECT_MASTER)?;
+        let m = u.master(every, owner)?;
         Ok(Candidate {
             id,
             player: owner,
@@ -204,7 +191,7 @@ impl UnitView<'_, '_> {
             zones: self.zones,
             foreign: owner_view(self.others, self.new_owner).players(),
             every: self.every,
-            masters: self.masters,
+            masters: self.every.get(self.player),
             plan: Planning {
                 pathing: self.pathing,
                 now: self.world_time,
@@ -230,14 +217,7 @@ impl UnitView<'_, '_> {
                 .ok_or(GenieError::unsupported(
                     "a resource found that the slice does not hold",
                 ))?;
-        let class = self
-            .every
-            .get(owner)
-            .and_then(|m| m.get(u.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a resource found of a master the slice lacks",
-            ))?
-            .class;
+        let class = u.master(self.every, owner)?.class;
         Ok(Some(crate::unit_ai::Gatherable {
             id,
             position: u.position(),

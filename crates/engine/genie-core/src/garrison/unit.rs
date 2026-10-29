@@ -10,6 +10,7 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::objects::unit::object_master;
 use crate::pathing::Pathing;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
@@ -44,13 +45,7 @@ impl Unit {
         let found = OthersRef::of(&c.w.players, c.player).find(enter.target);
         let (building, walking, meeting) = match found {
             Some((tp, t)) => {
-                let master =
-                    c.w.masters
-                        .get(tp)
-                        .and_then(|m| m.get(t.life.master_id))
-                        .ok_or(GenieError::unsupported(
-                            "an Enter's building of a master the slice lacks",
-                        ))?;
+                let master = t.master(&c.w.masters, tp)?;
                 let room = units_inside(OthersRef::of(&c.w.players, c.player), t.id)
                     < usize::from(master.garrison);
                 let (mut view, walking, meeting) = crate::garrison::enter_view(
@@ -74,23 +69,18 @@ impl Unit {
             None => (None, (0.0, 0.0), Ok(([0.0; 2], 0))),
         };
         // the MoveTo's give-up waits for a human player's villager (by its unit AI's stance)
-        let villager =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .is_some_and(|m| m.class == 4);
+        let villager = self
+            .master(&c.w.masters, c.player)
+            .is_ok_and(|m| m.class == 4);
         let (waits, stance) = (
             villager && !c.computer,
             self.ai.as_ref().map_or(0, |ai| ai.stance),
         );
         // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-        let defaults = self
-            .own_master
-            .as_deref()
-            .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id))
-            .map_or_else(MoveDefaults::default, |m| {
-                MoveDefaults::of(m, self.abilities.look.as_ref())
-            });
+        let defaults = self.master(&c.w.masters, c.player).map_or_else(
+            |_| MoveDefaults::default(),
+            |m| MoveDefaults::of(m, self.abilities.look.as_ref()),
+        );
         let (p, pace) = (c.player, c.pace());
         let enter_action = self.actions.enter_mut().expect("checked above");
         let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
@@ -213,11 +203,11 @@ impl Unit {
         c: &mut Context<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
-        let master = self
-            .own_master
-            .as_deref()
-            .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id))
-            .ok_or(crate::garrison::transport::NO_MASTER)?;
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )?;
         let (radius, restriction) = (master.radius, master.terrain_restriction);
         let t = self.actions.transport_mut().expect("checked by the caller");
         // the sprite its MoveTo's start shows (FUN_140aa0d30's default for none)
@@ -298,8 +288,9 @@ impl Unit {
             &mut Well512,
         ),
     ) -> Result<(), GenieError> {
-        let master = masters
-            .and_then(|m| m.get(self.life.master_id))
+        let master = self
+            .master_in(masters)
+            .ok()
             .ok_or(crate::garrison::transport::NO_MASTER)?;
         let ship = crate::garrison::transport::Ship {
             position: self.position(),
@@ -387,18 +378,10 @@ impl Unit {
         w: &mut EnterWorld<'_>,
     ) -> Result<bool, GenieError> {
         let masters = w.masters.ok_or(crate::garrison::NO_MASTERS)?;
-        let bm = w
-            .target_masters
-            .unwrap_or(masters)
-            .get(building.life.master_id)
-            .ok_or(GenieError::unsupported(
-                "an enter into a building of a master the slice lacks",
-            ))?;
-        let me = masters
-            .get(self.life.master_id)
-            .ok_or(GenieError::unsupported(
-                "an entering unit of a master the slice lacks",
-            ))?;
+        let bm = building.master_in(w.target_masters.or(Some(masters)))?;
+        // a copy: going inside changes the unit, which may hold it
+        let me = self.master_in(Some(masters))?.clone();
+        let me = &me;
         let actor = Actor {
             id: self.id,
             master: me,

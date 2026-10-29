@@ -35,28 +35,27 @@ pub(crate) fn regeneration_rate(master: &Master, unit: &Unit) -> f32 {
 }
 
 impl Unit {
-    /// Slot 0x110 of a combat object (`FUN_141213b10`): the classes 2, 20, 21, 22 and 53 repair
-    /// at a cost (not modelled); any other heals ([`Unit::heal_hp`]).
-    pub(crate) fn heal(&mut self, master: &Master, amount: f32) -> Result<(), GenieError> {
-        if matches!(master.class, 2 | 20 | 21 | 22 | 53) {
+    /// Slot 0x110 of a combat object (`FUN_141213b10`) of its master's `class` and
+    /// `hit_points`: the classes 2, 20, 21, 22 and 53 repair at a cost (not modelled); any other
+    /// heals (`FUN_141193b30`, [`crate::combat::damage::heal_hp`]).
+    pub(crate) fn heal(
+        &mut self,
+        class: i16,
+        hit_points: i16,
+        amount: f32,
+    ) -> Result<(), GenieError> {
+        if matches!(class, 2 | 20 | 21 | 22 | 53) {
             return Err(GenieError::unsupported(
                 "a heal at a cost (FUN_141213b10's classes)",
             ));
         }
-        let _ = self.heal_hp(master, amount);
-        Ok(())
-    }
-
-    /// `FUN_141193b30`: slot 0xb8 adds `amount` ([`Unit::gain_hp`]); a loss (`amount` below 0)
-    /// leaves at least 1 hit point; healed to its full hit points (slot 0xc0 at least slot 200,
-    /// `COMISS` with `JC`: a NaN is not), it holds exactly its master's. True then.
-    pub(crate) fn heal_hp(&mut self, master: &Master, amount: f32) -> bool {
-        crate::combat::damage::heal_hp(
+        let _ = crate::combat::damage::heal_hp(
             &mut self.life.hp,
             &mut self.hp_powerups,
-            master.hit_points,
+            hit_points,
             amount,
-        )
+        );
+        Ok(())
     }
 
     /// Slot 0xb8 of a combat object (`FUN_141203be0`): `amount` added up to its hit points with

@@ -212,7 +212,7 @@ pub(crate) fn clear_look_of(
     u: &Unit,
     masters: Option<&Masters>,
 ) -> Option<crate::construction::build::ClearLook> {
-    let m = masters?.get(u.life.master_id)?;
+    let m = u.master_in(masters).ok()?;
     Some(crate::construction::build::ClearLook {
         hp: u.life.hp,
         height: m.height,

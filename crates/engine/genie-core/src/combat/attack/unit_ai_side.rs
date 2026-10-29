@@ -8,6 +8,7 @@ use crate::combat::victims::{victim_in, victim_of};
 use crate::map::spatial::Placed;
 use crate::movement::Me;
 use crate::movement::move_to::Walk;
+use crate::objects::masters::player_master;
 use crate::objects::release::Releaser;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::world::SideWorld;
@@ -42,11 +43,10 @@ impl<'u> UnitView<'u, '_> {
         force: bool,
         ai: &UnitAi,
     ) -> Result<crate::unit_ai::Attacked, GenieError> {
+        // the unit's master, a copy: the attack's start changes the unit (its master's switch)
+        let own = self.unit.master(self.every, self.player)?.clone();
+        let master = &own;
         let unit = &mut *self.unit;
-        let master = self
-            .masters
-            .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(crate::world::ATTACKER_MASTER)?;
         if matches!(master.class, 51 | 54) {
             return Err(GenieError::unsupported(
                 "the attack command of a unit of class 51 or 54",
@@ -80,13 +80,9 @@ impl<'u> UnitView<'u, '_> {
             .spatial
             .get(self.unit.id)
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
-        let t_master = self
-            .every
-            .get(t.player)
-            .and_then(|m| m.get(t.master))
-            .ok_or(GenieError::unsupported(
-                "an attack's target of a master the slice does not have",
-            ))?;
+        let t_master = player_master(self.every, t.player, t.master).ok_or(
+            GenieError::unsupported("an attack's target of a master the slice does not have"),
+        )?;
         let visible = self.target_visible(&t, t_master)?;
         let unit = &mut *self.unit;
         // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
@@ -162,7 +158,7 @@ impl<'u> UnitView<'u, '_> {
             // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): the master's standing
             // sprite with its speed, `+0x7b8` cleared; the next update's state 4 ends the MoveTo
             mover.shows_standing();
-            unit.shows_standing_sprite(self.masters, self.graphics, self.sprite)?;
+            unit.shows_standing_sprite(self.every.get(self.player), self.graphics, self.sprite)?;
         }
         unit.actions.set_attack(Some(attack));
         self.lets.take(self.others, target, by);
@@ -206,11 +202,7 @@ impl<'u> UnitView<'u, '_> {
             let u = owner_view(self.others, self.new_owner)
                 .get(id)
                 .ok_or(NOT_HELD)?;
-            let m = self
-                .every
-                .get(p.player)
-                .and_then(|ms| ms.get(p.master))
-                .ok_or(NOT_HELD)?;
+            let m = player_master(self.every, p.player, p.master).ok_or(NOT_HELD)?;
             Ok(crate::combat::attack::Mark {
                 id,
                 kind: m.kind,
@@ -272,7 +264,7 @@ impl<'u> UnitView<'u, '_> {
                 .player(q)?
                 .attributes[..]
         };
-        let master = self.every.get(q)?.get(t.life.master_id)?;
+        let master = t.master(self.every, q).ok()?;
         let dip = SideWorld {
             player: self.player,
             relations: self.relations,
@@ -330,7 +322,8 @@ impl<'u> UnitView<'u, '_> {
             sprite: &mut unit.sprite,
             standing: self.graphics.get(&master.standing_sprite).copied(),
             volleys: self
-                .masters
+                .every
+                .get(self.player)
                 .is_some_and(|m| crate::combat::attack::volleys(master, m)),
             attack_timer: &mut unit.attack_timer,
             reload_worldtime: &mut unit.reload_worldtime,
@@ -400,6 +393,6 @@ impl<'u> UnitView<'u, '_> {
         } else {
             VILLAGER_FEMALE
         };
-        self.masters.and_then(|m| m.get(swap))
+        player_master(self.every, self.player, swap)
     }
 }

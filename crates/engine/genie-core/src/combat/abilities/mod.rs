@@ -34,7 +34,7 @@
 
 use crate::GenieError;
 use crate::math::fmath;
-use crate::objects::masters::Task;
+use crate::objects::masters::{Task, player_master};
 use crate::world::World;
 use genie_diff::Diff;
 
@@ -191,9 +191,8 @@ impl World {
         };
         let unit = &self.players[p].objects[i];
         let Some(master) = unit
-            .own_master
-            .as_deref()
-            .or_else(|| self.masters.get(p).and_then(|m| m.get(unit.life.master_id)))
+            .master(&self.masters, p)
+            .ok()
             .filter(|m| matches!(m.kind, COMBAT_KIND | BUILDING_KIND))
         else {
             return Ok(Vec::new());
@@ -223,10 +222,7 @@ impl World {
                     let multiplier = usize::try_from(task.attribute_type2)
                         .ok()
                         .and_then(|a| self.players[owner].attribute(a));
-                    let cost = self
-                        .masters
-                        .get(owner)
-                        .and_then(|m| m.get(own.id))
+                    let cost = player_master(&self.masters, owner, own.id)
                         .map_or(&[][..], |m| &m.cost[..]);
                     rewards.push(reward(task, owner, multiplier, cost));
                 }

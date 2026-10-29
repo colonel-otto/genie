@@ -5,7 +5,7 @@ use crate::movement::footprint_gap_squared;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::owner_view;
-use crate::unit_ai::world_view::{NOT_HELD, UnitView, WorldPicker};
+use crate::unit_ai::world_view::{UnitView, WorldPicker};
 
 impl UnitView<'_, '_> {
     /// The world as `bestUnitToAttack` and the attack tests read it for the unit
@@ -49,8 +49,6 @@ impl UnitView<'_, '_> {
     ) -> Result<bool, GenieError> {
         let others = owner_view(self.others, self.new_owner);
         let find = |id: i32| others.find(id);
-        let master_of =
-            |q: usize, o: &Unit| self.every.get(q).and_then(|ms| ms.get(o.life.master_id));
         let Some(ai) = u.ai.as_ref() else {
             return Ok(false);
         };
@@ -71,7 +69,7 @@ impl UnitView<'_, '_> {
             Some(_) => return Ok(false),
         };
         if let Some((tq, t)) = u.top_target().filter(|&t| t != -1).and_then(find) {
-            let tm = master_of(tq, t).ok_or(NOT_HELD)?;
+            let tm = t.master(self.every, tq)?;
             let gap = footprint_gap_squared(u.position(), m.radius, t.position(), tm.radius);
             let in_range =
                 gap <= m.weapon_range * m.weapon_range && m.min_range * m.min_range <= gap;
@@ -104,7 +102,7 @@ impl UnitView<'_, '_> {
         let target_kind = (ai.current_target != -1)
             .then(|| {
                 find(ai.current_target)
-                    .and_then(|(q, o)| master_of(q, o))
+                    .and_then(|(q, o)| o.master(self.every, q).ok())
                     .map(|tm| tm.kind)
             })
             .flatten();

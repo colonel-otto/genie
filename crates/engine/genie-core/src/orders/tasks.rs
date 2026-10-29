@@ -106,10 +106,10 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a Build's foundation the slice does not hold",
         ))?;
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
-        let builder = self.master_of(player, unit.life.master_id)?;
+        let builder = unit.master(&self.masters, player)?;
         let gap = crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius);
         let build_task = crate::construction::build::BuildTask::of(
             task,
@@ -155,13 +155,13 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unreachable(
             "a Repair's target the world does not hold",
         ))?;
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         if crate::construction::repair::SHIPS.contains(&tm.class) {
             return Err(crate::construction::repair::SHIP_REPAIR);
         }
         let (t_at, class) = (t.position(), i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
-        let range = self.master_of(player, unit.life.master_id)?.weapon_range;
+        let range = unit.master(&self.masters, player)?.weapon_range;
         self.take(target, self.releaser(player, idx));
         let repair_task = crate::construction::repair::RepairTask::of(task);
         Ok((
@@ -294,7 +294,7 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unreachable(
             "a Repair's target the world does not hold",
         ))?;
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         let (t_at, class, ship) = (
             t.position(),
             i32::from(tm.class),
@@ -385,7 +385,7 @@ impl World {
                 "a Build retargeted to another player's object (set_state 11)",
             ));
         }
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
         let old = unit
@@ -395,7 +395,7 @@ impl World {
             .ok_or(GenieError::unsupported(
                 "a Build's retarget without its Build",
             ))?;
-        let builder = self.master_of(player, unit.life.master_id)?;
+        let builder = unit.master(&self.masters, player)?;
         let gap = crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius);
         if old.target != target {
             // the task finder took the new target below state 3, which slot 0x68 keeps
@@ -469,7 +469,7 @@ impl World {
         let Some((p, f)) = self.object(id) else {
             return Ok(None);
         };
-        let kind = self.master_of(p, f.life.master_id)?.kind;
+        let kind = f.master(&self.masters, p)?.kind;
         Ok(Some(if kind == BUILDING {
             f.annex_of.unwrap_or(id)
         } else {

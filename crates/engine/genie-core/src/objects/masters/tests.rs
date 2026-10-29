@@ -1191,3 +1191,15 @@ fn a_master_s_unit_ai_type_reads_its_class_volley_missile_and_combat_level() {
     // the factory's own ids first
     assert_eq!(master(3, None, 0).unit_ai_type(1105), Some(0x12));
 }
+
+/// The lookup by player and id: the player's table's master, none without the table or the
+/// master.
+#[test]
+fn a_master_is_found_by_its_player_and_id() {
+    let every = vec![Masters::default(), villagers()];
+    let found = player_master(&every, 1, 83).map(|m| m.id);
+    assert_eq!(found, Some(83));
+    assert!(player_master(&every, 0, 83).is_none());
+    assert!(player_master(&every, 1, -1).is_none());
+    assert!(player_master(&every, 2, 83).is_none());
+}

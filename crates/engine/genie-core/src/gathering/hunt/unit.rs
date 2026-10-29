@@ -62,11 +62,7 @@ impl Unit {
         c: &mut Context<'_>,
         task: &crate::gathering::hunt::HuntTask,
     ) -> Result<(), GenieError> {
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let stand = crate::gathering::hunt::stand_sprite(
             task,
             master.standing_sprite,
@@ -112,11 +108,7 @@ impl Unit {
         let others = OthersRef::of(&c.w.players, c.player);
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_none_or(|&d| d == -1) {
@@ -167,11 +159,7 @@ impl Unit {
     /// [`HuntAction::retarget`]: crate::gathering::hunt::HuntAction::retarget
     /// [`HuntAction::search_walk`]: crate::gathering::hunt::HuntAction::search_walk
     pub(crate) fn hunt_after_drop(&mut self, c: &mut Context<'_>) -> Result<HeadCode, GenieError> {
-        let _ =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let _ = self.master(&c.w.masters, c.player)?;
         if self.actions.hunt().expect("the caller's hunt").target != -1 {
             return self.hunt_back_to_target(c).map(|()| HeadCode::Keeps);
         }
@@ -191,11 +179,7 @@ impl Unit {
     /// modelled.
     fn hunt_back_to_target(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let v = victim(c, hunt.target).ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold live",
         ))?;
@@ -332,11 +316,7 @@ impl Unit {
                 "a hunter tending a pasture (FUN_1411c7670)",
             ));
         }
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let mover = self.body.mover().ok_or(crate::world::HUNTER_UNMOVING)?;
         let radius =
             crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
@@ -428,24 +408,14 @@ impl Unit {
     /// fails at once takes the standing sprite (slot 0x68 with `FUN_140ac5210`'s: the unit
     /// carries nothing now).
     fn hunt_take_found(&mut self, c: &mut Context<'_>, found: i32) -> Result<(), GenieError> {
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let (owner, t) =
             OthersRef::of(&c.w.players, c.player)
                 .find(found)
                 .ok_or(GenieError::unsupported(
                     "a hunt's new target the slice does not hold",
                 ))?;
-        let t_master =
-            c.w.masters
-                .get(owner)
-                .and_then(|m| m.get(t.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a hunt's target of a master the slice does not have",
-                ))?;
+        let t_master = t.master(&c.w.masters, owner)?;
         let relations =
             c.w.spatial
                 .relations
@@ -536,11 +506,7 @@ impl Unit {
             m.shows_standing();
         }
         if self.sprite.is_some() {
-            let master =
-                c.w.masters
-                    .get(c.player)
-                    .and_then(|m| m.get(self.life.master_id))
-                    .ok_or(crate::world::HUNTER_MASTER)?;
+            let master = self.master(&c.w.masters, c.player)?;
             let standing = c.w.graphics.get(&master.standing_sprite).copied().ok_or(
                 GenieError::unsupported("a hunter without its standing sprite"),
             )?;

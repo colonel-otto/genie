@@ -1,6 +1,7 @@
 //! The counts the update reads: the town centres, the trainable and the upgradable masters,
 //! and where a master trains.
 
+use crate::objects::masters::player_master;
 use crate::players::world_player::{
     AGES, BUILDABLE_TOWN_CENTRE, BUILDER, BUILDING_CLASS, RESEARCHED, TOWN_CENTRES, TreeQuery,
     attribute, full_tree_civ, get,
@@ -185,10 +186,7 @@ impl World {
             return false;
         }
         let mut at = building;
-        let local = self
-            .masters
-            .get(self.local_player)
-            .and_then(|t| t.get(building));
+        let local = player_master(&self.masters, self.local_player, building);
         if let Some(b) = local.filter(|b| b.class == BUILDING_CLASS as i16)
             && let Some(site) = b.building.as_ref()
             && site.disappears_when_built

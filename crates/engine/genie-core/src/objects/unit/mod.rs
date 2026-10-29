@@ -9,7 +9,7 @@ use crate::gathering::hunt::{HuntAction, HuntSprites};
 use crate::objects::actions::ActionList;
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::Lifecycle;
-use crate::objects::masters::Master;
+use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::ownership::capture::Captured;
 use crate::production::Production;
@@ -252,6 +252,40 @@ pub struct Unit {
 }
 
 impl Unit {
+    /// The master the object reads through its master pointer (`+0xa0`): its own (`+0x6c0`,
+    /// [`Unit::own_master`]) when it has one, else player `player`'s master of its id in
+    /// `every`, the world's masters ([`crate::objects::masters::player_master`]).
+    ///
+    /// # Errors
+    ///
+    /// No master of its own and none of its id in the player's table, which the game's object
+    /// always has ([`crate::world::OBJECT_MASTER`], with the object, its master and the player).
+    pub fn master<'a>(
+        &'a self,
+        every: &'a [Masters],
+        player: usize,
+    ) -> Result<&'a Master, GenieError> {
+        self.master_in(every.get(player))
+            .map_err(|e| e.with("player", player))
+    }
+
+    /// [`Unit::master`] for a caller that holds its owner's table of masters (`table`, none for
+    /// an owner without one) rather than the world's.
+    ///
+    /// # Errors
+    ///
+    /// No master of its own and none of its id in `table`.
+    pub(crate) fn master_in<'a>(
+        &'a self,
+        table: Option<&'a Masters>,
+    ) -> Result<&'a Master, GenieError> {
+        object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            table,
+        )
+    }
+
     /// x, y, z on the map (`+0x3c8`, `+0x4c8`, `+0x5a8`, obfuscated in the game's memory): its
     /// static layer's ([`crate::objects::layers::Static`]).
     #[must_use]
@@ -332,6 +366,25 @@ pub(crate) const fn second_target_checked(
         Some(s) if 6 < s => (-1, Some(site)),
         _ => (site, None),
     }
+}
+
+/// [`Unit::master_in`] from the fields it reads, its own master `own` and its id and master id
+/// (`id`, `master_id`), for a caller that holds other fields of the unit to change: `own`, else
+/// master `master_id` of its owner's `table`. The one place of the rule.
+///
+/// # Errors
+///
+/// No master of its own and none of `master_id` in `table`.
+pub(crate) fn object_master<'a>(
+    own: Option<&'a Master>,
+    (id, master_id): (i32, i16),
+    table: Option<&'a Masters>,
+) -> Result<&'a Master, GenieError> {
+    own.or_else(|| table?.get(master_id)).ok_or_else(|| {
+        crate::world::OBJECT_MASTER
+            .with("object", id)
+            .with("master", master_id)
+    })
 }
 
 /// `RGE_Action_Object::update` (`0x14106ac90`): the action list of an object past state 2 goes

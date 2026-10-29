@@ -83,10 +83,8 @@ impl crate::world::World {
         let Some((tp, t)) = self.object(target) else {
             return Ok(false);
         };
-        let market = tp == p && self.master_of(tp, t.life.master_id)?.id == MARKET;
-        let class = self
-            .master_of(p, self.players[p].objects[i].life.master_id)?
-            .class;
+        let market = tp == p && t.master(&self.masters, tp)?.id == MARKET;
+        let class = self.players[p].objects[i].master(&self.masters, p)?.class;
         Ok(market && TRADE_CLASSES.contains(&class))
     }
 
@@ -100,10 +98,7 @@ impl crate::world::World {
         clears: bool,
     ) -> Result<(), GenieError> {
         let named = match self.object(target) {
-            Some((tp, t)) => Some((
-                target,
-                i32::from(self.master_of(tp, t.life.master_id)?.class),
-            )),
+            Some((tp, t)) => Some((target, i32::from(t.master(&self.masters, tp)?.class))),
             None => None,
         };
         let unit = &mut self.players[p].objects[i];
@@ -136,8 +131,8 @@ impl crate::world::World {
         f: impl FnOnce(&Ship, &mut MapShore<'_>) -> Result<Changed, GenieError>,
     ) -> Result<Changed, GenieError> {
         let ship = self.ship(p, i)?;
-        let restriction = self
-            .master_of(p, self.players[p].objects[i].life.master_id)?
+        let restriction = self.players[p].objects[i]
+            .master(&self.masters, p)?
             .terrain_restriction;
         let mut shore = MapShore::new(
             &self.spatial,

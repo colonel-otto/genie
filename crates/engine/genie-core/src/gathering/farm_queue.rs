@@ -9,6 +9,7 @@
 //! ([`crate::production::refund_master`]).
 
 use crate::GenieError;
+use crate::objects::masters::player_master;
 use crate::production::{cost_test, pay, refund_master};
 use crate::world::World;
 
@@ -142,7 +143,7 @@ impl World {
         }
         // the game reads the master without a test: a queue of a master the player lacks
         // cannot have been paid for
-        if let Some(m) = self.masters.get(p).and_then(|ms| ms.get(master)) {
+        if let Some(m) = player_master(&self.masters, p, master) {
             refund_master(m, n, player)?;
         }
         Ok(true)
@@ -194,11 +195,7 @@ impl World {
     pub fn reseed_master(&self, p: usize) -> Option<i16> {
         [FARM, PASTURE].into_iter().find(|&m| {
             self.can_make(p, m)
-                && self
-                    .masters
-                    .get(p)
-                    .and_then(|ms| ms.get(m))
-                    .is_some_and(|m| m.class == FARM_CLASS)
+                && player_master(&self.masters, p, m).is_some_and(|m| m.class == FARM_CLASS)
         })
     }
 
@@ -231,7 +228,7 @@ impl World {
         if farm[0] == NO_FARM {
             return Ok(false);
         }
-        let class = self.master_of(p, unit.life.master_id)?.class;
+        let class = unit.master(&self.masters, p)?.class;
         let owner = &self.players[p];
         let (master, auto, queue) =
             if (!owner.auto_farm_queue && owner.farm_queue < 1) || class != VILLAGER_CLASS {
@@ -255,7 +252,7 @@ impl World {
             own.push(gather.target);
             if self
                 .object(gather.target)
-                .and_then(|(q, t)| self.master_of(q, t.life.master_id).ok())
+                .and_then(|(q, t)| t.master(&self.masters, q).ok())
                 .is_some_and(|m| m.kind == crate::objects::masters::master_type::BUILDING)
             {
                 let mut k = 0;
@@ -285,7 +282,7 @@ impl World {
                 from_queue = true;
             }
         }
-        let made = self.master_of(p, master)?;
+        let made = self.master(p, master)?;
         let ai = Ok(made.unit_ai_type(master));
         let at = [farm[0], farm[1], 0.0];
         let (foundation, _) = self.make_building(p, master, ai, at)?;
@@ -322,7 +319,7 @@ impl World {
         }
         let by = self.releaser(p, idx);
         let master_id = self.players[p].objects[idx].life.master_id;
-        let standing = self.master_of(p, master_id)?.standing_sprite;
+        let standing = self.master(p, master_id)?.standing_sprite;
         let computer = self.players[p].computer;
         let unit = &mut self.players[p].objects[idx];
         let Some(gather) = unit.actions.gather_mut() else {

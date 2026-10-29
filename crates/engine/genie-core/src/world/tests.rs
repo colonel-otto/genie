@@ -1291,7 +1291,12 @@ fn an_idle_object_swaps_its_standing_sprite_on_a_high_draw() {
         ..Unit::default()
     };
     let mut r = rng(high);
-    u.idle_swap(&master, &graphics, &mut r);
+    u.idle_swap(
+        master.standing_sprite,
+        master.standing_sprite_2,
+        &graphics,
+        &mut r,
+    );
     assert_eq!(u.idle_variant, 1);
     let s = u.sprite.unwrap();
     assert_eq!((s.graphic.id, s.frame), (101, 0));
@@ -1301,7 +1306,12 @@ fn an_idle_object_swaps_its_standing_sprite_on_a_high_draw() {
         sprite: Some(shown(100, true)),
         ..Unit::default()
     };
-    u.idle_swap(&master, &graphics, &mut rng(low));
+    u.idle_swap(
+        master.standing_sprite,
+        master.standing_sprite_2,
+        &graphics,
+        &mut rng(low),
+    );
     assert_eq!((u.idle_variant, u.sprite.unwrap().graphic.id), (0, 100));
     // no loop, another sprite, no second standing sprite: no draw
     for (sprite, m) in [
@@ -1311,7 +1321,7 @@ fn an_idle_object_swaps_its_standing_sprite_on_a_high_draw() {
             shown(100, true),
             Master {
                 standing_sprite_2: None,
-                ..master.clone()
+                ..master
             },
         ),
     ] {
@@ -1320,7 +1330,7 @@ fn an_idle_object_swaps_its_standing_sprite_on_a_high_draw() {
             ..Unit::default()
         };
         let mut r = rng(high);
-        u.idle_swap(&m, &graphics, &mut r);
+        u.idle_swap(m.standing_sprite, m.standing_sprite_2, &graphics, &mut r);
         assert_eq!(r.draws, rng(high).draws);
     }
 }
@@ -2030,6 +2040,89 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
         (Some(OrderKind::Build), Some(ActionKind::Build), 10028)
     );
     assert_eq!(t.players[1].objects[1].workers, 1);
+}
+
+/// A builder with a master of its own (a captured villager's copy) builds as that master: its
+/// Build's `MoveTo` starts with the own master's walking sprite (`FUN_140aa0df0`'s default),
+/// not the one of its player's master of its id, which has none.
+#[test]
+fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
+    use crate::map::spatial::Placed;
+    use crate::objects::sprite::Graphic;
+    let mut t = sent_off_world(vec![]);
+    open_map(&mut t);
+    t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
+    let placed = |position, class, master, radius| Placed {
+        position,
+        radius,
+        class,
+        player: 1,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    let at = [26.5, 89.5, 0.0];
+    t.spatial.insert(9175, placed(at, 4, 83, [0.2, 0.2]));
+    t.spatial
+        .insert(10028, placed([30.0, 88.0, 0.0], 3, 70, [1.0, 1.0]));
+    let v = &mut t.players[1].objects[0];
+    v.place_for_test(at);
+    let mut mover = crate::gathering::hunt::tests::walker();
+    mover.moved_at = at;
+    v.body.put_mover(Some(mover));
+    // a walker of sixteen facets (its yaw reads them)
+    for table in &mut t.masters {
+        if let Some(m) = table.get_mut(118).and_then(|m| m.moving.as_mut()) {
+            m.facets = Some(crate::objects::facing::SpriteFacets {
+                count: 16,
+                flag_1: true,
+            });
+        }
+    }
+    t.build_mesh();
+    let work = crate::orders::Work {
+        target: 10028,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work).unwrap();
+    let walking = Graphic {
+        id: 7,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let _ = t.graphics.insert(7, walking);
+    let shown_after_update = |t: &mut World| {
+        in_update(t, (1, 0), 50, |unit, c| {
+            let me = crate::movement::Me {
+                id: unit.id,
+                group: unit.group.id,
+                action_state: unit.top_action().map_or(0, |a| a.state),
+            };
+            let _ = unit.build_part(c, me)?;
+            Ok(unit.sprite.map(|s| s.graphic.id))
+        })
+        .unwrap()
+    };
+    // the player's master 118 has no sprites: the MoveTo shows none
+    let mut table = t.clone();
+    assert_eq!(shown_after_update(&mut table), None);
+    let own = Master {
+        move_sprite: 7,
+        ..t.masters[1].get(118).unwrap().clone()
+    };
+    t.players[1].objects[0].own_master = Some(Box::new(own));
+    assert_eq!(shown_after_update(&mut t), Some(7));
 }
 
 /// The work command again on the Build's own foundation (`FUN_140ab1b30`): a Build at work
@@ -5635,17 +5728,17 @@ fn a_unit_inside_heals_up_to_its_hit_points() {
         },
         ..Unit::default()
     };
-    v.heal(&master, 0.1).unwrap();
+    v.heal(master.class, master.hit_points, 0.1).unwrap();
     assert_eq!(v.life.hp, 11.1);
     // a heal past the hit points stops at them, the powerup's room taking the rest
     v.life.hp = 24.95;
     v.hp_powerups = [1.0, 2.0];
-    v.heal(&master, 0.1).unwrap();
+    v.heal(master.class, master.hit_points, 0.1).unwrap();
     assert_eq!((v.life.hp, v.hp_powerups), (24.95f32 + 0.1, [1.0, 2.0]));
     // past them with the room: the overflow comes off the powerup, then a full unit holds
     // exactly its master's hit points
     v.life.hp = 26.95;
-    v.heal(&master, 0.1).unwrap();
+    v.heal(master.class, master.hit_points, 0.1).unwrap();
     assert_eq!(v.life.hp, 25.0);
     assert_eq!(v.hp_powerups[0], 1.0 - (26.95f32 + 0.1 - 27.0));
     // a paid class heals at a cost: not modelled
@@ -5653,7 +5746,7 @@ fn a_unit_inside_heals_up_to_its_hit_points() {
         class: 22,
         ..master
     };
-    assert!(v.heal(&ship, 0.1).is_err());
+    assert!(v.heal(ship.class, ship.hit_points, 0.1).is_err());
 }
 
 /// `FUN_140e6cfc0` resets every listed unit the world holds, a sleeping one too, and passes
@@ -10609,7 +10702,7 @@ fn scout_attack_on(
         ..UnitAi::default()
     };
     let masters = Masters::new([scout]);
-    let every = [Masters::new([wolf]), masters.clone()];
+    let every = [Masters::new([wolf]), masters];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let groups = crate::groups::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
@@ -10659,7 +10752,6 @@ fn scout_attack_on(
             new_owner: None,
             zones: &mut zones,
             every: &every,
-            masters: Some(&masters),
             graphics: &graphics,
             lets: Lets {
                 player: 1,
@@ -10796,7 +10888,7 @@ fn attack_by(
     };
     let _ = scout;
     let masters = Masters::new(std::iter::once(who).chain(also));
-    let every = [Masters::new([wolf]), masters.clone()];
+    let every = [Masters::new([wolf]), masters];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let groups = crate::groups::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
@@ -10852,7 +10944,6 @@ fn attack_by(
             new_owner: None,
             zones: &mut zones,
             every: &every,
-            masters: Some(&masters),
             graphics: &graphics,
             lets: Lets {
                 player: 1,
@@ -10997,7 +11088,7 @@ fn help_view<R>(
         ..Unit::default()
     };
     let masters = Masters::new([scout]);
-    let every = [Masters::new([wolf]), masters.clone()];
+    let every = [Masters::new([wolf]), masters];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
@@ -11045,7 +11136,6 @@ fn help_view<R>(
         new_owner: None,
         zones: &mut zones,
         every: &every,
-        masters: Some(&masters),
         graphics: &graphics,
         lets: Lets {
             player: 1,
@@ -11084,7 +11174,9 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
 /// [`helper_free`] of the unit `helper` of player `owner` with the world's unit groups `groups`.
 fn helper_free_of(owner: usize, helper: Unit, groups: &crate::groups::UnitGroups) -> bool {
     help_view(helper, None, groups, |side| {
-        let scout = side.masters.and_then(|m| m.get(448)).unwrap().clone();
+        let scout = crate::objects::masters::player_master(side.every, side.player, 448)
+            .unwrap()
+            .clone();
         let helper = side.others.view().own_iter().next().unwrap();
         side.helper_free(owner, helper, &scout, 50).unwrap()
     })
@@ -13006,7 +13098,7 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
         drop_site_sought(unknown, (false, true, -1))
             .unwrap_err()
             .reason(),
-        "a drop site of a master the slice does not have"
+        OBJECT_MASTER.reason()
     );
 }
 

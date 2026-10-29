@@ -16,7 +16,8 @@ use crate::unit_ai::world_view::owner_view;
 struct HuntPlan<'u> {
     task: crate::objects::masters::Task,
     switch: Option<&'u crate::objects::masters::Master>,
-    own: &'u crate::objects::masters::Master,
+    /// A copy: the switch changes the unit, which may hold it.
+    own: crate::objects::masters::Master,
     quarry: crate::gathering::hunt::Quarry,
     them: Placed,
 }
@@ -34,11 +35,7 @@ impl<'u> UnitView<'u, '_> {
     pub(crate) fn start_hunt_now(&mut self, target: i32, ai: &UnitAi) -> Result<(), GenieError> {
         use crate::gathering::hunt::{HuntAction, HuntTask};
         let player = self.player;
-        let own_class = self
-            .masters
-            .and_then(|m| m.get(self.unit.life.master_id))
-            .ok_or(crate::world::HUNTER_MASTER)?
-            .class;
+        let own_class = self.unit.master(self.every, self.player)?.class;
         let by = Releaser {
             id: self.unit.id,
             class: own_class,
@@ -50,7 +47,7 @@ impl<'u> UnitView<'u, '_> {
         self.lets.torn_down(self.others, (leaves, releases))?;
         if self.unit.life.state == 2 {
             self.unit
-                .show_standing(self.masters, self.graphics, self.sprite)?;
+                .show_standing(self.every.get(self.player), self.graphics, self.sprite)?;
         }
         let HuntPlan {
             task,
@@ -59,10 +56,10 @@ impl<'u> UnitView<'u, '_> {
             quarry,
             them,
         } = self.hunt_plan(target)?;
-        let hunter = switch.unwrap_or(own);
+        let hunter = switch.unwrap_or(&own);
         let id = self.unit.id;
         if let Some(next) = switch {
-            self.switch_unit_master(own, next)?;
+            self.switch_unit_master(&own, next)?;
         }
         let unit = &mut *self.unit;
         let hunt_task = HuntTask {
@@ -156,24 +153,14 @@ impl<'u> UnitView<'u, '_> {
             others.find(id)
         };
         let (tp, t) = find(target).ok_or(crate::orders::HUNT_TARGET_GONE)?;
-        let t_master = self
-            .every
-            .get(tp)
-            .and_then(|m| m.get(t.life.master_id))
-            .ok_or(crate::world::OBJECT_MASTER)?;
+        let t_master = t.master(self.every, tp)?;
         let main = if t_master.kind == crate::orders::BUILDING {
             t.annex_of.unwrap_or(target)
         } else {
             target
         };
         let main_master = match find(main) {
-            Some((mp, m)) => {
-                self.every
-                    .get(mp)
-                    .and_then(|ms| ms.get(m.life.master_id))
-                    .ok_or(crate::world::OBJECT_MASTER)?
-                    .id
-            }
+            Some((mp, m)) => m.master(self.every, mp)?.id,
             None => t_master.id,
         };
         let (Some(task_t), Some(general)) = (
@@ -182,10 +169,11 @@ impl<'u> UnitView<'u, '_> {
         ) else {
             return Err(crate::orders::HUNT_TARGET_GONE);
         };
-        let masters = self.masters.ok_or(crate::world::HUNTER_MASTER)?;
-        let own = masters
-            .get(unit.life.master_id)
+        let masters = self
+            .every
+            .get(self.player)
             .ok_or(crate::world::HUNTER_MASTER)?;
+        let own = unit.master_in(Some(masters))?;
         let actor = Actor {
             id: unit.id,
             master: own,
@@ -224,7 +212,7 @@ impl<'u> UnitView<'u, '_> {
         Ok(HuntPlan {
             task,
             switch,
-            own,
+            own: own.clone(),
             quarry,
             them,
         })

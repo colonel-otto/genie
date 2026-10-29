@@ -110,8 +110,9 @@ impl Unit {
             PointMove::Declined => {}
         }
         self.clear_own_actions(releases, builder_leaves, by)?;
-        let sprite = masters
-            .and_then(|ms| ms.get(self.life.master_id))
+        let sprite = self
+            .master_in(masters)
+            .ok()
             .and_then(|master| {
                 let look = self.abilities.look.as_ref();
                 ai_sprite(master, m.walk).or_else(|| point_sprite(master, look, false))
@@ -248,11 +249,9 @@ impl Unit {
                 "an AI move to an object of a unit that does not move",
             ));
         }
-        let livestock =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .is_some_and(|m| m.class == LIVESTOCK);
+        let livestock = self
+            .master(&c.w.masters, c.player)
+            .is_ok_and(|m| m.class == LIVESTOCK);
         let master =
             c.w.spatial
                 .get_known(target)?
@@ -265,10 +264,7 @@ impl Unit {
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.clear_own_actions(&mut releases, &mut leaves, by)?;
         crate::world::lets::torn_down(c, (leaves, releases))?;
-        let own =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id));
+        let own = self.master(&c.w.masters, c.player).ok();
         let range = crate::movement::move_to::object_range(range, own);
         let sprite = own
             .and_then(|master| ai_sprite(master, false).or_else(|| object_sprite(master)))
@@ -337,8 +333,9 @@ impl Unit {
         sprite_rng: &mut Well512,
     ) -> Result<(), GenieError> {
         if self.sprite.is_some() {
-            let standing = masters
-                .and_then(|m| m.get(self.life.master_id))
+            let standing = self
+                .master_in(masters)
+                .ok()
                 .map(|m| m.standing_sprite)
                 .and_then(|id| graphics.get(&id).copied())
                 .ok_or(GenieError::unsupported(

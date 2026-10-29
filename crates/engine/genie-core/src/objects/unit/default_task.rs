@@ -20,15 +20,14 @@ impl Unit {
             return Ok(true);
         }
         if std::mem::take(&mut self.default_make) {
-            let task =
-                c.w.masters
-                    .get(c.player)
-                    .and_then(|m| m.get(self.life.master_id))
-                    .and_then(Master::default_task)
-                    .copied()
-                    .ok_or(GenieError::unsupported(
-                        "a Make whose master the slice does not have",
-                    ))?;
+            let task = self
+                .master(&c.w.masters, c.player)
+                .ok()
+                .and_then(Master::default_task)
+                .copied()
+                .ok_or(GenieError::unsupported(
+                    "a Make whose master the slice does not have",
+                ))?;
             self.actions
                 .set_make(Some(crate::gathering::make::MakeAction::start(
                     task,
@@ -43,9 +42,8 @@ impl Unit {
         if self.default_artifact {
             // the factory gives the action the default task, whose moving sprite its MoveTos take
             let moving = self
-                .own_master
-                .as_deref()
-                .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id))
+                .master(&c.w.masters, c.player)
+                .ok()
                 .and_then(Master::default_task)
                 .and_then(|t| crate::objects::sprite::sprite_id(t.sprites[0]));
             self.actions

@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::garrison::{BUILDING_CLASS, CLASS_FLAGS, COMBAT_KIND, LEAST_HP_SHARE, TRANSPORTED};
-use crate::objects::masters::Task;
+use crate::objects::masters::{Task, player_master};
 use crate::orders::{BUILDING, GARRISON};
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -82,7 +82,7 @@ impl World {
         b: &crate::objects::unit::Unit,
         unit: Option<i32>,
     ) -> Result<bool, GenieError> {
-        let capacity = i32::from(self.master_of(bp, b.life.master_id)?.garrison);
+        let capacity = i32::from(b.master(&self.masters, bp)?.garrison);
         let with = match unit {
             Some(u) => self.garrisoned(u)? + 1,
             None => 1,
@@ -122,7 +122,7 @@ impl World {
         others: bool,
         unchecked: bool,
     ) -> Result<bool, GenieError> {
-        let Some(unit) = self.masters.get(player).and_then(|m| m.get(master)) else {
+        let Some(unit) = player_master(&self.masters, player, master) else {
             return Ok(false);
         };
         let Some((bp, b)) = self.object(building) else {
@@ -140,7 +140,7 @@ impl World {
         if b.life.state != 2 {
             return Ok(false);
         }
-        let own = self.master_of(bp, b.life.master_id)?;
+        let own = b.master(&self.masters, bp)?;
         if own.object_flags & 1 != 0
             && (unit.kind == COMBAT_KIND || class_has_flags(unit.class, TRANSPORTED))
         {
@@ -158,7 +158,7 @@ impl World {
             ))?,
             None => (bp, b),
         };
-        let bm = self.master_of(bp, b.life.master_id)?;
+        let bm = b.master(&self.masters, bp)?;
         // CVTPS2PD, CVTDQ2PD, MULSD, then COMISD with JBE: an unordered hit point count takes
         // nothing
         let max_hp = f64::from(f32::from(bm.hit_points));
@@ -193,10 +193,7 @@ impl World {
         };
         let is_building = self
             .object(building)
-            .map(|(bp, b)| {
-                self.master_of(bp, b.life.master_id)
-                    .map(|m| m.kind == BUILDING)
-            })
+            .map(|(bp, b)| b.master(&self.masters, bp).map(|m| m.kind == BUILDING))
             .transpose()?
             .unwrap_or(false);
         let mut count = 0;
@@ -205,7 +202,7 @@ impl World {
                 if u.life.inside != Some(building) {
                     continue;
                 }
-                let kind = self.master_of(p, u.life.master_id)?.kind;
+                let kind = u.master(&self.masters, p)?.kind;
                 if is_building && kind == COMBAT_KIND && u.raider_countdown != 0 {
                     return Err(GenieError::unsupported(
                         "a unit inside a building with its raider_build_countdown (+0xc2c)",

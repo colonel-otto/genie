@@ -26,7 +26,7 @@ impl World {
                 .or_else(|| player.sleeping.by_id(id))
                 .map(|u| (p, u))
         })?;
-        let master = self.masters.get(p)?.get(u.life.master_id)?;
+        let master = u.master(&self.masters, p).ok()?;
         let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
@@ -55,13 +55,7 @@ impl World {
                 .by_id(id)
                 .or_else(|| player.sleeping.by_id(id))
             {
-                let master = self
-                    .masters
-                    .get(p)
-                    .and_then(|m| m.get(u.life.master_id))
-                    .ok_or(GenieError::unsupported(
-                        "a unit AI's target of a master the slice does not have",
-                    ))?;
+                let master = u.master(&self.masters, p)?;
                 let [x, y, _] = u.position();
                 return Ok(Some(crate::unit_ai::Seen {
                     state: u.life.state,
@@ -98,10 +92,9 @@ impl World {
     /// its place alone, as a guess); then the main buildings (`+0xbb8`) of the target and of the
     /// annexes among them, which the hits on those annexes go to.
     pub(crate) fn blasted(&self, unit: &Unit, p: usize, target: i32) -> Vec<Victim> {
-        let reach = self
-            .masters
-            .get(p)
-            .and_then(|m| m.get(unit.life.master_id))
+        let reach = unit
+            .master(&self.masters, p)
+            .ok()
             .map(|m| m.area_effect)
             .filter(|&r| 0.0 < r)
             .map(|r| r + 6.0 + 2.0);
@@ -165,7 +158,7 @@ impl KillLeft {
 /// one of any list, live or asleep, of a master its owner has.
 pub(crate) fn readable<'o>(c: &'o Context<'_>, id: i32) -> Option<(usize, &'o Unit, &'o Master)> {
     let (p, u, _) = c.w.locate(id)?;
-    let master = c.w.masters.get(p)?.get(u.life.master_id)?;
+    let master = u.master(&c.w.masters, p).ok()?;
     Some((p, u, master))
 }
 
@@ -375,14 +368,7 @@ impl World {
             ));
         }
         let u = &self.players[q].objects[j];
-        let master = self
-            .masters
-            .get(q)
-            .and_then(|m| m.get(u.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a killed object of a master the slice does not have",
-            ))?
-            .clone();
+        let master = u.master(&self.masters, q)?.clone();
         let ap = kill.attacker_player;
         if master.class == 4 {
             // the attacker's class as the hit saw it: the attacker may be out for its update
@@ -418,12 +404,7 @@ impl World {
         let (q, u) = self
             .object(id)
             .ok_or(crate::construction::build::NOT_HELD)?;
-        let master = u
-            .own_master
-            .as_deref()
-            .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
-            .ok_or(crate::construction::build::NOT_HELD)?
-            .clone();
+        let master = u.master(&self.masters, q)?.clone();
         self.count_kill_of(q, &master, killer)
     }
 

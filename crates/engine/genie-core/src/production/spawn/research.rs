@@ -78,7 +78,7 @@ impl World {
         }
         let (t, def) = self.research_tech(p, r.tech)?;
         let master = building.life.master_id;
-        let rate = building.work_rate_powerup + self.master_of(p, master)?.work_rate;
+        let rate = building.work_rate_powerup + self.master(p, master)?.work_rate;
         let state = &owner.techs[t];
         let repeatable = state.repeatable(def, false);
         let shared = def.kind == crate::technology::SHARED_KIND;

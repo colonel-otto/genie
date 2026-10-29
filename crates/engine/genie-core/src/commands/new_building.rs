@@ -8,7 +8,7 @@ use crate::movement::Mover;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::lifecycle::{Class, Lifecycle};
-use crate::objects::masters::Master;
+use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
 use crate::world::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889, World};
@@ -24,9 +24,9 @@ impl World {
         master: i16,
         position: [f32; 3],
     ) -> Result<(i32, [f32; 3]), GenieError> {
-        let unit_ai = self.master_of(player, master)?.unit_ai_type(master);
+        let unit_ai = self.master(player, master)?.unit_ai_type(master);
         let made = self.make_building(player, master, Ok(unit_ai), position)?;
-        let cost = self.master_of(player, master)?.cost.clone();
+        let cost = self.master(player, master)?.cost.clone();
         let owner = &mut self.players[player];
         for &(resource, amount, paid) in &cost {
             let slot = usize::try_from(resource)
@@ -51,14 +51,11 @@ impl World {
         player: usize,
         master: i16,
     ) -> Result<(), GenieError> {
-        if let Some(m) = self.masters.get(player).and_then(|m| m.get(master)) {
+        if let Some(m) = player_master(&self.masters, player, master) {
             count_class(&mut self.players[player].attributes, m, 1.0);
         }
         let _ = self.streams.get(Stream::Object).rand15();
-        if let Some(m) = self
-            .masters
-            .get(player)
-            .and_then(|m| m.get(master))
+        if let Some(m) = player_master(&self.masters, player, master)
             .filter(|m| m.kind == BUILDING_KIND && m.trained_at.iter().any(|&t| t != -1))
         {
             let paid: i32 = m
@@ -80,10 +77,7 @@ impl World {
         player: usize,
         master: i16,
     ) -> Result<(i16, f32), GenieError> {
-        let storage = self
-            .masters
-            .get(player)
-            .and_then(|m| m.get(master))
+        let storage = player_master(&self.masters, player, master)
             .map(|m| m.storage.clone())
             .unwrap_or_default();
         let mut held = (-1, 0.0);
@@ -135,7 +129,7 @@ impl World {
         unit_ai: Result<Option<u32>, GenieError>,
         position: [f32; 3],
     ) -> Result<(i32, [f32; 3]), GenieError> {
-        let made = self.master_of(player, master)?.clone();
+        let made = self.master(player, master)?.clone();
         let building = made.building.ok_or(GenieError::unsupported(
             "a building constructor of a master without its building part",
         ))?;
@@ -144,10 +138,7 @@ impl World {
         let position = self.on_ground(player, master, position);
         let id = self.take_object_id(player, master);
         // what its first update as a built building starts (slot 0x7f0)
-        let (default_make, default_task) = self
-            .masters
-            .get(player)
-            .and_then(|m| m.get(master))
+        let (default_make, default_task) = player_master(&self.masters, player, master)
             .map_or((false, None), Master::default_start);
         let ai = unit_ai
             .and_then(|t| Ok((t, self.new_object(player, master, &made, position)?)))
@@ -175,23 +166,18 @@ impl World {
         self.building_combat_setup(player, master)?;
         let held = self.building_storage(player, master)?;
         // what its death reads of the master: its dying sprite, death spawns and decay
-        let death = self.masters.get(player).and_then(|m| m.get(master)).map_or(
-            (None, false, -1, None),
-            |m| {
+        let death =
+            player_master(&self.masters, player, master).map_or((None, false, -1, None), |m| {
                 (
                     (0 <= m.death_sprite).then_some(m.death_sprite),
                     0 <= m.death_spawns[0],
                     m.death_spawns[1],
                     m.life,
                 )
-            },
-        );
+            });
         // the moving setup (FUN_1411580a0) of every building, a moving object though it never
         // moves (a mule cart does): the walk reads its last move time
-        let mut mover = self
-            .masters
-            .get(player)
-            .and_then(|m| m.get(master))
+        let mut mover = player_master(&self.masters, player, master)
             .and_then(|m| m.moving)
             .map(|stats| Mover::new_object(stats, position, self.world_time, angle, None));
         // the constructor (FUN_1411de5f0)
@@ -303,11 +289,7 @@ impl World {
             missile: None,
             attack_count: 0,
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire
-            firepower: self
-                .masters
-                .get(player)
-                .and_then(|m| m.get(master))
-                .map_or(0.0, |m| m.volley_fire),
+            firepower: player_master(&self.masters, player, master).map_or(0.0, |m| m.volley_fire),
             next_volley: 0,
             reload_worldtime: 0,
             garrison: Vec::new(),
@@ -364,7 +346,7 @@ impl World {
                 continue;
             }
             // a master the player has not got makes nothing (its slot 0x40 is not called)
-            let Some(am) = self.masters.get(player).and_then(|m| m.get(annex)).cloned() else {
+            let Some(am) = player_master(&self.masters, player, annex).cloned() else {
                 continue;
             };
             // the .dat's annexes are buildings (type 80): another type's master has no building

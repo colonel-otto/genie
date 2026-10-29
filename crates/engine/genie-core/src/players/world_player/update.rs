@@ -165,7 +165,7 @@ impl World {
         p: usize,
         unit: &crate::objects::unit::Unit,
     ) -> Result<bool, GenieError> {
-        let master = self.master_of(p, unit.life.master_id)?;
+        let master = unit.master(&self.masters, p)?;
         let state = unit.life.state;
         if (1..=4).contains(&state)
             && master

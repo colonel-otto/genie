@@ -81,9 +81,8 @@ impl Unit {
         }
         if self.sprite.is_some() {
             let standing = self
-                .own_master
-                .as_deref()
-                .or_else(|| masters.and_then(|m| m.get(self.life.master_id)))
+                .master_in(masters)
+                .ok()
                 .map(|m| m.standing_sprite)
                 .and_then(|id| graphics.get(&id).copied())
                 .ok_or(GenieError::unsupported(

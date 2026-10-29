@@ -30,7 +30,7 @@ impl World {
         toward: Option<[f32; 2]>,
     ) -> Result<[f32; 2], GenieError> {
         let building = &self.players[p].objects[i];
-        let site_master = self.master_of(p, building.life.master_id)?;
+        let site_master = building.master(&self.masters, p)?;
         let position = building.position();
         let mut walls = [false; 4];
         for (wall, tiles) in
@@ -93,7 +93,7 @@ impl World {
         at: [f32; 3],
         facet: Option<u8>,
     ) -> Result<(), GenieError> {
-        let made = self.master_of(p, master)?.clone();
+        let made = self.master(p, master)?.clone();
         if made.kind == BUILDING {
             return self.new_building(p, &made, at);
         }

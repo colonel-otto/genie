@@ -27,7 +27,7 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a gather's target the slice does not hold",
         ))?;
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         if tm.kind == BUILDING {
             if t.top_action_kind() == Some(PACK_ACTION) || t.unmodelled_action.is_some() {
                 return Err(GenieError::unsupported(
@@ -41,7 +41,7 @@ impl World {
                     ))?,
                     None => (tp, t),
                 };
-                let main_master = self.master_of(mp, main.life.master_id)?.id;
+                let main_master = main.master(&self.masters, mp)?.id;
                 if (main.life.state < 2 || matches!(main_master, MASTER_1893 | MASTER_1897))
                     && mp == player
                 {
@@ -56,7 +56,7 @@ impl World {
         }
         let (t_at, t_radius) = (t.position(), tm.radius);
         let unit = &self.players[player].objects[idx];
-        let me = self.master_of(player, unit.life.master_id)?;
+        let me = unit.master(&self.masters, player)?;
         let resource = crate::gathering::gather::Resource {
             id: target,
             position: t_at,
@@ -133,10 +133,10 @@ impl World {
         let (tp, o) = self.object(target).ok_or(GenieError::unsupported(
             "a move to an object the slice does not hold",
         ))?;
-        let tm = self.master_of(tp, o.life.master_id)?;
+        let tm = o.master(&self.masters, tp)?;
         let (at, radius) = (o.position(), tm.radius);
         let unit = &self.players[player].objects[idx];
-        let me = self.master_of(player, unit.life.master_id)?;
+        let me = unit.master(&self.masters, player)?;
         let moved_to = Some(crate::gathering::gather::MoveTarget {
             id: target,
             player: tp,
@@ -178,19 +178,19 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold",
         ))?;
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         let main = if tm.kind == BUILDING {
             t.annex_of.unwrap_or(target)
         } else {
             target
         };
         let main_master = match self.object(main) {
-            Some((mp, m)) => self.master_of(mp, m.life.master_id)?.id,
+            Some((mp, m)) => m.master(&self.masters, mp)?.id,
             None => tm.id,
         };
         let unit = &self.players[player].objects[idx];
-        Ok(self
-            .master_of(player, unit.life.master_id)?
+        Ok(unit
+            .master(&self.masters, player)?
             .drop_sites
             .contains(&main_master))
     }
@@ -251,7 +251,7 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold",
         ))?;
-        let t_master = self.master_of(tp, t.life.master_id)?;
+        let t_master = t.master(&self.masters, tp)?;
         let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
@@ -288,10 +288,10 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a gather's target the slice does not hold",
         ))?;
-        let tm = self.master_of(tp, t.life.master_id)?;
+        let tm = t.master(&self.masters, tp)?;
         let (t_at, t_radius) = (t.position(), tm.radius);
         let unit = &self.players[player].objects[idx];
-        let me = self.master_of(player, unit.life.master_id)?;
+        let me = unit.master(&self.masters, player)?;
         let resource = crate::gathering::gather::Resource {
             id: target,
             position: t_at,
@@ -382,7 +382,7 @@ impl World {
         task: &HuntTask,
     ) -> Result<Arms, GenieError> {
         let unit = &self.players[player].objects[idx];
-        let master = self.master_of(player, unit.life.master_id)?;
+        let master = unit.master(&self.masters, player)?;
         let moving = task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
         Ok(crate::combat::attack::arms(
             master,
@@ -400,7 +400,7 @@ impl World {
         target: i32,
     ) -> Result<Engagement, GenieError> {
         let unit = &self.players[player].objects[idx];
-        let master = self.master_of(player, unit.life.master_id)?;
+        let master = unit.master(&self.masters, player)?;
         let me = self
             .spatial
             .get(unit.id)

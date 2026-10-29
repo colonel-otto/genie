@@ -49,7 +49,7 @@ impl World {
                             .lead_object(&g.motion)
                             .expect("the nearest member is held");
                         let sight = self
-                            .master_of(leader.player(), leader.master_id())?
+                            .master(leader.player(), leader.master_id())?
                             .line_of_sight;
                         let range = sight * FOLLOW_SHARE;
                         let d = crate::math::fmath::sub(from, moved);

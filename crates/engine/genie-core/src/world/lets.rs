@@ -9,7 +9,7 @@
 
 use crate::GenieError;
 use crate::objects::lines::UnitLines;
-use crate::objects::masters::{Master, Masters};
+use crate::objects::masters::Masters;
 use crate::objects::release::{Releaser, released};
 use crate::objects::unit::TAKEN_OUT;
 use crate::players::tracker::Tracker;
@@ -160,8 +160,8 @@ impl Lets<'_> {
         }
         let allied = self.allied(others.view(), by.player, p);
         let (_, u) = others.get_mut(id).expect("located");
-        let listed = self
-            .master(p, u.life.master_id)
+        let listed = u
+            .master(self.masters, p)
             .is_ok_and(|m| u.lists_taker(m, allied));
         u.taken(listed, by.id);
     }
@@ -200,7 +200,7 @@ impl Lets<'_> {
         }
         let allied = self.allied(others.view(), by.player, p);
         let (_, u) = others.get_mut(id).expect("located");
-        let m = self.master(p, u.life.master_id)?;
+        let m = u.master(self.masters, p)?;
         let (kind, listed) = (m.kind, u.lists_taker(m, allied));
         released(u, kind, listed, by)
     }
@@ -227,7 +227,7 @@ impl Lets<'_> {
         let Some((p, f, _)) = others.locate(id) else {
             return Ok(());
         };
-        let site = if self.master(p, f.life.master_id)?.kind == crate::orders::BUILDING {
+        let site = if f.master(self.masters, p)?.kind == crate::orders::BUILDING {
             f.annex_of.unwrap_or(id)
         } else {
             id
@@ -276,13 +276,5 @@ impl Lets<'_> {
             other.map_or(&[][..], |p| &p.relations[..])
         };
         crate::unit_ai::task_finder::allied(relations, from, to, true)
-    }
-
-    /// Player `p`'s master `id`.
-    fn master(&self, p: usize, id: i16) -> Result<&Master, GenieError> {
-        self.masters
-            .get(p)
-            .and_then(|m| m.get(id))
-            .ok_or(crate::world::OBJECT_MASTER)
     }
 }

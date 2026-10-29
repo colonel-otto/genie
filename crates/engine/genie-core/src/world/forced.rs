@@ -257,10 +257,7 @@ impl World {
                 self.spatial.sight_state(id, state);
             }
             if before < 4 && 6 < state {
-                let master = self
-                    .masters
-                    .get(p)
-                    .and_then(|m| m.get(forced.life.master_id));
+                let master = forced.master(&self.masters, p).ok();
                 forget_resource(&mut self.spatial, master, id, forced.position());
             }
         }

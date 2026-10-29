@@ -35,13 +35,7 @@ impl World {
                 continue;
             };
             let unit = &self.players[player].objects[i];
-            let master = self
-                .masters
-                .get(player)
-                .and_then(|m| m.get(unit.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "SET GATHER POINT on a master the slice does not have",
-                ))?;
+            let master = unit.master(&self.masters, player)?;
             // FUN_141625a20's count with no object, for the object's own player
             if master.garrison == 0 && self.trainable_count(player, master.id) <= 0 {
                 continue;
@@ -94,11 +88,7 @@ impl World {
          -> Result<crate::unit_ai::QueuedOrder, GenieError> {
             let named = if t == -1 { None } else { turns.object(t) };
             let (target, owner, class) = match named {
-                Some((tp, u)) => (
-                    t,
-                    tp as i32,
-                    i32::from(turns.master_of(tp, u.life.master_id)?.class),
-                ),
+                Some((tp, u)) => (t, tp as i32, i32::from(u.master(&turns.masters, tp)?.class)),
                 None => (-1, -1, -1),
             };
             Ok(crate::unit_ai::QueuedOrder {
@@ -131,7 +121,7 @@ impl World {
             let Some(ai) = unit.ai.as_ref() else {
                 continue;
             };
-            let building = self.master_of(p, unit.life.master_id)?.kind == crate::orders::BUILDING;
+            let building = unit.master(&self.masters, p)?.kind == crate::orders::BUILDING;
             let mut queued = Vec::new();
             if building
                 && let Some(g) = unit.gather_point
@@ -267,7 +257,7 @@ impl World {
             };
         };
         let building = &owner.objects[i];
-        let master = self.master_of(player, building.life.master_id)?;
+        let master = building.master(&self.masters, player)?;
         let at = state
             .locations
             .iter()

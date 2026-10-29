@@ -5,6 +5,7 @@ use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
+use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::World;
@@ -87,13 +88,7 @@ impl Unit {
         slot: &mut Option<crate::combat::missile::MissileAction>,
         c: &mut Context<'_>,
     ) -> Result<(), GenieError> {
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a missile of a master the slice does not have",
-                ))?;
+        let master = self.master(&c.w.masters, c.player)?;
         let stats = master.missile_stats.ok_or(GenieError::unsupported(
             "a missile whose master has no flight",
         ))?;
@@ -175,11 +170,9 @@ impl Unit {
         if !(0.0 < stats.radius[0] && 0.0 < stats.radius[1]) {
             return Ok(());
         }
-        let blast_level =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .map_or(0, |m| m.blast_level);
+        let blast_level = self
+            .master(&c.w.masters, c.player)
+            .map_or(0, |m| m.blast_level);
         let met = self.missile_meets(stats, old, c)?;
         for &(id, player, kind, level) in &met {
             if action.state == crate::combat::missile::DONE {
@@ -275,12 +268,9 @@ impl Unit {
                 continue;
             };
             let m =
-                c.w.masters
-                    .get(p.player)
-                    .and_then(|m| m.get(p.master))
-                    .ok_or(GenieError::unsupported(
-                        "an object a missile meets of a master the slice does not have",
-                    ))?;
+                player_master(&c.w.masters, p.player, p.master).ok_or(GenieError::unsupported(
+                    "an object a missile meets of a master the slice does not have",
+                ))?;
             if crate::combat::missile::meets_height(p.position[2], m.height, at[2], stats.radius[2])
             {
                 met.push((id, p.player, m.kind, m.blast_defense));
@@ -335,12 +325,7 @@ impl Unit {
             .ok_or(GenieError::unsupported(
                 "a missile's shooter outside its list",
             ))?;
-        let master = masters
-            .get(p)
-            .and_then(|m| m.get(shooter.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a missile's shooter of a master the slice does not have",
-            ))?;
+        let master = shooter.master(masters, p)?;
         if 0.0 < master.area_effect {
             return Err(GenieError::unsupported(
                 "a missile of a shooter with an area effect",
@@ -390,13 +375,7 @@ impl Unit {
                 "a shooterless missile with an origin (its elevation, FUN_14113e550)",
             ));
         }
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a missile of a master the slice does not have",
-                ))?;
+        let master = self.master(&c.w.masters, c.player)?;
         if 0.0 < master.area_effect {
             return Err(GenieError::unsupported(
                 "a shooterless missile with an area effect",
@@ -469,7 +448,7 @@ impl Unit {
                 Some(self.life.master_id)
             };
             let area = blaster
-                .and_then(|id| c.w.masters.get(c.player).and_then(|m| m.get(id)))
+                .and_then(|id| player_master(&c.w.masters, c.player, id))
                 .map(|m| m.area_effect)
                 .ok_or(GenieError::unsupported(
                     "a landed missile's blast of a master the slice does not have",
@@ -549,10 +528,7 @@ impl Unit {
             self.life.state = 7;
             c.w.spatial.sight_state(self.id, 7);
             if before < 4 {
-                let master =
-                    c.w.masters
-                        .get(c.player)
-                        .and_then(|m| m.get(self.life.master_id));
+                let master = self.master(&c.w.masters, c.player).ok();
                 forget_resource(&mut c.w.spatial, master, self.id, self.position());
             }
         }

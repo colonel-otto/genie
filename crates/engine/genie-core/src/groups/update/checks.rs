@@ -55,7 +55,7 @@ impl World {
                     .as_ref()
                     .is_some_and(|ai| ai.current_action == Some(ActionKind::Attack))
             {
-                let master = self.master_of(p, u.life.master_id)?;
+                let master = u.master(&self.masters, p)?;
                 let search = if master.kind < ACTION_KIND {
                     master.line_of_sight
                 } else {
@@ -111,7 +111,7 @@ impl World {
         let WorldObject::Unit(p, u) = object else {
             return Ok(false);
         };
-        if self.master_of(p, u.life.master_id)?.kind < ACTION_KIND {
+        if u.master(&self.masters, p)?.kind < ACTION_KIND {
             return Ok(false);
         }
         if u.group.id != -1 && self.groups.get(u.group.id).is_some() && !self.at_rest(u.group.id) {
@@ -156,7 +156,7 @@ impl World {
         let WorldObject::Unit(p, u) = object else {
             return Ok(None);
         };
-        if self.master_of(p, u.life.master_id)?.kind < ACTION_KIND {
+        if u.master(&self.masters, p)?.kind < ACTION_KIND {
             return Ok(None);
         }
         if let Some(e) = u.unmodelled_action.clone() {
@@ -178,8 +178,8 @@ impl World {
         a: WorldObject<'_>,
         b: WorldObject<'_>,
     ) -> Result<f32, GenieError> {
-        let ra = self.master_of(a.player(), a.master_id())?.radius;
-        let rb = self.master_of(b.player(), b.master_id())?.radius;
+        let ra = self.master(a.player(), a.master_id())?.radius;
+        let rb = self.master(b.player(), b.master_id())?.radius;
         Ok(crate::movement::footprint_gap_squared(
             a.position(),
             ra,
@@ -244,7 +244,7 @@ impl World {
             let delivers = self.has_task(owner, u.life.master_id, RELIC_DELIVERY_ACTION)?;
             let target = self.world_object(ai.current_target);
             let relic = match target {
-                Some(t) => self.master_of(t.player(), t.master_id())?.class == RELIC_CLASS,
+                Some(t) => self.master(t.player(), t.master_id())?.class == RELIC_CLASS,
                 None => false,
             };
             if g.current_command == PICK_UP_RELIC
@@ -300,7 +300,7 @@ impl World {
         action: i16,
     ) -> Result<bool, GenieError> {
         let Some(masters) = self.masters.get(player) else {
-            return self.master_of(player, master).map(|_| false);
+            return self.master(player, master).map(|_| false);
         };
         Ok(masters
             .get(master)
@@ -321,7 +321,7 @@ impl World {
         object: WorldObject<'_>,
         player: usize,
     ) -> Result<bool, GenieError> {
-        let master = self.master_of(object.player(), object.master_id())?;
+        let master = self.master(object.player(), object.master_id())?;
         let [x, y, _] = object.position();
         let (x, y) = (
             crate::math::conversions::cvttss2si(x),
@@ -353,7 +353,7 @@ impl World {
         let WorldObject::Unit(p, u) = object else {
             return Ok(true);
         };
-        u.free_for_group(self.master_of(p, u.life.master_id)?)
+        u.free_for_group(u.master(&self.masters, p)?)
     }
 
     /// Slot 0x660 of object `id`: it shows its standing sprite. Nothing for an object below type
@@ -409,7 +409,7 @@ impl World {
         let Some((p, u)) = self.object(id) else {
             return Ok(false);
         };
-        let master = self.master_of(p, u.life.master_id)?;
+        let master = u.master(&self.masters, p)?;
         if master.kind < MOVING_KIND {
             return Ok(false);
         }

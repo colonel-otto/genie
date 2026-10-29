@@ -149,7 +149,7 @@ impl World {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            let master = self.master_of(p, u.life.master_id)?;
+            let master = u.master(&self.masters, p)?;
             left.push(Splittable {
                 id,
                 group: u.group.id,
@@ -310,7 +310,7 @@ impl World {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            let master = self.master_of(p, u.life.master_id)?;
+            let master = u.master(&self.masters, p)?;
             let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
             if (MOVING <= master.kind && 0.0 < speed) || queued {
                 points.push([u.position()[0], u.position()[1]]);

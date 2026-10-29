@@ -401,3 +401,36 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     };
     assert_eq!(of(Action::WaitSolidify(wait)), None);
 }
+
+/// A unit's master: its own when it has one (a captured unit's copy), else its player's of its
+/// id; an error with neither.
+#[test]
+fn a_unit_reads_its_own_master_before_its_player_s() {
+    use crate::objects::masters::{Master, Masters};
+    let shared = Master {
+        id: 4,
+        hit_points: 25,
+        ..Master::default()
+    };
+    let every = vec![Masters::default(), Masters::new([shared])];
+    let mut u = Unit {
+        id: 7,
+        life: Lifecycle {
+            master_id: 4,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    assert_eq!(u.master(&every, 1).map(|m| m.hit_points), Ok(25));
+    u.own_master = Some(Box::new(Master {
+        id: 4,
+        hit_points: 40,
+        ..Master::default()
+    }));
+    assert_eq!(u.master(&every, 1).map(|m| m.hit_points), Ok(40));
+    assert_eq!(u.master(&every, 0).map(|m| m.hit_points), Ok(40));
+    u.own_master = None;
+    let missing = u.master(&every, 0).expect_err("player 0 has no master 4");
+    assert_eq!(missing, crate::world::OBJECT_MASTER);
+    assert!(u.master(&every, 2).is_err(), "no table for player 2");
+}

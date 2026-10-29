@@ -22,7 +22,7 @@ impl World {
     pub(super) fn stop_everything(&mut self, p: usize) -> Result<(), GenieError> {
         for idx in 0..self.players[p].objects.len() {
             let unit = &self.players[p].objects[idx];
-            let master = self.master_of(p, unit.life.master_id)?;
+            let master = unit.master(&self.masters, p)?;
             let (class, id) = (master.class, master.id);
             let explorer = unit.ai.as_ref().is_some_and(|ai| {
                 matches!(
@@ -61,7 +61,7 @@ impl World {
     /// and forgets its target and its last target (`FUN_140c4dcb0`).
     pub(crate) fn object_stop(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[idx];
-        let master = self.master_of(p, unit.life.master_id)?;
+        let master = unit.master(&self.masters, p)?;
         let class = master.class;
         if unit
             .top_action_kind()
@@ -122,7 +122,7 @@ impl World {
         let computer = self.players[p].computer;
         let by = self.releaser(p, idx);
         let master_id = self.players[p].objects[idx].life.master_id;
-        let standing = self.master_of(p, master_id)?.standing_sprite;
+        let standing = self.master(p, master_id)?.standing_sprite;
         let unit = &mut self.players[p].objects[idx];
         let Some(kind) = unit.top_action_kind() else {
             return Ok(false);
@@ -200,7 +200,7 @@ impl World {
     ) -> Result<bool, GenieError> {
         let by = self.releaser(p, idx);
         let master_id = self.players[p].objects[idx].life.master_id;
-        let standing = self.master_of(p, master_id)?.standing_sprite;
+        let standing = self.master(p, master_id)?.standing_sprite;
         match kind {
             crate::gathering::gather::GATHER => self.halt_gather(p, idx, standing, by)?,
             crate::construction::build::BUILD => self.halt_build(p, idx, by)?,

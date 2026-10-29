@@ -4,7 +4,7 @@ use crate::GenieError;
 use crate::combat::victims::victim_of;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
-use crate::objects::masters::Masters;
+use crate::objects::masters::{Masters, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::others::OthersRef;
@@ -80,7 +80,7 @@ impl WorldPicker<'_> {
         };
         let master = match u.own_master.as_deref() {
             Some(m) => m,
-            None => self.every.get(q)?.get(u.life.master_id)?,
+            None => u.master(self.every, q).ok()?,
         };
         Some((q, u, attributes, master))
     }
@@ -180,7 +180,7 @@ impl WorldPicker<'_> {
             target: target.as_ref(),
             projectile: om
                 .charge_projectile
-                .and_then(|id| self.every.get(q)?.get(id))
+                .and_then(|id| player_master(self.every, q, id))
                 .map(|m| &m.weapons[..]),
             charge_event: om.charge_event,
             range_powerup: o.range_powerup,
@@ -219,13 +219,7 @@ impl WorldPicker<'_> {
     /// The object `id` as the attack tests read it, and whether it moves (slot 0x208 above 0).
     pub(crate) fn target(&self, id: i32) -> Result<(crate::unit_ai::Target, bool), GenieError> {
         let (owner, t) = self.others.find(id).ok_or(NOT_HELD)?;
-        let m = self
-            .every
-            .get(owner)
-            .and_then(|ms| ms.get(t.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a found object of a master the slice does not have",
-            ))?;
+        let m = t.master(self.every, owner)?;
         let placed = self
             .spatial
             .get_known(id)?

@@ -9,6 +9,7 @@ use crate::movement::{GroupSpeed, Me};
 use crate::objects::sprite::{sprite_id, standing};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::objects::unit::object_master;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
@@ -87,8 +88,9 @@ impl Unit {
         if !g.motion.moving() && g.slot_in_place(self.id) {
             return Ok(None);
         }
-        let master = masters
-            .and_then(|m| m.get(self.life.master_id))
+        let master = self
+            .master_in(masters)
+            .ok()
             .ok_or(crate::world::OBJECT_MASTER)?;
         if !self.free_for_group(master)? {
             return Ok(None);
@@ -110,11 +112,9 @@ impl Unit {
     ) -> Result<HeadCode, GenieError> {
         let step = self.own_move_step(c, me)?;
         if step.gave_up {
-            let villager =
-                c.w.masters
-                    .get(c.player)
-                    .and_then(|m| m.get(self.life.master_id))
-                    .is_some_and(|m| m.class == 4);
+            let villager = self
+                .master(&c.w.masters, c.player)
+                .is_ok_and(|m| m.class == 4);
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             self.own_move_gave_up(
                 villager && !c.computer,
@@ -161,10 +161,12 @@ impl Unit {
                 };
                 // its set_state 1 and 13 show slot 0x798's sprite; slot 0x68 takes the master's
                 // standing sprite for a null one
-                let master =
-                    c.w.masters
-                        .get(c.player)
-                        .and_then(|m| m.get(self.life.master_id));
+                let master = object_master(
+                    self.own_master.as_deref(),
+                    (self.id, self.life.master_id),
+                    c.w.masters.get(c.player),
+                )
+                .ok();
                 let graphic = |id: Option<i16>| id.and_then(|id| c.w.graphics.get(&id).copied());
                 let look = self.abilities.look.as_ref();
                 let standing = graphic(master.and_then(|m| standing(m, look, false)));
@@ -222,10 +224,12 @@ impl Unit {
                     });
                     // the motion step giving up: a human player's villager waits once, any
                     // other unit's MoveTo fails (LAB_140aa320c)
-                    let master = self
-                        .own_master
-                        .as_deref()
-                        .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id));
+                    let master = object_master(
+                        self.own_master.as_deref(),
+                        (self.id, self.life.master_id),
+                        c.w.masters.get(c.player),
+                    )
+                    .ok();
                     let villager = master.is_some_and(|m| m.class == 4);
                     let waits = villager && !c.computer;
                     let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);

@@ -32,7 +32,7 @@ impl World {
                 let Some((owner, unit)) = self.object(id) else {
                     continue;
                 };
-                let master = self.master_of(owner, unit.life.master_id)?;
+                let master = unit.master(&self.masters, owner)?;
                 if master.auto_gather {
                     found.push((id, master.gather_group, unit.position()));
                 }
@@ -67,7 +67,7 @@ impl World {
             return Ok(());
         };
         let (id, [x, y, _]) = (u.id, u.position());
-        let master = self.master_of(p, u.life.master_id)?;
+        let master = u.master(&self.masters, p)?;
         if !master.auto_gather {
             return Ok(());
         }

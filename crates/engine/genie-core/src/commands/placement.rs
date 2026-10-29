@@ -2,6 +2,7 @@
 //! builders, the placement test and the payment.
 
 use crate::GenieError;
+use crate::objects::masters::player_master;
 use crate::world::{FARM, RICE_FARM, World};
 
 impl World {
@@ -23,13 +24,9 @@ impl World {
     /// BUILD's pending debit (`FUN_141630d10` with 0, before its placement test): every cost
     /// entry of the master, paid or not, by resource, comes off the player's pending debit.
     pub(crate) fn debit_listed(&mut self, player: usize, master: i16) -> Result<(), GenieError> {
-        let site =
-            self.masters
-                .get(player)
-                .and_then(|m| m.get(master))
-                .ok_or(GenieError::unsupported(
-                    "BUILD of a master the player does not have",
-                ))?;
+        let site = player_master(&self.masters, player, master).ok_or(GenieError::unsupported(
+            "BUILD of a master the player does not have",
+        ))?;
         let mut listed = [0i16; 4];
         for &(resource, amount, _) in &site.cost {
             if let Some(r) = usize::try_from(resource).ok().filter(|&r| r < 4) {
@@ -54,7 +51,7 @@ impl World {
         if self.players[player].computer {
             return Ok(true);
         }
-        let trained_at = self.master_of(player, master)?.trained_at.clone();
+        let trained_at = self.master(player, master)?.trained_at.clone();
         for &id in builders {
             if self.builds((master, &trained_at), id)? {
                 return Ok(true);
@@ -104,7 +101,7 @@ impl World {
         human: bool,
         own: &[i32],
     ) -> Result<u8, GenieError> {
-        let site = self.master_of(player, master)?;
+        let site = self.master(player, master)?;
         if self.spatial.sight.is_none() {
             return Err(GenieError::unsupported(
                 "BUILD's placement test without the players' sight",
@@ -142,7 +139,7 @@ impl World {
     /// `FUN_141618db0`): every cost entry of a resource, paid or not, at most what the player
     /// holds. A cost in population (attribute 4) is not modelled.
     pub(crate) fn affords(&self, player: usize, master: i16) -> Result<bool, GenieError> {
-        let site = self.master_of(player, master)?;
+        let site = self.master(player, master)?;
         let owner = &self.players[player];
         for &(resource, amount, _) in &site.cost {
             let Ok(r) = usize::try_from(resource) else {

@@ -344,7 +344,7 @@ impl World {
         if sub == -1 {
             return Ok(false);
         }
-        let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
+        let unit = FormationUnit::of(u.master(&self.masters, p)?);
         let old = u.group.id;
         let g = self.groups.get(group).expect("the caller holds the group");
         if g.has(id) {

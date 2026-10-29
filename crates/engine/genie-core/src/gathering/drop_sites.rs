@@ -162,11 +162,7 @@ pub(crate) fn drop_site_search<'u>(
         if x == NO_POINT && y == NO_POINT {
             return Ok(Some(o.id));
         }
-        let master = masters
-            .get(o.life.master_id)
-            .ok_or(GenieError::unsupported(
-                "a drop site of a master the slice does not have",
-            ))?;
+        let master = o.master_in(Some(masters))?;
         if let (Some(s), Some(zone)) = (seeker.as_ref(), own_zone)
             && s.zones.zone(o.position()[0] as i32, o.position()[1] as i32) != zone
         {

@@ -71,7 +71,7 @@ impl World {
         let mut i = 0;
         while i < self.players[p].objects.len() {
             let unit = &self.players[p].objects[i];
-            let master = self.master_of(p, unit.life.master_id)?;
+            let master = unit.master(&self.masters, p)?;
             let class = master.class;
             let building = master.kind == crate::objects::masters::master_type::BUILDING;
             let cart_task = building
@@ -139,7 +139,7 @@ impl World {
             let (owner, o) = self.object(id).ok_or(GenieError::unsupported(
                 "an object on a tile the slice does not hold",
             ))?;
-            let m = self.master_of(owner, o.life.master_id)?;
+            let m = o.master(&self.masters, owner)?;
             if m.class == FARM && (class != FISHING_SHIP || m.id == FISH_TRAP) {
                 return Ok(Some(id));
             }
@@ -170,7 +170,7 @@ impl World {
         kind: u8,
     ) -> Result<(i32, Option<i32>), GenieError> {
         let unit = &self.players[p].objects[i];
-        let master = self.master_of(p, unit.life.master_id)?;
+        let master = unit.master(&self.masters, p)?;
         let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "a resource search without movement state",
         ))?;
@@ -207,10 +207,7 @@ impl World {
                 .ok_or(GenieError::unsupported(
                     "an object on a tile the slice does not hold",
                 ))?;
-            let m = masters
-                .get(owner)
-                .and_then(|m| m.get(u.life.master_id))
-                .ok_or(crate::world::OBJECT_MASTER)?;
+            let m = u.master(masters, owner)?;
             let position = spatial.get(id).map_or_else(|| u.position(), |o| o.position);
             Ok(Candidate {
                 id,

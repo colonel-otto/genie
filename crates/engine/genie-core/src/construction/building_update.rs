@@ -12,6 +12,7 @@ use crate::objects::lifecycle::Lifecycle;
 use crate::objects::lifecycle::death_parts::farm_bonus;
 use crate::objects::masters::Master;
 use crate::objects::sprite::Graphic;
+use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, annexes_of};
 use crate::world::context::Context;
 use crate::world::others::OthersRef;
@@ -43,11 +44,7 @@ impl Unit {
     /// of at most 0).
     pub(crate) fn gate_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player);
-        let Some(master) =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-        else {
+        let Ok(master) = self.master(&c.w.masters, c.player) else {
             return Ok(());
         };
         let transforms = master
@@ -138,11 +135,7 @@ impl Unit {
         else {
             return Ok(());
         };
-        let Some(m) =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-        else {
+        let Ok(m) = self.master(&c.w.masters, c.player) else {
             return Ok(());
         };
         let foundation = m.building.as_ref().map_or(-1, |b| b.foundation_terrain);
@@ -196,10 +189,7 @@ impl Unit {
         if !due {
             return Ok(());
         }
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id));
+        let master = self.master(&c.w.masters, c.player).ok();
         if !master.is_some_and(walls_branch) && self.annex_of.is_some() {
             return Ok(());
         }
@@ -210,10 +200,12 @@ impl Unit {
                 c.lend(self, |w| w.set_state(q, annex, 2))?;
             }
         }
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id));
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )
+        .ok();
         let others = OthersRef::of(&c.w.players, c.player);
         let annexed = others.own_iter().any(|u| u.annex_of == Some(self.id));
         let Some(construction) = self.construction.as_mut() else {
@@ -244,11 +236,11 @@ impl Unit {
             main_builders: None,
         };
         let built = Construction::complete(&mut site, &mut c.w.spatial, &mut c.w.pathing)?;
-        if let Some(m) =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-        {
+        if let Ok(m) = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        ) {
             crate::construction::build::show_built(
                 &mut self.sprite,
                 self.body.move_stats_mut(),
@@ -286,11 +278,11 @@ impl Unit {
         if self.life.state != 2 {
             return Ok(());
         }
-        let Some(master) =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-        else {
+        let Ok(master) = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        ) else {
             return Ok(());
         };
         let Some(bm) = master.building else {
@@ -330,11 +322,7 @@ impl Unit {
             let Some(u) = OthersRef::of(&c.w.players, c.player).own(id) else {
                 continue;
             };
-            let kind =
-                c.w.masters
-                    .get(c.player)
-                    .and_then(|m| m.get(u.life.master_id))
-                    .map(|m| m.kind);
+            let kind = u.master(&c.w.masters, c.player).ok().map(|m| m.kind);
             if kind == Some(70) && 0 < u.raider_countdown {
                 return Err(GenieError::unsupported(
                     "a unit inside whose raider_build_countdown runs (FUN_1411e7220)",
@@ -347,18 +335,17 @@ impl Unit {
             let Some(u) = c.w.players[c.player].objects.by_id_mut(id) else {
                 continue;
             };
-            let m =
-                c.w.masters
-                    .get(c.player)
-                    .and_then(|m| m.get(u.life.master_id))
-                    .ok_or(GenieError::unsupported(
-                        "a unit inside of a master the slice does not have",
-                    ))?;
+            let m = object_master(
+                u.own_master.as_deref(),
+                (u.id, u.life.master_id),
+                c.w.masters.get(c.player),
+            )?;
             if m.class == VILLAGER_CLASS {
                 villagers += 1;
             }
-            if 0.0 < rate && u.life.hp < f32::from(m.hit_points) {
-                u.heal(m, rate)?;
+            let (class, hit_points) = (m.class, m.hit_points);
+            if 0.0 < rate && u.life.hp < f32::from(hit_points) {
+                u.heal(class, hit_points, rate)?;
             }
         }
         if 0 < villagers
@@ -373,7 +360,8 @@ impl Unit {
     }
 
     /// The animated object's idle swap (the end of `RGE_Animated_Object::update`,
-    /// `0x141071880`): an object whose master has a second standing sprite (`+0x478`) and whose
+    /// `0x141071880`): an object whose master has a second standing sprite (`+0x478`, `second`;
+    /// the first, `+0x470`, is `standing`) and whose
     /// slot 0x5d8 answers 0 (an animated object's always; a moving one's while its master's move
     /// algorithm, `+0x768`, has bit 0 clear), showing either standing sprite, whose sprite's node
     /// looped in this update (the sprite list's slot 0x40, the node's slot 12), draws on the
@@ -383,11 +371,12 @@ impl Unit {
     /// frame, [`crate::objects::sprite::ActiveSprite::reset_frame`]).
     pub(crate) fn idle_swap(
         &mut self,
-        master: &Master,
+        standing: i16,
+        second: Option<i16>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite_rng: &mut Well512,
     ) {
-        let Some(second) = master.standing_sprite_2 else {
+        let Some(second) = second else {
             return;
         };
         if self
@@ -401,7 +390,7 @@ impl Unit {
             return;
         };
         let id = shown.graphic.id;
-        if (id != master.standing_sprite && id != second) || !shown.looped {
+        if (id != standing && id != second) || !shown.looped {
             return;
         }
         if sprite_rng.rand15() <= 0x3fff {
@@ -409,7 +398,7 @@ impl Unit {
         }
         self.idle_variant = i32::from(self.idle_variant == 0);
         let next = if self.idle_variant == 0 {
-            master.standing_sprite
+            standing
         } else {
             second
         };
@@ -438,11 +427,7 @@ impl Unit {
     ///
     /// What the blast does not model.
     pub(crate) fn death_blast(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        let Some(master) =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-        else {
+        let Ok(master) = self.master(&c.w.masters, c.player) else {
             return Ok(());
         };
         if !blasts_at_death(master, &self.life) {

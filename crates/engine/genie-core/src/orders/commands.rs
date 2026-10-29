@@ -50,7 +50,7 @@ impl World {
             if unit.ai.is_none() {
                 continue;
             }
-            let master = self.master_of(p, unit.life.master_id)?;
+            let master = unit.master(&self.masters, p)?;
             if matches!(state, 1 | 2)
                 && (matches!(master.class, 51 | 54) || matches!(master.id, 42 | 331))
             {
@@ -91,7 +91,7 @@ impl World {
         if p != player && !self.settings.cheats_enabled {
             return Ok(());
         }
-        if self.master_of(p, unit.life.master_id)?.kind != BUILDING {
+        if unit.master(&self.masters, p)?.kind != BUILDING {
             return Ok(());
         }
         let now = self.world_time;
@@ -147,7 +147,7 @@ impl World {
             if unit.ai.is_none() {
                 continue;
             }
-            let master = self.master_of(p, unit.life.master_id)?;
+            let master = unit.master(&self.masters, p)?;
             if master.object_flags & 0x10 == 0 {
                 if master.class == AUTO_SCOUT_CLASS {
                     return Err(GenieError::unsupported(
@@ -443,7 +443,7 @@ impl World {
             return Ok(());
         }
         let master = self.players[p].objects[idx].life.master_id;
-        let standing = self.master_of(p, master)?.standing_sprite;
+        let standing = self.master(p, master)?.standing_sprite;
         let g = self
             .graphics
             .get(&standing)

@@ -229,8 +229,6 @@ pub(crate) struct UnitView<'u, 'o> {
     pub(crate) zones: &'u mut crate::pathing::zones::Zones,
     /// Every player's masters.
     pub(crate) every: &'u [Masters],
-    /// The owner's masters.
-    pub(crate) masters: Option<&'u Masters>,
     /// The sprites.
     pub(crate) graphics: &'u std::collections::BTreeMap<i16, Graphic>,
     /// Where the side's takes (slot 0x178), releases (slot 0x180) and a counted builder's

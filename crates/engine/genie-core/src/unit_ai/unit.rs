@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Mover, footprint_gap_squared};
 use crate::objects::masters::Master;
+use crate::objects::unit::object_master;
 use crate::objects::unit::{Step, Unit};
 use crate::ownership::capture::Captured;
 use crate::unit_ai::Notify;
@@ -59,11 +60,12 @@ impl Unit {
         }
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
         // the unit's master: its own (a captured unit's copy), else its owner's
-        let master = self.own_master.as_deref().or_else(|| {
-            c.w.masters
-                .get(c.player)
-                .and_then(|ms| ms.get(self.life.master_id))
-        });
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )
+        .ok();
         let class = master.map(|ms| ms.class);
         // a captured unit's unit AI runs as its new owner's (RGE_Combat_Object::update reads the
         // owner then): on that player's turn, with its time as it stands
@@ -344,7 +346,6 @@ impl Unit {
                 new_owner: view.new_owner,
                 zones,
                 every,
-                masters: every.get(view.player),
                 graphics,
                 lets: Lets {
                     player: p,
@@ -400,11 +401,7 @@ impl Unit {
             ));
         };
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
-        let master = self.own_master.as_deref().or_else(|| {
-            c.w.masters
-                .get(c.player)
-                .and_then(|ms| ms.get(self.life.master_id))
-        });
+        let master = self.master(&c.w.masters, c.player).ok();
         let class = master.map(|ms| ms.class);
         let (player, computer) = (c.player, c.computer);
         let view = OwnerView::of(c, None);
@@ -470,13 +467,7 @@ impl Unit {
             let (Some((owner, u)), Some(p)) = (found, c.w.spatial.get(id)) else {
                 continue;
             };
-            let m =
-                c.w.masters
-                    .get(owner)
-                    .and_then(|ms| ms.get(u.life.master_id))
-                    .ok_or(GenieError::unsupported(
-                        "a named object of a master the slice does not have",
-                    ))?;
+            let m = u.master(&c.w.masters, owner)?;
             let me = master.ok_or(crate::world::UNIT_AI_MASTER)?;
             seen.push(crate::unit_ai::UnitSeen {
                 id,

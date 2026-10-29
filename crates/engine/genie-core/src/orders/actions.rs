@@ -48,9 +48,7 @@ impl World {
         let u = &self.players[player].objects[idx];
         Releaser {
             id: u.id,
-            class: self
-                .master_of(player, u.life.master_id)
-                .map_or(-1, |m| m.class),
+            class: u.master(&self.masters, player).map_or(-1, |m| m.class),
             player,
         }
     }
@@ -79,7 +77,7 @@ impl World {
         };
         let class = match t.own_master.as_deref() {
             Some(m) => m.class,
-            None => self.master_of(q, t.life.master_id)?.class,
+            None => t.master(&self.masters, q)?.class,
         };
         let record = crate::unit_ai::OrderRecord {
             order,
@@ -134,7 +132,7 @@ impl World {
         let Some(Place::Live(p, idx)) = self.place(id) else {
             return Ok(());
         };
-        if p != player || self.master_of(player, master).is_err() {
+        if p != player || self.master(player, master).is_err() {
             return Ok(());
         }
         let unit = &self.players[p].objects[idx];
@@ -155,7 +153,7 @@ impl World {
         new: i16,
     ) -> Result<(), GenieError> {
         self.change_master(player, idx, new)?;
-        let build_time = self.master_of(player, new)?.build_time;
+        let build_time = self.master(player, new)?.build_time;
         let unit = &mut self.players[player].objects[idx];
         if unit.life.state == 2
             && let Some(c) = unit.construction.as_mut()
@@ -178,8 +176,8 @@ impl World {
                 "a gate's toggle to a master of its own or its original owner's",
             ));
         }
-        let new = self
-            .master_of(player, unit.life.master_id)?
+        let new = unit
+            .master(&self.masters, player)?
             .building
             .as_ref()
             .map_or(-1, |b| b.transform_unit);
@@ -187,7 +185,7 @@ impl World {
             return Ok(());
         }
         self.transform_building(player, idx, new)?;
-        let height = self.master_of(player, new)?.height;
+        let height = self.master(player, new)?.height;
         let now = self.world_time;
         if 0.0 < height {
             let id = self.players[player].objects[idx].id;
@@ -222,7 +220,7 @@ impl World {
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };
-        let master = self.master_of(p, u.life.master_id)?;
+        let master = u.master(&self.masters, p)?;
         let spared = TRIBE_COMBAT <= master.kind
             && (master.class == SPARED || (master.class == LIVESTOCK && 0.0 < u.life.amount));
         if spared {
@@ -261,8 +259,8 @@ impl World {
     ) -> Result<(), GenieError> {
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];
-        let old = self.master_of(player, unit.life.master_id)?.clone();
-        let next = self.master_of(player, new)?.clone();
+        let old = unit.master(&self.masters, player)?.clone();
+        let next = self.master(player, new)?.clone();
         let world = SwitchWorld {
             spatial: &mut self.spatial,
             pathing: &mut self.pathing,

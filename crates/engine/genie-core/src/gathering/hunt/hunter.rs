@@ -8,6 +8,7 @@ use crate::combat::victims::readable;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::teardown::HeadCode;
+use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, hunt_walk_sprite, second_target_checked};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
@@ -147,11 +148,11 @@ impl Unit {
         me: Me,
     ) -> Result<HeadCode, GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )?;
         let me_at =
             c.w.spatial
                 .get_known(self.id)?
@@ -256,11 +257,11 @@ impl Unit {
         me: Me,
     ) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::HUNTER_MASTER)?;
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )?;
         let who = crate::gathering::hunt::PointWalker {
             computer: c.computer,
             villager: master.class == 4,

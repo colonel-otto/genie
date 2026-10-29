@@ -6,6 +6,7 @@ use crate::commands::FOUNDATION_GONE;
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
+use crate::objects::masters::player_master;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::{TaskWorld, point_terrain, task_search, task_target_with};
@@ -44,7 +45,7 @@ impl World {
             let Some((q, unit)) = self.object(id) else {
                 continue;
             };
-            let m = self.master_of(q, unit.life.master_id)?;
+            let m = unit.master(&self.masters, q)?;
             let speed = m.moving.map_or(0.0, |s| s.speed);
             let kind = m.kind;
             let moves = 0x1d < kind && crate::math::fmath::below_or_unordered(0.0, speed);
@@ -118,13 +119,9 @@ impl World {
         let masters = self.masters.get(q).ok_or(GenieError::unsupported(
             "BUILD tasks the builders: no master table",
         ))?;
-        let site =
-            self.masters
-                .get(fp)
-                .and_then(|m| m.get(master))
-                .ok_or(GenieError::unsupported(
-                    "BUILD of a master the player does not have",
-                ))?;
+        let site = player_master(&self.masters, fp, master).ok_or(GenieError::unsupported(
+            "BUILD of a master the player does not have",
+        ))?;
         let target = TaskTarget {
             id: foundation,
             master: site,
@@ -156,11 +153,7 @@ impl World {
         }
         let actor = Actor {
             id,
-            master: masters
-                .get(unit.life.master_id)
-                .ok_or(GenieError::unsupported(
-                    "a unit of a master the player does not have",
-                ))?,
+            master: unit.master_in(Some(masters))?,
             player: q,
             held: (unit.life.attribute_type, unit.life.amount),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
@@ -246,7 +239,7 @@ impl World {
         (fp, foundation, master): (usize, i32, i16),
         position: [f32; 3],
     ) -> Result<(), GenieError> {
-        let site_class = i32::from(self.master_of(fp, master)?.class);
+        let site_class = i32::from(self.master(fp, master)?.class);
         if let Some(m) = self.players[player].objects[idx].body.mover_mut() {
             m.ignore_units.clear();
         }
@@ -335,7 +328,7 @@ impl World {
         }
         let gone = FOUNDATION_GONE;
         let (fp, f) = self.object(foundation).ok_or_else(|| gone.clone())?;
-        let (site, f_at) = (self.master_of(fp, f.life.master_id)?, f.position());
+        let (site, f_at) = (f.master(&self.masters, fp)?, f.position());
         let find = |id: i32| self.object(id);
         let t =
             task_target_with(foundation, 1, &find, &self.masters)?.ok_or_else(|| gone.clone())?;
@@ -353,11 +346,7 @@ impl World {
         let unit = &owner.objects[idx];
         let actor = Actor {
             id: unit.id,
-            master: masters
-                .get(unit.life.master_id)
-                .ok_or(GenieError::unsupported(
-                    "a unit of a master the player does not have",
-                ))?,
+            master: unit.master_in(Some(masters))?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),

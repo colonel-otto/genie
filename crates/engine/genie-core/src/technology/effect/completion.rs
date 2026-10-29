@@ -2,7 +2,7 @@
 //! it, a built building's technologies, the cost modifier and the disable and enable commands.
 
 use crate::GenieError;
-use crate::objects::masters::master_type;
+use crate::objects::masters::{master_type, player_master};
 use crate::technology::EffectCommand;
 use crate::technology::effect::{
     ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, RESEARCH_SPENT,
@@ -303,7 +303,7 @@ impl World {
         let held = usize::try_from(tech).ok().filter(|&t| t < count);
         if held.is_some_and(|t| self.techs[t].kind == crate::technology::SHARED_KIND) {
             let building = object.and_then(|id| self.object(id)).is_some_and(|(q, u)| {
-                self.master_of(q, u.life.master_id)
+                u.master(&self.masters, q)
                     .is_ok_and(|m| m.kind == master_type::BUILDING)
             });
             if building {
@@ -353,7 +353,7 @@ impl World {
         one: bool,
         object: Option<i32>,
     ) -> Result<(), GenieError> {
-        if self.masters.get(p).and_then(|m| m.get(master)).is_none() {
+        if player_master(&self.masters, p, master).is_none() {
             return Ok(());
         }
         if enable == 1 && master == MODE_TESTED_MASTER {
@@ -368,7 +368,7 @@ impl World {
         }
         if let (true, Some(id)) = (one, object) {
             let building = self.object(id).is_some_and(|(q, u)| {
-                self.master_of(q, u.life.master_id)
+                u.master(&self.masters, q)
                     .is_ok_and(|m| m.kind == master_type::BUILDING)
             });
             if building {

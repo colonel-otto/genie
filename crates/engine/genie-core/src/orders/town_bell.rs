@@ -241,7 +241,7 @@ impl World {
                 continue;
             }
             let id = o.id;
-            let m = self.master_of(owner, o.life.master_id)?;
+            let m = o.master(&self.masters, owner)?;
             let (kind, class, master) = (m.kind, m.class, m.id);
             let takes_villagers = m.building.is_some_and(|b| b.garrison_type & 1 != 0);
             let near = |t: &Self| -> Result<bool, GenieError> {
@@ -285,7 +285,7 @@ impl World {
             let idx = k;
             k += 1;
             let b = &self.players[owner].objects[idx];
-            let m = self.master_of(owner, b.life.master_id)?;
+            let m = b.master(&self.masters, owner)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
             if m.kind != BUILDING || 3 <= b.life.state || !takes_villagers || !b.town_bell.flag {
                 continue;
@@ -332,7 +332,7 @@ impl World {
             let idx = k;
             k += 1;
             let b = &self.players[owner].objects[idx];
-            let m = self.master_of(owner, b.life.master_id)?;
+            let m = b.master(&self.masters, owner)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
             if b.life.state != 2
                 || b.life.inside.is_some()
@@ -366,7 +366,7 @@ impl World {
             let Some((up, u)) = self.object(inside) else {
                 continue;
             };
-            let um = self.master_of(up, u.life.master_id)?;
+            let um = u.master(&self.masters, up)?;
             if UNIT <= um.kind && (um.class == VILLAGER_CLASS || um.id == MASTER_1808) {
                 let _ = self.back_to_work(Some((owner, idx)), inside)?;
             }
@@ -459,7 +459,7 @@ impl World {
         filter: i16,
     ) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];
-        let master = self.master_of(player, unit.life.master_id)?;
+        let master = unit.master(&self.masters, player)?;
         if !(master.class == VILLAGER || master.id == MASTER_1808) {
             return Ok(());
         }
@@ -467,7 +467,7 @@ impl World {
             return Ok(());
         };
         let takes = if filter == GARRISON {
-            let tm = self.master_of(tp, t.life.master_id)?;
+            let tm = t.master(&self.masters, tp)?;
             let world = TaskWorld {
                 players: &self.players,
                 drop_sites: &self.drop_sites,

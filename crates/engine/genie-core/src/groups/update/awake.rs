@@ -341,7 +341,7 @@ impl World {
                 let Some(object) = self.world_object(slot.unit_id) else {
                     continue;
                 };
-                let master = self.master_of(object.player(), object.master_id())?;
+                let master = self.master(object.player(), object.master_id())?;
                 let reach = crate::groups::stats::weapon_range(master);
                 if range > reach {
                     range = reach;

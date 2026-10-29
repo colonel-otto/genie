@@ -33,10 +33,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let world_time = self.world_time;
         let sprite = self.point_move_sprite(p, new)?;
-        let villager = self
-            .master_of(p, self.players[p].objects[new].life.master_id)?
-            .class
-            == VILLAGER;
+        let villager = self.players[p].objects[new].master(&self.masters, p)?.class == VILLAGER;
         let unit = &mut self.players[p].objects[new];
         if let Some(m) = unit.body.mover_mut() {
             m.waiting = 1;
@@ -110,8 +107,8 @@ impl World {
             .first()
             .and_then(|m| m.get(g.target_master))
             .map_or(-1, |m| m.class);
-        let los = self
-            .master_of(p, self.players[p].objects[new].life.master_id)?
+        let los = self.players[p].objects[new]
+            .master(&self.masters, p)?
             .line_of_sight;
         let [x, y, _] = g.point;
         let gaia = self
@@ -121,7 +118,7 @@ impl World {
         let closest = |list: &[Unit]| -> Result<Option<i32>, GenieError> {
             let mut best: Option<(&Unit, f32)> = None;
             for u in list {
-                if self.master_of(0, u.life.master_id)?.class != class {
+                if u.master(&self.masters, 0)?.class != class {
                     continue;
                 }
                 let (dx, dy) = (x - u.position()[0], y - u.position()[1]);
@@ -133,7 +130,7 @@ impl World {
             let Some((u, _)) = best else {
                 return Ok(None);
             };
-            let [rx, ry] = self.master_of(0, u.life.master_id)?.radius;
+            let [rx, ry] = u.master(&self.masters, 0)?.radius;
             let gap = |d: f32, r: f32| {
                 let g = d.abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
@@ -179,7 +176,7 @@ impl World {
         if g.target == building
             && let Some((bp, b)) = self.object(building)
         {
-            let room = i32::from(self.master_of(bp, b.life.master_id)?.garrison);
+            let room = i32::from(b.master(&self.masters, bp)?.garrison);
             let held = self.garrisoned(building)?;
             if held < 10 || held < room {
                 return self.enter_forced(p, new, building);
@@ -198,7 +195,7 @@ impl World {
         let (owner, t) = self.object(target).ok_or(GenieError::unreachable(
             "unreachable: a gather point's target found",
         ))?;
-        let on_building = self.master_of(owner, t.life.master_id)?.kind == BUILDING;
+        let on_building = t.master(&self.masters, owner)?.kind == BUILDING;
         if let Some(m) = self.players[p].objects[new].body.mover_mut() {
             m.waiting = 1;
         }

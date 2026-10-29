@@ -10,6 +10,7 @@ use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::objects::unit::object_master;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::context::Context;
 
@@ -38,11 +39,7 @@ impl Unit {
     /// ([`crate::combat::attack::Attack::lost`]): its update without a target, the notify its
     /// disarm posts to the unit AI; codes 1 and 3 delete it.
     fn attack_lost_part(&mut self, c: &mut Context<'_>) -> Result<HeadCode, GenieError> {
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::ATTACKER_MASTER)?;
+        let master = self.master(&c.w.masters, c.player)?;
         let armed = armed(master, self.firepower);
         let attack = self.actions.attack_mut().expect("the caller's test");
         let (code, disarmed) = attack.update_targetless(c.dt_seconds, armed, &mut self.body)?;
@@ -69,11 +66,11 @@ impl Unit {
         own: Option<Victim>,
     ) -> Result<HeadCode, GenieError> {
         let attack = self.actions.attack_mut().expect("the caller's test");
-        let master =
-            c.w.masters
-                .get(c.player)
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::world::ATTACKER_MASTER)?;
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )?;
         let armed = armed(master, self.firepower);
         let computer = c.computers.get(c.player).copied().unwrap_or(false);
         let mut victim = victim(c, attack.target).ok_or(GenieError::unsupported(
@@ -188,7 +185,7 @@ impl Unit {
         (self.actions.hunt().is_some() || self.actions.attack().is_some())
             .then_some(())
             .and_then(|()| {
-                let master = c.w.masters.get(c.player)?.get(self.life.master_id)?;
+                let master = self.master(&c.w.masters, c.player).ok()?;
                 let terrain = c.w.spatial.terrain.as_ref();
                 Some(victim_of(
                     self,

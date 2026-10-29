@@ -172,7 +172,7 @@ impl World {
             return Ok(false);
         };
         let bits = self.tile_bits(x, y);
-        let kind = self.master_of(p, u.life.master_id)?.kind;
+        let kind = u.master(&self.masters, p)?.kind;
         let umv = self
             .spatial
             .sight
@@ -214,7 +214,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return false;
         };
-        let Some(m) = self.masters.get(p).and_then(|m| m.get(u.life.master_id)) else {
+        let Ok(m) = u.master(&self.masters, p) else {
             return false;
         };
         let annex = linked && u.annex_of.is_some();
@@ -274,7 +274,7 @@ impl World {
                 } else {
                     &self.players[q].objects[k]
                 };
-                let Some(m) = self.masters.get(p).and_then(|m| m.get(u.life.master_id)) else {
+                let Ok(m) = u.master(&self.masters, p) else {
                     continue;
                 };
                 let (state, kind, ghosts, position) =
@@ -299,10 +299,8 @@ impl World {
                 .iter()
                 .filter(|u| u.annex_of.is_some())
                 .filter(|u| {
-                    self.masters
-                        .get(p)
-                        .and_then(|m| m.get(u.life.master_id))
-                        .is_some_and(|m| m.class != GATE_CLASS)
+                    u.master(&self.masters, p)
+                        .is_ok_and(|m| m.class != GATE_CLASS)
                 })
                 .map(|u| u.id)
                 .collect();
@@ -331,11 +329,8 @@ impl World {
         };
         let position = u.position();
         if id < 0
-            || self
-                .masters
-                .get(p)
-                .and_then(|m| m.get(original.master))
-                .is_none_or(|m| m.ghost_on_death != LEAVES_GHOSTS)
+            || u.master(&self.masters, p)
+                .map_or(true, |m| m.ghost_on_death != LEAVES_GHOSTS)
         {
             return Ok(());
         }
@@ -375,8 +370,8 @@ impl World {
         at: [f32; 3],
         original: Original,
     ) -> Result<(), GenieError> {
-        let recyclable = self.master_of(viewer, GHOST_MASTER)?.recyclable;
-        let kind = self.master_of(original.owner, original.master)?.kind;
+        let recyclable = self.master(viewer, GHOST_MASTER)?.recyclable;
+        let kind = self.master(original.owner, original.master)?.kind;
         let umv = self
             .spatial
             .sight
@@ -480,7 +475,7 @@ impl World {
                     ));
                 }
                 self.spatial.remove_ghost(g.id, g.position);
-                if self.master_of(p, GHOST_MASTER)?.recyclable {
+                if self.master(p, GHOST_MASTER)?.recyclable {
                     self.recycling.ghosts.push(g.id);
                 }
                 continue;

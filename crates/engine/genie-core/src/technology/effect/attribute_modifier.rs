@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::objects::masters::{AttributeWorld, Master, master_type};
+use crate::objects::masters::{AttributeWorld, Master, master_type, player_master};
 use crate::technology::effect::{CAPPED, Change, has_actions, shows_sprite, within_table};
 use crate::world::World;
 
@@ -53,7 +53,7 @@ impl World {
             let Some((_, u)) = self.object(id) else {
                 continue;
             };
-            let master = self.master_of(p, u.life.master_id)?;
+            let master = u.master(&self.masters, p)?;
             let (kind, master_id, master_class) = (master.kind, master.id, master.class);
             if matches!(kind, master_type::COMBAT | master_type::BUILDING) {
                 self.garrison_volleys(p, id, after)?;
@@ -80,7 +80,7 @@ impl World {
             return Ok(());
         };
         let masters = &self.masters[p];
-        let master = self.master_of(p, u.life.master_id)?;
+        let master = u.master(&self.masters, p)?;
         if u.garrison.is_empty() || at_most_or_unordered(master.reload, 0.0) {
             return Ok(());
         }
@@ -93,7 +93,7 @@ impl World {
             let Some((q, unit)) = self.object(inside) else {
                 continue;
             };
-            let m = self.master_of(q, unit.life.master_id)?;
+            let m = unit.master(&self.masters, q)?;
             if m.kind == master_type::COMBAT {
                 shares.push(crate::garrison::share(
                     m,
@@ -133,7 +133,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        let master = self.master_of(p, u.life.master_id)?.clone();
+        let master = u.master(&self.masters, p)?.clone();
         let g = |id: i16| self.graphics.get(&id).copied();
         if master.kind < master_type::ACTION || !has_actions(u) {
             let sprite = match (attribute, u.idle_variant) {
@@ -220,9 +220,7 @@ impl World {
                 continue;
             }
             let annexes = match self.object(id) {
-                Some((_, u))
-                    if self.master_of(p, u.life.master_id)?.kind == master_type::BUILDING =>
-                {
+                Some((_, u)) if u.master(&self.masters, p)?.kind == master_type::BUILDING => {
                     crate::objects::unit::annexes_of(id, &self.players[p].objects)
                 }
                 _ => continue,
@@ -231,7 +229,7 @@ impl World {
                 let Some((_, a)) = self.object(annex) else {
                     continue;
                 };
-                let am = self.master_of(p, a.life.master_id)?;
+                let am = a.master(&self.masters, p)?;
                 let own_annexes = am.kind == master_type::BUILDING
                     && !crate::objects::unit::annexes_of(annex, &self.players[p].objects)
                         .is_empty();
@@ -286,7 +284,7 @@ impl World {
         attribute: u8,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
-        let master = self.master_of(p, unit)?.clone();
+        let master = self.master(p, unit)?.clone();
         let (done, pending) = self.tracked_master(p, &master);
         let mut kept = Vec::new();
         for id in done {
@@ -318,7 +316,7 @@ impl World {
             }
         }
         self.change_one_master(p, unit, change, v, attribute);
-        let master = self.master_of(p, unit)?.clone();
+        let master = self.master(p, unit)?.clone();
         for id in kept {
             match attribute {
                 a::SIZE_Z => {
@@ -423,7 +421,7 @@ impl World {
     /// their sight's line of sight and their tile's height test.
     pub(super) fn master_followers(&mut self, p: usize, id: i16, attribute: u8) {
         use crate::objects::masters::attribute as a;
-        let Some(master) = self.masters.get(p).and_then(|m| m.get(id)).cloned() else {
+        let Some(master) = player_master(&self.masters, p, id).cloned() else {
             return;
         };
         let terrain = self.spatial.terrain.as_ref();

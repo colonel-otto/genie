@@ -44,7 +44,7 @@ impl World {
         // issuer only queuing it
         let issuer = player;
         let player = p;
-        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
+        let master = self.players[player].objects[idx].master(&self.masters, player)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         let still = master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0);
         if still {
@@ -200,8 +200,8 @@ impl World {
             };
             self.order_work(player, idx, &work)?;
         }
-        let class = self
-            .master_of(player, self.players[player].objects[idx].life.master_id)?
+        let class = self.players[player].objects[idx]
+            .master(&self.masters, player)?
             .class;
         let ai = self.players[player].objects[idx]
             .ai

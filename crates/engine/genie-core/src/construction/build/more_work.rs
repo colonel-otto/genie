@@ -33,11 +33,7 @@ impl Unit {
         let masters = c.w.masters.get(c.player).ok_or(GenieError::unsupported(
             "a builder without its player's masters",
         ))?;
-        let master = masters
-            .get(self.life.master_id)
-            .ok_or(GenieError::unsupported(
-                "a builder of a master the slice does not have",
-            ))?;
+        let master = self.master_in(Some(masters))?;
         let site = masters.get(built).ok_or(GenieError::unsupported(
             "a building of a master the slice does not have",
         ))?;
@@ -62,10 +58,7 @@ impl Unit {
         let restriction = mover.stats.restriction;
         let (player, me_id, every) = (c.player, self.id, &c.w.masters);
         let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
-            let m = every
-                .get(owner)
-                .and_then(|m| m.get(u.life.master_id))
-                .ok_or(crate::world::OBJECT_MASTER)?;
+            let m = u.master(every, owner)?;
             Ok(Candidate {
                 id,
                 player: owner,

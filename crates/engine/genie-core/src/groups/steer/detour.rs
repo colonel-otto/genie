@@ -116,7 +116,7 @@ impl World {
     /// A member of a master the slice does not have.
     fn rounder<'d>(&self, id: i32, differentiators: &'d [i32]) -> Result<Rounder<'d>, GenieError> {
         let (p, u) = self.object(id).expect("the member is held");
-        let master = self.master_of(p, u.life.master_id)?;
+        let master = u.master(&self.masters, p)?;
         let mover = u.body.mover().expect(MOVES);
         let grow = master.radius[0] * ROUND_RADIUS;
         Ok(Rounder {

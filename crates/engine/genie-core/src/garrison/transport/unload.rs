@@ -15,7 +15,7 @@ impl crate::world::World {
     /// master's radii, whether an object is inside it, the map's size and whether it has speed.
     pub(super) fn ship(&self, p: usize, i: usize) -> Result<Ship, GenieError> {
         let unit = &self.players[p].objects[i];
-        let master = self.master_of(p, unit.life.master_id)?;
+        let master = unit.master(&self.masters, p)?;
         Ok(Ship {
             position: unit.position(),
             radius: master.radius,
@@ -48,8 +48,8 @@ impl crate::world::World {
             self.clear_actions(p, i)?;
         }
         let ship = self.ship(p, i)?;
-        let restriction = self
-            .master_of(p, self.players[p].objects[i].life.master_id)?
+        let restriction = self.players[p].objects[i]
+            .master(&self.masters, p)?
             .terrain_restriction;
         let mut shore = MapShore::new(
             &self.spatial,
@@ -139,7 +139,7 @@ impl crate::world::World {
             .transport()
             .copied()
             .ok_or(GenieError::unreachable("an unload without its Transport"))?;
-        let restriction = self.master_of(p, unit.life.master_id)?.terrain_restriction;
+        let restriction = unit.master(&self.masters, p)?.terrain_restriction;
         let [x, y, _] = t.point;
         let zone = if x == NONE {
             u32::MAX
@@ -215,7 +215,7 @@ impl crate::world::World {
     pub(super) fn unload_all(&mut self, p: usize, i: usize, zone: u32) -> Result<u8, GenieError> {
         const SPOTS: usize = 0x1d;
         let ship = &self.players[p].objects[i];
-        let radius = self.master_of(p, ship.life.master_id)?.radius;
+        let radius = ship.master(&self.masters, p)?.radius;
         let mut spots = [Around {
             center: [0.0; 2],
             radius: [0.0; 2],
@@ -238,7 +238,7 @@ impl crate::world::World {
             let Some((up, u)) = self.object(id) else {
                 continue;
             };
-            let made = self.master_of(up, u.life.master_id)?.clone();
+            let made = u.master(&self.masters, up)?.clone();
             while 0 < k {
                 if let Some(spot) =
                     self.drop_location((p, i), id, &made, spots[k], zone, &mut last)?
@@ -280,7 +280,7 @@ impl crate::world::World {
         last: &mut Option<[f32; 2]>,
     ) -> Result<Option<[f32; 2]>, GenieError> {
         let ship = &self.players[p].objects[i];
-        let restriction = self.master_of(p, ship.life.master_id)?.terrain_restriction;
+        let restriction = ship.master(&self.masters, p)?.terrain_restriction;
         let terrain = self
             .spatial
             .terrain
@@ -383,7 +383,7 @@ impl crate::world::World {
     ) -> Result<(), GenieError> {
         let ship = &self.players[p].objects[i];
         let at = ship.position();
-        if self.master_of(p, ship.life.master_id)?.class == crate::garrison::SIEGE_CLASS {
+        if ship.master(&self.masters, p)?.class == crate::garrison::SIEGE_CLASS {
             return Err(crate::garrison::SIEGE_UNLOAD);
         }
         let (up, ui) = self.live_inside(id)?;

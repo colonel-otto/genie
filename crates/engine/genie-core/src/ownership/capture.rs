@@ -138,12 +138,8 @@ impl Unit {
         c: &mut Context<'_>,
         new: usize,
     ) -> Result<(), GenieError> {
-        let master = self.own_master.as_deref().or_else(|| {
-            c.w.masters
-                .get(c.player)
-                .and_then(|ms| ms.get(self.life.master_id))
-        });
-        if master.is_some_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
+        let master = self.master(&c.w.masters, c.player);
+        if master.is_ok_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
             return Err(HANDS_LEFT);
         }
         let _ = self.change_owner(c, new)?;
@@ -163,12 +159,8 @@ impl Unit {
         c: &mut Context<'_>,
         new: usize,
     ) -> Result<bool, GenieError> {
-        let master = self.own_master.as_deref().or_else(|| {
-            c.w.masters
-                .get(c.player)
-                .and_then(|ms| ms.get(self.life.master_id))
-        });
-        if master.is_some_and(|m| m.kind == crate::objects::masters::master_type::BUILDING) {
+        let master = self.master(&c.w.masters, c.player);
+        if master.is_ok_and(|m| m.kind == crate::objects::masters::master_type::BUILDING) {
             c.building_handover = true;
             return Ok(c
                 .w

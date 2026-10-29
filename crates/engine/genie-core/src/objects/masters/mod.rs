@@ -17,6 +17,7 @@ mod static_setters;
 mod tribe_setters;
 mod values;
 
+pub use self::lookup::player_master;
 pub use self::values::AttributeWorld;
 use self::values::{
     MISSILE_SPEED_CAP, PERCENT, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short, add_sprite,
