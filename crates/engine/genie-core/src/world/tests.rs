@@ -10134,7 +10134,6 @@ fn own_attack(target: i32, target2: i32, state: u8) -> crate::combat::attack::At
         },
         sub_action: false,
         repaths: false,
-        runs: true,
         same_owner: false,
     }
 }

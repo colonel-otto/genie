@@ -1,9 +1,7 @@
 //! Each saved top action the slice imports, and the saved actions it refuses.
 
 use crate::OTHER_SUB_ACTION;
-use crate::fixtures::{
-    action_list, combat_master, combat_mut, combat_object, master_moving_mut, with_masters,
-};
+use crate::fixtures::{action_list, combat_master, combat_mut, combat_object, with_masters};
 use crate::top_actions::saved_actions;
 use genie_core::GenieError;
 use genie_core::construction::build::{BUILD, BuildTask};
@@ -958,35 +956,6 @@ fn attack(state: u8, walk: u16, pending: bool) -> Action {
             ..RgeActionAttack::default()
         }));
     })
-}
-
-/// An Attack runs (`+0x68`) where it walks with its master's running sprite; a unit whose
-/// master is not saved has no running sprite (-1) and never runs.
-#[test]
-fn an_attack_runs_with_the_masters_running_sprite() {
-    use genie_core::combat::attack::ATTACK;
-    let mut master = combat_master(83);
-    master_moving_mut(&mut master).run_sprite_id = 5;
-    let objects = with_masters(vec![master]);
-    let sprites = swing_sprites();
-    let runs = |walk: u16, objects: &PlayerObjects| {
-        import_drawn(
-            &acting(ATTACK, attack(4, walk, false)),
-            objects,
-            Unit::default(),
-            Some(&sprites),
-        )
-        .unwrap()
-        .actions
-        .attack()
-        .copied()
-        .unwrap()
-        .runs
-    };
-    assert!(runs(5, &objects));
-    assert!(!runs(4, &objects));
-    assert!(!runs(1, &PlayerObjects::default()));
-    assert!(!runs(0, &PlayerObjects::default()));
 }
 
 /// A Hunt's Attack in its swing past the hit (state 7, no hit to come) rests the unit's

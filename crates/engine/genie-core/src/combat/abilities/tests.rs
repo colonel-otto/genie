@@ -589,7 +589,6 @@ fn keshik(t: &mut World) {
         },
         sub_action: false,
         repaths: false,
-        runs: true,
         same_owner: false,
     };
     t.players[1].objects[0].actions.set_attack(Some(attack));

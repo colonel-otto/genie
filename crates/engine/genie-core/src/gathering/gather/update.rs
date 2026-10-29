@@ -9,11 +9,10 @@ use crate::gathering::gather::{
     WALK, WALK_BACK, WORK, waits_for_a_farm,
 };
 use crate::gathering::hunt::walk_sprite;
-use crate::movement::Mover;
 use crate::movement::move_to::{
-    Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+    Goal, MoveTo, Shown, Walk, start_walk_shown, target_moved, walk_or_give_up,
 };
-use crate::objects::sprite::new_sprite;
+use crate::movement::{Mover, PathAsk};
 
 impl GatherAction {
     /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::gathering::hunt::asked_drop_off`] on the
@@ -304,14 +303,16 @@ impl GatherAction {
                 walk.me.action_state = self.state;
                 let range = self.walk_range;
                 let goal = self.walk_to.map_or(Goal::Target(self.target), Goal::Point);
-                let walked = start_walk_or_give_up(walk.reborrow(), goal, range, true)?;
+                // the MoveTo's set_state(4) shows the walking sprite before the motion step
+                let shown = Shown {
+                    graphic: self.walk_sprite(g),
+                    sprite: &mut *g.sprite,
+                    rng: &mut *g.sprite_rng,
+                };
+                let to = (goal, range, true);
+                let walked =
+                    start_walk_shown(walk.reborrow(), to, PathAsk::default(), Some(shown))?;
                 self.post_in_the_way(&mut walk, g);
-                // the MoveTo's set_state(4) shows the walking sprite
-                if walked.is_none_or(|w| w == MoveTo::Moving)
-                    && let Some(s) = self.walk_sprite(g)
-                {
-                    new_sprite(g.sprite, walk.body.move_stats_mut(), s, g.sprite_rng);
-                }
                 match walked {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up(g),

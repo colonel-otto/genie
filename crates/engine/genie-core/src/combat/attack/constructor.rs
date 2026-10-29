@@ -38,7 +38,6 @@ impl Attack {
             arms,
             sub_action: false,
             repaths: false,
-            runs: true,
             same_owner: e.same_owner,
         }
     }
@@ -66,7 +65,6 @@ impl Attack {
         let mut a = Self {
             sub_action: true,
             repaths: true,
-            runs: false,
             ..Self::own(target, e, arms)
         };
         if e.target_class == GATE {

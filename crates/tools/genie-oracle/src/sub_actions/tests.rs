@@ -208,27 +208,20 @@ fn moving(state: u8) -> Result<MoveTo, genie_core::GenieError> {
 #[test]
 fn a_saved_attack_reads_its_target_range_and_move_to() {
     let graphics = std::collections::BTreeMap::new();
-    let a = saved_attack(
-        &attack(5, vec![(1, move_to())]),
-        Some(&graphics),
-        &moving,
-        -1,
-    )
-    .unwrap();
+    let a = saved_attack(&attack(5, vec![(1, move_to())]), Some(&graphics), &moving).unwrap();
     assert_eq!((a.target, a.state), (700, 5));
     assert_eq!(a.range.to_bits(), 5.0_f32.to_bits());
-    let plain = saved_attack(&attack(2, vec![]), Some(&graphics), &moving, -1).unwrap();
+    let plain = saved_attack(&attack(2, vec![]), Some(&graphics), &moving).unwrap();
     assert_eq!(plain.state, 2);
     assert!(
         saved_attack(
             &attack(2, vec![(9, attack(1, vec![]))]),
             Some(&graphics),
-            &moving,
-            -1
+            &moving
         )
         .is_err()
     );
-    assert!(saved_attack(&attack(2, vec![]), None, &moving, -1).is_err());
-    assert!(saved_attack(&move_to(), Some(&graphics), &moving, -1).is_err());
-    assert!(saved_attack(&Action::default(), Some(&graphics), &moving, -1).is_err());
+    assert!(saved_attack(&attack(2, vec![]), None, &moving).is_err());
+    assert!(saved_attack(&move_to(), Some(&graphics), &moving).is_err());
+    assert!(saved_attack(&Action::default(), Some(&graphics), &moving).is_err());
 }

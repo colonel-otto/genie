@@ -123,7 +123,7 @@ fn hunt_attack(
     saved: &Saved<'_>,
     sub: &Action,
 ) -> Result<genie_core::combat::attack::Attack, GenieError> {
-    let mut attack = saved_attack(sub, saved.graphics, &move_to_state, saved.run_sprite())?;
+    let mut attack = saved_attack(sub, saved.graphics, &move_to_state)?;
     if attack.state == genie_core::combat::attack::SWING && !attack.pending {
         let reload = saved_reload(saved.object, saved.s, saved.objects).ok_or(
             GenieError::unsupported("a saved swing without its unit's reload"),

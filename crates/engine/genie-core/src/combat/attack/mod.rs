@@ -168,11 +168,6 @@ pub struct Attack {
     /// `+0x61`, `mTargetMovedState`, which its `MoveTo` takes: a target that leaves the
     /// `MoveTo`'s point makes it ask for a path at once (the Hunt's `set_state` 12 sets it).
     pub repaths: bool,
-    /// `+0x68`, the sprite its `MoveTo` shows, is the master's running one (a unit's own
-    /// Attack's, slot 0x7d0): the `MoveTo`'s start sets the unit's running speed. The Hunt's
-    /// (its task's sprite) leaves the speed.
-    #[diff(gap = "differs from the save (MarvinBlue/426048731's 9149 at update 4450)")]
-    pub runs: bool,
     /// `+0x9f`, `was_same_owner` (saved): its target was its unit's player's when the
     /// constructor (`FUN_140a7c210`) took it; the update's ally test spares such a livestock or
     /// farm target ([`Attack::update`]).

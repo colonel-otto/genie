@@ -6,10 +6,10 @@ use crate::gathering::hunt::{
     ARRIVED, DROP, DropOff, HuntAction, Lead, PointWalker, SEARCH, Shown, asked_drop_off,
     resource_kind,
 };
-use crate::movement::Mover;
 use crate::movement::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+    Goal, MoveTo, MoveWait, Walk, start_walk_shown, target_moved, walk_or_give_up,
 };
+use crate::movement::{Mover, PathAsk};
 
 /// What a drop-off's update did ([`HuntAction::update_drop`],
 /// [`crate::gathering::gather::GatherAction::update_drop`]).
@@ -80,7 +80,7 @@ impl HuntAction {
         held: &mut f32,
         attributes: usize,
         site: Option<DropOff>,
-        mut shown: Shown<'_>,
+        shown: Shown<'_>,
         who: PointWalker,
     ) -> Result<Dropped, GenieError> {
         if self.timer < 0.0 {
@@ -96,13 +96,9 @@ impl HuntAction {
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.walk_range;
                 walk.me.action_state = self.state;
-                let walked = start_walk_or_give_up(
-                    walk.reborrow(),
-                    Goal::Target(self.carry_to),
-                    range,
-                    true,
-                )?;
-                shown.walking(walked.unwrap_or(MoveTo::Moving), walk.body.move_stats_mut());
+                let to = (Goal::Target(self.carry_to), range, true);
+                let ask = PathAsk::default();
+                let walked = start_walk_shown(walk.reborrow(), to, ask, Some(shown))?;
                 match walked {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up_walk(who),

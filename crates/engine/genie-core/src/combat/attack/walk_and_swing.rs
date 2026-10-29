@@ -7,10 +7,10 @@ use crate::combat::attack::{
 };
 use crate::combat::damage::Victim;
 use crate::math::rng::Well512;
-use crate::movement::footprint_gap_squared;
 use crate::movement::move_to::{
-    Follow, MoveTo, Walk, follow_path_end, start_walk_or_give_up, target_moved, walk_or_give_up,
+    Follow, MoveTo, Shown, Walk, follow_path_end, start_walk_shown, target_moved, walk_or_give_up,
 };
+use crate::movement::{PathAsk, footprint_gap_squared};
 use crate::objects::sprite::new_sprite;
 use crate::{GenieError, combat::damage};
 
@@ -90,10 +90,13 @@ impl Attack {
     }
 
     /// State 4's `MoveTo` start (case 3): after a wait `+0x6c` goes from 1 to 2 as it asks again;
-    /// a running `MoveTo` sets the running speed; it moves (`set_state` 4, its sprite shown) and
-    /// asks for its path. In range at once it arrives, showing the idle sprite with `+0x7b8`
-    /// cleared. False when the motion step gave up ([`Attack::give_up`]; a `MoveTo` that fails at
-    /// once shows the idle sprite too).
+    /// it asks for its path and moves (`set_state` 4), which shows its sprite (the Attack's
+    /// `+0x68`, [`Arms::move_sprite`]; slot 0x68 takes the master's standing one for none) before
+    /// the motion step ([`start_walk_shown`]). In range at once it arrives, showing the idle
+    /// sprite with `+0x7b8` cleared. False when the motion step gave up ([`Attack::give_up`]; a
+    /// `MoveTo` that fails at once shows the idle sprite too).
+    ///
+    /// [`Arms::move_sprite`]: crate::combat::attack::Arms::move_sprite
     pub(super) fn walk_start(
         &mut self,
         walk: &mut Walk<'_>,
@@ -103,22 +106,17 @@ impl Attack {
         if self.move_wait.state == 1 {
             self.move_wait.state = 2;
         }
-        // the MoveTo's sprite sets the unit's speed: a running one the running speed
-        if self.runs
-            && let Some(m) = walk.body.mover_mut()
-        {
-            m.stats.speed = m.stats.run_speed;
-        }
         self.move_to = Some(MoveTo::Moving);
         let (goal, range) = self.goal();
-        let walked = start_walk_or_give_up(walk.reborrow(), goal, range, false)?;
-        in_the_way(walk, s);
         // the MoveTo's set_state(4) shows its sprite (`+0x58`, the Attack's `+0x68`)
-        if walked.is_none_or(|w| w == MoveTo::Moving)
-            && let Some(g) = self.arms.move_sprite
-        {
-            new_sprite(s.sprite, walk.body.move_stats_mut(), g, s.sprite_rng);
-        }
+        let shown = Shown {
+            sprite: &mut *s.sprite,
+            rng: &mut *s.sprite_rng,
+            graphic: self.arms.move_sprite.or(s.standing),
+        };
+        let ask = PathAsk::default();
+        let walked = start_walk_shown(walk.reborrow(), (goal, range, false), ask, Some(shown))?;
+        in_the_way(walk, s);
         let Some(state) = walked else {
             // the motion step gave up in the update set_state(4) ran; a MoveTo that fails
             // at once (set_state 13, not quiet: 0x140aa29e0) shows the idle sprite and

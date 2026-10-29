@@ -1,8 +1,6 @@
 //! A saved object's top action as the slice models it ([`saved_actions`]).
 
-use crate::{
-    OTHER_SUB_ACTION, combat_master, moving_master, saved_attack, saved_move_wait, saved_sprite,
-};
+use crate::{OTHER_SUB_ACTION, combat_master, saved_attack, saved_move_wait, saved_sprite};
 use genie_core::GenieError;
 use genie_core::construction::build::{BUILD, BuildAction, BuildTask};
 use genie_core::movement::fly::{FLY, Fly};
@@ -116,14 +114,6 @@ struct Saved<'a> {
 }
 
 impl Saved<'_> {
-    /// The master's running sprite, which an Attack's `MoveTo` may show.
-    fn run_sprite(&self) -> i16 {
-        self.objects
-            .master(self.s.master_obj)
-            .and_then(moving_master)
-            .map_or(-1, |m| m.run_sprite_id)
-    }
-
     /// The task of the action's slot (`short_val`).
     fn task(&self, task_at: TaskAt<'_>) -> Result<Task, GenieError> {
         task_at(self.s.master_obj, self.base.short_val)
@@ -515,7 +505,6 @@ fn import_attack(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> {
         saved.action,
         saved.graphics,
         &move_to_state,
-        saved.run_sprite(),
     )?));
     unit.sprite = saved.graphics.and_then(|g| saved_sprite(saved.s, g));
     Ok(())

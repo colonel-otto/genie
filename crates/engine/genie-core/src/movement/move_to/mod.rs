@@ -254,14 +254,6 @@ impl Shown<'_> {
             new_sprite(self.sprite, stats, g, self.rng);
         }
     }
-
-    /// The `MoveTo` that started is in `state`: in state 4 the unit shows its sprite
-    /// ([`Shown::show`]).
-    pub fn walking(&mut self, state: MoveTo, stats: Option<&mut MoveStats>) {
-        if state == MoveTo::Moving {
-            self.show(stats);
-        }
-    }
 }
 
 /// A moving `MoveTo`'s update (state 4, `0x140aa2a70` from `LAB_140aa320c`): the motion step

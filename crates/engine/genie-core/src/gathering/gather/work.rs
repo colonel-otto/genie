@@ -7,10 +7,10 @@ use crate::gathering::gather::{
     REGATHERED, REMAINDER, SPECIAL_TARGETS, WAIT_SHIFT, WORK,
 };
 use crate::gathering::hunt::Dropped;
-use crate::movement::MoveStats;
 use crate::movement::move_to::{
-    Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+    Goal, MoveTo, Shown, Walk, start_walk_shown, target_moved, walk_or_give_up,
 };
+use crate::movement::{MoveStats, PathAsk};
 use crate::objects::sprite::new_sprite;
 
 /// Food and the food kinds (0, 15 to 17): a gatherer keeps a load of one for another.
@@ -162,17 +162,15 @@ impl GatherAction {
                 self.move_to = Some(MoveTo::Moving);
                 walk.me.action_state = self.state;
                 let range = self.task.range;
-                let walked = start_walk_or_give_up(
-                    walk.reborrow(),
-                    Goal::Target(self.carry_to),
-                    range,
-                    true,
-                )?;
-                if walked.is_none_or(|w| w == MoveTo::Moving)
-                    && let Some(s) = self.walk_sprite(g)
-                {
-                    new_sprite(g.sprite, walk.body.move_stats_mut(), s, g.sprite_rng);
-                }
+                // the MoveTo's set_state(4) shows the walking sprite before the motion step
+                let shown = Shown {
+                    graphic: self.walk_sprite(g),
+                    sprite: &mut *g.sprite,
+                    rng: &mut *g.sprite_rng,
+                };
+                let to = (Goal::Target(self.carry_to), range, true);
+                let walked =
+                    start_walk_shown(walk.reborrow(), to, PathAsk::default(), Some(shown))?;
                 match walked {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up(g),

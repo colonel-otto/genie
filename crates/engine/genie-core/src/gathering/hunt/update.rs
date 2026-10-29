@@ -7,8 +7,9 @@ use crate::gathering::hunt::{
     ATTACK, FACE, GATHER, Gatherer, Herd, HuntAction, LEAD, PREDATOR, SEARCH, Shown, TREE_CLASS,
     WALK, WALK_SEARCH, walk_sprite,
 };
+use crate::movement::PathAsk;
 use crate::movement::move_to::{
-    Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+    Goal, MoveTo, Walk, start_walk_shown, target_moved, walk_or_give_up,
 };
 
 impl HuntAction {
@@ -164,20 +165,20 @@ impl HuntAction {
         let range = self.walk_range;
         walk.me.action_state = self.state;
         let goal = Goal::Target(self.target);
-        let walked = start_walk_or_give_up(walk.reborrow(), goal, range, true)?;
-        crate::combat::attack::in_the_way(&mut walk, strike);
         let shows = walk_sprite(
             self.task.resource,
             *gather.held_kind,
             *gather.held,
             &gather.sprites,
         );
-        Shown {
-            sprite: strike.sprite,
-            rng: strike.sprite_rng,
+        let shown = Shown {
+            sprite: &mut *strike.sprite,
+            rng: &mut *strike.sprite_rng,
             graphic: shows,
-        }
-        .walking(walked.unwrap_or(MoveTo::Moving), walk.body.move_stats_mut());
+        };
+        let ask = PathAsk::default();
+        let walked = start_walk_shown(walk.reborrow(), (goal, range, true), ask, Some(shown))?;
+        crate::combat::attack::in_the_way(&mut walk, strike);
         match walked {
             Some(state) => self.move_to = Some(state),
             None => self.give_up(strike),

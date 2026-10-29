@@ -70,7 +70,6 @@ pub(crate) fn own_attack(target: i32, state: u8, range: f32) -> Attack {
         },
         sub_action: false,
         repaths: false,
-        runs: true,
         same_owner: false,
     }
 }
@@ -1228,7 +1227,6 @@ fn a_disarmed_building_s_targetless_attack_ends_with_its_notify() {
         },
         sub_action: false,
         repaths: false,
-        runs: false,
         same_owner: false,
     };
     let mut body = Body::Animated(Animated::new(0.5));

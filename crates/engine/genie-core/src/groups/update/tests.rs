@@ -377,7 +377,6 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         },
         sub_action: false,
         repaths: false,
-        runs: false,
         same_owner: false,
     };
     for (state, free) in [(2, false), (3, true), (13, true), (14, true), (4, false)] {

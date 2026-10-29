@@ -7,10 +7,8 @@ use crate::gathering::hunt::{
     ARRIVED, ATTACK, BUILDING, CLASS_49, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE,
     LIVESTOCK, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, Shown, WALK_POINT, WALK_SEARCH, food,
 };
-use crate::movement::Mover;
-use crate::movement::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
-};
+use crate::movement::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk_shown, walk_or_give_up};
+use crate::movement::{Mover, PathAsk};
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -314,7 +312,7 @@ impl HuntAction {
         &mut self,
         mut walk: Walk<'_>,
         who: PointWalker,
-        mut shown: Shown<'_>,
+        shown: Shown<'_>,
     ) -> Result<PointWalk, GenieError> {
         let ended = match self.move_to {
             Some(MoveTo::Start) => {
@@ -325,9 +323,9 @@ impl HuntAction {
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.walk_range;
                 walk.me.action_state = self.state;
-                let walked =
-                    start_walk_or_give_up(walk.reborrow(), Goal::Point(self.point), range, true)?;
-                shown.walking(walked.unwrap_or(MoveTo::Moving), walk.body.move_stats_mut());
+                let to = (Goal::Point(self.point), range, true);
+                let ask = PathAsk::default();
+                let walked = start_walk_shown(walk.reborrow(), to, ask, Some(shown))?;
                 match walked {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up_walk(who),

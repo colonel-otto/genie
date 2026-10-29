@@ -78,7 +78,6 @@ pub(super) fn saved_attack(
     sub: &genie_save::generated::world::Action,
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::objects::sprite::Graphic>>,
     move_to_state: &dyn Fn(u8) -> Result<genie_core::movement::move_to::MoveTo, GenieError>,
-    run_sprite: i16,
 ) -> Result<genie_core::combat::attack::Attack, GenieError> {
     use genie_core::movement::move_to::MOVE_TO;
     let b = sub
@@ -158,8 +157,6 @@ pub(super) fn saved_attack(
         },
         sub_action: b.sub_action_value != 0,
         repaths: b.target_moved_state != 0,
-        // `+0x68`, its MoveTo's sprite
-        runs: 0 <= run_sprite && a.short_val as i16 == run_sprite,
         same_owner: a.was_same_owner != 0,
     })
 }
