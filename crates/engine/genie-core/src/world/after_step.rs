@@ -41,7 +41,7 @@ impl World {
         let at = (p, self.slot_of(p, id)?, id);
         self.finish_own_update(at, (dt, full), &outcome)?;
         self.apply_ai_starts((p, self.slot_of(p, id)?), &mut out, &outcome)?;
-        self.apply_hits_and_releases(&mut out)?;
+        self.clear_started()?;
         Ok(Stepped {
             outcome,
             slot: self.slot_of(p, id)?,
@@ -120,13 +120,8 @@ impl World {
         Ok(())
     }
 
-    /// What the hits' write-backs left, in the order the hits made it (the blast's objects, the
-    /// unit itself for a retaliation, its target): the kills and razings; then a construction
-    /// start's clearing and the changed tiles.
-    fn apply_hits_and_releases(&mut self, out: &mut ObjectOutputs) -> Result<(), GenieError> {
-        for k in std::mem::take(&mut out.kills) {
-            self.kill_left(&k)?;
-        }
+    /// A construction start's clearing and the changed tiles, after the update.
+    fn clear_started(&mut self) -> Result<(), GenieError> {
         // a construction start's clearing of the desolid foundations it overlaps
         // (FUN_1411cd0d0), after the builder's update
         for id in self.spatial.take_started() {

@@ -96,7 +96,7 @@ impl Unit {
         let code = code?;
         // the retaliation's kill of the unit itself, which follows its step
         if let Some(k) = self.hit_back(f.own)? {
-            file_kill(c, KillLeft::own(self.id, k))?;
+            file_kill(c, self, KillLeft::own(self.id, k))?;
         }
         Ok(HeadCode::of(code))
     }

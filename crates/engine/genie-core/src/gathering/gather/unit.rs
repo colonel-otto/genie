@@ -260,7 +260,7 @@ impl Unit {
         if let Some(v) = victim.as_mut()
             && let Some(k) = write_back(c, v)?
         {
-            crate::combat::victims::file_kill(c, k)?;
+            crate::combat::victims::file_kill(c, self, k)?;
         }
         self.gather_next(c, next, old, by)
     }

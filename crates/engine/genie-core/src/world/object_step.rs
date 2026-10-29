@@ -56,7 +56,6 @@ impl World {
             turn,
             ai_target,
             blasted,
-            kills: Vec::new(),
             player: p,
             taken_over: None,
             building_handover: false,

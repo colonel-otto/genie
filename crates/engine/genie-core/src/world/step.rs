@@ -2,7 +2,6 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
-use crate::combat::victims::KillLeft;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
@@ -33,11 +32,6 @@ pub(crate) struct Step<'a> {
     /// blast at death), which its blast may reach, read as the update starts; each hit writes
     /// them back where it ran ([`crate::combat::victims::write_back`]).
     pub(crate) blasted: Vec<Victim>,
-    /// The updating object's own kill (a retaliation's), which its slot's stand-in keeps from
-    /// the world until the step's end ([`crate::combat::victims::file_kill`]): the caller's
-    /// after the update ([`World::kill_left`]); another object's kill reaches the world at the
-    /// hit.
-    pub(crate) kills: Vec<KillLeft>,
     /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
     /// whether it has the unit's master: the update ends with the takeover ([`crate::objects::unit::Outcome::Captured`]).
     pub(crate) taken_over: Option<(usize, bool)>,
@@ -57,8 +51,6 @@ pub(crate) struct Step<'a> {
 pub(crate) struct ObjectOutputs {
     /// [`Step`]'s `starts`.
     pub(in crate::world) starts: Vec<AiStart>,
-    /// [`Step`]'s `kills`.
-    pub(in crate::world) kills: Vec<KillLeft>,
 }
 
 impl Step<'_> {
@@ -66,7 +58,6 @@ impl Step<'_> {
     pub(in crate::world) fn outputs(&mut self) -> ObjectOutputs {
         ObjectOutputs {
             starts: std::mem::take(&mut self.starts),
-            kills: std::mem::take(&mut self.kills),
         }
     }
 }

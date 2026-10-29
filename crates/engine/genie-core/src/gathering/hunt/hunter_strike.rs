@@ -57,7 +57,7 @@ impl Unit {
         let next = next?;
         // the retaliation's kill of the unit itself, which follows its step
         if let Some(k) = self.hit_back(f.own)? {
-            file_kill(c, KillLeft::own(self.id, k))?;
+            file_kill(c, self, KillLeft::own(self.id, k))?;
         }
         match next {
             HuntNext::Stay => Ok(()),

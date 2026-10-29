@@ -260,62 +260,72 @@ pub(crate) fn write_back(c: &mut Step<'_>, v: &mut Victim) -> Result<Option<Kill
 }
 
 /// A hit's kill and razings where the hit runs (the damage slot `FUN_1412108e0` kills and counts
-/// at once: `FUN_141082e80`, slot 0x8b0): another object's reach the world now
-/// ([`World::kill_left`]); the updating object's own, its slot holding its stand-in, follow its
-/// step ([`Step::kills`]).
+/// at once: `FUN_141082e80`, slot 0x8b0): another object's reach the world
+/// ([`World::kill_left`]); the updating object's own (`me`, out of its slot) counts as its
+/// player's ([`World::count_killed`]), and a livestock's change to Gaia (slot 0x70) is the
+/// unit's own at once ([`Unit::ai_change_owner`]: its list's move follows the update, as a
+/// takeover's).
 ///
 /// # Errors
 ///
 /// What the kill does not model, or an attribute a player lacks.
-pub(crate) fn file_kill(c: &mut Step<'_>, k: KillLeft) -> Result<(), GenieError> {
-    if k.id == c.me {
-        c.kills.push(k);
-        Ok(())
-    } else {
-        c.w.kill_left(&k)
+pub(crate) fn file_kill(c: &mut Step<'_>, me: &mut Unit, k: KillLeft) -> Result<(), GenieError> {
+    if k.id != c.me {
+        return c.w.kill_left(&k);
     }
+    if let Some(kill) = k.kill {
+        let master = me.master(&c.w.masters, c.player)?.clone();
+        c.w.count_killed(c.player, &master, kill)?;
+        if kill.to_gaia {
+            me.ai_change_owner(0, c)?;
+        }
+    }
+    c.w.count_razed(&k.razed)
 }
 
 /// A strike's write-back where it ran ([`write_back`]), each object's kill and razings right
-/// after it ([`file_kill`]): the blast's objects (`blasted`, which go back to the update's) in
-/// their order, then its target `v`.
+/// after it ([`file_kill`], `me` the updating object): the blast's objects (`blasted`, which go
+/// back to the update's) in their order, then its target `v`.
 ///
 /// # Errors
 ///
 /// A notify a unit AI's queue does not take, or what a kill does not model.
 pub(crate) fn write_struck(
     c: &mut Step<'_>,
+    me: &mut Unit,
     mut blasted: Vec<Victim>,
     v: &mut Victim,
 ) -> Result<(), GenieError> {
     for b in &mut blasted {
         if let Some(k) = write_back(c, b)? {
-            file_kill(c, k)?;
+            file_kill(c, me, k)?;
         }
     }
     c.blasted = blasted;
     if let Some(k) = write_back(c, v)? {
-        file_kill(c, k)?;
+        file_kill(c, me, k)?;
     }
     Ok(())
 }
 
 /// A strike's write-back where it ran ([`write_struck`] on the update's `blasted`, then its
-/// target `v`); what they leave joins the update's kills in that order.
+/// target `v`; `me` the updating object), each kill filed after its object's.
 ///
 /// # Errors
 ///
-/// A notify a unit AI's queue does not take.
-pub(crate) fn write_strike_back(c: &mut Step<'_>, v: &mut Victim) -> Result<(), GenieError> {
+/// A notify a unit AI's queue does not take, or what a kill does not model.
+pub(crate) fn write_strike_back(
+    c: &mut Step<'_>,
+    me: &mut Unit,
+    v: &mut Victim,
+) -> Result<(), GenieError> {
     let blasted = std::mem::take(&mut c.blasted);
-    write_struck(c, blasted, v)
+    write_struck(c, me, blasted, v)
 }
 
 impl World {
-    /// What a hit's write-back left after the update ([`KillLeft`]) on an object the world
-    /// still holds live: its kill ([`World::killed`]), then each razing
-    /// ([`crate::combat::damage::Razed`]: the history event of the attacker's player, the
-    /// attribute adds in their order).
+    /// What a hit's write-back left ([`KillLeft`]) on an object the world holds live: its kill
+    /// ([`World::killed`]), then its razings ([`World::count_razed`]).
     ///
     /// # Errors
     ///
@@ -327,7 +337,17 @@ impl World {
         if let Some(kill) = k.kill {
             self.killed(q, j, kill)?;
         }
-        for r in &k.razed {
+        self.count_razed(&k.razed)
+    }
+
+    /// Each razing a hit left ([`crate::combat::damage::Razed`]): the history event of the
+    /// attacker's player, the attribute adds in their order.
+    ///
+    /// # Errors
+    ///
+    /// An attribute a player lacks.
+    pub(crate) fn count_razed(&mut self, razed: &[Razed]) -> Result<(), GenieError> {
+        for r in razed {
             if let Some(kind) = r.event {
                 let now = self.world_time;
                 self.players[r.attacker_player].history.add_event(
@@ -359,13 +379,33 @@ impl World {
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
     /// player and the particles (`FUN_141158bb0`).
     pub(crate) fn killed(&mut self, q: usize, j: usize, kill: Kill) -> Result<(), GenieError> {
+        let u = &self.players[q].objects[j];
+        let master = u.master(&self.masters, q)?.clone();
+        self.count_killed(q, &master, kill)?;
+        if kill.to_gaia {
+            self.give_gaia(q, j)?;
+        }
+        Ok(())
+    }
+
+    /// [`World::killed`]'s counts of an object of player `q` and `master`: its owner's computer
+    /// AI (not modelled), a villager's counts for its owner, then the kill's
+    /// ([`World::count_kill_of`]).
+    ///
+    /// # Errors
+    ///
+    /// A computer player's object, and an attribute a player lacks.
+    pub(crate) fn count_killed(
+        &mut self,
+        q: usize,
+        master: &Master,
+        kill: Kill,
+    ) -> Result<(), GenieError> {
         if self.players[q].computer {
             return Err(GenieError::unsupported(
                 "a computer player's killed object (its AI's slot 0x2f0)",
             ));
         }
-        let u = &self.players[q].objects[j];
-        let master = u.master(&self.masters, q)?.clone();
         let ap = kill.attacker_player;
         if master.class == 4 {
             // the attacker's class as the hit saw it: the attacker may be out for its update
@@ -382,11 +422,7 @@ impl World {
                 self.players[q].add_attribute(kind, 1.0)?;
             }
         }
-        self.count_kill_of(q, &master, ap)?;
-        if kill.to_gaia {
-            self.give_gaia(q, j)?;
-        }
-        Ok(())
+        self.count_kill_of(q, master, ap)
     }
 
     /// `FUN_1412005b0` on the object `id` killed for player `killer` (a movement damage's,

@@ -67,7 +67,7 @@ impl HuntAction {
             }),
             GATHER => {
                 let full = self.gather(seconds(c.dt), unit, &mut f.victim, r)?;
-                write_target_back(c, f)?;
+                write_target_back(c, unit, f)?;
                 Ok(if full { HuntNext::Drop } else { HuntNext::Stay })
             }
             _ => Err(GenieError::unsupported(
@@ -110,7 +110,7 @@ impl HuntAction {
                 ))
             }
             1 | 2 | 5 => {
-                self.decay_check(c, r.stops_decay, f)?;
+                self.decay_check(c, unit, r.stops_decay, f)?;
                 self.set_walk(&c.w.spatial, &mut unit.body, &f.victim, f.own.player)?;
                 Ok(HuntNext::Stay)
             }
@@ -254,7 +254,7 @@ impl HuntAction {
             .mover_mut()
             .ok_or(crate::world::HUNTER_UNMOVING)?
             .stop()?;
-        self.decay_check(c, r.stops_decay, f)?;
+        self.decay_check(c, unit, r.stops_decay, f)?;
         self.set_face(c, unit, f, r)
     }
 
@@ -337,9 +337,13 @@ impl HuntAction {
 /// # Errors
 ///
 /// The write-back's and the kill's.
-pub(super) fn write_target_back(c: &mut Step<'_>, f: &mut Fight) -> Result<(), GenieError> {
+pub(super) fn write_target_back(
+    c: &mut Step<'_>,
+    hunter: &mut Unit,
+    f: &mut Fight,
+) -> Result<(), GenieError> {
     if let Some(k) = crate::combat::victims::write_back(c, &mut f.victim)? {
-        crate::combat::victims::file_kill(c, k)?;
+        crate::combat::victims::file_kill(c, hunter, k)?;
     }
     Ok(())
 }

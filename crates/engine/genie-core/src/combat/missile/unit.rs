@@ -353,7 +353,7 @@ impl Unit {
                 "a retaliation killing a missile's shooter",
             ));
         }
-        write_strike_back(c, victim)?;
+        write_strike_back(c, self, victim)?;
         Ok(struck.result)
     }
 
@@ -408,7 +408,7 @@ impl Unit {
         if self.hit_back(own)?.is_some() {
             return Err(GenieError::unsupported("a retaliation killing a missile"));
         }
-        write_strike_back(c, victim)?;
+        write_strike_back(c, self, victim)?;
         Ok(struck.result)
     }
 

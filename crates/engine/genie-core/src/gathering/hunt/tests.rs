@@ -98,11 +98,11 @@ fn a_stopped_decay_goes_back_to_the_world_at_once() {
     let mut hunt = hunting(10028);
     hunt.task.kind4 = DECAY_TASK;
     let mut rig = Rig::on_the_path(decaying.clone());
-    rig.run(100, |c, _, f, _| hunt.decay_check(c, true, f))
+    rig.run(100, |c, u, f, _| hunt.decay_check(c, u, true, f))
         .unwrap();
     assert_eq!(rig.f.victim.decay, -0.25);
     let mut rig = Rig::on_the_path(decaying);
-    rig.run(100, |c, _, f, _| hunt.decay_check(c, false, f))
+    rig.run(100, |c, u, f, _| hunt.decay_check(c, u, false, f))
         .unwrap();
     assert_eq!(rig.f.victim.decay, 0.25);
 }

@@ -105,8 +105,10 @@ impl Unit {
         Ok(())
     }
 
-    /// The unit's slot 0x70 as its unit AI asks it ([`Effect::ChangeOwner`], the artifact's
-    /// processIdle `FUN_140c1e410`): [`Unit::change_owner`]; once it changed hands the caller
+    /// The unit's slot 0x70 in its own update: as its unit AI asks it ([`Effect::ChangeOwner`],
+    /// the artifact's processIdle `FUN_140c1e410`), or a hit's kill gives it, a player's
+    /// livestock, to Gaia ([`crate::combat::victims::file_kill`]): [`Unit::change_owner`]; once
+    /// it changed hands the caller
     /// moves it to the new owner's list after the update ([`Outcome::Captured`]), and a building's
     /// whole change is the caller's even without the new owner's master.
     ///

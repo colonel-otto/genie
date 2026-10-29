@@ -310,7 +310,7 @@ impl Attack {
             if let Some(target) = executed {
                 unit.post_own(ACTION_EXECUTED, [600, target, 0])?;
             }
-            write_strike_back(c, &mut f.victim)?;
+            write_strike_back(c, unit, &mut f.victim)?;
         }
         self.pending = false;
         if f.victim.hp <= 0.0 {

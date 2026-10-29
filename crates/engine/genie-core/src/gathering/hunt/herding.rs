@@ -120,11 +120,12 @@ impl HuntAction {
     pub(super) fn decay_check(
         &self,
         c: &mut Step<'_>,
+        hunter: &mut Unit,
         stops_decay: bool,
         f: &mut Fight,
     ) -> Result<(), GenieError> {
         if self.stops_decay_of(stops_decay, &mut f.victim) {
-            write_target_back(c, f)?;
+            write_target_back(c, hunter, f)?;
         }
         Ok(())
     }

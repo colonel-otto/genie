@@ -9273,9 +9273,9 @@ fn a_lent_object_is_the_world_s_for_the_call() {
 fn a_kill_in_the_step_reports_the_object_s_new_slot() {
     let (mut t, mut v) = killed_sheep(true);
     let stepped = t
-        .step_object((1, 1), (0, None, false), |_, c| {
+        .step_object((1, 1), (0, None, false), |u, c| {
             if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
-                crate::combat::victims::file_kill(c, k)?;
+                crate::combat::victims::file_kill(c, u, k)?;
             }
             Ok(crate::objects::unit::Outcome::Stay)
         })
@@ -9287,15 +9287,15 @@ fn a_kill_in_the_step_reports_the_object_s_new_slot() {
 
 /// A hit's kill reaches the world where the hit runs (the damage slot `FUN_1412108e0` kills and
 /// counts at once: `FUN_141082e80`, slot 0x8b0): the update's later parts see the sheep Gaia's
-/// and the kill counted. The updating unit's own kill (its target's retaliation) waits for the
-/// step's end, its slot holding the stand-in.
+/// and the kill counted. The updating unit's own kill (its target's retaliation) counts there
+/// too, on the unit out of its slot: its owner counts the loss to Gaia (attribute 325).
 #[test]
 fn a_hit_s_kill_reaches_the_world_where_the_hit_runs() {
     use crate::combat::victims::{KillLeft, file_kill};
     let (mut t, mut v) = killed_sheep(false);
-    let seen = in_update(&mut t, (1, 0), 0, |_, c| {
+    let seen = in_update(&mut t, (1, 0), 0, |u, c| {
         if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
-            file_kill(c, k)?;
+            file_kill(c, u, k)?;
         }
         let gaia_s = c.w.players[0].objects.position_of(9520).is_some();
         let counted = c.w.players[1].attributes[301];
@@ -9305,12 +9305,34 @@ fn a_hit_s_kill_reaches_the_world_where_the_hit_runs() {
             attacker_class: 58,
             to_gaia: false,
         };
-        file_kill(c, KillLeft::own(c.me, kill))?;
-        let waits = c.kills.len();
-        c.kills.clear();
-        Ok((gaia_s, counted, waits))
+        // the town centre as a master of the table, its own kill counted by it
+        u.life.master_id = 705;
+        let before = c.w.players[1].attributes[325];
+        file_kill(c, u, KillLeft::own(c.me, kill))?;
+        Ok((gaia_s, counted, c.w.players[1].attributes[325] - before))
     });
-    assert_eq!(seen.unwrap(), (true, 1.0, 1));
+    assert_eq!(seen.unwrap(), (true, 1.0, 1.0));
+}
+
+/// The updating unit's own kill that gives it to Gaia (a player's livestock): its slot 0x70 at
+/// once on the unit out of its slot (its owner's fields Gaia's, [`Unit::ai_change_owner`]), the
+/// move to Gaia's list a takeover's after the update ([`crate::world::step::Step`]'s
+/// `taken_over`).
+#[test]
+fn an_own_kill_gives_the_livestock_to_gaia_at_once() {
+    use crate::combat::victims::{KillLeft, file_kill};
+    let (mut t, _) = killed_sheep(false);
+    let seen = in_update(&mut t, (1, 1), 0, |u, c| {
+        let kill = crate::combat::damage::Kill {
+            attacker: 10029,
+            attacker_player: 1,
+            attacker_class: 0,
+            to_gaia: true,
+        };
+        file_kill(c, u, KillLeft::own(c.me, kill))?;
+        Ok((c.taken_over, c.w.spatial.get(9520).map(|p| p.player)))
+    });
+    assert_eq!(seen, Ok((Some((0, true)), Some(0))));
 }
 
 /// A world call in the step that moves the stepping object's stand-in (a removal from its list,
@@ -9472,9 +9494,9 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
 /// ([`crate::combat::victims::write_back`]), its kill and razings with it
 /// ([`crate::combat::victims::file_kill`]).
 fn write_hit(t: &mut World, (p, i): (usize, usize), mut v: crate::combat::damage::Victim) {
-    in_update(t, (p, i), 0, |_, c| {
+    in_update(t, (p, i), 0, |u, c| {
         if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
-            crate::combat::victims::file_kill(c, k)?;
+            crate::combat::victims::file_kill(c, u, k)?;
         }
         Ok(())
     })
@@ -14756,43 +14778,58 @@ fn own_razing(adds: &[(i16, f32)]) -> crate::combat::victims::KillLeft {
     }
 }
 
-/// A step that fails stops what follows it: what its `Step` gathered does not apply (its own
-/// kill's razing counts), and the first effect that fails stops the ones after it (a count of
-/// a negative attribute stops the next one); a step that holds applies it.
+/// The updating unit's own razings count where the hit runs, within its update
+/// ([`crate::combat::victims::file_kill`] on the unit out of its slot): the attribute adds in
+/// their order, and the first that fails stops the ones after it (a count of a negative
+/// attribute stops the next one).
+#[test]
+fn the_own_razings_count_where_the_hit_runs() {
+    use crate::combat::victims::file_kill;
+    let razed = |adds: &[(i16, f32)]| {
+        let mut t = house_builder();
+        t.players[1].attributes[98] = 10.0;
+        let r = in_update(&mut t, (1, 0), 0, |u, c| {
+            file_kill(c, u, own_razing(adds))?;
+            Ok(c.w.players[1].attributes[98])
+        });
+        (
+            r.map_err(|e| e.reason().to_owned()),
+            t.players[1].attributes[98],
+        )
+    };
+    assert_eq!(razed(&[(98, -5.0)]), (Ok(5.0), 5.0));
+    let negative = Err("a negative attribute".to_owned());
+    assert_eq!(razed(&[(-1, 5.0), (98, -5.0)]), (negative, 10.0));
+}
+
+/// A step that fails stops what follows it: the unit AI's starts it gathered (a wait for a
+/// foundation) do not apply; a step that holds applies them.
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
     use crate::objects::unit::Outcome;
+    use crate::unit_ai::world_view::{AiStart, Wait};
+    let wait = AiStart::Wait(Wait {
+        target: 10028,
+        task: crate::objects::masters::Task::default(),
+        switch: None,
+    });
     let mut t = house_builder();
-    t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.kills.push(own_razing(&[(98, -5.0)]));
+        c.starts.push(wait);
         Err(GenieError::unsupported("the step's own gap"))
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
         Err("the step's own gap".to_owned())
     );
-    assert_eq!(t.players[1].attributes[98], 10.0);
-
+    assert!(t.players[1].objects[0].actions.wait_solidify().is_none());
     let mut t = house_builder();
-    t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.kills.push(own_razing(&[(-1, 5.0), (98, -5.0)]));
-        Ok(Outcome::Stay)
-    });
-    assert_eq!(
-        r.map_err(|e| e.reason().to_owned()),
-        Err("a negative attribute".to_owned())
-    );
-    assert_eq!(t.players[1].attributes[98], 10.0);
-    let mut t = house_builder();
-    t.players[1].attributes[98] = 10.0;
-    let r = finished_with(&mut t, (1, 0), |c| {
-        c.kills.push(own_razing(&[(98, -5.0)]));
+        c.starts.push(wait);
         Ok(Outcome::Stay)
     });
     assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Outcome::Stay));
-    assert_eq!(t.players[1].attributes[98], 5.0);
+    assert!(t.players[1].objects[0].actions.wait_solidify().is_some());
 }
 
 /// What a completion leaves its owner ([`World::built`]): a pasture puts its livestock on its
