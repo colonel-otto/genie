@@ -260,6 +260,28 @@ raising `file:line` (`#[track_caller]`) and key-value context.
   (C-FAILURE).
 - An error type implements `std::error::Error`, `Send`, `Sync` and `'static` (C-GOOD-ERR).
 
+### Indexing
+
+`v[i]` checks the bound, and an `i` out of range panics: in production code an index is a
+hidden `unwrap`. It also hides what the code means. `t.players[1].objects[0]` names a slot in
+two nested lists, and that slot holds another object after the next swap-remove.
+
+- Reach an object by its id through the world's lookup (`World::object`), not by its position
+  in nested lists. A position stays valid only until the list changes. An id stays valid for
+  the object's life.
+- Walk a collection with an iterator (`iter`, `iter_mut`, `zip`, `enumerate`, `chunks_exact`,
+  `windows`), not with an index from `0..len`. An iterator needs no bound check per element
+  and says what the loop does.
+- If an index comes from input (a recording, a save, the `.dat`), read with `get(i)` and turn
+  `None` into an error with the index as context (section 7). Better, parse the index into a
+  type at the boundary that holds only valid values (section 5).
+- In a hot loop, take the slice once before the loop and iterate it (`cells.get(start..end)`,
+  with an error for a range that the cells do not hold), or zip the columns that the loop
+  reads. Do not index several columns per element.
+- Do not use `get_unchecked`: the workspace forbids `unsafe`. Measure before you rewrite a
+  loop for speed. A bound check that never fails costs little. The panic is the defect.
+- Tests can index. There a panic is a failing test, and a short index keeps the test readable.
+
 ## 8. Data-oriented design
 
 - Hold state as plain data in columns: a field per object, a table per kind, an index by id. A
