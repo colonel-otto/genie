@@ -454,7 +454,7 @@ impl World {
         let bm = self.players[tp].objects[ti]
             .master(&self.masters, tp)?
             .clone();
-        self.run_on_step(player, idx, |unit, c| unit.go_inside(c, target, (&me, &bm)))
+        self.run_on_step(player, idx, |unit, c| unit.go_inside(c, target, &me, &bm))
     }
 }
 

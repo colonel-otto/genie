@@ -365,7 +365,7 @@ impl Unit {
         if usize::from(bm.garrison) <= inside {
             return Ok(false);
         }
-        self.go_inside(c, target, (&me, &bm))?;
+        self.go_inside(c, target, &me, &bm)?;
         self.post_own(
             crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
             [ActionKind::Enter.value(), 0, 0],
@@ -388,7 +388,8 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         target: i32,
-        (me, bm): (&Master, &Master),
+        me: &Master,
+        bm: &Master,
     ) -> Result<(), GenieError> {
         let id = self.id;
         if self.life.inside.is_some() {
@@ -431,9 +432,9 @@ impl Unit {
         }
         let building_radius = c.w.spatial.get(target).map_or(bm.radius, |p| p.radius);
         self.life.inside = Some(target);
-        self.join_building(c, (target, bp, reload), (me, bm))?;
-        self.enter_sight(c, (target, at, building_radius), placed, bm)?;
-        self.enter_town_bell((target, at, state), (me, bm))?;
+        self.join_building(c, target, bp, reload, me, bm)?;
+        self.enter_sight(c, target, at, building_radius, placed, bm)?;
+        self.enter_town_bell(target, at, state, me, bm)?;
         Ok(())
     }
 
@@ -443,8 +444,11 @@ impl Unit {
     fn join_building(
         &self,
         c: &mut Step<'_>,
-        (target, bp, reload): (i32, usize, f32),
-        (me, bm): (&Master, &Master),
+        target: i32,
+        bp: usize,
+        reload: f32,
+        me: &Master,
+        bm: &Master,
     ) -> Result<(), GenieError> {
         let masters =
             c.w.masters
@@ -470,7 +474,9 @@ impl Unit {
     fn enter_sight(
         &self,
         c: &mut Step<'_>,
-        (target, at, radius): (i32, [f32; 3], [f32; 2]),
+        target: i32,
+        at: [f32; 3],
+        radius: [f32; 2],
         placed: crate::map::spatial::Placed,
         bm: &Master,
     ) -> Result<(), GenieError> {
@@ -506,8 +512,11 @@ impl Unit {
     /// villagers; with 3 it is never cleared.
     fn enter_town_bell(
         &mut self,
-        (target, at, state): (i32, [f32; 3], u8),
-        (me, bm): (&Master, &Master),
+        target: i32,
+        at: [f32; 3],
+        state: u8,
+        me: &Master,
+        bm: &Master,
     ) -> Result<(), GenieError> {
         if me.class != 4 && me.id != 1808 {
             return Ok(());
