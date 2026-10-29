@@ -335,16 +335,6 @@ fn a_build_s_move_to_shows_its_sprite_else_its_constructor_s() {
     );
 }
 
-/// A builder without a sprite, with a fresh Sprite stream and no sprites: its `MoveTo`s show
-/// nothing. Leaked, so a test's `Builder` may live anywhere (a few bytes per test).
-fn no_sprites() -> Sprites<'static> {
-    Sprites {
-        sprite: Box::leak(Box::new(None)),
-        rng: Box::leak(Box::default()),
-        graphics: Box::leak(Box::default()),
-    }
-}
-
 /// MarvinBlue/426048731's house 10028 as BUILD placed it: a foundation of master 70.
 fn house() -> crate::map::spatial::Placed {
     crate::map::spatial::Placed {
@@ -420,7 +410,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
         };
         let builder = Builder {
             defaults: MoveDefaults::default(),
-            sprites: no_sprites(),
+            sprites: Sprites::none(),
             class: VILLAGER,
             master: 83,
             held: 0.0,
@@ -581,7 +571,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
     fn builder(waits: &mut u8, state: Option<u8>) -> Builder<'_> {
         Builder {
             defaults: MoveDefaults::default(),
-            sprites: no_sprites(),
+            sprites: Sprites::none(),
             class: VILLAGER,
             master: 83,
             held: 0.0,
@@ -861,7 +851,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
             Some(site),
             Builder {
                 defaults: MoveDefaults::default(),
-                sprites: no_sprites(),
+                sprites: Sprites::none(),
                 class: VILLAGER,
                 master: 118,
                 held: 0.0,
@@ -1643,7 +1633,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
             Some(site),
             Builder {
                 defaults: MoveDefaults::default(),
-                sprites: no_sprites(),
+                sprites: Sprites::none(),
                 class: VILLAGER,
                 master: 83,
                 held: 0.0,
@@ -1687,7 +1677,7 @@ fn walk_update_planned(
     prepare: impl FnOnce(&mut Spatial),
     pathing: Option<&mut Pathing>,
 ) -> (BuildStep, Spatial) {
-    let shows = (MoveDefaults::default(), no_sprites());
+    let shows = (MoveDefaults::default(), Sprites::none());
     walk_update_shown(build, who, prepare, pathing, shows)
 }
 
@@ -2111,7 +2101,7 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
             Some(site),
             Builder {
                 defaults: MoveDefaults::default(),
-                sprites: no_sprites(),
+                sprites: Sprites::none(),
                 class: VILLAGER,
                 master: 83,
                 held: 0.0,
@@ -2255,7 +2245,7 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
             Some(site),
             Builder {
                 defaults: MoveDefaults::default(),
-                sprites: no_sprites(),
+                sprites: Sprites::none(),
                 class: VILLAGER,
                 master: 83,
                 held: 0.0,
@@ -2405,7 +2395,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
             Some(site),
             Builder {
                 defaults: MoveDefaults::default(),
-                sprites: no_sprites(),
+                sprites: Sprites::none(),
                 class: VILLAGER,
                 master: 83,
                 held: 0.0,
@@ -2512,7 +2502,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
             Some(site),
             Builder {
                 defaults: MoveDefaults::default(),
-                sprites: no_sprites(),
+                sprites: Sprites::none(),
                 class: VILLAGER,
                 master: 83,
                 held: 7.0,
@@ -2562,7 +2552,7 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
         };
         let builder = Builder {
             defaults: MoveDefaults::default(),
-            sprites: no_sprites(),
+            sprites: Sprites::none(),
             class: VILLAGER,
             master: 83,
             held: 0.0,
@@ -2746,7 +2736,7 @@ fn a_builder_lets_a_dead_foundation_go() {
                 }),
                 Builder {
                     defaults: MoveDefaults::default(),
-                    sprites: no_sprites(),
+                    sprites: Sprites::none(),
                     class: VILLAGER,
                     master: 83,
                     held: 0.0,
@@ -2824,7 +2814,7 @@ fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it()
     let mut waits = waits.iter_mut();
     let mut builder = || Builder {
         defaults: MoveDefaults::default(),
-        sprites: no_sprites(),
+        sprites: Sprites::none(),
         class: VILLAGER,
         master: 83,
         held: 0.0,
@@ -3019,7 +3009,7 @@ fn drop_update(
             None,
             Builder {
                 defaults: MoveDefaults::default(),
-                sprites: no_sprites(),
+                sprites: Sprites::none(),
                 class: VILLAGER,
                 master: 83,
                 held,
@@ -3215,7 +3205,7 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
             None,
             Builder {
                 defaults: MoveDefaults::default(),
-                sprites: no_sprites(),
+                sprites: Sprites::none(),
                 class: VILLAGER,
                 master: 83,
                 held: 10.0,

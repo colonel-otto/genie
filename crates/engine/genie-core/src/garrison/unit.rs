@@ -5,7 +5,7 @@ use crate::gathering::gather::unit::give_load;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
-use crate::movement::move_to::MoveTo;
+use crate::movement::move_to::{MoveDefaults, MoveTo, Sprites, SubMover};
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
@@ -79,10 +79,18 @@ impl Unit {
                 .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .is_some_and(|m| m.class == 4);
-        let gives_up = (
+        let (waits, stance) = (
             villager && !c.computer,
             self.ai.as_ref().map_or(0, |ai| ai.stance),
         );
+        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
+        let defaults = self
+            .own_master
+            .as_deref()
+            .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id))
+            .map_or_else(MoveDefaults::default, |m| {
+                MoveDefaults::of(m, self.abilities.look.as_ref())
+            });
         let (p, pace) = (c.player, c.pace());
         let enter_action = self.actions.enter_mut().expect("checked above");
         let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
@@ -100,7 +108,16 @@ impl Unit {
                 };
                 crate::garrison::ship_reaches(ship, w.world, plan, to)
             },
-            gives_up,
+            SubMover {
+                waits,
+                stance,
+                defaults,
+                sprites: Sprites {
+                    sprite: &mut self.sprite,
+                    rng: beside.sprite_rng,
+                    graphics: beside.graphics,
+                },
+            },
         )?;
         if let Some(to) = step.order {
             // the transport's slot 0x340 within the update, the unit lent for what it lets go

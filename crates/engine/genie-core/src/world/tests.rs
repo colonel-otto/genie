@@ -4473,6 +4473,47 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
     );
 }
 
+/// The Enter's `MoveTo` shows its sprite as it starts (`FUN_140a87320` case 4 gives its
+/// constructor the task's moving sprite, `0x140aa29e0`'s `set_state(4)` shows it): the task's,
+/// else `FUN_140aa0df0`'s default toward a building, the master's walking sprite.
+#[test]
+fn an_enter_s_move_to_shows_its_sprite_as_it_starts() {
+    for (moving, shown) in [(Some(30), 30), (None, 31)] {
+        let mut t = enter_world(vec![], 5);
+        t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+        t.build_mesh();
+        for id in [30, 31] {
+            let g = Graphic {
+                id,
+                frames: 10,
+                facets: 16,
+                speed_multiplier: 1.0,
+                frame_duration: 0.1,
+                replay_delay: 0.0,
+                flags: 1,
+            };
+            let _ = t.graphics.insert(id, g);
+        }
+        t.masters[1].get_mut(83).unwrap().move_sprite = 31;
+        let v = &mut t.players[1].objects[0];
+        let here = v.position();
+        v.body.mover_mut().unwrap().moved_at = here;
+        let task = crate::garrison::tests::enter_task(0.0, 3);
+        v.actions.set_enter(Some(crate::garrison::EnterAction {
+            move_to: Some(MoveTo::Start),
+            moving,
+            ..crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], &task)
+        }));
+        let _ = in_update(&mut t, (1, 0), 50, Unit::update).unwrap();
+        let v = &t.players[1].objects[0];
+        assert_eq!(
+            v.actions.enter().map(|e| e.move_to),
+            Some(Some(MoveTo::Moving))
+        );
+        assert_eq!(v.sprite.map(|s| s.graphic.id), Some(shown));
+    }
+}
+
 /// A second enter command of livestock walking under its Artifact (430061417's pig 7920 in
 /// update 32, INTERACT on the transport again): the new Enter takes the house (slot 0x178), then
 /// `FUN_140a98e20` pops the old one, whose teardown lets the house go (slot 0x180) and whose
@@ -4481,7 +4522,11 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
 #[test]
 fn livestock_s_second_enter_command_stops_the_walk_and_lets_the_old_enter_s_target_go() {
     let mut t = livestock_enter_world();
-    let mut walking = crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], 0.0, 3);
+    let mut walking = crate::garrison::EnterAction::new(
+        10028,
+        [30.0, 88.0, 0.0],
+        &crate::garrison::tests::enter_task(0.0, 3),
+    );
     walking.move_to = Some(MoveTo::Moving);
     let v = &mut t.players[1].objects[0];
     v.actions.artifact_mut().unwrap().enter = Some(walking);
@@ -4545,7 +4590,11 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
             t.players[2].relations = vec![3, 0, 0];
             t.spatial.relations = vec![vec![0, 3, 3], vec![3, 0, 0], vec![3, 0, 0]];
         }
-        let mut e = crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], 2.0, 3);
+        let mut e = crate::garrison::EnterAction::new(
+            10028,
+            [30.0, 88.0, 0.0],
+            &crate::garrison::tests::enter_task(2.0, 3),
+        );
         e.move_to = Some(MoveTo::Arrived);
         let v = &mut t.players[1].objects[0];
         v.place_for_test([29.5, 89.5, 0.0]);
@@ -4571,7 +4620,11 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
 #[test]
 fn an_entered_enter_of_a_unit_let_out_goes_at_its_update() {
     let mut t = enter_world(vec![], 5);
-    let mut e = crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], 0.5, 3);
+    let mut e = crate::garrison::EnterAction::new(
+        10028,
+        [30.0, 88.0, 0.0],
+        &crate::garrison::tests::enter_task(0.5, 3),
+    );
     e.state = crate::garrison::ENTERED;
     t.players[1].objects[0].actions.set_enter(Some(e));
     t.tick(50);
@@ -7453,6 +7506,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             retry: true,
             task_class: 0,
             move_wait: crate::movement::move_to::MoveWait::default(),
+            moving: None,
         }));
     // a walking villager: an Enter without a MoveTo does not stop it
     villager.body.set_anim_speed(1.0);

@@ -415,7 +415,7 @@ fn import_repair(
     Ok(())
 }
 
-/// The Enter (3): its task's range and class, its `MoveTo` and its retry.
+/// The Enter (3): its task's range, class and moving sprite, its `MoveTo` and its retry.
 fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Result<(), GenieError> {
     use genie_core::garrison::{ENTERED, EnterAction};
     let base = saved.base;
@@ -450,6 +450,7 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
             genie_core::movement::move_to::MoveWait::default,
             saved_move_wait,
         ),
+        moving: (0 <= task.sprites[0]).then_some(task.sprites[0]),
     }));
     Ok(())
 }

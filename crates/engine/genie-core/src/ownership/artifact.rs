@@ -577,7 +577,11 @@ mod tests {
     #[test]
     fn a_move_deletes_the_held_enter_letting_its_transport_go() {
         let walking_enter = || {
-            let mut e = crate::garrison::EnterAction::new(11970, [34.125, 123.333, 0.0], 0.0, 20);
+            let mut e = crate::garrison::EnterAction::new(
+                11970,
+                [34.125, 123.333, 0.0],
+                &crate::garrison::tests::enter_task(0.0, 20),
+            );
             e.move_to = Some(MoveTo::Moving);
             e
         };
@@ -610,8 +614,7 @@ mod tests {
         c.enter = Some(crate::garrison::EnterAction::new(
             11970,
             [1.0, 2.0, 0.0],
-            0.0,
-            20,
+            &crate::garrison::tests::enter_task(0.0, 20),
         ));
         assert_eq!(
             c.take_point([3.0, 4.0, 0.0]),
@@ -627,7 +630,11 @@ mod tests {
     /// teardown (`FUN_140a73fc0`) lets the target go before the Enter's.
     #[test]
     fn the_stop_and_the_teardown_delete_the_held_enter() {
-        let mut e = crate::garrison::EnterAction::new(11970, [1.0, 2.0, 0.0], 0.0, 20);
+        let mut e = crate::garrison::EnterAction::new(
+            11970,
+            [1.0, 2.0, 0.0],
+            &crate::garrison::tests::enter_task(0.0, 20),
+        );
         e.move_to = Some(MoveTo::Moving);
         let by_enter = SubActionsGone {
             stops: true,
@@ -665,7 +672,13 @@ mod tests {
     /// unit's speed and acceleration 0, so the next velocity step does not move it).
     #[test]
     fn an_enter_command_replaces_the_held_enter_letting_its_target_go_and_stopping_its_walk() {
-        let enter = |target| crate::garrison::EnterAction::new(target, [1.0, 2.0, 0.0], 0.0, 20);
+        let enter = |target| {
+            crate::garrison::EnterAction::new(
+                target,
+                [1.0, 2.0, 0.0],
+                &crate::garrison::tests::enter_task(0.0, 20),
+            )
+        };
         let gone = |stops, released| SubActionsGone { stops, released };
         let mut a = Artifact::new(false);
         // nothing held: nothing to let go, nothing walking

@@ -144,12 +144,7 @@ impl World {
         let tm = self.master_of(tp, t.life.master_id)?;
         let (class, height) = (i32::from(tm.class), t.position()[2]);
         let (at, _) = self.enter_meeting(player, idx, target)?;
-        let action = EnterAction::new(
-            target,
-            [at[0], at[1], height],
-            task.work_range,
-            task.object_group,
-        );
+        let action = EnterAction::new(target, [at[0], at[1], height], task);
         self.take(target, self.releaser(player, idx));
         Ok((action, target, class))
     }

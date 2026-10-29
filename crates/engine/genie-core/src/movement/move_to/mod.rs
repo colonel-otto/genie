@@ -273,6 +273,49 @@ impl Sprites<'_> {
     }
 }
 
+/// What a sub-`MoveTo` reads of its unit besides the walk: whether the motion step's give-up
+/// makes it wait (`waits`, a human player's villager) and the unit AI's stance
+/// ([`MoveWait::give_up`]), the sprites its constructors take when its owner gives none, and
+/// the unit's sprites, which its start shows.
+#[derive(Debug)]
+pub struct SubMover<'a> {
+    /// The motion step's give-up makes the `MoveTo` wait once.
+    pub waits: bool,
+    /// The unit AI's stance (`+0x1a9`).
+    pub stance: u8,
+    /// The constructors' sprites for none, as the update starts.
+    pub defaults: MoveDefaults,
+    /// The unit's sprite, the Sprite stream and the sprites' table.
+    pub sprites: Sprites<'a>,
+}
+
+#[cfg(test)]
+impl SubMover<'static> {
+    /// A unit whose give-up `waits` (stance 0), without default sprites or a sprite
+    /// ([`Sprites::none`]).
+    pub(crate) fn none(waits: bool) -> Self {
+        Self {
+            waits,
+            stance: 0,
+            defaults: MoveDefaults::default(),
+            sprites: Sprites::none(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl Sprites<'static> {
+    /// A unit without a sprite, with a fresh Sprite stream and no sprites: its `MoveTo`s show
+    /// nothing. Leaked, so a test may hold it anywhere (a few bytes per test).
+    pub(crate) fn none() -> Self {
+        Self {
+            sprite: Box::leak(Box::new(None)),
+            rng: Box::leak(Box::default()),
+            graphics: Box::leak(Box::default()),
+        }
+    }
+}
+
 /// The unit's sprite, the Sprite stream and the sprite a walk shows: a `MoveTo` that turns to
 /// state 4 shows its sprite (`0x140aa29e0`, slot 0x68 with `+0x58`).
 #[derive(Debug)]
