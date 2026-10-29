@@ -1,0 +1,252 @@
+{
+ "clippy::bool_assert_comparison": {
+  "crates/formats/genie-rec/src/version.rs": 1
+ },
+ "clippy::cast_possible_truncation": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/engine/genie-core/tests/crt_math.rs": 1,
+  "crates/formats/genie-cpx/src/read.rs": 1,
+  "crates/formats/genie-dat/src/dat_write.rs": 4,
+  "crates/formats/genie-dat/src/tech.rs": 4,
+  "crates/formats/genie-dat/src/tech_tree/mod.rs": 2,
+  "crates/formats/genie-dat/src/tech_tree/nodes.rs": 4,
+  "crates/formats/genie-dat/src/terrain.rs": 1,
+  "crates/formats/genie-dat/src/unit_type/combat.rs": 1,
+  "crates/formats/genie-dat/src/unit_type/statics.rs": 1,
+  "crates/formats/genie-drs/src/write.rs": 1,
+  "crates/formats/genie-hki/src/file.rs": 1,
+  "crates/formats/genie-hki/src/group.rs": 1,
+  "crates/formats/genie-lang/src/formats.rs": 1,
+  "crates/formats/genie-rec/src/de/body.rs": 1,
+  "crates/formats/genie-save/src/lib.rs": 1,
+  "crates/formats/genie-scx/src/ai.rs": 1,
+  "crates/formats/genie-scx/src/format/rge.rs": 1,
+  "crates/formats/genie-scx/src/format/scx.rs": 3,
+  "crates/formats/genie-scx/src/format/tribe_read.rs": 1,
+  "crates/formats/genie-scx/src/header.rs": 3,
+  "crates/formats/genie-scx/src/player.rs": 1,
+  "crates/formats/genie-scx/src/triggers/condition.rs": 1,
+  "crates/formats/genie-scx/src/triggers/effect.rs": 1,
+  "crates/formats/genie-scx/src/triggers/trigger.rs": 3,
+  "crates/formats/genie-scx/src/victory.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1,
+  "crates/tools/genie-oracle/tests/tick_trace.rs": 1
+ },
+ "clippy::cast_possible_wrap": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/formats/genie-scx/src/format/scx.rs": 3,
+  "crates/formats/genie-scx/src/format/tribe_read.rs": 1,
+  "crates/formats/genie-scx/src/player.rs": 1,
+  "crates/formats/genie-scx/src/triggers/condition.rs": 1,
+  "crates/formats/genie-scx/src/triggers/effect.rs": 1,
+  "crates/formats/genie-scx/src/victory.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1,
+  "crates/tools/genie-oracle/tests/tick_trace.rs": 1
+ },
+ "clippy::cast_precision_loss": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1,
+  "crates/tools/genie-oracle/tests/tick_trace.rs": 1
+ },
+ "clippy::cast_sign_loss": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/formats/genie-cpx/src/read.rs": 1,
+  "crates/formats/genie-scx/src/format/rge.rs": 1,
+  "crates/formats/genie-scx/src/format/tribe_read.rs": 1,
+  "crates/formats/genie-scx/src/format/tribe_write.rs": 2,
+  "crates/formats/genie-scx/src/player.rs": 1,
+  "crates/formats/genie-scx/src/triggers/condition.rs": 1,
+  "crates/formats/genie-scx/src/triggers/effect.rs": 2,
+  "crates/formats/genie-scx/src/triggers/trigger.rs": 3,
+  "crates/formats/genie-scx/src/victory.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1,
+  "crates/tools/genie-oracle/tests/tick_trace.rs": 1
+ },
+ "clippy::cognitive_complexity": {
+  "crates/formats/genie-scx/src/format/mod.rs": 1
+ },
+ "clippy::eq_op": {
+  "crates/engine/genie-core/src/map/spatial/pather.rs": 1,
+  "crates/engine/genie-core/src/math/fmath/fmod_and_log.rs": 2,
+  "crates/engine/genie-core/src/math/fmath/inverse_trig.rs": 1,
+  "crates/engine/genie-core/src/math/fmath/reduction.rs": 1,
+  "crates/engine/genie-core/src/math/fmath/sin_cos.rs": 2
+ },
+ "clippy::float_cmp": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/engine/genie-core/src/map/terrain.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::fn_params_excessive_bools": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::imprecise_flops": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::large_enum_variant": {
+  "crates/engine/genie-core/src/objects/layers.rs": 1
+ },
+ "clippy::literal_string_with_formatting_args": {
+  "Cargo.toml": 1
+ },
+ "clippy::many_single_char_names": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/engine/genie-core/src/map/terrain.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::match_same_arms": {
+  "crates/engine/genie-core/src/map/terrain.rs": 1
+ },
+ "clippy::maybe_infinite_iter": {
+  "crates/engine/genie-core/src/unit_ai/tests.rs": 2
+ },
+ "clippy::missing_errors_doc": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::module_name_repetitions": {
+  "Cargo.toml": 1
+ },
+ "clippy::needless_pass_by_value": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::neg_cmp_op_on_partial_ord": {
+  "crates/formats/genie-rec/src/unit_type.rs": 1
+ },
+ "clippy::redundant_pub_crate": {
+  "Cargo.toml": 1
+ },
+ "clippy::significant_drop_tightening": {
+  "crates/tools/genie-swiss-knife/tests/acceptance.rs": 2
+ },
+ "clippy::similar_names": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::struct_excessive_bools": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/formats/genie-dat/src/unit_type/statics.rs": 1,
+  "crates/formats/genie-rec/src/lib.rs": 1,
+  "crates/formats/genie-rec/src/unit/building.rs": 1,
+  "crates/formats/genie-rec/src/unit/statics.rs": 1,
+  "crates/formats/genie-rec/src/unit_type.rs": 1,
+  "crates/formats/genie-scx/src/format/tribe_read.rs": 1,
+  "crates/formats/genie-scx/src/triggers/trigger.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::struct_field_names": {
+  "crates/formats/genie-rec/src/actions/mod.rs": 1
+ },
+ "clippy::suboptimal_flops": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::suspicious_operation_groupings": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::too_long_first_doc_paragraph": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::too_many_arguments": {
+  "crates/engine/genie-core/src/combat/missile/mod.rs": 1,
+  "crates/engine/genie-core/src/garrison/transport/shore.rs": 1,
+  "crates/engine/genie-core/src/gathering/gather/start.rs": 2,
+  "crates/engine/genie-core/src/gathering/gather_search.rs": 2,
+  "crates/engine/genie-core/src/gathering/hunt/drop_off.rs": 1,
+  "crates/engine/genie-core/src/gathering/hunt/start.rs": 3,
+  "crates/engine/genie-core/src/groups/command.rs": 1,
+  "crates/engine/genie-core/src/map/spatial/grid.rs": 1,
+  "crates/engine/genie-core/src/map/spatial/pather.rs": 1,
+  "crates/engine/genie-core/src/map/spatial/search.rs": 3,
+  "crates/engine/genie-core/src/movement/long_walk.rs": 2,
+  "crates/engine/genie-core/src/movement/new_path.rs": 2,
+  "crates/engine/genie-core/src/movement/path_end.rs": 1,
+  "crates/engine/genie-core/src/movement/request.rs": 1,
+  "crates/engine/genie-core/src/movement/step.rs": 1,
+  "crates/engine/genie-core/src/orders/gather.rs": 1,
+  "crates/engine/genie-core/src/pathing/hull_path/node_lists.rs": 2,
+  "crates/engine/genie-core/src/pathing/hull_path/walks.rs": 3,
+  "crates/engine/genie-core/src/pathing/short_path/nodes.rs": 2,
+  "crates/engine/genie-core/src/pathing/short_path/outline.rs": 2,
+  "crates/engine/genie-core/src/pathing/short_path/raycast.rs": 1,
+  "crates/engine/genie-core/src/pathing/tile_path/search.rs": 2,
+  "crates/engine/genie-core/src/unit_ai/actions.rs": 2,
+  "crates/engine/genie-core/src/unit_ai/attacked.rs": 2,
+  "crates/engine/genie-core/src/unit_ai/best_target/choice.rs": 1,
+  "crates/engine/genie-core/src/unit_ai/damaged.rs": 4,
+  "crates/engine/genie-core/src/unit_ai/flight.rs": 1,
+  "crates/engine/genie-core/src/unit_ai/handle.rs": 3,
+  "crates/engine/genie-core/src/unit_ai/retarget.rs": 1,
+  "crates/engine/genie-core/src/unit_ai/type_notifies.rs": 14,
+  "crates/engine/genie-core/src/unit_ai/update.rs": 1,
+  "crates/engine/genie-core/src/vision/registry.rs": 2,
+  "crates/engine/genie-core/src/vision/visibility/object_events.rs": 1,
+  "crates/engine/genie-core/src/vision/visibility/sight.rs": 1,
+  "crates/tools/genie-oracle/src/forced_replay.rs": 1,
+  "crates/tools/genie-oracle/src/top_actions.rs": 1
+ },
+ "clippy::too_many_lines": {
+  "crates/engine/genie-core/src/groups/formation/passability.rs": 1,
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/engine/genie-core/src/unit_ai/unit.rs": 1,
+  "crates/engine/genie-core/src/world/object_step.rs": 1,
+  "crates/formats/genie-rec/tests/de_oracle.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1,
+  "crates/tools/genie-oracle/tests/tick_trace.rs": 1
+ },
+ "clippy::type_complexity": {
+  "crates/engine/genie-core/src/garrison/enter.rs": 1,
+  "crates/engine/genie-core/src/garrison/meeting.rs": 1
+ },
+ "clippy::unused_self": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::useless_let_if_seq": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "clippy::while_float": {
+  "crates/engine/genie-core/src/lib.rs": 1,
+  "crates/tools/genie-oracle/src/lib.rs": 1
+ },
+ "dead_code": {
+  "crates/formats/genie-dat/src/sprite.rs": 1,
+  "crates/formats/genie-rec/src/actions/mod.rs": 1,
+  "crates/formats/genie-rec/src/header.rs": 5,
+  "crates/formats/genie-rec/src/player/gaia.rs": 2,
+  "crates/formats/genie-rec/src/player/history.rs": 1,
+  "crates/formats/genie-rec/src/player/sight.rs": 1,
+  "crates/formats/genie-rec/src/unit/unit_ai.rs": 3,
+  "crates/formats/genie-rec/src/unit_action.rs": 1,
+  "crates/formats/genie-rec/src/unit_type.rs": 1,
+  "crates/formats/genie-scx/src/format/rge.rs": 1,
+  "crates/formats/genie-scx/src/format/tribe_read.rs": 2
+ },
+ "missing_copy_implementations": {
+  "crates/engine/genie-core/src/math/rng.rs": 1,
+  "crates/tools/genie-swiss-knife/src/commands.rs": 1,
+  "crates/tools/genie-swiss-knife/src/config.rs": 1
+ },
+ "rustdoc::private_intra_doc_links": {
+  "Cargo.toml": 1
+ },
+ "trivial_casts": {
+  "crates/formats/genie-save/src/layout_types.rs": 1
+ },
+ "unreachable_pub": {
+  "Cargo.toml": 1
+ },
+ "unused": {
+  "crates/formats/genie-rec/src/lib.rs": 2,
+  "crates/formats/genie-scx/src/bitmap.rs": 3
+ },
+ "unused_qualifications": {
+  "crates/formats/genie-save/src/layout_types.rs": 1
+ }
+}

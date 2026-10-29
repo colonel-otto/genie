@@ -50,6 +50,9 @@ jobs:
       # .config/file-size-debt.json holds the file at that length.
       - run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
       - run: scripts/file_size.py
+      # scripts/lint_allows.py: no lint turned off where it was not before (.config/lint-allows.json,
+      # FD-043's section L)
+      - run: scripts/lint_allows.py
 
   readmes:
     name: Every genie-core folder has a current README
