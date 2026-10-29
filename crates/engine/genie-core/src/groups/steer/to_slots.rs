@@ -280,6 +280,7 @@ impl World {
             return Ok(());
         }
         if MOST_FAILURES < g.members[index].specific_move.consecutive_move_failures {
+            // A member's own move for being moved aside (`mReason`).
             let _ = self.set_specific_move(group, id, (-1, ASIDE), (at, ASIDE_TIMER, 0.0));
             self.stop_member(id)?;
             self.groups.get_mut(group).expect("held").flags |= 0x200;

@@ -68,6 +68,7 @@ impl Visibility {
                 (true, offset)
             }
             Some(_) => {
+                // The master whose sight the AI players' market lists follow (`FUN_1411d0190`: id 84).
                 if s.master == MARKET && !self.computer.get(s.player).copied().unwrap_or(false) {
                     // its tile goes to the allied computer players' lists (player +0x180)
                     if self.computer.iter().any(|&c| c) {

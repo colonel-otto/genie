@@ -175,6 +175,8 @@ pub(crate) const fn cared_classes(
         BUILDING_AI => Ok(&BUILDING_CARED),
         TRANSPORT_AI => Ok(&TRANSPORT_CARED),
         SIEGE_TOWER_AI => Ok(&SIEGE_TOWER_CARED),
+        // The trade boat's class (`-0xeaa` raw): its cared classes and its trade partner are not the
+        // trade cart's.
         TRADE_AI if class == class::TRADE_BOAT => Ok(&TRADE_SHIP_CARED),
         TRADE_AI => Ok(&TRADE_CART_CARED),
         FISHING_AI => Ok(&FISHING_CARED),

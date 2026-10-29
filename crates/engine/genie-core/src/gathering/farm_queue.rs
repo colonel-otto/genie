@@ -53,6 +53,8 @@ impl World {
     /// `FUN_141616540`: player `p` buys `count` fish traps (199) for its dock's queue
     /// ([`World::buy_ahead`]).
     pub(crate) fn queue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, GenieError> {
+        // The fish trap (master 199, its master table's `+0x638`).
+        // The farm a mill's queue buys (`0x32`, GAME 0xd and 0xe).
         self.buy_ahead(p, count, FISH_TRAP, Queue::FishTraps)
     }
 
@@ -170,6 +172,11 @@ impl World {
         let Some(b) = ms.get(base) else {
             return false;
         };
+        // The farm class (49), whose masters the reseed takes (`FUN_141658b40`'s `-0xe7b`).
+        // The villager's class (4, `-0xea8`), which reseeds farms, and the fishing ship's (21, `0x15`),
+        // which reseeds fish traps.
+        // The town centre (621, `0x26d`), whose availability also counts the town centres standing
+        // against attribute 218 (`FUN_141663f80`).
         if base == TOWN_CENTRE_621 {
             let limit = self.players[p]
                 .attribute(attribute::TOWN_CENTRE_LIMIT)

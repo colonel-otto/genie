@@ -87,6 +87,8 @@ impl World {
                 }
             } else {
                 let building = match target_annex {
+                    // The class of buildings, which a unit's garrison task names (`FUN_1415c9240` with 3, 3).
+                    // A gate's class: its annex is not its main building for a garrison order.
                     Some(main) if tm.class != class::GATE => main,
                     _ => target,
                 };

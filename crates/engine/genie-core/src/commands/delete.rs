@@ -67,6 +67,11 @@ impl World {
         };
         let mutual =
             |a: usize, b: usize| self.spatial.allied_with(a, b) && self.spatial.allied_with(b, a);
+        // The buildings' master type, whose slot 0x8b8 is the building's.
+        // The first master type whose slot 0xd0 is the action object's (`FUN_14106c420`), and the
+        // TRIBE combat objects' type, whose slot 0xa0 is `FUN_14121cc40`.
+        // A player's game status once it lost (`+0x89`).
+        // A town centre's master whose delete also tells the world's `+0x820` (`FUN_1414615d0`).
         let lost_ally = self.players[owner].game_status == LOST && mutual(player, owner);
         if owner != player && !self.settings.cheats_enabled && !lost_ally {
             return Ok(());
@@ -161,6 +166,8 @@ impl World {
         if UNDELETABLE.contains(&class) {
             return Ok(());
         }
+        // The class a unit's slot 0xd8 (`FUN_141211340`) spares, and the livestock it spares while it
+        // holds some.
         if class == class::RELIC || (class == class::LIVESTOCK && 0.0 < unit.life.amount) {
             return Ok(());
         }

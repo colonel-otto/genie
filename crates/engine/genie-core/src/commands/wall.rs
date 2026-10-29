@@ -224,6 +224,7 @@ impl World {
         let Some(site) = player_master(&self.masters, player, master) else {
             return Ok(());
         };
+        // The buildings' master type: a wall of another type does nothing.
         if site.kind != BUILDING {
             return Ok(());
         }
@@ -392,6 +393,8 @@ impl World {
             return Ok(m
                 .tasks
                 .iter()
+                // The builder the train locations name for every villager (`FUN_141262270`: `0x76`).
+                // The action type of the task another unit builds with (`FUN_141262270`: `0x65`).
                 .find(|t| t.action_type == action_type::BUILD)
                 .is_some_and(|t| t.object_id == building));
         }

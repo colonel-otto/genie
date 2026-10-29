@@ -45,6 +45,10 @@ impl UnitAi {
         if self.patrols(group) {
             return self.patrol_idle_part(at, computer, ai, side);
         }
+        // Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
+        // `-0xe78` raw).
+        // A building's master type (`'P'`, `FUN_1411942c0`).
+        // The combat type (`0x46`), from which on the full update's tail reads a target's `+0x924`.
         if matches!(at.class, class::BUILDING | class::TOWER)
             && matches!(
                 self.current_action,

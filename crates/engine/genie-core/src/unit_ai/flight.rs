@@ -41,6 +41,7 @@ impl UnitAi {
         side.set_under_attack(true);
         // the game also tests the action values 0x25f and 0x268 here, which no unit AI holds
         // ([`ActionKind`])
+        // The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
         let uncon = at.class != class::KING;
         let _ = self.run_away(uncon, at, computer, ai_rng, side)?;
         Ok(BREAK)
@@ -90,6 +91,7 @@ impl UnitAi {
             };
             vx += u.position[0] - x;
             vy += u.position[1] - y;
+            // The class whose attackers make a computer's unit warn its group (`FUN_140c5e900`: 22).
             class_22 |= u.class == class::WARSHIP;
         }
         if computer && class_22 && 0.0 < at.speed {

@@ -176,6 +176,7 @@ impl World {
                 if let Some(p) = target
                     && self.has_treason_building(p)
                 {
+                    // The pending debit's entry of gold (`FUN_141630ef0` with 3).
                     self.players[p].pending_debit[attribute::GOLD] -= TREASON_COST;
                     self.treason(p)?;
                 }

@@ -199,6 +199,7 @@ fn current_target(
 /// flag allows them outside the defend patrol of a unit that is no siege.
 const fn attacks_walls(me: &Searcher) -> bool {
     let defending =
+        // Class 13 (siege), whose units keep the walls' owner flag on the attack move order (`0x2dd`).
         matches!(me.order, Some(crate::unit_ai::OrderKind::AttackMove)) && me.class != class::SIEGE;
     matches!(me.target_types[0], 27 | 39)
         || matches!(me.target_types[1], 27 | 39)
@@ -310,6 +311,7 @@ impl Walked {
                     continue;
                 };
                 match t.class {
+                    // The wall's and the gate's classes.
                     class::GATE => {
                         if self.gate.1 < 0.0 || gap < self.gate.1 {
                             self.gate = (id, gap);

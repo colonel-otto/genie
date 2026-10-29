@@ -279,6 +279,9 @@ impl UnitAi {
             let (position, class) = place.ok_or(GenieError::unsupported(
                 "a stop ending an order without the unit's place",
             ))?;
+            // The class whose busy units skip the idle check (`-0xe98` raw).
+            // The class of the attackers and targets a villager's damage notify looks at (`-0xea2` raw).
+            // The class whose stop leaves the state position (`-0xe9a` raw, slot 0xb0).
             if class != class::MONK {
                 self.state_position = position;
             }

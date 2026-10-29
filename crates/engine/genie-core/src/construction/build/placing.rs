@@ -226,6 +226,7 @@ impl BuildAction {
     /// the map.
     pub(super) fn back(&mut self, c: &Step<'_>, builder: &Unit) -> Result<(), GenieError> {
         let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
+        // The villager's class (4, `-0xea8` encoded): Build's walk off the footprint returns at once.
         if c.w.spatial.get(builder.id).map(|p| p.class) != Some(class::VILLAGER) {
             return Err(GenieError::unsupported(
                 "a builder other than a villager returns",

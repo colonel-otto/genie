@@ -411,6 +411,8 @@ pub(super) fn link(
     }
     let level = &mut motion.paths[0];
     level.state = 0;
+    // A level's plans (`FUN_140f8f670`, `FUN_140f9b800`).
+    // A new path's flags (`FUN_14152eea0`).
     level.continue_counter = CONTINUE;
     let (range, target, top) = (level.range, level.target, level.level == 2);
     let new = PathData {

@@ -372,6 +372,7 @@ impl BuildAction {
                 .retain(|o| !(DROPPED_ORDERS.contains(&o.order) && gone.contains(&o.target)));
             if !ai.orders.is_empty() {
                 ai.end_order_and_action()?;
+                // 1: the action is done.
                 self.end(c, builder, DONE)?;
                 return Ok(HeadCode::Deletes);
             }

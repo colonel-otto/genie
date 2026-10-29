@@ -60,6 +60,11 @@ impl World {
                     .is_some_and(|ai| ai.current_action == Some(ActionKind::Attack))
             {
                 let master = u.master(&self.masters, p)?;
+                // The relics' master class (`FUN_141017c70`'s test of the target's class).
+                // The monastery's master id (`FUN_141017850`'s test of the target's master).
+                // The master types from which an object moves (`RGE_Moving_Object`), acts
+                // (`RGE_Action_Object`) and is a TRIBE combat unit.
+                // The trade cart's and the trade boat's master classes (`FUN_141017f00`).
                 let search = if master.kind < ACTION {
                     master.line_of_sight
                 } else {

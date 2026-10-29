@@ -585,6 +585,8 @@ fn move_path_flags(from: [f32; 3], to: [f32; 3], leg: bool) -> u32 {
         d[1] = 0.0;
         let length = crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
         if crate::math::fmath::at_most_or_unordered(PATROL_LEG_REACH, length) {
+            // A new path's flags (`FUN_14152eea0`'s construction).
+            // The plans a path level may still try (`FUN_140f9b800`, `FUN_140f98e80`).
             NEW_PATH_FLAGS | 1 | 2
         } else {
             (NEW_PATH_FLAGS | 1) & !2

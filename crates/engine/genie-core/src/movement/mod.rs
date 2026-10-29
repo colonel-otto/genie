@@ -473,6 +473,8 @@ impl PathData {
 /// near.
 fn far_waypoint(way: f32, target: Option<(f32, i16)>) -> bool {
     target.map_or(CLOSE <= way, |(gap, master)| {
+        // A target of this master (raw `0x60c9`) or class gives the tile planner of a reach test this
+        // much more range (`FUN_140fa0370`, `DAT_142eb1c98`).
         CLOSE <= gap || master == ID_45
     })
 }
@@ -500,6 +502,7 @@ pub(crate) fn gate_gap(
     own: f32,
     annex: impl Fn(f32) -> f32,
 ) -> f32 {
+    // The class the motion step measures by its annexes (`-0xe85` encoded).
     if target.class != class::GATE {
         return own;
     }

@@ -352,6 +352,7 @@ fn garrison_task<'m>(
     if (t.player == actor.player || mutual)
         && t.player != 0
         && t.state == 2
+        // A building's master type (`'P'`).
         && t.master.kind == BUILDING
         && (list.kind == 70 || list.id == ids::MASTER_1808)
         && t.master.garrison != 0

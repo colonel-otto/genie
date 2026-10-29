@@ -258,6 +258,7 @@ impl BuildAction {
             // case 0: the update returns 1, the action list removes it
             (DONE, _) => return Ok(HeadCode::Deletes),
             // case 1: set_state(13); the update returns 0
+            // 13 (`0xd`): the Build failed; its next update tells its unit AI and halts it.
             (HALTED, _) => self.end(c, builder, FAILED)?,
             (FAILED, _) => return self.failed(c, builder, reads),
             (WORK, _) => self.face_and_place(c, builder, reads)?,

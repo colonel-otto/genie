@@ -135,6 +135,9 @@ pub fn share(
         // would crash it: a master the player has is the only case it runs
         let other = u16::try_from(master.object_flags >> 16).unwrap_or(u16::MAX);
         if let Some(m) = i16::try_from(other).ok().and_then(|id| masters.get(id))
+            // `SEEK_SHELTER`'s villagers: class 4 of type 70.
+            // The type of a combat unit: the master a transforming master names (`+0x656`), and a unit a
+            // transport takes in (`FUN_14120eb10`).
             && m.kind == COMBAT
         {
             floor = firepower(m, masters, reload_powerup) / rate;

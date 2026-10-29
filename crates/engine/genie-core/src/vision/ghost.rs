@@ -217,6 +217,7 @@ impl World {
         let annex = linked && u.annex_of.is_some();
         !UNWATCHED_CLASSES.contains(&m.class)
             && !u.construction.is_some_and(|c| c.desolid)
+            // The master a building's watch leaves out (`FUN_1411cc980`).
             && (!annex || m.class == class::GATE)
             && m.id != MASTER_1808
     }
@@ -632,6 +633,7 @@ mod tests {
         Masters::new([
             Master {
                 id: GHOST_MASTER,
+                // The type of a ghost (`+0xf`).
                 kind: DOPPELGANGER,
                 recyclable,
                 ..Master::default()

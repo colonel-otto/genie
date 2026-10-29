@@ -343,6 +343,8 @@ impl UnitView<'_, '_> {
             return None;
         }
         let swap = if master.task_by_group == 1 {
+            // The villagers a villager's attack command switches to by its task swap group (its player's
+            // master table's entries at `+0x298` and `+0x928`).
             VILLAGER_MALE
         } else {
             VILLAGER_FEMALE

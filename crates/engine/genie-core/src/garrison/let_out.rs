@@ -78,6 +78,8 @@ impl World {
         let (up, ui) = self.live_inside(id)?;
         let unit = &self.players[up].objects[ui];
         let made = unit.master(&self.masters, up)?.clone();
+        // The class of siege weapons, whose own place an Enter's point keeps (`FUN_140a85f30`, the
+        // short `0xd`).
         if bm.class == class::SIEGE {
             return Err(SIEGE_UNLOAD);
         }

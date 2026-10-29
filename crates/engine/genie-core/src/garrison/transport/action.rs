@@ -243,6 +243,7 @@ impl TransportAction {
                 let next = if self.state == SAIL { IDLE } else { UNLOAD };
                 (self.set_state(next, ship, shore), 0)
             }
+            // Failed: the update returns 3.
             FAILED => {
                 let changed = self.set_state(IDLE, ship, shore);
                 stand(unit, changed, look)?;

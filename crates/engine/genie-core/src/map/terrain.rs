@@ -441,6 +441,7 @@ impl Terrain {
         // the town centre's (109) gap: the clamped rectangle's first two columns of its third
         // and fourth rows
         let gap = |tx: i32, ty: i32| {
+            // The town centre's master (109), whose foundation terrain leaves its gap (`FUN_1411ddd90`).
             f.master == TOWN_CENTRE && (tx == x0 || tx == x0 + 1) && (ty == y0 + 2 || ty == y0 + 3)
         };
         let (mut wanted, mut kind, mut layer) = (f.terrain, f.terrain, -1i16);

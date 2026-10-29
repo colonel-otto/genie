@@ -47,6 +47,8 @@ enum Start {
 /// `FUN_1415c60b0`) searches. The caller then tests that it is ready (slot 0x2d0 with 1: its
 /// top action may be interrupted and its unit AI holds no order) and has a unit AI.
 const fn start_of(class: i16, building: bool, cart_task: bool) -> Option<Start> {
+    // The classes the pass puts to work: villagers and fishing ships (decoded 4 and 21).
+    // The farm class a unit's tile is searched for, and the fish trap a fishing ship takes.
     if matches!(class, class::VILLAGER | class::FISHING_SHIP) {
         return Some(Start::Work);
     }

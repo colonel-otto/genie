@@ -105,6 +105,7 @@ impl Unit {
         match state {
             Some(DROP) if timer < 0.0 => self.hunt_drop_wait(c)?,
             Some(DROP) => return self.hunt_drop_walk(c, me),
+            // State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
             Some(FAILED) => return self.hunt_failed(),
             Some(WALK_POINT | WALK_SEARCH) => self.hunt_point_walk(c, me)?,
             Some(SEARCH) => self.hunt_search_wait(c)?,

@@ -94,6 +94,7 @@ pub fn key(masters: Option<&Masters>, lines: &UnitLines, master: i16) -> Key {
     let mut out = Key::NONE;
     let mut id = i32::from(master);
     let mut classed = true;
+    // The buildings' type, which wait in the pending lists.
     if m.kind == BUILDING {
         let (stack, head, first_annex) = m
             .building

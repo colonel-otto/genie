@@ -194,6 +194,9 @@ impl World {
         let (position, garrison) = (u.position(), u.garrison.clone());
         if relation != ALLY {
             self.leave_foreign_holder(p, id, q, inside)?;
+            // The market (master 84), whose owner's diplomacy change toward a computer player shows it to
+            // that player's tile list.
+            // The siege tower's class (13), whose units leave it for a player no longer allied.
             if class == class::SIEGE
                 && garrison
                     .iter()

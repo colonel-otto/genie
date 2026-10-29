@@ -274,6 +274,7 @@ impl World {
         let (speed, radius) = (mover.stats.speed, mover.stats.radius);
         mover.new_position(id, at, (&mut self.spatial, Some(&mut self.pathing)));
         if 0 <= id
+            // The types of action objects (`RGE_Action_Object`) and of buildings (`TRIBE_Building_Object`).
             && kind < BUILDING
             && speed == 0.0
             && (LINKED_RADIUS < radius[0] || LINKED_RADIUS < radius[1])

@@ -29,6 +29,7 @@ impl World {
                     Some(ActionKind::AutoScout | ActionKind::Explore)
                 )
             });
+            // The classes a defeat stops besides explorers: villagers (4) and fishing boats (21).
             if matches!(class, class::VILLAGER | class::FISHING_SHIP) || explorer {
                 if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
                     m.ignore_units.clear();
@@ -71,6 +72,9 @@ impl World {
             ));
         }
         let keeps = self.halt_top_action(p, idx)?;
+        // The livestock's class, whose unit AI a stop leaves alone (`FUN_14108c050`: raw `-0xe72`).
+        // The trade carts' class, which keep their actions while they carry goods (`FUN_14106a940`).
+        // The trade action's type (`0x6f`), whose load keeps a stopped unit's AI going.
         if keeps && class == class::TRADE_CART {
             return Err(GenieError::unsupported(
                 "a trade cart's goods after its stop (+0x7a0, FUN_141188160)",

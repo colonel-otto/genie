@@ -96,6 +96,8 @@ pub fn refund_tech(
     let modifier = if crate::technology::is_age(tech) {
         0.0
     } else {
+        // The research cost modifier (attribute 85, `+0x2a8`), which scales a refunded technology's
+        // costs above 0.
         attributes.get(attribute::RESEARCH_COST_MODIFIER)?
     };
     for (j, c) in def.costs.iter().enumerate() {
@@ -128,6 +130,7 @@ fn cost_entry(master: &Master, j: usize) -> (i16, i16, bool) {
 /// then only the paid entries (the second value true).
 #[must_use]
 pub fn costed<'m>(masters: &'m Masters, m: &'m Master) -> (&'m Master, bool) {
+    // The buildings' master type (`'P'`), whose annex's costs the cost test reads.
     if m.kind != BUILDING {
         return (m, false);
     }

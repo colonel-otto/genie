@@ -198,8 +198,12 @@ pub(crate) const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWE
 /// modulo 100.
 pub(crate) const fn villager(draw: u64) -> i16 {
     if draw.wrapping_mul(100) % 100 < 50 {
+        // The villager master QUEUE draws a sex for (`0x53`), and the generic villager id that becomes
+        // 0x53 first (`0x712`), both in `FUN_1411cbc40`.
+        // The farm, which BUILD places as the rice farm on mangrove or rice farm terrain.
         VILLAGER_MALE
     } else {
+        // The female villager master (`0x125`).
         VILLAGER_FEMALE
     }
 }

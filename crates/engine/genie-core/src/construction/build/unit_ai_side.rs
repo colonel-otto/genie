@@ -19,6 +19,7 @@ impl UnitView<'_, '_> {
         if self.find_object(foundation).is_none() {
             return Ok(false);
         }
+        // The Build action's type, which word 9 adds.
         if self.unit.top_action_kind() == Some(action_type::BUILD) {
             return Ok(true);
         }

@@ -110,6 +110,7 @@ impl Spatial {
                     "a pather query meeting a record of kind 11 (its own radii)",
                 ));
             }
+            // The class of a gate, which a player's allies may pass (slot 0x678, `FUN_1411d4a30`).
             if p.class == class::GATE {
                 return Err(GenieError::unsupported(
                     "a pather query meeting a gate (its players' passage, slot 0x678)",

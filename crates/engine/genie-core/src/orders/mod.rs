@@ -101,6 +101,8 @@ pub(crate) struct Work {
 /// no target the world holds (`targetless`).
 const fn packs(class: i16, reach: Option<(bool, bool)>, targetless: bool, computer: bool) -> bool {
     match reach {
+        // Masters and classes the order handler and slot 0x7e8 treat apart (decoded; the game stores a
+        // class as its value − 0xeac, a master id as its id + 0x609c).
         None => targetless && class == class::CLASS_54 && computer,
         Some((within, _)) => {
             (class == class::CLASS_54 && !within) || (class == class::CLASS_51 && within)

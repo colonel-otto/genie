@@ -71,6 +71,9 @@ impl Attack {
             repaths: true,
             ..Self::own(target, e, arms)
         };
+        // The gate class, whose parts' gaps readyToAttack measures.
+        // The villagers' class, whose attack ends on any dead target.
+        // The trees' class, a dead one of which up to state 5 keeps another unit's attack going.
         if e.target_class == class::GATE {
             return Err(GenieError::unsupported(
                 "a hunt's Attack on a gate (its parts' gaps)",
@@ -294,6 +297,7 @@ impl Attack {
         body: &mut Body,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
+        // State 13 ("Failed"): the target went out of sight.
         self.state = FAILED;
         body.set_anim_speed(1.0);
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(

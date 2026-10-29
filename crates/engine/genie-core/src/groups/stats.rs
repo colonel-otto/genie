@@ -552,6 +552,7 @@ impl World {
             return Ok(false);
         }
         let (p, u) = self.object(view.id).expect("the member is held");
+        // The types of action objects (`RGE_Action_Object`), whose action list slot 0x538 reads.
         if u.master(&self.masters, p)?.kind >= ACTION {
             if let Some(e) = u.unmodelled_action.clone() {
                 return Err(e);

@@ -370,6 +370,7 @@ impl Spatial {
         let at = self.objects.get(&me);
         let searcher = Searcher {
             class_10: at.is_some_and(|m| m.class == 10),
+            // The villagers' class, which gathers from farms (`FUN_141195750`).
             farmer: at.is_some_and(|m| m.class == class::VILLAGER),
             trapper: at.is_some_and(|m| TRAPPERS.contains(&m.master)),
         };
@@ -564,6 +565,7 @@ pub(super) fn farm_kept(
         if 1 <= workers {
             return Ok(false);
         }
+        // The fish trap (raw `0x6163`), which only the fishing ships gather from (`FUN_1411945a0`).
         if !searcher.trapper && p.master == FISH_TRAP {
             return Ok(false);
         }

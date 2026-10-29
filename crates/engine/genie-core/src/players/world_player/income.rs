@@ -37,6 +37,7 @@ impl World {
             };
             let building = unit
                 .master(&self.masters, owner)
+                // The buildings' type (the object's `+0xf`, `'P'`).
                 .is_ok_and(|m| m.kind == BUILDING);
             if building {
                 sum += unit.livestock_summation;

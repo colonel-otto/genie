@@ -116,6 +116,7 @@ impl Attack {
         f: &Fight,
         r: &AttackReads,
     ) -> Result<u8, GenieError> {
+        // The villagers' class, whose `MoveTo` waits once when the motion step gives up.
         if r.ai_order.has_ai() && (f.victim.player != 0 || f.own.class != class::VILLAGER) {
             forget_target(unit);
         }
@@ -159,6 +160,9 @@ impl Attack {
     ) -> Result<u8, GenieError> {
         let target = std::mem::replace(&mut self.target, -1);
         self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
+        // The predators' class (10), whose unit AI's slot 0x1f0 a failed Attack calls.
+        // The boar's unit-AI type, whose slot 0x1f0 (`FUN_140c16d50`) sends it home.
+        // The lion's unit-AI type, whose slot 0x1f0 (`FUN_140c16d60`) does nothing.
         if f.own.class == class::PREDATOR && !matches!(r.ai_type, Some(BOAR_AI | LION_AI) | None) {
             return Err(GenieError::unsupported(
                 "a predator's failed Attack whose unit AI is not a boar's or a lion's (slot 0x1f0)",
@@ -190,6 +194,8 @@ impl Attack {
         unit: &mut Unit,
         sprite_rng: &mut Well512,
     ) -> Result<(), GenieError> {
+        // The states the slice models: 1 done, 2 the target died, 4 on the way, 6 waiting to swing, 7
+        // swinging, 13 failed.
         self.finish_in(DONE, unit, sprite_rng)
     }
 

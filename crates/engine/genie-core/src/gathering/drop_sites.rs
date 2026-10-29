@@ -34,6 +34,8 @@ impl Seeker<'_, '_> {
     /// A fishing ship ([`class::FISHING_SHIP`]) seeks in every zone and counts a drop site its path
     /// does not reach while near it.
     const fn fishing(&self) -> bool {
+        // The fishing ship's class (21), whose drop-site search passes over the zones.
+        // The villager's class (4), which searches from the farm it works.
         self.class == class::FISHING_SHIP
     }
 
@@ -169,6 +171,8 @@ pub(crate) fn drop_site_search<'u>(
         let busy = at_work != -1
             && 40 <= master.kind
             && o.top_action_kind().is_some_and(|k| {
+                // The action types the Gather's drop-site searches pass over (`FUN_1411671e0`'s argument 8
+                // `0x7d`, which takes `0x7c` with it).
                 k == at_work || (at_work == action_type::UNPACK && k == action_type::PACK)
             });
         if busy || (outside && o.life.inside.is_some()) {

@@ -350,6 +350,8 @@ impl UnitAi {
                     point: [x, y, off.z],
                     range: 0.0,
                     force: true,
+                    // The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
+                    // The villagers' class.
                     walk: off.class != class::PREY,
                 },
                 side,
@@ -357,6 +359,7 @@ impl UnitAi {
             )?;
         }
         if !off.computer
+            // The villager class (`-0xea8` raw): a boar attacking one turns furious.
             && off.class == class::VILLAGER
             && let (Some(site), Some(target)) = (off.site, off.action_target)
         {

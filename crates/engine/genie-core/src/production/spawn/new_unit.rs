@@ -145,6 +145,7 @@ impl World {
                 .map(|(tp, t)| (tp, t.life.master_id));
             if let Some((tp, tm)) = target {
                 let ai = self.players[p].objects[new].ai.as_ref();
+                // The monastery, which a unit carrying a relic's order keeps (`FUN_141188e10`).
                 let keeps = tm == MONASTERY
                     && ai.is_some_and(|ai| ai.orders.iter().any(|q| q.target_type == RELIC_TYPE));
                 let t_master = self.master(tp, tm)?;
@@ -192,6 +193,8 @@ impl World {
         Ok(NewObject {
             computer: owner.computer,
             posture: owner.posture,
+            // The player's attribute a new soldier's unit AI reads: the current age (`player+0x100` at
+            // `+0x30`, `FUN_140c12300`).
             age: crate::technology::Attributes::get(owner, attribute::CURRENT_AGE)?,
             ..NewObject::of(position, master, made)
         })

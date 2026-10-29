@@ -121,6 +121,7 @@ pub fn more_work(
                 continue;
             }
             for o in objects(i32::from(x), i32::from(y))? {
+                // The farm class (49), which both searches treat apart.
                 if o.class == class::FARM {
                     // its own tests (owner, pasture, the targeting flag, masters 1893 and 1897)
                     // come before the entry's, which takes no farm without a farm target

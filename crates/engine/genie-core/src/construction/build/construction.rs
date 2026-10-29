@@ -106,10 +106,13 @@ pub(super) fn completion_counts(
     // 1.0, 0x14330eb8c)
     let history = match master.id {
         CASTLE => Some(crate::players::history::CASTLE_BUILT),
+        // The Wonder's master (`0x114`), whose construction rate the player's attribute raises at most to
+        // `DAT_142ed66b4`.
         WONDER => Some(crate::players::history::WONDER_BUILT),
         _ => None,
     };
     match master.id {
+        // The monastery (master 104, `0x6104` raw), whose relics give goods every second.
         MONASTERY => attributes.push((MONASTERIES, 1.0)),
         WONDER => attributes.extend([(WONDERS, 1.0), (WONDERS_BUILT, 1.0)]),
         CASTLE => attributes.extend([(CASTLES, 1.0), (CASTLES_BUILT, 1.0)]),

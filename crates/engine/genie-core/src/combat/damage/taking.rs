@@ -232,6 +232,7 @@ pub(super) fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)]
     if t.hp < 1.0 {
         t.hp = 0.0;
         t.goto_sleep = false;
+        // The villager class (4): its hits leave what a static target holds.
         if src.class != class::VILLAGER {
             t.amount = 0.0;
         }

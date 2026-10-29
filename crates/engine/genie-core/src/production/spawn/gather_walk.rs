@@ -36,6 +36,14 @@ impl World {
         let world_time = self.world_time;
         let sprite = self.point_move_sprite(p, new)?;
         let villager =
+            // A building's master type (`'P'`).
+            // A combat unit's master type (`'F'`, `TRIBE_Master_Combat_Object`).
+            // The wall class, which the search checks the building's corners for (`FUN_1415417f0`).
+            // Classes the placement tests treat apart: a tree placed (15) passes over farms (49); buildings
+            // of classes 51 and 54 block though desolid.
+            // The gate class, whose own walls BUILD's placement scan passes over (`FUN_14123aee0`).
+            // The relic's master, which always stays (`FUN_141194e80`).
+            // The villager class, whose new units count in attribute 248.
             self.players[p].objects[new].master(&self.masters, p)?.class == class::VILLAGER;
         let unit = &mut self.players[p].objects[new];
         if let Some(m) = unit.body.mover_mut() {

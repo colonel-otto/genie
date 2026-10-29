@@ -57,6 +57,10 @@ impl Mover {
         let solid = self.stats.radius.iter().all(|&r| 0.0 < r);
         let trade_cart = world
             .get(me.id)
+            // The trade cart's class (19), whose path requests the owner's budget limits (`FUN_14165d6f0`).
+            // The classes a long path's stretch may not cross (`0x141150f00` after `FUN_140f9eb70`, raw
+            // `-0xe91`, `-0xe78`, `-0xea9`): walls, towers, and buildings that do not move; gates
+            // ([`GATE`]) too. A villager's (`-0xea8`) path crosses them.
             .is_some_and(|p| p.class == class::TRADE_CART);
         if solid && !self.plan_allowed(me, world, plan, trade_cart, plans)? {
             return Ok(AfterRequest::Paused);

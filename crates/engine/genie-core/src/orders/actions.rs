@@ -225,6 +225,10 @@ impl World {
         let master = u.master(&self.masters, p)?;
         let spared = TRIBE_COMBAT <= master.kind
             && (master.class == SPARED
+                // The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
+                // (raw `0x3a`).
+                // The town centre (master 109, `0x6109` raw), to which livestock's `MoveTo` goes as to a point
+                // (`FUN_140aa0df0`).
                 || (master.class == class::LIVESTOCK && 0.0 < u.life.amount));
         if spared {
             return Ok(());

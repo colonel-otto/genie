@@ -34,6 +34,9 @@ impl HuntAction {
         self.tear_down(body.mover_mut())?;
         self.state = WALK;
         self.timer = 0.0;
+        // The villagers' class, whose `MoveTo` waits once when the motion step gives up.
+        // Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
+        // The predators' class, whose hunt ends on its own terms (`-0xea2` raw, `0x140ac85fd`).
         let own_livestock = victim.class == class::LIVESTOCK && victim.player == player;
         if victim.state <= 2 && !own_livestock {
             return Err(GenieError::unsupported(

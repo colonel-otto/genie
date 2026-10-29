@@ -25,6 +25,8 @@ use crate::world::step::Step;
 #[must_use]
 pub fn waits_for_a_farm(master: i16, target_type: i32) -> bool {
     FARM_WAITERS.contains(&master)
+        // The farm class, whose gather the slice does not model yet.
+        // The villagers' class, whose `MoveTo` waits once when the motion step gives up.
         || (TRAP_WAITERS.contains(&master) && target_type == i32::from(class::FARM))
 }
 
@@ -237,6 +239,7 @@ impl GatherAction {
             new_sprite(sprite, mover.map(|m| &mut m.stats), s, rng);
         }
         if arrived && computer {
+            // State 1: done; its update returns 1 and the action list removes it.
             self.state = DONE;
             return Ok([-1; 2]);
         }

@@ -414,6 +414,7 @@ impl MissileAction {
                 self.timer += way;
                 self.distance -= way;
                 if max_range <= self.timer && self.distance < BEYOND {
+                    // State 1: the missile ends.
                     self.state = DONE;
                 }
                 d

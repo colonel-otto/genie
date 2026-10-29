@@ -238,6 +238,8 @@ impl HuntAction {
             held,
             drops_here,
         } = retarget;
+        // A building's master type (`'P'`).
+        // A building whose top action is this (a farm at work) takes a hunt sent to it to `set_state` 15.
         if target.kind == BUILDING && target.top_action == Some(action_type::UNPACK) {
             return Err(GenieError::unsupported(
                 "a hunt sent to a farm at work (set_state 15)",

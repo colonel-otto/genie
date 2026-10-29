@@ -140,6 +140,7 @@ impl GatherAction {
         // 0xf8 with 1), the unit holds none, and the gathering goes on
         if 0.0 < r.food_sold
             && target.class == class::FARM
+            // The food kind a farm holds (`+0x308` 16): the food sold at once.
             && unit.life.attribute_type == FARM_FOOD_KIND
         {
             let sold = std::mem::take(&mut unit.life.amount);

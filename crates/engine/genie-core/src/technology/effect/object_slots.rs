@@ -249,6 +249,8 @@ impl World {
         let owner = &mut self.players[p];
         for &(kind, amount, _) in master.storage.iter().take(3) {
             match kind {
+                // The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):
+                // headroom (4), and current population (11) and 19, which hold its magnitude.
                 attribute::HEADROOM => {
                     owner.add_attribute(attribute::HEADROOM, amount.abs())?;
                     owner.add_attribute(attribute::HEADROOM, v)?;

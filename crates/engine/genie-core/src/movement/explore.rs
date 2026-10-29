@@ -94,6 +94,7 @@ impl ExploreAction {
                 Owner::Stopped
             }
             WAIT => Owner::WantsPoint,
+            // State 13: failed.
             DONE | FAILED | 14 => Owner::Standing,
             WALK => {
                 self.move_to = Some(MoveToAction::sub_to_point(self.point, 0.0, sprite));

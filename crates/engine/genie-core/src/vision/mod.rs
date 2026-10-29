@@ -103,6 +103,7 @@ impl World {
                         self.players[q]
                             .objects
                             .iter()
+                            // The town centre the reveal finds (`0x6d`) and the flare it makes there (`0x2b9`).
                             .filter(|u| u.life.master_id == TOWN_CENTRE)
                             .map(|u| (p, q, u.position())),
                     );

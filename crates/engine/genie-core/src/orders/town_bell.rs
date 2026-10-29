@@ -135,6 +135,7 @@ fn record_object(
             .action
             .is_some_and(|a| ENDED_ON_A_BUILDING.contains(&a))
         && o.building
+        // The farms' class, whose records a built farm does not end.
         && o.class != class::FARM
         && o.built
     {
@@ -220,6 +221,10 @@ impl World {
         let Some((_, t)) = self.object(tc) else {
             return Ok(());
         };
+        // The town centre, whose bell the command rings (`0x6109` raw).
+        // The master that answers the bell besides the villagers (`0x710`).
+        // The villagers' class.
+        // The units' least type (`0x46`) and the buildings' (`'P'`).
         if t.life.master_id != TOWN_CENTRE {
             return Ok(());
         }

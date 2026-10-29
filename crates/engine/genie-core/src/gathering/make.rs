@@ -128,6 +128,7 @@ impl MakeAction {
             c.w.masters.get(c.player),
         )?;
         match self.state {
+            // `+0x18`: the state whose update reports the action done (`FUN_140a99e30` returns 1).
             DONE => return Ok(HeadCode::Deletes),
             MAKING if 0.0 < self.remaining || self.total <= 0.0 => {
                 let rate = (master.work_rate + farm.work_rate_powerup)
@@ -149,6 +150,8 @@ impl MakeAction {
             MAKING
                 if !UNEXHAUSTED.contains(&master.id)
                     && farm.life.amount <= 0.0
+                    // The first master type whose slot 0xd8 is `FUN_141211340` (70, `TRIBE_Combat_Object`, and 80);
+                    // below it slot 0xd8 is `FUN_14118f580` itself.
                     && (master.kind < COMBAT || master.class != NEVER_EXHAUSTED_CLASS) =>
             {
                 farm.life.hp = 0.0;

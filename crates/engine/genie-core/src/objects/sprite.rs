@@ -350,6 +350,9 @@ pub fn trade_sprite(master: &Master) -> Option<i16> {
     master
         .tasks
         .iter()
+        // A trade cart's class (`FUN_14106a940`, decoded 0x13).
+        // The trade task whose carrying sprite a trade cart with goods shows (`FUN_1412028a0`: action
+        // type 0x6f, `object_id` 0x54).
         .find(|t| t.action_type == action_type::TRADE && t.object_id == TRADE_TARGET)
         .and_then(|t| sprite_id(t.sprites[3]))
 }

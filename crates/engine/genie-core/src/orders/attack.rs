@@ -153,6 +153,7 @@ impl World {
             "an attack task's target the slice does not hold",
         ))?;
         let tm = t.master(&self.masters, owner)?;
+        // A building's master type (`'P'`); types below 30 do not move.
         let aimed = if tm.kind == BUILDING {
             t.annex_of.unwrap_or(target)
         } else {

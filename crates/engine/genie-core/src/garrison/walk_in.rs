@@ -321,6 +321,9 @@ impl EnterAction {
         let t = Self::held_target(reads.target)?;
         match self.state {
             // state 1 returns 1, state 13 returns 3: either way the list removes the action
+            // The Enter action's states the slice models: 1 done (inside), 2 waiting to try again, 4
+            // walking to the target.
+            // The failed Enter (`set_state(13)`), whose update returns 3.
             DONE | FAILED => return Ok(HeadCode::Deletes),
             WAIT => {
                 self.timer -= seconds(c.dt);

@@ -307,6 +307,8 @@ impl MakeObj {
     /// combat master (`TRIBE_Master_Combat_Object`, type 70 and up).
     #[must_use]
     pub fn time(&self, master: Option<&Master>, building: i16) -> i16 {
+        // The first master type that is a `TRIBE_Master_Combat_Object` (the dynamic casts of
+        // `FUN_1411cbc40` and `FUN_140acf280`).
         let Some(m) = master.filter(|m| COMBAT <= m.kind) else {
             return 0;
         };
@@ -404,6 +406,9 @@ impl Production {
 pub fn population(storage: &[(i16, f32, u8)]) -> f32 {
     storage
         .iter()
+        // The population headroom (attribute 4), the population (11), the population cap (32), the
+        // units queued (80) and the units in production (81).
+        // The population (attribute 11).
         .filter(|&&(kind, _, _)| kind == attribute::HEADROOM)
         .fold(0.0, |pop, &(_, amount, _)| pop - amount)
 }

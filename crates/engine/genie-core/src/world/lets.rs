@@ -302,6 +302,7 @@ impl Lets<'_> {
     /// The building whose builders object `f` (`id`, of player `p`) counts in: an annex's main
     /// building, else the object itself.
     fn site_of(&self, f: &Unit, p: usize, id: i32) -> Result<i32, GenieError> {
+        // The building master type RESEARCH asks for (`'P'`, 80).
         Ok(if f.master(self.masters, p)?.kind == BUILDING {
             f.annex_of.unwrap_or(id)
         } else {

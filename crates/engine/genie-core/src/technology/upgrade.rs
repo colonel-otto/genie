@@ -346,6 +346,7 @@ impl World {
         }
         let u = self.object_at(place);
         if master_type::COMBAT <= kind
+            // The villager class (4), whose load an upgrade without its master kept goes to its player.
             && old.class == class::VILLAGER
             && 0.0 < u.life.amount
             && 0 <= u.life.attribute_type

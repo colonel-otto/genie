@@ -446,6 +446,7 @@ pub(crate) fn lose_built_storage(
             p.add_attribute(kind, -amount)?;
         }
     }
+    // The population headroom attribute, which a building's held amount gives (`+0x308` 4).
     if held == attribute::HEADROOM {
         p.add_attribute(attribute::HEADROOM, -amount)?;
     }

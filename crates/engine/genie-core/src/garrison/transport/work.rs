@@ -85,6 +85,7 @@ impl crate::world::World {
         let Some((tp, t)) = self.object(target) else {
             return Ok(false);
         };
+        // The market (`0x60f0` raw), whose own trade units the work command never retakes.
         let market = tp == p && t.master(&self.masters, tp)?.id == MARKET;
         let class = self.players[p].objects[i].master(&self.masters, p)?.class;
         Ok(market && TRADE_CLASSES.contains(&class))

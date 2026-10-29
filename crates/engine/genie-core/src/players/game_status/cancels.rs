@@ -248,6 +248,8 @@ impl World {
             if slot.tech != -1 || slot.count == 0 {
                 return Ok(());
             }
+            // The villager's masters, whose two sexes a cancel of five counts as one kind
+            // (`FUN_1411d66b0`, `FUN_1411d61e0`).
             if master != kind && master != VILLAGER_MALE && master != VILLAGER_FEMALE {
                 return Ok(());
             }
@@ -367,6 +369,7 @@ impl World {
             return Ok(());
         }
         let attribute =
+            // The player's attribute that mode reads (6, `+0x30`).
             crate::technology::Attributes::get(&self.players[p], attribute::CURRENT_AGE)?;
         if crate::math::fmath::below_or_unordered(ONE_UNIT_AGE, attribute) {
             return Ok(());

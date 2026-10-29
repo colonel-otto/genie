@@ -26,6 +26,7 @@ use crate::world::{
 /// wall) or the house runs only its damage frames by its hit points and its combat update; no
 /// whole seconds, and an annex of it completes as well ([`Unit::complete_on_update`]).
 pub(crate) const fn walls_branch(master: &Master) -> bool {
+    // The house's master id (`0x46`), whose update takes the walls' branch ([`walls_branch`]).
     master.class == class::WALL || master.id == HOUSE
 }
 
@@ -272,6 +273,7 @@ impl Unit {
                 (u.id, u.life.master_id),
                 c.w.masters.get(c.player),
             )?;
+            // The villager's class (4), which a building's repair by its garrison counts.
             if m.class == class::VILLAGER {
                 villagers += 1;
             }

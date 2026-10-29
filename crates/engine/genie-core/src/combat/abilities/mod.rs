@@ -191,6 +191,7 @@ impl World {
         let Some(master) = unit
             .master(&self.masters, p)
             .ok()
+            // The object types the routine runs on: a combat unit (`'F'`) and a building (`'P'`).
             .filter(|m| matches!(m.kind, COMBAT | BUILDING))
         else {
             return Ok(Vec::new());

@@ -319,6 +319,7 @@ impl World {
                        t: usize| {
             if defs[t].kind == REENABLED_KIND {
                 states[t].state = 1;
+            // A researched technology's state, which a disable command keeps (`FUN_1413cdb00`).
             } else if states[t].state != RESEARCHED {
                 states[t].state = -1;
             }

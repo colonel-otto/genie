@@ -62,6 +62,7 @@ const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET
 /// held, and a `MoveTo` of its own (not quiet) takes it (slot 0x178).
 #[must_use]
 pub const fn holds_object(livestock: bool, master: i16, state: u8) -> bool {
+    // The town centre's master (`FUN_140aa0df0`'s `0x6109` raw), to which livestock walks beside.
     !(livestock && master == TOWN_CENTRE) && state < 7
 }
 

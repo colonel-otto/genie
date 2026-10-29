@@ -68,6 +68,7 @@ impl World {
             let Some(king) = self.players[i]
                 .objects
                 .iter()
+                // The king (`0x1b2`), whom the treason reveals.
                 .find(|u| u.life.master_id == KING)
             else {
                 continue;

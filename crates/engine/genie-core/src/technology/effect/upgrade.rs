@@ -193,6 +193,8 @@ impl World {
                 let made = if master == VILLAGER_MALE {
                     let r = self.streams.get(Stream::Player).rand15() as i32;
                     if 49 < r % 100 {
+                        // The male and female villagers' masters.
+                        // The relic's master, which the world counts.
                         VILLAGER_FEMALE
                     } else {
                         VILLAGER_MALE

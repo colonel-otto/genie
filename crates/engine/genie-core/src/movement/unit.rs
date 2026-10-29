@@ -93,6 +93,8 @@ impl Unit {
             return Ok(None);
         }
         Ok(Some(match g.member_reason(self.id) {
+            // A group member's own move's reasons slot 0x5e0 tells apart (`FUN_141017590`): moved aside,
+            // and none.
             ASIDE => GroupSpeed::Aside,
             NO_OWN_MOVE => GroupSpeed::Free,
             _ => GroupSpeed::OwnMove(g.motion.maximum_velocity_forward),

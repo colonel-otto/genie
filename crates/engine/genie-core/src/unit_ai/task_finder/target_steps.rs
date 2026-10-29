@@ -63,6 +63,7 @@ fn trade_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&
     trades
         .then(|| {
             first(list, |task| {
+                // The trade task's action type (`0x6f`).
                 task.action_type == action_type::TRADE
                     && (task.object_id == t.master.id || task.object_group == t.master.class)
                     && wanted(filter, task)

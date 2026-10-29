@@ -31,6 +31,9 @@ impl Unit {
         let changed = self.change_owner(c, new)?;
         // the scan reads the owner after the change: the old one when `new` lacks the master
         let mut taken = Vec::new();
+        // The livestock class (`-0xe72` raw).
+        // The siege class (`-0xe9f` raw), whose ownership change drops the units it carries
+        // (`FUN_14120f800`).
         if class == class::LIVESTOCK && (if changed { new } else { c.player }) != 0 {
             scan_livestock(c, self.position(), new, &mut taken)?;
         }

@@ -64,6 +64,8 @@ pub(super) fn damage(
             attacker: src.id,
             attacker_player: src.player,
             attacker_class: src.class,
+            // The livestock class, which goes to Gaia when killed.
+            // The artifact class (1), which no blast reaches.
             to_gaia: t.kind == 70 && t.class == class::LIVESTOCK && t.player != 0,
         });
     }
@@ -140,6 +142,8 @@ pub fn blast(
     // every building on the tiles starts the blast with nothing taken (+0xb90, first pass)
     for t in targets
         .iter_mut()
+        // The building type (`'P'`): its slot 0xe8 is `FUN_1411cea90` ([`take_building`]).
+        // The wall class (27): its razing counts nothing.
         .filter(|t| t.kind == BUILDING && blast.on_tiles(t))
     {
         if let Some(b) = t.building.as_mut() {

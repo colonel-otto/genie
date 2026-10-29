@@ -112,6 +112,9 @@ pub(crate) fn refund_of(master: &Master, main: Option<i32>) -> Vec<(i16, f32)> {
     if main.is_some() {
         return Vec::new();
     }
+    // The masters whose death lowers a count of their owner's (`FUN_1411dbb70`, raw `0x6104`,
+    // `0x61b0`, `0x60ee`): the monastery's ([`MONASTERY`]) in attribute 52, the wonder's in 42,
+    // the castle's in 134.
     if matches!(master.id, CASTLE | WONDER) {
         return vec![(98, cost)];
     }

@@ -210,6 +210,10 @@ impl crate::world::World {
 /// The master a completed building's stack unit takes (`+0x986`): [`RICE_PASTURE`] for master
 /// 1889 on mangrove or rice terrain (`rice`, `+0xcd0`), else its own.
 const fn stack_master(master: &Master, building: &BuildingMaster, rice: bool) -> i16 {
+    // The buildings' master type (80).
+    // The masters and the class the end of the work treats apart: 621 and 1889 among the
+    // foundations, class 39 among the builders, 1893 and 1897 (`id - 0x765 & !4 == 0`), the fish
+    // trap 199 and farms (class 49, `FUN_141194b20`).
     if master.id == PASTURE_1889 && 0 <= building.stack_unit && rice {
         RICE_PASTURE
     } else {

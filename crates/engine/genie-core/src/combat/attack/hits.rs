@@ -142,6 +142,9 @@ pub(crate) fn strike(
 /// building's `+0xb90`, its main building's (`+0xbb8`, among `blasted`) for an annex; 0 for
 /// another object.
 pub(super) fn blast_so_far(victim: &Victim, blasted: &[Victim]) -> Result<f32, GenieError> {
+    // The livestock (58, `0x3a`) and farm (49, `0x31`) classes: the ally test spares an Attack on
+    // one that was its unit's player's when the Attack took it ([`Attack::same_owner`]).
+    // A building's master type (`'P'`), whose main building (`+0xbb8`) an area effect attacks.
     let Some(b) = victim.building.as_ref().filter(|_| victim.kind == BUILDING) else {
         return Ok(0.0);
     };

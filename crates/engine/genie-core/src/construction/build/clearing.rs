@@ -183,7 +183,10 @@ pub(super) fn clearing_takes(
     if o.master == site.master {
         return Ok(None);
     }
+    // The masters whose classes (39, the gate, and 52) take their owner's walls (27) off their
+    // footprint, and the tree class (15).
     let under_gate = matches!(site.class, class::GATE | class::TOWER);
+    // The wall class (27, `0x1b`): two walls beside a builder on a footprint's diagonal stop it.
     let own_wall = o.player == site.player && under_gate && o.class == class::WALL;
     let tree = site.trees && o.class == class::TREE;
     if o.buildable_on == 0 && !own_wall && !tree {

@@ -168,6 +168,7 @@ impl World {
             let worth = volume as f32 * price;
             let fee = self.fee(p) * worth;
             let gold = cvttss2si(worth - fee + ROUND) as f32;
+            // The gold a sale gives and a purchase costs.
             self.add_resource(p, attribute::GOLD, gold, 1, true);
             let lot = volume.wrapping_neg() as f32;
             self.add_resource(p, usize::from(attribute), lot, 0, true);

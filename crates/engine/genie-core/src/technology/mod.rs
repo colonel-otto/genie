@@ -187,6 +187,7 @@ pub fn factors(
     let modifier = if is_age(tech) {
         0.0
     } else {
+        // The attribute that scales research costs above 0 (`+0x2a8`: 85).
         attribute(attribute::RESEARCH_COST_MODIFIER)?
     };
     let scale = if tech == SCALED_BY_38 {

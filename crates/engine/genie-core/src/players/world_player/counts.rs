@@ -74,6 +74,9 @@ impl World {
                 count = count.wrapping_add(1);
             }
         }
+        // The wonder's master (`0x61b0` raw, `0x14163bb68`).
+        // The builder's master (`FUN_141625a20`'s 0x76).
+        // The town centre a builder may place (`FUN_141625a20`'s 0x26d).
         if building == BUILDER {
             let a = &self.players[p].attributes;
             let centre = masters.get(TOWN_CENTRE_621);
@@ -129,6 +132,7 @@ impl World {
             .copied()
             .flatten()
             .map_or(-1, |u| match state(u.elite_tech) {
+                // A technology's state once researched.
                 Some(RESEARCHED) => u.elite,
                 Some(_) => u.unit,
                 None => -1,
