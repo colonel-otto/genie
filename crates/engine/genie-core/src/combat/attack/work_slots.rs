@@ -7,6 +7,7 @@ use crate::combat::attack::{
 };
 use crate::movement::footprint_gap;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::{GenieError, combat::damage};
@@ -84,7 +85,7 @@ impl Attack {
         let special = r
             .swing_sprites
             .special
-            .filter(|_| 70 <= f.own.kind && damage::charge_hit(&f.own.source, &f.victim));
+            .filter(|_| COMBAT <= f.own.kind && damage::charge_hit(&f.own.source, &f.victim));
         let chosen = if let Some(look) = r.swing_sprites.look {
             Some(look)
         } else if let Some(special) = special {

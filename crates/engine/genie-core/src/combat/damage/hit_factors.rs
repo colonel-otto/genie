@@ -4,6 +4,8 @@ use crate::GenieError;
 use crate::combat::damage::{
     Attacker, Facing, HIGHER, LOWER, RELIC_BOOST, SPECIFIC_RELIC_BOOST, Victim,
 };
+use crate::objects::masters::class;
+use crate::objects::masters::master_type::BUILDING;
 
 /// Slot 0x1f0 of a combat object (`FUN_14120d780`) at height `z` whose player has `up_down` as
 /// attributes 211 and 212: a hit from higher up gains 25% and attributes 211 and the target's
@@ -38,7 +40,7 @@ pub fn building_elevation_factor(
     } else if 0 < relics[0] {
         f *= RELIC_BOOST;
     }
-    if kind == 80 {
+    if kind == BUILDING {
         if 0 < victim_relics[1] {
             return f / SPECIFIC_RELIC_BOOST;
         }
@@ -75,7 +77,8 @@ pub const fn charge_works(charge_target: i16, charge_type: i16, class: i16, kind
     let targets = charge_target as u16;
     if targets == 0xffff
         || charge_type == -4
-        || (targets == 0 && !(80 <= kind && class != 51 && class != 54))
+        || (targets == 0
+            && !(BUILDING <= kind && class != class::CLASS_51 && class != class::CLASS_54))
     {
         return true;
     }

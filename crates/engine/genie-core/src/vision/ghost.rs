@@ -18,6 +18,7 @@ use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
+use crate::objects::masters::master_type::BUILDING;
 use crate::vision::registry::MASK;
 use crate::world::World;
 
@@ -284,7 +285,7 @@ impl World {
                 }
                 // a building's load constructor (FUN_1411ac170, type 80 only): FUN_1411cc980
                 // before the rehook links its annexes
-                if kind == 80 && self.watches_building_at(p, id, false) {
+                if kind == BUILDING && self.watches_building_at(p, id, false) {
                     let _ = self.watch(p, id, x, y)?;
                 }
             }

@@ -6,6 +6,9 @@ use crate::construction::repair::{CountedIn, RepairReads, Repairee};
 use crate::map::spatial::Spatial;
 use crate::movement::Me;
 use crate::movement::move_to::MoveDefaults;
+use crate::objects::masters::class;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
@@ -52,7 +55,7 @@ impl Unit {
             radius: own.radius,
             scenario: scenario_mode(c.w.settings.game_mode),
             rate: self.work_rate_powerup + own.work_rate,
-            waits: own.class == 4 && !c.w.players[c.player].computer,
+            waits: own.class == class::VILLAGER && !c.w.players[c.player].computer,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
             // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
             defaults: MoveDefaults::of(&own, self.abilities.look.as_ref()),
@@ -195,9 +198,9 @@ fn repairee_of(
         position: t.position(),
         radius: tm.radius,
         class: tm.class,
-        moves: 29 < tm.kind && tm.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
+        moves: MOVING <= tm.kind && tm.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
     };
-    let counting = if tm.kind == 80 {
+    let counting = if tm.kind == BUILDING {
         t.annex_of.unwrap_or(target)
     } else {
         target
@@ -227,7 +230,7 @@ pub(crate) fn repair_target(
     if let Some((q, t)) = others.find(target).filter(|_| target != -1) {
         let tm = repair_master(&c.w.masters, q, t)
             .ok_or(GenieError::missing_data("a repaired object's master"))?;
-        for id in reached_ids(&c.w.spatial, t, target, tm.kind == 80) {
+        for id in reached_ids(&c.w.spatial, t, target, tm.kind == BUILDING) {
             let Some(o) = others.find(id) else {
                 continue;
             };
@@ -301,7 +304,7 @@ fn repaired(
             .map_or(&[][..], |p| &p.attributes[..])
     };
     let rate = |k: usize| attributes.get(k).copied().unwrap_or(0.0);
-    let annexes = if om.kind == 80 && o.annex_of.is_none() {
+    let annexes = if om.kind == BUILDING && o.annex_of.is_none() {
         let mut a = c.w.spatial.annexes_of(id);
         a.sort_unstable();
         a
@@ -316,7 +319,11 @@ fn repaired(
         master_hp: om.hit_points,
         hp: o.life.hp,
         hp_powerups: o.hp_powerups,
-        main: if om.kind == 80 { o.annex_of } else { None },
+        main: if om.kind == BUILDING {
+            o.annex_of
+        } else {
+            None
+        },
         annexes,
         cost_rates: [
             rate(crate::construction::repair::UNIT_REPAIR_COST),

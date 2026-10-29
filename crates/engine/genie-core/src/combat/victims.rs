@@ -5,7 +5,10 @@ use crate::GenieError;
 use crate::combat::damage::{Kill, Razed, Victim};
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -419,7 +422,7 @@ impl World {
             ));
         }
         let ap = kill.attacker_player;
-        if master.class == 4 {
+        if master.class == class::VILLAGER {
             // the attacker's class as the hit saw it: the attacker may be out for its update
             if matches!(kill.attacker_class, 9 | 10) {
                 self.players[q].add_attribute(227, 1.0)?;
@@ -593,7 +596,7 @@ pub(crate) fn victim_of(
             .copied()
             .collect(),
         // a combat object's slot 0xf0 is FUN_141082530 (types 50 and up)
-        armored: (50 <= kind).then(|| crate::combat::damage::Armored {
+        armored: (RGE_COMBAT <= kind).then(|| crate::combat::damage::Armored {
             armors: master.armors.clone(),
             base_armor: master.base_armor,
             terrain_bonus: master.terrain_bonus,
@@ -643,7 +646,9 @@ pub(crate) fn victim_of(
 /// `FUN_140fde380`: `master` is of type 70 and up, of class 51 or 54, with a weapon (`+0x810`
 /// above 0): a trebuchet, packed or not, whose kill counts as a unit's.
 pub(crate) const fn is_trebuchet(master: &Master) -> bool {
-    70 <= master.kind && matches!(master.class, 51 | 54) && !master.weapons.is_empty()
+    COMBAT <= master.kind
+        && matches!(master.class, class::CLASS_51 | class::CLASS_54)
+        && !master.weapons.is_empty()
 }
 
 /// `master`'s paid cost (`+0x880`: each entry with a resource and the paid flag), summed as

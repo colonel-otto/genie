@@ -9,8 +9,11 @@ use crate::movement::Mover;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::class;
+use crate::objects::masters::master_type::ANIMATED;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::MOVING;
+use crate::objects::masters::master_type::STATIC;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
 use crate::production::spawn::{
@@ -154,12 +157,12 @@ impl World {
         at: [f32; 3],
         facing: Facing,
     ) -> Result<usize, GenieError> {
-        if made.kind != 10 && !(20..40).contains(&made.kind) {
+        if made.kind != STATIC && !(20..40).contains(&made.kind) {
             return Err(GenieError::unsupported(
                 "remains of a type other than 10 and 20 to 39",
             ));
         }
-        if made.kind == 10 && 0 < made.hit_points {
+        if made.kind == STATIC && 0 < made.hit_points {
             return Err(GenieError::unsupported(
                 "remains with hit points (the sleeping list)",
             ));
@@ -188,7 +191,7 @@ impl World {
             flag_1: g.flags & 2 != 0,
         });
         let mut angle = 0.0;
-        let moving = if 30 <= made.kind {
+        let moving = if MOVING <= made.kind {
             // the moving setup's angle draw (FUN_141141640, "setup" line 0x2c3)
             let drawn = if crate::objects::facing::draws_angle(facets) {
                 let r = self.streams.get(Stream::Object).rand15();
@@ -270,7 +273,7 @@ impl World {
         }
         // a static object (type 10) dies on its sprite after its death (the dying one, else its
         // standing one), which may start on a random facet
-        let death_facets = if made.kind == 10 {
+        let death_facets = if made.kind == STATIC {
             let after = if 0 <= made.death_sprite {
                 made.death_sprite
             } else {
@@ -286,7 +289,7 @@ impl World {
         owner.objects.push(Unit {
             id,
             life: Lifecycle {
-                class: if made.kind == 10 {
+                class: if made.kind == STATIC {
                     Class::Static
                 } else {
                     Class::Animated
@@ -307,7 +310,7 @@ impl World {
             // an animated one's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             body: crate::objects::layers::Body::new(
                 at,
-                (20 <= made.kind).then(crate::objects::layers::Animated::default),
+                (ANIMATED <= made.kind).then(crate::objects::layers::Animated::default),
                 moving.map(|stats| Mover::new_object(stats, at, self.world_time, angle, facets)),
             ),
             attackable: true,

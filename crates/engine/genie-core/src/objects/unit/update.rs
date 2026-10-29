@@ -6,6 +6,7 @@ use crate::movement::{Me, Mover};
 use crate::objects::actions::Action;
 use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::master_type::ACTION;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Outcome, Unit, loses_actions};
@@ -264,7 +265,7 @@ impl Unit {
         if let Some(m) = self
             .master(&c.w.masters, c.player)
             .ok()
-            .filter(|m| 40 <= m.kind)
+            .filter(|m| ACTION <= m.kind)
             && let Some(p) = c.w.spatial.get(self.id).copied()
         {
             let moving = self.body.mover().is_some_and(Mover::is_moving);

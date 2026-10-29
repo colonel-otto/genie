@@ -8,6 +8,7 @@ use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
+use crate::objects::masters::class;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
@@ -44,7 +45,7 @@ impl UnitView<'_, '_> {
         let own = self.unit.master(&self.c.w.masters, self.player)?.clone();
         let master = &own;
         let unit = &mut *self.unit;
-        if matches!(master.class, 51 | 54) {
+        if matches!(master.class, class::CLASS_51 | class::CLASS_54) {
             return Err(GenieError::unsupported(
                 "the attack command of a unit of class 51 or 54",
             ));
@@ -339,7 +340,7 @@ impl UnitView<'_, '_> {
         &self,
         master: &crate::objects::masters::Master,
     ) -> Option<&crate::objects::masters::Master> {
-        if master.class != 4 {
+        if master.class != class::VILLAGER {
             return None;
         }
         let swap = if master.task_by_group == 1 {

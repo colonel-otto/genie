@@ -7,6 +7,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::TOWN_CENTRE;
+use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::{HERD_MOST, NO_POINT, Place};
 use crate::players::PlayerId;
@@ -179,7 +180,7 @@ impl World {
                 return Err(GenieError::unsupported("a cancel at a sleeping object"));
             };
             let unit = &self.players[p].objects[idx];
-            if unit.life.state != 2 || unit.master(&self.masters, p)?.kind < 80 {
+            if unit.life.state != 2 || unit.master(&self.masters, p)?.kind < BUILDING {
                 continue;
             }
             self.cancel_queued(p, idx, index, all)?;
@@ -226,7 +227,7 @@ impl World {
             // order filter none by owner
             let unit = &self.players[p].objects[idx];
             let kind = unit.master(&self.masters, p)?.kind;
-            if unit.life.state != 2 || kind < 40 || unit.life.amount <= 0.0 {
+            if unit.life.state != 2 || kind < ACTION || unit.life.amount <= 0.0 {
                 continue;
             }
             if unit.unmodelled_action.is_some() {

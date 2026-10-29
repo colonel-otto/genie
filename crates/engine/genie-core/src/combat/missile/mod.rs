@@ -10,6 +10,7 @@
 
 use crate::GenieError;
 use crate::math::fmath;
+use crate::objects::masters::class;
 use crate::orders::action_state::DONE;
 use genie_diff::Diff;
 
@@ -296,9 +297,9 @@ pub fn aim(at: AimAt<'_>, draw: &mut dyn FnMut() -> u32) -> Result<[f32; 3], Gen
     let mut gap = fmath::sqrt((y - from[1]) * (y - from[1]) + dx * dx);
     let mut chance = aimer.hit_chance;
     if let Some((radius, class)) = target
-        && aimer.class == 54
+        && aimer.class == class::CLASS_54
         && radius[0] < 1.0
-        && matches!(class, 27 | 52 | 3)
+        && matches!(class, class::WALL | class::TOWER | class::BUILDING)
     {
         chance = 0x50;
     }

@@ -421,7 +421,10 @@ impl UnitAi {
             let Some(u) = at.unit(id) else {
                 continue;
             };
-            if matches!(u.class, 3 | 13 | 52 | 54) {
+            if matches!(
+                u.class,
+                class::BUILDING | class::SIEGE | class::TOWER | class::CLASS_54
+            ) {
                 continue;
             }
             let d = u.gap_squared;

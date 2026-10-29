@@ -7,6 +7,7 @@ use crate::movement::{
     SHORT_PATHER, SPLIT, STUCK_PAUSE, ShortAsk, TileAsk, Walker, footprint_gap_squared,
     owner_number, short_path_including, split, tile_plan_for,
 };
+use crate::objects::masters::class;
 use crate::pathing::hull_path::HullPather;
 use crate::pathing::tile_path::{Path, Request};
 use crate::{GenieError, math::fmath, pathing::short_path};
@@ -186,12 +187,18 @@ impl Mover {
                 }
                 // slot 0x4f0: a building's master with a task of action type 0x99
                 // (FUN_1415c60b0), 0 for anything else
-                let worker_building = matches!(p.class, 3 | 27 | 39 | 49 | 52)
-                    && world
-                        .task_0x99
-                        .get(p.player)
-                        .is_some_and(|m| m.contains(&p.master));
-                if !matches!(p.class, 2 | 4 | 19 | 21) && !worker_building {
+                let worker_building = matches!(
+                    p.class,
+                    class::BUILDING | class::WALL | class::GATE | class::FARM | class::TOWER
+                ) && world
+                    .task_0x99
+                    .get(p.player)
+                    .is_some_and(|m| m.contains(&p.master));
+                if !matches!(
+                    p.class,
+                    class::TRADE_BOAT | class::VILLAGER | class::TRADE_CART | class::FISHING_SHIP
+                ) && !worker_building
+                {
                     continue;
                 }
                 // FUN_140fa0110 runs for each such hit: its temporary shapes leave the mesh's

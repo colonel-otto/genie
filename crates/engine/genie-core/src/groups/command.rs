@@ -6,6 +6,7 @@ use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
+use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
 use crate::world::World;
@@ -112,7 +113,7 @@ impl World {
         for m in &g.members {
             if let Some((p, u)) = self.object(m.id) {
                 let master = u.master(&self.masters, p)?;
-                if 69 < master.kind && master.formation_category != 0 {
+                if COMBAT <= master.kind && master.formation_category != 0 {
                     return Ok(false);
                 }
             }

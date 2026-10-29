@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::master_type::MOVING;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
@@ -212,7 +213,7 @@ impl UnitAi {
             // move (FUN_140fdd080: a master of type 30 and up with speed) gives the order up
             0x1fd => {
                 if self.current_order == Some(OrderKind::Attack)
-                    && !(29 < at.kind && 0.0 < at.speed)
+                    && !(MOVING <= at.kind && 0.0 < at.speed)
                 {
                     self.current_order = None;
                 }

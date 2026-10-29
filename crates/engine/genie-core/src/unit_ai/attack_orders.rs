@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
@@ -181,7 +182,7 @@ impl UnitAi {
                 None => return Ok(false),
             },
         };
-        if matches!(t.class, 9 | 10 | 15) {
+        if matches!(t.class, 9 | class::PREDATOR | class::TREE) {
             self.hunt_object(target, i32::from(t.class), t.position, at, side, rng)?;
             return Ok(true);
         }

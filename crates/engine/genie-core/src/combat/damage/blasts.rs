@@ -8,6 +8,8 @@ use crate::combat::damage::{
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::MISSILE;
 use crate::{GenieError, math::fmath};
 
 /// `FUN_141082e80`: the damage ([`armor_damage`]) beyond what a blast has done: an attacker of
@@ -29,7 +31,7 @@ pub(super) fn damage(
 ) -> Result<(), GenieError> {
     let d = armor_damage(t, weapons, factor, &src.source, bonus_damage(src, t))?;
     if blast_taken < d {
-        if 70 <= src.kind {
+        if COMBAT <= src.kind {
             let hit = charge_hit(&src.source, t);
             src.source.charge_hit = hit;
             if hit && src.source.area_effect <= 0.0 {
@@ -38,15 +40,16 @@ pub(super) fn damage(
         }
         lose(t, d - blast_taken);
     }
-    let marks = t.kind == 70 || (t.kind == 80 && matches!(t.class, 51 | 54));
-    if 60 <= src.kind && src.source.ability & 4 != 0 && marks {
+    let marks = t.kind == COMBAT
+        || (t.kind == BUILDING && matches!(t.class, class::CLASS_51 | class::CLASS_54));
+    if MISSILE <= src.kind && src.source.ability & 4 != 0 && marks {
         return Err(GenieError::unsupported(
             "an attacker whose combat ability marks its target (FUN_141206250)",
         ));
     }
     let master_hp = i32::from(t.master_hp);
     if src.source.class != ELEPHANT_ARCHER {
-        let sender = if src.kind == 60 {
+        let sender = if src.kind == MISSILE {
             src.source.fired_from
         } else {
             src.id
@@ -66,7 +69,7 @@ pub(super) fn damage(
             attacker_class: src.class,
             // The livestock class, which goes to Gaia when killed.
             // The artifact class (1), which no blast reaches.
-            to_gaia: t.kind == 70 && t.class == class::LIVESTOCK && t.player != 0,
+            to_gaia: t.kind == COMBAT && t.class == class::LIVESTOCK && t.player != 0,
         });
     }
     Ok(())
@@ -225,7 +228,7 @@ pub(super) fn blast_one(
     let Some(d2) = blast_distance2(t, b.center, b.r) else {
         return Ok(());
     };
-    if 70 <= t.kind && shield(t, false) {
+    if COMBAT <= t.kind && shield(t, false) {
         return Ok(());
     }
     let mut f = blast_falloff(attacker, a, t, (b.r, d2), is_main);
@@ -324,7 +327,7 @@ pub(super) fn blast_falloff(
     is_main: bool,
 ) -> f32 {
     let mut f = elevation_factor(attacker.position[2], attacker.attack_elevation, t);
-    if 70 <= t.kind && (t.player == attacker.player || t.allied[1]) {
+    if COMBAT <= t.kind && (t.player == attacker.player || t.allied[1]) {
         f *= t.armored.as_ref().map_or(1.0, |x| x.friendly_fire);
     }
     if a.missile < 0 {
@@ -390,7 +393,7 @@ pub(super) fn fixed_blast(
         if f32::from(t.capacity) < t.amount {
             t.amount = f32::from(t.capacity);
         }
-        if 1.0 <= before && 0 < t.player && t.kind == 70 {
+        if 1.0 <= before && 0 < t.player && t.kind == COMBAT {
             t.killed = Some(Kill {
                 attacker: attacker.id,
                 attacker_player: attacker.player,

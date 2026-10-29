@@ -1,6 +1,7 @@
 //! A footprint's spots, occupants and clearing, foreign marks, clear points and obstruction
 //! candidates.
 
+use crate::objects::masters::class;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -158,7 +159,7 @@ impl Spatial {
             .filter(|&(&id, o)| {
                 id != site_id
                     && o.master != site.master
-                    && (o.buildable_on != 0 || o.class == 15)
+                    && (o.buildable_on != 0 || o.class == class::TREE)
                     && (o.position[0] - sx).abs() < o.radius[0] + rx
                     && (o.position[1] - sy).abs() < o.radius[1] + ry
             })

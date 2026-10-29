@@ -12,6 +12,7 @@ use crate::math::rng::Stream;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToAction, Shown, graphic_of};
 use crate::movement::{Me, PathAsk};
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::{Unit, object_master};
 use crate::orders::action_state::DONE;
@@ -180,7 +181,7 @@ impl ExploreAction {
             c.w.masters.get(c.player),
         )
         .ok();
-        let villager = master.is_some_and(|m| m.class == 4);
+        let villager = master.is_some_and(|m| m.class == class::VILLAGER);
         let gives_up = GiveUp {
             waits: villager && !c.w.players[c.player].computer,
             stance: explorer.ai.as_ref().map_or(0, |ai| ai.stance),

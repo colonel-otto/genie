@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::{HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
@@ -80,7 +81,7 @@ impl World {
         let master = unit.master(&self.masters, p)?;
         let seeks = master.kind < COMBAT
             || (!master.drop_sites.iter().any(|&d| d == 45 || d == 2172)
-                && !matches!(master.class, 21 | 2));
+                && !matches!(master.class, class::FISHING_SHIP | class::TRADE_BOAT));
         let masters = self.masters.get(p).ok_or(GenieError::unsupported(
             "a drop-off of a player without masters",
         ))?;

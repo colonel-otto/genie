@@ -7,6 +7,7 @@ use crate::construction::build::{
     NO_CONSTRUCTION, NOT_HELD, RICE_PASTURE, StackUnit, held, show_built,
 };
 use crate::map::spatial::Placed;
+use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::{BuildingMaster, Master};
 
@@ -106,7 +107,7 @@ impl crate::world::World {
         master: &Master,
         placed: &Placed,
     ) -> Result<(), GenieError> {
-        if !matches!(master.class, 51 | 54)
+        if !matches!(master.class, class::CLASS_51 | class::CLASS_54)
             && let Some(v) = self.spatial.sight.as_mut()
         {
             v.construction_completed(id, placed.position, placed.radius);

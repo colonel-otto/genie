@@ -8,6 +8,7 @@ use crate::combat::attack::{
 };
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
+use crate::objects::masters::master_type::MOVING;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
 
@@ -114,7 +115,7 @@ impl Attack {
         } else {
             gap
         };
-        let mobile = 30 <= f.own.kind && 0.0 < speed;
+        let mobile = MOVING <= f.own.kind && 0.0 < speed;
         if !skip_ready && self.ready_at_once(t.position, near, mobile || r.volley_under_way) {
             return self.face(unit, t.position, f, r);
         }

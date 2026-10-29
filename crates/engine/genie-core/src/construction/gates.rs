@@ -68,7 +68,7 @@ pub(crate) fn gate_units(
         let Some(p) = spatial.get(id) else {
             continue;
         };
-        let counts = !matches!(p.class, 27 | 39 | 52)
+        let counts = !matches!(p.class, class::WALL | class::GATE | class::TOWER)
             && (p.class != 3 || p.speed != 0.0)
             && (GATE_EPSILON <= p.speed || p.player != 0);
         if counts {

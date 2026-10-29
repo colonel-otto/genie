@@ -10,6 +10,7 @@ use crate::gathering::closest_resource::herded;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
+use crate::objects::masters::class;
 use crate::objects::masters::player_master;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, WorldPicker, patrol_information, town_centre};
@@ -110,7 +111,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             if no_help || m.id == SIEGE_TOWER {
                 continue;
             }
-            if !gaia_attacker && m.class == 4 {
+            if !gaia_attacker && m.class == class::VILLAGER {
                 continue;
             }
             if owner != self.player && !self.c.w.spatial.allied_with(owner, self.player) {

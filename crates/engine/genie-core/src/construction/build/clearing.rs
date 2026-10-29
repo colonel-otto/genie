@@ -1,6 +1,8 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
 use crate::objects::masters::class;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -212,8 +214,8 @@ pub(super) fn clearing_takes(
     // the destroy's death part (FUN_14121cc40 below state 3) drops the record and sets +0x686
     // first; then FUN_141189670: COMISS 0 against the height, JC drops the record (a NaN too),
     // else the record held (`+0x658`) does
-    let dies = 70 <= seen.kind && seen.state < 3 && !seen.roo_called;
-    let destroy_drops = dies && (seen.kind < 80 || (!seen.desolid && 0.0 < seen.height));
+    let dies = COMBAT <= seen.kind && seen.state < 3 && !seen.roo_called;
+    let destroy_drops = dies && (seen.kind < BUILDING || (!seen.desolid && 0.0 < seen.height));
     let roo_drops = site.trees
         && !seen.roo_called
         && !dies

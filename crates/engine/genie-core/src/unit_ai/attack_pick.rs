@@ -2,6 +2,9 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::objects::masters::class;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
@@ -313,17 +316,20 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     if me.player == 0 || matches!(t.class, 1 | 42) {
         return Ok(false);
     }
-    let gaia_combat = !me.scenario && 70 <= t.kind && t.capture == 0;
-    if !gaia_combat && t.owner == 0 && !matches!(t.class, 9 | 10) {
+    let gaia_combat = !me.scenario && COMBAT <= t.kind && t.capture == 0;
+    if !gaia_combat && t.owner == 0 && !matches!(t.class, 9 | class::PREDATOR) {
         return Ok(false);
     }
-    if (t.kind == 80 && t.desolid) || TOWER_SPARED.contains(&t.master) || me.state <= 1 {
+    if (t.kind == BUILDING && t.desolid) || TOWER_SPARED.contains(&t.master) || me.state <= 1 {
         return Ok(false);
     }
-    if t.class == 10 && me.attack_priority < 3 {
+    if t.class == class::PREDATOR && me.attack_priority < 3 {
         return Ok(t.combat_level == 4);
     }
-    if !matches!(me.class, 51 | 54) && me.missile == -1 && me.firepower <= ARMED_FIREPOWER {
+    if !matches!(me.class, class::CLASS_51 | class::CLASS_54)
+        && me.missile == -1
+        && me.firepower <= ARMED_FIREPOWER
+    {
         return Ok(false);
     }
     Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
@@ -387,11 +393,11 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
     if t.class == 64 {
         return Ok(false);
     }
-    let gaia_combat = !me.scenario && 70 <= t.kind && t.capture == 0;
+    let gaia_combat = !me.scenario && COMBAT <= t.kind && t.capture == 0;
     if me.player == 0 && !gaia_combat {
         return Ok(false);
     }
-    if t.owner == 0 && !matches!(t.class, 9 | 10) && !gaia_combat {
+    if t.owner == 0 && !matches!(t.class, 9 | class::PREDATOR) && !gaia_combat {
         return Ok(false);
     }
     if !t.targeting {
@@ -408,7 +414,7 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
     if me.held == HELD_NO_ATTACK || matches!(t.class, 1 | 42 | 60) {
         return Ok(false);
     }
-    if t.kind == 80 && t.desolid {
+    if t.kind == BUILDING && t.desolid {
         return Ok(false);
     }
     if s.stance == 3 {
@@ -423,7 +429,7 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
 /// [`soldier_can_attack`]'s soldiers that never attack: class 51, master 444, and a packed class
 /// 54 or master 109 under its Pack or Unpack (top action 124 or 125).
 pub(super) const fn never_attacks(me: &Attacker) -> bool {
-    if me.class == 51 || me.master == SOLDIER_NEVER {
+    if me.class == class::CLASS_51 || me.master == SOLDIER_NEVER {
         return true;
     }
     (me.class == PACKED_CLASS || me.master == PACKED_MASTER)

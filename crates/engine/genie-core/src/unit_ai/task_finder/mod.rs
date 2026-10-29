@@ -16,6 +16,7 @@ use crate::GenieError;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::task_finder::target_steps::on_target;
 
@@ -354,7 +355,7 @@ fn garrison_task<'m>(
         && t.state == 2
         // A building's master type (`'P'`).
         && t.master.kind == BUILDING
-        && (list.kind == 70 || list.id == ids::MASTER_1808)
+        && (list.kind == COMBAT || list.id == ids::MASTER_1808)
         && t.master.garrison != 0
     {
         let garrison_type = t.master.building.map_or(0, |b| b.garrison_type);

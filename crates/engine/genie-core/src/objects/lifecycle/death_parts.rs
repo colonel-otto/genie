@@ -7,6 +7,8 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::ids::WONDER;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
@@ -67,7 +69,7 @@ pub(crate) fn combat_dies(
             "a dying unit in a pasture (FUN_141189ca0)",
         ));
     }
-    if matches!(master.class, 1 | 13 | 43) {
+    if matches!(master.class, 1 | class::SIEGE | class::CLASS_43) {
         return Err(GenieError::unsupported("a dying unit of class 1, 13 or 43"));
     }
     u.life.hp = 0.0;
@@ -75,14 +77,14 @@ pub(crate) fn combat_dies(
         return Ok(());
     }
     let desolid = u.construction.is_some_and(|c| c.desolid);
-    if master.kind < 80 || (!desolid && 0.0 < master.height) {
+    if master.kind < BUILDING || (!desolid && 0.0 < master.height) {
         pathing.removed(u.id);
         spatial.drop_record(u.id);
     }
-    if 0x45 < master.kind {
+    if COMBAT <= master.kind {
         spatial.set_tall(u.id, false);
     }
-    if master.kind == 80
+    if master.kind == BUILDING
         && u.annex_of.is_none()
         && u.life.inside.is_none()
         && let Some(v) = spatial.sight.as_mut()
@@ -106,7 +108,7 @@ pub(crate) fn refund_of(master: &Master, main: Option<i32>) -> Vec<(i16, f32)> {
             cost += f32::from(amount);
         }
     }
-    if master.kind != 80 {
+    if master.kind != BUILDING {
         return vec![(98, cost), (164, cost)];
     }
     if main.is_some() {

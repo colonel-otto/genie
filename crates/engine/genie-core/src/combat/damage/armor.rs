@@ -3,6 +3,9 @@
 
 use crate::GenieError;
 use crate::combat::damage::{Armored, Attacker, Victim, charge_damage, charge_works};
+use crate::objects::masters::class;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::MISSILE;
 
 /// `FUN_141085450`, a combat object's melee armor as its master holds it: its best armor of
 /// class 4 above −32768, else its best of any, else its base armor.
@@ -82,7 +85,7 @@ pub(super) fn weapon_armor(
         if k != class {
             continue;
         }
-        if 60 <= attacker.kind
+        if MISSILE <= attacker.kind
             && matches!(k, 3 | 4)
             && attacker.ability & 1 != 0
             && a.ability & 2 == 0
@@ -91,7 +94,7 @@ pub(super) fn weapon_armor(
             continue;
         }
         armor = n;
-        if 70 <= kind && matches!(k, 3 | 4) {
+        if COMBAT <= kind && matches!(k, 3 | 4) {
             armor = class_armor(a, k, own_class, state);
         }
     }
@@ -152,9 +155,9 @@ pub fn armor_damage(
     for &(class, amount) in weapons {
         let armor_f = f32::from(weapon_armor(a, class, attacker, kind, own_class, state));
         let mut attack = f32::from(amount);
-        let pierce_or_melee = matches!(class, 3 | 4 | 31);
+        let pierce_or_melee = matches!(class, class::BUILDING | class::VILLAGER | 31);
         let mut resist = 1.0f32;
-        if 70 <= attacker.kind {
+        if COMBAT <= attacker.kind {
             let charge =
                 !charged && 0.0 < attack && pierce_or_melee && charges(attacker, own_class, kind);
             let c = if charge {

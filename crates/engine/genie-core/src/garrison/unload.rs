@@ -183,7 +183,7 @@ impl World {
             let kind = self.players[up].objects[ui].master(&self.masters, up)?.kind;
             let u = &mut self.players[up].objects[ui];
             // a unit (type 70) is no longer under the town bell (`+0x9dc`)
-            if 70 <= kind {
+            if COMBAT <= kind {
                 u.town_bell.flag = false;
             }
             if let Some(ai) = u.ai.as_mut() {
@@ -347,7 +347,7 @@ impl World {
                     continue;
                 };
                 let m = u.master(&self.masters, up)?;
-                if 70 <= m.kind && (m.class == class::VILLAGER || m.id == MASTER_1808) {
+                if COMBAT <= m.kind && (m.class == class::VILLAGER || m.id == MASTER_1808) {
                     let _ = self.back_to_work(Some((p, idx)), inside)?;
                 }
             }

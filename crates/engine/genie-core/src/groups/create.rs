@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
+use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -43,7 +44,7 @@ impl FormationUnit {
     /// on x (`+0x5d8`), any other [`DEFAULT_RADIUS`].
     pub(crate) fn of(master: &crate::objects::masters::Master) -> Self {
         let full = 0.0 < master.height && 0.0 < master.radius[0] && 0.0 < master.radius[1];
-        let radius = if 69 < master.kind && full {
+        let radius = if COMBAT <= master.kind && full {
             master.spacing_modifier * master.radius[0]
         } else {
             DEFAULT_RADIUS

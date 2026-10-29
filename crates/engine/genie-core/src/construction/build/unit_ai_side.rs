@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::action_type;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
@@ -107,7 +108,7 @@ impl UnitView<'_, '_> {
                 }
                 let u = others.own(id)?;
                 let kind = u.master(every, player).ok()?.kind;
-                (80 <= kind && u.life.state == 0).then_some(id)
+                (BUILDING <= kind && u.life.state == 0).then_some(id)
             })
         };
         Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on).unwrap_or(-1))

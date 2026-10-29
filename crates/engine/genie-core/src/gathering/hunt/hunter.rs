@@ -9,6 +9,7 @@ use crate::gathering::hunt::NO_HUNT;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, second_target_checked};
@@ -188,7 +189,7 @@ impl Unit {
         };
         let who = crate::gathering::hunt::PointWalker {
             computer: c.w.players[c.player].computer,
-            villager: master.class == 4,
+            villager: master.class == class::VILLAGER,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
         let dropped = hunt.update_drop(c, self, me, site, who);
@@ -251,7 +252,7 @@ impl Unit {
         )?;
         let who = crate::gathering::hunt::PointWalker {
             computer: c.w.players[c.player].computer,
-            villager: master.class == 4,
+            villager: master.class == class::VILLAGER,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
         let walked = hunt.update_point_walk(c, self, me, who);

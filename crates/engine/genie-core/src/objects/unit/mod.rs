@@ -1,6 +1,8 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
 use crate::objects::masters::ids::WONDER;
+use crate::objects::masters::master_type::MISSILE;
+use crate::objects::masters::master_type::TREE;
 use genie_diff::Diff;
 
 use crate::GenieError;
@@ -411,12 +413,12 @@ pub(crate) fn missed_passes(
     target: i32,
     blast_level: u8,
 ) -> bool {
-    if player == c.player || kind == 60 {
+    if player == c.player || kind == MISSILE {
         return true;
     }
     let other = id != target;
     c.w.spatial.allied_with(c.player, player)
-        || (other && player == 0 && 15 < kind)
+        || (other && player == 0 && TREE < kind)
         || (other && level < blast_level)
 }
 

@@ -7,6 +7,7 @@ use crate::construction::build::{BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::objects::masters::action_type;
+use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::player_master;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -49,7 +50,7 @@ impl World {
             let m = unit.master(&self.masters, q)?;
             let speed = m.moving.map_or(0.0, |s| s.speed);
             let kind = m.kind;
-            let moves = 0x1d < kind && crate::math::fmath::below_or_unordered(0.0, speed);
+            let moves = MOVING <= kind && crate::math::fmath::below_or_unordered(0.0, speed);
             if !moves && !queued {
                 continue;
             }

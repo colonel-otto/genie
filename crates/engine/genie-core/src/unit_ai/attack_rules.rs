@@ -3,6 +3,9 @@
 
 use crate::GenieError;
 use crate::math::fmath::Vec3;
+use crate::objects::masters::class;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     Attacker, BUILDING_AI, CIVILIAN, DEFEND_GROWTH, LION_AI, PREDATOR_AI, PRIEST_AI,
@@ -59,7 +62,7 @@ pub(super) const BOAT_CONVERTER: i16 = 53;
 /// owner holds at most 0 (or not a number) fails.
 #[must_use]
 pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool {
-    if p.class == 43 {
+    if p.class == class::CLASS_43 {
         return false;
     }
     // full faith (`COMISS`: a NaN has none)
@@ -70,13 +73,23 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
     let Some(t) = t else {
         return false;
     };
-    if t.owner == 0 || p.attributes.get(67).is_some_and(|&a| a <= 0.0) || t.class == 58 {
+    if t.owner == 0
+        || p.attributes.get(67).is_some_and(|&a| a <= 0.0)
+        || t.class == class::LIVESTOCK
+    {
         return false;
     }
     if p.master == BOAT_CONVERTER {
-        return matches!(t.class, 2 | 20 | 21 | 22 | 53);
+        return matches!(
+            t.class,
+            class::TRADE_BOAT
+                | class::TRANSPORT
+                | class::FISHING_SHIP
+                | class::WARSHIP
+                | class::CLASS_53
+        );
     }
-    if NEVER_CONVERTED.contains(&t.master) || matches!(t.class, 27 | 39 | 30) {
+    if NEVER_CONVERTED.contains(&t.master) || matches!(t.class, class::WALL | class::GATE | 30) {
         return false;
     }
     let hero = t.hero;
@@ -141,8 +154,10 @@ pub fn type_attacks_neutral(ai_type: u32, attack_priority: u8, class: i16) -> bo
     match ai_type {
         CIVILIAN | BUILDING_AI => false,
         PREDATOR_AI | LION_AI => {
-            !matches!(class, 13 | 22 | 52 | 54 | 55)
-                && (attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class))
+            !matches!(
+                class,
+                class::SIEGE | class::WARSHIP | class::TOWER | class::CLASS_54 | class::CLASS_55
+            ) && (attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class))
         }
         PRIEST_AI => priest_attacks_neutral(attack_priority, class),
         SOLDIER_AI | TOWER_AI => soldier_attacks_neutral(attack_priority, class),
@@ -319,11 +334,11 @@ pub fn siege_can_attack(
     if matches!(t.class, 1 | 42) || s.stance == 3 || !siege_in_reach(me, s, t)? {
         return Ok(false);
     }
-    let takes_by_sight = !me.scenario && 70 <= me.kind && me.capture == 0;
+    let takes_by_sight = !me.scenario && COMBAT <= me.kind && me.capture == 0;
     if me.player == 0 && !takes_by_sight {
         return Ok(false);
     }
-    if (t.kind == 80 && t.desolid) || me.state < 2 {
+    if (t.kind == BUILDING && t.desolid) || me.state < 2 {
         return Ok(false);
     }
     if !me.computer && !any && me.class == PACKED_UNIT_CLASS {
@@ -382,7 +397,7 @@ pub(super) fn siege_chooses(me: &Attacker, s: &Seeker, t: &Target) -> bool {
         if RAM_MASTERS.contains(&me.master) {
             return RAM_TARGETS.contains(&t.class);
         }
-        if matches!(me.class, 51 | 54) {
+        if matches!(me.class, class::CLASS_51 | class::CLASS_54) {
             return TREBUCHET_TARGETS.contains(&t.class);
         }
     }

@@ -4,6 +4,8 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::orders::{
     ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
@@ -240,7 +242,7 @@ impl World {
                 continue;
             };
             let master = u.master(&self.masters, p)?;
-            if master.kind < 70 || master.formation_category == 0 || split.far.contains(&id) {
+            if master.kind < COMBAT || master.formation_category == 0 || split.far.contains(&id) {
                 i += 1;
                 continue;
             }
@@ -346,7 +348,7 @@ impl World {
             }
         }
         // a sleeping object is of a type below 30 (only slot 0x180 puts one to sleep)
-        if 50 <= kind
+        if RGE_COMBAT <= kind
             && let Some(Place::Live(p, idx)) = self.place(id)
         {
             let walk = crate::unit_ai::AiMove {

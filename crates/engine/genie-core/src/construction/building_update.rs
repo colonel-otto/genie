@@ -13,6 +13,7 @@ use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::HOUSE;
 use crate::objects::masters::ids::MONASTERY;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, annexes_of};
@@ -449,7 +450,7 @@ pub(crate) const DEATH_BLAST_FACTOR: f32 = crate::math::image::turn::DEATH_BLAST
 /// [`DEATH_BLAST_MASTERS`] or [`DEATH_BLAST_CLASSES`] below [`DEATH_BLAST_HP`] hit points in state
 /// 2. The update runs for the combat objects and buildings (types 70 and 80).
 pub(crate) fn blasts_at_death(master: &Master, life: &Lifecycle) -> bool {
-    70 <= master.kind
+    COMBAT <= master.kind
         && life.hp < DEATH_BLAST_HP
         && life.state == 2
         && (DEATH_BLAST_MASTERS.contains(&master.id) || DEATH_BLAST_CLASSES.contains(&master.class))

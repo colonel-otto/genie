@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type::ACTION;
 
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning, footprint_gap_squared};
@@ -169,7 +170,7 @@ pub(crate) fn drop_site_search<'u>(
             continue;
         }
         let busy = at_work != -1
-            && 40 <= master.kind
+            && ACTION <= master.kind
             && o.top_action_kind().is_some_and(|k| {
                 // The action types the Gather's drop-site searches pass over (`FUN_1411671e0`'s argument 8
                 // `0x7d`, which takes `0x7c` with it).

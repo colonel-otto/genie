@@ -3,6 +3,7 @@
 
 use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::player_master;
 use crate::players::attribute;
 use crate::players::world_player::{
@@ -70,7 +71,7 @@ impl World {
         let mut count = 0i16;
         for m in masters.iter() {
             let flags = u8::from(m.disabled);
-            if 70 <= m.kind && m.available && self.trains_at(m, building) && flags & 1 == 0 {
+            if COMBAT <= m.kind && m.available && self.trains_at(m, building) && flags & 1 == 0 {
                 count = count.wrapping_add(1);
             }
         }
@@ -139,7 +140,7 @@ impl World {
             });
         let mut count = 0i16;
         for m in masters.iter() {
-            if m.kind < 70 || !self.trains_at(m, building) {
+            if m.kind < COMBAT || !self.trains_at(m, building) {
                 continue;
             }
             let flags = u8::from(m.disabled);

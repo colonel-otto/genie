@@ -71,7 +71,7 @@ impl World {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            if 70 <= u.master(&self.masters, p)?.kind {
+            if COMBAT <= u.master(&self.masters, p)?.kind {
                 units.push(id);
             }
         }
@@ -381,7 +381,7 @@ impl World {
             };
             let unit = &self.players[p].objects[idx];
             let kind = unit.master(&self.masters, p)?.kind;
-            if (2 < unit.life.state && unit.life.state != 6) || kind < 70 {
+            if (2 < unit.life.state && unit.life.state != 6) || kind < COMBAT {
                 continue;
             }
             if through_ai && unit.ai.is_some() {

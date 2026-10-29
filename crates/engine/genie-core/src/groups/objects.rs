@@ -1,6 +1,8 @@
 //! An object of the world's id table ([`WorldObject`]) as the groups read it, and a unit's
 //! sub-formation.
 
+use crate::objects::masters::master_type::COMBAT;
+
 /// An object of the world's id table (`FUN_1415417a0`, `BaseWorld::object`): the objects of
 /// every player's live, sleeping and doppelganger lists, which the player's add and removal
 /// (`FUN_141668040`) keep in the table through the world's slots 16 and 17 (`FUN_14152cb60`,
@@ -121,10 +123,10 @@ impl crate::world::World {
 /// other (255) none ("Invalid formation category").
 #[must_use]
 pub const fn sub_formation(kind: u8, hero_flag: u8, formation_category: u8) -> Option<i32> {
-    if kind < 70 {
+    if kind < COMBAT {
         return None;
     }
-    if kind == 70 && hero_flag & 0x11 != 0 && hero_flag & 0x90 != 0x90 {
+    if kind == COMBAT && hero_flag & 0x11 != 0 && hero_flag & 0x90 != 0x90 {
         return Some(5);
     }
     match formation_category {

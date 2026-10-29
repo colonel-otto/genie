@@ -67,7 +67,7 @@ impl UnitAi {
         // it does not run; a computer player's first lets the units inside it go
         // (FUN_141225c40 with −1, −1)
         if self.ai_type == SIEGE_AI {
-            if at.class == 54 || Self::top_target_live(at, side)?.is_some() {
+            if at.class == class::CLASS_54 || Self::top_target_live(at, side)?.is_some() {
                 return Ok(false);
             }
             if computer {
@@ -99,7 +99,7 @@ impl UnitAi {
                 "a computer's unit running from class 22 (its group's runs)",
             ));
         }
-        if computer && at.class == 20 {
+        if computer && at.class == class::TRANSPORT {
             return Err(GenieError::unsupported(
                 "a computer's transport ship running away",
             ));

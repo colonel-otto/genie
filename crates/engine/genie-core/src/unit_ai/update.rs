@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
@@ -301,7 +302,7 @@ impl UnitAi {
                 }
             }
             Some(t) => {
-                if at.state == 2 && 2 < t.state && t.kind != 80 {
+                if at.state == 2 && 2 < t.state && t.kind != BUILDING {
                     let attack_over = action == Some(ActionKind::Attack)
                         && at.action_state.ok_or(GenieError::unsupported(
                             "an attack whose target died, its top action not held",

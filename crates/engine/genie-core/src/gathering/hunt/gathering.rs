@@ -214,7 +214,7 @@ impl HuntAction {
             victim.amount -= over;
             *held += over;
         }
-        if matches!(victim.class, 9 | 10)
+        if matches!(victim.class, 9 | class::PREDATOR)
             && unit.life.attribute_type == 3
             && self.task.resource == 3
         {

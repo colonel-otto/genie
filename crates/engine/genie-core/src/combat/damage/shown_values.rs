@@ -5,7 +5,9 @@ use crate::combat::damage::{
     EPSILON, ONE, Victim, charge_hit, charged, master_melee_armor, melee_armor, range_charge_hit,
 };
 use crate::math::conversions::cvttss2si;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::{GenieError, math::fmath};
 
 /// The action type of a bonus damage task (`FUN_14107ce60`).
@@ -16,7 +18,7 @@ impl Victim {
     /// `TRIBE_Building_Object`): its powerups and charges count; a combat object of type 50 or
     /// 60 (`RGE_Combat_Object`) answers 0 for them.
     pub(super) const fn tribe(&self) -> bool {
-        matches!(self.kind, 70 | 80)
+        matches!(self.kind, COMBAT | BUILDING)
     }
 
     /// Slot 0xc0, its hit points as a share reads them: a combat unit's or building's
@@ -77,7 +79,8 @@ pub fn bonus_damage(attacker: &Victim, target: &Victim) -> f32 {
     {
         let any = t.object_id == -1
             && t.object_group == -1
-            && (matches!(target.class, 51 | 54) || target.kind < BUILDING);
+            && (matches!(target.class, class::CLASS_51 | class::CLASS_54)
+                || target.kind < BUILDING);
         if !(any || t.object_id == target.master_id || t.object_group == target.class) {
             continue;
         }

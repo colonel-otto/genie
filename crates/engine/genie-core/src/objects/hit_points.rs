@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 
 /// A hero's regeneration (`DAT_142ed06a8`, a minute's hit points).
@@ -44,7 +45,14 @@ impl Unit {
         hit_points: i16,
         amount: f32,
     ) -> Result<(), GenieError> {
-        if matches!(class, 2 | 20 | 21 | 22 | 53) {
+        if matches!(
+            class,
+            class::TRADE_BOAT
+                | class::TRANSPORT
+                | class::FISHING_SHIP
+                | class::WARSHIP
+                | class::CLASS_53
+        ) {
             return Err(GenieError::unsupported(
                 "a heal at a cost (FUN_141213b10's classes)",
             ));

@@ -83,7 +83,7 @@ impl World {
         if bm.class == class::SIEGE {
             return Err(SIEGE_UNLOAD);
         }
-        if made.class == WHOLE_SHARE_CLASS || made.class == 58 {
+        if made.class == WHOLE_SHARE_CLASS || made.class == class::LIVESTOCK {
             return Err(GenieError::unsupported(
                 "a class 42 or livestock unit leaving a building (its player's counts)",
             ));

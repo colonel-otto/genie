@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::{Outcome, Unit};
 use crate::world::step::Step;
 
@@ -112,7 +113,7 @@ impl Unit {
             && !(before == 4 && after == 5)
             && self
                 .master(&c.w.masters, c.player)
-                .is_ok_and(|m| m.kind == 80)
+                .is_ok_and(|m| m.kind == BUILDING)
         {
             for annex in c.w.spatial.annexes_of(self.id) {
                 if let Some((q, _)) = c.w.object(annex) {
@@ -154,7 +155,7 @@ impl Unit {
             .ok_or(GenieError::unsupported(
                 "a dead object of a master the slice does not have",
             ))?;
-        if kind < 80 && 0 <= self.life.remains {
+        if kind < BUILDING && 0 <= self.life.remains {
             let facet = self
                 .body
                 .mover()

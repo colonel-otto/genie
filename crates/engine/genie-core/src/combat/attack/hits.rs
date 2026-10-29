@@ -5,6 +5,8 @@ use crate::combat::attack::{DRAW_SCALE, QUIET_SWINGS};
 use crate::combat::damage::Victim;
 use crate::math::rng::Well512;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::MISSILE;
 use crate::{GenieError, combat::damage};
 
 /// Where a hit comes from: the place it lands (`FUN_141084230`'s x, y, z: the attacker's for a
@@ -89,7 +91,7 @@ pub(crate) fn strike(
     hit: Hit,
     object_rng: &mut Well512,
 ) -> Result<Struck, GenieError> {
-    if victim.kind == 70 && damage::shield(victim, hit.missile) {
+    if victim.kind == COMBAT && damage::shield(victim, hit.missile) {
         let master_hp = i32::from(own.master_hp);
         victim
             .damaged
@@ -104,7 +106,9 @@ pub(crate) fn strike(
         result: 1,
         executed: None,
     };
-    if 60 <= a.kind && 0.0 < a.area_effect && (a.charge_type != 3 || damage::charge_hit(&a, victim))
+    if MISSILE <= a.kind
+        && 0.0 < a.area_effect
+        && (a.charge_type != 3 || damage::charge_hit(&a, victim))
     {
         let main = victim.id;
         let mut targets: Vec<&mut Victim> = blasted.iter_mut().collect();

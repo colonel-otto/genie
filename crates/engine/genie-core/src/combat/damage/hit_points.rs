@@ -3,6 +3,8 @@
 
 use crate::combat::damage::{Armored, Victim};
 use crate::math::fmath;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 
 /// `FUN_14108d8a0`: a shield blocks the hit: a target whose master's charge type is 5 against a
 /// melee hit (4 against a missile) spends a charge of 1 when it has one (`COMISS 1.0, charge`,
@@ -49,7 +51,7 @@ pub(super) fn effective(v: &Victim) -> f32 {
 /// stingers (`+0xb58`) and a surviving object's hit point transforms (`+0xb20`,
 /// `FUN_141204450`).
 pub fn lose(t: &mut Victim, d: f32) {
-    let unit = matches!(t.kind, 70 | 80);
+    let unit = matches!(t.kind, COMBAT | BUILDING);
     let Some(a) = t.armored.as_mut().filter(|_| unit) else {
         t.hp -= d;
         return;

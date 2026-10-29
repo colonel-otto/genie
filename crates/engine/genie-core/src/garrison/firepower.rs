@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, maxss};
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 
@@ -48,7 +49,7 @@ pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f
     let volley = master
         .volley_missile
         .and_then(|id| masters.get(id))
-        .filter(|_| !matches!(master.class, 4 | 6));
+        .filter(|_| !matches!(master.class, class::VILLAGER | 6));
     let sum = volley.map_or_else(
         || {
             weapons_sum(&master.weapons, |c| {

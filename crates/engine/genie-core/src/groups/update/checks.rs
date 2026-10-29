@@ -313,7 +313,7 @@ impl World {
         };
         Ok(masters
             .get(master)
-            .is_some_and(|m| 39 < m.kind && m.tasks.iter().any(|t| t.action_type == action)))
+            .is_some_and(|m| ACTION <= m.kind && m.tasks.iter().any(|t| t.action_type == action)))
     }
 
     /// `FUN_141188ea0` of `object` for player `player`: its tile (`CVTTSS2SI` of its x and y)

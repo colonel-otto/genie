@@ -14,6 +14,7 @@ use crate::movement::move_to::{
 };
 use crate::movement::{Me, PathAsk, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::sprite::{ActiveSprite, new_sprite};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
@@ -244,7 +245,7 @@ impl Attack {
         sprite: ActiveSprite,
     ) -> Result<(), GenieError> {
         let ranged = self.arms.missile != -1;
-        if f.own.class == 51 || (!ranged && matches!(f.own.class, 35 | 64)) {
+        if f.own.class == class::CLASS_51 || (!ranged && matches!(f.own.class, 35 | 64)) {
             return Err(GenieError::unsupported("a swing of class 35, 51 or 64"));
         }
         if ranged && self.arms.fire_frame < 0 {

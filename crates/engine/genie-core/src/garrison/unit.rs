@@ -6,7 +6,10 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::move_to::MoveDefaults;
+use crate::objects::masters::class;
+use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters, TaskId};
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
@@ -93,7 +96,7 @@ impl Unit {
             ),
         };
         let master = self.master(&c.w.masters, c.player);
-        let villager = master.as_ref().is_ok_and(|m| m.class == 4);
+        let villager = master.as_ref().is_ok_and(|m| m.class == class::VILLAGER);
         Ok(crate::garrison::EnterReads {
             target,
             start,
@@ -470,7 +473,7 @@ impl Unit {
             c.w.masters
                 .get(c.player)
                 .ok_or(crate::garrison::NO_MASTERS)?;
-        let firepower = if me.kind == 70 {
+        let firepower = if me.kind == COMBAT {
             let own = c.w.masters.get(bp).unwrap_or(masters);
             let rate = crate::garrison::attack_rate(bm, own, reload);
             crate::garrison::share(me, masters, self.reload_powerup, rate)?
@@ -534,7 +537,7 @@ impl Unit {
         me: &Master,
         bm: &Master,
     ) -> Result<(), GenieError> {
-        if me.class != 4 && me.id != 1808 {
+        if me.class != class::VILLAGER && me.id != MASTER_1808 {
             return Ok(());
         }
         if !self.town_bell.flag {

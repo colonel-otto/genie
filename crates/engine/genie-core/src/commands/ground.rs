@@ -1,6 +1,9 @@
 //! A new building's ground: the units on its foundation sent off, its terrain, the footprint
 //! clearing and its place.
 
+use crate::objects::masters::class;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::MOVING;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -42,7 +45,7 @@ impl World {
                 continue;
             };
             let master = u.master(&self.masters, owner)?;
-            if master.kind < 30 || u.life.state != 2 || u.top_target() == Some(foundation) {
+            if master.kind < MOVING || u.life.state != 2 || u.top_target() == Some(foundation) {
                 continue;
             }
             let walking = u.body.anim_speed().is_some_and(|s| 0.0 < s);
@@ -51,7 +54,7 @@ impl World {
                 .mover()
                 .and_then(|m| m.paths.first())
                 .map(|l| l.state);
-            let stands = (owner == 0 && matches!(master.class, 9 | 10))
+            let stands = (owner == 0 && matches!(master.class, 9 | class::PREDATOR))
                 || (!walking && level.is_none_or(|s| matches!(s, 0 | 6)));
             let busy = u.ai.as_ref().is_none_or(|ai| {
                 matches!(
@@ -62,7 +65,7 @@ impl World {
             if !stands || busy {
                 continue;
             }
-            if owner == site_owner && 70 <= master.kind && master.formation_category != 0 {
+            if owner == site_owner && COMBAT <= master.kind && master.formation_category != 0 {
                 together.push(id);
                 continue;
             }

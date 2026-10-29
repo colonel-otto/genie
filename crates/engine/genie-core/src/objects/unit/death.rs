@@ -6,6 +6,8 @@ use crate::math::rng::Stream;
 use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::death_parts::{built_death, combat_dies, farm_bonus, refund_of};
 use crate::objects::masters::Master;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::{NO_DYING_SPRITE, Unit};
 use crate::world::step::Step;
 
@@ -33,7 +35,7 @@ impl Unit {
         let master = &master;
         // the last building of a master with a technology withdraws it, after the combat part
         let mut tech = None;
-        if master.kind == 80 {
+        if master.kind == BUILDING {
             // the static update's death (0x14118ad50) lets the annexes go before its set_state(3):
             // each slot (`+0xbc0`..) clears and its annex's `+0xbb8` with it, and each annex takes
             // the building's hit points (`+0x278`), so it dies in its own update; the set_state
@@ -62,7 +64,7 @@ impl Unit {
             } else if before == 0 {
                 self.foundation_died(c, master)?;
             }
-        } else if master.kind != 70 {
+        } else if master.kind != COMBAT {
             // a static object's dying sprite is the lifecycle's ([`Lifecycle::die`]); an
             // animated or moving one shows its master's (slot 0x7a0, `FUN_1411887e0`: no
             // terrain look) through slot 0x68 (a moving one's `FUN_141158620` derives its facet
@@ -93,7 +95,7 @@ impl Unit {
         // the static update's sprite after the death (0x14118ad50): a building's by its build
         // points (its destruction sprite unbuilt), any other combat object's slot 0x7a0's
         let look = self.abilities.look.as_ref();
-        let shown = if master.kind == 80 {
+        let shown = if master.kind == BUILDING {
             let built = self
                 .construction
                 .ok_or(crate::construction::build::NO_CONSTRUCTION)?;

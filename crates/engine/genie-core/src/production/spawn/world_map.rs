@@ -1,6 +1,7 @@
 //! The map as the placement test reads it from the world ([`WorldMap`]).
 
 use crate::GenieError;
+use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::production::spawn::{Near, PlaceMap};
 use crate::world::World;
 
@@ -111,7 +112,7 @@ impl PlaceMap for WorldMap<'_> {
                     fog_visibility: master.fog_visibility,
                     fog_mask: t.spatial.sight.as_ref().and_then(|v| {
                         let umv = v.seer(id).map_or(0, |s| s.umv);
-                        (50 <= master.kind && umv != 0).then(|| {
+                        (RGE_COMBAT <= master.kind && umv != 0).then(|| {
                             v.registry
                                 .as_ref()
                                 .and_then(|r| r.entry(id))

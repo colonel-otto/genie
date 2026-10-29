@@ -113,7 +113,8 @@ impl Unit {
         let missile = 0 <= master.missile;
         // what the rest reads of the master, before the notify changes the unit
         let notifies = matches!(master.id, 73 | 559);
-        let (trebuchet, [x_spread, y_spread, _]) = (master.class == 54, master.volley_spread);
+        let (trebuchet, [x_spread, y_spread, _]) =
+            (master.class == class::CLASS_54, master.volley_spread);
         let (first, extra) = if master.max_volley == 0 {
             (true, 0)
         } else {
@@ -565,7 +566,7 @@ impl Aimed {
 /// when of class 51 or 54, with a missile, or with a firepower above 1; any other attacker can.
 pub(crate) fn armed(master: &Master, firepower: f32) -> bool {
     master.kind != BUILDING
-        || matches!(master.class, 51 | 54)
+        || matches!(master.class, class::CLASS_51 | class::CLASS_54)
         || master.missile != -1
         || ARMED_FIREPOWER < firepower
 }

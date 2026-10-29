@@ -10,7 +10,10 @@ use crate::combat::damage::{
 use crate::objects::masters::class;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::WONDER;
+use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::RGE_COMBAT;
 
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
 /// already done to it (`blast_taken`, a building's `+0xb90`): a static, animated, doppelganger,
@@ -161,7 +164,7 @@ pub(super) fn take_building(
     for a in others.iter_mut().filter(|a| annexes.contains(&a.id)) {
         a.hp = t.hp;
     }
-    if forward && 50 <= src.kind && t.hp >= ONE {
+    if forward && RGE_COMBAT <= src.kind && t.hp >= ONE {
         attack_effects(&src.source, t)?;
     }
     Ok(true)
@@ -175,7 +178,7 @@ pub(super) const DAMAGED_LATELY: u8 = 0x3c;
 /// killed: its master's tasks of action type 0x9a pay their owner's attributes, research
 /// technologies and run effects (not modelled); an attacker without one does nothing.
 pub(super) const fn kill_bonus(src: &Attacker) -> Result<(), GenieError> {
-    if 40 <= src.kind && src.kill_bonus_tasks {
+    if ACTION <= src.kind && src.kill_bonus_tasks {
         return Err(GenieError::unsupported(
             "an attacker's kill bonus task (action type 0x9a)",
         ));
@@ -220,7 +223,7 @@ impl Victim {
 pub(super) fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)], factor: f32) {
     // slot 0x2f0 of a TRIBE attacker (types 70, 80; [`charge_hit`]) starts the sum at its raw
     // charge (slot 0x310, `+0x9e0`) plus 0
-    let mut damage = if 70 <= src.kind && charge_hit(src, t) {
+    let mut damage = if COMBAT <= src.kind && charge_hit(src, t) {
         src.charge + 0.0
     } else {
         0.0f32
@@ -328,7 +331,7 @@ pub(super) fn retaliates(
         return Ok(false);
     }
     let mut f = elevation_factor(t.position[2], t.attack_elevation, src);
-    if src.kind == 70 && special_charge_ready(&src.source)? {
+    if src.kind == COMBAT && special_charge_ready(&src.source)? {
         f *= RETALIATION_SCALE;
     }
     let w = t.weapons.clone();
@@ -366,7 +369,7 @@ pub(super) fn after_hit(
     if ONE > t.hp {
         kill_bonus(&src.source)?;
     }
-    if 50 <= src.kind && t.hp >= ONE {
+    if RGE_COMBAT <= src.kind && t.hp >= ONE {
         attack_effects(&src.source, t)?;
     }
     Ok(())

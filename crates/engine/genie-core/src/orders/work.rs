@@ -9,6 +9,7 @@ use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::orders::gather::HuntOrder;
 use crate::orders::{ATTACK_TASK, Work};
 use crate::unit_ai::ActionKind;
@@ -167,7 +168,7 @@ impl World {
             return Ok(());
         }
         // FUN_140c64e50: a unit of a type below 70 always clears its AI's notifies
-        let clears = notified || unit.master(&self.masters, player)?.kind < 70;
+        let clears = notified || unit.master(&self.masters, player)?.kind < COMBAT;
         let found = self.work_task(player, idx, (target, point), filter)?;
         let Some((with, task)) = found else {
             if filter != -1 {
@@ -502,7 +503,7 @@ impl World {
             )?;
             self.remember_order(player, idx, (order, action))?;
         }
-        if alive || class == 51 {
+        if alive || class == class::CLASS_51 {
             if target == -1 {
                 self.move_point_order_with(player, idx, point, notified)?;
             } else {

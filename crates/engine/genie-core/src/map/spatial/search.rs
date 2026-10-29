@@ -369,7 +369,7 @@ impl Spatial {
     ) -> Result<(i32, f32), GenieError> {
         let at = self.objects.get(&me);
         let searcher = Searcher {
-            class_10: at.is_some_and(|m| m.class == 10),
+            class_10: at.is_some_and(|m| m.class == class::PREDATOR),
             // The villagers' class, which gathers from farms (`FUN_141195750`).
             farmer: at.is_some_and(|m| m.class == class::VILLAGER),
             trapper: at.is_some_and(|m| TRAPPERS.contains(&m.master)),

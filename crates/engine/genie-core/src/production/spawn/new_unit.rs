@@ -8,6 +8,7 @@ use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MONASTERY;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::players::attribute;
@@ -150,7 +151,7 @@ impl World {
                     && ai.is_some_and(|ai| ai.orders.iter().any(|q| q.target_type == RELIC_TYPE));
                 let t_master = self.master(tp, tm)?;
                 if !keeps
-                    && 70 <= t_master.kind
+                    && COMBAT <= t_master.kind
                     && t_master.garrison != 0
                     && self.takes_in(o.target, p, master)?
                 {

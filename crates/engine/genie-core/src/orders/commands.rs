@@ -54,7 +54,8 @@ impl World {
             }
             let master = unit.master(&self.masters, p)?;
             if matches!(state, 1 | 2)
-                && (matches!(master.class, 51 | 54) || matches!(master.id, 42 | 331))
+                && (matches!(master.class, class::CLASS_51 | class::CLASS_54)
+                    || matches!(master.id, 42 | 331))
             {
                 continue;
             }

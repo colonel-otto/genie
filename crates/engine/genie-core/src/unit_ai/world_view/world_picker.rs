@@ -5,6 +5,7 @@ use crate::combat::victims::victim_of;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::objects::masters::{Masters, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::Foreign;
@@ -413,7 +414,11 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
     /// Object `id`'s weapon range (slot 0x230: a combat object's master's, else 0).
     fn weapon_range(&mut self, id: i32) -> Result<f32, GenieError> {
         let (_, _, _, m) = self.held(id).ok_or(NOT_HELD)?;
-        Ok(if 50 <= m.kind { m.weapon_range } else { 0.0 })
+        Ok(if RGE_COMBAT <= m.kind {
+            m.weapon_range
+        } else {
+            0.0
+        })
     }
 
     fn engages(&mut self, id: i32) -> Result<bool, GenieError> {

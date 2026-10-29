@@ -374,13 +374,14 @@ impl UnitAi {
         if let Some(n) = new
             && id != -1
         {
-            if n.kind == 80 {
-                let farm_rule = current.is_none_or(|c| c.class != 49) || n.class == 49;
-                if !matches!(n.class, 51 | 54) && farm_rule {
+            if n.kind == BUILDING {
+                let farm_rule =
+                    current.is_none_or(|c| c.class != class::FARM) || n.class == class::FARM;
+                if !matches!(n.class, class::CLASS_51 | class::CLASS_54) && farm_rule {
                     return Ok(10);
                 }
             }
-            if 80 <= n.kind
+            if BUILDING <= n.kind
                 && let Some(main) = n.main
             {
                 id = main;

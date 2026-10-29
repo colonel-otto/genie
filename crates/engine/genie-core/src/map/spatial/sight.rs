@@ -3,8 +3,8 @@
 
 use crate::GenieError;
 use crate::map::spatial::{BLOCKED, Spatial};
+use crate::objects::masters::{class, master_type::COMBAT};
 use crate::vision::visibility::Visibility;
-
 impl Spatial {
     /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects on
     /// the lists of the tiles within the animal's radius (whole) plus 3 tiles of its own tile
@@ -59,7 +59,7 @@ impl Spatial {
         let area = [x0 as f32, y0 as f32, (x1 + 1) as f32, (y1 + 1) as f32];
         let unsure = self.frozen().any(|(id, q)| {
             q.unknown.is_some_and(|u| {
-                let counts = v.seer(id).is_some_and(|s| s.kind == 70)
+                let counts = v.seer(id).is_some_and(|s| s.kind == COMBAT)
                     && !out(q.player)
                     && !KEPT.contains(&q.class);
                 let [bx0, by0, bx1, by1] = q.bounds();
@@ -82,14 +82,14 @@ impl Spatial {
         let mut nearest = vec![999.0f32; players];
         let mut own_seen = false;
         let mut taker = false;
-        let livestock = p.class == 58;
+        let livestock = p.class == class::LIVESTOCK;
         // the tiles' lists row by row, each in its order: an object a full tile did not file is
         // not met
         let on_tiles =
             (y0..=y1).flat_map(|ty| (x0..=x1).flat_map(move |tx| self.objects_on(tx, ty)));
         for (id, q) in on_tiles {
             let Some(s) = v.seer(id) else { continue };
-            if s.kind != 70 || s.state != 2 || KEPT.contains(&q.class) {
+            if s.kind != COMBAT || s.state != 2 || KEPT.contains(&q.class) {
                 continue;
             }
             if (q.player == 0 && s.capture != 0) || out(q.player) {

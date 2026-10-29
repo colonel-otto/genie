@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::{
     ARTIFACT_AI, ActionKind, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
@@ -334,10 +335,10 @@ pub(super) fn soldier_stance(new: &NewObject) -> u8 {
 /// for a computer player's and for classes 51 and 54 (`-0xe79`, `-0xe76` raw); the owner's
 /// posture (slot 0x90, its low byte) for class 55 (`-0xe75`); 1 for any other.
 pub(super) const fn siege_stance(new: &NewObject) -> u8 {
-    if new.computer || matches!(new.class, 51 | 54) {
+    if new.computer || matches!(new.class, class::CLASS_51 | class::CLASS_54) {
         return 0;
     }
-    if new.class == 55 {
+    if new.class == class::CLASS_55 {
         return new.posture as u8;
     }
     1

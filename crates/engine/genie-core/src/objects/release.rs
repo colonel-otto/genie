@@ -4,6 +4,8 @@
 use crate::GenieError;
 use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
 use crate::objects::masters::master_type::ANIMATED;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::world::World;
@@ -80,7 +82,7 @@ impl World {
         self.track_remove(p, gone.id, gone.life.master_id);
         let master = gone.master(&self.masters, p).ok();
         forget_resource(&mut self.spatial, master, gone.id, gone.position());
-        if let Some(m) = master.filter(|m| 70 <= m.kind) {
+        if let Some(m) = master.filter(|m| COMBAT <= m.kind) {
             count_class(&mut self.players[p].attributes, m, -1.0);
         }
         let recyclable = master.is_some_and(|m| m.recyclable);
@@ -105,7 +107,7 @@ impl World {
         let Some(master) = unit
             .master(&self.masters, p)
             .ok()
-            .filter(|m| matches!(m.kind, 70 | 80))
+            .filter(|m| matches!(m.kind, COMBAT | BUILDING))
             .cloned()
         else {
             return;
@@ -122,7 +124,7 @@ impl World {
         let unit = &self.players[p].objects[i];
         let combat = unit
             .master(&self.masters, p)
-            .is_ok_and(|m| matches!(m.kind, 70 | 80));
+            .is_ok_and(|m| matches!(m.kind, COMBAT | BUILDING));
         if combat {
             self.players[p].objects[i].clamp_hp_powerup();
         }

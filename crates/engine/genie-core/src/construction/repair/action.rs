@@ -10,6 +10,7 @@ use crate::math::rng::Stream;
 use crate::movement::move_to::{Goal, MoveDefaults, MoveTo, MoveWait, Sprites, sub_move_to_update};
 use crate::movement::{Me, footprint_gap};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
@@ -345,7 +346,7 @@ impl RepairAction {
         let (answer, kind) = crate::construction::repair::repair_target(c, self.target, amount)?;
         match answer {
             1 => {
-                if 0x45 < kind
+                if COMBAT <= kind
                     && let Some((_, u)) = c.w.object_mut(self.target)
                 {
                     u.armor_removed = [0; 2];

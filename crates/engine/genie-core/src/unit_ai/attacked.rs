@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
+use crate::objects::masters::master_type::MISSILE;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -213,7 +214,7 @@ impl UnitAi {
             return Ok(GO_ON);
         }
         if !computer {
-            if matches!(target.class, 3 | 27 | 52) {
+            if matches!(target.class, class::BUILDING | class::WALL | class::TOWER) {
                 return self.strike_back(attacker_id, at, ai_rng, side);
             }
             return Ok(GO_ON);
@@ -233,10 +234,10 @@ impl UnitAi {
     ) -> Result<u32, GenieError> {
         let attacker_id = attacker.id;
         if target.master == WONDER
-            || (target.class == 52 && attacker.class == 52)
-            || attacker.kind == 60
-            || (attacker.class == 52
-                && !matches!(at.class, 13 | 54 | 22)
+            || (target.class == class::TOWER && attacker.class == class::TOWER)
+            || attacker.kind == MISSILE
+            || (attacker.class == class::TOWER
+                && !matches!(at.class, class::SIEGE | class::CLASS_54 | class::WARSHIP)
                 && at.disable_tower_priority)
         {
             return Ok(GO_ON);
@@ -313,7 +314,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let boar = at.class == 10 && at.combat_level == 1;
+        let boar = at.class == class::PREDATOR && at.combat_level == 1;
         if !boar
             && at.unit(n.p[0]).is_some()
             && self.retarget_disabled == 0

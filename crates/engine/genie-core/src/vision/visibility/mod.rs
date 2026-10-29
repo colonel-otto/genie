@@ -23,6 +23,7 @@
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 
 use crate::GenieError;
+use crate::objects::masters::class;
 use crate::vision::registry::{MASK, Registry};
 use std::collections::BTreeMap;
 
@@ -259,7 +260,7 @@ pub fn capture_kind(player: usize, class: i16, master: i16) -> u8 {
     if player == 0 && master == 814 {
         kind = 1;
     }
-    if class == 58 || class == 1 {
+    if class == class::LIVESTOCK || class == 1 {
         kind = 3;
     }
     kind

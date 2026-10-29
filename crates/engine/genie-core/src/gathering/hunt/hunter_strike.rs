@@ -12,6 +12,7 @@ use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::world::TREE_NEAR;
@@ -220,7 +221,7 @@ impl Unit {
             engagement,
             arms,
             idle,
-            special_graphic: if master.kind == 70 && master.special_graphic {
+            special_graphic: if master.kind == COMBAT && master.special_graphic {
                 Some(c.w.graphics.get(&master.special_sprite).copied().ok_or(
                     GenieError::unsupported("a special graphic the data file does not have"),
                 )?)

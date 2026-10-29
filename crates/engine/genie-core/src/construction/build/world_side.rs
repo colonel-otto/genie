@@ -152,7 +152,7 @@ impl crate::world::World {
                     continue;
                 };
                 let desolid = a.construction.is_some_and(|c| c.desolid);
-                if a.master(&self.masters, q)?.kind < 80 || !desolid {
+                if a.master(&self.masters, q)?.kind < BUILDING || !desolid {
                     continue;
                 }
                 self.clear_foundations_under(annex)?;

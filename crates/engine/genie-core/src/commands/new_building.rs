@@ -201,7 +201,7 @@ impl World {
                 .unwrap_or(false);
         // +0xcd0 (FUN_141188db0): mangrove or rice terrain under its place
         let rice = terrain.is_some_and(|t| matches!(t.kind(tx, ty), Some(54 | 55 | 63..=67)));
-        let foundation = !matches!(made.class, 51 | 54)
+        let foundation = !matches!(made.class, class::CLASS_51 | class::CLASS_54)
             && !matches!(master, 357 | 1188)
             && building.head_unit == -1;
         let hp = if foundation && 0 < made.build_time {
@@ -231,7 +231,9 @@ impl World {
             f32::from(made.build_time)
         };
         // FUN_1411cf770 with no master copy of its own and no annex link yet
-        let desolid = 0 < made.build_time && !matches!(made.class, 51 | 54) && progress == 0.0;
+        let desolid = 0 < made.build_time
+            && !matches!(made.class, class::CLASS_51 | class::CLASS_54)
+            && progress == 0.0;
         let owner = &mut self.players[player];
         owner.objects.push(Unit {
             id,
