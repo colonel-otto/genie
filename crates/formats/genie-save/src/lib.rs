@@ -18,6 +18,14 @@
 
 // the 16.16 version's halves and the stream offsets (a save is far below 4 GiB) are cut on purpose
 #![allow(clippy::cast_possible_truncation)]
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::unimplemented,
+    clippy::todo
+)]
 
 pub mod generated;
 mod layout_types;
@@ -119,30 +127,30 @@ impl Header {
 
     /// The player sections, Gaia first, with where each starts ([`PlayerSection::ends`] gives
     /// where it ends).
+    ///
+    /// A player of a type no creator handles is left out; [`parse`] accepts none, so a parsed
+    /// save lists them all.
     #[must_use]
     pub fn players(&self) -> Vec<PlayerSection<'_>> {
         self.world
             .base_world
             .players
             .iter()
-            .map(|p| PlayerSection {
-                start: p.pos as usize,
-                player: &p.val,
-            })
+            .filter_map(|p| PlayerSection::new(p.pos as usize, &p.val).ok())
             .collect()
     }
 }
 
 /// The bytes a value writes back: as many as it read.
-pub(crate) fn written_len<T: binrw::BinWrite>(value: &T) -> usize
+pub(crate) fn written_len<T: binrw::BinWrite>(value: &T) -> Result<usize, Error>
 where
     for<'a> T::Args<'a>: Default,
 {
     let mut out = binrw::io::Cursor::new(Vec::new());
     value
         .write_le(&mut out)
-        .expect("a value read from a save writes back");
-    out.into_inner().len()
+        .map_err(|e| GenieError::io("a value that does not write back").with("binrw", e))?;
+    Ok(out.into_inner().len())
 }
 
 /// Read a world save (a recording's chapter header once inflated).
@@ -203,18 +211,14 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
         );
     }
     for p in &world.base_world.players {
-        if p.val.world_player().is_none() {
-            // the game's WorldPlayerFactory.cpp: "InvalidPlayerType: %d"
-            return Err(GenieError::invalid_input("InvalidPlayerType")
-                .with("type", p.val.type_)
-                .with("at", p.pos));
-        }
+        // the game's WorldPlayerFactory.cpp: "InvalidPlayerType: %d"
+        let _ = PlayerSection::new(p.pos as usize, &p.val)?;
     }
     let map = &world.base_world.map;
     let ends = SectionEnds {
         lobby: lobby_end,
         replay: map.pos as usize,
-        map: map.pos as usize + written_len(&map.val),
+        map: map.pos as usize + written_len(&map.val)?,
         players_start: world
             .base_world
             .players
@@ -300,7 +304,7 @@ mod tests {
         let read = parse(&save).unwrap();
         assert_eq!(bytes(&read), save);
         assert_eq!(read.save_version().hundredths(), 6660);
-        assert_eq!(read.ends.lobby, written_len(&read.file_header));
+        assert_eq!(read.ends.lobby, written_len(&read.file_header).unwrap());
         assert!(read.ends.lobby < read.ends.replay && read.ends.replay < read.ends.map);
         assert_eq!(read.ends.players_start, save.len());
         assert_eq!(read.players(), []);
@@ -371,7 +375,7 @@ mod tests {
             e,
             GenieError::unsupported("the world's AI scripts (AIExpert)")
         );
-        let lobby = written_len(&h.file_header);
+        let lobby = written_len(&h.file_header).unwrap();
         assert_eq!(
             e.context().next(),
             Some(("at", &*format!("{:#x}", lobby + 4)))

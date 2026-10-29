@@ -84,7 +84,11 @@ fn marvinblue_sections_end_where_imhex_says() {
     // (tests/de_oracle.rs); against ImHex, the section starts, ends and counts.
     for (i, p) in players.iter().enumerate() {
         let name = |part: &str| format!("player{i}{part}");
-        assert_eq!(p.ends().start, expected_start(&name("")), "player {i}");
+        assert_eq!(
+            p.ends().unwrap().start,
+            expected_start(&name("")),
+            "player {i}"
+        );
         assert_eq!(
             p.objects().masters.as_ref().map_or(0, Vec::len),
             expected_count(&name(".initial_objects")),
@@ -98,7 +102,7 @@ fn marvinblue_sections_end_where_imhex_says() {
     }
     // Every section, Gaia's included, is read to its end, and the next one starts right there. The
     // pattern skips Gaia's tail by searching for player 1; ImHex's offset for player 1 is the check.
-    assert_eq!(players[0].ends().end, expected_start("player1"));
+    assert_eq!(players[0].ends().unwrap().end, expected_start("player1"));
     for (i, p) in players.iter().enumerate().skip(1) {
         assert_eq!(
             (
@@ -108,7 +112,11 @@ fn marvinblue_sections_end_where_imhex_says() {
             (0, 0),
             "player {i}"
         );
-        assert_eq!(p.ends().end, expected(&format!("player{i}")), "player {i}");
+        assert_eq!(
+            p.ends().unwrap().end,
+            expected(&format!("player{i}")),
+            "player {i}"
+        );
     }
 }
 
