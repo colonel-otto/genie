@@ -1,4 +1,5 @@
 use super::*;
+use crate::vision::registry::UnitUpdate;
 
 /// The record cells (FD-030-D03) give every query the objects whose record is filed in a
 /// cell it visits, as the full scan's cell test does, in id order: on and off the map, on
@@ -143,8 +144,16 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
     s.unit_diplomacy = vec![vec![1, 4, 4], vec![0, 1, 4], vec![0, 4, 1]];
     let mut r = Registry::new(3, 65);
     // a villager of player 1 at (12, 10), which player 2 sees
-    r.update_unit(1, 1, [12.0, 10.0], [0.2, 0.2], 4, 0, 1 << 2)
-        .unwrap();
+    r.update_unit(UnitUpdate {
+        id: 1,
+        owner: 1,
+        at: [12.0, 10.0],
+        radii: [0.2, 0.2],
+        class: 4,
+        old: 0,
+        new: 1 << 2,
+    })
+    .unwrap();
     let mut v = Visibility::new(120, 120, Vec::new(), Vec::new(), Vec::new(), 0, Vec::new());
     v.registry = Some(r);
     s.sight = Some(v);
@@ -360,15 +369,15 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
     assert_eq!(s.manager_buffer(), None);
     s.set_manager_buffer(Some(0.1));
     let _ = s
-        .walk_hits(
-            [2.0, 2.0],
-            [3.0, 2.0],
-            [2.0, 2.0, 3.0, 2.0],
-            0.2,
-            1.0,
-            None,
-            &[],
-        )
+        .walk_hits(WalkQuery {
+            from: [2.0, 2.0],
+            to: [3.0, 2.0],
+            rect: [2.0, 2.0, 3.0, 2.0],
+            grow: 0.2,
+            ally_factor: 1.0,
+            player: None,
+            ignore: &[],
+        })
         .unwrap();
     assert_eq!(s.manager_buffer(), None);
     // a point query near tile (4, 5) meets its record once it is put, within the grow
@@ -394,7 +403,17 @@ fn a_walk_past_the_maps_edge_meets_its_record_first() {
     s.insert(7, villager(1.0, 5.5));
     let (from, to) = ([0.1, 5.5], [2.0, 5.5]);
     let rect = [0.1, 5.5, 2.0, 5.5];
-    let hits = s.walk_hits(from, to, rect, 0.2, 1.0, Some(2), &[]).unwrap();
+    let hits = s
+        .walk_hits(WalkQuery {
+            from,
+            to,
+            rect,
+            grow: 0.2,
+            ally_factor: 1.0,
+            player: Some(2),
+            ignore: &[],
+        })
+        .unwrap();
     assert_eq!(hits.len(), 2);
     assert_eq!(hits[0] as u32 & 0xff00_0000, 0xff00_0000);
     assert_eq!(hits[1], 7);
@@ -531,18 +550,42 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     let rect = [29.5, 88.0, 29.5, 88.3];
     // the box (29.8..30.2, 88.8..89.2) grown by 0.25 reaches 88.55, past the step's end
     assert_eq!(
-        s.walk_hits(from, to, rect, 0.25, 0.5, Some(2), &[]),
+        s.walk_hits(WalkQuery {
+            from,
+            to,
+            rect,
+            grow: 0.25,
+            ally_factor: 0.5,
+            player: Some(2),
+            ignore: &[]
+        }),
         Ok(vec![])
     );
     // grown by 0.4 it reaches x 29.4: the step crosses it once it gets to y 88.4
     let longer = ([29.5, 88.0], [29.5, 88.5]);
     let rect = [29.5, 88.0, 29.5, 88.5];
     assert_eq!(
-        s.walk_hits(longer.0, longer.1, rect, 0.4, 1.0, Some(2), &[]),
+        s.walk_hits(WalkQuery {
+            from: longer.0,
+            to: longer.1,
+            rect,
+            grow: 0.4,
+            ally_factor: 1.0,
+            player: Some(2),
+            ignore: &[]
+        }),
         Ok(vec![9175])
     );
     assert_eq!(
-        s.walk_hits(longer.0, longer.1, rect, 0.4, 1.0, Some(2), &[9175]),
+        s.walk_hits(WalkQuery {
+            from: longer.0,
+            to: longer.1,
+            rect,
+            grow: 0.4,
+            ally_factor: 1.0,
+            player: Some(2),
+            ignore: &[9175]
+        }),
         Ok(vec![])
     );
     // moving, of the walker's player, it grows by 0.4 × 0.5 only
@@ -554,13 +597,29 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
         }),
     );
     assert_eq!(
-        s.walk_hits(longer.0, longer.1, rect, 0.4, 0.5, Some(2), &[]),
+        s.walk_hits(WalkQuery {
+            from: longer.0,
+            to: longer.1,
+            rect,
+            grow: 0.4,
+            ally_factor: 0.5,
+            player: Some(2),
+            ignore: &[]
+        }),
         Ok(vec![])
     );
     // an enemy's moving box grows in full
     s.relations[2][1] = 3;
     assert_eq!(
-        s.walk_hits(longer.0, longer.1, rect, 0.4, 0.5, Some(1), &[]),
+        s.walk_hits(WalkQuery {
+            from: longer.0,
+            to: longer.1,
+            rect,
+            grow: 0.4,
+            ally_factor: 0.5,
+            player: Some(1),
+            ignore: &[]
+        }),
         Ok(vec![9175])
     );
 }
@@ -1129,7 +1188,15 @@ fn the_manager_keeps_the_last_ignore_list_set() {
     assert_eq!(s.manager_ignore(), Vec::<i32>::new());
     let rect = [2.0, 5.0, 3.0, 5.0];
     let _ = s
-        .walk_hits([2.0, 5.0], [3.0, 5.0], rect, 0.2, 1.0, None, &[7, 8])
+        .walk_hits(WalkQuery {
+            from: [2.0, 5.0],
+            to: [3.0, 5.0],
+            rect,
+            grow: 0.2,
+            ally_factor: 1.0,
+            player: None,
+            ignore: &[7, 8],
+        })
         .unwrap();
     assert_eq!(s.manager_ignore(), [7, 8]);
     assert!(s.point_clear(3, [4.5, 4.5], 0.1, 0xff).unwrap());

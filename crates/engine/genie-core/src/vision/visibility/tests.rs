@@ -1,4 +1,5 @@
 use super::*;
+use crate::vision::registry::UnitUpdate;
 
 fn world(players: usize) -> Visibility {
     let n = 120 * 120;
@@ -106,8 +107,16 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
     let mut v = world(3);
     let mut r = Registry::new(3, 65);
     r.entries.entry(7).or_default().mask = 0b11;
-    r.update_unit(7, 0, [10.5, 10.5], [0.2, 0.2], 6, 0, 0b11)
-        .unwrap();
+    r.update_unit(UnitUpdate {
+        id: 7,
+        owner: 0,
+        at: [10.5, 10.5],
+        radii: [0.2, 0.2],
+        class: 6,
+        old: 0,
+        new: 0b11,
+    })
+    .unwrap();
     v.registry = Some(r);
     v.records_owner(7, 2).unwrap();
     v.records_owner(-5, 2).unwrap();

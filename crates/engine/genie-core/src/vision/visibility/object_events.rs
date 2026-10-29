@@ -2,6 +2,7 @@
 //! construction's start and completion.
 
 use crate::GenieError;
+use crate::vision::registry::UnitUpdate;
 use crate::vision::visibility::Visibility;
 use crate::world::player::Player;
 
@@ -88,15 +89,15 @@ impl Visibility {
             return Ok(None);
         }
         registry.entries.entry(id).or_default().mask = mask;
-        registry.update_unit(
+        registry.update_unit(UnitUpdate {
             id,
-            owner as u8,
-            [x, y],
-            radius,
+            owner: owner as u8,
+            at: [x, y],
+            radii: radius,
             class,
-            old & 0xffff_ffff,
-            mask,
-        )?;
+            old: old & 0xffff_ffff,
+            new: mask,
+        })?;
         Ok((s.capture == 1).then_some(mask))
     }
 
@@ -125,8 +126,24 @@ impl Visibility {
         };
         let mask = r.entry(id).map_or(0, |e| e.mask);
         let place = [at[0], at[1]];
-        r.update_unit(id, owner as u8, place, old.0, old.1, mask & 0xffff_ffff, 0)?;
-        r.update_unit(id, owner as u8, place, new.0, new.1, 0, mask)
+        r.update_unit(UnitUpdate {
+            id,
+            owner: owner as u8,
+            at: place,
+            radii: old.0,
+            class: old.1,
+            old: mask & 0xffff_ffff,
+            new: 0,
+        })?;
+        r.update_unit(UnitUpdate {
+            id,
+            owner: owner as u8,
+            at: place,
+            radii: new.0,
+            class: new.1,
+            old: 0,
+            new: mask,
+        })
     }
 
     /// The combat object's destructor (`FUN_141073060`): it leaves every list.
@@ -142,15 +159,15 @@ impl Visibility {
             return Ok(());
         };
         let mask = r.entry(id).map_or(0, |e| e.mask);
-        r.update_unit(
+        r.update_unit(UnitUpdate {
             id,
-            owner as u8,
-            [at[0], at[1]],
-            radius,
+            owner: owner as u8,
+            at: [at[0], at[1]],
+            radii: radius,
             class,
-            mask & 0xffff_ffff,
-            0,
-        )?;
+            old: mask & 0xffff_ffff,
+            new: 0,
+        })?;
         let _ = r.entries.remove(&id);
         Ok(())
     }

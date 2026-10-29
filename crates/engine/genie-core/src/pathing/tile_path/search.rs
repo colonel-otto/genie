@@ -104,20 +104,40 @@ impl OpenList {
     }
 }
 
+/// A node from the pool ([`Planner::alloc`]'s arguments, `FUN_140f79c90`'s).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct NewNode {
+    /// The tile's x.
+    pub(super) x: i16,
+    /// The tile's y.
+    pub(super) y: i16,
+    /// The level of the tile's cell.
+    pub(super) level: u8,
+    /// The cost so far.
+    pub(super) g: f32,
+    /// The estimate to the goal.
+    pub(super) h: f32,
+    /// The node it comes from.
+    pub(super) parent: Option<usize>,
+    /// The edge it was entered by.
+    pub(super) dir: u8,
+    /// The tile its cost is measured from.
+    pub(super) entry: [i16; 2],
+}
+
 impl Planner {
     /// `FUN_140f79c90`: a new node from the pool.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn alloc(
-        &mut self,
-        x: i16,
-        y: i16,
-        level: u8,
-        g: f32,
-        h: f32,
-        parent: Option<usize>,
-        dir: u8,
-        entry: [i16; 2],
-    ) -> usize {
+    pub(super) fn alloc(&mut self, new: NewNode) -> usize {
+        let NewNode {
+            x,
+            y,
+            level,
+            g,
+            h,
+            parent,
+            dir,
+            entry,
+        } = new;
         let cell = self.index(level, x, y);
         self.nodes.push(Node {
             cell,
@@ -225,7 +245,16 @@ impl Planner {
         let dy = i32::from(ey) - i32::from(cy);
         let d = fmath::sqrt((dy * dy + dx * dx) as f32);
         let h = self.estimate_from(cx, cy);
-        let n = self.alloc(x, y, level, d + g0, h, Some(parent), dir, [cx, cy]);
+        let n = self.alloc(NewNode {
+            x,
+            y,
+            level,
+            g: d + g0,
+            h,
+            parent: Some(parent),
+            dir,
+            entry: [cx, cy],
+        });
         self.open.push(n, &self.nodes);
         self.nodes[n].shortcut = shortcut;
         if self.cells[i][0] & OPEN == 0 {
@@ -257,7 +286,16 @@ impl Planner {
         let dy = i32::from(ey) - i32::from(y);
         let d = fmath::sqrt((dy * dy + dx * dx) as f32);
         let h = self.estimate_from(x, y);
-        let n = self.alloc(x, y, 0, d + g0, h, Some(parent), dir, [x, y]);
+        let n = self.alloc(NewNode {
+            x,
+            y,
+            level: 0,
+            g: d + g0,
+            h,
+            parent: Some(parent),
+            dir,
+            entry: [x, y],
+        });
         self.open.push(n, &self.nodes);
         self.nodes[n].shortcut = shortcut;
         if self.cells[i][0] & OPEN == 0 {
@@ -299,7 +337,16 @@ impl Planner {
         }
         let h0 = self.start_estimate(start[0], start[1]);
         let mut count: u32 = 0;
-        let n = self.alloc(lx, ly, level, 0.0, h0, None, 0, start);
+        let n = self.alloc(NewNode {
+            x: lx,
+            y: ly,
+            level,
+            g: 0.0,
+            h: h0,
+            parent: None,
+            dir: 0,
+            entry: start,
+        });
         let cell = self.nodes[n].cell;
         if self.cells[cell][1] & GOAL != 0 {
             return Some(n);
@@ -337,7 +384,16 @@ impl Planner {
             return None;
         }
         let h0 = self.start_estimate(x, y);
-        let n = self.alloc(x, y, 0, 0.0, h0, None, 0, start);
+        let n = self.alloc(NewNode {
+            x,
+            y,
+            level: 0,
+            g: 0.0,
+            h: h0,
+            parent: None,
+            dir: 0,
+            entry: start,
+        });
         let cell = self.nodes[n].cell;
         if self.cells[cell][1] & GOAL != 0 {
             return Some(n);

@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::combat::missile::AimAt;
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
@@ -464,13 +465,15 @@ impl Unit {
         let point = {
             let draws = c.w.streams.get(Stream::Action);
             crate::combat::missile::aim(
-                action.point,
-                position,
-                Some((aimed.radius, aimed.class)),
-                shot.aimer,
-                made.id,
-                shot.attack_count,
-                &mut action.hit_mode,
+                AimAt {
+                    point: action.point,
+                    from: position,
+                    target: Some((aimed.radius, aimed.class)),
+                    aimer: shot.aimer,
+                    master_id: made.id,
+                    attack_count: shot.attack_count,
+                    hit_mode: &mut action.hit_mode,
+                },
                 &mut || draws.rand15(),
             )?
         };

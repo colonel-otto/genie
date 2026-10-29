@@ -1,6 +1,6 @@
 //! The velocity step, a new object's setup, the position setter and the motion step's loop.
 
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     ANNEX_GAP, AfterRequest, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion,
@@ -507,15 +507,15 @@ impl Mover {
                 rect[3] + grow,
             ])?;
             let player = world.get(me.id).map(|p| p.player);
-            let hits = world.walk_hits(
+            let hits = world.walk_hits(WalkQuery {
                 from,
                 to,
                 rect,
                 grow,
-                self.stats.min_collision,
+                ally_factor: self.stats.min_collision,
                 player,
-                &[me.id],
-            )?;
+                ignore: &[me.id],
+            })?;
             if !hits.is_empty() {
                 let avoided =
                     self.avoid(me, (world, groups), &hits, projected, dt, (now, computer))?;

@@ -24,6 +24,7 @@ mod pather;
 mod search;
 mod sight;
 
+pub use self::grid::WalkQuery;
 pub(crate) use self::pather::GATE_CLASS;
 pub use self::pather::{Hit, SmoothingWalls, tile_record_id};
 use self::pather::{WalkTest, record_meets_segment};

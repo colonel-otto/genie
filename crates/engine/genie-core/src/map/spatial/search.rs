@@ -9,6 +9,7 @@ use crate::map::spatial::{
 };
 use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
+use crate::vision::registry::VisibleQuery;
 use crate::vision::visibility::Seer;
 
 impl Spatial {
@@ -236,16 +237,16 @@ impl Spatial {
             ];
             self.check_known_classes(rect, search.classes)?;
             self.check_sight(player, rect)?;
-            if let Some(lists) = r.visible_units(
+            if let Some(lists) = r.visible_units(VisibleQuery {
                 player,
-                search.at,
-                search.radius,
-                0,
-                search.classes,
-                &relations,
-                search.size,
-                0xff,
-            )? {
+                at: search.at,
+                radius: search.radius,
+                mode: 0,
+                classes: search.classes,
+                relations: &relations,
+                size: search.size,
+                wanted: 0xff,
+            })? {
                 self.search_cache.remember(lists);
                 fresh = true;
             }

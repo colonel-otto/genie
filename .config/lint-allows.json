@@ -153,12 +153,6 @@
   "crates/tools/genie-oracle/src/lib.rs": 1
  },
  "clippy::too_many_arguments": {
-  "crates/engine/genie-core/src/combat/missile/mod.rs": 1,
-  "crates/engine/genie-core/src/groups/command.rs": 1,
-  "crates/engine/genie-core/src/map/spatial/grid.rs": 1,
-  "crates/engine/genie-core/src/pathing/tile_path/search.rs": 1,
-  "crates/engine/genie-core/src/vision/registry.rs": 2,
-  "crates/engine/genie-core/src/vision/visibility/sight.rs": 1,
   "crates/tools/genie-oracle/src/forced_replay.rs": 1,
   "crates/tools/genie-oracle/src/top_actions.rs": 1
  },

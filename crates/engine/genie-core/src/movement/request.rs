@@ -2,7 +2,7 @@
 //! goal's reach.
 
 use crate::GenieError;
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::Vec3;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::movement::{
@@ -296,15 +296,15 @@ impl Mover {
                 rect[2] + grow,
                 rect[3] + grow,
             ])?;
-            let hits = world.walk_hits(
+            let hits = world.walk_hits(WalkQuery {
                 from,
                 to,
                 rect,
                 grow,
-                self.stats.min_collision,
+                ally_factor: self.stats.min_collision,
                 player,
-                &ignore,
-            )?;
+                ignore: &ignore,
+            })?;
             let walled = hits.iter().any(|&h| {
                 world.get(h).is_some_and(|p| {
                     matches!(p.class, WALL_CLASS | GATE | TOWER_CLASS)

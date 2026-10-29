@@ -1,6 +1,6 @@
 //! A reached waypoint and what follows it: the next waypoint, a level's end and the moving state.
 
-use crate::map::spatial::Spatial;
+use crate::map::spatial::{Spatial, WalkQuery};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     CLOSE, EPSILON, Goal, LOOK_AHEAD, Me, Motion, Mover, Next, PathData, RANGE_FLOOR,
@@ -288,15 +288,15 @@ impl Mover {
             return Ok(false);
         }
         let player = world.get(me.id).map(|q| q.player);
-        let hits = world.walk_hits(
+        let hits = world.walk_hits(WalkQuery {
             from,
             to,
             rect,
-            rx,
-            self.stats.min_collision,
+            grow: rx,
+            ally_factor: self.stats.min_collision,
             player,
-            &ignore,
-        )?;
+            ignore: &ignore,
+        })?;
         Ok(hits.is_empty())
     }
 

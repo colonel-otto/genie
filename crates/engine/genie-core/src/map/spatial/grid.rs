@@ -6,6 +6,26 @@ use crate::map::spatial::{
     Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
 };
 
+/// A walk's obstruction query ([`Spatial::walk_hits`]'s arguments).
+#[derive(Clone, Copy, Debug)]
+pub struct WalkQuery<'a> {
+    /// The step's start.
+    pub from: [f32; 2],
+    /// The step's end.
+    pub to: [f32; 2],
+    /// The step's rectangle.
+    pub rect: [f32; 4],
+    /// The walker's radius, which grows the records' boxes and the rectangle.
+    pub grow: f32,
+    /// The walker's master's `min_collision_size_multiplier`, for a moving object of `player` or
+    /// an ally.
+    pub ally_factor: f32,
+    /// The walker's player.
+    pub player: Option<usize>,
+    /// The objects the query ignores.
+    pub ignore: &'a [i32],
+}
+
 impl Spatial {
     /// Each obstruction record: the object's id, the record's kind and box.
     pub fn records(&self) -> impl Iterator<Item = (i32, u8, [f32; 4])> + '_ {
@@ -317,17 +337,16 @@ impl Spatial {
     /// records first ([`Spatial::edge_records`], `FUN_141057290`). Both its callers
     /// (`FUN_14114cc60`, the gate's `FUN_1411d0570`) set the manager's ignore list to `ignore`
     /// first ([`Spatial::set_manager_ignore`]).
-    #[allow(clippy::too_many_arguments)]
-    pub fn walk_hits(
-        &mut self,
-        from: [f32; 2],
-        to: [f32; 2],
-        rect: [f32; 4],
-        grow: f32,
-        ally_factor: f32,
-        player: Option<usize>,
-        ignore: &[i32],
-    ) -> Result<Vec<i32>, GenieError> {
+    pub fn walk_hits(&mut self, walk: WalkQuery<'_>) -> Result<Vec<i32>, GenieError> {
+        let WalkQuery {
+            from,
+            to,
+            rect,
+            grow,
+            ally_factor,
+            player,
+            ignore,
+        } = walk;
         self.set_manager_ignore(ignore);
         // its callers reset the buffer after the query (FUN_1410562d0 with 0)
         self.set_manager_buffer(None);

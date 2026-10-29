@@ -45,6 +45,7 @@ use crate::unit_ai::task_finder::world::{
 use crate::unit_ai::task_finder::{Actor, Diplomacy};
 use crate::unit_ai::world_view::{DropWorld, Foreign, Wait, patrol_information};
 use crate::unit_ai::{Effect, Notify, OWNER_CHANGED, UnitAi};
+use crate::vision::registry::UnitUpdate;
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::checkpoint::TopAction;
 use crate::world::others::OthersRef;
@@ -7423,8 +7424,16 @@ fn hands_world(id: i32, p: usize, class: i16, master: i16, los: f32) -> Spatial 
     );
     let mut r = crate::vision::registry::Registry::new(3, 65);
     r.entries.entry(id).or_default().mask = 1 << p;
-    r.update_unit(id, p as u8, [10.5, 10.5], [0.2, 0.2], class, 0, 1 << p)
-        .unwrap();
+    r.update_unit(UnitUpdate {
+        id,
+        owner: p as u8,
+        at: [10.5, 10.5],
+        radii: [0.2, 0.2],
+        class,
+        old: 0,
+        new: 1 << p,
+    })
+    .unwrap();
     v.registry = Some(r);
     let at = [10.5, 10.5, 0.0];
     v.add_seer(
@@ -8982,8 +8991,16 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
     );
     let r = v.registry.as_mut().unwrap();
     r.entries.entry(500).or_default().mask = 0b11;
-    r.update_unit(500, 1, [11.5, 10.5], [0.2, 0.2], 4, 0, 0b11)
-        .unwrap();
+    r.update_unit(UnitUpdate {
+        id: 500,
+        owner: 1,
+        at: [11.5, 10.5],
+        radii: [0.2, 0.2],
+        class: 4,
+        old: 0,
+        new: 0b11,
+    })
+    .unwrap();
     t.tick(100);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(t.players[0].objects.len(), 0);
@@ -9093,8 +9110,16 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
     );
     let r = v.registry.as_mut().unwrap();
     r.entries.entry(500).or_default().mask = 0b11;
-    r.update_unit(500, 1, [11.5, 10.5], [0.2, 0.2], 4, 0, 0b11)
-        .unwrap();
+    r.update_unit(UnitUpdate {
+        id: 500,
+        owner: 1,
+        at: [11.5, 10.5],
+        radii: [0.2, 0.2],
+        class: 4,
+        old: 0,
+        new: 0b11,
+    })
+    .unwrap();
     t.tick(100);
     assert_eq!(t.players[0].objects.len(), 0);
     let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
@@ -13678,8 +13703,16 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
     let mut r = crate::vision::registry::Registry::new(2, 65);
     for (id, x) in [(500, 32.5), (501, 36.5)] {
         r.entries.entry(id).or_default().mask = 1 << 1;
-        r.update_unit(id, 0, [x, 89.5], [0.2, 0.2], 9, 0, 1 << 1)
-            .unwrap();
+        r.update_unit(UnitUpdate {
+            id,
+            owner: 0,
+            at: [x, 89.5],
+            radii: [0.2, 0.2],
+            class: 9,
+            old: 0,
+            new: 1 << 1,
+        })
+        .unwrap();
     }
     let sight = t.spatial.sight.as_mut().unwrap();
     sight.registry = Some(r);

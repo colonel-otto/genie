@@ -14,6 +14,7 @@ use crate::objects::unit::object_master;
 use crate::pathing::Pathing;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
+use crate::vision::registry::UnitUpdate;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 
@@ -486,15 +487,15 @@ impl Unit {
         };
         if let Some(r) = v.registry.as_mut().filter(|_| 0 <= id) {
             let mask = r.entry(id).map_or(0, |e| e.mask);
-            r.update_unit(
+            r.update_unit(UnitUpdate {
                 id,
-                c.player as u8,
-                [self.position()[0], self.position()[1]],
-                placed.radius,
-                placed.class,
-                mask & 0xffff_ffff,
-                0,
-            )?;
+                owner: c.player as u8,
+                at: [self.position()[0], self.position()[1]],
+                radii: placed.radius,
+                class: placed.class,
+                old: mask & 0xffff_ffff,
+                new: 0,
+            })?;
             // its mask (`+0x8f8`) is none after
             r.entries.entry(id).or_default().mask = 0;
         }

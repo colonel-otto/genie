@@ -252,6 +252,25 @@ pub struct Aimer {
     pub class: i16,
 }
 
+/// What a missile's aim takes besides the Action stream's draw ([`aim`]'s arguments).
+#[derive(Debug)]
+pub struct AimAt<'a> {
+    /// The point it aims for.
+    pub point: [f32; 3],
+    /// Where the missile is.
+    pub from: [f32; 3],
+    /// The target's radii and class, none without a target.
+    pub target: Option<([f32; 3], i16)>,
+    /// The firing object's hit chance, spread and class.
+    pub aimer: Aimer,
+    /// The missile's master's id.
+    pub master_id: i16,
+    /// The missile's attack count (`+0x900`).
+    pub attack_count: i32,
+    /// The hit mode, which a miss sets to 1.
+    pub hit_mode: &'a mut u8,
+}
+
 /// `FUN_140a9c600`: where a missile at `from` aims for its `point`: a target's height rises by a
 /// third of its master's height radius (`target`: its radii x and z and class; None without a
 /// target); the Action stream's draw ("intercept") over 100 against the hit chance (80 for a
@@ -260,17 +279,16 @@ pub struct Aimer {
 /// more draws, half each way; a missile of master 528 with an attack count (`+0x900`) strays by
 /// that share of it. The class-54 rule is the firing object's (`+0x28`): the caller's `aimer` is
 /// the missile's own master for a volley's extra missile, which has none.
-#[allow(clippy::too_many_arguments)]
-pub fn aim(
-    point: [f32; 3],
-    from: [f32; 3],
-    target: Option<([f32; 3], i16)>,
-    aimer: Aimer,
-    master_id: i16,
-    attack_count: i32,
-    hit_mode: &mut u8,
-    draw: &mut dyn FnMut() -> u32,
-) -> Result<[f32; 3], GenieError> {
+pub fn aim(at: AimAt<'_>, draw: &mut dyn FnMut() -> u32) -> Result<[f32; 3], GenieError> {
+    let AimAt {
+        point,
+        from,
+        target,
+        aimer,
+        master_id,
+        attack_count,
+        hit_mode,
+    } = at;
     let [mut x, mut y, mut z] = point;
     if let Some((radius, _)) = target {
         z += radius[2] / HEIGHT_SHARE;
@@ -521,9 +539,18 @@ mod tests {
         let target = Some(([0.2, 0.2, 1.5], 6));
         let aim_with = |draws: [u32; 3], master: i16, count: i32, mode: &mut u8| {
             let mut d = draws.into_iter();
-            aim(point, from, target, aimer, master, count, mode, &mut || {
-                d.next().unwrap()
-            })
+            aim(
+                AimAt {
+                    point,
+                    from,
+                    target,
+                    aimer,
+                    master_id: master,
+                    attack_count: count,
+                    hit_mode: mode,
+                },
+                &mut || d.next().unwrap(),
+            )
         };
         // a draw of 70% or less hits: the target's height rises by 1.5 / 3
         let mut mode = 0;
@@ -554,9 +581,18 @@ mod tests {
         let mut d = std::iter::once(26213u32);
         let narrow = Some(([0.5, 0.5, 0.0], 3));
         assert_eq!(
-            aim(point, from, narrow, siege, 4, 0, &mut mode, &mut || d
-                .next()
-                .unwrap()),
+            aim(
+                AimAt {
+                    point,
+                    from,
+                    target: narrow,
+                    aimer: siege,
+                    master_id: 4,
+                    attack_count: 0,
+                    hit_mode: &mut mode
+                },
+                &mut || d.next().unwrap()
+            ),
             Ok(point)
         );
     }

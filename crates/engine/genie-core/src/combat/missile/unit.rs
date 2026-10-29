@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
+use crate::map::spatial::WalkQuery;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::lifecycle::seconds;
@@ -260,9 +261,15 @@ impl Unit {
             rect[2] + grow,
             rect[3] + grow,
         ])?;
-        let crossed =
-            c.w.spatial
-                .walk_hits(from, to, rect, grow, 1.0, Some(c.player), &[self.id])?;
+        let crossed = c.w.spatial.walk_hits(WalkQuery {
+            from,
+            to,
+            rect,
+            grow,
+            ally_factor: 1.0,
+            player: Some(c.player),
+            ignore: &[self.id],
+        })?;
         let mut met = Vec::new();
         for id in crossed {
             let Some(p) = c.w.spatial.get(id) else {

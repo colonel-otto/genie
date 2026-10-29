@@ -4,6 +4,26 @@
 use crate::vision::registry::MASK;
 use crate::vision::visibility::{CIRCLE_MASTER, EDGE, MARKET, Seer, Visibility, tile_of};
 
+/// An object's own sight, as the base class explores it ([`Visibility::base_sight_on`]'s
+/// arguments, `FUN_141192560`'s).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SightOn {
+    /// The object.
+    pub(super) id: i32,
+    /// Its seer.
+    pub(super) seer: Seer,
+    /// Its place (x, y, z).
+    pub(super) position: [f32; 3],
+    /// Its master's radii (x, y).
+    pub(super) radius: [f32; 2],
+    /// Whether it explores its footprint as a rectangle.
+    pub(super) square: bool,
+    /// Its line of sight.
+    pub(super) los: i32,
+    /// The circle's offset.
+    pub(super) offset: bool,
+}
+
 impl Visibility {
     /// Slot 0x1d0: the object's sight comes, on its owner's map: a circle of its line of sight, or
     /// its footprint when `square` (`FUN_141192560`; a building's `FUN_1411d0190`). Returns the
@@ -57,21 +77,28 @@ impl Visibility {
             }
             None => (square, offset),
         };
-        self.base_sight_on(id, s, position, radius, square, los, offset)
+        self.base_sight_on(SightOn {
+            id,
+            seer: s,
+            position,
+            radius,
+            square,
+            los,
+            offset,
+        })
     }
 
     /// `FUN_141192560`.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn base_sight_on(
-        &mut self,
-        id: i32,
-        s: Seer,
-        position: [f32; 3],
-        radius: [f32; 2],
-        square: bool,
-        los: i32,
-        offset: bool,
-    ) -> i32 {
+    pub(super) fn base_sight_on(&mut self, on: SightOn) -> i32 {
+        let SightOn {
+            id,
+            seer: s,
+            position,
+            radius,
+            square,
+            los,
+            offset,
+        } = on;
         let square = square && s.master != CIRCLE_MASTER;
         if los <= 0 {
             return 0;

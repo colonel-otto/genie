@@ -2,7 +2,7 @@
 //! and closed after a player's update.
 
 use crate::GenieError;
-use crate::map::spatial::Spatial;
+use crate::map::spatial::{Spatial, WalkQuery};
 use crate::objects::masters::player_master;
 use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, World};
 
@@ -45,7 +45,15 @@ pub(crate) fn gate_units(
         rect[2] + GATE_GROW,
         rect[3] + GATE_GROW,
     ])?;
-    let hits = spatial.walk_hits(from, to, rect, GATE_GROW, 1.0, Some(owner), &[gate, a, b])?;
+    let hits = spatial.walk_hits(WalkQuery {
+        from,
+        to,
+        rect,
+        grow: GATE_GROW,
+        ally_factor: 1.0,
+        player: Some(owner),
+        ignore: &[gate, a, b],
+    })?;
     if GATE_QUERY_RECORDS < hits.len() {
         return Err(GenieError::unsupported(
             "a gate's query of more than 10 records",

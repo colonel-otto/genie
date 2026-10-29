@@ -50,29 +50,11 @@ pub struct MoveTo {
 }
 
 impl UnitGroup {
-    /// `queueOrder` (`FUN_14102b640`): a command at the queue's end (`+0x420`, its count
-    /// `+0x450`) of `command`, `target`, `point`, `range` and its approved byte,
-    /// retargeting byte and 16 bits after them.
-    #[allow(clippy::too_many_arguments)]
-    pub fn queue_command(
-        &mut self,
-        command: i32,
-        target: i32,
-        point: [f32; 3],
-        range: f32,
-        approved: u8,
-        disable_retargeting: u8,
-        approved_2: u16,
-    ) {
-        self.command_queue.push(GroupCommand {
-            command,
-            target_id: target,
-            range,
-            point,
-            approved,
-            disable_retargeting,
-            approved_2,
-        });
+    /// `queueOrder` (`FUN_14102b640`): `command` at the queue's end (`+0x420`, its count
+    /// `+0x450`): its command, target, point, range, approved byte, retargeting byte and the 16
+    /// bits after them.
+    pub fn queue_command(&mut self, command: GroupCommand) {
+        self.command_queue.push(command);
     }
 
     /// `FUN_14100dd10`: the queue's approved commands go and the others turn approved.
@@ -226,22 +208,30 @@ impl World {
             .expect("the caller holds the group");
         let at = [point[0], 0.0, point[1]];
         if how.queued {
-            g.queue_command(
-                MOVE_COMMAND,
-                -1,
-                at,
-                how.range,
-                u8::from(how.direct),
-                0,
-                0xffff,
-            );
+            g.queue_command(GroupCommand {
+                command: MOVE_COMMAND,
+                target_id: -1,
+                range: how.range,
+                point: at,
+                approved: u8::from(how.direct),
+                disable_retargeting: 0,
+                approved_2: 0xffff,
+            });
             if g.current_command == -1 && how.direct && g.hibernating != 1 {
                 g.hibernating = 1;
             }
             return Ok(Some(false));
         }
         if !how.direct && !g.command_queue.is_empty() {
-            g.queue_command(MOVE_COMMAND, -1, at, how.range, 0, 0, 0xffff);
+            g.queue_command(GroupCommand {
+                command: MOVE_COMMAND,
+                target_id: -1,
+                range: how.range,
+                point: at,
+                approved: 0,
+                disable_retargeting: 0,
+                approved_2: 0xffff,
+            });
             g.approve_queued();
             self.check_queued_orders(group)?;
             return Ok(Some(true));

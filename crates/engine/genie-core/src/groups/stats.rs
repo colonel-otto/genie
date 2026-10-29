@@ -684,6 +684,7 @@ mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::vision::registry::UnitUpdate;
     use crate::world::Player;
 
     /// Slot 0x238 (`FUN_14108d9b0`): the weapon range, plus `charge_event` for a ready charge of
@@ -781,8 +782,16 @@ mod tests {
             (30, 3, [4.0, 5.0], 6),
             (31, 3, [5.0, 4.0], 4),
         ] {
-            r.update_unit(id, owner, at, [0.2, 0.2], class, 0, 1 << 1)
-                .unwrap();
+            r.update_unit(UnitUpdate {
+                id,
+                owner,
+                at,
+                radii: [0.2, 0.2],
+                class,
+                old: 0,
+                new: 1 << 1,
+            })
+            .unwrap();
         }
         let mut v = crate::vision::visibility::Visibility::new(
             20,
@@ -858,7 +867,15 @@ mod tests {
                 .registry
                 .as_mut()
                 .unwrap()
-                .update_unit(22, 2, [13.0, 5.0], [0.2, 0.2], 6, 0, 1 << 1)
+                .update_unit(UnitUpdate {
+                    id: 22,
+                    owner: 2,
+                    at: [13.0, 5.0],
+                    radii: [0.2, 0.2],
+                    class: 6,
+                    old: 0,
+                    new: 1 << 1,
+                })
                 .unwrap();
             t.players[1].objects[0].ai.as_mut().unwrap().ai_type = ai_type;
             t

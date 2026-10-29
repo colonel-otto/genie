@@ -60,6 +60,48 @@ pub struct Entry {
     pub slots: [Option<usize>; SLOTS],
 }
 
+/// An object's change of the players that see it ([`Registry::update_unit`]'s arguments,
+/// `FUN_14128a1d0`'s).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UnitUpdate {
+    /// The object.
+    pub id: i32,
+    /// The owner's id (`player+0x718`).
+    pub owner: u8,
+    /// Its place (x, y).
+    pub at: [f32; 2],
+    /// Its master's radii (x, y).
+    pub radii: [f32; 2],
+    /// Its master's class.
+    pub class: i16,
+    /// The mask of the players that saw it.
+    pub old: u64,
+    /// The mask of the players that see it.
+    pub new: u64,
+}
+
+/// A query for the visible units of a player ([`Registry::visible_units`]'s arguments,
+/// `FUN_141288c00`'s).
+#[derive(Clone, Copy, Debug)]
+pub struct VisibleQuery<'a> {
+    /// The player whose lists it reads.
+    pub player: usize,
+    /// The searcher's place (x, y).
+    pub at: [f32; 2],
+    /// How far, at most 44.
+    pub radius: f32,
+    /// 0: a rounded box, 1: a box.
+    pub mode: i32,
+    /// The classes it reads.
+    pub classes: &'a [i32],
+    /// What the owners are to the player (0 Gaia, 1 self, 2 friend, 3 neutral, 4 enemy).
+    pub relations: &'a [u32],
+    /// The searcher's radii (x, y).
+    pub size: [f32; 2],
+    /// The relations kept, one bit each.
+    pub wanted: u8,
+}
+
 /// The registry: `lists[player][class]`, and each object's [`Entry`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Registry {
@@ -94,17 +136,16 @@ impl Registry {
     /// `Update_Unit_Info` (`FUN_14128a1d0`): for each player whose bit (of the low 16) differs
     /// between `old` and `new`, the object joins the end of that player's list of its class, or
     /// leaves it (the list's last record takes its place).
-    #[allow(clippy::too_many_arguments)]
-    pub fn update_unit(
-        &mut self,
-        id: i32,
-        owner: u8,
-        [x, y]: [f32; 2],
-        [rx, ry]: [f32; 2],
-        class: i16,
-        old: u64,
-        new: u64,
-    ) -> Result<(), GenieError> {
+    pub fn update_unit(&mut self, unit: UnitUpdate) -> Result<(), GenieError> {
+        let UnitUpdate {
+            id,
+            owner,
+            at: [x, y],
+            radii: [rx, ry],
+            class,
+            old,
+            new,
+        } = unit;
         let mut changed = (old ^ new) & 0xffff;
         let mut seen = new;
         if class < 0 {
@@ -215,18 +256,20 @@ impl Registry {
     /// 0 Gaia, 1 self, 2 friend, 3 neutral, 4 enemy) is in `wanted`; by relation, each with its
     /// edge distance, at most 256 each. None when the query reads nothing (no classes, a player
     /// out of range), which leaves the game's last answer in place.
-    #[allow(clippy::too_many_arguments)]
     pub fn visible_units(
         &self,
-        player: usize,
-        [x, y]: [f32; 2],
-        radius: f32,
-        mode: i32,
-        classes: &[i32],
-        relations: &[u32],
-        [rx, ry]: [f32; 2],
-        wanted: u8,
+        query: VisibleQuery<'_>,
     ) -> Result<Option<[Vec<Record>; 5]>, GenieError> {
+        let VisibleQuery {
+            player,
+            at: [x, y],
+            radius,
+            mode,
+            classes,
+            relations,
+            size: [rx, ry],
+            wanted,
+        } = query;
         if classes.is_empty() || self.players <= player {
             return Ok(None);
         }
@@ -306,8 +349,16 @@ mod tests {
     fn an_object_joins_a_list_when_seen_and_leaves_by_a_swap_with_the_last() {
         let mut r = registry();
         for id in [1, 2, 3] {
-            r.update_unit(id, 1, [id as f32, 5.0], [0.2, 0.2], 4, 0, 0b101)
-                .unwrap();
+            r.update_unit(UnitUpdate {
+                id,
+                owner: 1,
+                at: [id as f32, 5.0],
+                radii: [0.2, 0.2],
+                class: 4,
+                old: 0,
+                new: 0b101,
+            })
+            .unwrap();
         }
         assert_eq!(
             r.lists[0][4].iter().map(|x| x.id).collect::<Vec<_>>(),
@@ -316,8 +367,16 @@ mod tests {
         assert_eq!(r.lists[2][4].len(), 3);
         assert_eq!(r.lists[1][4], Vec::<Record>::new());
         // 1 leaves player 0's sight: 3 takes its place
-        r.update_unit(1, 1, [1.0, 5.0], [0.2, 0.2], 4, 0b101, 0b100)
-            .unwrap();
+        r.update_unit(UnitUpdate {
+            id: 1,
+            owner: 1,
+            at: [1.0, 5.0],
+            radii: [0.2, 0.2],
+            class: 4,
+            old: 0b101,
+            new: 0b100,
+        })
+        .unwrap();
         assert_eq!(
             r.lists[0][4].iter().map(|x| x.id).collect::<Vec<_>>(),
             [3, 2]
@@ -332,26 +391,58 @@ mod tests {
     #[test]
     fn a_query_finds_the_records_within_its_rounded_box_by_relation() {
         let mut r = registry();
-        r.update_unit(1, 1, [12.0, 10.0], [0.2, 0.2], 4, 0, 1)
-            .unwrap();
-        r.update_unit(2, 2, [10.0, 13.5], [0.2, 0.2], 4, 0, 1)
-            .unwrap();
-        r.update_unit(3, 2, [13.0, 13.0], [0.2, 0.2], 4, 0, 1)
-            .unwrap();
-        r.update_unit(4, 0, [10.5, 10.5], [0.2, 0.2], 9, 0, 1)
-            .unwrap();
+        r.update_unit(UnitUpdate {
+            id: 1,
+            owner: 1,
+            at: [12.0, 10.0],
+            radii: [0.2, 0.2],
+            class: 4,
+            old: 0,
+            new: 1,
+        })
+        .unwrap();
+        r.update_unit(UnitUpdate {
+            id: 2,
+            owner: 2,
+            at: [10.0, 13.5],
+            radii: [0.2, 0.2],
+            class: 4,
+            old: 0,
+            new: 1,
+        })
+        .unwrap();
+        r.update_unit(UnitUpdate {
+            id: 3,
+            owner: 2,
+            at: [13.0, 13.0],
+            radii: [0.2, 0.2],
+            class: 4,
+            old: 0,
+            new: 1,
+        })
+        .unwrap();
+        r.update_unit(UnitUpdate {
+            id: 4,
+            owner: 0,
+            at: [10.5, 10.5],
+            radii: [0.2, 0.2],
+            class: 9,
+            old: 0,
+            new: 1,
+        })
+        .unwrap();
         let relations = [1, 4, 4];
         let found = r
-            .visible_units(
-                0,
-                [10.0, 10.0],
-                3.0,
-                0,
-                &[4, 9],
-                &relations,
-                [0.2, 0.2],
-                0xff,
-            )
+            .visible_units(VisibleQuery {
+                player: 0,
+                at: [10.0, 10.0],
+                radius: 3.0,
+                mode: 0,
+                classes: &[4, 9],
+                relations: &relations,
+                size: [0.2, 0.2],
+                wanted: 0xff,
+            })
             .unwrap()
             .unwrap();
         // 1 is 1.8 off along x, 2 is 3.3 off along y (beyond 3.2), 3 is at the corner and beyond
@@ -361,8 +452,17 @@ mod tests {
         // the edge distances, the overlap along y included: (1.8, -0.2)
         assert!((found[4][0].distance - (1.8f32 * 1.8 + 0.04).sqrt()).abs() < 1e-6);
         assert_eq!(
-            r.visible_units(0, [10.0, 10.0], 3.0, 0, &[], &relations, [0.2, 0.2], 0xff)
-                .unwrap(),
+            r.visible_units(VisibleQuery {
+                player: 0,
+                at: [10.0, 10.0],
+                radius: 3.0,
+                mode: 0,
+                classes: &[],
+                relations: &relations,
+                size: [0.2, 0.2],
+                wanted: 0xff
+            })
+            .unwrap(),
             None
         );
     }
@@ -370,21 +470,37 @@ mod tests {
     #[test]
     fn a_query_caps_its_radius_at_44() {
         let mut r = registry();
-        r.update_unit(1, 1, [53.5, 10.0], [0.2, 0.2], 4, 0, 1)
-            .unwrap();
-        r.update_unit(2, 1, [60.0, 10.0], [0.2, 0.2], 4, 0, 1)
-            .unwrap();
+        r.update_unit(UnitUpdate {
+            id: 1,
+            owner: 1,
+            at: [53.5, 10.0],
+            radii: [0.2, 0.2],
+            class: 4,
+            old: 0,
+            new: 1,
+        })
+        .unwrap();
+        r.update_unit(UnitUpdate {
+            id: 2,
+            owner: 1,
+            at: [60.0, 10.0],
+            radii: [0.2, 0.2],
+            class: 4,
+            old: 0,
+            new: 1,
+        })
+        .unwrap();
         let found = r
-            .visible_units(
-                0,
-                [10.0, 10.0],
-                100.0,
-                1,
-                &[4],
-                &[1, 4, 4],
-                [0.2, 0.2],
-                0xff,
-            )
+            .visible_units(VisibleQuery {
+                player: 0,
+                at: [10.0, 10.0],
+                radius: 100.0,
+                mode: 1,
+                classes: &[4],
+                relations: &[1, 4, 4],
+                size: [0.2, 0.2],
+                wanted: 0xff,
+            })
             .unwrap()
             .unwrap();
         // the box reaches 44.2 along x: 1's edge is 43.3 off, 2's 49.8
@@ -394,10 +510,27 @@ mod tests {
     #[test]
     fn a_query_keeps_a_wide_object_whose_centre_lies_beyond_the_radius() {
         let mut r = registry();
-        r.update_unit(1, 1, [15.0, 10.0], [2.0, 2.0], 4, 0, 1)
-            .unwrap();
+        r.update_unit(UnitUpdate {
+            id: 1,
+            owner: 1,
+            at: [15.0, 10.0],
+            radii: [2.0, 2.0],
+            class: 4,
+            old: 0,
+            new: 1,
+        })
+        .unwrap();
         let found = r
-            .visible_units(0, [10.0, 10.0], 3.0, 0, &[4], &[1, 4, 4], [0.2, 0.2], 0xff)
+            .visible_units(VisibleQuery {
+                player: 0,
+                at: [10.0, 10.0],
+                radius: 3.0,
+                mode: 0,
+                classes: &[4],
+                relations: &[1, 4, 4],
+                size: [0.2, 0.2],
+                wanted: 0xff,
+            })
             .unwrap()
             .unwrap();
         // the centre is 5 off, beyond 3.2, but the edge is 3 off: the 7-tile margin keeps it in
