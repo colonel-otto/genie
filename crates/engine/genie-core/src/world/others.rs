@@ -195,11 +195,6 @@ impl<'a> Others<'a> {
         OthersRef::new(self.player, self.own, foreign)
     }
 
-    /// [`OthersRef::find`].
-    pub(crate) fn find(&self, id: i32) -> Option<(usize, &Unit)> {
-        self.view().find(id)
-    }
-
     /// Object `id` of any list, live or sleeping, with its owner, to change: what the world's
     /// table by id (`FUN_1415417a0`) gives the game's call on it.
     pub(crate) fn get_mut(&mut self, id: i32) -> Option<(usize, &mut Unit)> {
@@ -430,8 +425,8 @@ mod tests {
         );
         assert_eq!(others.view().own(10).map(|u| u.life.hp), Some(4.0));
         assert_eq!(others.view().find(2).map(|(_, u)| u.life.hp), Some(4.0));
-        assert_eq!(others.find(12).map(|(_, u)| u.life.hp), Some(4.0));
-        assert_eq!(others.find(20).map(|(q, _)| q), Some(2));
+        assert_eq!(others.view().find(12).map(|(_, u)| u.life.hp), Some(4.0));
+        assert_eq!(others.view().find(20).map(|(q, _)| q), Some(2));
         assert_eq!(others.view().foreign(10).map(|(q, _)| q), None);
         assert_eq!(own[1].id, TAKEN_OUT, "the stand-in stays as it was");
     }

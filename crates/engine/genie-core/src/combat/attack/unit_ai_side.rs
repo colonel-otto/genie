@@ -7,6 +7,7 @@ use crate::combat::attack::{AttackReads, Fight, Ground};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
 use crate::map::spatial::Placed;
+use crate::math::rng::Stream;
 use crate::objects::masters::player_master;
 use crate::objects::release::Releaser;
 use crate::unit_ai::UnitAi;
@@ -19,7 +20,7 @@ use crate::unit_ai::world_view::{NOT_HELD, UnitView};
 const VILLAGER_MALE: i16 = 83;
 const VILLAGER_FEMALE: i16 = 293;
 
-impl<'u> UnitView<'u, '_> {
+impl UnitView<'_, '_> {
     /// The attack command (slot 0x338, `FUN_14120cea0`; classes 51 and 54 are not modelled) ->
     /// `FUN_141081a80`: a target the world does not hold fails; `+0x648` takes the world's time
     /// (not held); the unit's own Attack on the target answers true, forced after its slot 0x48
@@ -43,7 +44,7 @@ impl<'u> UnitView<'u, '_> {
         ai: &UnitAi,
     ) -> Result<crate::unit_ai::Attacked, GenieError> {
         // the unit's master, a copy: the attack's start changes the unit (its master's switch)
-        let own = self.unit.master(self.every, self.player)?.clone();
+        let own = self.unit.master(&self.c.w.masters, self.player)?.clone();
         let master = &own;
         let unit = &mut *self.unit;
         if matches!(master.class, 51 | 54) {
@@ -52,7 +53,7 @@ impl<'u> UnitView<'u, '_> {
             ));
         }
         let no = crate::unit_ai::Attacked::default;
-        let Some(t) = self.spatial.get_known(target)?.copied() else {
+        let Some(t) = self.c.w.spatial.get_known(target)?.copied() else {
             return Ok(no());
         };
         if unit.actions.attack().is_some_and(|a| a.target == target) {
@@ -64,29 +65,22 @@ impl<'u> UnitView<'u, '_> {
                 posted: Vec::new(),
             });
         }
-        // a villager switches to its player's villager of its task swap group (`+0x7b8` 1: the
-        // master table's `+0x298`, 83; else `+0x928`, 293) when the player has it (slot 0x90 with
-        // 0: the action list clears, then the master's unit part; its owner's part after the
-        // update)
-        let master = match self.villager_swap(master) {
-            Some(next) => {
-                self.switch_unit_master(master, next)?;
-                next
-            }
-            None => master,
-        };
+        let master = &self.swapped_master(own)?;
         let me_at = *self
+            .c
+            .w
             .spatial
             .get(self.unit.id)
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
-        let t_master = player_master(self.every, t.player, t.master).ok_or(
+        let t_master = player_master(&self.c.w.masters, t.player, t.master).ok_or(
             GenieError::unsupported("an attack's target of a master the slice does not have"),
         )?;
         let visible = self.target_visible(&t, t_master)?;
         let unit = &mut *self.unit;
         // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
         let look = unit.abilities.look.as_ref();
-        let arms = crate::combat::attack::arms_looking(master, look, self.graphics, [-1; 4], -1);
+        let arms =
+            crate::combat::attack::arms_looking(master, look, &self.c.w.graphics, [-1; 4], -1);
         let standing = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
         if unit.sprite.is_none() {
             return Err(GenieError::unsupported(
@@ -107,25 +101,19 @@ impl<'u> UnitView<'u, '_> {
             master,
             &me_at,
             &t,
-            self.world_time,
+            self.c.w.world_time,
         )?;
         // the constructor clears +0x900 for a target other than its own (none yet)
         unit.attack_count = 0;
         if unit.life.inside.is_some() {
-            let mut attack = crate::combat::attack::Attack::own(target, &e, arms);
-            attack.fail_at_start(&mut unit.sprite, &mut unit.body, self.sprite)?;
-            unit.actions.set_attack(Some(attack));
-            self.lets.take(self.others, Some(&mut *unit), target, by);
-            return Ok(crate::unit_ai::Attacked {
-                attacks: true,
-                posted: Vec::new(),
-            });
+            return self
+                .attack_from_inside(crate::combat::attack::Attack::own(target, &e, arms), by);
         }
         crate::objects::sprite::new_sprite(
             &mut unit.sprite,
             unit.body.move_stats_mut(),
             standing,
-            self.sprite,
+            self.c.w.streams.get(Stream::Sprite),
         );
         let mover = unit.body.mover_mut().expect("its speed read above");
         let crate::combat::attack::Commanded {
@@ -136,7 +124,7 @@ impl<'u> UnitView<'u, '_> {
             failed,
             failed_first,
         } = crate::combat::attack::Attack::command(
-            (target, self.spatial),
+            (target, &self.c.w.spatial),
             &e,
             arms,
             (visible, t.player),
@@ -146,7 +134,11 @@ impl<'u> UnitView<'u, '_> {
             unit.body.set_anim_speed(1.0);
         }
         if failed {
-            attack.fail_at_start(&mut unit.sprite, &mut unit.body, self.sprite)?;
+            attack.fail_at_start(
+                &mut unit.sprite,
+                &mut unit.body,
+                self.c.w.streams.get(Stream::Sprite),
+            )?;
         }
         if ready {
             posted.extend(self.ready_at_start(&mut attack, master, ai)?);
@@ -157,13 +149,54 @@ impl<'u> UnitView<'u, '_> {
             // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): the master's standing
             // sprite with its speed, `+0x7b8` cleared; the next update's state 4 ends the MoveTo
             mover.shows_standing();
-            unit.shows_standing_sprite(self.every.get(self.player), self.graphics, self.sprite)?;
+            unit.shows_standing_sprite(
+                self.c.w.masters.get(self.player),
+                &self.c.w.graphics,
+                self.c.w.streams.get(Stream::Sprite),
+            )?;
         }
         unit.actions.set_attack(Some(attack));
-        self.lets.take(self.others, Some(&mut *unit), target, by);
+        self.take(target, by);
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted,
+        })
+    }
+
+    /// The attack command's master: a villager switches to its player's villager of its task
+    /// swap group first ([`UnitView::villager_swap`]; slot 0x90 with 0: the action list clears,
+    /// then the master's unit part; its owner's part after the update), else it keeps `own`.
+    fn swapped_master(
+        &mut self,
+        own: crate::objects::masters::Master,
+    ) -> Result<crate::objects::masters::Master, GenieError> {
+        let Some(next) = self.villager_swap(&own).cloned() else {
+            return Ok(own);
+        };
+        self.switch_unit_master(&own, &next)?;
+        Ok(next)
+    }
+
+    /// The install's start (`0x140a7f8c0`) of the Attack of a unit inside another: it fails at
+    /// once (`set_state(13)`, [`crate::combat::attack::Attack::fail_at_start`]) and holds its
+    /// target, which it takes (slot 0x178, as `by`).
+    fn attack_from_inside(
+        &mut self,
+        mut attack: crate::combat::attack::Attack,
+        by: Releaser,
+    ) -> Result<crate::unit_ai::Attacked, GenieError> {
+        let unit = &mut *self.unit;
+        attack.fail_at_start(
+            &mut unit.sprite,
+            &mut unit.body,
+            self.c.w.streams.get(Stream::Sprite),
+        )?;
+        let target = attack.target;
+        unit.actions.set_attack(Some(attack));
+        self.take(target, by);
+        Ok(crate::unit_ai::Attacked {
+            attacks: true,
+            posted: Vec::new(),
         })
     }
 
@@ -180,8 +213,7 @@ impl<'u> UnitView<'u, '_> {
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.unit
             .tear_down_actions(&mut releases, &mut leaves, by)?;
-        self.lets
-            .torn_down(self.others, Some(&mut *self.unit), (leaves, releases))?;
+        self.torn_down((leaves, releases))?;
         Ok(by)
     }
 
@@ -199,10 +231,10 @@ impl<'u> UnitView<'u, '_> {
         ai: &UnitAi,
     ) -> Result<(), GenieError> {
         let mark = |id: i32, p: &Placed| -> Result<crate::combat::attack::Mark, GenieError> {
-            let u = owner_view(self.others, self.new_owner)
+            let u = owner_view(&self.c.w.players, self.c.player, self.new_owner)
                 .get(id)
                 .ok_or(NOT_HELD)?;
-            let m = player_master(self.every, p.player, p.master).ok_or(NOT_HELD)?;
+            let m = player_master(&self.c.w.masters, p.player, p.master).ok_or(NOT_HELD)?;
             Ok(crate::combat::attack::Mark {
                 id,
                 kind: m.kind,
@@ -213,11 +245,11 @@ impl<'u> UnitView<'u, '_> {
             })
         };
         let target_mark = mark(target, t)?;
-        let main = match owner_view(self.others, self.new_owner)
+        let main = match owner_view(&self.c.w.players, self.c.player, self.new_owner)
             .get(target)
             .and_then(|u| u.annex_of)
         {
-            Some(m) => match self.spatial.get(m).copied() {
+            Some(m) => match self.c.w.spatial.get(m).copied() {
                 Some(p) => Some(mark(m, &p)?),
                 None => None,
             },
@@ -242,10 +274,10 @@ impl<'u> UnitView<'u, '_> {
             unit.attack_count = 0;
         }
         if let Some(old) = w.lets_go {
-            self.lets.release(self.others, Some(&mut *unit), old, by)?;
+            self.release(old, by)?;
         }
         if let Some(new) = w.takes {
-            self.lets.take(self.others, Some(&mut *unit), new, by);
+            self.take(new, by);
         }
         Ok(())
     }
@@ -255,28 +287,31 @@ impl<'u> UnitView<'u, '_> {
     /// sleeping objects, or the old owner's of a unit taken over in its update, whose attributes
     /// it does not hold).
     fn victim_of_target(&self, id: i32) -> Option<Victim> {
-        let (q, t) = owner_view(self.others, self.new_owner).find(id)?;
-        let attributes = if owner_view(self.others, self.new_owner).own(id).is_some() {
-            self.attributes
+        let (q, t) = owner_view(&self.c.w.players, self.c.player, self.new_owner).find(id)?;
+        let attributes = if owner_view(&self.c.w.players, self.c.player, self.new_owner)
+            .own(id)
+            .is_some()
+        {
+            &self.c.w.players[self.player].attributes
         } else {
-            &owner_view(self.others, self.new_owner)
+            &owner_view(&self.c.w.players, self.c.player, self.new_owner)
                 .players()
                 .player(q)?
                 .attributes[..]
         };
-        let master = t.master(self.every, q).ok()?;
+        let master = t.master(&self.c.w.masters, q).ok()?;
         let dip = SideWorld {
             player: self.player,
-            relations: self.relations,
-            foreign: owner_view(self.others, self.new_owner).players(),
-            drop_sites: self.drop_sites,
+            relations: &self.c.w.players[self.player].relations,
+            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            drop_sites: &self.c.w.drop_sites,
         };
         Some(victim_in(
             t,
             (q, master, attributes),
             (self.player, &dip),
-            self.spatial,
-            self.mode_680,
+            &self.c.w.spatial,
+            self.c.w.mode_680,
         ))
     }
 
@@ -300,23 +335,23 @@ impl<'u> UnitView<'u, '_> {
         let own = victim_of(
             unit,
             master,
-            self.attributes,
+            &self.c.w.players[self.player].attributes,
             self.player,
-            self.spatial.terrain.as_ref(),
-            self.mode_680,
+            self.c.w.spatial.terrain.as_ref(),
+            self.c.w.mode_680,
         );
         let reads = AttackReads::of(
             unit,
             master,
-            (self.every.get(self.player), self.graphics),
+            (self.c.w.masters.get(self.player), &self.c.w.graphics),
             Some(ai),
-            (self.computer, self.world_time),
+            (self.computer, self.c.w.world_time),
         );
         let fight = Fight { victim, own };
         let mut posted = Vec::new();
         let mut g = Ground {
-            map: self.spatial,
-            sprite_rng: self.sprite,
+            map: &self.c.w.spatial,
+            sprite_rng: self.c.w.streams.get(Stream::Sprite),
             object_rng: None,
             buffer: Some(&mut posted),
         };
@@ -336,8 +371,8 @@ impl<'u> UnitView<'u, '_> {
         t_master: &crate::objects::masters::Master,
     ) -> Result<bool, GenieError> {
         let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
-        Ok(self.spatial.sees_tile(self.player, tx, ty)
-            || (t_master.fog_visibility != 0 && self.spatial.explored(self.player, tx, ty)?))
+        Ok(self.c.w.spatial.sees_tile(self.player, tx, ty)
+            || (t_master.fog_visibility != 0 && self.c.w.spatial.explored(self.player, tx, ty)?))
     }
 
     /// The attack command's villager swap: a villager (class 4) switches to its player's villager
@@ -346,7 +381,7 @@ impl<'u> UnitView<'u, '_> {
     fn villager_swap(
         &self,
         master: &crate::objects::masters::Master,
-    ) -> Option<&'u crate::objects::masters::Master> {
+    ) -> Option<&crate::objects::masters::Master> {
         if master.class != 4 {
             return None;
         }
@@ -355,6 +390,6 @@ impl<'u> UnitView<'u, '_> {
         } else {
             VILLAGER_FEMALE
         };
-        player_master(self.every, self.player, swap)
+        player_master(&self.c.w.masters, self.player, swap)
     }
 }

@@ -187,37 +187,36 @@ impl UnitView<'_, '_> {
     ) -> Result<Option<crate::unit_ai::Gatherable>, GenieError> {
         let mut w = ResourceWorld {
             player: self.player,
-            spatial: self.spatial,
-            zones: self.zones,
-            foreign: owner_view(self.others, self.new_owner).players(),
-            every: self.every,
-            masters: self.every.get(self.player),
+            spatial: &self.c.w.spatial,
+            zones: &mut self.c.w.zones,
+            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            every: &self.c.w.masters,
+            masters: self.c.w.masters.get(self.player),
             plan: Planning {
-                pathing: self.pathing,
-                now: self.world_time,
+                pathing: &mut self.c.w.pathing,
+                now: self.c.w.world_time,
                 computer: self.computer,
-                object: self.object,
+                object: self.c.w.streams.get(Stream::Object),
                 construction_rate: self.construction_rate,
-                groups: self.groups,
+                groups: &self.c.w.groups,
             },
         };
         let (id, _) = closest_resource_of(
             self.unit,
             &mut w,
-            owner_view(self.others, self.new_owner),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner),
             (search.kind, search.cap, search.site),
             (search.current, search.min_state, search.point),
         )?;
         if id == -1 {
             return Ok(None);
         }
-        let (owner, u) =
-            owner_view(self.others, self.new_owner)
-                .find(id)
-                .ok_or(GenieError::unsupported(
-                    "a resource found that the slice does not hold",
-                ))?;
-        let class = u.master(self.every, owner)?.class;
+        let (owner, u) = owner_view(&self.c.w.players, self.c.player, self.new_owner)
+            .find(id)
+            .ok_or(GenieError::unsupported(
+                "a resource found that the slice does not hold",
+            ))?;
+        let class = u.master(&self.c.w.masters, owner)?.class;
         Ok(Some(crate::unit_ai::Gatherable {
             id,
             position: u.position(),

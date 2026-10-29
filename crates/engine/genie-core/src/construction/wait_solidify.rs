@@ -77,8 +77,8 @@ impl UnitView<'_, '_> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
             self.player,
-            owner_view(self.others, self.new_owner),
-            owner_view(self.others, self.new_owner).players(),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
         );
         let find = |id: i32| {
             if id == unit.id {
@@ -87,38 +87,44 @@ impl UnitView<'_, '_> {
             others.find(id)
         };
         let (Some(t), Some(general)) = (
-            task_target_with(target, 1, &find, self.every)?,
-            task_target_with(target, 2, &find, self.every)?,
+            task_target_with(target, 1, &find, &self.c.w.masters)?,
+            task_target_with(target, 2, &find, &self.c.w.masters)?,
         ) else {
             return Ok(false);
         };
         let masters = self
-            .every
+            .c
+            .w
+            .masters
             .get(self.player)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
-        let own = unit.master(self.every, self.player)?;
+        let own = unit.master(&self.c.w.masters, self.player)?;
         let actor = Actor {
             id: unit.id,
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            attribute_95: self.c.w.players[self.player]
+                .attributes
+                .get(95)
+                .copied()
+                .unwrap_or(0.0),
             civ: self.civ,
         };
         let dip = SideWorld {
             player,
-            relations: self.relations,
+            relations: &self.c.w.players[self.player].relations,
             foreign,
-            drop_sites: self.drop_sites,
+            drop_sites: &self.c.w.drop_sites,
         };
         // slot 0x820's point: the target's place
         let at = find(target).map_or([0.0; 3], |(_, u)| u.position());
-        let terrain = point_terrain(self.spatial.terrain.as_ref(), at);
+        let terrain = point_terrain(self.c.w.spatial.terrain.as_ref(), at);
         let Some((task, switch)) = task_search(masters, &actor, &t, &general, terrain, -1, &dip)?
         else {
             return Ok(false);
         };
-        self.starts.push(AiStart::Wait(Wait {
+        self.c.starts.push(AiStart::Wait(Wait {
             target,
             task,
             switch: switch.map(|m| m.id),

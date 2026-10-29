@@ -1,8 +1,8 @@
 //! What an object's update does to the objects its actions take and let go (slots 0x178 and
 //! 0x180) and to the building a counted builder leaves: each the world's call where the game
 //! makes it (FD-045-D07, D28; [`World::take`], [`World::release`], [`World::leave_builders`]),
-//! which runs [`Lets`] on a view of the whole world. The unit AI's side runs [`Lets`] on its
-//! own view.
+//! which runs [`Lets`] on a view of the whole world; the unit AI's side runs them so too, its
+//! own AI's notifies held until its call returns ([`World::with_lets_for`]).
 //!
 //! The updating object itself is out of its slot (its stand-in holds it), so no lookup by id
 //! finds it: a call on it runs on the unit its caller holds (`me`), at once.
@@ -42,6 +42,19 @@ impl World {
         player: usize,
         f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
     ) -> R {
+        // no unit AI's side runs here: an updating unit holds its AI (one without has none to
+        // tell), so nothing waits for a side's return
+        self.with_lets_for(player, &mut Vec::new(), f)
+    }
+
+    /// [`World::with_lets`] for the side of the updating unit's AI ([`crate::unit_ai::world_view::UnitView`]),
+    /// whose AI is out of the unit: the notifies for it go to `own_notifies`.
+    pub(crate) fn with_lets_for<R>(
+        &mut self,
+        player: usize,
+        own_notifies: &mut Vec<(Notify, u8)>,
+        f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
+    ) -> R {
         let (before, rest) = self.players.split_at_mut(player);
         let (own, after) = rest.split_first_mut().expect("a player of the world");
         let Player {
@@ -52,16 +65,13 @@ impl World {
             ..
         } = own;
         let mut others = Others::new(player, (objects, sleeping), (before, after));
-        // no unit AI's side runs here: an updating unit holds its AI (one without has none to
-        // tell), so nothing waits for a side's return
-        let mut own_notifies = Vec::new();
         let mut lets = Lets {
             player,
             relations,
             masters: &self.masters,
             lines: &self.lines,
             tracker,
-            own_notifies: &mut own_notifies,
+            own_notifies,
         };
         f(&mut lets, &mut others)
     }
@@ -133,14 +143,6 @@ pub(crate) fn torn_down(
 }
 
 impl Lets<'_> {
-    /// The tracker's promotion (`FUN_14104fb20`) of the owner's unit `id`, whose master changes
-    /// from `old` to `new` where the change runs ([`crate::players::tracker::Tracker::promote`]).
-    pub(crate) fn promote(&mut self, id: i32, old: i16, new: i16) {
-        let masters = self.masters.get(self.player);
-        let key = |m| crate::players::tracker::key(masters, self.lines, m);
-        self.tracker.promote(id, key(old), key(new));
-    }
-
     /// Slot 0x178 on object `id`, which an action of `by` takes ([`World::take`] through the
     /// view): a live one counts its worker ([`crate::objects::unit::Unit::taken`]; a building
     /// first lists an unallied taker of a foundation with a stack unit); a sleeping one counts

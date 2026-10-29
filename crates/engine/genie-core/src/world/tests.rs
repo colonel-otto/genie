@@ -47,8 +47,7 @@ use crate::unit_ai::world_view::{DropWorld, Foreign, Wait, patrol_information};
 use crate::unit_ai::{Notify, OWNER_CHANGED, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::checkpoint::TopAction;
-use crate::world::lets::Lets;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::OthersRef;
 use crate::world::player::Player;
 
 fn player(objects: Vec<Option<UnitAi>>) -> Player {
@@ -4356,14 +4355,40 @@ fn a_side_s_own_release_tells_the_unit_ai_as_the_side_returns() {
         let view = OwnerView::of(c, None);
         let attacker = unit.attacker_of(13, None, (1, false), false, 0);
         let inside = unit.with_side(c, &view, attacker, (1, false), |ai, side, _| {
-            side.lets
-                .release(side.others, Some(&mut *side.unit), by.id, by)?;
+            side.release(by.id, by)?;
             Ok((side.unit.workers, ai.notifies.len()))
         })?;
         Ok((inside, unit.ai.as_ref().map(|ai| ai.notifies.len())))
     });
     assert_eq!(seen, Ok(((0, 0), Some(1))));
     assert_eq!(notified(&t, NO_LONGER_ON_ME).len(), 1);
+}
+
+/// The AI stream is the unit AI's while it runs on its side ([`Unit::with_side`]): its draws are
+/// the world's stream after the run, and a world routine that draws from it meanwhile fails the
+/// run.
+#[test]
+fn the_ai_stream_is_the_unit_ai_s_while_its_side_runs() {
+    use crate::unit_ai::world_view::OwnerView;
+    let mut t = hunt_world();
+    let mut drawn = t.streams.get(Stream::Ai).clone();
+    let first = drawn.rand15();
+    let run = |t: &mut World, world_draws: bool| {
+        in_update(t, (1, 0), 50, |unit, c| {
+            let view = OwnerView::of(c, None);
+            let attacker = unit.attacker_of(13, None, (1, false), false, 0);
+            unit.with_side(c, &view, attacker, (1, false), |_, side, rng| {
+                if world_draws {
+                    let _ = side.c.w.streams.get(Stream::Ai).rand15();
+                }
+                Ok(rng.rand15())
+            })
+        })
+    };
+    assert_eq!(run(&mut t, false), Ok(first));
+    assert_eq!(*t.streams.get(Stream::Ai), drawn);
+    let failed = run(&mut t, true).expect_err("a draw beside the unit AI's");
+    assert!(failed.to_string().contains("AI stream"), "{failed}");
 }
 
 /// The unit AI's stop (`Effect::Stop`, [`Unit::stop_action`]): the forager's Gather goes and
@@ -10831,6 +10856,71 @@ fn scout_attack(timer: f32, inside: Option<i32>) -> (Unit, crate::unit_ai::Attac
     scout_attack_on(timer, inside, None, false)
 }
 
+/// `f` on the unit AI's side ([`crate::unit_ai::world_view::UnitView`]) of the first of player
+/// 1's live objects `own` (the scout 123 of master 448 at (10, 10)), player 1 holding `tracker`, in
+/// a world of Gaia's player `gaia`, `spatial`, the masters `every`, `graphics` and the unit groups
+/// `groups`, as the unit's update runs it: what `f` gives and the world after the update.
+fn on_side<R>(
+    (gaia, own, tracker): (Player, Vec<Unit>, crate::players::tracker::Tracker),
+    (spatial, every, graphics): (
+        Spatial,
+        Vec<Masters>,
+        std::collections::BTreeMap<i16, Graphic>,
+    ),
+    groups: crate::groups::UnitGroups,
+    f: impl FnOnce(&mut crate::unit_ai::world_view::UnitView<'_, '_>) -> R,
+) -> (R, World) {
+    let scout = Player {
+        objects: own.into(),
+        relations: vec![0, 0],
+        tracker,
+        ..Player::default()
+    };
+    let mut t = World::new(0, 0, 0, vec![0, 0], vec![gaia, scout]);
+    (t.spatial, t.masters, t.graphics, t.groups) = (spatial, every, graphics, groups);
+    let answer = in_update(&mut t, (1, 0), 0, |unit, c| {
+        let mut side = crate::unit_ai::world_view::UnitView {
+            c,
+            unit,
+            attacker: crate::unit_ai::Attacker {
+                ai_type: 13,
+                player: 1,
+                computer: false,
+                state: 2,
+                held: -1,
+                top_action: None,
+                master: 448,
+                kind: 70,
+                class: 47,
+                attack_priority: 0,
+                missile: -1,
+                range: 1.0,
+                min_range: 0.0,
+                charge_type: 0,
+                area_effect: 0.0,
+                blast_level: 0,
+                los: 4.0,
+                position: [10.0, 10.0, 0.0],
+                radius: [0.2, 0.2],
+                speed: 1.2,
+                scenario: false,
+                firepower: 0.0,
+                capture: 0,
+            },
+            player: 1,
+            computer: false,
+            construction_rate: 1.0,
+            new_owner: None,
+            civ: 0,
+            ai_settings: AiSettings::default(),
+            attribute_adds: Vec::new(),
+            own_notifies: Vec::new(),
+        };
+        Ok(f(&mut side))
+    });
+    (answer.unwrap(), t)
+}
+
 /// [`scout_attack`] of a scout whose own Attack is `own`, the command `force`d or not.
 fn scout_attack_on(
     timer: f32,
@@ -10903,11 +10993,10 @@ fn scout_attack_on(
         .into(),
         ..Player::default()
     };
-    let mut players = [gaia];
     let mut rng = Well512::default();
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.speed = 1.2;
-    let mut unit = Unit {
+    let unit = Unit {
         id: 123,
         body: crate::objects::layers::Body::new([10.0, 10.0, 0.0], None, Some(walker)),
         sprite: Some(crate::objects::sprite::ActiveSprite::start(
@@ -10928,81 +11017,21 @@ fn scout_attack_on(
         ai_type: 13,
         ..UnitAi::default()
     };
-    let masters = Masters::new([scout]);
-    let every = [Masters::new([wolf]), masters];
-    let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
-    let groups = crate::groups::UnitGroups::default();
-    let (mut object, mut sprite) = (Well512::default(), Well512::default());
-    let mut waits = Vec::new();
-    let mut adds = Vec::new();
-    let (mut none, mut asleep) = (ObjectList::default(), ObjectList::default());
-    let mut view = Others::new(1, (&mut none, &mut asleep), (&mut players, &mut []));
-    let attacked = {
-        let mut side = crate::unit_ai::world_view::UnitView {
-            unit: &mut unit,
-            attacker: crate::unit_ai::Attacker {
-                ai_type: 13,
-                player: 1,
-                computer: false,
-                state: 2,
-                held: -1,
-                top_action: None,
-                master: 448,
-                kind: 70,
-                class: 47,
-                attack_priority: 0,
-                missile: -1,
-                range: 1.0,
-                min_range: 0.0,
-                charge_type: 0,
-                area_effect: 0.0,
-                blast_level: 0,
-                los: 4.0,
-                position: [10.0, 10.0, 0.0],
-                radius: [0.2, 0.2],
-                speed: 1.2,
-                scenario: false,
-                firepower: 0.0,
-                capture: 0,
-            },
-            player: 1,
-            computer: false,
-            spatial: &mut spatial,
-            pathing: &mut pathing,
-            groups: &groups,
-            object: &mut object,
-            sprite: &mut sprite,
-            world_time: 0,
-            construction_rate: 1.0,
-            others: &mut view,
-            new_owner: None,
-            zones: &mut zones,
-            every: &every,
-            graphics: &graphics,
-            lets: Lets {
-                player: 1,
-                relations: &[0, 0],
-                masters: &every,
-                lines: &crate::objects::lines::UnitLines::default(),
-                tracker: &mut crate::players::tracker::Tracker::default(),
-                own_notifies: &mut Vec::new(),
-            },
-            starts: &mut waits,
-            attribute_adds: &mut adds,
-            relations: &[0, 0],
-            attributes: &[],
-            civ: 0,
-            ai_settings: AiSettings::default(),
-            drop_sites: &[],
-            mode_680: 0,
-            carry_rule: false,
-        };
-        side.attack(50, force, &ai).unwrap()
-    };
+    let every = vec![Masters::new([wolf]), Masters::new([scout])];
+    let (attacked, t) = on_side(
+        (
+            gaia,
+            vec![unit],
+            crate::players::tracker::Tracker::default(),
+        ),
+        (spatial, every, graphics),
+        crate::groups::UnitGroups::default(),
+        |side| side.attack(50, force, &ai).unwrap(),
+    );
     // the takes reach Gaia's objects through the view: each counts a worker
-    let taken = players[0].objects.iter();
+    let taken = t.players[0].objects.iter();
     let takes = taken.flat_map(|u| std::iter::repeat_n(u.id, u.workers as usize));
-    (unit, attacked, takes.collect())
+    (t.players[1].objects[0].clone(), attacked, takes.collect())
 }
 
 /// The attack command of unit 123 of master `who` (in a table with `also`) on Gaia's wolf 50, as
@@ -11084,11 +11113,10 @@ fn attack_by(
         .into(),
         ..Player::default()
     };
-    let mut players = [gaia];
     let mut rng = Well512::default();
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.speed = 1.2;
-    let mut unit = Unit {
+    let unit = Unit {
         id: 123,
         body: crate::objects::layers::Body::new([10.0, 10.0, 0.0], None, Some(walker)),
         sprite: Some(crate::objects::sprite::ActiveSprite::start(
@@ -11111,83 +11139,24 @@ fn attack_by(
     };
     let _ = scout;
     let masters = Masters::new(std::iter::once(who).chain(also));
-    let every = [Masters::new([wolf]), masters];
-    let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
-    let groups = crate::groups::UnitGroups::default();
-    let (mut object, mut sprite) = (Well512::default(), Well512::default());
-    let mut waits = Vec::new();
-    let mut adds = Vec::new();
-    let (mut none, mut asleep) = (ObjectList::default(), ObjectList::default());
+    let every = vec![Masters::new([wolf]), masters];
     let lines = crate::objects::lines::UnitLines::default();
     let mut tracker = crate::players::tracker::Tracker::default();
     tracker.add(
         123,
         crate::players::tracker::key(every.get(1), &lines, attacker_master),
     );
-    let mut view = Others::new(1, (&mut none, &mut asleep), (&mut players, &mut []));
-    let attacked = {
-        let mut side = crate::unit_ai::world_view::UnitView {
-            unit: &mut unit,
-            attacker: crate::unit_ai::Attacker {
-                ai_type: 13,
-                player: 1,
-                computer: false,
-                state: 2,
-                held: -1,
-                top_action: None,
-                master: 448,
-                kind: 70,
-                class: 47,
-                attack_priority: 0,
-                missile: -1,
-                range: 1.0,
-                min_range: 0.0,
-                charge_type: 0,
-                area_effect: 0.0,
-                blast_level: 0,
-                los: 4.0,
-                position: [10.0, 10.0, 0.0],
-                radius: [0.2, 0.2],
-                speed: 1.2,
-                scenario: false,
-                firepower: 0.0,
-                capture: 0,
-            },
-            player: 1,
-            computer: false,
-            spatial: &mut spatial,
-            pathing: &mut pathing,
-            groups: &groups,
-            object: &mut object,
-            sprite: &mut sprite,
-            world_time: 0,
-            construction_rate: 1.0,
-            others: &mut view,
-            new_owner: None,
-            zones: &mut zones,
-            every: &every,
-            graphics: &graphics,
-            lets: Lets {
-                player: 1,
-                relations: &[0, 0],
-                masters: &every,
-                lines: &lines,
-                tracker: &mut tracker,
-                own_notifies: &mut Vec::new(),
-            },
-            starts: &mut waits,
-            attribute_adds: &mut adds,
-            relations: &[0, 0],
-            attributes: &[],
-            civ: 0,
-            ai_settings: AiSettings::default(),
-            drop_sites: &[],
-            mode_680: 0,
-            carry_rule: false,
-        };
-        side.attack(50, force, &ai).unwrap()
-    };
-    (unit, attacked, adds, tracker)
+    let ((attacked, adds), t) = on_side(
+        (gaia, vec![unit], tracker),
+        (spatial, every, graphics),
+        crate::groups::UnitGroups::default(),
+        |side| {
+            let attacked = side.attack(50, force, &ai).unwrap();
+            (attacked, std::mem::take(&mut side.attribute_adds))
+        },
+    );
+    let unit = t.players[1].objects[0].clone();
+    (unit, attacked, adds, t.players[1].tracker.clone())
 }
 
 /// A villager's attack command (`FUN_141081a80`): a builder (118, task swap group 1) switches to
@@ -11292,12 +11261,10 @@ fn help_view<R>(
         .into(),
         ..Player::default()
     };
-    let mut players = [gaia];
     if let Some(lists) = searched {
         spatial.set_searched(lists);
     }
-    let (mut own, mut asleep) = (ObjectList::from(vec![helper]), ObjectList::default());
-    let mut unit = Unit {
+    let unit = Unit {
         id: 123,
         body: crate::objects::layers::Body::at([10.0, 10.0, 0.0]),
         life: Lifecycle {
@@ -11307,73 +11274,16 @@ fn help_view<R>(
         ..Unit::default()
     };
     let masters = Masters::new([scout]);
-    let every = [Masters::new([wolf]), masters];
-    let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
-    let (mut object, mut sprite) = (Well512::default(), Well512::default());
-    let mut waits = Vec::new();
-    let mut adds = Vec::new();
+    let every = vec![Masters::new([wolf]), masters];
+    let tracker = crate::players::tracker::Tracker::default();
     let graphics = std::collections::BTreeMap::new();
-    let mut view = Others::new(1, (&mut own, &mut asleep), (&mut players, &mut []));
-    let mut side = crate::unit_ai::world_view::UnitView {
-        unit: &mut unit,
-        attacker: crate::unit_ai::Attacker {
-            ai_type: 13,
-            player: 1,
-            computer: false,
-            state: 2,
-            held: -1,
-            top_action: None,
-            master: 448,
-            kind: 70,
-            class: 47,
-            attack_priority: 0,
-            missile: -1,
-            range: 1.0,
-            min_range: 0.0,
-            charge_type: 0,
-            area_effect: 0.0,
-            blast_level: 0,
-            los: 4.0,
-            position: [10.0, 10.0, 0.0],
-            radius: [0.2, 0.2],
-            speed: 1.2,
-            scenario: false,
-            firepower: 0.0,
-            capture: 0,
-        },
-        player: 1,
-        computer: false,
-        spatial: &mut spatial,
-        pathing: &mut pathing,
-        groups,
-        object: &mut object,
-        sprite: &mut sprite,
-        world_time: 0,
-        construction_rate: 1.0,
-        others: &mut view,
-        new_owner: None,
-        zones: &mut zones,
-        every: &every,
-        graphics: &graphics,
-        lets: Lets {
-            player: 1,
-            relations: &[0, 0],
-            masters: &every,
-            lines: &crate::objects::lines::UnitLines::default(),
-            tracker: &mut crate::players::tracker::Tracker::default(),
-            own_notifies: &mut Vec::new(),
-        },
-        starts: &mut waits,
-        attribute_adds: &mut adds,
-        relations: &[0, 0],
-        attributes: &[],
-        civ: 0,
-        ai_settings: AiSettings::default(),
-        drop_sites: &[],
-        mode_680: 0,
-        carry_rule: false,
-    };
-    f(&mut side)
+    let (answer, _) = on_side(
+        (gaia, vec![unit, helper], tracker),
+        (spatial, every, graphics),
+        groups.clone(),
+        f,
+    );
+    answer
 }
 
 /// `AskForHelp`'s helper test ([`UnitView::helper_free`]) of [`helper_scout`] against the wolf.
@@ -11390,10 +11300,13 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
 /// [`helper_free`] of the unit `helper` of player `owner` with the world's unit groups `groups`.
 fn helper_free_of(owner: usize, helper: Unit, groups: &crate::groups::UnitGroups) -> bool {
     help_view(helper, None, groups, |side| {
-        let scout = crate::objects::masters::player_master(side.every, side.player, 448)
+        let scout = crate::objects::masters::player_master(&side.c.w.masters, side.player, 448)
             .unwrap()
             .clone();
-        let helper = side.others.view().own_iter().next().unwrap();
+        let helper = OthersRef::of(&side.c.w.players, 1)
+            .own_iter()
+            .next()
+            .unwrap();
         side.helper_free(owner, helper, &scout, 50).unwrap()
     })
 }

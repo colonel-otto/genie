@@ -8,7 +8,7 @@
 use crate::GenieError;
 use crate::gathering::closest_resource::herded;
 use crate::map::spatial::Placed;
-use crate::math::rng::Well512;
+use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::masters::player_master;
 use crate::objects::release::Releaser;
@@ -23,18 +23,22 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
         let class = self
             .unit
-            .master(self.every, self.player)
+            .master(&self.c.w.masters, self.player)
             .ok()
             .map(|m| m.class)
             .ok_or(crate::world::OBJECT_MASTER)?;
         let at = [self.unit.position()[0], self.unit.position()[1]];
         let look = |id: i32| {
-            owner_view(self.others, self.new_owner)
+            owner_view(&self.c.w.players, self.c.player, self.new_owner)
                 .own(id)
                 .map(|u| (u.life.state, u.position()))
         };
         Ok(crate::orders::nearest_table_site(
-            (self.drop_sites, self.civ, &*self.lets.tracker),
+            (
+                &self.c.w.drop_sites,
+                self.civ,
+                &self.c.w.players[self.c.player].tracker,
+            ),
             (at, self.unit.life.attribute_type, class),
             look,
         ))
@@ -53,7 +57,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "a stand test of a unit without movement state",
         ))?;
-        self.spatial.point_clear(
+        self.c.w.spatial.point_clear(
             unit.id,
             point,
             mover.stats.radius[0],
@@ -80,16 +84,16 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         const SIEGE_TOWER: i16 = 0x451;
         /// `AskForHelp`'s reach (`DAT_142ecccc4`): the squared footprint gap of 3 tiles.
         const HELP_REACH: f32 = crate::math::image::unit_ai::HELP_REACH;
-        let lists = self.spatial.searched().ok_or(GenieError::unsupported(
+        let lists = self.c.w.spatial.searched().ok_or(GenieError::unsupported(
             "a search that reads the registry's last answer (before any query)",
         ))?;
-        let others = owner_view(self.others, self.new_owner);
+        let others = owner_view(&self.c.w.players, self.c.player, self.new_owner);
         let find = |id: i32| others.find(id);
         let gaia_attacker = find(attacker).is_some_and(|(owner, _)| owner == 0);
         let me = self.unit.id;
         let my_radius = self
             .unit
-            .master(self.every, self.player)
+            .master(&self.c.w.masters, self.player)
             .ok()
             .map(|m| m.radius)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
@@ -103,7 +107,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             if u.ai.is_none() || 3 <= u.life.state {
                 continue;
             }
-            let m = u.master(self.every, owner)?;
+            let m = u.master(&self.c.w.masters, owner)?;
             let class = i64::from(m.class);
             let no_help = (0..=0x27).contains(&class) && (NO_HELP_CLASSES >> class) & 1 != 0;
             if no_help || m.id == SIEGE_TOWER {
@@ -112,7 +116,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             if !gaia_attacker && m.class == 4 {
                 continue;
             }
-            if owner != self.player && !self.spatial.allied_with(owner, self.player) {
+            if owner != self.player && !self.c.w.spatial.allied_with(owner, self.player) {
                 continue;
             }
             let gap =
@@ -141,15 +145,14 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     }
 
     fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, GenieError> {
-        let Some(p) = self.spatial.get(id) else {
+        let Some(p) = self.c.w.spatial.get(id) else {
             return Ok(None);
         };
-        let (owner, u) = self
-            .others
+        let (owner, u) = crate::world::others::OthersRef::of(&self.c.w.players, self.c.player)
             .find(id)
             .ok_or(GenieError::unsupported("an object the slice does not hold"))?;
-        let m = u.master(self.every, owner)?;
-        let me = self.unit.master(self.every, self.player)?;
+        let m = u.master(&self.c.w.masters, owner)?;
+        let me = self.unit.master(&self.c.w.masters, self.player)?;
         Ok(Some(crate::unit_ai::UnitSeen {
             id,
             class: m.class,
@@ -168,7 +171,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             master: u.life.master_id,
             kind: m.kind,
             main: u.annex_of,
-            allied: crate::unit_ai::task_finder::allied(self.relations, self.player, owner, true),
+            allied: crate::unit_ai::task_finder::allied(
+                &self.c.w.players[self.player].relations,
+                self.player,
+                owner,
+                true,
+            ),
         }))
     }
 
@@ -184,7 +192,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, GenieError> {
         let class = usize::try_from(player)
             .ok()
-            .and_then(|p| self.every.get(p))
+            .and_then(|p| self.c.w.masters.get(p))
             .zip(i16::try_from(master).ok())
             .and_then(|(ms, id)| ms.get(id))
             .map(|m| m.class);
@@ -193,12 +201,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
 
     fn reaches(&mut self, target: i32, range: f32) -> Result<bool, GenieError> {
         let mut plan = Planning {
-            pathing: self.pathing,
-            now: self.world_time,
+            pathing: &mut self.c.w.pathing,
+            now: self.c.w.world_time,
             computer: self.computer,
-            object: self.object,
+            object: self.c.w.streams.get(Stream::Object),
             construction_rate: self.construction_rate,
-            groups: self.groups,
+            groups: &self.c.w.groups,
         };
         let unit = &*self.unit;
         let walker = Me {
@@ -211,7 +219,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         ))?;
         mover.reaches_object(
             &walker,
-            self.spatial,
+            &self.c.w.spatial,
             &mut plan,
             target,
             range,
@@ -229,30 +237,33 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             seeker,
             me: self.unit.id,
             player: self.player,
-            others: owner_view(self.others, self.new_owner),
-            foreign: owner_view(self.others, self.new_owner).players(),
-            spatial: self.spatial,
-            every: self.every,
+            others: owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            spatial: &self.c.w.spatial,
+            every: &self.c.w.masters,
             restriction: self
                 .unit
-                .master(self.every, self.player)
+                .master(&self.c.w.masters, self.player)
                 .map_or(-1, |m| m.terrain_restriction),
             unit: &*self.unit,
-            attributes: self.attributes,
-            relations: self.relations,
+            attributes: &self.c.w.players[self.player].attributes,
+            relations: &self.c.w.players[self.player].relations,
             ai_settings: self.ai_settings,
-            now: self.world_time,
-            mode_680: self.mode_680,
+            now: self.c.w.world_time,
+            mode_680: self.c.w.mode_680,
         };
-        let (others, every) = (owner_view(self.others, self.new_owner), self.every);
+        let (others, every) = (
+            owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            &self.c.w.masters,
+        );
         // ClosestObject's reachability check (slot 0x3d0) walks the unit's paths
         let mut plan = Planning {
-            pathing: self.pathing,
-            now: self.world_time,
+            pathing: &mut self.c.w.pathing,
+            now: self.c.w.world_time,
             computer: self.computer,
-            object: self.object,
+            object: self.c.w.streams.get(Stream::Object),
             construction_rate: self.construction_rate,
-            groups: self.groups,
+            groups: &self.c.w.groups,
         };
         let unit = &*self.unit;
         let walker = Me {
@@ -260,7 +271,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let (mover, master_id, spatial) = (unit.body.mover(), unit.life.master_id, &*self.spatial);
+        let (mover, master_id, spatial) =
+            (unit.body.mover(), unit.life.master_id, &self.c.w.spatial);
         let mut reach = |id: i32, range: f32| {
             let m = mover.ok_or(GenieError::unsupported(
                 "a reach test of a unit that does not move",
@@ -295,7 +307,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         seeker: &crate::unit_ai::Seeker,
     ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
         let picker = self.picker(Some(*seeker));
-        let held = owner_view(self.others, self.new_owner)
+        let held = owner_view(&self.c.w.players, self.c.player, self.new_owner)
             .get(target)
             .is_some();
         if !held {
@@ -322,12 +334,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     }
 
     fn stop(&mut self) -> Result<(), GenieError> {
-        let masters = self.every.get(self.player);
+        let masters = self.c.w.masters.get(self.player);
         let by = Releaser {
             id: self.unit.id,
             class: self
                 .unit
-                .master(self.every, self.player)
+                .master(&self.c.w.masters, self.player)
                 .map_or(-1, |m| m.class),
             player: self.player,
         };
@@ -336,16 +348,15 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             (&mut releases, &mut leaves),
             by,
             masters,
-            self.graphics,
-            self.sprite,
+            &self.c.w.graphics,
+            self.c.w.streams.get(Stream::Sprite),
         )?;
-        self.lets
-            .torn_down(self.others, Some(&mut *self.unit), (leaves, releases))
+        self.torn_down((leaves, releases))
     }
 
     fn cap_human_order(&mut self, cap: u32) -> Result<(), GenieError> {
         self.unit.last_human_order = self.unit.last_human_order.min(cap);
-        self.spatial.set_gait(self.unit.id, self.unit.gait());
+        self.c.w.spatial.set_gait(self.unit.id, self.unit.gait());
         Ok(())
     }
 
@@ -354,10 +365,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         ai: &UnitAi,
         rng: &mut Well512,
     ) -> Result<Option<[i32; 2]>, GenieError> {
-        let tc = town_centre(owner_view(self.others, self.new_owner))?;
+        let tc = town_centre(owner_view(&self.c.w.players, self.c.player, self.new_owner))?;
         let (at, computer) = (self.unit.position(), self.computer);
         // the search about the town centre only while the player has no scout map
-        let scout_map = self.spatial.scout_map(self.player).is_some();
+        let scout_map = self.c.w.spatial.scout_map(self.player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
         if !scout_map
             && let Some(p) = crate::movement::explore::unexplored_area(tc, map, &mut area)?
@@ -377,13 +388,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
 
     fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
         let (at, player) = (self.unit.position(), self.player);
-        let scouted = self.spatial.scout_map(player).is_some();
+        let scouted = self.c.w.spatial.scout_map(player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
         area.scouted = scouted;
         let found = crate::movement::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)?;
         // the point found is marked in the scout map (FUN_140f4d5e0 with 1)
         if let Some([x, y]) = found {
-            self.spatial.scout(player, x, y);
+            self.c.w.spatial.scout(player, x, y);
         }
         Ok(found)
     }
@@ -394,15 +405,15 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
         let size = crate::movement::explore::SCOUT_MAP_SIZE;
         let mut m = crate::movement::explore::InfluenceMap::new([size, size], 0);
-        let [w, h] = self.spatial.map;
+        let [w, h] = self.c.w.spatial.map;
         for y in 0..h {
             for x in 0..w {
-                if self.spatial.scout_sight(self.player, x, y) == Some(0xf) {
+                if self.c.w.spatial.scout_sight(self.player, x, y) == Some(0xf) {
                     m.set(x, y, 1);
                 }
             }
         }
-        self.spatial.set_scout_map(self.player, m);
+        self.c.w.spatial.set_scout_map(self.player, m);
         Ok(())
     }
 
@@ -421,7 +432,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
                 to,
                 over_wall: false,
             } => {
-                self.starts.push(AiStart::Transport(to));
+                self.c.starts.push(AiStart::Transport(to));
                 Ok(true)
             }
             _ => Err(crate::unit_ai::UNMODELLED_COMMAND),
@@ -447,7 +458,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     /// [`Unit::ai_move_with`]: crate::objects::unit::Unit::ai_move_with
     /// [`Unit::transport_sail`]: crate::objects::unit::Unit::transport_sail
     fn ai_move_now(&mut self, m: AiMove) -> Result<(), GenieError> {
-        let class = self.unit.master(self.every, self.player)?.class;
+        let class = self.unit.master(&self.c.w.masters, self.player)?.class;
         let by = Releaser {
             id: self.unit.id,
             class,
@@ -458,15 +469,26 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             m,
             (class, self.player),
             (&mut releases, &mut leaves, by),
-            (self.every.get(self.player), self.graphics, self.sprite),
+            (
+                self.c.w.masters.get(self.player),
+                &self.c.w.graphics,
+                self.c.w.streams.get(Stream::Sprite),
+            ),
         )?;
-        self.lets
-            .torn_down(self.others, Some(&mut *self.unit), (leaves, releases))?;
+        self.torn_down((leaves, releases))?;
         if sails {
             self.unit.transport_sail(
                 m.point,
-                (self.spatial, self.zones, self.pathing),
-                (self.every.get(self.player), self.graphics, self.sprite),
+                (
+                    &self.c.w.spatial,
+                    &mut self.c.w.zones,
+                    &mut self.c.w.pathing,
+                ),
+                (
+                    self.c.w.masters.get(self.player),
+                    &self.c.w.graphics,
+                    self.c.w.streams.get(Stream::Sprite),
+                ),
             )?;
         }
         Ok(())
@@ -499,7 +521,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     ///
     /// [`Unit::top_target`]: crate::objects::unit::Unit::top_target
     fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
-        let target = match self.starts.last() {
+        let target = match self.c.starts.last() {
             Some(AiStart::Wait(_)) => return Ok(None),
             Some(AiStart::Repair(
                 RepairOrder::Retake(t)
@@ -516,7 +538,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             Some(AiStart::Enter(e)) => Some(e.entered),
             None => self.unit.top_target().filter(|&t| t != -1),
         };
-        Ok(target.filter(|&t| self.spatial.get(t).is_some()))
+        Ok(target.filter(|&t| self.c.w.spatial.get(t).is_some()))
     }
 
     /// The object as the full update's tail reads it, found as [`UnitSide::seen_unit`] finds
@@ -525,11 +547,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let Some(seen) = self.seen_unit(id)? else {
             return Ok(None);
         };
-        let u = owner_view(self.others, self.new_owner)
+        let u = owner_view(&self.c.w.players, self.c.player, self.new_owner)
             .get(id)
             .expect("seen_unit found it");
         let kind = u
-            .master(self.every, seen.owner)
+            .master(&self.c.w.masters, seen.owner)
             .expect("seen_unit found its master")
             .kind;
         Ok(Some(crate::unit_ai::TargetFlags {

@@ -1,6 +1,7 @@
 //! What the unit AI's view asks of its unit: its picker, a helper's tests and a master switch.
 
 use crate::GenieError;
+use crate::math::rng::Stream;
 use crate::movement::footprint_gap_squared;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
@@ -16,17 +17,17 @@ impl UnitView<'_, '_> {
             seeker,
             me: self.unit.id,
             player: self.player,
-            others: owner_view(self.others, self.new_owner),
-            foreign: owner_view(self.others, self.new_owner).players(),
-            spatial: self.spatial,
-            every: self.every,
+            others: owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            spatial: &self.c.w.spatial,
+            every: &self.c.w.masters,
             restriction: -1,
             unit: &*self.unit,
-            attributes: self.attributes,
-            relations: self.relations,
+            attributes: &self.c.w.players[self.player].attributes,
+            relations: &self.c.w.players[self.player].relations,
             ai_settings: self.ai_settings,
-            now: self.world_time,
-            mode_680: self.mode_680,
+            now: self.c.w.world_time,
+            mode_680: self.c.w.mode_680,
         }
     }
 
@@ -47,12 +48,12 @@ impl UnitView<'_, '_> {
         m: &crate::objects::masters::Master,
         attacker: i32,
     ) -> Result<bool, GenieError> {
-        let others = owner_view(self.others, self.new_owner);
+        let others = owner_view(&self.c.w.players, self.c.player, self.new_owner);
         let find = |id: i32| others.find(id);
         let Some(ai) = u.ai.as_ref() else {
             return Ok(false);
         };
-        let patrolling = match self.groups.get(u.group.id) {
+        let patrolling = match self.c.w.groups.get(u.group.id) {
             None => {
                 let busy = u.top_action_kind().is_some() || u.unmodelled_action.is_some();
                 if ai.current_action.is_some()
@@ -69,7 +70,7 @@ impl UnitView<'_, '_> {
             Some(_) => return Ok(false),
         };
         if let Some((tq, t)) = u.top_target().filter(|&t| t != -1).and_then(find) {
-            let tm = t.master(self.every, tq)?;
+            let tm = t.master(&self.c.w.masters, tq)?;
             let gap = footprint_gap_squared(u.position(), m.radius, t.position(), tm.radius);
             let in_range =
                 gap <= m.weapon_range * m.weapon_range && m.min_range * m.min_range <= gap;
@@ -81,12 +82,14 @@ impl UnitView<'_, '_> {
         let computer = if owner == self.player {
             self.computer
         } else {
-            owner_view(self.others, self.new_owner)
+            owner_view(&self.c.w.players, self.c.player, self.new_owner)
                 .players()
                 .player(owner)
                 .is_some_and(|q| q.computer)
         };
         let capture = self
+            .c
+            .w
             .spatial
             .sight
             .as_ref()
@@ -102,7 +105,7 @@ impl UnitView<'_, '_> {
         let target_kind = (ai.current_target != -1)
             .then(|| {
                 find(ai.current_target)
-                    .and_then(|(q, o)| o.master(self.every, q).ok())
+                    .and_then(|(q, o)| o.master(&self.c.w.masters, q).ok())
                     .map(|tm| tm.kind)
             })
             .flatten();
@@ -126,28 +129,73 @@ impl UnitView<'_, '_> {
         own: &crate::objects::masters::Master,
         next: &crate::objects::masters::Master,
     ) -> Result<(), GenieError> {
-        let unit = &mut *self.unit;
         let by = Releaser {
-            id: unit.id,
+            id: self.unit.id,
             class: own.class,
             player: self.player,
         };
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
-        unit.tear_down_actions(&mut releases, &mut leaves, by)?;
-        self.lets
-            .torn_down(self.others, Some(&mut *unit), (leaves, releases))?;
+        self.unit
+            .tear_down_actions(&mut releases, &mut leaves, by)?;
+        self.torn_down((leaves, releases))?;
+        let w = &mut *self.c.w;
         let world = crate::orders::SwitchWorld {
-            spatial: self.spatial,
-            pathing: self.pathing,
-            graphics: self.graphics,
-            sprite: self.sprite,
+            spatial: &mut w.spatial,
+            pathing: &mut w.pathing,
+            graphics: &w.graphics,
+            sprite: w.streams.get(Stream::Sprite),
         };
-        let switched = crate::orders::switch_master(unit, own, next, world)?;
+        let switched = crate::orders::switch_master(self.unit, own, next, world)?;
         self.attribute_adds.extend(switched.leaving);
         if switched.promoted {
-            self.lets.promote(unit.id, own.id, next.id);
+            self.c
+                .w
+                .track_promote(self.c.player, self.unit.id, own.id, next.id);
         }
         self.attribute_adds.extend(switched.coming);
         Ok(())
+    }
+}
+
+impl UnitView<'_, '_> {
+    /// Slot 0x178 on object `id`, which the unit's action of `by` takes
+    /// ([`crate::world::lets::Lets::take`]); the unit itself, out of its slot, is taken where it
+    /// is.
+    pub(crate) fn take(&mut self, id: i32, by: Releaser) {
+        let (p, unit, own) = (self.c.player, &mut *self.unit, &mut self.own_notifies);
+        self.c
+            .w
+            .with_lets_for(p, own, |lets, others| lets.take(others, Some(unit), id, by));
+    }
+
+    /// Slot 0x180 on object `id`, which the unit's action of `by` lets go
+    /// ([`crate::world::lets::Lets::release`]); the unit itself, out of its slot, is let go
+    /// where it is, its AI told when the side's call returns.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::world::lets::Lets::release`]'s.
+    pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
+        let (p, unit, own) = (self.c.player, &mut *self.unit, &mut self.own_notifies);
+        self.c.w.with_lets_for(p, own, |lets, others| {
+            lets.release(others, Some(unit), id, by)
+        })
+    }
+
+    /// What the unit's action list's teardown left the world, at once
+    /// ([`crate::world::lets::Lets::torn_down`]): the buildings its counted builders leave, then
+    /// the targets it lets go.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::world::lets::Lets::torn_down`]'s.
+    pub(crate) fn torn_down(
+        &mut self,
+        (leaves, releases): (Vec<i32>, Vec<(i32, Releaser)>),
+    ) -> Result<(), GenieError> {
+        let (p, unit, own) = (self.c.player, &mut *self.unit, &mut self.own_notifies);
+        self.c.w.with_lets_for(p, own, |lets, others| {
+            lets.torn_down(others, Some(unit), (leaves, releases))
+        })
     }
 }

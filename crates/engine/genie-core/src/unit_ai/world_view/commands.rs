@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::math::rng::Stream;
 use crate::movement::{Me, Mover, Planning};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
@@ -22,8 +23,8 @@ impl UnitView<'_, '_> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
             self.player,
-            owner_view(self.others, self.new_owner),
-            owner_view(self.others, self.new_owner).players(),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
         );
         let find = |id: i32| {
             if id == unit.id {
@@ -35,24 +36,27 @@ impl UnitView<'_, '_> {
             return Ok(false);
         };
         // slot 0x820's point: the target's place
-        let terrain = point_terrain(self.spatial.terrain.as_ref(), t_unit.position());
+        let terrain = point_terrain(self.c.w.spatial.terrain.as_ref(), t_unit.position());
         if unit.top_action_kind() == Some(crate::construction::repair::REPAIR) {
-            self.starts
+            self.c
+                .starts
                 .push(AiStart::Repair(RepairOrder::Retake(target)));
             return Ok(true);
         }
         let masters = self
-            .every
+            .c
+            .w
+            .masters
             .get(self.player)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
-        let own = unit.master(self.every, self.player)?;
+        let own = unit.master(&self.c.w.masters, self.player)?;
         let switch = crate::construction::repair::REPAIRERS
             .iter()
             .find(|&&(group, _)| group == own.task_by_group)
             .and_then(|&(_, id)| masters.get(id));
         let (Some(t), Some(general)) = (
-            task_target_with(target, 1, &find, self.every)?,
-            task_target_with(target, 2, &find, self.every)?,
+            task_target_with(target, 1, &find, &self.c.w.masters)?,
+            task_target_with(target, 2, &find, &self.c.w.masters)?,
         ) else {
             return Err(GenieError::unreachable(
                 "a repair command's target the world holds without its task target",
@@ -63,14 +67,18 @@ impl UnitView<'_, '_> {
             master: switch.unwrap_or(own),
             player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            attribute_95: self.c.w.players[self.player]
+                .attributes
+                .get(95)
+                .copied()
+                .unwrap_or(0.0),
             civ: self.civ,
         };
         let dip = SideWorld {
             player,
-            relations: self.relations,
+            relations: &self.c.w.players[self.player].relations,
             foreign,
-            drop_sites: self.drop_sites,
+            drop_sites: &self.c.w.drop_sites,
         };
         let found = task_search(
             masters,
@@ -84,7 +92,7 @@ impl UnitView<'_, '_> {
         if switch.is_none() && found.is_none() {
             return Ok(false);
         }
-        self.starts.push(AiStart::Repair(RepairOrder::Start {
+        self.c.starts.push(AiStart::Repair(RepairOrder::Start {
             target,
             switches: [
                 switch.map(|m| m.id),
@@ -105,8 +113,8 @@ impl UnitView<'_, '_> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
             self.player,
-            owner_view(self.others, self.new_owner),
-            owner_view(self.others, self.new_owner).players(),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
         );
         let find = |id: i32| {
             if id == unit.id {
@@ -120,13 +128,15 @@ impl UnitView<'_, '_> {
         let under_artifact =
             unit.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE);
         let masters = self
-            .every
+            .c
+            .w
+            .masters
             .get(self.player)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
-        let own = unit.master(self.every, self.player)?;
+        let own = unit.master(&self.c.w.masters, self.player)?;
         let (Some(t), Some(general)) = (
-            task_target_with(target, 1, &find, self.every)?,
-            task_target_with(target, 2, &find, self.every)?,
+            task_target_with(target, 1, &find, &self.c.w.masters)?,
+            task_target_with(target, 2, &find, &self.c.w.masters)?,
         ) else {
             return Err(GenieError::unreachable(
                 "an enter command's target the world holds without its task target",
@@ -137,17 +147,21 @@ impl UnitView<'_, '_> {
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            attribute_95: self.c.w.players[self.player]
+                .attributes
+                .get(95)
+                .copied()
+                .unwrap_or(0.0),
             civ: self.civ,
         };
         let dip = SideWorld {
             player,
-            relations: self.relations,
+            relations: &self.c.w.players[self.player].relations,
             foreign,
-            drop_sites: self.drop_sites,
+            drop_sites: &self.c.w.drop_sites,
         };
         // slot 0x820's point: the target's place
-        let terrain = point_terrain(self.spatial.terrain.as_ref(), t_unit.position());
+        let terrain = point_terrain(self.c.w.spatial.terrain.as_ref(), t_unit.position());
         let Some((task, switch)) = task_search(
             masters,
             &actor,
@@ -162,14 +176,14 @@ impl UnitView<'_, '_> {
         };
         // the constructor's target: a building's annex enters its main building
         let building = t_unit
-            .master(self.every, tp)
+            .master(&self.c.w.masters, tp)
             .is_ok_and(|m| m.kind == crate::orders::BUILDING);
         let entered = if building {
             t_unit.annex_of.unwrap_or(target)
         } else {
             target
         };
-        self.starts.push(AiStart::Enter(EnterOrder {
+        self.c.starts.push(AiStart::Enter(EnterOrder {
             target,
             entered,
             task,
@@ -182,12 +196,14 @@ impl UnitView<'_, '_> {
     /// What an explorer's searches ask of the world, the map's size and the unit's line of sight.
     pub(crate) fn scout_area(&mut self) -> Result<(ScoutArea<'_>, [i32; 2], f32), GenieError> {
         let unit = &*self.unit;
-        let master = unit.master(self.every, self.player)?;
+        let master = unit.master(&self.c.w.masters, self.player)?;
         let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "an auto scout without movement state",
         ))?;
-        let [w, h] = self.spatial.map;
+        let [w, h] = self.c.w.spatial.map;
         let terrain = self
+            .c
+            .w
             .spatial
             .terrain
             .as_ref()
@@ -198,22 +214,22 @@ impl UnitView<'_, '_> {
             .restrictions
             .get(mover.stats.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let zones = self.zones.of(w, h, &terrain.kinds, values);
+        let zones = self.c.w.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: unit.id,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let area = ScoutArea {
-            spatial: self.spatial,
+            spatial: &self.c.w.spatial,
             zones,
             plan: Planning {
-                pathing: self.pathing,
-                now: self.world_time,
+                pathing: &mut self.c.w.pathing,
+                now: self.c.w.world_time,
                 computer: self.computer,
-                object: self.object,
+                object: self.c.w.streams.get(Stream::Object),
                 construction_rate: self.construction_rate,
-                groups: self.groups,
+                groups: &self.c.w.groups,
             },
             mover,
             me,

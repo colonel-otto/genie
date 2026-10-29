@@ -4,13 +4,10 @@
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::objects::masters::Masters;
-use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
-use crate::unit_ai::task_finder::DropSite;
 use crate::world::World;
-use crate::world::lets::Lets;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::OthersRef;
 use crate::world::player::Player;
 
 mod commands;
@@ -164,11 +161,11 @@ impl OwnerView {
     }
 }
 
-/// The objects as the unit AI of an updating unit reads them: the update's view `others`, or
-/// for a unit player `new` took over in its update, that player's live list as its own and the
-/// old owner's among the others' ([`OthersRef::changed_hands`]).
-pub(crate) fn owner_view<'v>(others: &'v Others<'_>, new: Option<usize>) -> OthersRef<'v> {
-    changed_view(others.view(), new)
+/// The objects as the unit AI of player `p`'s updating unit reads them: the update's view of
+/// `players`, or for a unit player `new` took over in its update, that player's live list as its
+/// own and the old owner's among the others' ([`OthersRef::changed_hands`]).
+pub(crate) fn owner_view(players: &[Player], p: usize, new: Option<usize>) -> OthersRef<'_> {
+    changed_view(OthersRef::of(players, p), new)
 }
 
 /// `view` as the unit AI of a unit player `new` took over reads it ([`owner_view`]).
@@ -180,62 +177,35 @@ pub(crate) fn changed_view(view: OthersRef<'_>, new: Option<usize>) -> OthersRef
 }
 
 /// A unit and the world as its unit AI asks them while it runs, the AI taken out of the unit
-/// for that time ([`crate::unit_ai::UnitSide`]): the searches and the unit's own commands.
-pub(crate) struct UnitView<'u, 'o> {
+/// for that time ([`crate::unit_ai::UnitSide`]): the searches and the unit's own commands. The
+/// world is the update's step's, the unit out of its slot.
+pub(crate) struct UnitView<'u, 's> {
+    /// The update's step: the world without the unit (its stand-in holds its slot), the
+    /// updating player and the unit's id.
+    pub(crate) c: &'u mut Step<'s>,
     /// The unit, without its unit AI.
     pub(crate) unit: &'u mut Unit,
     /// What the attack check of a search reads of the unit.
     pub(crate) attacker: crate::unit_ai::Attacker,
-    /// The owner, as the AI runs (a captured unit's new one).
+    /// The owner, as the AI runs (a captured unit's new one): its diplomacy, attributes and
+    /// civ are what the task search reads of it.
     pub(crate) player: usize,
     /// The owner is a computer player.
     pub(crate) computer: bool,
-    /// The world's objects (and the players' scout maps, which an auto scout makes and marks).
-    pub(crate) spatial: &'u mut Spatial,
-    /// The planners and the mesh, which a reach test walks.
-    pub(crate) pathing: &'u mut Pathing,
-    /// The world's unit groups, which a reach test's long path reads.
-    pub(crate) groups: &'u crate::groups::UnitGroups,
-    /// The Object stream, which a reach test's new path draws from.
-    pub(crate) object: &'u mut Well512,
-    /// The Sprite stream, which a new sprite draws from.
-    pub(crate) sprite: &'u mut Well512,
-    /// The world's time.
-    pub(crate) world_time: u32,
     /// The owner's construction rate.
     pub(crate) construction_rate: f32,
-    /// The world's objects besides the unit, to read ([`owner_view`]) and change by id.
-    pub(crate) others: &'u mut Others<'o>,
-    /// The player that took the unit over in its update ([`owner_view`]).
+    /// The player that took the unit over in its update ([`changed_view`]).
     pub(crate) new_owner: Option<usize>,
-    /// The map's terrain zones, which an explorer's search reads.
-    pub(crate) zones: &'u mut crate::pathing::zones::Zones,
-    /// Every player's masters.
-    pub(crate) every: &'u [Masters],
-    /// The sprites.
-    pub(crate) graphics: &'u std::collections::BTreeMap<i16, Graphic>,
-    /// Where the side's takes (slot 0x178), releases (slot 0x180) and a counted builder's
-    /// leaves go, through `others` ([`Lets`]); the owner's object tracker among them, whose
-    /// done lists the drop-site table's search reads.
-    pub(crate) lets: Lets<'u>,
-    /// The actions its slots 0x388 and 0x378 gave ([`AiStart`]), the caller's.
-    pub(crate) starts: &'u mut Vec<AiStart>,
-    /// What its master change (slot 0x90) gives or takes of its owner's attributes, the owner's
-    /// after the side's call ([`crate::objects::unit::Unit::with_side`]).
-    pub(crate) attribute_adds: &'u mut Vec<(i16, f32)>,
-    /// What its task search reads of its owner: its diplomacy, attributes and civ, and the drop
-    /// sites.
-    pub(crate) relations: &'u [u8],
-    pub(crate) attributes: &'u [f32],
+    /// The owner's civ.
     pub(crate) civ: u8,
     /// The owner's AI settings.
     pub(crate) ai_settings: crate::world::player::AiSettings,
-    pub(crate) drop_sites: &'u [DropSite],
-    /// The game's setting at `+0x680` ([`World::mode_680`]), which a hit's source carries.
-    pub(crate) mode_680: i32,
-    /// The game's carry rule ([`crate::world::settings::Settings::carry_rule`]), which a hunt's start
-    /// reads.
-    pub(crate) carry_rule: bool,
+    /// What its master change (slot 0x90) gives or takes of its owner's attributes, the owner's
+    /// after the side's call ([`crate::objects::unit::Unit::with_side`]).
+    pub(crate) attribute_adds: Vec<(i16, f32)>,
+    /// The notifies the side's calls give the unit's own AI, which the side does not hold: the
+    /// AI is posted them, with the unit's state, when the side's call returns ([`Lets`]).
+    pub(crate) own_notifies: Vec<(crate::unit_ai::Notify, u8)>,
 }
 
 #[cfg(test)]

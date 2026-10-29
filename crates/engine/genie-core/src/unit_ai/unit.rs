@@ -11,14 +11,10 @@ use crate::ownership::capture::Captured;
 use crate::unit_ai::Notify;
 use crate::unit_ai::world_view::{OwnerView, UnitView, changed_view};
 use crate::unit_ai::{AfterOrder, Effect, Surroundings, UnitAi};
-use crate::world::World;
-use crate::world::lets::Lets;
-use crate::world::others::{Others, OthersRef};
-use crate::world::player::Player;
+use crate::world::others::OthersRef;
 use crate::world::scenario_mode;
 use crate::world::standard_mode;
 use crate::world::step::Step;
-use std::borrow::Cow;
 
 impl Unit {
     /// The end of [`Unit::update`] after the actions (`captured`: the Artifact's capture, `leaves`:
@@ -203,14 +199,19 @@ impl Unit {
         })
     }
 
-    /// Runs `f` on the unit's AI with its side ([`UnitView`]: the unit without its AI, what it
-    /// reads of the world through `view`, the Object and Sprite streams) and the AI stream, with
-    /// `attacker` for the attack tests ([`Unit::attacker_of`]), as player `player`
-    /// (`computer`); the AI is the unit's again after it.
+    /// Runs `f` on the unit's AI with its side ([`UnitView`]: the unit without its AI, on the
+    /// update's step, the owner as `view` names it) and the AI stream, with `attacker` for the
+    /// attack tests ([`Unit::attacker_of`]), as player `player` (`computer`); the AI is the
+    /// unit's again after it and is posted the notifies the side's calls gave it.
     ///
     /// # Panics
     ///
     /// A unit without a unit AI: the callers ask for one.
+    ///
+    /// # Errors
+    ///
+    /// `f`'s, a notify the AI's queue does not take, an attribute the owner lacks, and a draw
+    /// from the AI stream in a world routine the side called while the AI held the stream.
     pub(crate) fn with_side<R>(
         &mut self,
         c: &mut Step<'_>,
@@ -220,100 +221,40 @@ impl Unit {
         f: impl FnOnce(&mut UnitAi, &mut UnitView<'_, '_>, &mut Well512) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let mut ai = self.ai.take().expect("a unit with a unit AI");
-        let (p, world_time) = (c.player, c.w.world_time);
-        // what its master change gives or takes of the owner's attributes, the owner's after
-        // the side's call (the task search reads the attributes as the call starts)
-        let mut adds = Vec::new();
-        // the notifies its side's calls give the unit's own AI, which the side does not hold
-        let mut own_notifies = Vec::new();
-        let World {
-            players,
-            spatial,
-            pathing,
-            groups,
-            streams,
-            zones,
-            masters: every,
-            graphics,
-            lines,
-            drop_sites,
-            mode_680,
-            settings,
-            ..
-        } = &mut *c.w;
-        let [ai_stream, object, sprite] = streams.three(Stream::Ai, Stream::Object, Stream::Sprite);
-        let (before, rest) = players.split_at_mut(p);
-        let (own, after) = rest.split_first_mut().expect("the updating player");
-        let Player {
-            objects,
-            sleeping,
-            relations: own_relations,
-            attributes: own_attributes,
-            tracker,
-            ..
-        } = own;
-        // a new owner's diplomacy and attributes, copied out of the view's other players
-        let (relations, attributes): (Cow<'_, [u8]>, Cow<'_, [f32]>) = view.new_owner.map_or_else(
-            || {
-                (
-                    Cow::Borrowed(&own_relations[..]),
-                    Cow::Borrowed(&own_attributes[..]),
-                )
-            },
-            |q| {
-                let q = if q < p { &before[q] } else { &after[q - p - 1] };
-                (
-                    Cow::Owned(q.relations.clone()),
-                    Cow::Owned(q.attributes.clone()),
-                )
-            },
-        );
-        let mut others = Others::new(p, (objects, sleeping), (before, after));
-        let result = {
-            let mut side = UnitView {
-                unit: self,
-                attacker,
-                player,
-                computer,
-                spatial,
-                pathing,
-                groups,
-                object,
-                sprite,
-                world_time,
-                construction_rate: view.construction_rate,
-                others: &mut others,
-                new_owner: view.new_owner,
-                zones,
-                every,
-                graphics,
-                lets: Lets {
-                    player: p,
-                    relations: own_relations,
-                    masters: every,
-                    lines,
-                    tracker,
-                    own_notifies: &mut own_notifies,
-                },
-                starts: &mut c.starts,
-                attribute_adds: &mut adds,
-                relations: &relations,
-                attributes: &attributes,
-                civ: view.civ,
-                ai_settings: view.ai_settings,
-                drop_sites,
-                mode_680: *mode_680,
-                carry_rule: settings.carry_rule(),
-            };
-            f(&mut ai, &mut side, ai_stream)
+        // the AI stream is the AI's while it runs: no world routine the side calls draws from it
+        let held = c.w.streams.get(Stream::Ai).clone();
+        let mut ai_stream = held.clone();
+        let mut side = UnitView {
+            c: &mut *c,
+            unit: self,
+            attacker,
+            player,
+            computer,
+            construction_rate: view.construction_rate,
+            new_owner: view.new_owner,
+            civ: view.civ,
+            ai_settings: view.ai_settings,
+            // what its master change gives or takes of the owner's attributes, the owner's after
+            // the side's call (the task search reads the attributes as the call starts)
+            attribute_adds: Vec::new(),
+            own_notifies: Vec::new(),
         };
+        let result = f(&mut ai, &mut side, &mut ai_stream);
+        let (adds, own_notifies) = (side.attribute_adds, side.own_notifies);
         let posted = own_notifies
             .into_iter()
             .try_for_each(|(n, state)| ai.post(n, state));
         self.ai = Some(ai);
+        let stream = c.w.streams.get(Stream::Ai);
+        if *stream != held {
+            return Err(GenieError::unreachable(
+                "a world routine drew from the AI stream while the unit AI held it",
+            ));
+        }
+        *stream = ai_stream;
         let answer = result?;
         posted?;
-        c.w.players[p].add_attributes(adds)?;
+        c.w.players[c.player].add_attributes(adds)?;
         Ok(answer)
     }
 
