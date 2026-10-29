@@ -21,14 +21,6 @@ impl World {
         (dt, turn): (u32, Option<u32>),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Outcome, GenieError> {
-        // the unit AI's target as its update starts, read before the unit leaves its list: a unit
-        // may be its own target (an unload's)
-        let ai_target = self.players[p].objects[i]
-            .ai
-            .as_ref()
-            .map(|ai| ai.current_target)
-            .filter(|&t| t != -1)
-            .map_or(Ok(None), |t| self.seen(t, p));
         let mut unit = self.players[p].objects.take_out(i);
         let watch = crate::trace::Watch::of(&unit);
         // the objects a hit's blast may reach about its target (one a hit can read), or about
@@ -53,7 +45,6 @@ impl World {
             dt,
             tick,
             turn,
-            ai_target,
             blasted,
             player: p,
             taken_over: None,

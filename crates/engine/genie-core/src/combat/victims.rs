@@ -55,26 +55,7 @@ impl World {
                 .by_id(id)
                 .or_else(|| player.sleeping.by_id(id))
             {
-                let master = u.master(&self.masters, p)?;
-                let [x, y, _] = u.position();
-                return Ok(Some(crate::unit_ai::Seen {
-                    state: u.life.state,
-                    kind: master.kind,
-                    owner: p,
-                    class: master.class,
-                    position: u.position(),
-                    radius: master.radius,
-                    visible: self.spatial.visible(viewer, x as i32, y as i32),
-                    flags: master.object_flags,
-                    sight: self
-                        .spatial
-                        .tile_sight(
-                            viewer,
-                            crate::math::conversions::cvttss2si(x),
-                            crate::math::conversions::cvttss2si(y),
-                        )
-                        .unwrap_or(0),
-                }));
+                return self.seen_of(u, p, viewer).map(Some);
             }
         }
         match self.spatial.get(id) {
@@ -83,6 +64,36 @@ impl World {
             )),
             None => Ok(None),
         }
+    }
+
+    /// Player `p`'s object `u` as the unit AI of a unit of player `viewer` reads it
+    /// ([`World::seen`]), wherever it is held (a unit out of its slot for its step too).
+    pub(crate) fn seen_of(
+        &self,
+        u: &Unit,
+        p: usize,
+        viewer: usize,
+    ) -> Result<crate::unit_ai::Seen, GenieError> {
+        let master = u.master(&self.masters, p)?;
+        let [x, y, _] = u.position();
+        Ok(crate::unit_ai::Seen {
+            state: u.life.state,
+            kind: master.kind,
+            owner: p,
+            class: master.class,
+            position: u.position(),
+            radius: master.radius,
+            visible: self.spatial.visible(viewer, x as i32, y as i32),
+            flags: master.object_flags,
+            sight: self
+                .spatial
+                .tile_sight(
+                    viewer,
+                    crate::math::conversions::cvttss2si(x),
+                    crate::math::conversions::cvttss2si(y),
+                )
+                .unwrap_or(0),
+        })
     }
 
     /// The objects besides `unit` (player `p`) and its `target` that its hit may reach: for a

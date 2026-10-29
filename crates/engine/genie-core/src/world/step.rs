@@ -26,8 +26,6 @@ pub(crate) struct Step<'a> {
     pub(crate) tick: u32,
     /// The owner's accumulated time when it has the turn: the full unit-AI update runs.
     pub(crate) turn: Option<u32>,
-    /// The unit AI's current target as its target block reads it ([`World::seen`]).
-    pub(crate) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
     /// The objects about the target of a unit with an area effect (or about the unit, for its
     /// blast at death), which its blast may reach, read as the update starts; each hit writes
     /// them back where it ran ([`crate::combat::victims::write_back`]).

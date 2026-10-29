@@ -133,21 +133,7 @@ impl Unit {
             scenario: scenario_mode(c.w.settings.game_mode),
             task_0x69: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x69)),
             // a new owner sees the target with its own map
-            target: match c.ai_target.clone()? {
-                Some(t) if view.player != c.player => {
-                    let [x, y, _] = t.position;
-                    let (tx, ty) = (
-                        crate::math::conversions::cvttss2si(x),
-                        crate::math::conversions::cvttss2si(y),
-                    );
-                    Some(crate::unit_ai::Seen {
-                        visible: c.w.spatial.visible(view.player, x as i32, y as i32),
-                        sight: c.w.spatial.tile_sight(view.player, tx, ty).unwrap_or(0),
-                        ..t
-                    })
-                }
-                t => t,
-            },
+            target: self.ai_target(c, view.player)?,
             under_attack: self.under_attack,
             id: self.id,
             anim_speed: self.body.anim_speed(),
@@ -389,6 +375,22 @@ impl Unit {
                 }
             },
         )
+    }
+
+    /// Its unit AI's target as the AI reads it where it runs (`FUN_1415417a0` on `+0x48`), with
+    /// player `viewer`'s map ([`crate::world::World::seen`]): none without one, the unit itself
+    /// (out of its slot) when it is its own target (an unload's). The unit's update may have
+    /// changed the target before (the Build's work order on a resource).
+    fn ai_target(
+        &self,
+        c: &Step<'_>,
+        viewer: usize,
+    ) -> Result<Option<crate::unit_ai::Seen>, GenieError> {
+        match self.ai.as_ref().map(|ai| ai.current_target) {
+            None | Some(-1) => Ok(None),
+            Some(t) if t == self.id => c.w.seen_of(self, c.player, viewer).map(Some),
+            Some(t) => c.w.seen(t, viewer),
+        }
     }
 
     /// The objects its unit AI names besides its target, as the world's table holds them

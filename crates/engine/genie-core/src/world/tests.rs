@@ -5221,6 +5221,39 @@ fn a_build_command_without_its_foundation_or_a_task_does_nothing() {
     assert_eq!(t.players[1].objects[0].life.master_id, 118);
 }
 
+/// The unit AI reads its target where it runs (`FUN_1415417a0` on `+0x48`), not as the unit's
+/// step began: a target the update changed (the Build's work order on a resource) is the new
+/// one, and a unit that is its own target reads itself out of its slot.
+#[test]
+fn the_unit_ai_reads_the_target_its_unit_s_update_left() {
+    use crate::unit_ai::world_view::OwnerView;
+    let mut t = sent_off_world(vec![]);
+    let mut read = Vec::new();
+    t.run_on_step(1, 0, |unit, c| {
+        for target in [10028, 9175, -1] {
+            unit.ai.as_mut().unwrap().current_target = target;
+            let master = unit.master(&c.w.masters, 1).ok();
+            let at = unit.surroundings(
+                c,
+                &OwnerView::of(c, None),
+                (master, master.map(|m| m.class)),
+                (1, false, false),
+            )?;
+            read.push(at.target.map(|s| (s.state, s.owner, s.position)));
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(
+        read,
+        [
+            Some((0, 1, [30.0, 88.0, 0.0])),
+            Some((2, 1, [29.5, 89.5, 0.0])),
+            None
+        ]
+    );
+}
+
 /// The unit AI's view answers slot 0x380 before `BuildObject` takes the build
 /// (`UnitSide::builds`): 0 for a foundation the world does not hold or no task for it, 1 with a
 /// task or a Build on top (its slot 0x48), whatever the master's lists then hold.
