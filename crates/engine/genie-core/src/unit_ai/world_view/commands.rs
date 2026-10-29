@@ -222,7 +222,7 @@ impl UnitView<'_, '_> {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let area = ScoutArea {
-            spatial: &self.c.w.spatial,
+            spatial: &mut self.c.w.spatial,
             zones,
             plan: Planning {
                 pathing: &mut self.c.w.pathing,
@@ -274,7 +274,7 @@ pub(crate) fn town_centre(units: OthersRef<'_>) -> Result<Option<[i32; 2]>, Geni
 
 /// What the auto scout's search asks of the world for one unit ([`crate::movement::explore::Area`]).
 pub(crate) struct ScoutArea<'a> {
-    pub(crate) spatial: &'a Spatial,
+    pub(crate) spatial: &'a mut Spatial,
     pub(crate) zones: &'a crate::pathing::zones::ZoneMap,
     pub(crate) plan: Planning<'a>,
     pub(crate) mover: &'a Mover,
@@ -310,7 +310,7 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
         self.zones.zone(x as i32, y as i32)
     }
 
-    fn clear(&self, x: i32, y: i32) -> Result<bool, GenieError> {
+    fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
         let mask = self.mover.stats.restriction_mask;
         self.spatial
             .point_clear(self.me.id, [x as f32, y as f32], self.radius[0], mask)

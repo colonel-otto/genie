@@ -91,7 +91,6 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         player: 1,
         others: OthersRef::new(1, &none, foreign),
         foreign,
-        spatial: &spatial,
         every: &every,
         restriction: -1,
         unit: &me,
@@ -101,7 +100,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         now: 0,
         mode_680: 0,
     };
-    picker.harmless(50).unwrap()
+    picker.harmless(&spatial, 50).unwrap()
 }
 
 /// Slot 0x78 of the ward's unit AI: of its attackers the world holds, the nearest by the
@@ -152,7 +151,6 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         Masters::new([master(4, [0.3, 0.3])]),
         Masters::new([master(5, [0.3, 0.3]), master(6, [1.3, 0.3])]),
     ];
-    let spatial = Spatial::new([120, 120]);
     let attacker = crate::unit_ai::Attacker {
         ai_type: 13,
         player: 1,
@@ -190,7 +188,6 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         player: 1,
         others: OthersRef::new(1, &others, foreign),
         foreign,
-        spatial: &spatial,
         every: &every,
         restriction: -1,
         unit: &me,
@@ -320,7 +317,6 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         player: 1,
         others: OthersRef::new(1, &none, foreign),
         foreign,
-        spatial: &spatial,
         every: &every,
         restriction: -1,
         unit: &me,
@@ -330,7 +326,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         now: 0,
         mode_680: 0,
     };
-    let c = picker.candidate(50, 1.4, 2).unwrap();
+    let c = picker.candidate(&spatial, 50, 1.4, 2).unwrap();
     assert_eq!(
         (c.id, c.distance, c.category, c.class, c.speed),
         (50, 1.4, 2, 6, 0.0)
@@ -340,5 +336,5 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         (true, 0.5, 6.0, 40.0, 2.0)
     );
     assert_eq!((c.workable, c.current), (false, false));
-    assert!(picker.candidate(77, 1.4, 2).is_err());
+    assert!(picker.candidate(&spatial, 77, 1.4, 2).is_err());
 }

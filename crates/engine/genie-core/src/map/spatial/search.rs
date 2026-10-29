@@ -9,7 +9,7 @@ use crate::map::spatial::{
 };
 use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
-use crate::vision::visibility::{Seer, Visibility};
+use crate::vision::visibility::Seer;
 
 impl Spatial {
     /// `FormationTransform`'s line query (`FUN_141051900` with flags 0x40, any player, the
@@ -66,7 +66,7 @@ impl Spatial {
         };
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
-        let tile = self.tile_records.borrow().iter().any(|&(y, x)| {
+        let tile = self.tile_records.iter().any(|&(y, x)| {
             self.visits_cell(level, x >> shift, y >> shift, query)
                 && !ignore.contains(&tile_record_id(x, y))
                 && meets(3, [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0])
@@ -157,7 +157,7 @@ impl Spatial {
     /// [`SearchCache`]: crate::map::spatial::SearchCache
     #[allow(clippy::too_many_arguments)]
     pub fn search(
-        &self,
+        &mut self,
         me: i32,
         player: usize,
         search: &Search<'_>,
@@ -167,26 +167,30 @@ impl Spatial {
         shuns: &dyn Fn(&Placed) -> Result<bool, GenieError>,
         farm: &FarmLook<'_>,
     ) -> Result<Found, GenieError> {
-        let v = self.sight.as_ref().ok_or(GenieError::unsupported(
+        let _ = self.sight.as_ref().ok_or(GenieError::unsupported(
             "a search without the players' sight",
         ))?;
         let fresh = self.search_query(player, search)?;
-        let cache = self.search_cache.borrow();
-        let found = cache.last.as_ref().ok_or(GenieError::unsupported(
-            "a search that reads the registry's last answer (before any query)",
-        ))?;
+        let _ = self.last_found()?;
         self.pick_found(
-            v,
             (me, player),
             search,
-            found,
             fresh,
             attack,
             reach,
-            moving,
-            shuns,
-            farm,
+            (moving, shuns, farm),
         )
+    }
+
+    /// The lists the last search left, as the cache holds them, or the error of a search that
+    /// reads the registry's last answer before any query.
+    fn last_found(&self) -> Result<&[Vec<Record>; 5], GenieError> {
+        self.search_cache
+            .last
+            .as_ref()
+            .ok_or(GenieError::unsupported(
+                "a search that reads the registry's last answer (before any query)",
+            ))
     }
 
     /// What player `player`'s queries make of the first `players` players' objects
@@ -210,7 +214,7 @@ impl Spatial {
     /// lists it leaves are [`Spatial::searched`]'s.
     ///
     /// [`SearchCache`]: crate::map::spatial::SearchCache
-    pub fn search_query(&self, player: usize, search: &Search<'_>) -> Result<bool, GenieError> {
+    pub fn search_query(&mut self, player: usize, search: &Search<'_>) -> Result<bool, GenieError> {
         let v = self.sight.as_ref().ok_or(GenieError::unsupported(
             "a search without the players' sight",
         ))?;
@@ -220,66 +224,63 @@ impl Spatial {
         let relations = self.query_kinds(player, r.players)?;
         let [x, y] = search.at;
         let mut fresh = false;
-        {
-            let mut cache = self.search_cache.borrow_mut();
-            let (dx, dy) = (x - cache.at[0], y - cache.at[1]);
-            if SEARCH_REUSE_SQUARED < dy * dy + dx * dx || !cache.holds {
-                cache.holds = true;
-                cache.at = search.at;
-                let radius = search.radius.min(1000.0);
-                let [rx, ry] = search.size;
-                let rect = [
-                    (x - (radius + rx)) - 0.001,
-                    (y - (radius + ry)) - 0.001,
-                    x + (radius + rx) + 0.001,
-                    y + (radius + ry) + 0.001,
-                ];
-                self.check_known_classes(rect, search.classes)?;
-                self.check_sight(player, rect)?;
-                if let Some(lists) = r.visible_units(
-                    player,
-                    search.at,
-                    search.radius,
-                    0,
-                    search.classes,
-                    &relations,
-                    search.size,
-                    0xff,
-                )? {
-                    cache.last = Some(lists);
-                    fresh = true;
-                }
+        let (dx, dy) = (x - self.search_cache.at[0], y - self.search_cache.at[1]);
+        if SEARCH_REUSE_SQUARED < dy * dy + dx * dx || !self.search_cache.holds {
+            self.search_cache.hold(search.at);
+            let radius = search.radius.min(1000.0);
+            let [rx, ry] = search.size;
+            let rect = [
+                (x - (radius + rx)) - 0.001,
+                (y - (radius + ry)) - 0.001,
+                x + (radius + rx) + 0.001,
+                y + (radius + ry) + 0.001,
+            ];
+            self.check_known_classes(rect, search.classes)?;
+            self.check_sight(player, rect)?;
+            if let Some(lists) = r.visible_units(
+                player,
+                search.at,
+                search.radius,
+                0,
+                search.classes,
+                &relations,
+                search.size,
+                0xff,
+            )? {
+                self.search_cache.remember(lists);
+                fresh = true;
             }
         }
         Ok(fresh)
     }
 
+    /// A unit AI's full update starts (`0x140c66b10`): the search cache lets go.
+    pub const fn forget_search(&mut self) {
+        self.search_cache.holds = false;
+    }
+
     /// The lists the last search left (`DAT_143f69178`, by relation kind; 4 the enemies), as
     /// [`Spatial::search_query`] left them.
+    #[must_use]
     pub fn searched(&self) -> Option<[Vec<Record>; 5]> {
-        self.search_cache.borrow().last.clone()
+        self.search_cache.last.clone()
     }
 
     /// The lists a last search left, as a test sets them.
     #[cfg(test)]
-    pub(crate) fn set_searched(&self, lists: [Vec<Record>; 5]) {
-        self.search_cache.borrow_mut().last = Some(lists);
+    pub(crate) fn set_searched(&mut self, lists: [Vec<Record>; 5]) {
+        self.search_cache.remember(lists);
     }
 
     /// The search's pick of what it found ([`Spatial::search`]).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn pick_found(
-        &self,
-        v: &Visibility,
+        &mut self,
         (me, player): (i32, usize),
         search: &Search<'_>,
-        found: &[Vec<Record>; 5],
         fresh: bool,
         attack: &mut dyn crate::unit_ai::AttackPicker,
         reach: &mut Reach<'_>,
-        moving: &dyn Fn(i32) -> bool,
-        shuns: &dyn Fn(&Placed) -> Result<bool, GenieError>,
-        farm: &FarmLook<'_>,
+        checks: ClosestChecks<'_>,
     ) -> Result<Found, GenieError> {
         match search.pick {
             Pick::Closest {
@@ -300,9 +301,8 @@ impl Spatial {
                     spared,
                     reach: reaching,
                 };
-                let checks = (moving, shuns, farm);
-                let (id, distance) =
-                    self.closest_object(v, me, player, found, filter, reach, checks)?;
+                let (id, distance) = self.closest_object(me, player, filter, reach, checks)?;
+                let found = self.last_found()?;
                 Ok(Found {
                     id,
                     enemies: !found[4].is_empty(),
@@ -313,17 +313,20 @@ impl Spatial {
                     retries: [None; 3],
                 })
             }
-            Pick::Look => Ok(Found {
-                id: -1,
-                enemies: !found[4].is_empty(),
-                position: None,
-                fresh,
-                players: 0,
-                distance: -1,
-                retries: [None; 3],
-            }),
+            Pick::Look => {
+                let found = self.last_found()?;
+                Ok(Found {
+                    id: -1,
+                    enemies: !found[4].is_empty(),
+                    position: None,
+                    fresh,
+                    players: 0,
+                    distance: -1,
+                    retries: [None; 3],
+                })
+            }
             Pick::Attack { ask, .. } => {
-                let choice = Self::best_unit_to_attack(found, &ask, search.memory, attack, reach)?;
+                let choice = self.best_unit_to_attack(&ask, search.memory, attack, reach)?;
                 let id = choice.target;
                 let mut retries = [None; 3];
                 for (slot, r) in retries.iter_mut().zip(choice.retries) {
@@ -331,7 +334,7 @@ impl Spatial {
                 }
                 Ok(Found {
                     id,
-                    enemies: !found[4].is_empty(),
+                    enemies: !self.last_found()?[4].is_empty(),
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
                     players: 0,
@@ -354,13 +357,10 @@ impl Spatial {
     /// game's `+0x6b4` of 1, not met, would let it take them). Not modelled: a workers cap
     /// (argument 6; the objects' `+0x644`), the unbuilt farm test of a search for state 0, the
     /// pastures and farms (class 49). Nothing found answers −1.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn closest_object(
-        &self,
-        v: &Visibility,
+        &mut self,
         me: i32,
         player: usize,
-        found: &[Vec<Record>; 5],
         filter: Filter,
         reach: &mut Reach<'_>,
         checks: ClosestChecks<'_>,
@@ -373,13 +373,20 @@ impl Spatial {
         };
         let spared = spared_list(filter.spared);
         let mut best: Option<(i32, f32)> = None;
-        for (kind, records) in found.iter().enumerate() {
+        for kind in 0..5 {
             let related = related(filter.relation, kind);
-            for record in records {
+            // each record is read where it is tested: the reachability check is handed the
+            // spatial index, which it writes
+            let mut next = 0;
+            while let Some(record) = self.last_found()?[kind].get(next).copied() {
+                next += 1;
                 if record.id == me {
                     continue;
                 }
-                let (Some(seer), Some(p)) = (v.seer(record.id), self.objects.get(&record.id))
+                let sight = self.sight.as_ref().ok_or(GenieError::unsupported(
+                    "a search without the players' sight",
+                ))?;
+                let (Some(seer), Some(p)) = (sight.seer(record.id), self.objects.get(&record.id))
                 else {
                     continue;
                 };
@@ -389,10 +396,10 @@ impl Spatial {
                 if !closest_kept(record.id, (seer, p), filter, (player, searcher), checks)? {
                     continue;
                 }
-                if filter.reach && !reach(record.id, CLOSEST_RANGE)? {
+                if filter.reach && !reach(self, record.id, CLOSEST_RANGE)? {
                     continue;
                 }
-                best = nearer(best, record);
+                best = nearer(best, &record);
             }
         }
         // the distance starts at `DAT_14330ec20` (−1) without a find
@@ -407,17 +414,19 @@ impl Spatial {
     ///
     /// What the reads and tests do not model.
     pub(super) fn best_unit_to_attack(
-        found: &[Vec<Record>; 5],
+        &mut self,
         ask: &crate::unit_ai::AttackAsk,
         memory: crate::unit_ai::Memory<'_>,
         attack: &mut dyn crate::unit_ai::AttackPicker,
         reach: &mut Reach<'_>,
     ) -> Result<crate::unit_ai::best_target::Choice, GenieError> {
         let me = attack.searcher(memory)?;
+        let found = self.last_found()?;
         let lists: [Vec<i32>; 5] = std::array::from_fn(|k| found[k].iter().map(|r| r.id).collect());
         let mut field = AttackField {
             picker: attack,
             reach,
+            world: self,
         };
         crate::unit_ai::best_target::best_unit_to_attack(&me, &ask.ask(), &lists, &mut field)
     }

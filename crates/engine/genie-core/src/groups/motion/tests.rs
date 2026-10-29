@@ -266,7 +266,7 @@ impl Fixture {
             groups: &self.groups,
         };
         let mut world = StepWorld {
-            spatial: &self.spatial,
+            spatial: &mut self.spatial,
             plan: &mut plan,
             dt: 0.1,
         };
@@ -369,7 +369,7 @@ impl Fixture {
             groups: &self.groups,
         };
         let mut world = StepWorld {
-            spatial: &self.spatial,
+            spatial: &mut self.spatial,
             plan: &mut plan,
             dt: 0.1,
         };
@@ -704,7 +704,7 @@ impl Fixture {
             groups: &self.groups,
         };
         let mut world = StepWorld {
-            spatial: &self.spatial,
+            spatial: &mut self.spatial,
             plan: &mut plan,
             dt: 0.1,
         };
@@ -859,7 +859,7 @@ fn the_members_centre_pulls_a_group_whose_members_all_act() {
             groups: &fx.groups,
         };
         let mut world = StepWorld {
-            spatial: &fx.spatial,
+            spatial: &mut fx.spatial,
             plan: &mut plan,
             dt: 0.1,
         };

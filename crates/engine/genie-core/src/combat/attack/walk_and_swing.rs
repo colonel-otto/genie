@@ -179,7 +179,7 @@ impl Attack {
     ) -> Result<(), GenieError> {
         // a MoveTo to a point follows nothing
         let follow = if self.state == MOVE {
-            target_moved(&c.walk(&mut unit.body, me), self.target, self.repaths)?
+            target_moved(&mut c.walk(&mut unit.body, me), self.target, self.repaths)?
         } else {
             Follow::Stays
         };

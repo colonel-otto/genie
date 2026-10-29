@@ -306,7 +306,7 @@ pub trait Area {
     /// The unit's own zone (`FUN_14118eea0`).
     fn own_zone(&mut self) -> u16;
     /// The unit could stand at the point (slot 0x278, [`crate::map::spatial::Spatial::point_clear`]).
-    fn clear(&self, x: i32, y: i32) -> Result<bool, GenieError>;
+    fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError>;
     /// The unit reaches the point within its line of sight less a tile (slot 0x3d8,
     /// [`crate::movement::Mover::reaches`]).
     fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError>;
@@ -664,7 +664,7 @@ mod tests {
         fn own_zone(&mut self) -> u16 {
             1
         }
-        fn clear(&self, _: i32, _: i32) -> Result<bool, GenieError> {
+        fn clear(&mut self, _: i32, _: i32) -> Result<bool, GenieError> {
             Ok(true)
         }
         fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
@@ -746,7 +746,7 @@ mod tests {
         fn own_zone(&mut self) -> u16 {
             1
         }
-        fn clear(&self, x: i32, y: i32) -> Result<bool, GenieError> {
+        fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
             self.open.clear(x, y)
         }
         fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
@@ -798,7 +798,7 @@ mod tests {
         fn own_zone(&mut self) -> u16 {
             1
         }
-        fn clear(&self, _: i32, _: i32) -> Result<bool, GenieError> {
+        fn clear(&mut self, _: i32, _: i32) -> Result<bool, GenieError> {
             Ok(true)
         }
         fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {

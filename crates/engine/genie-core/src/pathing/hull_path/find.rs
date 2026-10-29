@@ -314,7 +314,7 @@ impl HullPather<'_> {
     /// target alone; else the last point goes. Whether the path is found (1); else it ends
     /// partway.
     pub(super) fn found_end(
-        &self,
+        &mut self,
         q: &HullQuery,
         rounds: &Rounds,
         path: &mut Waypoints,

@@ -298,19 +298,10 @@ impl crate::world::World {
             .terrain
             .as_ref()
             .ok_or(crate::pathing::zones::NO_TERRAIN)?;
-        let values = terrain
+        let _ = terrain
             .restrictions
             .get(moving.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let placing = crate::production::spawn::Placing {
-            player: p,
-            radius: made.radius,
-            tall: made.tall,
-            class: made.class,
-            restriction: values,
-            hill_mode: made.hill_mode,
-            placement: made.placement,
-        };
         let unit = self.object(id).map(|(_, u)| u);
         let (grow, mask) = unit.and_then(|u| u.body.mover()).map_or_else(
             || (made.radius[0], terrain.restriction_mask(moving.restriction)),
@@ -318,8 +309,6 @@ impl crate::world::World {
         );
         let zone_map = zone_map.map(|k| self.zones.map(k));
         let mut rng = self.streams.get(crate::math::rng::Stream::Object).clone();
-        let map = crate::production::spawn::WorldMap { turns: self };
-        let spatial = &self.spatial;
         let mut draws = DropDraws::new(around, made.radius, [w, h], last, &mut rng);
         let mut found = None;
         // the place's tests, each only after the one before passed
@@ -328,11 +317,32 @@ impl crate::world::World {
                 continue;
             }
             let [rx, ry] = made.radius;
-            spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
-            if crate::production::spawn::placement(&placing, &map, [x, y], false)?
-                == crate::production::spawn::Tested::Free
-                && spatial.point_clear(id, [x, y], grow, mask)?
-            {
+            self.spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
+            // the placing reads the terrain, which `point_clear` below borrows with the map
+            let free = {
+                let terrain = self
+                    .spatial
+                    .terrain
+                    .as_ref()
+                    .ok_or(crate::pathing::zones::NO_TERRAIN)?;
+                let values = terrain
+                    .restrictions
+                    .get(moving.restriction)
+                    .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
+                let placing = crate::production::spawn::Placing {
+                    player: p,
+                    radius: made.radius,
+                    tall: made.tall,
+                    class: made.class,
+                    restriction: values,
+                    hill_mode: made.hill_mode,
+                    placement: made.placement,
+                };
+                let map = crate::production::spawn::WorldMap { turns: &*self };
+                crate::production::spawn::placement(&placing, &map, [x, y], false)?
+                    == crate::production::spawn::Tested::Free
+            };
+            if free && self.spatial.point_clear(id, [x, y], grow, mask)? {
                 found = Some([x, y]);
                 break;
             }

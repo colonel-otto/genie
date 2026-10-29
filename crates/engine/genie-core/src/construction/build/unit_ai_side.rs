@@ -117,7 +117,7 @@ impl UnitView<'_, '_> {
     ///
     /// [`Spatial::spot_off`]: crate::map::spatial::Spatial::spot_off
     pub(crate) fn spot_off_footprint(
-        &self,
+        &mut self,
         site: i32,
         radius: [f32; 2],
     ) -> Result<crate::unit_ai::OffFootprint, GenieError> {

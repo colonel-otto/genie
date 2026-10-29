@@ -142,7 +142,7 @@ impl World {
     /// records grown by the short pather's radius, the differentiators ignored).
     ///
     /// [`Spatial::point_clear_among`]: crate::map::spatial::Spatial::point_clear_among
-    fn round_clear(&self, r: &Rounder<'_>, p: Vec3) -> Result<bool, GenieError> {
+    fn round_clear(&mut self, r: &Rounder<'_>, p: Vec3) -> Result<bool, GenieError> {
         self.spatial
             .point_clear_among(r.id, [p[0], p[2]], r.grow, r.mask, r.differentiators)
     }
@@ -315,7 +315,7 @@ impl World {
         let r = crate::movement::short_path_for(
             walker,
             from,
-            &self.spatial,
+            &mut self.spatial,
             &mut plan,
             (to, 0.0, -1),
             ignore,

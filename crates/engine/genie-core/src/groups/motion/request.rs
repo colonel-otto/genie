@@ -167,7 +167,7 @@ fn tile_plan(
     target: Option<&Placed>,
     plan: &mut PathSoFar,
 ) -> Result<(), GenieError> {
-    let spatial = world.spatial;
+    let spatial = &mut *world.spatial;
     let radii = target.map_or(0.0, |t| t.radius[0]) + lead.walker.radius;
     let mut planning = world.plan.reborrow();
     planning.computer = lead.computer;
@@ -216,7 +216,7 @@ fn short_plan(
     short_range: f32,
     plan: &mut PathSoFar,
 ) -> Result<Option<Pass>, GenieError> {
-    let spatial = world.spatial;
+    let spatial = &mut *world.spatial;
     plan.planned = false;
     plan.path.points.clear();
     let ignore = lead
@@ -282,7 +282,7 @@ fn in_range(motion: &mut Motion, reach: f32, target_gap2: f32, now: u32) -> Pass
 /// ignored): the two points are the plan, found.
 fn straight_way(
     lead: &Lead,
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     leg: &Leg,
     plan: &mut PathSoFar,
 ) -> Result<(), GenieError> {

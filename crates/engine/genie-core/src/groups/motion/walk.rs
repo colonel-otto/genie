@@ -22,7 +22,7 @@ pub(super) fn steer(
     motion: &mut Motion,
     group: &GroupView,
     lead: &Lead,
-    world: &StepWorld<'_, '_>,
+    world: &mut StepWorld<'_, '_>,
     target: Option<&Placed>,
 ) -> Result<Pass, GenieError> {
     let dt = world.dt;
@@ -72,7 +72,7 @@ pub(super) fn steer(
 fn way_blocked(
     motion: &mut Motion,
     lead: &Lead,
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     at: Vec3,
     next: Vec3,
 ) -> Result<Option<Pass>, GenieError> {
@@ -280,7 +280,7 @@ impl World {
                 groups: &self.groups,
             };
             let mut world = StepWorld {
-                spatial: &self.spatial,
+                spatial: &mut self.spatial,
                 plan: &mut plan,
                 dt: self.dt_seconds,
             };

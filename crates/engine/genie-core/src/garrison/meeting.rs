@@ -144,19 +144,11 @@ impl Iterator for LandingWalk {
 pub fn walled_off(
     me: [f32; 2],
     them: [f32; 2],
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     masters: &[Masters],
     (id, stats): (i32, &MoveStats),
 ) -> Result<bool, GenieError> {
     let map = spatial.map;
-    let stands = |x: i32, y: i32| {
-        spatial.point_clear(
-            id,
-            [x as f32, y as f32],
-            stats.radius[0],
-            stats.restriction_mask,
-        )
-    };
     let (mx, my) = (cvttss2si(me[0]), cvttss2si(me[1]));
     let (tx, ty) = (cvttss2si(them[0]), cvttss2si(them[1]));
     let (x0, y0) = (mx.min(tx), my.min(ty));
@@ -168,7 +160,15 @@ pub fn walled_off(
     let mut count = 0usize;
     for x in x0..=x1 {
         for y in y0..=y1 {
-            if (x, y) == (mx, my) || (x, y) == (tx, ty) || stands(x, y)? {
+            if (x, y) == (mx, my)
+                || (x, y) == (tx, ty)
+                || spatial.point_clear(
+                    id,
+                    [x as f32, y as f32],
+                    stats.radius[0],
+                    stats.restriction_mask,
+                )?
+            {
                 continue;
             }
             count += buildings_on(spatial, masters, x, y)?;
@@ -251,7 +251,7 @@ pub(super) const UNPLACED: GenieError =
 pub(crate) fn meeting_point(
     t: &MeetingTarget,
     unit: (i32, [f32; 3], &MoveStats),
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<([f32; 2], u8), GenieError> {
     match meet_at(t) {
@@ -272,7 +272,7 @@ pub(crate) fn meeting_point(
 fn shore_or_beach(
     t: &MeetingTarget,
     unit: (i32, [f32; 3], &MoveStats),
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<([f32; 2], u8), GenieError> {
     let [ux, uy, _] = unit.1;
@@ -298,7 +298,7 @@ fn shore_or_beach(
 fn shore(
     t: &MeetingTarget,
     (id, [ux, uy, _], stats): (i32, [f32; 3], &MoveStats),
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<Option<[i32; 2]>, GenieError> {
     let terrain = spatial
@@ -314,6 +314,10 @@ fn shore(
     let own = map.zone(cvttss2si(ux), cvttss2si(uy));
     let from = [cvttss2si(t.position[0]), cvttss2si(t.position[1])];
     for (tile @ [x, y], place) in LandingWalk::new(from, [cvttss2si(ux), cvttss2si(uy)]) {
+        let terrain = spatial
+            .terrain
+            .as_ref()
+            .ok_or(crate::pathing::zones::NO_TERRAIN)?;
         if !terrain.beach(x, y) {
             continue;
         }
@@ -326,14 +330,14 @@ fn shore(
 }
 
 /// What `FUN_140a85c30`'s tile test ([`walled_off`]) reads.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct Walls<'a> {
     /// Where the unit last moved to (`+0x824`), x and y.
     pub me: [f32; 2],
     /// Where the target last moved to (slot 0x520), x and y.
     pub them: [f32; 2],
     /// The map's places and tiles.
-    pub spatial: &'a Spatial,
+    pub spatial: &'a mut Spatial,
     /// Each player's masters, which tell the buildings.
     pub masters: &'a [Masters],
     /// The unit's id.
@@ -348,7 +352,7 @@ impl Walls<'_> {
     /// # Errors
     ///
     /// [`walled_off`]'s.
-    pub fn walled_off(&self) -> Result<bool, GenieError> {
+    pub fn walled_off(&mut self) -> Result<bool, GenieError> {
         walled_off(
             self.me,
             self.them,
@@ -365,7 +369,7 @@ impl Walls<'_> {
 /// moved to (slot 0x520), its buildings those whose master (`masters`, each player's) is of
 /// type 80.
 pub(crate) fn enter_reach(
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     masters: &[Masters],
     (id, stats, moved_at): (i32, &MoveStats, [f32; 3]),
     (target, target_mover): (i32, Option<&crate::movement::Mover>),
@@ -380,7 +384,7 @@ pub(crate) fn enter_reach(
     let gap = footprint_gap_squared(me.position, me.radius, them.position, them.radius);
     let speed = target_mover.map_or(0.0, |m| m.stats.speed);
     let them_at = target_mover.map_or(them.position, |m| m.moved_at);
-    let walls = Walls {
+    let mut walls = Walls {
         me: [moved_at[0], moved_at[1]],
         them: [them_at[0], them_at[1]],
         spatial,
@@ -388,7 +392,7 @@ pub(crate) fn enter_reach(
         id,
         stats,
     };
-    EnterAction::in_reach(range, gap, speed, &walls)
+    EnterAction::in_reach(range, gap, speed, &mut walls)
 }
 
 /// What an Enter's update reads of its target `t` (of master `tm`, with `room` for `unit`): the
@@ -400,7 +404,7 @@ pub(crate) fn enter_reach(
 ///
 /// A unit without movement state ([`NO_SPEED`]), and what the reach does not model.
 pub(crate) fn enter_view(
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     masters: &[Masters],
     unit: &crate::objects::unit::Unit,
     (t, tm, room): (&crate::objects::unit::Unit, &Master, bool),
@@ -447,7 +451,7 @@ pub(crate) fn enter_view(
 /// for the unit, and the unit.
 pub(crate) struct Meeting<'a> {
     /// The map, its places and its terrain.
-    pub(crate) spatial: &'a Spatial,
+    pub(crate) spatial: &'a mut Spatial,
     /// The zone maps the shore's test reads (built on first use).
     pub(crate) zones: &'a mut crate::pathing::zones::Zones,
     /// The target.
@@ -488,7 +492,7 @@ impl Meeting<'_> {
 /// from where it last moved to; one without movement state does not.
 pub(crate) fn ship_reaches(
     ship: &crate::objects::unit::Unit,
-    world: &Spatial,
+    world: &mut Spatial,
     plan: &mut crate::movement::Planning<'_>,
     to: [f32; 3],
 ) -> Result<bool, GenieError> {

@@ -25,7 +25,7 @@ impl HullPather<'_> {
     /// target, the other), by a point `(half side + radius) √2` from its middle on either side of
     /// the walk, when both walks by that point meet nothing (the second the target alone).
     pub(super) fn quick_path(
-        &self,
+        &mut self,
         from: Point,
         to: Point,
         target: Option<i32>,

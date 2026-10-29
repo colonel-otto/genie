@@ -257,8 +257,7 @@ impl World {
             .current_formation
             .take()
         {
-            let g = self.groups.get(group).expect("held").clone();
-            let moved = self.formation_transform(&mut f, &g, false);
+            let moved = self.formation_transform(&mut f, group, false);
             self.groups.get_mut(group).expect("held").current_formation = Some(f);
             let _ = moved?;
         }

@@ -56,3 +56,10 @@ pub mod trace;
 pub mod unit_ai;
 pub mod vision;
 pub mod world;
+
+// FD-001's many instances share one loaded world read-only, so a `&World` must cross threads:
+// no interior mutability hides in the state.
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<world::World>();
+};

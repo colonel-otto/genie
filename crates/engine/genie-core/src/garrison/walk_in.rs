@@ -265,7 +265,7 @@ impl EnterAction {
         range: f32,
         gap_squared: f32,
         target_speed: f32,
-        walls: &crate::garrison::Walls<'_>,
+        walls: &mut crate::garrison::Walls<'_>,
     ) -> Result<bool, GenieError> {
         if range * range < gap_squared {
             return Ok(false);
@@ -447,7 +447,7 @@ impl EnterAction {
                 ))?;
             let master = target.master(&w.masters, tp)?;
             let meeting = Meeting {
-                spatial: &w.spatial,
+                spatial: &mut w.spatial,
                 zones: &mut w.zones,
                 target,
                 master,

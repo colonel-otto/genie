@@ -67,7 +67,7 @@ impl Mover {
     pub(super) fn plan_solid(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
@@ -104,7 +104,7 @@ impl Mover {
     fn first_plan(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
@@ -130,7 +130,7 @@ impl Mover {
     fn near_target_path(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
@@ -157,7 +157,7 @@ impl Mover {
     fn first_tile_plan(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
@@ -206,7 +206,7 @@ impl Mover {
     fn short_path_to(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         near: bool,
@@ -239,7 +239,7 @@ impl Mover {
     fn short_tail(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
@@ -278,7 +278,7 @@ impl Mover {
     fn short_try(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         near: bool,
@@ -342,7 +342,7 @@ impl Mover {
     fn long_tail(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
@@ -391,7 +391,7 @@ impl Mover {
     fn tile_again(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,

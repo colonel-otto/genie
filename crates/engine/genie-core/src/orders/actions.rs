@@ -190,7 +190,8 @@ impl World {
         if 0.0 < height {
             let id = self.players[player].objects[idx].id;
             let annexes = crate::objects::unit::annexes_of(id, &self.players[player].objects);
-            let (units, _) = crate::construction::gates::gate_units(&self.spatial, id, &annexes)?;
+            let (units, _) =
+                crate::construction::gates::gate_units(&mut self.spatial, id, &annexes)?;
             for u in units {
                 self.shut_in_gate(u)?;
             }

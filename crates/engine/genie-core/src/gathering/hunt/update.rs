@@ -210,7 +210,7 @@ impl HuntAction {
         f: &Fight,
         r: &AttackReads,
     ) -> Result<(), GenieError> {
-        if target_moved(&c.walk(&mut unit.body, me), self.target, true)?.again() {
+        if target_moved(&mut c.walk(&mut unit.body, me), self.target, true)?.again() {
             self.move_to = Some(MoveTo::Start);
             return Ok(());
         }

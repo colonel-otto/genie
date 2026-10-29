@@ -78,7 +78,7 @@ impl World {
             let r = crate::movement::short_path_for(
                 walker,
                 [at[0], at[2]],
-                &self.spatial,
+                &mut self.spatial,
                 &mut plan,
                 (to, 0.0, -1),
                 &members,

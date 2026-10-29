@@ -216,7 +216,7 @@ impl HullPather<'_> {
     /// The manager's line test (`FUN_141052b90`, then `FUN_141052350` with flags 0x40) with the
     /// pather's buffer, ignore list and include list: Spatial's pather query, which leaves every
     /// moving record out, or an included one that moves ([`HullPather::included_movers`]).
-    pub(super) fn blocked(&self, a: Point, b: Point) -> Result<bool, GenieError> {
+    pub(super) fn blocked(&mut self, a: Point, b: Point) -> Result<bool, GenieError> {
         if self
             .world
             .pather_blocked(a, b, self.buffer, self.mask, &self.ignore)?
@@ -230,7 +230,7 @@ impl HullPather<'_> {
     /// `FUN_141051900` with flags 0x40), with the pather's buffer, ignore list and include list:
     /// Spatial's pather query and the included objects that move
     /// ([`HullPather::included_movers`]). The callers read how many and which, not their order.
-    pub(super) fn hits(&self, a: Point, b: Point) -> Result<Vec<Hit>, GenieError> {
+    pub(super) fn hits(&mut self, a: Point, b: Point) -> Result<Vec<Hit>, GenieError> {
         let mut hits = self
             .world
             .pather_hits(a, b, self.buffer, self.mask, &self.ignore)?;

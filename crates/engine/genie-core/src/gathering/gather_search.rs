@@ -266,6 +266,17 @@ struct Pass {
     seeds: Vec<Cell>,
 }
 
+/// The search's reads of its world `W` (the spatial index): a tile the player has explored, a tile
+/// the unit can stand on, the candidates on a tile, and the check whether the unit reaches an
+/// object, which writes the obstruction manager's scratch in `W` and so takes it by `&mut`.
+pub type Explored<'a, W> = dyn Fn(&W, i32, i32) -> Result<bool, GenieError> + 'a;
+/// See [`Explored`].
+pub type Passable<'a, W> = dyn Fn(&W, i32, i32) -> bool + 'a;
+/// See [`Explored`].
+pub type ObjectsOn<'a, W> = dyn Fn(&W, i32, i32) -> Result<Vec<Candidate>, GenieError> + 'a;
+/// See [`Explored`].
+pub type Reaches<'a, W> = dyn FnMut(&mut W, i32) -> Result<bool, GenieError> + 'a;
+
 /// `ClosestResourceObject` (`FUN_140c49760`) with no point (`param_7`, `param_8` −1: the unit's
 /// place), no drop site (`param_3` −1) and `param_6` 2: the closest object of gather group `kind`
 /// that the unit reaches (`reach`, slot 0x3d0 with the range 0: `FUN_14152b6e0` holds in the
@@ -288,15 +299,16 @@ struct Pass {
 /// A unit with a pasture of its own, or a tile whose order of objects decides (two candidates,
 /// or another object beside one that fails the first test).
 #[allow(clippy::too_many_arguments)]
-pub fn closest_resource(
+pub fn closest_resource<W>(
     seeker: &Seeker,
     kind: u8,
     max_workers: i32,
     map: [i32; 2],
-    explored: &dyn Fn(i32, i32) -> Result<bool, GenieError>,
-    passable: &dyn Fn(i32, i32) -> bool,
-    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, GenieError>,
-    reach: &mut dyn FnMut(i32) -> Result<bool, GenieError>,
+    world: &mut W,
+    explored: &Explored<'_, W>,
+    passable: &Passable<'_, W>,
+    objects: &ObjectsOn<'_, W>,
+    reach: &mut Reaches<'_, W>,
 ) -> Result<i32, GenieError> {
     closest_resource_at(
         seeker,
@@ -304,6 +316,7 @@ pub fn closest_resource(
         kind,
         max_workers,
         map,
+        world,
         explored,
         passable,
         objects,
@@ -332,16 +345,17 @@ pub fn closest_resource(
 ///
 /// As [`closest_resource`].
 #[allow(clippy::too_many_arguments)]
-pub fn closest_resource_at(
+pub fn closest_resource_at<W>(
     seeker: &Seeker,
     site: Option<&SearchSite>,
     kind: u8,
     max_workers: i32,
     map: [i32; 2],
-    explored: &dyn Fn(i32, i32) -> Result<bool, GenieError>,
-    passable: &dyn Fn(i32, i32) -> bool,
-    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, GenieError>,
-    reach: &mut dyn FnMut(i32) -> Result<bool, GenieError>,
+    world: &mut W,
+    explored: &Explored<'_, W>,
+    passable: &Passable<'_, W>,
+    objects: &ObjectsOn<'_, W>,
+    reach: &mut Reaches<'_, W>,
 ) -> Result<(i32, Option<i32>), GenieError> {
     /// The fallback's steps before it has one (`1000000`).
     const NO_STEPS: i32 = 1_000_000;
@@ -368,7 +382,14 @@ pub fn closest_resource_at(
         };
         d(a) < d(b)
     };
-    let passes = search_passes(site, map, passable, unit_tile, los, &nearer);
+    let passes = search_passes(
+        site,
+        map,
+        &|x, y| passable(world, x, y),
+        unit_tile,
+        los,
+        &nearer,
+    );
     let cap = if max_workers == -1 {
         i32::MAX
     } else {
@@ -387,18 +408,18 @@ pub fn closest_resource_at(
         while i < queue.len() {
             let Cell { x, y, steps } = queue[i];
             i += 1;
-            if !explored(x, y)? {
+            if !explored(world, x, y)? {
                 continue;
             }
             let d = pass_distance(pass.origin, x, y);
             if pass.max_steps < d || x < 0 || y < 0 || map[0] <= x || map[1] <= y {
                 continue;
             }
-            if passable(x, y) {
+            if passable(world, x, y) {
                 push_neighbours(&mut queue, &mut seen, &at, Cell { x, y, steps }, map);
                 msvc::sort(&mut queue[i..], &nearer);
             }
-            let on_tile = objects(x, y)?;
+            let on_tile = objects(world, x, y)?;
             let Some(o) = first_resource(&on_tile, kind)? else {
                 continue;
             };
@@ -407,10 +428,10 @@ pub fn closest_resource_at(
                 continue;
             }
             if o.workers < cap {
-                if reach(o.id)? {
+                if reach(world, o.id)? {
                     return Ok((o.id, Some(d)));
                 }
-            } else if steps < fallback_steps && reach(o.id)? {
+            } else if steps < fallback_steps && reach(world, o.id)? {
                 fallback = o.id;
                 fallback_steps = steps;
                 fallback_d = d;
@@ -764,7 +785,7 @@ mod tests {
         };
         // trees at (12, 10) and (8, 11): the second is nearer the unit's place
         let trees = [tree(1, 12.5, 10.5), tree(2, 8.5, 11.5)];
-        let objects = |x: i32, y: i32| {
+        let objects = |(): &(), x: i32, y: i32| {
             Ok(trees
                 .iter()
                 .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
@@ -782,10 +803,11 @@ mod tests {
             0,
             2,
             [40, 40],
-            &|_, _| Ok(true),
-            &|x, y| !tree_at(x, y),
+            &mut (),
+            &|&(), _, _| Ok(true),
+            &|&(), x, y| !tree_at(x, y),
             &objects,
-            &mut |id| {
+            &mut |&mut (), id| {
                 asked.push(id);
                 Ok(true)
             },
@@ -802,10 +824,11 @@ mod tests {
             0,
             2,
             [40, 40],
-            &|_, _| Ok(true),
-            &|x, y| !tree_at(x, y),
+            &mut (),
+            &|&(), _, _| Ok(true),
+            &|&(), x, y| !tree_at(x, y),
             &objects,
-            &mut |_| Ok(true),
+            &mut |&mut (), _| Ok(true),
         )
         .unwrap();
         assert_eq!(found, 1);
@@ -830,7 +853,7 @@ mod tests {
             footprint: true,
         };
         let search = |trees: &[Candidate], site: Option<&SearchSite>| {
-            let objects = |x: i32, y: i32| {
+            let objects = |(): &(), x: i32, y: i32| {
                 Ok(trees
                     .iter()
                     .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
@@ -849,10 +872,11 @@ mod tests {
                 0,
                 2,
                 [40, 40],
-                &|_, _| Ok(true),
-                &|x, y| !blocked(x, y),
+                &mut (),
+                &|&(), _, _| Ok(true),
+                &|&(), x, y| !blocked(x, y),
                 &objects,
-                &mut |_| Ok(true),
+                &mut |&mut (), _| Ok(true),
             )
             .unwrap()
         };
@@ -896,10 +920,10 @@ mod tests {
         seeker: &Seeker,
         trees: &[Candidate],
         max_workers: i32,
-        explored: &dyn Fn(i32, i32) -> Result<bool, GenieError>,
+        explored: &Explored<'_, ()>,
         reach: &[i32],
     ) -> Result<(i32, Option<i32>), GenieError> {
-        let objects = |x: i32, y: i32| {
+        let objects = |(): &(), x: i32, y: i32| {
             Ok(trees
                 .iter()
                 .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
@@ -912,10 +936,11 @@ mod tests {
             0,
             max_workers,
             [40, 40],
+            &mut (),
             explored,
-            &|_, _| true,
+            &|&(), _, _| true,
             &objects,
-            &mut |id| Ok(reach.contains(&id)),
+            &mut |&mut (), id| Ok(reach.contains(&id)),
         )
     }
 
@@ -924,7 +949,7 @@ mod tests {
         let trees = [tree(1, 12.5, 10.5)];
         let low = Seeker { state: 1, ..SEEKER };
         assert_eq!(
-            search_trees(&low, &trees, 2, &|_, _| Ok(true), &[1]),
+            search_trees(&low, &trees, 2, &|&(), _, _| Ok(true), &[1]),
             Ok((-1, None))
         );
         let tending = Seeker {
@@ -932,7 +957,7 @@ mod tests {
             ..SEEKER
         };
         assert_eq!(
-            search_trees(&tending, &trees, 2, &|_, _| Ok(true), &[1]),
+            search_trees(&tending, &trees, 2, &|&(), _, _| Ok(true), &[1]),
             Err(GenieError::unsupported(
                 "a resource search by a unit with a pasture of its own"
             ))
@@ -947,7 +972,7 @@ mod tests {
             ..tree(1, 12.5, 10.5)
         };
         let both = [full, tree(2, 15.5, 10.5)];
-        let all = |_, _| Ok(true);
+        let all = |&(): &(), _, _| Ok(true);
         // at most 2 workers: past the full one to the free one
         assert_eq!(
             search_trees(&SEEKER, &both, 2, &all, &[1, 2]),
@@ -970,7 +995,7 @@ mod tests {
     #[test]
     fn an_unexplored_tile_s_resource_is_not_tested() {
         let both = [tree(1, 12.5, 10.5), tree(2, 15.5, 10.5)];
-        let dark = |x, y| Ok((x, y) != (12, 10));
+        let dark = |&(): &(), x, y| Ok((x, y) != (12, 10));
         assert_eq!(
             search_trees(&SEEKER, &both, 2, &dark, &[1, 2]),
             Ok((2, Some(5)))
@@ -989,7 +1014,7 @@ mod tests {
         let with = |n: usize| {
             let mut trees: Vec<Candidate> = near[..n].to_vec();
             trees.push(far);
-            search_trees(&SEEKER, &trees, 2, &|_, _| Ok(true), &[99])
+            search_trees(&SEEKER, &trees, 2, &|&(), _, _| Ok(true), &[99])
         };
         // 30 tested: the 31st is the far one, taken
         assert_eq!(with(30), Ok((99, Some(8))));

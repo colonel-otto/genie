@@ -195,6 +195,7 @@ impl Spatial {
     }
 
     /// What the walk reads of the moving object `id`.
+    #[must_use]
     pub fn gait(&self, id: i32) -> Option<Gait> {
         self.gaits.get(&id).copied()
     }
@@ -224,6 +225,7 @@ impl Spatial {
     }
 
     /// The annexes of the building `main`, in id order.
+    #[must_use]
     pub fn annexes_of(&self, main: i32) -> Vec<i32> {
         self.annexes
             .iter()
@@ -233,16 +235,19 @@ impl Spatial {
     }
 
     /// The main building of the annex `id`, if it is one.
+    #[must_use]
     pub fn annex_of(&self, id: i32) -> Option<i32> {
         self.annexes.get(&id).copied()
     }
 
     /// `FUN_141663dc0` with the ally flag ([`Spatial::allied`]), for the walk's avoidance.
+    #[must_use]
     pub fn allied_with(&self, from: usize, to: usize) -> bool {
         self.allied(from, to)
     }
 
     /// The players `from` counts as allies ([`Spatial::allied_with`]), one bit each.
+    #[must_use]
     pub fn allies_of(&self, from: usize) -> u64 {
         (0..64usize)
             .filter(|&to| self.allied(from, to))
@@ -266,30 +271,29 @@ impl Spatial {
 
     /// `FUN_1410562e0` on the obstruction manager: its ignore list becomes `ids` (none for an
     /// empty list), until the next call.
-    pub fn set_manager_ignore(&self, ids: &[i32]) {
-        let mut list = self.manager_ignore.borrow_mut();
-        list.clear();
-        list.extend_from_slice(ids);
+    pub fn set_manager_ignore(&mut self, ids: &[i32]) {
+        self.manager_ignore.clear();
+        self.manager_ignore.extend_from_slice(ids);
     }
 
     /// The obstruction manager's ignore list as the last `FUN_1410562e0` left it
     /// ([`Spatial::set_manager_ignore`]).
     #[must_use]
     pub fn manager_ignore(&self) -> Vec<i32> {
-        self.manager_ignore.borrow().clone()
+        self.manager_ignore.clone()
     }
 
     /// `FUN_1410562d0` on the obstruction manager: its buffer becomes `buffer` (None: not set),
     /// until the next call.
-    pub fn set_manager_buffer(&self, buffer: Option<f32>) {
-        self.manager_buffer.set(buffer);
+    pub const fn set_manager_buffer(&mut self, buffer: Option<f32>) {
+        self.manager_buffer = buffer;
     }
 
     /// The obstruction manager's buffer as the last `FUN_1410562d0` left it
     /// ([`Spatial::set_manager_buffer`]).
     #[must_use]
     pub const fn manager_buffer(&self) -> Option<f32> {
-        self.manager_buffer.get()
+        self.manager_buffer
     }
 
     /// What the queries that set no buffer grow the records by: the buffer the last
@@ -298,7 +302,7 @@ impl Spatial {
     /// spot `FUN_141007630`).
     #[must_use]
     pub fn manager_grow(&self) -> f32 {
-        self.manager_buffer.get().unwrap_or(0.0)
+        self.manager_buffer.unwrap_or(0.0)
     }
 
     /// The walk's obstruction query (`FUN_14114cc60` -> `FUN_141051900` with flags `0x90`, each
@@ -315,7 +319,7 @@ impl Spatial {
     /// first ([`Spatial::set_manager_ignore`]).
     #[allow(clippy::too_many_arguments)]
     pub fn walk_hits(
-        &self,
+        &mut self,
         from: [f32; 2],
         to: [f32; 2],
         rect: [f32; 4],
@@ -403,7 +407,7 @@ impl Spatial {
     ///
     /// As [`Spatial::line_hits`] (the records go all the same).
     pub fn line_query(
-        &self,
+        &mut self,
         from: [f32; 2],
         to: [f32; 2],
         grow: f32,
@@ -479,7 +483,7 @@ impl Spatial {
         if tiles {
             let level = self.grid.level(0);
             let shift = self.grid.shift(level);
-            for &(y, x) in self.tile_records.borrow().iter() {
+            for &(y, x) in &self.tile_records {
                 let id = tile_record_id(x, y);
                 let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
                 if self.visits_cell(level, x >> shift, y >> shift, query)

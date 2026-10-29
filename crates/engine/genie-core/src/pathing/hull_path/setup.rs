@@ -22,7 +22,7 @@ pub(crate) const NO_RESTRICTION: GenieError =
 ///
 /// Where the pather meets what the slice does not model, or an object the world does not place.
 pub fn quick_reach(
-    world: &Spatial,
+    world: &mut Spatial,
     me: i32,
     target: i32,
     mask: u8,
@@ -51,7 +51,7 @@ pub fn quick_reach(
 ///
 /// Where the pather meets what the slice does not model.
 pub fn quick_reach_from(
-    world: &Spatial,
+    world: &mut Spatial,
     me: i32,
     from: Point,
     target: i32,
@@ -62,8 +62,8 @@ pub fn quick_reach_from(
     let Some(t) = world.get_known(target)? else {
         return Ok(None);
     };
-    let mut pather = HullPather::new(world, me, target, mask, radius);
     let to = [t.position[0], t.position[1]];
+    let mut pather = HullPather::new(world, me, target, mask, radius);
     let (result, path) = pather.find_quick(from, to, target, range)?;
     // the slot removes the manager's temporary tile records after (FUN_1410561f0), which the
     // quick path's exit leaves
@@ -87,7 +87,7 @@ impl<'w> HullPather<'w> {
     /// when it keeps them ([`HullPather::find_keeping`]), so a caller that keeps this pather
     /// across searches holds the same state.
     #[must_use]
-    pub fn new(world: &'w Spatial, unit: i32, target: i32, mask: u8, radius: f32) -> Self {
+    pub fn new(world: &'w mut Spatial, unit: i32, target: i32, mask: u8, radius: f32) -> Self {
         let player = world
             .get(unit)
             .map_or(-1, |p| i32::try_from(p.player).unwrap_or(-1));
@@ -103,7 +103,13 @@ impl<'w> HullPather<'w> {
     /// given; an empty one ignores nothing either way. The rest is the constructor's state
     /// ([`HullPather::new`]).
     #[must_use]
-    pub fn for_list(world: &'w Spatial, ids: &[i32], mask: u8, radius: f32, player: i32) -> Self {
+    pub fn for_list(
+        world: &'w mut Spatial,
+        ids: &[i32],
+        mask: u8,
+        radius: f32,
+        player: i32,
+    ) -> Self {
         let mut ignore = ids.to_vec();
         for &id in ids {
             let Some(p) = world.get(id) else {

@@ -251,7 +251,7 @@ impl Default for KeptHulls {
 /// ignore list.
 #[derive(Debug)]
 pub struct HullPather<'w> {
-    world: &'w Spatial,
+    world: &'w mut Spatial,
     mask: u8,
     radius: f32,
     /// `FindShortPath`'s player (its argument 12, the unit's player's number `+0x718`), whom slot

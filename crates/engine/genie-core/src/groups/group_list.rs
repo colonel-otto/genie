@@ -1,6 +1,7 @@
 //! The world's unit groups ([`UnitGroups`]), an object's link to its group and the group
 //! every listed unit is in.
 
+use crate::GenieError;
 use crate::groups::UnitGroup;
 use genie_diff::Diff;
 
@@ -89,6 +90,18 @@ impl UnitGroups {
             return None;
         }
         self.groups.iter().find(|g| g.id == id)
+    }
+
+    /// The group of id `id` that the caller holds: its layout reads it again where the world's
+    /// spatial index is written, which a borrow of the group would block.
+    ///
+    /// # Errors
+    ///
+    /// A group the table does not hold.
+    pub fn held(&self, id: i32) -> Result<&UnitGroup, GenieError> {
+        self.get(id).ok_or_else(|| {
+            GenieError::unreachable("a layout of a group the world does not hold").with("group", id)
+        })
     }
 
     /// The group of id `id`, to change (`FUN_14152ff40`).

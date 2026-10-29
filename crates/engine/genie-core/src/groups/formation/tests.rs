@@ -377,8 +377,7 @@ fn the_group_target_and_horde_transforms_place_every_slot() {
     t.groups.groups[0].motion.position[0] = [5.0, 0.0, 5.0];
     t.groups.groups[0].motion.position[1] = [0.0, 0.0, 1.0];
     t.groups.groups[0].current_target.original_position = [9.0, 0.0, 9.0];
-    let g = t.groups.get(1).unwrap().clone();
-    let run = |kind: i32| {
+    let mut run = |kind: i32| {
         let mut f = Formation::new();
         f.transform_type = kind;
         f.transform_orientation = [0.0, 0.0, 1.0];
@@ -387,7 +386,7 @@ fn the_group_target_and_horde_transforms_place_every_slot() {
             ..slot_at([0.0; 3], 1)
         }];
         f.spare_slots = vec![Slot::default()];
-        let took = t.formation_transform(&mut f, &g, false).unwrap();
+        let took = t.formation_transform(&mut f, 1, false).unwrap();
         (
             took,
             f.slots[0].transform_position,
@@ -408,7 +407,7 @@ fn the_group_target_and_horde_transforms_place_every_slot() {
     f.transform_type = 3;
     f.transform_orientation = [0.0, 0.0, -1.0];
     f.slots = vec![slot_at([0.0; 3], 1)];
-    assert!(t.formation_transform(&mut f, &g, false).unwrap());
+    assert!(t.formation_transform(&mut f, 1, false).unwrap());
     assert_eq!((f.slots[0].unit_id, f.slots[0].position_filled), (10, 1));
 }
 
@@ -423,7 +422,6 @@ fn an_unreachable_slot_moves_to_the_reachable_cell_its_unit_finds() {
         t.groups.groups[0].motion.position[0] = [5.5, 0.0, 5.5];
         t.groups.groups[0].motion.lead = 10;
         t.groups.groups[0].desired_spacing = spacing;
-        let g = t.groups.get(1).unwrap().clone();
         let mut f = Formation::new();
         f.slots = vec![
             Slot {
@@ -435,7 +433,7 @@ fn an_unreachable_slot_moves_to_the_reachable_cell_its_unit_finds() {
                 ..slot_at([8.5, 0.0, 5.5], 1)
             },
         ];
-        t.passable_slots(&mut f, &g).unwrap();
+        t.passable_slots(&mut f, 1).unwrap();
         f.slots
             .iter()
             .map(|s| s.transform_position)
@@ -448,10 +446,9 @@ fn an_unreachable_slot_moves_to_the_reachable_cell_its_unit_finds() {
     // every slot standable: nothing moves
     let mut t = slot_world(&[(10, 4, 5.5, 5.5)], &[]);
     t.groups.groups[0].motion.lead = 10;
-    let g = t.groups.get(1).unwrap().clone();
     let mut f = Formation::new();
     f.slots = vec![slot_at([12.5, 0.0, 5.5], 1)];
-    t.passable_slots(&mut f, &g).unwrap();
+    t.passable_slots(&mut f, 1).unwrap();
     assert_eq!(f.slots[0].transform_position, [12.5, 0.0, 5.5]);
 }
 
@@ -509,7 +506,6 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
         }
         t.groups.groups[0].motion.position[0] = [5.5, 0.0, 5.5];
         assert_eq!(t.groups.groups[0].motion.lead, -1);
-        let g = t.groups.get(1).unwrap().clone();
         let mut f = Formation::new();
         f.slots = vec![
             Slot {
@@ -521,7 +517,7 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
                 ..slot_at([8.5, 0.0, 5.5], 1)
             },
         ];
-        t.passable_slots(&mut f, &g).unwrap();
+        t.passable_slots(&mut f, 1).unwrap();
         f.slots
             .iter()
             .map(|s| s.transform_position)
@@ -539,7 +535,6 @@ fn a_found_cell_steps_toward_the_nearest_slot_when_the_way_is_clear() {
     let mut t = slot_world(&[(10, 4, 5.5, 5.5), (11, 4, 7.5, 7.5)], &[(8, 5)]);
     t.groups.groups[0].motion.position[0] = [5.5, 0.0, 5.5];
     t.groups.groups[0].motion.lead = 10;
-    let g = t.groups.get(1).unwrap().clone();
     let mut f = Formation::new();
     f.slots = vec![
         Slot {
@@ -552,7 +547,7 @@ fn a_found_cell_steps_toward_the_nearest_slot_when_the_way_is_clear() {
         },
         slot_at([6.5, 0.0, 7.5], 1),
     ];
-    t.passable_slots(&mut f, &g).unwrap();
+    t.passable_slots(&mut f, 1).unwrap();
     assert_eq!(f.slots[1].transform_position, [6.5, 0.0, 6.5]);
     assert_eq!(f.slots[2].transform_position, [6.5, 0.0, 7.5]);
 }
@@ -603,10 +598,9 @@ fn a_cell_mark_points_toward_the_nearest_slot_and_a_nan_along_y() {
 /// above 0, else, a NaN too, the line's index times the spacing.
 #[test]
 fn a_nan_distance_back_takes_the_index_times_the_spacing() {
-    let t = slot_world(&[(10, 4, 5.0, 5.0)], &[]);
-    let mut g = t.groups.get(1).unwrap().clone();
-    g.motion.position[0] = [9.0, 0.0, 5.0];
-    g.desired_spacing = 2.0;
+    let mut t = slot_world(&[(10, 4, 5.0, 5.0)], &[]);
+    t.groups.groups[0].motion.position[0] = [9.0, 0.0, 5.0];
+    t.groups.groups[0].desired_spacing = 2.0;
     let mut f = Formation::new();
     f.transform_type = 0;
     f.number_lines = 2;
@@ -622,7 +616,7 @@ fn a_nan_distance_back_takes_the_index_times_the_spacing() {
             ..FormationLine::default()
         },
     ];
-    let _ = t.formation_transform(&mut f, &g, false).unwrap();
+    let _ = t.formation_transform(&mut f, 1, false).unwrap();
     assert_eq!(f.slots[1].transform_position, [7.0, 0.0, 5.0]);
 }
 
@@ -692,7 +686,7 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
         let g = t.groups.get(1).unwrap().clone();
         let mut whole = Formation::new();
         assert!(
-            t.create_column_line(&mut whole, &g, false, (false, false))
+            t.create_column_line(&mut whole, 1, false, (false, false))
                 .unwrap()
         );
         let mut parts = Formation::new();
@@ -703,7 +697,7 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
             (false, false),
             t.world_time
         ));
-        t.lay_units(&mut parts, &g, previous == COLUMN).unwrap();
+        t.lay_units(&mut parts, 1, previous == COLUMN).unwrap();
         assert_eq!(whole, parts);
         whole.slots.iter().map(|s| s.unit_id).collect::<Vec<_>>()
     };

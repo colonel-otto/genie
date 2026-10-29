@@ -108,7 +108,7 @@ impl World {
             let (player, after) = rest.split_first_mut().expect("p is a player");
             let mut w = ResourceWorld {
                 player: p,
-                spatial: &self.spatial,
+                spatial: &mut self.spatial,
                 zones: &mut self.zones,
                 foreign: Foreign {
                     before: &*before,

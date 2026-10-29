@@ -232,7 +232,7 @@ impl Unit {
         &self,
         stats: &crate::combat::missile::MissileStats,
         old: [f32; 3],
-        c: &Step<'_>,
+        c: &mut Step<'_>,
     ) -> Result<Vec<(i32, usize, u8, u8)>, GenieError> {
         let [w, h] = c.w.spatial.map;
         let hold = |v: f32, size: i32| {

@@ -117,7 +117,7 @@ impl Unit {
         } else {
             let mut w = DropWorld {
                 masters: c.w.masters.get(c.player),
-                spatial: &c.w.spatial,
+                spatial: &mut c.w.spatial,
                 zones: &mut c.w.zones,
                 pathing: &mut c.w.pathing,
                 object: c.w.streams.get(Stream::Object),
@@ -342,7 +342,6 @@ impl Unit {
             group: self.group.id,
             action_state: self.actions.hunt().expect("the caller's hunt").state,
         };
-        let spatial: &Spatial = &c.w.spatial;
         let mut plan = Planning {
             pathing: &mut c.w.pathing,
             now: c.w.world_time,
@@ -352,7 +351,7 @@ impl Unit {
             groups: &c.w.groups,
         };
         let master_id = self.life.master_id;
-        let mut reach = |id: i32, range: f32| {
+        let mut reach = |spatial: &mut Spatial, id: i32, range: f32| {
             mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
         };
         let mut no_attack = crate::unit_ai::NoAttack;
@@ -363,7 +362,7 @@ impl Unit {
             ))
         };
         let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
-        let result = spatial.search(
+        let result = c.w.spatial.search(
             self.id,
             c.player,
             &search,
@@ -534,7 +533,7 @@ impl Unit {
     pub(crate) fn hunt_drop_off(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.w.masters.get(c.player),
-            spatial: &c.w.spatial,
+            spatial: &mut c.w.spatial,
             zones: &mut c.w.zones,
             pathing: &mut c.w.pathing,
             object: c.w.streams.get(Stream::Object),

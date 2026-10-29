@@ -245,9 +245,10 @@ impl BuildAction {
     ///
     /// A builder without movement state, a foundation gone from the map, no free tile beside
     /// it, and a builder that cannot move.
-    pub(super) fn clear(&mut self, c: &Step<'_>, builder: &Unit) -> Result<(), GenieError> {
+    pub(super) fn clear(&mut self, c: &mut Step<'_>, builder: &Unit) -> Result<(), GenieError> {
         let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
         let site = c.w.spatial.get(self.target).ok_or(SITE_GONE)?;
+        let site = (site.position, site.radius);
         let at = builder.position();
         let spot =
             c.w.spatial

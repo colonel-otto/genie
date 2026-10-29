@@ -73,7 +73,8 @@ impl World {
                 let to = g.current_formation.as_ref().expect("found above").slots[slot]
                     .transform_position;
                 let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
-                let clear = self.line_clear(u, u.moved_vector().xhy(), to, CLEARANCE, &members)?;
+                let from = u.moved_vector().xhy();
+                let clear = self.line_clear(m.id, from, to, CLEARANCE, &members)?;
                 let dt = self.dt_seconds;
                 let g = self.groups.get_mut(group).expect("held");
                 let own = &mut g.members[index].specific_move;
@@ -165,23 +166,27 @@ impl World {
     ///
     /// For a unit without movement state: a group's members move ([`MOVES`]).
     pub(super) fn line_clear(
-        &self,
-        u: &crate::objects::unit::Unit,
+        &mut self,
+        id: i32,
         from: Vec3,
         to: Vec3,
         grow: f32,
         ignore: &[i32],
     ) -> Result<bool, GenieError> {
+        let (_, u) = self.object(id).ok_or(GenieError::unreachable(
+            "a steered member the world does not hold",
+        ))?;
         let mover = u.body.mover().expect(MOVES);
-        let own = [u.id];
+        let (radius, mask) = (mover.stats.radius[0], mover.stats.restriction_mask);
+        let own = [id];
         let ignore = if ignore.is_empty() { &own[..] } else { ignore };
         // FUN_1411570c0 sets the manager's ignore list to it (FUN_1410562e0)
         let map = self.spatial.map;
         let hits = self.spatial.line_query(
             hold(from, map),
             hold(to, map),
-            grow * mover.stats.radius[0],
-            Some(mover.stats.restriction_mask),
+            grow * radius,
+            Some(mask),
             ignore,
         )?;
         Ok(hits.is_empty())
@@ -309,7 +314,8 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        if !self.line_clear(u, u.moved_vector().xhy(), to, CLEARANCE, differentiators)? {
+        let from = u.moved_vector().xhy();
+        if !self.line_clear(id, from, to, CLEARANCE, differentiators)? {
             return self.way_round(group, index, slot, gap, differentiators);
         }
         self.steer_member(group, slot, id, gap)?;

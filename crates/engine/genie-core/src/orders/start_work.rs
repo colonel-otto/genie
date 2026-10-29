@@ -192,43 +192,47 @@ impl World {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let (mask, master_id) = (mover.stats.restriction_mask, unit.life.master_id);
-        let (players, masters, spatial) = (&self.players, &self.masters, &self.spatial);
-        let candidate = |id: i32| -> Result<Candidate, GenieError> {
-            let (owner, u) = players
-                .iter()
-                .enumerate()
-                .find_map(|(q, player)| {
-                    player
-                        .objects
-                        .by_id(id)
-                        .or_else(|| player.sleeping.by_id(id))
-                        .map(|u| (q, u))
+        let (players, masters) = (&self.players, &self.masters);
+        let candidate =
+            |spatial: &crate::map::spatial::Spatial, id: i32| -> Result<Candidate, GenieError> {
+                let (owner, u) = players
+                    .iter()
+                    .enumerate()
+                    .find_map(|(q, player)| {
+                        player
+                            .objects
+                            .by_id(id)
+                            .or_else(|| player.sleeping.by_id(id))
+                            .map(|u| (q, u))
+                    })
+                    .ok_or(GenieError::unsupported(
+                        "an object on a tile the slice does not hold",
+                    ))?;
+                let m = u.master(masters, owner)?;
+                let position = spatial.get(id).map_or_else(|| u.position(), |o| o.position);
+                Ok(Candidate {
+                    id,
+                    player: owner,
+                    class: m.class,
+                    master: m.id,
+                    state: u.life.state,
+                    workers: u.workers,
+                    position,
+                    pasture: u.pasture,
+                    untargetable: u.untargetable,
+                    attribute: u.life.attribute_type,
+                    amount: u.life.amount,
+                    auto_gather: m.auto_gather,
+                    gather_group: m.gather_group,
                 })
-                .ok_or(GenieError::unsupported(
-                    "an object on a tile the slice does not hold",
-                ))?;
-            let m = u.master(masters, owner)?;
-            let position = spatial.get(id).map_or_else(|| u.position(), |o| o.position);
-            Ok(Candidate {
-                id,
-                player: owner,
-                class: m.class,
-                master: m.id,
-                state: u.life.state,
-                workers: u.workers,
-                position,
-                pasture: u.pasture,
-                untargetable: u.untargetable,
-                attribute: u.life.attribute_type,
-                amount: u.life.amount,
-                auto_gather: m.auto_gather,
-                gather_group: m.gather_group,
-            })
-        };
-        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
+            };
+        let objects = |spatial: &crate::map::spatial::Spatial,
+                       x: i32,
+                       y: i32|
+         -> Result<Vec<Candidate>, GenieError> {
             spatial
                 .objects_on(x, y)
-                .map(|(id, _)| candidate(id))
+                .map(|(id, _)| candidate(spatial, id))
                 .collect()
         };
         let mut plan = Planning {
@@ -245,11 +249,14 @@ impl World {
             None,
             kind,
             -1,
-            spatial.map,
-            &|x, y| spatial.explored(p, x, y),
-            &|x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
+            self.spatial.map,
+            &mut self.spatial,
+            &|spatial, x, y| spatial.explored(p, x, y),
+            &|spatial, x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
             &objects,
-            &mut |id| mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id),
+            &mut |spatial, id| {
+                mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id)
+            },
         )
     }
 }

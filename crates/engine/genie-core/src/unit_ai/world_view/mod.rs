@@ -30,7 +30,7 @@ use crate::world::step::Step;
 /// search's plans), the owner's type and construction rate.
 pub(crate) struct DropWorld<'a> {
     pub masters: Option<&'a Masters>,
-    pub spatial: &'a Spatial,
+    pub spatial: &'a mut Spatial,
     pub zones: &'a mut crate::pathing::zones::Zones,
     pub pathing: &'a mut Pathing,
     pub object: &'a mut Well512,

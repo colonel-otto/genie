@@ -189,7 +189,7 @@ impl Mover {
     /// first within 10 tiles (squared, `DAT_14330ebcc`) that the unit can walk to straight
     /// (`FUN_141142750`) becomes the parent's waypoint; level 0 goes, and the parent asks for a
     /// path (state 2) as the motion step starts again. True when it did.
-    pub(super) fn look_ahead(&mut self, me: &Me, world: &Spatial) -> Result<bool, GenieError> {
+    pub(super) fn look_ahead(&mut self, me: &Me, world: &mut Spatial) -> Result<bool, GenieError> {
         let target = self.paths[0].target;
         let parent = &self.paths[1];
         // the motion step's place of the unit: +0x824, where it last moved to
@@ -229,7 +229,7 @@ impl Mover {
         me: &Me,
         p: Vec3,
         target: i32,
-        world: &Spatial,
+        world: &mut Spatial,
     ) -> Result<bool, GenieError> {
         let [rx, ry, rz] = self.stats.radius;
         let [w, h] = world.map;
@@ -264,7 +264,7 @@ impl Mover {
         me: &Me,
         p: Vec3,
         target: i32,
-        world: &Spatial,
+        world: &mut Spatial,
     ) -> Result<bool, GenieError> {
         let [rx, ry, rz] = self.stats.radius;
         let [w, h] = world.map;

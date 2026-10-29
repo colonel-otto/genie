@@ -320,7 +320,7 @@ impl BuildAction {
             Some(MoveTo::Moving) => {
                 let mut walk = c.walk(&mut builder.body, me);
                 if self.walk_target != -1
-                    && crate::movement::move_to::target_moved(&walk, self.walk_target, true)?
+                    && crate::movement::move_to::target_moved(&mut walk, self.walk_target, true)?
                         .again()
                 {
                     self.move_to = Some(MoveTo::Start);

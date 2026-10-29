@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::{
-    Grid, Obstruction, Placed, RecordCells, Spatial, Tiles, WalkTest, tile_record_id,
+    Grid, Obstruction, Placed, RecordCells, SearchCache, Spatial, Tiles, WalkTest, tile_record_id,
 };
 use std::collections::BTreeMap;
 
@@ -20,9 +20,9 @@ impl Spatial {
     pub fn with_tiles(map: [i32; 2], tiles: Tiles) -> Self {
         Self {
             map,
-            manager_ignore: std::cell::RefCell::new(Vec::new()),
-            tile_records: std::cell::RefCell::default(),
-            manager_buffer: std::cell::Cell::new(None),
+            manager_ignore: Vec::new(),
+            tile_records: std::collections::BTreeSet::new(),
+            manager_buffer: None,
             objects: BTreeMap::new(),
             records: RecordCells::default(),
             inside: BTreeMap::new(),
@@ -40,17 +40,13 @@ impl Spatial {
             sight: None,
             vision: Vec::new(),
             terrain: None,
-            search_cache: std::cell::RefCell::default(),
+            search_cache: SearchCache::default(),
             grid: Grid::new(map),
         }
     }
 
-    /// A unit AI's full update starts (`0x140c66b10`): the search cache lets go.
-    pub fn forget_search(&self) {
-        self.search_cache.borrow_mut().holds = false;
-    }
-
     /// What the game keeps per tile.
+    #[must_use]
     pub const fn tiles(&self) -> &Tiles {
         &self.tiles
     }
@@ -193,6 +189,7 @@ impl Spatial {
     /// Player `player`'s masks both meet the unified map's bits of tile (`x`, `y`): what it sees
     /// (`+0x2a8`) and what it explored (`+0x2a0`). False off the map and without the players'
     /// sight.
+    #[must_use]
     pub fn sees_and_explored(&self, player: usize, x: i32, y: i32) -> bool {
         let Some(v) = self.sight.as_ref() else {
             return false;
@@ -206,6 +203,7 @@ impl Spatial {
     }
 
     /// The object `id`'s place, if the world holds it.
+    #[must_use]
     pub fn get(&self, id: i32) -> Option<&Placed> {
         self.objects.get(&id).or_else(|| self.inside.get(&id))
     }
@@ -456,7 +454,7 @@ impl Spatial {
     /// then `FUN_1410561f0`): the temporary records of the tiles its terrain mask lacks
     /// ([`Spatial::put_tile_records`]), tested ([`Spatial::segment_meets`]) and removed again.
     pub fn segment_blocked(
-        &self,
+        &mut self,
         a: [f32; 2],
         b: [f32; 2],
         grow: f32,
@@ -476,6 +474,7 @@ impl Spatial {
     /// meets the walk's box and segment (`FUN_141052e10`): the temporary tile records
     /// ([`Spatial::put_tile_records`], kind 3) and the objects' static records (kinds 2, 11 and
     /// 13; flag `0x100` passes the kinds of the mask `0x2804` and the records of no object).
+    #[must_use]
     pub fn segment_meets(&self, a: [f32; 2], b: [f32; 2], grow: f32, ignore: &[i32]) -> bool {
         let Some(test) = WalkTest::new(a, b, grow, self.map) else {
             return true;
@@ -497,7 +496,7 @@ impl Spatial {
     pub(super) fn tile_records_meet(&self, test: &WalkTest, ignore: &[i32]) -> bool {
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
-        self.tile_records.borrow().iter().any(|&(y, x)| {
+        self.tile_records.iter().any(|&(y, x)| {
             self.visits_cell(level, x >> shift, y >> shift, test.query)
                 && !ignore.contains(&tile_record_id(x, y))
                 && test.meets([x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0])
@@ -509,7 +508,7 @@ impl Spatial {
     /// its query, then `FUN_1410561f0`): its temporary tile records
     /// ([`Spatial::put_tile_records`]) tested as [`Spatial::segment_meets`] tests them, and
     /// removed again. A walk whose grown box leaves the map counts as blocked.
-    pub fn tiles_block(&self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) -> bool {
+    pub fn tiles_block(&mut self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) -> bool {
         self.put_tile_records(a, b, grow, mask);
         let blocked =
             WalkTest::new(a, b, grow, self.map).is_none_or(|t| self.tile_records_meet(&t, &[]));
@@ -521,7 +520,7 @@ impl Spatial {
     /// `a` and `b` (x, y), grown by `grow` (the manager's buffer) and held on the map, whose word
     /// holds neither a terrain class of `mask` nor a temporary record (`mask & 0x7f | 0x80`), row
     /// by row. The records stay until [`Spatial::clear_tile_records`].
-    pub fn put_tile_records(&self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) {
+    pub fn put_tile_records(&mut self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) {
         use crate::math::conversions::cvttss2si;
         let (lo_x, hi_x) = (
             if b[0] <= a[0] { b[0] } else { a[0] },
@@ -542,31 +541,26 @@ impl Spatial {
         let x1 = if hi_x < w { hi_x } else { w - 1 };
         let y1 = if hi_y < h { hi_y } else { h - 1 };
         let impassable = u64::from(mask & 0x7f);
-        let mut records = self.tile_records.borrow_mut();
         for y in y0..=y1 {
             for x in x0..=x1 {
                 let Some(word) = self.tiles.word(x, y) else {
                     continue;
                 };
                 if word & (impassable | 0x80) == 0 {
-                    let _ = records.insert((y, x));
+                    let _ = self.tile_records.insert((y, x));
                 }
             }
         }
     }
 
     /// `FUN_1410561f0`: every temporary tile record ([`Spatial::put_tile_records`]) goes.
-    pub fn clear_tile_records(&self) {
-        self.tile_records.borrow_mut().clear();
+    pub fn clear_tile_records(&mut self) {
+        self.tile_records.clear();
     }
 
     /// The temporary tile records ([`Spatial::put_tile_records`]) as (x, y), row by row.
     #[must_use]
     pub fn tile_records(&self) -> Vec<[i32; 2]> {
-        self.tile_records
-            .borrow()
-            .iter()
-            .map(|&(y, x)| [x, y])
-            .collect()
+        self.tile_records.iter().map(|&(y, x)| [x, y]).collect()
     }
 }

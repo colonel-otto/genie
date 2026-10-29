@@ -369,7 +369,7 @@ fn a_radius_above_half_a_tile_or_unordered_takes_the_old_pather() {
 /// which needs the game's mesh.
 #[test]
 fn a_big_unit_s_short_path_takes_the_old_pather() {
-    let world = walled(0.6);
+    let mut world = walled(0.6);
     let mut pathing = Pathing::default();
     let mut object = Well512::default();
     let groups = crate::groups::UnitGroups::default();
@@ -393,13 +393,13 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
     let r = short_path_for(
         walker,
         [4.5, 5.5],
-        &world,
+        &mut world,
         &mut plan,
         goal,
         &[9171],
         &mut out,
     );
-    let mut pather = HullPather::for_list(&world, &[9171], 6, 0.6, 2);
+    let mut pather = HullPather::for_list(&mut world, &[9171], 6, 0.6, 2);
     let (result, path) = pather.find([4.5, 5.5], [8.5, 5.5], -1, 0.0).unwrap();
     assert_eq!((r, result), (Ok(1), 1), "{path:?}");
     let points: Vec<Vec3> = path.points.iter().map(|&[x, y]| [x, 0.0, y]).collect();
@@ -409,7 +409,7 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
     let r = short_path_for(
         walker,
         [4.5, 5.5],
-        &world,
+        &mut world,
         &mut plan,
         ([20.5, 0.0, 5.5], 0.0, -1),
         &[9171],
@@ -423,7 +423,7 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
     let r = short_path_for(
         small,
         [4.5, 5.5],
-        &world,
+        &mut world,
         &mut plan,
         goal,
         &[9171],
@@ -653,7 +653,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
         m.request_path([4.5, 5.5, 0.0], [8.5, 5.5, 0.0], 0.0, -1, 100);
         let mut plans = 0;
         assert!(
-            m.request(&me, &w, &mut plan, goal, &mut plans, include)
+            m.request(&me, &mut w, &mut plan, goal, &mut plans, include)
                 .is_ok()
         );
         m.paths[0].points.clone()
@@ -717,12 +717,21 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
     m.moved_at = [5.5, 5.5, 0.0];
     // 25 tiles away on open land: the long pather's answer
     let far = [30.5, 5.5];
-    assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(true));
+    assert_eq!(
+        m.reaches(&me, &mut world, &mut plan, far, 0.0, 83),
+        Ok(true)
+    );
     // with ignore units the long pather lowers those that wait or move (none here)
     m.ignore_units = vec![5, 6];
-    assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(true));
+    assert_eq!(
+        m.reaches(&me, &mut world, &mut plan, far, 0.0, 83),
+        Ok(true)
+    );
     m.moved_at = [-1.0, 5.5, 0.0];
-    assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(false));
+    assert_eq!(
+        m.reaches(&me, &mut world, &mut plan, far, 0.0, 83),
+        Ok(false)
+    );
 }
 
 /// `FUN_14114f630`: an angle at most the turn's most, or a NaN most (an infinite turn rate
@@ -1145,7 +1154,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
         crate::map::spatial::Tiles::new(120, 120, vec![2; 14400]),
     );
     // on open ground: waypoint 3 is beyond 10 tiles, waypoint 2 within, so it takes 2
-    assert_eq!(m.look_ahead(&me, &w), Ok(true));
+    assert_eq!(m.look_ahead(&me, &mut w), Ok(true));
     assert_eq!(m.paths.len(), 1);
     assert_eq!(
         (m.paths[0].level, m.paths[0].waypoint, m.paths[0].state),
@@ -1175,7 +1184,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
             obstruction: Some(Obstruction { kind: 2, class: 1 }),
         },
     );
-    assert_eq!(m.look_ahead(&me, &w), Ok(false));
+    assert_eq!(m.look_ahead(&me, &mut w), Ok(false));
     assert_eq!(m.paths.len(), 2);
 }
 
@@ -1292,18 +1301,27 @@ fn a_unit_closes_in_along_a_clear_straight_line() {
         group: -1,
         action_state: 0,
     };
-    let open = tiled_world(vec![4; 120 * 120]);
-    assert_eq!(m.close_in(&me, [28.0, 0.0, 87.0], -1, &open), Ok(true));
-    assert_eq!(m.close_in(&me, [32.0, 0.0, 89.0], -1, &open), Ok(false));
-    assert_eq!(m.close_in(&me, [32.0, 0.0, 89.0], 9175, &open), Ok(true));
-    assert_eq!(m.close_in(&me, [-1.0, 0.0, 89.0], -1, &open), Ok(false));
-    assert_eq!(m.close_in(&me, [28.0, 0.0, 200.0], -1, &open), Ok(false));
+    let mut open = tiled_world(vec![4; 120 * 120]);
+    assert_eq!(m.close_in(&me, [28.0, 0.0, 87.0], -1, &mut open), Ok(true));
+    assert_eq!(m.close_in(&me, [32.0, 0.0, 89.0], -1, &mut open), Ok(false));
+    assert_eq!(
+        m.close_in(&me, [32.0, 0.0, 89.0], 9175, &mut open),
+        Ok(true)
+    );
+    assert_eq!(m.close_in(&me, [-1.0, 0.0, 89.0], -1, &mut open), Ok(false));
+    assert_eq!(
+        m.close_in(&me, [28.0, 0.0, 200.0], -1, &mut open),
+        Ok(false)
+    );
     let mut classes = vec![4; 120 * 120];
     for x in 26..31 {
         classes[88 * 120 + x] = 1;
     }
-    let walled = tiled_world(classes);
-    assert_eq!(m.close_in(&me, [28.0, 0.0, 87.0], -1, &walled), Ok(false));
+    let mut walled = tiled_world(classes);
+    assert_eq!(
+        m.close_in(&me, [28.0, 0.0, 87.0], -1, &mut walled),
+        Ok(false)
+    );
 }
 
 /// The long path's stretches (`0x141150f00` after `FUN_140f9eb70`): one whose query meets a
@@ -1346,7 +1364,7 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
             world.insert(500, b);
         }
         let mut p = path();
-        let r = m.walled_off(&me, &world, -1, &mut p);
+        let r = m.walled_off(&me, &mut world, -1, &mut p);
         (r, p.points.len())
     };
     assert_eq!(walled(true, None), (Ok(true), 3));
@@ -1384,7 +1402,7 @@ fn a_long_plan_reaches_its_waypoint_stops_short_or_ends_at_a_band() {
         }
     }
     let plan = |classes: &[u8], waypoint: Vec3, way: f32| {
-        let world = tiled_world(classes.to_vec());
+        let mut world = tiled_world(classes.to_vec());
         let mut pathing = Pathing::default();
         pathing.start_mesh(120);
         let mut object = Well512::default();
@@ -1404,7 +1422,7 @@ fn a_long_plan_reaches_its_waypoint_stops_short_or_ends_at_a_band() {
         };
         let mut m = builder_9177().placed([28.0, 89.0, 0.0]);
         let mut path = Path::default();
-        let r = m.long_plan(&me, &world, &plan, waypoint, way, 0.0, None, &mut path);
+        let r = m.long_plan(&me, &mut world, &plan, waypoint, way, 0.0, None, &mut path);
         (r, path.points, path.length)
     };
     let open = vec![4; 120 * 120];

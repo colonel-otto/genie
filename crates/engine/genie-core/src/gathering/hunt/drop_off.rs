@@ -118,7 +118,7 @@ impl HuntAction {
                 return Ok(Dropped::Going);
             }
             Some(MoveTo::Moving) => {
-                if target_moved(&c.walk(&mut unit.body, me), self.carry_to, true)?.again() {
+                if target_moved(&mut c.walk(&mut unit.body, me), self.carry_to, true)?.again() {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(Dropped::Going);
                 }

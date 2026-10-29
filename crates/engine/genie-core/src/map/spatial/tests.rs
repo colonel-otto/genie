@@ -157,11 +157,11 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
         memory: crate::unit_ai::Memory::default(),
     };
     let mut never = crate::unit_ai::NoAttack;
-    let mut reach = |_: i32, _: f32| Ok(true);
+    let mut reach = |_: &mut Spatial, _: i32, _: f32| Ok(true);
     let still = |_: i32| false;
     let none = |_: &Placed| Ok(false);
     let no_farm = |_: i32| None;
-    let mut search = |s: &Spatial, at| {
+    let mut search = |s: &mut Spatial, at| {
         let f = s
             .search(
                 9,
@@ -176,19 +176,19 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
             .unwrap();
         (f.enemies, f.fresh)
     };
-    assert_eq!(search(&s, [10.0, 10.0]), (true, true));
+    assert_eq!(search(&mut s, [10.0, 10.0]), (true, true));
     // 4 tiles on (16 squared, within 25) the query is skipped: the enemy stays found
-    assert_eq!(search(&s, [10.0, 14.0]), (true, false));
+    assert_eq!(search(&mut s, [10.0, 14.0]), (true, false));
     // a unit AI's full update lets the cache go: the query runs, and finds nothing there
     s.forget_search();
-    assert_eq!(search(&s, [10.0, 14.0]), (false, true));
+    assert_eq!(search(&mut s, [10.0, 14.0]), (false, true));
     // 6 tiles from the last query (36 squared) it runs again
-    assert_eq!(search(&s, [10.0, 8.0]), (true, true));
+    assert_eq!(search(&mut s, [10.0, 8.0]), (true, true));
 }
 
 #[test]
 fn a_rectangle_leaving_the_map_meets_the_edge_records_where_its_diagonal_crosses() {
-    let s = Spatial::new([120, 120]);
+    let mut s = Spatial::new([120, 120]);
     assert_eq!(
         s.edge_records([0.0, 0.0, 120.0, 120.0], 25),
         Vec::<Hit>::new()
@@ -243,14 +243,14 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
     );
     assert!(!line(&s, &[]));
     // the class-2 tile (7, 2) once its record is put, for a mask that lacks its class
-    let across = || s.still_line_hit([7.5, 1.0], [7.5, 4.0], 0.0, &[]).unwrap();
-    assert!(!across());
+    let across = |s: &Spatial| s.still_line_hit([7.5, 1.0], [7.5, 4.0], 0.0, &[]).unwrap();
+    assert!(!across(&s));
     s.put_tile_records([6.0, 1.0], [8.0, 3.0], 0.0, 3);
-    assert!(!across());
+    assert!(!across(&s));
     s.put_tile_records([6.0, 1.0], [8.0, 3.0], 0.0, 1);
-    assert!(across());
+    assert!(across(&s));
     s.clear_tile_records();
-    assert!(!across());
+    assert!(!across(&s));
     assert!(s.still_line_hit([1.0, 5.0], [10.5, 5.0], 0.0, &[]).unwrap());
     // a line 0.3 beside the standing villager (radius 0.2): met only with a buffer of 0.2
     let mut t = Spatial::with_tiles([10, 10], Tiles::new(10, 10, vec![1; 100]));
@@ -352,7 +352,7 @@ fn a_last_move_set_outside_the_object_s_update_reaches_the_walk() {
 fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
     let mut classes = vec![1u8; 100];
     classes[5 * 10 + 4] = 2;
-    let s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
+    let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
     assert_eq!((s.manager_buffer(), s.manager_grow()), (None, 0.0));
     s.set_manager_buffer(Some(0.1));
     assert_eq!(s.manager_grow(), 0.1);
@@ -832,9 +832,14 @@ fn the_visible_map_s_tile_test_reads_only_the_players_bits() {
 #[test]
 fn the_free_spot_beside_a_footprint_is_the_closest_empty_tile_around_it() {
     // the game sends 9175 to (29.5, 89.5): (30, 89) is as close but holds 9175 itself
-    let (s, house) = site();
+    let (mut s, house) = site();
     assert_eq!(
-        s.spot_beside([30.0, 89.0, 0.0], (1, 0.2), 6, &house),
+        s.spot_beside(
+            [30.0, 89.0, 0.0],
+            (1, 0.2),
+            6,
+            (house.position, house.radius)
+        ),
         Ok(Some([29.5, 89.5]))
     );
 }
@@ -941,7 +946,7 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
 fn a_walk_meets_a_tile_whose_terrain_the_unit_cannot_cross() {
     let mut classes = vec![1; 256];
     classes[5 * 16 + 9] = 2;
-    let s = Spatial::with_tiles([16, 16], Tiles::new(16, 16, classes));
+    let mut s = Spatial::with_tiles([16, 16], Tiles::new(16, 16, classes));
     assert!(s.segment_blocked([2.0, 5.5], [14.0, 5.5], 0.2, 1, &[]));
     assert!(!s.segment_blocked([2.0, 5.5], [14.0, 5.5], 0.2, 3, &[]));
     // a walk whose grown box leaves the map
@@ -955,7 +960,7 @@ fn a_walk_meets_a_tile_whose_terrain_the_unit_cannot_cross() {
 fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
     let mut classes = vec![1; 64 * 64];
     classes[5 * 64 + 5] = 0;
-    let s = Spatial::with_tiles([64, 64], Tiles::new(64, 64, classes));
+    let mut s = Spatial::with_tiles([64, 64], Tiles::new(64, 64, classes));
     let (a, b) = ([6.5, 6.5], [7.5, 7.5]);
     assert!(!s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
     s.clear_tile_records();
@@ -1035,7 +1040,7 @@ fn a_tile_record_blocks_later_walks_until_the_records_are_cleared() {
     let mut classes = vec![1; 128 * 128];
     classes[90 * 128 + 78] = 0;
     classes[87 * 128 + 78] = 0;
-    let s = Spatial::with_tiles([128, 128], Tiles::new(128, 128, classes));
+    let mut s = Spatial::with_tiles([128, 128], Tiles::new(128, 128, classes));
     let (first, second) = (([77.5, 90.5], [76.5, 91.5]), ([77.5, 91.5], [76.5, 92.5]));
     // alone, the second walk's tiles stop at y = 91 and its test removes its records
     assert!(!s.segment_blocked(second.0, second.1, 0.5, 1, &[]));
@@ -1120,7 +1125,7 @@ fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_i
 /// next set; the objects' part of the point query leaves the edge's records out.
 #[test]
 fn the_manager_keeps_the_last_ignore_list_set() {
-    let s = Spatial::new([10, 10]);
+    let mut s = Spatial::new([10, 10]);
     assert_eq!(s.manager_ignore(), Vec::<i32>::new());
     let rect = [2.0, 5.0, 3.0, 5.0];
     let _ = s

@@ -319,7 +319,7 @@ impl World {
         let player = &self.players[p];
         let world = crate::unit_ai::world_view::DropWorld {
             masters: self.masters.get(p),
-            spatial: &self.spatial,
+            spatial: &mut self.spatial,
             zones: &mut self.zones,
             pathing: &mut self.pathing,
             object: self.streams.get(Stream::Object),

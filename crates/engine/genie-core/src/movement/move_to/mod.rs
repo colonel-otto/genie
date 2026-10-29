@@ -420,7 +420,7 @@ pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Genie
 /// left them, [`Spatial::manager_grow`], [`Spatial::manager_ignore`]), and walks on;
 /// else it tells the unit (notify 0x1fc), turns to state 3 and the motion step runs on. True when
 /// the `MoveTo` turns to state 3.
-pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow, GenieError> {
+pub fn target_moved(walk: &mut Walk<'_>, target: i32, quiet: bool) -> Result<Follow, GenieError> {
     let t = walk
         .world
         .get_known(target)?
@@ -433,7 +433,8 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
         .ok_or(GenieError::unsupported(
             "a MoveTo to a target whose point the slice does not hold",
         ))?;
-    let (dx, dy) = (point[0] - t.position[0], point[1] - t.position[1]);
+    let at = t.position;
+    let (dx, dy) = (point[0] - at[0], point[1] - at[1]);
     if !(dx < OFF_LOW || OFF_HIGH < dx || dy < OFF_LOW || OFF_HIGH < dy) {
         return Ok(Follow::Stays);
     }
@@ -443,7 +444,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
     let mover = walk.body.mover().ok_or(crate::world::WALKER_UNMOVING)?;
     if mover.walks_to_path_end()? {
         let me = walk.position();
-        let (a, b) = ([me[0], me[1]], [t.position[0], t.position[1]]);
+        let (a, b) = ([me[0], me[1]], [at[0], at[1]]);
         let grow = walk.world.manager_grow();
         walk.world.check_known_records([
             a[0].min(b[0]) - grow,
@@ -456,7 +457,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
             .world
             .segment_blocked(a, b, grow, mover.stats.restriction_mask, &ignore)
         {
-            return Ok(Follow::PathEnd(t.position));
+            return Ok(Follow::PathEnd(at));
         }
     }
     Ok(Follow::Again)
@@ -564,7 +565,7 @@ mod tests {
             let mut mover = crate::movement::tests::builder_9177();
             mover.move_to_point = point;
             let mut mover = Body::new([28.0, 89.0, 0.0], None, Some(mover));
-            let walk = Walk {
+            let mut walk = Walk {
                 body: &mut mover,
                 me: Me {
                     id: 9177,
@@ -575,7 +576,7 @@ mod tests {
                 world: &mut world,
                 plan: None,
             };
-            target_moved(&walk, target, quiet)
+            target_moved(&mut walk, target, quiet)
         };
         let on = Some([30.4, 88.0, 0.0]);
         let off = Some([30.6, 88.0, 0.0]);

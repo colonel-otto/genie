@@ -2,7 +2,7 @@
 //! spots.
 
 use crate::GenieError;
-use crate::map::spatial::{BLOCKED, Placed, Spatial};
+use crate::map::spatial::{BLOCKED, Spatial};
 use crate::vision::visibility::Visibility;
 
 impl Spatial {
@@ -320,6 +320,7 @@ impl Spatial {
 
     /// Whether player `player` sees tile (`x`, `y`): [`Spatial::tile_sight`] is 0xf. False
     /// without the players' sight.
+    #[must_use]
     pub fn sees_tile(&self, player: usize, x: i32, y: i32) -> bool {
         self.tile_sight(player, x, y) == Some(0xf)
     }
@@ -337,6 +338,7 @@ impl Spatial {
 
     /// [`Spatial::visibility`] is 0xf: player `player` sees tile (`x`, `y`) now. False without
     /// the players' sight.
+    #[must_use]
     pub fn visible(&self, player: usize, x: i32, y: i32) -> bool {
         self.visibility(player, x, y) == Some(0xf)
     }
@@ -462,7 +464,7 @@ impl Spatial {
     ///
     /// Never: the tall-object grid covers the map as the word grid does.
     pub fn passable(
-        &self,
+        &mut self,
         x: i32,
         y: i32,
         mask: u8,
@@ -488,12 +490,12 @@ impl Spatial {
     ///
     /// As [`Spatial::spot_off`].
     pub fn spot_beside(
-        &self,
+        &mut self,
         from: [f32; 3],
         me: (i32, f32),
         mask: u8,
-        site: &Placed,
+        site: ([f32; 3], [f32; 2]),
     ) -> Result<Option<[f32; 2]>, GenieError> {
-        self.spot_off(from, me, mask, (site.position, site.radius), false)
+        self.spot_off(from, me, mask, site, false)
     }
 }

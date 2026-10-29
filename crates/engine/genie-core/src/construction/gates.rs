@@ -15,7 +15,7 @@ use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, 
 /// most 25; the second answer is how many of them are of a player the gate's counts an ally
 /// (`FUN_141663d90` with the ally flag).
 pub(crate) fn gate_units(
-    spatial: &Spatial,
+    spatial: &mut Spatial,
     gate: i32,
     annexes: &[i32],
 ) -> Result<(Vec<i32>, usize), GenieError> {

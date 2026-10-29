@@ -15,7 +15,7 @@ pub(crate) struct Seeker<'a, 'b> {
     pub(crate) me: Me,
     pub(crate) mover: &'a Mover,
     pub(crate) plan: &'a mut Planning<'b>,
-    pub(crate) spatial: &'a Spatial,
+    pub(crate) spatial: &'a mut Spatial,
     pub(crate) zones: &'a crate::pathing::zones::ZoneMap,
     /// Its master's class.
     pub(crate) class: i16,
@@ -336,6 +336,8 @@ mod tests {
         spatial: &Spatial,
     ) -> Result<Option<i32>, GenieError> {
         let mover = crate::gathering::hunt::tests::walker();
+        // the search writes the obstruction manager's scratch: it runs on the fixture's copy
+        let mut spatial = spatial.clone();
         let zones = ZoneMap::new(40, 40, &[0; 1600], &[1.0]);
         let mut pathing = Pathing::default();
         let mut object = Well512::default();
@@ -357,7 +359,7 @@ mod tests {
             },
             mover: &mover,
             plan: &mut plan,
-            spatial,
+            spatial: &mut spatial,
             zones: &zones,
             class,
             by_path: true,

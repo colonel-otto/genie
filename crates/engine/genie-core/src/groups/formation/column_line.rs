@@ -433,12 +433,13 @@ impl World {
     ///
     /// As the transform and the units' assignment.
     pub(crate) fn create_column_line(
-        &self,
+        &mut self,
         formation: &mut Formation,
-        g: &UnitGroup,
+        group: i32,
         column: bool,
         staggered_flanked: (bool, bool),
     ) -> Result<bool, GenieError> {
+        let g = self.groups.held(group)?;
         if !column_line_slots(formation, g, column, staggered_flanked, self.world_time) {
             return Ok(false);
         }
@@ -446,7 +447,7 @@ impl World {
             && g.previous_formation
                 .as_ref()
                 .is_some_and(|p| p.kind == COLUMN);
-        self.lay_units(formation, g, after_column)?;
+        self.lay_units(formation, group, after_column)?;
         Ok(true)
     }
 }

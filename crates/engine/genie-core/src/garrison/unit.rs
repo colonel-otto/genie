@@ -56,7 +56,7 @@ impl Unit {
     /// The target's master's and [`crate::garrison::enter_view`]'s.
     fn enter_reads(
         &self,
-        c: &Step<'_>,
+        c: &mut Step<'_>,
         enter: &crate::garrison::EnterAction,
     ) -> Result<crate::garrison::EnterReads, GenieError> {
         let others = OthersRef::of(&c.w.players, c.player);
@@ -65,7 +65,7 @@ impl Unit {
                 let master = t.master(&c.w.masters, tp)?;
                 let room = units_inside(others, t.id) < usize::from(master.garrison);
                 let (mut view, start) = crate::garrison::enter_view(
-                    &c.w.spatial,
+                    &mut c.w.spatial,
                     &c.w.masters,
                     self,
                     (t, master, room),

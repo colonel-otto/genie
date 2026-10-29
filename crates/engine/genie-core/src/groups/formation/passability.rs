@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
-use crate::groups::{Formation, Slot, UnitGroup};
+use crate::groups::{Formation, Slot};
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{Vec3, scale, sub};
 use crate::math::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
@@ -59,14 +59,15 @@ impl World {
     ///
     /// A formation line past the lines' array, and the routines it runs.
     pub fn formation_transform(
-        &self,
+        &mut self,
         formation: &mut Formation,
-        g: &UnitGroup,
+        group: i32,
         column_to_line: bool,
     ) -> Result<bool, GenieError> {
         if formation.slots.is_empty() {
             return Ok(false);
         }
+        let g = self.groups.held(group)?;
         let world = (self.world_time, self.spatial.map);
         let canon = [
             if formation.about_faced == 0 {
@@ -152,7 +153,7 @@ impl World {
             }
             took = true;
         }
-        self.passable_slots(formation, g)?;
+        self.passable_slots(formation, group)?;
         Ok(took)
     }
 
@@ -192,10 +193,11 @@ impl World {
     /// Never: an active slot was found, so the nearest one is too (its distance is finite).
     #[allow(clippy::too_many_lines)]
     pub(super) fn passable_slots(
-        &self,
+        &mut self,
         formation: &mut Formation,
-        g: &UnitGroup,
+        group: i32,
     ) -> Result<(), GenieError> {
+        let g = self.groups.held(group)?;
         let tester = self.lead_object(&g.motion).or_else(|| {
             formation
                 .slots

@@ -35,10 +35,10 @@ impl Mover {
     pub(super) fn reach_test(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         to: [f32; 2],
-        target: Option<(i32, &Placed)>,
+        target: Option<i32>,
         range: f32,
         master: i16,
     ) -> Result<bool, GenieError> {
@@ -57,8 +57,12 @@ impl Mover {
         }
         let radius = self.stats.radius;
         let ground = [radius[0], radius[1]];
-        let (target_id, target_radius) = target.map_or((-1, 0.0), |(id, t)| (id, t.radius[0]));
-        let bonus = target.is_some_and(|(_, t)| t.master == WIDE_MASTER || t.class == WIDE_CLASS);
+        // the target is read where it is tested: the short path below is handed the spatial
+        // index, which it writes
+        let placed = target_placed(world, target)?;
+        let target_id = target.unwrap_or(-1);
+        let target_radius = placed.map_or(0.0, |t| t.radius[0]);
+        let bonus = placed.is_some_and(|t| t.master == WIDE_MASTER || t.class == WIDE_CLASS);
         let mut path = Path::default();
         if let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) {
             let req = Request {
@@ -80,16 +84,15 @@ impl Mover {
             let goal = [to[0], 0.0, to[1]];
             // FUN_140fa0370 hands the start test both vectors' first two floats: x and the
             // height, the unit's (`+0x824`) and the target's (slot 0x520), not x and y
-            let height = target.map_or(0.0, |(_, t)| t.position[2]);
+            let height = placed.map_or(0.0, |t| t.position[2]);
             let line = ([x, height_at], [to[0], height]);
-            let ignore =
-                self.ignore_list(me, world, plan, target.map(|(_, t)| t), target_id, line)?;
+            let ignore = self.ignore_list(me, world, plan, placed, target_id, line)?;
             let lists = (&ignore[..], &[][..]);
             if self.short_path(me, world, plan, goal, range, target_id, lists, &mut path)? < 2 {
                 return Ok(true);
             }
         }
-        let long_target = if let Some((_, t)) = target {
+        let long_target = if let Some(t) = target_placed(world, target)? {
             let gap2 = footprint_gap_squared(self.position(), ground, t.position, t.radius);
             if gap2 < REACH_NEAR {
                 return Ok(false);
@@ -122,7 +125,7 @@ impl Mover {
             ignore_units: &self.ignore_units,
             group_units: plan.groups.group_units(me.group),
         };
-        let lowered = lowered_units(&walker, world, target.map(|(id, _)| id))
+        let lowered = lowered_units(&walker, world, target)
             .into_iter()
             .filter_map(|id| world.get(id))
             .filter(|p| p.tall)
@@ -522,4 +525,17 @@ impl Mover {
             .map(|&(_, p)| p)
             .or_else(|| world.gait(id).and_then(|g| g.pause))
     }
+}
+
+/// The place of a reach test's target in the spatial index, None without a target. The caller
+/// found the target there, so a missing one is a broken invariant.
+fn target_placed(world: &Spatial, target: Option<i32>) -> Result<Option<&Placed>, GenieError> {
+    target
+        .map(|id| {
+            world.get(id).ok_or_else(|| {
+                GenieError::unreachable("a reach test's target left the spatial index")
+                    .with("object", id)
+            })
+        })
+        .transpose()
 }

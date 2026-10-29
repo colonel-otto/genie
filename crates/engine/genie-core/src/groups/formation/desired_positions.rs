@@ -169,29 +169,32 @@ impl World {
             g.current_formation = Some(Formation::new());
         }
         let mut f = g.current_formation.take().expect("made above");
-        let g = self.groups.get(group).expect("the group read above");
         let result = match kind {
             LINE | STAGGERED | FLANKED | COLUMN if !laid_out => self
                 .create_column_line(
                     &mut f,
-                    g,
+                    group,
                     kind == COLUMN,
                     (kind == STAGGERED, kind == FLANKED),
                 )
                 .map(|_| ()),
-            PHALANX if !laid_out => self.create_phalanx(&mut f, g).map(|_| ()),
-            BOX if !laid_out => self.create_box(&mut f, g).map(|_| ()),
+            PHALANX if !laid_out => self.create_phalanx(&mut f, group).map(|_| ()),
+            BOX if !laid_out => self.create_box(&mut f, group).map(|_| ()),
             // true: the group has members; the transform after (`LAB_141040abf`)
             HORDE if !laid_out => self
-                .create_horde(&mut f, g)
-                .and_then(|_| self.formation_transform(&mut f, g, false))
+                .groups
+                .held(group)
+                .and_then(|g| self.create_horde(&mut f, g))
+                .and_then(|_| self.formation_transform(&mut f, group, false))
                 .map(|_| ()),
             USER_DEFINED if !laid_out => self
-                .create_udf(&mut f, g)
-                .and_then(|_| self.formation_transform(&mut f, g, false))
+                .groups
+                .held(group)
+                .and_then(|g| self.create_udf(&mut f, g))
+                .and_then(|_| self.formation_transform(&mut f, group, false))
                 .map(|_| ()),
             // laid out already, or a type the switch does not know: the transform alone
-            _ => self.formation_transform(&mut f, g, false).map(|_| ()),
+            _ => self.formation_transform(&mut f, group, false).map(|_| ()),
         };
         self.groups
             .get_mut(group)

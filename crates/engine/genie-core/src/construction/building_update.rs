@@ -64,7 +64,7 @@ impl Unit {
             return Ok(());
         }
         let locked = gate.locked;
-        let (total, allied) = self.gate_count(c, others)?;
+        let (total, allied) = self.gate_count(&mut c.w.spatial, others)?;
         let gate = self.gate.as_mut().expect("held above");
         if shut && 0 < allied && !locked {
             gate.close_timer = 0.0;
@@ -107,14 +107,11 @@ impl Unit {
     /// as made): the units in it and how many of them are of an ally.
     pub(crate) fn gate_count(
         &self,
-        c: &Step<'_>,
+        spatial: &mut Spatial,
         others: OthersRef<'_>,
     ) -> Result<(usize, usize), GenieError> {
-        let (units, allied) = gate_units(
-            &c.w.spatial,
-            self.id,
-            &annexes_of(self.id, others.own_iter()),
-        )?;
+        let (units, allied) =
+            gate_units(spatial, self.id, &annexes_of(self.id, others.own_iter()))?;
         Ok((units.len(), allied))
     }
 

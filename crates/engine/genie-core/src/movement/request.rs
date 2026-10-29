@@ -28,7 +28,7 @@ impl Mover {
     pub(super) fn request(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         goal: Goal<'_>,
         plans: &mut u32,
@@ -199,7 +199,7 @@ impl Mover {
     pub(super) fn long_plan(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &Planning<'_>,
         waypoint: Vec3,
         way: f32,
@@ -255,7 +255,7 @@ impl Mover {
     pub(super) fn walled_off(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         target_id: i32,
         path: &mut Path,
     ) -> Result<bool, GenieError> {

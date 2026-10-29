@@ -222,11 +222,11 @@ impl RepairAction {
     /// x radius and its terrain restriction's mask.
     fn can_path(
         &self,
-        c: &Step<'_>,
+        c: &mut Step<'_>,
         repairer: &Unit,
         reads: &RepairReads,
     ) -> Result<bool, GenieError> {
-        let spatial = &c.w.spatial;
+        let spatial = &mut c.w.spatial;
         let terrain = spatial
             .terrain
             .as_ref()
@@ -234,11 +234,12 @@ impl RepairAction {
         let r = reads
             .restriction
             .ok_or(crate::pathing::hull_path::NO_RESTRICTION)?;
+        let mask = terrain.restriction_mask(r);
         crate::pathing::hull_path::quick_reach(
             spatial,
             repairer.id,
             self.target,
-            terrain.restriction_mask(r),
+            mask,
             reads.radius[0],
             REACH,
         )

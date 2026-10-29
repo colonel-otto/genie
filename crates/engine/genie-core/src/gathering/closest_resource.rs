@@ -15,7 +15,7 @@ use crate::world::step::Step;
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
 pub(crate) struct ResourceWorld<'a, 'b> {
     pub(crate) player: usize,
-    pub(crate) spatial: &'a Spatial,
+    pub(crate) spatial: &'a mut Spatial,
     pub(crate) zones: &'a mut crate::pathing::zones::Zones,
     pub(crate) foreign: Foreign<'a>,
     pub(crate) every: &'a [Masters],
@@ -121,8 +121,7 @@ pub(crate) fn closest_resource_of(
         })
     };
     let me = candidate(me_id, player, unit, unit.position())?;
-    let spatial: &Spatial = c.spatial;
-    let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
+    let objects = |spatial: &Spatial, x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
         spatial
             .objects_on(x, y)
             .map(|(id, p)| {
@@ -159,11 +158,12 @@ pub(crate) fn closest_resource_of(
         site.as_ref(),
         kind,
         cap,
-        spatial.map,
-        &|x, y| spatial.explored(player, x, y),
-        &|x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
+        c.spatial.map,
+        c.spatial,
+        &|spatial, x, y| spatial.explored(player, x, y),
+        &|spatial, x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
         &objects,
-        &mut |id| mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id),
+        &mut |spatial, id| mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id),
     )
 }
 
@@ -187,7 +187,7 @@ impl UnitView<'_, '_> {
     ) -> Result<Option<crate::unit_ai::Gatherable>, GenieError> {
         let mut w = ResourceWorld {
             player: self.player,
-            spatial: &self.c.w.spatial,
+            spatial: &mut self.c.w.spatial,
             zones: &mut self.c.w.zones,
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
             every: &self.c.w.masters,
@@ -261,7 +261,7 @@ impl Unit {
             .current_target;
         let mut w = ResourceWorld {
             player: c.player,
-            spatial: &c.w.spatial,
+            spatial: &mut c.w.spatial,
             zones: &mut c.w.zones,
             foreign: others.players(),
             every: &c.w.masters,

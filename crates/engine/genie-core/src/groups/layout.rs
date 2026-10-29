@@ -592,14 +592,14 @@ impl World {
     ///
     /// As the transform and the units' assignment.
     pub(crate) fn create_phalanx(
-        &self,
+        &mut self,
         formation: &mut Formation,
-        g: &UnitGroup,
+        group: i32,
     ) -> Result<bool, GenieError> {
-        if !phalanx_slots(formation, g, self.world_time) {
+        if !phalanx_slots(formation, self.groups.held(group)?, self.world_time) {
             return Ok(false);
         }
-        self.lay_units(formation, g, false)?;
+        self.lay_units(formation, group, false)?;
         Ok(true)
     }
 
@@ -611,14 +611,14 @@ impl World {
     ///
     /// As [`box_slots`], the transform and the units' assignment.
     pub(crate) fn create_box(
-        &self,
+        &mut self,
         formation: &mut Formation,
-        g: &UnitGroup,
+        group: i32,
     ) -> Result<bool, GenieError> {
-        if !box_slots(formation, g, self.world_time)? {
+        if !box_slots(formation, self.groups.held(group)?, self.world_time)? {
             return Ok(false);
         }
-        self.lay_units(formation, g, false)?;
+        self.lay_units(formation, group, false)?;
         Ok(true)
     }
 }
@@ -831,7 +831,7 @@ mod tests {
     /// slots and `lay_units` without the column-to-line flag.
     #[test]
     fn a_phalanx_and_a_box_take_their_units_after_their_slots() {
-        let t = three_at_six();
+        let mut t = three_at_six();
         let g = t.groups.get(1).unwrap().clone();
         let stale = Slot {
             unit_id: 99,
@@ -841,10 +841,10 @@ mod tests {
         let mut start = Formation::new();
         start.spare_slots = vec![stale; 9];
         let mut whole = start.clone();
-        assert!(t.create_phalanx(&mut whole, &g).unwrap());
+        assert!(t.create_phalanx(&mut whole, 1).unwrap());
         let mut parts = start.clone();
         assert!(phalanx_slots(&mut parts, &g, t.world_time));
-        t.lay_units(&mut parts, &g, false).unwrap();
+        t.lay_units(&mut parts, 1, false).unwrap();
         assert_eq!(whole, parts);
         let mut ids: Vec<i32> = whole.slots.iter().map(|s| s.unit_id).collect();
         ids.sort_unstable();
@@ -856,16 +856,17 @@ mod tests {
                 .all(|s| (s.unit_id, s.position_filled) == (-1, 0))
         );
         let mut whole = start.clone();
-        assert!(t.create_box(&mut whole, &g).unwrap());
+        assert!(t.create_box(&mut whole, 1).unwrap());
         let mut parts = start;
         assert!(box_slots(&mut parts, &g, t.world_time).unwrap());
-        t.lay_units(&mut parts, &g, false).unwrap();
+        t.lay_units(&mut parts, 1, false).unwrap();
         assert_eq!(whole, parts);
         assert!(whole.slots.iter().all(|s| s.unit_id != -1));
         // without members, nothing
         let mut none = Formation::new();
-        assert!(!t.create_box(&mut none, &group(0, 1.0, &[])).unwrap());
-        assert!(!t.create_phalanx(&mut none, &group(0, 1.0, &[])).unwrap());
+        t.groups.groups[0] = group(0, 1.0, &[]);
+        assert!(!t.create_box(&mut none, 1).unwrap());
+        assert!(!t.create_phalanx(&mut none, 1).unwrap());
     }
 
     /// `FUN_141013eb0` and `FUN_141014f60` look their members up themselves: a held member's

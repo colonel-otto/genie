@@ -284,7 +284,7 @@ impl World {
     ///
     /// A target the world does not place, and [`enter_view`]'s.
     pub(super) fn entering(
-        &self,
+        &mut self,
         player: usize,
         idx: usize,
         target: i32,
@@ -296,7 +296,7 @@ impl World {
         let room = self.has_room(tp, t, Some(id))?;
         let t = placed_object(&self.players, self.place(target))?;
         enter_view(
-            &self.spatial,
+            &mut self.spatial,
             &self.masters,
             &self.players[player].objects[idx],
             (t, &tm, room),
@@ -324,7 +324,7 @@ impl World {
         let master = target.master(&self.masters, tp)?.clone();
         let target = placed_object(&self.players, self.place(action.target))?;
         let meeting = Meeting {
-            spatial: &self.spatial,
+            spatial: &mut self.spatial,
             zones: &mut self.zones,
             target,
             master: &master,
@@ -354,7 +354,7 @@ impl World {
         let room = self.has_room(tp, t, Some(id))?;
         let target = placed_object(&self.players, self.place(target))?;
         Meeting {
-            spatial: &self.spatial,
+            spatial: &mut self.spatial,
             zones: &mut self.zones,
             target,
             master: &master,
@@ -386,7 +386,7 @@ impl World {
             construction_rate: self.players[tp].construction_rate,
             groups: &self.groups,
         };
-        if !ship_reaches(ship, &self.spatial, &mut plan, to)? {
+        if !ship_reaches(ship, &mut self.spatial, &mut plan, to)? {
             return Err(UNREACHED);
         }
         self.ship_move(transport, to)

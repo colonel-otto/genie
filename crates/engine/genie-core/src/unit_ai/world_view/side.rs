@@ -7,7 +7,7 @@
 
 use crate::GenieError;
 use crate::gathering::closest_resource::herded;
-use crate::map::spatial::Placed;
+use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::masters::player_master;
@@ -130,11 +130,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     }
 
     fn duel(&mut self, other: i32) -> Result<crate::unit_ai::Duel, GenieError> {
-        self.picker(None).duel(other)
+        self.picker(None).duel(&self.c.w.spatial, other)
     }
 
     fn harmless(&mut self, attacker: i32) -> Result<bool, GenieError> {
-        self.picker(None).harmless(attacker)
+        self.picker(None).harmless(&self.c.w.spatial, attacker)
     }
 
     fn defended_attacker(&mut self, target: i32) -> Result<Option<i32>, GenieError> {
@@ -216,7 +216,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         ))?;
         mover.reaches_object(
             &walker,
-            &self.c.w.spatial,
+            &mut self.c.w.spatial,
             &mut plan,
             target,
             range,
@@ -236,7 +236,6 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             player: self.player,
             others: owner_view(&self.c.w.players, self.c.player, self.new_owner),
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
-            spatial: &self.c.w.spatial,
             every: &self.c.w.masters,
             restriction: self
                 .unit
@@ -268,9 +267,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let (mover, master_id, spatial) =
-            (unit.body.mover(), unit.life.master_id, &self.c.w.spatial);
-        let mut reach = |id: i32, range: f32| {
+        let (mover, master_id) = (unit.body.mover(), unit.life.master_id);
+        let mut reach = |spatial: &mut Spatial, id: i32, range: f32| {
             let m = mover.ok_or(GenieError::unsupported(
                 "a reach test of a unit that does not move",
             ))?;
@@ -286,7 +284,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         };
         // a farm's workers (`+0x644`) and its pasture (`+0x790`)
         let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
-        spatial.search(
+        self.c.w.spatial.search(
             unit.id,
             self.player,
             search,
@@ -310,7 +308,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         if !held {
             return Ok(None);
         }
-        let (t, _) = picker.target(target)?;
+        let (t, _) = picker.target(&self.c.w.spatial, target)?;
         Ok(
             crate::unit_ai::can_attack(&self.attacker, seeker, &t)?
                 .then_some((t.class, t.position)),

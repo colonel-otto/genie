@@ -40,7 +40,7 @@ impl Spatial {
     /// [`Gait::moving`]: crate::map::spatial::Gait::moving
     #[allow(clippy::too_many_arguments)]
     pub(super) fn pather_query(
-        &self,
+        &mut self,
         a: [f32; 2],
         b: [f32; 2],
         buffer: Option<f32>,
@@ -76,7 +76,7 @@ impl Spatial {
         };
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
-        for &(y, x) in self.tile_records.borrow().iter() {
+        for &(y, x) in &self.tile_records {
             let id = tile_record_id(x, y);
             let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
             if self.visits_cell(level, x >> shift, y >> shift, grown)
@@ -126,7 +126,7 @@ impl Spatial {
     /// Whether the old short pather's walk `a` -> `b` meets a record ([`Spatial::pather_query`]:
     /// `FUN_141052b90`, then `FUN_141052350` with flags 0x40).
     pub fn pather_blocked(
-        &self,
+        &mut self,
         a: [f32; 2],
         b: [f32; 2],
         buffer: Option<f32>,
@@ -141,7 +141,7 @@ impl Spatial {
     /// The records the old short pather's walk `a` -> `b` meets, at most 25
     /// ([`Spatial::pather_query`]: `FUN_141052b90`, then `FUN_141051900` with flags 0x40).
     pub fn pather_hits(
-        &self,
+        &mut self,
         a: [f32; 2],
         b: [f32; 2],
         buffer: Option<f32>,
@@ -236,7 +236,7 @@ pub(super) fn ccw(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2]) -> i32 {
 /// end removes them ([`Spatial::clear_tile_records`]).
 #[derive(Debug)]
 pub struct SmoothingWalls<'a> {
-    pub(super) world: &'a Spatial,
+    pub(super) world: &'a mut Spatial,
     pub(super) radius: f32,
     pub(super) mask: u8,
     pub(super) ignore: &'a [i32],
@@ -248,7 +248,7 @@ impl<'a> SmoothingWalls<'a> {
     /// The test of a unit `radius` wide (the manager's buffer) whose terrain mask is `mask`,
     /// with the manager's ignore list `ignore`.
     #[must_use]
-    pub const fn new(world: &'a Spatial, radius: f32, mask: u8, ignore: &'a [i32]) -> Self {
+    pub const fn new(world: &'a mut Spatial, radius: f32, mask: u8, ignore: &'a [i32]) -> Self {
         Self {
             world,
             radius,

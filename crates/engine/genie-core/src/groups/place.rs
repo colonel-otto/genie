@@ -142,7 +142,7 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn clear_spot(&self, group: i32, centroid: Vec3) -> Result<Vec3, GenieError> {
+    pub fn clear_spot(&mut self, group: i32, centroid: Vec3) -> Result<Vec3, GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let Some(first) = g.members.first() else {
             return Ok(centroid);

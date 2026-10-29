@@ -262,7 +262,7 @@ impl Mover {
     pub(super) fn short_path(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         to: Vec3,
         range: f32,
@@ -303,7 +303,7 @@ impl Mover {
     pub(super) fn tile_plan(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         to: Vec3,
         radii: f32,
@@ -337,7 +337,7 @@ impl Mover {
     pub fn reaches(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         to: [f32; 2],
         range: f32,
@@ -352,7 +352,7 @@ impl Mover {
     pub fn reaches_object(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: &mut Planning<'_>,
         target: i32,
         range: f32,
@@ -362,7 +362,7 @@ impl Mover {
             return Ok(false);
         };
         let to = [t.position[0], t.position[1]];
-        self.reach_test(me, world, plan, to, Some((target, t)), range, master)
+        self.reach_test(me, world, plan, to, Some(target), range, master)
     }
 
     /// Slot 0x3e8 of the unit (`FUN_14114f790`): the length of its short path to object `target`
@@ -374,7 +374,7 @@ impl Mover {
     pub fn short_reach(
         &self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         target: i32,
         range: f32,
     ) -> Result<Option<f32>, GenieError> {

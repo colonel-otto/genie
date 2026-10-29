@@ -18,7 +18,6 @@ impl UnitView<'_, '_> {
             player: self.player,
             others: owner_view(&self.c.w.players, self.c.player, self.new_owner),
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
-            spatial: &self.c.w.spatial,
             every: &self.c.w.masters,
             restriction: -1,
             unit: &*self.unit,
@@ -109,7 +108,7 @@ impl UnitView<'_, '_> {
             })
             .flatten();
         let picker = self.picker(None);
-        let (target, _) = picker.target(attacker)?;
+        let (target, _) = picker.target(&self.c.w.spatial, attacker)?;
         crate::unit_ai::can_attack(&me, &ai.seeker_with(target_kind), &target)
     }
 }

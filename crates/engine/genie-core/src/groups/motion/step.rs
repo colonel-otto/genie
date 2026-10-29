@@ -22,7 +22,7 @@ pub(super) enum Pass {
 
 /// The world as `BMotion`'s path step reads it.
 pub(crate) struct StepWorld<'w, 'p> {
-    pub(crate) spatial: &'w Spatial,
+    pub(crate) spatial: &'w mut Spatial,
     pub(crate) plan: &'w mut Planning<'p>,
     pub(crate) dt: f32,
 }
@@ -93,7 +93,7 @@ pub(super) fn pass(
     world: &mut StepWorld<'_, '_>,
     budget: bool,
 ) -> Result<Pass, GenieError> {
-    let spatial = world.spatial;
+    let spatial = &mut *world.spatial;
     let level = &motion.paths[0];
     if !level.has_path {
         return Ok(Pass::Done(false));

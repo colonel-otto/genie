@@ -338,7 +338,7 @@ impl GatherAction {
             Some(MoveTo::Moving) => {
                 // a MoveTo to a point has no target to follow
                 if self.walk_to.is_none()
-                    && target_moved(&c.walk(&mut unit.body, me), self.target, true)?.again()
+                    && target_moved(&mut c.walk(&mut unit.body, me), self.target, true)?.again()
                 {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(());

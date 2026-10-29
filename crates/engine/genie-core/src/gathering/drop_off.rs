@@ -284,7 +284,7 @@ impl Unit {
     pub(crate) fn gather_drop_off(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.w.masters.get(c.player),
-            spatial: &c.w.spatial,
+            spatial: &mut c.w.spatial,
             zones: &mut c.w.zones,
             pathing: &mut c.w.pathing,
             object: c.w.streams.get(Stream::Object),

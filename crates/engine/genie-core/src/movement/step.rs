@@ -315,7 +315,7 @@ impl Mover {
     pub(super) fn level_state(
         &mut self,
         me: &Me,
-        world: &Spatial,
+        world: &mut Spatial,
         plan: Option<&mut Planning<'_>>,
         goal: Goal<'_>,
         plans: &mut u32,
@@ -427,7 +427,7 @@ impl Mover {
         &mut self,
         me: &Me,
         dt: f32,
-        (world, groups): (&Spatial, Option<&crate::groups::UnitGroups>),
+        (world, groups): (&mut Spatial, Option<&crate::groups::UnitGroups>),
         pathing: Option<&mut Pathing>,
         goal: Goal<'_>,
         (now, computer): (u32, bool),

@@ -60,7 +60,7 @@ pub fn old_pather_paths(
             continue;
         };
         let mut pather = genie_core::pathing::hull_path::HullPather::new(
-            &turns.spatial,
+            &mut turns.spatial,
             id,
             target,
             mask,

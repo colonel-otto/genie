@@ -6333,14 +6333,14 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
     s.insert(27746, placed(18.5, 39, 1, 0.0, 2));
     s.insert(27747, placed(21.5, 39, 1, 0.0, 2));
     s.insert(1, placed(19.6, 4, 1, 0.8, 5));
-    let (units, allied) = gate_units(&s, 27745, &[27746, 27747]).unwrap();
+    let (units, allied) = gate_units(&mut s, 27745, &[27746, 27747]).unwrap();
     assert_eq!((units, allied), (vec![1], 1));
     s.insert(2, placed(20.4, 10, 0, 0.0, 5));
     s.insert(3, placed(20.8, 6, 2, 0.9, 5));
     s.insert(4, placed(21.0, 27, 1, 0.0, 2));
-    let (units, allied) = gate_units(&s, 27745, &[27746, 27747]).unwrap();
+    let (units, allied) = gate_units(&mut s, 27745, &[27746, 27747]).unwrap();
     assert_eq!((units, allied), (vec![1, 3], 1));
-    assert!(gate_units(&s, 27745, &[27746]).is_err());
+    assert!(gate_units(&mut s, 27745, &[27746]).is_err());
 }
 
 /// records/425906646's gate 27745 of player 1 (annexes 27746 and 27747, master 88: open, no
@@ -8517,7 +8517,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     let drop_off = |hunter: &mut Unit, t: &mut World| {
         let world = DropWorld {
             masters: Some(&masters),
-            spatial: &t.spatial,
+            spatial: &mut t.spatial,
             zones: &mut t.zones,
             pathing: &mut t.pathing,
             object: t.streams.get(Stream::Object),
@@ -13354,7 +13354,7 @@ fn drop_site_sought(
     setup(&mut t);
     let mut world = DropWorld {
         masters: t.masters.get(1),
-        spatial: &t.spatial,
+        spatial: &mut t.spatial,
         zones: &mut t.zones,
         pathing: &mut t.pathing,
         object: t.streams.get(Stream::Object),

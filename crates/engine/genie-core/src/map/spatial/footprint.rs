@@ -19,7 +19,7 @@ impl Spatial {
     ///
     /// A tile whose objects the slice does not know.
     pub fn spot_off(
-        &self,
+        &mut self,
         from: [f32; 3],
         (me, radius_x): (i32, f32),
         mask: u8,
@@ -171,6 +171,7 @@ impl Spatial {
     /// The edges cast by `CVTTSS2SI` (a NaN or huge edge gives `i32::MIN`: the loops then do
     /// not run), the tile's players the low 32 bits of `word >> 23` against `1 << (player &
     /// 0x1f)` in 32 bits.
+    #[must_use]
     pub fn foreign_marks(&self, site: &Placed) -> bool {
         use crate::math::conversions::cvttss2si;
         let [sx, sy, _] = site.position;
@@ -197,7 +198,7 @@ impl Spatial {
     /// included. A grown point beyond the map's edge meets the edge's
     /// records ([`Spatial::edge_records`]) and is never clear.
     pub fn point_clear(
-        &self,
+        &mut self,
         me: i32,
         point: [f32; 2],
         grow: f32,
@@ -229,7 +230,7 @@ impl Spatial {
     ///
     /// As [`Spatial::point_hit`].
     pub fn point_clear_among(
-        &self,
+        &mut self,
         me: i32,
         point: [f32; 2],
         grow: f32,
@@ -282,7 +283,7 @@ impl Spatial {
         }
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
-        let tile = self.tile_records.borrow().iter().any(|&(ty, tx)| {
+        let tile = self.tile_records.iter().any(|&(ty, tx)| {
             let [x0, y0, x1, y1] = [tx as f32, ty as f32, tx as f32 + 1.0, ty as f32 + 1.0];
             self.visits_cell(level, tx >> shift, ty >> shift, rect)
                 && !ignore.contains(&tile_record_id(tx, ty))
@@ -339,7 +340,7 @@ impl Spatial {
         self.tiles
             .word(x, y)
             .is_some_and(|w| w & u64::from(mask & 0x7f | 0x80) == 0)
-            && !self.tile_records.borrow().contains(&(y, x))
+            && !self.tile_records.contains(&(y, x))
     }
 
     /// The records a move query could report (`FUN_14114cc60` -> `FUN_141051900`): those of a
@@ -347,6 +348,7 @@ impl Spatial {
     /// `grow`, meets `rect` (`x0, y0, x1, y1`, edges included), except the `ignore`d objects'. The game then tests each candidate against the move's
     /// segment and shrinks moving allies' boxes (master `+0x780`, at most 1); every hit is a
     /// candidate, so no candidate means no hit.
+    #[must_use]
     pub fn obstruction_candidates(&self, rect: [f32; 4], grow: f32, ignore: &[i32]) -> Vec<i32> {
         let query = [
             rect[0] - grow,

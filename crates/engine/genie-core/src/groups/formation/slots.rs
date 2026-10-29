@@ -478,15 +478,16 @@ impl World {
     ///
     /// As the routines it runs.
     pub fn lay_units(
-        &self,
+        &mut self,
         formation: &mut Formation,
-        g: &UnitGroup,
+        group: i32,
         after_column: bool,
     ) -> Result<(), GenieError> {
-        if self.formation_transform(formation, g, after_column)? {
+        if self.formation_transform(formation, group, after_column)? {
             return Ok(());
         }
         formation.clear_units();
+        let g = self.groups.held(group)?;
         if formation.number_transformed_slots < 1 || g.previous_formation.is_none() || !after_column
         {
             self.populate_slots(formation, g)

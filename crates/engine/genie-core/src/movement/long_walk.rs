@@ -166,7 +166,7 @@ pub(crate) fn tile_plan_for(
     walker: Walker,
     from: [f32; 2],
     level_target: Option<i32>,
-    world: &Spatial,
+    world: &mut Spatial,
     plan: &mut Planning<'_>,
     (to, radii, range): (Vec3, f32, f32),
     target: Option<&Placed>,
@@ -282,7 +282,7 @@ pub(super) fn old_pather_for(radius: f32) -> bool {
 pub(crate) fn short_path_for(
     walker: Walker,
     from: [f32; 2],
-    world: &Spatial,
+    world: &mut Spatial,
     plan: &mut Planning<'_>,
     goal: (Vec3, f32, i32),
     ignore: &[i32],
@@ -319,7 +319,7 @@ pub(super) fn owner_number(world: &Spatial, id: i32) -> i32 {
 pub(crate) fn short_path_including(
     walker: Walker,
     from: [f32; 2],
-    world: &Spatial,
+    world: &mut Spatial,
     plan: &mut Planning<'_>,
     (to, range, target): (Vec3, f32, i32),
     (ignore, include): (&[i32], &[i32]),

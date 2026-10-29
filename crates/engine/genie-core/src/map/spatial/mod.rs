@@ -41,23 +41,27 @@ const SEARCH_REUSE_SQUARED: f32 = crate::math::image::spatial::SEARCH_REUSE_SQUA
 const PASTURE_CLASS: i32 = 49;
 const LIVESTOCK_CLASS: i32 = 58;
 
-/// The caller's reachability check of a found object (slot 0x3d0 within a range).
-pub type Reach<'a> = dyn FnMut(i32, f32) -> Result<bool, GenieError> + 'a;
+/// The caller's reachability check of a found object (slot 0x3d0 within a range): it paths over
+/// the spatial index the search reads, which the check's queries write, so the search hands it
+/// over for each call.
+pub type Reach<'a> = dyn FnMut(&mut Spatial, i32, f32) -> Result<bool, GenieError> + 'a;
 
 /// `bestUnitToAttack`'s world ([`crate::unit_ai::best_target::Battlefield`]): the unit AI's picker for its
 /// reads and tests, the search's reachability for its paths (slot 0x3d0).
 struct AttackField<'p, 'r> {
     picker: &'p mut dyn crate::unit_ai::AttackPicker,
     reach: &'p mut Reach<'r>,
+    /// The spatial index the search and the picker's reads go through.
+    world: &'p mut Spatial,
 }
 
 impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
     fn thing(&mut self, id: i32) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError> {
-        self.picker.thing(id)
+        self.picker.thing(self.world, id)
     }
 
     fn can_attack(&mut self, id: i32) -> Result<bool, GenieError> {
-        self.picker.can_attack(id)
+        self.picker.can_attack(self.world, id)
     }
 
     fn attacks_neutral(&mut self, class: i16) -> Result<bool, GenieError> {
@@ -65,7 +69,7 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
     }
 
     fn spares_friends(&mut self, id: i32) -> Result<bool, GenieError> {
-        self.picker.spares_friends(id)
+        self.picker.spares_friends(self.world, id)
     }
 
     fn shuns(&mut self, id: i32) -> Result<bool, GenieError> {
@@ -78,7 +82,7 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
         distance: f32,
         category: i32,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
-        self.picker.candidate(id, distance, category)
+        self.picker.candidate(self.world, id, distance, category)
     }
 
     fn armored(&mut self, id: i32) -> Result<bool, GenieError> {
@@ -94,11 +98,11 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
     }
 
     fn quick_path(&mut self, id: i32, range: f32) -> Result<bool, GenieError> {
-        self.picker.quick_path(id, range)
+        self.picker.quick_path(self.world, id, range)
     }
 
     fn path(&mut self, id: i32, range: f32) -> Result<bool, GenieError> {
-        (self.reach)(id, range)
+        (self.reach)(self.world, id, range)
     }
 }
 
@@ -493,17 +497,17 @@ pub struct Spatial {
     /// ([`Spatial::set_manager_ignore`]) leave it to the ones that do not (the motion step's
     /// query of a level's waypoint). The game keeps a pointer to the caller's list; the slice
     /// keeps the ids it held then.
-    manager_ignore: std::cell::RefCell<Vec<i32>>,
+    manager_ignore: Vec<i32>,
     /// The obstruction manager's temporary tile records (`FUN_1410510c0`: kind 3, the tile's box,
     /// id [`tile_record_id`], on the list `+0x70` with the count `+0x78`, bit 0x80 in the tile's
     /// word), as (y, x): [`Spatial::put_tile_records`] puts them, and they stay for every query
     /// until [`Spatial::clear_tile_records`] removes them all.
-    tile_records: std::cell::RefCell<std::collections::BTreeSet<(i32, i32)>>,
+    tile_records: std::collections::BTreeSet<(i32, i32)>,
     /// The obstruction manager's buffer (`+0x57` set, `+0x58` the radius its queries grow the
     /// records by) as the last `FUN_1410562d0` left it, None when not set: the routines that
     /// set it reset it at their end but `FindShortPath`'s quick-only exit, and the queries that
     /// set none read what is left ([`Spatial::manager_grow`]).
-    manager_buffer: std::cell::Cell<Option<f32>>,
+    manager_buffer: Option<f32>,
     objects: BTreeMap<i32, Placed>,
     /// The cell of each object's record ([`RecordCells`]), kept with `objects`
     /// ([`Spatial::refile`]).
@@ -549,7 +553,7 @@ pub struct Spatial {
     /// The map's terrain, when the slice holds it.
     pub terrain: Option<crate::map::terrain::Terrain>,
     /// The unit AIs' search cache ([`SearchCache`]).
-    search_cache: std::cell::RefCell<SearchCache>,
+    search_cache: SearchCache,
     /// The obstruction manager's grid, from the map's size.
     grid: Grid,
 }
@@ -566,6 +570,19 @@ struct SearchCache {
     at: [f32; 2],
     /// The registry's five output lists as the last query left them.
     last: Option<[Vec<Record>; 5]>,
+}
+
+impl SearchCache {
+    /// A search that queries sets the place and holds the cache (`FUN_140c63e20`).
+    const fn hold(&mut self, at: [f32; 2]) {
+        self.holds = true;
+        self.at = at;
+    }
+
+    /// The registry's lists a query left (`DAT_143f69178`): the last answer the cache reads.
+    fn remember(&mut self, lists: [Vec<Record>; 5]) {
+        self.last = Some(lists);
+    }
 }
 
 /// [`Spatial::closest_object`]'s per-object checks: livestock that is moving, and the objects a
