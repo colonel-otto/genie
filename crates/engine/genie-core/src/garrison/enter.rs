@@ -4,8 +4,8 @@
 use crate::GenieError;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{
-    ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, NO_MASTERS, UNPLACED, UNREACHED,
-    WalkStart, Walking, enter_view, ship_reaches,
+    ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, UNPLACED, UNREACHED, WalkStart,
+    Walking, enter_view, ship_reaches,
 };
 use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
@@ -407,9 +407,9 @@ impl World {
         self.move_aside(p, i, walk)
     }
 
-    /// The enter at the Enter's start ([`crate::objects::unit::Unit::enter_building`] into its target,
-    /// any player's live object, then the start's own `set_state(1)`); the load it gives goes to
-    /// the owner's attributes at once.
+    /// The enter at the Enter's start ([`crate::objects::unit::Unit::enter_building`] into its
+    /// target, any player's live object, then the start's own `set_state(1)`), on the unit's
+    /// step ([`World::run_on_step`]).
     pub(super) fn enter_now(
         &mut self,
         player: usize,
@@ -422,58 +422,23 @@ impl World {
             .flat_map(|p| p.objects.iter().chain(&p.sleeping))
             .filter(|u| u.life.inside == Some(target))
             .count();
-        let Some(crate::orders::Place::Live(tp, ti)) = self.place(target) else {
+        let Some(crate::orders::Place::Live(..)) = self.place(target) else {
             return Err(ENTER_SLEEPING);
         };
-        let mut unit = self.players[player].objects.take_out(idx);
-        let mut adds = Vec::new();
-        let result = (|| {
-            let building = &self.players[tp].objects[ti];
-            let owner = &self.players[player];
-            let mut w = crate::garrison::unit::EnterWorld {
-                spatial: &mut self.spatial,
-                pathing: &mut self.pathing,
-                masters: self.masters.get(player),
-                target_masters: self.masters.get(tp),
-                graphics: &self.graphics,
-                sprite_rng: self.streams.get(crate::math::rng::Stream::Sprite),
-                drop_sites: &self.drop_sites,
-                attributes: &owner.attributes,
-                civ: owner.civ,
-                sharing: owner.sharing,
-                player,
-                attribute_adds: &mut adds,
-                firepower: 0.0,
-                left_group: None,
-            };
-            if !unit.enter_building(building, inside, &mut w)? {
+        self.run_on_step(player, idx, |unit, c| {
+            if !unit.enter_building(c, target, inside)? {
                 return Err(GenieError::unsupported(
                     "an Enter in reach that did not get in",
                 ));
             }
-            unit.entered(&mut w)?;
-            Ok((w.firepower, w.left_group))
-        })();
-        let id = unit.id;
-        let _ = self.put_back_own(player, unit)?;
-        let (firepower, left_group) = result?;
-        // its removeUnit from the unit group it left (FUN_14102c160), when the world holds it
-        if let Some(g) = left_group.filter(|&g| self.groups.get(g).is_some()) {
-            let _ = self.remove_unit(g, id, target, false)?;
-        }
-        let b = &mut self.players[tp].objects[ti];
-        b.firepower += firepower;
-        b.garrison.push(id);
-        for (kind, amount) in adds {
-            self.players[player].add_attribute(kind, amount)?;
-        }
-        Ok(())
+            unit.entered(c)
+        })
     }
 
     /// The unit at `idx` of player `player` goes into `target` at once, its slot 0x1a0 forced
     /// (`FUN_141212e10` with 1: `FUN_1411921d0` passes over the room test, slot 0x198;
-    /// [`crate::objects::unit::Unit::go_inside`]): no load given, no notify, no state change. The
-    /// building's list takes it and its volleys its share.
+    /// [`crate::objects::unit::Unit::go_inside`] on the unit's step): no load given, no notify,
+    /// no state change. The building's list takes it and its volleys its share.
     pub(crate) fn enter_forced(
         &mut self,
         player: usize,
@@ -489,41 +454,7 @@ impl World {
         let bm = self.players[tp].objects[ti]
             .master(&self.masters, tp)?
             .clone();
-        let mut unit = self.players[player].objects.take_out(idx);
-        let mut adds = Vec::new();
-        let result: Result<_, GenieError> = (|| {
-            let building = &self.players[tp].objects[ti];
-            let owner = &self.players[player];
-            let masters = self.masters.get(player).ok_or(NO_MASTERS)?;
-            let mut w = crate::garrison::unit::EnterWorld {
-                spatial: &mut self.spatial,
-                pathing: &mut self.pathing,
-                masters: Some(masters),
-                target_masters: self.masters.get(tp),
-                graphics: &self.graphics,
-                sprite_rng: self.streams.get(crate::math::rng::Stream::Sprite),
-                drop_sites: &self.drop_sites,
-                attributes: &owner.attributes,
-                civ: owner.civ,
-                sharing: owner.sharing,
-                player,
-                attribute_adds: &mut adds,
-                firepower: 0.0,
-                left_group: None,
-            };
-            unit.go_inside(building, (masters, &me, &bm), &mut w)?;
-            Ok((w.firepower, w.left_group))
-        })();
-        let id = unit.id;
-        let _ = self.put_back_own(player, unit)?;
-        let (firepower, left_group) = result?;
-        if let Some(g) = left_group.filter(|&g| self.groups.get(g).is_some()) {
-            let _ = self.remove_unit(g, id, target, false)?;
-        }
-        let b = &mut self.players[tp].objects[ti];
-        b.firepower += firepower;
-        b.garrison.push(id);
-        Ok(())
+        self.run_on_step(player, idx, |unit, c| unit.go_inside(c, target, (&me, &bm)))
     }
 }
 

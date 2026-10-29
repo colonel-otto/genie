@@ -13,7 +13,7 @@ use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::pathing::Pathing;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::task_finder::{Actor, DropSite};
+use crate::unit_ai::task_finder::Actor;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 
@@ -104,62 +104,20 @@ impl Unit {
     }
 
     /// The Enter's enter in its update (`FUN_140a867b0` into `target`, [`Unit::enter_building`],
-    /// then the update's own `set_state(1)`): the unit group it left, when the world holds it
-    /// (`FUN_14152ff40`), loses it (removeUnit, `FUN_14102c160` with the building and 0:
-    /// [`crate::world::World::remove_unit`] on the unit lent back to its slot), the load the
-    /// building took goes to the owner, and the building gains the unit and its firepower, each
-    /// at once.
+    /// then the update's own `set_state(1)`).
     pub(crate) fn enter_in_update(
         &mut self,
         c: &mut Step<'_>,
         target: i32,
     ) -> Result<(), GenieError> {
-        let (tp, building) =
-            OthersRef::of(&c.w.players, c.player)
-                .find(target)
-                .ok_or(GenieError::unreachable(
-                    "an Enter's enter without the target its update held",
-                ))?;
         let inside = units_inside(OthersRef::of(&c.w.players, c.player), target);
-        let mut adds = Vec::new();
-        let mut w = EnterWorld {
-            spatial: &mut c.w.spatial,
-            pathing: &mut c.w.pathing,
-            masters: c.w.masters.get(c.player),
-            target_masters: c.w.masters.get(tp),
-            graphics: &c.w.graphics,
-            sprite_rng: c.w.streams.get(Stream::Sprite),
-            drop_sites: &c.w.drop_sites,
-            attributes: &c.w.players[c.player].attributes,
-            civ: c.w.players[c.player].civ,
-            sharing: c.w.players[c.player].sharing,
-            player: c.player,
-            attribute_adds: &mut adds,
-            firepower: 0.0,
-            left_group: None,
-        };
-        if !self.enter_building(building, inside, &mut w)? {
+        if !self.enter_building(c, target, inside)? {
             return Err(GenieError::unsupported(
                 "an Enter that did not get in (state 2)",
             ));
         }
         // the update's own set_state(1) after the enter's
-        self.entered(&mut w)?;
-        let (firepower, left_group) = (w.firepower, w.left_group);
-        // removeUnit inside the enter; nothing between it and here reads the group or the gait
-        if let Some(g) = left_group.filter(|&g| c.w.groups.get(g).is_some()) {
-            let id = self.id;
-            c.lend(self, |w| w.remove_unit(g, id, target, false).map(drop))?;
-        }
-        // the load the building took, the owner's within the enter (nothing after it in the
-        // enter reads the attributes)
-        c.w.players[c.player].add_attributes(adds)?;
-        // its building, any player's, gains the unit at once (the enter's slot 0x1c0)
-        if let Some((_, b)) = c.w.object_mut(target) {
-            b.firepower += firepower;
-            b.garrison.push(self.id);
-        }
-        Ok(())
+        self.entered(c)
     }
 
     /// `FUN_140a867b0` on a unit inside its target already (the update's walk again put it in):
@@ -283,8 +241,12 @@ impl Unit {
     /// `MoveTo`'s teardown stops the unit, slot 0x5d0), the unit shows its master's standing
     /// sprite ([`Unit::shows_standing_sprite`]) and, the Enter not being quiet, its unit AI gets
     /// notify 0x1f9 with the enter action value.
-    pub(crate) fn entered(&mut self, w: &mut EnterWorld<'_>) -> Result<(), GenieError> {
-        self.set_entered(w.masters, w.graphics, w.sprite_rng)
+    pub(crate) fn entered(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
+        self.set_entered(
+            c.w.masters.get(c.player),
+            &c.w.graphics,
+            c.w.streams.get(Stream::Sprite),
+        )
     }
 
     /// [`Unit::entered`] with the owner's masters, the sprites' table and the Sprite stream its
@@ -336,24 +298,29 @@ impl Unit {
     /// a Gaia building's capture (slot 0x70) are not held.
     pub(crate) fn enter_building(
         &mut self,
-        building: &Self,
+        c: &mut Step<'_>,
+        target: i32,
         inside: usize,
-        w: &mut EnterWorld<'_>,
     ) -> Result<bool, GenieError> {
-        let masters = w.masters.ok_or(crate::garrison::NO_MASTERS)?;
-        let bm = building.master_in(w.target_masters.or(Some(masters)))?;
-        // a copy: going inside changes the unit, which may hold it
+        let (tp, building) = c.w.object(target).ok_or(GenieError::unreachable(
+            "an enter into a building the world does not hold",
+        ))?;
+        let own = c.w.masters.get(c.player);
+        let masters = own.ok_or(crate::garrison::NO_MASTERS)?;
+        // copies: going inside changes the unit and the world, which hold them
+        let bm = building.master_in(c.w.masters.get(tp).or(own))?.clone();
+        let hp = building.life.hp;
         let me = self.master_in(Some(masters))?.clone();
-        let me = &me;
+        let owner = &c.w.players[c.player];
         let actor = Actor {
             id: self.id,
-            master: me,
-            player: w.player,
+            master: &me,
+            player: c.player,
             held: (self.life.attribute_type, self.life.amount),
-            attribute_95: w.attributes.get(95).copied().unwrap_or(0.0),
-            civ: w.civ,
+            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+            civ: owner.civ,
         };
-        if crate::unit_ai::task_finder::drops_at(w.drop_sites, bm.id, &actor)
+        if crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, bm.id, &actor)
             && 0.0 < self.life.amount
             && bm.kind == crate::orders::BUILDING
         {
@@ -364,20 +331,22 @@ impl Unit {
                 _ => None,
             };
             if let Some(resource) = resource {
+                // the building takes the load: the owner's attributes gain it at once
+                let mut adds = Vec::new();
                 give_load(
-                    (&w.spatial.relations, w.sharing),
-                    w.player,
-                    w.attribute_adds,
+                    (&c.w.spatial.relations, owner.sharing),
+                    c.player,
+                    &mut adds,
                     resource,
                     self.life.amount,
                 )?;
+                c.w.players[c.player].add_attributes(adds)?;
                 self.life.attribute_type = -1;
                 self.life.amount = 0.0;
             }
         }
         if bm.kind == crate::orders::BUILDING
-            && building.life.hp
-                <= f32::from(bm.hit_points) * crate::math::image::garrison::ENTER_HP_SHARE
+            && hp <= f32::from(bm.hit_points) * crate::math::image::garrison::ENTER_HP_SHARE
         {
             return Err(GenieError::unsupported(
                 "an enter into a building at a fifth of its hit points (state 13)",
@@ -396,29 +365,32 @@ impl Unit {
         if usize::from(bm.garrison) <= inside {
             return Ok(false);
         }
-        self.go_inside(building, (masters, me, bm), w)?;
+        self.go_inside(c, target, (&me, &bm))?;
         self.post_own(
             crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
             [ActionKind::Enter.value(), 0, 0],
         )?;
-        self.entered(w)?;
+        self.entered(c)?;
         Ok(true)
     }
 
-    /// The unit's slot 0x1a0 into `building` (`FUN_141212e10`; the room test, slot 0x198, is the
-    /// caller's): its sight goes from its tile, it leaves its tile's list, the obstruction
-    /// manager and the mesh, a member of a unit group leaves it and stands, it joins the
-    /// building's, its records leave the registry's lists; the building's sight takes a circle
-    /// of 5 and the villager's town-bell flag follows the garrison (`FUN_1412067f0` with 3).
-    /// The building's `+0x9a8` (the units inside the unit), and a siege building's slot 0x1b0
-    /// are not modelled.
+    /// The unit's slot 0x1a0 into building `target` (`FUN_141212e10`; the room test, slot 0x198,
+    /// is the caller's), the unit's master `me` and the building's `bm`: its sight goes from its
+    /// tile, it leaves its tile's list, the obstruction manager and the mesh; a member of a unit
+    /// group leaves the group when the world holds it (removeUnit, `FUN_14102c160` with the
+    /// building and 0, [`crate::world::World::remove_unit`] at once on the unit lent back to its
+    /// slot; `FUN_14152ff40`) and stands; it joins the building's (slot 0x1c0: the building's
+    /// list and, for a unit of type 70, its volleys' share, [`crate::garrison::share`]); its
+    /// records leave the registry's lists; the building's sight takes a circle of 5 and the
+    /// villager's town-bell flag follows the garrison (`FUN_1412067f0` with 3). The building's
+    /// `+0x9a8` (the units inside the unit), and a siege building's slot 0x1b0 are not modelled.
     pub(crate) fn go_inside(
         &mut self,
-        building: &Self,
-        (masters, me, bm): (&Masters, &Master, &Master),
-        w: &mut EnterWorld<'_>,
+        c: &mut Step<'_>,
+        target: i32,
+        (me, bm): (&Master, &Master),
     ) -> Result<(), GenieError> {
-        let target = building.id;
+        let id = self.id;
         if self.life.inside.is_some() {
             return Err(GenieError::unsupported("an enter of a unit inside another"));
         }
@@ -428,121 +400,142 @@ impl Unit {
                 "an enter of a unit with units inside it",
             ));
         }
-        let placed = w
-            .spatial
-            .get(self.id)
-            .copied()
-            .ok_or(GenieError::unsupported("an entering unit without a place"))?;
-        if let Some(v) = w.spatial.sight.as_mut() {
-            v.sight_off(self.id, self.position(), placed.radius, false, false);
+        let placed =
+            c.w.spatial
+                .get(id)
+                .copied()
+                .ok_or(GenieError::unsupported("an entering unit without a place"))?;
+        if let Some(v) = c.w.spatial.sight.as_mut() {
+            v.sight_off(id, self.position(), placed.radius, false, false);
         }
-        let at = building.position();
-        let id = self.id;
-        self.body.base_mut().go_inside(id, at, w.spatial);
-        w.pathing.removed(self.id);
-        // a member of a unit group (+0x6d0) leaves the group the world holds (removeUnit with the
-        // building and 0, FUN_14102c160: the caller's, `left_group`), then stands (slot 0x560)
-        if self.group.id != -1 {
-            w.left_group = Some(self.group.id);
+        let (bp, building) = c.w.object(target).ok_or(GenieError::unreachable(
+            "an enter into a building the world does not hold",
+        ))?;
+        let (at, state, reload) = (
+            building.position(),
+            building.life.state,
+            building.reload_powerup,
+        );
+        self.body.base_mut().go_inside(id, at, &mut c.w.spatial);
+        c.w.pathing.removed(id);
+        // a member of a unit group (+0x6d0) leaves the group the world holds, then stands
+        // (slot 0x560)
+        let group = self.group.id;
+        if group != -1 {
+            if c.w.groups.get(group).is_some() {
+                c.lend(self, |w| w.remove_unit(group, id, target, false).map(drop))?;
+            }
             if let Some(m) = self.body.mover_mut() {
                 m.stand()?;
             }
         }
-        let building_radius = w.spatial.get(target).map_or(bm.radius, |p| p.radius);
+        let building_radius = c.w.spatial.get(target).map_or(bm.radius, |p| p.radius);
         self.life.inside = Some(target);
-        // the building's slot 0x1c0 (FUN_1411cb850 -> FUN_14120b790): a unit (type 70) adds its
-        // share to the building's volleys
-        if me.kind == 70 {
-            let own = w.target_masters.unwrap_or(masters);
-            let rate = crate::garrison::attack_rate(bm, own, building.reload_powerup);
-            w.firepower = crate::garrison::share(me, masters, self.reload_powerup, rate)?;
-        }
-        if let Some(v) = w.spatial.sight.as_mut() {
-            if let Some(r) = v.registry.as_mut().filter(|_| 0 <= self.id) {
-                let mask = r.entry(self.id).map_or(0, |e| e.mask);
-                r.update_unit(
-                    self.id,
-                    w.player as u8,
-                    [self.position()[0], self.position()[1]],
-                    placed.radius,
-                    placed.class,
-                    mask & 0xffff_ffff,
-                    0,
-                )?;
-                // its mask (`+0x8f8`) is none after
-                r.entries.entry(self.id).or_default().mask = 0;
-            }
-            // a building's sight takes a circle of 5 (FUN_141212e10, type 80 only)
-            if bm.kind == crate::orders::BUILDING {
-                let _ = v.sight_on_los(target, at, building_radius, false, 5, false);
-            }
-        }
-        // FUN_1412067f0 with 3, for a villager or master 1808: the town-bell record of its work
-        // (FUN_141206a20 with the flag clear: the Enter's target at its place, no target class,
-        // the unit AI's action, no second target), then the flag set for a building in state 2
-        // (its own player's) that takes villagers; with 3 it is never cleared
-        if me.class == 4 || me.id == 1808 {
-            if !self.town_bell.flag {
-                let action =
-                    self.ai
-                        .as_ref()
-                        .map(|ai| ai.current_action)
-                        .ok_or(GenieError::unsupported(
-                            "a town-bell record of a unit without a unit AI",
-                        ))?;
-                self.town_bell.record(crate::orders::town_bell::BackToWork {
-                    target,
-                    target_type: -1,
-                    action,
-                    target2: -1,
-                    point: [at[0], at[1]],
-                });
-            }
-            if bm.kind == crate::orders::BUILDING
-                && building.life.state == 2
-                && bm.building.is_some_and(|b| b.garrison_type & 1 != 0)
-            {
-                self.town_bell.flag = true;
-            }
+        self.join_building(c, (target, bp, reload), (me, bm))?;
+        self.enter_sight(c, (target, at, building_radius), placed, bm)?;
+        self.enter_town_bell((target, at, state), (me, bm))?;
+        Ok(())
+    }
+
+    /// [`Unit::go_inside`]'s slot 0x1c0 of building `target` (`FUN_1411cb850` -> `FUN_14118c890`,
+    /// `FUN_14120b790`; its owner `bp`, its reload powerup `reload`): its list takes the unit,
+    /// and a unit (type 70) adds its share to the building's volleys.
+    fn join_building(
+        &self,
+        c: &mut Step<'_>,
+        (target, bp, reload): (i32, usize, f32),
+        (me, bm): (&Master, &Master),
+    ) -> Result<(), GenieError> {
+        let masters =
+            c.w.masters
+                .get(c.player)
+                .ok_or(crate::garrison::NO_MASTERS)?;
+        let firepower = if me.kind == 70 {
+            let own = c.w.masters.get(bp).unwrap_or(masters);
+            let rate = crate::garrison::attack_rate(bm, own, reload);
+            crate::garrison::share(me, masters, self.reload_powerup, rate)?
+        } else {
+            0.0
+        };
+        if let Some((_, b)) = c.w.object_mut(target) {
+            b.firepower += firepower;
+            b.garrison.push(self.id);
         }
         Ok(())
     }
-}
 
-/// What the enter into a building ([`Unit::enter_building`]) reads and changes of the world
-/// besides the unit and the building.
-pub(crate) struct EnterWorld<'a> {
-    /// Every object's place, the sight and the registry.
-    pub spatial: &'a mut Spatial,
-    /// The mesh the unit's shape leaves.
-    pub pathing: &'a mut Pathing,
-    /// The owner's masters.
-    pub masters: Option<&'a Masters>,
-    /// The target's owner's masters, which its master is (the owner's when None).
-    pub target_masters: Option<&'a Masters>,
-    /// The graphics, for the standing sprite.
-    pub graphics: &'a std::collections::BTreeMap<i16, Graphic>,
-    /// The Sprite stream, which a new sprite may draw from.
-    pub sprite_rng: &'a mut Well512,
-    /// The drop-site table.
-    pub drop_sites: &'a [DropSite],
-    /// The owner's attributes and civ, as the drop-site test's actor.
-    pub attributes: &'a [f32],
-    /// The owner's civ.
-    pub civ: u8,
-    /// The owner shares its gathered resources (`+0x1426`).
-    pub sharing: bool,
-    /// The owner.
-    pub player: usize,
-    /// The attributes the owner gains (a load), which the caller adds.
-    pub attribute_adds: &'a mut Vec<(i16, f32)>,
-    /// What the building's volleys gain (`+0xa00`, [`crate::garrison::share`]), which the caller
-    /// adds.
-    pub firepower: f32,
-    /// The unit group the unit was a member of (`+0x6d0`): the caller runs the group's removeUnit
-    /// (`FUN_14102c160` with the building and 0, [`crate::world::World::remove_unit`]) when the
-    /// world holds it (`FUN_14152ff40`).
-    pub left_group: Option<i32>,
+    /// [`Unit::go_inside`]'s sight: the unit's records leave the registry's lists
+    /// (`FUN_14128a1d0` from its mask to 0, `placed` its record as it was) and a building
+    /// `target` at `at` (radius `radius`) sees a circle of 5 (slot 0x1d0 with 5).
+    fn enter_sight(
+        &self,
+        c: &mut Step<'_>,
+        (target, at, radius): (i32, [f32; 3], [f32; 2]),
+        placed: crate::map::spatial::Placed,
+        bm: &Master,
+    ) -> Result<(), GenieError> {
+        let id = self.id;
+        let Some(v) = c.w.spatial.sight.as_mut() else {
+            return Ok(());
+        };
+        if let Some(r) = v.registry.as_mut().filter(|_| 0 <= id) {
+            let mask = r.entry(id).map_or(0, |e| e.mask);
+            r.update_unit(
+                id,
+                c.player as u8,
+                [self.position()[0], self.position()[1]],
+                placed.radius,
+                placed.class,
+                mask & 0xffff_ffff,
+                0,
+            )?;
+            // its mask (`+0x8f8`) is none after
+            r.entries.entry(id).or_default().mask = 0;
+        }
+        // a building's sight takes a circle of 5 (FUN_141212e10, type 80 only)
+        if bm.kind == crate::orders::BUILDING {
+            let _ = v.sight_on_los(target, at, radius, false, 5, false);
+        }
+        Ok(())
+    }
+
+    /// [`Unit::go_inside`]'s `FUN_1412067f0` with 3, for a villager or master 1808: the
+    /// town-bell record of its work (`FUN_141206a20` with the flag clear: the Enter's target
+    /// `target` at its place `at`, no target class, the unit AI's action, no second target),
+    /// then the flag set for a building in state 2 (`state`; its own player's) that takes
+    /// villagers; with 3 it is never cleared.
+    fn enter_town_bell(
+        &mut self,
+        (target, at, state): (i32, [f32; 3], u8),
+        (me, bm): (&Master, &Master),
+    ) -> Result<(), GenieError> {
+        if me.class != 4 && me.id != 1808 {
+            return Ok(());
+        }
+        if !self.town_bell.flag {
+            let action =
+                self.ai
+                    .as_ref()
+                    .map(|ai| ai.current_action)
+                    .ok_or(GenieError::unsupported(
+                        "a town-bell record of a unit without a unit AI",
+                    ))?;
+            self.town_bell.record(crate::orders::town_bell::BackToWork {
+                target,
+                target_type: -1,
+                action,
+                target2: -1,
+                point: [at[0], at[1]],
+            });
+        }
+        if bm.kind == crate::orders::BUILDING
+            && state == 2
+            && bm.building.is_some_and(|b| b.garrison_type & 1 != 0)
+        {
+            self.town_bell.flag = true;
+        }
+        Ok(())
+    }
 }
 
 impl Unit {
