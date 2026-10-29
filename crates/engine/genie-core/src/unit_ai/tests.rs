@@ -557,6 +557,24 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     );
 }
 
+/// The effects pending before a command that runs at once ([`UnitAi::run_pending`]): with a stop
+/// among them they run first, in their order (the cap before the stop here), and the stop counts
+/// as the update's; without a stop they wait for the update's end.
+#[test]
+fn the_effects_pending_before_a_command_at_once_run_first_with_a_stop() {
+    let mut ai = UnitAi::default();
+    let mut side = Recorder::default();
+    let mut fx = vec![Effect::CapHumanOrder(5)];
+    ai.run_pending(&mut side, &mut fx).unwrap();
+    assert_eq!(fx, vec![Effect::CapHumanOrder(5)]);
+    assert_eq!((side.caps.len(), ai.stopped_at_once), (0, false));
+    fx.push(Effect::Stop);
+    ai.run_pending(&mut side, &mut fx).unwrap();
+    assert_eq!(fx, vec![]);
+    assert_eq!((side.caps, side.stops), (vec![(5, 0)], vec![0]));
+    assert!(ai.stopped_at_once);
+}
+
 /// What the unit's slot 0x388 answers ([`UnitSide::wait_solidify`]), and the foundations
 /// asked.
 struct WaitSide(bool, Vec<i32>);
@@ -763,20 +781,29 @@ fn slot_0x108_asks_the_unit_when_forced_or_without_an_action_value() {
         ..UnitAi::default()
     };
     let mut side = WaitSide(true, Vec::new());
-    assert_eq!(ai.wait_for_foundation(10028, false, &mut side), Ok(false));
+    assert_eq!(
+        ai.wait_for_foundation(10028, false, &mut side, &mut Vec::new()),
+        Ok(false)
+    );
     assert_eq!(side.1, Vec::<i32>::new());
     assert_eq!(
         (ai.current_action, ai.last_action),
         (Some(ActionKind::Gather), Some(ActionKind::Heal))
     );
     let mut refused = WaitSide(false, Vec::new());
-    assert_eq!(ai.wait_for_foundation(10028, true, &mut refused), Ok(false));
+    assert_eq!(
+        ai.wait_for_foundation(10028, true, &mut refused, &mut Vec::new()),
+        Ok(false)
+    );
     assert_eq!(refused.1, vec![10028]);
     assert_eq!(
         (ai.current_action, ai.last_action),
         (Some(ActionKind::Gather), Some(ActionKind::Heal))
     );
-    assert_eq!(ai.wait_for_foundation(10028, true, &mut side), Ok(true));
+    assert_eq!(
+        ai.wait_for_foundation(10028, true, &mut side, &mut Vec::new()),
+        Ok(true)
+    );
     assert_eq!(
         (ai.current_action, ai.last_action),
         (Some(ActionKind::WaitSolidify), Some(ActionKind::Gather))
@@ -785,7 +812,10 @@ fn slot_0x108_asks_the_unit_when_forced_or_without_an_action_value() {
         current_action: None,
         ..UnitAi::default()
     };
-    assert_eq!(idle.wait_for_foundation(10028, false, &mut side), Ok(true));
+    assert_eq!(
+        idle.wait_for_foundation(10028, false, &mut side, &mut Vec::new()),
+        Ok(true)
+    );
     assert_eq!(
         (idle.current_action, idle.last_action),
         (Some(ActionKind::WaitSolidify), None)
@@ -3370,6 +3400,7 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             processing: false,
             buffered: Vec::new(),
             commanded: false,
+            stopped_at_once: false,
             attackers: Vec::new(),
             order_history: Vec::new(),
             retries: Vec::new(),

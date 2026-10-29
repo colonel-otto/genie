@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::construction::building_update::blasts_at_death;
 use crate::objects::unit::{Outcome, Unit};
 use crate::world::World;
-use crate::world::step::{ObjectOutputs, Step};
+use crate::world::step::Step;
 
 impl World {
     /// One object's step with its `Step` (`f`: the unit's update, or one part of its unit AI
@@ -13,15 +13,14 @@ impl World {
     /// and `f` gets it and the `Step`, which holds the world (FD-045-D28; the objects it
     /// makes join the list at their making). It goes back to the slot its stand-in holds then
     /// ([`World::put_back_own`]). Returns `f`'s result (an error of the put-back, then of the
-    /// sight's registry first) and what the `Step` gathered for the world
-    /// ([`World::step_object`]).
+    /// sight's registry first).
     #[allow(clippy::too_many_lines)]
     pub(super) fn run_object(
         &mut self,
         (p, i): (usize, usize),
         (dt, turn): (u32, Option<u32>),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
-    ) -> (Result<Outcome, GenieError>, ObjectOutputs) {
+    ) -> Result<Outcome, GenieError> {
         // the unit AI's target as its update starts, read before the unit leaves its list: a unit
         // may be its own target (an unload's)
         let ai_target = self.players[p].objects[i]
@@ -59,13 +58,11 @@ impl World {
             player: p,
             taken_over: None,
             building_handover: false,
-            starts: Vec::new(),
         };
         let mut result = f(&mut unit, &mut c);
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);
         }
-        let out = c.outputs();
         if let Some(e) = self.spatial.take_sight_unsupported()
             && result.is_ok()
         {
@@ -76,7 +73,7 @@ impl World {
         if let Err(e) = self.put_back_own(p, unit) {
             result = Err(e);
         }
-        (result, out)
+        result
     }
 
     /// Runs `f` on object `i` of player `p` with its step outside its update: a command's part

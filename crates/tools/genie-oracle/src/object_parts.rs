@@ -157,6 +157,7 @@ pub(super) fn unit_ai(
         processing: false,
         buffered: Vec::new(),
         commanded: false,
+        stopped_at_once: false,
     }))
 }
 

@@ -157,6 +157,16 @@ class Inventory(unittest.TestCase):
         self.assertNotIn("tests.rs", out[0])
         self.assertIn("`apply_completions`", out[1])
 
+    def test_without_world_outputs_the_section_says_so_without_a_table(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = crate(Path(d))
+            step = (src / "world/step.rs").read_text()
+            (src / "world/step.rs").write_text(step[: step.index("pub(crate) struct ObjectOutputs")])
+            text = ef.inventory(src, "SRC")
+        self.assertEqual(rows(text, "The world's outputs"), [])
+        self.assertIn("None: each output of an object's step is a call where the game makes it", text)
+        self.assertIn("0 world outputs, 4 unit AI effects", text)
+
     def test_each_unit_ai_effect_names_the_files_that_name_it(self):
         with tempfile.TemporaryDirectory() as d:
             text = ef.inventory(crate(Path(d)), "SRC")

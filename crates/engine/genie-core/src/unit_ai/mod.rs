@@ -549,6 +549,11 @@ pub struct UnitAi {
     /// within one update, cleared at its start.
     #[diff(unsaved)]
     pub commanded: bool,
+    /// This update's stop ran at once, ahead of a command that runs at once
+    /// ([`UnitAi::run_pending`]): the action list emptied as a pending [`Effect::Stop`] would.
+    /// Not saved: genie's flag within one update, cleared at its start.
+    #[diff(unsaved)]
+    pub stopped_at_once: bool,
     /// `+0xc0`, the attackers (count `+0xc8`): a set of object ids kept sorted
     /// (`FUN_140b43f30`), which a boar's damage notify adds to and the full update prunes; the
     /// save's `numberUnits` and `tempInt`.

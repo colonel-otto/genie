@@ -4466,11 +4466,36 @@ fn a_hunt_whose_attack_failed_takes_a_near_tree_or_searches() {
     }
 }
 
+/// [`sent_off_world`] with the queue `orders`, the house built and damaged (300 hit points), and
+/// with `repairer` the repairer master 156 (the villager's with the Repair task 4, range 0.5).
+fn repairer_world(orders: Vec<crate::unit_ai::QueuedOrder>, repairer: bool) -> World {
+    let mut t = sent_off_world(orders);
+    let house = &mut t.players[1].objects[1];
+    house.life.state = 2;
+    house.life.hp = 300.0;
+    let c = house.construction.as_mut().unwrap();
+    (c.progress, c.desolid) = (1.0, false);
+    if repairer {
+        for masters in &mut t.masters {
+            let mut m = masters.get(83).unwrap().clone();
+            m.id = 156;
+            m.weapon_range = 0.5;
+            m.tasks.push(crate::objects::masters::Task {
+                id: 4,
+                work_val1: 0.5,
+                ..task(crate::construction::repair::REPAIR)
+            });
+            *masters = Masters::new(masters.iter().cloned().chain([m]));
+        }
+    }
+    t
+}
+
 /// The unit AI's repair order on the player's damaged house (`0x2ce`, slot 0x378 forced,
 /// `FUN_141217c00`): the villager (83, task swap group 1) becomes its player's repairer (156,
-/// slot 0x90), whose task list gives the Repair task; after the update the Repair walks to the
-/// house (state 4) and the AI holds the repair action on it. Without the repairer master the
-/// villager's own list must give the task, which it does not: the order is not taken.
+/// slot 0x90), whose task list gives the Repair task; the Repair walks to the house (state 4)
+/// and the AI holds the repair action on it. Without the repairer master the villager's own list
+/// must give the task, which it does not: the order is not taken.
 #[test]
 fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     use crate::unit_ai::QueuedOrder;
@@ -4486,28 +4511,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
         ready: true,
         target_type: 80,
     };
-    let world = |repairer: bool| {
-        let mut t = sent_off_world(vec![order]);
-        let house = &mut t.players[1].objects[1];
-        house.life.state = 2;
-        house.life.hp = 300.0;
-        let c = house.construction.as_mut().unwrap();
-        (c.progress, c.desolid) = (1.0, false);
-        if repairer {
-            for masters in &mut t.masters {
-                let mut m = masters.get(83).unwrap().clone();
-                m.id = 156;
-                m.weapon_range = 0.5;
-                m.tasks.push(crate::objects::masters::Task {
-                    id: 4,
-                    work_val1: 0.5,
-                    ..task(crate::construction::repair::REPAIR)
-                });
-                *masters = Masters::new(masters.iter().cloned().chain([m]));
-            }
-        }
-        t
-    };
+    let world = |repairer: bool| repairer_world(vec![order], repairer);
     let mut t = world(true);
     t.tick(50);
     let v = &t.players[1].objects[0];
@@ -4523,6 +4527,81 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     t.tick(50);
     let v = &t.players[1].objects[0];
     assert_eq!((v.life.master_id, v.actions.repair().copied()), (83, None));
+}
+
+/// The unit AI's side of player 1's villager in `t` as its update runs it ([`Unit::with_side`]):
+/// what `f` gives and the villager's unit AI as the side returns.
+fn villager_side<R>(
+    t: &mut World,
+    f: impl FnOnce(&mut crate::unit_ai::world_view::UnitView<'_, '_>) -> Result<R, GenieError>,
+) -> Result<(R, Option<UnitAi>), GenieError> {
+    use crate::unit_ai::world_view::OwnerView;
+    in_update(t, (1, 0), 0, |unit, c| {
+        let view = OwnerView::of(c, None);
+        let attacker = unit.attacker_of(4, None, (1, false), false, 0);
+        let answer = unit.with_side(c, &view, attacker, (1, false), |_, side, _| f(side))?;
+        Ok((answer, unit.ai.clone()))
+    })
+}
+
+/// The unit AI's repair command at once (slot 0x378 while the AI runs, the villager lent back to
+/// its slot): within the run the villager is its player's repairer, holds the Repair, and its top
+/// target is the house ([`crate::unit_ai::UnitSide::top_target_now`]).
+#[test]
+fn the_unit_ai_s_repair_command_is_the_unit_s_within_its_run() {
+    use crate::unit_ai::{UnitCommand, UnitSide};
+    let mut t = repairer_world(vec![], true);
+    let house = Placed {
+        position: [30.0, 88.0, 0.0],
+        radius: [1.0, 1.0],
+        class: 3,
+        player: 1,
+        master: 70,
+        obstruction_type: 2,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(10028, house);
+    let seen = villager_side(&mut t, |side| {
+        let repairs = side.command(UnitCommand::Repair(10028))?;
+        let r = side.unit.actions.repair().map(|r| r.target);
+        Ok((repairs, side.unit.life.master_id, r, side.top_target_now()?))
+    });
+    assert_eq!(
+        seen.map(|(s, _)| s),
+        Ok((true, 156, Some(10028), Some(10028)))
+    );
+}
+
+/// A world routine the unit AI's side lends its unit to ([`UnitView::lend`]) finds a stand-in for
+/// the AI, which is out of the unit while it runs: one that changes it fails the lend.
+///
+/// [`UnitView::lend`]: crate::unit_ai::world_view::UnitView::lend
+#[test]
+fn a_world_routine_that_reaches_the_running_unit_ai_fails_the_side_s_lend() {
+    let mut t = repairer_world(vec![], false);
+    let held = villager_side(&mut t, |side| {
+        side.lend(|w, p, i| Ok(w.players[p].objects[i].ai.is_some()))
+    });
+    assert_eq!(held.map(|(h, ai)| (h, ai.is_some())), Ok((true, true)));
+    let reached = villager_side(&mut t, |side| {
+        side.lend(|w, p, i| {
+            w.players[p].objects[i].ai.as_mut().unwrap().current_target = 7;
+            Ok(())
+        })
+    });
+    let e = reached.expect_err("the stand-in changed");
+    assert!(e.to_string().contains("reached the unit's AI"), "{e}");
+    assert_eq!(
+        t.players[1].objects[0]
+            .ai
+            .as_ref()
+            .map(|ai| ai.current_target),
+        Some(-1)
+    );
 }
 
 /// The world of [`sent_off_world`] with the queue `orders`, the house built and whole, taking
@@ -4643,6 +4722,29 @@ fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
             crate::unit_ai::ACTION_FAILED,
             [ActionKind::Enter.value(), 0, 0]
         )]
+    );
+}
+
+/// The unit AI's enter command at once (slot 0x3a0 while the AI runs) of a unit inside an
+/// object: its Enter fails at the start, and the notify 0x1f9 for its own AI, which the side does
+/// not hold, reaches the AI as the side returns.
+#[test]
+fn the_unit_ai_s_enter_from_inside_tells_its_ai_as_the_side_returns() {
+    use crate::unit_ai::{UnitCommand, UnitSide};
+    let mut t = enter_world(vec![], 5);
+    t.players[1].objects[0].life.inside = Some(4242);
+    let seen = villager_side(&mut t, |side| {
+        let enters = side.command(UnitCommand::Enter(10028))?;
+        Ok((enters, side.unit.actions.enter().map(|e| e.state)))
+    });
+    let failed = Notify::own(
+        9175,
+        crate::unit_ai::ACTION_FAILED,
+        [ActionKind::Enter.value(), 0, 0],
+    );
+    assert_eq!(
+        seen.map(|(s, ai)| (s, ai.map(|ai| ai.notifies))),
+        Ok(((true, Some(crate::garrison::FAILED)), Some(vec![failed])))
     );
 }
 
@@ -10870,9 +10972,12 @@ fn on_side<R>(
     groups: crate::groups::UnitGroups,
     f: impl FnOnce(&mut crate::unit_ai::world_view::UnitView<'_, '_>) -> R,
 ) -> (R, World) {
+    let mut attributes = vec![0.0; 8];
+    attributes[4] = 10.0;
     let scout = Player {
         objects: own.into(),
         relations: vec![0, 0],
+        attributes,
         tracker,
         ..Player::default()
     };
@@ -10913,7 +11018,6 @@ fn on_side<R>(
             new_owner: None,
             civ: 0,
             ai_settings: AiSettings::default(),
-            attribute_adds: Vec::new(),
             own_notifies: Vec::new(),
         };
         Ok(f(&mut side))
@@ -11036,14 +11140,14 @@ fn scout_attack_on(
 
 /// The attack command of unit 123 of master `who` (in a table with `also`) on Gaia's wolf 50, as
 /// [`scout_attack_on`], the unit in its owner's done tracker list of its master: the unit, the
-/// answer, the attribute changes and its owner's tracker after it.
+/// answer, its owner's attribute 4 as the command returns and its owner's tracker after it.
 fn attack_by(
     who: Master,
     also: Vec<Master>,
 ) -> (
     Unit,
     crate::unit_ai::Attacked,
-    Vec<(i16, f32)>,
+    f32,
     crate::players::tracker::Tracker,
 ) {
     use crate::unit_ai::UnitSide;
@@ -11152,7 +11256,7 @@ fn attack_by(
         crate::groups::UnitGroups::default(),
         |side| {
             let attacked = side.attack(50, force, &ai).unwrap();
-            (attacked, std::mem::take(&mut side.attribute_adds))
+            (attacked, side.c.w.players[1].attributes[4])
         },
     );
     let unit = t.players[1].objects[0].clone();
@@ -11178,14 +11282,15 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
         moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
     };
-    let (unit, attacked, adds, tracker) = attack_by(
+    let (unit, attacked, housed, tracker) = attack_by(
         villager(118, vec![(4, 1.0, 2)]),
-        vec![villager(83, vec![(4, 1.0, 2)])],
+        vec![villager(83, vec![(4, 3.0, 2)])],
     );
     assert_eq!(unit.life.master_id, 83);
     assert!(attacked.attacks);
     assert!(unit.actions.attack().is_some_and(|a| a.target == 50));
-    assert_eq!(adds, [(4, -1.0), (4, 1.0)]);
+    // the owner's attribute 4 (10 before) as the attack command returns
+    assert_eq!(housed, 10.0 - 1.0 + 3.0);
     assert_eq!((tracker.list(118), tracker.list(83)), (&[][..], &[123][..]));
 }
 
@@ -14715,34 +14820,28 @@ fn the_own_razings_count_where_the_hit_runs() {
     assert_eq!(razed(&[(-1, 5.0), (98, -5.0)]), (negative, 10.0));
 }
 
-/// A step that fails stops what follows it: the unit AI's starts it gathered (a wait for a
-/// foundation) do not apply; a step that holds applies them.
+/// A step that fails stops what follows it: a construction start it marked is not cleared after
+/// it ([`World::step_object`]'s `clear_started`); a step that holds clears it.
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
     use crate::objects::unit::Outcome;
-    use crate::unit_ai::world_view::{AiStart, Wait};
-    let wait = AiStart::Wait(Wait {
-        target: 10028,
-        task: crate::objects::masters::Task::default(),
-        switch: None,
-    });
     let mut t = house_builder();
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.starts.push(wait);
+        c.w.spatial.started(10028);
         Err(GenieError::unsupported("the step's own gap"))
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
         Err("the step's own gap".to_owned())
     );
-    assert!(t.players[1].objects[0].actions.wait_solidify().is_none());
+    assert_eq!(t.spatial.take_started(), vec![10028]);
     let mut t = house_builder();
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.starts.push(wait);
+        c.w.spatial.started(10028);
         Ok(Outcome::Stay)
     });
     assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Outcome::Stay));
-    assert!(t.players[1].objects[0].actions.wait_solidify().is_some());
+    assert_eq!(t.spatial.take_started(), vec![]);
 }
 
 /// What a completion leaves its owner ([`World::built`]): a pasture puts its livestock on its

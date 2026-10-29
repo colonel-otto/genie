@@ -218,10 +218,16 @@ def inventory(src: Path, src_link: str) -> str:
             "",
             "## The world's outputs",
             "",
-            "The fields of `ObjectOutputs`: what an object's step leaves for the world, applied after",
-            "the object's update by the functions named.",
-            "",
-            *outputs,
+            *(
+                [
+                    "The fields of `ObjectOutputs`: what an object's step leaves for the world, applied after",
+                    "the object's update by the functions named.",
+                    "",
+                    *outputs,
+                ]
+                if count(outputs)
+                else ["None: each output of an object's step is a call where the game makes it (FD-043-D11)."]
+            ),
             "",
             "## The unit AI's effects",
             "",

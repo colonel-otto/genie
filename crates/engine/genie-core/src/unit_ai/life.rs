@@ -169,6 +169,7 @@ impl UnitAi {
             processing: false,
             buffered: Vec::new(),
             commanded: false,
+            stopped_at_once: false,
             attackers: Vec::new(),
             order_history: Vec::new(),
             retries: Vec::new(),

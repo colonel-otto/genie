@@ -43,8 +43,8 @@ pub(crate) struct DropWorld<'a> {
 /// What the unit's slot 0x388 (`FUN_141226fc0`) found while its unit AI ran
 /// ([`crate::unit_ai::UnitSide::wait_solidify`]): the foundation, the task its slot 0x820 found
 /// on it and the master the search switches the unit to (slot 0x90; None when its own master's
-/// list gave the task). The caller makes them the unit's after the update
-/// ([`World::wait_for_foundation`]).
+/// list gave the task), which the side makes the unit's at once ([`World::wait_for_foundation`],
+/// [`UnitView::lend`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Wait {
     pub(crate) target: i32,
@@ -53,8 +53,7 @@ pub(crate) struct Wait {
 }
 
 /// The unit's repair command (slot 0x378, `FUN_141217c00`) as its unit AI gave it
-/// ([`UnitView::repair_command`]), which the caller makes after the update
-/// ([`World::repair_order`]).
+/// ([`UnitView::repair_command`]), which the side makes at once ([`World::repair_order`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum RepairOrder {
     /// The Repair on top takes the target (its slot 0x48, `FUN_140adb480`).
@@ -69,30 +68,16 @@ pub(crate) enum RepairOrder {
 }
 
 /// The unit's enter command (slot 0x3a0, `FUN_1410847e0`, forced) as its unit AI gave it
-/// ([`UnitView::enter_command`]), which the caller makes after the update
-/// ([`World::enter_order`]): the master the task search's swap group gave (slot 0x90 with 0),
-/// then the Enter on the task found into the target (an annex: its main building, the Enter's
-/// target), under an Artifact on top or not.
+/// ([`UnitView::enter_command`]), which the side makes at once ([`World::enter_order`]): the
+/// master the task search's swap group gave (slot 0x90 with 0), then the Enter on the task found
+/// into the target (an annex: its main building, the Enter's target), under an Artifact on top
+/// or not.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct EnterOrder {
     pub(crate) target: i32,
-    pub(crate) entered: i32,
     pub(crate) task: crate::objects::masters::Task,
     pub(crate) switch: Option<i16>,
     pub(crate) under_artifact: bool,
-}
-
-/// An action the unit AI gave its unit while it ran, made after the update.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum AiStart {
-    /// A wait for a foundation ([`Wait`], [`World::wait_for_foundation`]).
-    Wait(Wait),
-    /// A repair ([`RepairOrder`], [`World::repair_order`]).
-    Repair(RepairOrder),
-    /// An enter ([`EnterOrder`], [`World::enter_order`]).
-    Enter(EnterOrder),
-    /// An unload command at a point (slot 0x3a8, [`World::transport_order`]).
-    Transport([f32; 3]),
 }
 
 /// The players but the owner of the unit that updates, read-only: the players before it and
@@ -200,9 +185,6 @@ pub(crate) struct UnitView<'u, 's> {
     pub(crate) civ: u8,
     /// The owner's AI settings.
     pub(crate) ai_settings: crate::world::player::AiSettings,
-    /// What its master change (slot 0x90) gives or takes of its owner's attributes, the owner's
-    /// after the side's call ([`crate::objects::unit::Unit::with_side`]).
-    pub(crate) attribute_adds: Vec<(i16, f32)>,
     /// The notifies the side's calls give the unit's own AI, which the side does not hold: the
     /// AI is posted them, with the unit's state, when the side's call returns ([`Lets`]).
     pub(crate) own_notifies: Vec<(crate::unit_ai::Notify, u8)>,

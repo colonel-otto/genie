@@ -165,7 +165,7 @@ impl UnitView<'_, '_> {
 
     /// The attack command's master: a villager switches to its player's villager of its task
     /// swap group first ([`UnitView::villager_swap`]; slot 0x90 with 0: the action list clears,
-    /// then the master's unit part; its owner's part after the update), else it keeps `own`.
+    /// then the master change at once, [`UnitView::switch_unit_master`]), else it keeps `own`.
     fn swapped_master(
         &mut self,
         own: crate::objects::masters::Master,
@@ -173,7 +173,7 @@ impl UnitView<'_, '_> {
         let Some(next) = self.villager_swap(&own).cloned() else {
             return Ok(own);
         };
-        self.switch_unit_master(&own, &next)?;
+        self.switch_unit_master(&own, next.id)?;
         Ok(next)
     }
 

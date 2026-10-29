@@ -106,8 +106,8 @@ impl UnitView<'_, '_> {
     /// The build command at once ([`World::build_command`]'s path without a Build on top, which
     /// a stop before it leaves none): slot 0x820 with any action type and the switch
     /// ([`UnitView::build_found`]) finds a task, else nothing (slot 0x380's 0); the switch (slot
-    /// 0x90 with 0: the actions go, then the master's unit part, [`crate::orders::switch_master`];
-    /// its owner's part after the update); a Build on the task (`FUN_140aad4e0`, the footprints'
+    /// 0x90 with 0: the actions go, then the master change at once,
+    /// [`UnitView::switch_unit_master`]); a Build on the task (`FUN_140aad4e0`, the footprints'
     /// gap, the task's range and work value, the builder's work rate with the unit's powerup)
     /// takes the foundation (slot 0x178) and replaces the actions (slot 0x808). A Build on top
     /// (its slot 0x48) is not modelled here.
@@ -139,7 +139,7 @@ impl UnitView<'_, '_> {
         );
         let id = unit.id;
         if let Some(next) = &switch {
-            self.switch_unit_master(&own, next)?;
+            self.switch_unit_master(&own, next.id)?;
         }
         let by = Releaser {
             id,

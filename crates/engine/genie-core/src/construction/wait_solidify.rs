@@ -16,7 +16,7 @@ use crate::objects::masters::Task;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::owner_view;
-use crate::unit_ai::world_view::{AiStart, UnitView, Wait};
+use crate::unit_ai::world_view::{UnitView, Wait};
 use genie_diff::Diff;
 
 /// The action type (`+0x8`, 0x9a).
@@ -72,7 +72,8 @@ impl WaitSolidify {
 impl UnitView<'_, '_> {
     /// The unit AI's wait for a foundation while it runs ([`crate::unit_ai::UnitSide::wait_solidify`]):
     /// the task the unit's slot 0x820 finds on `target` (any action type, with the master switch)
-    /// gives the wait the caller makes after the update ([`AiStart::Wait`]); false without one.
+    /// gives the wait, made at once on the unit lent back to its slot
+    /// ([`crate::world::World::wait_for_foundation`]); false without one.
     pub(crate) fn start_wait_now(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
@@ -124,11 +125,12 @@ impl UnitView<'_, '_> {
         else {
             return Ok(false);
         };
-        self.c.starts.push(AiStart::Wait(Wait {
+        let wait = Wait {
             target,
             task,
             switch: switch.map(|m| m.id),
-        }));
+        };
+        self.lend(|w, p, i| w.wait_for_foundation(p, i, wait))?;
         Ok(true)
     }
 }

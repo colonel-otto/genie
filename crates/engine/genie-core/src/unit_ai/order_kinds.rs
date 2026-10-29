@@ -99,17 +99,18 @@ impl UnitAi {
         &mut self,
         target: i32,
         force: bool,
-        action: ActionKind,
-        command: UnitCommand,
-        at: &Surroundings,
-        side: &mut dyn UnitSide,
+        (action, command): (ActionKind, UnitCommand),
+        (at, side): (&Surroundings, &mut dyn UnitSide),
+        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action == Some(action) {
             return Ok(false);
         }
+        self.run_pending(side, fx)?;
         if !side.command(command)? {
             return Ok(false);
         }
+        self.commanded = true;
         self.set_action(Some(action));
         match Self::world_object(target, at, side)? {
             Some(t) => self.set_target(target, i32::from(t.class), t.position),
@@ -207,8 +208,8 @@ impl UnitAi {
         &mut self,
         target: i32,
         force: bool,
-        at: &Surroundings,
-        side: &mut dyn UnitSide,
+        (at, side): (&Surroundings, &mut dyn UnitSide),
+        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         let held = Self::world_object(target, at, side)?;
         if self.ai_type == CIVILIAN && held.is_none() {
@@ -217,9 +218,11 @@ impl UnitAi {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
+        self.run_pending(side, fx)?;
         if !side.command(UnitCommand::Enter(target))? {
             return Ok(false);
         }
+        self.commanded = true;
         self.set_action(Some(ActionKind::Enter));
         self.target_at(target, held.map(|t| i32::from(t.class)), [-1.0; 3]);
         Ok(true)
@@ -254,18 +257,19 @@ impl UnitAi {
     pub(super) fn unload_at(
         &mut self,
         point: [f32; 2],
-        force: bool,
-        over_wall: bool,
-        at: &Surroundings,
-        side: &mut dyn UnitSide,
+        (force, over_wall): (bool, bool),
+        (at, side): (&Surroundings, &mut dyn UnitSide),
+        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
         let to = [point[0], point[1], at.position[2]];
+        self.run_pending(side, fx)?;
         if !side.command(UnitCommand::Unload { to, over_wall })? {
             return Ok(false);
         }
+        self.commanded = true;
         self.set_action(Some(if over_wall {
             ActionKind::UnloadOverWall
         } else {
@@ -415,13 +419,16 @@ impl UnitAi {
         target: i32,
         force: bool,
         side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
+        self.run_pending(side, fx)?;
         if !side.wait_solidify(target)? {
             return Ok(false);
         }
+        self.commanded = true;
         self.set_action(Some(ActionKind::WaitSolidify));
         Ok(true)
     }

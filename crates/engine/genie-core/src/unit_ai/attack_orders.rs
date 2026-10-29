@@ -161,34 +161,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        if fx.contains(&Effect::Stop) {
-            if fx.iter().any(|e| {
-                !matches!(
-                    e,
-                    Effect::Stop
-                        | Effect::CapHumanOrder(_)
-                        | Effect::Command(AiCommand::BuildObject(_) | AiCommand::HuntObject(_))
-                        | Effect::Move(_)
-                )
-            }) {
-                return Err(PENDING_BEFORE_ATTACK.with("effects", format!("{fx:?}")));
-            }
-            // the effects before it ran before it: in order (a requeued build or hunt order's
-            // command too, whose action the attack command replaces)
-            for e in std::mem::take(fx) {
-                match e {
-                    Effect::CapHumanOrder(cap) => side.cap_human_order(cap)?,
-                    Effect::Command(AiCommand::BuildObject(foundation)) => {
-                        side.build_now(foundation)?;
-                    }
-                    Effect::Command(AiCommand::HuntObject(quarry)) => {
-                        side.hunt_now(quarry, self)?;
-                    }
-                    Effect::Move(m) => side.ai_move_now(m)?,
-                    _ => side.stop()?,
-                }
-            }
-        }
+        self.run_pending(side, fx)?;
         let attacked = side.attack(target, force, self)?;
         for (kind, p) in attacked.posted {
             self.post(Notify::own(at.id, kind, p), at.state)?;
@@ -197,6 +170,53 @@ impl UnitAi {
             self.commanded = true;
         }
         Ok(attacked.attacks)
+    }
+
+    /// The effects the AI's processing left pending before a command of the unit that runs at
+    /// once (slot 0x338's attack, 0x388's wait for a foundation, 0x378's repair, 0x3a0's enter,
+    /// 0x3a8's unload): a pending stop (slot 0x3c0, [`Effect::Stop`]) emptied the action list
+    /// before the command fills it, so the effects before it run first, in order
+    /// ([`UnitSide::stop`], the caps on the last human order time, a requeued build or hunt
+    /// order's command, whose action the command replaces, a move); the stop then counts as the
+    /// update's ([`UnitAi::stopped_at_once`]). Other effects beside a stop are not modelled.
+    ///
+    /// # Errors
+    ///
+    /// Other effects pending beside a stop, and what the side's calls do not model.
+    pub(super) fn run_pending(
+        &mut self,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        if !fx.contains(&Effect::Stop) {
+            return Ok(());
+        }
+        if fx.iter().any(|e| {
+            !matches!(
+                e,
+                Effect::Stop
+                    | Effect::CapHumanOrder(_)
+                    | Effect::Command(AiCommand::BuildObject(_) | AiCommand::HuntObject(_))
+                    | Effect::Move(_)
+            )
+        }) {
+            return Err(PENDING_BEFORE_ATTACK.with("effects", format!("{fx:?}")));
+        }
+        for e in std::mem::take(fx) {
+            match e {
+                Effect::CapHumanOrder(cap) => side.cap_human_order(cap)?,
+                Effect::Command(AiCommand::BuildObject(foundation)) => {
+                    side.build_now(foundation)?;
+                }
+                Effect::Command(AiCommand::HuntObject(quarry)) => {
+                    side.hunt_now(quarry, self)?;
+                }
+                Effect::Move(m) => side.ai_move_now(m)?,
+                _ => side.stop()?,
+            }
+        }
+        self.stopped_at_once = true;
+        Ok(())
     }
 
     /// The civilian's `AttackObject` (slot 0xb8, `FUN_140c17370`) with its force flag 1, as every

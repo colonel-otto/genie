@@ -210,8 +210,8 @@ impl Unit {
     ///
     /// # Errors
     ///
-    /// `f`'s, a notify the AI's queue does not take, an attribute the owner lacks, and a draw
-    /// from the AI stream in a world routine the side called while the AI held the stream.
+    /// `f`'s, a notify the AI's queue does not take, and a draw from the AI stream in a world
+    /// routine the side called while the AI held the stream.
     pub(crate) fn with_side<R>(
         &mut self,
         c: &mut Step<'_>,
@@ -234,14 +234,11 @@ impl Unit {
             new_owner: view.new_owner,
             civ: view.civ,
             ai_settings: view.ai_settings,
-            // what its master change gives or takes of the owner's attributes, the owner's after
-            // the side's call (the task search reads the attributes as the call starts)
-            attribute_adds: Vec::new(),
             own_notifies: Vec::new(),
         };
         let result = f(&mut ai, &mut side, &mut ai_stream);
-        let (adds, own_notifies) = (side.attribute_adds, side.own_notifies);
-        let posted = own_notifies
+        let posted = side
+            .own_notifies
             .into_iter()
             .try_for_each(|(n, state)| ai.post(n, state));
         self.ai = Some(ai);
@@ -254,7 +251,6 @@ impl Unit {
         *stream = ai_stream;
         let answer = result?;
         posted?;
-        c.w.players[c.player].add_attributes(adds)?;
         Ok(answer)
     }
 

@@ -42,7 +42,8 @@ impl World {
                 (Some(OrderKind::Enter), Some(ActionKind::Enter)),
             )?;
         }
-        self.install_enter(player, idx, target, action, task)
+        let failed = self.install_enter(player, idx, target, action, task)?;
+        self.post_own_failure(player, idx, failed)
     }
 
     /// Slot 0x3a0 (`FUN_1410847e0`, the enter command) of the unit at `idx` of `player` on
@@ -74,13 +75,31 @@ impl World {
             return Ok(false);
         };
         let under_artifact = top == Some(crate::ownership::artifact::ARTIFACT_TYPE);
-        self.enter_with(player, idx, target, &task, under_artifact)?;
+        let failed = self.enter_with(player, idx, target, &task, under_artifact)?;
+        self.post_own_failure(player, idx, failed)?;
         Ok(true)
     }
 
-    /// The unit's enter command its unit AI gave ([`crate::unit_ai::world_view::EnterOrder`]), after the
-    /// update: the master switch (slot 0x90 with 0, [`World::change_master`]), then the Enter
-    /// ([`World::enter_with`]).
+    /// The notify an Enter's install gave the unit's own unit AI ([`World::install_enter_as`]),
+    /// posted to it (slot 0x328, with the unit's state).
+    fn post_own_failure(
+        &mut self,
+        player: usize,
+        idx: usize,
+        failed: Option<crate::unit_ai::Notify>,
+    ) -> Result<(), GenieError> {
+        let unit = &mut self.players[player].objects[idx];
+        let state = unit.life.state;
+        match (failed, unit.ai.as_mut()) {
+            (Some(n), Some(ai)) => ai.post(n, state),
+            _ => Ok(()),
+        }
+    }
+
+    /// The unit's enter command its unit AI gave ([`crate::unit_ai::world_view::EnterOrder`]),
+    /// while the AI runs: the master switch (slot 0x90 with 0, [`World::change_master`]), then
+    /// the Enter ([`World::enter_with`]). Returns the notify the Enter's install gives the unit's
+    /// own AI, which its side holds until it returns.
     ///
     /// # Errors
     ///
@@ -90,7 +109,7 @@ impl World {
         player: usize,
         idx: usize,
         order: crate::unit_ai::world_view::EnterOrder,
-    ) -> Result<(), GenieError> {
+    ) -> Result<Option<crate::unit_ai::Notify>, GenieError> {
         if let Some(master) = order.switch {
             self.change_master(player, idx, master)?;
         }
@@ -100,7 +119,8 @@ impl World {
     /// The enter command's Enter on `task` (`FUN_140a855d0`, [`World::new_enter`]): under an
     /// Artifact on top (`under_artifact`, read before the task search) it would become the
     /// Artifact's sub-action, which is not modelled; else the action list empties and the Enter
-    /// is installed (slot 0x808, [`World::install_enter`]).
+    /// is installed (slot 0x808, [`World::install_enter`]). Returns the notify the install gives
+    /// the unit's own AI ([`World::install_enter_as`]).
     ///
     /// # Errors
     ///
@@ -112,7 +132,7 @@ impl World {
         target: i32,
         task: &Task,
         under_artifact: bool,
-    ) -> Result<(), GenieError> {
+    ) -> Result<Option<crate::unit_ai::Notify>, GenieError> {
         let (action, target, _) = self.new_enter(player, idx, target, task)?;
         self.install_enter_as(player, idx, target, action, task, under_artifact)
     }
@@ -151,8 +171,9 @@ impl World {
     }
 
     /// The Enter's install (slot 0x808): the action list empties and the Enter starts (slot 5,
-    /// `FUN_140a86f20`): a unit inside an object (`set_state(13)`) and a target without room
-    /// (`FUN_140a864d0`, `set_state(11)`) are not modelled; else its `set_state(4)`
+    /// `FUN_140a86f20`): a unit inside an object fails it (`set_state(13)`, its notify for the
+    /// unit's own AI the answer, [`World::install_enter_as`]); a target without room
+    /// (`FUN_140a864d0`, `set_state(11)`) is not modelled; else its `set_state(4)`
     /// ([`EnterAction::walk_again`]): a unit in reach enters at once ([`World::enter_now`]),
     /// else it walks, a transport to the point first ([`World::move_transport`]).
     pub(super) fn install_enter(
@@ -162,7 +183,7 @@ impl World {
         target: i32,
         action: EnterAction,
         task: &Task,
-    ) -> Result<(), GenieError> {
+    ) -> Result<Option<crate::unit_ai::Notify>, GenieError> {
         self.install_enter_as(player, idx, target, action, task, false)
     }
 
@@ -171,6 +192,9 @@ impl World {
     /// [`crate::ownership::artifact::Artifact::hold_enter`]: an Enter lets its target go, slot 0x180
     /// ([`World::release`]), and a walking `MoveTo`'s teardown stops the unit) and the Enter
     /// starts in its list (`FUN_140a977e0`), the Artifact's update running it from then on.
+    /// Returns the notify a unit inside an object posts its own unit AI (0x1f9 with the Enter's
+    /// action value), which the caller posts: the unit AI that gave the enter command holds it
+    /// out of the unit while it runs.
     pub(super) fn install_enter_as(
         &mut self,
         player: usize,
@@ -179,7 +203,7 @@ impl World {
         mut action: EnterAction,
         task: &Task,
         sub: bool,
-    ) -> Result<(), GenieError> {
+    ) -> Result<Option<crate::unit_ai::Notify>, GenieError> {
         let id = self.players[player].objects[idx].id;
         if sub {
             let by = self.releaser(player, idx);
@@ -215,16 +239,11 @@ impl World {
                 &self.graphics,
                 self.streams.get(crate::math::rng::Stream::Sprite),
             )?;
-            let state = unit.life.state;
-            if let Some(ai) = unit.ai.as_mut() {
-                let n = crate::unit_ai::Notify::own(
-                    id,
-                    crate::unit_ai::ACTION_FAILED,
-                    [ActionKind::Enter.value(), 0, 0],
-                );
-                ai.post(n, state)?;
-            }
-            return Ok(());
+            return Ok(Some(crate::unit_ai::Notify::own(
+                id,
+                crate::unit_ai::ACTION_FAILED,
+                [ActionKind::Enter.value(), 0, 0],
+            )));
         }
         let (tp, t) = self.object(target).expect("found above");
         if !self.has_room(tp, t, Some(id))? {
@@ -248,11 +267,12 @@ impl World {
                         art.enter = Some(e);
                     }
                 }
-                entered
+                entered.map(|()| None)
             }
             Walking::Walk(to) => {
                 self.players[player].objects[idx].place_enter(action, sub);
                 to.map_or(Ok(()), |to| self.move_transport(target, to))
+                    .map(|()| None)
             }
         }
     }

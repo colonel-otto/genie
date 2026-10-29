@@ -213,7 +213,7 @@ impl UnitAi {
                     OrderKind::Convert => (ActionKind::Convert, UnitCommand::Convert(o.target)),
                     _ => (ActionKind::Repair, UnitCommand::Repair(o.target)),
                 };
-                self.work_object(o.target, true, action, command, at, side)?
+                self.work_object(o.target, true, (action, command), (at, side), fx)?
             }
             OrderKind::Gather => self.gather_order(o.target, at, side, fx)?,
             OrderKind::Hunt | OrderKind::AutoBoarLuring => {
@@ -224,7 +224,7 @@ impl UnitAi {
                 hunts
             }
             OrderKind::Foundation => {
-                let waits = self.wait_for_foundation(o.target, true, side)?;
+                let waits = self.wait_for_foundation(o.target, true, side, fx)?;
                 self.set_action(Some(ActionKind::WaitSolidify));
                 waits
             }
@@ -244,10 +244,10 @@ impl UnitAi {
         Ok(match o.order {
             OrderKind::Follow => self.follow_object(o.target, o.range, true, at, side, fx)?,
             OrderKind::Transport => self.transport_to(o.point, true, side)?,
-            OrderKind::Enter => self.enter_object(o.target, true, at, side)?,
+            OrderKind::Enter => self.enter_object(o.target, true, (at, side), fx)?,
             OrderKind::Unload | OrderKind::UnloadOverWall => {
                 let over_wall = o.order == OrderKind::UnloadOverWall;
-                self.unload_at([o.point[0], o.point[1]], true, over_wall, at, side)?
+                self.unload_at([o.point[0], o.point[1]], (true, over_wall), (at, side), fx)?
             }
             _ => false,
         })
@@ -325,7 +325,9 @@ impl UnitAi {
         });
         let id = match PendingTop::of(fx) {
             PendingTop::Replaced(id) => id,
-            PendingTop::Unchanged if self.commanded => side.top_target_now()?,
+            PendingTop::Unchanged if self.commanded || self.stopped_at_once => {
+                side.top_target_now()?
+            }
             PendingTop::Unchanged => return Ok(start),
         };
         let Some(id) = id else {

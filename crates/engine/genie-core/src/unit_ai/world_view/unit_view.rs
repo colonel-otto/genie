@@ -1,12 +1,13 @@
 //! What the unit AI's view asks of its unit: its picker, a helper's tests and a master switch.
 
 use crate::GenieError;
-use crate::math::rng::Stream;
 use crate::movement::footprint_gap_squared;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
+use crate::unit_ai::UnitAi;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, WorldPicker};
+use crate::world::World;
 
 impl UnitView<'_, '_> {
     /// The world as `bestUnitToAttack` and the attack tests read it for the unit
@@ -116,10 +117,37 @@ impl UnitView<'_, '_> {
 }
 
 impl UnitView<'_, '_> {
-    /// Slot 0x90 with 0 from `own` to `next` (a task's switch, a villager's swap): the action list
-    /// clears (the old actions' teardowns), then the master's unit part
-    /// ([`crate::orders::switch_master`]); what it gives and takes of the owner's attributes and
-    /// its promotion are the owner's part after the update.
+    /// `f` on the world with the unit lent back to its slot ([`crate::world::step::Step::lend_at`]):
+    /// a world routine on the unit while its AI runs, at once where the game's AI calls the
+    /// unit's slot (its commands 0x388, 0x378, 0x3a0 and 0x3a8, its master change 0x90). The AI
+    /// is out of the unit for its run: the routine finds a stand-in in its place (a default unit
+    /// AI), and a routine that changed the stand-in fails the lend; a notify for the unit's own
+    /// AI comes back in the routine's answer instead.
+    ///
+    /// # Errors
+    ///
+    /// `f`'s and the lend's, and a routine that reached the unit's AI.
+    pub(crate) fn lend<R>(
+        &mut self,
+        f: impl FnOnce(&mut World, usize, usize) -> Result<R, GenieError>,
+    ) -> Result<R, GenieError> {
+        self.unit.ai = Some(UnitAi::default());
+        let answer = self.c.lend_at(self.unit, f);
+        let stand_in = self.unit.ai.take();
+        let answer = answer?;
+        if stand_in != Some(UnitAi::default()) {
+            return Err(GenieError::unreachable(
+                "a world routine the unit AI's side called reached the unit's AI",
+            )
+            .with("object", self.unit.id));
+        }
+        Ok(answer)
+    }
+
+    /// Slot 0x90 with 0 from `own` to master `next` (a task's switch, a villager's swap): the
+    /// action list clears (the old actions' teardowns), then the master change at once, the
+    /// unit lent back to its slot ([`World::change_master`]: the master's unit part, what it
+    /// gives and takes of the owner's attributes and the tracker's promotion).
     ///
     /// # Errors
     ///
@@ -127,7 +155,7 @@ impl UnitView<'_, '_> {
     pub(crate) fn switch_unit_master(
         &mut self,
         own: &crate::objects::masters::Master,
-        next: &crate::objects::masters::Master,
+        next: i16,
     ) -> Result<(), GenieError> {
         let by = Releaser {
             id: self.unit.id,
@@ -138,22 +166,7 @@ impl UnitView<'_, '_> {
         self.unit
             .tear_down_actions(&mut releases, &mut leaves, by)?;
         self.torn_down((leaves, releases))?;
-        let w = &mut *self.c.w;
-        let world = crate::orders::SwitchWorld {
-            spatial: &mut w.spatial,
-            pathing: &mut w.pathing,
-            graphics: &w.graphics,
-            sprite: w.streams.get(Stream::Sprite),
-        };
-        let switched = crate::orders::switch_master(self.unit, own, next, world)?;
-        self.attribute_adds.extend(switched.leaving);
-        if switched.promoted {
-            self.c
-                .w
-                .track_promote(self.c.player, self.unit.id, own.id, next.id);
-        }
-        self.attribute_adds.extend(switched.coming);
-        Ok(())
+        self.lend(|w, p, i| w.change_master(p, i, next))
     }
 }
 

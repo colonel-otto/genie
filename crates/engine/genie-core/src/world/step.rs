@@ -7,7 +7,6 @@ use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
-use crate::unit_ai::world_view::AiStart;
 use crate::world::World;
 
 pub(crate) struct Step<'a> {
@@ -41,25 +40,6 @@ pub(crate) struct Step<'a> {
     /// The owner's id: the updating object's player, whose fields the update reads through
     /// the world (`w.players[player]`).
     pub(crate) player: usize,
-    /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
-    /// which the caller makes the unit's after the update, in order.
-    pub(crate) starts: Vec<AiStart>,
-}
-
-/// What an object's step gathered in its `Step` for the world to apply after it
-/// ([`crate::world::World::step_object`]): the `Step`'s fields of the same meaning.
-pub(crate) struct ObjectOutputs {
-    /// [`Step`]'s `starts`.
-    pub(in crate::world) starts: Vec<AiStart>,
-}
-
-impl Step<'_> {
-    /// What the step gathered ([`ObjectOutputs`]), taken out of the `Step`.
-    pub(in crate::world) fn outputs(&mut self) -> ObjectOutputs {
-        ObjectOutputs {
-            starts: std::mem::take(&mut self.starts),
-        }
-    }
 }
 
 /// What a walk takes of the update beside the world: the dt in seconds, the world's time, and

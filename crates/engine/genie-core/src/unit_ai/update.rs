@@ -39,6 +39,7 @@ impl UnitAi {
     ) -> Result<Vec<Effect>, GenieError> {
         let retarget = retarget_kind(self.ai_type)?;
         self.commanded = false;
+        self.stopped_at_once = false;
         self.best_this_update = -1;
         // the full update's start: the time since the last enemy sighting grows by the world's dt
         self.time_since_enemy += at.dt_seconds;
@@ -60,8 +61,8 @@ impl UnitAi {
             return Ok(fx);
         }
         self.end_notifies(dt, at, &mut fx)?;
-        // slot 0x430 again: a stop emptied the action list, an attack command filled it
-        let stopped = fx.contains(&Effect::Stop);
+        // slot 0x430 again: a stop emptied the action list, a command filled it
+        let stopped = fx.contains(&Effect::Stop) || self.stopped_at_once;
         let busy = (at.busy && !stopped) || self.commanded;
         if !busy {
             self.reset_ended_action(at);

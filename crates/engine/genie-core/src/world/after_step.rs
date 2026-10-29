@@ -4,9 +4,8 @@
 use crate::GenieError;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
-use crate::unit_ai::world_view::AiStart;
 use crate::world::World;
-use crate::world::step::{ObjectOutputs, Step};
+use crate::world::step::Step;
 
 /// What an object's step left for its list's loop ([`World::step_object`]).
 pub(super) struct Stepped {
@@ -19,10 +18,10 @@ pub(super) struct Stepped {
 
 impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
-    /// AI for a command) and what follows it: what its `Step` gathered, applied in the order the
-    /// game's update makes them (the regeneration, passive abilities and production of a full
-    /// update, the unit AI's waits, the own kill). Returns the step and the object's slot, which
-    /// it looks up by id after each part that may move it.
+    /// AI for a command) and what follows it in the game's update: the regeneration, passive
+    /// abilities and production of a full update, then a construction start's clearing and the
+    /// changed tiles. Returns the step and the object's slot, which it looks up by id after each
+    /// part that may move it.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
     /// runs (regeneration, passive abilities, production) do not.
     ///
@@ -36,11 +35,9 @@ impl World {
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Stepped, GenieError> {
         let id = self.players[p].objects[i].id;
-        let (outcome, mut out) = self.run_object((p, i), (dt, turn), f);
-        let outcome = outcome?;
+        let outcome = self.run_object((p, i), (dt, turn), f)?;
         let at = (p, self.slot_of(p, id)?, id);
         self.finish_own_update(at, (dt, full), &outcome)?;
-        self.apply_ai_starts((p, self.slot_of(p, id)?), &mut out, &outcome)?;
         self.clear_started()?;
         Ok(Stepped {
             outcome,
@@ -88,34 +85,6 @@ impl World {
         // TRIBE_Building_Object::update: the production after the combat update
         if matches!(outcome, Outcome::Stay) && own_update {
             self.produce(p, i, seconds(dt))?;
-        }
-        Ok(())
-    }
-
-    /// The unit AI's starts: the waits, repairs, enters and transports.
-    fn apply_ai_starts(
-        &mut self,
-        (p, i): (usize, usize),
-        out: &mut ObjectOutputs,
-        outcome: &Outcome,
-    ) -> Result<(), GenieError> {
-        // the waits for foundations (slot 0x388) and the repairs (slot 0x378) the unit AI's
-        // orders gave
-        for start in std::mem::take(&mut out.starts) {
-            // a unit that ran its orders stays in its list: the full update runs them
-            // only for a unit alive and not inside another, between turns only for a
-            // unit of a type below 70 or outside, and nothing after the queue in the
-            // unit's update kills, captures or houses it
-            debug_assert!(matches!(outcome, Outcome::Stay));
-            if !matches!(outcome, Outcome::Stay) {
-                break;
-            }
-            match start {
-                AiStart::Wait(w) => self.wait_for_foundation(p, i, w),
-                AiStart::Repair(r) => self.repair_order(p, i, r),
-                AiStart::Enter(e) => self.enter_order(p, i, e),
-                AiStart::Transport(to) => self.transport_order(p, i, to),
-            }?;
         }
         Ok(())
     }

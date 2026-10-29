@@ -35,7 +35,8 @@ pub mod town_bell;
 mod unit_order;
 mod work;
 
-pub(crate) use self::actions::{SwitchWorld, switch_master};
+#[cfg(test)]
+use self::actions::{SwitchWorld, switch_master};
 use self::points::{centroid, follow_axis, follow_spread, grid_point, offset_point};
 #[cfg(test)]
 use crate::gathering::hunt::HUNT;

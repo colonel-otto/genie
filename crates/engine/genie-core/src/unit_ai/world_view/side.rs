@@ -13,9 +13,7 @@ use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::masters::player_master;
 use crate::objects::release::Releaser;
 use crate::unit_ai::world_view::owner_view;
-use crate::unit_ai::world_view::{
-    AiStart, RepairOrder, UnitView, WorldPicker, patrol_information, town_centre,
-};
+use crate::unit_ai::world_view::{UnitView, WorldPicker, patrol_information, town_centre};
 use crate::unit_ai::{AiMove, Search, UnitAi};
 use crate::world::PETARD;
 
@@ -427,12 +425,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         match command {
             crate::unit_ai::UnitCommand::Repair(target) => self.repair_command(target),
             crate::unit_ai::UnitCommand::Enter(target) => self.enter_command(target),
-            // slot 0x3a8 (FUN_14108d050): its Transport, made after the update, answers 1
+            // slot 0x3a8 (FUN_14108d050): its Transport, made at once, answers 1
             crate::unit_ai::UnitCommand::Unload {
                 to,
                 over_wall: false,
             } => {
-                self.c.starts.push(AiStart::Transport(to));
+                self.lend(|w, p, i| w.transport_order(p, i, to))?;
                 Ok(true)
             }
             _ => Err(crate::unit_ai::UNMODELLED_COMMAND),
@@ -513,31 +511,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         Ok(())
     }
 
-    /// Slot 400 at the full update's tail, after what the AI gave (made after the update,
-    /// [`AiStart`], the last of them counting): a wait for a foundation holds no object, a
-    /// repair its target, a master switch without a task left no action, an enter the object
-    /// it enters; else the top action's target ([`Unit::top_target`]); either while the world
-    /// holds it.
+    /// Slot 400 at the full update's tail: the top action's target ([`Unit::top_target`]), the
+    /// actions the AI gave in its run made already (a wait for a foundation and a Transport hold
+    /// none), while the world holds it.
     ///
     /// [`Unit::top_target`]: crate::objects::unit::Unit::top_target
     fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
-        let target = match self.c.starts.last() {
-            Some(AiStart::Wait(_)) => return Ok(None),
-            Some(AiStart::Repair(
-                RepairOrder::Retake(t)
-                | RepairOrder::Start {
-                    target: t,
-                    task: Some(_),
-                    ..
-                },
-            )) => Some(*t),
-            // the Transport holds no target
-            Some(
-                AiStart::Repair(RepairOrder::Start { task: None, .. }) | AiStart::Transport(_),
-            ) => None,
-            Some(AiStart::Enter(e)) => Some(e.entered),
-            None => self.unit.top_target().filter(|&t| t != -1),
-        };
+        let target = self.unit.top_target().filter(|&t| t != -1);
         Ok(target.filter(|&t| self.c.w.spatial.get(t).is_some()))
     }
 

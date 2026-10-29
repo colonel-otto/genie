@@ -7,7 +7,7 @@ use crate::movement::{Me, Mover, Planning};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::owner_view;
-use crate::unit_ai::world_view::{AiStart, EnterOrder, RepairOrder, UnitView};
+use crate::unit_ai::world_view::{EnterOrder, RepairOrder, UnitView};
 use crate::world::others::OthersRef;
 
 impl UnitView<'_, '_> {
@@ -17,8 +17,9 @@ impl UnitView<'_, '_> {
     /// repairer ([`crate::construction::repair::REPAIRERS`], slot 0x90 with 0), and its slot 0x820 with the
     /// repair's action type (`0x6a`) and the switch ([`task_search`] on the target and its main
     /// building, the new master's list first) finds a task: a new Repair on it
-    /// (`FUN_140ad7fa0`) replaces the unit's actions (slot 0x808): 1; none: 0. The caller makes
-    /// the switches and the Repair after the update ([`RepairOrder`], [`World::repair_order`]).
+    /// (`FUN_140ad7fa0`) replaces the unit's actions (slot 0x808): 1; none: 0. The switches and
+    /// the Repair are made at once on the unit lent back to its slot ([`RepairOrder`],
+    /// [`World::repair_order`]).
     pub(super) fn repair_command(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
@@ -38,9 +39,8 @@ impl UnitView<'_, '_> {
         // slot 0x820's point: the target's place
         let terrain = point_terrain(self.c.w.spatial.terrain.as_ref(), t_unit.position());
         if unit.top_action_kind() == Some(crate::construction::repair::REPAIR) {
-            self.c
-                .starts
-                .push(AiStart::Repair(RepairOrder::Retake(target)));
+            let order = RepairOrder::Retake(target);
+            self.lend(|w, p, i| w.repair_order(p, i, order))?;
             return Ok(true);
         }
         let masters = self
@@ -92,23 +92,26 @@ impl UnitView<'_, '_> {
         if switch.is_none() && found.is_none() {
             return Ok(false);
         }
-        self.c.starts.push(AiStart::Repair(RepairOrder::Start {
+        let order = RepairOrder::Start {
             target,
             switches: [
                 switch.map(|m| m.id),
                 found.and_then(|(_, m)| m.map(|m| m.id)),
             ],
             task: found.map(|(task, _)| task),
-        }));
-        Ok(found.is_some())
+        };
+        let repairs = found.is_some();
+        self.lend(|w, p, i| w.repair_order(p, i, order))?;
+        Ok(repairs)
     }
 
     /// The unit's enter command (slot 0x3a0, `FUN_1410847e0`, forced) on `target`: an object the
     /// world (`FUN_1415417a0`) does not hold is 0; its slot 0x820 with the garrison filter (3)
     /// and the switch ([`task_search`] on the target and its main building) finds a task, whose
     /// Enter (`FUN_140a855d0`) replaces the unit's actions (an Artifact on top would take it as
-    /// its sub-action): 1; none: 0. The caller makes the switch and the Enter after the update
-    /// ([`EnterOrder`], [`World::enter_order`]).
+    /// its sub-action): 1; none: 0. The switch and the Enter are made at once on the unit lent
+    /// back to its slot ([`EnterOrder`], [`World::enter_order`]); the notify its install gives
+    /// the unit's own AI waits for the side's return.
     pub(super) fn enter_command(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
@@ -122,7 +125,7 @@ impl UnitView<'_, '_> {
             }
             others.find(id)
         };
-        let Some((tp, t_unit)) = find(target) else {
+        let Some((_, t_unit)) = find(target) else {
             return Ok(false);
         };
         let under_artifact =
@@ -174,22 +177,15 @@ impl UnitView<'_, '_> {
         else {
             return Ok(false);
         };
-        // the constructor's target: a building's annex enters its main building
-        let building = t_unit
-            .master(&self.c.w.masters, tp)
-            .is_ok_and(|m| m.kind == crate::orders::BUILDING);
-        let entered = if building {
-            t_unit.annex_of.unwrap_or(target)
-        } else {
-            target
-        };
-        self.c.starts.push(AiStart::Enter(EnterOrder {
+        let order = EnterOrder {
             target,
-            entered,
             task,
             switch: switch.map(|m| m.id),
             under_artifact,
-        }));
+        };
+        if let Some(n) = self.lend(|w, p, i| w.enter_order(p, i, order))? {
+            self.own_notifies.push((n, self.unit.life.state));
+        }
         Ok(true)
     }
 
