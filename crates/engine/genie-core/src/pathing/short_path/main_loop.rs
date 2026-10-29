@@ -1,9 +1,9 @@
 //! The search's run: its main loop and a popped node's expansion by its type.
 
 use crate::pathing::short_path::{
-    Callback, Ctx, Hit, Kind, NONE, NUDGES, Node, Point, Poly, RECT_HEURISTIC, Search, ShortPath,
-    T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits, float_distance, in_box, isqrt,
-    through_float,
+    Callback, Corner, Ctx, Hit, Kind, NONE, NUDGES, Node, Point, Poly, RECT_HEURISTIC, Search,
+    ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits, float_distance, in_box,
+    isqrt, through_float,
 };
 use crate::{GenieError, math::fmath};
 
@@ -90,7 +90,15 @@ impl Search<'_> {
                 let sn = poly.sides[fv as usize];
                 let sh = poly.shapes[fv as usize];
                 if poly.costs[fv as usize] != UNSET
-                    && !self.goal_test(gf, n.idx, 0, e, fv, pi, v)
+                    && !self.goal_test(Corner {
+                        g: gf,
+                        parent: n.idx,
+                        dir: 0,
+                        lo: e,
+                        hi: fv,
+                        poly: pi,
+                        pt: v,
+                    })
                     && sp != sn
                     && sh != NONE
                     && let Some(token) = corner_emits(sp, sn, v, self.goal.at)
@@ -126,7 +134,15 @@ impl Search<'_> {
                 let sn = poly.sides[bv as usize];
                 let sh = poly.shapes[bv as usize];
                 if poly.costs[bv as usize] != UNSET
-                    && !self.goal_test(gb, n.idx, 1, bv, next0, pi, v)
+                    && !self.goal_test(Corner {
+                        g: gb,
+                        parent: n.idx,
+                        dir: 1,
+                        lo: bv,
+                        hi: next0,
+                        poly: pi,
+                        pt: v,
+                    })
                     && sp != sn
                     && sh != NONE
                     && let Some(token) = corner_emits(sp, sn, v, self.goal.at)

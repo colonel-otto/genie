@@ -39,13 +39,37 @@ fn search_toward(mesh: &Mesh, at: Point, range: i32) -> Search<'_> {
 fn a_goal_candidate_in_range_and_cheaper_becomes_the_goal_else_maybe_the_best() {
     let mesh = Mesh::new(64);
     let mut s = search_toward(&mesh, [10 * ONE, 10 * ONE], 2 * ONE);
-    assert!(s.goal_test(5 * ONE, 0, 0, 0, 0, 0, [11 * ONE, 10 * ONE]));
+    assert!(s.goal_test(Corner {
+        g: 5 * ONE,
+        parent: 0,
+        dir: 0,
+        lo: 0,
+        hi: 0,
+        poly: 0,
+        pt: [11 * ONE, 10 * ONE]
+    }));
     assert_eq!(s.goal_node, 1);
     // in range but dearer: the best instead, as it lies nearer than the start's estimate
-    assert!(!s.goal_test(6 * ONE, 0, 0, 0, 0, 0, [11 * ONE, 10 * ONE]));
+    assert!(!s.goal_test(Corner {
+        g: 6 * ONE,
+        parent: 0,
+        dir: 0,
+        lo: 0,
+        hi: 0,
+        poly: 0,
+        pt: [11 * ONE, 10 * ONE]
+    }));
     assert_eq!((s.goal_node, s.best), (1, 2));
     // out of range and farther than the best's estimate (one tile): nothing
-    assert!(!s.goal_test(ONE, 0, 0, 0, 0, 0, [30 * ONE, 30 * ONE]));
+    assert!(!s.goal_test(Corner {
+        g: ONE,
+        parent: 0,
+        dir: 0,
+        lo: 0,
+        hi: 0,
+        poly: 0,
+        pt: [30 * ONE, 30 * ONE]
+    }));
     assert_eq!((s.arena.len(), s.best), (3, 2));
 }
 
@@ -56,29 +80,29 @@ fn a_goal_candidate_in_range_and_cheaper_becomes_the_goal_else_maybe_the_best() 
 fn the_goal_s_foot_on_a_spanning_edge_is_a_goal_candidate() {
     let mesh = Mesh::new(64);
     let mut s = search_toward(&mesh, [10 * ONE, 10 * ONE], 2 * ONE);
-    s.foot_test(
-        0,
-        [9 * ONE, 12 * ONE],
-        [9 * ONE, 20 * ONE],
-        0,
-        0,
-        0,
-        0,
-        ONE,
-        0,
-    );
+    s.foot_test(Foot {
+        poly: 0,
+        a: [9 * ONE, 12 * ONE],
+        b: [9 * ONE, 20 * ONE],
+        dx: 0,
+        lo: 0,
+        hi: 0,
+        dir: 0,
+        g0: ONE,
+        parent: 0,
+    });
     assert_eq!(s.arena.len(), 1);
-    s.foot_test(
-        0,
-        [15 * ONE, 9 * ONE],
-        [5 * ONE, 9 * ONE],
-        1,
-        0,
-        0,
-        0,
-        ONE,
-        0,
-    );
+    s.foot_test(Foot {
+        poly: 0,
+        a: [15 * ONE, 9 * ONE],
+        b: [5 * ONE, 9 * ONE],
+        dx: 1,
+        lo: 0,
+        hi: 0,
+        dir: 0,
+        g0: ONE,
+        parent: 0,
+    });
     let goal = s.arena[s.goal_node as usize];
     assert_eq!((goal.at, goal.g), ([10 * ONE, 9 * ONE], 6 * ONE));
 }

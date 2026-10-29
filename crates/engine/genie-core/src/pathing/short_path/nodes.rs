@@ -3,6 +3,49 @@
 
 use crate::pathing::short_path::{Kind, NONE, Node, Point, RECT_HEURISTIC, Search};
 
+/// A polygon corner reached as a goal candidate (`FUN_140fa3860`'s arguments, [`Search::goal_test`]).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Corner {
+    /// The cost to the corner.
+    pub(super) g: i32,
+    /// The node it was reached from.
+    pub(super) parent: u32,
+    /// The walk's direction round the polygon (0 forward, 1 backward).
+    pub(super) dir: u8,
+    /// The first vertex of the walked run.
+    pub(super) lo: u32,
+    /// The last vertex of the walked run.
+    pub(super) hi: u32,
+    /// The polygon.
+    pub(super) poly: u32,
+    /// The corner's point.
+    pub(super) pt: Point,
+}
+
+/// A polygon's axis edge whose foot the goal may lie on (`FUN_140fa8210`'s arguments,
+/// [`Search::foot_test`]).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Foot {
+    /// The polygon.
+    pub(super) poly: u32,
+    /// The edge's start.
+    pub(super) a: Point,
+    /// The edge's end.
+    pub(super) b: Point,
+    /// The edge's x extent: horizontal when not 0.
+    pub(super) dx: i32,
+    /// The first vertex of the walked run.
+    pub(super) lo: u32,
+    /// The last vertex of the walked run.
+    pub(super) hi: u32,
+    /// The walk's direction round the polygon (0 forward, 1 backward).
+    pub(super) dir: u8,
+    /// The cost at the edge's start.
+    pub(super) g0: i32,
+    /// The node it was reached from.
+    pub(super) parent: u32,
+}
+
 /// `FUN_140fa3bc0`: whether a polygon corner at `v` between sides `prev` and `next` emits a node
 /// toward `g`, and the token its raycast ignores (0xff none).
 pub(super) fn corner_emits(prev: u8, next: u8, v: Point, g: Point) -> Option<u8> {
@@ -147,17 +190,16 @@ impl Search<'_> {
 
     /// `FUN_140fa3860`: a node at `pt` reached with cost `g`: within range and better than the goal
     /// so far, it becomes the goal (true); else, nearer than the best so far, the best.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn goal_test(
-        &mut self,
-        g: i32,
-        parent: u32,
-        dir: u8,
-        lo: u32,
-        hi: u32,
-        poly: u32,
-        pt: Point,
-    ) -> bool {
+    pub(super) fn goal_test(&mut self, corner: Corner) -> bool {
+        let Corner {
+            g,
+            parent,
+            dir,
+            lo,
+            hi,
+            poly,
+            pt,
+        } = corner;
         let d2: i64 = if RECT_HEURISTIC {
             self.goal.rect_distance2(pt)
         } else {
@@ -191,19 +233,18 @@ impl Search<'_> {
 
     /// `FUN_140fa8210`: the goal's foot on an axis edge `a`–`b` (horizontal when `dx != 0`) as a
     /// goal candidate.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn foot_test(
-        &mut self,
-        poly: u32,
-        a: Point,
-        b: Point,
-        dx: i32,
-        lo: u32,
-        hi: u32,
-        dir: u8,
-        g0: i32,
-        parent: u32,
-    ) {
+    pub(super) fn foot_test(&mut self, edge: Foot) {
+        let Foot {
+            poly,
+            a,
+            b,
+            dx,
+            lo,
+            hi,
+            dir,
+            g0,
+            parent,
+        } = edge;
         let (s, e, gv) = if dx != 0 {
             (a[0], b[0], self.goal.at[0])
         } else {
@@ -214,7 +255,15 @@ impl Search<'_> {
         if low <= gv && gv <= high {
             let foot = if dx != 0 { [gv, a[1]] } else { [a[0], gv] };
             let g = g0.wrapping_add((gv.wrapping_sub(s)).wrapping_abs());
-            let _ = self.goal_test(g, parent, dir, lo, hi, poly, foot);
+            let _ = self.goal_test(Corner {
+                g,
+                parent,
+                dir,
+                lo,
+                hi,
+                poly,
+                pt: foot,
+            });
         }
     }
 

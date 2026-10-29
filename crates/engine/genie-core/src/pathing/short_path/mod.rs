@@ -20,7 +20,7 @@ pub use self::call::{Call, Entry, Listed, Pather, Query, ShortPath, Target, to_p
 #[cfg(test)]
 use self::geometry::segment_hit;
 use self::geometry::{contact_point, ray_rect, shrunk_corner, snap_to_side};
-use self::nodes::{cheb, clamp_to_box, clip, corner_emits, in_box};
+use self::nodes::{Corner, Foot, cheb, clamp_to_box, clip, corner_emits, in_box};
 
 /// A point in fixed point.
 pub type Point = [i32; 2];

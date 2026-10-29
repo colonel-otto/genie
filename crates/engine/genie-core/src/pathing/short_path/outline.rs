@@ -4,25 +4,44 @@
 use crate::GenieError;
 use crate::pathing::mesh::Mesh;
 use crate::pathing::short_path::{
-    Kind, NONE, Point, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box, contact_point,
-    corner_emits, in_box, inside, shrunk_corner,
+    Corner, Foot, Kind, NONE, Point, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
+    contact_point, corner_emits, in_box, inside, shrunk_corner,
 };
+
+/// A vertex the tracer adds to the outline being traced ([`Search::append`]'s arguments after
+/// the polygon).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Traced {
+    /// The vertex.
+    pub(super) pos: Point,
+    /// The outline's first vertex.
+    pub(super) first: Point,
+    /// Whether the start side runs vertically.
+    pub(super) vertical: bool,
+    /// The start side.
+    pub(super) s0: u32,
+    /// The side the vertex is on.
+    pub(super) side: u8,
+    /// The shape it lies on.
+    pub(super) shape: u32,
+    /// The turns so far (4 a full one).
+    pub(super) winding: i32,
+}
 
 impl Search<'_> {
     /// `FUN_140fa2fa0`: append a vertex to the polygon being traced, unless the outline closes:
     /// after a full turn (`|winding| == 4`) the vertex passes the first one along the start side's
     /// line. On closing, a first vertex whose side repeats the last one's is dropped.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn append(
-        poly: &mut Poly,
-        pos: Point,
-        first: Point,
-        vertical: bool,
-        s0: u32,
-        side: u8,
-        shape: u32,
-        winding: i32,
-    ) -> bool {
+    pub(super) fn append(poly: &mut Poly, vertex: Traced) -> bool {
+        let Traced {
+            pos,
+            first,
+            vertical,
+            s0,
+            side,
+            shape,
+            winding,
+        } = vertex;
         if let (Some(&last), 4) = (poly.vertices.last(), winding.wrapping_abs()) {
             let closes = if vertical {
                 last[0] == first[0]
@@ -173,7 +192,18 @@ impl Search<'_> {
                     pos = clamped;
                 }
                 loop {
-                    if Self::append(poly, pos, first, vertical, s0, side as u8, shape, wp) {
+                    if Self::append(
+                        poly,
+                        Traced {
+                            pos,
+                            first,
+                            vertical,
+                            s0,
+                            side: side as u8,
+                            shape,
+                            winding: wp,
+                        },
+                    ) {
                         poly.costs = vec![UNSET; poly.vertices.len()];
                         return Ok(0);
                     }
@@ -402,8 +432,28 @@ impl Search<'_> {
         let dyb = v[last as usize][1] - p[1];
         let dxf = v[0][0] - p[0];
         let dyf = v[0][1] - p[1];
-        self.foot_test(pi, p, v[last as usize], dxb, last, 0, 1, g0, parent);
-        self.foot_test(pi, p, v[0], dxf, 0, 0, 0, g0, parent);
+        self.foot_test(Foot {
+            poly: pi,
+            a: p,
+            b: v[last as usize],
+            dx: dxb,
+            lo: last,
+            hi: 0,
+            dir: 1,
+            g0,
+            parent,
+        });
+        self.foot_test(Foot {
+            poly: pi,
+            a: p,
+            b: v[0],
+            dx: dxf,
+            lo: 0,
+            hi: 0,
+            dir: 0,
+            g0,
+            parent,
+        });
         let mut cb = (if dyb.wrapping_abs() < dxb.wrapping_abs() {
             dxb.wrapping_abs()
         } else {
@@ -427,8 +477,15 @@ impl Search<'_> {
                 let sp = poly.sides[(bi - 1) as usize];
                 let sn = poly.sides[bi as usize];
                 let sh = poly.shapes[bi as usize];
-                if !self.goal_test(cb, parent, 1, bi, 0, pi, vv)
-                    && sp != sn
+                if !self.goal_test(Corner {
+                    g: cb,
+                    parent,
+                    dir: 1,
+                    lo: bi,
+                    hi: 0,
+                    poly: pi,
+                    pt: vv,
+                }) && sp != sn
                     && sh != NONE
                     && let Some(token) = corner_emits(sp, sn, vv, self.goal.at)
                 {
@@ -449,7 +506,17 @@ impl Search<'_> {
                 }
                 let w = v[(bi - 1) as usize];
                 let dx = vv[0] - w[0];
-                self.foot_test(pi, vv, w, dx, bi - 1, 0, 1, cb, parent);
+                self.foot_test(Foot {
+                    poly: pi,
+                    a: vv,
+                    b: w,
+                    dx,
+                    lo: bi - 1,
+                    hi: 0,
+                    dir: 1,
+                    g0: cb,
+                    parent,
+                });
                 cb = cb.wrapping_add(cheb(vv, w));
                 bi -= 1;
             } else {
@@ -457,8 +524,15 @@ impl Search<'_> {
                 let sn = poly.sides[fi as usize];
                 let sh = poly.shapes[fi as usize];
                 let sp = poly.sides[((n - 1 + fi) % n) as usize];
-                if !self.goal_test(cf, parent, 0, 0, fi, pi, vv)
-                    && sp != sn
+                if !self.goal_test(Corner {
+                    g: cf,
+                    parent,
+                    dir: 0,
+                    lo: 0,
+                    hi: fi,
+                    poly: pi,
+                    pt: vv,
+                }) && sp != sn
                     && sh != NONE
                     && let Some(token) = corner_emits(sp, sn, vv, self.goal.at)
                 {
@@ -480,7 +554,17 @@ impl Search<'_> {
                 fi += 1;
                 let w = v[fi as usize];
                 let dx = vv[0] - w[0];
-                self.foot_test(pi, vv, w, dx, 0, fi, 0, cf, parent);
+                self.foot_test(Foot {
+                    poly: pi,
+                    a: vv,
+                    b: w,
+                    dx,
+                    lo: 0,
+                    hi: fi,
+                    dir: 0,
+                    g0: cf,
+                    parent,
+                });
                 cf = cf.wrapping_add(cheb(vv, w));
             }
             if fi >= bi {

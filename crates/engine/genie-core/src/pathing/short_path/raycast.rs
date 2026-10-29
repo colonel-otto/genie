@@ -6,6 +6,25 @@ use crate::pathing::short_path::{
     Callback, Ctx, Hit, Point, Sweep, T_START, inside, ray_rect, strictly_inside, tile_of,
 };
 
+/// One tile of a raycast ([`Ctx::ray_tile`]'s arguments).
+#[derive(Debug)]
+pub(super) struct RayTile<'a> {
+    /// The callback over the tile's shapes.
+    pub(super) cb: Callback,
+    /// The tile's shapes.
+    pub(super) list: &'a [u32],
+    /// The ray's start.
+    pub(super) a: Point,
+    /// The ray's end.
+    pub(super) b: Point,
+    /// The ray's fraction so far, which a hit lowers.
+    pub(super) t: &'a mut i32,
+    /// The hit it leaves.
+    pub(super) hit: &'a mut Hit,
+    /// The token a hit ignores, as the callback leaves it.
+    pub(super) token: &'a mut u32,
+}
+
 impl Ctx<'_> {
     pub(super) fn ignored(&self, id: u32) -> bool {
         self.ignore.get(id as usize).copied().unwrap_or(false)
@@ -38,17 +57,16 @@ impl Ctx<'_> {
     }
 
     /// One tile of the raycast: the callback over the tile's shapes.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn ray_tile(
-        &self,
-        cb: Callback,
-        list: &[u32],
-        a: Point,
-        b: Point,
-        t: &mut i32,
-        hit: &mut Hit,
-        token: &mut u32,
-    ) -> i32 {
+    pub(super) fn ray_tile(&self, tile: RayTile<'_>) -> i32 {
+        let RayTile {
+            cb,
+            list,
+            a,
+            b,
+            t,
+            hit,
+            token,
+        } = tile;
         let d = self.d;
         let mut result = 0;
         // B and C first test the shape against the ray's box
@@ -182,7 +200,15 @@ impl Ctx<'_> {
         while 0 < count {
             let e = err;
             let list = self.tile(tx, ty);
-            let r = self.ray_tile(cb, list, a, b, t, hit, token);
+            let r = self.ray_tile(RayTile {
+                cb,
+                list,
+                a,
+                b,
+                t,
+                hit,
+                token,
+            });
             let mut left = count;
             if r != 0 {
                 let hy = ((i64::from(y1.wrapping_sub(y0)) * i64::from(*t)) >> 22) as i32 + y0;
