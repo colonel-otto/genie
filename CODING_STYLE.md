@@ -153,10 +153,20 @@ raw value once and returns a type that can hold only valid values. Later code ta
 so it cannot receive an unchecked value, and the compiler holds the check in place. (Alexis
 King, "Parse, don't validate", 2019.)
 
-- Parse raw input into its type at the boundary that reads it: the save reader, the `.dat`
-  reader, the command codec, the oracle's import. The parse returns a `Result`. An invalid
-  value is an error there, with its context (section 7).
-- After the boundary, pass the parsed type. Do not pass the raw value with a check beside it.
+- Parse as early as possible: at the system boundary, where the value first enters genie. The
+  boundaries are the save reader, the `.dat` reader, the command codec and the oracle's import.
+  The parse returns a `Result`. An invalid value is an error there, with its context
+  (section 7).
+- Do not keep a raw value to convert it later, where a function needs the type. A struct field
+  that a reader fills holds the parsed type from the start.
+- Keep the value in its type from the boundary on, through every field and every call. Pass
+  the parsed type, never the raw value with a check beside it.
+- Convert back to a raw number only at an outgoing boundary (a writer, a format that the game
+  reads) or inside the type's own arithmetic. Two genie functions never pass a value as a raw
+  number and parse it again.
+- Migrate from the boundary inward: first the reader or the codec that makes the value, then
+  its callers. Code that is not migrated yet gets a raw number back through a helper
+  (`ObjectId::field`). Such a helper is temporary.
 - Write no `is_valid` function that returns a `bool` for later code to trust. Write a
   constructor that returns the type or an error (`TryFrom`, `of_field`).
 - Put the check into the shape of the type. A required value is `T`, not `Option<T>`. A closed
