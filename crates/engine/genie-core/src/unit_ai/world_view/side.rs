@@ -430,7 +430,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
                 to,
                 over_wall: false,
             } => {
-                self.lend(|w, p, i| w.transport_order(p, i, to))?;
+                self.c
+                    .lend_at(self.unit, |w, p, i| w.transport_order(p, i, to))?;
                 Ok(true)
             }
             _ => Err(crate::unit_ai::UNMODELLED_COMMAND),

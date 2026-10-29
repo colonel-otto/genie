@@ -7,6 +7,7 @@ use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
+use crate::unit_ai::UnitAi;
 use crate::world::World;
 
 pub(crate) struct Step<'a> {
@@ -40,6 +41,9 @@ pub(crate) struct Step<'a> {
     /// The owner's id: the updating object's player, whose fields the update reads through
     /// the world (`w.players[player]`).
     pub(crate) player: usize,
+    /// While the unit AI's side runs ([`Unit::with_side`]: the AI out of the unit), the notifies
+    /// the step's calls give that AI, posted to it as the side returns; None otherwise.
+    pub(crate) side_notifies: Option<Vec<(crate::unit_ai::Notify, u8)>>,
 }
 
 /// What a walk takes of the update beside the world: the dt in seconds, the world's time, and
@@ -105,17 +109,25 @@ impl Step<'_> {
     /// Runs `f` on the world with the updating object `me` lent back to its slot (FD-045-Q03:
     /// the game's world holds the object while its update calls a routine that scans the
     /// objects, a technology's effects or a search among them), then takes it out again from
-    /// where `f` left it; `me` holds what `f` changed on it.
+    /// where `f` left it; `me` holds what `f` changed on it. While the unit AI's side runs
+    /// ([`Step::side_notifies`]), a stand-in AI holds the AI's place on the lent unit.
     ///
     /// # Errors
     ///
-    /// `f`'s, or the object's stand-in or the object itself gone from the owner's live list.
+    /// `f`'s, the object's stand-in or the object itself gone from the owner's live list, and
+    /// a routine that reached the stand-in AI.
     pub(crate) fn lend<R>(
         &mut self,
         me: &mut Unit,
         f: impl FnOnce(&mut World) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let p = self.player;
+        // while the unit AI's side runs, its AI is out of the unit: a stand-in holds its place,
+        // which no routine on the lent unit may reach
+        let side = self.side_notifies.is_some();
+        if side {
+            me.ai = Some(UnitAi::default());
+        }
         let lent = std::mem::replace(me, Unit::taken_out());
         let answer = self.w.put_back_own(p, lent).and_then(|_| f(self.w));
         let own = &mut self.w.players[p].objects;
@@ -123,7 +135,15 @@ impl Step<'_> {
             GenieError::unreachable("a lent object left its list").with("object", self.me)
         })?;
         *me = own.take_out(i);
-        answer
+        let stand_in = if side { me.ai.take() } else { None };
+        let answer = answer?;
+        if side && stand_in != Some(UnitAi::default()) {
+            return Err(GenieError::unreachable(
+                "a world routine the unit AI's side called reached the unit's AI",
+            )
+            .with("object", self.me));
+        }
+        Ok(answer)
     }
 
     /// [`Step::lend`] for a world routine on the updating object by its slot: `f` gets the world,
@@ -144,6 +164,28 @@ impl Step<'_> {
             })?;
             f(w, p, i)
         })
+    }
+
+    /// A notify for the updating unit `me`'s own AI from a call of the step (an Enter's own
+    /// failure): posted at once, or held for the side's return while the AI is out of the unit
+    /// ([`Step::side_notifies`]); a unit without a unit AI has none to tell.
+    ///
+    /// # Errors
+    ///
+    /// A notify the unit AI's queue does not take.
+    pub(crate) fn notify_own(
+        &mut self,
+        me: &mut Unit,
+        n: crate::unit_ai::Notify,
+    ) -> Result<(), GenieError> {
+        let state = me.life.state;
+        if let Some(ai) = me.ai.as_mut() {
+            return ai.post(n, state);
+        }
+        if let Some(own) = self.side_notifies.as_mut() {
+            own.push((n, state));
+        }
+        Ok(())
     }
 
     /// The owner's slot 0xf8 with 1 and 1 on a unit's load (`FUN_141616820`,

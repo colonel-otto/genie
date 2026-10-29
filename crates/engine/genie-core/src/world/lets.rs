@@ -5,7 +5,8 @@
 //! own AI's notifies held until its call returns ([`World::with_lets_for`]).
 //!
 //! The updating object itself is out of its slot (its stand-in holds it), so no lookup by id
-//! finds it: a call on it runs on the unit its caller holds (`me`), at once.
+//! finds it: a call on it runs on the unit its caller holds (`me`), at once, its unit AI's
+//! notifies held while the AI's side runs ([`Step::side_notifies`]).
 
 use crate::GenieError;
 use crate::objects::lines::UnitLines;
@@ -77,11 +78,20 @@ impl World {
     }
 }
 
+/// `f` with the updating player's [`Lets`] for a call on the updating object itself: its unit
+/// AI's notifies go to the side's buffer while its side runs ([`Step::side_notifies`]).
+fn own_lets<R>(c: &mut Step<'_>, f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R) -> R {
+    match c.side_notifies.as_mut() {
+        Some(own) => c.w.with_lets_for(c.player, own, f),
+        None => c.w.with_lets(c.player, f),
+    }
+}
+
 /// Slot 0x178 on object `id`, which an action of `by` takes, from an update: the world's take
 /// ([`World::take`]); the updating object's own runs on `me` ([`Lets::take`]).
 pub(crate) fn take(c: &mut Step<'_>, me: &mut Unit, id: i32, by: Releaser) {
     if id == c.me {
-        c.w.with_lets(c.player, |lets, others| lets.take(others, Some(me), id, by));
+        own_lets(c, |lets, others| lets.take(others, Some(me), id, by));
     } else {
         c.w.take(id, by);
     }
@@ -100,9 +110,7 @@ pub(crate) fn release(
     by: Releaser,
 ) -> Result<(), GenieError> {
     if id == c.me {
-        return c.w.with_lets(c.player, |lets, others| {
-            lets.release(others, Some(me), id, by)
-        });
+        return own_lets(c, |lets, others| lets.release(others, Some(me), id, by));
     }
     c.w.release(id, by)
 }
@@ -116,9 +124,7 @@ pub(crate) fn release(
 /// An object of a master its owner lacks.
 pub(crate) fn leave_builders(c: &mut Step<'_>, me: &mut Unit, id: i32) -> Result<(), GenieError> {
     // the updating player's lets: the updating object's own site is reckoned by its owner
-    c.w.with_lets(c.player, |lets, others| {
-        lets.leave_builders(others, Some(me), id)
-    })
+    own_lets(c, |lets, others| lets.leave_builders(others, Some(me), id))
 }
 
 /// What an action list's teardown left the world, applied at once from an update: the buildings
@@ -302,31 +308,6 @@ impl Lets<'_> {
                 id
             },
         )
-    }
-
-    /// What an action list's teardown left the world, applied at once: the buildings its
-    /// counted builders leave ([`Lets::leave_builders`]), then the targets it lets go
-    /// ([`Lets::release`]; `me` the updating object), as [`World::clear_actions`] applies
-    /// them.
-    ///
-    /// # Errors
-    ///
-    /// [`Lets::leave_builders`]' and [`Lets::release`]'s.
-    ///
-    /// [`World::clear_actions`]: crate::world::World::clear_actions
-    pub(crate) fn torn_down(
-        &mut self,
-        others: &mut Others<'_>,
-        mut me: Option<&mut Unit>,
-        (builder_leaves, releases): (Vec<i32>, Vec<(i32, Releaser)>),
-    ) -> Result<(), GenieError> {
-        for id in builder_leaves {
-            self.leave_builders(others, me.as_deref_mut(), id)?;
-        }
-        for (id, by) in releases {
-            self.release(others, me.as_deref_mut(), id, by)?;
-        }
-        Ok(())
     }
 
     /// Player `from` counts player `to` as its own or allied, with its allies (`FUN_141663dc0`

@@ -185,9 +185,6 @@ pub(crate) struct UnitView<'u, 's> {
     pub(crate) civ: u8,
     /// The owner's AI settings.
     pub(crate) ai_settings: crate::world::player::AiSettings,
-    /// The notifies the side's calls give the unit's own AI, which the side does not hold: the
-    /// AI is posted them, with the unit's state, when the side's call returns ([`Lets`]).
-    pub(crate) own_notifies: Vec<(crate::unit_ai::Notify, u8)>,
 }
 
 #[cfg(test)]

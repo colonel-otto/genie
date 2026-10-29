@@ -224,6 +224,7 @@ impl Unit {
         // the AI stream is the AI's while it runs: no world routine the side calls draws from it
         let held = c.w.streams.get(Stream::Ai).clone();
         let mut ai_stream = held.clone();
+        let outer = c.side_notifies.replace(Vec::new());
         let mut side = UnitView {
             c: &mut *c,
             unit: self,
@@ -234,13 +235,10 @@ impl Unit {
             new_owner: view.new_owner,
             civ: view.civ,
             ai_settings: view.ai_settings,
-            own_notifies: Vec::new(),
         };
         let result = f(&mut ai, &mut side, &mut ai_stream);
-        let posted = side
-            .own_notifies
-            .into_iter()
-            .try_for_each(|(n, state)| ai.post(n, state));
+        let own = std::mem::replace(&mut c.side_notifies, outer).unwrap_or_default();
+        let posted = own.into_iter().try_for_each(|(n, state)| ai.post(n, state));
         self.ai = Some(ai);
         let stream = c.w.streams.get(Stream::Ai);
         if *stream != held {

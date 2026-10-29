@@ -58,6 +58,7 @@ impl World {
             player: p,
             taken_over: None,
             building_handover: false,
+            side_notifies: None,
         };
         let mut result = f(&mut unit, &mut c);
         if let Some(w) = watch {

@@ -4364,6 +4364,39 @@ fn a_side_s_own_release_tells_the_unit_ai_as_the_side_returns() {
     assert_eq!(notified(&t, NO_LONGER_ON_ME).len(), 1);
 }
 
+/// A notify for the updating unit's own AI from a call of its step ([`Step::notify_own`]):
+/// posted at once while the AI is in the unit; held while the AI's side runs, the AI out of the
+/// unit, and posted as the side returns.
+///
+/// [`Step::notify_own`]: crate::world::step::Step::notify_own
+#[test]
+fn a_step_s_own_notify_waits_for_the_unit_ai_s_side_to_return() {
+    use crate::unit_ai::world_view::OwnerView;
+    use crate::unit_ai::{NO_LONGER_ON_ME, Notify};
+    let mut t = hunt_world();
+    let id = t.players[1].objects[0].id;
+    let ai = t.players[1].objects[0].ai.as_mut().unwrap();
+    (ai.attackers, ai.notifies) = (vec![id], Vec::new());
+    let n = Notify::own(id, NO_LONGER_ON_ME, [1, 2, 3]);
+    let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
+        c.notify_own(unit, n)?;
+        let at_once = unit.ai.as_ref().map(|ai| ai.notifies.len());
+        let view = OwnerView::of(c, None);
+        let attacker = unit.attacker_of(13, None, (1, false), false, 0);
+        let inside = unit.with_side(c, &view, attacker, (1, false), |ai, side, _| {
+            side.c.notify_own(side.unit, n)?;
+            Ok(ai.notifies.len())
+        })?;
+        Ok((
+            at_once,
+            inside,
+            unit.ai.as_ref().map(|ai| ai.notifies.len()),
+        ))
+    });
+    assert_eq!(seen, Ok((Some(1), 1, Some(2))));
+    assert_eq!(notified(&t, NO_LONGER_ON_ME), vec![[1, 2, 3]; 2]);
+}
+
 /// The AI stream is the unit AI's while it runs on its side ([`Unit::with_side`]): its draws are
 /// the world's stream after the run, and a world routine that draws from it meanwhile fails the
 /// run.
@@ -4576,19 +4609,21 @@ fn the_unit_ai_s_repair_command_is_the_unit_s_within_its_run() {
     );
 }
 
-/// A world routine the unit AI's side lends its unit to ([`UnitView::lend`]) finds a stand-in for
+/// A world routine the unit AI's side lends its unit to ([`Step::lend`]) finds a stand-in for
 /// the AI, which is out of the unit while it runs: one that changes it fails the lend.
 ///
-/// [`UnitView::lend`]: crate::unit_ai::world_view::UnitView::lend
+/// [`Step::lend`]: crate::world::step::Step::lend
 #[test]
 fn a_world_routine_that_reaches_the_running_unit_ai_fails_the_side_s_lend() {
     let mut t = repairer_world(vec![], false);
     let held = villager_side(&mut t, |side| {
-        side.lend(|w, p, i| Ok(w.players[p].objects[i].ai.is_some()))
+        side.c.lend_at(side.unit, |w, p, i| {
+            Ok(w.players[p].objects[i].ai.is_some())
+        })
     });
     assert_eq!(held.map(|(h, ai)| (h, ai.is_some())), Ok((true, true)));
     let reached = villager_side(&mut t, |side| {
-        side.lend(|w, p, i| {
+        side.c.lend_at(side.unit, |w, p, i| {
             w.players[p].objects[i].ai.as_mut().unwrap().current_target = 7;
             Ok(())
         })
@@ -11018,7 +11053,6 @@ fn on_side<R>(
             new_owner: None,
             civ: 0,
             ai_settings: AiSettings::default(),
-            own_notifies: Vec::new(),
         };
         Ok(f(&mut side))
     });
