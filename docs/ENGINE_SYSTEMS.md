@@ -187,11 +187,15 @@ code keep it so:
 
 ## Conventions
 
+The rules for new code are in [CODING_STYLE.md](../CODING_STYLE.md). This section names the ones
+that shape the engine's source.
+
 - **Names.** Folders and files have plain English names for what they hold. Game addresses and
   class abbreviations stay in the documentation, not in paths or identifiers.
 - **One routine, one port.** A port follows its routine whole: every branch, its order of
   operations, its random draws. A part that is not ported yet returns
-  `GenieError::unsupported`, and the player stops there.
+  `GenieError::unsupported`, and the player stops there. A new port adds no such part: it ports
+  every branch.
 - **File length.** A hand-written file holds at most 700 lines of production code
   (`scripts/file_size.py`). Tests do not count.
 - **An action's folder.** An action has a folder of its own in its system, for example

@@ -75,6 +75,8 @@ own, and fix its long-standing bugs instead of reproducing them.
   Each folder of the core's source has a `README.md` for its system.
 - [`docs/DEBUGGING.md`](docs/DEBUGGING.md) shows how to play a recording, find where it goes
   wrong, and report a bug.
+- [`CODING_STYLE.md`](CODING_STYLE.md) sets the rules for the code: naming, types, errors, the
+  data-oriented design, the engine patterns, the architecture, determinism, docs and tests.
 
 ## To the developers of the game
 
