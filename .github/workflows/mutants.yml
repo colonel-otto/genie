@@ -1,70 +1,126 @@
-# Mutation testing (cargo-mutants, .cargo/mutants.toml): each changed function is mutated and
-# the tests must catch the mutant. The whole workspace holds about 42,000 mutants, too many for
-# one run, so CI mutates only the lines a push or a pull request changes (`--in-diff`); a run
-# by hand (workflow_dispatch) mutates one crate.
+# Mutation testing (cargo-mutants, .cargo/mutants.toml): each function is mutated and the tests
+# must catch the mutant. It runs once a week over the whole workspace, not on pushes or pull
+# requests. The workspace holds about 42,000 mutants, so the run is split into shards, one job
+# each (`--shard k/n`); 256 shards keep a shard at about 165 mutants, inside a job's six hours.
+# A run by hand (workflow_dispatch) mutates the workspace or one crate.
 name: cargo-mutants
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    # Only a change that can change the result.
-    paths:
-      - ".cargo/mutants.toml"
-      - ".config/nextest.toml"
-      - ".github/workflows/mutants.yml"
-      - "Cargo.*"
-      - "crates/**"
+  schedule:
+    # Saturdays, 02:17 UTC
+    - cron: "17 2 * * 6"
   workflow_dispatch:
     inputs:
       package:
-        description: "The crate to mutate whole (e.g. genie-rec)"
-        required: true
+        description: "One crate to mutate (e.g. genie-rec); empty for the whole workspace"
+        required: false
+        default: ""
+      shards:
+        description: "The number of shards (jobs), at most 256"
+        required: false
+        default: "256"
 
 permissions:
   contents: read
 
+# A second run waits for the first instead of cancelling a week's run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  cargo-mutants:
+  shards:
     runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.list.outputs.count }}
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - id: list
+        # the input through the environment, never into the script's text
+        env:
+          SHARDS: ${{ inputs.shards || '256' }}
+        run: |
+          case "$SHARDS" in
+            ''|*[!0-9]*) echo "shards must be a number: $SHARDS"; exit 1 ;;
+          esac
+          if [ "$SHARDS" -lt 1 ] || [ "$SHARDS" -gt 256 ]; then
+            echo "shards must be 1 to 256: $SHARDS"; exit 1
+          fi
+          echo "count=$SHARDS" >> "$GITHUB_OUTPUT"
+          echo "list=$(jq -nc "[range($SHARDS)]")" >> "$GITHUB_OUTPUT"
+
+  cargo-mutants:
+    needs: shards
+    name: cargo-mutants (shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.shards.outputs.list) }}
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-mutants,cargo-nextest
       - uses: Swatinem/rust-cache@v2
-      - name: The change's lines
-        if: github.event_name != 'workflow_dispatch'
-        env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: git diff "$BASE" "$GITHUB_SHA" -- crates > change.diff
-      - name: Mutate the change
-        if: github.event_name != 'workflow_dispatch'
-        run: |
-          if [ -s change.diff ]; then
-            cargo mutants -vV --in-place --in-diff change.diff
-          else
-            echo "no change under crates/"
-          fi
-      - name: Mutate one crate
-        if: github.event_name == 'workflow_dispatch'
-        # the input through the environment, never into the script's text
+        with:
+          shared-key: mutants
+          # one writer for the shards' common cache
+          save-if: ${{ matrix.shard == 0 }}
+      - name: Mutate the shard
         env:
           PACKAGE: ${{ inputs.package }}
-        run: cargo mutants -vV --in-place --package "$PACKAGE"
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ needs.shards.outputs.count }}
+        run: |
+          args=(--in-place --shard "$SHARD/$SHARDS" --sharding round-robin)
+          if [ -n "$PACKAGE" ]; then
+            args+=(--package "$PACKAGE")
+          fi
+          cargo mutants -vV "${args[@]}"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: mutants-out
+          name: mutants-out-${{ matrix.shard }}
           path: mutants.out
           if-no-files-found: ignore
+
+  # The shards' results in one place: the counts and the missed mutants in the run's summary,
+  # the lists as one artifact.
+  report:
+    needs: cargo-mutants
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: mutants-out-*
+          path: shards
+      - name: The shards' results
+        run: |
+          mkdir -p mutants
+          for kind in caught missed timeout unviable; do
+            cat shards/*/"$kind".txt 2>/dev/null | sort > "mutants/$kind.txt" || true
+          done
+          {
+            echo "## cargo-mutants"
+            echo
+            for kind in caught missed timeout unviable; do
+              echo "- $kind: $(wc -l < "mutants/$kind.txt")"
+            done
+            echo
+            echo "### Missed (the first 2000)"
+            echo
+            echo '```'
+            head -n 2000 mutants/missed.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mutants
+          path: mutants

@@ -1,6 +1,7 @@
 # cargo-mutants (mutation testing, https://mutants.rs): a mutant the tests do not catch marks
-# code whose tests check too little. CI runs the mutants of each change
-# (.github/workflows/mutants.yml); a whole crate runs by hand: `cargo mutants -p CRATE`.
+# code whose tests check too little. CI runs the whole workspace once a week, in shards
+# (.github/workflows/mutants.yml); a change's mutants run by hand: `cargo mutants --in-diff
+# FILE.diff`, a whole crate's `cargo mutants -p CRATE`.
 
 # The tests run under nextest, as everywhere in genie (.config/nextest.toml).
 test_tool = "nextest"
