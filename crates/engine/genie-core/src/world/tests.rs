@@ -13706,32 +13706,31 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
         let _ = unit.build_part(c, me)?;
         let heard = unit.ai.as_ref().unwrap().notifies.iter();
         Ok((
-            c.work_order.take().map(|w| (w.target, w.point)),
+            (unit.top_action_kind(), unit.top_target()),
             heard.map(|n| n.kind).collect(),
         ))
     });
     (t, r)
 }
 
-/// What [`built_the_centre`]'s search left: the work command (its target and point) and the
-/// notifies' kinds.
-type BuildSearched = Result<(Option<(i32, [f32; 3])>, Vec<i32>), GenieError>;
+/// What [`built_the_centre`]'s search left within the update: the builder's top action (its
+/// type and target) and the notifies' kinds.
+type BuildSearched = Result<((Option<i16>, Option<i32>), Vec<i32>), GenieError>;
 
 /// The search for more work around the town centre a builder finished (`0x140ab0b43`,
 /// [`Unit::more_work`], within the Build's update): the table's entry for the centre (auto
 /// work) takes berries, within the centre's line of sight (16 tiles) the bush at 32.5 is the
 /// nearest, and the unit AI's `ClosestResourceObject` names it: the work command on it at its
-/// place. An entry without auto work, or a line of sight below the floor (the reach 4 tiles,
-/// short of the bushes), finds nothing: the Build waits without a target, lets the centre go and
-/// asks its unit AI for a search.
+/// place, within the update (the Gather replaces the Build). An entry without auto work, or a
+/// line of sight below the floor (the reach 4 tiles, short of the bushes), finds nothing: the
+/// Build waits without a target, lets the centre go and asks its unit AI for a search.
 #[test]
 fn a_builder_finds_more_work_around_the_building_it_finished() {
+    use crate::construction::build::BUILD;
+    use crate::gathering::gather::GATHER;
     let (t, found) = built_the_centre(|_| ());
-    assert_eq!(found, Ok((Some((600, [32.5, 89.5, 0.0])), vec![])));
-    assert_eq!(
-        t.players[1].objects[0].actions.build().map(|b| b.target),
-        Some(700)
-    );
+    assert_eq!(found, Ok(((Some(GATHER), Some(600)), vec![])));
+    assert!(t.players[1].objects[0].actions.build().is_none());
     let off: fn(&mut World) = |t| t.drop_sites[0].auto_work = false;
     let short: fn(&mut World) = |t| {
         for masters in &mut t.masters {
@@ -13740,7 +13739,7 @@ fn a_builder_finds_more_work_around_the_building_it_finished() {
     };
     for setup in [off, short] {
         let (t, found) = built_the_centre(setup);
-        assert_eq!(found, Ok((None, vec![SEARCH_NEEDED])));
+        assert_eq!(found, Ok(((Some(BUILD), Some(-1)), vec![SEARCH_NEEDED])));
         let b = t.players[1].objects[0].actions.build().copied().unwrap();
         assert_eq!((b.state, b.target), (crate::construction::build::IDLE, -1));
         assert_eq!(t.players[1].objects[2].workers, 0);
@@ -14543,13 +14542,6 @@ type Orders<'a> = dyn Fn(&mut step::Step<'_>) + 'a;
 #[test]
 fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
     use crate::objects::unit::Outcome;
-    let work = crate::orders::Work {
-        target: 600,
-        point: [32.5, 89.5, 0.0],
-        carry_test: false,
-        filter: -1,
-        notified: true,
-    };
     let order = crate::unit_ai::QueuedOrder {
         issuer: 1,
         order: OrderKind::OnTarget,
@@ -14572,16 +14564,10 @@ fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
     };
     assert_eq!(leaving(&|_| ()), Ok(Outcome::Leave));
     let gap = |reason: &str| Err(reason.to_owned());
-    let cases: [(&Orders<'_>, _); 2] = [
-        (
-            &|c| c.work_order = Some(work),
-            gap("a builder's work order of a unit that leaves its list"),
-        ),
-        (
-            &|c| c.order_on_target = Some((order, None)),
-            gap("an order on a target of a unit that leaves its list"),
-        ),
-    ];
+    let cases: [(&Orders<'_>, _); 1] = [(
+        &|c| c.order_on_target = Some((order, None)),
+        gap("an order on a target of a unit that leaves its list"),
+    )];
     for (orders, failed) in cases {
         assert_eq!(leaving(orders), failed);
     }

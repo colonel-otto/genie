@@ -114,8 +114,8 @@ impl World {
     pub(super) fn update_objects(&mut self, p: usize, (dt, turn): (u32, Option<u32>)) {
         // the loop's count, which goes on past each object but one that leaves
         let mut i = 0;
-        // a unit whose update stopped before its unit AI for its work order runs that part
-        // again once the work is given ([`Unit::ai_part`]), at the slot its step left it in
+        // a unit whose unit AI took an order on a target runs the rest of its unit AI once the
+        // order ran ([`Unit::ai_part`]), at the slot its step left it in
         let mut resume: Option<(AiResume, usize)> = None;
         while resume.is_some() || i < self.players[p].objects.len() {
             let (again, slot) = resume.take().map_or((None, i), |(r, k)| (Some(r), k));
@@ -131,11 +131,10 @@ impl World {
                 tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master).entered();
             let stepped = self.step_object((p, slot), (dt, turn, true), again, Unit::update);
             match stepped {
-                Ok(s) => match (s.outcome, s.resume, s.after) {
-                    (Outcome::Stay, Some(ai_resume), _) => resume = Some((ai_resume, s.slot)),
+                Ok(s) => match (s.outcome, s.after) {
                     // the unit AI's rest after the order on a target it took, which the unit's
                     // update runs again from there ([`crate::unit_ai::UnitAi::after_order`])
-                    (Outcome::Stay, None, Some(after)) => {
+                    (Outcome::Stay, Some(after)) => {
                         let ai_resume = AiResume {
                             captured: None,
                             leaves: Outcome::Stay,

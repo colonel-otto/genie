@@ -39,8 +39,8 @@ pub(crate) struct Step<'a> {
     /// after the update ([`World::kill_left`]); another object's kill reaches the world at the
     /// hit.
     pub(crate) kills: Vec<KillLeft>,
-    /// The unit's update stopped before its unit AI for the caller's work order
-    /// ([`Unit::ai_part`]); given back, the update runs only that part.
+    /// The rest of the unit AI's full update after the order on a target the caller ran
+    /// ([`Unit::ai_part`]); given, the update runs only that part.
     pub(crate) ai_resume: Option<AiResume>,
     /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
     /// whether it has the unit's master: the update ends with the takeover ([`crate::objects::unit::Outcome::Captured`]).
@@ -51,9 +51,6 @@ pub(crate) struct Step<'a> {
     /// The owner's id: the updating object's player, whose fields the update reads through
     /// the world (`w.players[player]`).
     pub(crate) player: usize,
-    /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
-    /// which the caller gives after the update ([`World::order_work`]).
-    pub(crate) work_order: Option<crate::orders::Work>,
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
     /// runs after the update ([`World::order_on_target`]), and the full update's tail that reads
     /// what the order gave ([`crate::unit_ai::UnitAi::after_order`]).
@@ -76,12 +73,8 @@ pub(crate) struct ObjectOutputs {
     )>,
     /// [`Step`]'s `starts`.
     pub(in crate::world) starts: Vec<AiStart>,
-    /// [`Step`]'s `work_order`.
-    pub(in crate::world) work_order: Option<crate::orders::Work>,
     /// [`Step`]'s `kills`.
     pub(in crate::world) kills: Vec<KillLeft>,
-    /// [`Step`]'s `ai_resume`.
-    pub(in crate::world) ai_resume: Option<AiResume>,
 }
 
 impl Step<'_> {
@@ -90,9 +83,7 @@ impl Step<'_> {
         ObjectOutputs {
             ordered: self.order_on_target.take(),
             starts: std::mem::take(&mut self.starts),
-            work_order: self.work_order.take(),
             kills: std::mem::take(&mut self.kills),
-            ai_resume: self.ai_resume.take(),
         }
     }
 }

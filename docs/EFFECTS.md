@@ -5,7 +5,7 @@
 An object's update in the game changes other objects by direct calls (a notify through
 slot 0x38, a release through slot 0x180, a stop through slot 0x5d0). genie-core cannot
 change them from inside the update, so it hands such effects on to be done outside it.
-These are the channels it uses (FD-045): 5 world outputs, 15 unit AI effects and 18 hand-offs.
+These are the channels it uses (FD-045): 3 world outputs, 15 unit AI effects and 18 hand-offs.
 
 ## The world's outputs
 
@@ -16,9 +16,7 @@ the object's update by the functions named.
 | --- | --- | --- | --- | --- | --- |
 | `order_on_target` | `Option<(crate::unit_ai::QueuedOrder,Option<crate::unit_ai::AfterOrder>)>` | The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller runs after the update (`World::order_on_target`), and the full update's tail that reads what the order gave (`crate::unit_ai::UnitAi::after_order`). |  | [`objects/unit/stop.rs`](../crates/engine/genie-core/src/objects/unit/stop.rs) | `step_object`, `apply_ai_starts` |
 | `starts` | `Vec<AiStart>` | The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran (`AiStart`), which the caller makes the unit's after the update, in order. |  | [`unit_ai/unit.rs`](../crates/engine/genie-core/src/unit_ai/unit.rs) | `apply_ai_starts` |
-| `work_order` | `Option<crate::orders::Work>` | The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf), which the caller gives after the update (`World::order_work`). | `slot 0x7e8` | [`construction/build/states.rs`](../crates/engine/genie-core/src/construction/build/states.rs), [`objects/unit/update.rs`](../crates/engine/genie-core/src/objects/unit/update.rs) | `apply_work_order` |
 | `kills` | `Vec<KillLeft>` | The updating object's own kill (a retaliation's), which its slot's stand-in keeps from the world until the step's end (`crate::combat::victims::file_kill`): the caller's after the update (`World::kill_left`); another object's kill reaches the world at the hit. |  | [`combat/victims.rs`](../crates/engine/genie-core/src/combat/victims.rs) | `apply_hits_and_releases` |
-| `ai_resume` | `Option<AiResume>` | The unit's update stopped before its unit AI for the caller's work order (`Unit::ai_part`); given back, the update runs only that part. |  | [`objects/unit/update.rs`](../crates/engine/genie-core/src/objects/unit/update.rs) | `step_object` |
 
 ## The unit AI's effects
 

@@ -185,13 +185,13 @@ fn plan(t: &mut World) {
     t.pathing.start_mesh(20);
 }
 
-/// The work an update gives: its target and point.
-type Work = Option<(i32, [f32; 3])>;
+/// The builder's top action right after its update: its type and target.
+type Top = (Option<i16>, Option<i32>);
 
 /// One update of the builder's Build of `dt` ms (its part of the unit's update,
-/// [`Unit::build_part`]) and its code; the work it gives after the update (slot 0x7e8) is taken
-/// out first.
-fn update(t: &mut World, dt: u32) -> Result<(HeadCode, Work), GenieError> {
+/// [`Unit::build_part`]), its code and the builder's top action right after it (the work it
+/// gives within the update, slot 0x7e8, replaces the Build).
+fn update(t: &mut World, dt: u32) -> Result<(HeadCode, Top), GenieError> {
     in_update(t, (1, 0), dt, |u, c| {
         let me = Me {
             id: u.id,
@@ -199,7 +199,7 @@ fn update(t: &mut World, dt: u32) -> Result<(HeadCode, Work), GenieError> {
             action_state: u.top_action().map_or(0, |a| a.state),
         };
         let code = u.build_part(c, me)?;
-        Ok((code, c.work_order.take().map(|w| (w.target, w.point))))
+        Ok((code, (u.top_action_kind(), u.top_target())))
     })
 }
 
@@ -949,7 +949,7 @@ fn a_builder_lets_a_dead_foundation_go() {
 }
 
 /// The end of the work (case 0xdf): a villager works the farm it built (class 49), its unit AI
-/// dropping its build orders: slot 0x7e8 on the farm at its place, after the update.
+/// dropping its build orders: slot 0x7e8 on the farm at its place, within the update.
 #[test]
 fn a_villager_works_the_farm_it_built() {
     let b = BuildAction {
@@ -968,9 +968,12 @@ fn a_villager_works_the_farm_it_built() {
     let ai = own(&mut t, BUILDER).ai.as_mut().unwrap();
     ai.orders = vec![order(OrderKind::Build), order(OrderKind::Hunt)];
     let worked = update(&mut t, 20).unwrap();
-    assert_eq!(worked, (HeadCode::Keeps, Some((HOUSE, AT_HOUSE))));
-    let orders = &builder(&t).ai.as_ref().unwrap().orders;
-    assert_eq!(orders, &vec![order(OrderKind::Hunt)]);
+    // the work command within the update: [`site_world`]'s villager has no farm task, so it
+    // walks to the farm, and the move (slot 0x138, `+0xa14` 1) empties the queue the Build
+    // left its Hunt order in
+    let walks = Some(crate::movement::move_to::MOVE_TO);
+    assert_eq!(worked, (HeadCode::Keeps, (walks, Some(HOUSE))));
+    assert_eq!(builder(&t).ai.as_ref().unwrap().orders, vec![]);
 }
 
 /// A builder beside its foundation works in its first update (state 6); census v5's 208 stops

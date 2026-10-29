@@ -132,7 +132,7 @@ impl BuildAction {
 
     /// Case 0xdf of the update, the work ended (224): a villager works the farm it built (class
     /// 49 but the fish trap, `FUN_141194b20`: a pasture too), a fishing ship its fish trap (slot
-    /// 0x7e8 on it, at its place: [`Step::work_order`]); another builder of a pasture (1893,
+    /// 0x7e8 on it, at its place: [`BuildAction::works_it`]); another builder of a pasture (1893,
     /// 1897, slot 0x780 against its owner's attribute 290) is not modelled; the builder's unit
     /// AI drops its build orders on foundations gone or built (`FUN_140c5dcd0`); with orders
     /// left in its queue (`FUN_140c564a0`) it has no order and no action (`FUN_140c64b60`,
@@ -180,7 +180,7 @@ impl BuildAction {
         ))?;
         if works_it {
             ai.orders.retain(|o| o.order != OrderKind::Build);
-            self.works_it(c)?;
+            self.works_it(c, builder)?;
             return Ok(HeadCode::Keeps);
         }
         // FUN_140c5dcd0 (the building just completed is in state 2 now)
@@ -194,9 +194,12 @@ impl BuildAction {
         Ok(HeadCode::Deletes)
     }
 
-    /// Slot 0x7e8 on the building the builder built, at its place: the work the caller gives
-    /// after the update ([`Step::work_order`]).
-    fn works_it(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
+    /// Slot 0x7e8 on the building the builder built, at its place, inside the update (the
+    /// builder lent back to its slot: [`World::order_work`], which replaces the Build); the
+    /// update then answers 0.
+    ///
+    /// [`World::order_work`]: crate::world::World::order_work
+    fn works_it(&mut self, c: &mut Step<'_>, builder: &mut Unit) -> Result<(), GenieError> {
         let point =
             c.w.spatial
                 .get(self.target)
@@ -204,25 +207,27 @@ impl BuildAction {
                     "a builder's building without a place",
                 ))?
                 .position;
-        c.work_order = Some(crate::orders::Work {
+        let work = crate::orders::Work {
             target: self.target,
             point,
             carry_test: false,
             filter: -1,
             notified: true,
-        });
-        Ok(())
+        };
+        self.lend(c, builder, |w, p, i| w.order_work(p, i, &work))
     }
 
     /// The Build's case 0xdf after the work: the builder's search for more work around the
-    /// building it finished ([`Unit::more_work`]: the work the caller gives after the update,
-    /// [`Step::work_order`]); without one the Build lets the building go and waits
-    /// ([`BuildAction::no_more_work`]; `set_state(3)` without orders: notify 0x202, then the
-    /// standing sprite).
+    /// building it finished ([`Unit::more_work`]: its slot 0x7e8 inside the update, the builder
+    /// lent back to its slot, [`World::order_work`]); without one the Build lets the building
+    /// go and waits ([`BuildAction::no_more_work`]; `set_state(3)` without orders: notify
+    /// 0x202, then the standing sprite).
     ///
     /// # Errors
     ///
-    /// What the search does not model.
+    /// What the search and the work command do not model.
+    ///
+    /// [`World::order_work`]: crate::world::World::order_work
     fn search(
         &mut self,
         c: &mut Step<'_>,
@@ -235,8 +240,7 @@ impl BuildAction {
         ))?;
         let target = self.target;
         if let Some(work) = builder.more_work(c, target, built)? {
-            c.work_order = Some(work);
-            return Ok(());
+            return self.lend(c, builder, |w, p, i| w.order_work(p, i, &work));
         }
         self.no_more_work()?;
         crate::world::lets::release(c, builder, target, reads.by)?;

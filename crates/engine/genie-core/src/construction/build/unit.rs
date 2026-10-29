@@ -208,9 +208,10 @@ impl Unit {
 }
 
 impl BuildAction {
-    /// Runs `f` on the world with the builder lent back to its slot ([`Step::lend`]: the
-    /// world's routines that scan the objects meet it, as the game's do), its Build as this
-    /// update left it so far; after `f` the Build is the one `f` left.
+    /// Runs `f` on the world with the builder lent back to its slot ([`Step::lend_at`]: the
+    /// world's routines that scan the objects meet it, as the game's do; `f` gets its player and
+    /// slot), its Build as this update left it so far; after `f` the Build is the one `f` left
+    /// (none when `f` replaced the builder's actions: a work command).
     ///
     /// # Errors
     ///
@@ -219,12 +220,12 @@ impl BuildAction {
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
-        f: impl FnOnce(&mut World) -> Result<R, GenieError>,
+        f: impl FnOnce(&mut World, usize, usize) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         if let Some(b) = builder.actions.build_mut() {
             *b = *self;
         }
-        let answer = c.lend(builder, f);
+        let answer = c.lend_at(builder, f);
         if let Some(b) = builder.actions.build() {
             *self = *b;
         }
@@ -265,7 +266,7 @@ impl BuildAction {
         match &worked {
             Worked::Main { amount, .. } => {
                 let amount = *amount;
-                self.lend(c, builder, |w| w.work_building(target, amount))?;
+                self.lend(c, builder, |w, _, _| w.work_building(target, amount))?;
             }
             Worked::Completed(built) => self.completed(c, builder, built.clone())?,
             Worked::Going | Worked::Done => {}
@@ -292,7 +293,7 @@ impl BuildAction {
         let target = self.target;
         for annex in c.w.spatial.annexes_of(target) {
             if let Some((q, _)) = c.w.object(annex) {
-                self.lend(c, builder, |w| w.set_state(q, annex, 2))?;
+                self.lend(c, builder, |w, _, _| w.set_state(q, annex, 2))?;
             }
         }
         let p = c.player;
@@ -332,7 +333,7 @@ impl BuildAction {
             started: false,
             ..built
         };
-        self.lend(c, builder, |w| w.built(p, target, built))
+        self.lend(c, builder, |w, _, _| w.built(p, target, built))
     }
 }
 

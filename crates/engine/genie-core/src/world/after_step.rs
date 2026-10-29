@@ -14,8 +14,6 @@ use crate::world::step::{ObjectOutputs, Step};
 pub(super) struct Stepped {
     /// The step.
     pub(super) outcome: Outcome,
-    /// The resume of a unit AI part the update stopped before.
-    pub(super) resume: Option<AiResume>,
     /// The tail after an order on a target.
     pub(super) after: Option<AfterOrder>,
     /// The object's slot in its owner's live list after the step: a removal that put the list's
@@ -23,26 +21,14 @@ pub(super) struct Stepped {
     pub(super) slot: usize,
 }
 
-/// An effect for a unit that stays in its list: `leaves` when the step took the unit out.
-fn in_list<T>(
-    outcome: &Outcome,
-    leaves: GenieError,
-    effect: impl FnOnce() -> Result<T, GenieError>,
-) -> Result<(), GenieError> {
-    if !matches!(outcome, Outcome::Stay) {
-        return Err(leaves);
-    }
-    effect().map(drop)
-}
-
 impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
     /// AI for a command) and what follows it: what its `Step` gathered, applied in the order the
     /// game's update makes them (the regeneration, passive abilities and production of a full
-    /// update, a builder's work order, the unit AI's waits and order on a target, the own kill).
-    /// Returns the step, the resume of a unit AI
-    /// part the update stopped before, the tail after an order on a target and the object's
-    /// slot, which it looks up by id after each part that may move it.
+    /// update, the unit AI's waits and order on a target, the own kill). `resume` is the rest of
+    /// a unit AI's full update after its order on a target ([`Unit::ai_part`]). Returns the step,
+    /// the tail after an order on a target and the object's slot, which it looks up by id after
+    /// each part that may move it.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
     /// runs (regeneration, passive abilities, production) do not.
     ///
@@ -61,15 +47,12 @@ impl World {
         let outcome = outcome?;
         // the tail after an order on a target, which stops the unit AI's rest
         let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);
-        let own_update = full && out.ai_resume.is_none();
         let at = (p, self.slot_of(p, id)?, id);
-        self.finish_own_update(at, (dt, own_update), after_order, &outcome)?;
-        self.apply_work_order((p, self.slot_of(p, id)?), &mut out, &outcome)?;
+        self.finish_own_update(at, (dt, full), after_order, &outcome)?;
         self.apply_ai_starts((p, self.slot_of(p, id)?), &mut out, &outcome)?;
         self.apply_hits_and_releases(&mut out)?;
         Ok(Stepped {
             outcome,
-            resume: out.ai_resume,
             after: after_order,
             slot: self.slot_of(p, id)?,
         })
@@ -117,24 +100,6 @@ impl World {
         // unit AI's rest, when an order on a target stopped it)
         if matches!(outcome, Outcome::Stay) && own_update && after_order.is_none() {
             self.produce(p, i, seconds(dt))?;
-        }
-        Ok(())
-    }
-
-    /// A builder's work found in its Build's update (slot 0x7e8 from case 0xdf, [`Step`]'s
-    /// `work_order`), given before the update's unit AI part resumes.
-    fn apply_work_order(
-        &mut self,
-        (p, i): (usize, usize),
-        out: &mut ObjectOutputs,
-        outcome: &Outcome,
-    ) -> Result<(), GenieError> {
-        if let Some(work) = out.work_order.take() {
-            in_list(
-                outcome,
-                GenieError::unsupported("a builder's work order of a unit that leaves its list"),
-                || self.order_work(p, i, &work),
-            )?;
         }
         Ok(())
     }

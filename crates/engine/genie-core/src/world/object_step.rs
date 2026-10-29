@@ -60,7 +60,6 @@ impl World {
             blasted,
             kills: Vec::new(),
             player: p,
-            work_order: None,
             ai_resume: resume,
             taken_over: None,
             building_handover: false,
