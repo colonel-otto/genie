@@ -418,12 +418,12 @@ pub(super) fn sees(
 /// # Errors
 ///
 /// The release's.
-pub(super) fn let_go(c: &mut Step<'_>, unit: &Unit, target: i32) -> Result<(), GenieError> {
+pub(super) fn let_go(c: &mut Step<'_>, unit: &mut Unit, target: i32) -> Result<(), GenieError> {
     if target == -1 {
         return Ok(());
     }
     let by = unit.releaser(c);
-    crate::world::lets::release(c, target, by)
+    crate::world::lets::release(c, unit, target, by)
 }
 
 /// The squared reach of an attack of `range` (`FUN_140a82ae0` at `0x140a83950`): the range squared,

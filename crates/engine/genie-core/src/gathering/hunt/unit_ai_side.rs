@@ -44,7 +44,8 @@ impl<'u> UnitView<'u, '_> {
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.unit
             .tear_down_actions(&mut releases, &mut leaves, by)?;
-        self.lets.torn_down(self.others, (leaves, releases))?;
+        self.lets
+            .torn_down(self.others, Some(&mut *self.unit), (leaves, releases))?;
         if self.unit.life.state == 2 {
             self.unit
                 .show_standing(self.every.get(self.player), self.graphics, self.sprite)?;
@@ -76,10 +77,11 @@ impl<'u> UnitView<'u, '_> {
             class: hunter.class,
             player,
         };
-        self.lets.take(self.others, target, by);
+        self.lets.take(self.others, Some(&mut *unit), target, by);
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         unit.tear_down_actions(&mut releases, &mut leaves, by)?;
-        self.lets.torn_down(self.others, (leaves, releases))?;
+        self.lets
+            .torn_down(self.others, Some(&mut *unit), (leaves, releases))?;
         let me = *self
             .spatial
             .get(id)
@@ -122,8 +124,9 @@ impl<'u> UnitView<'u, '_> {
         let drops = hunt.target == -1 && hunt.carry_to == target;
         unit.actions.set_hunt(Some(hunt));
         if drops {
-            self.lets.take(self.others, target, by);
-            self.lets.release(self.others, target, by)?;
+            self.lets.take(self.others, Some(&mut *unit), target, by);
+            self.lets
+                .release(self.others, Some(&mut *unit), target, by)?;
         }
         Ok(())
     }

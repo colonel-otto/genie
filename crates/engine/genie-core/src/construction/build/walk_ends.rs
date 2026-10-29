@@ -162,7 +162,7 @@ impl BuildAction {
         self.leave(c, builder)?;
         if self.target != -1 {
             let target = std::mem::replace(&mut self.target, -1);
-            crate::world::lets::release(c, target, reads.by)?;
+            crate::world::lets::release(c, builder, target, reads.by)?;
         }
         self.walk_to_point(c, builder)
     }

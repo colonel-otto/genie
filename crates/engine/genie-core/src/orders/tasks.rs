@@ -483,6 +483,6 @@ impl World {
     /// unit's its own); none once the world no longer holds `id`. Outside an update
     /// ([`crate::world::lets::Lets::leave_builders`] on the whole world).
     pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), GenieError> {
-        self.with_lets(0, |lets, others| lets.leave_builders(others, id))
+        self.with_lets(0, |lets, others| lets.leave_builders(others, None, id))
     }
 }

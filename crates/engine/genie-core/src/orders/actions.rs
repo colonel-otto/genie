@@ -23,7 +23,7 @@ impl World {
     /// (slot 0x2d8, the last object taking its place) for the end of the live list (slot
     /// 0x2d0). A live object flagged to sleep only drops the flags.
     pub(crate) fn take(&mut self, id: i32, by: Releaser) {
-        self.with_lets(by.player, |lets, others| lets.take(others, id, by));
+        self.with_lets(by.player, |lets, others| lets.take(others, None, id, by));
     }
 
     /// Slot 0x180 on the object an action of `by` lets go, outside an update
@@ -40,7 +40,7 @@ impl World {
     ///
     /// [`crate::world::lets::Lets::release`]'s.
     pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
-        self.with_lets(by.player, |lets, others| lets.release(others, id, by))
+        self.with_lets(by.player, |lets, others| lets.release(others, None, id, by))
     }
 
     /// Object `idx` of player `player` as the releaser of its actions' targets.

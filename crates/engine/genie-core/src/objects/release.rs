@@ -35,6 +35,21 @@ pub(crate) fn released(
     listed: bool,
     by: Releaser,
 ) -> Result<(), GenieError> {
+    let state = u.life.state;
+    match (released_fields(u, kind, listed, by), u.ai.as_mut()) {
+        (Some(n), Some(ai)) => ai.post(n, state),
+        _ => Ok(()),
+    }
+}
+
+/// [`released`] on the object `u` itself; returns the notify 699 a combat object's unit AI is
+/// told (none for a releaser of a negative id), which [`released`] posts.
+pub(crate) fn released_fields(
+    u: &mut Unit,
+    kind: u8,
+    listed: bool,
+    by: Releaser,
+) -> Option<Notify> {
     if listed && let Some(i) = u.attacking_units.iter().position(|&t| t == by.id) {
         let _ = u.attacking_units.remove(i);
     }
@@ -46,21 +61,12 @@ pub(crate) fn released(
     if kind < ANIMATED_TYPE && u.workers == 0 && alive {
         u.life.goto_sleep = true;
     }
-    if !u.combat {
-        return Ok(());
-    }
-    if 0 <= by.id
-        && let Some(ai) = u.ai.as_mut()
-    {
-        let n = Notify {
-            caller: by.id,
-            recipient: u.id,
-            kind: crate::unit_ai::NO_LONGER_ON_ME,
-            p: [i32::from(by.class), 0, 0],
-        };
-        ai.post(n, u.life.state)?;
-    }
-    Ok(())
+    (u.combat && 0 <= by.id).then(|| Notify {
+        caller: by.id,
+        recipient: u.id,
+        kind: crate::unit_ai::NO_LONGER_ON_ME,
+        p: [i32::from(by.class), 0, 0],
+    })
 }
 
 impl World {

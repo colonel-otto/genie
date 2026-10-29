@@ -125,7 +125,7 @@ impl BuildAction {
     ) -> Result<(), GenieError> {
         Self::stand(c, builder)?;
         let target = std::mem::replace(&mut self.target, -1);
-        crate::world::lets::release(c, target, reads.by)?;
+        crate::world::lets::release(c, builder, target, reads.by)?;
         self.point = [-1.0; 3];
         self.state = HALTED;
         Ok(())

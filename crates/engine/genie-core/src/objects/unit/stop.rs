@@ -25,7 +25,7 @@ impl Unit {
             &c.w.graphics,
             sprite,
         )?;
-        crate::world::lets::torn_down(c, (leaves, releases))
+        crate::world::lets::torn_down(c, self, (leaves, releases))
     }
 
     /// [`Unit::stop_action`] on the parts of the world it changes: the targets its actions let
@@ -134,7 +134,7 @@ impl Unit {
     pub(crate) fn delete_own_head(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let torn = self.actions.delete_head(&mut self.body, self.life.state)?;
-        torn.let_go(c, by)
+        torn.let_go(c, self, by)
     }
 
     /// Its unit AI's effects, in order.

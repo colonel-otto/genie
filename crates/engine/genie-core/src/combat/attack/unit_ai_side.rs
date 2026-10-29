@@ -115,7 +115,7 @@ impl<'u> UnitView<'u, '_> {
             let mut attack = crate::combat::attack::Attack::own(target, &e, arms);
             attack.fail_at_start(&mut unit.sprite, &mut unit.body, self.sprite)?;
             unit.actions.set_attack(Some(attack));
-            self.lets.take(self.others, target, by);
+            self.lets.take(self.others, Some(&mut *unit), target, by);
             return Ok(crate::unit_ai::Attacked {
                 attacks: true,
                 posted: Vec::new(),
@@ -160,7 +160,7 @@ impl<'u> UnitView<'u, '_> {
             unit.shows_standing_sprite(self.every.get(self.player), self.graphics, self.sprite)?;
         }
         unit.actions.set_attack(Some(attack));
-        self.lets.take(self.others, target, by);
+        self.lets.take(self.others, Some(&mut *unit), target, by);
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted,
@@ -180,7 +180,8 @@ impl<'u> UnitView<'u, '_> {
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.unit
             .tear_down_actions(&mut releases, &mut leaves, by)?;
-        self.lets.torn_down(self.others, (leaves, releases))?;
+        self.lets
+            .torn_down(self.others, Some(&mut *self.unit), (leaves, releases))?;
         Ok(by)
     }
 
@@ -241,10 +242,10 @@ impl<'u> UnitView<'u, '_> {
             unit.attack_count = 0;
         }
         if let Some(old) = w.lets_go {
-            self.lets.release(self.others, old, by)?;
+            self.lets.release(self.others, Some(&mut *unit), old, by)?;
         }
         if let Some(new) = w.takes {
-            self.lets.take(self.others, new, by);
+            self.lets.take(self.others, Some(&mut *unit), new, by);
         }
         Ok(())
     }

@@ -141,7 +141,8 @@ impl<'u> UnitView<'u, '_> {
             };
             let (mut releases, mut leaves) = (Vec::new(), Vec::new());
             unit.tear_down_actions(&mut releases, &mut leaves, by)?;
-            self.lets.torn_down(self.others, (leaves, releases))?;
+            self.lets
+                .torn_down(self.others, Some(&mut *unit), (leaves, releases))?;
             let world = crate::orders::SwitchWorld {
                 spatial: self.spatial,
                 pathing: self.pathing,
@@ -160,10 +161,12 @@ impl<'u> UnitView<'u, '_> {
             class: builder.class,
             player,
         };
-        self.lets.take(self.others, foundation, by);
+        self.lets
+            .take(self.others, Some(&mut *unit), foundation, by);
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         unit.tear_down_actions(&mut releases, &mut leaves, by)?;
-        self.lets.torn_down(self.others, (leaves, releases))?;
+        self.lets
+            .torn_down(self.others, Some(&mut *unit), (leaves, releases))?;
         unit.actions.set_build(Some(build));
         Ok(())
     }

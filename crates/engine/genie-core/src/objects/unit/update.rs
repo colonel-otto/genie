@@ -246,7 +246,7 @@ impl Unit {
             let by = self.releaser(c);
             let (mut releases, mut leaves) = (Vec::new(), Vec::new());
             self.clear_own_actions(&mut releases, &mut leaves, by)?;
-            crate::world::lets::torn_down(c, (leaves, releases))?;
+            crate::world::lets::torn_down(c, self, (leaves, releases))?;
         }
         Ok(())
     }

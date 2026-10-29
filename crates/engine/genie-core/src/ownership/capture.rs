@@ -71,7 +71,7 @@ impl Unit {
                     .stop()?;
             }
             for t in [gone.released, released].into_iter().flatten() {
-                crate::world::lets::release(c, t, by)?;
+                crate::world::lets::release(c, self, t, by)?;
             }
             self.show_standing(
                 c.w.masters.get(c.player),
@@ -83,7 +83,7 @@ impl Unit {
             // artifact holds (a `MoveTo` of its own), and the list goes
             let (mut releases, mut leaves) = (Vec::new(), Vec::new());
             self.tear_down_actions(&mut releases, &mut leaves, by)?;
-            crate::world::lets::torn_down(c, (leaves, releases))?;
+            crate::world::lets::torn_down(c, self, (leaves, releases))?;
         }
         let top = self.top_action_kind().map_or(-1, i32::from);
         let trading = top == TRADE_ACTION

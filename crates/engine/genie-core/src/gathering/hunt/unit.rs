@@ -89,13 +89,13 @@ impl Unit {
     ///
     /// The release's.
     pub(crate) fn hunt_release<const N: usize>(
-        &self,
+        &mut self,
         c: &mut Step<'_>,
         ids: [i32; N],
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         for id in ids.into_iter().filter(|&id| id != -1) {
-            crate::world::lets::release(c, id, by)?;
+            crate::world::lets::release(c, self, id, by)?;
         }
         Ok(())
     }
@@ -221,7 +221,7 @@ impl Unit {
         let site = std::mem::replace(&mut hunt.carry_to, -1);
         let by = self.releaser(c);
         if site != -1 {
-            crate::world::lets::release(c, site, by)?;
+            crate::world::lets::release(c, self, site, by)?;
         }
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -488,7 +488,7 @@ impl Unit {
                     c.w.streams.get(Stream::Sprite),
                 )?;
             }
-            crate::world::lets::take(c, found, by);
+            crate::world::lets::take(c, self, found, by);
         }
         self.hunt_failed_sprite(c)
     }
@@ -545,7 +545,7 @@ impl Unit {
         };
         if let Some(site) = self.drop_off_in(w, OthersRef::of(&c.w.players, c.player))? {
             let by = self.releaser(c);
-            crate::world::lets::take(c, site, by);
+            crate::world::lets::take(c, self, site, by);
         }
         Ok(())
     }

@@ -45,7 +45,7 @@ impl Unit {
     /// A target or a shooter in the world the slice cannot read, and a dead shooter (its
     /// weapons going to the missile, `FUN_14113e170`).
     pub(crate) fn missile_ends(
-        &self,
+        &mut self,
         action: &mut crate::combat::missile::MissileAction,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
@@ -72,7 +72,7 @@ impl Unit {
         }
         if action.target != -1 && target_state.is_some_and(dead) {
             let by = self.releaser(c);
-            crate::world::lets::release(c, action.target, by)?;
+            crate::world::lets::release(c, self, action.target, by)?;
             action.target = -1;
         }
         if action.fired_from != -1 && shooter_state.is_some_and(dead) {
@@ -514,7 +514,7 @@ impl Unit {
         if let Some(a) = slot.take() {
             let by = self.releaser(c);
             for t in [a.target, a.fired_from].into_iter().filter(|&t| t != -1) {
-                crate::world::lets::release(c, t, by)?;
+                crate::world::lets::release(c, self, t, by)?;
             }
         }
         if self.life.state < 7 {

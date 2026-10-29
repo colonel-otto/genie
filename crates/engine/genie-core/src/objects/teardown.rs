@@ -31,9 +31,14 @@ impl TornDown {
     /// # Errors
     ///
     /// [`crate::world::lets::torn_down`]'s.
-    pub(crate) fn let_go(self, c: &mut Step<'_>, by: Releaser) -> Result<(), GenieError> {
+    pub(crate) fn let_go(
+        self,
+        c: &mut Step<'_>,
+        me: &mut crate::objects::unit::Unit,
+        by: Releaser,
+    ) -> Result<(), GenieError> {
         let releases = self.releases.into_iter().map(|t| (t, by)).collect();
-        crate::world::lets::torn_down(c, (self.builder_leaves, releases))
+        crate::world::lets::torn_down(c, me, (self.builder_leaves, releases))
     }
 }
 

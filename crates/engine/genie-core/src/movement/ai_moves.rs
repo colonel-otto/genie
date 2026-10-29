@@ -35,7 +35,7 @@ impl Unit {
             (&mut releases, &mut leaves, by),
             (c.w.masters.get(c.player), &c.w.graphics, sprite_rng),
         )?;
-        crate::world::lets::torn_down(c, (leaves, releases))?;
+        crate::world::lets::torn_down(c, self, (leaves, releases))?;
         if sails {
             let sprite_rng = c.w.streams.get(Stream::Sprite);
             self.transport_sail(
@@ -259,11 +259,11 @@ impl Unit {
                 .master;
         let by = self.releaser(c);
         if crate::movement::move_to::holds_object(livestock, master, state) {
-            crate::world::lets::take(c, target, by);
+            crate::world::lets::take(c, self, target, by);
         }
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.clear_own_actions(&mut releases, &mut leaves, by)?;
-        crate::world::lets::torn_down(c, (leaves, releases))?;
+        crate::world::lets::torn_down(c, self, (leaves, releases))?;
         let own = self.master(&c.w.masters, c.player).ok();
         let range = crate::movement::move_to::object_range(range, own);
         let sprite = own

@@ -39,8 +39,8 @@ impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
     /// AI for a command) and what follows it: what its `Step` gathered, applied in the order the
     /// game's update makes them (the regeneration, passive abilities and production of a full
-    /// update, a builder's work order, the unit AI's waits and order on a target, the own kill,
-    /// the takes and releases). Returns the step, the resume of a unit AI
+    /// update, a builder's work order, the unit AI's waits and order on a target, the own kill).
+    /// Returns the step, the resume of a unit AI
     /// part the update stopped before, the tail after an order on a target and the object's
     /// slot, which it looks up by id after each part that may move it.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
@@ -189,21 +189,11 @@ impl World {
     }
 
     /// What the hits' write-backs left, in the order the hits made it (the blast's objects, the
-    /// unit itself for a retaliation, its target): the kills and razings; then the takes, the
-    /// builders' leaves and the releases, a construction start's clearing and the changed
-    /// tiles.
+    /// unit itself for a retaliation, its target): the kills and razings; then a construction
+    /// start's clearing and the changed tiles.
     fn apply_hits_and_releases(&mut self, out: &mut ObjectOutputs) -> Result<(), GenieError> {
         for k in std::mem::take(&mut out.kills) {
             self.kill_left(&k)?;
-        }
-        for (id, by) in std::mem::take(&mut out.takes) {
-            self.take(id, by);
-        }
-        for id in std::mem::take(&mut out.builder_leaves) {
-            self.leave_builders(id)?;
-        }
-        for (id, by) in std::mem::take(&mut out.releases) {
-            self.release(id, by)?;
         }
         // a construction start's clearing of the desolid foundations it overlaps
         // (FUN_1411cd0d0), after the builder's update

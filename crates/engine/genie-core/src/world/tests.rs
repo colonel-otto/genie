@@ -4160,7 +4160,7 @@ fn lets_world() -> World {
 /// counts its worker; a sleeping one counts its worker and wakes, last in its player's live
 /// list and tracker; an unallied player's foundation with a stack unit lists its taker, and
 /// Gaia's own taker is allied; one the world does not hold is not taken; the updating unit
-/// itself is the world's after the step.
+/// itself counts its worker at once, within its update.
 #[test]
 fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
     use crate::world::lets::take;
@@ -4170,15 +4170,17 @@ fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
         class: 9,
         player: 0,
     };
-    let deferred = in_update(&mut t, (1, 0), 50, |unit, c| {
+    let own = in_update(&mut t, (1, 0), 50, |unit, c| {
         let by = unit.releaser(c);
-        for id in [520, 521, 530, 9999, unit.id] {
-            take(c, id, by);
+        for id in [520, 521, 530, 9999] {
+            take(c, unit, id, by);
         }
-        take(c, 530, gaia);
-        Ok(c.takes.iter().map(|&(id, _)| id).collect::<Vec<_>>())
+        let before = unit.workers;
+        take(c, unit, unit.id, by);
+        take(c, unit, 530, gaia);
+        Ok((before, unit.workers))
     });
-    assert_eq!(deferred, Ok(vec![t.players[1].objects[0].id]));
+    assert_eq!(own, Ok((0, 1)));
     let workers = |t: &World, id| t.object(id).map(|(_, u)| u.workers);
     assert_eq!(workers(&t, 520), Some(1));
     assert_eq!(workers(&t, 521), Some(1));
@@ -4196,10 +4198,11 @@ fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
 
 /// An update's release through its view (slot 0x180, [`crate::world::lets::release`]): a live
 /// tree no one works on any more goes to sleep; a sleeping one counts a worker less and stays
-/// asleep; one the world does not hold is not let go; the updating unit itself is the world's
-/// after the step. Then a counted builder's leave ([`crate::world::lets::Lets::leave_builders`]): an
-/// object counts one builder less, an annex's main building for the annex; the teardown's
-/// pair applies leaves before releases ([`crate::world::lets::torn_down`]).
+/// asleep; one the world does not hold is not let go; the updating unit itself counts a worker
+/// less at once, within its update. Then a counted builder's leave
+/// ([`crate::world::lets::Lets::leave_builders`]): an object counts one builder less, an annex's
+/// main building for the annex, the updating unit itself at once; the teardown's pair applies
+/// leaves before releases ([`crate::world::lets::torn_down`]).
 #[test]
 fn an_update_s_release_and_builder_leave_change_the_objects_at_once() {
     use crate::world::lets::{leave_builders, release, torn_down};
@@ -4208,17 +4211,20 @@ fn an_update_s_release_and_builder_leave_change_the_objects_at_once() {
         let u = t.object_mut(id).unwrap().1;
         (u.workers, u.builders) = (2, 3);
     }
-    let deferred = in_update(&mut t, (1, 0), 50, |unit, c| {
+    let own = in_update(&mut t, (1, 0), 50, |unit, c| {
         let by = unit.releaser(c);
-        for id in [520, 521, 9999, unit.id] {
-            release(c, id, by)?;
+        (unit.workers, *unit.repairers_mut()) = (1, 1);
+        for id in [520, 521, 9999] {
+            release(c, unit, id, by)?;
         }
-        leave_builders(c, 520)?;
-        leave_builders(c, 530)?;
-        torn_down(c, (vec![521], vec![(520, by)]))?;
-        Ok(c.releases.iter().map(|&(id, _)| id).collect::<Vec<_>>())
+        release(c, unit, unit.id, by)?;
+        leave_builders(c, unit, 520)?;
+        leave_builders(c, unit, 530)?;
+        leave_builders(c, unit, unit.id)?;
+        torn_down(c, unit, (vec![521], vec![(520, by)]))?;
+        Ok((unit.workers, *unit.repairers_mut()))
     });
-    assert_eq!(deferred, Ok(vec![t.players[1].objects[0].id]));
+    assert_eq!(own, Ok((0, 0)));
     let tree = |t: &World, id| {
         t.object(id)
             .map(|(_, u)| (u.workers, u.builders, u.life.goto_sleep))
@@ -4277,6 +4283,33 @@ fn an_own_object_taken_out_leaves_the_world_until_it_goes_back() {
     assert_eq!(t.locate(521).map(|(q, _, s)| (q, s)), Some((0, false)));
 }
 
+/// The unit AI's side's release of the unit itself ([`crate::world::lets::Lets::release`] on
+/// the side's unit): the unit counts its worker less at once, and the notify 699 for its own AI,
+/// which the side does not hold while it runs, reaches the AI as the side's call returns.
+#[test]
+fn a_side_s_own_release_tells_the_unit_ai_as_the_side_returns() {
+    use crate::unit_ai::NO_LONGER_ON_ME;
+    use crate::unit_ai::world_view::OwnerView;
+    let mut t = hunt_world();
+    let id = t.players[1].objects[0].id;
+    let ai = t.players[1].objects[0].ai.as_mut().unwrap();
+    (ai.attackers, ai.notifies) = (vec![id], Vec::new());
+    let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
+        (unit.workers, unit.combat) = (1, true);
+        let by = unit.releaser(c);
+        let view = OwnerView::of(c, None);
+        let attacker = unit.attacker_of(13, None, (1, false), false, 0);
+        let inside = unit.with_side(c, &view, attacker, (1, false), |ai, side, _| {
+            side.lets
+                .release(side.others, Some(&mut *side.unit), by.id, by)?;
+            Ok((side.unit.workers, ai.notifies.len()))
+        })?;
+        Ok((inside, unit.ai.as_ref().map(|ai| ai.notifies.len())))
+    });
+    assert_eq!(seen, Ok(((0, 0), Some(1))));
+    assert_eq!(notified(&t, NO_LONGER_ON_ME).len(), 1);
+}
+
 /// The unit AI's stop (`Effect::Stop`, [`Unit::stop_action`]): the forager's Gather goes and
 /// its bush counts a worker less within the update, through the view, not after the step.
 #[test]
@@ -4296,9 +4329,9 @@ fn a_unit_ai_s_stop_lets_its_target_go_within_the_update() {
         let bush = OthersRef::of(&c.w.players, c.player)
             .find(600)
             .map(|(_, b)| b.workers);
-        Ok((bush, c.releases.len(), unit.actions.gather().is_some()))
+        Ok((bush, unit.actions.gather().is_some()))
     });
-    assert_eq!(seen, Ok((Some(0), 0, false)));
+    assert_eq!(seen, Ok((Some(0), false)));
     assert_eq!(t.players[0].objects[0].workers, 0);
 }
 
@@ -10822,11 +10855,10 @@ fn scout_attack_on(
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let groups = crate::groups::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
-    let (mut takes, mut releases, mut leaves, mut waits) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut waits = Vec::new();
     let mut adds = Vec::new();
     let (mut none, mut asleep) = (ObjectList::default(), ObjectList::default());
-    let mut view = Others::new((1, 123), (&mut none, &mut asleep), (&mut players, &mut []));
+    let mut view = Others::new(1, (&mut none, &mut asleep), (&mut players, &mut []));
     let attacked = {
         let mut side = crate::unit_ai::world_view::UnitView {
             unit: &mut unit,
@@ -10875,9 +10907,7 @@ fn scout_attack_on(
                 masters: &every,
                 lines: &crate::objects::lines::UnitLines::default(),
                 tracker: &mut crate::players::tracker::Tracker::default(),
-                takes: &mut takes,
-                releases: &mut releases,
-                builder_leaves: &mut leaves,
+                own_notifies: &mut Vec::new(),
             },
             starts: &mut waits,
             attribute_adds: &mut adds,
@@ -10891,7 +10921,6 @@ fn scout_attack_on(
         };
         side.attack(50, force, &ai).unwrap()
     };
-    let _ = takes;
     // the takes reach Gaia's objects through the view: each counts a worker
     let taken = players[0].objects.iter();
     let takes = taken.flat_map(|u| std::iter::repeat_n(u.id, u.workers as usize));
@@ -11008,8 +11037,7 @@ fn attack_by(
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let groups = crate::groups::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
-    let (mut takes, mut releases, mut leaves, mut waits) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut waits = Vec::new();
     let mut adds = Vec::new();
     let (mut none, mut asleep) = (ObjectList::default(), ObjectList::default());
     let lines = crate::objects::lines::UnitLines::default();
@@ -11018,7 +11046,7 @@ fn attack_by(
         123,
         crate::players::tracker::key(every.get(1), &lines, attacker_master),
     );
-    let mut view = Others::new((1, 123), (&mut none, &mut asleep), (&mut players, &mut []));
+    let mut view = Others::new(1, (&mut none, &mut asleep), (&mut players, &mut []));
     let attacked = {
         let mut side = crate::unit_ai::world_view::UnitView {
             unit: &mut unit,
@@ -11067,9 +11095,7 @@ fn attack_by(
                 masters: &every,
                 lines: &lines,
                 tracker: &mut tracker,
-                takes: &mut takes,
-                releases: &mut releases,
-                builder_leaves: &mut leaves,
+                own_notifies: &mut Vec::new(),
             },
             starts: &mut waits,
             attribute_adds: &mut adds,
@@ -11083,7 +11109,6 @@ fn attack_by(
         };
         side.attack(50, force, &ai).unwrap()
     };
-    let _ = takes;
     (unit, attacked, adds, tracker)
 }
 
@@ -11207,11 +11232,10 @@ fn help_view<R>(
     let every = [Masters::new([wolf]), masters];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
-    let (mut takes, mut releases, mut leaves, mut waits) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut waits = Vec::new();
     let mut adds = Vec::new();
     let graphics = std::collections::BTreeMap::new();
-    let mut view = Others::new((1, 123), (&mut own, &mut asleep), (&mut players, &mut []));
+    let mut view = Others::new(1, (&mut own, &mut asleep), (&mut players, &mut []));
     let mut side = crate::unit_ai::world_view::UnitView {
         unit: &mut unit,
         attacker: crate::unit_ai::Attacker {
@@ -11259,9 +11283,7 @@ fn help_view<R>(
             masters: &every,
             lines: &crate::objects::lines::UnitLines::default(),
             tracker: &mut crate::players::tracker::Tracker::default(),
-            takes: &mut takes,
-            releases: &mut releases,
-            builder_leaves: &mut leaves,
+            own_notifies: &mut Vec::new(),
         },
         starts: &mut waits,
         attribute_adds: &mut adds,

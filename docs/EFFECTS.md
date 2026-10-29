@@ -5,7 +5,7 @@
 An object's update in the game changes other objects by direct calls (a notify through
 slot 0x38, a release through slot 0x180, a stop through slot 0x5d0). genie-core cannot
 change them from inside the update, so it hands such effects on to be done outside it.
-These are the channels it uses (FD-045): 10 world outputs, 15 unit AI effects and 18 hand-offs.
+These are the channels it uses (FD-045): 7 world outputs, 15 unit AI effects and 18 hand-offs.
 
 ## The world's outputs
 
@@ -21,9 +21,6 @@ the object's update by the functions named.
 | `work_order` | `Option<crate::orders::Work>` | The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf), which the caller gives after the update (`World::order_work`). | `slot 0x7e8` | [`construction/build/states.rs`](../crates/engine/genie-core/src/construction/build/states.rs), [`objects/unit/update.rs`](../crates/engine/genie-core/src/objects/unit/update.rs) | `apply_work_order` |
 | `kills` | `Vec<KillLeft>` | The updating object's own kill (a retaliation's), which its slot's stand-in keeps from the world until the step's end (`crate::combat::victims::file_kill`): the caller's after the update (`World::kill_left`); another object's kill reaches the world at the hit. |  | [`combat/victims.rs`](../crates/engine/genie-core/src/combat/victims.rs) | `apply_hits_and_releases` |
 | `ai_resume` | `Option<AiResume>` | The unit's update stopped before its unit AI for the caller's work order (`Unit::ai_part`); given back, the update runs only that part. |  | [`objects/unit/update.rs`](../crates/engine/genie-core/src/objects/unit/update.rs) | `step_object` |
-| `releases` | `Vec<(i32, Releaser)>` | The releases (slot 0x180, `World::release`) and takes (slot 0x178, `World::take`) of the updating object itself, which the view does not hold: the caller applies them after the hits' kills. | `slot 0x180`, `slot 0x178` | [`unit_ai/unit.rs`](../crates/engine/genie-core/src/unit_ai/unit.rs), [`world/lets.rs`](../crates/engine/genie-core/src/world/lets.rs) | `apply_hits_and_releases` |
-| `builder_leaves` | `Vec<i32>` | A counted builder's leave (`Unit::clear_own_actions`, `FUN_140aadbf0`) of the updating object itself, or of an annex of it: the building `FUN_140aaddb0` gives counts one builder less (`World::leave_builders`), the caller's before the releases. | `FUN_140aadbf0`, `FUN_140aaddb0` | [`unit_ai/unit.rs`](../crates/engine/genie-core/src/unit_ai/unit.rs), [`world/lets.rs`](../crates/engine/genie-core/src/world/lets.rs) | `apply_hits_and_releases` |
-| `takes` | `Vec<(i32, Releaser)>` | `Step`'s `takes`. |  | [`unit_ai/unit.rs`](../crates/engine/genie-core/src/unit_ai/unit.rs), [`world/lets.rs`](../crates/engine/genie-core/src/world/lets.rs) | `apply_hits_and_releases` |
 
 ## The unit AI's effects
 

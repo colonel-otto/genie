@@ -54,12 +54,12 @@ impl Unit {
     /// past state 6 is let go and goes (one the slice holds but cannot read is not modelled); a
     /// second target ([`second_target_checked`]) alike.
     fn gather_check_targets(&mut self, c: &mut Step<'_>, by: Releaser) -> Result<(), GenieError> {
-        let gather = self.actions.gather_mut().ok_or(NO_GATHER)?;
-        if gather.target != -1 {
-            let state = readable(c, gather.target).map(|(_, u, _)| u.life.state);
+        let target = self.actions.gather().ok_or(NO_GATHER)?.target;
+        if target != -1 {
+            let state = readable(c, target).map(|(_, u, _)| u.life.state);
             let gone = match state {
                 Some(s) => 6 < s,
-                None if c.w.spatial.get(gather.target).is_some() => {
+                None if c.w.spatial.get(target).is_some() => {
                     return Err(GenieError::unsupported(
                         "a gather's target the slice cannot read",
                     ));
@@ -68,21 +68,21 @@ impl Unit {
             };
             if gone {
                 if state.is_some() {
-                    crate::world::lets::release(c, gather.target, by)?;
+                    crate::world::lets::release(c, self, target, by)?;
                 }
-                gather.target = -1;
+                self.actions.gather_mut().ok_or(NO_GATHER)?.target = -1;
             }
         }
-        let site = gather.carry_to;
+        let site = self.actions.gather().ok_or(NO_GATHER)?.carry_to;
         let held = c.w.spatial.get(site).is_some();
         let (kept, let_go) = second_target_checked(
             site,
             held,
             state_of(site, OthersRef::of(&c.w.players, c.player)),
         );
-        gather.carry_to = kept;
+        self.actions.gather_mut().ok_or(NO_GATHER)?.carry_to = kept;
         if let Some(t) = let_go {
-            crate::world::lets::release(c, t, by)?;
+            crate::world::lets::release(c, self, t, by)?;
         }
         Ok(())
     }
@@ -166,7 +166,7 @@ impl Unit {
             // set_state(2): the target, then the drop site go (slot 0x68, FUN_140a7a190)
             Dropped::Idle => {
                 for id in before.into_iter().filter(|&id| id != -1) {
-                    crate::world::lets::release(c, id, by)?;
+                    crate::world::lets::release(c, self, id, by)?;
                 }
                 Ok(HeadCode::Keeps)
             }
@@ -217,11 +217,12 @@ impl Unit {
         radius: [f32; 2],
     ) -> Result<HeadCode, GenieError> {
         c.give_load(kind, amount)?;
-        let gather = self.actions.gather_mut().ok_or(NO_GATHER)?;
+        let gather = self.actions.gather().ok_or(NO_GATHER)?;
         if gather.target == -1 {
             return self.gather_after_drop(c);
         }
-        crate::world::lets::release(c, gather.carry_to, by)?;
+        crate::world::lets::release(c, self, gather.carry_to, by)?;
+        let gather = self.actions.gather_mut().ok_or(NO_GATHER)?;
         gather.carry_to = -1;
         let t =
             c.w.spatial
@@ -282,7 +283,7 @@ impl Unit {
         if let Some(g) = self.actions.gather() {
             for (old, new) in [(old_target, g.target), (old_second, g.carry_to)] {
                 if old != new && old != -1 {
-                    crate::world::lets::release(c, old, by)?;
+                    crate::world::lets::release(c, self, old, by)?;
                 }
             }
         }

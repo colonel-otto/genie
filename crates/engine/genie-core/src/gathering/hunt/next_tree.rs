@@ -126,7 +126,7 @@ impl Unit {
             // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
             self.hunt_release(c, [old])?;
             let by = self.releaser(c);
-            crate::world::lets::take(c, found, by);
+            crate::world::lets::take(c, self, found, by);
         }
         Ok(true)
     }

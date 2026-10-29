@@ -239,7 +239,7 @@ impl BuildAction {
             return Ok(());
         }
         self.no_more_work()?;
-        crate::world::lets::release(c, target, reads.by)?;
+        crate::world::lets::release(c, builder, target, reads.by)?;
         builder.post_own(SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0])?;
         Self::stand(c, builder)
     }
@@ -454,10 +454,10 @@ impl BuildAction {
         }
         Self::stand(c, builder)?;
         if target != -1 {
-            crate::world::lets::release(c, target, reads.by)?;
+            crate::world::lets::release(c, builder, target, reads.by)?;
         }
         if second != -1 {
-            crate::world::lets::release(c, second, reads.by)?;
+            crate::world::lets::release(c, builder, second, reads.by)?;
         }
         Ok(())
     }

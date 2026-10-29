@@ -171,10 +171,10 @@ impl BuildAction {
         if self.site != new {
             let old = std::mem::replace(&mut self.site, new);
             if old != -1 {
-                crate::world::lets::release(c, old, by)?;
+                crate::world::lets::release(c, builder, old, by)?;
             }
             if new != -1 {
-                crate::world::lets::take(c, new, by);
+                crate::world::lets::take(c, builder, new, by);
             }
         }
         let Some((id, range)) = found else {
@@ -359,7 +359,7 @@ impl BuildAction {
         if self.target != -1 {
             let site = std::mem::replace(&mut self.site, -1);
             if site != -1 {
-                crate::world::lets::release(c, site, reads.by)?;
+                crate::world::lets::release(c, builder, site, reads.by)?;
             }
             let state = Self::site_unit(c, reads).map(|s| s.life.state);
             self.restart(c, builder, state)?;

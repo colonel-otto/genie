@@ -134,7 +134,8 @@ impl UnitView<'_, '_> {
         };
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         unit.tear_down_actions(&mut releases, &mut leaves, by)?;
-        self.lets.torn_down(self.others, (leaves, releases))?;
+        self.lets
+            .torn_down(self.others, Some(&mut *unit), (leaves, releases))?;
         let world = crate::orders::SwitchWorld {
             spatial: self.spatial,
             pathing: self.pathing,

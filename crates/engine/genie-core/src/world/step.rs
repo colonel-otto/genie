@@ -7,7 +7,6 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
-use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::AiStart;
@@ -49,15 +48,6 @@ pub(crate) struct Step<'a> {
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
     /// caller's ([`crate::ownership::capture::Captured::building`]).
     pub(crate) building_handover: bool,
-    /// The releases (slot 0x180, [`World::release`]) and takes (slot 0x178, [`World::take`])
-    /// of the updating object itself, which the view does not hold: the caller applies them
-    /// after the hits' kills. The update calls every other one at once ([`crate::world::lets`]).
-    pub(crate) releases: Vec<(i32, Releaser)>,
-    pub(crate) takes: Vec<(i32, Releaser)>,
-    /// A counted builder's leave ([`Unit::clear_own_actions`], `FUN_140aadbf0`) of the updating
-    /// object itself, or of an annex of it: the building `FUN_140aaddb0` gives counts one
-    /// builder less ([`World::leave_builders`]), the caller's before the releases.
-    pub(crate) builder_leaves: Vec<i32>,
     /// The owner's id: the updating object's player, whose fields the update reads through
     /// the world (`w.players[player]`).
     pub(crate) player: usize,
@@ -102,12 +92,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) kills: Vec<KillLeft>,
     /// [`Step`]'s `ai_resume`.
     pub(in crate::world) ai_resume: Option<AiResume>,
-    /// [`Step`]'s `releases`.
-    pub(in crate::world) releases: Vec<(i32, Releaser)>,
-    /// [`Step`]'s `builder_leaves`.
-    pub(in crate::world) builder_leaves: Vec<i32>,
-    /// [`Step`]'s `takes`.
-    pub(in crate::world) takes: Vec<(i32, Releaser)>,
 }
 
 impl Step<'_> {
@@ -121,9 +105,6 @@ impl Step<'_> {
             work_order: self.work_order.take(),
             kills: std::mem::take(&mut self.kills),
             ai_resume: self.ai_resume.take(),
-            releases: std::mem::take(&mut self.releases),
-            builder_leaves: std::mem::take(&mut self.builder_leaves),
-            takes: std::mem::take(&mut self.takes),
         }
     }
 }

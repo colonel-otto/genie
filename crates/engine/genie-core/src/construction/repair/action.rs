@@ -374,7 +374,7 @@ impl RepairAction {
     pub(super) fn drop_target(
         &mut self,
         c: &mut Step<'_>,
-        repairer: &Unit,
+        repairer: &mut Unit,
         reads: &RepairReads,
     ) -> Result<(), GenieError> {
         if self.counted {
@@ -384,7 +384,7 @@ impl RepairAction {
         let target = std::mem::replace(&mut self.target, -1);
         if target != -1 {
             let by = repairer.releaser(c);
-            crate::world::lets::release(c, target, by)?;
+            crate::world::lets::release(c, repairer, target, by)?;
         }
         Ok(())
     }

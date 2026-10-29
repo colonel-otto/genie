@@ -378,7 +378,7 @@ impl Artifact {
             m.stop()?;
         }
         if let Some(t) = released {
-            crate::world::lets::release(c, t, r.by)?;
+            crate::world::lets::release(c, unit, t, r.by)?;
         }
         if !quiet {
             unit.post_own(notify, [ActionKind::Move.value(), 0, 0])?;
@@ -449,7 +449,7 @@ fn let_go_gone(
     by: Releaser,
 ) -> Result<(), GenieError> {
     if let Some(t) = gone.released {
-        crate::world::lets::release(c, t, by)?;
+        crate::world::lets::release(c, unit, t, by)?;
     }
     if gone.stops
         && let Some(m) = unit.body.mover_mut()
@@ -501,7 +501,9 @@ impl Unit {
             && let Some(e) = after.take()
         {
             // its sub-action list deletes it (FUN_140a98e20): the Enter's destructor
-            Action::Enter(e).tear_down(&mut self.body)?.let_go(c, by)?;
+            Action::Enter(e)
+                .tear_down(&mut self.body)?
+                .let_go(c, self, by)?;
         }
         if let Some(art) = self.actions.artifact_mut() {
             if let Some(e) = after {
@@ -509,7 +511,7 @@ impl Unit {
             } else {
                 art.goal = None;
                 if let Some(t) = art.drop_target() {
-                    crate::world::lets::release(c, t, by)?;
+                    crate::world::lets::release(c, self, t, by)?;
                 }
             }
         }

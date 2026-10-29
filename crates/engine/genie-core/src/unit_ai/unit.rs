@@ -301,10 +301,12 @@ impl Unit {
         f: impl FnOnce(&mut UnitAi, &mut UnitView<'_, '_>, &mut Well512) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let mut ai = self.ai.take().expect("a unit with a unit AI");
-        let (p, me, world_time) = (c.player, c.me, c.w.world_time);
+        let (p, world_time) = (c.player, c.w.world_time);
         // what its master change gives or takes of the owner's attributes, the owner's after
         // the side's call (the task search reads the attributes as the call starts)
         let mut adds = Vec::new();
+        // the notifies its side's calls give the unit's own AI, which the side does not hold
+        let mut own_notifies = Vec::new();
         let World {
             players,
             spatial,
@@ -347,7 +349,7 @@ impl Unit {
                 )
             },
         );
-        let mut others = Others::new((p, me), (objects, sleeping), (before, after));
+        let mut others = Others::new(p, (objects, sleeping), (before, after));
         let result = {
             let mut side = UnitView {
                 unit: self,
@@ -372,9 +374,7 @@ impl Unit {
                     masters: every,
                     lines,
                     tracker,
-                    takes: &mut c.takes,
-                    releases: &mut c.releases,
-                    builder_leaves: &mut c.builder_leaves,
+                    own_notifies: &mut own_notifies,
                 },
                 starts: &mut c.starts,
                 attribute_adds: &mut adds,
@@ -388,8 +388,12 @@ impl Unit {
             };
             f(&mut ai, &mut side, ai_stream)
         };
+        let posted = own_notifies
+            .into_iter()
+            .try_for_each(|(n, state)| ai.post(n, state));
         self.ai = Some(ai);
         let answer = result?;
+        posted?;
         c.w.players[p].add_attributes(adds)?;
         Ok(answer)
     }

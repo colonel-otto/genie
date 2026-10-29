@@ -183,7 +183,7 @@ impl BuildAction {
         self.uncount(c)?;
         if self.target != -1 {
             let target = std::mem::replace(&mut self.target, -1);
-            crate::world::lets::release(c, target, reads.by)?;
+            crate::world::lets::release(c, builder, target, reads.by)?;
         }
         let (kind, amount) = (builder.life.attribute_type, builder.life.amount);
         let attributes = c.w.players[c.player].attributes.len();
@@ -225,7 +225,7 @@ impl BuildAction {
         self.restart(c, builder, Some(state))?;
         let walked_from = (self.walk_target != -1).then_some(self.target);
         let target = std::mem::replace(&mut self.target, -1);
-        crate::world::lets::release(c, target, reads.by)?;
+        crate::world::lets::release(c, builder, target, reads.by)?;
         Ok(walked_from)
     }
 

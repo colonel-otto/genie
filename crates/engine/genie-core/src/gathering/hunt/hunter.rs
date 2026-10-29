@@ -38,7 +38,7 @@ impl Unit {
             if gone {
                 if state.is_some() {
                     let by = self.releaser(c);
-                    crate::world::lets::release(c, target, by)?;
+                    crate::world::lets::release(c, self, target, by)?;
                 }
                 if let Some(h) = self.actions.hunt_mut() {
                     h.set_target(-1);

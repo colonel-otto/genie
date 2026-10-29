@@ -339,7 +339,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             self.graphics,
             self.sprite,
         )?;
-        self.lets.torn_down(self.others, (leaves, releases))
+        self.lets
+            .torn_down(self.others, Some(&mut *self.unit), (leaves, releases))
     }
 
     fn cap_human_order(&mut self, cap: u32) -> Result<(), GenieError> {
@@ -459,7 +460,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             (&mut releases, &mut leaves, by),
             (self.every.get(self.player), self.graphics, self.sprite),
         )?;
-        self.lets.torn_down(self.others, (leaves, releases))?;
+        self.lets
+            .torn_down(self.others, Some(&mut *self.unit), (leaves, releases))?;
         if sails {
             self.unit.transport_sail(
                 m.point,
