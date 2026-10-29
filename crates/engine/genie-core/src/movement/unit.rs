@@ -274,41 +274,15 @@ impl Unit {
         Ok(())
     }
 
-    /// A bird's Fly in its update: its step, the stop, and a failed flight's notify.
+    /// A bird's Fly in its update ([`crate::movement::fly::Fly::update`]): nothing without one.
     pub(crate) fn fly_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<(), GenieError> {
-        if let Some(fly) = self.actions.fly_mut() {
-            let mover = self
-                .body
-                .mover()
-                .ok_or(GenieError::unsupported("a bird without movement state"))?;
-            let (speed, radius, position) = (
-                mover.stats.speed,
-                [mover.stats.radius[0], mover.stats.radius[1]],
-                mover.position(),
-            );
-            let map = c.w.spatial.map;
-            let (walk, action) = c.walk_with(&mut self.body, me, Stream::Action);
-            let sky = crate::movement::fly::Sky {
-                speed,
-                position,
-                radius,
-                map,
-                action,
-            };
-            let step = fly.update(walk, sky)?;
-            if step.stopped
-                && let Some(mover) = self.body.mover_mut()
-            {
-                mover.stop()?;
-            }
-            // a failed flight's MoveTo posts its failure (notify 0x1f9, the move action value)
-            if step.failed {
-                self.post_own(
-                    crate::unit_ai::ACTION_FAILED,
-                    [ActionKind::Move.value(), 0, 0],
-                )?;
-            }
+        let Some(mut fly) = self.actions.fly().copied() else {
+            return Ok(());
+        };
+        let flown = fly.update(c, self, me);
+        if let Some(f) = self.actions.fly_mut() {
+            *f = fly;
         }
-        Ok(())
+        flown
     }
 }

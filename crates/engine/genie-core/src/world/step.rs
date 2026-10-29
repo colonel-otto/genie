@@ -345,33 +345,6 @@ impl Step<'_> {
         )
     }
 
-    /// A walk and another stream than the walk's Object stream.
-    pub(crate) fn walk_with<'b>(
-        &'b mut self,
-        body: &'b mut crate::objects::layers::Body,
-        me: Me,
-        other: Stream,
-    ) -> (Walk<'b>, &'b mut Well512) {
-        let (object, other) = self.w.streams.two(Stream::Object, other);
-        (
-            Walk {
-                body,
-                me,
-                dt: seconds(self.dt),
-                world: &mut self.w.spatial,
-                plan: Some(Planning {
-                    pathing: &mut self.w.pathing,
-                    now: self.w.world_time,
-                    computer: self.w.players[self.player].computer,
-                    object,
-                    construction_rate: self.w.players[self.player].construction_rate,
-                    groups: &self.w.groups,
-                }),
-            },
-            other,
-        )
-    }
-
     /// What an object's walking action needs from the tick.
     pub(crate) fn walk<'b>(
         &'b mut self,
