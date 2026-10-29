@@ -217,9 +217,7 @@ fn import_artifact(
 
 /// An Artifact's `MoveTo` to its target: the goal (a point or an object) and the range.
 fn artifact_walk(sub: &Action) -> Result<(Goal, f32), GenieError> {
-    let b = sub
-        .base()
-        .ok_or(GenieError::unsupported("a saved MoveTo without its base"))?;
+    let b = sub.base().ok_or(MOVE_TO_BASELESS)?;
     let goal = if b.target_id == -1 {
         Goal::Point(
             target_point(b).ok_or(GenieError::unsupported("a saved MoveTo without its point"))?,
@@ -230,21 +228,36 @@ fn artifact_walk(sub: &Action) -> Result<(Goal, f32), GenieError> {
     Ok((goal, sub_range(sub)?))
 }
 
-/// A `MoveTo` of its own (type 1): its state, goal, range, sprite and wait.
+/// A `MoveTo` of its own (type 1): its state, goal, range, sprite and wait; not quiet.
 fn import_move_to(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> {
-    let base = saved.base;
-    unit.actions.set_move_to(Some(MoveToAction {
+    let move_to = saved_move_to(saved.action, saved.graphics, false)?;
+    unit.actions.set_move_to(Some(move_to));
+    Ok(())
+}
+
+/// A saved `MoveTo` (type 1), of its own or an action's sub-action: its state, goal, target,
+/// range, sprite and wait. The save does not hold `+0x60`: `quiet` is its maker's.
+fn saved_move_to(
+    action: &Action,
+    graphics: Option<&BTreeMap<i16, Graphic>>,
+    quiet: bool,
+) -> Result<MoveToAction, GenieError> {
+    let base = action.base().ok_or(MOVE_TO_BASELESS)?;
+    Ok(MoveToAction {
         state: move_to_state(base.state)?,
         goal: target_point(base),
         target: base.target_id,
-        range: sub_range(saved.action)?,
+        range: sub_range(action)?,
         // its sprite (`+0x58`, the save's second `short_val`; −1 for none)
-        sprite: saved_move_to_sprite(base.short_val_2, saved.graphics)?,
+        sprite: saved_move_to_sprite(base.short_val_2, graphics)?,
+        quiet,
         // its wait (`+0x6c`, `+0x70`, `+0x74`)
-        wait: saved_move_wait(saved.action),
-    }));
-    Ok(())
+        wait: saved_move_wait(action),
+    })
 }
+
+/// A saved `MoveTo` without its base.
+const MOVE_TO_BASELESS: GenieError = GenieError::unsupported("a saved MoveTo without its base");
 
 /// A saved `MoveTo`'s sprite (`id`, −1 for none) from the sprites' table.
 fn saved_move_to_sprite(
@@ -496,7 +509,10 @@ fn import_explore(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
     let sub = saved.move_to_sub(GenieError::unsupported(
         "a saved Explore with another sub-action",
     ))?;
-    let move_to = sub.map(sub_state).transpose()?;
+    // its quiet MoveTo to the point (`0x140a87e30`: `FUN_140a7a170` with 1)
+    let move_to = sub
+        .map(|s| saved_move_to(s, saved.graphics, true))
+        .transpose()?;
     if !matches!(
         base.state,
         genie_core::movement::explore::WAIT | genie_core::movement::explore::WALK
@@ -510,7 +526,6 @@ fn import_explore(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
             state: base.state,
             point: saved.point(),
             move_to,
-            move_wait: sub.map(saved_move_wait).unwrap_or_default(),
         }));
     Ok(())
 }

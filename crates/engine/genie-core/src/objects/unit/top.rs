@@ -210,7 +210,7 @@ impl Unit {
             Action::Fly(f) => walking(f.move_to),
             Action::Gather(g) => walking(g.move_to),
             Action::Attack(a) => walking(a.move_to),
-            Action::Explore(e) => walking(e.move_to),
+            Action::Explore(e) => walking(e.move_to.map(|m| m.state)),
             Action::Enter(e) => walking(e.move_to),
             Action::Transport(t) => walking(t.move_to),
             Action::MoveTo(_) | Action::Missile(_) | Action::Make(_) | Action::WaitSolidify(_) => {

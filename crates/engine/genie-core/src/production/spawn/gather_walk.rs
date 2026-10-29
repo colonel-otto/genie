@@ -79,6 +79,7 @@ impl World {
                 goal: Some(point),
                 target: -1,
                 range: 0.0,
+                quiet: false,
                 wait: crate::movement::move_to::MoveWait::default(),
             }));
         Ok(())

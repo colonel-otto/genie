@@ -869,7 +869,7 @@ fn a_transport_takes_its_base_alone() {
 }
 
 #[test]
-fn an_explore_takes_its_move_to_and_wait() {
+fn an_explore_takes_its_quiet_move_to_with_its_wait() {
     use genie_core::movement::explore::{EXPLORE, WAIT, WALK};
     let e = imported(EXPLORE, explore(base(WAIT)))
         .unwrap()
@@ -877,7 +877,7 @@ fn an_explore_takes_its_move_to_and_wait() {
         .explore()
         .copied()
         .unwrap();
-    assert_eq!((e.state, e.move_to, e.move_wait.state), (WAIT, None, 0));
+    assert_eq!((e.state, e.move_to), (WAIT, None));
     let e = imported(
         EXPLORE,
         explore(with_sub(base(WALK), MOVE_TO, move_to(4, 0.5))),
@@ -887,7 +887,9 @@ fn an_explore_takes_its_move_to_and_wait() {
     .explore()
     .copied()
     .unwrap();
-    assert_eq!((e.move_to, e.move_wait.state), (Some(MoveTo::Moving), 2));
+    // a quiet MoveTo (its maker's `+0x60`, which the save does not hold) with the saved wait
+    let m = e.move_to.unwrap();
+    assert_eq!((m.state, m.quiet, m.wait.state), (MoveTo::Moving, true, 2));
     assert_eq!(
         imported(EXPLORE, explore(with_sub(base(WALK), 4, explore(base(3))))).unwrap_err(),
         GenieError::unsupported("a saved Explore with another sub-action")

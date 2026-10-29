@@ -20,6 +20,7 @@ fn walking_forager() -> World {
         goal: Some([40.0, 80.0, 0.0]),
         target: -1,
         range: 0.0,
+        quiet: false,
         wait: MoveWait::default(),
     }));
     let ai = u.ai.as_mut().unwrap();

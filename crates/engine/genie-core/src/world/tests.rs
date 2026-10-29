@@ -5226,7 +5226,7 @@ fn a_build_command_without_its_foundation_or_a_task_does_nothing() {
 #[test]
 fn a_world_routine_s_unit_ai_calls_run_on_the_unit_at_once() {
     let mut t = sent_off_world(vec![]);
-    let (explore, _) = crate::movement::explore::ExploreAction::new([10.0, 10.0, 0.0]);
+    let (explore, _) = crate::movement::explore::ExploreAction::new([10.0, 10.0, 0.0], None);
     t.players[1].objects[0].actions.set_explore(Some(explore));
     let seen = t
         .run_ai_calls((1, 0), |ai, side, rng| {
@@ -8403,6 +8403,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
             target: 50,
             range: 0.0,
             sprite: None,
+            quiet: false,
             wait: crate::movement::move_to::MoveWait::default(),
         })),
         pasture: -1,
@@ -10051,6 +10052,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
             target: 77,
             range: 0.0,
             sprite: None,
+            quiet: false,
             wait: crate::movement::move_to::MoveWait::default(),
         })),
         ..Unit::default()
@@ -13485,6 +13487,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
         target: 600,
         range: 0.25,
         sprite: None,
+        quiet: false,
         wait: crate::movement::move_to::MoveWait::default(),
     };
     let mut t = own_move_world(to_bush(MoveTo::Start));
@@ -13583,7 +13586,7 @@ fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> E
     let mut t = forage_world();
     t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
     t.build_mesh();
-    let (mut explore, _) = crate::movement::explore::ExploreAction::new([40.5, 89.5, 0.0]);
+    let (mut explore, _) = crate::movement::explore::ExploreAction::new([40.5, 89.5, 0.0], None);
     set(&mut explore);
     t.players[1].objects[0].actions.set_explore(Some(explore));
     let r = in_update(&mut t, (1, 0), 50, |unit, c| {
@@ -13621,9 +13624,8 @@ fn an_explore_s_move_to_shows_the_master_s_walking_sprite_as_it_starts() {
     let _ = t.graphics.insert(31, walking);
     let master = t.players[1].objects[0].life.master_id;
     t.masters[1].get_mut(master).unwrap().move_sprite = 31;
-    let (explore, _) = crate::movement::explore::ExploreAction::new([40.5, 89.5, 0.0]);
-    t.players[1].objects[0].actions.set_explore(Some(explore));
     let r = in_update(&mut t, (1, 0), 50, |unit, c| {
+        unit.explore_to([40.5, 89.5], c)?;
         let me = crate::movement::Me {
             id: unit.id,
             group: unit.group.id,
@@ -13633,9 +13635,10 @@ fn an_explore_s_move_to_shows_the_master_s_walking_sprite_as_it_starts() {
     });
     assert_eq!(r, Ok(()));
     let v = &t.players[1].objects[0];
+    let move_to = v.actions.explore().and_then(|e| e.move_to);
     assert_eq!(
-        v.actions.explore().map(|e| e.move_to),
-        Some(Some(MoveTo::Moving))
+        move_to.map(|m| (m.state, m.sprite.map(|g| g.id))),
+        Some((MoveTo::Moving, Some(31)))
     );
     assert_eq!(v.sprite.map(|s| s.graphic.id), Some(31));
 }
@@ -13658,18 +13661,25 @@ fn an_explore_walks_to_its_point_then_asks_for_the_next() {
     let (r, e, heard) = explored(|_| ());
     assert_eq!(r, Ok(()));
     let e = e.unwrap();
-    assert_eq!((e.state, e.move_to), (WALK, Some(MoveTo::Moving)));
+    assert_eq!(
+        (e.state, e.move_to.map(|m| m.state)),
+        (WALK, Some(MoveTo::Moving))
+    );
     assert_eq!(heard, []);
     let asked = vec![(WANTS_POINT, [ActionKind::Explore.value(), 0, 0])];
     for end in [MoveTo::Arrived, MoveTo::Failed] {
-        let (r, e, heard) = explored(|e| e.move_to = Some(end));
+        let (r, e, heard) = explored(|e| {
+            if let Some(m) = e.move_to.as_mut() {
+                m.state = end;
+            }
+        });
         assert_eq!(r, Ok(()));
         let e = e.unwrap();
         assert_eq!((e.state, e.move_to), (WAIT, None));
         assert_eq!(heard, asked);
     }
     let (r, e, heard) = explored(|e| {
-        let _ = e.set_state(WAIT);
+        let _ = e.set_state(WAIT, None);
     });
     assert_eq!((r, e.map(|e| e.state), heard), (Ok(()), Some(WAIT), vec![]));
     for (state, reason) in [

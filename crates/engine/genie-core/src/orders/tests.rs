@@ -1360,6 +1360,9 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
         kind: 70,
         class: 12,
         object_flags: 0x10,
+        // no sprites: the Explore's MoveTo takes none (the world's sprites' table holds none)
+        move_sprite: -1,
+        standing_sprite: -1,
         ..Master::default()
     };
     t.masters
@@ -1787,6 +1790,7 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
             goal: Some([30.0, 30.0, 0.0]),
             target: -1,
             range: 0.0,
+            quiet: false,
             wait: crate::movement::move_to::MoveWait::default(),
         }));
     assert_eq!(t.head_takes_move(1, 0, Some(11), point), Ok(false));
@@ -3538,6 +3542,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
             goal: Some([40.0, 89.5, 0.0]),
             target: -1,
             range: 0.0,
+            quiet: false,
             wait: crate::movement::move_to::MoveWait::default(),
         }));
     let moving = Task {

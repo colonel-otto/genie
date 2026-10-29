@@ -10,9 +10,9 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::movement::Me;
-use crate::movement::move_to::{MoveDefaults, MoveTo, Sprites};
+use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToAction, Shown, graphic_of};
 use crate::objects::masters::Master;
-use crate::objects::sprite::sprite_id;
+use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::{Unit, object_master};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -61,34 +61,33 @@ pub struct ExploreAction {
     pub state: u8,
     /// The point it walks to (`+0x38`..`+0x40`), x −1 for none.
     pub point: [f32; 3],
-    /// Its `MoveTo` to the point (state 11's sub-action, quiet: `+0x60` set, range 0, the master's
-    /// moving sprite `+0x748` as no task names one).
-    pub move_to: Option<MoveTo>,
-    /// Its `MoveTo`'s wait after the motion step gave up.
-    pub move_wait: crate::movement::move_to::MoveWait,
+    /// Its `MoveTo` to the point: state 11's sub-action, quiet, range 0, with the master's walking
+    /// sprite ([`ExploreAction::move_shown`]).
+    pub move_to: Option<MoveToAction>,
 }
 
 impl ExploreAction {
     /// `FUN_140a87d30`, then its first (slot 0x28, `0x140a87e10`) as the action list adds it:
-    /// state 3 without a point, else 11.
+    /// state 3 without a point, else 11, whose `MoveTo` takes `sprite`
+    /// ([`ExploreAction::set_state`]).
     #[must_use]
-    pub fn new(point: [f32; 3]) -> (Self, Owner) {
+    pub fn new(point: [f32; 3], sprite: Option<Graphic>) -> (Self, Owner) {
         let mut a = Self {
             state: 0,
             point,
             move_to: None,
-            move_wait: crate::movement::move_to::MoveWait::default(),
         };
         let state = if a.point[0] == NO_POINT { WAIT } else { WALK };
-        let owner = a.set_state(state);
+        let owner = a.set_state(state, sprite);
         (a, owner)
     }
 
     /// `Set_state` (slot 0x80, `0x140a87e30`): its sub-actions go (`FUN_140a98620`), then by state:
-    /// 3 asks its unit AI for a point, 11 makes the `MoveTo` to the point (`FUN_140aa0d30` with
-    /// range 0, made quiet by `FUN_140a7a170`; the action list starts it, `FUN_140a977e0`: state
-    /// 3 for a unit with a speed).
-    pub const fn set_state(&mut self, state: u8) -> Owner {
+    /// 3 asks its unit AI for a point, 11 makes the `MoveTo` to the point with `sprite`, the one
+    /// [`ExploreAction::move_shown`] resolves (`FUN_140aa0d30` with range 0, made quiet by
+    /// `FUN_140a7a170`; the action list starts it, `FUN_140a977e0`: state 3 for a unit with a
+    /// speed). The other states read no sprite.
+    pub const fn set_state(&mut self, state: u8, sprite: Option<Graphic>) -> Owner {
         self.move_to = None;
         self.state = state;
         match state {
@@ -99,8 +98,7 @@ impl ExploreAction {
             WAIT => Owner::WantsPoint,
             DONE | FAILED | 14 => Owner::Standing,
             WALK => {
-                self.move_to = Some(MoveTo::Start);
-                self.move_wait = crate::movement::move_to::MoveWait::NEW;
+                self.move_to = Some(MoveToAction::sub_to_point(self.point, 0.0, sprite));
                 Owner::Nothing
             }
             _ => Owner::Nothing,
@@ -116,14 +114,14 @@ impl ExploreAction {
     }
 
     /// The point (slot 0x48, `0x140a881a0`): one on the map's quarter (both coordinates at least
-    /// 0) becomes its point and it walks there (`set_state` 11); any other makes it wait for one
-    /// (`set_state` 3).
-    pub fn take_point(&mut self, point: [f32; 3]) -> Owner {
+    /// 0) becomes its point and it walks there with `sprite` (`set_state` 11); any other makes it
+    /// wait for one (`set_state` 3).
+    pub fn take_point(&mut self, point: [f32; 3], sprite: Option<Graphic>) -> Owner {
         if 0.0 <= point[0] && 0.0 <= point[1] {
             self.point = point;
-            return self.set_state(WALK);
+            return self.set_state(WALK, sprite);
         }
-        self.set_state(WAIT)
+        self.set_state(WAIT, None)
     }
 
     /// What the update does after its `MoveTo`'s update returned `code` (`0x140a880c0` in state 11,
@@ -131,7 +129,7 @@ impl ExploreAction {
     /// runs the action's slot 0x68 and walks again (`set_state` 11), which is not modelled.
     pub const fn after_walk(&mut self, code: u8) -> Result<Owner, GenieError> {
         match code {
-            1 | 2 | 3 | 5 => Ok(self.set_state(WAIT)),
+            1 | 2 | 3 | 5 => Ok(self.set_state(WAIT, None)),
             4 => Err(GenieError::unsupported(
                 "an Explore whose MoveTo returned 4 (its slot 0x68)",
             )),
@@ -174,16 +172,9 @@ impl ExploreAction {
     }
 
     /// State 11's walk: the `MoveTo`'s update code (`FUN_140a992b0`): 1 once it arrived or
-    /// without one, 3 once it failed (quiet: no notify, but for a unit AI on a patrol or an
-    /// attack move). The motion step giving up makes a human player's villager wait once and
-    /// fails any other unit's `MoveTo` (`LAB_140aa320c`).
+    /// without one, 3 once it failed. The motion step giving up makes a human player's villager
+    /// wait once and fails any other unit's `MoveTo` (`LAB_140aa320c`).
     fn walk(&mut self, c: &mut Step<'_>, explorer: &mut Unit, me: Me) -> Result<(), GenieError> {
-        let quiet = explorer.ai.as_ref().is_some_and(|ai| {
-            !matches!(
-                ai.current_order,
-                Some(OrderKind::Patrol | OrderKind::AttackMove)
-            )
-        });
         let master = object_master(
             explorer.own_master.as_deref(),
             (explorer.id, explorer.life.master_id),
@@ -191,35 +182,22 @@ impl ExploreAction {
         )
         .ok();
         let villager = master.is_some_and(|m| m.class == 4);
-        let waits = villager && !c.w.players[c.player].computer;
-        let stance = explorer.ai.as_ref().map_or(0, |ai| ai.stance);
-        // the sprite its MoveTo's start shows (FUN_140aa0d30's default for none)
-        let move_shown = match (self.move_to, master) {
-            (Some(MoveTo::Start), Some(m)) => {
-                let defaults = MoveDefaults::of(m, explorer.abilities.look.as_ref());
-                Self::move_shown(m, defaults)
-            }
-            _ => None,
+        let gives_up = GiveUp {
+            waits: villager && !c.w.players[c.player].computer,
+            stance: explorer.ai.as_ref().map_or(0, |ai| ai.stance),
         };
-        let goal = crate::movement::move_to::Goal::Point(self.point);
         let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut explorer.body, me);
-        let mut sprites = Sprites {
-            sprite: &mut explorer.sprite,
-            rng: beside.sprite_rng,
-            graphics: beside.graphics,
+        let code = match &mut self.move_to {
+            Some(move_to) => {
+                let shown = (move_to.state == MoveTo::Start).then_some(Shown {
+                    sprite: &mut explorer.sprite,
+                    rng: beside.sprite_rng,
+                    graphic: move_to.sprite,
+                });
+                move_to.sub_update(&mut walk, gives_up, shown)?
+            }
+            None => 1,
         };
-        let shown = match self.move_to {
-            Some(MoveTo::Start) => Some(sprites.shown(move_shown)?),
-            _ => None,
-        };
-        let code = crate::movement::move_to::sub_move_to_update(
-            (&mut self.move_to, &mut self.move_wait),
-            &mut walk,
-            goal,
-            (0.0, quiet),
-            (waits, stance),
-            shown,
-        )?;
         let walked = self.move_to.is_some();
         let owner = self.after_walk(code)?;
         if walked && self.move_to.is_none() {
@@ -524,9 +502,10 @@ impl Unit {
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let at = [point[0], point[1], self.position()[2]];
+        let sprite = self.explore_sprite(c)?;
         let owner = if let Some(e) = self.actions.explore_mut() {
             let walked = e.move_to.is_some();
-            let owner = e.take_point(at);
+            let owner = e.take_point(at, sprite);
             if walked {
                 self.stop_mover()?;
             }
@@ -537,11 +516,30 @@ impl Unit {
                     "an Explore replacing another action",
                 ));
             }
-            let (e, owner) = ExploreAction::new(at);
+            let (e, owner) = ExploreAction::new(at, sprite);
             self.actions.set_explore(Some(e));
             owner
         };
         self.explore_owner(owner, c)
+    }
+
+    /// The sprite an Explore's `MoveTo` takes (`set_state(11)`, [`ExploreAction::move_shown`]):
+    /// the master's walking sprite, else `FUN_140aa0d30`'s default, from the sprites' table; none
+    /// for a unit whose master the world lacks.
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    fn explore_sprite(&self, c: &Step<'_>) -> Result<Option<Graphic>, GenieError> {
+        let Ok(master) = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        ) else {
+            return Ok(None);
+        };
+        let defaults = MoveDefaults::of(master, self.abilities.look.as_ref());
+        graphic_of(&c.w.graphics, ExploreAction::move_shown(master, defaults))
     }
 
     /// What an Explore's `set_state` asks of its unit ([`crate::movement::explore::Owner`]): its notify 0x202
@@ -636,16 +634,39 @@ mod tests {
         );
     }
 
+    /// An Explore without a point waits for one; a point makes the quiet `MoveTo` to it (range
+    /// 0, the sprite its maker resolved, a new wait), which a code of 1 drops again.
     #[test]
     fn an_explore_without_a_point_waits_for_one_then_walks() {
-        let (mut a, owner) = ExploreAction::new([-1.0, -1.0, 0.0]);
+        let (mut a, owner) = ExploreAction::new([-1.0, -1.0, 0.0], None);
         assert_eq!((a.state, owner, a.move_to), (WAIT, Owner::WantsPoint, None));
-        assert_eq!(a.take_point([19.0, 84.0, 0.0]), Owner::Nothing);
-        assert_eq!((a.state, a.move_to), (WALK, Some(MoveTo::Start)));
+        let walking = Graphic {
+            id: 7,
+            frames: 10,
+            facets: 16,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        };
+        assert_eq!(
+            a.take_point([19.0, 84.0, 0.0], Some(walking)),
+            Owner::Nothing
+        );
+        let made = MoveToAction {
+            state: MoveTo::Start,
+            goal: Some([19.0, 84.0, 0.0]),
+            target: -1,
+            range: 0.0,
+            sprite: Some(walking),
+            quiet: true,
+            wait: crate::movement::move_to::MoveWait::NEW,
+        };
+        assert_eq!((a.state, a.move_to), (WALK, Some(made)));
         assert_eq!(a.after_walk(0), Ok(Owner::Nothing));
         assert_eq!(a.after_walk(1), Ok(Owner::WantsPoint));
         assert_eq!((a.state, a.move_to), (WAIT, None));
-        assert_eq!(a.take_point([-1.0, 5.0, 0.0]), Owner::WantsPoint);
+        assert_eq!(a.take_point([-1.0, 5.0, 0.0], None), Owner::WantsPoint);
     }
 
     /// An area where every point but the unexplored ones counts, at its distance from (20, 92).

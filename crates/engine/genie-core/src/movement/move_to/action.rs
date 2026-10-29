@@ -15,8 +15,9 @@ use crate::objects::masters::Master;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite, sprite_id, standing, walking};
 use genie_diff::Diff;
 
-/// A `MoveTo` as a unit's own top action (a wandering animal's, a moved or following unit's). Its
-/// `+0x60` and `+0x61` are 0: it is not quiet.
+/// A `MoveTo` (`RGE_Action_Move_To`): a unit's own top action (a wandering animal's, a moved or
+/// following unit's; its `+0x60` and `+0x61` are 0: it is not quiet), or the sub-action of an
+/// action that walks ([`MoveToAction::sub_to_point`]).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MoveToAction {
     /// Its state (`+0x18`).
@@ -32,9 +33,17 @@ pub struct MoveToAction {
     /// the one its maker gave, else its constructor's default ([`point_sprite`],
     /// [`object_sprite`]); None for none (null).
     pub sprite: Option<Graphic>,
+    /// `+0x60`: quiet. An action makes its sub-action `MoveTo` quiet (`FUN_140a7a170` with 1):
+    /// its `set_state` 1, 13 and 14 show no standing sprite (`0x140aa29e0`), and its update
+    /// posts no notify 0x1fa, 0x1f9 or 0x1fb (`0x140aa2a70`). A `MoveTo` of its own is not quiet.
+    /// The save does not hold it: the import takes its maker's.
+    pub quiet: bool,
     /// Its wait after the motion step gave up.
     pub wait: MoveWait,
 }
+
+/// A `MoveTo` without a target object or a point.
+const GOAL_LACKING: GenieError = GenieError::unsupported("a MoveTo of its own without a goal");
 
 /// A `MoveTo`'s start counts the unit at its target within this gap (`0x140aa2100`,
 /// `DAT_142eb99cc`).
@@ -215,6 +224,7 @@ impl MoveToAction {
             target,
             range,
             sprite,
+            quiet: false,
             wait: MoveWait::default(),
         })
     }
@@ -283,7 +293,21 @@ impl MoveToAction {
             target: -1,
             range,
             sprite,
+            quiet: false,
             wait: MoveWait::default(),
+        }
+    }
+
+    /// Where it walks (`+0x30`, else `+0x38`..`+0x40`): its target object, else its point.
+    ///
+    /// # Errors
+    ///
+    /// A `MoveTo` with neither.
+    pub const fn walks_to(&self) -> Result<Goal, GenieError> {
+        match (self.target, self.goal) {
+            (-1, Some(point)) => Ok(Goal::Point(point)),
+            (-1, None) => Err(GOAL_LACKING),
+            (id, _) => Ok(Goal::Target(id)),
         }
     }
 
@@ -407,22 +431,19 @@ impl MoveToAction {
         if self.wait.state == 1 {
             self.wait.state = 2;
         }
-        let goal = match (self.target, self.goal) {
-            (-1, Some(point)) => Goal::Point(point),
-            (-1, None) => {
-                return Err(GenieError::unsupported(
-                    "a MoveTo of its own without a goal",
-                ));
-            }
-            (id, _) => Goal::Target(id),
-        };
+        let goal = self.walks_to()?;
         self.state = MoveTo::Moving;
         let shown = Shown {
             sprite: &mut *shows.sprite,
             rng: &mut *shows.rng,
             graphic: self.sprite.or(shows.master_standing),
         };
-        match start_walk_shown(walk.reborrow(), (goal, self.range, false), ask, Some(shown))? {
+        match start_walk_shown(
+            walk.reborrow(),
+            (goal, self.range, self.quiet),
+            ask,
+            Some(shown),
+        )? {
             Some(state) => self.state = state,
             None => step.gave_up = true,
         }
@@ -463,6 +484,7 @@ mod tests {
             goal: (target == -1).then_some([30.0, 88.0, 0.0]),
             target,
             range: 0.1,
+            quiet: false,
             wait: MoveWait {
                 state: 1,
                 timer: 0.0,

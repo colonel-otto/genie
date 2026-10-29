@@ -110,6 +110,7 @@ fn an_object_past_state_2_loses_its_actions() {
         goal: Some([40.0, 80.0, 0.0]),
         target: -1,
         range: 0.0,
+        quiet: false,
         wait: MoveWait::default(),
     }));
     in_update(&mut t, (1, 0), 50, Unit::actions_past_life).unwrap();
@@ -388,8 +389,10 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     let mut attack = crate::combat::attack::tests::own_attack(7, 4, 0.5);
     attack.move_to = Some(MoveTo::Moving);
     assert_eq!(of(Action::Attack(attack)), walking);
-    let (mut explore, _) = crate::movement::explore::ExploreAction::new([1.0, 2.0, 0.0]);
-    explore.move_to = Some(MoveTo::Moving);
+    let (mut explore, _) = crate::movement::explore::ExploreAction::new([1.0, 2.0, 0.0], None);
+    if let Some(m) = explore.move_to.as_mut() {
+        m.state = MoveTo::Moving;
+    }
     assert_eq!(of(Action::Explore(explore)), walking);
     let mut transport = crate::garrison::transport::TransportAction::new([1.0, 2.0, 0.0]);
     transport.move_to = Some(MoveTo::Moving);
