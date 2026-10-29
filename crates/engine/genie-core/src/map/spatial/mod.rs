@@ -432,6 +432,21 @@ impl Tiles {
         (xs, ys)
     }
 
+    /// The word indices of the covered tiles, row by row: each is on the map.
+    fn covered_indices(&self, p: &Placed) -> impl Iterator<Item = usize> + use<> {
+        let width = self.width;
+        let on_map = 0 < self.width && 0 < self.height;
+        let (xs, ys) = if on_map {
+            self.covered(p)
+        } else {
+            (
+                std::ops::RangeInclusive::new(1, 0),
+                std::ops::RangeInclusive::new(1, 0),
+            )
+        };
+        ys.flat_map(move |y| xs.clone().map(move |x| (y * width + x) as usize))
+    }
+
     /// The covered tiles as a rectangle, as the manager hands it to the planners' callback.
     fn covered_rect(&self, p: &Placed) -> [i16; 4] {
         let (xs, ys) = self.covered(p);
@@ -446,13 +461,9 @@ impl Tiles {
         if o.class == 5 {
             bits |= 0x8000;
         }
-        let (xs, ys) = self.covered(p);
-        for y in ys {
-            for x in xs.clone() {
-                let i = self.index(x, y).expect("covered tiles are on the map");
-                if self.words[i] < 0x80_0000 {
-                    self.words[i] = (self.words[i] & !0xff_ff00) | bits;
-                }
+        for i in self.covered_indices(p) {
+            if self.words[i] < 0x80_0000 {
+                self.words[i] = (self.words[i] & !0xff_ff00) | bits;
             }
         }
     }
@@ -462,17 +473,13 @@ impl Tiles {
     /// where another object (its centre on the tile) holds a static record (`static_record`:
     /// kind 0, 1, 2, 11 or 13), the rest stays as it is and the planners hear nothing (false).
     fn unmark(&mut self, p: &Placed, me: i32, static_record: impl Fn(i32) -> bool) -> bool {
-        let (xs, ys) = self.covered(p);
         let own = 1u64 << p.player;
-        for y in ys {
-            for x in xs.clone() {
-                let i = self.index(x, y).expect("covered tiles are on the map");
-                if self.lists[i].iter().any(|&o| o != me && static_record(o)) {
-                    return false;
-                }
-                if self.words[i] >> 23 == own {
-                    self.words[i] &= 0xff;
-                }
+        for i in self.covered_indices(p) {
+            if self.lists[i].iter().any(|&o| o != me && static_record(o)) {
+                return false;
+            }
+            if self.words[i] >> 23 == own {
+                self.words[i] &= 0xff;
             }
         }
         true

@@ -10,6 +10,10 @@
 use crate::GenieError;
 use crate::objects::masters::ids::TOWN_CENTRE;
 
+/// A foundation's tile off the map after the clamp to it.
+const TILE_OFF_MAP: GenieError =
+    GenieError::unreachable("a foundation tile off the map after the clamp");
+
 /// What the `.dat` says of a terrain (its record at map `+0x6238`, 0x1f0 bytes each).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TerrainKind {
@@ -463,7 +467,7 @@ impl Terrain {
             is_farm_terrain(wanted) || matches!(f.master, 357 | 1188) || f.class == CLASS_14;
         for ty in y0..=y1 {
             for tx in x0..=x1 {
-                let i = self.index(tx, ty).expect("clamped to the map");
+                let i = self.index(tx, ty).ok_or(TILE_OFF_MAP)?;
                 let t = self.kinds[i];
                 if let Some(values) = bonus.as_ref() {
                     let v = values.get(usize::from(t)).copied().unwrap_or(0.0);

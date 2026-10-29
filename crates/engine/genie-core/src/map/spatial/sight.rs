@@ -471,13 +471,13 @@ impl Spatial {
         me: i32,
         radius_x: f32,
     ) -> Result<bool, GenieError> {
-        let Some(word) = self.tiles.word(x, y) else {
+        let (Some(word), Some(tall)) = (self.tiles.word(x, y), self.tiles.tall(x, y)) else {
             return Ok(false);
         };
         if word & (u64::from(mask ^ 0xff) | BLOCKED) != 0 {
             return Ok(false);
         }
-        if 1 < self.tiles.tall(x, y).expect("a tile with a word") {
+        if 1 < tall {
             return self.point_clear(me, [x as f32, y as f32], radius_x * 0.5, mask);
         }
         Ok(true)
