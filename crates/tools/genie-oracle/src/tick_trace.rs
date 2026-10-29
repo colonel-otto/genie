@@ -70,7 +70,7 @@ impl TickTrace {
         let ticks = word_at(data, 8).ok_or(TraceError::NotATrace)? as usize;
         let lane_count = word_at(data, 12).ok_or(TraceError::NotATrace)? as usize;
         let mut rows = Vec::new();
-        let _ = ZlibDecoder::new(data.get(16..).unwrap_or_default())
+        let _ = ZlibDecoder::new(data.get(16..).ok_or(TraceError::NotATrace)?)
             .read_to_end(&mut rows)
             .map_err(TraceError::Inflate)?;
         let row = 4 * (1 + 11 * lane_count);
