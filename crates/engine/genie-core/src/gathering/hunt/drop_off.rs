@@ -2,14 +2,18 @@
 //! without a target.
 
 use crate::GenieError;
+use crate::combat::attack::set_walker_anim;
 use crate::gathering::hunt::{
     ARRIVED, DROP, DropOff, HuntAction, Lead, PointWalker, SEARCH, Shown, asked_drop_off,
     resource_kind,
 };
 use crate::movement::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk_shown, target_moved, walk_or_give_up,
+    Goal, MoveTo, MoveWait, start_walk_shown, target_moved, walk_or_give_up,
 };
-use crate::movement::{Mover, PathAsk};
+use crate::movement::{Me, Mover, PathAsk};
+use crate::objects::lifecycle::seconds;
+use crate::objects::unit::{Unit, hunt_walk_sprite};
+use crate::world::step::Step;
 
 /// What a drop-off's update did ([`HuntAction::update_drop`],
 /// [`crate::gathering::gather::GatherAction::update_drop`]).
@@ -59,32 +63,35 @@ impl HuntAction {
         Ok(())
     }
 
-    /// State 8's update (`0x140ac7a00` case 7): while its timer is below 0 the hunt waits (the
-    /// timer runs by dt); at its end the drop site goes (`FUN_140a7a190` with none) and the hunt
-    /// tries again (`set_state(8)`, [`Dropped::Again`], the caller's). Else the `MoveTo` to the
-    /// drop site walks, waits after the motion step gave up (a human player's villager once:
-    /// [`HuntAction::give_up_walk`]) or fails; a failed one (codes 3 to 5) makes the hunt wait 3
-    /// seconds and stops the unit's animation (`FUN_141161850`). Once it ended (its update in
-    /// state 1 returns 1: the list deletes it and its destructor stops the unit) the load goes to
-    /// the player at a drop site that takes it within a tile (`site`; one that does not,
-    /// `set_state` 2, is not modelled; a farther one makes the hunt wait 3 seconds too): the
-    /// resource of what the unit carries (`FUN_140fdd4f0`: food for 15 to 17, nothing outside 0
-    /// to 3, 9 and 56, then 0 beyond the player's attributes, `FUN_140efe5b0`), which the caller
-    /// adds; the unit carries nothing after (`FUN_14119d310` with -1). A hunt with a target walks
-    /// back to it (`set_state` 4), one without searches for a new one (the caller's).
-    #[allow(clippy::too_many_arguments)]
-    pub fn update_drop(
+    /// State 8's update (`0x140ac7a00` case 7) of `unit`'s hunt on the step, the hunt copied out
+    /// of its list: while its timer is below 0 the hunt waits (the timer runs by dt); at its end
+    /// the drop site goes (`FUN_140a7a190` with none) and the hunt tries again (`set_state(8)`,
+    /// [`Dropped::Again`], the caller's). Else the `MoveTo` to the drop site walks (the units in
+    /// its way go to the unit AI at once), waits after the motion step gave up (a human
+    /// player's villager once: [`HuntAction::give_up_walk`]) or fails; a failed one (codes 3 to
+    /// 5) makes the hunt wait 3 seconds and stops the unit's animation (`FUN_141161850`). Once it
+    /// ended (its update in state 1 returns 1: the list deletes it and its destructor stops the
+    /// unit) the load goes to the player at a drop site that takes it within a tile (`site`; one
+    /// that does not, `set_state` 2, is not modelled; a farther one makes the hunt wait 3 seconds
+    /// too): the resource of what the unit carries (`FUN_140fdd4f0`: food for 15 to 17, nothing
+    /// outside 0 to 3, 9 and 56, then 0 beyond the player's attributes, `FUN_140efe5b0`), which
+    /// the caller adds; the unit carries nothing after (`FUN_14119d310` with -1). A hunt with a
+    /// target walks back to it (`set_state` 4), one without searches for a new one (the
+    /// caller's).
+    ///
+    /// # Errors
+    ///
+    /// What the drop-off does not model, and the walk's.
+    pub(crate) fn update_drop(
         &mut self,
-        mut walk: Walk<'_>,
-        held_kind: &mut i16,
-        held: &mut f32,
-        attributes: usize,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
         site: Option<DropOff>,
-        shown: Shown<'_>,
         who: PointWalker,
     ) -> Result<Dropped, GenieError> {
         if self.timer < 0.0 {
-            self.timer += walk.dt;
+            self.timer += seconds(c.dt);
             if self.timer < 0.0 {
                 return Ok(Dropped::Going);
             }
@@ -94,11 +101,16 @@ impl HuntAction {
         match self.move_to {
             Some(MoveTo::Start) => {
                 self.move_to = Some(MoveTo::Moving);
-                let range = self.walk_range;
-                walk.me.action_state = self.state;
-                let to = (Goal::Target(self.carry_to), range, true);
-                let ask = PathAsk::default();
-                let walked = start_walk_shown(walk.reborrow(), to, ask, Some(shown))?;
+                let to = (Goal::Target(self.carry_to), self.walk_range, true);
+                let walked = self.start_walk(
+                    c,
+                    unit,
+                    Me {
+                        action_state: self.state,
+                        ..me
+                    },
+                    to,
+                )?;
                 match walked {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up_walk(who),
@@ -106,19 +118,24 @@ impl HuntAction {
                 return Ok(Dropped::Going);
             }
             Some(MoveTo::Moving) => {
-                if target_moved(&walk, self.carry_to, true)?.again() {
+                if target_moved(&c.walk(&mut unit.body, me), self.carry_to, true)?.again() {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(Dropped::Going);
                 }
-                walk.me.action_state = self.state;
-                match walk_or_give_up(walk)? {
+                let me = Me {
+                    action_state: self.state,
+                    ..me
+                };
+                let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
+                unit.post_in_the_way()?;
+                match walked {
                     Some(m) => self.move_to = Some(m),
                     None => self.give_up_walk(who),
                 }
                 return Ok(Dropped::Going);
             }
             Some(MoveTo::Waiting) => {
-                self.move_wait.timer += walk.dt;
+                self.move_wait.timer += seconds(c.dt);
                 if self.move_wait.delay <= self.move_wait.timer {
                     self.move_wait.timer = 0.0;
                     self.move_to = Some(MoveTo::Start);
@@ -127,12 +144,12 @@ impl HuntAction {
             }
             Some(MoveTo::Failed) => {
                 self.timer = DROP_WAIT;
-                walk.set_anim_speed(0.0);
+                set_walker_anim(&mut unit.body, 0.0);
                 return Ok(Dropped::Going);
             }
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
-                walk.body
+                unit.body
                     .mover_mut()
                     .ok_or(crate::world::HUNTER_UNMOVING)?
                     .stop()?;
@@ -153,14 +170,38 @@ impl HuntAction {
         }
         if DROP_REACH < site.gap_squared {
             self.timer = DROP_WAIT;
-            walk.set_anim_speed(0.0);
+            set_walker_anim(&mut unit.body, 0.0);
             return Ok(Dropped::Going);
         }
-        let kind = resource_kind(*held_kind, attributes);
-        let amount = *held;
-        *held_kind = -1;
-        *held = 0.0;
+        let attributes = c.w.players[c.player].attributes.len();
+        let kind = resource_kind(unit.life.attribute_type, attributes);
+        let amount = unit.life.amount;
+        unit.life.attribute_type = -1;
+        unit.life.amount = 0.0;
         Ok(Dropped::Load(kind, amount))
+    }
+
+    /// The `MoveTo`'s start toward `to` (the goal, the range, quiet) as the drop-off's and the
+    /// point walk's: the walk shows the hunt's walking sprite as it turns to state 4
+    /// ([`hunt_walk_sprite`]) and the units in its way go to the unit AI at once. Returns the
+    /// `MoveTo`'s state, None without a way.
+    pub(super) fn start_walk(
+        &self,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        to: (Goal, f32, bool),
+    ) -> Result<Option<MoveTo>, GenieError> {
+        let graphic = hunt_walk_sprite(self, &c.w.graphics, &unit.life);
+        let (walk, rng) = c.walk_and_sprites(&mut unit.body, me);
+        let shown = Shown {
+            sprite: &mut unit.sprite,
+            rng,
+            graphic,
+        };
+        let walked = start_walk_shown(walk, to, PathAsk::default(), Some(shown))?;
+        unit.post_in_the_way()?;
+        Ok(walked)
     }
 
     /// Slot 0x78 (`FUN_140a78060`, the base action's; `UNIT_ORDER`'s drop-off) of a unit carrying

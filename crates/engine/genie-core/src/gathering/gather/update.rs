@@ -297,7 +297,7 @@ impl GatherAction {
     /// it starts (a target's or a point's, within [`GatherAction::walk_range`]), walks, waits
     /// after the motion step gave up (a villager once); a `MoveTo` to the target asks again
     /// when the target left its point. The units in the unit's way go to its unit AI at once
-    /// ([`GatherAction::post_in_the_way`]).
+    /// ([`Unit::post_in_the_way`](crate::objects::unit::Unit::post_in_the_way)).
     ///
     /// # Errors
     ///

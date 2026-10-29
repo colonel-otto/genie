@@ -12,6 +12,10 @@ use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
 
+/// A hunter's update without its Hunt: the caller's test.
+pub(super) const NO_HUNT: crate::GenieError =
+    crate::GenieError::unreachable("a hunter's update without its Hunt");
+
 mod drop_off;
 mod gathering;
 mod herding;
@@ -35,8 +39,6 @@ use crate::combat::damage::Victim;
 #[cfg(test)]
 use crate::movement::Mover;
 pub use crate::movement::move_to::Shown;
-#[cfg(test)]
-use crate::movement::move_to::Walk;
 
 /// The Hunt action's type, which word 9 adds.
 pub const HUNT: i16 = 110;

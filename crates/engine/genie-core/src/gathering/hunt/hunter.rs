@@ -5,12 +5,13 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::victims::readable;
+use crate::gathering::hunt::NO_HUNT;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
-use crate::objects::unit::{Unit, hunt_walk_sprite, second_target_checked};
+use crate::objects::unit::{Unit, second_target_checked};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
@@ -148,7 +149,7 @@ impl Unit {
         c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
-        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
+        let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
         let master = object_master(
             self.own_master.as_deref(),
             (self.id, self.life.master_id),
@@ -185,28 +186,16 @@ impl Unit {
             }
             None => None,
         };
-        let attributes = c.w.players[c.player].attributes.len();
-        let shows = hunt_walk_sprite(hunt, &c.w.graphics, &self.life);
         let who = crate::gathering::hunt::PointWalker {
             computer: c.w.players[c.player].computer,
             villager: master.class == 4,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
-        let (walk, rng) = c.walk_and_sprites(&mut self.body, me);
-        let shown = crate::gathering::hunt::Shown {
-            sprite: &mut self.sprite,
-            rng,
-            graphic: shows,
-        };
-        match hunt.update_drop(
-            walk,
-            &mut self.life.attribute_type,
-            &mut self.life.amount,
-            attributes,
-            site,
-            shown,
-            who,
-        )? {
+        let dropped = hunt.update_drop(c, self, me, site, who)?;
+        if let Some(h) = self.actions.hunt_mut() {
+            *h = hunt;
+        }
+        match dropped {
             crate::gathering::hunt::Dropped::Going => {}
             crate::gathering::hunt::Dropped::Load(kind, amount) => {
                 // the player's slot 0xf8 (FUN_141616820) with 1 and 1: the resource, and its
@@ -218,7 +207,7 @@ impl Unit {
             }
             crate::gathering::hunt::Dropped::Again => {
                 // the drop site goes (FUN_140a7a190 with none), then set_state(8)
-                let hunt = self.actions.hunt_mut().expect("above");
+                let hunt = self.actions.hunt_mut().ok_or(NO_HUNT)?;
                 let site = std::mem::replace(&mut hunt.carry_to, -1);
                 self.hunt_release(c, [site])?;
                 self.hunt_drop_off(c)?;
@@ -253,7 +242,7 @@ impl Unit {
     /// `FUN_140ac5210`'s), the target and the second target go; state 11's is `set_state(3)`, the
     /// search ([`Unit::hunt_search_state`]).
     pub(crate) fn hunt_point_walk(&mut self, c: &mut Step<'_>, me: Me) -> Result<(), GenieError> {
-        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
+        let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
         let master = object_master(
             self.own_master.as_deref(),
             (self.id, self.life.master_id),
@@ -264,14 +253,11 @@ impl Unit {
             villager: master.class == 4,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
-        let shows = hunt_walk_sprite(hunt, &c.w.graphics, &self.life);
-        let (walk, rng) = c.walk_and_sprites(&mut self.body, me);
-        let shown = crate::gathering::hunt::Shown {
-            sprite: &mut self.sprite,
-            rng,
-            graphic: shows,
-        };
-        match hunt.update_point_walk(walk, who, shown)? {
+        let walked = hunt.update_point_walk(c, self, me, who)?;
+        if let Some(h) = self.actions.hunt_mut() {
+            *h = hunt;
+        }
+        match walked {
             crate::gathering::hunt::PointWalk::Walking => {}
             crate::gathering::hunt::PointWalk::Search => self.hunt_search_state(c)?,
             crate::gathering::hunt::PointWalk::Done { target, second } => {

@@ -1,16 +1,5 @@
 use super::*;
 
-/// No sprite shown: a test hunt's walk.
-fn shown<'a>(
-    sprite: &'a mut Option<crate::objects::sprite::ActiveSprite>,
-    rng: &'a mut crate::math::rng::Well512,
-) -> Shown<'a> {
-    Shown {
-        sprite,
-        rng,
-        graphic: None,
-    }
-}
 use crate::combat::attack::tests::Rig;
 use crate::movement::{Me, MoveStats, Velocity};
 use crate::objects::unit::Unit;
@@ -629,24 +618,17 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
         stance: 1,
     };
     let run = |h: &mut HuntAction, who: PointWalker| {
-        let mover = walker();
-        let mut world = crate::map::spatial::Spatial::default();
-        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
-        let mut mover =
-            crate::objects::layers::Body::new([171.888_89, 59.053_39, 0.0], None, Some(mover));
-        let walk = Walk {
-            body: &mut mover,
-            me: Me {
-                id: 31110,
-                group: -1,
-                action_state: h.state,
-            },
-            dt: 0.5,
-            world: &mut world,
-            plan: None,
-        };
-        let got = h.update_point_walk(walk, who, shown(&mut sprite, &mut rng));
-        (got, mover.mover().unwrap().velocity.unwrap().velocity[2])
+        let mut rig = Rig::on(
+            crate::map::spatial::Spatial::default(),
+            0.8,
+            Victim::default(),
+        );
+        let at = [171.888_89, 59.053_39, 0.0];
+        rig.unit_mut().body = crate::objects::layers::Body::new(at, None, Some(walker()));
+        let got = rig.run(500, |c, u, _, _| {
+            h.update_point_walk(c, u, me(h.state), who)
+        });
+        (got, rig.mover().velocity.unwrap().velocity[2])
     };
     let done = PointWalk::Done {
         target: -1,
@@ -716,18 +698,17 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
 /// computer player's ended walk are not modelled.
 #[test]
 fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
-    use crate::movement::tests::WalkRig;
     let who = PointWalker {
         computer: false,
         villager: true,
         stance: 0,
     };
-    let drop = |h: &mut HuntAction, rig: &mut WalkRig| {
-        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
-        let (mut kind, mut held) = (1, 3.0);
-        let shown = shown(&mut sprite, &mut rng);
-        let walk = rig.walk(DROP);
-        h.update_drop(walk, &mut kind, &mut held, 230, None, shown, who)
+    let drop = |h: &mut HuntAction, rig: &mut Rig| {
+        (
+            rig.unit_mut().life.attribute_type,
+            rig.unit_mut().life.amount,
+        ) = (1, 3.0);
+        rig.run(100, |c, u, _, _| h.update_drop(c, u, me(DROP), None, who))
     };
     let dropping = |move_to| HuntAction {
         state: DROP,
@@ -735,13 +716,13 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         move_to,
         ..hunting(-1)
     };
-    let mut rig = WalkRig::on_the_path();
+    let mut rig = Rig::on_the_path(Victim::default());
     rig.mover_mut().paths.clear();
     let mut h = dropping(Some(MoveTo::Start));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Moving));
     assert_eq!(rig.mover_mut().paths.len(), 2);
-    let mut rig = WalkRig::on_the_path();
+    let mut rig = Rig::on_the_path(Victim::default());
     let mut h = dropping(Some(MoveTo::Moving));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Moving));
@@ -763,10 +744,10 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
     let mut h = dropping(Some(MoveTo::Arrived));
     assert!(drop(&mut h, &mut rig).is_err());
     // the walk to a point
-    let point_walk = |h: &mut HuntAction, rig: &mut WalkRig, who| {
-        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
-        let state = h.state;
-        h.update_point_walk(rig.walk(state), who, shown(&mut sprite, &mut rng))
+    let point_walk = |h: &mut HuntAction, rig: &mut Rig, who| {
+        rig.run(100, |c, u, _, _| {
+            h.update_point_walk(c, u, me(h.state), who)
+        })
     };
     let walking = |move_to| HuntAction {
         state: WALK_POINT,
@@ -774,14 +755,14 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         move_to,
         ..hunting(-1)
     };
-    let mut rig = WalkRig::on_the_path();
+    let mut rig = Rig::on_the_path(Victim::default());
     rig.mover_mut().paths.clear();
     let mut h = walking(Some(MoveTo::Start));
     h.move_wait.state = 1;
     assert_eq!(point_walk(&mut h, &mut rig, who), Ok(PointWalk::Walking));
     assert_eq!((h.move_to, h.move_wait.state), (Some(MoveTo::Moving), 2));
     assert_eq!(rig.mover_mut().paths.len(), 2);
-    let mut rig = WalkRig::on_the_path();
+    let mut rig = Rig::on_the_path(Victim::default());
     let mut h = walking(Some(MoveTo::Moving));
     assert_eq!(point_walk(&mut h, &mut rig, who), Ok(PointWalk::Walking));
     assert_eq!(h.move_to, Some(MoveTo::Moving));
@@ -792,6 +773,45 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
     };
     let mut h = walking(Some(MoveTo::Arrived));
     assert!(point_walk(&mut h, &mut rig, computer).is_err());
+}
+
+/// The units in the way of the drop-off's and the point walk's `MoveTo` (notify 0x215, the
+/// motion step's [`crate::movement::Mover::in_the_way`]) go to the unit AI at once, in their
+/// order, as the Hunt's own walk passes them on.
+#[test]
+fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
+    let who = PointWalker {
+        computer: false,
+        villager: true,
+        stance: 0,
+    };
+    let in_the_way = vec![
+        (crate::unit_ai::IN_THE_WAY, [77, -1, -1]),
+        (crate::unit_ai::IN_THE_WAY, [78, -1, -1]),
+    ];
+    for state in [DROP, WALK_POINT] {
+        for move_to in [MoveTo::Start, MoveTo::Moving] {
+            let mut rig = Rig::on_the_path(Victim::default());
+            rig.mover_mut().in_the_way = vec![77, 78];
+            let mut h = HuntAction {
+                state,
+                carry_to: 10028,
+                point: [35.5, 88.5, 0.0],
+                move_to: Some(move_to),
+                ..hunting(-1)
+            };
+            rig.run(100, |c, u, _, _| {
+                if state == DROP {
+                    h.update_drop(c, u, me(state), None, who).map(|_| ())
+                } else {
+                    h.update_point_walk(c, u, me(state), who).map(|_| ())
+                }
+            })
+            .unwrap();
+            assert_eq!(rig.posted(), in_the_way, "{state} {move_to:?}");
+            assert_eq!(rig.mover().in_the_way, Vec::<i32>::new());
+        }
+    }
 }
 
 /// `set_state(4)` (`0x140ac60e0` case 4) toward house 10028 from 9177: a dead target is
@@ -1196,22 +1216,6 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
 /// the unit carries nothing after; the hunt has no target to go back to.
 #[test]
 fn a_drop_off_gives_the_load_to_the_player() {
-    fn walk<'a>(
-        body: &'a mut crate::objects::layers::Body,
-        world: &'a mut crate::map::spatial::Spatial,
-    ) -> Walk<'a> {
-        Walk {
-            body,
-            me: Me {
-                id: 9181,
-                group: -1,
-                action_state: DROP,
-            },
-            dt: 0.028,
-            world,
-            plan: None,
-        }
-    }
     let mut hunt = HuntAction {
         target: -1,
         state: DROP,
@@ -1227,11 +1231,14 @@ fn a_drop_off_gives_the_load_to_the_player() {
         move_wait: MoveWait::default(),
         lead: Lead::default(),
     };
-    let mut mover =
-        crate::objects::layers::Body::new([26.820_372, 94.718_056, 0.0], None, Some(walker()));
-    let mut world = crate::map::spatial::Spatial::default();
-    let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
-    let (mut kind, mut held) = (1, 7.057_053_6);
+    let mut rig = Rig::on(
+        crate::map::spatial::Spatial::default(),
+        0.8,
+        Victim::default(),
+    );
+    let at = [26.820_372, 94.718_056, 0.0];
+    rig.unit_mut().body = crate::objects::layers::Body::new(at, None, Some(walker()));
+    rig.t.players[1].attributes = vec![0.0; 230];
     let site = DropOff {
         takes: true,
         gap_squared: 0.5,
@@ -1241,52 +1248,32 @@ fn a_drop_off_gives_the_load_to_the_player() {
         villager: true,
         stance: 0,
     };
-    let got = hunt
-        .update_drop(
-            walk(&mut mover, &mut world),
-            &mut kind,
-            &mut held,
-            230,
-            Some(site),
-            shown(&mut sprite, &mut rng),
-            who,
-        )
-        .unwrap();
+    let drop = |rig: &mut Rig, hunt: &mut HuntAction, held: (i16, f32), site| {
+        (
+            rig.unit_mut().life.attribute_type,
+            rig.unit_mut().life.amount,
+        ) = held;
+        rig.run(28, |c, u, _, _| {
+            hunt.update_drop(c, u, me(DROP), Some(site), who)
+        })
+    };
+    let got = drop(&mut rig, &mut hunt, (1, 7.057_053_6), site).unwrap();
     assert_eq!(got, Dropped::Load(1, 7.057_053_6));
-    assert_eq!((kind, held, hunt.move_to), (-1, 0.0, None));
+    let life = &rig.unit().life;
+    assert_eq!(
+        (life.attribute_type, life.amount, hunt.move_to),
+        (-1, 0.0, None)
+    );
     // carried food of a carcass (15) goes as food; a site that does not take it stops
-    let mut kind = 15;
-    let mut held = 2.0;
     hunt.move_to = Some(MoveTo::Arrived);
-    let got = hunt
-        .update_drop(
-            walk(&mut mover, &mut world),
-            &mut kind,
-            &mut held,
-            230,
-            Some(site),
-            shown(&mut sprite, &mut rng),
-            who,
-        )
-        .unwrap();
+    let got = drop(&mut rig, &mut hunt, (15, 2.0), site).unwrap();
     assert_eq!(got, Dropped::Load(0, 2.0));
     hunt.move_to = Some(MoveTo::Arrived);
     let refused = DropOff {
         takes: false,
         ..site
     };
-    assert!(
-        hunt.update_drop(
-            walk(&mut mover, &mut world),
-            &mut kind,
-            &mut held,
-            230,
-            Some(refused),
-            shown(&mut sprite, &mut rng),
-            who,
-        )
-        .is_err()
-    );
+    assert!(drop(&mut rig, &mut hunt, (15, 2.0), refused).is_err());
     // a site out of a tile's reach: the hunt waits 3 seconds, the unit's animation stopped;
     // at the wait's end it tries again
     hunt.move_to = Some(MoveTo::Arrived);
@@ -1294,25 +1281,20 @@ fn a_drop_off_gives_the_load_to_the_player() {
         gap_squared: 1.5,
         ..site
     };
-    let step = |hunt: &mut HuntAction, mover: &mut crate::objects::layers::Body| {
-        let mut world = crate::map::spatial::Spatial::default();
-        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
-        hunt.update_drop(
-            walk(mover, &mut world),
-            &mut 15,
-            &mut 2.0,
-            230,
-            Some(far),
-            shown(&mut sprite, &mut rng),
-            who,
-        )
-        .unwrap()
-    };
-    mover.set_anim_speed(1.0);
-    assert_eq!(step(&mut hunt, &mut mover), Dropped::Going);
-    assert_eq!((hunt.timer, mover.anim_speed()), (DROP_WAIT, Some(0.0)));
+    rig.unit_mut().body.set_anim_speed(1.0);
+    assert_eq!(
+        drop(&mut rig, &mut hunt, (15, 2.0), far),
+        Ok(Dropped::Going)
+    );
+    assert_eq!(
+        (hunt.timer, rig.unit().body.anim_speed()),
+        (DROP_WAIT, Some(0.0))
+    );
     hunt.timer = -0.01;
-    assert_eq!(step(&mut hunt, &mut mover), Dropped::Again);
+    assert_eq!(
+        drop(&mut rig, &mut hunt, (15, 2.0), far),
+        Ok(Dropped::Again)
+    );
     assert_eq!(hunt.timer, 0.0);
 }
 

@@ -5,10 +5,13 @@ use crate::GenieError;
 use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::gathering::hunt::{
     ARRIVED, ATTACK, BUILDING, CLASS_49, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE,
-    LIVESTOCK, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, Shown, WALK_POINT, WALK_SEARCH, food,
+    LIVESTOCK, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, WALK_POINT, WALK_SEARCH, food,
 };
-use crate::movement::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk_shown, walk_or_give_up};
-use crate::movement::{Mover, PathAsk};
+use crate::movement::move_to::{Goal, MoveTo, MoveWait, walk_or_give_up};
+use crate::movement::{Me, Mover};
+use crate::objects::lifecycle::seconds;
+use crate::objects::unit::Unit;
+use crate::world::step::Step;
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -298,8 +301,9 @@ impl HuntAction {
         self.set_point_walk(WALK_SEARCH, mover)
     }
 
-    /// State 15's and 11's update (`0x140ac7a00` cases 0xe and 0xa): the `MoveTo` to the point
-    /// walks; the motion step giving up turns it to its wait or its failure
+    /// State 15's and 11's update (`0x140ac7a00` cases 0xe and 0xa) of `unit`'s hunt on the step,
+    /// the hunt copied out of its list: the `MoveTo` to the point walks (the units in its way go
+    /// to the unit AI at once); the motion step giving up turns it to its wait or its failure
     /// ([`HuntAction::give_up_walk`]); a waiting one asks again after its wait (its case 2, its
     /// update returns 0). Once it ended (its update returns 1, 2 or 5) or failed (3, quiet: no
     /// notify), the `set_state` that follows tears it down (`FUN_140a98620`; its destructor stops
@@ -308,12 +312,21 @@ impl HuntAction {
     /// goes, the point clears and the timer; the unit takes its standing sprite and the second
     /// target goes, the caller's). A computer player's ended walk in state 15 (`set_state` 1) or
     /// failed one (`set_state` 13) is not modelled; a point walk has no target to lose (code 4).
-    pub fn update_point_walk(
+    ///
+    /// # Errors
+    ///
+    /// What the point walk does not model, and the walk's.
+    pub(crate) fn update_point_walk(
         &mut self,
-        mut walk: Walk<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
         who: PointWalker,
-        shown: Shown<'_>,
     ) -> Result<PointWalk, GenieError> {
+        let me = Me {
+            action_state: self.state,
+            ..me
+        };
         let ended = match self.move_to {
             Some(MoveTo::Start) => {
                 // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
@@ -321,27 +334,24 @@ impl HuntAction {
                     self.move_wait.state = 2;
                 }
                 self.move_to = Some(MoveTo::Moving);
-                let range = self.walk_range;
-                walk.me.action_state = self.state;
-                let to = (Goal::Point(self.point), range, true);
-                let ask = PathAsk::default();
-                let walked = start_walk_shown(walk.reborrow(), to, ask, Some(shown))?;
-                match walked {
+                let to = (Goal::Point(self.point), self.walk_range, true);
+                match self.start_walk(c, unit, me, to)? {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up_walk(who),
                 }
                 return Ok(PointWalk::Walking);
             }
             Some(MoveTo::Moving) => {
-                walk.me.action_state = self.state;
-                match walk_or_give_up(walk)? {
+                let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
+                unit.post_in_the_way()?;
+                match walked {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up_walk(who),
                 }
                 return Ok(PointWalk::Walking);
             }
             Some(MoveTo::Waiting) => {
-                self.move_wait.timer += walk.dt;
+                self.move_wait.timer += seconds(c.dt);
                 if self.move_wait.delay <= self.move_wait.timer {
                     self.move_wait.timer = 0.0;
                     self.move_to = Some(MoveTo::Start);
@@ -364,7 +374,7 @@ impl HuntAction {
             }));
         }
         self.move_to = None;
-        walk.body
+        unit.body
             .mover_mut()
             .ok_or(crate::world::HUNTER_UNMOVING)?
             .stop()?;

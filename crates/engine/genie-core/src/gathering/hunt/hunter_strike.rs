@@ -6,6 +6,7 @@ use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{KillLeft, file_kill, victim};
 use crate::gathering::drop_sites::nearest_drop_site;
+use crate::gathering::hunt::NO_HUNT;
 use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites};
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
@@ -15,9 +16,6 @@ use crate::objects::unit::object_master;
 use crate::world::TREE_NEAR;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
-
-/// The hunt's strike without its Hunt: the caller's test.
-const NO_HUNT: GenieError = GenieError::unreachable("a hunt's strike without its Hunt");
 
 impl Unit {
     /// The hunt's strike in the hunter's update (`0x140ac7a00`'s states 4, 6, 7, 10 and 12): what
