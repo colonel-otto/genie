@@ -12,6 +12,22 @@ use crate::unit_ai::{
     Search, Surroundings, UnitAi, UnitSide, civilian_kind, civilian_search_radius, retarget_kind,
 };
 
+/// What the full update's tail takes besides the surroundings ([`UnitAi::update_tail`]'s
+/// arguments, `0x140c66b10` from its slot 73 call on).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct UpdateTail {
+    /// Which retarget check slot 73 runs.
+    pub(super) retarget: Retarget,
+    /// The world's time.
+    pub(super) world_time: u32,
+    /// The owner's type test (`player+0x10 == 3`).
+    pub(super) computer: bool,
+    /// The unit was busy after the notifies, as the update read it before its order queue.
+    pub(super) busy: bool,
+    /// The unit's group as the update read it.
+    pub(super) group: Option<GroupState>,
+}
+
 impl UnitAi {
     /// The full update (slot 4, `0x140c66b10`; the boar's `0x140c2c010` adds its tail):
     /// `dt` is the time the owner accumulated since its last turn (`world+0x18c[player]`),
@@ -85,7 +101,14 @@ impl UnitAi {
                 group: at.group,
             }));
         }
-        self.update_tail(retarget, world_time, computer, busy, at.group, at, ai, side)?;
+        let tail = UpdateTail {
+            retarget,
+            world_time,
+            computer,
+            busy,
+            group: at.group,
+        };
+        self.update_tail(tail, at, ai, side)?;
         Ok(None)
     }
 
@@ -109,16 +132,14 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
         let retarget = retarget_kind(self.ai_type)?;
-        self.update_tail(
+        let tail = UpdateTail {
             retarget,
             world_time,
             computer,
-            after.busy,
-            after.group,
-            at,
-            ai,
-            side,
-        )
+            busy: after.busy,
+            group: after.group,
+        };
+        self.update_tail(tail, at, ai, side)
     }
 
     /// The full update after its order queue (`0x140c66b10` from its slot 73 call on): slot 73
@@ -126,18 +147,20 @@ impl UnitAi {
     /// [`UnitAi::civilian_misc`], the artifact's [`UnitAi::artifact_misc`], livestock's
     /// nothing), the idle part ([`UnitAi::idle_part`]), the look-around check and the boar's
     /// tail. `busy` and `group` are what the update read before its order queue.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn update_tail(
         &mut self,
-        retarget: Retarget,
-        world_time: u32,
-        computer: bool,
-        busy: bool,
-        group: Option<GroupState>,
+        tail: UpdateTail,
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
+        let UpdateTail {
+            retarget,
+            world_time,
+            computer,
+            busy,
+            group,
+        } = tail;
         match retarget {
             Retarget::Base => {
                 let _ = self.retarget_check(world_time, computer, at, ai, side)?;

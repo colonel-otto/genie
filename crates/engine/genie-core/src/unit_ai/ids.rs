@@ -8,7 +8,7 @@ use crate::unit_ai::{
 };
 
 /// What slot 73 does for a factory type.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Retarget {
     /// The base slot 73: the retarget check.
     Base,

@@ -161,7 +161,6 @@
   "crates/engine/genie-core/src/map/spatial/grid.rs": 1,
   "crates/engine/genie-core/src/orders/gather.rs": 1,
   "crates/engine/genie-core/src/pathing/tile_path/search.rs": 1,
-  "crates/engine/genie-core/src/unit_ai/update.rs": 1,
   "crates/engine/genie-core/src/vision/registry.rs": 2,
   "crates/engine/genie-core/src/vision/visibility/sight.rs": 1,
   "crates/tools/genie-oracle/src/forced_replay.rs": 1,

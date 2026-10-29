@@ -2,6 +2,7 @@ use super::*;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::test_sides::With;
+use crate::unit_ai::update::UpdateTail;
 
 /// A side whose searches find nothing (`Found::NONE`).
 fn finds_nothing() -> impl FnMut(&Search<'_>) -> Result<Found, GenieError> {
@@ -9545,11 +9546,13 @@ fn a_priest_retargets_but_on_an_order_on_a_target() {
         let mut u = priest(order);
         let mut r = rng();
         let _ = u.update_tail(
-            Retarget::Priest,
-            10_000,
-            computer,
-            false,
-            None,
+            UpdateTail {
+                retarget: Retarget::Priest,
+                world_time: 10_000,
+                computer,
+                busy: false,
+                group: None,
+            },
             &at,
             &mut r,
             &mut With::new(&mut Recorder::default(), &mut Vec::new()),
