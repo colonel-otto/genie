@@ -161,12 +161,10 @@ impl TriggerEffect {
 
     /// Get the "Unit Type" value for this trigger effect.
     ///
-    /// # Panics
-    ///
-    /// Panics if the stored value is not a unit type ID, e.g. -1 when none is set.
+    /// None if the stored value is not a unit type ID, e.g. -1 when none is set.
     #[must_use]
-    pub fn unit_type(&self) -> UnitTypeID {
-        self.properties[6].try_into().unwrap()
+    pub fn unit_type(&self) -> Option<UnitTypeID> {
+        self.properties[6].try_into().ok()
     }
 
     /// Set the "Unit Type" value for this trigger effect.
@@ -295,12 +293,10 @@ impl TriggerEffect {
 
     /// Get the "Object Type" value for this trigger effect.
     ///
-    /// # Panics
-    ///
-    /// Panics if the stored value is not a unit type ID, e.g. -1 when none is set.
+    /// None if the stored value is not a unit type ID, e.g. -1 when none is set.
     #[must_use]
-    pub fn object_type(&self) -> UnitTypeID {
-        self.properties[21].try_into().unwrap()
+    pub fn object_type(&self) -> Option<UnitTypeID> {
+        self.properties[21].try_into().ok()
     }
 
     /// Set the "Object Type" value for this trigger effect.

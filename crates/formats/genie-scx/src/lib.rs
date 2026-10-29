@@ -8,6 +8,14 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::unimplemented,
+    clippy::todo
+)]
 
 mod ai;
 mod bitmap;
@@ -88,6 +96,24 @@ pub enum Error {
     /// The given ID is not a known victory condition state.
     #[error(transparent)]
     ParseVictoryConditionStateError(#[from] num_enum::TryFromPrimitiveError<VictoryState>),
+    /// A string is too long for the length prefix it is written with.
+    #[error("string too long for its length prefix")]
+    StringTooLongError,
+    /// An embedded AI file lacks its file name.
+    #[error("an embedded AI file has no file name")]
+    MissingAIFileNameError,
+    /// An embedded AI file has no content.
+    #[error("an embedded AI file is empty")]
+    EmptyAIFileError,
+    /// The scenario's description is longer than its length prefix allows.
+    #[error("description too long for its length prefix")]
+    DescriptionTooLongError,
+    /// The scenario has more triggers than the format counts.
+    #[error("more triggers than the format can count")]
+    TooManyTriggersError,
+    /// The version bundle for the requested game is not modelled.
+    #[error("no version bundle for this game is modelled")]
+    UnsupportedGameError,
     /// An error occurred while reading or writing.
     #[error(transparent)]
     IoError(#[from] io::Error),
@@ -107,6 +133,7 @@ impl From<WriteStringError> for Error {
         match err {
             WriteStringError::IoError(err) => Self::IoError(err),
             WriteStringError::EncodeStringError(err) => Self::EncodeStringError(err),
+            WriteStringError::TooLong => Self::StringTooLongError,
         }
     }
 }
@@ -325,6 +352,22 @@ impl From<Error> for genie_error::GenieError {
             | Error::ParseAIErrorCodeError(_)
             | Error::ParseVictoryConditionStateError(_) => {
                 Self::invalid_input("an id this reader does not know")
+            }
+            Error::StringTooLongError => {
+                Self::invalid_input("a string too long for its length prefix")
+            }
+            Error::MissingAIFileNameError => {
+                Self::invalid_input("an embedded AI file without a file name")
+            }
+            Error::EmptyAIFileError => Self::invalid_input("an embedded AI file without content"),
+            Error::DescriptionTooLongError => {
+                Self::invalid_input("a description too long for its length prefix")
+            }
+            Error::TooManyTriggersError => {
+                Self::invalid_input("more triggers than the format can count")
+            }
+            Error::UnsupportedGameError => {
+                Self::missing_data("a version bundle this crate does not hold")
             }
             Error::IoError(_) => Self::io("a read or write that failed"),
         };

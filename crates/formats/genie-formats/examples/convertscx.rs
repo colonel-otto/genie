@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
     } = Cli::from_args();
     let version_arg = version;
     let version = match version_arg.as_deref() {
-        Some("aoe") => VersionBundle::aoe(),
+        Some("aoe") => VersionBundle::aoe()?,
         Some("ror") => VersionBundle::ror(),
         Some("aoc") => VersionBundle::aoc(),
         Some("hd") => VersionBundle::hd_edition(),

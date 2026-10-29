@@ -36,13 +36,13 @@ impl Default for SCXVersion {
 
 impl Debug for SCXVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", std::str::from_utf8(&self.0).unwrap())
+        write!(f, "{:?}", String::from_utf8_lossy(&self.0))
     }
 }
 
 impl Display for SCXVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", std::str::from_utf8(&self.0).unwrap())
+        write!(f, "{}", String::from_utf8_lossy(&self.0))
     }
 }
 
@@ -385,9 +385,12 @@ pub struct VersionBundle {
 
 impl VersionBundle {
     /// A version bundle with the parameters `AoE1` uses by default.
-    #[must_use]
-    pub fn aoe() -> Self {
-        unimplemented!()
+    ///
+    /// # Errors
+    ///
+    /// Always: the `AoE1` bundle is not modelled yet.
+    pub const fn aoe() -> Result<Self, crate::Error> {
+        Err(crate::Error::UnsupportedGameError)
     }
 
     /// A version bundle with the parameters `AoE1`: Rise of Rome uses by default.

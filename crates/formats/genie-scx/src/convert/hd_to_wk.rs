@@ -92,18 +92,30 @@ impl HDToWK {
     /// This updates the object type IDs in trigger conditions and effects.
     fn convert_trigger(&self, trigger: &mut Trigger) {
         trigger.conditions_unordered_mut().for_each(|cond| {
-            if let Some(new_type) = self.object_ids_map.get(&cond.unit_type().into()) {
+            if let Some(new_type) = cond
+                .unit_type()
+                .and_then(|t| self.object_ids_map.get(&t.into()))
+            {
                 cond.set_unit_type(*new_type);
             }
-            if let Some(new_type) = self.object_ids_map.get(&cond.object_type().into()) {
+            if let Some(new_type) = cond
+                .object_type()
+                .and_then(|t| self.object_ids_map.get(&t.into()))
+            {
                 cond.set_object_type(*new_type);
             }
         });
         trigger.effects_unordered_mut().for_each(|effect| {
-            if let Some(new_type) = self.object_ids_map.get(&effect.unit_type().into()) {
+            if let Some(new_type) = effect
+                .unit_type()
+                .and_then(|t| self.object_ids_map.get(&t.into()))
+            {
                 effect.set_unit_type(*new_type);
             }
-            if let Some(new_type) = self.object_ids_map.get(&effect.object_type().into()) {
+            if let Some(new_type) = effect
+                .object_type()
+                .and_then(|t| self.object_ids_map.get(&t.into()))
+            {
                 effect.set_object_type(*new_type);
             }
         });

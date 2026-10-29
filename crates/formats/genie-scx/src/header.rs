@@ -186,12 +186,12 @@ impl SCXHeader {
         }
         description_bytes.push(0);
         if format_version == *b"3.13" {
-            let len =
-                u16::try_from(description_bytes.len()).expect("description length must fit in u16");
+            let len = u16::try_from(description_bytes.len())
+                .map_err(|_| crate::Error::DescriptionTooLongError)?;
             intermediate.write_u16::<LE>(len)?;
         } else {
-            let len =
-                u32::try_from(description_bytes.len()).expect("description length must fit in u32");
+            let len = u32::try_from(description_bytes.len())
+                .map_err(|_| crate::Error::DescriptionTooLongError)?;
             intermediate.write_u32::<LE>(len)?;
         }
         intermediate.write_all(&description_bytes)?;

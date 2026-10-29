@@ -34,6 +34,10 @@ pub enum WriteStringError {
     /// Failed to read a string because it could not be encoded.
     #[error(transparent)]
     EncodeStringError(#[from] EncodeStringError),
+    /// Failed to write a string because its length with the NULL terminator does not fit the
+    /// length prefix.
+    #[error("string too long for its length prefix")]
+    TooLong,
     /// Failed to write a string because the underlying I/O failed.
     #[error(transparent)]
     IoError(#[from] io::Error),
@@ -48,16 +52,14 @@ pub enum WriteStringError {
 ///
 /// Returns an error if the string cannot be encoded as WINDOWS-1252, or if writing fails.
 ///
-/// # Panics
-///
-/// Panics if the encoded string is `i16::MAX` bytes or longer, so that its length with the NULL
-/// terminator does not fit the `i16` prefix.
+/// Also fails if the encoded string is `i16::MAX` bytes or longer, so that its length with the
+/// NULL terminator does not fit the prefix.
 pub fn write_str<W: Write>(output: &mut W, string: &str) -> Result<(), WriteStringError> {
     let (bytes, _enc, failed) = WINDOWS_1252.encode(string);
     if failed {
         return Err(WriteStringError::EncodeStringError(EncodeStringError));
     }
-    let len = i16::try_from(bytes.len() + 1).expect("string too long for an i16 length prefix");
+    let len = i16::try_from(bytes.len() + 1).map_err(|_| WriteStringError::TooLong)?;
     output.write_i16::<LE>(len)?;
     output.write_all(&bytes)?;
     output.write_u8(0)?;
@@ -73,16 +75,14 @@ pub fn write_str<W: Write>(output: &mut W, string: &str) -> Result<(), WriteStri
 ///
 /// Returns an error if the string cannot be encoded as WINDOWS-1252, or if writing fails.
 ///
-/// # Panics
-///
-/// Panics if the encoded string is `i32::MAX` bytes or longer, so that its length with the NULL
-/// terminator does not fit the `i32` prefix.
+/// Also fails if the encoded string is `i32::MAX` bytes or longer, so that its length with the
+/// NULL terminator does not fit the prefix.
 pub fn write_i32_str<W: Write>(output: &mut W, string: &str) -> Result<(), WriteStringError> {
     let (bytes, _enc, failed) = WINDOWS_1252.encode(string);
     if failed {
         return Err(WriteStringError::EncodeStringError(EncodeStringError));
     }
-    let len = i32::try_from(bytes.len() + 1).expect("string too long for an i32 length prefix");
+    let len = i32::try_from(bytes.len() + 1).map_err(|_| WriteStringError::TooLong)?;
     output.write_i32::<LE>(len)?;
     output.write_all(&bytes)?;
     output.write_u8(0)?;
@@ -97,9 +97,7 @@ pub fn write_i32_str<W: Write>(output: &mut W, string: &str) -> Result<(), Write
 ///
 /// Returns an error if the string cannot be encoded as WINDOWS-1252, or if writing fails.
 ///
-/// # Panics
-///
-/// Panics if the encoded string is too long for the `i16` prefix (see `write_str`).
+/// Also fails if the encoded string is too long for the `i16` prefix (see `write_str`).
 pub fn write_opt_str<W: Write>(
     output: &mut W,
     option: &Option<String>,
@@ -120,9 +118,7 @@ pub fn write_opt_str<W: Write>(
 ///
 /// Returns an error if the string cannot be encoded as WINDOWS-1252, or if writing fails.
 ///
-/// # Panics
-///
-/// Panics if the encoded string is too long for the `i32` prefix (see `write_i32_str`).
+/// Also fails if the encoded string is too long for the `i32` prefix (see `write_i32_str`).
 pub fn write_opt_i32_str<W: Write>(
     output: &mut W,
     option: &Option<String>,
@@ -267,6 +263,9 @@ impl From<WriteStringError> for genie_error::GenieError {
         let to = match &e {
             WriteStringError::EncodeStringError(_) => {
                 Self::invalid_input("a string that does not encode as WINDOWS-1252")
+            }
+            WriteStringError::TooLong => {
+                Self::invalid_input("a string too long for its length prefix")
             }
             WriteStringError::IoError(_) => Self::io("a read or write that failed"),
         };

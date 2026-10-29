@@ -4,7 +4,6 @@ use crate::Result;
 use crate::triggers::{TriggerCondition, TriggerEffect, write_opt_string_key};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{ReadStringsExt, StringKey, read_opt_u32, write_i32_str, write_opt_i32_str};
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// A trigger, describing automatic interactive behaviours in a scenario.
@@ -298,7 +297,7 @@ impl TriggerSystem {
     ///
     /// # Panics
     ///
-    /// Panics if there are more than `u32::MAX` triggers.
+    /// Fails if there are more than `u32::MAX` triggers.
     // The format stores the technology and variable name counts and the variable numbers as u32.
     #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write, version: f64) -> Result<()> {
@@ -306,7 +305,9 @@ impl TriggerSystem {
         if version >= 1.5 {
             output.write_i8(self.objectives_state)?;
         }
-        output.write_u32::<LE>(self.triggers.len().try_into().unwrap())?;
+        output.write_u32::<LE>(
+            u32::try_from(self.triggers.len()).map_err(|_| crate::Error::TooManyTriggersError)?,
+        )?;
         for trigger in &self.triggers {
             trigger.write_to(&mut output, version)?;
         }

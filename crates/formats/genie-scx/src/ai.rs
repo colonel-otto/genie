@@ -140,10 +140,10 @@ impl AIFile {
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let filename = input
             .read_u32_length_prefixed_str()?
-            .expect("missing ai file name");
+            .ok_or(crate::Error::MissingAIFileNameError)?;
         let content = input
             .read_u32_length_prefixed_str()?
-            .expect("empty ai file?");
+            .ok_or(crate::Error::EmptyAIFileError)?;
 
         Ok(Self { filename, content })
     }

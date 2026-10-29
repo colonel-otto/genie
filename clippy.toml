@@ -1,0 +1,5 @@
+# Tests may unwrap, expect and panic; production code of a crate that turns the panic lints
+# on (CODING_STYLE.md, sections 7 and 14) may not.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
