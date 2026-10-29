@@ -3,7 +3,7 @@
 This guide sets the rules for the code in this repository. It applies to every crate. A rule
 that applies only to the engine crates says so.
 
-It rests on five sources:
+It rests on six sources:
 
 - The **Rust API Guidelines**. Their ids (`C-CASE`, `C-NEWTYPE`, …) follow each rule they set.
 - **Rust Design Patterns**: its idioms, patterns and anti-patterns.
@@ -12,6 +12,8 @@ It rests on five sources:
 - The **game-engine patterns** of Bevy's ECS and of Robert Nystrom's *Game Programming
   Patterns*.
 - **Hexagonal architecture** (ports and adapters) for the systems that meet the outside world.
+- The **sans-io** pattern for the crates that do I/O (sans-io.readthedocs.io). Rust examples
+  are `quinn-proto` beside `quinn`, and `rustls`.
 
 Three things rank above any guideline, in this order:
 
@@ -20,7 +22,7 @@ Three things rank above any guideline, in this order:
 2. **This guide.** Where it departs from a general guideline, it says why.
 3. **The general guidelines.**
 
-The gates (section 15) check what a machine can check. A review checks the rest against this
+The gates (section 16) check what a machine can check. A review checks the rest against this
 guide.
 
 ## 1. Principles
@@ -64,7 +66,7 @@ data-oriented architect makes it.
   (`reach.rs` beside `reached.rs`) are not allowed.
 - Put no game address, Ghidra label or class abbreviation into a path or an identifier. Write
   `image::sprite::EPSILON`, not `DAT_142eb0c60`. Addresses go into the documentation as
-  provenance (section 12). The addresses of one build are data of that build, not code.
+  provenance (section 13). The addresses of one build are data of that build, not code.
 - Give a type the name that says what it is where it is used: `HuntAction`, not `hunt::Action`.
   This is why the workspace allows `clippy::module_name_repetitions`.
 - Use `as_` for a free borrowed view, `to_` for a conversion that costs, `into_` for one that
@@ -266,7 +268,35 @@ scheduler breaks a bit-for-bit replay. No pattern changes the game's order of up
 - If a trait can serve as `dyn`, keep it object-safe (C-OBJECT). Seal a trait that others must
   not implement (C-SEALED).
 
-## 11. Determinism
+## 11. Sans-io in the leaf crates
+
+The core does no I/O (section 10). The leaf crates do: the format crates read and write the
+game's files, and the later network, storage and RelicLink crates talk to servers. Write their
+logic sans-io: the logic does no I/O itself. Then a blocking caller, an async runtime and
+WebAssembly use the same code without assumptions. This section does not apply to genie-core.
+
+- Keep the format or protocol logic free of I/O. It takes bytes, events and the time in, and it
+  gives bytes, events and values out. It never opens a file, a socket or a timer, and it never
+  blocks, sleeps or awaits.
+- Model a protocol as a state machine that the caller drives: it takes the bytes that arrived
+  and the current time, and it gives the bytes to send, the events and the time of its next
+  timeout. Name the methods for the protocol, not for a runtime.
+- Pass the time in. The logic reads no clock, so a test or a replay can give any time.
+- Parse from a buffer that the caller filled (`&[u8]`). If the bytes do not hold a whole
+  record yet, return how many more the parser needs instead of reading them. Write by returning
+  the bytes, or into a buffer that the caller owns.
+- Put the I/O into thin drivers beside the logic. A blocking driver works over `std::io::Read`
+  and `Write`. An async driver sits behind a Cargo feature named after its runtime (`tokio`,
+  not `with-tokio`, C-FEATURE). A driver holds no format or protocol logic: it moves bytes and
+  time between the I/O and the state machine.
+- Keep the logic free of an async runtime: no `async fn`, no runtime type and no runtime
+  dependency outside the drivers.
+- Test the logic with byte slices and a time that the test gives. A unit test opens no file and
+  no socket.
+- A reader over the whole file in memory (`&[u8]`) is sans-io. A reader over `R: Read` is a
+  blocking driver. When you change such a reader, give it a sans-io core.
+
+## 12. Determinism
 
 genie gives the same bits as the game on every host, WebAssembly included.
 
@@ -284,7 +314,7 @@ genie gives the same bits as the game on every host, WebAssembly included.
 - Check each change to the simulation against the recordings' checkpoints. No recording that
   holds can regress.
 
-## 12. Documentation
+## 13. Documentation
 
 - Document every item (`missing_docs`). A crate root opens with a thorough `//!`. A published
   crate's root has an example (C-CRATE-DOC).
@@ -303,7 +333,7 @@ genie gives the same bits as the game on every host, WebAssembly included.
   that the save does not hold `#[diff(unsaved)]`, and a field compared as one value
   `#[diff(eq)]`.
 
-## 13. Tests
+## 14. Tests
 
 - Work test-driven. Write the tests with the port, from the decompile's behaviour. Watch them
   fail, then make them pass. A port without its tests is not done.
@@ -318,7 +348,7 @@ genie gives the same bits as the game on every host, WebAssembly included.
 - Mark a test that takes minutes or gigabytes `#[ignore = "expensive: …"]`.
 - Run the tests with `cargo nextest`. If you pipe test output, set `-o pipefail` first.
 
-## 14. Lints
+## 15. Lints
 
 - The workspace's lint set applies to every crate: clippy's `pedantic` and `nursery`,
   `missing_docs`, and `unsafe_code = "forbid"`.
@@ -330,7 +360,7 @@ genie gives the same bits as the game on every host, WebAssembly included.
 - genie-core turns off the cast and float lints for the game's arithmetic. No other crate does,
   except for a field width that its file format fixes.
 
-## 15. The gates
+## 16. The gates
 
 Enable the pre-commit hook once per clone: `git config core.hooksPath .githooks`. Then a commit
 cannot fail CI's checks. `.github/workflows/ci.yml` runs the same checks and more.
@@ -350,7 +380,7 @@ cannot fail CI's checks. `.github/workflows/ci.yml` runs the same checks and mor
 | Dependency direction | no format crate depends on an engine or tool crate | CI |
 | Docs | `cargo doc --locked --workspace --no-deps` | CI |
 
-## 16. Commits
+## 17. Commits
 
 - Make one change per commit.
 - Write the subject as `crate: the change`, for example
