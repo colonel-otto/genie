@@ -3,7 +3,9 @@
 
 use crate::GenieError;
 use crate::garrison::{EnterAction, EnterTarget, SIEGE_CLASS};
+use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
+use crate::movement::MoveStats;
 use crate::movement::footprint_gap_squared;
 use crate::objects::masters::{Master, Masters, player_master};
 use crate::orders::BUILDING;
@@ -114,16 +116,30 @@ pub fn landing_tile(
 /// `FUN_140a85c30`'s tile test for a range of at most 1 to a target with speed: about the tiles
 /// of the unit's and the target's movement places (slot 0x520, `+0x824`; `me` and `them`),
 /// their box (when it spans more than one tile on an axis, its first tile and the next, within
-/// the map `map`), each tile but those two where the unit could not stand (`stands`, slot 0x278
-/// at the tile's corner) counts the buildings on it (`buildings`, type 80 of the tile's list).
-/// True when they are exactly two: the unit is not in reach.
+/// the map), each tile but those two where the unit (`unit`: its id and movement state) could
+/// not stand (slot 0x278 at the tile's corner, [`Spatial::point_clear`] with its x radius and
+/// its restriction's mask) counts the buildings on it ([`buildings_on`]). True when they are
+/// exactly two: the unit is not in reach.
+///
+/// # Errors
+///
+/// What slot 0x278 and the count give.
 pub fn walled_off(
     me: [f32; 2],
     them: [f32; 2],
-    map: [i32; 2],
-    mut stands: impl FnMut(i32, i32) -> Result<bool, GenieError>,
-    mut buildings: impl FnMut(i32, i32) -> Result<usize, GenieError>,
+    spatial: &Spatial,
+    masters: &[Masters],
+    (id, stats): (i32, &MoveStats),
 ) -> Result<bool, GenieError> {
+    let map = spatial.map;
+    let stands = |x: i32, y: i32| {
+        spatial.point_clear(
+            id,
+            [x as f32, y as f32],
+            stats.radius[0],
+            stats.restriction_mask,
+        )
+    };
     let (mx, my) = (cvttss2si(me[0]), cvttss2si(me[1]));
     let (tx, ty) = (cvttss2si(them[0]), cvttss2si(them[1]));
     let (x0, y0) = (mx.min(tx), my.min(ty));
@@ -138,10 +154,32 @@ pub fn walled_off(
             if (x, y) == (mx, my) || (x, y) == (tx, ty) || stands(x, y)? {
                 continue;
             }
-            count += buildings(x, y)?;
+            count += buildings_on(spatial, masters, x, y)?;
         }
     }
     Ok(count == 2)
+}
+
+/// The buildings on tile (`x`, `y`) for [`walled_off`]: the objects of the tile's list whose
+/// master (`masters`, each player's) is of type 80.
+///
+/// # Errors
+///
+/// An object whose master the slice lacks.
+fn buildings_on(
+    spatial: &Spatial,
+    masters: &[Masters],
+    x: i32,
+    y: i32,
+) -> Result<usize, GenieError> {
+    let mut n = 0;
+    for (_, o) in spatial.objects_on(x, y) {
+        let m = player_master(masters, o.player, o.master).ok_or(GenieError::unsupported(
+            "an object on a tile of a master the slice lacks",
+        ))?;
+        n += usize::from(m.kind == BUILDING);
+    }
+    Ok(n)
 }
 
 /// [`MeetingTarget`] of the target `t` (of master `tm`) with `room` for the unit: its top speed
@@ -193,8 +231,8 @@ pub(super) const UNPLACED: GenieError =
 /// and the restriction's mask); else a beach under the unit (`FUN_1413fbf30`).
 pub(crate) fn meeting_point(
     t: &MeetingTarget,
-    unit: (i32, [f32; 3], &crate::movement::MoveStats),
-    spatial: &crate::map::spatial::Spatial,
+    unit: (i32, [f32; 3], &MoveStats),
+    spatial: &Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<([f32; 2], u8), GenieError> {
     let (id, [ux, uy, _], stats) = unit;
@@ -230,9 +268,9 @@ pub(crate) fn meeting_point(
 /// moved to (slot 0x520), its buildings those whose master (`masters`, each player's) is of
 /// type 80.
 pub(crate) fn enter_reach(
-    spatial: &crate::map::spatial::Spatial,
+    spatial: &Spatial,
     masters: &[Masters],
-    (id, stats, moved_at): (i32, &crate::movement::MoveStats, [f32; 3]),
+    (id, stats, moved_at): (i32, &MoveStats, [f32; 3]),
     (target, target_mover): (i32, Option<&crate::movement::Mover>),
     range: f32,
 ) -> Result<bool, GenieError> {
@@ -249,25 +287,9 @@ pub(crate) fn enter_reach(
         walled_off(
             [moved_at[0], moved_at[1]],
             [them_at[0], them_at[1]],
-            spatial.map,
-            |x, y| {
-                spatial.point_clear(
-                    id,
-                    [x as f32, y as f32],
-                    stats.radius[0],
-                    stats.restriction_mask,
-                )
-            },
-            |x, y| {
-                let mut n = 0;
-                for (_, o) in spatial.objects_on(x, y) {
-                    let m = player_master(masters, o.player, o.master).ok_or(
-                        GenieError::unsupported("an object on a tile of a master the slice lacks"),
-                    )?;
-                    n += usize::from(m.kind == BUILDING);
-                }
-                Ok(n)
-            },
+            spatial,
+            masters,
+            (id, stats),
         )
     })
 }
@@ -279,7 +301,7 @@ pub(crate) fn enter_reach(
 /// `set_state(4)` moves either, so it holds there).
 #[allow(clippy::type_complexity)]
 pub(crate) fn enter_view(
-    spatial: &crate::map::spatial::Spatial,
+    spatial: &Spatial,
     zones: &mut crate::pathing::zones::Zones,
     masters: &[Masters],
     unit: &crate::objects::unit::Unit,
@@ -330,7 +352,7 @@ pub(crate) fn enter_view(
 /// from where it last moved to; one without movement state does not.
 pub(crate) fn ship_reaches(
     ship: &crate::objects::unit::Unit,
-    world: &crate::map::spatial::Spatial,
+    world: &Spatial,
     plan: &mut crate::movement::Planning<'_>,
     to: [f32; 3],
 ) -> Result<bool, GenieError> {

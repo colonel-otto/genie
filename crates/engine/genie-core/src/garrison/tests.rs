@@ -637,45 +637,104 @@ fn the_landing_walk_steps_twice_per_tile_of_the_longer_axis() {
     );
 }
 
+/// A map of `size` tiles whose `blocked` tiles hold a terrain class outside the walker's mask
+/// (bit 1), with a town centre (a building) on each tile of `buildings` and a villager (no
+/// building) on each of `others`, and the walker (id 1, x radius 0.2, mask 1).
+fn walled_map(
+    size: [i32; 2],
+    blocked: &[(i32, i32)],
+    buildings: &[(i32, i32)],
+    others: &[(i32, i32)],
+) -> (crate::map::spatial::Spatial, crate::movement::MoveStats) {
+    use crate::map::spatial::{Placed, Spatial, Tiles};
+    let [w, h] = size;
+    let mut words = vec![0u8; (w * h) as usize];
+    for &(x, y) in blocked {
+        words[(y * w + x) as usize] = 0x02;
+    }
+    let mut spatial = Spatial::with_tiles(size, Tiles::new(w, h, words));
+    let at = |(x, y): (i32, i32), master: i16| Placed {
+        position: [x as f32 + 0.5, y as f32 + 0.5, 0.0],
+        radius: [0.2, 0.2],
+        class: 0,
+        player: 1,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: false,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    let placed = buildings
+        .iter()
+        .map(|&t| at(t, TC))
+        .chain(others.iter().map(|&t| at(t, VILLAGER)));
+    for (id, p) in (10..).zip(placed) {
+        spatial.insert(id, p);
+    }
+    let stats = crate::movement::MoveStats {
+        fly_mode: 0,
+        speed: 0.8,
+        base: 0.8,
+        turn_rate: f32::MAX,
+        turn_radius: 0.0,
+        turn_radius_speed: f32::MAX,
+        radius: [0.2, 0.2, 0.5],
+        restriction: 0,
+        restriction_mask: 1,
+        turn_time: 0.0,
+        move_algorithm: 0,
+        min_collision: 1.0,
+        fast_turn: false,
+        walk_speed: 1.0,
+        stand_speed: 1.0,
+        run_speed: 1.0,
+        facets: None,
+        weapon_range: 0.0,
+    };
+    (spatial, stats)
+}
+
 #[test]
 fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
     // FUN_140a85c30 for range <= 1 and a target with speed: the box of the two tiles (one
     // tile and the next when it spans more than one), the two tiles left out
-    let mut asked = Vec::new();
-    let walled = walled_off(
-        [10.5, 10.5],
-        [11.5, 11.5],
-        [100, 100],
-        |x, y| {
-            asked.push((x, y));
-            Ok(false)
-        },
-        |x, y| Ok(usize::from((x, y) == (10, 11) || (x, y) == (11, 10))),
+    let masters = [Masters::default(), garrison_masters()];
+    let walled = |spatial: &crate::map::spatial::Spatial, stats, me, them| {
+        walled_off(me, them, spatial, &masters, (1, stats))
+    };
+    let blocked = [(10, 11), (11, 10)];
+    let (spatial, stats) = walled_map([100, 100], &blocked, &blocked, &[(10, 11)]);
+    assert_eq!(
+        walled(&spatial, &stats, [10.5, 10.5], [11.5, 11.5]),
+        Ok(true)
     );
-    assert_eq!(walled, Ok(true));
-    assert_eq!(asked, [(10, 11), (11, 10)]);
+    // the unit's and the target's own tiles do not count, nor what is not a building
+    let (spatial, stats) = walled_map([100, 100], &blocked, &[(10, 10), (10, 11)], &[(11, 10)]);
+    assert_eq!(
+        walled(&spatial, &stats, [10.5, 10.5], [11.5, 11.5]),
+        Ok(false)
+    );
     // a tile the unit could stand on does not count
-    let walled = walled_off(
-        [10.5, 10.5],
-        [11.5, 11.5],
-        [100, 100],
-        |x, y| Ok((x, y) == (11, 10)),
-        |_, _| Ok(1),
+    let (spatial, stats) = walled_map([100, 100], &[(10, 11)], &blocked, &[]);
+    assert_eq!(
+        walled(&spatial, &stats, [10.5, 10.5], [11.5, 11.5]),
+        Ok(false)
     );
-    assert_eq!(walled, Ok(false));
     // far apart: the first tile of the box and the next, within the map
-    let mut asked = Vec::new();
-    let _ = walled_off(
-        [98.5, 2.5],
-        [95.5, 9.5],
-        [97, 100],
-        |x, y| {
-            asked.push((x, y));
-            Ok(true)
-        },
-        |_, _| Ok(0),
+    let far = [(95, 2), (96, 3)];
+    let (spatial, stats) = walled_map([97, 100], &far, &far, &[]);
+    assert_eq!(walled(&spatial, &stats, [98.5, 2.5], [95.5, 9.5]), Ok(true));
+    let (spatial, stats) = walled_map([97, 100], &far, &[(95, 2), (95, 4)], &[]);
+    assert_eq!(
+        walled(&spatial, &stats, [98.5, 2.5], [95.5, 9.5]),
+        Ok(false)
     );
-    assert_eq!(asked, [(95, 2), (95, 3), (96, 2), (96, 3)]);
+    // a master the slice lacks on a counted tile fails
+    let masters = [Masters::default(), Masters::default()];
+    let (spatial, stats) = walled_map([100, 100], &blocked, &blocked, &[]);
+    assert!(walled_off([10.5, 10.5], [11.5, 11.5], &spatial, &masters, (1, &stats)).is_err());
 }
 
 #[test]
