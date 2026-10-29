@@ -8,6 +8,7 @@
 //! `FUN_14162fd90`), the repeat test `FUN_1413d1050`.
 
 use crate::GenieError;
+use crate::players::attribute;
 
 pub mod effect;
 pub mod upgrade;
@@ -23,8 +24,6 @@ pub fn is_age(tech: i16) -> bool {
 const SPIES: i16 = 0x198;
 /// The technology whose cost adjustments scale by attribute 38 (0x2f3) instead of 1.
 const SCALED_BY_38: i16 = 0x2f3;
-/// The attribute that scales research costs above 0 (`+0x2a8`: 85).
-const RESEARCH_COST_MODIFIER: i16 = 85;
 /// The attribute 0x2f3's cost adjustments scale by (`+0x130`).
 const ATTRIBUTE_38: i16 = 38;
 /// The resource a cost the player cannot meet takes the rest from (`+0x18`: gold).
@@ -185,7 +184,7 @@ pub fn factors(
     let modifier = if is_age(tech) {
         0.0
     } else {
-        attribute(RESEARCH_COST_MODIFIER)?
+        attribute(attribute::RESEARCH_COST_MODIFIER)?
     };
     let scale = if tech == SCALED_BY_38 {
         attribute(ATTRIBUTE_38)? as i32 as i16

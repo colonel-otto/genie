@@ -3,9 +3,9 @@
 
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::attribute;
 use crate::players::world_player::{
-    COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, attribute,
-    get, set,
+    COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, get, set,
 };
 use crate::world::World;
 

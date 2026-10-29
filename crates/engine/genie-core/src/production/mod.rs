@@ -19,6 +19,7 @@
 use crate::GenieError;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, TrainLocation};
+use crate::players::attribute;
 use genie_diff::Diff;
 
 mod costs;
@@ -410,8 +411,6 @@ pub fn population(storage: &[(i16, f32, u8)]) -> f32 {
 /// The population headroom (attribute 4), the population (11), the population cap (32), the
 /// units queued (80) and the units in production (81).
 pub const HEADROOM: i16 = 4;
-/// The population (attribute 11).
-pub const POPULATION: usize = 11;
 /// The population cap (attribute 32).
 pub const POPULATION_CAP: usize = 32;
 /// The units queued (attribute 80).
@@ -425,8 +424,10 @@ pub const IN_PRODUCTION: i16 = 81;
 pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
     let a = |i: usize| attributes.get(i).copied().ok_or(crate::world::NO_ATTRIBUTE);
     let in_production = a(IN_PRODUCTION as usize)?;
-    Ok(a(POPULATION_CAP)? < a(POPULATION)? + in_production + pop
-        || (a(HEADROOM as usize)? - in_production) - pop < 0.0)
+    Ok(
+        a(POPULATION_CAP)? < a(attribute::POPULATION)? + in_production + pop
+            || (a(HEADROOM as usize)? - in_production) - pop < 0.0,
+    )
 }
 
 #[cfg(test)]
@@ -646,7 +647,7 @@ mod tests {
         };
         let refunded = |state: &mut TechState, tech, modifier| {
             let mut held = Held(vec![0.0; 90]);
-            held.0[usize::try_from(costs::RESEARCH_COST_MODIFIER).unwrap()] = modifier;
+            held.0[usize::try_from(attribute::RESEARCH_COST_MODIFIER).unwrap()] = modifier;
             let r = refund_tech(state, &def, tech, &mut held);
             (r, held.0[0], held.0[1])
         };

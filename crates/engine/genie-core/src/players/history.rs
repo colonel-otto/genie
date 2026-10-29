@@ -21,6 +21,7 @@
 
 use crate::math::conversions::{cvttss2si, cvttss2si_64};
 use crate::math::image::history::{BATTLE_RECORD, BATTLE_START};
+use crate::players::attribute;
 
 /// Feudal Age reached (research 101).
 pub const FEUDAL_AGE: u8 = 0;
@@ -51,22 +52,6 @@ const BATTLES_COMPARED: i32 = 3;
 const KILL_VALUE_OF: usize = 400;
 /// The first of the attributes that count the player's razings' value of each player (425 + i).
 const RAZING_VALUE_OF: usize = 425;
-
-/// The player's attributes the update reads.
-mod attribute {
-    pub const KILLS: usize = 20;
-    pub const CIVILIAN_POPULATION: usize = 37;
-    pub const MILITARY_POPULATION: usize = 40;
-    pub const RAZINGS: usize = 43;
-    pub const KILLS_VALUE_OTHER: usize = 152;
-    pub const RAZINGS_VALUE_OTHER: usize = 153;
-    pub const KILLS_OTHER: usize = 154;
-    pub const RAZINGS_OTHER: usize = 155;
-    pub const UNITS_VALUE: usize = 164;
-    pub const BUILDINGS_VALUE: usize = 165;
-    pub const KILLS_VALUE: usize = 170;
-    pub const RAZINGS_VALUE: usize = 172;
-}
 
 /// An event (`Time_Slice_History_Event`, 0x20 bytes, `calloc`ed).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

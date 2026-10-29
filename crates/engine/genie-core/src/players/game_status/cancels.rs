@@ -5,7 +5,8 @@ use crate::GenieError;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
-use crate::players::game_status::{CURRENT_AGE, ONE_UNIT_AGE, ONE_UNIT_MODE};
+use crate::players::attribute;
+use crate::players::game_status::{ONE_UNIT_AGE, ONE_UNIT_MODE};
 use crate::production::{Making, refund, refund_research};
 use crate::world::World;
 
@@ -365,7 +366,8 @@ impl World {
         if self.settings.game_mode != ONE_UNIT_MODE {
             return Ok(());
         }
-        let attribute = crate::technology::Attributes::get(&self.players[p], CURRENT_AGE)?;
+        let attribute =
+            crate::technology::Attributes::get(&self.players[p], attribute::CURRENT_AGE)?;
         if crate::math::fmath::below_or_unordered(ONE_UNIT_AGE, attribute) {
             return Ok(());
         }

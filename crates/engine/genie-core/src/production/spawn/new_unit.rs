@@ -10,8 +10,9 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::MONASTERY;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
+use crate::players::attribute;
 use crate::production::IN_PRODUCTION;
-use crate::production::spawn::CURRENT_AGE;
+
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
@@ -191,7 +192,7 @@ impl World {
         Ok(NewObject {
             computer: owner.computer,
             posture: owner.posture,
-            age: crate::technology::Attributes::get(owner, CURRENT_AGE)?,
+            age: crate::technology::Attributes::get(owner, attribute::CURRENT_AGE)?,
             ..NewObject::of(position, master, made)
         })
     }

@@ -9,6 +9,7 @@ use crate::GenieError;
 use crate::gathering::farm_queue::PASTURE;
 use crate::objects::masters::ids::FARM;
 use crate::players::PlayerId;
+use crate::players::attribute;
 use crate::world::World;
 
 /// GAME's packet as `FUN_140e7c330` reads it: the sub-command at `+4` and its arguments.
@@ -175,7 +176,7 @@ impl World {
                 if let Some(p) = target
                     && self.has_treason_building(p)
                 {
-                    self.players[p].pending_debit[GOLD] -= TREASON_COST;
+                    self.players[p].pending_debit[attribute::GOLD] -= TREASON_COST;
                     self.treason(p)?;
                 }
             }
@@ -296,8 +297,6 @@ impl World {
     }
 }
 
-/// The pending debit's entry of gold (`FUN_141630ef0` with 3).
-const GOLD: usize = 3;
 /// What Treason's command takes off the pending debit of gold (`DAT_142eb5bd4`, 400.0, read at
 /// `0x140e7c73d`).
 const TREASON_COST: f32 = crate::math::image::turn::TREASON_COST;
@@ -361,7 +360,7 @@ mod tests {
         );
         // no castle: no treason
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
-        assert_eq!(t.players[1].pending_debit[GOLD], 0.0);
+        assert_eq!(t.players[1].pending_debit[attribute::GOLD], 0.0);
         let castle = Master {
             id: CASTLE,
             class: 52,
@@ -371,7 +370,7 @@ mod tests {
         t.track_add(1, 500, CASTLE);
         t.track_complete(1, 500, CASTLE);
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
-        assert_eq!(t.players[1].pending_debit[GOLD], -TREASON_COST);
+        assert_eq!(t.players[1].pending_debit[attribute::GOLD], -TREASON_COST);
     }
 
     /// GAME's queue cases for the command's player: 0xd and 0x15 buy farms and pastures for the

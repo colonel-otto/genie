@@ -244,9 +244,6 @@ impl Command {
     }
 }
 
-/// The player's attribute game mode 16's QUEUE reads (6, `+0x30`), and its bound
-/// (`DAT_14330eb8c`).
-const CURRENT_AGE: i16 = 6;
 const ONE_UNIT_AGE: f32 = crate::math::image::turn::ONE_UNIT_AGE;
 
 /// A build order on a foundation the world no longer holds.

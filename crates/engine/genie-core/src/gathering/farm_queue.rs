@@ -14,6 +14,7 @@ use crate::objects::masters::ids::FARM;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::player_master;
+use crate::players::attribute;
 use crate::production::{cost_test, pay, refund_master};
 use crate::world::World;
 
@@ -22,7 +23,6 @@ pub const QUEUE_LIMIT: i32 = 40;
 /// The pasture a mill's queue buys (`0x761`, GAME 0x15 and 0x16).
 pub const PASTURE: i16 = 0x761;
 
-const TOWN_CENTRE_LIMIT: usize = 218;
 /// A reseeding gatherer's farm spot of none (`DAT_14330ec20`, −1.0, read at `0x140a8aa9e`).
 const NO_FARM: f32 = crate::math::image::farm_queue::NO_FARM;
 /// The one farm or fish trap a reseed pays (`DAT_14330eb8c`, 1.0, read at `0x140a8ac75` and
@@ -171,7 +171,9 @@ impl World {
             return false;
         };
         if base == TOWN_CENTRE_621 {
-            let limit = self.players[p].attribute(TOWN_CENTRE_LIMIT).unwrap_or(0.0);
+            let limit = self.players[p]
+                .attribute(attribute::TOWN_CENTRE_LIMIT)
+                .unwrap_or(0.0);
             if (self.town_centre_count(p) as f32) < limit {
                 return true;
             }
@@ -480,7 +482,7 @@ mod tests {
         let mut t = world(0.0);
         t.masters[1] = Masters::new([building(TOWN_CENTRE_621, 3, TOWN_CENTRE_621, false, -1)]);
         assert!(!t.can_make(1, TOWN_CENTRE_621));
-        t.players[1].attributes[TOWN_CENTRE_LIMIT] = 1.0;
+        t.players[1].attributes[attribute::TOWN_CENTRE_LIMIT] = 1.0;
         assert!(t.can_make(1, TOWN_CENTRE_621));
     }
 

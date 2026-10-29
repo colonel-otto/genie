@@ -53,9 +53,6 @@ const INSIDE: f32 = crate::math::image::spawn::INSIDE;
 
 /// A new moving object's right vector's z (`FUN_1411580a0` reads `DAT_14330ec20`).
 pub(crate) const START_RIGHT_Z: f32 = crate::math::image::spawn::START_RIGHT_Z;
-/// The player's attribute a new soldier's unit AI reads: the current age (`player+0x100` at
-/// `+0x30`, `FUN_140c12300`).
-const CURRENT_AGE: i16 = 6;
 
 /// How a new plain object ([`World::plain_object`]) that moves faces.
 ///

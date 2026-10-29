@@ -101,40 +101,6 @@ const POPULATION_STORAGE: i16 = 11;
 /// … with the store mode 0x20 (`0x14163b89d`).
 const ALIVE_STORE_MODE: u8 = 0x20;
 
-/// The player's attributes the update reads and writes.
-mod attribute {
-    /// Food: the first of the four resources (food, wood, stone, gold: 0 to 3).
-    pub const FOOD: usize = 0;
-    /// Gold.
-    pub const GOLD: usize = 3;
-    /// The population.
-    pub const POPULATION: usize = 11;
-    /// The units owned.
-    pub const UNITS_OWNED: usize = 19;
-    /// The kills.
-    pub const KILLS: usize = 20;
-    /// The explored share of the map, in percent.
-    pub const EXPLORED: usize = 22;
-    /// The kill ratio: kills less losses.
-    pub const KILL_RATIO: usize = 44;
-    /// The survival to the finish, which a defeat clears.
-    pub const SURVIVAL: usize = 45;
-    /// The gold counter, which gold with a statistic grows (`FUN_141616820`).
-    pub const GOLD_COUNTER: usize = 49;
-    /// The first of the gathered totals of food, wood and stone (166 to 168).
-    pub const GATHERED: usize = 166;
-    /// The gathered total of gold.
-    pub const GOLD_GATHERED: usize = 169;
-    /// The first of the trickles a minute of food, wood, stone and gold (230 to 233).
-    pub const TRICKLES: usize = 230;
-    /// The food a minute of the livestock in the player's mills.
-    pub const MILL_FOOD: usize = 254;
-    /// The town centre is not available (0 lets a builder place one, `FUN_141625a20`).
-    pub const NO_TOWN_CENTRE: usize = 48;
-    /// The town centres a player may have (`FUN_141625a20`).
-    pub const TOWN_CENTRE_LIMIT: usize = 218;
-}
-
 /// The timers that keep a player in the game without a living object (the defeat check's first
 /// test): each counts at 0 or more; −1 is none.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -5,7 +5,8 @@ use crate::GenieError;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
-use crate::production::{HEADROOM, POPULATION, POPULATION_CAP, QUEUED};
+use crate::players::attribute;
+use crate::production::{HEADROOM, POPULATION_CAP, QUEUED};
 
 /// `FUN_141630530`: a queued unit's refund. For a master of type 70 and up each of its cost
 /// entries with an attribute and a paid flag gives back what the queue entry's `costs` paid
@@ -77,10 +78,6 @@ pub fn refund_master(
     Ok(())
 }
 
-/// The research cost modifier (attribute 85, `+0x2a8`), which scales a refunded technology's
-/// costs above 0.
-pub(crate) const RESEARCH_COST_MODIFIER: i16 = 85;
-
 /// `FUN_1413ccc00` with `param_3` 1 for technology `tech`: in state 2 or 4 it gives back its
 /// `.dat` costs (each entry with an attribute and a paid flag: its amount plus the state's
 /// adjustment, which the research cost modifier, attribute 85 above 0 and not for an age,
@@ -99,7 +96,7 @@ pub fn refund_tech(
     let modifier = if crate::technology::is_age(tech) {
         0.0
     } else {
-        attributes.get(RESEARCH_COST_MODIFIER)?
+        attributes.get(attribute::RESEARCH_COST_MODIFIER)?
     };
     for (j, c) in def.costs.iter().enumerate() {
         if c.attribute < 0 || c.paid == 0 {
@@ -178,7 +175,7 @@ pub fn cost_test(
             if !population {
                 continue;
             }
-            let pop = attributes.get(POPULATION as i16)?;
+            let pop = attributes.get(attribute::POPULATION as i16)?;
             let cap = attributes.get(POPULATION_CAP as i16)?;
             if cap <= pop {
                 return Ok(false);

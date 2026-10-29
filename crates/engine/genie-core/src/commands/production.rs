@@ -2,9 +2,9 @@
 //! entry's costs.
 
 use crate::GenieError;
+use crate::commands::ONE_UNIT_AGE;
 use crate::commands::queue::QueueCommand;
 use crate::commands::research::ResearchCommand;
-use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE};
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::ids::VILLAGER_MALE;
@@ -12,6 +12,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Masters, player_master};
 use crate::orders::Place;
+use crate::players::attribute;
 use crate::production::Production;
 use crate::world::player::POPULATION;
 use crate::world::{
@@ -132,7 +133,7 @@ impl World {
         // game mode 16: with attribute 6 at most 1 (COMISS, JC: a NaN is not) a military unit
         // (its key's +9) is queued one at a time, the player's +0x1378 its flag
         if self.settings.game_mode == ONE_UNIT_GAME
-            && crate::technology::Attributes::get(owner, CURRENT_AGE)? <= ONE_UNIT_AGE
+            && crate::technology::Attributes::get(owner, attribute::CURRENT_AGE)? <= ONE_UNIT_AGE
             && self.tracker_key(player, unit_id).military
         {
             if owner.one_military_queued {

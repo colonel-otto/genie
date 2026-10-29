@@ -8,6 +8,7 @@
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered, maxss};
 use crate::players::PlayerId;
+use crate::players::attribute;
 use crate::world::World;
 
 /// The commodities: food, wood and stone (the commands' only ones) and the ore (attribute
@@ -16,8 +17,6 @@ const FOOD: u8 = 0;
 const WOOD: u8 = 1;
 const STONE: u8 = 2;
 const ORE: u8 = 0x38;
-/// The gold a sale gives and a purchase costs.
-const GOLD: usize = 3;
 /// The player's attribute 78, the share of a trade's worth the market keeps.
 const FEE: usize = 78;
 /// A commodity's price after its net trades came back to 0 (`DAT_142f03164`, `DAT_14330eb8c`,
@@ -169,7 +168,7 @@ impl World {
             let worth = volume as f32 * price;
             let fee = self.fee(p) * worth;
             let gold = cvttss2si(worth - fee + ROUND) as f32;
-            self.add_resource(p, GOLD, gold, 1, true);
+            self.add_resource(p, attribute::GOLD, gold, 1, true);
             let lot = volume.wrapping_neg() as f32;
             self.add_resource(p, usize::from(attribute), lot, 0, true);
         }
@@ -189,7 +188,7 @@ impl World {
             if volume < 1 {
                 return;
             }
-            let gold = self.players[p].attribute(GOLD).unwrap_or(0.0);
+            let gold = self.players[p].attribute(attribute::GOLD).unwrap_or(0.0);
             let price = self.market.price(attribute);
             if at_most_or_unordered(price, 0.0) {
                 return;
@@ -201,7 +200,7 @@ impl World {
                 return;
             }
             let paid = cvttss2si(cost) as f32;
-            self.add_resource(p, GOLD, -paid, 0, true);
+            self.add_resource(p, attribute::GOLD, -paid, 0, true);
             self.market.trade(attribute, true);
             self.add_resource(p, usize::from(attribute), lot, 0, true);
         }
@@ -324,7 +323,7 @@ mod tests {
     #[test]
     fn a_purchase_costs_the_lot_s_worth_and_the_fee_at_least_21() {
         let mut t = trading();
-        t.players[1].resources[GOLD] = 170.0;
+        t.players[1].resources[attribute::GOLD] = 170.0;
         t.buy(player_id(1), FOOD, 2);
         let p = &t.players[1];
         assert_eq!(p.resources, [200.0, 100.0, 100.0, 21.0]);
@@ -336,10 +335,10 @@ mod tests {
         let mut t = trading();
         t.players[1].commodity_volume = 10;
         t.buy(player_id(1), WOOD, 1);
-        assert_eq!(t.players[1].resources[GOLD], 100.0 - 21.0);
+        assert_eq!(t.players[1].resources[attribute::GOLD], 100.0 - 21.0);
         // no volume, no purchase
         t.players[1].commodity_volume = 0;
         t.buy(player_id(1), WOOD, 1);
-        assert_eq!(t.players[1].resources[GOLD], 79.0);
+        assert_eq!(t.players[1].resources[attribute::GOLD], 79.0);
     }
 }
