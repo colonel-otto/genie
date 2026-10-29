@@ -3,7 +3,8 @@
 //! value plus `0x609c`; the values here are the decoded ones. A master the engine tests by id
 //! without a known name is `ID_n` or `MASTER_n`.
 
-/// The master whose footprint a reach test gives more range (raw `0x60c9`, `FUN_140fa0370`).
+/// The dock (`.dat` DOCK), whose footprint a reach test gives more range (raw `0x60c9`,
+/// `FUN_140fa0370`).
 pub const ID_45: i16 = 45;
 /// The farm (`0x32`): a mill's queue buys it, and BUILD places it as the rice farm on mangrove or
 /// rice farm terrain.
@@ -37,16 +38,16 @@ pub const RELIC: i16 = 285;
 pub const VILLAGER_FEMALE: i16 = 293;
 /// The king (`0x1b2`).
 pub const KING: i16 = 434;
-/// Master 448 (raw `0x625c`), which the task finder treats apart.
+/// The scout cavalry (`.dat` SCOUT, raw `0x625c`), which the task finder treats apart.
 pub const ID_448: i16 = 448;
-/// Master 546 (raw `0x62be`), which the task finder treats apart.
+/// The light cavalry (`.dat` LTCAV, raw `0x62be`), which the task finder treats apart.
 pub const ID_546: i16 = 546;
 /// A town centre (`0x26d`): a delete also tells the world's `+0x820`, a builder may place it and
 /// its availability counts the town centres standing.
 pub const TOWN_CENTRE_621: i16 = 621;
-/// Master 1105 (raw `0x64ed`), which the task finder treats apart.
+/// The siege tower (`.dat` SIEGTWR, raw `0x64ed`), which the task finder treats apart.
 pub const ID_1105: i16 = 1105;
-/// Master 1808 (`0x710`, raw `0x67ac`), which answers the town bell besides the villagers and
+/// The mule cart (`.dat` MULECART, class 3, `0x710`, raw `0x67ac`), which answers the town bell besides the villagers and
 /// which a building's watch leaves out.
 pub const MASTER_1808: i16 = 1808;
 /// The pasture master (`0x761`) whose foundation keeps its snow and whose stack unit depends on

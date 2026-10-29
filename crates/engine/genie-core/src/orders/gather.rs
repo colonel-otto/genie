@@ -52,7 +52,7 @@ impl World {
         ))?;
         let tm = t.master(&self.masters, tp)?;
         if tm.kind == BUILDING {
-            // The action type of a building packing or unpacking (0x7d), whose target a gather drops
+            // The action type of a packed siege unit unpacking (an Unpack, 125, `0x7d`), whose target a gather drops
             // (`FUN_140a903a0`).
             if t.top_action_kind() == Some(action_type::UNPACK) || t.unmodelled_action.is_some() {
                 return Err(GenieError::unsupported(

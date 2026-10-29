@@ -34,21 +34,23 @@ pub const WARSHIP: i16 = 22;
 pub const WALL: i16 = 27;
 /// Gates (decoded 39), whose annexes stay in their owner's watched list.
 pub const GATE: i16 = 39;
-/// Relics (`0x2a`, `-0xe82` raw): a delete spares them.
+/// Relics (`.dat` class 42, `0x2a`, `-0xe82` raw): a delete spares them.
 pub const RELIC: i16 = 42;
-/// Class 43 (`-0xe81` raw), which the task finder treats apart.
+/// Monks carrying a relic (`.dat` class 43, `-0xe81` raw), which the task finder treats apart.
 pub const CLASS_43: i16 = 43;
 /// Farms and a pasture's livestock (decoded 49, `0x31`).
 pub const FARM: i16 = 49;
-/// Class 51 (`-0xe79` raw): buildings that block though desolid, and ghosts that stay watched.
+/// Packed siege units (`.dat` class 51, `-0xe79` raw: the packed trebuchet and mangonel, master type
+/// 80): they block a placement though desolid, and their ghosts stay watched.
 pub const CLASS_51: i16 = 51;
 /// Towers.
 pub const TOWER: i16 = 52;
-/// Class 53 (`-0xe77` raw), which the task finder treats apart.
+/// Boarding boats (`.dat` class 53, `-0xe77` raw), which the task finder treats apart.
 pub const CLASS_53: i16 = 53;
-/// Class 54 (`-0xe76` raw): buildings that block though desolid, and ghosts that stay watched.
+/// Unpacked siege units (`.dat` class 54, `-0xe76` raw: the trebuchet, the bombard cannon): they
+/// block a placement though desolid, and their ghosts stay watched.
 pub const CLASS_54: i16 = 54;
-/// Class 55 (`-0xe75` raw), which the task finder treats apart.
+/// Scorpions and the like (`.dat` class 55, `-0xe75` raw), which the task finder treats apart.
 pub const CLASS_55: i16 = 55;
 /// Livestock (decoded 58, `0x3a`, `-0xe72` raw), which goes to Gaia when killed.
 pub const LIVESTOCK: i16 = 58;

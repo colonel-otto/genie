@@ -216,7 +216,7 @@ impl HuntAction {
     }
 
     /// Slot 9 (`0x140ac97c0`), the work command's new target for the hunt it keeps: true when the
-    /// hunt takes it. A building at work as a farm (top action `0x7d`) takes it to `set_state` 15,
+    /// hunt takes it. A building whose top action is an Unpack ([`action_type::UNPACK`], 125) takes it to `set_state` 15,
     /// not modelled. Its own player's drop site (one of its master's, `drops_here`,
     /// `FUN_14109d4f0`) while it carries something (`held`) takes the load there: the target goes
     /// (slot 0x68 with none; the caller releases it), the timer and the point clear, the drop site
@@ -239,7 +239,7 @@ impl HuntAction {
             drops_here,
         } = retarget;
         // A building's master type (`'P'`).
-        // A building whose top action is this (a farm at work) takes a hunt sent to it to `set_state` 15.
+        // A building whose top action is an Unpack takes a hunt sent to it to `set_state` 15.
         if target.kind == BUILDING && target.top_action == Some(action_type::UNPACK) {
             return Err(GenieError::unsupported(
                 "a hunt sent to a farm at work (set_state 15)",
