@@ -1,24 +1,23 @@
-//! The builder's part of its update: what the Build action reads of its foundation, the
-//! foundation's annexes and main building, the builder and its unit AI's orders; the action's
-//! update; and what its step changes in the world.
+//! The builder's part of its update: what the Build action reads as it starts (its
+//! foundation, the foundation's annexes and main building, the builder and its unit AI's
+//! orders), the action's update on the Build copied out of the action list, and the work's
+//! part that runs on the world: the foundation's work, its starts and its completion.
 
 use crate::objects::unit::object_master;
-use crate::unit_ai::ActionKind;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
 use crate::construction::build::{
-    AnnexStart, BuildAction, BuildStep, Builder, ClearLook, Completion, DROP, DROPPED_ORDERS,
-    MainWork, NO_CONSTRUCTION, NOT_HELD, Site, WorkChain,
+    AnnexStart, BuildAction, BuildReads, Built, ClearLook, Completion, Construction, DROP,
+    DROPPED_ORDERS, FOREIGN_SITE, MainWork, NO_CONSTRUCTION, Site, WorkChain, Worked,
 };
 use crate::gathering::hunt::DropOff;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
-use crate::movement::move_to::{MoveDefaults, Sprites};
+use crate::movement::move_to::MoveDefaults;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::death_parts::{clear_look_of, farm_bonus};
 use crate::objects::object_list::ObjectList;
-use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{TAKEN_OUT, Unit};
 use crate::unit_ai::OrderKind;
@@ -26,115 +25,37 @@ use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
-use crate::world::{BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_NEEDED, World};
-
-/// What the Build's update reads of the world besides its foundation, as the update starts.
-struct BuildReads {
-    /// The foundation's master, when this player holds the foundation.
-    built: Option<i16>,
-    /// The object the foundation's stacking made (`Unit::stack_made`).
-    stack_made: Option<i32>,
-    /// The state of its `MoveTo`'s target, which the `MoveTo`'s update checks first.
-    walk_target_state: Option<u8>,
-    /// The foundations its unit AI's queued build orders name, as they stand.
-    build_targets: Vec<(i32, Option<u8>)>,
-    /// State 8: what the drop-off reads of its drop site.
-    deposit: Option<(u8, DropOff)>,
-    /// State 8: the targets of its unit AI's orders that the drop-off drops, gone.
-    gone_orders: Vec<i32>,
-    /// The main building that takes the work instead (`FUN_1411cc430`).
-    main_work: Option<MainWork>,
-}
+use crate::world::{BUILDING_KIND, DROP_SITE_MASTERS, World};
 
 impl Unit {
-    /// The Build's part of the builder's update (`RGE_Action_Object::update` on its Build, the
-    /// action's slot 6) and its code: nothing without a Build.
+    /// The Build's update ([`BuildAction::update`]) with what it reads as it starts
+    /// ([`Unit::build_reads`]), on the Build copied out of the action list and put back after
+    /// it; its code (the end's 1). Nothing without a Build.
     pub(crate) fn build_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
-        let looks = self.clearing_looks(c, OthersRef::of(&c.w.players, c.player));
-        let by = self.releaser(c);
-        let Some(action) = self.actions.build().copied() else {
+        let Some(mut build) = self.actions.build().copied() else {
             return Ok(HeadCode::Keeps);
         };
-        let target = action.target;
-        let annexed = OthersRef::of(&c.w.players, c.player)
-            .own_iter()
-            .any(|u| u.annex_of == Some(target));
-        let reads = self.build_reads(c, OthersRef::of(&c.w.players, c.player), action)?;
-        let annex_ids = c.w.spatial.annexes_of(target);
-        let class = self.master(&c.w.masters, c.player).map_or(-1, |m| m.class);
-        // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
-        let held_kind = self.life.attribute_type;
-        let attributes = c.w.players[c.player].attributes.len();
-        let has_kind = usize::try_from(held_kind).is_ok_and(|k| k < attributes);
-        let drop_site = drop_site_master(c, reads.built) && has_kind;
-        let farm_bonus = farm_bonus(&c.w.players[c.player].attributes);
-        let (player, pace) = (c.player, c.pace());
-        let (attribute_204, mode_680, computer, now) = (
-            c.w.attribute_204(),
-            c.w.mode_680,
-            c.w.players[c.player].computer,
-            c.w.world_time,
-        );
-        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-        let defaults = self
-            .master(&c.w.masters, c.player)
-            .ok()
-            .map_or_else(MoveDefaults::default, |m| {
-                MoveDefaults::of(m, self.abilities.look.as_ref())
-            });
-        let build = self.actions.build_mut().expect("above");
-        let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
-        let template = Completion {
-            master: None,
-            annexed,
-            attribute_204,
-            mode_680,
-            farm_bonus,
-            masters: beside.masters.get(player),
-            computer,
-            ai: false,
-            main: false,
-            now,
-            rice: false,
-        };
-        let own = &mut beside.players[player].objects;
-        let site = build_site(own, target, &annex_ids, template, reads.main_work)?;
-        let builder = Builder {
-            defaults,
-            sprites: Sprites {
-                sprite: &mut self.sprite,
-                rng: beside.sprite_rng,
-                graphics: beside.graphics,
-            },
-            class,
-            master: self.life.master_id,
-            held: self.life.amount,
-            held_kind,
-            drop_site,
-            ai: self.ai.as_mut(),
-            waits: &mut self.footprint_waits,
-            build_targets: &reads.build_targets,
-            looks: &looks,
-            walk_target_state: reads.walk_target_state,
-            deposit: reads.deposit,
-            attributes,
-            gone_orders: &reads.gone_orders,
-            stack_made: reads.stack_made,
-        };
-        let mut step = build.update(walk, site, builder)?;
-        record_build_step(c, self, target, &annex_ids, &mut step)?;
-        self.after_build_step(c, me, (target, reads.built, by), step)
+        let reads = self.build_reads(c, build)?;
+        let built = build.update(c, self, me, &reads);
+        if let Some(b) = self.actions.build_mut() {
+            *b = build;
+        }
+        // its end's 1 deletes it; the destructor (FUN_140aadbf0) finds it out of the builders
+        // (set_state left them) and lets go the foundation and the second target it still holds
+        built
     }
 
     /// What the footprint clearing of the Build's `set_state(7)` reads (`FUN_1415c3620`) of the
     /// objects on the tiles about a desolid foundation, as the update starts: none for a builder
     /// in another state or at another foundation.
-    fn clearing_looks(&self, c: &Step<'_>, others: OthersRef<'_>) -> BTreeMap<i32, ClearLook> {
+    fn clearing_looks(
+        &self,
+        c: &Step<'_>,
+        others: OthersRef<'_>,
+        action: BuildAction,
+    ) -> BTreeMap<i32, ClearLook> {
         let mut looks = BTreeMap::new();
-        if let Some(f) = self
-            .actions
-            .build()
-            .copied()
+        if let Some(f) = Some(action)
             .filter(|b| matches!(b.state, 6 | 222))
             .and_then(|b| others.own(b.target))
             .filter(|u| u.construction.is_some_and(|k| k.desolid))
@@ -160,18 +81,21 @@ impl Unit {
         looks
     }
 
-    /// What the Build's update reads of the world besides its foundation ([`BuildReads`]).
-    fn build_reads(
+    /// What the Build's update reads of the world as it starts ([`BuildReads`]).
+    pub(super) fn build_reads(
         &self,
         c: &Step<'_>,
-        others: OthersRef<'_>,
         action: BuildAction,
     ) -> Result<BuildReads, GenieError> {
+        let others = OthersRef::of(&c.w.players, c.player);
         let target = action.target;
-        let built = others.own(target).map(|u| u.life.master_id);
-        let stack_made = others.own(target).and_then(|u| u.stack_made);
-        let walk_target = action.walk_target;
-        let walk_target_state = others.get(walk_target).map(|u| u.life.state);
+        let foundation = others.own(target);
+        let site = foundation
+            .filter(|u| u.construction.is_some())
+            .map(|u| u.id);
+        let built = foundation.map(|u| u.life.master_id);
+        let stack_made = foundation.and_then(|u| u.stack_made);
+        let walk_target_state = others.get(action.walk_target).map(|u| u.life.state);
         let build_targets: Vec<(i32, Option<u8>)> = self.ai.as_ref().map_or_else(Vec::new, |ai| {
             ai.orders
                 .iter()
@@ -190,7 +114,12 @@ impl Unit {
         } else {
             (None, Vec::new())
         };
+        let master = self.master(&c.w.masters, c.player);
+        // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
+        let attributes = c.w.players[c.player].attributes.len();
+        let has_kind = usize::try_from(self.life.attribute_type).is_ok_and(|k| k < attributes);
         Ok(BuildReads {
+            site,
             built,
             stack_made,
             walk_target_state,
@@ -198,6 +127,19 @@ impl Unit {
             deposit,
             gone_orders,
             main_work: main_work_of(others, target)?,
+            looks: self.clearing_looks(c, others, action),
+            // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
+            defaults: master
+                .as_ref()
+                .ok()
+                .map_or_else(MoveDefaults::default, |m| {
+                    MoveDefaults::of(m, self.abilities.look.as_ref())
+                }),
+            class: master.map_or(-1, |m| m.class),
+            drop_site: drop_site_master(c, built) && has_kind,
+            annexed: others.own_iter().any(|u| u.annex_of == Some(target)),
+            annex_ids: c.w.spatial.annexes_of(target),
+            by: self.releaser(c),
         })
     }
 
@@ -263,291 +205,94 @@ impl Unit {
                 .collect()
         })
     }
+}
 
-    /// What the Build's step changes of the builder: the load dropped, its animation, the
-    /// targets let go, its notifies, its standing sprite, the work it takes next and its
-    /// drop-off; its code (the end's 1). `target` is the foundation, `built` its master.
-    pub(crate) fn after_build_step(
+impl BuildAction {
+    /// Runs `f` on the world with the builder lent back to its slot ([`Step::lend`]: the
+    /// world's routines that scan the objects meet it, as the game's do), its Build as this
+    /// update left it so far; after `f` the Build is the one `f` left.
+    ///
+    /// # Errors
+    ///
+    /// `f`'s and the lend's.
+    pub(super) fn lend<R>(
         &mut self,
         c: &mut Step<'_>,
-        me: Me,
-        (target, built, by): (i32, Option<i16>, Releaser),
-        step: BuildStep,
-    ) -> Result<HeadCode, GenieError> {
-        // the load dropped at the end of the work (FUN_140aadc50: the player's slot 0xf8 with
-        // 1 and 1, then the builder carries nothing, FUN_14119d310)
-        if let Some((kind, amount)) = step.dropped {
-            c.give_load(kind, amount)?;
-            self.life.attribute_type = -1;
-            self.life.amount = 0.0;
+        builder: &mut Unit,
+        f: impl FnOnce(&mut World) -> Result<R, GenieError>,
+    ) -> Result<R, GenieError> {
+        if let Some(b) = builder.actions.build_mut() {
+            *b = *self;
         }
-        // the unit's animation stopped (FUN_141161850), the second target let go
-        if step.anim_stopped {
-            self.body.set_anim_speed(0.0);
+        let answer = c.lend(builder, f);
+        if let Some(b) = builder.actions.build() {
+            *self = *b;
         }
-        if let Some(s) = step.site_let_go {
-            crate::world::lets::release(c, s, by)?;
-        }
-        if step.released {
-            crate::world::lets::release(c, target, by)?;
-        }
-        self.post_build_notifies(&step)?;
-        if step.stands {
-            self.show_standing(
-                c.w.masters.get(c.player),
-                &c.w.graphics,
-                c.w.streams.get(Stream::Sprite),
-            )?;
-        }
-        if step.works_it {
-            // slot 0x7e8 on the building it built, at its place (the caller's work command)
-            let point =
-                c.w.spatial
-                    .get(target)
-                    .ok_or(GenieError::unsupported(
-                        "a builder's building without a place",
-                    ))?
-                    .position;
-            c.work_order = Some(crate::orders::Work {
-                target,
-                point,
-                carry_test: false,
-                filter: -1,
-                notified: true,
-            });
-        }
-        if step.search {
-            self.build_search(c, (target, built, by))?;
-        }
-        if step.drop_off {
-            self.build_drop_off(c, me)?;
-        }
-        // its end's 1 deletes it; the destructor (FUN_140aadbf0) finds it out of the builders
-        // (set_state left them) and lets go the foundation and the second target it still holds
-        Ok(HeadCode::ended(step.done))
+        answer
     }
 
-    /// The notifies a Build's step posts to the builder's unit AI: the search needed, a pasture
-    /// already built (`FUN_1411c5f70`'s new id) and the failure.
-    fn post_build_notifies(&mut self, step: &BuildStep) -> Result<(), GenieError> {
-        if step.notified {
-            self.post_own(SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0])?;
-        }
-        if let Some(made) = step.pasture_made {
-            self.post_own(
-                crate::unit_ai::PASTURE_BUILT,
-                [ActionKind::Build.value(), made, 0],
-            )?;
-        }
-        if step.failed {
-            self.post_own(
-                crate::unit_ai::ACTION_FAILED,
-                [ActionKind::Build.value(), 0, 0],
-            )?;
-        }
-        Ok(())
-    }
-
-    /// The Build's case 0xdf after the work: the builder's search for more work around the
-    /// building it finished ([`Unit::more_work`]); without one the Build waits (`set_state(3)`
-    /// without orders: notify 0x202, then the standing sprite) and lets the building go.
-    pub(crate) fn build_search(
+    /// `FUN_1411cc430`'s `rate` seconds of work on the foundation ([`Construction::work`] on
+    /// its [`Site`], built here), then at once what the work started and completed: each
+    /// construction that started (its annexes' first) its owner watches (`FUN_1411e5670`'s
+    /// `FUN_141090430`), the main building of an annex takes the work
+    /// ([`World::work_building`] with the builder lent) and the completion's parts follow
+    /// ([`BuildAction::completed`]). Returns what the work did.
+    ///
+    /// # Errors
+    ///
+    /// Another player's foundation, and what the work, the watches and the completion do not
+    /// model.
+    pub(super) fn work_on(
         &mut self,
         c: &mut Step<'_>,
-        (target, built, by): (i32, Option<i16>, Releaser),
-    ) -> Result<(), GenieError> {
-        let built = built.ok_or(GenieError::unsupported(
-            "a builder's building the slice does not hold",
-        ))?;
-        if let Some(work) = self.more_work(c, target, built)? {
-            c.work_order = Some(work);
-        } else {
-            if let Some(b) = self.actions.build_mut() {
-                b.no_more_work()?;
+        builder: &mut Unit,
+        reads: &BuildReads,
+        rate: f32,
+    ) -> Result<Worked, GenieError> {
+        let target = self.target;
+        let worked = work_site(c, target, reads, rate)?;
+        for id in reads.annex_ids.iter().copied().chain([target]) {
+            if let Some(cons) = c.w.players[c.player]
+                .objects
+                .by_id_mut(id)
+                .and_then(|u| u.construction.as_mut())
+                .filter(|cons| cons.started)
+            {
+                cons.started = false;
+                c.w.watch_started(c.player, id)?;
             }
-            crate::world::lets::release(c, target, by)?;
-            self.post_own(SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0])?;
-            self.show_standing(
-                c.w.masters.get(c.player),
-                &c.w.graphics,
-                c.w.streams.get(Stream::Sprite),
-            )?;
         }
-        Ok(())
+        match &worked {
+            Worked::Main { amount, .. } => {
+                let amount = *amount;
+                self.lend(c, builder, |w| w.work_building(target, amount))?;
+            }
+            Worked::Completed(built) => self.completed(c, builder, built.clone())?,
+            Worked::Going | Worked::Done => {}
+        }
+        Ok(worked)
     }
-}
 
-/// `FUN_1411cc430`'s way to the building that takes the work: while the foundation `target` is
-/// an annex of a main building in state 0 with at least 1 hit point (COMISS: a NaN too), that
-/// main building, the last one found.
-fn main_work_of(others: OthersRef<'_>, target: i32) -> Result<Option<MainWork>, GenieError> {
-    let mut worked = target;
-    let mut main_work = None;
-    while let Some(m) = others
-        .own(worked)
-        .and_then(|u| u.annex_of)
-        .and_then(|m| others.own(m))
-        .filter(|m| m.life.state == 0 && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp))
-    {
-        worked = m.id;
-        main_work = Some(MainWork {
-            construction: m.construction.ok_or(NO_CONSTRUCTION)?,
-            hp: m.life.hp,
-        });
-    }
-    Ok(main_work)
-}
-
-/// The foundation `target` as the Build's update works it ([`Site`]): its construction and its
-/// completion (`template` with the foundation's own master, unit AI, main building and rice),
-/// the foundation's annexes of a building type (`annex_ids`), whose work starts first (none when
-/// the work goes on to a main building, `main_work`), and the builders of the main building a
-/// building annex counts its builders in (`FUN_140aaddb0`, `+0xbb8`). None when this player does
-/// not hold the foundation.
-fn build_site<'u>(
-    own: &'u mut ObjectList,
-    target: i32,
-    annex_ids: &[i32],
-    template: Completion<'u>,
-    main_work: Option<MainWork>,
-) -> Result<Option<Site<'u>>, GenieError> {
-    let masters = template.masters;
-    let counted_main = own
-        .by_id(target)
-        .filter(|u| u.master_in(masters).is_ok_and(|m| m.kind == BUILDING_KIND))
-        .and_then(|u| u.annex_of);
-    let mut main_builders = None;
-    let mut site = None;
-    let mut starts = Vec::new();
-    for u in own.iter_mut().filter(|u| u.id != TAKEN_OUT) {
-        if u.id == target {
-            site = Some(u);
-            continue;
-        }
-        if Some(u.id) == counted_main {
-            let k = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
-            main_builders = Some(&mut k.builders);
-            continue;
-        }
-        if main_work.is_some() || !annex_ids.contains(&u.id) {
-            continue;
-        }
-        let Some(am) = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters)
-            .ok()
-            .filter(|m| BUILDING_KIND <= m.kind)
-        else {
-            continue;
-        };
-        let construction = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
-        starts.push(AnnexStart {
-            id: u.id,
-            construction,
-            mover: u.body.mover_mut(),
-            firepower: &mut u.firepower,
-            volley: am.volley_fire,
-        });
-    }
-    if counted_main.is_some() && main_builders.is_none() {
-        return Err(NOT_HELD);
-    }
-    // the slot order: the constructor made them, and their ids, in it
-    starts.sort_by_key(|a| a.id);
-    Ok(site.and_then(|u| {
-        let master = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters).ok();
-        let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
-        Some(Site {
-            id: u.id,
-            life: &mut u.life,
-            construction: u.construction.as_mut()?,
-            mover: u.body.mover_mut(),
-            firepower: Some(&mut u.firepower),
-            roo_called: Some(&mut u.roo_called),
-            store: Some(&mut u.store),
-            completion: Completion {
-                master,
-                ai,
-                main,
-                rice,
-                ..template
-            },
-            chain: WorkChain {
-                annexes: starts,
-                main: main_work,
-            },
-            main_builders,
-        })
-    }))
-}
-
-/// `FUN_140fde180`: the foundation's master `built` is a drop site (the masters 562, 584, 621,
-/// 68, 1808, 50, 1187 and 199, or one the drop-site table has for every civ or the builder's).
-fn drop_site_master(c: &Step<'_>, built: Option<i16>) -> bool {
-    built.is_some_and(|m| {
-        DROP_SITE_MASTERS.contains(&m)
-            || c.w.drop_sites.iter().any(|d| {
-                d.building == m
-                    && (d.civs.is_empty() || d.civs.contains(&c.w.players[c.player].civ))
-            })
-    })
-}
-
-/// What the Build's step changes of the world beside the builder `me`: the cleared objects and
-/// the footprint's removals and occupants (at once, through the world), the constructions that
-/// started (its annexes' first: their owner watches each at once, `FUN_1411e5670`), the work an annex's
-/// main building takes ([`World::work_building`]), and the completion (taken out of the step)
-/// with its annexes' state ([`World::set_state`]), its tracker part, its standing sprite and
-/// what it leaves its owner ([`World::built`]). The last three run with the builder lent to the
-/// world ([`Step::lend`]): their searches and effects meet it, as the game's do.
-///
-/// # Errors
-///
-/// What an annex's `set_state`, the main building's work and the completion's outputs do not
-/// model.
-pub(crate) fn record_build_step(
-    c: &mut Step<'_>,
-    me: &mut Unit,
-    target: i32,
-    annex_ids: &[i32],
-    step: &mut BuildStep,
-) -> Result<(), GenieError> {
-    // the footprint clearing's deletes (the Build's set_state(7), FUN_1415c3620), then the
-    // foundation another player's marks lie on: a human owner's goes (FUN_1411ccbb0)
-    for cl in step.cleared.iter().copied() {
-        c.w.clear_object(cl, true)?;
-    }
-    if let Some(site) = step.removes
-        && let Some((q, _)) = c.w.object(site)
-        && !c.w.players[q].computer
-    {
-        c.w.remove_building(q, site)?;
-    }
-    // the units its footprint's test met are sent off (FUN_14123bb20), the builder not among
-    // them
-    if !step.occupants.is_empty() {
-        c.w.evacuate(target, &step.occupants)?;
-    }
-    for id in annex_ids.iter().copied().chain([target]) {
-        if let Some(cons) = c.w.players[c.player]
-            .objects
-            .by_id_mut(id)
-            .and_then(|u| u.construction.as_mut())
-            .filter(|cons| cons.started)
-        {
-            cons.started = false;
-            c.w.watch_started(c.player, id)?;
-        }
-    }
-    // the work the annex leaves its main building (FUN_1411cc430), where the builder's runs
-    if let Some(amount) = step.main_work {
-        c.lend(me, |w| w.work_building(target, amount))?;
-    }
-    if let Some(built) = step.completed.take() {
-        // its set_state(2) took its annexes along (FUN_1411dbb70: their slot 0xa0), which the
-        // game does before the completion the step made; then the completion's first part's
-        // tracker part (FUN_1411c6bd0 -> FUN_14104eac0), the foundation the builder's player's
+    /// The completion's parts after [`Construction::complete`]: its `set_state(2)` takes its
+    /// annexes along (`FUN_1411dbb70`: their slot 0xa0, [`World::set_state`]), the first
+    /// part's tracker part (`FUN_1411c6bd0` -> `FUN_14104eac0`), its standing sprite
+    /// ([`crate::construction::build::show_built`]) and what it leaves its owner
+    /// ([`World::built`]), at once and in the game's order, the builder lent to the world for
+    /// the searches and effects; the start's watch is [`BuildAction::work_on`]'s.
+    ///
+    /// # Errors
+    ///
+    /// What an annex's `set_state` and the completion's outputs do not model.
+    fn completed(
+        &mut self,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        built: Built,
+    ) -> Result<(), GenieError> {
+        let target = self.target;
         for annex in c.w.spatial.annexes_of(target) {
             if let Some((q, _)) = c.w.object(annex) {
-                c.lend(me, |w| w.set_state(q, annex, 2))?;
+                self.lend(c, builder, |w| w.set_state(q, annex, 2))?;
             }
         }
         let p = c.player;
@@ -583,14 +328,150 @@ pub(crate) fn record_build_step(
                 );
             }
         }
-        // what it leaves its owner, at once and in the game's order, the builder lent to the
-        // world for its searches and effects; the start's watch is the started loop's above,
-        // which cleared the flag
-        let built = crate::construction::build::Built {
+        let built = Built {
             started: false,
             ..built
         };
-        c.lend(me, |w| w.built(p, target, built))?;
+        self.lend(c, builder, |w| w.built(p, target, built))
     }
-    Ok(())
+}
+
+/// [`Construction::work`] of `rate` seconds on the foundation `target` of the builder's
+/// player, its [`Site`] built from the world as it stands ([`build_site`]).
+///
+/// # Errors
+///
+/// A foundation the player does not hold, and what the work does not model.
+fn work_site(
+    c: &mut Step<'_>,
+    target: i32,
+    reads: &BuildReads,
+    rate: f32,
+) -> Result<Worked, GenieError> {
+    let p = c.player;
+    let (attribute_204, now) = (c.w.attribute_204(), c.w.world_time);
+    let World {
+        players,
+        masters,
+        spatial,
+        pathing,
+        mode_680,
+        ..
+    } = &mut *c.w;
+    let template = Completion {
+        master: None,
+        annexed: reads.annexed,
+        attribute_204,
+        mode_680: *mode_680,
+        farm_bonus: farm_bonus(&players[p].attributes),
+        masters: masters.get(p),
+        computer: players[p].computer,
+        ai: false,
+        main: false,
+        now,
+        rice: false,
+    };
+    let own = &mut players[p].objects;
+    let mut site = build_site(own, target, &reads.annex_ids, template, reads.main_work)?
+        .ok_or(FOREIGN_SITE)?;
+    Construction::work(&mut site, rate, spatial, pathing, now)
+}
+
+/// `FUN_1411cc430`'s way to the building that takes the work: while the foundation `target` is
+/// an annex of a main building in state 0 with at least 1 hit point (COMISS: a NaN too), that
+/// main building, the last one found.
+fn main_work_of(others: OthersRef<'_>, target: i32) -> Result<Option<MainWork>, GenieError> {
+    let mut worked = target;
+    let mut main_work = None;
+    while let Some(m) = others
+        .own(worked)
+        .and_then(|u| u.annex_of)
+        .and_then(|m| others.own(m))
+        .filter(|m| m.life.state == 0 && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp))
+    {
+        worked = m.id;
+        main_work = Some(MainWork {
+            construction: m.construction.ok_or(NO_CONSTRUCTION)?,
+            hp: m.life.hp,
+        });
+    }
+    Ok(main_work)
+}
+
+/// The foundation `target` as the Build's work works it ([`Site`]): its construction and its
+/// completion (`template` with the foundation's own master, unit AI, main building and rice),
+/// the foundation's annexes of a building type (`annex_ids`), whose work starts first (none when
+/// the work goes on to a main building, `main_work`). None when this player does not hold the
+/// foundation.
+fn build_site<'u>(
+    own: &'u mut ObjectList,
+    target: i32,
+    annex_ids: &[i32],
+    template: Completion<'u>,
+    main_work: Option<MainWork>,
+) -> Result<Option<Site<'u>>, GenieError> {
+    let masters = template.masters;
+    let mut site = None;
+    let mut starts = Vec::new();
+    for u in own.iter_mut().filter(|u| u.id != TAKEN_OUT) {
+        if u.id == target {
+            site = Some(u);
+            continue;
+        }
+        if main_work.is_some() || !annex_ids.contains(&u.id) {
+            continue;
+        }
+        let Some(am) = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters)
+            .ok()
+            .filter(|m| BUILDING_KIND <= m.kind)
+        else {
+            continue;
+        };
+        let construction = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
+        starts.push(AnnexStart {
+            id: u.id,
+            construction,
+            mover: u.body.mover_mut(),
+            firepower: &mut u.firepower,
+            volley: am.volley_fire,
+        });
+    }
+    // the slot order: the constructor made them, and their ids, in it
+    starts.sort_by_key(|a| a.id);
+    Ok(site.and_then(|u| {
+        let master = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters).ok();
+        let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
+        Some(Site {
+            id: u.id,
+            life: &mut u.life,
+            construction: u.construction.as_mut()?,
+            mover: u.body.mover_mut(),
+            firepower: Some(&mut u.firepower),
+            roo_called: Some(&mut u.roo_called),
+            store: Some(&mut u.store),
+            completion: Completion {
+                master,
+                ai,
+                main,
+                rice,
+                ..template
+            },
+            chain: WorkChain {
+                annexes: starts,
+                main: main_work,
+            },
+        })
+    }))
+}
+
+/// `FUN_140fde180`: the foundation's master `built` is a drop site (the masters 562, 584, 621,
+/// 68, 1808, 50, 1187 and 199, or one the drop-site table has for every civ or the builder's).
+fn drop_site_master(c: &Step<'_>, built: Option<i16>) -> bool {
+    built.is_some_and(|m| {
+        DROP_SITE_MASTERS.contains(&m)
+            || c.w.drop_sites.iter().any(|d| {
+                d.building == m
+                    && (d.civs.is_empty() || d.civs.contains(&c.w.players[c.player].civ))
+            })
+    })
 }

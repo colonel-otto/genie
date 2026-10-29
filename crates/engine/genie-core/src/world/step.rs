@@ -7,7 +7,6 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
-use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
@@ -178,7 +177,6 @@ pub(crate) struct Pace {
 /// while its unit walks.
 pub(crate) struct Beside<'b> {
     pub(crate) players: &'b mut Vec<Player>,
-    pub(crate) masters: &'b [Masters],
     /// The sprites' table.
     pub(crate) graphics: &'b std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     /// The Sprite stream, which a sprite the walk shows draws from.
@@ -196,7 +194,6 @@ impl World {
     ) -> (Walk<'b>, Beside<'b>) {
         let Self {
             players,
-            masters,
             spatial,
             pathing,
             groups,
@@ -221,7 +218,6 @@ impl World {
         };
         let beside = Beside {
             players,
-            masters,
             graphics,
             sprite_rng,
         };

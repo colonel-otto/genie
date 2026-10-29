@@ -1,49 +1,54 @@
 //! The placement on a foundation no builder started (state 7), a builder's joining and its
 //! work, the walk off the footprint (state 223) and back.
 
-use std::collections::BTreeMap;
-
 use crate::GenieError;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildStep, Built, CLEAR, ClearLook, ClearingSite, Construction,
-    Dropped, EXTRA_BUILDER, FOREIGN_SITE, HALTED, Load, MAX_WAITS, PLACE, SITE_GONE, Site,
-    VILLAGER, WAIT, WALL, WONDER, WONDER_RATE, Worked, footprint_clearing,
+    BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
+    HALTED, MAX_WAITS, PLACE, SITE_GONE, VILLAGER, WAIT, WALL, WONDER, WONDER_RATE, Worked,
+    footprint_clearing,
 };
 use crate::movement::footprint_gap;
-use crate::movement::move_to::{MoveTo, Walk};
+use crate::movement::move_to::MoveTo;
+use crate::objects::lifecycle::seconds;
+use crate::objects::unit::Unit;
+use crate::world::step::Step;
 
 impl BuildAction {
     /// `set_state(7)` (`0x140aae200` case 7) on a foundation no builder started: clear the
     /// footprint of what may be built over (`FUN_1415c3620` with `param_6`,
-    /// [`footprint_clearing`]: the records of what goes go now, the deletes are the caller's
-    /// after the update, [`BuildStep::cleared`]), find who stands on it (those just cleared are in
+    /// [`footprint_clearing`]: the records of what goes go first, then the objects,
+    /// [`crate::world::World::clear_object`]), send the units standing on it off but this
+    /// builder (`FUN_14123bb20`, [`crate::world::World::evacuate`]; those just cleared are in
     /// state 7, which the test passes over), and send this builder off it if it stands there
-    /// itself. Another player's marks on the footprint ([`Spatial::foreign_marks`]) halt it
-    /// ([`BuildStep::removes`]).
+    /// itself. Another player's marks on the footprint ([`Spatial::foreign_marks`]) remove a
+    /// human owner's foundation ([`BuildAction::remove_marked`]) and halt the Build.
+    ///
+    /// # Errors
+    ///
+    /// Another player's foundation, and what the clearing, the send-off and the removal do not
+    /// model.
     ///
     /// [`Spatial::foreign_marks`]: crate::map::spatial::Spatial::foreign_marks
     pub(super) fn place(
         &mut self,
-        walk: &mut Walk<'_>,
-        site: Option<Site<'_>>,
-        (waits, looks): (&mut u8, &BTreeMap<i32, ClearLook>),
-        step: &mut BuildStep,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let mut site = site.ok_or(FOREIGN_SITE)?;
+        let desolid = Self::site_unit(c, reads)
+            .ok_or(FOREIGN_SITE)?
+            .construction
+            .is_some_and(|k| k.desolid);
         // every set_state first takes the builder out of FUN_140aaddb0's building's builders
-        if self.added {
-            let b = site.builders();
-            *b = b.wrapping_sub(1);
-            self.added = false;
-        }
+        self.uncount(c)?;
         self.move_to = None;
         self.goal = None;
         self.walk_target = -1;
         self.state = PLACE;
-        if !site.construction.desolid {
-            return self.join(walk, &mut site);
+        if !desolid {
+            return self.join(c, builder);
         }
-        let placed = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
+        let placed = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
         let clearing = ClearingSite {
             player: placed.player,
             master: placed.master,
@@ -52,76 +57,91 @@ impl BuildAction {
             at: [placed.position[0], placed.position[1]],
             trees: true,
         };
-        let cleared = footprint_clearing(walk.world, &clearing, looks)?;
+        let cleared = footprint_clearing(&c.w.spatial, &clearing, &reads.looks)?;
         for cl in cleared.iter().filter(|cl| cl.record_goes) {
-            if let Some(p) = walk.plan.as_mut() {
-                p.pathing.removed(cl.id);
-            }
-            walk.world.drop_record(cl.id);
+            c.w.pathing.removed(cl.id);
+            c.w.spatial.drop_record(cl.id);
         }
-        if let Some(p) = walk.plan.as_mut() {
-            p.pathing.tiles_changed(walk.world.take_changes());
+        c.w.pathing.tiles_changed(c.w.spatial.take_changes());
+        let obstructs = !matches!(placed.obstruction_type, 0 | 12);
+        let occupants: Vec<i32> =
+            c.w.spatial
+                .footprint_occupants(self.target, &placed, obstructs, &reads.looks)?
+                .into_iter()
+                .filter(|&id| !cleared.iter().any(|cl| cl.id == id))
+                .collect();
+        for cl in cleared {
+            c.w.clear_object(cl, true)?;
         }
-        let site_ref = &mut site;
-        let site = &placed;
-        let world = &*walk.world;
-        let obstructs = !matches!(site.obstruction_type, 0 | 12);
-        let occupants: Vec<i32> = world
-            .footprint_occupants(self.target, site, obstructs, looks)?
-            .into_iter()
-            .filter(|&id| !cleared.iter().any(|cl| cl.id == id))
-            .collect();
-        step.cleared = cleared;
-        step.occupants = occupants
+        let others: Vec<i32> = occupants
             .iter()
             .copied()
-            .filter(|&id| id != walk.me.id)
+            .filter(|&id| id != builder.id)
             .collect();
-        if world.foreign_marks(site) {
-            // FUN_1411d4b80: a human owner's foundation goes (FUN_1411ccbb0, the caller's after
-            // the update), the interface hears of it (FUN_140c898a0 0x88, not held), and
-            // set_state(2) halts the Build: the standing sprite, the foundation let go, no point
-            step.removes = Some(self.target);
-            step.stands = true;
-            step.released = true;
-            self.target = -1;
-            self.point = [-1.0; 3];
-            self.state = HALTED;
-            return Ok(());
+        if !others.is_empty() {
+            c.w.evacuate(self.target, &others)?;
+        }
+        if c.w.spatial.foreign_marks(&placed) {
+            // FUN_1411d4b80: a human owner's foundation goes (FUN_1411ccbb0), the interface hears
+            // of it (FUN_140c898a0 0x88, not held), and set_state(2) halts the Build: the
+            // standing sprite, the foundation let go, no point
+            self.remove_marked(c)?;
+            return self.halt_placing(c, builder, reads);
         }
         if occupants.is_empty() {
-            return self.join(walk, site_ref);
+            return self.join(c, builder);
         }
-        let [bx, by, _] = walk.position();
-        let [sx, sy, _] = site.position;
-        let inside = (bx - sx).abs() <= site.radius[0] && (by - sy).abs() <= site.radius[1];
+        let [bx, by, _] = builder.position();
+        let [sx, sy, _] = placed.position;
+        let inside = (bx - sx).abs() <= placed.radius[0] && (by - sy).abs() <= placed.radius[1];
         if inside {
-            return self.clear(walk);
+            return self.clear(c, builder);
         }
         // LAB_140aaf5d4: the builder waits a second (set_state 222) up to 21 times; then the
         // interface hears of it (FUN_140c898a0 0x88, not held), set_state(2) halts the Build
         // (the standing sprite, the foundation let go, no point) and the waits start again
-        if MAX_WAITS <= *waits {
-            step.stands = true;
-            step.released = true;
-            self.target = -1;
-            self.point = [-1.0; 3];
-            self.state = HALTED;
-            *waits = 0;
-            return Ok(());
+        if MAX_WAITS <= builder.footprint_waits {
+            builder.footprint_waits = 0;
+            return self.halt_placing(c, builder, reads);
         }
-        *waits += 1;
+        builder.footprint_waits += 1;
         self.state = WAIT;
         self.timer = 1.0;
         Ok(())
     }
 
+    /// `set_state(2)` from the placement: the builder takes its standing sprite, the
+    /// foundation is let go, the point is −1 (the builder counts among no builders here, its
+    /// `MoveTo` went).
+    ///
+    /// # Errors
+    ///
+    /// The sprite's and the release's.
+    fn halt_placing(
+        &mut self,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        reads: &BuildReads,
+    ) -> Result<(), GenieError> {
+        Self::stand(c, builder)?;
+        let target = std::mem::replace(&mut self.target, -1);
+        crate::world::lets::release(c, target, reads.by)?;
+        self.point = [-1.0; 3];
+        self.state = HALTED;
+        Ok(())
+    }
+
     /// `LAB_140aaf9f4`: the builder joins the work: unless walls of other players stand on both
     /// tiles beside it on the footprint's diagonal (`set_state` 2, not modelled), it counts among
-    /// the foundation's builders. Its work sprite and sound are not held by the slice.
-    pub(super) fn join(&mut self, walk: &Walk<'_>, site: &mut Site<'_>) -> Result<(), GenieError> {
-        let placed = walk.world.get(self.target).ok_or(SITE_GONE)?;
-        let [bx, by] = [walk.position()[0] as i32, walk.position()[1] as i32];
+    /// the builders of `FUN_140aaddb0`'s building ([`BuildAction::count`]). Its work sprite and
+    /// sound are not held by the slice.
+    ///
+    /// # Errors
+    ///
+    /// A foundation gone from the map, the walls beside a diagonal builder, and the count's.
+    pub(super) fn join(&mut self, c: &mut Step<'_>, builder: &Unit) -> Result<(), GenieError> {
+        let placed = *c.w.spatial.get(self.target).ok_or(SITE_GONE)?;
+        let [bx, by] = [builder.position()[0] as i32, builder.position()[1] as i32];
         let [tx, mut ty] = [placed.position[0] as i32, placed.position[1] as i32];
         let [rx, ry] = placed.radius;
         if (rx as i32) as f32 == rx && (ry as i32) as f32 == ry {
@@ -138,7 +158,7 @@ impl BuildAction {
             let (a, b) = beside_diagonal(bx, by, dx, dy);
             let player = placed.player;
             let walled = |[x, y]: [i32; 2]| {
-                walk.world
+                c.w.spatial
                     .object_on_tile(x, y, |o| o.class == WALL && o.player != player)
             };
             if walled(a) && walled(b) {
@@ -147,10 +167,8 @@ impl BuildAction {
                 ));
             }
         }
-        // FUN_140aaddb0's building counts it: an annex's main building
         if !self.added {
-            let b = site.builders();
-            *b = b.wrapping_add(1);
+            Self::count(c, self.target, 1)?;
             self.added = true;
         }
         Ok(())
@@ -159,67 +177,63 @@ impl BuildAction {
     /// The work (state 7, `0x140ab0370` case 6): the builder adds its rate times dt to the
     /// foundation's construction: its work rate times the task's work value, times the owner's
     /// construction rate (attribute 195) when that is above 0 (the Wonder's at most 1.2), each
-    /// builder after the first adding a third ([`Construction::work`]). A finished building, a
-    /// farm's reseeding and the instant-build cheat (`game+0xc14`) are not modelled.
+    /// builder after the first adding a third ([`BuildAction::work_on`]). A finished
+    /// foundation with hit points then ends the work ([`BuildAction::finish`]). A farm's
+    /// reseeding and the instant-build cheat (`game+0xc14`) are not modelled.
+    ///
+    /// # Errors
+    ///
+    /// Another player's foundation, and what the work and its end do not model.
     pub(super) fn work(
         &mut self,
-        mut walk: Walk<'_>,
-        site: Option<Site<'_>>,
-        load: Load,
-    ) -> Result<(Option<Built>, Dropped, Option<f32>), GenieError> {
-        let mut site = site.ok_or(FOREIGN_SITE)?;
-        let plan = walk
-            .plan
-            .as_mut()
-            .ok_or(GenieError::unsupported("work without the world's planners"))?;
-        let mut rate = self.task.work_rate * self.task.work_value * walk.dt;
-        let mut factor = plan.construction_rate;
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        reads: &BuildReads,
+    ) -> Result<(), GenieError> {
+        let site = Self::site_unit(c, reads).ok_or(FOREIGN_SITE)?;
+        let mut rate = self.task.work_rate * self.task.work_value * seconds(c.dt);
+        let mut factor = c.w.players[c.player].construction_rate;
         if site.life.master_id == WONDER && WONDER_RATE < factor {
             factor = WONDER_RATE;
         }
         if 0.0 < factor {
             rate *= factor;
         }
-        let n = f32::from(*site.builders());
+        let n = f32::from(Self::builders(c, self.target)?);
         if 1.0 < n {
             rate *= ((n - 1.0) * EXTRA_BUILDER + 1.0) / n;
         }
-        let (pathing, now) = (&mut *plan.pathing, plan.now);
-        let worked = Construction::work(&mut site, rate, walk.world, pathing, now)?;
-        let (completed, passed) = match worked {
-            Worked::Going => return Ok((None, None, None)),
-            Worked::Main {
-                amount,
-                going: true,
-            } => return Ok((None, None, Some(amount))),
-            Worked::Main { amount, .. } => (None, Some(amount)),
-            Worked::Done => (None, None),
-            Worked::Completed(built) => (Some(built), None),
-        };
+        match self.work_on(c, builder, reads, rate)? {
+            Worked::Going | Worked::Main { going: true, .. } => return Ok(()),
+            Worked::Main { .. } | Worked::Done | Worked::Completed(_) => {}
+        }
         // a finished foundation with hit points ends the work (its `+0x278`, decoded); one
         // without (deleted, it dies in its own update) leaves the Build as it is
-        if 0.0 < site.life.hp {
-            let dropped = self.finish(&mut walk, Some(site.builders()), load)?;
-            Ok((completed, dropped, passed))
-        } else {
-            Ok((completed, None, passed))
+        if Self::site_unit(c, reads).is_some_and(|u| 0.0 < u.life.hp) {
+            self.finish(c, builder, reads)?;
         }
+        Ok(())
     }
 
     /// `set_state(4)` after the walk off the footprint (`0x140aae200` case 4): the goal is the
     /// foundation again and a new `MoveTo` to it (`FUN_140aa0df0`) starts arrived if the footprints
     /// touch, as [`BuildAction::start`]'s. Only a villager returns at once (`0x140ab0370` case
     /// 0xde; any other builder in range would work, state 6).
-    pub(super) fn back(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
-        let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
-        if walk.world.get(walk.me.id).map(|p| p.class) != Some(VILLAGER) {
+    ///
+    /// # Errors
+    ///
+    /// A builder without movement state, one other than a villager, and a foundation gone from
+    /// the map.
+    pub(super) fn back(&mut self, c: &Step<'_>, builder: &Unit) -> Result<(), GenieError> {
+        let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
+        if c.w.spatial.get(builder.id).map(|p| p.class) != Some(VILLAGER) {
             return Err(GenieError::unsupported(
                 "a builder other than a villager returns",
             ));
         }
-        let site = walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
+        let site = c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-        let gap = footprint_gap(walk.position(), ground, site.position, site.radius);
+        let gap = footprint_gap(builder.position(), ground, site.position, site.radius);
         *self = self.restarted(self.target, site.position, gap);
         Ok(())
     }
@@ -227,20 +241,26 @@ impl BuildAction {
     /// `set_state(223)`: a quiet `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`,
     /// `FUN_140aa0d30` with the task's moving sprite); it starts in state 3, as a `MoveTo` to a
     /// point is far from it (`FUN_140aa2100`).
-    pub(super) fn clear(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
-        let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
-        let site = walk.world.get(self.target).expect("place found it");
-        let spot = walk
-            .world
-            .spot_beside(
-                walk.position(),
-                (walk.me.id, mover.stats.radius[0]),
-                mover.stats.restriction_mask,
-                site,
-            )?
-            .ok_or(GenieError::unsupported(
-                "no free tile beside the footprint (set_state 2)",
-            ))?;
+    ///
+    /// # Errors
+    ///
+    /// A builder without movement state, a foundation gone from the map, no free tile beside
+    /// it, and a builder that cannot move.
+    pub(super) fn clear(&mut self, c: &Step<'_>, builder: &Unit) -> Result<(), GenieError> {
+        let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
+        let site = c.w.spatial.get(self.target).ok_or(SITE_GONE)?;
+        let at = builder.position();
+        let spot =
+            c.w.spatial
+                .spot_beside(
+                    at,
+                    (builder.id, mover.stats.radius[0]),
+                    mover.stats.restriction_mask,
+                    site,
+                )?
+                .ok_or(GenieError::unsupported(
+                    "no free tile beside the footprint (set_state 2)",
+                ))?;
         if mover.stats.speed == 0.0 {
             return Err(GenieError::unsupported(
                 "a builder that cannot move (MoveTo state 13)",
@@ -250,7 +270,7 @@ impl BuildAction {
         self.move_to = Some(MoveTo::Start);
         self.move_sprite = self.task.moving;
         self.walk_target = -1;
-        self.goal = Some([spot[0], spot[1], walk.position()[2]]);
+        self.goal = Some([spot[0], spot[1], at[2]]);
         Ok(())
     }
 

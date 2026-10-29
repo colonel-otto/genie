@@ -16,11 +16,10 @@ use std::collections::BTreeMap;
 
 use crate::GenieError;
 use crate::map::spatial::Obstruction;
-use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait, Sprites};
+use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait};
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::OrderKind;
-use crate::unit_ai::UnitAi;
 use genie_diff::Diff;
 
 mod clearing;
@@ -39,7 +38,7 @@ pub(crate) use self::clearing::{CLEARING_REACH, clearing_objects, footprint_clea
 pub use self::clearing::{ClearLook, Cleared, ClearingSite};
 #[cfg(test)]
 use self::clearing::{GATE, TREE};
-pub use self::drop_off::{DropSearch, DropStart};
+pub use self::drop_off::DropSearch;
 #[cfg(test)]
 use self::placing::beside_diagonal;
 pub(crate) use crate::construction::build::world_side::{NO_CONSTRUCTION, NOT_HELD, held};
@@ -179,7 +178,8 @@ pub struct Construction {
     pub started: bool,
 }
 
-/// What a builder's work reaches of its foundation.
+/// What a builder's work reaches of its foundation: the split borrow [`Construction::work`] and
+/// [`Construction::complete`] take, built where the work runs.
 #[derive(Debug)]
 pub struct Site<'a> {
     /// The foundation.
@@ -202,30 +202,6 @@ pub struct Site<'a> {
     /// which it starts first, and the main building that takes the work when it is an annex
     /// ([`WorkChain`]).
     pub chain: WorkChain<'a>,
-    /// The builder count (`+0x9e8`) of its main building when it is a building annex
-    /// (`+0xbb8`): the building `FUN_140aaddb0` gives counts the builders instead
-    /// ([`Site::builders`]).
-    pub main_builders: Option<&'a mut u8>,
-}
-
-impl<'a> Site<'a> {
-    /// The builder count of the building `FUN_140aaddb0` gives a Build on this foundation: its
-    /// main building's for a building annex, else its own (`+0x9e8`).
-    pub fn builders(&mut self) -> &mut u8 {
-        match self.main_builders.as_deref_mut() {
-            Some(b) => b,
-            None => &mut self.construction.builders,
-        }
-    }
-
-    /// [`Site::builders`] for the rest of the site's borrow.
-    #[must_use]
-    pub fn into_builders(self) -> &'a mut u8 {
-        match self.main_builders {
-            Some(b) => b,
-            None => &mut self.construction.builders,
-        }
-    }
 }
 
 /// What a foundation's work (`FUN_1411cc430`) reaches besides it ([`Construction::work`]).
@@ -493,135 +469,52 @@ mod built_sprite_tests {
     }
 }
 
-/// What a builder brings to its Build action's update besides its walk.
+/// What a builder's Build reads as its update starts (`Unit::build_part`'s reads), besides
+/// the action and the world it reaches through the step.
 #[derive(Debug)]
-pub struct Builder<'a> {
-    /// The sprites its `MoveTo`s take when the task gives none, as the update starts.
-    pub defaults: MoveDefaults,
-    /// Its sprite, the Sprite stream and the sprites' table, which its `MoveTo`'s
-    /// `set_state(4)` shows its sprite with ([`BuildAction::move_sprite`]).
-    pub sprites: Sprites<'a>,
-    /// The builder's class (`+0x0a`, decoded).
-    pub class: i16,
-    /// Its master's id.
-    pub master: i16,
-    /// What it carries (`+0x310`).
-    pub held: f32,
-    /// The kind of what it carries (`+0x308`, −1 for none).
-    pub held_kind: i16,
-    /// Its foundation's master is a drop site for its civ (`FUN_140fde180`): the end of the work
-    /// gives its load to its player.
-    pub drop_site: bool,
-    /// Its unit AI, which a finished Build hands its queued orders to.
-    pub ai: Option<&'a mut UnitAi>,
-    /// `+0x889`: the builder's waits for an occupied footprint (not saved, 0 at a load).
-    pub waits: &'a mut u8,
-    /// The state of each foundation its unit AI's queued build orders name (None for one that
-    /// is gone), as the update starts.
-    pub build_targets: &'a [(i32, Option<u8>)],
-    /// What the footprint clearing of its `set_state(7)` reads of the objects on the tiles
-    /// ([`ClearLook`]) by id, as the update starts; none for one the caller does not hold.
-    pub looks: &'a BTreeMap<i32, ClearLook>,
-    /// The state of its `MoveTo`'s target ([`BuildAction::walk_target`]) as the update starts,
-    /// None when the world does not hold it.
-    pub walk_target_state: Option<u8>,
-    /// In state 8, what the drop-off reads of its second target ([`BuildAction::site`]) as the
-    /// update starts: its state and [`crate::gathering::hunt::DropOff`]; None when the world does not
-    /// hold it.
-    pub deposit: Option<(u8, crate::gathering::hunt::DropOff)>,
-    /// The number of its player's attributes, beyond which the resource of a load is food
-    /// (`FUN_140efe5b0`).
-    pub attributes: usize,
-    /// In state 8, the targets of its unit AI's queued orders 0x2c5, 0x2c9 and 0x2db the world
-    /// no longer holds or whose seen state is above 5, as the update starts (`FUN_140c5de60`).
-    pub gone_orders: &'a [i32],
+pub(crate) struct BuildReads {
+    /// The foundation (the action's target) when the builder's player holds it with its
+    /// construction: the update reads and works it through the world.
+    pub(crate) site: Option<i32>,
+    /// The foundation's master, when the builder's player holds the foundation.
+    pub(crate) built: Option<i16>,
     /// The foundation's `+0xcb0`: the object its completion's stack unit made
     /// ([`crate::objects::unit::Unit::stack_made`]).
-    pub stack_made: Option<i32>,
-}
-
-/// What the end of a Build's work leads to (case 0xdf).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AfterWork {
-    /// The Build ends (`set_state(1)`; the update returns 1).
-    Done,
-    /// The builder looks for more work around the building.
-    Search,
-    /// The builder works the building (slot 0x7e8).
-    WorksIt,
+    pub(crate) stack_made: Option<i32>,
+    /// The state of its `MoveTo`'s target ([`BuildAction::walk_target`]), None when the world
+    /// does not hold it.
+    pub(crate) walk_target_state: Option<u8>,
+    /// The state of each foundation its unit AI's queued build orders name (None for one that
+    /// is gone).
+    pub(crate) build_targets: Vec<(i32, Option<u8>)>,
+    /// In state 8, what the drop-off reads of its second target ([`BuildAction::site`]): its
+    /// state and [`crate::gathering::hunt::DropOff`]; None when the world does not hold it.
+    pub(crate) deposit: Option<(u8, crate::gathering::hunt::DropOff)>,
+    /// In state 8, the targets of its unit AI's queued orders 0x2c5, 0x2c9 and 0x2db the world
+    /// no longer holds or whose seen state is above 5 (`FUN_140c5de60`).
+    pub(crate) gone_orders: Vec<i32>,
+    /// The main building that takes the work instead (`FUN_1411cc430`, [`WorkChain::main`]).
+    pub(crate) main_work: Option<MainWork>,
+    /// What the footprint clearing of its `set_state(7)` reads of the objects on the tiles
+    /// ([`ClearLook`]) by id; none for one the world does not hold.
+    pub(crate) looks: BTreeMap<i32, ClearLook>,
+    /// The sprites its `MoveTo`s take when the task gives none.
+    pub(crate) defaults: MoveDefaults,
+    /// The builder's class (`+0x0a`, decoded).
+    pub(crate) class: i16,
+    /// Its foundation's master is a drop site for its civ (`FUN_140fde180`) and it carries a
+    /// kind its player has: the end of the work gives its load to its player.
+    pub(crate) drop_site: bool,
+    /// Another object is the foundation's annex (its `+0xbc0` list), which its completion reads.
+    pub(crate) annexed: bool,
+    /// The foundation's annexes on the map, whose constructions the work starts first.
+    pub(crate) annex_ids: Vec<i32>,
+    /// The builder as the releaser of its targets (slot 0x180's argument).
+    pub(crate) by: crate::objects::release::Releaser,
 }
 
 /// The fishing ships that work the fish traps they build (`FUN_1411945a0`: 13, 2356, 2171).
 const FISHING_SHIPS: [i16; 3] = [13, 2356, 2171];
-
-/// What a Build action's update leaves to its unit and player.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct BuildStep {
-    /// The update returned 1: the action list removes the action, whose destructor
-    /// (`FUN_140aadbf0`) releases the foundation (slot 0x180).
-    pub done: bool,
-    /// The builder works the building it built (a villager its farm, a fishing ship its fish
-    /// trap: slot 0x7e8 on it, the caller's).
-    pub works_it: bool,
-    /// The work completed the building: what its owner gains.
-    pub completed: Option<Built>,
-    /// The action let its foundation go (slot 0x68 with none, `FUN_140ab0300` ->
-    /// `FUN_140a7a230`: the foundation's slot 0x180): the caller's.
-    pub released: bool,
-    /// Its `set_state(3)` found no orders in its unit AI's queue and posted notify 0x202 (with
-    /// the build action's value) to it: the caller's.
-    pub notified: bool,
-    /// Its failure (the update's case 0xc) posts notify 0x1f9 (with the build action's value)
-    /// to its unit AI: the caller's.
-    pub failed: bool,
-    /// The unit takes its master's standing sprite (slot 0x68 in `set_state` 1, 2, 3 and 13):
-    /// the caller's.
-    pub stands: bool,
-    /// The work ended and the builder looks for more work around the building (`FUN_1415cc4e0`,
-    /// [`crate::gathering::gather_search::more_work`]): the caller's, which works what it finds, else lets
-    /// the foundation go ([`BuildAction::no_more_work`], then as [`BuildStep::released`]).
-    pub search: bool,
-    /// The units on the foundation's footprint besides the builder, which its test
-    /// (`FUN_14123bb20`) would send off: the caller's.
-    pub occupants: Vec<i32>,
-    /// The objects the footprint clearing of its `set_state(7)` deletes (`FUN_1415c3620` with
-    /// `param_6`), in order; their records went already: the caller's.
-    pub cleared: Vec<Cleared>,
-    /// The end of the work at a drop site (`set_state(224)`, `FUN_140aadc50`): the load the
-    /// builder gives its player (kind, amount; the food kinds 15 to 17 as 0), which it no longer
-    /// carries (`FUN_14119d310` with −1 and 0): the caller's.
-    pub dropped: Option<(i16, f32)>,
-    /// The seconds of work an annex's main building takes ([`Worked::Main`]): the caller's
-    /// after the update ([`crate::world::World::work_building`] on the foundation).
-    pub main_work: Option<f32>,
-    /// The foundation another player's marks lie on (`set_state(7)`'s `FUN_1411d4b80`), which
-    /// goes when its owner is human (`FUN_1411ccbb0`, [`crate::world::World::remove_building`]):
-    /// the caller's after the update.
-    pub removes: Option<i32>,
-    /// The drop-off searches again (`set_state(8)`, [`BuildAction::set_drop`] with the caller's
-    /// search): the caller's after the update.
-    pub drop_off: bool,
-    /// The second target the action let go (`FUN_140a7a190` with none: its slot 0x180), the
-    /// caller's to release.
-    pub site_let_go: Option<i32>,
-    /// The unit's animation stopped (`FUN_141161850`: its `+0x7b8` 0), the caller's.
-    pub anim_stopped: bool,
-    /// A human player's builder left a pasture already built: notify 0x21d with the build
-    /// action's value and this, the pasture its stack unit made (0 when the slice does not hold
-    /// it), the caller's.
-    pub pasture_made: Option<i32>,
-}
-
-/// A load a builder drops at the end of its work: kind and amount ([`BuildStep::dropped`]).
-type Dropped = Option<(i16, f32)>;
-
-/// What a builder carries when its work ends, and whether its foundation takes it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Load {
-    amount: f32,
-    kind: i16,
-    drop_site: bool,
-}
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
 const EXTRA_BUILDER: f32 = crate::math::image::build::EXTRA_BUILDER;
@@ -643,7 +536,7 @@ const WALL: i16 = 27;
 /// The Build action's states the slice models.
 const MOVE: u8 = 4;
 const WORK: u8 = 6;
-const PLACE: u8 = 7;
+pub(crate) const PLACE: u8 = 7;
 /// The walk to the action's point (`set_state(11)`).
 const WALK_POINT: u8 = 11;
 /// The wait for an occupied footprint (`set_state(222)`).
@@ -653,7 +546,7 @@ const MAX_WAITS: u8 = 21;
 /// 223 (`0xdf`): off the footprint, to a free tile beside it.
 const CLEAR: u8 = 223;
 /// 224 (`0xe0`): the work ended, the building completed.
-const FINISHED: u8 = 224;
+pub(crate) const FINISHED: u8 = 224;
 /// 1: the action is done.
 const DONE: u8 = 1;
 /// The last object state an action takes as its target (`FUN_140a7a230`: one above is refused).
@@ -1067,5 +960,7 @@ mod stack_tests {
     }
 }
 
+#[cfg(test)]
+mod step_tests;
 #[cfg(test)]
 mod tests;

@@ -234,7 +234,6 @@ impl Unit {
                 rice: self.rice,
             },
             chain: crate::construction::build::WorkChain::default(),
-            main_builders: None,
         };
         let built = Construction::complete(&mut site, &mut c.w.spatial, &mut c.w.pathing)?;
         if let Ok(m) = object_master(

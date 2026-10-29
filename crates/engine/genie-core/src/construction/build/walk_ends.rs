@@ -3,10 +3,12 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildStep, Builder, FOREIGN_SITE, REACH, SEEN, SITE_GONE, Site,
-    UNSEEN_SITE, VILLAGER, WALK_POINT, WORK,
+    BUILDER_UNMOVING, BuildAction, BuildReads, FOREIGN_SITE, REACH, SEEN, SITE_GONE, UNSEEN_SITE,
+    VILLAGER, WALK_POINT, WORK,
 };
-use crate::movement::move_to::{MoveTo, Walk};
+use crate::movement::move_to::MoveTo;
+use crate::objects::unit::Unit;
+use crate::world::step::Step;
 
 impl BuildAction {
     /// The update's case 3 with its `MoveTo` at its end (1), or without one (the list's update
@@ -20,30 +22,29 @@ impl BuildAction {
     /// What the restart and the wait do not model.
     pub(super) fn walk_ended(
         &mut self,
-        walk: &mut Walk<'_>,
-        site: Option<Site<'_>>,
-        builder: Builder<'_>,
-        step: &mut BuildStep,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        reads: &BuildReads,
     ) -> Result<(), GenieError> {
         if self.target == -1 {
-            return self.idle(walk, site, builder, step);
+            return self.idle(c, builder, reads);
         }
-        if builder.class != VILLAGER {
-            let at = walk.position();
-            let ground = walk
+        if reads.class != VILLAGER {
+            let at = builder.position();
+            let ground = builder
                 .body
                 .mover()
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
                 .ok_or(BUILDER_UNMOVING)?;
-            let t = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
+            let t = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
             let gap = crate::movement::footprint_gap_squared(at, ground, t.position, t.radius);
             let range = self.task.range;
             if !(gap <= range * range || gap <= REACH) {
-                let state = site.as_ref().map(|s| s.life.state);
-                return self.restart(walk, site.map(Site::into_builders), state);
+                let state = Self::site_unit(c, reads).map(|s| s.life.state);
+                return self.restart(c, builder, state);
             }
         }
-        self.leave(walk, None)?;
+        self.leave(c, builder)?;
         self.state = WORK;
         Ok(())
     }
@@ -51,10 +52,11 @@ impl BuildAction {
     /// The update's case 3 or 0xde with its `MoveTo` failed (3): a foundation no builder started
     /// (`+0xc60`) with another player's marks on its footprint ([`Spatial::foreign_marks`]) while
     /// its owner sees it (`FUN_1411d4b80` with 1: its slot 0x1e0, [`Spatial::building_sight`])
-    /// goes when its owner is human ([`BuildStep::removes`]), the interface hears of it
-    /// (`FUN_140c898a0` 0x88, not held) and `set_state(2)` halts the Build. Else the tile planner
-    /// of the builder's terrain restriction (`FUN_140f7cb30`) asks for a path from where the
-    /// builder last moved to (slot 0x520) to the foundation's place within their radii
+    /// goes at once when its owner is human (`FUN_1411ccbb0`,
+    /// [`crate::world::World::remove_building`]), the interface hears of it (`FUN_140c898a0`
+    /// 0x88, not held) and `set_state(2)` halts the Build. Else the tile planner of the
+    /// builder's terrain restriction (`FUN_140f7cb30`) asks for a path from where the builder
+    /// last moved to (slot 0x520) to the foundation's place within their radii
     /// (`FUN_140f7c530`): a result below 2 walks again (`set_state(4)`), any other, no planner or
     /// no foundation waits (`set_state(3)`).
     ///
@@ -67,42 +69,43 @@ impl BuildAction {
     /// [`Spatial::foreign_marks`]: crate::map::spatial::Spatial::foreign_marks
     pub(super) fn walk_failed(
         &mut self,
-        walk: &mut Walk<'_>,
-        site: Option<Site<'_>>,
-        builder: Builder<'_>,
-        step: &mut BuildStep,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        reads: &BuildReads,
     ) -> Result<(), GenieError> {
         if self.target != -1 {
-            let s = site.as_ref().ok_or(FOREIGN_SITE)?;
-            let placed = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
-            if s.construction.desolid && walk.world.foreign_marks(&placed) {
-                let seen = walk
-                    .world
-                    .building_sight(self.target, placed.position, placed.player)
-                    .ok_or(UNSEEN_SITE)?
-                    == SEEN;
+            let s = Self::site_unit(c, reads).ok_or(FOREIGN_SITE)?;
+            let desolid = s.construction.is_some_and(|k| k.desolid);
+            let placed = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
+            if desolid && c.w.spatial.foreign_marks(&placed) {
+                let seen =
+                    c.w.spatial
+                        .building_sight(self.target, placed.position, placed.player)
+                        .ok_or(UNSEEN_SITE)?
+                        == SEEN;
                 if seen {
-                    step.removes = Some(self.target);
-                    return self.halt_in(walk, site, step);
+                    self.remove_marked(c)?;
+                    return self.halt_in(c, builder, reads);
                 }
             }
         }
-        let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
+        let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
         let (restriction, ground, [mx, my, _]) = (
             mover.stats.restriction,
             mover.stats.radius[0],
             mover.moved_at,
         );
         let mut code = 3;
+        // the foundation's place and its master's radius, read before the planner's borrow
+        let known = c.w.spatial.get_known(self.target).map(Option::<&_>::copied);
+        let master_radius = Self::site_unit(c, reads)
+            .and_then(|s| s.master(&c.w.masters, c.player).ok())
+            .map(|m| m.radius[0]);
         if self.target != -1
-            && let Some(plan) = walk.plan.as_mut()
-            && let Some(planner) = plan.pathing.planner(restriction, walk.world.tiles())
+            && let Some(planner) = c.w.pathing.planner(restriction, c.w.spatial.tiles())
         {
-            let t = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
-            let radius = site
-                .as_ref()
-                .and_then(|s| s.completion.master)
-                .map_or(t.radius[0], |m| m.radius[0]);
+            let t = known?.ok_or(SITE_GONE)?;
+            let radius = master_radius.unwrap_or(t.radius[0]);
             let req = crate::pathing::tile_path::Request {
                 from: [mx, my],
                 to: [t.position[0], t.position[1]],
@@ -117,49 +120,71 @@ impl BuildAction {
                 .code();
         }
         if code < 2 {
-            let state = site.as_ref().map(|s| s.life.state);
-            self.restart(walk, site.map(Site::into_builders), state)
+            let state = Self::site_unit(c, reads).map(|s| s.life.state);
+            self.restart(c, builder, state)
         } else {
-            self.idle(walk, site, builder, step)
+            self.idle(c, builder, reads)
         }
+    }
+
+    /// `FUN_1411d4b80`'s end on the foundation another player's marks lie on: a human owner's
+    /// foundation goes at once (`FUN_1411ccbb0`, [`crate::world::World::remove_building`]).
+    ///
+    /// # Errors
+    ///
+    /// What the removal does not model.
+    pub(super) fn remove_marked(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
+        if let Some((q, _)) = c.w.object(self.target)
+            && !c.w.players[q].computer
+        {
+            c.w.remove_building(q, self.target)?;
+        }
+        Ok(())
     }
 
     /// Its `MoveTo` returned 4 or 5 in state 4 or 223 (`0x140ab0370` cases 3 and 0xde): slot
     /// 0x68 with none (`FUN_140ab0300`: a counted builder leaves the builders of
-    /// `FUN_140aaddb0`'s building, the foundation is let go, [`BuildStep::released`]) and
-    /// `set_state(11)`: the prelude ([`BuildAction::leave`]: the `MoveTo`'s teardown stops the
-    /// unit), then a quiet `MoveTo` to the action's point (`FUN_140aa0d30`: range 0, the task's
-    /// moving sprite; `FUN_140a7a170` with 1), which starts in state 3 (`FUN_140aa2100`: a
-    /// `MoveTo` without a target is far from it), in 13 for a unit without speed.
+    /// `FUN_140aaddb0`'s building, the foundation is let go at once) and `set_state(11)`: the
+    /// prelude ([`BuildAction::leave`]: the `MoveTo`'s teardown stops the unit), then a quiet
+    /// `MoveTo` to the action's point (`FUN_140aa0d30`: range 0, the task's moving sprite;
+    /// `FUN_140a7a170` with 1), which starts in state 3 (`FUN_140aa2100`: a `MoveTo` without a
+    /// target is far from it), in 13 for a unit without speed.
+    ///
+    /// # Errors
+    ///
+    /// The prelude's and the release's.
     pub(super) fn lose_foundation(
         &mut self,
-        walk: &mut Walk<'_>,
-        site: Option<Site<'_>>,
-        step: &mut BuildStep,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let builders = site.map(Site::into_builders);
-        self.leave(walk, builders)?;
+        self.leave(c, builder)?;
         if self.target != -1 {
-            self.target = -1;
-            step.released = true;
+            let target = std::mem::replace(&mut self.target, -1);
+            crate::world::lets::release(c, target, reads.by)?;
         }
-        self.walk_to_point(walk, None)
+        self.walk_to_point(c, builder)
     }
 
     /// `set_state(11)` (`0x140aae200` case 0xb): the prelude ([`BuildAction::leave`]), then a
     /// quiet `MoveTo` to the action's point (`FUN_140aa0d30`: range 0, the task's moving sprite;
     /// `FUN_140a7a170` with 1), which starts in state 3 (`FUN_140aa2100`: a `MoveTo` without a
     /// target is far from it), in 13 for a unit without speed.
+    ///
+    /// # Errors
+    ///
+    /// The prelude's.
     pub(super) fn walk_to_point(
         &mut self,
-        walk: &mut Walk<'_>,
-        builders: Option<&mut u8>,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
     ) -> Result<(), GenieError> {
-        self.leave(walk, builders)?;
+        self.leave(c, builder)?;
         self.state = WALK_POINT;
         self.goal = Some(self.point);
         self.move_sprite = self.task.moving;
-        let moves = walk.body.mover().is_some_and(|m| m.stats.speed != 0.0);
+        let moves = builder.body.mover().is_some_and(|m| m.stats.speed != 0.0);
         self.move_to = Some(if moves { MoveTo::Start } else { MoveTo::Failed });
         Ok(())
     }

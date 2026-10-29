@@ -5,7 +5,6 @@ use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
-use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -135,19 +134,25 @@ impl World {
     }
 
     /// The Build's `set_state(8)` as `UNIT_ORDER`'s drop-off (slot 0x78) gives it to the builder
-    /// at (`p`, `idx`): a counted builder leaves its foundation's builders first
-    /// ([`World::leave_builders`]); a builder that carries something (`+0x310` above 0, COMISS:
+    /// at (`p`, `idx`), on the builder's step ([`World::run_on_step`]): a builder that carries something (`+0x310` above 0, COMISS:
     /// not a NaN) searches the drop-site table ([`World::table_drop_site`] for what it carries
     /// and its class) and its slot 0x820 the task on the site found (any action type, no switch,
     /// [`World::find_work_task`]: its range, else the Build task's); then
-    /// [`crate::construction::build::BuildAction::set_drop`], whose second targets the world releases and
-    /// takes and whose notify 0x203 goes to the unit AI.
+    /// [`crate::construction::build::BuildAction::set_drop`]: a counted builder leaves its
+    /// foundation's builders, the second targets go and come at once, notify 0x203 goes to the
+    /// unit AI.
     pub(crate) fn build_drop_off_now(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
         let by = self.releaser(p, idx);
         let unit = &self.players[p].objects[idx];
-        let build = unit.actions.build().expect("the caller's Build");
-        let (target, counted, task_range) = (build.target, build.added, build.task.range);
+        let task_range = unit
+            .actions
+            .build()
+            .ok_or(GenieError::unreachable(
+                "a drop-off order without its Build",
+            ))?
+            .task
+            .range;
         let (amount, held, at) = (
             unit.life.amount,
             unit.life.attribute_type,
@@ -168,38 +173,18 @@ impl World {
         } else {
             DropSearch::Empty
         };
-        if counted {
-            self.leave_builders(target)?;
-        }
-        let unit = &mut self.players[p].objects[idx];
-        let me = crate::movement::Me {
-            id: unit.id,
-            group: unit.group.id,
-            action_state: crate::construction::build::DROP,
-        };
-        let build = unit.actions.build_mut().expect("the caller's Build");
-        build.added = false;
-        let mut walk = crate::movement::move_to::Walk {
-            body: &mut unit.body,
-            me,
-            dt: 0.0,
-            world: &mut self.spatial,
-            plan: None,
-        };
-        let out = build.set_drop(&mut walk, None, search)?;
-        if out.notified {
-            unit.post_own(
-                crate::unit_ai::NO_DROP_SITE,
-                [ActionKind::Build.value(), 0, 0],
-            )?;
-        }
-        if out.let_go != -1 {
-            self.release(out.let_go, by)?;
-        }
-        if out.took != -1 {
-            self.take(out.took, by);
-        }
-        Ok(())
+        // the Build's set_state(8) on the builder's step: its prelude leaves the builders, its
+        // second targets and its notify go to the world and the unit AI at once
+        self.run_on_step(p, idx, |unit, c| {
+            let mut build = *unit.actions.build().ok_or(GenieError::unreachable(
+                "a drop-off order without its Build",
+            ))?;
+            let dropped = build.set_drop(c, unit, search, by);
+            if let Some(b) = unit.actions.build_mut() {
+                *b = build;
+            }
+            dropped
+        })
     }
 
     /// Slot 0x78's answer to a load of another resource than its task's (`FUN_140a78060`): the

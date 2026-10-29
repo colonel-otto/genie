@@ -95,6 +95,25 @@ impl World {
         (result, out)
     }
 
+    /// Runs `f` on object `i` of player `p` with its step outside its update: a command's part
+    /// the game runs on the object at once (`UNIT_ORDER`'s drop-off), [`World::step_object`]
+    /// without the update's own parts.
+    ///
+    /// # Errors
+    ///
+    /// `f`'s, and what its effects do not model.
+    pub(crate) fn run_on_step(
+        &mut self,
+        p: usize,
+        i: usize,
+        f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<(), GenieError>,
+    ) -> Result<(), GenieError> {
+        let _ = self.step_object((p, i), (0, None, false), None, |unit, c| {
+            f(unit, c).map(|()| Outcome::Stay)
+        })?;
+        Ok(())
+    }
+
     /// Runs `f` on the unit AI of object `i` of player `p` outside its update (a command's
     /// immediate order, `FUN_140c55c90`): the object's step ([`World::step_object`] without the
     /// update's own parts) whose only part is the AI's run with what it reads of the world

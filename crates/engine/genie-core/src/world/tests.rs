@@ -9,7 +9,7 @@ use crate::commands::{
     TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction,
     UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
-use crate::construction::build::{BuildAction, BuildStep, BuildTask, Construction};
+use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::construction::gates::gate_units;
 use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::unit::give_load;
@@ -13022,21 +13022,20 @@ fn house_builder() -> World {
     t
 }
 
-/// The Build's drop-off (`set_state(8)` from its search, [`Unit::build_drop_off`]) of the
+/// The Build's drop-off (`set_state(8)` from its search, [`BuildAction::drop_again`]) of the
 /// villager building foundation 10028 while it carries `held`, its town centre a done drop site
 /// of the table (resources 0 to 3 and berries): Ok with the Build's state, its site and range,
 /// the centre's workers and what the unit AI heard.
-fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
+fn drop_again_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
     let mut t = house_builder();
     let v = &mut t.players[1].objects[0];
     (v.life.attribute_type, v.life.amount) = held;
     in_update(&mut t, (1, 0), 50, |unit, c| {
-        let me = crate::movement::Me {
-            id: unit.id,
-            group: unit.group.id,
-            action_state: unit.top_action().map_or(0, |a| a.state),
-        };
-        unit.build_drop_off(c, me)
+        let mut b = *unit.actions.build().unwrap();
+        let by = unit.releaser(c);
+        let dropped = b.drop_again(c, unit, by);
+        *unit.actions.build_mut().unwrap() = b;
+        dropped
     })
     .unwrap();
     let v = &t.players[1].objects[0];
@@ -13064,11 +13063,11 @@ fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
 #[test]
 fn a_loaded_builder_s_drop_off_finds_its_town_centre() {
     use crate::construction::build::DROP;
-    assert_eq!(build_drop_off_with((17, 6.0)), (DROP, 700, 0.25, 1, vec![]));
-    assert_eq!(build_drop_off_with((2, 6.0)), (DROP, 700, 0.0, 1, vec![]));
-    assert_eq!(build_drop_off_with((-1, 0.0)), (4, -1, 0.0, 0, vec![]));
+    assert_eq!(drop_again_with((17, 6.0)), (DROP, 700, 0.25, 1, vec![]));
+    assert_eq!(drop_again_with((2, 6.0)), (DROP, 700, 0.0, 1, vec![]));
+    assert_eq!(drop_again_with((-1, 0.0)), (4, -1, 0.0, 0, vec![]));
     assert_eq!(
-        build_drop_off_with((5, 6.0)),
+        drop_again_with((5, 6.0)),
         (4, -1, 0.0, 0, vec![crate::unit_ai::NO_DROP_SITE])
     );
 }
@@ -13524,195 +13523,6 @@ fn a_hunter_that_finds_nothing_after_the_drop_walks_to_its_point() {
     }
 }
 
-/// [`Unit::after_build_step`] of [`house_builder`]'s forager for `step`, with what the step leaves
-/// in its context: the objects let go and the work command; the attributes its owner gained
-/// within the update; and the notifies its unit AI heard.
-fn after_build(t: &mut World, step: BuildStep) -> AfterBuild {
-    in_update(t, (1, 0), 50, |unit, c| {
-        let me = crate::movement::Me {
-            id: unit.id,
-            group: unit.group.id,
-            action_state: unit.top_action().map_or(0, |a| a.state),
-        };
-        let by = unit.releaser(c);
-        let before = attribute_values(c.w, 1);
-        let code = unit.after_build_step(c, me, (10028, Some(70), by), step)?;
-        unit.end_head_update(c, code)?;
-        let released = c.releases.iter().map(|&(id, _)| id).collect();
-        let heard = unit.ai.as_ref().unwrap().notifies.iter();
-        Ok(AfterBuild {
-            released,
-            work: c.work_order.map(|w| (w.target, w.point)),
-            added: gained(c.w, 1, &before),
-            heard: heard.map(|n| (n.kind, n.p)).collect(),
-        })
-    })
-    .unwrap()
-}
-
-/// What [`after_build`] saw.
-#[derive(Debug, PartialEq)]
-struct AfterBuild {
-    released: Vec<i32>,
-    work: Option<(i32, [f32; 3])>,
-    added: Vec<(i16, f32)>,
-    heard: Vec<(i32, [i32; 3])>,
-}
-
-/// What a Build's step changes of its builder ([`Unit::after_build_step`]): the load dropped at
-/// the end of the work goes to the player (wood, and its gathered total) and the builder carries
-/// nothing; the animation stops and the second target goes; the action's end removes the Build
-/// and lets its foundation go, as does the release alone; the work on the building it built is a
-/// work command at its place; the search needed, a pasture built and the failure tell the unit
-/// AI; a drop-off searches the drop site for the load.
-#[test]
-fn a_build_step_s_changes_reach_the_builder() {
-    use crate::unit_ai::{ACTION_FAILED, PASTURE_BUILT};
-    let none = || AfterBuild {
-        released: vec![],
-        work: None,
-        added: vec![],
-        heard: vec![],
-    };
-    let house_workers = |t: &World| t.players[1].objects[1].workers;
-    let mut t = house_builder();
-    assert_eq!(house_workers(&t), 1);
-    let dropped = BuildStep {
-        dropped: Some((1, 5.0)),
-        ..BuildStep::default()
-    };
-    let added = vec![(1, 5.0), (167, 5.0)];
-    assert_eq!(after_build(&mut t, dropped), AfterBuild { added, ..none() });
-    let v = &t.players[1].objects[0];
-    assert_eq!((v.life.attribute_type, v.life.amount), (-1, 0.0));
-    assert_eq!(t.players[1].resources[1], 5.0);
-    let mut t = house_builder();
-    t.object_mut(700).unwrap().1.workers = 1;
-    let stopped = BuildStep {
-        anim_stopped: true,
-        site_let_go: Some(700),
-        ..BuildStep::default()
-    };
-    // the second target goes where the step lets it go, not after the update
-    assert_eq!(after_build(&mut t, stopped), none());
-    assert_eq!(t.object(700).map(|(_, u)| u.workers), Some(0));
-    assert_eq!(t.players[1].objects[0].body.anim_speed(), Some(0.0));
-    for (done, released) in [(true, false), (false, true)] {
-        let mut t = house_builder();
-        let step = BuildStep {
-            done,
-            released,
-            ..BuildStep::default()
-        };
-        assert_eq!(after_build(&mut t, step), none());
-        assert_eq!(house_workers(&t), 0);
-        assert_eq!(t.players[1].objects[0].actions.build().is_none(), done);
-    }
-    let mut t = house_builder();
-    let told = BuildStep {
-        works_it: true,
-        notified: true,
-        failed: true,
-        pasture_made: Some(5),
-        ..BuildStep::default()
-    };
-    assert_eq!(
-        after_build(&mut t, told),
-        AfterBuild {
-            work: Some((10028, [30.0, 88.0, 0.0])),
-            heard: vec![
-                (SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0]),
-                (PASTURE_BUILT, [ActionKind::Build.value(), 5, 0]),
-                (ACTION_FAILED, [ActionKind::Build.value(), 0, 0]),
-            ],
-            ..none()
-        }
-    );
-    let mut t = house_builder();
-    let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = (17, 6.0);
-    let drop_off = BuildStep {
-        drop_off: true,
-        ..BuildStep::default()
-    };
-    assert_eq!(after_build(&mut t, drop_off), none());
-    let b = t.players[1].objects[0].actions.build().copied().unwrap();
-    assert_eq!((b.state, b.site), (crate::construction::build::DROP, 700));
-}
-
-/// [`house_builder`]'s forager after it built town centre 700 (its Build's target, its `MoveTo`
-/// gone) on a map with a tile planner, its search for more work ([`Unit::build_search`]) run with
-/// `setup` first: the work command it found and the notifies its unit AI heard.
-fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
-    let mut t = house_builder();
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
-    t.build_mesh();
-    for masters in &mut t.masters {
-        let bush = masters.get_mut(59).unwrap();
-        (bush.auto_gather, bush.gather_group) = (true, 1);
-        masters.get_mut(120).unwrap().line_of_sight = 4.0;
-        masters.get_mut(109).unwrap().line_of_sight = 16.0;
-    }
-    t.drop_sites[0].auto_work = true;
-    let b = t.players[1].objects[0].actions.build_mut().unwrap();
-    (b.target, b.move_to) = (700, None);
-    t.players[1].objects[2].workers = 1;
-    setup(&mut t);
-    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
-        let by = unit.releaser(c);
-        unit.build_search(c, (700, Some(109), by))?;
-        let heard = unit.ai.as_ref().unwrap().notifies.iter();
-        Ok((
-            c.work_order.take().map(|w| (w.target, w.point)),
-            heard.map(|n| n.kind).collect(),
-        ))
-    });
-    (t, r)
-}
-
-/// What [`built_the_centre`]'s search left: the work command (its target and point) and the
-/// notifies' kinds.
-type BuildSearched = Result<(Option<(i32, [f32; 3])>, Vec<i32>), GenieError>;
-
-/// The search for more work around the town centre a builder finished (`0x140ab0b43`,
-/// [`Unit::more_work`]): the table's entry for the centre (auto work) takes berries, within the
-/// centre's line of sight (16 tiles) the bush at 32.5 is the nearest, and the unit AI's
-/// `ClosestResourceObject` names it: the work command on it at its place. An entry without auto
-/// work, or a line of sight below the floor (the reach 4 tiles, short of the bushes), finds
-/// nothing: the Build waits without a target, lets the centre go and asks its unit AI for a
-/// search. A building the slice does not hold is not modelled.
-#[test]
-fn a_builder_finds_more_work_around_the_building_it_finished() {
-    let (t, found) = built_the_centre(|_| ());
-    assert_eq!(found, Ok((Some((600, [32.5, 89.5, 0.0])), vec![])));
-    assert_eq!(
-        t.players[1].objects[0].actions.build().map(|b| b.target),
-        Some(700)
-    );
-    let off: fn(&mut World) = |t| t.drop_sites[0].auto_work = false;
-    let short: fn(&mut World) = |t| {
-        for masters in &mut t.masters {
-            masters.get_mut(109).unwrap().line_of_sight = 0.0;
-        }
-    };
-    for setup in [off, short] {
-        let (t, found) = built_the_centre(setup);
-        assert_eq!(found, Ok((None, vec![SEARCH_NEEDED])));
-        let b = t.players[1].objects[0].actions.build().copied().unwrap();
-        assert_eq!((b.state, b.target), (crate::construction::build::IDLE, -1));
-        assert_eq!(t.players[1].objects[2].workers, 0);
-    }
-    let mut t = house_builder();
-    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
-        let by = unit.releaser(c);
-        unit.build_search(c, (700, None, by))
-    });
-    assert_eq!(
-        r.unwrap_err().reason(),
-        "a builder's building the slice does not hold"
-    );
-}
-
 /// How often player `p` watches object `id`.
 fn watches(t: &World, p: usize, id: i32) -> usize {
     t.players[p].watched.iter().filter(|w| w.id == id).count()
@@ -13721,189 +13531,6 @@ fn watches(t: &World, p: usize, id: i32) -> usize {
 /// A site's state, hit points and build points.
 fn site_of(u: &Unit) -> (u8, f32, Option<f32>) {
     (u.life.state, u.life.hp, u.construction.map(|c| c.progress))
-}
-
-/// What a Build's step changes beside its builder (`record_build_step`, the caller's after the
-/// step): the cleared objects, the foundation another player's marks lie on, a construction that
-/// started (its owner watches it once, at once: the flag clears), the work
-/// an annex's main building takes (at once, `World::work_building`: the house's state, hit points
-/// and build points); and the completion, taken out of the step: the house leaves its
-/// pending tracker list for its done one and its owner gains what it brings at once (the builder
-/// lent to the world, `World::built`: here its history event and attributes; the start's watch
-/// is the loop's). A step of nothing changes nothing.
-#[test]
-fn a_build_step_s_changes_reach_the_world() {
-    use crate::construction::build::unit::record_build_step;
-    use crate::construction::build::{Built, Cleared};
-    let recorded = |t: &mut World, step: &mut BuildStep| {
-        in_update(t, (1, 0), 50, |unit, c| {
-            record_build_step(c, unit, 10028, &[], step)?;
-            let owner = &c.w.players[1];
-            let events: Vec<u8> = owner.history.events.iter().map(|e| e.kind).collect();
-            let built = (events, owner.attributes[4]);
-            Ok((
-                c.w.object(601).map(|(_, u)| site_of(u)),
-                watches(c.w, 1, 10028),
-                c.w.object(10028).map(|(_, u)| site_of(u)),
-                built,
-            ))
-        })
-        .unwrap()
-    };
-    let mut t = house_builder();
-    t.players[1].history.entries.push([0, 0]);
-    let mut quiet = BuildStep::default();
-    let nothing = recorded(&mut t, &mut quiet);
-    assert_eq!(
-        nothing,
-        (
-            Some((2, 1.0, None)),
-            0,
-            Some((0, 1.0, Some(0.0))),
-            (vec![], 0.0)
-        )
-    );
-    t.players[1].objects[1]
-        .construction
-        .as_mut()
-        .unwrap()
-        .started = true;
-    let cleared = Cleared {
-        id: 601,
-        wall: false,
-        record_goes: true,
-    };
-    let built = Built {
-        attributes: vec![(4, 5.0)],
-        history: Some(6),
-        tech: None,
-        cart: None,
-        stack: None,
-        vanishes: false,
-        started: true,
-        pasture: false,
-    };
-    let mut step = BuildStep {
-        cleared: vec![cleared],
-        removes: Some(4444),
-        occupants: vec![9175],
-        main_work: Some(2.5),
-        completed: Some(built),
-        ..BuildStep::default()
-    };
-    assert_eq!(
-        recorded(&mut t, &mut step),
-        (
-            Some((7, 0.0, None)),
-            1,
-            Some((0, 56.0, Some(2.5))),
-            (vec![6], 5.0)
-        )
-    );
-    assert_eq!(step.completed, None);
-    let watched = t.players[1].watched.iter().filter(|w| w.id == 10028);
-    assert_eq!(watched.count(), 1, "the start's watch once, the loop's");
-    let house = &t.players[1].objects[1];
-    assert!(!house.construction.unwrap().started);
-    let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
-    assert!(t.players[1].tracker.list(k.master).contains(&10028));
-}
-
-/// A Build's step whose site's construction started (`record_build_step`, `FUN_1411e5670`):
-/// its owner watches the site within the builder's update, and the start's flag clears.
-#[test]
-fn a_build_step_s_started_site_is_watched_where_the_builder_runs() {
-    use crate::construction::build::unit::record_build_step;
-    let mut t = house_builder();
-    let k = t.players[1].objects[1].construction.as_mut().unwrap();
-    (k.desolid, k.started) = (false, true);
-    let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
-        record_build_step(c, unit, 10028, &[], &mut BuildStep::default())?;
-        let started =
-            c.w.object(10028)
-                .and_then(|(_, u)| u.construction)
-                .map(|k| k.started);
-        Ok((watches(c.w, 1, 10028), started))
-    });
-    assert_eq!(
-        seen.map_err(|e| e.reason().to_owned()),
-        Ok((1, Some(false)))
-    );
-}
-
-/// A Build's step deletes the objects its footprint clearing found (`FUN_1415c3620`) and
-/// removes a human owner's foundation that another player's marks lie on (`FUN_1411ccbb0`)
-/// where the builder's update runs (`record_build_step`); a computer's foundation stays.
-#[test]
-fn a_build_step_clears_and_removes_where_the_builder_runs() {
-    use crate::construction::build::Cleared;
-    use crate::construction::build::unit::record_build_step;
-    let run = |computer: bool, mut step: BuildStep| {
-        let mut t = house_builder();
-        t.players[1].computer = computer;
-        in_update(&mut t, (1, 0), 50, |unit, c| {
-            record_build_step(c, unit, 10028, &[], &mut step)?;
-            Ok([601, 10028].map(|id| c.w.object(id).map(|(_, u)| site_of(u))))
-        })
-        .map_err(|e| e.reason().to_owned())
-    };
-    let cleared = Cleared {
-        id: 601,
-        wall: false,
-        record_goes: false,
-    };
-    let clears = BuildStep {
-        cleared: vec![cleared],
-        ..BuildStep::default()
-    };
-    assert_eq!(run(false, clears).map(|s| s[0]), Ok(Some((7, 0.0, None))));
-    let removes = || BuildStep {
-        removes: Some(10028),
-        ..BuildStep::default()
-    };
-    let seen = run(false, removes()).map(|s| s[1]);
-    assert_eq!(seen, Ok(Some((7, 0.0, Some(0.0)))));
-    let seen = run(true, removes()).map(|s| s[1]);
-    assert_eq!(seen, Ok(Some((0, 1.0, Some(0.0)))));
-}
-
-/// A Build's step sends the units on its footprint off where the builder's update runs
-/// (`record_build_step`, [`World::evacuate`]): an idle villager standing there hears notify 0x216
-/// within the builder's update.
-#[test]
-fn a_build_step_sends_its_footprint_s_units_off_where_the_builder_runs() {
-    use crate::construction::build::unit::record_build_step;
-    let mut t = house_builder();
-    let mut other = t.players[1].objects[0].clone();
-    other.id = 9176;
-    other.place_for_test([30.0, 88.5, 0.0]);
-    other.actions = ActionList::default();
-    t.players[1].objects.push(other);
-    let placed = *t.spatial.get(9175).unwrap();
-    t.spatial.insert(
-        9176,
-        Placed {
-            position: [30.0, 88.5, 0.0],
-            ..placed
-        },
-    );
-    let mut step = BuildStep {
-        occupants: vec![9176],
-        ..BuildStep::default()
-    };
-    let heard = in_update(&mut t, (1, 0), 50, |unit, c| {
-        record_build_step(c, unit, 10028, &[], &mut step)?;
-        let (_, u) = c.w.object(9176).expect("held");
-        let sent = |ai: &UnitAi| {
-            let sent = ai
-                .notifies
-                .iter()
-                .filter(|n| n.kind == crate::unit_ai::SENT_OFF);
-            sent.count()
-        };
-        Ok(u.ai.as_ref().map(sent))
-    });
-    assert_eq!(heard.map_err(|e| e.reason().to_owned()), Ok(Some(1)));
 }
 
 /// [`house_builder`]'s house 10028 with an annex: a second house foundation 10030 (player 1's
@@ -13950,32 +13577,197 @@ fn a_building_s_own_completion_completes_its_annexes_first() {
     assert!(annex.is_some() && annex < house, "{annex:?} {house:?}");
 }
 
+/// [`house_builder`]'s forager after it built town centre 700 (its Build's target in state 224,
+/// the end of the work, its `MoveTo` gone; the centre built) on a map with a tile planner, its
+/// update with `setup` run first: the work it found (slot 0x7e8's target and point, the
+/// caller's after the update) and the notifies its unit AI heard.
+fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
+    let mut t = house_builder();
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    for masters in &mut t.masters {
+        let bush = masters.get_mut(59).unwrap();
+        (bush.auto_gather, bush.gather_group) = (true, 1);
+        masters.get_mut(120).unwrap().line_of_sight = 4.0;
+        masters.get_mut(109).unwrap().line_of_sight = 16.0;
+    }
+    t.drop_sites[0].auto_work = true;
+    let b = t.players[1].objects[0].actions.build_mut().unwrap();
+    (b.target, b.move_to, b.state) = (700, None, crate::construction::build::FINISHED);
+    let centre = &mut t.players[1].objects[2];
+    centre.workers = 1;
+    centre.construction = Some(Construction {
+        progress: 25.0,
+        desolid: false,
+        builders: 0,
+        hit_points: 2400,
+        build_time: 25,
+        record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+        snow: false,
+        sprite_override: false,
+        started: false,
+    });
+    setup(&mut t);
+    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let _ = unit.build_part(c, me)?;
+        let heard = unit.ai.as_ref().unwrap().notifies.iter();
+        Ok((
+            c.work_order.take().map(|w| (w.target, w.point)),
+            heard.map(|n| n.kind).collect(),
+        ))
+    });
+    (t, r)
+}
+
+/// What [`built_the_centre`]'s search left: the work command (its target and point) and the
+/// notifies' kinds.
+type BuildSearched = Result<(Option<(i32, [f32; 3])>, Vec<i32>), GenieError>;
+
+/// The search for more work around the town centre a builder finished (`0x140ab0b43`,
+/// [`Unit::more_work`], within the Build's update): the table's entry for the centre (auto
+/// work) takes berries, within the centre's line of sight (16 tiles) the bush at 32.5 is the
+/// nearest, and the unit AI's `ClosestResourceObject` names it: the work command on it at its
+/// place. An entry without auto work, or a line of sight below the floor (the reach 4 tiles,
+/// short of the bushes), finds nothing: the Build waits without a target, lets the centre go and
+/// asks its unit AI for a search.
+#[test]
+fn a_builder_finds_more_work_around_the_building_it_finished() {
+    let (t, found) = built_the_centre(|_| ());
+    assert_eq!(found, Ok((Some((600, [32.5, 89.5, 0.0])), vec![])));
+    assert_eq!(
+        t.players[1].objects[0].actions.build().map(|b| b.target),
+        Some(700)
+    );
+    let off: fn(&mut World) = |t| t.drop_sites[0].auto_work = false;
+    let short: fn(&mut World) = |t| {
+        for masters in &mut t.masters {
+            masters.get_mut(109).unwrap().line_of_sight = 0.0;
+        }
+    };
+    for setup in [off, short] {
+        let (t, found) = built_the_centre(setup);
+        assert_eq!(found, Ok((None, vec![SEARCH_NEEDED])));
+        let b = t.players[1].objects[0].actions.build().copied().unwrap();
+        assert_eq!((b.state, b.target), (crate::construction::build::IDLE, -1));
+        assert_eq!(t.players[1].objects[2].workers, 0);
+    }
+}
+
+/// [`house_builder`]'s forager at work on foundation `site` (the Build's state 7, counted among
+/// its builders, with a task of rate and value 1), the house counting one builder, `setup` run
+/// first: one update of `dt` milliseconds.
+fn worked(t: &mut World, site: i32, dt: u32) -> Result<(), GenieError> {
+    let b = t.players[1].objects[0].actions.build_mut().unwrap();
+    (b.target, b.state, b.added, b.move_to) = (site, crate::construction::build::PLACE, true, None);
+    b.task = BuildTask {
+        range: 0.1,
+        work_value: 1.0,
+        work_rate: 1.0,
+        resource: -1,
+        id: -1,
+        moving: None,
+    };
+    t.players[1]
+        .objects
+        .by_id_mut(10028)
+        .and_then(|h| h.construction.as_mut())
+        .unwrap()
+        .builders = 1;
+    in_update(t, (1, 0), dt, |unit, c| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        unit.build_part(c, me).map(drop)
+    })
+}
+
+/// The first work on a desolid foundation starts its construction (`FUN_1411e5670`): its owner
+/// watches it once, within the builder's update, and the start's flag clears.
+#[test]
+fn a_builder_s_first_work_starts_the_site_its_owner_watches() {
+    let mut t = house_builder();
+    assert_eq!(
+        worked(&mut t, 10028, 50).map_err(|e| e.reason().to_owned()),
+        Ok(())
+    );
+    let k = t.players[1]
+        .objects
+        .by_id(10028)
+        .unwrap()
+        .construction
+        .unwrap();
+    assert_eq!((k.desolid, k.started), (false, false));
+    assert_eq!(watches(&t, 1, 10028), 1);
+}
+
+/// The work on an annex (started) whose main building (in state 0, 1 hit point) takes it
+/// (`FUN_1411cc430`'s recursion, [`World::work_building`] with the builder lent): the house gets
+/// the 2.5 seconds, its build points and its share of hit points, within the builder's update.
+#[test]
+fn a_builder_s_work_on_an_annex_goes_to_its_main_building() {
+    let mut t = annexed_house();
+    // the annex started: it clears no foundation under it (FUN_1411cd0d0) on the house's start
+    let annex = t.players[1].objects.by_id_mut(10030).unwrap();
+    annex.construction.as_mut().unwrap().desolid = false;
+    assert_eq!(
+        worked(&mut t, 10030, 2500).map_err(|e| e.reason().to_owned()),
+        Ok(())
+    );
+    let house = t.players[1].objects.by_id(10028).unwrap();
+    assert_eq!(site_of(house), (0, 56.0, Some(2.5)));
+    let annex = t.players[1].objects.by_id(10030).unwrap();
+    assert_eq!(site_of(annex).2, Some(0.0));
+}
+
+/// The work that completes the house (`Construction::complete`) gives its parts at once within
+/// the builder's update: the house stands in state 2, leaves its pending tracker list for its
+/// done one, its owner gains its paid cost (attributes 98 and 165, `World::built`); then the
+/// builder's work ends (`set_state(224)`), out of the builders.
+#[test]
+fn a_builder_s_completion_reaches_the_world_within_its_update() {
+    let mut t = house_builder();
+    let h = t.players[1].objects.by_id_mut(10028).unwrap();
+    h.life.hp = 549.0;
+    let k = h.construction.as_mut().unwrap();
+    (k.progress, k.desolid) = (24.99, false);
+    assert_eq!(
+        worked(&mut t, 10028, 50).map_err(|e| e.reason().to_owned()),
+        Ok(())
+    );
+    let house = t.players[1].objects.by_id(10028).unwrap();
+    assert_eq!((house.life.state, house.repairers()), (2, 0));
+    let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
+    assert!(t.players[1].tracker.list(k.master).contains(&10028));
+    let attributes = &t.players[1].attributes;
+    assert_eq!((attributes[98], attributes[165]), (25.0, 25.0));
+    let b = t.players[1].objects[0].actions.build().copied().unwrap();
+    assert_eq!(
+        (b.state, b.added),
+        (crate::construction::build::FINISHED, false)
+    );
+}
+
 /// A builder's completion of its foundation takes the foundation's annexes to state 2 where it
-/// runs, before the foundation's tracker part (`record_build_step`).
+/// runs, before the foundation's tracker part (`FUN_1411dbb70`).
 #[test]
 fn a_builder_s_completion_completes_the_foundation_s_annexes_where_it_runs() {
-    use crate::construction::build::Built;
-    use crate::construction::build::unit::record_build_step;
     let mut t = annexed_house();
-    let built = Built {
-        attributes: vec![],
-        history: None,
-        tech: None,
-        cart: None,
-        stack: None,
-        vanishes: false,
-        started: false,
-        pasture: false,
-    };
-    let mut step = BuildStep {
-        completed: Some(built),
-        ..BuildStep::default()
-    };
-    let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
-        record_build_step(c, unit, 10028, &[10030], &mut step)?;
-        Ok(c.w.object(10030).map(|(_, a)| a.life.state))
-    });
-    assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(Some(2)));
+    let h = t.players[1].objects.by_id_mut(10028).unwrap();
+    let k = h.construction.as_mut().unwrap();
+    (k.progress, k.desolid) = (24.99, false);
+    assert_eq!(
+        worked(&mut t, 10028, 50).map_err(|e| e.reason().to_owned()),
+        Ok(())
+    );
+    let annex = t.players[1].objects.by_id(10030).unwrap();
+    assert_eq!(annex.life.state, 2);
     let (annex, house) = done_at(&t, 10030, 10028);
     assert!(annex.is_some() && annex < house, "{annex:?} {house:?}");
 }
@@ -14609,12 +14401,11 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
         flag_1: false,
     });
     in_update(&mut t, (1, 0), 50, |unit, c| {
-        let me = crate::movement::Me {
-            id: unit.id,
-            group: unit.group.id,
-            action_state: unit.top_action().map_or(0, |a| a.state),
-        };
-        unit.build_drop_off(c, me)
+        let mut b = *unit.actions.build().unwrap();
+        let by = unit.releaser(c);
+        let dropped = b.drop_again(c, unit, by);
+        *unit.actions.build_mut().unwrap() = b;
+        dropped
     })
     .unwrap();
     let mut seen = Vec::new();

@@ -238,7 +238,6 @@ impl crate::world::World {
                 rice,
             },
             chain: WorkChain::default(),
-            main_builders: None,
         };
         let built = Construction::complete(&mut site, &mut self.spatial, &mut self.pathing)?;
         let u = held(&mut self.players, place);

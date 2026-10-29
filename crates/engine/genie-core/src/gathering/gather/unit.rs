@@ -7,7 +7,6 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
 use crate::objects::release::Releaser;
-use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
 use crate::unit_ai::ActionKind;
@@ -18,105 +17,6 @@ use crate::world::others::OthersRef;
 use crate::world::step::Step;
 
 impl Unit {
-    /// The Build's `set_state(8)` from its update (case 7 searching again): the drop-site table's
-    /// nearest drop site for what the unit carries ([`crate::orders::nearest_table_site`] over
-    /// its player's objects; the sleeping ones, static only, are never drop sites) and the task
-    /// its slot 0x820 finds on it ([`task_search`] with any action type, no switch: its range,
-    /// else the Build task's), unless it carries nothing (COMISS: a NaN load neither); then
-    /// [`crate::construction::build::BuildAction::set_drop`], whose second targets the caller releases and
-    /// takes and whose notify 0x203 goes to the unit AI. A builder of state 8 counts among no
-    /// builders (its `set_state(8)` left them).
-    pub(crate) fn build_drop_off(&mut self, c: &mut Step<'_>, me: Me) -> Result<(), GenieError> {
-        use crate::construction::build::DropSearch;
-        let by = self.releaser(c);
-        let build = self.actions.build().expect("the caller's Build");
-        let task_range = build.task.range;
-        let view = OthersRef::of(&c.w.players, c.player);
-        let search = if 0.0 < self.life.amount {
-            let masters =
-                c.w.masters
-                    .get(c.player)
-                    .ok_or(crate::world::OBJECT_MASTER)?;
-            let own = self.master_in(Some(masters))?;
-            let at = [self.position()[0], self.position()[1]];
-            let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
-            let found = crate::orders::nearest_table_site(
-                (
-                    &c.w.drop_sites,
-                    c.w.players[c.player].civ,
-                    &c.w.players[c.player].tracker,
-                ),
-                (at, self.life.attribute_type, own.class),
-                look,
-            );
-            match found {
-                None => DropSearch::Nothing,
-                Some(id) => {
-                    let (player, foreign) = (c.player, view.players());
-                    let unit = &*self;
-                    let find = |t: i32| {
-                        if t == unit.id {
-                            return Some((player, unit));
-                        }
-                        view.find(t)
-                    };
-                    let every = &c.w.masters;
-                    let task = match (
-                        crate::unit_ai::task_finder::world::task_target_with(id, 1, &find, every)?,
-                        crate::unit_ai::task_finder::world::task_target_with(id, 2, &find, every)?,
-                    ) {
-                        (Some(t), Some(general)) => {
-                            use crate::unit_ai::task_finder::world::SideWorld;
-                            use crate::unit_ai::task_finder::world::task_search;
-                            let actor = Actor {
-                                id: self.id,
-                                master: own,
-                                player,
-                                held: (self.life.attribute_type, self.life.amount),
-                                attribute_95: c.w.players[c.player]
-                                    .attributes
-                                    .get(95)
-                                    .copied()
-                                    .unwrap_or(0.0),
-                                civ: c.w.players[c.player].civ,
-                            };
-                            let dip = SideWorld {
-                                player,
-                                relations: &c.w.players[c.player].relations,
-                                foreign,
-                                drop_sites: &c.w.drop_sites,
-                            };
-                            // slot 0x820's point: x, y and z −1, no terrain
-                            task_search(masters, &actor, &t, &general, None, -1, &dip)?
-                        }
-                        _ => None,
-                    };
-                    let range = task.map_or(task_range, |(t, _)| t.work_range);
-                    let sprite = task.and_then(|(t, _)| sprite_id(t.sprites[3]));
-                    DropSearch::Site { id, range, sprite }
-                }
-            }
-        } else {
-            DropSearch::Empty
-        };
-        let mut walk = c.walk(&mut self.body, me);
-        let build = self.actions.build_mut().expect("the caller's Build");
-        let out = build.set_drop(&mut walk, None, search)?;
-        if out.let_go != -1 {
-            crate::world::lets::release(c, out.let_go, by)?;
-        }
-        if out.took != -1 {
-            crate::world::lets::take(c, out.took, by);
-        }
-        if out.notified {
-            self.post_own(
-                crate::unit_ai::NO_DROP_SITE,
-                [ActionKind::Build.value(), 0, 0],
-            )?;
-        }
-        Ok(())
-    }
-
     /// The Gather's update (slot 6, `0x140a8e1d0`). It first checks its targets: a target gone
     /// from the world's table goes (slot 0x68 with none), one past state 6 is let go (slot 0x180)
     /// and goes; a second target gone goes (`FUN_140a7a190` with none), one past state 6 is let
