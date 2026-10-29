@@ -12987,14 +12987,15 @@ fn gather_step(t: &mut World) -> Result<(), GenieError> {
 
 /// What follows the Gather's update ([`Unit::gather_next`]) for the forager on bush 600 with
 /// its town centre 700, each worked by one: the end lets both go and removes the Gather; a
-/// target the update changed lets the old one go, where the update does; a build command asks
-/// for the Gather's target to be built after the update (a second in one update is not
-/// modelled); the reseed after the walk back to the farm, whether it arrived.
+/// target the update changed lets the old one go, where the update does; the reseed after the
+/// walk back, without a farm to reseed, idles the human player's gatherer and lets both targets
+/// go within the update (the build command:
+/// [`the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name`]).
 #[test]
 fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
     use crate::gathering::gather::Next;
-    type Followed = (Result<(), GenieError>, Vec<i32>, Option<i32>, Option<bool>);
-    let follow = |next: Next, old: (i32, i32), built: Option<i32>| -> (World, Followed) {
+    type Followed = (Result<(), GenieError>, Vec<i32>, Option<(i32, u8)>);
+    let follow = |next: Next, old: (i32, i32)| -> (World, Followed) {
         let mut t = foraging();
         t.players[1].objects[0]
             .actions
@@ -13006,7 +13007,6 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
         }
         let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
             let by = unit.releaser(c);
-            c.build_command = built;
             let r = unit
                 .gather_next(c, next, old, by)
                 .and_then(|code| unit.end_head_update(c, code));
@@ -13019,25 +13019,23 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
                         .is_some_and(|(_, u)| u.workers == 0)
                 })
                 .collect();
-            Ok((r, released, c.build_command.take(), c.reseed.take()))
+            let gather = unit.actions.gather().map(|g| (g.target, g.state));
+            Ok((r, released, gather))
         })
         .unwrap();
         (t, seen)
     };
-    let (t, seen) = follow(Next::Done, (600, 700), None);
-    assert_eq!(seen, (Ok(()), vec![600, 700], None, None));
+    let (t, seen) = follow(Next::Done, (600, 700));
+    assert_eq!(seen, (Ok(()), vec![600, 700], None));
     assert!(t.players[1].objects[0].actions.gather().is_none());
-    let (t, seen) = follow(Next::Stay, (700, -1), None);
-    assert_eq!(seen, (Ok(()), vec![700], None, None));
+    let (t, seen) = follow(Next::Stay, (700, -1));
+    assert_eq!(seen.0, Ok(()));
+    assert_eq!(seen.1, vec![700]);
     assert!(t.players[1].objects[0].actions.gather().is_some());
-    let (_, seen) = follow(Next::Stay, (600, 600), None);
-    assert_eq!(seen, (Ok(()), vec![600], None, None));
-    let (_, seen) = follow(Next::Build, (600, 700), None);
-    assert_eq!(seen, (Ok(()), vec![], Some(600), None));
-    let (_, (r, ..)) = follow(Next::Build, (600, 700), Some(5));
-    assert_eq!(r.unwrap_err().reason(), "two build commands in one update");
-    let (_, seen) = follow(Next::Reseed { arrived: true }, (600, 700), None);
-    assert_eq!(seen, (Ok(()), vec![], None, Some(true)));
+    let (_, seen) = follow(Next::Stay, (600, 600));
+    assert_eq!((seen.0, seen.1), (Ok(()), vec![600]));
+    let (_, seen) = follow(Next::Reseed { arrived: true }, (600, 700));
+    assert_eq!(seen, (Ok(()), vec![600, 700], Some((-1, 2))));
 }
 
 /// The Gather's other states (`0x140a8e1d0`): done, it goes and lets its bush go; the search's
@@ -14574,16 +14572,11 @@ fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
     };
     assert_eq!(leaving(&|_| ()), Ok(Outcome::Leave));
     let gap = |reason: &str| Err(reason.to_owned());
-    let cases: [(&Orders<'_>, _); 4] = [
+    let cases: [(&Orders<'_>, _); 2] = [
         (
             &|c| c.work_order = Some(work),
             gap("a builder's work order of a unit that leaves its list"),
         ),
-        (
-            &|c| c.build_command = Some(10028),
-            gap(LEAVES_ITS_LIST.reason()),
-        ),
-        (&|c| c.reseed = Some(true), gap(LEAVES_ITS_LIST.reason())),
         (
             &|c| c.order_on_target = Some((order, None)),
             gap("an order on a target of a unit that leaves its list"),
@@ -14630,13 +14623,13 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
 }
 
 /// The unit AI's orders of a step reach the unit and the units they name: a `GatherObject`'s
-/// gather command takes the bush at once (the Gather is the unit's while its update runs), a
-/// reseed without a farm lets it go, a build command gives the builder its Build, a drop
-/// elsewhere sends the unit to the drop site with the order back to its target queued, and a
-/// move off a footprint gives it a `MoveTo` at once.
+/// gather command takes the bush at once (the Gather is the unit's while its update runs); the
+/// Gather's reseed without a farm lets it go and its build command gives the builder its Build,
+/// both within the update; a drop elsewhere sends the unit to the drop site with the order back
+/// to its target queued, and a move off a footprint gives it a `MoveTo` at once.
 #[test]
 fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
-    use crate::objects::unit::Outcome;
+    use crate::gathering::gather::Next;
     use crate::unit_ai::Effect;
     // the effects applied in the unit's step, and its top action right after them
     let applied = |t: &mut World, effects: Vec<Effect>| {
@@ -14646,10 +14639,18 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
         })
         .map_err(|e| e.reason().to_owned())
     };
-    let stay = |t: &mut World, orders: &Orders<'_>| {
-        finished_with(t, (1, 0), |c| {
-            orders(c);
-            Ok(Outcome::Stay)
+    // what follows the Gather's update, and the unit's actions right after it
+    let followed = |t: &mut World, next: Next| {
+        in_update(t, (1, 0), 50, |unit, c| {
+            let by = unit.releaser(c);
+            let g = unit.actions.gather().copied().unwrap();
+            let _ = unit.gather_next(c, next, (g.target, g.carry_to), by)?;
+            let bush = OthersRef::of(&c.w.players, 0)
+                .find(600)
+                .map(|(_, b)| b.workers);
+            let gather = unit.actions.gather().map(|g| (g.target, g.state));
+            let build = unit.actions.build().map(|b| b.target);
+            Ok((bush, gather, build))
         })
         .map_err(|e| e.reason().to_owned())
     };
@@ -14667,24 +14668,21 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
         (Some(crate::gathering::gather::GATHER), Some((600, 4)))
     );
     assert_eq!(t.players[0].objects[0].workers, 1);
-    assert_eq!(stay(&mut t, &|c| c.reseed = Some(true)), Ok(Outcome::Stay));
-    let gather = t.players[1].objects[0].actions.gather().copied().unwrap();
-    assert_eq!((gather.target, gather.state), (-1, 2));
-    assert_eq!(t.players[0].objects[0].workers, 0);
+    let reseeded = followed(&mut t, Next::Reseed { arrived: true });
+    assert_eq!(reseeded, Ok((Some(0), Some((-1, 2)), None)));
 
     let mut t = house_builder();
     t.players[1].objects[0].actions.set_build(None);
+    assert!(applied(&mut t, vec![Effect::Command(AiCommand::GatherObject(600))]).is_ok());
+    t.players[1].objects[0].actions.gather_mut().unwrap().target = 10028;
     assert_eq!(
-        stay(&mut t, &|c| c.build_command = Some(10028)),
-        Ok(Outcome::Stay)
+        followed(&mut t, Next::Build),
+        Ok((Some(1), None, Some(10028)))
     );
     let builder = &t.players[1].objects[0];
     assert_eq!(
-        (
-            builder.top_action_kind(),
-            builder.actions.build().map(|b| b.target)
-        ),
-        (Some(crate::construction::build::BUILD), Some(10028))
+        builder.top_action_kind(),
+        Some(crate::construction::build::BUILD)
     );
 
     let mut t = house_builder();

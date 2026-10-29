@@ -7,8 +7,8 @@ use crate::objects::unit::{Outcome, Unit};
 use crate::unit_ai::AfterOrder;
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::AiStart;
+use crate::world::World;
 use crate::world::step::{ObjectOutputs, Step};
-use crate::world::{LEAVES_ITS_LIST, World};
 
 /// What an object's step left for its list's loop ([`World::step_object`]).
 pub(super) struct Stepped {
@@ -139,8 +139,7 @@ impl World {
         Ok(())
     }
 
-    /// The unit AI's starts: the waits and repairs, a Gather's build command and reseed, and the
-    /// order on a target.
+    /// The unit AI's starts: the waits and repairs, and the order on a target.
     fn apply_ai_starts(
         &mut self,
         (p, i): (usize, usize),
@@ -164,18 +163,6 @@ impl World {
                 AiStart::Enter(e) => self.enter_order(p, i, e),
                 AiStart::Transport(to) => self.transport_order(p, i, to),
             }?;
-        }
-        // a Gather's build command on its target not built yet (slot 0x380)
-        if let Some(foundation) = out.build_command {
-            in_list(outcome, LEAVES_ITS_LIST, || {
-                self.build_command(p, i, foundation)
-            })?;
-        }
-        // a Gather's reseed after its walk back (state 0xf2): a build command too
-        if let Some(arrived) = out.reseed {
-            in_list(outcome, LEAVES_ITS_LIST, || {
-                self.reseed_after_walk(p, i, arrived)
-            })?;
         }
         if let Some((order, _)) = out.ordered {
             if !matches!(outcome, Outcome::Stay) {

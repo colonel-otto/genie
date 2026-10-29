@@ -123,11 +123,6 @@ pub(crate) const GATE_CLOSE_DELAY: f32 = 0.5;
 /// counts (25).
 pub(crate) const GATE_QUERY_RECORDS: usize = 10;
 pub(crate) const GATE_COUNT_CAP: usize = 25;
-/// A unit's build command (a Gather's on its target not built yet, or its reseed) after an
-/// update in which the unit left its list: in the game it ran inside the update, before.
-const LEAVES_ITS_LIST: GenieError =
-    GenieError::unsupported("a build command of a unit that leaves its list");
-
 /// The world constructor's history period (`FUN_141599e50`'s immediate 0x19 at `world+0x8b8`),
 /// until the `.dat`'s `time_slice` replaces it.
 pub const HISTORY_PERIOD: i32 = 25;

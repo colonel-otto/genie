@@ -267,8 +267,12 @@ impl Unit {
 
     /// What follows the Gather's update (`next`; `old`: its targets before): an end is its code
     /// (state 1's update returns 1, whose deletion lets both targets go); else each target it
-    /// changed is let go (slot 0x68, `FUN_140a7a190` with none), then the drop-off, the search, a
-    /// build command, or the reseed after the update (state 0xf2's walk ended).
+    /// changed is let go (slot 0x68, `FUN_140a7a190` with none), then the drop-off, the search,
+    /// the unit's build command on its target (`set_state(6)`'s slot 0x380, forced:
+    /// [`crate::world::World::build_command`]) or the reseed (state 0xf2's walk ended,
+    /// `FUN_140a8aa60`: [`crate::world::World::reseed_after_walk`]). The last two run inside the
+    /// update, on the unit lent back to its slot ([`Step::lend_at`]), and replace or end the
+    /// Gather; the update then answers 0, as after them.
     pub(crate) fn gather_next(
         &mut self,
         c: &mut Step<'_>,
@@ -292,11 +296,11 @@ impl Unit {
             Next::Search => self.gather_search(c)?,
             Next::Build => {
                 let target = self.actions.gather().map_or(-1, |g| g.target);
-                if c.build_command.replace(target).is_some() {
-                    return Err(GenieError::unsupported("two build commands in one update"));
-                }
+                c.lend_at(self, |w, p, i| w.build_command(p, i, target).map(drop))?;
             }
-            Next::Reseed { arrived } => c.reseed = Some(arrived),
+            Next::Reseed { arrived } => {
+                c.lend_at(self, |w, p, i| w.reseed_after_walk(p, i, arrived))?;
+            }
             Next::Stay | Next::Done => {}
         }
         Ok(HeadCode::Keeps)

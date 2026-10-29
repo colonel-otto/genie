@@ -61,12 +61,6 @@ pub(crate) struct Step<'a> {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on
-    /// a target not built yet), which the caller runs after the update ([`World::build_command`]).
-    pub(crate) build_command: Option<i32>,
-    /// A Gather's walk back to reseed ended (state 0xf2, whether it arrived), which the caller
-    /// reseeds after the update ([`World::reseed_after_walk`]).
-    pub(crate) reseed: Option<bool>,
     /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
     /// which the caller makes the unit's after the update, in order.
     pub(crate) starts: Vec<AiStart>,
@@ -80,10 +74,6 @@ pub(crate) struct ObjectOutputs {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// [`Step`]'s `build_command`.
-    pub(in crate::world) build_command: Option<i32>,
-    /// [`Step`]'s `reseed`.
-    pub(in crate::world) reseed: Option<bool>,
     /// [`Step`]'s `starts`.
     pub(in crate::world) starts: Vec<AiStart>,
     /// [`Step`]'s `work_order`.
@@ -99,8 +89,6 @@ impl Step<'_> {
     pub(in crate::world) fn outputs(&mut self) -> ObjectOutputs {
         ObjectOutputs {
             ordered: self.order_on_target.take(),
-            build_command: self.build_command.take(),
-            reseed: self.reseed.take(),
             starts: std::mem::take(&mut self.starts),
             work_order: self.work_order.take(),
             kills: std::mem::take(&mut self.kills),
