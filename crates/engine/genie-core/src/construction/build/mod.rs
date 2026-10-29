@@ -405,16 +405,12 @@ const MAX_WAITS: u8 = 21;
 const CLEAR: u8 = 223;
 /// 224 (`0xe0`): the work ended, the building completed.
 pub(crate) const FINISHED: u8 = 224;
-/// 1: the action is done.
-const DONE: u8 = 1;
 /// The last object state an action takes as its target (`FUN_140a7a230`: one above is refused).
 const LAST_TAKEN: u8 = 6;
 /// 3: the action waits without a target.
 pub(crate) const IDLE: u8 = 3;
 /// `set_state(2)`: the unit's stop halted the Build (slot 0x38); its next update fails it.
 const HALTED: u8 = 2;
-/// 13 (`0xd`): the Build failed; its next update tells its unit AI and halts it.
-const FAILED: u8 = 13;
 /// 8: the builder carries its load to a drop site (`set_state(8)`, [`BuildAction::set_drop`]).
 pub const DROP: u8 = 8;
 /// The drop-off's wait after a drop site out of reach (`0xc0400000`).

@@ -5,6 +5,7 @@ use crate::movement::move_to::MoveDefaults;
 use crate::objects::masters::BuildingMaster;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::{DONE, FAILED};
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
@@ -488,7 +489,7 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
     assert_eq!(t.object(200).unwrap().1.garrison, [1000]);
-    assert_eq!((enter_of(&t).state, completed(&t)), (ENTERED, 2));
+    assert_eq!((enter_of(&t).state, completed(&t)), (DONE, 2));
     // without the walk again, code 1 in reach enters once
     let mut t = entering(
         [5.5, 29.5],
@@ -497,7 +498,7 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
     );
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
-    assert_eq!((enter_of(&t).state, completed(&t)), (ENTERED, 1));
+    assert_eq!((enter_of(&t).state, completed(&t)), (DONE, 1));
 }
 
 #[test]
@@ -2702,7 +2703,7 @@ fn a_villager_beside_a_ship_enters_it_at_once() {
     let v = t.object(1000).unwrap().1;
     assert_eq!(v.life.inside, Some(200));
     assert_eq!([v.position()[0], v.position()[1]], [5.5, 20.5]);
-    assert_eq!(v.actions.enter().map(|e| e.state), Some(ENTERED));
+    assert_eq!(v.actions.enter().map(|e| e.state), Some(DONE));
     assert!(!v.town_bell.flag);
     assert_eq!(
         v.town_bell.work,
@@ -3039,7 +3040,7 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
     );
     assert_eq!(ship.garrison, [0; 0]);
     assert_eq!(t.object(1000).unwrap().1.life.inside, None);
-    let failed = |tr: &mut transport::TransportAction| tr.state = transport::FAILED;
+    let failed = |tr: &mut transport::TransportAction| tr.state = FAILED;
     let t = transport_ticked([10.5, 10.5], [17.5, 10.5], failed);
     let ship = t.object(200).unwrap().1;
     assert_eq!(ship.actions.transport().copied(), None);
@@ -3123,7 +3124,7 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
     // stop's context reads
     let tr = t.object(200).unwrap().1.actions.transport().copied();
     assert_eq!(tr.map(|tr| tr.state), Some(transport::IDLE));
-    let done = |tr: &mut transport::TransportAction| tr.state = transport::DONE;
+    let done = |tr: &mut transport::TransportAction| tr.state = DONE;
     let t = transport_ticked([10.5, 10.5], [17.5, 10.5], done);
     let ship = t.object(200).unwrap().1;
     assert_eq!(ship.actions.transport().copied(), None);

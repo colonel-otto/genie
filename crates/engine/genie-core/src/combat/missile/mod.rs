@@ -10,6 +10,7 @@
 
 use crate::GenieError;
 use crate::math::fmath;
+use crate::orders::action_state::DONE;
 use genie_diff::Diff;
 
 pub(crate) mod unit;
@@ -19,8 +20,6 @@ pub const MISSILE: i16 = 8;
 
 /// A missile's states: 4 flies, 1 ends (`set_state` 1: the object's slot 0xd8, its hit points to 0).
 pub const FLYING: u8 = 4;
-/// State 1: the missile ends.
-pub const DONE: u8 = 1;
 
 /// A target's height counts a third of its master's height radius (`FUN_140a9c600`,
 /// `DAT_142eb1c98`).

@@ -12,6 +12,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
+use crate::orders::action_state::DONE;
 use crate::pathing::Pathing;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
@@ -285,7 +286,7 @@ impl Unit {
         {
             m.stop()?;
         }
-        enter.state = crate::garrison::ENTERED;
+        enter.state = DONE;
         self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         self.post_own(
             crate::unit_ai::ai_kinds::NOTIFY_ACTION_FAILED,

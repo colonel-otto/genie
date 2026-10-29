@@ -2,6 +2,7 @@ use super::*;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
+use crate::orders::action_state::FAILED;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
@@ -3389,7 +3390,7 @@ fn a_drop_off_order_fails_on_what_it_does_not_hold() {
 /// soldier that may move starts its `MoveTo` arrived and shows its standing sprite.
 #[test]
 fn an_attack_task_s_start_ends_where_the_start_does() {
-    use crate::combat::attack::{FAILED, MOVE};
+    use crate::combat::attack::MOVE;
     let started = |ai: bool, at: f32| {
         let (mut t, task) = work_attack(0);
         let unit = &mut t.players[1].objects[0];

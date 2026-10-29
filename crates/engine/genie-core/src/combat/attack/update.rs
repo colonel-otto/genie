@@ -3,8 +3,8 @@
 
 use crate::GenieError;
 use crate::combat::attack::{
-    AiOrder, Attack, AttackReads, DONE, FAILED, Fight, GOTO_POINT, GOTO_SEEN, KILLED, MOVE,
-    NO_RANGE, NONE, READY, Readiness, SEEN_RANGE, SWING, TOUCH, set_walker_anim,
+    AiOrder, Attack, AttackReads, Fight, GOTO_POINT, GOTO_SEEN, KILLED, MOVE, NO_RANGE, NONE,
+    READY, Readiness, SEEN_RANGE, SWING, TOUCH, set_walker_anim,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{Goal, MoveTo};
@@ -15,6 +15,8 @@ use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::world::step::Step;
 
 impl Attack {

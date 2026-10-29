@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::transport::{
-    Changed, DONE, FAILED, IDLE, LAND_FLAGS, MOVE_RANGE, MapShore, NEAR, NO_TRANSPORT, NONE, SAIL,
+    Changed, IDLE, LAND_FLAGS, MOVE_RANGE, MapShore, NEAR, NO_TRANSPORT, NONE, SAIL,
     SAIL_TO_UNLOAD, SHORE_MARGIN, Ship, Shore, TransportAction, TransportReads, UNLOAD,
     UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
 };
@@ -15,6 +15,8 @@ use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToAction, Shown
 use crate::objects::masters::{Master, TaskId};
 use crate::objects::sprite::{Graphic, new_sprite, sprite_id};
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::{ActionKind, UnitAi};
 use crate::world::World;
 use crate::world::step::Step;

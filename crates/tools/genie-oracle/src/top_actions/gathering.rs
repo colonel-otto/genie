@@ -145,8 +145,9 @@ pub(super) fn import_gather(
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
     use genie_core::gathering::gather::{
-        DONE, DROP, FACE, GatherAction, IDLE, MOVED, SEARCH, WALK, WALK_BACK, WORK,
+        DROP, FACE, GatherAction, IDLE, MOVED, SEARCH, WALK, WALK_BACK, WORK,
     };
+    use genie_core::orders::action_state::DONE;
     let base = saved.base;
     let part = saved
         .action

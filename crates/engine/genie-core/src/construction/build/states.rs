@@ -4,8 +4,8 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildReads, DONE, FINISHED, FISHING_SHIPS, HALTED, IDLE,
-    LAST_TAKEN, MOVE, NO_TARGET_POINT, SITE_GONE, WORK, drop_done_orders,
+    BUILDER_UNMOVING, BuildAction, BuildReads, FINISHED, FISHING_SHIPS, HALTED, IDLE, LAST_TAKEN,
+    MOVE, NO_TARGET_POINT, SITE_GONE, WORK, drop_done_orders,
 };
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
@@ -14,6 +14,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
 use crate::unit_ai::{ActionKind, OrderKind};
 use crate::world::SEARCH_NEEDED;
 use crate::world::step::Step;

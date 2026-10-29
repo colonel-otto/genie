@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::attack::{
-    Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, FAILED, Fight, GOTO_SEEN, Ground,
+    Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, Fight, GOTO_SEEN, Ground,
     LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
 use crate::math::rng::{Stream, Well512};
@@ -14,6 +14,7 @@ use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
+use crate::orders::action_state::FAILED;
 use crate::world::step::Step;
 
 impl Attack {

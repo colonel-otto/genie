@@ -9,6 +9,7 @@ use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
+use crate::orders::action_state::DONE;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::World;
 use crate::world::others::OthersRef;
@@ -100,7 +101,7 @@ impl Unit {
         self.missile_ends(action, c)?;
         match action.state {
             crate::combat::missile::FLYING => {}
-            crate::combat::missile::DONE => {
+            DONE => {
                 return Err(GenieError::unsupported(
                     "a missile action's update in state 1",
                 ));
@@ -177,7 +178,7 @@ impl Unit {
             .map_or(0, |m| m.blast_level);
         let met = self.missile_meets(stats, old, c)?;
         for &(id, player, kind, level) in &met {
-            if action.state == crate::combat::missile::DONE {
+            if action.state == DONE {
                 break;
             }
             if action.met.contains(&id) {
@@ -290,7 +291,7 @@ impl Unit {
     /// The missile action's `set_state(1)` (`FUN_140a9de70`): the missile's slot 0xd8
     /// (`FUN_14118f580`), its hit points to 0.
     pub(crate) const fn end_missile(&mut self, action: &mut crate::combat::missile::MissileAction) {
-        action.state = crate::combat::missile::DONE;
+        action.state = DONE;
         self.life.hp = 0.0;
     }
 
@@ -444,7 +445,7 @@ impl Unit {
             return Ok(());
         };
         self.missile_lands_on_target(action, fired, stats, c)?;
-        if action.state == crate::combat::missile::DONE {
+        if action.state == DONE {
             return Ok(());
         }
         if action.result != 2 {
@@ -482,10 +483,7 @@ impl Unit {
         stats: &crate::combat::missile::MissileStats,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
-        if action.state == crate::combat::missile::DONE
-            || action.target == -1
-            || action.met.contains(&action.target)
-        {
+        if action.state == DONE || action.target == -1 || action.met.contains(&action.target) {
             return Ok(());
         }
         let v = victim(c, action.target).ok_or(GenieError::unsupported(

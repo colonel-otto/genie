@@ -1,6 +1,8 @@
 use super::*;
 use crate::movement::Me;
 use crate::objects::teardown::HeadCode;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 
 const TASK: RepairTask = RepairTask {
     id: 7,

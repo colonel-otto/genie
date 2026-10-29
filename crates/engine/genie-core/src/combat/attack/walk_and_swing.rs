@@ -1,9 +1,9 @@
 //! State 4's walk to the target and state 7's swing with its hit and its trample.
 
 use crate::combat::attack::{
-    AfterHit, Attack, AttackReads, DRAW_SCALE, EPSILON, FAILED, Fight, HALF, Hit, KILLED, MOVE,
-    Readiness, after_hit, blast_so_far, reset_sprite, set_attack_timer, set_walker_anim,
-    squared_reach, strike,
+    AfterHit, Attack, AttackReads, DRAW_SCALE, EPSILON, Fight, HALF, Hit, KILLED, MOVE, Readiness,
+    after_hit, blast_so_far, reset_sprite, set_attack_timer, set_walker_anim, squared_reach,
+    strike,
 };
 use crate::combat::damage::Victim;
 use crate::combat::victims::write_strike_back;
@@ -16,6 +16,7 @@ use crate::movement::{Me, PathAsk, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::{ActiveSprite, new_sprite};
 use crate::objects::unit::Unit;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::step::Step;
 use crate::{GenieError, combat::damage};

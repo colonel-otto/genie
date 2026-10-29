@@ -3,8 +3,8 @@
 
 use crate::GenieError;
 use crate::construction::repair::{
-    DONE, EXTRA_REPAIRER, FACE, FAILED, HALTED, IDLE, LEAST_HP, MOVE, MOVING_REACH, ONE, REACH,
-    RepairAction, RepairReads, RepairTask, Repairee, SHIP_REPAIR, SHIPS, WAIT, WALK_POINT, WORK,
+    EXTRA_REPAIRER, FACE, HALTED, IDLE, LEAST_HP, MOVE, MOVING_REACH, ONE, REACH, RepairAction,
+    RepairReads, RepairTask, Repairee, SHIP_REPAIR, SHIPS, WAIT, WALK_POINT, WORK,
 };
 use crate::math::rng::Stream;
 use crate::movement::move_to::{Goal, MoveDefaults, MoveTo, MoveWait, Sprites, sub_move_to_update};
@@ -12,6 +12,8 @@ use crate::movement::{Me, footprint_gap};
 use crate::objects::lifecycle::seconds;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::world::step::Step;
 

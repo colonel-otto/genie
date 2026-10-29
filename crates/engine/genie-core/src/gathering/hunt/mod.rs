@@ -56,8 +56,6 @@ pub const DROP: u8 = 8;
 pub const LEAD: u8 = 10;
 /// State 12 (`0xc`): attacking it.
 pub const ATTACK: u8 = 12;
-/// State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
-pub const FAILED: u8 = 13;
 /// State 2: the hunt is done with its target; it waits (a tree's target class would search
 /// again, `set_state` 3).
 pub const IDLE: u8 = 2;

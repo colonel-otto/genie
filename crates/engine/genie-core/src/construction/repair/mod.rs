@@ -41,8 +41,6 @@ const EXTRA_REPAIRER: f32 = crate::math::image::repair::EXTRA_REPAIRER;
 /// The wait of state 10 (`0x3f800000`), and the repairer count's first (`DAT_14330eb8c`).
 const ONE: f32 = crate::math::image::repair::ONE;
 
-/// The Repair action's states.
-const DONE: u8 = 1;
 const HALTED: u8 = 2;
 const IDLE: u8 = 3;
 const MOVE: u8 = 4;
@@ -50,7 +48,6 @@ const FACE: u8 = 6;
 const WORK: u8 = 7;
 const WAIT: u8 = 10;
 const WALK_POINT: u8 = 11;
-const FAILED: u8 = 13;
 
 /// The ship classes whose repair meets them at the shore (`FUN_140ad9120`: 20, 21, 22, 2, 53).
 pub const SHIPS: [i16; 5] = [20, 21, 22, 2, 53];

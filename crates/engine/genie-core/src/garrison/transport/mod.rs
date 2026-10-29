@@ -67,8 +67,6 @@ const DROP_TRIES: u16 = 50;
 const WATER_FLAGS: u8 = 7;
 const LAND_FLAGS: u8 = 0x18;
 
-/// The Transport's states.
-pub const DONE: u8 = 1;
 /// Idle: the update does nothing.
 pub const IDLE: u8 = 2;
 /// Sailing to unload.
@@ -77,8 +75,6 @@ pub const SAIL_TO_UNLOAD: u8 = 4;
 pub const UNLOAD: u8 = 6;
 /// Sailing.
 pub const SAIL: u8 = 11;
-/// Failed: the update returns 3.
-pub const FAILED: u8 = 13;
 
 /// A Transport's unit of a master the slice does not have.
 pub const NO_MASTER: GenieError =

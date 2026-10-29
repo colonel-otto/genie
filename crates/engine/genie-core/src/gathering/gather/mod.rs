@@ -47,8 +47,6 @@ pub const FACE: u8 = 6;
 pub const WORK: u8 = 7;
 /// State 8: taking the load to its drop site.
 pub const DROP: u8 = 8;
-/// State 1: done; its update returns 1 and the action list removes it.
-pub const DONE: u8 = 1;
 /// State 2: idle, without a target, a drop site or a point; its update does nothing.
 pub const IDLE: u8 = 2;
 /// State 15: walking to the point the unit was moved to (slot 0x40).

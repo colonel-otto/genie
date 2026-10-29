@@ -5,8 +5,8 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::update::UNMOVING;
 use crate::gathering::gather::{
-    DONE, FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, IDLE,
-    NO_GATHER_POINT, Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,
+    FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, IDLE, NO_GATHER_POINT,
+    Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,
 };
 use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait};
@@ -16,6 +16,7 @@ use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
 use crate::world::step::Step;
 
 /// Whether a gatherer of `master` whose Gather has the target class `target_type` waits for

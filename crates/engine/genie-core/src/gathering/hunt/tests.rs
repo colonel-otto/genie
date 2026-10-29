@@ -1,5 +1,7 @@
 use super::*;
 use crate::objects::masters::class;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 
 use crate::combat::attack::tests::Rig;
 use crate::movement::{Me, MoveStats, Velocity};
@@ -1120,7 +1122,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
         (Ok(HuntNext::Stay), false)
     );
     assert_eq!((h.state, h.attack.map(|a| a.state)), (ATTACK, Some(14)));
-    let done = crate::combat::attack::DONE;
+    let done = DONE;
     let mut h = fresh(10028);
     assert_eq!(
         attack(&mut h, done, sheep(), true, false),
@@ -1146,7 +1148,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
         "a hunt that ends with its Attack on a predator (set_state 1)"
     );
     let mut h = fresh(10028);
-    let failed = crate::combat::attack::FAILED;
+    let failed = FAILED;
     assert_eq!(
         attack(&mut h, failed, sheep(), true, false),
         (Ok(HuntNext::AttackFailed), false)

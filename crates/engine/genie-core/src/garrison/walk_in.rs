@@ -14,6 +14,8 @@ use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -24,11 +26,6 @@ pub const ENTER: i16 = 3;
 /// The gap below which the Enter's `MoveTo` starts arrived (`0x140aa2100`, `DAT_142eb99cc`).
 pub(super) const ARRIVED: f32 = crate::math::image::move_to::ARRIVED;
 
-/// The Enter action's states the slice models: 1 done (inside), 2 waiting to try again, 4
-/// walking to the target.
-pub const ENTERED: u8 = 1;
-/// The failed Enter (`set_state(13)`), whose update returns 3.
-pub const FAILED: u8 = 13;
 pub(super) const WAIT: u8 = 2;
 pub(super) const WALK: u8 = 4;
 /// `set_state(2)`'s wait before the Enter walks again, in seconds (`FUN_140a87320`, the constant
@@ -324,7 +321,7 @@ impl EnterAction {
         let t = Self::held_target(reads.target)?;
         match self.state {
             // state 1 returns 1, state 13 returns 3: either way the list removes the action
-            ENTERED | FAILED => return Ok(HeadCode::Deletes),
+            DONE | FAILED => return Ok(HeadCode::Deletes),
             WAIT => {
                 self.timer -= seconds(c.dt);
                 if self.timer <= 0.0 {

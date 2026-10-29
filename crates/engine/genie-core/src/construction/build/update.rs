@@ -3,8 +3,8 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLEAR, DONE, DROP, FAILED,
-    FINISHED, HALTED, IDLE, MOVE, PLACE, WAIT, WALK_POINT, WORK,
+    ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLEAR, DROP, FINISHED, HALTED,
+    IDLE, MOVE, PLACE, WAIT, WALK_POINT, WORK,
 };
 use crate::movement::move_to::{
     Goal, MoveDefaults, MoveTo, MoveWait, Sprites, start_walk_shown, walk_or_give_up,
@@ -16,6 +16,8 @@ use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::world::step::Step;

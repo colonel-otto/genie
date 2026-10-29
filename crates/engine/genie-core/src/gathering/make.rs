@@ -16,6 +16,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
+use crate::orders::action_state::DONE;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -24,9 +25,6 @@ pub const MAKE: i16 = 21;
 
 /// `+0x18`: the state its update runs in (`set_state(6)`, `first_in_stack`'s).
 pub const MAKING: u8 = 6;
-
-/// `+0x18`: the state whose update reports the action done (`FUN_140a99e30` returns 1).
-pub const DONE: u8 = 1;
 
 /// The task's resource for which `set_state(6)` reads the farm food (`FUN_140a99d60`'s
 /// `task+0x20 == 0x10`): the farms' and the pastures' food kind.

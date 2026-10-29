@@ -72,9 +72,6 @@ const NONE: f32 = crate::math::image::attack::NONE;
 const RELOAD_MS: f32 = crate::math::image::attack::RELOAD_MS;
 /// The hit chance's scale (`0x7fffffff`, the low word of a 64-bit Object-stream draw).
 const DRAW_SCALE: i64 = 0x7fff_ffff;
-/// The states the slice models: 1 done, 2 the target died, 4 on the way, 6 waiting to swing, 7
-/// swinging, 13 failed.
-pub const DONE: u8 = 1;
 /// State 2: the target died.
 pub const KILLED: u8 = 2;
 /// State 4: on the way.
@@ -83,8 +80,6 @@ pub const MOVE: u8 = 4;
 pub const READY: u8 = 6;
 /// State 7: swinging.
 pub const SWING: u8 = 7;
-/// State 13 ("Failed"): the target went out of sight.
-pub const FAILED: u8 = 13;
 /// The waiting state 5 ("Goto2"), a `MoveTo` to where the target was seen.
 const GOTO_SEEN: u8 = 5;
 /// State 11: a human player's unit that reached where its target was seen without seeing it

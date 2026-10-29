@@ -5,6 +5,8 @@ use crate::objects::layers::Animated;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::world::Player;
 use crate::world::step::Step;

@@ -3,12 +3,13 @@
 
 use crate::GenieError;
 use crate::combat::attack::{
-    Attack, AttackReads, FAILED, Fight, Ground, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE,
-    NONE, READY, Readiness, SHORT_RANGE_GAP, face_target,
+    Attack, AttackReads, Fight, Ground, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE,
+    READY, Readiness, SHORT_RANGE_GAP, face_target,
 };
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::FAILED;
 
 impl Attack {
     /// `set_state(6)` (case 6): with a target or a point (`+0x38` not −1, `UCOMISS`: a NaN one

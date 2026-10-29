@@ -31,6 +31,8 @@ use crate::objects::object_list::ObjectList;
 use crate::objects::release::{Releaser, released};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{Unit, loses_actions};
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::ownership::artifact::Artifact;
 use crate::ownership::change::change_hands;
 use crate::test_ids::master_id;
@@ -3760,7 +3762,6 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
 /// modelled; without a hunt the part does nothing.
 #[test]
 fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
-    use crate::gathering::hunt::FAILED;
     let mut t = hunter_in(|h| {
         h.state = FAILED;
         h.attack = None;
@@ -4751,10 +4752,7 @@ fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
     t.players[1].objects[0].life.inside = Some(4242);
     assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
     let v = &t.players[1].objects[0];
-    assert_eq!(
-        v.actions.enter().map(|e| e.state),
-        Some(crate::garrison::FAILED)
-    );
+    assert_eq!(v.actions.enter().map(|e| e.state), Some(FAILED));
     assert_eq!(
         v.ai.as_ref().unwrap().notifies,
         [Notify::own(
@@ -4784,7 +4782,7 @@ fn the_unit_ai_s_enter_from_inside_tells_its_ai_as_the_side_returns() {
     );
     assert_eq!(
         seen.map(|(s, ai)| (s, ai.map(|ai| ai.notifies))),
-        Ok(((true, Some(crate::garrison::FAILED)), Some(vec![failed])))
+        Ok(((true, Some(FAILED)), Some(vec![failed])))
     );
 }
 
@@ -5053,7 +5051,7 @@ fn an_entered_enter_of_a_unit_let_out_goes_at_its_update() {
         [30.0, 88.0, 0.0],
         &crate::garrison::tests::enter_task(0.5, 3),
     );
-    e.state = crate::garrison::ENTERED;
+    e.state = DONE;
     t.players[1].objects[0].actions.set_enter(Some(e));
     t.tick(50);
     t.tick(50);
@@ -8665,7 +8663,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     hunter
         .actions
         .set_hunt(Some(crate::gathering::hunt::HuntAction {
-            state: crate::gathering::hunt::FAILED,
+            state: FAILED,
             target: -1,
             carry_to: 9149,
             ..crate::gathering::hunt::tests::hunting(-1)
@@ -10833,8 +10831,7 @@ fn forced(walk: bool) -> crate::unit_ai::AiMove {
 #[test]
 fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
     let mut u = mover_unit(123);
-    u.actions
-        .set_attack(Some(own_attack(9149, 9150, crate::combat::attack::DONE)));
+    u.actions.set_attack(Some(own_attack(9149, 9150, DONE)));
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![9149, 9150]));
     assert_eq!(u.actions.attack().copied(), None);
     let mt = u.actions.move_to().copied().expect("the AI's MoveTo");
@@ -11663,10 +11660,7 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
     let (unit, attacked, takes) = scout_attack(0.0, Some(9149));
     assert_eq!((attacked.attacks, takes), (true, vec![50]));
-    assert_eq!(
-        unit.actions.attack().map(|a| a.state),
-        Some(crate::combat::attack::FAILED)
-    );
+    assert_eq!(unit.actions.attack().map(|a| a.state), Some(FAILED));
     assert_eq!(unit.body.anim_speed(), Some(1.0));
 }
 
@@ -12032,10 +12026,7 @@ fn without_a_farm_to_make_the_farmer_idles() {
     t.reseed_after_walk(1, 0, true).unwrap();
     let p = &t.players[1];
     assert_eq!((p.objects.len(), p.resources[1]), (1, 59.0));
-    assert_eq!(
-        p.objects[0].actions.gather().map(|g| g.state),
-        Some(crate::gathering::gather::DONE)
-    );
+    assert_eq!(p.objects[0].actions.gather().map(|g| g.state), Some(DONE));
 }
 
 /// [`reseed_world`] with one farm queued, `setup` run on it, then the reseed itself
@@ -12678,7 +12669,7 @@ fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
         .actions
         .missile()
         .map(|a| (a.state, a.result));
-    assert_eq!(action, Some((crate::combat::missile::DONE, 1)));
+    assert_eq!(action, Some((DONE, 1)));
     for _ in 0..3 {
         t.tick(100);
     }
@@ -13258,7 +13249,7 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
 /// (state 11).
 #[test]
 fn the_gather_s_update_ends_asks_again_and_walks_back() {
-    use crate::gathering::gather::{DONE, SEARCH, WALK, WALK_BACK};
+    use crate::gathering::gather::{SEARCH, WALK, WALK_BACK};
     let set = |state, timer| {
         let mut t = foraging();
         let g = t.players[1].objects[0].actions.gather_mut().unwrap();
@@ -13702,14 +13693,8 @@ fn an_explore_walks_to_its_point_then_asks_for_the_next() {
     });
     assert_eq!((r, e.map(|e| e.state), heard), (Ok(()), Some(WAIT), vec![]));
     for (state, reason) in [
-        (
-            crate::movement::explore::DONE,
-            "a done Explore (the action list after it)",
-        ),
-        (
-            crate::movement::explore::FAILED,
-            "a failed Explore (notify 0x1f9, set_state 2)",
-        ),
+        (DONE, "a done Explore (the action list after it)"),
+        (FAILED, "a failed Explore (notify 0x1f9, set_state 2)"),
     ] {
         let (r, _, _) = explored(|e| e.state = state);
         assert_eq!(r.unwrap_err().reason(), reason);

@@ -15,6 +15,8 @@ use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::{ActionKind, OrderKind, QueuedOrder, UnitAi};
 use crate::world::step::Step;
 use crate::world::tests::in_update;

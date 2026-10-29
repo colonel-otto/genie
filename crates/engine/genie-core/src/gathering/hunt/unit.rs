@@ -10,6 +10,7 @@ use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::Search;
@@ -234,7 +235,7 @@ impl Unit {
                 "a hunt's Attack whose MoveTo starts arrived after its drop-off",
             ));
         }
-        if hunt.state == crate::gathering::hunt::FAILED {
+        if hunt.state == FAILED {
             return Err(GenieError::unsupported(
                 "a hunt failing on its target after its drop-off",
             ));
@@ -498,10 +499,7 @@ impl Unit {
     /// A hunt that failed at once after its retarget: the unit shows standing, and a unit with
     /// a sprite takes its master's standing sprite (none in the data file is not modelled).
     fn hunt_failed_sprite(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let failed = self
-            .actions
-            .hunt()
-            .is_some_and(|h| h.state == crate::gathering::hunt::FAILED);
+        let failed = self.actions.hunt().is_some_and(|h| h.state == FAILED);
         if !failed {
             return Ok(());
         }

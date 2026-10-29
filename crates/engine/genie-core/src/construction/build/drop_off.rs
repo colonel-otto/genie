@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, DONE, DROP, DROP_REACH, DROP_WAIT,
+    ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, DROP, DROP_REACH, DROP_WAIT,
     DROPPED_ORDERS, NO_TARGET_POINT,
 };
 use crate::movement::move_to::{
@@ -13,6 +13,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::world::others::OthersRef;

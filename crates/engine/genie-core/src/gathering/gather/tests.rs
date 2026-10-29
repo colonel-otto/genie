@@ -3,6 +3,7 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Mover};
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
 use crate::world::step::Step;
 use crate::world::{Player, World};
 

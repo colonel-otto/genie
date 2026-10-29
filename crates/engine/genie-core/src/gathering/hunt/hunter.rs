@@ -12,6 +12,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, second_target_checked};
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
@@ -96,9 +97,7 @@ impl Unit {
         own: &mut Option<Victim>,
         tree_lost: bool,
     ) -> Result<HeadCode, GenieError> {
-        use crate::gathering::hunt::{
-            DROP, FAILED, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH,
-        };
+        use crate::gathering::hunt::{DROP, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH};
         let (state, timer, target) = self
             .actions
             .hunt()

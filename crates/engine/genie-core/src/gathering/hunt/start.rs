@@ -4,8 +4,8 @@
 use crate::GenieError;
 use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::gathering::hunt::{
-    ARRIVED, ATTACK, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE, Lead,
-    OWN_LIVESTOCK_RANGE, Quarry, SEARCH, WALK_POINT, WALK_SEARCH, food,
+    ARRIVED, ATTACK, DROP, FARM_AT_WORK, HuntAction, HuntTask, IDLE, Lead, OWN_LIVESTOCK_RANGE,
+    Quarry, SEARCH, WALK_POINT, WALK_SEARCH, food,
 };
 use crate::movement::move_to::{Goal, MoveTo, MoveWait, walk_or_give_up};
 use crate::movement::{Me, Mover};
@@ -13,6 +13,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::FAILED;
 use crate::world::step::Step;
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).

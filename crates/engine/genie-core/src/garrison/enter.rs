@@ -4,13 +4,14 @@
 use crate::GenieError;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{
-    ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, UNPLACED, UNREACHED, WalkStart,
-    Walking, enter_view, ship_reaches,
+    ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, UNPLACED, UNREACHED, WalkStart, Walking,
+    enter_view, ship_reaches,
 };
 use crate::movement::move_to::{MoveDefaults, SpriteReads};
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::GARRISON;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;

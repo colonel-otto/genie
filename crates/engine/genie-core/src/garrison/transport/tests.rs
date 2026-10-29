@@ -1,5 +1,7 @@
 use super::*;
 use crate::movement::move_to::{MoveTo, MoveToAction};
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 
 /// A map of zones by column (the tile's x over 10) and terrain flags by a closure; the shore
 /// point the planner gives, recorded.

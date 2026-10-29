@@ -4,8 +4,8 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::{
-    DONE, FACE, FARM_WAIT, GatherAction, GatherReads, IDLE, MOVED, Next, REGATHERED, RESEED_WALK,
-    SEARCH, SEARCH_WAIT, STOP_FARMS, StopRate, WAIT_GAP, WAIT_WORKERS, WALK, WALK_BACK, WORK,
+    FACE, FARM_WAIT, GatherAction, GatherReads, IDLE, MOVED, Next, REGATHERED, RESEED_WALK, SEARCH,
+    SEARCH_WAIT, STOP_FARMS, StopRate, WAIT_GAP, WAIT_WORKERS, WALK, WALK_BACK, WORK,
     waits_for_a_farm,
 };
 use crate::gathering::hunt::walk_sprite;
@@ -16,6 +16,7 @@ use crate::movement::{Me, Mover, PathAsk};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::orders::action_state::DONE;
 use crate::world::step::Step;
 
 /// A gatherer without movement state, which the Gather's walks and turns need.

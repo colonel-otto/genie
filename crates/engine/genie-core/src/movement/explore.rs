@@ -14,6 +14,8 @@ use crate::movement::{Me, PathAsk};
 use crate::objects::masters::Master;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::{Unit, object_master};
+use crate::orders::action_state::DONE;
+use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::step::Step;
@@ -22,16 +24,12 @@ use genie_diff::Diff;
 /// The Explore action's type.
 pub const EXPLORE: i16 = 4;
 
-/// The states the slice models.
-pub const DONE: u8 = 1;
 /// State 2: stopped.
 pub const STOPPED: u8 = 2;
 /// State 3: waiting for a point.
 pub const WAIT: u8 = 3;
 /// State 11: walking to the point.
 pub const WALK: u8 = 11;
-/// State 13: failed.
-pub const FAILED: u8 = 13;
 
 /// A point of −1 is no point (`DAT_14330ec20`).
 const NO_POINT: f32 = crate::math::image::explore::NO_POINT;
