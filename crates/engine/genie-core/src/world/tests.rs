@@ -13181,6 +13181,45 @@ fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> E
     (r, v.actions.explore().copied(), heard)
 }
 
+/// The Explore's `MoveTo` shows its sprite as it starts (`0x140a87e30` gives `FUN_140aa0d30`
+/// the master's walking sprite, an Explore having no task; `0x140aa29e0`'s `set_state(4)` shows
+/// it before the motion step).
+#[test]
+fn an_explore_s_move_to_shows_the_master_s_walking_sprite_as_it_starts() {
+    let mut t = forage_world();
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    let walking = Graphic {
+        id: 31,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let _ = t.graphics.insert(31, walking);
+    let master = t.players[1].objects[0].life.master_id;
+    t.masters[1].get_mut(master).unwrap().move_sprite = 31;
+    let (explore, _) = crate::movement::explore::ExploreAction::new([40.5, 89.5, 0.0]);
+    t.players[1].objects[0].actions.set_explore(Some(explore));
+    let r = in_update(&mut t, (1, 0), 50, |unit, c| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            group: unit.group.id,
+            action_state: crate::movement::explore::WALK,
+        };
+        unit.explore_part(c, me)
+    });
+    assert_eq!(r, Ok(()));
+    let v = &t.players[1].objects[0];
+    assert_eq!(
+        v.actions.explore().map(|e| e.move_to),
+        Some(Some(MoveTo::Moving))
+    );
+    assert_eq!(v.sprite.map(|s| s.graphic.id), Some(31));
+}
+
 /// What [`explored`] gives: the part's result, the Explore after it and the notifies heard.
 type Explored = (
     Result<(), GenieError>,

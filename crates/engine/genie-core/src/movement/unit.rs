@@ -3,7 +3,8 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::move_to::{MoveTo, Shows};
+use crate::movement::explore::ExploreAction;
+use crate::movement::move_to::{MoveDefaults, MoveTo, Shows, Sprites};
 use crate::movement::{GroupSpeed, Me};
 use crate::objects::sprite::{sprite_id, standing};
 use crate::objects::teardown::HeadCode;
@@ -221,21 +222,39 @@ impl Unit {
                     });
                     // the motion step giving up: a human player's villager waits once, any
                     // other unit's MoveTo fails (LAB_140aa320c)
-                    let villager =
-                        c.w.masters
-                            .get(c.player)
-                            .and_then(|m| m.get(self.life.master_id))
-                            .is_some_and(|m| m.class == 4);
+                    let master = self
+                        .own_master
+                        .as_deref()
+                        .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id));
+                    let villager = master.is_some_and(|m| m.class == 4);
                     let waits = villager && !c.computer;
                     let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
+                    // the sprite its MoveTo's start shows (FUN_140aa0d30's default for none)
+                    let move_shown = match (explore.move_to, master) {
+                        (Some(MoveTo::Start), Some(m)) => {
+                            let defaults = MoveDefaults::of(m, self.abilities.look.as_ref());
+                            ExploreAction::move_shown(m, defaults)
+                        }
+                        _ => None,
+                    };
                     let goal = crate::movement::move_to::Goal::Point(explore.point);
+                    let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut self.body, me);
+                    let mut sprites = Sprites {
+                        sprite: &mut self.sprite,
+                        rng: beside.sprite_rng,
+                        graphics: beside.graphics,
+                    };
+                    let shown = match explore.move_to {
+                        Some(MoveTo::Start) => Some(sprites.shown(move_shown)?),
+                        _ => None,
+                    };
                     let code = crate::movement::move_to::sub_move_to_update(
                         (&mut explore.move_to, &mut explore.move_wait),
-                        &mut c.walk(&mut self.body, me),
+                        &mut walk,
                         goal,
                         (0.0, quiet),
                         (waits, stance),
-                        None,
+                        shown,
                     )?;
                     let walked = explore.move_to.is_some();
                     let owner = explore.after_walk(code)?;

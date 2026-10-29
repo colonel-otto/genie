@@ -9,7 +9,9 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::move_to::MoveTo;
+use crate::movement::move_to::{MoveDefaults, MoveTo};
+use crate::objects::masters::Master;
+use crate::objects::sprite::sprite_id;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -102,6 +104,14 @@ impl ExploreAction {
             }
             _ => Owner::Nothing,
         }
+    }
+
+    /// The sprite its `MoveTo` shows (`set_state(11)` gives `FUN_140aa0d30` its task's moving
+    /// sprite, `+0x40`, without one the master's walking sprite, `+0x748`; an Explore has no
+    /// task): the master's walking sprite, for none the constructor's default from `defaults`.
+    #[must_use]
+    pub const fn move_shown(master: &Master, defaults: MoveDefaults) -> Option<i16> {
+        defaults.to_point(sprite_id(master.move_sprite))
     }
 
     /// The point (slot 0x48, `0x140a881a0`): one on the map's quarter (both coordinates at least
@@ -492,6 +502,26 @@ impl Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The sprite its `MoveTo` shows: the master's walking sprite, for none `FUN_140aa0d30`'s
+    /// default.
+    #[test]
+    fn an_explore_s_move_to_shows_the_master_s_walking_sprite_else_the_default() {
+        let defaults = MoveDefaults {
+            point: Some(20),
+            object: Some(21),
+        };
+        let master = Master {
+            move_sprite: 7,
+            ..Master::default()
+        };
+        assert_eq!(ExploreAction::move_shown(&master, defaults), Some(7));
+        let walkless = Master {
+            move_sprite: -1,
+            ..master
+        };
+        assert_eq!(ExploreAction::move_shown(&walkless, defaults), Some(20));
+    }
 
     /// The scout map (`FUN_140f4a240`, `FUN_140f4d5e0`): 480 by 480 from tile (0, 0), each
     /// byte the fill; a set off the map is let be, a read off it is none.
