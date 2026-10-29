@@ -20,6 +20,10 @@ use crate::top_actions::gathering::{import_gather, import_hunt, import_make};
 /// A task slot's task of a master (the master, the slot).
 type TaskAt<'a> = &'a dyn Fn(i16, i16) -> Result<Task, GenieError>;
 
+/// What `saved_actions` finds an object without actions: a state the caller rules out.
+const NO_ACTIONS: GenieError =
+    GenieError::unreachable("saved_actions called for an object without actions");
+
 /// The top action of a saved object as the slice models it: the Artifact action (107), the
 /// Build action (101) with its `MoveTo`, a `MoveTo` of its own (type 1), a bird's Fly action (10)
 /// with its `MoveTo`, the Hunt (110) with its Attack or `MoveTo` (and in state 8 its second
@@ -39,10 +43,8 @@ pub(super) fn saved_actions(
     let mut entries = object
         .actions()
         .map(genie_save::generated::world::ActionList::entries)
-        .expect("saved_actions is called for an object with actions");
-    let (kind, action) = entries
-        .next()
-        .expect("saved_actions is called for an object with actions");
+        .ok_or(NO_ACTIONS)?;
+    let (kind, action) = entries.next().ok_or(NO_ACTIONS)?;
     if let Some((below, _)) = entries.next() {
         return Err(not_imported().with("below the head", below));
     }

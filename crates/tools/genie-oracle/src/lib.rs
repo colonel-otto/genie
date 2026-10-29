@@ -37,6 +37,14 @@
     // every error is `GenieError`, which names the part the slice does not model
     clippy::missing_errors_doc
 )]
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::unimplemented,
+    clippy::todo
+)]
 
 pub mod census;
 pub mod groups;

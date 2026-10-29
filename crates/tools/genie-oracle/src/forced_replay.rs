@@ -439,20 +439,31 @@ impl<T> Ahead<T> {
         }
     }
 
+    /// The parsed ones. A lock a panic poisoned still holds the parses that were put: the map is
+    /// only ever inserted into and taken from.
+    fn locked(&self) -> std::sync::MutexGuard<'_, std::collections::BTreeMap<usize, T>> {
+        self.parsed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// A task's parse of index `k`.
     pub(super) fn put(&self, k: usize, v: T) {
-        let _ = self.parsed.lock().expect("a parse panicked").insert(k, v);
+        let _ = self.locked().insert(k, v);
         self.ready.notify_all();
     }
 
     /// The run takes index `k`, waiting until it is parsed.
     pub(super) fn take(&self, k: usize) -> T {
-        let mut parsed = self.parsed.lock().expect("a parse panicked");
+        let mut parsed = self.locked();
         loop {
             if let Some(v) = parsed.remove(&k) {
                 return v;
             }
-            parsed = self.ready.wait(parsed).expect("a parse panicked");
+            parsed = self
+                .ready
+                .wait(parsed)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
         }
     }
 }

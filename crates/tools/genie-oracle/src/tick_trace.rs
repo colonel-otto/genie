@@ -38,6 +38,24 @@ pub struct TickTrace {
     lanes: Vec<Vec<[u32; 11]>>,
 }
 
+/// The little-endian word of `bytes` at `at`.
+fn word_at(bytes: &[u8], at: usize) -> Option<u32> {
+    let word = bytes.get(at..at.checked_add(4)?)?;
+    Some(u32::from_le_bytes([word[0], word[1], word[2], word[3]]))
+}
+
+/// The eleven words of a lane from `at`.
+fn lane_words(
+    word: &impl Fn(usize) -> Result<u32, TraceError>,
+    at: usize,
+) -> Result<[u32; 11], TraceError> {
+    let mut lane = [0; 11];
+    for (w, slot) in lane.iter_mut().enumerate() {
+        *slot = word(at + 4 * w)?;
+    }
+    Ok(lane)
+}
+
 impl TickTrace {
     /// A trace from its file's bytes: the magic, the tick and lane counts, then each tick's row
     /// of eleven words per lane.
@@ -45,34 +63,30 @@ impl TickTrace {
     /// # Errors
     ///
     /// [`TraceError`] when the bytes are not a trace, do not inflate or end early.
-    ///
-    /// # Panics
-    ///
-    /// Never: the header's length is checked before its words are read.
     pub fn decode(data: &[u8]) -> Result<Self, TraceError> {
-        if data.len() < 16 || &data[..8] != MAGIC {
+        if data.get(..8) != Some(MAGIC.as_slice()) {
             return Err(TraceError::NotATrace);
         }
-        let ticks = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
-        let lane_count = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;
+        let ticks = word_at(data, 8).ok_or(TraceError::NotATrace)? as usize;
+        let lane_count = word_at(data, 12).ok_or(TraceError::NotATrace)? as usize;
         let mut rows = Vec::new();
-        let _ = ZlibDecoder::new(&data[16..])
+        let _ = ZlibDecoder::new(data.get(16..).unwrap_or_default())
             .read_to_end(&mut rows)
             .map_err(TraceError::Inflate)?;
         let row = 4 * (1 + 11 * lane_count);
         if rows.len() < ticks * row {
             return Err(TraceError::Truncated);
         }
-        let word = |at: usize| u32::from_le_bytes(rows[at..at + 4].try_into().unwrap());
+        let word = |at: usize| word_at(&rows, at).ok_or(TraceError::Truncated);
         let mut times = Vec::with_capacity(ticks);
         let mut lanes = Vec::with_capacity(ticks);
         for t in 0..ticks {
             let base = t * row;
-            times.push(word(base));
+            times.push(word(base)?);
             lanes.push(
                 (0..lane_count)
-                    .map(|l| std::array::from_fn(|w| word(base + 4 + 4 * (11 * l + w))))
-                    .collect(),
+                    .map(|l| lane_words(&word, base + 4 + 4 * 11 * l))
+                    .collect::<Result<_, _>>()?,
             );
         }
         Ok(Self { times, lanes })

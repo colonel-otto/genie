@@ -29,17 +29,22 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
             }
             Some("shape") => {
                 let m = mesh.as_mut()?;
-                let v: Vec<i32> = words[2..6].iter().map(|w| w.parse().unwrap()).collect();
+                let v: Vec<i32> = words
+                    .get(2..6)?
+                    .iter()
+                    .map(|w| w.parse().ok())
+                    .collect::<Option<_>>()?;
                 m.shapes.push([v[0], v[1], v[2], v[3]]);
                 m.sides.push(Default::default());
             }
             Some("side") => {
                 let m = mesh.as_mut()?;
                 let side: usize = words.get(1)?.parse().ok()?;
-                let w: Vec<u32> = words[2..9]
+                let w: Vec<u32> = words
+                    .get(2..9)?
                     .iter()
-                    .map(|w| u32::from_str_radix(w, 16).unwrap())
-                    .collect();
+                    .map(|w| u32::from_str_radix(w, 16).ok())
+                    .collect::<Option<_>>()?;
                 m.sides.last_mut()?[side].push(Contact {
                     other: w[0],
                     side: w[1],
@@ -53,8 +58,11 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
                 let m = mesh.as_mut()?;
                 let x: u32 = words.get(1)?.parse().ok()?;
                 let y: u32 = words.get(2)?.parse().ok()?;
-                m.tiles[(y * m.width + x) as usize] =
-                    words[3..].iter().map(|w| w.parse().unwrap()).collect();
+                *m.tiles.get_mut((y * m.width + x) as usize)? = words
+                    .get(3..)?
+                    .iter()
+                    .map(|w| w.parse().ok())
+                    .collect::<Option<_>>()?;
             }
             _ => {}
         }

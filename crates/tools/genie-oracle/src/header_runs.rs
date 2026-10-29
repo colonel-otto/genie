@@ -96,11 +96,11 @@ pub fn simulate_word9(
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
     let all = frames(&chapter, usize::MAX)?;
-    let first = all
+    let (first, checkpoint) = all
         .iter()
-        .position(|f| f.checkpoint.is_some())
+        .enumerate()
+        .find_map(|(i, f)| f.checkpoint.as_ref().map(|c| (i, c)))
         .ok_or(Error::NoCheckpoint)?;
-    let checkpoint = all[first].checkpoint.as_ref().expect("found above");
     let group_command = all[..first].iter().enumerate().find_map(|(i, f)| {
         let packet = f.commands.iter().find(|p| GROUP_COMMANDS.contains(&p[0]))?;
         Some(GroupCommand {
