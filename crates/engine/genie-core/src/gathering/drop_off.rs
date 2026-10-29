@@ -125,7 +125,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
             return gather.walk_back(0.0, mover).map(|()| HeadCode::Keeps);
         }
-        if c.computer {
+        if c.w.players[c.player].computer {
             return Ok(HeadCode::Deletes);
         }
         let carry_to = gather.carry_to;
@@ -189,7 +189,11 @@ impl Unit {
         let (owner, resource) =
             self.found_resource(c, OthersRef::of(&c.w.players, c.player), found)?;
         let master = self.master(&c.w.masters, c.player)?;
-        let (computer, farm_stops, held) = (c.computer, c.farm_stops, self.life.amount);
+        let (computer, farm_stops, held) = (
+            c.w.players[c.player].computer,
+            c.w.settings.walkable_farms,
+            self.life.amount,
+        );
         let rate = crate::gathering::gather::StopRate {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
@@ -287,9 +291,9 @@ impl Unit {
             zones: &mut c.w.zones,
             pathing: &mut c.w.pathing,
             object: c.w.streams.get(Stream::Object),
-            world_time: c.world_time,
-            computer: c.computer,
-            construction_rate: c.construction_rate,
+            world_time: c.w.world_time,
+            computer: c.w.players[c.player].computer,
+            construction_rate: c.w.players[c.player].construction_rate,
             groups: &c.w.groups,
         };
         if let Some(site) = self.gather_drop_off_in(w, OthersRef::of(&c.w.players, c.player))? {

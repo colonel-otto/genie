@@ -6,6 +6,7 @@ use crate::gathering::closest_resource::herded;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::lifecycle::seconds;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
@@ -40,7 +41,7 @@ impl Unit {
         let task = hunt.task;
         if hunt.target_class == 10 {
             // a human player's hunt is done (set_state 2), a computer player's ends (1)
-            if c.computer {
+            if c.w.players[c.player].computer {
                 return Err(GenieError::unsupported(
                     "a computer player's hunt of class 10's search (set_state 1)",
                 ));
@@ -120,9 +121,9 @@ impl Unit {
                 zones: &mut c.w.zones,
                 pathing: &mut c.w.pathing,
                 object: c.w.streams.get(Stream::Object),
-                world_time: c.world_time,
-                computer: c.computer,
-                construction_rate: c.construction_rate,
+                world_time: c.w.world_time,
+                computer: c.w.players[c.player].computer,
+                construction_rate: c.w.players[c.player].construction_rate,
                 groups: &c.w.groups,
             };
             let (site, _) = self.drop_site(&mut w, others, -1, crate::gathering::hunt::SEARCH)?;
@@ -210,7 +211,7 @@ impl Unit {
             master,
             me_at,
             them,
-            c.world_time,
+            c.w.world_time,
         )?;
         let moving = hunt
             .task
@@ -344,10 +345,10 @@ impl Unit {
         let spatial: &Spatial = &c.w.spatial;
         let mut plan = Planning {
             pathing: &mut c.w.pathing,
-            now: c.world_time,
-            computer: c.computer,
+            now: c.w.world_time,
+            computer: c.w.players[c.player].computer,
             object: c.w.streams.get(Stream::Object),
-            construction_rate: c.construction_rate,
+            construction_rate: c.w.players[c.player].construction_rate,
             groups: &c.w.groups,
         };
         let master_id = self.life.master_id;
@@ -376,7 +377,7 @@ impl Unit {
         let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
-        ai.alert(result, c.dt_seconds);
+        ai.alert(result, seconds(c.dt));
         Ok(result.id)
     }
 
@@ -386,7 +387,7 @@ impl Unit {
     /// [`crate::gathering::hunt::HuntAction::search_walk`]); one without would wait
     /// (`set_state(2)`), not modelled.
     fn hunt_found_nothing(&mut self, c: &Context<'_>, kind: i8) -> Result<(), GenieError> {
-        if c.computer && kind != 0 {
+        if c.w.players[c.player].computer && kind != 0 {
             return Err(GenieError::unsupported(
                 "a computer player's hunt that found nothing after its drop-off (set_state 1)",
             ));
@@ -453,7 +454,7 @@ impl Unit {
             master,
             me_at,
             them,
-            c.world_time,
+            c.w.world_time,
         )?;
         let (sprites, moving) = self.actions.hunt().map_or(([-1; 4], -1), |h| {
             let moving = h
@@ -537,9 +538,9 @@ impl Unit {
             zones: &mut c.w.zones,
             pathing: &mut c.w.pathing,
             object: c.w.streams.get(Stream::Object),
-            world_time: c.world_time,
-            computer: c.computer,
-            construction_rate: c.construction_rate,
+            world_time: c.w.world_time,
+            computer: c.w.players[c.player].computer,
+            construction_rate: c.w.players[c.player].construction_rate,
             groups: &c.w.groups,
         };
         if let Some(site) = self.drop_off_in(w, OthersRef::of(&c.w.players, c.player))? {

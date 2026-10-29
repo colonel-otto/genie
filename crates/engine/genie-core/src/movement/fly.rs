@@ -312,7 +312,7 @@ impl Unit {
             self.new_position(at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
             // the position setter marks the move (`+0x824`, `+0x870`)
             if let Some(m) = self.body.mover_mut() {
-                m.mark_move(at, c.world_time);
+                m.mark_move(at, c.w.world_time);
             }
         }
         Ok(())

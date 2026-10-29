@@ -73,8 +73,12 @@ impl Unit {
         let drop_site = drop_site_master(c, reads.built) && has_kind;
         let farm_bonus = farm_bonus(&c.w.players[c.player].attributes);
         let (player, pace) = (c.player, c.pace());
-        let (attribute_204, mode_680, computer, now) =
-            (c.attribute_204, c.mode_680, c.computer, c.world_time);
+        let (attribute_204, mode_680, computer, now) = (
+            c.w.attribute_204(),
+            c.w.mode_680,
+            c.w.players[c.player].computer,
+            c.w.world_time,
+        );
         // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
         let defaults = self
             .master(&c.w.masters, c.player)
@@ -227,7 +231,7 @@ impl Unit {
                 .get(95)
                 .copied()
                 .unwrap_or(0.0),
-            civ: c.civ,
+            civ: c.w.players[c.player].civ,
         };
         Ok(state_of(site, others).map(|state| {
             let drop = DropOff {
@@ -484,10 +488,10 @@ fn build_site<'u>(
 fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
     built.is_some_and(|m| {
         DROP_SITE_MASTERS.contains(&m)
-            || c.w
-                .drop_sites
-                .iter()
-                .any(|d| d.building == m && (d.civs.is_empty() || d.civs.contains(&c.civ)))
+            || c.w.drop_sites.iter().any(|d| {
+                d.building == m
+                    && (d.civs.is_empty() || d.civs.contains(&c.w.players[c.player].civ))
+            })
     })
 }
 

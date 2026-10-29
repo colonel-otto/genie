@@ -54,16 +54,25 @@ fn rec(id: i32, x: f32, y: f32) -> VisibleResource {
 /// when it allows taking Gaia's units.
 #[test]
 fn the_first_other_player_that_sees_the_object_takes_it_over() {
-    let humans = [(false, false); 4];
-    assert_eq!(sight_taker(0b0111, 0, true, &humans), Some(1));
-    assert_eq!(sight_taker(0b0110, 1, true, &humans), Some(2));
-    assert_eq!(sight_taker(0b0001, 1, true, &humans), None);
-    assert_eq!(sight_taker(1 << 33 | 0b10, 1, true, &humans), None);
-    let ai = [(false, false), (true, false), (false, false), (true, true)];
-    assert_eq!(sight_taker(0b1110, 0, false, &ai), Some(2));
-    assert_eq!(sight_taker(0b1010, 0, false, &ai), Some(3));
-    assert_eq!(sight_taker(0b0010, 0, false, &ai), None);
-    assert_eq!(sight_taker(0b0010, 0, true, &ai), Some(1));
+    use crate::world::player::Player;
+    let players = |computers: [bool; 4]| {
+        computers.map(|computer| Player {
+            computer,
+            ..Player::default()
+        })
+    };
+    let humans = players([false; 4]);
+    let none = [false; 4];
+    assert_eq!(sight_taker(0b0111, 0, true, &humans, &none), Some(1));
+    assert_eq!(sight_taker(0b0110, 1, true, &humans, &none), Some(2));
+    assert_eq!(sight_taker(0b0001, 1, true, &humans, &none), None);
+    assert_eq!(sight_taker(1 << 33 | 0b10, 1, true, &humans, &none), None);
+    let ai = players([false, true, false, true]);
+    let allows = [false, false, false, true];
+    assert_eq!(sight_taker(0b1110, 0, false, &ai, &allows), Some(2));
+    assert_eq!(sight_taker(0b1010, 0, false, &ai, &allows), Some(3));
+    assert_eq!(sight_taker(0b0010, 0, false, &ai, &allows), None);
+    assert_eq!(sight_taker(0b0010, 0, true, &ai, &allows), Some(1));
 }
 
 /// The combat object's sight answers a changed mask only for an object others take over by

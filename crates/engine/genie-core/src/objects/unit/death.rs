@@ -49,7 +49,7 @@ impl Unit {
                 // FUN_1411dbb70 to state 3 from 2: the storage leaves (FUN_1411e63f0), the owner's
                 // watched list lets it go (FUN_141091310), the tiles unlink (FUN_140f65580), and
                 // a monastery's, wonder's or castle's count leaves, at least 0 left
-                let death = built_death(self, master, c.computer)?;
+                let death = built_death(self, master, c.w.players[c.player].computer)?;
                 c.w.players[c.player].add_attributes(death.adds)?;
                 c.w.unwatch(c.player, self.id);
                 if let (Some(v), Some(at)) = (c.w.spatial.sight.as_mut(), death.unlink) {
@@ -151,13 +151,13 @@ impl Unit {
             master: Some(master),
             annexed: false,
             attribute_204: false,
-            mode_680: c.mode_680,
+            mode_680: c.w.mode_680,
             farm_bonus: farm_bonus(&c.w.players[c.player].attributes),
             masters: c.w.masters.get(c.player),
-            computer: c.computer,
+            computer: c.w.players[c.player].computer,
             ai: self.ai.is_some(),
             main: self.annex_of.is_some(),
-            now: c.world_time,
+            now: c.w.world_time,
             rice: self.rice,
         };
         let part = completion.first_part(construction)?;
@@ -193,7 +193,7 @@ impl Unit {
             self.body.mover_mut(),
             &mut c.w.spatial,
             &mut c.w.pathing,
-            c.world_time,
+            c.w.world_time,
         )?;
         if started {
             construction.started = false;

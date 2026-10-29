@@ -97,7 +97,7 @@ impl Unit {
             master,
             me_at,
             them,
-            c.world_time,
+            c.w.world_time,
         )?;
         let hunt = self.actions.hunt_mut().expect("the caller's");
         let old = hunt.target;

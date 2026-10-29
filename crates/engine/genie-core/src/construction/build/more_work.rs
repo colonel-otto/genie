@@ -40,8 +40,12 @@ impl Unit {
         let at = *c.w.spatial.get(building).ok_or(GenieError::unsupported(
             "a builder's building without a place",
         ))?;
-        let entry =
-            crate::unit_ai::task_finder::drop_site(&c.w.drop_sites, built, master.class, c.civ);
+        let entry = crate::unit_ai::task_finder::drop_site(
+            &c.w.drop_sites,
+            built,
+            master.class,
+            c.w.players[c.player].civ,
+        );
         let los = site.line_of_sight;
         let held = if REACH_FLOOR <= los { los } else { REACH_LOW };
         let reach = if held <= REACH_CAP { held } else { REACH_CAP };

@@ -157,25 +157,6 @@ pub(crate) const CASTLES: i16 = 134;
 /// The foundation terrain a building's death covers with terrain 1 (`FUN_1411dbb70`: `0x1c`).
 pub(crate) const RESTORED_FOUNDATION: i16 = 28;
 
-/// What every object of a player reads of all players while that player's objects update
-/// ([`World::player_frame`]).
-pub(in crate::world) struct PlayerFrame {
-    /// Each player's attribute 97.
-    attribute_97: Vec<f32>,
-    /// Each player's game status (`+0x89`).
-    game_status: Vec<u8>,
-    /// Each player's computer flag.
-    computers: Vec<bool>,
-    /// Each player's `chance_to_dodge_missiles`.
-    dodge_chances: Vec<u8>,
-    /// Each player's `chance_for_archers_to_maintain_distance`.
-    keep_distance_chances: Vec<u8>,
-    /// Each player's computer flag and `mAllowCapturingGaiaUnits`.
-    sight_takers: Vec<(bool, bool)>,
-    /// Some player's attribute 204 is not 0.
-    attribute_204: bool,
-}
-
 /// What a built building's death leaves its owner's update to do after it
 /// ([`Unit::building_died`]): the count attribute it lowers, and its master with the master's
 /// technology.

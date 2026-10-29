@@ -73,7 +73,7 @@ impl Unit {
             .master(&c.w.masters, c.player)
             .is_ok_and(|m| m.class == 4);
         let (waits, stance) = (
-            villager && !c.computer,
+            villager && !c.w.players[c.player].computer,
             self.ai.as_ref().map_or(0, |ai| ai.stance),
         );
         // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
@@ -153,8 +153,8 @@ impl Unit {
             sprite_rng: c.w.streams.get(Stream::Sprite),
             drop_sites: &c.w.drop_sites,
             attributes: &c.w.players[c.player].attributes,
-            civ: c.civ,
-            sharing: c.sharing,
+            civ: c.w.players[c.player].civ,
+            sharing: c.w.players[c.player].sharing,
             player: c.player,
             attribute_adds: &mut adds,
             firepower: 0.0,
@@ -269,7 +269,7 @@ impl Unit {
             )?;
         }
         if step.cannot_unload {
-            crate::unit_ai::alert_owner(c.computer)?;
+            crate::unit_ai::alert_owner(c.w.players[c.player].computer)?;
         }
         c.transport_unload = step.unload;
         Ok(HeadCode::of(step.code))

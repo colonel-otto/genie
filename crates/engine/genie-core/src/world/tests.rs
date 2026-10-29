@@ -3572,9 +3572,8 @@ pub(crate) fn in_update<R>(
     dt: u32,
     f: impl FnOnce(&mut Unit, &mut context::Context<'_>) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
-    let frame = t.player_frame();
     let mut answer = None;
-    let _ = t.step_object((p, i), (dt, None, false), &frame, None, |u, c| {
+    let _ = t.step_object((p, i), (dt, None, false), None, |u, c| {
         answer = Some(f(u, c)?);
         Ok(crate::objects::unit::Step::Stay)
     })?;
@@ -7223,6 +7222,24 @@ fn owner_search_unit(s: &mut Spatial, id: i32, p: usize, x: f32) {
     );
 }
 
+/// Players of attribute 97 `attribute_97` and game status `status`, as an Artifact's owner
+/// search reads them.
+fn artifact_players(attribute_97: &[f32], status: &[u8]) -> Vec<Player> {
+    status
+        .iter()
+        .enumerate()
+        .map(|(q, &game_status)| {
+            let mut attributes = vec![0.0; 98];
+            attributes[97] = attribute_97.get(q).copied().unwrap_or(0.0);
+            Player {
+                attributes,
+                game_status,
+                ..Player::default()
+            }
+        })
+        .collect()
+}
+
 /// The Artifact action's owner search (`FUN_140aabc40`) passes over the units of a player that
 /// is out (`+0x89` not 0) and over such a player as a taker: 428265662's Gaia sheep 27530 in
 /// update 642 stays Gaia's next to the units of player 7, who resigned in update 428.
@@ -7232,13 +7249,28 @@ fn an_owner_search_passes_over_a_player_out_of_the_game() {
     let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
     unit(&mut s, 1, 1, 11.5);
     let none = [0.0; 3];
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(Some(1)));
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 2, 0]), Ok(None));
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
+        Ok(Some(1))
+    );
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 2, 0])),
+        Ok(None)
+    );
     // of two players, the nearest takes it: player 2 once player 1 is out
     unit(&mut s, 2, 2, 12.5);
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(Some(1)));
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 2, 0]), Ok(Some(2)));
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 2, 1]), Ok(None));
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
+        Ok(Some(1))
+    );
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 2, 0])),
+        Ok(Some(2))
+    );
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 2, 1])),
+        Ok(None)
+    );
 }
 
 /// The owner search's own owner and attribute 97 (`FUN_140aabc40`): a unit of the animal's own
@@ -7253,13 +7285,16 @@ fn an_owner_search_keeps_the_owner_s_animal_unless_attribute_97_takes_it() {
     let mut s = hands_world(27530, 1, LIVESTOCK, 594, 2.0);
     unit(&mut s, 1, 1, 11.5);
     unit(&mut s, 2, 2, 11.5);
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(None));
     assert_eq!(
-        s.artifact_owner(27530, &[0.0, 0.0, 1.0], &[0, 0, 0]),
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
+        Ok(None)
+    );
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&[0.0, 0.0, 1.0], &[0, 0, 0])),
         Ok(Some(2))
     );
     assert_eq!(
-        s.artifact_owner(27530, &[0.0, 1.0, 1.0], &[0, 0, 0]),
+        s.artifact_owner(27530, &artifact_players(&[0.0, 1.0, 1.0], &[0, 0, 0])),
         Ok(None)
     );
     let mut s = hands_world(27530, 1, LIVESTOCK, 594, 2.0);
@@ -7270,11 +7305,17 @@ fn an_owner_search_keeps_the_owner_s_animal_unless_attribute_97_takes_it() {
         ..*s.get(3).unwrap()
     };
     s.insert(3, building);
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(None));
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
+        Ok(None)
+    );
     let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
     unit(&mut s, 1, 1, 11.5);
     s.go_inside(27530, [10.5, 10.5, 0.0]);
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(Some(1)));
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
+        Ok(Some(1))
+    );
 }
 
 /// The owner search's unmodelled parts: an animal the world does not hold, a unit of a player
@@ -7282,8 +7323,11 @@ fn an_owner_search_keeps_the_owner_s_animal_unless_attribute_97_takes_it() {
 #[test]
 fn an_owner_search_s_unmodelled_parts_fail() {
     let none = [0.0; 3];
-    let reason =
-        |s: &Spatial, me, status: &[u8]| s.artifact_owner(me, &none, status).unwrap_err().reason();
+    let reason = |s: &Spatial, me, status: &[u8]| {
+        s.artifact_owner(me, &artifact_players(&none, status))
+            .unwrap_err()
+            .reason()
+    };
     let s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
     assert_eq!(
         reason(&s, 99, &[0, 0, 0]),
@@ -7292,7 +7336,7 @@ fn an_owner_search_s_unmodelled_parts_fail() {
     let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
     owner_search_unit(&mut s, 1, 3, 11.5);
     assert_eq!(
-        reason(&s, 27530, &[0, 0, 0, 0]),
+        reason(&s, 27530, &[0, 0, 0]),
         "an owner search's unit of a player beyond the list"
     );
     let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
@@ -7334,9 +7378,15 @@ fn an_owner_search_counts_only_the_units_on_the_tiles_lists() {
     }
     owner_search_unit(&mut s, 1, 1, 11.5);
     let none = [0.0; 3];
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(None));
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
+        Ok(None)
+    );
     owner_search_unit(&mut s, 2, 1, 12.5);
-    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(Some(1)));
+    assert_eq!(
+        s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
+        Ok(Some(1))
+    );
 }
 
 /// `FUN_14120f800` for a new owner whose table lacks the master writes the new owner into
@@ -9064,9 +9114,8 @@ fn a_lent_object_is_the_world_s_for_the_call() {
 #[test]
 fn a_kill_in_the_step_reports_the_object_s_new_slot() {
     let (mut t, mut v) = killed_sheep(true);
-    let frame = t.player_frame();
     let stepped = t
-        .step_object((1, 1), (0, None, false), &frame, None, |_, c| {
+        .step_object((1, 1), (0, None, false), None, |_, c| {
             if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
                 crate::combat::victims::file_kill(c, k)?;
             }
@@ -9122,9 +9171,8 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     let mut t = house_builder();
     let before = ids(&t);
     let last = before.len() - 1;
-    let frame = t.player_frame();
     let stepped = t
-        .step_object((1, last), (50, None, false), &frame, None, |_, c| {
+        .step_object((1, last), (50, None, false), None, |_, c| {
             let _ = c.w.players[1].objects.swap_remove(0);
             Ok(Step::Stay)
         })
@@ -9132,9 +9180,8 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     assert_eq!(stepped.slot, 0);
     assert_eq!(ids(&t)[0], before[last]);
     let mut t = house_builder();
-    let frame = t.player_frame();
     let failed = t
-        .step_object((1, 0), (50, None, false), &frame, None, |_, c| {
+        .step_object((1, 0), (50, None, false), None, |_, c| {
             c.w.players[1].objects.truncate(0);
             Ok(Step::Stay)
         })
@@ -14604,8 +14651,7 @@ fn finished_with(
     (p, i): (usize, usize),
     step: impl FnOnce(&mut context::Context<'_>) -> Result<crate::objects::unit::Step, GenieError>,
 ) -> Result<crate::objects::unit::Step, GenieError> {
-    let frame = t.player_frame();
-    t.step_object((p, i), (50, None, false), &frame, None, |_, c| step(c))
+    t.step_object((p, i), (50, None, false), None, |_, c| step(c))
         .map(|s| s.step)
 }
 

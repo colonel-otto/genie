@@ -161,9 +161,9 @@ impl OwnerView {
             return Self {
                 player: c.player,
                 new_owner: None,
-                civ: c.civ,
-                construction_rate: c.construction_rate,
-                ai_settings: c.ai_settings,
+                civ: c.w.players[c.player].civ,
+                construction_rate: c.w.players[c.player].construction_rate,
+                ai_settings: c.w.players[c.player].ai_settings,
             };
         };
         Self {

@@ -31,7 +31,7 @@ impl Unit {
         own: &mut Option<Victim>,
         tree_lost: bool,
     ) -> Result<(), GenieError> {
-        let computer = c.computer;
+        let computer = c.w.players[c.player].computer;
         let master = object_master(
             self.own_master.as_deref(),
             (self.id, self.life.master_id),
@@ -74,7 +74,7 @@ impl Unit {
             ai_class: self.ai.as_ref().map(|ai| ai.target_type),
             sprites,
             tree_searched: tree_lost,
-            predator_hunts_end: c.predator_hunts_end,
+            predator_hunts_end: c.w.settings.predator_hunts_end(),
             searches: false,
             leads: None,
             attack_failed: false,
@@ -87,7 +87,7 @@ impl Unit {
             .as_ref()
             .is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1);
         let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
-        let world_time = c.world_time;
+        let world_time = c.w.world_time;
         let standing = c.w.graphics.get(&master.standing_sprite).copied();
         let volleys =
             c.w.masters
@@ -224,7 +224,7 @@ impl Unit {
             master,
             me_at,
             them,
-            c.world_time,
+            c.w.world_time,
         )?;
         let moving = action
             .task
@@ -240,7 +240,7 @@ impl Unit {
                 (action.drop_site, d)
             })
         } else {
-            if c.computer {
+            if c.w.players[c.player].computer {
                 return Err(GenieError::unsupported(
                     "a computer player's hunt of its livestock (its drop-site search)",
                 ));

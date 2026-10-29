@@ -10,6 +10,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::lifecycle::death_parts::farm_bonus;
+use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Master;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::object_master;
@@ -75,7 +76,7 @@ impl Unit {
             if gate.close_timer <= 0.0 {
                 gate.close_timer = GATE_CLOSE_DELAY;
             } else {
-                gate.close_timer -= c.dt_seconds;
+                gate.close_timer -= seconds(c.dt);
                 if gate.close_timer <= 0.0 {
                     gate.close_timer = 0.0;
                     return self.toggle_own_gate(c, height <= 0.0);
@@ -160,7 +161,7 @@ impl Unit {
             master: m.id,
             class: m.class,
             terrain_bonus: m.terrain_bonus,
-            mode_680: c.mode_680,
+            mode_680: c.w.mode_680,
         };
         c.w.spatial
             .terrain
@@ -222,14 +223,14 @@ impl Unit {
             completion: Completion {
                 master,
                 annexed,
-                attribute_204: c.attribute_204,
-                mode_680: c.mode_680,
+                attribute_204: c.w.attribute_204(),
+                mode_680: c.w.mode_680,
                 farm_bonus: farm_bonus(&c.w.players[c.player].attributes),
                 masters: c.w.masters.get(c.player),
-                computer: c.computer,
+                computer: c.w.players[c.player].computer,
                 ai: self.ai.is_some(),
                 main: self.annex_of.is_some(),
-                now: c.world_time,
+                now: c.w.world_time,
                 rice: self.rice,
             },
             chain: crate::construction::build::WorkChain::default(),
@@ -305,7 +306,7 @@ impl Unit {
                 "a building whose master attribute 255 names (FUN_1411c39b0)",
             ));
         }
-        let seconds = c.world_time.wrapping_sub(self.garrison_time) / 1000;
+        let seconds = c.w.world_time.wrapping_sub(self.garrison_time) / 1000;
         if seconds == 0 {
             return Ok(());
         }
@@ -440,7 +441,7 @@ impl Unit {
             &c.w.players[c.player].attributes,
             c.player,
             terrain,
-            c.mode_680,
+            c.w.mode_680,
         );
         let mut targets: Vec<&mut Victim> = c.blasted.iter_mut().collect();
         let _ = crate::combat::damage::blast(

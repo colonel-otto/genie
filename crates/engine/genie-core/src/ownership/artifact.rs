@@ -508,11 +508,9 @@ impl Unit {
                 .map(|s| s.capture);
         let searches = !(self.combat && capture == Some(0));
         let spatial: &Spatial = &c.w.spatial;
-        let (attribute_97, game_status) = (c.attribute_97, c.game_status);
+        let players = &c.w.players;
         let id = self.id;
-        let new = artifact.step(dt, searches, &mut || {
-            spatial.artifact_owner(id, attribute_97, game_status)
-        })?;
+        let new = artifact.step(dt, searches, &mut || spatial.artifact_owner(id, players))?;
         if let Some(Handover::Taken { gone, .. }) = new {
             if let Some(t) = gone.released {
                 crate::world::lets::release(c, t, by)?;

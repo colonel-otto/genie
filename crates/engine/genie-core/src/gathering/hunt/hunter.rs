@@ -7,6 +7,7 @@ use crate::combat::damage::Victim;
 use crate::combat::victims::readable;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
+use crate::objects::lifecycle::seconds;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, hunt_walk_sprite, second_target_checked};
@@ -127,7 +128,7 @@ impl Unit {
     /// again ([`Unit::hunt_drop_off`]).
     pub(crate) fn hunt_drop_wait(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
-        hunt.timer += c.dt_seconds;
+        hunt.timer += seconds(c.dt);
         if 0.0 <= hunt.timer {
             hunt.timer = 0.0;
             let site = std::mem::replace(&mut hunt.carry_to, -1);
@@ -170,7 +171,7 @@ impl Unit {
                         .get(95)
                         .copied()
                         .unwrap_or(0.0),
-                    civ: c.civ,
+                    civ: c.w.players[c.player].civ,
                 };
                 Some(crate::gathering::hunt::DropOff {
                     takes: crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, s.master, &actor),
@@ -187,7 +188,7 @@ impl Unit {
         let attributes = c.w.players[c.player].attributes.len();
         let shows = hunt_walk_sprite(hunt, &c.w.graphics, &self.life);
         let who = crate::gathering::hunt::PointWalker {
-            computer: c.computer,
+            computer: c.w.players[c.player].computer,
             villager: master.class == 4,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
@@ -263,7 +264,7 @@ impl Unit {
             c.w.masters.get(c.player),
         )?;
         let who = crate::gathering::hunt::PointWalker {
-            computer: c.computer,
+            computer: c.w.players[c.player].computer,
             villager: master.class == 4,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
@@ -291,7 +292,7 @@ impl Unit {
     pub(crate) fn hunt_search_wait(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.timer < 0.0 {
-            hunt.timer += c.dt_seconds;
+            hunt.timer += seconds(c.dt);
             if 0.0 <= hunt.timer {
                 hunt.timer = SEARCH_AGAIN;
                 self.hunt_search_notify(c)?;
@@ -316,6 +317,6 @@ impl Unit {
     pub(crate) fn hunt_wait_walk(&mut self, c: &Context<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-        hunt.wait_then_walk(c.dt_seconds, mover)
+        hunt.wait_then_walk(seconds(c.dt), mover)
     }
 }

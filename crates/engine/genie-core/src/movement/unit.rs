@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::movement::explore::ExploreAction;
 use crate::movement::move_to::{MoveDefaults, MoveTo, Shows, Sprites};
 use crate::movement::{GroupSpeed, Me};
+use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::{sprite_id, standing};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -45,10 +46,10 @@ impl Unit {
             let here = mover.position();
             let at = mover.step_velocity(
                 here,
-                c.dt_seconds,
+                seconds(c.dt),
                 c.w.spatial.map,
                 c.w.spatial.terrain.as_ref(),
-                (c.world_time, group),
+                (c.w.world_time, group),
             );
             if at != here {
                 mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
@@ -117,7 +118,7 @@ impl Unit {
                 .is_ok_and(|m| m.class == 4);
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             self.own_move_gave_up(
-                villager && !c.computer,
+                villager && !c.w.players[c.player].computer,
                 stance,
                 (
                     c.w.masters.get(c.player),
@@ -231,7 +232,7 @@ impl Unit {
                     )
                     .ok();
                     let villager = master.is_some_and(|m| m.class == 4);
-                    let waits = villager && !c.computer;
+                    let waits = villager && !c.w.players[c.player].computer;
                     let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
                     // the sprite its MoveTo's start shows (FUN_140aa0d30's default for none)
                     let move_shown = match (explore.move_to, master) {

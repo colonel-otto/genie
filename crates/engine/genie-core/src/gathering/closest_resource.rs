@@ -269,10 +269,10 @@ impl Unit {
             masters: c.w.masters.get(c.player),
             plan: Planning {
                 pathing: &mut c.w.pathing,
-                now: c.world_time,
-                computer: c.computer,
+                now: c.w.world_time,
+                computer: c.w.players[c.player].computer,
                 object: c.w.streams.get(Stream::Object),
-                construction_rate: c.construction_rate,
+                construction_rate: c.w.players[c.player].construction_rate,
                 groups: &c.w.groups,
             },
         };

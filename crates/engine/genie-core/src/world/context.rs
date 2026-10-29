@@ -6,6 +6,7 @@ use crate::combat::victims::KillLeft;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
+use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
@@ -23,17 +24,14 @@ pub(crate) struct Context<'a> {
     pub(crate) w: &'a mut World,
     /// The updating object's id.
     pub(crate) me: i32,
-    /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
+    /// The tick's dt in milliseconds (`world+0x164`; in seconds, [`seconds`]).
+    ///
+    /// [`seconds`]: crate::objects::lifecycle::seconds
     pub(crate) dt: u32,
-    pub(crate) dt_seconds: f32,
     /// The ticks so far, this one included.
     pub(crate) tick: u32,
     /// The owner's accumulated time when it has the turn: the full unit-AI update runs.
     pub(crate) turn: Option<u32>,
-    pub(crate) world_time: u32,
-    pub(crate) computer: bool,
-    /// The owner's construction rate (attribute 195).
-    pub(crate) construction_rate: f32,
     /// The unit AI's current target as its target block reads it ([`World::seen`]).
     pub(crate) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
     /// The objects about the target of a unit with an area effect (or about the unit, for its
@@ -66,45 +64,9 @@ pub(crate) struct Context<'a> {
     /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
     /// building: the caller runs the group's removeUnit ([`World::remove_unit`]).
     pub(crate) left_group: Option<(i32, i32)>,
-    /// The game's setting at `+0x680` is 1 ([`World::mode_680`]).
-    pub(crate) mode_1: bool,
-    /// The owner's id and civ (`player+0x738`).
+    /// The owner's id: the updating object's player, whose fields the update reads through
+    /// the world (`w.players[player]`).
     pub(crate) player: usize,
-    pub(crate) civ: u8,
-    /// The owner's AI settings (`+0x608`..), which its unit AIs read.
-    pub(crate) ai_settings: crate::world::player::AiSettings,
-    /// The player shares its gathered resources with its allies (`+0x1426`).
-    pub(crate) sharing: bool,
-    /// The game's farm setting ([`crate::world::settings::Settings::walkable_farms`]).
-    pub(crate) farm_stops: bool,
-    /// The game's setting [`crate::world::settings::Settings::predator_hunts_end`].
-    pub(crate) predator_hunts_end: bool,
-    /// Every player's attribute 97 (by player), for a capture.
-    pub(crate) attribute_97: &'a [f32],
-    /// Every player's game status (`+0x89`), which the Artifact's owner search reads.
-    pub(crate) game_status: &'a [u8],
-    /// The player whose turn this tick is (`world+0x188`) and every player's computer flag.
-    pub(crate) player_turn: usize,
-    pub(crate) computers: &'a [bool],
-    /// Each player's `chance_to_dodge_missiles` ([`crate::world::Player::dodge_chance`]).
-    pub(crate) dodge_chances: &'a [u8],
-    /// Each player's `chance_for_archers_to_maintain_distance`
-    /// ([`crate::world::Player::keep_distance_chance`]).
-    pub(crate) keep_distance_chances: &'a [u8],
-    /// Some player's attribute 204 is not 0, which a building's completion reads.
-    pub(crate) attribute_204: bool,
-    /// [`World::mode_680`].
-    pub(crate) mode_680: i32,
-    /// The game's carry rule ([`crate::world::settings::Settings::carry_rule`]), which a hunt's start
-    /// reads.
-    pub(crate) carry_rule: bool,
-    /// The game mode is one of `FUN_141302540`'s ([`scenario_mode`]).
-    pub(crate) scenario: bool,
-    /// The game mode's descriptor flag `+0x9c` ([`standard_mode`]) and each player's computer
-    /// flag and `mAllowCapturingGaiaUnits`, which a takeover by sight reads
-    /// ([`crate::vision::visibility::sight_taker`]).
-    pub(crate) standard: bool,
-    pub(crate) sight_takers: &'a [(bool, bool)],
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`World::order_work`]).
     pub(crate) work_order: Option<crate::orders::Work>,
@@ -306,7 +268,10 @@ impl Context<'_> {
     pub(crate) fn give_load(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
         let mut adds = Vec::new();
         crate::gathering::gather::unit::give_load(
-            (&self.w.spatial.relations, self.sharing),
+            (
+                &self.w.spatial.relations,
+                self.w.players[self.player].sharing,
+            ),
             self.player,
             &mut adds,
             kind,
@@ -316,12 +281,12 @@ impl Context<'_> {
     }
 
     /// What a walk takes of the update beside the world ([`World::walk_beside`]).
-    pub(crate) const fn pace(&self) -> Pace {
+    pub(crate) fn pace(&self) -> Pace {
         Pace {
-            dt: self.dt_seconds,
-            now: self.world_time,
-            computer: self.computer,
-            construction_rate: self.construction_rate,
+            dt: seconds(self.dt),
+            now: self.w.world_time,
+            computer: self.w.players[self.player].computer,
+            construction_rate: self.w.players[self.player].construction_rate,
         }
     }
 }
@@ -338,14 +303,14 @@ impl Context<'_> {
             Walk {
                 body,
                 me,
-                dt: self.dt_seconds,
+                dt: seconds(self.dt),
                 world: &mut self.w.spatial,
                 plan: Some(Planning {
                     pathing: &mut self.w.pathing,
-                    now: self.world_time,
-                    computer: self.computer,
+                    now: self.w.world_time,
+                    computer: self.w.players[self.player].computer,
                     object,
-                    construction_rate: self.construction_rate,
+                    construction_rate: self.w.players[self.player].construction_rate,
                     groups: &self.w.groups,
                 }),
             },
@@ -367,14 +332,14 @@ impl Context<'_> {
             Walk {
                 body,
                 me,
-                dt: self.dt_seconds,
+                dt: seconds(self.dt),
                 world: &mut self.w.spatial,
                 plan: Some(Planning {
                     pathing: &mut self.w.pathing,
-                    now: self.world_time,
-                    computer: self.computer,
+                    now: self.w.world_time,
+                    computer: self.w.players[self.player].computer,
                     object,
-                    construction_rate: self.construction_rate,
+                    construction_rate: self.w.players[self.player].construction_rate,
                     groups: &self.w.groups,
                 }),
             },
@@ -395,14 +360,14 @@ impl Context<'_> {
             Walk {
                 body,
                 me,
-                dt: self.dt_seconds,
+                dt: seconds(self.dt),
                 world: &mut self.w.spatial,
                 plan: Some(Planning {
                     pathing: &mut self.w.pathing,
-                    now: self.world_time,
-                    computer: self.computer,
+                    now: self.w.world_time,
+                    computer: self.w.players[self.player].computer,
                     object,
-                    construction_rate: self.construction_rate,
+                    construction_rate: self.w.players[self.player].construction_rate,
                     groups: &self.w.groups,
                 }),
             },
@@ -411,7 +376,7 @@ impl Context<'_> {
     }
 
     /// What an object's walking action needs from the tick.
-    pub(crate) const fn walk<'b>(
+    pub(crate) fn walk<'b>(
         &'b mut self,
         body: &'b mut crate::objects::layers::Body,
         me: Me,
@@ -419,14 +384,14 @@ impl Context<'_> {
         Walk {
             body,
             me,
-            dt: self.dt_seconds,
+            dt: seconds(self.dt),
             world: &mut self.w.spatial,
             plan: Some(Planning {
                 pathing: &mut self.w.pathing,
-                now: self.world_time,
-                computer: self.computer,
+                now: self.w.world_time,
+                computer: self.w.players[self.player].computer,
                 object: self.w.streams.get(Stream::Object),
-                construction_rate: self.construction_rate,
+                construction_rate: self.w.players[self.player].construction_rate,
                 groups: &self.w.groups,
             }),
         }

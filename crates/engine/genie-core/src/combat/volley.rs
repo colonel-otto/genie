@@ -159,7 +159,7 @@ impl Unit {
                 self.volley_missile(c, &aimed, scatter)?;
             }
         }
-        if (extra != 0 || missile) && c.computers.get(aimed.player).copied().unwrap_or(false) {
+        if (extra != 0 || missile) && c.w.players.get(aimed.player).is_some_and(|q| q.computer) {
             return Err(GenieError::unsupported(
                 "a hit on a computer player's object (its notify 0x214)",
             ));
@@ -213,7 +213,7 @@ impl Unit {
         // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
         // spare friends
         let spares_friends = !(1.0 < weapon_range && blast_level & 4 == 0);
-        if !spares_friends && c.computers.get(aimed.player).copied().unwrap_or(false) {
+        if !spares_friends && c.w.players.get(aimed.player).is_some_and(|q| q.computer) {
             return Err(GenieError::unsupported(
                 "a missile fired at a computer player's object (its notify 0x20f)",
             ));
@@ -371,7 +371,7 @@ impl Unit {
             waiting: 0,
             wait_delays: 0,
             attack_moving: false,
-            last_move: c.world_time,
+            last_move: c.w.world_time,
             moved_at: [0.0; 3],
             substitute_count: 0,
             ignore_units: Vec::new(),
@@ -396,7 +396,7 @@ impl Unit {
             position[2] =
                 crate::combat::missile::grounded(position[2], ground, false, stats.fly_mode);
         }
-        mover.mark_move(position, c.world_time);
+        mover.mark_move(position, c.w.world_time);
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         let placed = Placed {
             position,

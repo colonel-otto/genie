@@ -5,6 +5,7 @@ use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
+use crate::objects::lifecycle::seconds;
 use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::unit_ai::ACTION_EXECUTED;
@@ -109,7 +110,7 @@ impl Unit {
                 ));
             }
         }
-        let (step, flying) = action.fly(c.dt_seconds, missile.max_range, &stats)?;
+        let (step, flying) = action.fly(seconds(c.dt), missile.max_range, &stats)?;
         missile.step = step;
         missile.flying = flying;
         let old = self.position();
@@ -132,7 +133,7 @@ impl Unit {
                 ))?
                 .ground(at[0], at[1])?;
         at[2] = crate::combat::missile::grounded(at[2], ground, flying, stats.fly_mode);
-        mover.mark_move(at, c.world_time);
+        mover.mark_move(at, c.w.world_time);
         mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
         if matches!(stats.projectile_type, 0..=2) {
             let fired = Fired {
@@ -307,7 +308,7 @@ impl Unit {
             return self.own_strike(action, fired.by, c);
         }
         let mut victim = victim(c, action.target);
-        let (p, mode_680) = (c.player, c.mode_680);
+        let (p, mode_680) = (c.player, c.w.mode_680);
         let World {
             players,
             masters,
@@ -388,7 +389,7 @@ impl Unit {
             &c.w.players[c.player].attributes,
             c.player,
             terrain,
-            c.mode_680,
+            c.w.mode_680,
         );
         // the missile's own part is out of the unit while it flies
         own.source.fired_from = fired_from;

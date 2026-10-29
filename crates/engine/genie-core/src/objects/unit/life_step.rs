@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
+use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Step, Unit};
 use crate::world::context::Context;
 
@@ -28,7 +29,7 @@ impl Unit {
         let leaves =
             if self
                 .life
-                .update(c.dt_seconds, c.w.streams.get(Stream::Object), animating)?
+                .update(seconds(c.dt), c.w.streams.get(Stream::Object), animating)?
             {
                 Step::Leave
             } else {

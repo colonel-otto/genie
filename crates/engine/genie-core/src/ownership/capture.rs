@@ -173,7 +173,7 @@ impl Unit {
             (c.player, new),
             &c.w.masters,
             &mut c.w.spatial,
-            c.world_time,
+            c.w.world_time,
         )
     }
 }

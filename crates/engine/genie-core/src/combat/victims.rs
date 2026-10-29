@@ -183,7 +183,7 @@ pub(crate) fn victim(c: &Context<'_>, id: i32) -> Option<Victim> {
         (p, master, attributes),
         (c.player, &sides),
         &c.w.spatial,
-        c.mode_680,
+        c.w.mode_680,
     ))
 }
 

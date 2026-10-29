@@ -5,6 +5,7 @@ use crate::combat::victims::{readable, victim, write_back};
 use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
+use crate::objects::lifecycle::seconds;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
@@ -40,7 +41,11 @@ impl Unit {
             let at = [self.position()[0], self.position()[1]];
             let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
             let found = crate::orders::nearest_table_site(
-                (&c.w.drop_sites, c.civ, &c.w.players[c.player].tracker),
+                (
+                    &c.w.drop_sites,
+                    c.w.players[c.player].civ,
+                    &c.w.players[c.player].tracker,
+                ),
                 (at, self.life.attribute_type, own.class),
                 look,
             );
@@ -73,7 +78,7 @@ impl Unit {
                                     .get(95)
                                     .copied()
                                     .unwrap_or(0.0),
-                                civ: c.civ,
+                                civ: c.w.players[c.player].civ,
                             };
                             let dip = SideWorld {
                                 player,
@@ -204,10 +209,10 @@ impl Unit {
             },
             class: master.class,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
-            world_time: c.world_time,
-            farm_stops: c.farm_stops,
+            world_time: c.w.world_time,
+            farm_stops: c.w.settings.walkable_farms,
             player: c.player,
-            computer: c.computer,
+            computer: c.w.players[c.player].computer,
             stop_productivity: crate::gathering::gather::productivity_of(
                 task.productivity,
                 &c.w.players[c.player].attributes,
@@ -295,7 +300,7 @@ impl Unit {
                 .get(95)
                 .copied()
                 .unwrap_or(0.0),
-            civ: c.civ,
+            civ: c.w.players[c.player].civ,
         };
         Ok(Some(crate::gathering::hunt::DropOff {
             takes: crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, s.master, &actor),
@@ -349,7 +354,7 @@ impl Unit {
         view: GatherView,
         by: Releaser,
     ) -> Result<HeadCode, GenieError> {
-        let dt = c.dt_seconds;
+        let dt = seconds(c.dt);
         let gather = self.actions.gather_mut().expect("the caller's gather");
         let mut victim = victim(c, gather.target);
         let old = (gather.target, gather.carry_to);
@@ -445,9 +450,9 @@ impl Unit {
                 zones: &mut c.w.zones,
                 pathing: &mut c.w.pathing,
                 object: c.w.streams.get(Stream::Object),
-                world_time: c.world_time,
-                computer: c.computer,
-                construction_rate: c.construction_rate,
+                world_time: c.w.world_time,
+                computer: c.w.players[c.player].computer,
+                construction_rate: c.w.players[c.player].construction_rate,
                 groups: &c.w.groups,
             };
             self.drop_site_from(&mut w, others, state, false)?

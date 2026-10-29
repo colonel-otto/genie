@@ -7,7 +7,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Step, Unit};
 use crate::ownership::capture::Captured;
 use crate::unit_ai::unit::AiResume;
-use crate::world::{PlayerFrame, World};
+use crate::world::World;
 
 impl World {
     /// One world update of `dt` game milliseconds without commands.
@@ -95,45 +95,13 @@ impl World {
         }
     }
 
-    /// What every object of player-loop reads of all players (`attribute_97`, the game status,
-    /// the computer flags, the dodge and keep-distance chances, the sight takers, attribute 204),
-    /// as the players stand when the loop starts.
-    pub(super) fn player_frame(&self) -> PlayerFrame {
-        let attribute_97: Vec<f32> = self
-            .players
+    /// Some player's attribute 204 is not 0, which a building's completion reads: the players'
+    /// attributes as they stand.
+    #[must_use]
+    pub(crate) fn attribute_204(&self) -> bool {
+        self.players
             .iter()
-            .map(|q| q.attributes.get(97).copied().unwrap_or(0.0))
-            .collect();
-        let game_status: Vec<u8> = self.players.iter().map(|q| q.game_status).collect();
-        let computers: Vec<bool> = self.players.iter().map(|q| q.computer).collect();
-        let dodge_chances: Vec<u8> = self.players.iter().map(|q| q.dodge_chance).collect();
-        let keep_distance_chances: Vec<u8> = self
-            .players
-            .iter()
-            .map(|q| q.keep_distance_chance)
-            .collect();
-        let sight_takers: Vec<(bool, bool)> = self
-            .players
-            .iter()
-            .enumerate()
-            .map(|(q, player)| {
-                let allows = self.allow_gaia_capture.get(q).copied();
-                (player.computer, allows.unwrap_or(false))
-            })
-            .collect();
-        let attribute_204 = self
-            .players
-            .iter()
-            .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0));
-        PlayerFrame {
-            attribute_97,
-            game_status,
-            computers,
-            dodge_chances,
-            keep_distance_chances,
-            sight_takers,
-            attribute_204,
-        }
+            .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0))
     }
 }
 
@@ -144,7 +112,6 @@ impl World {
     /// objects of a player a command stopped; dead objects still run their state steps, which
     /// draw nothing and depend on nothing the stop changed.
     pub(super) fn update_objects(&mut self, p: usize, (dt, turn): (u32, Option<u32>)) {
-        let frame = self.player_frame();
         // the loop's count, which goes on past each object but one that leaves
         let mut i = 0;
         // a unit whose update stopped before its unit AI for its work order runs that part
@@ -162,8 +129,7 @@ impl World {
             let (id, master) = (player.objects[slot].id, player.objects[slot].life.master_id);
             let _object =
                 tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master).entered();
-            let stepped =
-                self.step_object((p, slot), (dt, turn, true), &frame, again, Unit::update);
+            let stepped = self.step_object((p, slot), (dt, turn, true), again, Unit::update);
             match stepped {
                 Ok(s) => match (s.step, s.resume, s.after) {
                     (Step::Stay, Some(ai_resume), _) => resume = Some((ai_resume, s.slot)),

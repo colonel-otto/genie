@@ -10,6 +10,7 @@
 //! is made and the farmers took the last of it, the farm's slot 0xd8 sets its hit points to 0.
 
 use crate::GenieError;
+use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -198,7 +199,7 @@ impl Unit {
             class: master.class,
             work_rate: master.work_rate + self.work_rate_powerup,
             capacity: master.capacity,
-            dt: c.dt_seconds,
+            dt: seconds(c.dt),
         };
         let step = make.update(
             &mut Held {

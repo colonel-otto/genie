@@ -3,11 +3,10 @@
 
 use crate::GenieError;
 use crate::construction::building_update::blasts_at_death;
-use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Step, Unit};
 use crate::unit_ai::unit::AiResume;
+use crate::world::World;
 use crate::world::context::{Context, ObjectOutputs};
-use crate::world::{PlayerFrame, World, scenario_mode, standard_mode};
 
 impl World {
     /// One object's step with its Context (`f`: the unit's update, or one part of its unit AI
@@ -22,7 +21,6 @@ impl World {
         &mut self,
         (p, i): (usize, usize),
         (dt, turn): (u32, Option<u32>),
-        frame: &PlayerFrame,
         resume: Option<AiResume>,
         f: impl FnOnce(&mut Unit, &mut Context<'_>) -> Result<Step, GenieError>,
     ) -> (Result<Step, GenieError>, ObjectOutputs) {
@@ -51,27 +49,13 @@ impl World {
             }
             None => Vec::new(),
         };
-        let player = &self.players[p];
-        let (computer, construction_rate, civ) =
-            (player.computer, player.construction_rate, player.civ);
-        let (ai_settings, sharing) = (player.ai_settings, player.sharing);
-        let settings = &self.settings;
-        let (farm_stops, predator_hunts_end) =
-            (settings.walkable_farms, settings.predator_hunts_end());
-        let (carry_rule, game_mode) = (settings.carry_rule(), settings.game_mode);
-        let (tick, world_time, mode_680, player_turn) =
-            (self.ticks, self.world_time, self.mode_680, self.player_turn);
-        let me = unit.id;
+        let (tick, me) = (self.ticks, unit.id);
         let mut c = Context {
             w: self,
             me,
             dt,
-            dt_seconds: seconds(dt),
             tick,
             turn,
-            world_time,
-            computer,
-            construction_rate,
             ai_target,
             blasted,
             kills: Vec::new(),
@@ -79,25 +63,7 @@ impl World {
             takes: Vec::new(),
             builder_leaves: Vec::new(),
             left_group: None,
-            mode_1: mode_680 == 1,
             player: p,
-            civ,
-            ai_settings,
-            sharing,
-            farm_stops,
-            predator_hunts_end,
-            attribute_97: &frame.attribute_97,
-            game_status: &frame.game_status,
-            player_turn,
-            computers: &frame.computers,
-            dodge_chances: &frame.dodge_chances,
-            keep_distance_chances: &frame.keep_distance_chances,
-            attribute_204: frame.attribute_204,
-            mode_680,
-            carry_rule,
-            scenario: scenario_mode(game_mode),
-            standard: standard_mode(game_mode),
-            sight_takers: &frame.sight_takers,
             work_order: None,
             transport_unload: false,
             ai_resume: resume,
@@ -148,8 +114,7 @@ impl World {
             &mut crate::math::rng::Well512,
         ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
     ) -> Result<(), GenieError> {
-        let frame = self.player_frame();
-        let stepped = self.step_object((p, i), (0, None, false), &frame, None, |unit, c| {
+        let stepped = self.step_object((p, i), (0, None, false), None, |unit, c| {
             unit.run_ai(c, f).map(|()| Step::Stay)
         })?;
         match stepped.step {

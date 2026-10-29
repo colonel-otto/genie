@@ -15,6 +15,7 @@ use crate::unit_ai::AiMove;
 use crate::world::World;
 use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::scenario_mode;
 
 impl Unit {
     /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it
@@ -50,7 +51,11 @@ impl Unit {
         let (player, pace) = (c.player, c.pace());
         // what the owner holds now: the update may have paid or gained before the repair
         let resources = c.w.players[player].resources;
-        let (scenario, now, computer) = (c.scenario, c.world_time, c.computer);
+        let (scenario, now, computer) = (
+            scenario_mode(c.w.settings.game_mode),
+            c.w.world_time,
+            c.w.players[c.player].computer,
+        );
         let (my_id, stance) = (self.id, self.ai.as_ref().map_or(0, |ai| ai.stance));
         let repair_action = self.actions.repair_mut().expect("checked above");
         let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);

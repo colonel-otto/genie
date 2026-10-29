@@ -3,11 +3,13 @@
 
 use crate::GenieError;
 use crate::vision::visibility::Visibility;
+use crate::world::player::Player;
 
 /// `RGE_Combat_Object::update`'s takeover by sight (`0x14107dfb0`, once the registry took a
 /// changed `mask` of an object with `+0x924` 1, [`Visibility::combat_sight`]): the players from
-/// 1 on, in order, each with its computer flag (`player+0x10 == 3`) and its
-/// `mAllowCapturingGaiaUnits` (`+0x670`). Outside the game modes whose descriptor's `+0x9c` is 1
+/// 1 on, in order, each with its computer flag (`player+0x10 == 3`, [`Player::computer`]) and
+/// its `mAllowCapturingGaiaUnits` (`+0x670`, `allows`, the world's
+/// `allow_gaia_capture`), as they stand. Outside the game modes whose descriptor's `+0x9c` is 1
 /// (`standard`, `FUN_141302450`) a computer player that does not allow it is passed over; the
 /// test `DAT_143e76fc3` guards before (`FUN_140ca6be0` on the AI's table) is never run, the
 /// flag being 0 in the image and never written. The first other player than `owner` whose bit
@@ -17,13 +19,16 @@ pub fn sight_taker(
     mask: u64,
     owner: usize,
     standard: bool,
-    players: &[(bool, bool)],
+    players: &[Player],
+    allows: &[bool],
 ) -> Option<usize> {
     players
         .iter()
         .enumerate()
         .skip(1)
-        .filter(|&(_, &(computer, allows))| standard || !computer || allows)
+        .filter(|&(q, player)| {
+            standard || !player.computer || allows.get(q).copied().unwrap_or(false)
+        })
         .map(|(q, _)| q)
         .find(|&q| q != owner && mask & (1u64 << (q & 63)) != 0)
 }

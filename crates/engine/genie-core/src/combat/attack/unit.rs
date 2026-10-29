@@ -8,6 +8,7 @@ use crate::combat::victims::{KillLeft, file_kill, victim, victim_of, write_struc
 use crate::combat::volley::{Aimed, armed};
 use crate::math::rng::Stream;
 use crate::movement::Me;
+use crate::objects::lifecycle::seconds;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
@@ -42,7 +43,7 @@ impl Unit {
         let master = self.master(&c.w.masters, c.player)?;
         let armed = armed(master, self.firepower);
         let attack = self.actions.attack_mut().expect("the caller's test");
-        let (code, disarmed) = attack.update_targetless(c.dt_seconds, armed, &mut self.body)?;
+        let (code, disarmed) = attack.update_targetless(seconds(c.dt), armed, &mut self.body)?;
         if disarmed {
             let posted = attack.disarmed(
                 &mut self.sprite,
@@ -72,7 +73,7 @@ impl Unit {
             c.w.masters.get(c.player),
         )?;
         let armed = armed(master, self.firepower);
-        let computer = c.computers.get(c.player).copied().unwrap_or(false);
+        let computer = c.w.players.get(c.player).is_some_and(|q| q.computer);
         let mut victim = victim(c, attack.target).ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         ))?;
@@ -83,7 +84,7 @@ impl Unit {
             .as_ref()
             .is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1);
         let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
-        let world_time = c.world_time;
+        let world_time = c.w.world_time;
         let standing = c.w.graphics.get(&master.standing_sprite).copied();
         let volleys =
             c.w.masters
@@ -167,13 +168,13 @@ impl Unit {
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
         // `+0x87c` (a terrain look's rate, [`crate::combat::abilities`])
         if 0.0 < self.attack_timer {
-            self.attack_timer -= c.dt_seconds * self.abilities.attack_rate;
+            self.attack_timer -= seconds(c.dt) * self.abilities.attack_rate;
             if self.attack_timer < 0.0 {
                 self.attack_timer = 0.0;
             }
         }
         // then a reload world time past ends the volley under way (`+0xa04`) and is none
-        if self.reload_worldtime != 0 && self.reload_worldtime < c.world_time {
+        if self.reload_worldtime != 0 && self.reload_worldtime < c.w.world_time {
             self.next_volley = 0;
             self.reload_worldtime = 0;
         }
@@ -193,7 +194,7 @@ impl Unit {
                     &c.w.players[c.player].attributes,
                     c.player,
                     terrain,
-                    c.mode_680,
+                    c.w.mode_680,
                 ))
             })
     }

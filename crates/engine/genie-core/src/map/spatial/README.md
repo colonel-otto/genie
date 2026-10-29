@@ -33,5 +33,5 @@ found, as in the game.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`construction`](../../construction/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`pathing`](../../pathing/), [`players`](../../players/), [`unit_ai`](../../unit_ai/), [`vision`](../../vision/).
+- Uses: [`construction`](../../construction/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`pathing`](../../pathing/), [`players`](../../players/), [`unit_ai`](../../unit_ai/), [`vision`](../../vision/), [`world`](../../world/).
 <!-- /uses -->

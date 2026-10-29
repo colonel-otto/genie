@@ -8,7 +8,7 @@ use crate::unit_ai::AfterOrder;
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::{AiStart, AiWork};
 use crate::world::context::{Context, ObjectOutputs};
-use crate::world::{LEAVES_ITS_LIST, PlayerFrame, World};
+use crate::world::{LEAVES_ITS_LIST, World};
 
 /// What an object's step left for its list's loop ([`World::step_object`]).
 pub(super) struct Stepped {
@@ -53,12 +53,11 @@ impl World {
         &mut self,
         (p, i): (usize, usize),
         (dt, turn, full): (u32, Option<u32>, bool),
-        frame: &PlayerFrame,
         resume: Option<AiResume>,
         f: impl FnOnce(&mut Unit, &mut Context<'_>) -> Result<Step, GenieError>,
     ) -> Result<Stepped, GenieError> {
         let id = self.players[p].objects[i].id;
-        let (step, mut out) = self.run_object((p, i), (dt, turn), frame, resume, f);
+        let (step, mut out) = self.run_object((p, i), (dt, turn), resume, f);
         let step = step?;
         // the tail after an order on a target, which stops the unit AI's rest
         let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);

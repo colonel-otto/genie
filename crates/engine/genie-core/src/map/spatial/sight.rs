@@ -13,15 +13,14 @@ impl Spatial {
     /// by player in `game_status`, is 0), Gaia's only with `+0x924` 0, of no class of 1, 60, 42,
     /// 11, 14, 30, 58, 3, 52, 27, 39, 49, 37, 9, 10 or 38, counted per player with the nearest
     /// footprint gap (squared). A unit of its own owner keeps it, unless that owner's attribute
-    /// 97 (`attribute_97`, by player) is above 0 and it is livestock (class 58), which then takes
+    /// 97 (of `players`, as they stand) is above 0 and it is livestock (class 58), which then takes
     /// it from nobody; a player whose attribute 97 is above 0 counts 100 more (the most units then
     /// win). One other player takes it; of several, the nearest (Gaia never); a player out of the
     /// game takes it never. A frozen unit that counts and may have moved onto the tiles fails it.
     pub fn artifact_owner(
         &self,
         me: i32,
-        attribute_97: &[f32],
-        game_status: &[u8],
+        players: &[crate::world::player::Player],
     ) -> Result<Option<usize>, GenieError> {
         const KEPT: [i16; 16] = [1, 60, 42, 11, 14, 30, 58, 3, 52, 27, 39, 49, 37, 9, 10, 38];
         // a world without the players' sight (the unit tests') holds nobody near
@@ -51,9 +50,9 @@ impl Spatial {
         let x1 = i32::from(x1).min(self.map[0] - 1);
         let y1 = i32::from(y1).min(self.map[1] - 1);
         let out = |o: usize| {
-            game_status
+            players
                 .get(o)
-                .is_some_and(|&s| s != crate::players::game_status::PLAYING)
+                .is_some_and(|q| q.game_status != crate::players::game_status::PLAYING)
         };
         // a frozen unit that could count (of the combat type and a class that counts) may have
         // moved onto the tiles
@@ -77,7 +76,8 @@ impl Spatial {
                 "an owner search near a stopped unit that counts",
             ));
         }
-        let players = self.relations.len().max(attribute_97.len());
+        let attribute_97 = |o: usize| players.get(o).and_then(|q| q.attributes.get(97).copied());
+        let players = self.relations.len().max(players.len());
         let mut counts = vec![0i32; players];
         let mut nearest = vec![999.0f32; players];
         let mut own_seen = false;
@@ -101,7 +101,7 @@ impl Spatial {
                     "an owner search's unit of a player beyond the list",
                 ));
             }
-            let strong = livestock && attribute_97.get(o).is_some_and(|&a| 0.0 < a);
+            let strong = livestock && attribute_97(o).is_some_and(|a| 0.0 < a);
             if o == p.player {
                 if strong {
                     return Ok(None);
