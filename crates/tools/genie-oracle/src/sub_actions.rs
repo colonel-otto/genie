@@ -419,9 +419,17 @@ pub(super) fn default_task(
     };
     match action {
         DefaultAction::None => Ok(None),
-        DefaultAction::Type(ARTIFACT_TYPE) => Ok(Some(DefaultStart::Artifact(
-            genie_core::ownership::artifact::Artifact::new(s.owner == 0),
-        ))),
+        DefaultAction::Type(ARTIFACT_TYPE) => {
+            // the factory gives the action the default task, whose moving sprite its MoveTos take
+            let moving = masters
+                .and_then(|t| t.work(civ, objects.dat_master(s.master_obj)))
+                .and_then(genie_core::objects::masters::Master::default_task)
+                .map(|t| t.sprites[0])
+                .filter(|&id| 0 <= id);
+            Ok(Some(DefaultStart::Artifact(
+                genie_core::ownership::artifact::Artifact::new(s.owner == 0, moving),
+            )))
+        }
         DefaultAction::Type(genie_core::movement::fly::FLY) => {
             fly_task(objects, civ, masters, s.master_obj).map(|t| Some(DefaultStart::Fly(t)))
         }

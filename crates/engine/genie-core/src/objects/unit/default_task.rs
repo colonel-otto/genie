@@ -41,8 +41,15 @@ impl Unit {
             return Ok(true);
         }
         if self.default_artifact {
+            // the factory gives the action the default task, whose moving sprite its MoveTos take
+            let moving = self
+                .own_master
+                .as_deref()
+                .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id))
+                .and_then(Master::default_task)
+                .and_then(|t| crate::objects::sprite::sprite_id(t.sprites[0]));
             self.actions
-                .set_artifact(Some(Artifact::new(c.player == 0)));
+                .set_artifact(Some(Artifact::new(c.player == 0, moving)));
             return Ok(true);
         }
         if let Some(e) = &self.default_task {

@@ -10,7 +10,10 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::movement::Me;
-use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::movement::PathAsk;
+use crate::movement::move_to::{
+    Goal, MoveDefaults, MoveTo, Shown, Sprites, Walk, start_walk_shown, walk_or_give_up,
+};
 use crate::objects::actions::Action;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -91,6 +94,8 @@ pub struct Artifact {
     /// The Enter an enter command made its sub-action (`FUN_1410847e0` under an Artifact on
     /// top), which its update runs first ([`Artifact::hold_enter`]).
     pub enter: Option<crate::garrison::EnterAction>,
+    /// Its task's moving sprite (`+0x40`), which its `MoveTo`s take; None for none.
+    pub moving: Option<i16>,
 }
 
 /// The action type the checkpoint adds for an Artifact action.
@@ -106,9 +111,9 @@ pub(crate) const TO_GAIA: u8 = 100;
 const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET;
 
 impl Artifact {
-    /// A new action, about to check for a new owner.
+    /// A new action of a task whose moving sprite is `moving`, about to check for a new owner.
     #[must_use]
-    pub const fn new(gaia: bool) -> Self {
+    pub const fn new(gaia: bool, moving: Option<i16>) -> Self {
         Self {
             state: CHECK,
             timer: 0.0,
@@ -118,6 +123,18 @@ impl Artifact {
             target: -1,
             walk_to: None,
             enter: None,
+            moving,
+        }
+    }
+
+    /// The sprite its `MoveTo` shows (`set_state`, `0x140aace30`, gives its constructor the
+    /// task's moving sprite): that, else the constructor's default from `defaults`
+    /// (`FUN_140aa0df0`'s toward an object, state 5; `FUN_140aa0d30`'s toward the point, 4).
+    #[must_use]
+    pub const fn move_shown(&self, defaults: MoveDefaults) -> Option<i16> {
+        match self.walk_to {
+            Some(_) => defaults.to_object(self.moving),
+            None => defaults.to_point(self.moving),
         }
     }
 
@@ -216,8 +233,8 @@ impl Artifact {
 
     /// Slot 8 (`FUN_140aaca30`) on a move to a point, which the action takes: the point, then
     /// `set_state(4)` (`0x140aace30`): its sub-actions go ([`Artifact::drop_sub_actions`]), a
-    /// `MoveTo` to the point within 0 (`FUN_140aa0d30` with its task's sprite, walking; the
-    /// sprite is not held) is added and starts (state 3 for an animal away from the point), and
+    /// `MoveTo` to the point within 0 (`FUN_140aa0d30` with its task's sprite,
+    /// [`Artifact::move_shown`]) is added and starts (state 3 for an animal away from the point), and
     /// the action checks again (`set_state` 6). Returns the sub-actions that went.
     pub fn take_point(&mut self, point: [f32; 3]) -> SubActionsGone {
         self.goal = Some(point);
@@ -265,16 +282,17 @@ impl Artifact {
     /// new owner it waits (`set_state` 10).
     pub fn update(
         &mut self,
-        walk: Option<Walk<'_>>,
+        (walk, shown): (Option<Walk<'_>>, Option<Shown<'_>>),
         dt_ms: u32,
         searches: bool,
         owner: &mut dyn FnMut() -> Result<Option<usize>, GenieError>,
     ) -> Result<Option<Handover>, GenieError> {
-        let _ = self.walk(walk)?;
+        let _ = self.walk(walk, shown)?;
         self.step(dt_ms, searches, owner)
     }
 
-    /// The update's first part: its `MoveTo` sub-action (`FUN_140a992b0`). Once the `MoveTo`
+    /// The update's first part: its `MoveTo` sub-action (`FUN_140a992b0`), whose start shows its
+    /// sprite (`shown`, [`Artifact::move_shown`]) before the motion step. Once the `MoveTo`
     /// ended ([`Ended`]): the notify kind the caller sends to the unit AI with the move action
     /// value (the `MoveTo` to the point is not quiet): its completion (0x1fa) from its update in
     /// state 1, or its failure (0x1f9) from state 13; a quiet one (to an object) posts none. A
@@ -283,7 +301,11 @@ impl Artifact {
     /// (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0, the caller's), its point (−1)
     /// and its target (slot 0x68 with none: let go, the caller's release). A waiting `MoveTo` is
     /// not modelled.
-    pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<Option<Ended>, GenieError> {
+    pub fn walk(
+        &mut self,
+        walk: Option<Walk<'_>>,
+        shown: Option<Shown<'_>>,
+    ) -> Result<Option<Ended>, GenieError> {
         let need = || GenieError::unsupported("a walking animal without its walk");
         match self.move_to {
             Some(MoveTo::Start) => {
@@ -300,7 +322,9 @@ impl Artifact {
                 self.move_to = Some(MoveTo::Moving);
                 // a motion step that gives up in the start's update fails the MoveTo, as in
                 // its moving state
-                let started = start_walk_or_give_up(walk.ok_or_else(need)?, goal, range, quiet)?;
+                let walk = walk.ok_or_else(need)?;
+                let ask = PathAsk::default();
+                let started = start_walk_shown(walk, (goal, range, quiet), ask, shown)?;
                 self.move_to = Some(started.unwrap_or(MoveTo::Failed));
             }
             Some(MoveTo::Moving) => {
@@ -446,11 +470,31 @@ impl Unit {
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<Option<Handover>, GenieError> {
-        let Some(artifact) = self.actions.artifact_mut() else {
+        if self.actions.artifact().is_none() {
             return Ok(None);
+        }
+        let (dt, pace) = (c.dt, c.pace());
+        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
+        let defaults = self
+            .own_master
+            .as_deref()
+            .or_else(|| c.w.masters.get(c.player)?.get(self.life.master_id))
+            .map_or_else(MoveDefaults::default, |m| {
+                MoveDefaults::of(m, self.abilities.look.as_ref())
+            });
+        let artifact = self.actions.artifact_mut().expect("checked above");
+        let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
+        let mut sprites = Sprites {
+            sprite: &mut self.sprite,
+            rng: beside.sprite_rng,
+            graphics: beside.graphics,
         };
-        let dt = c.dt;
-        let ended = artifact.walk(Some(c.walk(&mut self.body, me)))?;
+        let shown = if artifact.move_to == Some(MoveTo::Start) {
+            Some(sprites.shown(artifact.move_shown(defaults))?)
+        } else {
+            None
+        };
+        let ended = artifact.walk(Some(walk), shown)?;
         if ended.is_some()
             && let Some(m) = self.body.mover_mut()
         {
@@ -530,8 +574,8 @@ mod tests {
 
     #[test]
     fn a_check_finds_no_owner_and_waits_one_second() {
-        let mut a = Artifact::new(false);
-        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let mut a = Artifact::new(false, None);
+        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer), (10, 1.0));
     }
 
@@ -541,7 +585,7 @@ mod tests {
         let mut a = Artifact {
             state: WAIT,
             timer: 0.4,
-            ..Artifact::new(false)
+            ..Artifact::new(false, None)
         };
         assert_eq!(a.take_point([28.5, 93.5, 0.0]), SubActionsGone::default());
         assert_eq!(
@@ -563,10 +607,10 @@ mod tests {
         );
         assert_eq!(walking.move_to, Some(MoveTo::Start));
         // its walk needs the animal's movement state
-        assert!(a.update(None, 50, true, &mut || Ok(None)).is_err());
+        assert!(a.update((None, None), 50, true, &mut || Ok(None)).is_err());
         // a MoveTo that ended goes with the point, then the check waits again
         a.move_to = Some(MoveTo::Arrived);
-        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer, a.move_to, a.goal), (10, 1.0, None, None));
     }
 
@@ -589,7 +633,7 @@ mod tests {
             stops: true,
             released: Some(11970),
         };
-        let mut a = Artifact::new(false);
+        let mut a = Artifact::new(false, None);
         a.enter = Some(walking_enter());
         assert_eq!(a.take_point([32.854_168, 120.729_164, 0.0]), by_enter);
         assert_eq!(
@@ -601,7 +645,7 @@ mod tests {
             )
         );
         // to an object: the old target goes and the new one comes first, then the Enter
-        let mut b = Artifact::new(false);
+        let mut b = Artifact::new(false, None);
         b.enter = Some(walking_enter());
         let (targets, gone) = b.take_object((9149, true), [5.0, 6.0, 0.0], true, false);
         assert_eq!(
@@ -610,7 +654,7 @@ mod tests {
         );
         assert_eq!((b.enter, b.move_to), (None, Some(MoveTo::Start)));
         // an Enter that does not walk stops nothing
-        let mut c = Artifact::new(false);
+        let mut c = Artifact::new(false, None);
         c.enter = Some(crate::garrison::EnterAction::new(
             11970,
             [1.0, 2.0, 0.0],
@@ -640,19 +684,19 @@ mod tests {
             stops: true,
             released: Some(11970),
         };
-        let mut a = Artifact::new(false);
+        let mut a = Artifact::new(false, None);
         (a.enter, a.goal, a.target, a.state) = (Some(e), Some([1.0, 2.0, 0.0]), 77, WAIT);
         assert_eq!(a.stop(), (by_enter, Some(77)));
         assert_eq!(
             (a.enter, a.goal, a.target, a.state),
             (None, None, -1, CHECK)
         );
-        let mut b = Artifact::new(false);
+        let mut b = Artifact::new(false, None);
         (b.enter, b.target) = (Some(e), 77);
         assert_eq!(b.tear_down(), (Some(77), by_enter));
         assert_eq!((b.enter, b.target), (None, -1));
         // the check that finds an owner deletes it too
-        let mut c = Artifact::new(false);
+        let mut c = Artifact::new(false, None);
         c.enter = Some(e);
         let found = c.step(50, true, &mut || Ok(Some(2))).unwrap();
         assert_eq!(
@@ -680,7 +724,7 @@ mod tests {
             )
         };
         let gone = |stops, released| SubActionsGone { stops, released };
-        let mut a = Artifact::new(false);
+        let mut a = Artifact::new(false, None);
         // nothing held: nothing to let go, nothing walking
         assert_eq!(a.hold_enter(enter(7934)), gone(false, None));
         // the held Enter walks: its MoveTo's teardown stops the unit
@@ -699,32 +743,32 @@ mod tests {
 
     #[test]
     fn gaia_waits_half_a_second() {
-        let mut a = Artifact::new(true);
-        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let mut a = Artifact::new(true, None);
+        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
         assert_eq!(a.timer, 0.5);
     }
 
     #[test]
     fn the_wait_ends_when_the_timer_reaches_zero_then_one_check_follows() {
-        let mut a = Artifact::new(false);
-        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let mut a = Artifact::new(false, None);
+        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
         // 1.0 - 20 × 0.05 in f32 is -1.56e-7, so the 20th update ends the wait
         let waits = (0..30).take_while(|_| {
-            let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
+            let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
             a.state == 10
         });
         assert_eq!(waits.count(), 19);
         assert_eq!(a.state, 6);
-        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer), (10, 1.0));
     }
 
     #[test]
     fn a_check_that_finds_a_new_owner_hands_the_animal_over_and_stays_a_check() {
-        let mut a = Artifact::new(true);
+        let mut a = Artifact::new(true, None);
         let mut asked = 0;
         let found = a
-            .update(None, 50, true, &mut || {
+            .update((None, None), 50, true, &mut || {
                 asked += 1;
                 Ok(Some(2))
             })
@@ -741,14 +785,16 @@ mod tests {
             )
         );
         // a combat-type animal whose +0x924 is 0 never asks
-        let mut b = Artifact::new(true);
-        let found = b.update(None, 50, false, &mut || Ok(Some(2))).unwrap();
+        let mut b = Artifact::new(true, None);
+        let found = b
+            .update((None, None), 50, false, &mut || Ok(Some(2)))
+            .unwrap();
         assert_eq!((found, b.state), (None, 10));
         // the conversion's stop: the check again, no MoveTo went
         assert_eq!(b.stop(), (SubActionsGone::default(), None));
         assert_eq!(b.state, 6);
         // a walking animal's MoveTo goes (its teardown stops the unit), and its target is let go
-        let mut walking = Artifact::new(false);
+        let mut walking = Artifact::new(false, None);
         let _ = walking.take_point([28.5, 94.5, 0.0]);
         walking.target = 9149;
         assert_eq!(
@@ -766,7 +812,7 @@ mod tests {
             (None, None, -1)
         );
         // without a sub-action the point and the target stay (FUN_140a98730 false)
-        let mut kept = Artifact::new(false);
+        let mut kept = Artifact::new(false, None);
         (kept.goal, kept.target, kept.state) = (Some([3.0, 4.0, 0.0]), 77, WAIT);
         assert_eq!(kept.stop(), (SubActionsGone::default(), None));
         assert_eq!(
@@ -780,7 +826,7 @@ mod tests {
     /// leaves (no sub-action).
     #[test]
     fn a_walking_animal_taken_over_keeps_its_point_and_target() {
-        let mut a = Artifact::new(true);
+        let mut a = Artifact::new(true, None);
         a.goal = Some([5.0, 6.0, 0.0]);
         a.target = 9149;
         a.walk_to = Some((Goal::Target(9149), 1.0));
@@ -810,7 +856,7 @@ mod tests {
     fn state_100_hands_the_animal_to_gaia() {
         let mut a = Artifact {
             state: TO_GAIA,
-            ..Artifact::new(false)
+            ..Artifact::new(false, None)
         };
         let found = a
             .step(50, true, &mut || Err(GenieError::unsupported("no search")))
@@ -823,7 +869,7 @@ mod tests {
     /// The teardown lets the target go and stops a walk.
     #[test]
     fn a_move_to_an_object_lets_the_old_target_go_and_takes_the_new() {
-        let mut a = Artifact::new(false);
+        let mut a = Artifact::new(false, None);
         let (t, gone) = a.take_object((9149, true), [10.0, 12.0, 0.0], true, false);
         assert_eq!(
             (t, gone),
@@ -874,7 +920,7 @@ mod tests {
     /// state, and the next update ends it with its failure.
     #[test]
     fn a_walk_the_motion_step_gives_up_at_its_start_fails() {
-        let mut a = Artifact::new(false);
+        let mut a = Artifact::new(false, None);
         let _ = a.take_point([28.5, 93.5, 0.0]);
         let mut mover = crate::gathering::hunt::tests::walker();
         mover.stats.speed = 0.0;
@@ -891,19 +937,82 @@ mod tests {
             world: &mut world,
             plan: None,
         };
-        assert_eq!(a.walk(Some(walk)), Ok(None));
+        assert_eq!(a.walk(Some(walk), None), Ok(None));
         assert_eq!(a.move_to, Some(MoveTo::Failed));
         let failed = Ended {
             notify: Some(crate::unit_ai::ACTION_FAILED),
             released: None,
         };
-        assert_eq!(a.walk(None), Ok(Some(failed)));
+        assert_eq!(a.walk(None, None), Ok(Some(failed)));
+    }
+
+    /// The sprite its `MoveTo` shows: the task's moving sprite, else the default of its
+    /// constructor, toward an object (`FUN_140aa0df0`) or the point (`FUN_140aa0d30`).
+    #[test]
+    fn an_artifact_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
+        let defaults = MoveDefaults {
+            point: Some(20),
+            object: Some(21),
+        };
+        let mut a = Artifact::new(false, None);
+        let _ = a.take_point([28.5, 93.5, 0.0]);
+        assert_eq!(a.move_shown(defaults), Some(20));
+        let _ = a.take_object((9149, true), [1.0, 1.0, 0.0], false, false);
+        assert_eq!(a.move_shown(defaults), Some(21));
+        a.moving = Some(3);
+        assert_eq!(a.move_shown(defaults), Some(3));
+    }
+
+    /// The walk's start shows its sprite (`0x140aa29e0`'s `set_state(4)`) before the motion
+    /// step, here one that gives up (a unit without speed).
+    #[test]
+    fn an_artifact_s_walk_shows_its_sprite_as_it_starts() {
+        let mut a = Artifact::new(false, Some(3));
+        let _ = a.take_point([28.5, 93.5, 0.0]);
+        let mut mover = crate::gathering::hunt::tests::walker();
+        // the top speed derives from the base and the sprite shown
+        (mover.stats.speed, mover.stats.base) = (0.0, 0.0);
+        let mut world = Spatial::new([120, 120]);
+        let mut mover = crate::objects::layers::Body::new([20.5, 90.5, 0.0], None, Some(mover));
+        let walk = Walk {
+            body: &mut mover,
+            me: Me {
+                id: 9517,
+                group: -1,
+                action_state: 0,
+            },
+            dt: 0.05,
+            world: &mut world,
+            plan: None,
+        };
+        let graphic = crate::objects::sprite::Graphic {
+            id: 3,
+            frames: 10,
+            facets: 16,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        };
+        let graphics = std::collections::BTreeMap::from([(3, graphic)]);
+        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
+        let mut sprites = Sprites {
+            sprite: &mut sprite,
+            rng: &mut rng,
+            graphics: &graphics,
+        };
+        let shown = sprites
+            .shown(a.move_shown(MoveDefaults::default()))
+            .unwrap();
+        assert_eq!(a.walk(Some(walk), Some(shown)), Ok(None));
+        assert_eq!(a.move_to, Some(MoveTo::Failed));
+        assert_eq!(sprite.map(|s| s.graphic.id), Some(3));
     }
 
     /// A `MoveTo` that ended goes with the point and lets the target go (slot 0x68 with none).
     #[test]
     fn an_ended_walk_lets_the_target_go() {
-        let mut a = Artifact::new(false);
+        let mut a = Artifact::new(false, None);
         a.target = 9149;
         a.goal = Some([1.0, 1.0, 0.0]);
         a.walk_to = Some((Goal::Target(9149), 1.0));
@@ -912,14 +1021,14 @@ mod tests {
             notify: None,
             released: Some(9149),
         };
-        assert_eq!(a.walk(None), Ok(Some(quiet)));
+        assert_eq!(a.walk(None, None), Ok(Some(quiet)));
         a.target = 77;
         a.move_to = Some(MoveTo::Failed);
         let failed = Ended {
             notify: Some(crate::unit_ai::ACTION_FAILED),
             released: Some(77),
         };
-        assert_eq!(a.walk(None), Ok(Some(failed)));
-        assert_eq!(a.walk(None), Ok(None));
+        assert_eq!(a.walk(None, None), Ok(Some(failed)));
+        assert_eq!(a.walk(None, None), Ok(None));
     }
 }

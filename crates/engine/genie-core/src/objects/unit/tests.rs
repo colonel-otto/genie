@@ -249,7 +249,7 @@ fn an_object_inside_another_runs_its_inside_update() {
     );
     assert_eq!(
         t.players[1].objects[0].actions.artifact(),
-        Some(&crate::ownership::artifact::Artifact::new(false)),
+        Some(&crate::ownership::artifact::Artifact::new(false, None)),
         "the Artifact the default task made has not run yet"
     );
 }
@@ -359,7 +359,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
         u.actions.put(action);
         u.top_sub_action()
     };
-    let mut artifact = crate::ownership::artifact::Artifact::new(false);
+    let mut artifact = crate::ownership::artifact::Artifact::new(false, None);
     artifact.move_to = Some(MoveTo::Moving);
     assert_eq!(of(Action::Artifact(artifact)), walking);
     let mut enter = crate::garrison::EnterAction::new(

@@ -15,6 +15,7 @@ fn a_building_s_production_state_comes_before_its_top_action_s() {
         target: -1,
         walk_to: None,
         enter: None,
+        moving: None,
     };
     let making = genie_core::production::Production {
         action: Some(genie_core::production::Making::Unit(

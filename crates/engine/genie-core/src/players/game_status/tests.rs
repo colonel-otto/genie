@@ -230,7 +230,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let artifact = add(Unit {
         id: 34,
         actions: ActionList::default()
-            .with_artifact(Some(crate::ownership::artifact::Artifact::new(false))),
+            .with_artifact(Some(crate::ownership::artifact::Artifact::new(false, None))),
         ..Unit::default()
     });
     assert_eq!(

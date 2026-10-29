@@ -62,7 +62,7 @@ pub(super) fn saved_actions(
         graphics,
     };
     match kind {
-        ARTIFACT_TYPE => import_artifact(&saved, unit),
+        ARTIFACT_TYPE => import_artifact(&saved, &task_at, unit),
         MOVE_TO => import_move_to(&saved, unit),
         genie_core::combat::missile::MISSILE => import_missile(&saved, unit),
         genie_core::gathering::make::MAKE => import_make(&saved, &task_at, unit),
@@ -170,9 +170,21 @@ fn walk_point(sub: &Action) -> Option<[f32; 3]> {
     sub.base().and_then(target_point)
 }
 
-/// The Artifact action (107): its state and timer, and its `MoveTo` to its target.
-fn import_artifact(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> {
+/// The Artifact action (107): its state and timer, its `MoveTo` to its target and its task's
+/// moving sprite.
+fn import_artifact(
+    saved: &Saved<'_>,
+    task_at: TaskAt<'_>,
+    unit: &mut Unit,
+) -> Result<(), GenieError> {
     let base = saved.base;
+    // its task (the base's `short_val`, −1 for none)
+    let moving = if base.short_val < 0 {
+        None
+    } else {
+        let id = saved.task(task_at)?.sprites[0];
+        (0 <= id).then_some(id)
+    };
     let sub = saved.move_to_sub(GenieError::unsupported(
         "a saved Artifact action with another sub-action",
     ))?;
@@ -198,6 +210,7 @@ fn import_artifact(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError>
             target: base.target_id,
             walk_to,
             enter: None,
+            moving,
         }));
     Ok(())
 }

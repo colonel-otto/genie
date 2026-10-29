@@ -83,7 +83,7 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
         move_to: Some(MoveTo::Moving),
         goal: Some([32.5, 89.5, 0.0]),
         target: 600,
-        ..Artifact::new(false)
+        ..Artifact::new(false, None)
     };
     let mut t = forage_world();
     t.players[1].objects[0]

@@ -136,7 +136,7 @@ fn the_frame_seed_chains_through_two_world_draws() {
 #[test]
 fn artifacts_of_every_player_start_updating_in_the_second_tick() {
     let animal = |gaia| Unit {
-        actions: ActionList::default().with_artifact(Some(Artifact::new(gaia))),
+        actions: ActionList::default().with_artifact(Some(Artifact::new(gaia, None))),
         ..Unit::default()
     };
     let players = vec![
@@ -4449,7 +4449,7 @@ fn livestock_enter_world() -> World {
     }
     let v = &mut t.players[1].objects[0];
     v.life.master_id = 594;
-    v.actions.set_artifact(Some(Artifact::new(false)));
+    v.actions.set_artifact(Some(Artifact::new(false, None)));
     t
 }
 
@@ -5291,7 +5291,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
         .artifact()
         .copied()
         .expect("the Artifact again");
-    assert_eq!(a, Artifact::new(false));
+    assert_eq!(a, Artifact::new(false, None));
     // its first update checks for a new owner, finds none and waits a second
     t.tick(50);
     let a = t.players[1].objects[0].actions.artifact().copied().unwrap();
@@ -5432,7 +5432,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
         },
         actions: ActionList::default().with_artifact(Some(Artifact {
             state: crate::ownership::artifact::TO_GAIA,
-            ..Artifact::new(false)
+            ..Artifact::new(false, None)
         })),
         ..Unit::default()
     };
@@ -7461,7 +7461,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         goal: Some([20.0, 20.0, 0.0]),
         walk_to: Some((crate::movement::move_to::Goal::Target(9149), 1.0)),
         move_to: Some(MoveTo::Moving),
-        ..Artifact::new(false)
+        ..Artifact::new(false, None)
     }));
     t.clear_actions(1, 0).unwrap();
     let sheep = &t.players[1].objects[0];
@@ -8325,7 +8325,7 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
     }
     t.players[1].objects[0]
         .actions
-        .set_artifact(Some(Artifact::new(false)));
+        .set_artifact(Some(Artifact::new(false, None)));
     t.artifact_take_object(1, 0, 9149).unwrap();
     assert_eq!(t.players[1].objects[3].workers, 2);
     t.artifact_take_object(1, 0, 9150).unwrap();
@@ -8615,7 +8615,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
     walker.stats.speed = 0.8;
     walker.stats.stand_speed = 0.5;
     let sheep = Unit {
-        actions: ActionList::default().with_artifact(Some(Artifact::new(true))),
+        actions: ActionList::default().with_artifact(Some(Artifact::new(true, None))),
         body: crate::objects::layers::Body::Moving(walker),
         ai: None,
         ..hands_unit(9520, 705)

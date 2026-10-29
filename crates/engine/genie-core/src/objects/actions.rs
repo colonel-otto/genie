@@ -271,12 +271,12 @@ mod tests {
     fn artifact(state: u8) -> Artifact {
         Artifact {
             state,
-            ..Artifact::new(false)
+            ..Artifact::new(false, None)
         }
     }
 
     fn other() -> Action {
-        Action::Artifact(Artifact::new(true))
+        Action::Artifact(Artifact::new(true, None))
     }
 
     #[test]
