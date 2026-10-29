@@ -4,10 +4,10 @@
 //! Command layouts and names follow genie-rs and aoc-mgz; where the meaning of a stored value is
 //! not known, its docs say so.
 
+use crate::fits;
 use crate::{ObjectID, PlayerID, Result};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{ReadSkipExt, ReadStringsExt};
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 mod buildings;
@@ -61,13 +61,11 @@ impl ViewLock {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the stored player ID is negative or above 255.
+    /// Also fails if the stored player ID is negative or above 255.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let x = input.read_f32::<LE>()?;
         let y = input.read_f32::<LE>()?;
-        let player = input.read_i32::<LE>()?.try_into().unwrap();
+        let player = fits(input.read_i32::<LE>()?)?;
         Ok(Self { x, y, player })
     }
 
@@ -112,14 +110,12 @@ impl ObjectsList {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if an object ID in the list is negative.
+    /// Also fails if an object ID in the list is negative.
     pub fn read_from(mut input: impl Read, count: i32) -> Result<Self> {
         if count < 0xFF {
             let mut list = vec![];
             for _ in 0..count {
-                list.push(input.read_i32::<LE>()?.try_into().unwrap());
+                list.push(fits(input.read_i32::<LE>()?)?);
             }
             Ok(Self::List(list))
         } else {
@@ -239,9 +235,7 @@ impl Command {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the command type is not one listed in [`Command`], or if the command's own
+    /// Also fails if the command type is not one listed in [`Command`], or if the command's own
     /// reader panics.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let len = input.read_u32::<LE>()?;
@@ -264,9 +258,9 @@ impl Command {
 /// The commands to units and groups (ids below 0x64) after their id; `len` is the command's
 /// length, which `UserPatch`'s AI command needs.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics on an id no command has.
+/// Fails on an id no command has.
 fn read_unit_command(id: u8, cursor: &mut impl Read, len: u32) -> Result<Command> {
     match id {
         0x00 => OrderCommand::read_from(&mut *cursor).map(Command::Order),
@@ -284,15 +278,15 @@ fn read_unit_command(id: u8, cursor: &mut impl Read, len: u32) -> Result<Command
         0x15 => PatrolCommand::read_from(&mut *cursor).map(Command::Patrol),
         0x17 => FormFormationCommand::read_from(&mut *cursor).map(Command::FormFormation),
         0x35 => UserPatchAICommand::read_from(&mut *cursor, len).map(Command::UserPatchAI),
-        id => panic!("unsupported command type {id:#x}"),
+        id => Err(crate::Error::UnsupportedCommand(id)),
     }
 }
 
 /// The commands to buildings, the game and the market (ids from 0x64 on) after their id.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics on an id no command has.
+/// Fails on an id no command has.
 fn read_building_command(id: u8, cursor: &mut impl Read) -> Result<Command> {
     match id {
         0x64 => MakeCommand::read_from(&mut *cursor).map(Command::Make),
@@ -312,7 +306,7 @@ fn read_building_command(id: u8, cursor: &mut impl Read) -> Result<Command> {
         0x7b => BuyResourceCommand::read_from(&mut *cursor).map(Command::BuyResource),
         0x7f => Unknown7FCommand::read_from(&mut *cursor).map(Command::Unknown7F),
         0x80 => BackToWorkCommand::read_from(&mut *cursor).map(Command::BackToWork),
-        id => panic!("unsupported command type {id:#x}"),
+        id => Err(crate::Error::UnsupportedCommand(id)),
     }
 }
 
@@ -414,7 +408,7 @@ impl Meta {
     fn read_from_inner(mut input: impl Read) -> Result<Self> {
         let checksum_interval = input.read_u32::<LE>()?;
         let is_multiplayer = input.read_u32::<LE>()? != 0;
-        let local_player_id = input.read_u32::<LE>()?.try_into().unwrap();
+        let local_player_id = fits(input.read_u32::<LE>()?)?;
         let header_position = input.read_u32::<LE>()?;
         let use_sequence_numbers = input.read_u32::<LE>()? != 0;
         Ok(Self {
@@ -434,9 +428,7 @@ impl Meta {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the stored local player ID is above 255.
+    /// Also fails if the stored local player ID is above 255.
     pub fn read_from_mgl(mut input: impl Read) -> Result<Self> {
         let meta = Self::read_from_inner(&mut input)?;
         let _exe_file_size = input.read_u64::<LE>()?;
@@ -456,12 +448,14 @@ impl Meta {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the log version is not 3, 4 or 5, or if the stored local player ID is above 255.
+    /// Also fails if the log version is not 3, 4 or 5, or if the stored local player ID is above 255.
     pub fn read_from_mgx(mut input: impl Read) -> Result<Self> {
         let log_version = input.read_u32::<LE>()?;
-        assert!(matches!(log_version, 3..=5));
+        if !matches!(log_version, 3..=5) {
+            return Err(crate::Error::InvalidData(
+                "a log version other than 3, 4 or 5",
+            ));
+        }
         let mut meta = Self::read_from_inner(&mut input)?;
         meta.log_version = Some(log_version);
         if log_version == 5 {
@@ -489,11 +483,13 @@ impl Chat {
     ///
     /// Returns an error if reading from `input` fails or the text is not valid WINDOWS-1252.
     ///
-    /// # Panics
-    ///
-    /// Panics if the `i32` stored before the text is not -1.
+    /// Also fails if the `i32` stored before the text is not -1.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        assert_eq!(input.read_i32::<LE>()?, -1);
+        if input.read_i32::<LE>()? != -1 {
+            return Err(crate::Error::InvalidData(
+                "a chat message without its -1 marker",
+            ));
+        }
         let message = input.read_u32_length_prefixed_str()?.unwrap_or_default();
         Ok(Self { message })
     }

@@ -6,7 +6,7 @@ use genie_rec::de::{Chapter, Checkpoint, Op};
 fn body(ops: &[Op<'_>]) -> Vec<u8> {
     let mut out = vec![];
     for op in ops {
-        op.write(&mut out);
+        op.write(&mut out).unwrap();
     }
     out
 }

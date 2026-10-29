@@ -118,7 +118,7 @@ fn an_action_after_11_76_has_a_word_state() {
 }
 
 #[test]
-#[should_panic(expected = "action type 2 not yet implemented")]
-fn an_unknown_action_type_is_not_implemented() {
-    let _ = UnitAction::read_from(&mut header_reader(&head(2).0, 11.76));
+fn an_unknown_action_type_is_an_error() {
+    let e = UnitAction::read_from(&mut header_reader(&head(2).0, 11.76)).unwrap_err();
+    assert!(matches!(e, crate::Error::UnsupportedUnitAction(2)));
 }

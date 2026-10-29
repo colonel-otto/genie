@@ -202,7 +202,7 @@ pub(crate) fn recording(header: &Header, ops: &[genie_rec::de::Op<'_>]) -> Vec<u
     out.extend(0_u32.to_le_bytes());
     out.extend(compressed);
     for op in ops {
-        op.write(&mut out);
+        op.write(&mut out).unwrap();
     }
     out
 }

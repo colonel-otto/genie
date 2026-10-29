@@ -1,11 +1,11 @@
 use crate::Result;
 use crate::element::{ReadableHeaderElement, WritableHeaderElement};
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
 use arrayvec::ArrayVec;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 pub use genie_dat::unit_type::{AttributeCost, ParseUnitBaseClassError, UnitBaseClass};
 pub use genie_support::{StringKey, UnitTypeID};
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// A player's copy of a unit type as the recording header stores it: only the attributes that can
@@ -34,7 +34,7 @@ pub struct CompactUnitType {
 
 impl ReadableHeaderElement for CompactUnitType {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let unit_base_class = input.read_u8()?.try_into().unwrap();
+        let unit_base_class = fits(input.read_u8()?)?;
         let static_ = StaticUnitAttributes::read_from(input)?;
         let mut unit = Self {
             unit_base_class,
@@ -139,7 +139,7 @@ impl StaticUnitAttributes {
     fn read_user_patch<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<i8> {
         self.death_object_id = match input.read_i16::<LE>()? {
             -1 => None,
-            id => Some(id.try_into().unwrap()),
+            id => Some(fits(id)?),
         };
         self.string_id = Some(input.read_u16::<LE>()?.into());
         self.description_id = Some(input.read_u16::<LE>()?.into());
@@ -288,11 +288,11 @@ impl ReadableHeaderElement for BaseCombatUnitAttributes {
         attrs.base_hit_chance = input.read_u16::<LE>()?;
         attrs.projectile_object_id = match input.read_i16::<LE>()? {
             -1 => None,
-            id => Some(id.try_into().unwrap()),
+            id => Some(fits(id)?),
         };
         attrs.defense_terrain_bonus = match input.read_i16::<LE>()? {
             -1 => None,
-            id => Some(id.try_into().unwrap()),
+            id => Some(fits(id)?),
         };
         attrs.weapon_range_max_2 = input.read_f32::<LE>()?;
         attrs.area_of_effect = input.read_f32::<LE>()?;
@@ -390,7 +390,7 @@ impl CombatUnitAttributes {
         self.frame_delay = Some(input.read_u16::<LE>()?);
         self.create_at_building = match input.read_i16::<LE>()? {
             -1 => None,
-            id => Some(id.try_into().unwrap()),
+            id => Some(fits(id)?),
         };
         self.create_button = Some(input.read_i8()?);
         self.rear_attack_modifier = Some(input.read_f32::<LE>()?);

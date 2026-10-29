@@ -3,10 +3,10 @@
 
 use crate::actions::{Location2, ObjectsList};
 use crate::{ObjectID, PlayerID, Result};
+use crate::{fits, opt_fits};
 use arrayvec::ArrayVec;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{ReadSkipExt, read_opt_u32};
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// A player resigns or drops from the game.
@@ -85,12 +85,10 @@ impl GroupWaypointCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 255 objects, the most the format's `u8` count holds.
+    /// Also fails if there are more than 255 objects, the most the format's `u8` count holds.
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u8(self.player_id.into())?;
-        output.write_u8(self.objects.len().try_into().unwrap())?;
+        output.write_u8(fits(self.objects.len())?)?;
         output.write_u8(self.location.0)?;
         output.write_u8(self.location.1)?;
         self.objects.write_to(&mut output)?;
@@ -126,11 +124,9 @@ impl UnitAIStateCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 255 objects, the most the format's `u8` count holds.
+    /// Also fails if there are more than 255 objects, the most the format's `u8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_u8(self.objects.len().try_into().unwrap())?;
+        output.write_u8(fits(self.objects.len())?)?;
         output.write_i8(self.state)?;
         self.objects.write_to(output)?;
         Ok(())
@@ -167,14 +163,12 @@ impl GuardCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 255 objects (the format's `u8` count), or if the target ID
+    /// Also fails if there are more than 255 objects (the format's `u8` count), or if the target ID
     /// is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_u8(self.objects.len().try_into().unwrap())?;
+        output.write_u8(fits(self.objects.len())?)?;
         output.write_all(&[0, 0])?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.target_id, -1)?)?;
         self.objects.write_to(output)?;
         Ok(())
     }
@@ -210,14 +204,12 @@ impl FollowCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 255 objects (the format's `u8` count), or if the target ID
+    /// Also fails if there are more than 255 objects (the format's `u8` count), or if the target ID
     /// is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_u8(self.objects.len().try_into().unwrap())?;
+        output.write_u8(fits(self.objects.len())?)?;
         output.write_all(&[0, 0])?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.target_id, -1)?)?;
         self.objects.write_to(output)?;
         Ok(())
     }
@@ -242,9 +234,7 @@ impl PatrolCommand {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the command says it has more than 10 waypoints.
+    /// Also fails if the command says it has more than 10 waypoints.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = input.read_i8()?;
@@ -260,7 +250,7 @@ impl PatrolCommand {
         command
             .waypoints
             .try_extend_from_slice(&raw_waypoints[0..usize::from(waypoint_count)])
-            .unwrap();
+            .map_err(|_| crate::Error::ValueOutOfRange)?;
         command.objects = ObjectsList::read_from(input, i32::from(selected_count))?;
         Ok(command)
     }
@@ -273,12 +263,10 @@ impl PatrolCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
+    /// Also fails if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_i8(self.objects.len().try_into().unwrap())?;
-        output.write_u8(self.waypoints.len().try_into().unwrap())?;
+        output.write_i8(fits(self.objects.len())?)?;
+        output.write_u8(fits(self.waypoints.len())?)?;
         output.write_u8(0)?;
         for i in 0..10 {
             output.write_f32::<LE>(self.waypoints.get(i).copied().unwrap_or_default().0)?;
@@ -324,11 +312,9 @@ impl FormFormationCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
+    /// Also fails if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_i8(self.objects.len().try_into().unwrap())?;
+        output.write_i8(fits(self.objects.len())?)?;
         output.write_u8(self.player_id.into())?;
         output.write_u8(0)?;
         output.write_i32::<LE>(self.formation_type)?;
@@ -371,16 +357,15 @@ impl UserPatchAICommand {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if `size` is below 4, or if it leaves room for more than 3 parameters (20 or
+    /// Also fails if `size` is below 4, or if it leaves room for more than 3 parameters (20 or
     /// more).
     pub fn read_from(mut input: impl Read, size: u32) -> Result<Self> {
-        let num_params = (size - 4) / 4;
-        assert!(
-            num_params < 4,
-            "UserPatchAICommand needs more room for {num_params} params"
-        );
+        let num_params = size.checked_sub(4).ok_or(crate::Error::ValueOutOfRange)? / 4;
+        if 4 <= num_params {
+            return Err(crate::Error::InvalidData(
+                "a user patch AI command with more than 3 parameters",
+            ));
+        }
         let ai_action = input.read_u8()?;
         let player_id = input.read_u8()?.into();
         let _padding = input.read_u8()?;

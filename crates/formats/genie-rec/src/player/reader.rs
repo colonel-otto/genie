@@ -2,6 +2,7 @@
 
 use crate::ai::PlayerAI;
 use crate::element::{OptionalReadableElement, ReadableHeaderElement};
+use crate::fits;
 use crate::player::{
     DiplomacyOffer, GaiaData, HistoryInfo, Player, PlayerTech, UserPatchData, VisibleMap,
     VisibleResources,
@@ -13,7 +14,6 @@ use crate::{ObjectID, Result};
 use byteorder::{LE, ReadBytesExt};
 use genie_dat::tech_tree::TechTree;
 use genie_support::ReadStringsExt;
-use std::convert::TryInto;
 use std::io::Read;
 
 impl ReadableHeaderElement for Player {
@@ -41,9 +41,9 @@ impl ReadableHeaderElement for Player {
 
 /// From 10.55 on the format puts check bytes between the sections (11, 22 or 33).
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if the byte read is not `value`.
+/// Fails if the byte read is not `value`.
 fn expect_marker<R: Read>(input: &mut RecordingHeaderReader<R>, value: u8) -> Result<()> {
     if input.version() >= 10.55 {
         assert_eq!(input.read_u8()?, value);
@@ -79,7 +79,7 @@ impl Player {
         expect_marker(input, 22)?;
         let num_attributes = input.read_u32::<LE>()?;
         expect_marker(input, 33)?;
-        self.attributes = vec![0.0; num_attributes.try_into().unwrap()];
+        self.attributes = vec![0.0; fits(num_attributes)?];
         input.read_f32_into::<LE>(&mut self.attributes)?;
         expect_marker(input, 11)?;
         self.initial_view = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);

@@ -2,9 +2,9 @@
 
 use crate::actions::{Location2, ObjectsList};
 use crate::{ObjectID, PlayerID, Result};
+use crate::{fits, opt_fits};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{ReadSkipExt, TechID, UnitTypeID, read_opt_u32};
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// Train a unit at a building (command `0x64`; aoc-mgz calls it the AI queue command).
@@ -47,16 +47,14 @@ impl MakeCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the target ID is above `i32::MAX`.
+    /// Also fails if the target ID is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
         output.write_u32::<LE>(self.building_id.into())?;
         output.write_u8(self.player_id.into())?;
         output.write_u8(0)?;
         output.write_u16::<LE>(self.unit_type_id.into())?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.target_id, -1)?)?;
         Ok(())
     }
 }
@@ -101,16 +99,14 @@ impl ResearchCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the target ID is above `i32::MAX`.
+    /// Also fails if the target ID is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
         output.write_u32::<LE>(self.building_id.into())?;
         output.write_u8(self.player_id.into())?;
         output.write_u8(0)?;
         output.write_u16::<LE>(self.tech_id.into())?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.target_id, -1)?)?;
         Ok(())
     }
 }
@@ -188,12 +184,12 @@ impl BuildWallCommand {
         let builders = if selected_count == -1 {
             ObjectsList::SameAsLast
         } else {
-            let mut list = vec![0; selected_count.try_into().unwrap()];
+            let mut list = vec![0; fits(selected_count)?];
             input.read_i32_into::<LE>(&mut list)?;
             if selected_count == 1 && list[0] == -1 {
                 list.clear();
             }
-            ObjectsList::List(list.into_iter().map(|id| id.try_into().unwrap()).collect())
+            ObjectsList::List(list.into_iter().map(fits).collect::<Result<_>>()?)
         };
         Ok(Self {
             player_id,
@@ -221,13 +217,11 @@ impl CancelBuildCommand {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the stored player ID is above 255.
+    /// Also fails if the stored player ID is above 255.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         input.skip(3)?;
         let building_id = input.read_u32::<LE>()?.into();
-        let player_id = input.read_u32::<LE>()?.try_into().unwrap();
+        let player_id = fits(input.read_u32::<LE>()?)?;
         Ok(Self {
             player_id,
             building_id,

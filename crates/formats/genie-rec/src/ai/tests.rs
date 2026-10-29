@@ -85,32 +85,32 @@ fn the_main_module_reads_its_objects() {
 /// The information module of an old save reads its skipped blocks and ends where the format
 /// is not known.
 #[test]
-#[should_panic(expected = "not yet implemented")]
 fn the_information_module_of_10_5_ends_at_its_unknown_part() {
     let zeros = vec![0u8; 1 << 18];
-    let _ = InformationAI::read_from(&mut header_reader(&zeros, 10.5));
+    let e = InformationAI::read_from(&mut header_reader(&zeros, 10.5)).unwrap_err();
+    assert!(matches!(e, crate::Error::NotRead(_)));
 }
 
 /// From 10.94 on it reads what the AI has seen; from 11.09 on the players' building counts.
 #[test]
-#[should_panic(expected = "not yet implemented")]
 fn the_information_module_of_11_97_ends_at_its_unknown_part() {
     let zeros = vec![0u8; 1 << 18];
-    let _ = InformationAI::read_from(&mut header_reader(&zeros, 11.97));
+    let e = InformationAI::read_from(&mut header_reader(&zeros, 11.97)).unwrap_err();
+    assert!(matches!(e, crate::Error::NotRead(_)));
 }
 
 /// The tactical module ends after its unit lists.
 #[test]
-#[should_panic(expected = "not yet implemented")]
 fn the_tactical_module_ends_after_its_unit_lists() {
     let zeros = vec![0u8; 1 << 10];
-    let _ = TacticalAI::read_from(&mut header_reader(&zeros, 11.97));
+    let e = TacticalAI::read_from(&mut header_reader(&zeros, 11.97)).unwrap_err();
+    assert!(matches!(e, crate::Error::NotRead(_)));
 }
 
 /// A player's AI reads its modules in order and stops in the information module.
 #[test]
-#[should_panic(expected = "not yet implemented")]
 fn a_player_s_ai_stops_in_the_information_module() {
     let zeros = vec![0u8; 1 << 18];
-    let _ = PlayerAI::read_from(&mut header_reader(&zeros, 11.97));
+    let e = PlayerAI::read_from(&mut header_reader(&zeros, 11.97)).unwrap_err();
+    assert!(matches!(e, crate::Error::NotRead(_)));
 }

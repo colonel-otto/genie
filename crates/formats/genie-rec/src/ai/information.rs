@@ -75,7 +75,7 @@ impl ReadableHeaderElement for InformationAI {
         skip_seen(input)?;
         skip_unit_counts(input)?;
 
-        todo!()
+        Err(crate::Error::NotRead("the rest of the AI information"))
     }
 }
 

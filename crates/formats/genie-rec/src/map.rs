@@ -1,9 +1,9 @@
 use crate::Result;
 use crate::element::{ReadableHeaderElement, WritableHeaderElement};
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::ReadSkipExt;
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// Data about a map tile.
@@ -151,7 +151,7 @@ impl WritableHeaderElement for MapZone {
         for val in &self.zone_map {
             output.write_i8(*val)?;
         }
-        output.write_u32::<LE>(self.passability_rules.len().try_into().unwrap())?;
+        output.write_u32::<LE>(fits(self.passability_rules.len())?)?;
         for val in &self.passability_rules {
             output.write_f32::<LE>(*val)?;
         }
@@ -175,7 +175,7 @@ impl ReadableHeaderElement for VisibilityMap {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let width = input.read_u32::<LE>()?;
         let height = input.read_u32::<LE>()?;
-        let mut visibility = vec![0; (width * height).try_into().unwrap()];
+        let mut visibility = vec![0; fits(width * height)?];
         input.read_u32_into::<LE>(&mut visibility)?;
         Ok(Self {
             width,
@@ -226,13 +226,13 @@ impl ReadableHeaderElement for Map {
 
         input.set_map_size(map.width, map.height);
         let num_zones = input.read_u32::<LE>()?;
-        map.zones = Vec::with_capacity(num_zones.try_into().unwrap());
+        map.zones = Vec::with_capacity(fits(num_zones)?);
         for _ in 0..num_zones {
             map.zones.push(MapZone::read_from(input)?);
         }
         map.all_visible = input.read_u8()? != 0;
         map.fog_of_war = input.read_u8()? != 0;
-        map.tiles = Vec::with_capacity((map.width * map.height).try_into().unwrap());
+        map.tiles = Vec::with_capacity(fits(map.width * map.height)?);
         for _ in 0..(map.width * map.height) {
             map.tiles.push(Tile::read_from(input)?);
         }

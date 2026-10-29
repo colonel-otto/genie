@@ -4,7 +4,7 @@
 //! sequence byte after it. The reader dispatches on the op id by hand: binrw's enum derive would try
 //! the variants in order and allocate an error for every mismatch.
 
-use super::Error;
+use crate::de::{Error, GenieError};
 use binrw::binrw;
 
 /// Op 5 as the first record of a recording.
@@ -226,14 +226,18 @@ impl Op<'_> {
     /// Write the record back in the recording's encoding.
     // The format stores the packet and text lengths as u32; a record read from a recording always
     // fits.
+    ///
+    /// # Errors
+    ///
+    /// A fixed-size record that does not write back.
     #[allow(clippy::cast_possible_truncation)]
-    pub fn write(&self, out: &mut Vec<u8>) {
+    pub fn write(&self, out: &mut Vec<u8>) -> Result<(), Error> {
         let words =
             |out: &mut Vec<u8>, ws: &[u32]| ws.iter().for_each(|w| out.extend(w.to_le_bytes()));
         match self {
             Op::Pregame(p) => {
                 words(out, &[5]);
-                write_fixed(p, out);
+                write_fixed(p, out)?;
             }
             Op::Command { packet, world_time } => {
                 words(out, &[1, packet.len() as u32]);
@@ -243,11 +247,11 @@ impl Op<'_> {
             Op::Sync { dt } => words(out, &[2, *dt]),
             Op::Checkpoint { dt, checkpoint } => {
                 words(out, &[2, *dt, 0]);
-                write_fixed(checkpoint.as_ref(), out);
+                write_fixed(checkpoint.as_ref(), out)?;
             }
             Op::View(v) => {
                 words(out, &[3]);
-                write_fixed(v, out);
+                write_fixed(v, out)?;
             }
             Op::Chat { channel, text } => {
                 words(out, &[4, channel.cast_unsigned(), text.len() as u32]);
@@ -255,18 +259,19 @@ impl Op<'_> {
             }
             Op::TriggerSync(t) => {
                 words(out, &[5]);
-                write_fixed(t, out);
+                write_fixed(t, out)?;
             }
             Op::End { trailer } => {
                 words(out, &[6]);
                 out.extend_from_slice(trailer);
             }
         }
+        Ok(())
     }
 }
 
-/// Append a fixed-size binrw record. Writing plain numbers into a growing `Vec` cannot fail.
-fn write_fixed<T>(value: &T, out: &mut Vec<u8>)
+/// Append a fixed-size binrw record.
+fn write_fixed<T>(value: &T, out: &mut Vec<u8>) -> Result<(), Error>
 where
     T: for<'b> binrw::BinWrite<Args<'b> = ()>,
 {
@@ -274,7 +279,7 @@ where
     cursor.set_position(cursor.get_ref().len() as u64);
     value
         .write_le(&mut cursor)
-        .expect("writing fixed-size numbers into a Vec cannot fail");
+        .map_err(|e| GenieError::io("a fixed-size record that does not write").with("binrw", e))
 }
 
 #[cfg(test)]
@@ -445,7 +450,7 @@ mod tests {
         body.extend(b"postgame");
         let mut out = Vec::new();
         for op in OpReader::new(&body, BASE, true) {
-            op.unwrap().write(&mut out);
+            op.unwrap().write(&mut out).unwrap();
         }
         assert_eq!(out, body);
     }

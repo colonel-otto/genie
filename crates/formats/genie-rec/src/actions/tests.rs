@@ -459,14 +459,14 @@ fn each_game_command_takes_its_values() {
 
 /// An id no command has is not read.
 #[test]
-#[should_panic(expected = "unsupported command type 0x6")]
-fn an_unknown_unit_command_panics() {
-    let _ = read(0x06, &[]);
+fn an_unknown_unit_command_is_an_error() {
+    let e = Command::read_from(&mut framed(0x06, &[]).as_slice()).unwrap_err();
+    assert!(matches!(e, crate::Error::UnsupportedCommand(0x06)));
 }
 
 /// Nor among the building commands.
 #[test]
-#[should_panic(expected = "unsupported command type 0x68")]
-fn an_unknown_building_command_panics() {
-    let _ = read(0x68, &[]);
+fn an_unknown_building_command_is_an_error() {
+    let e = Command::read_from(&mut framed(0x68, &[]).as_slice()).unwrap_err();
+    assert!(matches!(e, crate::Error::UnsupportedCommand(0x68)));
 }

@@ -1,5 +1,6 @@
 use crate::Result;
 use crate::element::{OptionalReadableElement, ReadableHeaderElement, WritableHeaderElement};
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
 use crate::unit_type::UnitBaseClass;
 use byteorder::ReadBytesExt;
@@ -7,7 +8,6 @@ pub use genie_dat::sprite::SpriteID;
 pub use genie_dat::terrain::TerrainID;
 pub use genie_dat::unit_type::AttributeCost;
 pub use genie_support::{StringKey, UnitTypeID};
-use std::convert::TryInto;
 use std::io::Read;
 
 mod building;
@@ -57,7 +57,7 @@ impl OptionalReadableElement for Unit {
         if raw_class == 0 {
             return Ok(None);
         }
-        let unit_base_class = raw_class.try_into().unwrap();
+        let unit_base_class = fits(raw_class)?;
         let static_ = StaticUnitAttributes::read_from(input)?;
         let mut unit = Self {
             unit_base_class,

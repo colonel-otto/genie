@@ -16,6 +16,14 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::unimplemented,
+    clippy::todo
+)]
 
 pub mod actions;
 pub mod ai;
@@ -147,6 +155,51 @@ pub enum Error {
     /// The scenario embedded in the header could not be read.
     #[error("Could not read embedded scenario data: {0}")]
     ReadScenarioError(#[from] genie_scx::Error),
+    /// A count or an id does not fit the field it is read from or written to.
+    #[error("a value that does not fit its field")]
+    ValueOutOfRange,
+    /// A string is not valid UTF-8.
+    #[error("a string that is not valid UTF-8")]
+    InvalidString,
+    /// A body action of a type the reader does not know.
+    #[error("unsupported action type {0:#x}")]
+    UnsupportedAction(i32),
+    /// A command of a type the reader does not know.
+    #[error("unsupported command type {0:#x}")]
+    UnsupportedCommand(u8),
+    /// A game command of a type the reader does not know.
+    #[error("unsupported game command {0:#x}")]
+    UnsupportedGameCommand(u8),
+    /// A unit action of a type the reader does not know.
+    #[error("unsupported unit action type {0}")]
+    UnsupportedUnitAction(u16),
+    /// A value the format rules out: the message says which.
+    #[error("{0}")]
+    InvalidData(&'static str),
+    /// A part of the header the crate does not read yet.
+    #[error("{0} is not read yet")]
+    NotRead(&'static str),
+    /// A part of the header the crate does not write yet.
+    #[error("this header element has no writer")]
+    NotWritten,
+}
+
+/// `value` as the type of the field it is read from or written to.
+///
+/// # Errors
+///
+/// [`Error::ValueOutOfRange`] when it does not fit.
+pub(crate) fn fits<T, U: TryInto<T>>(value: U) -> Result<T> {
+    value.try_into().map_err(|_| Error::ValueOutOfRange)
+}
+
+/// An optional id as its field: `none` for no id.
+///
+/// # Errors
+///
+/// [`Error::ValueOutOfRange`] when the id does not fit.
+pub(crate) fn opt_fits<T, U: TryInto<T>>(value: Option<U>, none: T) -> Result<T> {
+    value.map_or(Ok(none), fits)
 }
 
 impl From<genie_support::ReadStringError> for Error {
@@ -233,7 +286,7 @@ where
             }
             Ok(0x03) => Some(actions::ViewLock::read_from(&mut self.input).map(Action::ViewLock)),
             Ok(0x04) => Some(actions::Chat::read_from(&mut self.input).map(Action::Chat)),
-            Ok(id) => panic!("unsupported action type {id:#x}"),
+            Ok(id) => Some(Err(Error::UnsupportedAction(id))),
             Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => None,
             Err(err) => Some(Err(err.into())),
         }
@@ -490,6 +543,25 @@ impl From<Error> for genie_error::GenieError {
             Error::ReadScenarioError(_) => {
                 Self::invalid_input("an embedded scenario that does not read")
             }
+            Error::ValueOutOfRange => Self::invalid_input("a value that does not fit its field"),
+            Error::InvalidString => Self::invalid_input("a string that is not valid UTF-8"),
+            Error::UnsupportedAction(_) => {
+                Self::invalid_input("an action type this reader does not know")
+            }
+            Error::UnsupportedCommand(_) => {
+                Self::invalid_input("a command type this reader does not know")
+            }
+            Error::UnsupportedGameCommand(_) => {
+                Self::invalid_input("a game command type this reader does not know")
+            }
+            Error::UnsupportedUnitAction(_) => {
+                Self::invalid_input("a unit action type this reader does not know")
+            }
+            Error::InvalidData(_) => Self::invalid_input("a value the format rules out"),
+            Error::NotRead(_) => {
+                Self::missing_data("a part of the header this reader does not read")
+            }
+            Error::NotWritten => Self::missing_data("a header element without a writer"),
         };
         to.with_source(e)
     }
@@ -499,6 +571,35 @@ impl From<Error> for genie_error::GenieError {
 mod tests {
     use super::*;
     use std::fs::File;
+
+    /// Every error converts into a `GenieError` with the kind of its reason; the original stays as
+    /// its source.
+    #[test]
+    fn the_errors_convert_into_genie_errors_of_their_kinds() {
+        use genie_error::ErrorKind::{InvalidInput, Io, MissingData};
+        let kinds: [(Error, genie_error::ErrorKind); 13] = [
+            (io::Error::other("x").into(), Io),
+            (SyncError::ExpectedSync.into(), InvalidInput),
+            (genie_support::DecodeStringError.into(), InvalidInput),
+            (Error::ValueOutOfRange, InvalidInput),
+            (Error::InvalidString, InvalidInput),
+            (Error::InvalidData("x"), InvalidInput),
+            (Error::UnsupportedAction(9), InvalidInput),
+            (Error::UnsupportedCommand(9), InvalidInput),
+            (Error::UnsupportedGameCommand(9), InvalidInput),
+            (Error::UnsupportedUnitAction(9), InvalidInput),
+            (Error::NotRead("x"), MissingData),
+            (Error::NotWritten, MissingData),
+            (
+                Error::ReadScenarioError(genie_scx::Error::MissingFileNameError),
+                InvalidInput,
+            ),
+        ];
+        for (error, kind) in kinds {
+            let converted = genie_error::GenieError::from(error);
+            assert_eq!(converted.kind(), kind, "{converted}");
+        }
+    }
 
     #[test]
     // AI data parsing is incomplete: remove this attribute when the test starts passing

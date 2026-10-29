@@ -2,11 +2,11 @@
 //! resources, influence maps and quadrants.
 
 use crate::element::ReadableHeaderElement;
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
 use crate::{ObjectID, PlayerID, Result};
 use byteorder::{LE, ReadBytesExt};
 use genie_support::{ReadSkipExt, UnitTypeID, read_opt_u16, read_opt_u32};
-use std::convert::TryInto;
 use std::io::Read;
 
 /// What the information AI remembers about an important object.
@@ -232,11 +232,11 @@ impl ReadableHeaderElement for AttackMemory {
             max_y: input.read_u8()?,
             attacking_owner: match input.read_i8()? {
                 -1 => None,
-                id => Some(id.try_into().unwrap()),
+                id => Some(fits(id)?),
             },
             target_owner: match input.read_i8()? {
                 -1 => None,
-                id => Some(id.try_into().unwrap()),
+                id => Some(fits(id)?),
             },
             ..Default::default()
         };

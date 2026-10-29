@@ -94,9 +94,7 @@ impl UnitAction {
     ///
     /// Returns an error if reading fails.
     ///
-    /// # Panics
-    ///
-    /// Panics on an action type the reader does not know yet (see [`ActionType::read_from`]).
+    /// Also fails on an action type the reader does not know yet (see [`ActionType::read_from`]).
     pub fn read_list_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Vec<Self>> {
         let mut list = vec![];
         loop {
@@ -140,9 +138,8 @@ impl ActionType {
     ///
     /// Returns an error if reading fails.
     ///
-    /// # Panics
-    ///
-    /// Panics on an action type the reader does not know yet.
+    /// Also fails on an action type the reader does not know yet
+    /// ([`crate::Error::UnsupportedUnitAction`]).
     pub fn read_from<R: Read>(
         input: &mut RecordingHeaderReader<R>,
         action_type: u16,
@@ -157,7 +154,7 @@ impl ActionType {
             13 => Self::Guard,
             21 => Self::Make(ActionMake::read_from(input)?),
             107 => Self::Artifact,
-            _ => unimplemented!("action type {} not yet implemented", action_type),
+            _ => return Err(crate::Error::UnsupportedUnitAction(action_type)),
         };
         Ok(data)
     }

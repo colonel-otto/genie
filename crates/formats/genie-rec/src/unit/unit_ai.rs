@@ -1,11 +1,11 @@
 //! A unit's AI state ([`UnitAI`]): its orders, notifications, history, retargets and paths.
 
 use crate::element::{ReadableHeaderElement, read_counted};
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
 use crate::{ObjectID, PlayerID, Result};
 use byteorder::{LE, ReadBytesExt};
 use genie_support::{ReadSkipExt, read_opt_u32};
-use std::convert::TryInto;
 use std::io::Read;
 
 /// An order in a unit AI's order queue.
@@ -28,7 +28,7 @@ impl ReadableHeaderElement for UnitAIOrder {
             order_type: input.read_u32::<LE>()?,
             priority: input.read_u32::<LE>()?,
             target_id: input.read_u32::<LE>()?.into(),
-            target_player: input.read_u32::<LE>()?.try_into().unwrap(),
+            target_player: fits(input.read_u32::<LE>()?)?,
             target_location: (
                 input.read_f32::<LE>()?,
                 input.read_f32::<LE>()?,
@@ -152,13 +152,13 @@ impl ReadableHeaderElement for Waypoint {
     }
 }
 
-/// A patrol path. Placeholder: reading one is not implemented yet and panics.
+/// A patrol path. Placeholder: reading one is not implemented yet and fails.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PatrolPath {}
 
 impl ReadableHeaderElement for PatrolPath {
     fn read_from<R: Read>(_: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        unimplemented!()
+        Err(crate::Error::NotRead("a patrol path"))
     }
 }
 

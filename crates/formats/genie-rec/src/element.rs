@@ -63,14 +63,13 @@ pub trait WritableHeaderElement {
     ///
     /// Returns an error if writing fails.
     ///
-    /// # Panics
-    ///
-    /// The default implementation is a placeholder that always panics (`unimplemented!`).
+    /// The default implementation is a placeholder that always fails with
+    /// [`crate::Error::NotWritten`].
     fn write_to<W: Write>(&self, output: &mut W) -> crate::Result<()> {
         // we need to use `output` otherwise we'll get warnings that it's not used
         // prefixing it would make any traits auto completed also be prefixed with _ and that's annoying
         let _ = output;
-        unimplemented!()
+        Err(crate::Error::NotWritten)
     }
 }
 

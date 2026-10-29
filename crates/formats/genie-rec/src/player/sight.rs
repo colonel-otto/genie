@@ -1,10 +1,10 @@
 //! What a player sees: its visible map and the resource objects it knows of.
 
 use crate::element::ReadableHeaderElement;
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
 use crate::{ObjectID, PlayerID, Result};
 use byteorder::{LE, ReadBytesExt};
-use std::convert::TryInto;
 use std::io::Read;
 
 /// A player's view of the map: which tiles it has explored and currently sees.
@@ -32,8 +32,8 @@ impl ReadableHeaderElement for VisibleMap {
         if input.version() >= 6.70 {
             map.explored_tiles_count = input.read_u32::<LE>()?;
         }
-        map.player_id = input.read_u16::<LE>()?.try_into().unwrap();
-        map.tiles = vec![0; (map.width * map.height).try_into().unwrap()];
+        map.player_id = fits(input.read_u16::<LE>()?)?;
+        map.tiles = vec![0; fits(map.width * map.height)?];
         input.read_i8_into(&mut map.tiles)?;
         Ok(map)
     }
@@ -80,7 +80,7 @@ impl ReadableHeaderElement for VisibleResources {
         }
         let mut lists = Vec::with_capacity(sizes.len());
         for size in sizes {
-            let mut list = Vec::with_capacity(size.try_into().unwrap());
+            let mut list = Vec::with_capacity(fits(size)?);
             for _ in 0..size {
                 list.push(VisibleResource::read_from(input)?);
             }

@@ -3,9 +3,9 @@
 
 use crate::actions::{Location2, ObjectsList};
 use crate::{ObjectID, PlayerID, Result};
+use crate::{fits, opt_fits};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{ReadSkipExt, UnitTypeID, f32_neq, read_opt_u32};
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// Task an object to attack ground.
@@ -38,11 +38,9 @@ impl AttackGroundCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
+    /// Also fails if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_i8(self.objects.len().try_into().unwrap())?;
+        output.write_i8(fits(self.objects.len())?)?;
         output.write_all(&[0, 0])?;
         output.write_f32::<LE>(self.location.0)?;
         output.write_f32::<LE>(self.location.1)?;
@@ -81,14 +79,12 @@ impl RepairCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 255 repairers (the format's `u8` count), or if the target
+    /// Also fails if there are more than 255 repairers (the format's `u8` count), or if the target
     /// ID is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_u8(self.repairers.len().try_into().unwrap())?;
+        output.write_u8(fits(self.repairers.len())?)?;
         output.write_all(&[0, 0])?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.target_id, -1)?)?;
         self.repairers.write_to(output)?;
         Ok(())
     }
@@ -150,17 +146,13 @@ impl FlareCommand {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the unit ID stored before the recipients is not -1.
+    /// Also fails if the unit ID stored before the recipients is not -1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         input.skip(3)?;
-        assert_eq!(
-            input.read_i32::<LE>()?,
-            -1,
-            "found flare with unexpected unit id"
-        );
+        if input.read_i32::<LE>()? != -1 {
+            return Err(crate::Error::InvalidData("a flare with a unit id"));
+        }
         for receive in &mut command.recipients {
             *receive = input.read_u8()? != 0;
         }
@@ -297,11 +289,9 @@ impl SetGatherPointCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 255 buildings, the most the format's `u8` count holds.
+    /// Also fails if there are more than 255 buildings, the most the format's `u8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_u8(self.buildings.len().try_into().unwrap())?;
+        output.write_u8(fits(self.buildings.len())?)?;
         output.write_all(&[0, 0])?;
         output.write_u32::<LE>(self.target_id.map_or(0xFFFF_FFFF, Into::into))?;
         output.write_u16::<LE>(self.target_type_id.map_or(0xFFFF, Into::into))?;

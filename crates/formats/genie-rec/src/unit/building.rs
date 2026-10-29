@@ -1,6 +1,7 @@
 //! The building base class's attributes: the gather point and the production queue.
 
 use crate::element::{ReadableHeaderElement, read_xyz};
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
 use crate::unit_action::UnitAction;
 use crate::{ObjectID, Result};
@@ -8,7 +9,6 @@ use arrayvec::ArrayVec;
 use byteorder::{LE, ReadBytesExt};
 use genie_dat::terrain::TerrainID;
 use genie_support::{UnitTypeID, read_opt_u32};
-use std::convert::TryInto;
 use std::io::Read;
 
 /// Where a building sends the units it trains.
@@ -161,8 +161,8 @@ impl GatherPoint {
             (false, _, _) => None,
             (true, -1, -1) => Some(location),
             (true, id, unit_type_id) => Some(Self::Object {
-                id: id.try_into().unwrap(),
-                unit_type: unit_type_id.try_into().unwrap(),
+                id: fits(id)?,
+                unit_type: fits(unit_type_id)?,
             }),
         })
     }
@@ -179,7 +179,7 @@ impl BuildingUnitAttributes {
         for _ in 0..4 {
             let id = input.read_i32::<LE>()?;
             if id != -1 {
-                self.linked_children.push(id.try_into().unwrap());
+                self.linked_children.push(fits(id)?);
             }
         }
         self.captured_unit_count = input.read_u8()?;

@@ -1,4 +1,5 @@
 use crate::element::{ReadableHeaderElement, read_counted};
+use crate::fits;
 use crate::map::Map;
 use crate::player::Player;
 use crate::reader::RecordingHeaderReader;
@@ -8,7 +9,6 @@ use byteorder::{LE, ReadBytesExt};
 use genie_scx::TribeScen;
 use genie_support::ReadSkipExt;
 pub use genie_support::SpriteID;
-use std::convert::TryInto;
 use std::fmt::{self, Debug};
 use std::io::Read;
 
@@ -189,12 +189,12 @@ impl ReadableHeaderElement for AIFactState {
         let version = input.read_f32::<LE>()?;
         let death_match = input.read_u32::<LE>()? != 0;
         let regicide = input.read_u32::<LE>()? != 0;
-        let map_size = input.read_u32::<LE>()?.try_into().unwrap();
-        let map_type = input.read_u32::<LE>()?.try_into().unwrap();
-        let starting_resources = input.read_u32::<LE>()?.try_into().unwrap();
-        let starting_age = input.read_u32::<LE>()?.try_into().unwrap();
+        let map_size = fits(input.read_u32::<LE>()?)?;
+        let map_type = fits(input.read_u32::<LE>()?)?;
+        let starting_resources = fits(input.read_u32::<LE>()?)?;
+        let starting_age = fits(input.read_u32::<LE>()?)?;
         let cheats_enabled = input.read_u32::<LE>()? != 0;
-        let difficulty = input.read_u32::<LE>()?.try_into().unwrap();
+        let difficulty = fits(input.read_u32::<LE>()?)?;
         let mut timers = [[0; 10]; 8];
         let mut shared_goals = [0; 256];
         let mut signals = [0; 256];

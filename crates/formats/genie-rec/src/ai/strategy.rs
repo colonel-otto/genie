@@ -199,6 +199,6 @@ impl ReadableHeaderElement for TacticalAI {
         ai.artifacts = read_id_list(input)?;
         ai.trade_carts = read_id_list(input)?;
 
-        todo!()
+        Err(crate::Error::NotRead("the rest of the strategy AI"))
     }
 }

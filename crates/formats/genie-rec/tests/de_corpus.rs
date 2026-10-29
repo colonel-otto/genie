@@ -95,7 +95,7 @@ fn tier_1_recordings_read_and_round_trip() {
                         path.display()
                     ));
                 }
-                op.write(&mut written);
+                op.write(&mut written).expect("a read op writes back");
             }
             if !failed && written != chapter.body {
                 problems.push(format!(

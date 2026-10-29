@@ -50,7 +50,7 @@ macro_rules! numeric_field {
     ($($t:ty),*) => {$(
         impl Field for $t {
             fn read(bytes: &[u8]) -> Self {
-                <$t>::from_le_bytes(bytes[..size_of::<$t>()].try_into().unwrap())
+                <$t>::from_le_bytes(std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0)))
             }
             fn write(self, out: &mut Vec<u8>) {
                 out.extend_from_slice(&self.to_le_bytes());
@@ -62,7 +62,7 @@ numeric_field!(u8, i8, u16, i16, u32, i32, u64, i64, f32);
 
 impl<const N: usize> Field for [u8; N] {
     fn read(bytes: &[u8]) -> Self {
-        bytes[..N].try_into().unwrap()
+        std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0))
     }
     fn write(self, out: &mut Vec<u8>) {
         out.extend_from_slice(&self);
@@ -93,7 +93,8 @@ fn bytes(p: &[u8], at: usize) -> Option<Vec<u8>> {
 
 /// Write the size into a packet the encoder has filled.
 fn finish(mut out: Vec<u8>) -> Vec<u8> {
-    let size = u16::try_from(out.len() - 4).expect("a command packet fits a u16 size");
+    // a packet read from a recording has a u16 size; a longer one cannot come from its fields
+    let size = u16::try_from(out.len().saturating_sub(4)).unwrap_or(u16::MAX);
     out[2..4].copy_from_slice(&size.to_le_bytes());
     out
 }

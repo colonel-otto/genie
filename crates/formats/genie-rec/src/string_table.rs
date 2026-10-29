@@ -1,6 +1,7 @@
-use crate::Result;
 use crate::element::{ReadableHeaderElement, WritableHeaderElement};
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
+use crate::{Error, Result};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 
@@ -29,14 +30,16 @@ impl StringTable {
 
     /// The number of strings in the table.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the table holds 65535 (`u16::MAX`) strings or more.
-    #[must_use]
-    pub fn num_strings(&self) -> u16 {
+    /// [`Error::ValueOutOfRange`] if the table holds 65535 (`u16::MAX`) strings or more.
+    pub fn num_strings(&self) -> Result<u16> {
         let len = self.strings.len();
-        assert!(len < u16::MAX as usize);
-        u16::try_from(len).expect("the assert above bounds the length")
+        if len < usize::from(u16::MAX) {
+            fits(len)
+        } else {
+            Err(Error::ValueOutOfRange)
+        }
     }
 
     /// The strings in the table.
@@ -57,7 +60,7 @@ impl ReadableHeaderElement for StringTable {
             let length = input.read_u32::<LE>()?;
             let mut bytes = vec![0; length as usize];
             input.read_exact(&mut bytes)?;
-            strings.push(String::from_utf8(bytes).unwrap());
+            strings.push(String::from_utf8(bytes).map_err(|_| Error::InvalidString)?);
         }
 
         Ok(Self {
@@ -70,14 +73,15 @@ impl ReadableHeaderElement for StringTable {
 impl WritableHeaderElement for StringTable {
     fn write_to<W: Write>(&self, handle: &mut W) -> Result<()> {
         handle.write_u16::<LE>(self.max_strings)?;
-        handle.write_u16::<LE>(self.num_strings())?;
+        handle.write_u16::<LE>(self.num_strings()?)?;
         handle.write_u32::<LE>(0)?;
 
         for string in &self.strings {
             let len = string.len();
-            assert!(len < u32::MAX as usize);
-            let len = u32::try_from(len).expect("the assert above bounds the length");
-            handle.write_u32::<LE>(len)?;
+            if u32::MAX as usize <= len {
+                return Err(Error::ValueOutOfRange);
+            }
+            handle.write_u32::<LE>(fits(len)?)?;
             handle.write_all(string.as_bytes())?;
         }
 
@@ -108,7 +112,7 @@ mod tests {
             strings: vec!["a".to_owned(), "bc".to_owned()],
         };
         let read = writes_back(&table, 11.97);
-        assert_eq!((read.max_strings(), read.num_strings()), (4, 2));
+        assert_eq!((read.max_strings(), read.num_strings().unwrap()), (4, 2));
         assert_eq!(read.into_iter().collect::<Vec<_>>(), ["a", "bc"]);
     }
 }

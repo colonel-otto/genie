@@ -1,8 +1,8 @@
 //! The game commands (`0x67`), one variant per sub-command.
 
+use crate::fits;
 use crate::{PlayerID, Result};
 use byteorder::{LE, ReadBytesExt};
-use std::convert::TryInto;
 use std::io::Read;
 
 /// Commands affecting the game (command `0x67`), one variant per sub-command.
@@ -129,9 +129,7 @@ impl GameCommand {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the sub-command is not one listed in [`GameCommand`], if the player ID is
+    /// Also fails if the sub-command is not one listed in [`GameCommand`], if the player ID is
     /// negative or above 255, or if a strategic number's value is above `i32::MAX`.
     pub fn read_from(input: impl Read) -> Result<Self> {
         use GameCommand::{
@@ -148,56 +146,48 @@ impl GameCommand {
             var4,
         } = RawGameCommand::read_from(input)?;
 
+        if !matches!(game_command, 0x01..=0x07 | 0x0a..=0x0e | 0x10) {
+            return Err(crate::Error::UnsupportedGameCommand(game_command));
+        }
+        let player_id = fits(var1)?;
         match game_command {
             0x01 => Ok(SetGameSpeed {
-                player_id: var1.try_into().unwrap(),
+                player_id,
                 speed: var3,
             }),
             0x02 => Ok(Inventory {
-                player_id: var1.try_into().unwrap(),
+                player_id,
                 attribute_id: var2,
                 amount: var3,
             }),
-            0x03 => Ok(UpgradeTown {
-                player_id: var1.try_into().unwrap(),
-            }),
-            0x04 => Ok(QuickBuild {
-                player_id: var1.try_into().unwrap(),
-            }),
+            0x03 => Ok(UpgradeTown { player_id }),
+            0x04 => Ok(QuickBuild { player_id }),
             0x05 => Ok(AlliedVictory {
-                player_id: var1.try_into().unwrap(),
+                player_id,
                 status: var2 != 0,
             }),
             0x06 => Ok(Cheat {
-                player_id: var1.try_into().unwrap(),
+                player_id,
                 cheat_id: var2,
             }),
-            0x07 => Ok(SharedLos {
-                player_id: var1.try_into().unwrap(),
-            }),
-            0x0a => Ok(Spies {
-                player_id: var1.try_into().unwrap(),
-            }),
+            0x07 => Ok(SharedLos { player_id }),
+            0x0a => Ok(Spies { player_id }),
             0x0b => Ok(SetStrategicNumber {
-                player_id: var1.try_into().unwrap(),
+                player_id,
                 strategic_number: var2,
-                value: var4.try_into().unwrap(),
+                value: fits(var4)?,
             }),
-            0x0c => Ok(Unknown0x0c {
-                player_id: var1.try_into().unwrap(),
-            }),
+            0x0c => Ok(Unknown0x0c { player_id }),
             0x0d => Ok(AddFarmReseedQueue {
-                player_id: var1.try_into().unwrap(),
+                player_id,
                 amount: var2,
             }),
             0x0e => Ok(RemoveFarmReseedQueue {
-                player_id: var1.try_into().unwrap(),
+                player_id,
                 amount: var2,
             }),
-            0x10 => Ok(FarmReseedAutoQueue {
-                player_id: var1.try_into().unwrap(),
-            }),
-            _ => panic!("unimplemented game command {game_command:#x}"),
+            0x10 => Ok(FarmReseedAutoQueue { player_id }),
+            _ => Err(crate::Error::UnsupportedGameCommand(game_command)),
         }
     }
 }

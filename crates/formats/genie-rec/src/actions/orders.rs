@@ -2,9 +2,9 @@
 
 use crate::actions::{Location2, Location3, ObjectsList};
 use crate::{ObjectID, PlayerID, Result};
+use crate::{fits, opt_fits};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{ReadSkipExt, UnitTypeID, read_opt_u32};
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// Task an object to a target object or a target location.
@@ -45,14 +45,12 @@ impl OrderCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the target ID is above `i32::MAX`, or if there are more than `u32::MAX` objects.
+    /// Also fails if the target ID is above `i32::MAX`, or if there are more than `u32::MAX` objects.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.player_id.into())?;
         output.write_all(&[0, 0])?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_u32::<LE>(self.objects.len().try_into().unwrap())?;
+        output.write_i32::<LE>(opt_fits(self.target_id, -1)?)?;
+        output.write_u32::<LE>(fits(self.objects.len())?)?;
         output.write_f32::<LE>(self.location.0)?;
         output.write_f32::<LE>(self.location.1)?;
         self.objects.write_to(output)?;
@@ -86,11 +84,9 @@ impl StopCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
+    /// Also fails if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_i8(self.objects.len().try_into().unwrap())?;
+        output.write_i8(fits(self.objects.len())?)?;
         self.objects.write_to(output)?;
         Ok(())
     }
@@ -130,13 +126,11 @@ impl WorkCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
+    /// Also fails if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
         output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u).cast_signed()))?;
-        output.write_i8(self.objects.len().try_into().unwrap())?;
+        output.write_i8(fits(self.objects.len())?)?;
         output.write_all(&[0, 0, 0])?;
         output.write_f32::<LE>(self.location.0)?;
         output.write_f32::<LE>(self.location.1)?;
@@ -184,14 +178,12 @@ impl MoveCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
+    /// Also fails if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.player_id.into())?;
         output.write_all(&[0, 0])?;
         output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u).cast_signed()))?;
-        output.write_i8(self.objects.len().try_into().unwrap())?;
+        output.write_i8(fits(self.objects.len())?)?;
         output.write_all(&[0, 0, 0])?;
         output.write_f32::<LE>(self.location.0)?;
         output.write_f32::<LE>(self.location.1)?;
@@ -329,9 +321,7 @@ impl AIOrderCommand {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the target's owner is stored as a negative number other than -1.
+    /// Also fails if the target's owner is stored as a negative number other than -1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = i32::from(input.read_i8()?);
@@ -344,7 +334,7 @@ impl AIOrderCommand {
         command.target_id = read_opt_u32(&mut input)?;
         command.target_player_id = match input.read_i8()? {
             -1 => None,
-            id => Some(id.try_into().unwrap()),
+            id => Some(fits(id)?),
         };
         input.skip(3)?;
         command.target_location = (
@@ -370,12 +360,10 @@ impl AIOrderCommand {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 127 objects (the format's `i8` count), or if the target ID
+    /// Also fails if there are more than 127 objects (the format's `i8` count), or if the target ID
     /// is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_i8(self.objects.len().try_into().unwrap())?;
+        output.write_i8(fits(self.objects.len())?)?;
         output.write_u8(self.player_id.into())?;
         output.write_u8(self.issuer.into())?;
         match &self.objects {
@@ -387,7 +375,7 @@ impl AIOrderCommand {
         output.write_u16::<LE>(self.order_type)?;
         output.write_i8(self.order_priority)?;
         output.write_u8(0)?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.target_id, -1)?)?;
         output.write_i8(
             self.target_player_id
                 .map_or(-1, |id| u8::from(id).cast_signed()),

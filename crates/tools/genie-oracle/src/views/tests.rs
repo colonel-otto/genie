@@ -245,7 +245,7 @@ fn the_checkpoint_view_names_the_differing_words() {
             checkpoint: checkpoint(),
         },
     ] {
-        op.write(&mut body);
+        op.write(&mut body).unwrap();
     }
     let chapter = Chapter {
         index: 1,

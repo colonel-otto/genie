@@ -106,11 +106,11 @@ fn a_static_unit_reads_only_its_static_attributes() {
 }
 
 #[test]
-#[should_panic(expected = "not implemented")]
 fn the_old_format_s_units_are_read_only() {
     let bytes = Bytes::default().u8(10).raw(&rest(identity()).0).0;
     let unit: Unit = OptionalReadableElement::read_from(&mut header_reader(&bytes, 11.58))
         .unwrap()
         .unwrap();
-    let _ = unit.write_to(&mut vec![]);
+    let e = unit.write_to(&mut vec![]).unwrap_err();
+    assert!(matches!(e, crate::Error::NotWritten));
 }

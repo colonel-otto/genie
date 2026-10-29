@@ -1,13 +1,13 @@
 //! The attributes every object has, and the animated base class's.
 
 use crate::element::{ReadableHeaderElement, WritableHeaderElement, read_xyz};
+use crate::fits;
 use crate::reader::RecordingHeaderReader;
 use crate::unit::SpriteList;
 use crate::{ObjectID, PlayerID, Result};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_dat::sprite::SpriteID;
 use genie_support::{UnitTypeID, read_opt_u32};
-use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// The attributes every object has.
@@ -110,7 +110,7 @@ impl StaticUnitAttributes {
         if input.version() < 11.58 {
             self.selected_group = match input.read_i8()? {
                 -1 => None,
-                id => Some(id.try_into().unwrap()),
+                id => Some(fits(id)?),
             };
         }
         self.attribute_type_held = input.read_u16::<LE>()?;
