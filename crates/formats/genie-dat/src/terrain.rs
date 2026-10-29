@@ -1,6 +1,8 @@
 //! Types related to terrains.
 
 use crate::FileVersion;
+use crate::conv::invalid_data;
+use crate::conv::opt_fits;
 use crate::sound::SoundID;
 use crate::sprite::{GraphicID, SpriteID};
 use crate::unit_type::UnitTypeID;
@@ -9,7 +11,6 @@ use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{
     MapInto, fallible_try_from, fallible_try_into, infallible_try_into, read_opt_u16, read_opt_u32,
 };
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// An ID identifying a terrain.
@@ -262,17 +263,20 @@ impl TerrainRestriction {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the restriction does not hold exactly `num_terrains` entries.
+    /// Also fails if the restriction does not hold exactly `num_terrains` entries.
     pub fn write_to(
         &self,
         mut output: impl Write,
         version: FileVersion,
         num_terrains: u16,
     ) -> Result<()> {
-        assert_eq!(self.passability.len(), num_terrains.into());
-        assert_eq!(self.pass_graphics.len(), num_terrains.into());
+        if self.passability.len() != usize::from(num_terrains)
+            || self.pass_graphics.len() != usize::from(num_terrains)
+        {
+            return Err(invalid_data(
+                "a terrain table that does not match the terrain count",
+            ));
+        }
         for value in &self.passability {
             output.write_f32::<LE>(*value)?;
         }
@@ -475,9 +479,7 @@ impl Terrain {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are not exactly `num_terrains` borders, or if the SLP ID or the terrain to
+    /// Also fails if there are not exactly `num_terrains` borders, or if the SLP ID or the terrain to
     /// draw does not fit the format's signed field.
     pub fn write_to<W: Write>(
         &self,
@@ -485,12 +487,16 @@ impl Terrain {
         _version: FileVersion,
         num_terrains: u16,
     ) -> Result<()> {
-        assert_eq!(self.borders.len(), num_terrains as usize);
+        if self.borders.len() != usize::from(num_terrains) {
+            return Err(invalid_data(
+                "a terrain border list that does not match the terrain count",
+            ));
+        }
         output.write_u8(u8::from(self.enabled))?;
         output.write_u8(self.random)?;
         write_terrain_name(output, &self.name)?;
         write_terrain_name(output, &self.slp_name)?;
-        output.write_i32::<LE>(self.slp_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.slp_id, -1)?)?;
         output.write_i32::<LE>(0)?; // slp pointer
         output.write_i32::<LE>(self.sound_id.map_or(-1, i32::from))?;
         output.write_i32::<LE>(self.blend_priority.unwrap_or(-1))?;
@@ -500,10 +506,7 @@ impl Terrain {
         for frame in &self.elevation_sprites {
             frame.write_to(output)?;
         }
-        output.write_i16::<LE>(
-            self.terrain_id_to_draw
-                .map_or(-1, |id| id.try_into().unwrap()),
-        )?;
+        output.write_i16::<LE>(opt_fits(self.terrain_id_to_draw, -1)?)?;
         output.write_i16::<LE>(self.rows)?;
         output.write_i16::<LE>(self.cols)?;
         for border in &self.borders {
@@ -605,15 +608,13 @@ impl TerrainBorder {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the SLP ID does not fit the format's `i32`.
+    /// Also fails if the SLP ID does not fit the format's `i32`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(u8::from(self.enabled))?;
         output.write_u8(self.random)?;
         write_terrain_name(output, &self.name)?;
         write_terrain_name(output, &self.slp_name)?;
-        output.write_i32::<LE>(self.slp_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.slp_id, -1)?)?;
         output.write_i32::<LE>(0)?; // slp pointer
         output.write_i32::<LE>(self.sound_id.map_or(-1, i32::from))?;
         output.write_u8(self.color.0)?;

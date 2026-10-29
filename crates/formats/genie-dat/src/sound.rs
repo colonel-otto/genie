@@ -1,8 +1,8 @@
 use crate::FileVersion;
+use crate::conv::{fits, invalid_data};
 use arrayvec::ArrayString;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{fallible_try_from, fallible_try_into, infallible_try_into};
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// An ID identifying a sound.
@@ -90,18 +90,19 @@ impl SoundItem {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if `civilization` or `icon_set` is `None`: the format always stores both.
+    ///     /// Also fails if `civilization` or `icon_set` is `None`: the format always stores both.
     pub fn write_to<W: Write>(&self, output: &mut W, _version: FileVersion) -> Result<()> {
         output.write_all(&[0; 13])?;
         output.write_i32::<LE>(self.resource_id)?;
         output.write_i16::<LE>(self.probability)?;
         // AoK only, must both be set
-        assert!(self.civilization.is_some());
-        assert!(self.icon_set.is_some());
-        output.write_i16::<LE>(self.civilization.unwrap())?;
-        output.write_i16::<LE>(self.icon_set.unwrap())?;
+        let (Some(civilization), Some(icon_set)) = (self.civilization, self.icon_set) else {
+            return Err(invalid_data(
+                "a sound item without its civilization or icon set",
+            ));
+        };
+        output.write_i16::<LE>(civilization)?;
+        output.write_i16::<LE>(icon_set)?;
         Ok(())
     }
 }
@@ -135,14 +136,12 @@ impl Sound {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than `u16::MAX` sound files, or if a sound file lacks its
+    /// Also fails if there are more than `u16::MAX` sound files, or if a sound file lacks its
     /// `civilization` or `icon_set` (see [`SoundItem::write_to`]).
     pub fn write_to<W: Write>(&self, output: &mut W, version: FileVersion) -> Result<()> {
         output.write_u16::<LE>(self.id.into())?;
         output.write_i16::<LE>(self.play_delay)?;
-        output.write_u16::<LE>(self.len().try_into().unwrap())?;
+        output.write_u16::<LE>(fits(self.len())?)?;
         output.write_i32::<LE>(self.cache_time)?;
         for item in &self.items {
             item.write_to(output, version)?;

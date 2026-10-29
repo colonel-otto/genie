@@ -1,9 +1,9 @@
 //! The weapons ([`WeaponInfo`]), the combat part and the projectile part.
 
+use crate::conv::fits;
 use crate::sprite::SpriteID;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{MapInto, UnitTypeID, read_opt_u16};
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// One attack or armour value: a class and the amount for it.
@@ -139,15 +139,13 @@ impl BaseCombatUnitTypeAttributes {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if `version` is below 11.52 and the base armour does not fit the u8 that such files
+    /// Also fails if `version` is below 11.52 and the base armour does not fit the u8 that such files
     /// store it in.
     // The format stores the attack and armour counts as u16 (truncated, as before).
     #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write, version: f32) -> Result<()> {
         if version < 11.52 {
-            output.write_u8(self.base_armor.try_into().unwrap())?;
+            output.write_u8(fits(self.base_armor)?)?;
         } else {
             output.write_u16::<LE>(self.base_armor)?;
         }
@@ -159,6 +157,11 @@ impl BaseCombatUnitTypeAttributes {
         for armor in &self.armors {
             armor.write_to(&mut output)?;
         }
+        self.write_ranges(&mut output)
+    }
+
+    /// The fields after the weapon and armour lists.
+    fn write_ranges(&self, mut output: impl Write) -> Result<()> {
         output.write_u16::<LE>(self.defense_terrain_bonus.unwrap_or(0xFFFF))?;
         output.write_f32::<LE>(self.weapon_range_max)?;
         output.write_f32::<LE>(self.area_effect_range)?;

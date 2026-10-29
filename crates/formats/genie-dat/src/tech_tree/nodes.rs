@@ -1,6 +1,7 @@
 //! The tech tree's nodes: ages, buildings, units and techs, read and written.
 
-use crate::tech_tree::{TechTreeDependencies, TechTreeStatus, TechTreeType, invalid_data};
+use crate::conv::invalid_data;
+use crate::tech_tree::{TechTreeDependencies, TechTreeStatus, TechTreeType};
 use crate::unit_type::UnitTypeID;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{TechID, read_opt_u32};
@@ -106,9 +107,7 @@ impl TechTreeAge {
     ///
     /// Returns an error if reading from `input` fails, or if a value is not valid for its field.
     ///
-    /// # Panics
-    ///
-    /// Panics if the node has more than 10 building levels or is not of type
+    /// Also fails if the node has more than 10 building levels or is not of type
     /// [`TechTreeType::Age`].
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut age = Self {
@@ -121,7 +120,9 @@ impl TechTreeAge {
             building_levels: input.read_u8()?,
             ..Default::default()
         };
-        assert!(age.building_levels <= 10);
+        if 10 < age.building_levels {
+            return Err(invalid_data("an age with more than 10 building levels"));
+        }
         for building in &mut age.buildings_per_zone {
             *building = input.read_u8()?;
         }
@@ -130,7 +131,9 @@ impl TechTreeAge {
         }
         age.max_age_length = input.read_u8()?;
         age.node_type = input.read_i32::<LE>()?.try_into().map_err(invalid_data)?;
-        assert_eq!(age.node_type, TechTreeType::Age);
+        if age.node_type != TechTreeType::Age {
+            return Err(invalid_data("an age node of another node type"));
+        }
         Ok(age)
     }
 

@@ -1,9 +1,9 @@
+use crate::conv::{fits, invalid_data, opt_fits};
 use crate::sound::SoundID;
 use crate::sprite::SpriteID;
 use crate::unit_type::UnitTypeID;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::read_opt_u16;
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 use std::ops::Deref;
 
@@ -54,15 +54,15 @@ impl TaskList {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if a task's type is not 1.
+    /// Also fails if a task's type is not 1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let num_tasks = input.read_u16::<LE>()?;
         let mut tasks = vec![];
         for _ in 0..num_tasks {
             let task_type = input.read_u16::<LE>()?;
-            assert_eq!(task_type, 1);
+            if task_type != 1 {
+                return Err(invalid_data("a task whose type is not 1"));
+            }
             tasks.push(Task::read_from(&mut input)?);
         }
 
@@ -75,12 +75,10 @@ impl TaskList {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than `u16::MAX` tasks, or if a task's IDs do not fit the format
+    /// Also fails if there are more than `u16::MAX` tasks, or if a task's IDs do not fit the format
     /// (see [`Task::write_to`]).
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_u16::<LE>(self.len().try_into().unwrap())?;
+        output.write_u16::<LE>(fits(self.len())?)?;
         for task in self.iter() {
             output.write_u16::<LE>(1)?;
             task.write_to(output)?;
@@ -134,15 +132,13 @@ impl Task {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the target unit type, a sprite or a sound ID does not fit the format's `i16`.
+    /// Also fails if the target unit type, a sprite or a sound ID does not fit the format's `i16`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u16::<LE>(self.id)?;
         output.write_u8(u8::from(self.is_default))?;
         output.write_u16::<LE>(self.action_type)?;
         output.write_i16::<LE>(self.object_class)?;
-        output.write_i16::<LE>(self.object_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.object_id, -1)?)?;
         output.write_i16::<LE>(self.terrain_id)?;
         output.write_i16::<LE>(self.attribute_types.0)?;
         output.write_i16::<LE>(self.attribute_types.1)?;
@@ -160,12 +156,17 @@ impl Task {
         output.write_u8(self.owner_type)?;
         output.write_u8(self.holding_attribute)?;
         output.write_u8(self.state_building)?;
-        output.write_i16::<LE>(self.move_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.work_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.work_sprite2.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.carry_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.work_sound.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.work_sound2.map_or(-1, |id| id.try_into().unwrap()))?;
+        let ids = [
+            opt_fits(self.move_sprite, -1),
+            opt_fits(self.work_sprite, -1),
+            opt_fits(self.work_sprite2, -1),
+            opt_fits(self.carry_sprite, -1),
+            opt_fits(self.work_sound, -1),
+            opt_fits(self.work_sound2, -1),
+        ];
+        for id in ids {
+            output.write_i16::<LE>(id?)?;
+        }
         Ok(())
     }
 }

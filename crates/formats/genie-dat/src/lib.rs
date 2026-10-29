@@ -8,9 +8,18 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::unimplemented,
+    clippy::todo
+)]
 
 mod civ;
 mod color_table;
+mod conv;
 mod dat_read;
 mod dat_write;
 pub mod de;
@@ -32,7 +41,7 @@ pub use crate::task::{Task, TaskList};
 pub use crate::tech::{Tech, TechEffect};
 use crate::tech_tree::TechTree;
 use crate::terrain::{Terrain, TerrainBorder, TerrainID, TerrainRestriction, TileSize};
-use genie_support::{TechID, f32_eq};
+use genie_support::TechID;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
 
@@ -121,23 +130,14 @@ impl FileVersion {
 
     /// Is this file built for Age of Empires II: The Conquerors?
     #[must_use]
-    pub fn is_aoc(self) -> bool {
-        let data_version = self.into_data_version();
-        f32_eq!(data_version, 11.97)
+    pub const fn is_aoc(self) -> bool {
+        matches!(&self.0, b"VER 5.7\0")
     }
 
     /// Is this file built for Age of Empires II: Definitive Edition?
     #[must_use]
     pub fn is_de2(self) -> bool {
         self >= Self(*b"VER 5.8\0")
-    }
-
-    /// Get the data version associated with this file version.
-    fn into_data_version(self) -> f32 {
-        match &self.0 {
-            b"VER 5.7\0" => 11.97,
-            _ => panic!("unknown version"),
-        }
     }
 }
 

@@ -1,11 +1,11 @@
 //! The animated, moving and action parts of a unit type.
 
+use crate::conv::opt_fits;
 use crate::sound::SoundID;
 use crate::sprite::SpriteID;
 use crate::task::TaskList;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{UnitTypeID, read_opt_u16};
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// The attribute of animated unit types.
@@ -100,15 +100,13 @@ impl MovingUnitTypeAttributes {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if a sprite or unit ID does not fit the format's `i16`.
+    /// Also fails if a sprite or unit ID does not fit the format's `i16`.
     pub fn write_to(&self, mut output: impl Write, _version: f32) -> Result<()> {
-        output.write_i16::<LE>(self.move_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.run_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.move_sprite, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.run_sprite, -1)?)?;
         output.write_f32::<LE>(self.turn_speed)?;
         output.write_u8(self.size_class)?;
-        output.write_i16::<LE>(self.trailing_unit.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.trailing_unit, -1)?)?;
         output.write_u8(self.trailing_options)?;
         output.write_f32::<LE>(self.trailing_spacing)?;
         output.write_u8(self.move_algorithm)?;
@@ -175,21 +173,16 @@ impl ActionUnitTypeAttributes {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the default task, a unit or a sound ID does not fit the format's `i16`.
+    /// Also fails if the default task, a unit or a sound ID does not fit the format's `i16`.
     pub fn write_to(&self, mut output: impl Write, _version: f32) -> Result<()> {
-        output.write_i16::<LE>(self.default_task.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.default_task, -1)?)?;
         output.write_f32::<LE>(self.search_radius)?;
         output.write_f32::<LE>(self.work_rate)?;
-        output.write_i16::<LE>(self.drop_site.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(
-            self.backup_drop_site
-                .map_or(-1, |id| id.try_into().unwrap()),
-        )?;
+        output.write_i16::<LE>(opt_fits(self.drop_site, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.backup_drop_site, -1)?)?;
         output.write_u8(self.task_by_group)?;
-        output.write_i16::<LE>(self.command_sound.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.move_sound.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.command_sound, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.move_sound, -1)?)?;
         output.write_u8(self.run_pattern)?;
         Ok(())
     }

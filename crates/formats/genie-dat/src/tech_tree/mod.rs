@@ -1,12 +1,13 @@
 //! Types related to the tech tree data.
 
 use crate::civ::CivilizationID;
+use crate::conv::invalid_data;
 use crate::unit_type::UnitTypeID;
 use arrayvec::ArrayVec;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::TechID;
 use std::convert::{TryFrom, TryInto};
-use std::io::{self, Read, Result, Write};
+use std::io::{Read, Result, Write};
 
 mod nodes;
 
@@ -224,9 +225,7 @@ impl TechTree {
     ///
     /// Returns an error if reading from `input` fails, or if a value is not valid for its field.
     ///
-    /// # Panics
-    ///
-    /// Panics if an age node has more than 10 building levels or is not of type
+    /// Also fails if an age node has more than 10 building levels or is not of type
     /// [`TechTreeType::Age`].
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let num_ages = input.read_u8()?;
@@ -342,13 +341,13 @@ impl TechTreeDependencies {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than 10 prerequisites, which the list's capacity rules out.
-    // At most 10 (asserted), so the count fits the format's u8.
+    /// Also fails if there are more than 10 prerequisites, which the list's capacity rules out.
+    // At most 10 (checked), so the count fits the format's u8.
     #[allow(clippy::cast_possible_truncation)]
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        assert!(self.len() <= 10);
+        if 10 < self.len() {
+            return Err(invalid_data("more than 10 prerequisites"));
+        }
         output.write_u8(self.len() as u8)?;
         output.write_all(&[0, 0, 0])?;
         for i in 0..10 {
@@ -382,10 +381,6 @@ impl TechTreeDependencies {
     pub fn iter(&self) -> impl Iterator<Item = &TechTreeDependency> {
         self.0.iter()
     }
-}
-
-fn invalid_data<E: std::error::Error + Sized + Send + Sync + 'static>(err: E) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, err)
 }
 
 impl From<ParseTechTreeStatusError> for genie_error::GenieError {

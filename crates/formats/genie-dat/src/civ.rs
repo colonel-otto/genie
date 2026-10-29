@@ -1,12 +1,12 @@
 //! Types related to civilizations.
 
 use crate::GameVersion;
+use crate::conv::{fits, invalid_data};
 use crate::unit_type::{UnitType, UnitTypeID};
 use arrayvec::ArrayString;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use encoding_rs::WINDOWS_1252;
 use genie_support::{fallible_try_from, infallible_try_into, read_opt_u16};
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// An ID identifying a civilization
@@ -53,6 +53,9 @@ fallible_try_from!(CivilizationID, u32);
 
 type CivName = ArrayString<20>;
 
+/// A civilization's name takes more than the 20 bytes its field holds.
+const NAME_TOO_LONG: &str = "a civilization name longer than its field";
+
 /// Information about a civilization.
 #[derive(Debug, Default, Clone)]
 pub struct Civilization {
@@ -77,16 +80,14 @@ impl Civilization {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the name, decoded from WINDOWS-1252, takes more than 20 bytes as UTF-8.
+    /// Also fails if the name, decoded from WINDOWS-1252, takes more than 20 bytes as UTF-8.
     pub fn read_from(mut input: impl Read, version: GameVersion) -> Result<Self> {
         let mut civ = Self::default();
         let mut bytes = [0; 20];
         input.read_exact(&mut bytes)?;
         let bytes = &bytes[..bytes.iter().position(|&c| c == 0).unwrap_or(bytes.len())];
         let (name, _encoding, _failed) = WINDOWS_1252.decode(bytes);
-        civ.name = CivName::from(&name).unwrap();
+        civ.name = CivName::from(&name).map_err(|_| invalid_data(NAME_TOO_LONG))?;
         let num_attributes = input.read_u16::<LE>()?;
         civ.civ_effect = input.read_u16::<LE>()?;
         civ.bonus_effect = read_opt_u16(&mut input)?;
@@ -124,14 +125,12 @@ impl Civilization {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are more than `u16::MAX` attributes or unit types.
+    /// Also fails if there are more than `u16::MAX` attributes or unit types.
     pub fn write_to(&self, mut output: impl Write, version: GameVersion) -> Result<()> {
         let mut name = [0; 20];
         (name[..self.name.len()]).copy_from_slice(self.name.as_bytes());
         output.write_all(&name)?;
-        output.write_u16::<LE>(self.attributes.len().try_into().unwrap())?;
+        output.write_u16::<LE>(fits(self.attributes.len())?)?;
         output.write_u16::<LE>(self.civ_effect)?;
         output.write_u16::<LE>(self.bonus_effect.unwrap_or(0xFFFF))?;
         for v in &self.attributes {
@@ -139,7 +138,7 @@ impl Civilization {
         }
         output.write_u8(self.culture)?;
 
-        output.write_u16::<LE>(self.unit_types.len().try_into().unwrap())?;
+        output.write_u16::<LE>(fits(self.unit_types.len())?)?;
         for opt in &self.unit_types {
             output.write_u32::<LE>(match opt {
                 Some(_) => 1,

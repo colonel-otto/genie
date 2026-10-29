@@ -1,4 +1,5 @@
 use crate::civ::CivilizationID;
+use crate::conv::invalid_data;
 use crate::unit_type::UnitTypeID;
 use arrayvec::{ArrayString, ArrayVec};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
@@ -17,6 +18,9 @@ pub struct EffectCommand {
 }
 
 type TechEffectName = ArrayString<31>;
+
+/// A tech effect's name takes more than the 31 bytes its field holds.
+const NAME_TOO_LONG: &str = "a tech effect name longer than its field";
 
 /// A tech effect is a group of attribute changes that are applied when the effect is triggered.
 #[derive(Debug, Default, Clone)]
@@ -106,10 +110,12 @@ impl TechEffect {
 
     /// Set the name of this effect.
     ///
-    /// # Panics
-    /// This function panics if `name` requires more than 31 bytes of storage.
-    pub fn set_name(&mut self, name: &str) {
-        self.name = TechEffectName::from(name).unwrap();
+    /// # Errors
+    ///
+    /// Returns an error if `name` requires more than 31 bytes of storage.
+    pub fn set_name(&mut self, name: &str) -> Result<()> {
+        self.name = TechEffectName::from(name).map_err(|_| invalid_data(NAME_TOO_LONG))?;
+        Ok(())
     }
 
     /// Read a tech effect from an input stream.
@@ -118,16 +124,14 @@ impl TechEffect {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the name, decoded from WINDOWS-1252, takes more than 31 bytes as UTF-8.
+    /// Also fails if the name, decoded from WINDOWS-1252, takes more than 31 bytes as UTF-8.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut effect = Self::default();
         let mut bytes = [0; 31];
         input.read_exact(&mut bytes)?;
         let bytes = &bytes[..bytes.iter().position(|&c| c == 0).unwrap_or(bytes.len())];
         let (name, _encoding, _failed) = WINDOWS_1252.decode(bytes);
-        effect.name = TechEffectName::from(&name).unwrap();
+        effect.name = TechEffectName::from(&name).map_err(|_| invalid_data(NAME_TOO_LONG))?;
 
         let num_commands = input.read_u16::<LE>()?;
         for _ in 0..num_commands {
@@ -241,9 +245,7 @@ impl Tech {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if a string key is a name rather than a number.
+    /// Also fails if a string key is a name rather than a number.
     // The format stores the name length as u16 (truncated, as before).
     #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
@@ -251,8 +253,8 @@ impl Tech {
         output.write_u16::<LE>(self.civilization_id.map_into().unwrap_or(0xFFFF))?;
         output.write_u16::<LE>(self.full_tech_mode)?;
         output.write_u16::<LE>(self.location.map_into().unwrap_or(0xFFFF))?;
-        output.write_u16::<LE>(dll_id_u16(self.language_dll_name.as_ref()))?;
-        output.write_u16::<LE>(dll_id_u16(self.language_dll_description.as_ref()))?;
+        output.write_u16::<LE>(dll_id_u16(self.language_dll_name.as_ref())?)?;
+        output.write_u16::<LE>(dll_id_u16(self.language_dll_description.as_ref())?)?;
         output.write_u16::<LE>(self.time)?;
         output.write_u16::<LE>(self.time2)?;
         output.write_u16::<LE>(self.type_)?;
@@ -260,7 +262,7 @@ impl Tech {
         output.write_u8(self.button_id)?;
         output.write_u32::<LE>(match self.language_dll_help {
             Some(StringKey::Num(id)) => id,
-            Some(_) => unreachable!("cannot use named string keys in dat files"),
+            Some(_) => return Err(invalid_data(NAMED_STRING_KEY)),
             None => 0xFFFF_FFFF,
         })?;
         output.write_u32::<LE>(self.help_page_id)?;
@@ -297,18 +299,21 @@ impl Tech {
     }
 }
 
+/// What a named string key is: a data file cannot hold one.
+const NAMED_STRING_KEY: &str = "a named string key in a data file";
+
 /// A language string's id as the format's u16, 0xFFFF for none.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics on a named string key, which a data file cannot hold.
+/// A named string key, which a data file cannot hold.
 // The format stores the string IDs as u16 (truncated, as before).
 #[allow(clippy::cast_possible_truncation)]
-fn dll_id_u16(key: Option<&StringKey>) -> u16 {
+fn dll_id_u16(key: Option<&StringKey>) -> Result<u16> {
     match key {
-        Some(StringKey::Num(id)) => *id as u16,
-        Some(_) => unreachable!("cannot use named string keys in dat files"),
-        None => 0xFFFF,
+        Some(StringKey::Num(id)) => Ok(*id as u16),
+        Some(_) => Err(invalid_data(NAMED_STRING_KEY)),
+        None => Ok(0xFFFF),
     }
 }
 
@@ -319,15 +324,15 @@ mod tests {
     /// A language string's id fits the format's u16, none is 0xFFFF.
     #[test]
     fn a_language_string_s_id_is_its_number() {
-        assert_eq!(dll_id_u16(Some(&StringKey::from(7198u32))), 7198);
-        assert_eq!(dll_id_u16(None), 0xFFFF);
+        assert_eq!(dll_id_u16(Some(&StringKey::from(7198u32))).unwrap(), 7198);
+        assert_eq!(dll_id_u16(None).unwrap(), 0xFFFF);
     }
 
     /// A named string key has no place in a data file.
     #[test]
-    #[should_panic(expected = "cannot use named string keys in dat files")]
     fn a_named_string_key_cannot_be_written() {
-        let _ = dll_id_u16(Some(&StringKey::from("NAME")));
+        let e = dll_id_u16(Some(&StringKey::from("NAME"))).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
     }
 
     /// The requirements: six tech slots (-1 for none), three effect slots (type 0xFFFF for

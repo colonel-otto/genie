@@ -36,7 +36,7 @@ fn the_installed_data_file_has_the_values_genieutils_reads() {
         return eprintln!("GENIE_DAT is not set; skipping");
     };
     let dat = DatFile::from_inflated(&data).unwrap();
-    let units = match dat.version() {
+    let units = match dat.version().unwrap() {
         Version(31) => 2539, // VER 8.8, build 158041
         Version(32) => 2750, // VER 8.9, build 185872
         other => panic!("no genieutils values for {other:?}"),

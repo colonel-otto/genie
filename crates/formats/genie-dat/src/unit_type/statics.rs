@@ -1,13 +1,13 @@
 //! The attributes every unit type has: the resource storage, the damage sprites and the static
 //! part ([`StaticUnitTypeAttributes`]).
 
+use crate::conv::{fits, invalid_data, opt_fits};
 use crate::sound::SoundID;
 use crate::sprite::{GraphicID, SpriteID};
 use crate::unit_type::{UnitClass, write_opt_string_key};
 use arrayvec::ArrayVec;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{StringKey, UnitTypeID, read_opt_u16};
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// A resource a unit stores (e.g. the food in a sheep), with how it is stored.
@@ -238,9 +238,7 @@ impl StaticUnitTypeAttributes {
     ///
     /// Returns an error if reading from `input` fails, or if an ID is out of range.
     ///
-    /// # Panics
-    ///
-    /// Panics if the name is not valid UTF-8.
+    /// Also fails if the name is not valid UTF-8.
     pub fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
         let mut unit_type = Self::default();
         let name_len = input.read_u16::<LE>()?;
@@ -253,7 +251,8 @@ impl StaticUnitTypeAttributes {
             // TODO use not-UTF8 for the name
             let mut bytes = vec![0; usize::from(name_len)];
             input.read_exact(&mut bytes)?;
-            String::from_utf8(bytes.iter().copied().take_while(|b| *b != 0).collect()).unwrap()
+            String::from_utf8(bytes.iter().copied().take_while(|b| *b != 0).collect())
+                .map_err(invalid_data)?
         };
         unit_type.copy_id = input.read_u16::<LE>()?;
         unit_type.unit_group = input.read_u16::<LE>()?;
@@ -379,9 +378,7 @@ impl StaticUnitTypeAttributes {
     /// Returns an error if writing to `output` fails, or if the second string ID does not fit an
     /// `i16`.
     ///
-    /// # Panics
-    ///
-    /// Panics if the name or help string key is a name rather than a number or does not fit the
+    /// Also fails if the name or help string key is a name rather than a number or does not fit the
     /// format's field, if a sprite, sound or unit ID does not fit an `i16`, or if there are more
     /// than 255 damage sprites.
     // The format stores the name length as a u16 (truncated, as before).
@@ -404,19 +401,13 @@ impl StaticUnitTypeAttributes {
     /// radius.
     fn write_identity(&self, mut output: impl Write) -> Result<()> {
         output.write_u16::<LE>(self.id.into())?;
-        output.write_i16::<LE>((&self.string_id).try_into().unwrap())?;
+        output.write_i16::<LE>(fits(&self.string_id)?)?;
         write_opt_string_key(&mut output, self.string_id2.as_ref())?;
         output.write_u16::<LE>(self.unit_class)?;
-        output.write_i16::<LE>(
-            self.standing_sprite_1
-                .map_or(-1, |id| id.try_into().unwrap()),
-        )?;
-        output.write_i16::<LE>(
-            self.standing_sprite_2
-                .map_or(-1, |id| id.try_into().unwrap()),
-        )?;
-        output.write_i16::<LE>(self.dying_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.undead_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.standing_sprite_1, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.standing_sprite_2, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.dying_sprite, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.undead_sprite, -1)?)?;
         output.write_u8(self.undead_flag)?;
         output.write_u16::<LE>(self.hp)?;
         output.write_f32::<LE>(self.los)?;
@@ -430,17 +421,14 @@ impl StaticUnitTypeAttributes {
     /// The sounds, the death spawn, the buttons, the editor flags, the tile and construction
     /// sizes and the terrain and movement types.
     fn write_sounds_and_placement(&self, mut output: impl Write) -> Result<()> {
-        output.write_i16::<LE>(self.train_sound.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.damage_sound.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.death_spawn.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.train_sound, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.damage_sound, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.death_spawn, -1)?)?;
         output.write_u8(self.sort_number)?;
         output.write_u8(u8::from(self.can_be_built_on))?;
-        output.write_i16::<LE>(self.button_picture.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.button_picture, -1)?)?;
         output.write_u8(u8::from(self.hide_in_scenario_editor))?;
-        output.write_i16::<LE>(
-            self.portrait_picture
-                .map_or(-1, |id| id.try_into().unwrap()),
-        )?;
+        output.write_i16::<LE>(opt_fits(self.portrait_picture, -1)?)?;
         output.write_u8(u8::from(self.enabled))?;
         output.write_u8(u8::from(self.disabled))?;
         output.write_i16::<LE>(self.tile_req.0)?;
@@ -467,7 +455,7 @@ impl StaticUnitTypeAttributes {
         output.write_u8(self.unit_level)?;
         output.write_f32::<LE>(self.multiple_attribute_mod)?;
         output.write_u8(self.map_color)?;
-        output.write_u32::<LE>((&self.help_string_id).try_into().unwrap())?;
+        output.write_u32::<LE>(fits(&self.help_string_id)?)?;
         output.write_u32::<LE>(self.help_page_id)?;
         output.write_u32::<LE>(self.hotkey_id)?;
         Ok(())
@@ -501,12 +489,12 @@ impl StaticUnitTypeAttributes {
                 None => UnitAttribute::write_empty(&mut output)?,
             }
         }
-        output.write_u8(self.damage_sprites.len().try_into().unwrap())?;
+        output.write_u8(fits(self.damage_sprites.len())?)?;
         for sprite in &self.damage_sprites {
             sprite.write_to(&mut output)?;
         }
-        output.write_i16::<LE>(self.selected_sound.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_i16::<LE>(self.death_sound.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(opt_fits(self.selected_sound, -1)?)?;
+        output.write_i16::<LE>(opt_fits(self.death_sound, -1)?)?;
         output.write_u8(self.attack_reaction)?;
         output.write_u8(self.convert_terrain_flag)?;
         Ok(())

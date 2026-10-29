@@ -1,9 +1,9 @@
 //! Types related to the random map data from Age of Empires 1.
 
+use crate::conv::fits;
 use crate::unit_type::UnitTypeID;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::ReadSkipExt;
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// A random map: its basic layout, and the lands, terrains, objects and elevations placed on it.
@@ -40,9 +40,7 @@ impl RandomMapInfo {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if a count does not fit a `usize` (on targets with 16-bit pointers).
+    /// Also fails if a count does not fit a `usize` (on targets with 16-bit pointers).
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut info = Self {
             id: input.read_i32::<LE>()?,
@@ -69,10 +67,10 @@ impl RandomMapInfo {
         let num_elevations = input.read_u32::<LE>()?;
         let _pointer = input.read_u32::<LE>()?;
 
-        info.lands = vec![RandomMapLand::default(); num_lands.try_into().unwrap()];
-        info.terrains = vec![RandomMapTerrain::default(); num_terrains.try_into().unwrap()];
-        info.objects = vec![RandomMapObject::default(); num_objects.try_into().unwrap()];
-        info.elevations = vec![RandomMapElevation::default(); num_elevations.try_into().unwrap()];
+        info.lands = vec![RandomMapLand::default(); fits(num_lands)?];
+        info.terrains = vec![RandomMapTerrain::default(); fits(num_terrains)?];
+        info.objects = vec![RandomMapObject::default(); fits(num_objects)?];
+        info.elevations = vec![RandomMapElevation::default(); fits(num_elevations)?];
 
         Ok(info)
     }
@@ -116,9 +114,7 @@ impl RandomMapInfo {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if a list has more than `u32::MAX` entries.
+    /// Also fails if a list has more than `u32::MAX` entries.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i32::<LE>(self.id)?;
         output.write_i32::<LE>(self.borders.0)?;
@@ -131,13 +127,13 @@ impl RandomMapInfo {
         output.write_i32::<LE>(self.land_percent)?;
 
         output.write_i32::<LE>(0)?; // some id
-        output.write_u32::<LE>(self.lands.len().try_into().unwrap())?;
+        output.write_u32::<LE>(fits(self.lands.len())?)?;
         output.write_u32::<LE>(0)?; // pointer
-        output.write_u32::<LE>(self.terrains.len().try_into().unwrap())?;
+        output.write_u32::<LE>(fits(self.terrains.len())?)?;
         output.write_u32::<LE>(0)?; // pointer
-        output.write_u32::<LE>(self.objects.len().try_into().unwrap())?;
+        output.write_u32::<LE>(fits(self.objects.len())?)?;
         output.write_u32::<LE>(0)?; // pointer
-        output.write_u32::<LE>(self.elevations.len().try_into().unwrap())?;
+        output.write_u32::<LE>(fits(self.elevations.len())?)?;
         output.write_u32::<LE>(0)?; // pointer
 
         Ok(())
@@ -150,9 +146,7 @@ impl RandomMapInfo {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if a list has more than `u32::MAX` entries.
+    /// Also fails if a list has more than `u32::MAX` entries.
     pub fn write_commands_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i32::<LE>(self.borders.0)?;
         output.write_i32::<LE>(self.borders.1)?;
@@ -164,28 +158,25 @@ impl RandomMapInfo {
         output.write_i32::<LE>(self.land_percent)?;
         output.write_u32::<LE>(0)?; // some id
 
-        output.write_u32::<LE>(self.lands.len().try_into().unwrap())?;
-        output.write_u32::<LE>(0)?; // pointer
-        for land in &self.lands {
-            land.write_to(output)?;
-        }
-        output.write_u32::<LE>(self.terrains.len().try_into().unwrap())?;
-        output.write_u32::<LE>(0)?; // pointer
-        for terrain in &self.terrains {
-            terrain.write_to(output)?;
-        }
-        output.write_u32::<LE>(self.objects.len().try_into().unwrap())?;
-        output.write_u32::<LE>(0)?; // pointer
-        for object in &self.objects {
-            object.write_to(output)?;
-        }
-        output.write_u32::<LE>(self.elevations.len().try_into().unwrap())?;
-        output.write_u32::<LE>(0)?; // pointer
-        for elevation in &self.elevations {
-            elevation.write_to(output)?;
-        }
-        Ok(())
+        write_counted(output, &self.lands, RandomMapLand::write_to)?;
+        write_counted(output, &self.terrains, RandomMapTerrain::write_to)?;
+        write_counted(output, &self.objects, RandomMapObject::write_to)?;
+        write_counted(output, &self.elevations, RandomMapElevation::write_to)
     }
+}
+
+/// A list's count, a pointer and its entries.
+fn write_counted<W: Write, T>(
+    output: &mut W,
+    list: &[T],
+    write: impl Fn(&T, &mut W) -> Result<()>,
+) -> Result<()> {
+    output.write_u32::<LE>(fits(list.len())?)?;
+    output.write_u32::<LE>(0)?; // pointer
+    for item in list {
+        write(item, output)?;
+    }
+    Ok(())
 }
 
 /// A land of a random map: an area with its own terrain, e.g. a player's start area.
@@ -362,12 +353,10 @@ impl RandomMapObject {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the unit type ID does not fit a [`UnitTypeID`].
+    /// Also fails if the unit type ID does not fit a [`UnitTypeID`].
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut object = Self {
-            unit_type: input.read_u32::<LE>()?.try_into().unwrap(),
+            unit_type: fits(input.read_u32::<LE>()?)?,
             terrain_type: input.read_i32::<LE>()?,
             group_flag: input.read_i8()?,
             scale_flag: input.read_i8()?,
@@ -435,12 +424,10 @@ impl RandomMapElevation {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the stored percentage, read as a u32, is above `i32::MAX`.
+    /// Also fails if the stored percentage, read as a u32, is above `i32::MAX`.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         Ok(Self {
-            percent: input.read_u32::<LE>()?.try_into().unwrap(),
+            percent: fits(input.read_u32::<LE>()?)?,
             height: input.read_i32::<LE>()?,
             clumps: input.read_i32::<LE>()?,
             spacing: input.read_i32::<LE>()?,

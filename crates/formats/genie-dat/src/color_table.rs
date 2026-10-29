@@ -1,6 +1,6 @@
+use crate::conv::fits;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 pub use jascpal::PaletteIndex;
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// Player colour data.
@@ -27,21 +27,19 @@ impl ColorTable {
     ///
     /// Returns an error if reading from `input` fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if a palette index is outside 0 to 255.
+    /// Also fails if a palette index is outside 0 to 255.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let id = input.read_i32::<LE>()?;
-        let base = input.read_i32::<LE>()?.try_into().unwrap();
-        let unit_outline_color = input.read_i32::<LE>()?.try_into().unwrap();
+        let base = fits(input.read_i32::<LE>()?)?;
+        let unit_outline_color = fits(input.read_i32::<LE>()?)?;
         let unit_selection_colors = (
-            input.read_i32::<LE>()?.try_into().unwrap(),
-            input.read_i32::<LE>()?.try_into().unwrap(),
+            fits(input.read_i32::<LE>()?)?,
+            fits(input.read_i32::<LE>()?)?,
         );
         let minimap_colors = (
-            input.read_i32::<LE>()?.try_into().unwrap(),
-            input.read_i32::<LE>()?.try_into().unwrap(),
-            input.read_i32::<LE>()?.try_into().unwrap(),
+            fits(input.read_i32::<LE>()?)?,
+            fits(input.read_i32::<LE>()?)?,
+            fits(input.read_i32::<LE>()?)?,
         );
         let statistics_text_color = input.read_i32::<LE>()?;
 

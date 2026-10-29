@@ -1,9 +1,9 @@
 //! The writer of a data file ([`DatFile::write_to`]): its sections in file order.
 
+use crate::conv::fits;
 use crate::{DatFile, GameVersion};
 use byteorder::{LE, WriteBytesExt};
 use flate2::{Compression, write::DeflateEncoder};
-use std::convert::TryInto;
 use std::io::{Result, Write};
 
 impl DatFile {
@@ -13,9 +13,7 @@ impl DatFile {
     ///
     /// Returns an error if writing or compressing fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if a list is too long for its count field, or if a member cannot be written (see
+    /// Also fails if a list is too long for its count field, or if a member cannot be written (see
     /// the `write_to` methods of the member types).
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         let num_terrains = if self.game_version == GameVersion::AoC && self.terrains.len() == 42 {
@@ -26,8 +24,8 @@ impl DatFile {
 
         let mut output = DeflateEncoder::new(output, Compression::default());
         output.write_all(&self.file_version.0)?;
-        output.write_u16::<LE>(self.terrain_tables.len().try_into().unwrap())?;
-        output.write_u16::<LE>(num_terrains.try_into().unwrap())?;
+        output.write_u16::<LE>(fits(self.terrain_tables.len())?)?;
+        output.write_u16::<LE>(fits(num_terrains)?)?;
 
         // Two lists of pointers
         output.write_all(&vec![
@@ -37,11 +35,7 @@ impl DatFile {
         ])?;
 
         for table in &self.terrain_tables {
-            table.write_to(
-                &mut output,
-                self.file_version,
-                num_terrains.try_into().unwrap(),
-            )?;
+            table.write_to(&mut output, self.file_version, fits(num_terrains)?)?;
         }
 
         self.write_graphics(&mut output)?;
@@ -61,17 +55,17 @@ impl DatFile {
     /// The colour tables, the sounds and the sprites, each with its count; the sprites' flags
     /// whether each exists come before those that do.
     fn write_graphics(&self, mut output: impl Write) -> Result<()> {
-        output.write_u16::<LE>(self.color_tables.len().try_into().unwrap())?;
+        output.write_u16::<LE>(fits(self.color_tables.len())?)?;
         for table in &self.color_tables {
             table.write_to(&mut output)?;
         }
 
-        output.write_u16::<LE>(self.sounds.len().try_into().unwrap())?;
+        output.write_u16::<LE>(fits(self.sounds.len())?)?;
         for sound in &self.sounds {
             sound.write_to(&mut output, self.file_version)?;
         }
 
-        output.write_u16::<LE>(self.sprites.len().try_into().unwrap())?;
+        output.write_u16::<LE>(fits(self.sprites.len())?)?;
         for maybe_sprite in &self.sprites {
             output.write_u32::<LE>(match maybe_sprite {
                 Some(_) => 1,

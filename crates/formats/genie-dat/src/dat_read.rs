@@ -2,6 +2,7 @@
 
 use crate::civ::Civilization;
 use crate::color_table::ColorTable;
+use crate::conv::invalid_data;
 use crate::random_map::RandomMapInfo;
 use crate::sound::Sound;
 use crate::sprite::Sprite;
@@ -22,9 +23,7 @@ impl DatFile {
     ///
     /// Returns an error if reading or inflating `input` fails, or if an ID is out of range.
     ///
-    /// # Panics
-    ///
-    /// Panics if a civilization's player type is not 1, or if a name does not fit its fixed-size
+    /// Also fails if a civilization's player type is not 1, or if a name does not fit its fixed-size
     /// buffer after decoding (see [`Civilization::read_from`] and [`TechEffect::read_from`]).
     pub fn read_from(input: impl Read) -> Result<Self> {
         let mut input = DeflateDecoder::new(input);
@@ -243,7 +242,9 @@ fn read_civilizations(
     let num_civilizations = input.read_u16::<LE>()?;
     read_array(num_civilizations.into(), || {
         let player_type = input.read_i8()?;
-        assert_eq!(player_type, 1);
+        if player_type != 1 {
+            return Err(invalid_data("a civilization whose player type is not 1"));
+        }
         Civilization::read_from(&mut input, game_version)
     })
 }

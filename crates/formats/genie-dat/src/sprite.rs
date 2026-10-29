@@ -1,5 +1,6 @@
 //! Types related to sprites and graphics.
 
+use crate::conv::{fits, invalid_data, opt_fits};
 use crate::sound::SoundID;
 use arrayvec::ArrayVec;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
@@ -251,6 +252,9 @@ impl SpriteAttackSound {
     }
 }
 
+/// A list does not hold as many entries as the count the file stores for it.
+const COUNT_MISMATCH: &str = "a list that does not match its count";
+
 impl Sprite {
     /// Read a sprite from an input stream.
     ///
@@ -258,9 +262,7 @@ impl Sprite {
     ///
     /// Returns an error if reading from `input` fails, or if an ID is out of range.
     ///
-    /// # Panics
-    ///
-    /// Panics if the name or file name is not valid UTF-8, or if the SLP ID is negative but not
+    /// Also fails if the name or file name is not valid UTF-8, or if the SLP ID is negative but not
     /// -1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut sprite = Self::default();
@@ -300,19 +302,19 @@ impl Sprite {
     /// Returns an error if writing to `output` fails, or if the name or file name is longer than
     /// its fixed-size field.
     ///
-    /// # Panics
-    ///
-    /// Panics if there are attack sounds but not one per angle, if there are more than
+    /// Also fails if there are attack sounds but not one per angle, if there are more than
     /// `u16::MAX` deltas, or if the SLP or sound ID does not fit the format's signed field.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        if !self.attack_sounds.is_empty() {
-            assert_eq!(self.attack_sounds.len(), usize::from(self.num_angles));
+        if !self.attack_sounds.is_empty()
+            && self.attack_sounds.len() != usize::from(self.num_angles)
+        {
+            return Err(invalid_data(COUNT_MISMATCH));
         }
         self.write_names(output)?;
         self.write_display(output)?;
 
-        output.write_u16::<LE>(self.deltas.len().try_into().unwrap())?;
-        output.write_i16::<LE>(self.sound_id.map_or(-1, |v| v.try_into().unwrap()))?;
+        output.write_u16::<LE>(fits(self.deltas.len())?)?;
+        output.write_i16::<LE>(opt_fits(self.sound_id, -1)?)?;
         output.write_u8(u8::from(!self.attack_sounds.is_empty()))?;
         output.write_u16::<LE>(self.num_frames)?;
         output.write_u16::<LE>(self.num_angles)?;
@@ -338,19 +340,16 @@ impl Sprite {
     fn read_names(&mut self, mut input: impl Read) -> Result<()> {
         let mut name = [0u8; 21];
         input.read_exact(&mut name)?;
-        self.name =
-            String::from_utf8(name.iter().copied().take_while(|b| *b != 0).collect()).unwrap();
+        self.name = String::from_utf8(name.iter().copied().take_while(|b| *b != 0).collect())
+            .map_err(invalid_data)?;
         let mut filename = [0u8; 13];
         input.read_exact(&mut filename)?;
         self.filename =
-            String::from_utf8(filename.iter().copied().take_while(|b| *b != 0).collect()).unwrap();
+            String::from_utf8(filename.iter().copied().take_while(|b| *b != 0).collect())
+                .map_err(invalid_data)?;
         self.slp_id = {
             let num = input.read_i32::<LE>()?;
-            if num == -1 {
-                None
-            } else {
-                Some(num.try_into().unwrap())
-            }
+            if num == -1 { None } else { Some(fits(num)?) }
         };
         Ok(())
     }
@@ -383,7 +382,7 @@ impl Sprite {
         (&mut filename[..]).write_all(self.filename.as_bytes())?;
         output.write_all(&name)?;
         output.write_all(&filename)?;
-        output.write_i32::<LE>(self.slp_id.map_or(-1, |v| v.try_into().unwrap()))?;
+        output.write_i32::<LE>(opt_fits(self.slp_id, -1)?)?;
         Ok(())
     }
 

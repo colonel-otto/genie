@@ -1,12 +1,12 @@
 //! The costs, the creatable part, the annexes and the building part.
 
+use crate::conv::fits;
 use crate::sound::SoundID;
 use crate::sprite::SpriteID;
 use crate::terrain::TerrainID;
 use arrayvec::ArrayVec;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{MapInto, TechID, UnitTypeID, read_opt_u16, read_opt_u32};
-use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
 /// Resource cost for a unit.
@@ -101,9 +101,7 @@ impl CombatUnitTypeAttributes {
     ///
     /// Returns an error if reading from `input` fails, or if an ID is out of range.
     ///
-    /// # Panics
-    ///
-    /// Panics if the garrison sprite ID does not fit a [`SpriteID`].
+    /// Also fails if the garrison sprite ID does not fit a [`SpriteID`].
     pub fn read_from(mut input: impl Read, _version: f32) -> Result<Self> {
         let mut attrs = Self::default();
         for _ in 0..3 {
@@ -121,11 +119,7 @@ impl CombatUnitTypeAttributes {
         attrs.hero_flag = input.read_u8()?;
         attrs.garrison_sprite = {
             let n = input.read_i32::<LE>()?;
-            if n < 0 {
-                None
-            } else {
-                Some(n.try_into().unwrap())
-            }
+            if n < 0 { None } else { Some(fits(n)?) }
         };
         attrs.volley_fire_amount = input.read_f32::<LE>()?;
         attrs.max_attacks_in_volley = input.read_i8()?;

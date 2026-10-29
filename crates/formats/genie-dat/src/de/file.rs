@@ -250,12 +250,15 @@ impl DatFile {
 
     /// The file's version.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `file_version` was changed to a string other than `VER 7.1` to `VER 8.9`; a file
-    /// this module read always has a valid one.
-    #[must_use]
-    pub fn version(&self) -> Version {
-        Version::of(&self.file_version).expect("checked when read")
+    /// [`ErrorKind::Unsupported`] if `file_version` was changed to a string other than `VER 7.1`
+    /// to `VER 8.9`; a file this module read always has a valid one.
+    ///
+    /// [`ErrorKind::Unsupported`]: genie_error::ErrorKind::Unsupported
+    pub fn version(&self) -> Result<Version, Error> {
+        Version::of(&self.file_version).ok_or(GenieError::unsupported(
+            "a data file version other than VER 7.1 to VER 8.9",
+        ))
     }
 }
