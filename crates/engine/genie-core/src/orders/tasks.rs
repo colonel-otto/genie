@@ -163,10 +163,7 @@ impl World {
         let unit = &self.players[player].objects[idx];
         let range = self.master_of(player, unit.life.master_id)?.weapon_range;
         self.take(target, self.releaser(player, idx));
-        let repair_task = crate::construction::repair::RepairTask {
-            id: task.id,
-            work_value: task.work_val1,
-        };
+        let repair_task = crate::construction::repair::RepairTask::of(task);
         Ok((
             crate::construction::repair::RepairAction::start(target, t_at, repair_task, range),
             class,

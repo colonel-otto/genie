@@ -5,7 +5,9 @@ use crate::construction::repair::payment::PaidAttributes;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::Me;
+use crate::movement::move_to::{MoveDefaults, Sprites};
 use crate::objects::masters::{Master, Masters};
+use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
@@ -38,6 +40,9 @@ impl Unit {
         } = repair_reads(c, OthersRef::of(&c.w.players, c.player), target)?;
         let original = set.clone();
         let (own_radius, own_class) = (own.radius, own.class);
+        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
+        let defaults = MoveDefaults::of(&own, self.abilities.look.as_ref());
+        let standing = sprite_id(own.standing_sprite);
         let (restriction, rate) = (
             usize::try_from(own.terrain_restriction).ok(),
             self.work_rate_powerup + own.work_rate,
@@ -100,6 +105,13 @@ impl Unit {
             now,
             waits: own_class == 4 && !computer,
             stance,
+            defaults,
+            standing,
+            sprites: Sprites {
+                sprite: &mut self.sprite,
+                rng: beside.sprite_rng,
+                graphics: beside.graphics,
+            },
             can_path: &mut can_path,
             repair: &mut repair,
         };

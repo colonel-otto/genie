@@ -201,6 +201,8 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let repair_task = crate::construction::repair::RepairTask {
         id: 0,
         work_value: 1.0,
+        moving: None,
+        proceeding: None,
     };
     let repair = add(Unit {
         id: 32,

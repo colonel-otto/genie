@@ -235,6 +235,7 @@ impl Unit {
                         goal,
                         (0.0, quiet),
                         (waits, stance),
+                        None,
                     )?;
                     let walked = explore.move_to.is_some();
                     let owner = explore.after_walk(code)?;

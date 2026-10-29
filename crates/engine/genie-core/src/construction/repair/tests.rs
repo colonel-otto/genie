@@ -5,6 +5,40 @@ use crate::movement::Me;
 const TASK: RepairTask = RepairTask {
     id: 7,
     work_value: 0.5,
+    moving: None,
+    proceeding: None,
+};
+
+/// [`TASK`] with the moving sprite 3 and the proceeding sprite 4.
+const SHOWING: RepairTask = RepairTask {
+    moving: Some(3),
+    proceeding: Some(4),
+    ..TASK
+};
+
+/// The sprites' table of the tests: the task's 3 and 4, the master's standing sprite 5 and the
+/// `MoveTo`s' defaults 20 (to a point) and 21 (to an object), each of speed factor 1.
+fn graphics() -> std::collections::BTreeMap<i16, crate::objects::sprite::Graphic> {
+    [3, 4, 5, 20, 21]
+        .map(|id| {
+            let g = crate::objects::sprite::Graphic {
+                id,
+                frames: 10,
+                facets: 16,
+                speed_multiplier: 1.0,
+                frame_duration: 0.1,
+                replay_delay: 0.0,
+                flags: 1,
+            };
+            (id, g)
+        })
+        .into()
+}
+
+/// The `MoveTo`s' defaults of the tests' repairer: 20 to a point, 21 to an object.
+const DEFAULTS: MoveDefaults = MoveDefaults {
+    point: Some(20),
+    object: Some(21),
 };
 
 /// A villager's master work rate 1 with a powerup of 0: half a hit point per second per the
@@ -191,8 +225,20 @@ fn ward(x: f32) -> Repairee {
 fn update(
     r: &mut RepairAction,
     target: Option<Repairee>,
+    args: (Option<u8>, bool, u8),
+    amounts: &mut Vec<f32>,
+) -> RepairStep {
+    update_shown(r, target, args, amounts, &mut None)
+}
+
+/// [`update`] by a repairer showing `sprite`, its master's standing sprite 5 and the sprites'
+/// table [`graphics`].
+fn update_shown(
+    r: &mut RepairAction,
+    target: Option<Repairee>,
     (repairers, paths, answer): (Option<u8>, bool, u8),
     amounts: &mut Vec<f32>,
+    sprite: &mut Option<crate::objects::sprite::ActiveSprite>,
 ) -> RepairStep {
     let mut world = Spatial::default();
     let mut body = crate::objects::layers::Body::new(
@@ -205,6 +251,7 @@ fn update(
         amounts.push(a);
         Ok(answer)
     };
+    let (graphics, mut rng) = (graphics(), crate::math::rng::Well512::default());
     let view = RepairView {
         target,
         radius: [0.2, 0.2],
@@ -214,10 +261,129 @@ fn update(
         now: 0,
         waits: false,
         stance: 0,
+        defaults: DEFAULTS,
+        standing: Some(5),
+        sprites: Sprites {
+            sprite,
+            rng: &mut rng,
+            graphics: &graphics,
+        },
         can_path: &mut can_path,
         repair: &mut repair,
     };
     r.update(walk(&mut world, &mut body), view).unwrap()
+}
+
+/// The sprite its `MoveTo` shows: the task's moving sprite, else the default of its
+/// constructor, toward the target (state 4, `FUN_140aa0df0`) or the point (11,
+/// `FUN_140aa0d30`).
+#[test]
+fn a_repair_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
+    let shown = |task, state| {
+        RepairAction {
+            state,
+            ..RepairAction::start(20, [11.0, 10.0, 0.0], task, 0.0)
+        }
+        .move_shown(DEFAULTS)
+    };
+    assert_eq!(
+        [shown(TASK, MOVE), shown(TASK, WALK_POINT)],
+        [Some(21), Some(20)]
+    );
+    assert_eq!(
+        [shown(SHOWING, MOVE), shown(SHOWING, WALK_POINT)],
+        [Some(3); 2]
+    );
+}
+
+/// Its states show the task's sprites (slot 0x68, `set_state` `0x140ad9c60`): the turn toward
+/// the target (6) the moving one, the work (7) the proceeding one; for none slot 0x68 shows the
+/// master's standing sprite.
+#[test]
+fn a_repairer_shows_its_task_s_sprites_as_it_faces_and_works() {
+    for (task, sprites) in [(SHOWING, [3, 4]), (TASK, [5, 5])] {
+        let mut amounts = Vec::new();
+        let mut sprite = None;
+        let mut r = RepairAction {
+            move_to: Some(MoveTo::Arrived),
+            ..RepairAction::start(20, [11.0, 10.0, 0.0], task, 0.0)
+        };
+        let args = (Some(0), true, 0);
+        let _ = update_shown(&mut r, Some(ward(11.0)), args, &mut amounts, &mut sprite);
+        assert_eq!(
+            (r.state, sprite.map(|s| s.graphic.id)),
+            (FACE, Some(sprites[0]))
+        );
+        let _ = update_shown(&mut r, Some(ward(11.0)), args, &mut amounts, &mut sprite);
+        assert_eq!(
+            (r.state, sprite.map(|s| s.graphic.id)),
+            (WORK, Some(sprites[1]))
+        );
+    }
+}
+
+/// The walk to the point starts its quiet `MoveTo`, which shows its sprite before the motion
+/// step (`0x140aa29e0`'s `set_state(4)`).
+#[test]
+fn a_repair_s_walk_to_its_point_shows_its_sprite_as_it_starts() {
+    use crate::map::spatial::Tiles;
+    for (task, shown) in [(TASK, 20), (SHOWING, 3)] {
+        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        let mut pathing =
+            crate::pathing::Pathing::new([20, 20], vec![0; 400], vec![vec![1.0]; 8], 0);
+        pathing.start_mesh(20);
+        let (mut object, groups) = (
+            crate::math::rng::Well512::default(),
+            crate::groups::UnitGroups::default(),
+        );
+        let mut body = crate::objects::layers::Body::new(
+            [2.5, 2.5, 0.0],
+            None,
+            Some(crate::gathering::hunt::tests::walker()),
+        );
+        body.mover_mut().unwrap().moved_at = [2.5, 2.5, 0.0];
+        let walk = Walk {
+            body: &mut body,
+            me: me(),
+            dt: 0.05,
+            world: &mut world,
+            plan: Some(crate::movement::Planning {
+                pathing: &mut pathing,
+                now: 0,
+                computer: false,
+                object: &mut object,
+                construction_rate: 1.0,
+                groups: &groups,
+            }),
+        };
+        let mut r = RepairAction::start(-1, [11.0, 10.0, 0.0], task, 0.0);
+        let _ = r.take_point([11.5, 10.5, 0.0], None).unwrap();
+        let (graphics, mut rng, mut sprite) =
+            (graphics(), crate::math::rng::Well512::default(), None);
+        let (mut can_path, mut repair) = (|_: &Spatial| Ok(true), |_: f32| Ok(0));
+        let view = RepairView {
+            target: None,
+            radius: [0.2, 0.2],
+            scenario: false,
+            rate: 1.0,
+            repairers: None,
+            now: 0,
+            waits: false,
+            stance: 0,
+            defaults: DEFAULTS,
+            standing: Some(5),
+            sprites: Sprites {
+                sprite: &mut sprite,
+                rng: &mut rng,
+                graphics: &graphics,
+            },
+            can_path: &mut can_path,
+            repair: &mut repair,
+        };
+        let _ = r.update(walk, view).unwrap();
+        assert_eq!(r.move_to, Some(MoveTo::Moving));
+        assert_eq!(sprite.map(|s| s.graphic.id), Some(shown));
+    }
 }
 
 /// A target the world no longer holds, another player's or a dead one ends the Repair

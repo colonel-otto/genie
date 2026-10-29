@@ -592,10 +592,7 @@ impl World {
         if let Some(r) = u.actions.repair_mut()
             && let Some(t) = old_task(r.task.id).as_ref().and_then(find)
         {
-            r.task = crate::construction::repair::RepairTask {
-                id: t.id,
-                work_value: t.work_val1,
-            };
+            r.task = crate::construction::repair::RepairTask::of(&t);
         }
         if let Some(b) = u.actions.build_mut()
             && let Some(t) = old_task(b.task.id).as_ref().and_then(find)

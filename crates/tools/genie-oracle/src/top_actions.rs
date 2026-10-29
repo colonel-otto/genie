@@ -403,10 +403,7 @@ fn import_repair(
             goal: sub.and_then(walk_point),
             point: saved.point(),
             timer: base.timer,
-            task: genie_core::construction::repair::RepairTask {
-                id: t.id,
-                work_value: t.work_val1,
-            },
+            task: genie_core::construction::repair::RepairTask::of(&t),
             range: saved
                 .objects
                 .master(saved.s.master_obj)

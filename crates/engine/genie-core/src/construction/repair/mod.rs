@@ -11,7 +11,9 @@
 //! ([`RepairView::repair`]), since it reaches other objects and the player's resources.
 
 use crate::GenieError;
-use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait, Sprites};
+use crate::objects::masters::Task;
+use crate::objects::sprite::sprite_id;
 use genie_diff::Diff;
 
 mod action;
@@ -64,13 +66,32 @@ pub const REPAIRERS: [(u8, i16); 2] = [(1, 156), (2, 222)];
 pub const SHIP_REPAIR: GenieError =
     GenieError::unsupported("the task finder's repair (106) of a ship (FUN_140ad9120)");
 
-/// What a Repair works with: its task's id and work value (`+0x28`, `work_val1`).
+/// What a Repair works with: its task's id, work value (`+0x28`, `work_val1`) and the two
+/// sprites its states show.
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct RepairTask {
     /// The task's id.
     pub id: i16,
     /// Its work value.
     pub work_value: f32,
+    /// Its moving sprite (`+0x40`), which its `MoveTo`s take and its turn toward the target
+    /// (state 6) shows; None for none.
+    pub moving: Option<i16>,
+    /// Its proceeding sprite (`+0x48`), which its work (state 7) shows; None for none.
+    pub proceeding: Option<i16>,
+}
+
+impl RepairTask {
+    /// The Repair task `task`.
+    #[must_use]
+    pub const fn of(task: &Task) -> Self {
+        Self {
+            id: task.id,
+            work_value: task.work_val1,
+            moving: sprite_id(task.sprites[0]),
+            proceeding: sprite_id(task.sprites[1]),
+        }
+    }
 }
 
 /// The Repair action of a repairer (`TRIBE_Action_Repair`, type 106).
@@ -144,6 +165,13 @@ pub struct RepairView<'a> {
     pub waits: bool,
     /// The unit AI's stance (`+0x1a9`).
     pub stance: u8,
+    /// The sprites its `MoveTo`s take when the task gives none, as the update starts.
+    pub defaults: MoveDefaults,
+    /// The master's standing sprite (`+0x470`), which slot 0x68 shows for none.
+    pub standing: Option<i16>,
+    /// The unit's sprite, the Sprite stream and the sprites' table, which its states show
+    /// sprites with (slot 0x68).
+    pub sprites: Sprites<'a>,
     /// The unit's quick path to the target within [`REACH`] (slot 0x3e0, `canQuickPath`) over
     /// the world's objects.
     pub can_path: &'a mut dyn FnMut(&crate::map::spatial::Spatial) -> Result<bool, GenieError>,

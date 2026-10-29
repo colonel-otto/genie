@@ -324,7 +324,8 @@ pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, GenieError> {
 /// A `MoveTo` sub-action's update (`0x140aa2a70`, which an action's sub-action list runs,
 /// `FUN_140a992b0`) and the code the action reads: a start asks for its path toward `goal`
 /// within `range` (`quiet` its `+0x60`; a `MoveTo` that waited once, `+0x6c` 1, counts as having
-/// asked again, 2), then walks ([`start_walk_or_give_up`]); a move runs the motion step
+/// asked again, 2), shows its sprite (`shown`, [`start_walk_shown`]) and walks; a move runs the
+/// motion step
 /// ([`walk_or_give_up`]). The motion step giving up makes it wait or fail
 /// ([`MoveWait::give_up`] with `waits` and `stance`). A wait adds the walk's dt onto its timer
 /// and at its delay asks again (`set_state(3)`; `COMISS`, `JC`: a NaN timer waits on). The code:
@@ -339,6 +340,7 @@ pub fn sub_move_to_update(
     goal: Goal,
     (range, quiet): (f32, bool),
     (waits, stance): (bool, u8),
+    shown: Option<Shown<'_>>,
 ) -> Result<u8, GenieError> {
     Ok(match *move_to {
         Some(MoveTo::Start) => {
@@ -346,7 +348,8 @@ pub fn sub_move_to_update(
                 move_wait.state = 2;
             }
             *move_to = Some(MoveTo::Moving);
-            let started = start_walk_or_give_up(walk.reborrow(), goal, range, quiet)?;
+            let ask = PathAsk::default();
+            let started = start_walk_shown(walk.reborrow(), (goal, range, quiet), ask, shown)?;
             *move_to = Some(started.unwrap_or_else(|| move_wait.give_up(waits, stance)));
             0
         }
@@ -483,7 +486,7 @@ mod tests {
         };
         let goal = Goal::Target(10028);
         let mut update = |m: &mut Option<MoveTo>, w: &mut MoveWait| {
-            sub_move_to_update((m, w), &mut rig.walk(4), goal, (0.1, true), (true, 0))
+            sub_move_to_update((m, w), &mut rig.walk(4), goal, (0.1, true), (true, 0), None)
         };
         assert_eq!(update(&mut move_to, &mut wait), Ok(0));
         assert_eq!((move_to, wait.state), (Some(MoveTo::Moving), 2));

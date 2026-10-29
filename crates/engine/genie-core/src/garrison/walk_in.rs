@@ -280,6 +280,7 @@ impl EnterAction {
                     Goal::Target(self.target),
                     (range, true),
                     (waits, stance),
+                    None,
                 )?;
                 match code {
                     // the walk again's enter put the unit inside, at the target's place: still
