@@ -75,7 +75,6 @@ impl World {
             reseed: None,
             move_aside: Vec::new(),
             starts: Vec::new(),
-            leads: None,
         };
         let mut result = f(&mut unit, &mut c);
         if let Some(w) = watch {

@@ -4030,6 +4030,26 @@ fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
     assert_eq!((h.state, h.attack.map(|a| a.target)), (ATTACK, Some(510)));
 }
 
+/// The lead is the Hunt's own call (`0x140ac60e0` case 6, `FUN_140ac4c60` before
+/// `set_state(10)`): the far sheep has its `MoveTo` to the town centre while the hunter's
+/// update still runs, not after it.
+#[test]
+fn a_hunter_s_sheep_walks_before_the_hunter_s_update_ends() {
+    let mut t = shepherd_world(30.2);
+    let walks = in_update(&mut t, (1, 0), 50, |unit, c| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let mut own = unit.own_victim(c);
+        let tree_lost = unit.tree_lost();
+        let _ = unit.hunt_part(c, me, &mut own, tree_lost)?;
+        Ok(c.w.players[1].objects[3].actions.move_to().is_some())
+    });
+    assert_eq!(walks, Ok(true));
+}
+
 /// [`hunt_world`] with Gaia's trees 520 and 521 (master 349, class 15, 100 wood, gathered by
 /// themselves as group 0) at x `near` and 40, the hunter's task on trees, its unit AI targeting
 /// class 15 and its hunt without a target at its own place.

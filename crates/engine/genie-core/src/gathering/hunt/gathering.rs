@@ -96,13 +96,14 @@ impl HuntAction {
                 ))?;
                 // own livestock more than 3 tiles from its drop site is led there: once sent
                 // (`moved_sheep`) the hunt waits for it; nearer than 30 tiles an animal that
-                // stands is sent (its slot 0x138) with the herd around it (`FUN_140ac4c60`, the
-                // caller's after the update); either way `moved_sheep` and `set_state(10)`
+                // stands is sent (its slot 0x138) with the herd around it (`FUN_140ac4c60`) at
+                // once, the hunter in the world; either way `moved_sheep` and `set_state(10)`
                 if let (true, Some((site, gap_squared))) = (herd.own, herd.drop_site) {
                     self.drop_site = site;
                     if HERD_REACH < gap_squared && (self.lead.moved || gap_squared < HERD_FAR) {
                         if !self.lead.moved && herd.idle {
-                            c.leads = Some((self.target, site));
+                            let (player, sheep) = (c.player, self.target);
+                            c.lend(unit, |w| w.lead_herd(player, sheep, site))?;
                         }
                         self.lead.moved = true;
                         self.set_lead(c, unit, f, r, &herd)?;

@@ -5,7 +5,7 @@
 An object's update in the game changes other objects by direct calls (a notify through
 slot 0x38, a release through slot 0x180, a stop through slot 0x5d0). genie-core cannot
 change them from inside the update, so it hands such effects on to be done outside it.
-These are the channels it uses (FD-045): 15 world outputs, 15 unit AI effects and 18 hand-offs.
+These are the channels it uses (FD-045): 14 world outputs, 15 unit AI effects and 18 hand-offs.
 
 ## The world's outputs
 
@@ -16,7 +16,6 @@ the object's update by the functions named.
 | --- | --- | --- | --- | --- | --- |
 | `order_on_target` | `Option<(crate::unit_ai::QueuedOrder,Option<crate::unit_ai::AfterOrder>)>` | The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller runs after the update (`World::order_on_target`), and the full update's tail that reads what the order gave (`crate::unit_ai::UnitAi::after_order`). |  | [`objects/unit/stop.rs`](../crates/engine/genie-core/src/objects/unit/stop.rs) | `step_object`, `apply_ai_starts` |
 | `works` | `Vec<AiWork>` | The unit AI's `HuntObject`s, `GatherObject`s and works (slot 0x7e8) in the order it gave them, whose unit parts the caller runs after the update in that order (`AiWork`): a later one's stop tears down the action an earlier one made. | `slot 0x7e8` | [`objects/unit/stop.rs`](../crates/engine/genie-core/src/objects/unit/stop.rs) | `apply_ai_works` |
-| `leads` | `Option<(i32, i32)>` | The livestock a hunt sends to a drop site with its herd, which the caller sends after the update (`World::lead_herd`). |  | [`gathering/hunt/gathering.rs`](../crates/engine/genie-core/src/gathering/hunt/gathering.rs) | `apply_ai_works` |
 | `build_command` | `Option<i32>` | The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on a target not built yet), which the caller runs after the update (`World::build_command`). | `slot 0x380` | [`gathering/gather/unit.rs`](../crates/engine/genie-core/src/gathering/gather/unit.rs) | `apply_ai_starts` |
 | `reseed` | `Option<bool>` | A Gather's walk back to reseed ended (state 0xf2, whether it arrived), which the caller reseeds after the update (`World::reseed_after_walk`). |  | [`gathering/gather/unit.rs`](../crates/engine/genie-core/src/gathering/gather/unit.rs) | `apply_ai_starts` |
 | `move_aside` | `Vec<AiMove>` | The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller runs after the update (`World::move_aside`). | `slot 0x148` | [`objects/unit/stop.rs`](../crates/engine/genie-core/src/objects/unit/stop.rs) | `apply_ai_works` |

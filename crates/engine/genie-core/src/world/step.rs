@@ -94,9 +94,6 @@ pub(crate) struct Step<'a> {
     /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
     /// which the caller makes the unit's after the update, in order.
     pub(crate) starts: Vec<AiStart>,
-    /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
-    /// update ([`World::lead_herd`]).
-    pub(crate) leads: Option<(i32, i32)>,
 }
 
 /// What an object's step gathered in its `Step` for the world to apply after it
@@ -110,8 +107,6 @@ pub(crate) struct ObjectOutputs {
     )>,
     /// [`Step`]'s `works`.
     pub(in crate::world) works: Vec<AiWork>,
-    /// [`Step`]'s `leads`.
-    pub(in crate::world) leads: Option<(i32, i32)>,
     /// [`Step`]'s `build_command`.
     pub(in crate::world) build_command: Option<i32>,
     /// [`Step`]'s `reseed`.
@@ -145,7 +140,6 @@ impl Step<'_> {
         ObjectOutputs {
             ordered: self.order_on_target.take(),
             works: std::mem::take(&mut self.works),
-            leads: self.leads.take(),
             build_command: self.build_command.take(),
             reseed: self.reseed.take(),
             move_aside: std::mem::take(&mut self.move_aside),

@@ -1130,11 +1130,12 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
 }
 
 /// `set_state(6)` on livestock (`0x140ac60e0` case 6): the hunter's own live animal more
-/// than 3 tiles from its drop site and nearer than 30 is led there (`set_state(10)`, an
-/// animal that stands sent first), and once led it is led on however far; a nearer or a
-/// farther one is slaughtered (`set_state(12)`). A dead animal out of the task's range plus
-/// `GAP` is walked to (`set_state(4)`); one at hand is faced. A live one unprepared is not
-/// modelled.
+/// than 3 tiles from its drop site and nearer than 30 is led there (`set_state(10)`; an
+/// animal that stands is sent first, which the world test
+/// `a_hunter_s_sheep_walks_before_the_hunter_s_update_ends` shows), and once led it is led on
+/// however far; a nearer or a farther one is slaughtered (`set_state(12)`). A dead animal out
+/// of the task's range plus `GAP` is walked to (`set_state(4)`); one at hand is faced. A live
+/// one unprepared is not modelled.
 #[test]
 fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     let herd = |site: Option<(i32, f32)>, idle| Herd {
@@ -1159,14 +1160,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
             herd,
             ..hunt_reads()
         };
-        let mut leads = None;
-        let got = rig.run(100, |c, u, f, _| {
-            let got = h.set_face(c, u, f, &r);
-            // the request only: World::lead_herd sends the herd after the update
-            leads = c.leads.take().map(|(_, site)| site);
-            got
-        });
-        (got, leads)
+        rig.run(100, |c, u, f, _| h.set_face(c, u, f, &r))
     };
     let walking = |target, moved| HuntAction {
         state: WALK,
@@ -1176,17 +1170,14 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
         },
         ..hunting(target)
     };
-    assert!(face(&mut walking(10028, false), sheep(2), None).0.is_err());
+    assert!(face(&mut walking(10028, false), sheep(2), None).is_err());
     let mut h = walking(10028, false);
-    let led = face(&mut h, sheep(2), Some(herd(Some((500, 16.0)), true)));
-    assert_eq!(led, (Ok(HuntNext::Stay), Some(500)));
+    let led = face(&mut h, sheep(2), Some(herd(Some((500, 16.0)), false)));
+    assert_eq!(led, Ok(HuntNext::Stay));
     assert_eq!(
         (h.state, h.drop_site, h.lead.moved, h.lead.start, h.timer),
         (LEAD, 500, true, [29.5, 89.0], LEAD_WAIT)
     );
-    let mut h = walking(10028, false);
-    let led = face(&mut h, sheep(2), Some(herd(Some((500, 16.0)), false)));
-    assert_eq!((led, h.state), ((Ok(HuntNext::Stay), None), LEAD));
     for (gap_squared, moved, state) in [
         (4.0, false, ATTACK),
         (HERD_FAR, false, ATTACK),
@@ -1194,20 +1185,20 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     ] {
         let mut h = walking(10028, moved);
         let herd = herd(Some((500, gap_squared)), false);
-        assert_eq!(face(&mut h, sheep(2), Some(herd)).0, Ok(HuntNext::Stay));
+        assert_eq!(face(&mut h, sheep(2), Some(herd)), Ok(HuntNext::Stay));
         assert_eq!(h.state, state, "{gap_squared} {moved}");
     }
     let mut h = walking(10028, false);
     assert_eq!(
-        face(&mut h, sheep(2), Some(herd(None, false))).0,
+        face(&mut h, sheep(2), Some(herd(None, false))),
         Ok(HuntNext::Stay)
     );
     assert_eq!(h.state, ATTACK);
     let mut h = walking(10028, false);
-    assert_eq!(face(&mut h, sheep(3), None).0, Ok(HuntNext::Stay));
+    assert_eq!(face(&mut h, sheep(3), None), Ok(HuntNext::Stay));
     assert_eq!((h.state, h.move_to), (WALK, Some(MoveTo::Start)));
     let mut h = walking(9177, false);
-    assert_eq!(face(&mut h, sheep(3), None).0, Ok(HuntNext::Stay));
+    assert_eq!(face(&mut h, sheep(3), None), Ok(HuntNext::Stay));
     assert_eq!((h.state, h.move_to, h.timer), (FACE, None, 0.0));
 }
 

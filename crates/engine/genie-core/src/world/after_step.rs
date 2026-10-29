@@ -126,8 +126,8 @@ impl World {
         Ok(())
     }
 
-    /// The unit AI's works in the order it gave them: a builder's work, a hunt's lead of its
-    /// livestock, the hunts, gathers, builds and works, and the moves off footprints.
+    /// The unit AI's works in the order it gave them: a builder's work, the hunts, gathers,
+    /// builds and works, and the moves off footprints.
     fn apply_ai_works(
         &mut self,
         (p, i): (usize, usize),
@@ -140,11 +140,6 @@ impl World {
                 GenieError::unsupported("a builder's work order of a unit that leaves its list"),
                 || self.order_work(p, i, &work),
             )?;
-        }
-        // a hunt's set_state(6) on its own livestock: the animal's slot 0x138 to the drop site
-        // and the herd around it (FUN_140ac4c60)
-        if let Some((sheep, site)) = out.leads {
-            self.lead_herd(p, sheep, site)?;
         }
         // the unit AI's HuntObjects (the unit's stop, then its hunt command),
         // GatherObjects (its gather command), BuildObjects (its build command) and works
