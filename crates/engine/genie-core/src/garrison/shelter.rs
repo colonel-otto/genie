@@ -3,12 +3,14 @@
 
 use crate::GenieError;
 use crate::garrison::{
-    COMBAT_KIND, COMPUTER_IDS, FAR, GATE_CLASS, HUMAN_IDS, MASTER_1808, NEARBY, TOWN_BELL_REACH,
-    TRANSPORTED, VILLAGER_CLASS, VILLAGER_KIND, class_has_flags, has_garrison_task,
+    COMPUTER_IDS, FAR, GATE_CLASS, HUMAN_IDS, MASTER_1808, NEARBY, TOWN_BELL_REACH, TRANSPORTED,
+    VILLAGER_CLASS, class_has_flags, has_garrison_task,
 };
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
-use crate::orders::{BUILDING, GARRISON, Work};
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+use crate::orders::{GARRISON, Work};
 use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -130,7 +132,7 @@ impl World {
                 continue;
             };
             let m = u.master(&self.masters, p)?;
-            if m.class == VILLAGER_CLASS && m.kind == VILLAGER_KIND {
+            if m.class == VILLAGER_CLASS && m.kind == COMBAT {
                 units.push(id);
             }
             if m.id == MASTER_1808 {
@@ -328,7 +330,7 @@ impl World {
         player: usize,
         master: i16,
     ) -> Result<bool, GenieError> {
-        if b.master(&self.masters, bp)?.kind < COMBAT_KIND {
+        if b.master(&self.masters, bp)?.kind < COMBAT {
             return Ok(false);
         }
         self.takes_in(b.id, player, master)

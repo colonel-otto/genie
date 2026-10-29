@@ -51,10 +51,6 @@ const PASSABLE: f32 = crate::math::image::spawn::PASSABLE;
 /// How far inside its far edges a box's last tile lies (`DAT_142eb1e9c`).
 const INSIDE: f32 = crate::math::image::spawn::INSIDE;
 
-/// A building's master type (`'P'`).
-const BUILDING: u8 = 80;
-/// A combat unit's master type (`'F'`, `TRIBE_Master_Combat_Object`).
-const TRIBE_COMBAT: u8 = 70;
 /// The wall class, which the search checks the building's corners for (`FUN_1415417f0`).
 pub const WALL: i16 = 27;
 /// Classes the placement tests treat apart: a tree placed (15) passes over farms (49); buildings

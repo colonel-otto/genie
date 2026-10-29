@@ -50,5 +50,5 @@ build time completes the building.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`combat`](../../combat/), [`commands`](../../commands/), [`garrison`](../../garrison/), [`gathering`](../../gathering/), [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`orders`](../../orders/), [`pathing`](../../pathing/), [`players`](../../players/), [`production`](../../production/), [`unit_ai`](../../unit_ai/), [`world`](../../world/).
+- Uses: [`combat`](../../combat/), [`commands`](../../commands/), [`gathering`](../../gathering/), [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`orders`](../../orders/), [`pathing`](../../pathing/), [`players`](../../players/), [`production`](../../production/), [`unit_ai`](../../unit_ai/), [`world`](../../world/).
 <!-- /uses -->

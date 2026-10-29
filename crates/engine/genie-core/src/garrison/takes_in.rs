@@ -1,9 +1,11 @@
 //! A building's test whether it takes a unit in (`FUN_14120eb10`), its room and what it holds.
 
 use crate::GenieError;
-use crate::garrison::{BUILDING_CLASS, CLASS_FLAGS, COMBAT_KIND, LEAST_HP_SHARE, TRANSPORTED};
+use crate::garrison::{BUILDING_CLASS, CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
-use crate::orders::{BUILDING, GARRISON};
+use crate::orders::GARRISON;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
@@ -142,14 +144,14 @@ impl World {
         }
         let own = b.master(&self.masters, bp)?;
         if own.object_flags & 1 != 0
-            && (unit.kind == COMBAT_KIND || class_has_flags(unit.class, TRANSPORTED))
+            && (unit.kind == COMBAT || class_has_flags(unit.class, TRANSPORTED))
         {
             if !has_garrison_task(&unit.tasks, GARRISON, own.class) {
                 return Ok(false);
             }
             return Ok(unchecked || self.has_room(bp, b, None)?);
         }
-        if unit.kind < COMBAT_KIND || own.kind != BUILDING {
+        if unit.kind < COMBAT || own.kind != BUILDING {
             return Ok(false);
         }
         let (bp, b) = match b.annex_of {
@@ -203,7 +205,7 @@ impl World {
                     continue;
                 }
                 let kind = u.master(&self.masters, p)?.kind;
-                if is_building && kind == COMBAT_KIND && u.raider_countdown != 0 {
+                if is_building && kind == COMBAT && u.raider_countdown != 0 {
                     return Err(GenieError::unsupported(
                         "a unit inside a building with its raider_build_countdown (+0xc2c)",
                     ));

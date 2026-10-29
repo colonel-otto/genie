@@ -3,11 +3,12 @@
 use crate::GenieError;
 use crate::commands::unload::UnloadCommand;
 use crate::garrison::{
-    BUILDING_CLASS, COMBAT_KIND, MASTER_1808, SIEGE_CLASS, SIEGE_UNLOAD, VILLAGER_CLASS,
-    WHOLE_SHARE_CLASS,
+    BUILDING_CLASS, MASTER_1808, SIEGE_CLASS, SIEGE_UNLOAD, VILLAGER_CLASS, WHOLE_SHARE_CLASS,
 };
 use crate::objects::ObjectId;
-use crate::orders::BUILDING;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -90,7 +91,7 @@ impl World {
             let master = unit.master(&self.masters, player)?;
             if master.kind < BUILDING {
                 let transport = container
-                    .filter(|&(_, kind)| COMBAT_KIND <= kind)
+                    .filter(|&(_, kind)| COMBAT <= kind)
                     .map(|(c, _)| c);
                 if flag == 3 || transport.is_some() {
                     self.drop_out(player, idx, transport, unit_type, &mut last)?;
@@ -128,7 +129,7 @@ impl World {
         let (up, ui) = self.live_inside(id)?;
         let kind = self.players[up].objects[ui].master(&self.masters, up)?.kind;
         let u = &mut self.players[up].objects[ui];
-        if COMBAT_KIND <= kind {
+        if COMBAT <= kind {
             u.town_bell.flag = false;
         }
         if let Some(ai) = u.ai.as_mut() {
@@ -253,7 +254,7 @@ impl World {
                 crate::orders::set_stance(ai, stance, place, side, rng)
             })?;
         }
-        if COMBAT_KIND <= made.kind {
+        if COMBAT <= made.kind {
             self.players[up].objects[ui].town_bell.flag = false;
         }
         Ok(())

@@ -17,6 +17,7 @@ use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
 use crate::objects::ObjectId;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{MasterId, player_master};
 use crate::orders::Place;
 use crate::players::PlayerId;
@@ -28,8 +29,6 @@ const ONE: f32 = crate::math::image::wall::ONE;
 /// How far inside the map's far edges the snap keeps a footprint (`FUN_141123ac0`).
 const MAP_MARGIN: f32 = crate::math::image::wall::MAP_MARGIN;
 
-/// The buildings' master type: a wall of another type does nothing.
-const BUILDING: u8 = 80;
 /// A builder's master type is above this (`FUN_141262270`: `0x27`).
 const BUILDER_TYPE: u8 = 0x27;
 /// The villagers' class (`FUN_141195750`: the master's class is 4), tested by the wall's train

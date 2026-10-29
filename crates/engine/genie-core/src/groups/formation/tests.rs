@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::master_type::DOPPELGANGER;
 
 /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
 #[test]
@@ -181,7 +182,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
             },
             crate::objects::masters::Master {
                 id: crate::vision::ghost::GHOST_MASTER,
-                kind: crate::vision::ghost::GHOST,
+                kind: DOPPELGANGER,
                 formation_category: 1,
                 ..crate::objects::masters::Master::default()
             },
@@ -494,7 +495,7 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
         for masters in &mut t.masters {
             let ghost = crate::objects::masters::Master {
                 id: crate::vision::ghost::GHOST_MASTER,
-                kind: crate::vision::ghost::GHOST,
+                kind: DOPPELGANGER,
                 terrain_restriction: 1,
                 ..crate::objects::masters::Master::default()
             };

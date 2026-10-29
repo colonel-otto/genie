@@ -2,8 +2,10 @@
 //! their refunds when an entry is cancelled (`FUN_141630530` and the cancels' calls).
 
 use crate::GenieError;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
-use crate::production::{COMBAT_MASTER, HEADROOM, POPULATION, POPULATION_CAP, QUEUED};
+use crate::production::{HEADROOM, POPULATION, POPULATION_CAP, QUEUED};
 
 /// `FUN_141630530`: a queued unit's refund. For a master of type 70 and up each of its cost
 /// entries with an attribute and a paid flag gives back what the queue entry's `costs` paid
@@ -14,7 +16,7 @@ pub fn refund(
     costs: &[(i32, f32); 3],
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<(), GenieError> {
-    if master.kind < COMBAT_MASTER {
+    if master.kind < COMBAT {
         return Ok(());
     }
     for &(attribute, _, paid) in master.cost.iter().take(3) {
@@ -62,7 +64,7 @@ pub fn refund_master(
     n: i32,
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<(), GenieError> {
-    if master.kind < COMBAT_MASTER {
+    if master.kind < COMBAT {
         return Ok(());
     }
     for &(attribute, amount, paid) in master.cost.iter().take(3) {
@@ -115,9 +117,6 @@ pub fn refund_tech(
     Ok(true)
 }
 
-/// The buildings' master type (`'P'`), whose annex's costs the cost test reads.
-const BUILDING_TYPE: u8 = 80;
-
 /// The cost multiplier `FUN_14162ef60`'s callers pass (`DAT_14330eb8c`, 1.0).
 const ONE: f32 = 1.0;
 
@@ -132,7 +131,7 @@ fn cost_entry(master: &Master, j: usize) -> (i16, i16, bool) {
 /// then only the paid entries (the second value true).
 #[must_use]
 pub fn costed<'m>(masters: &'m Masters, m: &'m Master) -> (&'m Master, bool) {
-    if m.kind != BUILDING_TYPE {
+    if m.kind != BUILDING {
         return (m, false);
     }
     let Some(head) = m
@@ -165,7 +164,7 @@ pub fn cost_test(
     population: bool,
     attributes: &dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
-    let Some(m) = masters.get(master).filter(|m| COMBAT_MASTER <= m.kind) else {
+    let Some(m) = masters.get(master).filter(|m| COMBAT <= m.kind) else {
         return Ok(false);
     };
     let (m, annex) = costed(masters, m);
@@ -243,7 +242,7 @@ pub fn master_costs(
     use crate::math::conversions::cvttss2si;
     let mut out = [(-1i16, 0i16); 3];
     let can = cost_test(masters, master, ONE, true, attributes)?;
-    let Some(m) = masters.get(master).filter(|m| COMBAT_MASTER <= m.kind) else {
+    let Some(m) = masters.get(master).filter(|m| COMBAT <= m.kind) else {
         return Ok(out);
     };
     let mut extra = 0i16;

@@ -6,6 +6,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::move_to::MoveDefaults;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, TaskId};
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
@@ -336,7 +337,7 @@ impl Unit {
         };
         if crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, bm.id, &actor)
             && 0.0 < self.life.amount
-            && bm.kind == crate::orders::BUILDING
+            && bm.kind == BUILDING
         {
             let kind = self.life.attribute_type;
             let resource = match kind {
@@ -359,7 +360,7 @@ impl Unit {
                 self.life.amount = 0.0;
             }
         }
-        if bm.kind == crate::orders::BUILDING
+        if bm.kind == BUILDING
             && hp <= f32::from(bm.hit_points) * crate::math::image::garrison::ENTER_HP_SHARE
         {
             return Err(GenieError::unsupported(
@@ -513,7 +514,7 @@ impl Unit {
             r.entries.entry(id).or_default().mask = 0;
         }
         // a building's sight takes a circle of 5 (FUN_141212e10, type 80 only)
-        if bm.kind == crate::orders::BUILDING {
+        if bm.kind == BUILDING {
             let _ = v.sight_on_los(target, at, radius, false, 5, false);
         }
         Ok(())
@@ -551,7 +552,7 @@ impl Unit {
                 point: [at[0], at[1]],
             });
         }
-        if bm.kind == crate::orders::BUILDING
+        if bm.kind == BUILDING
             && state == 2
             && bm.building.is_some_and(|b| b.garrison_type & 1 != 0)
         {

@@ -4,12 +4,13 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::objects::lifecycle::death_parts::count_class;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, player_master};
 use crate::objects::unit::Unit;
 use crate::ownership::capture::LIVESTOCK;
 use crate::unit_ai::OWNER_CHANGED;
+use crate::world::World;
 use crate::world::player::Player;
-use crate::world::{BUILDING_KIND, World};
 
 impl World {
     /// Slot 0x70 ([`change_hands`]) to Gaia of the object at `j` of player `q`, from outside its
@@ -41,7 +42,7 @@ impl World {
             .masters
             .first()
             .and_then(|m| m.get(master_id))
-            .is_some_and(|m| m.kind == BUILDING_KIND)
+            .is_some_and(|m| m.kind == BUILDING)
             && unit
                 .construction
                 .is_some_and(|c| f32::from(c.build_time) <= c.progress);
@@ -213,7 +214,7 @@ impl World {
             let Some((q, a)) = self.object(annex) else {
                 continue;
             };
-            if a.master(&self.masters, q)?.kind != BUILDING_KIND {
+            if a.master(&self.masters, q)?.kind != BUILDING {
                 continue;
             }
             let annex_watched = self.players[old].watched.iter().any(|w| w.id == annex);

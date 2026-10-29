@@ -3,7 +3,9 @@
 //! stacking and its new objects.
 
 use crate::GenieError;
-use crate::construction::build::{BUILDING_TYPE, CLASS_39, Completion, Construction, StackUnit};
+use crate::construction::build::{CLASS_39, Completion, Construction, StackUnit};
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, player_master};
 use crate::orders::Place;
 
@@ -239,7 +241,7 @@ impl crate::world::World {
         let (q, nu) = self.object(new).ok_or(NOT_HELD)?;
         let new_master = nu.master(&self.masters, q)?;
         let mut point = None;
-        let building_made = new_master.kind == BUILDING_TYPE;
+        let building_made = new_master.kind == BUILDING;
         let gate_lock = (building_made && old_class == CLASS_39 && new_master.class == CLASS_39)
             .then_some(old_lock);
         if building_made {
@@ -312,7 +314,7 @@ impl crate::world::World {
         };
         // a combat unit (type 70, an effect's spawn): the master's slot 0x40 there, its footprint
         // cleared with the flag, its visible resources for one that gathers by itself
-        if made.kind == crate::garrison::COMBAT_KIND {
+        if made.kind == COMBAT {
             let idx = self.combat_object(p, master, &made, at)?;
             let id = self.players[p].objects[idx].id;
             if flagged {
@@ -325,7 +327,7 @@ impl crate::world::World {
         }
         // a plain object (types 10 and 20 to 39: a pasture's livestock): the master's slot 0x40
         // there, facing its drawn angle
-        if made.kind != BUILDING_TYPE {
+        if made.kind != BUILDING {
             let idx = self.plain_object(
                 p,
                 master,

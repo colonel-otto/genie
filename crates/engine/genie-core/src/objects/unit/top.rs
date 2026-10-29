@@ -4,8 +4,9 @@ use crate::GenieError;
 use crate::math::game_vector::GameVector;
 use crate::objects::actions::Action;
 use crate::objects::masters::Master;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::{TAKEN_OUT, Unit};
-use crate::world::BUILDING_KIND;
+
 use crate::world::checkpoint::TopAction;
 
 impl Unit {
@@ -35,7 +36,7 @@ impl Unit {
     /// building (type 80) below state 2 whose master has a stack unit (`+0x986`), and the taker's
     /// player is not allied with its owner (`FUN_141663d90` with 1: `allied` false).
     pub(crate) fn lists_taker(&self, master: &Master, allied: bool) -> bool {
-        master.kind == BUILDING_KIND
+        master.kind == BUILDING
             && self.life.state < 2
             && master.building.is_some_and(|b| b.stack_unit != -1)
             && !allied

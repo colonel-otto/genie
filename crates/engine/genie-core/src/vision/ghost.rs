@@ -21,8 +21,6 @@ use crate::world::World;
 
 /// The ghosts' master in every player's list (`player+0x28`'s entry 243, "DOPL").
 pub const GHOST_MASTER: i16 = 243;
-/// The type of a ghost (`+0xf`).
-pub const GHOST: u8 = 25;
 /// A master's `create_doppelganger_on_death` that leaves ghosts.
 pub const LEAVES_GHOSTS: u8 = 2;
 /// The classes a building's watch leaves out (`FUN_1411cc980`) and the gates' class, whose annex
@@ -620,6 +618,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::master_type::DOPPELGANGER;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
     use crate::vision::visibility::{Seer, Visibility};
@@ -634,7 +633,7 @@ mod tests {
         Masters::new([
             Master {
                 id: GHOST_MASTER,
-                kind: GHOST,
+                kind: DOPPELGANGER,
                 recyclable,
                 ..Master::default()
             },

@@ -2,11 +2,11 @@
 //! place on the map.
 
 use crate::GenieError;
-use crate::garrison::{
-    COMBAT_KIND, NO_POINT, SIEGE_CLASS, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share,
-};
+use crate::garrison::{NO_POINT, SIEGE_CLASS, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
 use crate::objects::masters::Master;
-use crate::orders::{BUILDING, Work};
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+use crate::orders::Work;
 use crate::world::World;
 
 impl World {
@@ -135,7 +135,7 @@ impl World {
         // the container's slot 0x1c8 (`FUN_141217910`, a building's through `FUN_1411d6ad0`): a
         // unit (type 70) takes its share off the volleys (the container's rate by its player's
         // masters, the unit's share by its own)
-        let share = if made.kind == COMBAT_KIND {
+        let share = if made.kind == COMBAT {
             let (Some(own), Some(theirs)) = (self.masters.get(player), self.masters.get(up)) else {
                 return Err(GenieError::unsupported("an unload without the masters"));
             };

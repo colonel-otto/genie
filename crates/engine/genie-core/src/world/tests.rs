@@ -23,6 +23,7 @@ use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::object_list::ObjectList;
 use crate::objects::release::{Releaser, released};
@@ -4190,7 +4191,7 @@ fn lets_world() -> World {
     for masters in &mut t.masters {
         let annex = Master {
             id: 99,
-            kind: crate::orders::BUILDING,
+            kind: BUILDING,
             building: Some(crate::objects::masters::BuildingMaster {
                 stack_unit: 5,
                 ..crate::objects::masters::BuildingMaster::default()

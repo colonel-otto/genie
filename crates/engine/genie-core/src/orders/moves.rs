@@ -6,9 +6,11 @@ use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::MOVING;
 use crate::orders::{
-    BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
-    Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
+    CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MoveOrder, PASTURE_CLASS, Place, TOO_CLOSE,
+    VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;

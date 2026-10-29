@@ -3,12 +3,14 @@
 
 use crate::GenieError;
 use crate::groups::update::{
-    ACTION_KIND, BUILD, COMBAT_KIND, DELIVER_RELIC, FARTHEST, MONASTERY, MOVING_KIND, NO_COMMAND,
-    PICK_UP_RELIC, RELIC_CLASS, RELIC_DELIVERY_ACTION, RELIC_PICKUP_ACTION, Shown, TRADE_BOAT,
-    TRADE_CART, TRADE_CART_SPRITES,
+    BUILD, DELIVER_RELIC, FARTHEST, MONASTERY, NO_COMMAND, PICK_UP_RELIC, RELIC_CLASS,
+    RELIC_DELIVERY_ACTION, RELIC_PICKUP_ACTION, Shown, TRADE_BOAT, TRADE_CART, TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
 use crate::objects::masters::Master;
+use crate::objects::masters::master_type::ACTION;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::MOVING;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -56,7 +58,7 @@ impl World {
                     .is_some_and(|ai| ai.current_action == Some(ActionKind::Attack))
             {
                 let master = u.master(&self.masters, p)?;
-                let search = if master.kind < ACTION_KIND {
+                let search = if master.kind < ACTION {
                     master.line_of_sight
                 } else {
                     master.search_radius
@@ -111,7 +113,7 @@ impl World {
         let WorldObject::Unit(p, u) = object else {
             return Ok(false);
         };
-        if u.master(&self.masters, p)?.kind < ACTION_KIND {
+        if u.master(&self.masters, p)?.kind < ACTION {
             return Ok(false);
         }
         if u.group.id != -1 && self.groups.get(u.group.id).is_some() && !self.at_rest(u.group.id) {
@@ -156,7 +158,7 @@ impl World {
         let WorldObject::Unit(p, u) = object else {
             return Ok(None);
         };
-        if u.master(&self.masters, p)?.kind < ACTION_KIND {
+        if u.master(&self.masters, p)?.kind < ACTION {
             return Ok(None);
         }
         if let Some(e) = u.unmodelled_action.clone() {
@@ -410,18 +412,18 @@ impl World {
             return Ok(false);
         };
         let master = u.master(&self.masters, p)?;
-        if master.kind < MOVING_KIND {
+        if master.kind < MOVING {
             return Ok(false);
         }
         let trade_cart = match shown {
-            Shown::Standing => master.kind == COMBAT_KIND && master.class == TRADE_CART,
-            Shown::Walking => ACTION_KIND <= master.kind && master.class == TRADE_CART,
+            Shown::Standing => master.kind == COMBAT && master.class == TRADE_CART,
+            Shown::Walking => ACTION <= master.kind && master.class == TRADE_CART,
             Shown::Running => false,
         };
         if trade_cart {
             return Err(TRADE_CART_SPRITES);
         }
-        if ACTION_KIND <= master.kind
+        if ACTION <= master.kind
             && let Some(e) = u.unmodelled_action.clone()
         {
             return Err(e);
@@ -505,7 +507,7 @@ impl Unit {
     /// A unit with an action the slice does not model.
     pub(crate) fn free_for_group(&self, master: &Master) -> Result<bool, GenieError> {
         let u = self;
-        let state = if master.kind < ACTION_KIND {
+        let state = if master.kind < ACTION {
             0
         } else {
             if let Some(e) = u.unmodelled_action.clone() {

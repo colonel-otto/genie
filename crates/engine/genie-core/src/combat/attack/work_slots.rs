@@ -2,10 +2,11 @@
 //! (`set_target_obj`).
 
 use crate::combat::attack::{
-    Attack, AttackReads, BUILDING, CLASS_60, Fight, Ground, NO_OBJECT_STREAM, SWING, reset_sprite,
+    Attack, AttackReads, CLASS_60, Fight, Ground, NO_OBJECT_STREAM, SWING, reset_sprite,
     set_walker_anim,
 };
 use crate::movement::footprint_gap;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::{GenieError, combat::damage};

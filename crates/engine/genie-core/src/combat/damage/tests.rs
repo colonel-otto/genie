@@ -31,6 +31,7 @@ fn a_building_s_relics_scale_its_elevation_factor() {
 }
 
 use super::*;
+use crate::objects::masters::master_type::BUILDING;
 
 fn sheep() -> Victim {
     Victim {

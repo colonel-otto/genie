@@ -8,10 +8,11 @@ use crate::movement::Mover;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
-use crate::world::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889, World};
+use crate::world::{BUILDING_COST, FARM, GATE, Gate, PASTURE_1889, World};
 
 impl World {
     /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108,
@@ -56,7 +57,7 @@ impl World {
         }
         let _ = self.streams.get(Stream::Object).rand15();
         if let Some(m) = player_master(&self.masters, player, master)
-            .filter(|m| m.kind == BUILDING_KIND && m.trained_at.iter().any(|&t| t != -1))
+            .filter(|m| m.kind == BUILDING && m.trained_at.iter().any(|&t| t != -1))
         {
             let paid: i32 = m
                 .cost

@@ -4,10 +4,10 @@
 use crate::groups::SpecificMove;
 use crate::groups::motion::hold;
 use crate::groups::steer::{
-    ACTION_KIND, ASIDE, ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO,
-    MOVES,
+    ASIDE, ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO, MOVES,
 };
 use crate::math::fmath::{Vec3, below_or_unordered};
+use crate::objects::masters::master_type::ACTION;
 use crate::world::World;
 use crate::{GenieError, math::fmath};
 
@@ -141,7 +141,7 @@ impl World {
         p: usize,
         u: &crate::objects::unit::Unit,
     ) -> Result<(bool, u8), GenieError> {
-        if u.master(&self.masters, p)?.kind < ACTION_KIND {
+        if u.master(&self.masters, p)?.kind < ACTION {
             return Ok((false, 0));
         }
         if let Some(e) = u.unmodelled_action.clone() {

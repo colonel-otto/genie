@@ -33,6 +33,7 @@
 
 use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
+use crate::objects::masters::master_type::BUILDING;
 
 /// A pending key is its done key + this (a master's + 90000, a class's + 90900).
 pub const PENDING: i32 = 90_000;
@@ -40,8 +41,6 @@ pub const PENDING: i32 = 90_000;
 pub const CLASS_KEY: i32 = 900;
 /// The keys run below this master id (`FUN_141658430`: 9000 or more is none).
 const TRACKED_MASTERS: i32 = 9000;
-/// The buildings' type, which wait in the pending lists.
-const BUILDING: u8 = 80;
 /// The classes a key holds below this (`FUN_141658430`).
 const CLASSES: i16 = 100;
 /// The classes that count as done from the start (packed and unpacked siege, 51 and 54).

@@ -3,8 +3,9 @@
 use crate::GenieError;
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Stream;
+use crate::objects::masters::master_type::BUILDING;
 use crate::orders::gather::HuntOrder;
-use crate::orders::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
+use crate::orders::{HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;

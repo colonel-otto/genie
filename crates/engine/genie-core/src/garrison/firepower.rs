@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, maxss};
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 
 /// A combat master's attack rate needs a weapon range above this (`FUN_14120dc10`).
@@ -111,10 +112,6 @@ pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32
     sum / reload * g
 }
 
-/// The type of a combat unit: the master a transforming master names (`+0x656`), and a unit a
-/// transport takes in (`FUN_14120eb10`).
-pub(crate) const COMBAT_KIND: u8 = 70;
-
 /// `FUN_141213520`: the share of a building's volleys a unit of `master` inside it adds, against
 /// the building's attack rate `rate` ([`attack_rate`]): none against a rate of ±0 (`_fdclass`);
 /// 1 for class 42; else its [`firepower`] over the rate, at least the floor (`MAXSS`): 0, or for
@@ -138,7 +135,7 @@ pub fn share(
         // would crash it: a master the player has is the only case it runs
         let other = u16::try_from(master.object_flags >> 16).unwrap_or(u16::MAX);
         if let Some(m) = i16::try_from(other).ok().and_then(|id| masters.get(id))
-            && m.kind == COMBAT_KIND
+            && m.kind == COMBAT
         {
             floor = firepower(m, masters, reload_powerup) / rate;
         }

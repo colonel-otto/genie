@@ -7,10 +7,11 @@ use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
 use crate::map::Point;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
-use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, World};
+use crate::world::{BLOCKS_RESEARCH, World};
 
 impl World {
     /// SET GATHER POINT's handler ([`GatherPointCommand`]).
@@ -121,7 +122,7 @@ impl World {
             let Some(ai) = unit.ai.as_ref() else {
                 continue;
             };
-            let building = unit.master(&self.masters, p)?.kind == crate::orders::BUILDING;
+            let building = unit.master(&self.masters, p)?.kind == BUILDING;
             let mut queued = Vec::new();
             if building
                 && let Some(g) = unit.gather_point
@@ -262,7 +263,7 @@ impl World {
             .locations
             .iter()
             .any(|l| l.building == building.life.master_id);
-        if master.kind != BUILDING_KIND || building.life.state != 2 || !at {
+        if master.kind != BUILDING || building.life.state != 2 || !at {
             return Ok(());
         }
         if owner.computer {

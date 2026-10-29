@@ -2,11 +2,12 @@
 //! 0x848).
 
 use crate::combat::damage::{
-    ARTIFACT, Attacker, BUILDING, CONE, ELEPHANT_ARCHER, Kill, LIVESTOCK, MINUS_CONE, RAMS, Victim,
+    ARTIFACT, Attacker, CONE, ELEPHANT_ARCHER, Kill, LIVESTOCK, MINUS_CONE, RAMS, Victim,
     WIDE_CONE, armor_damage, bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus,
     lose, shield, take,
 };
 use crate::math::conversions::cvttss2si;
+use crate::objects::masters::master_type::BUILDING;
 use crate::{GenieError, math::fmath};
 
 /// `FUN_141082e80`: the damage ([`armor_damage`]) beyond what a blast has done: an attacker of

@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    AfterOrder, AiMove, BREAK, CIVILIAN_CARED, COMBAT_KIND, DEAD, Effect, GO_ON, Gatherable,
-    GroupState, LIVE_TARGET_ACTIONS, Memory, NO_POINT, Notify, Pick, ResourceSearch, Retarget,
-    Search, Surroundings, UnitAi, UnitSide, civilian_kind, civilian_search_radius, retarget_kind,
+    AfterOrder, AiMove, BREAK, CIVILIAN_CARED, DEAD, Effect, GO_ON, Gatherable, GroupState,
+    LIVE_TARGET_ACTIONS, Memory, NO_POINT, Notify, Pick, ResourceSearch, Retarget, Search,
+    Surroundings, UnitAi, UnitSide, civilian_kind, civilian_search_radius, retarget_kind,
 };
 
 /// What the full update's tail takes besides the surroundings ([`UnitAi::update_tail`]'s
@@ -203,8 +204,7 @@ impl UnitAi {
         let Some(t) = id.map(|id| side.target_flags(id)).transpose()?.flatten() else {
             return Ok(());
         };
-        let captured_again =
-            at.player == 0 && t.owner == 0 && COMBAT_KIND <= t.kind && t.capture == 2;
+        let captured_again = at.player == 0 && t.owner == 0 && COMBAT <= t.kind && t.capture == 2;
         let action = if captured_again {
             None
         } else {

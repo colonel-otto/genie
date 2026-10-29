@@ -12,6 +12,7 @@
 use crate::GenieError;
 use crate::objects::lifecycle::{Lifecycle, seconds};
 use crate::objects::masters::Task;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
@@ -46,10 +47,6 @@ pub const UNEXHAUSTED: [i16; 2] = [1893, 1897];
 /// The class whose slot 0xd8 (`FUN_141211340`, a combat object's or building's) does nothing
 /// (decoded 42); class 58 is spared only while it holds some, which an exhausted farm does not.
 const NEVER_EXHAUSTED_CLASS: i16 = 42;
-
-/// The first master type whose slot 0xd8 is `FUN_141211340` (70, `TRIBE_Combat_Object`, and 80);
-/// below it slot 0xd8 is `FUN_14118f580` itself.
-const TRIBE_COMBAT_TYPE: u8 = 70;
 
 /// `RGE_Action_Make`: its state (`+0x18`), the food still to make (`+0x44`, the base's
 /// `mTimer`), the food it makes in all (`+0x68`, the save's `work_timer`) and its task (`+0x48`).
@@ -154,8 +151,7 @@ impl MakeAction {
             MAKING
                 if !UNEXHAUSTED.contains(&master.id)
                     && farm.life.amount <= 0.0
-                    && (master.kind < TRIBE_COMBAT_TYPE
-                        || master.class != NEVER_EXHAUSTED_CLASS) =>
+                    && (master.kind < COMBAT || master.class != NEVER_EXHAUSTED_CLASS) =>
             {
                 farm.life.hp = 0.0;
             }

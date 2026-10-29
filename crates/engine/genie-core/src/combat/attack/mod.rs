@@ -460,8 +460,6 @@ const QUIET_SWINGS: [i16; 2] = [73, 559];
 /// one that was its unit's player's when the Attack took it ([`Attack::same_owner`]).
 pub(crate) const LIVESTOCK: i16 = 58;
 const FARM: i16 = 49;
-/// A building's master type (`'P'`), whose main building (`+0xbb8`) an area effect attacks.
-const BUILDING: u8 = 80;
 /// The class an Attack does not take as its target (`-0xe70` raw, [`Attack::set_target`]).
 const CLASS_60: i16 = 60;
 

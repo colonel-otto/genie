@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::victims::victim_of;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Masters, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::Foreign;
@@ -133,7 +134,7 @@ impl WorldPicker<'_> {
             unit.attack_elevation,
             &target,
         );
-        if fm.kind == crate::orders::BUILDING {
+        if fm.kind == BUILDING {
             factor = crate::combat::damage::building_elevation_factor(
                 factor, f.relics, tm.kind, t.relics,
             );

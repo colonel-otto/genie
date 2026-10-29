@@ -7,13 +7,14 @@ use crate::commands::research::ResearchCommand;
 use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE};
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Masters, player_master};
 use crate::orders::Place;
 use crate::production::Production;
 use crate::world::player::POPULATION;
 use crate::world::{
-    BUILDING_KIND, COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, VILLAGER, VILLAGER_ANY, World,
-    villager,
+    COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, VILLAGER, VILLAGER_ANY, World, villager,
 };
 
 impl World {
@@ -104,7 +105,7 @@ impl World {
         }
         let mut amount = i32::from(q.amount).min(i32::from(total_room as i16));
         if 0 < amount {
-            if unit.kind < crate::production::COMBAT_MASTER {
+            if unit.kind < COMBAT {
                 return Ok(());
             }
             let (costed, annex) = crate::production::costed(masters, unit);
@@ -188,10 +189,8 @@ impl World {
                 .map_or(0.0, |(q, u)| self.production_load(q, u))
         };
         let is_building = |id: i32| {
-            self.object(id).is_some_and(|(q, u)| {
-                u.master(&self.masters, q)
-                    .is_ok_and(|m| m.kind == BUILDING_KIND)
-            })
+            self.object(id)
+                .is_some_and(|(q, u)| u.master(&self.masters, q).is_ok_and(|m| m.kind == BUILDING))
         };
         let building = ObjectId::field(r.building);
         let mut chosen = is_building(building).then_some(building);
@@ -361,7 +360,7 @@ impl World {
             return Ok(true);
         }
         let time = made
-            .filter(|m| crate::production::COMBAT_MASTER <= m.kind)
+            .filter(|m| COMBAT <= m.kind)
             .map(|m| crate::production::train_time(&m.train_locations, building, button));
         self.new_entry(player, i, (master, -1), n, button, time)?;
         Ok(true)

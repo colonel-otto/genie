@@ -34,6 +34,8 @@
 
 use crate::GenieError;
 use crate::math::fmath;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
 use crate::world::World;
 use genie_diff::Diff;
@@ -54,10 +56,6 @@ pub const MOVEMENT_DAMAGE: i16 = 0x98;
 pub const TERRAIN_LOOK: i16 = 0x9f;
 /// The action type of a removal reward task (161).
 pub const REMOVAL_REWARD: i16 = 0xa1;
-
-/// The object types the routine runs on: a combat unit (`'F'`) and a building (`'P'`).
-const COMBAT_KIND: u8 = 70;
-const BUILDING_KIND: u8 = 80;
 
 /// The top action types a generation task's test passes (`FUN_140a7be70`): the Attack (9),
 /// type 7, the Gather (5) and the Hunt (0x6e).
@@ -193,7 +191,7 @@ impl World {
         let Some(master) = unit
             .master(&self.masters, p)
             .ok()
-            .filter(|m| matches!(m.kind, COMBAT_KIND | BUILDING_KIND))
+            .filter(|m| matches!(m.kind, COMBAT | BUILDING))
         else {
             return Ok(Vec::new());
         };

@@ -117,7 +117,12 @@ pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<i32>, Error> {
         let words: Vec<&str> = line.split_whitespace().collect();
         match words[..] {
             ["pool", k, _] => kind = Some(k.parse::<i32>().map_err(|_| Error::BadPoolDump)?),
-            [id, _] if kind == Some(i32::from(genie_core::vision::ghost::GHOST)) => {
+            [id, _]
+                if kind
+                    == Some(i32::from(
+                        genie_core::objects::masters::master_type::DOPPELGANGER,
+                    )) =>
+            {
                 ghosts.push(id.parse::<i32>().map_err(|_| Error::BadPoolDump)?);
             }
             [_, _] if kind.is_some() => {}

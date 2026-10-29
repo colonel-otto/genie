@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::movement::footprint_gap_squared;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::owner_view;
@@ -72,7 +73,7 @@ impl UnitView<'_, '_> {
             let gap = footprint_gap_squared(u.position(), m.radius, t.position(), tm.radius);
             let in_range =
                 gap <= m.weapon_range * m.weapon_range && m.min_range * m.min_range <= gap;
-            let spared = patrolling && tm.kind == crate::orders::BUILDING && tm.weapons.is_empty();
+            let spared = patrolling && tm.kind == BUILDING && tm.weapons.is_empty();
             if in_range && !spared {
                 return Ok(false);
             }

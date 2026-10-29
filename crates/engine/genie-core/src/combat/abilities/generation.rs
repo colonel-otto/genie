@@ -1,7 +1,9 @@
 //! The generation tasks (action type 151): their test, what they make and the player's store.
 
-use crate::combat::abilities::{BUILDING_KIND, COMBAT_KIND, ONE, Own, WORKING, WORKING_ACTIONS};
+use crate::combat::abilities::{ONE, Own, WORKING, WORKING_ACTIONS};
 use crate::objects::masters::Task;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::world::World;
 use crate::{GenieError, math::fmath};
 
@@ -45,11 +47,11 @@ pub fn generates(
     built: bool,
 ) -> bool {
     match kind {
-        COMBAT_KIND if task.combat_level_flag & 2 != 0 => return true,
-        BUILDING_KIND if task.combat_level_flag & 4 != 0 => return true,
+        COMBAT if task.combat_level_flag & 2 != 0 => return true,
+        BUILDING if task.combat_level_flag & 4 != 0 => return true,
         _ => {}
     }
-    if master_kind == COMBAT_KIND
+    if master_kind == COMBAT
         && let Some(top) = top
         && WORKING_ACTIONS.contains(&top.kind)
         && top.state == WORKING
@@ -59,7 +61,7 @@ pub fn generates(
     {
         return true;
     }
-    master_kind == BUILDING_KIND && built
+    master_kind == BUILDING && built
 }
 
 /// What a generation task makes in an update (`0x141207fc4`): the world's dt (`world+0x164`)
@@ -114,10 +116,10 @@ impl World {
         let unit = &self.players[p].objects[i];
         let flags = task.combat_level_flag;
         let short_cut = match master.kind {
-            COMBAT_KIND => flags & 2 != 0,
+            COMBAT => flags & 2 != 0,
             _ => flags & 4 != 0,
         };
-        let top = if short_cut || master.kind != COMBAT_KIND {
+        let top = if short_cut || master.kind != COMBAT {
             None
         } else {
             if let Some(e) = unit.unmodelled_action.clone() {
@@ -138,7 +140,7 @@ impl World {
                 }
             })
         };
-        let built = master.kind == BUILDING_KIND
+        let built = master.kind == BUILDING
             && self
                 .spatial
                 .sight

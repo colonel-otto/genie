@@ -8,11 +8,12 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
 use crate::production::spawn::{
-    BUILDING, Facing, NOT_MOVING, Placing, Site, TRIBE_COMBAT, WALL, WorldMap, corner_tiles,
-    placement, spawn_point,
+    Facing, NOT_MOVING, Placing, Site, WALL, WorldMap, corner_tiles, placement, spawn_point,
 };
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::World;
@@ -97,7 +98,7 @@ impl World {
         if made.kind == BUILDING {
             return self.new_building(p, &made, at);
         }
-        if made.kind == TRIBE_COMBAT {
+        if made.kind == COMBAT {
             let new = self.combat_object(p, master, &made, at)?;
             // a moving dead object's override (FUN_14119d490, FUN_14114d780): the new unit takes
             // its facet's angle

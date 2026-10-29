@@ -17,6 +17,7 @@
 //! value, and the buffer's regrowth by ten copies them with the rest.
 
 use crate::GenieError;
+use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, TrainLocation};
 use genie_diff::Diff;
 
@@ -305,7 +306,7 @@ impl MakeObj {
     /// combat master (`TRIBE_Master_Combat_Object`, type 70 and up).
     #[must_use]
     pub fn time(&self, master: Option<&Master>, building: i16) -> i16 {
-        let Some(m) = master.filter(|m| COMBAT_MASTER <= m.kind) else {
+        let Some(m) = master.filter(|m| COMBAT <= m.kind) else {
             return 0;
         };
         if m.object_flags & OWN_TRAIN_TIME != 0 {
@@ -314,10 +315,6 @@ impl MakeObj {
         train_time(&m.train_locations, building, self.button)
     }
 }
-
-/// The first master type that is a `TRIBE_Master_Combat_Object` (the dynamic casts of
-/// `FUN_1411cbc40` and `FUN_140acf280`).
-pub const COMBAT_MASTER: u8 = 70;
 
 /// `TRIBE_Action_Make_Tech` (type 0x67, 0x78 bytes): the research of a building's first queue
 /// entry (the save's `tribe_action_make_tech`).

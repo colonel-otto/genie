@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::master_type::BUILDING;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;

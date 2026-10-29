@@ -2,9 +2,8 @@
 
 use crate::GenieError;
 use crate::objects::ObjectId;
-use crate::orders::{
-    Interact, MAX_UNGROUPED, MOVING, Split, Splittable, centroid, splits_together,
-};
+use crate::objects::masters::master_type::MOVING;
+use crate::orders::{Interact, MAX_UNGROUPED, Split, Splittable, centroid, splits_together};
 use crate::world::World;
 
 impl World {

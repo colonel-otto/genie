@@ -367,10 +367,6 @@ pub(super) const PATROL_TURN_REACH: f32 = crate::math::image::unit_ai::PATROL_TU
 /// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
 /// `-0xe78` raw).
 pub(super) const CLASS_3: i16 = 3;
-/// A building's master type (`'P'`, `FUN_1411942c0`).
-pub(super) const BUILDING_KIND: u8 = 80;
-/// The combat type (`0x46`), from which on the full update's tail reads a target's `+0x924`.
-pub(super) const COMBAT_KIND: u8 = 70;
 
 /// A building on its make action without a missile and with at most this firepower forgets its
 /// target (`DAT_14330eb8c`).

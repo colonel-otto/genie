@@ -10,6 +10,9 @@ use crate::GenieError;
 use crate::construction::build::held;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
+use crate::objects::masters::master_type::ACTION;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Place;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -20,14 +23,6 @@ const UNDELETABLE: [i16; 4] = [58, 42, 1, 60];
 
 /// The first master type a delete takes (`FUN_1416257c0`: above `0x45`).
 const DELETABLE_TYPE: u8 = 70;
-
-/// The buildings' master type, whose slot 0x8b8 is the building's.
-const BUILDING: u8 = 80;
-
-/// The first master type whose slot 0xd0 is the action object's (`FUN_14106c420`), and the
-/// TRIBE combat objects' type, whose slot 0xa0 is `FUN_14121cc40`.
-const ACTION_OBJECT: u8 = 40;
-const TRIBE_COMBAT: u8 = 70;
 
 /// A player's game status once it lost (`+0x89`).
 const LOST: u8 = 2;
@@ -274,7 +269,7 @@ impl World {
                 self.clear_treaty_zones()?;
             }
         }
-        if ACTION_OBJECT <= master.kind
+        if ACTION <= master.kind
             && let Some(Place::Live(p, i)) = self.place(id)
         {
             self.clear_actions(p, i)?;
@@ -348,7 +343,7 @@ impl World {
         let master = u.master(&self.masters, owner)?.clone();
         match master.kind {
             BUILDING => self.building_set_state(owner, id, new, &master),
-            TRIBE_COMBAT => self.combat_set_state(owner, id, new, &master),
+            COMBAT => self.combat_set_state(owner, id, new, &master),
             _ => self.base_set_state(owner, id, new, &master),
         }
     }

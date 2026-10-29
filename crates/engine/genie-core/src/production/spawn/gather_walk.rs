@@ -3,9 +3,10 @@
 use crate::GenieError;
 use crate::commands::GatherPoint;
 use crate::math::rng::Stream;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
-use crate::production::spawn::{BUILDING, VILLAGER};
+use crate::production::spawn::VILLAGER;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;

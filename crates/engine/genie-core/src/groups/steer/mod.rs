@@ -42,9 +42,6 @@ const KEEPS_MOVING: [u8; 3] = [4, 5, 11];
 /// A group's members are units of type 70 or more (a group takes a unit only with a
 /// sub-formation, [`crate::groups::sub_formation`]), which the slice gives movement state.
 const MOVES: &str = "a group's member is a unit of type 70 or more, which moves";
-/// The types of action objects (`RGE_Action_Object`) and of buildings (`TRIBE_Building_Object`).
-const ACTION_KIND: u8 = 40;
-const BUILDING_KIND: u8 = 80;
 /// The way round a record (`FUN_141025fb0` from `0x14102683b`): the short pather's radius is the
 /// member's times this, and the position tests grow the records by as much (`DAT_142e7f384`).
 const ROUND_RADIUS: f32 = crate::math::image::group::ROUND_RADIUS;

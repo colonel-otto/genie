@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::groups::create::FormationUnit;
+use crate::objects::masters::master_type::ACTION;
 use crate::unit_ai::ActionKind;
 use crate::world::World;
 
@@ -18,8 +19,6 @@ const FAR: f32 = crate::math::image::group::FAR;
 const FAR_WIDE: f32 = crate::math::image::group::FAR_WIDE;
 /// The radius from which the far test takes [`FAR_WIDE`] (`DAT_142e7f384`).
 const WIDE_RADIUS: f32 = crate::math::image::group::WIDE_RADIUS;
-/// The types of action objects (`RGE_Action_Object`), whose action list slot 0x538 reads.
-const ACTION_KIND: u8 = 40;
 /// The objects of the members' searches a group keeps at most (`FUN_140c65c60`'s `0x46`).
 const MOST_OBJECTS: usize = 70;
 
@@ -553,7 +552,7 @@ impl World {
             return Ok(false);
         }
         let (p, u) = self.object(view.id).expect("the member is held");
-        if u.master(&self.masters, p)?.kind >= ACTION_KIND {
+        if u.master(&self.masters, p)?.kind >= ACTION {
             if let Some(e) = u.unmodelled_action.clone() {
                 return Err(e);
             }

@@ -20,7 +20,6 @@ pub(crate) mod unit;
 mod unload;
 mod walk_in;
 
-pub(crate) use self::firepower::COMBAT_KIND;
 use self::firepower::WHOLE_SHARE_CLASS;
 pub use self::firepower::{attack_rate, firepower, share};
 use self::meeting::{ENTER_NEAR, HALF_TILE, UNPLACED};
@@ -72,7 +71,6 @@ const HUMAN_IDS: usize = 60;
 const COMPUTER_IDS: usize = 500;
 /// `SEEK_SHELTER`'s villagers: class 4 of type 70.
 const VILLAGER_CLASS: i16 = 4;
-const VILLAGER_KIND: u8 = 70;
 
 /// The class-flags table `FUN_1411205e0` reads (`DAT_1439e37b0`, a u32 per class; its count,
 /// `DAT_1439e2cf8`, is 64), as the image holds it (nothing writes it).

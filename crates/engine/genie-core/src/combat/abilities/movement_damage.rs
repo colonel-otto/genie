@@ -1,11 +1,12 @@
 //! The movement damage tasks (action type 152): their timer and reach, the bystanders they
 //! strike and the hit.
 
-use crate::combat::abilities::{
-    ALWAYS_REACHED, BUILDING_KIND, COMBAT_KIND, ONE, Own, STRUCK_BUILDING_CLASSES,
-};
+use crate::combat::abilities::{ALWAYS_REACHED, ONE, Own, STRUCK_BUILDING_CLASSES};
 use crate::combat::damage::Victim;
 use crate::objects::masters::Task;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::world::World;
 use crate::{GenieError, math::fmath};
 
@@ -93,7 +94,7 @@ pub fn struck(hitter: &Hitter, range: f32, b: &Bystander) -> bool {
     if b.id == hitter.id || b.allied || b.player == 0 {
         return false;
     }
-    if b.kind == BUILDING_KIND && !STRUCK_BUILDING_CLASSES.contains(&b.class) {
+    if b.kind == BUILDING && !STRUCK_BUILDING_CLASSES.contains(&b.class) {
         return false;
     }
     if 2 < b.state {
@@ -163,7 +164,7 @@ impl World {
             .mover()
             .and_then(|m| m.velocity.as_ref())
             .is_some_and(|v| 0.0 < fmath::length(v.velocity));
-        if master.kind != COMBAT_KIND || !moving {
+        if master.kind != COMBAT || !moving {
             return Ok(());
         }
         let hitter = Hitter {
@@ -226,7 +227,7 @@ impl World {
                     id,
                     player: q,
                     allied: allied(q),
-                    kind: crate::vision::ghost::GHOST,
+                    kind: DOPPELGANGER,
                     class: m.class,
                     state: g.state,
                     blast_defense: m.blast_defense,
@@ -246,7 +247,7 @@ impl World {
         owner: usize,
         damage: f32,
     ) -> Result<(), GenieError> {
-        if b.kind == crate::vision::ghost::GHOST {
+        if b.kind == DOPPELGANGER {
             return Ok(());
         }
         let Some((q, u)) = self.object(b.id) else {
@@ -271,7 +272,7 @@ impl World {
         if let Some(a) = v.armored.as_ref() {
             u.hp_powerups = a.hp_powerups;
         }
-        if killed && b.kind == COMBAT_KIND {
+        if killed && b.kind == COMBAT {
             self.count_kill(b.id, owner)?;
         }
         Ok(())

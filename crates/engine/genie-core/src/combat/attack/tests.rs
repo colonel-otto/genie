@@ -2,6 +2,7 @@ use super::*;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::layers::Animated;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::world::Player;

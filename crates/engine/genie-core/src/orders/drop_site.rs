@@ -4,7 +4,9 @@
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
-use crate::orders::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
+use crate::orders::{HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -42,7 +44,7 @@ impl World {
         let Some(site) = site else {
             return Ok(());
         };
-        if kind < crate::garrison::COMBAT_KIND {
+        if kind < COMBAT {
             return Ok(());
         }
         let filter = if HUNTED_LOADS.contains(&held) {
@@ -76,7 +78,7 @@ impl World {
     ) -> Result<Option<i32>, GenieError> {
         let unit = &self.players[p].objects[idx];
         let master = unit.master(&self.masters, p)?;
-        let seeks = master.kind < crate::garrison::COMBAT_KIND
+        let seeks = master.kind < COMBAT
             || (!master.drop_sites.iter().any(|&d| d == 45 || d == 2172)
                 && !matches!(master.class, 21 | 2));
         let masters = self.masters.get(p).ok_or(GenieError::unsupported(

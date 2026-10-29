@@ -8,6 +8,8 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
+use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::COMBAT;
 use crate::orders::{GARRISON, VILLAGER, own_order_target};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
@@ -179,9 +181,6 @@ const TOWN_CENTRE: i16 = 109;
 const MASTER_1808: i16 = 0x710;
 /// The villagers' class.
 const VILLAGER_CLASS: i16 = 4;
-/// The units' least type (`0x46`) and the buildings' (`'P'`).
-const UNIT: u8 = 70;
-const BUILDING: u8 = 80;
 /// The town bell's reach ([`crate::garrison::TOWN_BELL_REACH`]).
 const REACH: f32 = crate::garrison::TOWN_BELL_REACH;
 /// A record's point on neither axis (`DAT_14330ec20`).
@@ -250,7 +249,7 @@ impl World {
                 // COMISS REACH, gap; JC: a gap above it, or a NaN, is out
                 Ok(!crate::math::fmath::below_or_unordered(REACH, gap))
             };
-            if (class == VILLAGER_CLASS && kind == UNIT && near(self)?)
+            if (class == VILLAGER_CLASS && kind == COMBAT && near(self)?)
                 || (master == MASTER_1808 && near(self)?)
             {
                 units.push(id);
@@ -367,7 +366,7 @@ impl World {
                 continue;
             };
             let um = u.master(&self.masters, up)?;
-            if UNIT <= um.kind && (um.class == VILLAGER_CLASS || um.id == MASTER_1808) {
+            if COMBAT <= um.kind && (um.class == VILLAGER_CLASS || um.id == MASTER_1808) {
                 let _ = self.back_to_work(Some((owner, idx)), inside)?;
             }
         }

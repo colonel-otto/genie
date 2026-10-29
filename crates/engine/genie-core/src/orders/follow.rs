@@ -3,9 +3,9 @@
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
+use crate::objects::masters::master_type::MOVING;
 use crate::orders::{
-    Followed, GUARD_RANGE, LIVESTOCK, MOVING, Place, VILLAGER, follow_axis, follow_spread,
-    ignore_unit,
+    Followed, GUARD_RANGE, LIVESTOCK, Place, VILLAGER, follow_axis, follow_spread, ignore_unit,
 };
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;

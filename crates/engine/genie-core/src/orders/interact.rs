@@ -3,9 +3,10 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::master_type::MOVING;
 use crate::orders::{
-    CLASS_54, Interact, MOVING, MoveOrder, Place, Split, Work, grid_point, ignore_unit,
-    offset_point, readiness, set_differentiator_groups,
+    CLASS_54, Interact, MoveOrder, Place, Split, Work, grid_point, ignore_unit, offset_point,
+    readiness, set_differentiator_groups,
 };
 use crate::unit_ai::OrderKind;
 use crate::world::World;

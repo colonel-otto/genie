@@ -2,9 +2,10 @@
 //! test and the spawn's.
 
 use crate::GenieError;
+use crate::objects::masters::master_type::BUILDING;
 use crate::production::spawn::{
-    BUILDING, BuildSite, CLASS_51, CLASS_54, FARM, GATE, INSIDE, PASSABLE, REACH, RELIC, TREE,
-    Tested, WALL, hill_fails, placement_terrains,
+    BuildSite, CLASS_51, CLASS_54, FARM, GATE, INSIDE, PASSABLE, REACH, RELIC, TREE, Tested, WALL,
+    hill_fails, placement_terrains,
 };
 
 /// An object near a candidate, as the placement test and the blocker test read it.

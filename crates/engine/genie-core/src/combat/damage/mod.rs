@@ -88,10 +88,6 @@ const ARTIFACT: i16 = 1;
 /// The rams (masters 35, 422, 548 and 1258): their blast reaches only buildings and their
 /// target.
 const RAMS: [i16; 4] = [35, 422, 548, 1258];
-/// The building type (`'P'`): its slot 0xe8 is `FUN_1411cea90` ([`take_building`]).
-///
-/// [`take_building`]: crate::combat::damage::taking::take_building
-const BUILDING: u8 = 80;
 /// The wall class (27): its razing counts nothing.
 const WALL: i16 = 27;
 /// 1 (`DAT_14330eb8c`, read into `XMM9` at `0x1411cec8e`): a building's least hit, the hit

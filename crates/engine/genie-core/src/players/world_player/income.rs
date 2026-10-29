@@ -2,9 +2,10 @@
 //! update's tail.
 
 use crate::math::fmath::at_most_or_unordered;
+use crate::objects::masters::master_type::BUILDING;
 use crate::players::world_player::{
-    BUILDING_TYPE, COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE,
-    SECOND, attribute, get, set,
+    COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, attribute,
+    get, set,
 };
 use crate::world::World;
 
@@ -36,7 +37,7 @@ impl World {
             };
             let building = unit
                 .master(&self.masters, owner)
-                .is_ok_and(|m| m.kind == BUILDING_TYPE);
+                .is_ok_and(|m| m.kind == BUILDING);
             if building {
                 sum += unit.livestock_summation;
             }

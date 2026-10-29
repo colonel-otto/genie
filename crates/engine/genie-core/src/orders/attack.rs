@@ -4,7 +4,8 @@ use crate::GenieError;
 use crate::combat::attack::{Attack, AttackReads, Fight};
 use crate::gathering::hunt::HuntRetarget;
 use crate::math::rng::Stream;
-use crate::orders::BUILDING;
+use crate::objects::masters::master_type::BUILDING;
+
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;

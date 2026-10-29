@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
+use crate::objects::masters::master_type::ANIMATED;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::world::World;
@@ -16,10 +17,6 @@ pub(crate) struct Releaser {
     pub(crate) class: i16,
     pub(crate) player: usize,
 }
-
-/// The first master type whose slot 0x180 is not the static object's (`FUN_141197d00`, types 10
-/// and 15): the animated object's (`FUN_141071ea0`, types 20 to 40) only counts a worker less.
-pub(crate) const ANIMATED_TYPE: u8 = 20;
 
 /// Slot 0x180 on object `u` of master type `kind`, let go by `by`: the static object's
 /// (`FUN_141197d00`, types 10 and 15) counts a worker less and a static one without workers
@@ -58,7 +55,7 @@ pub(crate) fn released_fields(
     }
     // COMISS hp with 0, JNC: a NaN does not count as alive
     let alive = (u.life.state == 2 && 0.0 <= u.life.hp) || u.life.state == 6;
-    if kind < ANIMATED_TYPE && u.workers == 0 && alive {
+    if kind < ANIMATED && u.workers == 0 && alive {
         u.life.goto_sleep = true;
     }
     (u.combat && 0 <= by.id).then(|| Notify {

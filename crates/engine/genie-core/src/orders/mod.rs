@@ -124,9 +124,6 @@ const PASTURE_CLASS: i16 = 49;
 const MASTER_1897: i16 = 1897;
 /// The range of GUARD's defend order (`DAT_142eb3634`, [`World::guard`]).
 const GUARD_RANGE: f32 = crate::math::image::order::GUARD_RANGE;
-/// A building's master type (`'P'`); types below 30 do not move.
-pub(crate) const BUILDING: u8 = 80;
-const MOVING: u8 = 30;
 /// The task filter of garrisoning (3).
 pub(crate) const GARRISON: i16 = 3;
 /// The action type of a building packing or unpacking (0x7d), whose target a gather drops

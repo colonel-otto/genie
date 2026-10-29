@@ -98,8 +98,6 @@ const LAST_BIT: f32 = crate::math::image::hunt::LAST_BIT;
 /// attribute 292 (`FUN_140ac44b0`).
 const DECAY_TASK: i16 = 0x124;
 
-/// A building's master type (`'P'`).
-const BUILDING: u8 = 80;
 /// The range of the walk to the hunter's own player's livestock (`DAT_142eb4838`).
 const OWN_LIVESTOCK_RANGE: f32 = crate::math::image::hunt::OWN_LIVESTOCK_RANGE;
 /// The villagers' class, whose `MoveTo` waits once when the motion step gives up.

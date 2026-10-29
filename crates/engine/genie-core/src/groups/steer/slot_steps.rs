@@ -4,10 +4,9 @@
 use crate::GenieError;
 use crate::groups::SpecificMove;
 use crate::groups::motion::passes_waypoint;
-use crate::groups::steer::{
-    BUILDING_KIND, CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, MOVES, SLOT_REACH,
-};
+use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, MOVES, SLOT_REACH};
 use crate::math::fmath::{Vec3, at_most_or_unordered, below_or_unordered};
+use crate::objects::masters::master_type::BUILDING;
 use crate::world::World;
 
 impl World {
@@ -275,7 +274,7 @@ impl World {
         let (speed, radius) = (mover.stats.speed, mover.stats.radius);
         mover.new_position(id, at, (&mut self.spatial, Some(&mut self.pathing)));
         if 0 <= id
-            && kind < BUILDING_KIND
+            && kind < BUILDING
             && speed == 0.0
             && (LINKED_RADIUS < radius[0] || LINKED_RADIUS < radius[1])
             && let Some(v) = self.spatial.sight.as_mut()

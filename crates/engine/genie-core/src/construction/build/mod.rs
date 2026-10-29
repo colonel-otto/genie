@@ -434,8 +434,6 @@ pub(crate) const DROPPED_ORDERS: [OrderKind; 3] =
     [OrderKind::Gather, OrderKind::Hunt, OrderKind::OnTarget];
 /// The point a `MoveTo` without a target walks to (`FUN_140aa0df0` leaves its zeroed `+0x38`).
 const NO_TARGET_POINT: [f32; 3] = [0.0; 3];
-/// The buildings' master type (80).
-const BUILDING_TYPE: u8 = 80;
 /// The masters and the class the end of the work treats apart: 621 and 1889 among the
 /// foundations, class 39 among the builders, 1893 and 1897 (`id - 0x765 & !4 == 0`), the fish
 /// trap 199 and farms (class 49, `FUN_141194b20`).

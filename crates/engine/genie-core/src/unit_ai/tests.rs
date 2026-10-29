@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::master_type::BUILDING;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::test_sides::With;
@@ -5332,7 +5333,7 @@ fn a_making_building_runs_process_idle_only_without_a_target() {
     };
     let at = Surroundings {
         class: CLASS_3,
-        kind: BUILDING_KIND,
+        kind: BUILDING,
         ranged: true,
         busy: true,
         ..Surroundings::default()

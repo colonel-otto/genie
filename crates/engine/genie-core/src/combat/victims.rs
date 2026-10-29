@@ -5,13 +5,14 @@ use crate::GenieError;
 use crate::combat::damage::{Kill, Razed, Victim};
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
+use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
-use crate::world::{BUILDING_KIND, World};
 
 impl World {
     /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): an
@@ -619,7 +620,7 @@ pub(crate) fn victim_of(
         damaged: Vec::new(),
         killed: None,
         // a building's slot 0xe8 is FUN_1411cea90
-        building: (kind == BUILDING_KIND).then(|| crate::combat::damage::Building {
+        building: (kind == BUILDING).then(|| crate::combat::damage::Building {
             main: u.annex_of,
             // the caller's, which holds the world's annex links
             annexes: Vec::new(),

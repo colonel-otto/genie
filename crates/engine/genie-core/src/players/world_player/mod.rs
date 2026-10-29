@@ -63,8 +63,6 @@ const GAIA_TYPE: u8 = 2;
 const HUMAN_TYPE: u8 = 1;
 /// The computer player's type: its income fills its escrow.
 const COMPUTER_TYPE: u8 = 3;
-/// The buildings' type (the object's `+0xf`, `'P'`).
-const BUILDING_TYPE: u8 = 80;
 /// The mill's master, whose livestock makes food (`FUN_14104f960` with 0x44).
 const MILL: i32 = 68;
 /// The king's master, which the regicide rule asks the tracker for (`FUN_14104eea0` with 0x1b2).

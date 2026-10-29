@@ -3,7 +3,8 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
-use crate::orders::{AUTO_SCOUT_CLASS, BUILDING, Place, lock_gate, set_stance};
+use crate::objects::masters::master_type::BUILDING;
+use crate::orders::{AUTO_SCOUT_CLASS, Place, lock_gate, set_stance};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;

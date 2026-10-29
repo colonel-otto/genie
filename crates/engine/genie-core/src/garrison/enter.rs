@@ -9,7 +9,8 @@ use crate::garrison::{
 };
 use crate::movement::move_to::{MoveDefaults, SpriteReads};
 use crate::objects::masters::Task;
-use crate::orders::{BUILDING, GARRISON};
+use crate::objects::masters::master_type::BUILDING;
+use crate::orders::GARRISON;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;

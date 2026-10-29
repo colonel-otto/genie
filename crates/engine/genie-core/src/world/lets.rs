@@ -11,6 +11,7 @@
 use crate::GenieError;
 use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::{Releaser, released, released_fields};
 use crate::objects::unit::Unit;
 use crate::players::tracker::Tracker;
@@ -301,13 +302,11 @@ impl Lets<'_> {
     /// The building whose builders object `f` (`id`, of player `p`) counts in: an annex's main
     /// building, else the object itself.
     fn site_of(&self, f: &Unit, p: usize, id: i32) -> Result<i32, GenieError> {
-        Ok(
-            if f.master(self.masters, p)?.kind == crate::orders::BUILDING {
-                f.annex_of.unwrap_or(id)
-            } else {
-                id
-            },
-        )
+        Ok(if f.master(self.masters, p)?.kind == BUILDING {
+            f.annex_of.unwrap_or(id)
+        } else {
+            id
+        })
     }
 
     /// Player `from` counts player `to` as its own or allied, with its allies (`FUN_141663dc0`

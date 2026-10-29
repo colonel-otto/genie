@@ -13,14 +13,12 @@
 //! its id + 0x609c), the port compares the decoded values and names the encoded ones.
 
 use crate::GenieError;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::task_finder::target_steps::on_target;
 
 mod target_steps;
 pub(crate) mod world;
-
-/// A building's master type (`'P'`).
-const BUILDING: u8 = 80;
 
 /// Classes (encoded `-0xeac + c`).
 mod class {

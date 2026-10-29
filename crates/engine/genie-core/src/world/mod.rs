@@ -129,8 +129,6 @@ pub const HISTORY_PERIOD: i32 = 25;
 
 /// The building top actions that keep RESEARCH from a building (`FUN_141227a00`: 0x7b to 0x7d).
 pub(crate) const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
-/// The building master type RESEARCH asks for (`'P'`, 80).
-pub(crate) const BUILDING_KIND: u8 = 80;
 /// The first master type whose slot 0x128 (a work at an object) does something: the action
 /// objects' (`FUN_14106c590`) and up; below it `FUN_141071bd0` returns at once.
 pub(crate) const STATIC_TYPES_END: u8 = 40;

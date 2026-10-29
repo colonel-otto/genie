@@ -29,11 +29,6 @@ const RELIC_DELIVERY_ACTION: i16 = 0x88;
 const RELIC_CLASS: i16 = 0x2a;
 /// The monastery's master id (`FUN_141017850`'s test of the target's master).
 const MONASTERY: i16 = 104;
-/// The master types from which an object moves (`RGE_Moving_Object`), acts
-/// (`RGE_Action_Object`) and is a TRIBE combat unit.
-const MOVING_KIND: u8 = 30;
-const ACTION_KIND: u8 = 40;
-const COMBAT_KIND: u8 = 70;
 /// The trade cart's and the trade boat's master classes (`FUN_141017f00`).
 const TRADE_CART: i16 = 19;
 const TRADE_BOAT: i16 = 2;

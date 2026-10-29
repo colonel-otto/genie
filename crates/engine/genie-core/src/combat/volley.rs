@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::release::Releaser;
 use crate::objects::sprite::ActiveSprite;
@@ -562,7 +563,7 @@ impl Aimed {
 /// `FUN_14120ea30` of an attacker of `master` with `firepower` (`+0xa00`): a building can attack
 /// when of class 51 or 54, with a missile, or with a firepower above 1; any other attacker can.
 pub(crate) fn armed(master: &Master, firepower: f32) -> bool {
-    master.kind != crate::orders::BUILDING
+    master.kind != BUILDING
         || matches!(master.class, 51 | 54)
         || master.missile != -1
         || ARMED_FIREPOWER < firepower

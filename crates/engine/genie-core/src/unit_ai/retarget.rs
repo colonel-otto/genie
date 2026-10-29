@@ -2,14 +2,15 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::master_type::BUILDING;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    AiMove, AttackAsk, BUILDING_KIND, CLASS_3, CLASS_20, CLASS_52, DEFEND_LEASH,
-    DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW, GroupState,
-    INVALID_POINT, Pick, RETARGET_RANGE, RETARGET_REACH, RetargetSearch, SINGLE_VOLLEY,
-    STAND_GROUND_PATROL_LEASH, STAND_GROUND_SLACK, Search, Surroundings, UnitAi, UnitSide,
-    group_lets_idle, held_action_state, patrol_distance, point_gap_squared,
+    AiMove, AttackAsk, CLASS_3, CLASS_20, CLASS_52, DEFEND_LEASH, DEFEND_PATROL_LEASH,
+    DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW, GroupState, INVALID_POINT, Pick,
+    RETARGET_RANGE, RETARGET_REACH, RetargetSearch, SINGLE_VOLLEY, STAND_GROUND_PATROL_LEASH,
+    STAND_GROUND_SLACK, Search, Surroundings, UnitAi, UnitSide, group_lets_idle, held_action_state,
+    patrol_distance, point_gap_squared,
 };
 
 impl UnitAi {
@@ -74,7 +75,7 @@ impl UnitAi {
         if self.adjusted_idle_timeout == 750 {
             self.update_adjusted_idle_timeout(ai);
         }
-        if Self::top_target_live(at, side)?.is_some_and(|t| t.kind == BUILDING_KIND) {
+        if Self::top_target_live(at, side)?.is_some_and(|t| t.kind == BUILDING) {
             return Ok(());
         }
         let _ = self.process_idle(at, computer, ai, side)?;
@@ -104,7 +105,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
         if self.current_target != -1
-            && at.kind == BUILDING_KIND
+            && at.kind == BUILDING
             && !at.ranged
             && at.firepower <= SINGLE_VOLLEY
         {

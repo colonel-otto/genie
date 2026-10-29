@@ -103,8 +103,8 @@ pub use self::surroundings::{
     no_search,
 };
 use self::surroundings::{
-    BUILDING_KIND, CLASS_3, CLASS_10, CLASS_18, CLASS_20, CLASS_52, COMBAT_KIND, LiveTop,
-    PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_idle,
+    CLASS_3, CLASS_10, CLASS_18, CLASS_20, CLASS_52, LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY,
+    group_lets_idle,
 };
 #[cfg(test)]
 use crate::math::rng::Well512;

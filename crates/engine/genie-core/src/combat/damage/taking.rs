@@ -3,11 +3,11 @@
 
 use crate::GenieError;
 use crate::combat::damage::{
-    Armored, Attacker, BUILDING, Building, EPSILON, FACING, LEAST_CLASS_HIT, LEAST_HIT_CLASSES,
-    MINUS_FACING, ONE, RETALIATION_RANGE, RETALIATION_SCALE, Razed, SPECIAL, VILLAGER, Victim,
-    WALL, charge_hit, damage, effective, elevation_factor, facing_offset, hp_floor, lose,
-    special_charge_ready,
+    Armored, Attacker, Building, EPSILON, FACING, LEAST_CLASS_HIT, LEAST_HIT_CLASSES, MINUS_FACING,
+    ONE, RETALIATION_RANGE, RETALIATION_SCALE, Razed, SPECIAL, VILLAGER, Victim, WALL, charge_hit,
+    damage, effective, elevation_factor, facing_offset, hp_floor, lose, special_charge_ready,
 };
+use crate::objects::masters::master_type::BUILDING;
 
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
 /// already done to it (`blast_taken`, a building's `+0xb90`): a static, animated, doppelganger,

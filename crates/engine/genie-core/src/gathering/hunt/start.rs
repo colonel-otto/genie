@@ -4,12 +4,13 @@
 use crate::GenieError;
 use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::gathering::hunt::{
-    ARRIVED, ATTACK, BUILDING, CLASS_49, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE,
-    LIVESTOCK, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, WALK_POINT, WALK_SEARCH, food,
+    ARRIVED, ATTACK, CLASS_49, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE, LIVESTOCK,
+    Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, WALK_POINT, WALK_SEARCH, food,
 };
 use crate::movement::move_to::{Goal, MoveTo, MoveWait, walk_or_give_up};
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 
