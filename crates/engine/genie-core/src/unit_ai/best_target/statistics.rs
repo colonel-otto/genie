@@ -63,7 +63,8 @@ pub struct Candidate {
     pub id: i32,
     /// Its footprints' gap to the unit (`FUN_14118f680`).
     pub distance: f32,
-    /// Its attack category (the caller's `FUN_140c4c8e0`, counted when not −1).
+    /// Its attack category (`FUN_140c4c8e0` on it, read where the candidate is made; counted
+    /// when not −1).
     pub category: i32,
     /// Its master's class.
     pub class: i16,
