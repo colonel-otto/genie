@@ -24,7 +24,7 @@ pub(crate) use self::firepower::COMBAT_KIND;
 use self::firepower::WHOLE_SHARE_CLASS;
 pub use self::firepower::{attack_rate, firepower, share};
 use self::meeting::{ENTER_NEAR, HALF_TILE, UNPLACED};
-pub use self::meeting::{MeetingTarget, landing_tile, meeting, walled_off};
+pub use self::meeting::{MeetAt, MeetingTarget, Walls, landing_tile, meet_at, walled_off};
 pub(crate) use self::meeting::{UNREACHED, enter_view, ship_reaches};
 use self::shelter::LEAST_HP_SHARE;
 pub(crate) use self::shelter::Shelters;

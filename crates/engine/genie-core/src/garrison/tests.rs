@@ -183,23 +183,29 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     assert_eq!(near.move_to, None);
     // the reach is the footprints' squared gap against the range squared (COMISS/JBE: a NaN
     // gap is in); a target with speed within a range of 1 (COMISS/JC: a NaN range is not
-    // tested) asks the tiles about the two
-    let no_tiles = || -> Result<bool, GenieError> { panic!("no tile test") };
-    assert_eq!(EnterAction::in_reach(1.0, 1.0, 0.0, no_tiles), Ok(true));
-    assert_eq!(EnterAction::in_reach(1.0, 1.01, 0.0, no_tiles), Ok(false));
+    // tested) asks the tiles about the two: on a walled map a reach that skips them is in
+    let masters = [Masters::default(), garrison_masters()];
+    let blocked = [(10, 11), (11, 10)];
+    let (walled, stats) = walled_map([100, 100], &blocked, &blocked, &[(10, 11)]);
+    let (open, _) = walled_map([100, 100], &[(10, 11)], &blocked, &[]);
+    let walls = |spatial| Walls {
+        me: [10.5, 10.5],
+        them: [11.5, 11.5],
+        spatial,
+        masters: &masters,
+        id: 1,
+        stats: &stats,
+    };
+    let reach = |range, gap, speed| EnterAction::in_reach(range, gap, speed, &walls(&walled));
+    assert_eq!(reach(1.0, 1.0, 0.0), Ok(true));
+    assert_eq!(reach(1.0, 1.01, 0.0), Ok(false));
+    assert_eq!(reach(1.0, f32::NAN, 0.0), Ok(true));
+    assert_eq!(reach(1.5, 0.5, 0.8), Ok(true));
+    assert_eq!(reach(f32::NAN, 0.5, 0.8), Ok(true));
+    assert_eq!(reach(1.0, 0.5, f32::NAN), Ok(true));
+    assert_eq!(reach(1.0, 0.5, 0.8), Ok(false));
     assert_eq!(
-        EnterAction::in_reach(1.0, f32::NAN, 0.0, no_tiles),
-        Ok(true)
-    );
-    assert_eq!(EnterAction::in_reach(1.5, 0.5, 0.8, no_tiles), Ok(true));
-    assert_eq!(
-        EnterAction::in_reach(f32::NAN, 0.5, 0.8, no_tiles),
-        Ok(true)
-    );
-    assert_eq!(EnterAction::in_reach(1.0, 0.5, 0.8, || Ok(true)), Ok(false));
-    assert_eq!(EnterAction::in_reach(1.0, 0.5, 0.8, || Ok(false)), Ok(true));
-    assert_eq!(
-        EnterAction::in_reach(1.0, 0.5, f32::NAN, no_tiles),
+        EnterAction::in_reach(1.0, 0.5, 0.8, &walls(&open)),
         Ok(true)
     );
 }
@@ -547,7 +553,10 @@ fn an_enter_s_target_moved_only_beyond_half_a_tile() {
 
 #[test]
 fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
-    // FUN_140a85f30 on an idle transport with room and speed
+    // FUN_140a85f30's branch by the target: an idle transport (state 0 or 2) with room and
+    // speed meets the unit at the shore; without room or speed (or with a negative one; a NaN
+    // has some) at its place; moving (state 4) where its action goes, but a siege weapon at its
+    // place; another state at its place
     let ship = MeetingTarget {
         room: true,
         speed: 1.1,
@@ -556,23 +565,12 @@ fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
         position: [79.5, 92.5],
         action_point: Err(UNPLACED),
     };
-    let unit = [83.5, 86.25];
-    let no_beach = || panic!("no beach test");
-    assert_eq!(
-        meeting(&ship, unit, || Ok(Some([81, 89])), no_beach),
-        Ok(([81.5, 89.5], 1))
-    );
-    // no shore on the way: a beach under the unit gives its place rounded (floorf of x+0.5)
-    assert_eq!(
-        meeting(&ship, unit, || Ok(None), || true),
-        Ok(([84.0, 86.0], 1))
-    );
-    assert_eq!(
-        meeting(&ship, unit, || Ok(None), || false),
-        Ok(([79.5, 92.5], 0))
-    );
-    // no room, no speed (or a negative one; a NaN has some): its place
-    let at_place = |t: MeetingTarget| meeting(&t, unit, || panic!("no landing"), || true);
+    assert_eq!(meet_at(&ship), MeetAt::Shore);
+    let idle = MeetingTarget {
+        state: 2,
+        ..ship.clone()
+    };
+    assert_eq!(meet_at(&idle), MeetAt::Shore);
     for t in [
         MeetingTarget {
             room: false,
@@ -587,35 +585,43 @@ fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
             ..ship.clone()
         },
     ] {
-        assert_eq!(at_place(t), Ok(([79.5, 92.5], 0)));
+        assert_eq!(meet_at(&t), MeetAt::Place);
     }
     let nan = MeetingTarget {
         speed: f32::NAN,
         ..ship.clone()
     };
-    assert_eq!(
-        meeting(&nan, unit, || Ok(Some([81, 89])), no_beach),
-        Ok(([81.5, 89.5], 1))
-    );
-    // moving (state 4): where its action goes, but a siege weapon at its place; another
-    // state at its place
+    assert_eq!(meet_at(&nan), MeetAt::Shore);
     let moving = MeetingTarget {
         state: 4,
         action_point: Ok([60.0, 70.0]),
         ..ship
     };
-    assert_eq!(at_place(moving.clone()), Ok(([60.0, 70.0], 0)));
+    assert_eq!(meet_at(&moving), MeetAt::ActionPoint);
+    let siege = MeetingTarget {
+        class: 13,
+        ..moving.clone()
+    };
+    assert_eq!(meet_at(&siege), MeetAt::Place);
     assert_eq!(
-        at_place(MeetingTarget {
-            class: 13,
-            ..moving.clone()
-        }),
-        Ok(([79.5, 92.5], 0))
+        meet_at(&MeetingTarget { state: 7, ..moving }),
+        MeetAt::Place
     );
-    assert_eq!(
-        at_place(MeetingTarget { state: 7, ..moving }),
-        Ok(([79.5, 92.5], 0))
-    );
+    // the shore on the way: from the ship's tile (5, 30) toward the villager's (5, 12) the
+    // first beach (5, 17), at its centre, code 1
+    let meet = |t: &mut World| {
+        let v = villager(t);
+        t.enter_meeting(1, v, 200)
+    };
+    let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
+    assert_eq!(meet(&mut t), Ok(([5.5, 17.5], 1)));
+    // no shore on the way (the two on one tile): a beach under the unit gives its place rounded
+    // (floorf of x + 0.5), code 1
+    let mut t = shore_world([5.6, 17.25], [5.4, 17.5]);
+    assert_eq!(meet(&mut t), Ok(([6.0, 17.0], 1)));
+    // neither: the ship's place, code 0
+    let mut t = shore_world([5.6, 12.25], [5.4, 12.5]);
+    assert_eq!(meet(&mut t), Ok(([5.4, 12.5], 0)));
 }
 
 #[test]

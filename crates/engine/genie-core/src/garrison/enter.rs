@@ -122,7 +122,7 @@ impl World {
     /// ([`World::enter_meeting`]); it takes the target (slot 0x178). With the target and its
     /// class.
     ///
-    /// [`meeting`]: crate::garrison::meeting::meeting
+    /// [`meeting`]: crate::garrison::meeting::meeting_point
     pub(super) fn new_enter(
         &mut self,
         player: usize,
@@ -291,7 +291,7 @@ impl World {
     ///
     /// The walk again's.
     ///
-    /// [`meeting`]: crate::garrison::meeting::meeting
+    /// [`meeting`]: crate::garrison::meeting::meeting_point
     pub(super) fn enter_walk_again(
         &mut self,
         player: usize,
@@ -321,7 +321,7 @@ impl World {
     ///
     /// A target the world does not place, and the meeting's.
     ///
-    /// [`meeting`]: crate::garrison::meeting::meeting
+    /// [`meeting`]: crate::garrison::meeting::meeting_point
     pub(super) fn enter_meeting(
         &mut self,
         player: usize,

@@ -24,7 +24,7 @@ pub(super) const HALF_TILE: f32 = crate::math::image::garrison::HALF_TILE;
 pub(crate) const UNREACHED: GenieError =
     GenieError::unsupported("an Enter's transport that cannot reach the unit (state 13)");
 
-/// What [`meeting`] (`FUN_140a85f30`) reads of an Enter's target.
+/// What [`meeting_point`] (`FUN_140a85f30`) reads of an Enter's target.
 #[derive(Clone, Debug)]
 pub struct MeetingTarget {
     /// It has room for the unit (slot 0x198 with the unit).
@@ -41,42 +41,35 @@ pub struct MeetingTarget {
     pub action_point: Result<[f32; 2], GenieError>,
 }
 
-/// `FUN_140a85f30`: where an Enter meets its target and the code its `set_state(4)` reads (1:
-/// the transport moves there). A target without room for the unit (slot 0x198), or without speed
-/// (`COMISS 0, speed` with `JNC`: a NaN speed has some), is met at its place. One idle (its
-/// action state 0) or in state 2 and with room meets the unit where its slot 0x428
-/// ([`landing_tile`], `landing`) finds the shore, at the tile's centre (code 1), else, the unit
-/// standing on a beach (`beach`, [`crate::map::terrain::Terrain::beach`]), at the unit's place rounded
-/// to the nearest corner (`floorf` of each plus 0.5, code 1), else at its place. One under an
-/// action in state 3, 4 or 11 meets it where that action goes, but a siege weapon (class 13)
-/// at its place; any other state at its place.
-pub fn meeting(
-    t: &MeetingTarget,
-    unit: [f32; 2],
-    landing: impl FnOnce() -> Result<Option<[i32; 2]>, GenieError>,
-    beach: impl FnOnce() -> bool,
-) -> Result<([f32; 2], u8), GenieError> {
-    let at = (t.position, 0);
+/// Where `FUN_140a85f30` meets an Enter's target, by the target alone ([`meet_at`]); the
+/// shore's search and the beach test are [`meeting_point`]'s.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MeetAt {
+    /// At its place (code 0).
+    Place,
+    /// The shore on the way, else a beach under the unit (code 1), else its place.
+    Shore,
+    /// Where its top action goes (code 0).
+    ActionPoint,
+}
+
+/// `FUN_140a85f30`'s branch by the target: one without room for the unit (slot 0x198), or
+/// without speed (`COMISS 0, speed` with `JNC`: a NaN speed has some), is met at its place. One
+/// idle (its action state 0) or in state 2 meets the unit at the shore. One under an action in
+/// state 3, 4 or 11 meets it where that action goes, but a siege weapon (class 13) at its
+/// place; any other state at its place.
+#[must_use]
+pub fn meet_at(t: &MeetingTarget) -> MeetAt {
     if !t.room || t.speed <= 0.0 {
-        return Ok(at);
+        return MeetAt::Place;
     }
     if matches!(t.state, 0 | 2) {
-        if let Some([x, y]) = landing()? {
-            return Ok(([x as f32 + HALF_TILE, y as f32 + HALF_TILE], 1));
-        }
-        // the state is 0 or 2 here, never 11, 4 or 3
-        if beach() {
-            return Ok((
-                [(unit[0] + HALF_TILE).floor(), (unit[1] + HALF_TILE).floor()],
-                1,
-            ));
-        }
-        return Ok(at);
+        return MeetAt::Shore;
     }
     if t.class == SIEGE_CLASS || !matches!(t.state, 11 | 4 | 3) {
-        return Ok(at);
+        return MeetAt::Place;
     }
-    Ok((t.action_point.clone()?, 0))
+    MeetAt::ActionPoint
 }
 
 /// `FUN_141157840` (a unit's slot 0x428, its last argument 1): from tile `from` (a transport's)
@@ -223,43 +216,123 @@ pub(crate) fn meeting_target(
 pub(super) const UNPLACED: GenieError =
     GenieError::unsupported("an Enter's transport under an action the slice does not place");
 
-/// [`meeting`] for `unit` (with its movement state `stats`) and its target `t`: the shore on the
-/// way from the target's tile to the unit's ([`landing_tile`]): a beach
-/// ([`crate::map::terrain::Terrain::beach`]) whose zone for the unit's restriction (`FUN_1411958c0`:
-/// 0 for a tile below 0) is the zone of the unit's own tile (`FUN_14118eea0`), where the unit
-/// could stand (slot 0x278, [`crate::map::spatial::Spatial::point_clear`] with the master's x radius
-/// and the restriction's mask); else a beach under the unit (`FUN_1413fbf30`).
+/// `FUN_140a85f30`: where an Enter of `unit` (its id, place and movement state) meets its
+/// target `t` and the code its `set_state(4)` reads (1: the transport moves there), by
+/// [`meet_at`]: at the target's place, where its top action goes, or at the shore
+/// ([`shore_or_beach`]).
+///
+/// # Errors
+///
+/// A target under an action whose point the slice does not keep, and the shore's search's.
 pub(crate) fn meeting_point(
     t: &MeetingTarget,
     unit: (i32, [f32; 3], &MoveStats),
     spatial: &Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<([f32; 2], u8), GenieError> {
-    let (id, [ux, uy, _], stats) = unit;
+    match meet_at(t) {
+        MeetAt::Place => Ok((t.position, 0)),
+        MeetAt::ActionPoint => Ok((t.action_point.clone()?, 0)),
+        MeetAt::Shore => shore_or_beach(t, unit, spatial, zones),
+    }
+}
+
+/// The shore case of `FUN_140a85f30`: where the unit's slot 0x428 ([`shore`]) finds the shore,
+/// at the tile's centre (code 1); else, the unit standing on a beach (`FUN_1413fbf30`,
+/// [`crate::map::terrain::Terrain::beach`]), at the unit's place rounded to the nearest corner
+/// (`floorf` of each plus 0.5, code 1); else at the target's place.
+///
+/// # Errors
+///
+/// The shore's search's.
+fn shore_or_beach(
+    t: &MeetingTarget,
+    unit: (i32, [f32; 3], &MoveStats),
+    spatial: &Spatial,
+    zones: &mut crate::pathing::zones::Zones,
+) -> Result<([f32; 2], u8), GenieError> {
+    let [ux, uy, _] = unit.1;
+    if let Some([x, y]) = shore(t, unit, spatial, zones)? {
+        return Ok(([x as f32 + HALF_TILE, y as f32 + HALF_TILE], 1));
+    }
     let terrain = spatial.terrain.as_ref();
-    let landing = || {
-        let terrain = terrain.ok_or(crate::pathing::zones::NO_TERRAIN)?;
-        let values = terrain
-            .restrictions
-            .get(stats.restriction)
-            .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let [w, h] = spatial.map;
-        let map = zones.of(w, h, &terrain.kinds, values);
-        let own = map.zone(cvttss2si(ux), cvttss2si(uy));
-        let from = [cvttss2si(t.position[0]), cvttss2si(t.position[1])];
-        landing_tile(from, [cvttss2si(ux), cvttss2si(uy)], |[x, y], [fx, fy]| {
-            if !terrain.beach(x, y) {
-                return Ok(false);
-            }
-            let zone = if x < 0 || y < 0 { 0 } else { map.zone(x, y) };
-            if zone != own {
-                return Ok(false);
-            }
-            spatial.point_clear(id, [fx, fy], stats.radius[0], stats.restriction_mask)
-        })
-    };
-    let beach = || terrain.is_some_and(|tr| tr.beach(cvttss2si(ux), cvttss2si(uy)));
-    meeting(t, [ux, uy], landing, beach)
+    if terrain.is_some_and(|tr| tr.beach(cvttss2si(ux), cvttss2si(uy))) {
+        return Ok(([(ux + HALF_TILE).floor(), (uy + HALF_TILE).floor()], 1));
+    }
+    Ok((t.position, 0))
+}
+
+/// The shore on the way from the target's tile to the unit's ([`landing_tile`]): a beach
+/// ([`crate::map::terrain::Terrain::beach`]) whose zone for the unit's restriction
+/// (`FUN_1411958c0`: 0 for a tile below 0) is the zone of the unit's own tile (`FUN_14118eea0`),
+/// where the unit could stand (slot 0x278, [`crate::map::spatial::Spatial::point_clear`] with
+/// the master's x radius and the restriction's mask).
+///
+/// # Errors
+///
+/// A map without terrain or the unit's restriction, and slot 0x278's.
+fn shore(
+    t: &MeetingTarget,
+    (id, [ux, uy, _], stats): (i32, [f32; 3], &MoveStats),
+    spatial: &Spatial,
+    zones: &mut crate::pathing::zones::Zones,
+) -> Result<Option<[i32; 2]>, GenieError> {
+    let terrain = spatial
+        .terrain
+        .as_ref()
+        .ok_or(crate::pathing::zones::NO_TERRAIN)?;
+    let values = terrain
+        .restrictions
+        .get(stats.restriction)
+        .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
+    let [w, h] = spatial.map;
+    let map = zones.of(w, h, &terrain.kinds, values);
+    let own = map.zone(cvttss2si(ux), cvttss2si(uy));
+    let from = [cvttss2si(t.position[0]), cvttss2si(t.position[1])];
+    landing_tile(from, [cvttss2si(ux), cvttss2si(uy)], |[x, y], [fx, fy]| {
+        if !terrain.beach(x, y) {
+            return Ok(false);
+        }
+        let zone = if x < 0 || y < 0 { 0 } else { map.zone(x, y) };
+        if zone != own {
+            return Ok(false);
+        }
+        spatial.point_clear(id, [fx, fy], stats.radius[0], stats.restriction_mask)
+    })
+}
+
+/// What `FUN_140a85c30`'s tile test ([`walled_off`]) reads.
+#[derive(Clone, Copy, Debug)]
+pub struct Walls<'a> {
+    /// Where the unit last moved to (`+0x824`), x and y.
+    pub me: [f32; 2],
+    /// Where the target last moved to (slot 0x520), x and y.
+    pub them: [f32; 2],
+    /// The map's places and tiles.
+    pub spatial: &'a Spatial,
+    /// Each player's masters, which tell the buildings.
+    pub masters: &'a [Masters],
+    /// The unit's id.
+    pub id: i32,
+    /// The unit's movement state.
+    pub stats: &'a MoveStats,
+}
+
+impl Walls<'_> {
+    /// [`walled_off`] about these places.
+    ///
+    /// # Errors
+    ///
+    /// [`walled_off`]'s.
+    pub fn walled_off(&self) -> Result<bool, GenieError> {
+        walled_off(
+            self.me,
+            self.them,
+            self.spatial,
+            self.masters,
+            (self.id, self.stats),
+        )
+    }
 }
 
 /// [`EnterAction::in_reach`] of the unit `id` (its movement state `stats`, its place in
@@ -283,15 +356,15 @@ pub(crate) fn enter_reach(
     let gap = footprint_gap_squared(me.position, me.radius, them.position, them.radius);
     let speed = target_mover.map_or(0.0, |m| m.stats.speed);
     let them_at = target_mover.map_or(them.position, |m| m.moved_at);
-    EnterAction::in_reach(range, gap, speed, || {
-        walled_off(
-            [moved_at[0], moved_at[1]],
-            [them_at[0], them_at[1]],
-            spatial,
-            masters,
-            (id, stats),
-        )
-    })
+    let walls = Walls {
+        me: [moved_at[0], moved_at[1]],
+        them: [them_at[0], them_at[1]],
+        spatial,
+        masters,
+        id,
+        stats,
+    };
+    EnterAction::in_reach(range, gap, speed, &walls)
 }
 
 /// What an Enter's update reads of its target `t` (of master `tm`, with `room` for `unit`): the
@@ -345,7 +418,7 @@ pub(crate) fn enter_view(
     ))
 }
 
-/// What `FUN_140a85f30` ([`meeting`]) reads where an Enter's `set_state(4)` or its constructor
+/// What `FUN_140a85f30` ([`meeting_point`]) reads where an Enter's `set_state(4)` or its constructor
 /// meets its target: the map and its zones, the target with its master and whether it has room
 /// for the unit, and the unit.
 pub(crate) struct Meeting<'a> {

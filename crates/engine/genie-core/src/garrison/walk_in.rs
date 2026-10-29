@@ -60,7 +60,7 @@ pub struct EnterAction {
     /// transport where the two meet, its height the target's at the constructor), which a
     /// target that moves leaves.
     ///
-    /// [`meeting`]: crate::garrison::meeting::meeting
+    /// [`meeting`]: crate::garrison::meeting::meeting_point
     pub point: [f32; 3],
     /// The task's work range (`+0x30`): a building's `MoveTo` stops this near, and the enter
     /// needs it.
@@ -137,7 +137,7 @@ impl EnterAction {
     /// the task's (`task`) range, class and moving sprite, `+0x68` 1; the start (slot 5,
     /// `FUN_140a86f20`) and its `set_state(4)` are [`EnterAction::walk_again`].
     ///
-    /// [`meeting`]: crate::garrison::meeting::meeting
+    /// [`meeting`]: crate::garrison::meeting::meeting_point
     #[must_use]
     pub const fn new(target: i32, point: [f32; 3], task: &Task) -> Self {
         Self {
@@ -183,7 +183,7 @@ impl EnterAction {
     ///
     /// The meeting's and the start's.
     ///
-    /// [`meeting`]: crate::garrison::meeting::meeting
+    /// [`meeting`]: crate::garrison::meeting::meeting_point
     pub(crate) fn walk_again(
         &mut self,
         t: &EnterTarget,
@@ -253,21 +253,25 @@ impl EnterAction {
     /// `FUN_140a85c30`: the unit is in reach of the target: their footprints' squared gap
     /// (`FUN_14118f8c0`; `COMISS`/`JBE`: a NaN gap is not out) at most the range squared; for a
     /// range of at most 1 (`COMISS`/`JC`: a NaN range is in reach) to a target with speed (slot
-    /// 0x208, above 0) the tiles about the two ([`walled_off`], `tiles`) must not hold exactly
+    /// 0x208, above 0) the tiles about the two ([`Walls::walled_off`]) must not hold exactly
     /// two buildings.
     ///
-    /// [`walled_off`]: crate::garrison::meeting::walled_off
+    /// # Errors
+    ///
+    /// The tile test's.
+    ///
+    /// [`Walls::walled_off`]: crate::garrison::Walls::walled_off
     pub fn in_reach(
         range: f32,
         gap_squared: f32,
         target_speed: f32,
-        tiles: impl FnOnce() -> Result<bool, GenieError>,
+        walls: &crate::garrison::Walls<'_>,
     ) -> Result<bool, GenieError> {
         if range * range < gap_squared {
             return Ok(false);
         }
         if range <= ENTER_NEAR && 0.0 < target_speed {
-            return Ok(!tiles()?);
+            return Ok(!walls.walled_off()?);
         }
         Ok(true)
     }
