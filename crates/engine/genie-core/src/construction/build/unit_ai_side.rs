@@ -133,13 +133,7 @@ impl<'u> UnitView<'u, '_> {
             foundation,
             f_at,
             gap,
-            BuildTask {
-                range: task.work_range,
-                work_value: task.work_val1,
-                work_rate: builder.work_rate + unit.work_rate_powerup,
-                resource: task.attribute_type,
-                id: task.id,
-            },
+            BuildTask::of(&task, builder.work_rate + unit.work_rate_powerup),
         );
         let id = unit.id;
         let unit = &mut *self.unit;

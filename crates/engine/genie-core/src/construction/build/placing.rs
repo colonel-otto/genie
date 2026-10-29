@@ -222,8 +222,9 @@ impl BuildAction {
         Ok(())
     }
 
-    /// `set_state(223)`: a `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`); it starts
-    /// in state 3, as a `MoveTo` to a point is far from it (`FUN_140aa2100`).
+    /// `set_state(223)`: a quiet `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`,
+    /// `FUN_140aa0d30` with the task's moving sprite); it starts in state 3, as a `MoveTo` to a
+    /// point is far from it (`FUN_140aa2100`).
     pub(super) fn clear(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
         let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
         let site = walk.world.get(self.target).expect("place found it");
@@ -245,6 +246,7 @@ impl BuildAction {
         }
         self.state = CLEAR;
         self.move_to = Some(MoveTo::Start);
+        self.move_sprite = self.task.moving;
         self.walk_target = -1;
         self.goal = Some([spot[0], spot[1], walk.position()[2]]);
         Ok(())

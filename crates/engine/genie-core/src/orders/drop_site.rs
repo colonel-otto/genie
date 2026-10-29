@@ -158,10 +158,11 @@ impl World {
             match self.table_drop_site(p, at, held, class) {
                 None => DropSearch::Nothing,
                 Some(id) => {
-                    let range = self
-                        .find_work_task(p, idx, id, -1, false)?
-                        .map_or(task_range, |t| t.work_range);
-                    DropSearch::Site { id, range }
+                    let found = self.find_work_task(p, idx, id, -1, false)?;
+                    let range = found.map_or(task_range, |t| t.work_range);
+                    let sprite =
+                        found.and_then(|t| crate::objects::sprite::sprite_id(t.sprites[3]));
+                    DropSearch::Site { id, range, sprite }
                 }
             }
         } else {

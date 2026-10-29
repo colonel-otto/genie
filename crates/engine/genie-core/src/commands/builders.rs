@@ -192,13 +192,7 @@ impl World {
             .get(with)
             .expect("work_master returns a master the player has");
         let gap = footprint_gap(unit.position(), builder.radius, position, site.radius);
-        let task = BuildTask {
-            range: task.work_range,
-            work_value: task.work_val1,
-            work_rate: builder.work_rate + unit.work_rate_powerup,
-            resource: task.attribute_type,
-            id: task.id,
-        };
+        let task = BuildTask::of(task, builder.work_rate + unit.work_rate_powerup);
         Ok((with, BuildAction::start(foundation, position, gap, task)))
     }
 
@@ -383,13 +377,7 @@ impl World {
             foundation,
             f_at,
             gap,
-            BuildTask {
-                range: task.work_range,
-                work_value: task.work_val1,
-                work_rate: builder.work_rate + unit.work_rate_powerup,
-                resource: task.attribute_type,
-                id: task.id,
-            },
+            BuildTask::of(&task, builder.work_rate + unit.work_rate_powerup),
         );
         if let Some(m) = switch.map(|m| m.id) {
             self.change_master(player, idx, m)?;

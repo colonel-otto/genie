@@ -600,10 +600,7 @@ impl World {
         if let Some(b) = u.actions.build_mut()
             && let Some(t) = old_task(b.task.id).as_ref().and_then(find)
         {
-            b.task.id = t.id;
-            b.task.range = t.work_range;
-            b.task.work_value = t.work_val1;
-            b.task.resource = t.attribute_type;
+            b.task = crate::construction::build::BuildTask::of(&t, b.task.work_rate);
         }
     }
 
@@ -948,7 +945,10 @@ mod tests {
             tasks: vec![
                 task(5, GATHER, 7, 0.5),
                 task(6, GATHER, 7, 0.75),
-                task(7, BUILD, 3, 1.5),
+                Task {
+                    sprites: [12, -1, -1, -1],
+                    ..task(7, BUILD, 3, 1.5)
+                },
                 task(8, crate::gathering::make::MAKE, -1, 2.0),
             ],
             ..old.clone()
@@ -960,6 +960,7 @@ mod tests {
             work_rate: 1.0,
             resource: 17,
             id: 3,
+            moving: None,
         };
         u.actions.set_build(Some(BuildAction::start(
             10028,
@@ -993,6 +994,7 @@ mod tests {
                 work_rate: 1.0,
                 resource: 17,
                 id: 7,
+                moving: Some(12),
             }
         );
         assert_eq!(u.actions.make().copied().unwrap().task, new.tasks[3]);

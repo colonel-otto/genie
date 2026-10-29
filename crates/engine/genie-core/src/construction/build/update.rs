@@ -7,8 +7,9 @@ use crate::construction::build::{
     CLEAR, DONE, DROP, FAILED, FINISHED, HALTED, IDLE, Load, Looks, MASTER_621, MASTER_1889, MOVE,
     PLACE, Site, VILLAGER, WAIT, WALK_POINT, WORK,
 };
+use crate::movement::PathAsk;
 use crate::movement::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
+    Goal, MoveDefaults, MoveTo, MoveWait, Shown, Walk, start_walk_shown, walk_or_give_up,
 };
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
@@ -16,8 +17,8 @@ use crate::unit_ai::UnitAi;
 impl BuildAction {
     /// The action's start (slot 5, `0x140aadd80`) on the foundation `target` at `at`: state 4
     /// for a target, whose `set_state` (`0x140aae200`) takes the foundation's place as the point
-    /// and creates the `MoveTo` to it; the `MoveTo` starts arrived if the footprints touch
-    /// (`gap`).
+    /// and creates the `MoveTo` to it (`FUN_140aa0df0` with the task's moving sprite); the
+    /// `MoveTo` starts arrived if the footprints touch (`gap`).
     #[must_use]
     pub fn start(target: i32, at: [f32; 3], gap: f32, task: BuildTask) -> Self {
         Self {
@@ -35,8 +36,21 @@ impl BuildAction {
             added: false,
             timer: 0.0,
             move_wait: MoveWait::default(),
+            move_sprite: task.moving,
             site: -1,
             drop_range: 0.0,
+        }
+    }
+
+    /// The sprite its `MoveTo`'s `set_state(4)` shows: the one it was made with
+    /// ([`BuildAction::move_sprite`]), else its constructor's default from `defaults`
+    /// (`FUN_140aa0df0`'s toward the foundation or a drop site, states 4 and 8;
+    /// `FUN_140aa0d30`'s toward a point, states 11 and 223).
+    #[must_use]
+    pub const fn move_shown(&self, defaults: MoveDefaults) -> Option<i16> {
+        match self.state {
+            MOVE | DROP => defaults.to_object(self.move_sprite),
+            _ => defaults.to_point(self.move_sprite),
         }
     }
 
@@ -217,7 +231,7 @@ impl BuildAction {
         &mut self,
         mut walk: Walk<'_>,
         site: Option<Site<'_>>,
-        builder: Builder<'_>,
+        mut builder: Builder<'_>,
         (walked_from, load): (Option<i32>, Load),
         step: &mut BuildStep,
     ) -> Result<(), GenieError> {
@@ -228,7 +242,11 @@ impl BuildAction {
         match (self.state, self.move_to) {
             // the MoveTo at its end (1), or no sub-action (the list's update returns 1)
             (4, Some(MoveTo::Arrived) | None) => self.walk_ended(&mut walk, site, builder, step),
-            (4, Some(MoveTo::Start)) => self.walk_to_foundation(walk, walked_from, (waits, stance)),
+            (4, Some(MoveTo::Start)) => {
+                let shown = self.move_shown(builder.defaults);
+                let shown = builder.sprites.shown(shown)?;
+                self.walk_to_foundation(walk, walked_from, (waits, stance), shown)
+            }
             (4 | CLEAR | WALK_POINT, Some(MoveTo::Moving)) => {
                 self.move_to = Some(match walk_or_give_up(walk)? {
                     Some(state) => state,
@@ -280,7 +298,11 @@ impl BuildAction {
                 step.dropped = d;
                 step.main_work = m;
             }),
-            (CLEAR | WALK_POINT, Some(MoveTo::Start)) => self.walk_to_goal(walk, (waits, stance)),
+            (CLEAR | WALK_POINT, Some(MoveTo::Start)) => {
+                let shown = self.move_shown(builder.defaults);
+                let shown = builder.sprites.shown(shown)?;
+                self.walk_to_goal(walk, (waits, stance), shown)
+            }
             // case 0xde: the MoveTo ended (its update in state 1 returns 1): a villager goes
             // back to the foundation (set_state 4)
             // (its update returned 1, or the list's without a sub-action: in reach or not)
@@ -296,15 +318,17 @@ impl BuildAction {
         }
     }
 
-    /// The `MoveTo` `set_state(4)` made walks to the foundation (`walked_from`, the one this
-    /// update let go, else its target), within the task's range; one without a target (a
-    /// `set_state(4)` without a foundation, or one that refused it) to its point. The motion step
-    /// giving up makes it wait or fail ([`MoveWait::give_up`] with `waits` and `stance`).
+    /// The quiet `MoveTo` `set_state(4)` made (`FUN_140a7a170` with 1) walks to the foundation
+    /// (`walked_from`, the one this update let go, else its target), within the task's range; one
+    /// without a target (a `set_state(4)` without a foundation, or one that refused it) to its
+    /// point. Its `set_state(4)` shows its sprite (`shown`) before the motion step. The motion
+    /// step giving up makes it wait or fail ([`MoveWait::give_up`] with `waits` and `stance`).
     fn walk_to_foundation(
         &mut self,
         walk: Walk<'_>,
         walked_from: Option<i32>,
         (waits, stance): (bool, u8),
+        shown: Shown<'_>,
     ) -> Result<(), GenieError> {
         self.asked_again();
         self.move_to = Some(MoveTo::Moving);
@@ -313,27 +337,33 @@ impl BuildAction {
             (None, Some(p)) if self.target == -1 || self.walk_target == -1 => Goal::Point(p),
             _ => Goal::Target(walked_from.unwrap_or(self.target)),
         };
-        self.move_to = Some(match start_walk_or_give_up(walk, to, range, false)? {
-            Some(state) => state,
-            None => self.move_wait.give_up(waits, stance),
-        });
+        let ask = PathAsk::default();
+        self.move_to = Some(
+            match start_walk_shown(walk, (to, range, true), ask, Some(shown))? {
+                Some(state) => state,
+                None => self.move_wait.give_up(waits, stance),
+            },
+        );
         Ok(())
     }
 
-    /// The quiet `MoveTo` to the point of `set_state(223)` and `set_state(11)`; the motion step
-    /// giving up makes it wait or fail ([`MoveWait::give_up`] with `waits` and `stance`).
+    /// The quiet `MoveTo` to the point of `set_state(223)` and `set_state(11)`, which shows its
+    /// sprite (`shown`) as it turns to state 4; the motion step giving up makes it wait or fail
+    /// ([`MoveWait::give_up`] with `waits` and `stance`).
     fn walk_to_goal(
         &mut self,
         walk: Walk<'_>,
         (waits, stance): (bool, u8),
+        shown: Shown<'_>,
     ) -> Result<(), GenieError> {
         self.asked_again();
         self.move_to = Some(MoveTo::Moving);
         let goal = self
             .goal
             .expect("set_state(223) and set_state(11) set the goal");
+        let ask = PathAsk::default();
         self.move_to = Some(
-            match start_walk_or_give_up(walk, Goal::Point(goal), 0.0, true)? {
+            match start_walk_shown(walk, (Goal::Point(goal), 0.0, true), ask, Some(shown))? {
                 Some(state) => state,
                 None => self.move_wait.give_up(waits, stance),
             },

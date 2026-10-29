@@ -14,9 +14,9 @@
 use self::update::drop_done_orders;
 use crate::GenieError;
 use crate::map::spatial::Obstruction;
-use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait, Sprites};
 use crate::objects::lifecycle::Lifecycle;
-use crate::objects::masters::Master;
+use crate::objects::masters::{Master, Task};
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use genie_diff::Diff;
@@ -94,6 +94,10 @@ pub struct BuildAction {
     pub timer: f32,
     /// Its `MoveTo`'s wait after the motion step gave up (`+0x6c`..`+0x74`).
     pub move_wait: MoveWait,
+    /// The sprite its `MoveTo` was made with (`+0x58` as the constructor takes it): the task's
+    /// moving sprite, on a drop-off the drop task's carrying one first; None for none, for which
+    /// the constructor takes its default ([`BuildAction::move_shown`]).
+    pub move_sprite: Option<i16>,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site of its drop-off (state 8,
     /// `set_state(8)`'s search), −1 for none.
     pub site: i32,
@@ -123,6 +127,23 @@ pub struct BuildTask {
     /// The task's id in its master's list (`+0xa`), which a master's upgrade finds the new
     /// master's task by (−1 for none).
     pub id: i16,
+    /// The task's moving sprite (`+0x40`), which it gives its `MoveTo`s; None for none.
+    pub moving: Option<i16>,
+}
+
+impl BuildTask {
+    /// The Build task `task` of a builder whose work rate is `work_rate`.
+    #[must_use]
+    pub const fn of(task: &Task, work_rate: f32) -> Self {
+        Self {
+            range: task.work_range,
+            work_value: task.work_val1,
+            work_rate,
+            resource: task.attribute_type,
+            id: task.id,
+            moving: crate::objects::sprite::sprite_id(task.sprites[0]),
+        }
+    }
 }
 
 /// A building under construction (`TRIBE_Building_Object`), with what its master says of it.
@@ -470,6 +491,11 @@ mod built_sprite_tests {
 /// What a builder brings to its Build action's update besides its walk.
 #[derive(Debug)]
 pub struct Builder<'a> {
+    /// The sprites its `MoveTo`s take when the task gives none, as the update starts.
+    pub defaults: MoveDefaults,
+    /// Its sprite, the Sprite stream and the sprites' table, which its `MoveTo`'s
+    /// `set_state(4)` shows its sprite with ([`BuildAction::move_sprite`]).
+    pub sprites: Sprites<'a>,
     /// The builder's class (`+0x0a`, decoded).
     pub class: i16,
     /// Its master's id.

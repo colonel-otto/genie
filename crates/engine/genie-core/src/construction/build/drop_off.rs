@@ -6,10 +6,10 @@ use crate::construction::build::{
     ARRIVED, BUILDER_UNMOVING, BuildAction, BuildStep, Builder, DONE, DROP, DROP_REACH, DROP_WAIT,
     DROPPED_ORDERS, NO_TARGET_POINT, Site, VILLAGER,
 };
-use crate::movement::footprint_gap;
 use crate::movement::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
+    Goal, MoveTo, MoveWait, Shown, Walk, start_walk_shown, walk_or_give_up,
 };
+use crate::movement::{PathAsk, footprint_gap};
 
 /// What the caller's search gives `set_state(8)` ([`BuildAction::set_drop`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -18,14 +18,16 @@ pub enum DropSearch {
     Empty,
     /// The drop-site table has no drop site for its load (`FUN_141658e20`).
     Nothing,
-    /// The drop site the table gives, and the range of the `MoveTo` to it: the task the
-    /// builder's slot 0x820 finds on it (any action type, no switch: its `+0x30`), else the
-    /// Build task's.
+    /// The drop site the table gives, and the range and sprite of the `MoveTo` to it: those of
+    /// the task the builder's slot 0x820 finds on it (any action type, no switch: its `+0x30`
+    /// and its carrying sprite `+0x58`), else the Build task's.
     Site {
         /// The drop site.
         id: i32,
         /// The `MoveTo`'s range.
         range: f32,
+        /// The found task's carrying sprite, None without the task or the sprite.
+        sprite: Option<i16>,
     },
 }
 
@@ -75,7 +77,10 @@ impl BuildAction {
                 return Ok(out);
             }
             DropSearch::Nothing => None,
-            DropSearch::Site { id, range } => Some((id, range)),
+            DropSearch::Site { id, range, sprite } => {
+                self.move_sprite = sprite.or(self.task.moving);
+                Some((id, range))
+            }
         };
         let new = found.map_or(-1, |(id, _)| id);
         if self.site != new {
@@ -127,7 +132,7 @@ impl BuildAction {
         &mut self,
         mut walk: Walk<'_>,
         site: Option<Site<'_>>,
-        builder: Builder<'_>,
+        mut builder: Builder<'_>,
         step: &mut BuildStep,
     ) -> Result<(), GenieError> {
         if crate::math::fmath::below_or_unordered(self.timer, 0.0) {
@@ -151,7 +156,9 @@ impl BuildAction {
             step.drop_off = true;
             return Ok(());
         }
-        if self.walk_to_drop(&mut walk, (waits, stance), step)? {
+        let shown = self.move_shown(builder.defaults);
+        let shown = builder.sprites.shown(shown)?;
+        if self.walk_to_drop(&mut walk, (waits, stance), step, shown)? {
             return Ok(());
         }
         if self.move_to.take().is_some()
@@ -180,13 +187,15 @@ impl BuildAction {
     /// for a path within the drop-off range; on its way a drop site that left the `MoveTo`'s
     /// point makes it ask again, else it walks; the motion step giving up makes it wait or fail
     /// ([`MoveWait::give_up`] with `waits` and `stance`); a waiting one asks again at its delay;
-    /// a failed one searches again. True while it walks, waits or failed (the update ends there);
+    /// a failed one searches again. Its start shows its sprite (`shown`) as it turns to state 4.
+    /// True while it walks, waits or failed (the update ends there);
     /// false at its end (codes 1 and 2) or without it.
     fn walk_to_drop(
         &mut self,
         walk: &mut Walk<'_>,
         (waits, stance): (bool, u8),
         step: &mut BuildStep,
+        shown: Shown<'_>,
     ) -> Result<bool, GenieError> {
         let to = if self.walk_target == -1 {
             Goal::Point(self.goal.unwrap_or(NO_TARGET_POINT))
@@ -198,8 +207,9 @@ impl BuildAction {
                 self.asked_again();
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.drop_range;
+                let ask = PathAsk::default();
                 self.move_to = Some(
-                    match start_walk_or_give_up(walk.reborrow(), to, range, true)? {
+                    match start_walk_shown(walk.reborrow(), (to, range, true), ask, Some(shown))? {
                         Some(state) => state,
                         None => self.move_wait.give_up(waits, stance),
                     },

@@ -121,6 +121,47 @@ pub fn ai_sprite(master: &Master, walk: bool) -> Option<i16> {
     run.or_else(|| sprite_id(master.move_sprite))
 }
 
+/// What a `MoveTo`'s constructors take for the sprite (`+0x58`) when their maker gives none,
+/// read from the unit's master and terrain look as the `MoveTo` is made: `FUN_140aa0d30`'s
+/// ([`point_sprite`]) and `FUN_140aa0df0`'s ([`object_sprite`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MoveDefaults {
+    /// `FUN_140aa0d30`'s, a `MoveTo` to a point.
+    pub point: Option<i16>,
+    /// `FUN_140aa0df0`'s, a `MoveTo` to an object.
+    pub object: Option<i16>,
+}
+
+impl MoveDefaults {
+    /// The defaults of a unit of `master` with the terrain look `look` (a trade cart's goods are
+    /// not held: none).
+    #[must_use]
+    pub fn of(master: &Master, look: Option<&Look>) -> Self {
+        Self {
+            point: point_sprite(master, look, false),
+            object: object_sprite(master),
+        }
+    }
+
+    /// The sprite of a `MoveTo` to a point (`FUN_140aa0d30`) whose maker gives `given`.
+    #[must_use]
+    pub const fn to_point(self, given: Option<i16>) -> Option<i16> {
+        match given {
+            Some(id) => Some(id),
+            None => self.point,
+        }
+    }
+
+    /// The sprite of a `MoveTo` to an object (`FUN_140aa0df0`) whose maker gives `given`.
+    #[must_use]
+    pub const fn to_object(self, given: Option<i16>) -> Option<i16> {
+        match given {
+            Some(id) => Some(id),
+            None => self.object,
+        }
+    }
+}
+
 /// The unit's sprite as its own `MoveTo`'s `set_state` (`0x140aa29e0`) shows it with slot 0x68
 /// ([`new_sprite`]): state 4 the `MoveTo`'s sprite ([`MoveToAction::sprite`]); states 1 and 13
 /// (an own `MoveTo` is not quiet) slot 0x798's ([`standing`]). Slot 0x68 shows the master's

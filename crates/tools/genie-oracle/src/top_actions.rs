@@ -364,6 +364,11 @@ fn import_build(
             genie_core::movement::move_to::MoveWait::default,
             saved_move_wait,
         ),
+        // its MoveTo's sprite (`+0x58`, the save's second `short_val`; −1 for none), else the
+        // task's moving one, which the next MoveTo takes
+        move_sprite: sub.and_then(Action::base).map_or(task.moving, |b| {
+            (0 <= b.short_val_2).then_some(b.short_val_2)
+        }),
         site: base.target2_id,
         drop_range,
     }));

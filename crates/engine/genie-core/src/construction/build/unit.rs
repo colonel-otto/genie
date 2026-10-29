@@ -13,6 +13,7 @@ use crate::construction::build::{
 use crate::gathering::hunt::DropOff;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
+use crate::movement::move_to::{MoveDefaults, Sprites};
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::death_parts::{clear_look_of, farm_bonus};
 use crate::objects::object_list::ObjectList;
@@ -77,6 +78,14 @@ impl Unit {
         let (player, pace) = (c.player, c.pace());
         let (attribute_204, mode_680, computer, now) =
             (c.attribute_204, c.mode_680, c.computer, c.world_time);
+        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
+        let defaults =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .map_or_else(MoveDefaults::default, |m| {
+                    MoveDefaults::of(m, self.abilities.look.as_ref())
+                });
         let build = self.actions.build_mut().expect("above");
         let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
         let template = Completion {
@@ -95,6 +104,12 @@ impl Unit {
         let own = &mut beside.players[player].objects;
         let site = build_site(own, target, &annex_ids, template, reads.main_work)?;
         let builder = Builder {
+            defaults,
+            sprites: Sprites {
+                sprite: &mut self.sprite,
+                rng: beside.sprite_rng,
+                graphics: beside.graphics,
+            },
             class,
             master: self.life.master_id,
             held: self.life.amount,

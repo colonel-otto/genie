@@ -334,6 +334,10 @@ pub(crate) fn builder_masters() -> Masters {
             facets: None,
             weapon_range: 0.0,
         }),
+        // no sprites (the world's sprites' table is empty)
+        standing_sprite: -1,
+        move_sprite: -1,
+        run_sprite: -1,
         ..Master::default()
     };
     let base = || vec![task(7, -1), task(3, 3)];
@@ -2017,6 +2021,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
             work_rate: 1.0,
             resource: -1,
             id: 0,
+            moving: None,
         }
     );
     let ai = v.ai.as_ref().unwrap();
@@ -7478,10 +7483,12 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             work_rate: 1.0,
             resource: -1,
             id: -1,
+            moving: None,
         },
         added: true,
         timer: 0.0,
         move_wait: crate::movement::move_to::MoveWait::default(),
+        move_sprite: None,
         site: -1,
         drop_range: 0.0,
     }));
@@ -7587,10 +7594,12 @@ fn deaths_world() -> World {
             work_rate: 1.0,
             resource: -1,
             id: -1,
+            moving: None,
         },
         added: true,
         timer: 0.0,
         move_wait: crate::movement::move_to::MoveWait::default(),
+        move_sprite: None,
         site: -1,
         drop_range: 0.0,
     }));

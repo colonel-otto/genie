@@ -158,6 +158,7 @@ impl BuildAction {
         self.leave(walk, builders)?;
         self.state = WALK_POINT;
         self.goal = Some(self.point);
+        self.move_sprite = self.task.moving;
         let moves = walk.body.mover().is_some_and(|m| m.stats.speed != 0.0);
         self.move_to = Some(if moves { MoveTo::Start } else { MoveTo::Failed });
         Ok(())

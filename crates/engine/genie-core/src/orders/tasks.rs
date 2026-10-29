@@ -111,13 +111,10 @@ impl World {
         let unit = &self.players[player].objects[idx];
         let builder = self.master_of(player, unit.life.master_id)?;
         let gap = crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius);
-        let build_task = crate::construction::build::BuildTask {
-            range: task.work_range,
-            work_value: task.work_val1,
-            work_rate: builder.work_rate + unit.work_rate_powerup,
-            resource: task.attribute_type,
-            id: task.id,
-        };
+        let build_task = crate::construction::build::BuildTask::of(
+            task,
+            builder.work_rate + unit.work_rate_powerup,
+        );
         self.take(target, self.releaser(player, idx));
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {

@@ -18,8 +18,8 @@ mod action;
 
 pub(crate) use crate::movement::move_to::action::TARGET_LACKING;
 pub use crate::movement::move_to::action::{
-    MoveStep, MoveToAction, Shows, ai_sprite, holds_object, object_range, object_sprite,
-    point_sprite,
+    MoveDefaults, MoveStep, MoveToAction, Shows, ai_sprite, holds_object, object_range,
+    object_sprite, point_sprite,
 };
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.
@@ -231,6 +231,46 @@ pub fn start_walk_shown(
         shown.show(walk.body.move_stats_mut());
     }
     walk_or_give_up(walk)
+}
+
+/// A `MoveTo`'s sprite outside the sprites' table.
+const SPRITE_LACKING: GenieError =
+    GenieError::missing_data("a MoveTo's sprite outside the sprites' table");
+
+/// The unit's sprite, the Sprite stream and the sprites' table: an action that holds its
+/// `MoveTo`'s sprite as an id shows it through them ([`Sprites::shown`]).
+#[derive(Debug)]
+pub struct Sprites<'a> {
+    /// The unit's sprite.
+    pub sprite: &'a mut Option<ActiveSprite>,
+    /// The Sprite stream.
+    pub rng: &'a mut Well512,
+    /// The sprites' table.
+    pub graphics: &'a std::collections::BTreeMap<i16, Graphic>,
+}
+
+impl Sprites<'_> {
+    /// The view that shows the sprite `id` (None for none) at a `MoveTo`'s `set_state(4)`.
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn shown(&mut self, id: Option<i16>) -> Result<Shown<'_>, GenieError> {
+        let graphic = match id {
+            Some(id) => Some(
+                self.graphics
+                    .get(&id)
+                    .copied()
+                    .ok_or_else(|| SPRITE_LACKING.with("sprite", id))?,
+            ),
+            None => None,
+        };
+        Ok(Shown {
+            sprite: &mut *self.sprite,
+            rng: &mut *self.rng,
+            graphic,
+        })
+    }
 }
 
 /// The unit's sprite, the Sprite stream and the sprite a walk shows: a `MoveTo` that turns to

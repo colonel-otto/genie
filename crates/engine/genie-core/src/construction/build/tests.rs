@@ -261,9 +261,9 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
     );
     // a cart (a task of action type 0x99) with a unit AI searches
     let cart = Master {
-        tasks: vec![crate::objects::masters::Task {
+        tasks: vec![Task {
             action_type: CART_TASK,
-            ..crate::objects::masters::Task::default()
+            ..Task::default()
         }],
         ..Master::default()
     };
@@ -295,7 +295,55 @@ const TASK: BuildTask = BuildTask {
     work_rate: 1.0,
     resource: -1,
     id: -1,
+    moving: None,
 };
+
+/// [`TASK`] with moving sprite 3.
+const MOVING_TASK: BuildTask = BuildTask {
+    moving: Some(3),
+    ..TASK
+};
+
+/// The sprite a Build's `MoveTo` shows: the one it was made with, else its constructor's
+/// default, `FUN_140aa0df0`'s toward the foundation or a drop site (states 4 and 8),
+/// `FUN_140aa0d30`'s toward a point (states 11 and 223).
+#[test]
+fn a_build_s_move_to_shows_its_sprite_else_its_constructor_s() {
+    let defaults = MoveDefaults {
+        point: Some(20),
+        object: Some(21),
+    };
+    let b = BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK);
+    let shown = |state, move_sprite| {
+        BuildAction {
+            state,
+            move_sprite,
+            ..b
+        }
+        .move_shown(defaults)
+    };
+    let states = [MOVE, DROP, WALK_POINT, CLEAR];
+    assert_eq!(
+        states.map(|s| shown(s, None)),
+        [Some(21), Some(21), Some(20), Some(20)]
+    );
+    assert_eq!(states.map(|s| shown(s, Some(3))), [Some(3); 4]);
+    // the task's moving sprite is the one start gives it
+    assert_eq!(
+        BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, MOVING_TASK).move_sprite,
+        Some(3)
+    );
+}
+
+/// A builder without a sprite, with a fresh Sprite stream and no sprites: its `MoveTo`s show
+/// nothing. Leaked, so a test's `Builder` may live anywhere (a few bytes per test).
+fn no_sprites() -> Sprites<'static> {
+    Sprites {
+        sprite: Box::leak(Box::new(None)),
+        rng: Box::leak(Box::default()),
+        graphics: Box::leak(Box::default()),
+    }
+}
 
 /// MarvinBlue/426048731's house 10028 as BUILD placed it: a foundation of master 70.
 fn house() -> crate::map::spatial::Placed {
@@ -371,6 +419,8 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
             }),
         };
         let builder = Builder {
+            defaults: MoveDefaults::default(),
+            sprites: no_sprites(),
             class: VILLAGER,
             master: 83,
             held: 0.0,
@@ -530,6 +580,8 @@ fn a_build_s_point_is_its_foundation_s_place() {
 fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
     fn builder(waits: &mut u8, state: Option<u8>) -> Builder<'_> {
         Builder {
+            defaults: MoveDefaults::default(),
+            sprites: no_sprites(),
             class: VILLAGER,
             master: 83,
             held: 0.0,
@@ -597,9 +649,11 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
         state: 7,
         ..Lifecycle::default()
     };
+    // a drop's sprite, which the walk to the point drops for the task's moving one (none)
     let mut b = BuildAction {
         move_to: Some(MoveTo::Moving),
         added: true,
+        move_sprite: Some(7),
         ..BuildAction::start(10913, [61.5, 92.5, 0.0], 0.8, TASK)
     };
     let site = Site {
@@ -653,6 +707,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
             [61.5, 92.5, 0.0]
         )
     );
+    assert_eq!(b.move_sprite, None);
     assert_eq!(
         mover_body.mover_mut().unwrap().velocity.unwrap().velocity[2],
         0.0
@@ -805,6 +860,8 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
             },
             Some(site),
             Builder {
+                defaults: MoveDefaults::default(),
+                sprites: no_sprites(),
                 class: VILLAGER,
                 master: 118,
                 held: 0.0,
@@ -1523,10 +1580,11 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
         goal: None,
         walk_target: -1,
         point: [-1.0; 3],
-        task: TASK,
+        task: MOVING_TASK,
         added: false,
         timer: 0.0,
         move_wait: MoveWait::default(),
+        move_sprite: Some(7),
         site: -1,
         drop_range: 0.0,
     };
@@ -1584,6 +1642,8 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
             },
             Some(site),
             Builder {
+                defaults: MoveDefaults::default(),
+                sprites: no_sprites(),
                 class: VILLAGER,
                 master: 83,
                 held: 0.0,
@@ -1605,6 +1665,8 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
         (build.state, build.move_to, build.goal),
         (223, Some(MoveTo::Start), Some([29.5, 89.5, 0.0]))
     );
+    // its MoveTo takes the task's moving sprite (FUN_140aa0d30)
+    assert_eq!(build.move_sprite, Some(3));
 }
 
 /// One update of `build` by builder 5 of `class` at `at` (a walker of the hunt's tests, its
@@ -1621,9 +1683,22 @@ fn walk_update(
 /// [`walk_update`] with the world's planners `pathing` (None: the walk has no planning).
 fn walk_update_planned(
     build: &mut BuildAction,
+    who: (i16, [f32; 3], bool),
+    prepare: impl FnOnce(&mut Spatial),
+    pathing: Option<&mut Pathing>,
+) -> (BuildStep, Spatial) {
+    let shows = (MoveDefaults::default(), no_sprites());
+    walk_update_shown(build, who, prepare, pathing, shows)
+}
+
+/// [`walk_update_planned`] by a builder whose `MoveTo`s take the sprites `defaults` when the
+/// Build gives none and show them through `sprites`.
+fn walk_update_shown(
+    build: &mut BuildAction,
     (class, at, computer): (i16, [f32; 3], bool),
     prepare: impl FnOnce(&mut Spatial),
     pathing: Option<&mut Pathing>,
+    (defaults, sprites): (MoveDefaults, Sprites<'_>),
 ) -> (BuildStep, Spatial) {
     use crate::map::spatial::{Placed, Tiles};
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
@@ -1706,6 +1781,8 @@ fn walk_update_planned(
             },
             Some(site),
             Builder {
+                defaults,
+                sprites,
                 class,
                 master: 83,
                 held: 0.0,
@@ -1821,6 +1898,42 @@ fn a_builder_whose_move_to_failed_waits_or_halts_on_marks() {
         (b.state, b.move_to, step.removes),
         (MOVE, Some(MoveTo::Start), None)
     );
+}
+
+/// The quiet `MoveTo` to the foundation shows its sprite as it starts (its `set_state(4)`,
+/// `0x140aa29e0`, slot 0x68), before the motion step: the task's moving sprite, else
+/// `FUN_140aa0df0`'s default.
+#[test]
+fn a_build_s_move_to_shows_its_sprite_as_it_starts() {
+    let graphic = |id| crate::objects::sprite::Graphic {
+        id,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let graphics = std::collections::BTreeMap::from([(3, graphic(3)), (21, graphic(21))]);
+    let defaults = MoveDefaults {
+        point: Some(20),
+        object: Some(21),
+    };
+    for (task, shown) in [(TASK, 21), (MOVING_TASK, 3)] {
+        let mut pathing = Pathing::new([20, 20], vec![0; 400], vec![vec![1.0]; 8], 0);
+        pathing.start_mesh(20);
+        let mut b = BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, task);
+        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
+        let sprites = Sprites {
+            sprite: &mut sprite,
+            rng: &mut rng,
+            graphics: &graphics,
+        };
+        let who = (VILLAGER, [2.5, 2.5, 0.0], false);
+        let _ = walk_update_shown(&mut b, who, |_| {}, Some(&mut pathing), (defaults, sprites));
+        assert_eq!(b.move_to, Some(MoveTo::Moving));
+        assert_eq!(sprite.map(|s| s.graphic.id), Some(shown));
+    }
 }
 
 /// The update's other cases (`0x140ab0370`): a Build done (case 0) returns 1; the walk to its
@@ -1997,6 +2110,8 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
             },
             Some(site),
             Builder {
+                defaults: MoveDefaults::default(),
+                sprites: no_sprites(),
                 class: VILLAGER,
                 master: 83,
                 held: 0.0,
@@ -2139,6 +2254,8 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
             },
             Some(site),
             Builder {
+                defaults: MoveDefaults::default(),
+                sprites: no_sprites(),
                 class: VILLAGER,
                 master: 83,
                 held: 0.0,
@@ -2287,6 +2404,8 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
             },
             Some(site),
             Builder {
+                defaults: MoveDefaults::default(),
+                sprites: no_sprites(),
                 class: VILLAGER,
                 master: 83,
                 held: 0.0,
@@ -2392,6 +2511,8 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
             },
             Some(site),
             Builder {
+                defaults: MoveDefaults::default(),
+                sprites: no_sprites(),
                 class: VILLAGER,
                 master: 83,
                 held: 7.0,
@@ -2440,6 +2561,8 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
             plan: None,
         };
         let builder = Builder {
+            defaults: MoveDefaults::default(),
+            sprites: no_sprites(),
             class: VILLAGER,
             master: 83,
             held: 0.0,
@@ -2622,6 +2745,8 @@ fn a_builder_lets_a_dead_foundation_go() {
                     main_builders: None,
                 }),
                 Builder {
+                    defaults: MoveDefaults::default(),
+                    sprites: no_sprites(),
                     class: VILLAGER,
                     master: 83,
                     held: 0.0,
@@ -2698,6 +2823,8 @@ fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it()
     let mut waits = [0u8; 3];
     let mut waits = waits.iter_mut();
     let mut builder = || Builder {
+        defaults: MoveDefaults::default(),
+        sprites: no_sprites(),
         class: VILLAGER,
         master: 83,
         held: 0.0,
@@ -2758,7 +2885,8 @@ fn drop_world() -> Spatial {
 
 /// `set_state(8)` (`0x140aae200` case 8): the prelude takes a counted builder out of the
 /// builders; the drop site found becomes the second target (`FUN_140a7a190`) and a quiet
-/// `MoveTo` to it within the search's range starts. None found lets the old one go, tells the
+/// `MoveTo` to it within the search's range starts, with the drop task's carrying sprite, else
+/// the Build task's moving one. None found lets the old one go, tells the
 /// unit AI (notify 0x203) and walks back to the foundation (`set_state(4)`), as a builder
 /// carrying nothing does without a search. Without a foundation that `MoveTo` has no target
 /// and walks to its zeroed point.
@@ -2778,7 +2906,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     let mut b = BuildAction {
         state: WORK,
         added: true,
-        ..BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK)
+        ..BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, MOVING_TASK)
     };
     let mut builders = 3;
     let mut walk = Walk {
@@ -2795,6 +2923,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
             DropSearch::Site {
                 id: 300,
                 range: 0.5,
+                sprite: Some(7),
             },
         )
         .unwrap();
@@ -2810,6 +2939,8 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
         (b.state, b.site, b.walk_target, b.drop_range, b.move_to),
         (DROP, 300, 300, 0.5, Some(MoveTo::Start))
     );
+    // the drop task's carrying sprite
+    assert_eq!(b.move_sprite, Some(7));
     assert_eq!((b.added, builders, b.target), (false, 2, 10028));
     let out = b.set_drop(&mut walk, None, DropSearch::Nothing).unwrap();
     assert_eq!(
@@ -2836,10 +2967,13 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
             DropSearch::Site {
                 id: 300,
                 range: 0.5,
+                sprite: None,
             },
         )
         .unwrap();
     assert_eq!((b.state, b.move_to), (DROP, Some(MoveTo::Arrived)));
+    // without one, the Build task's moving sprite
+    assert_eq!(b.move_sprite, Some(3));
     let mut lost = BuildAction { target: -1, ..b };
     let _ = lost.set_drop(&mut walk, None, DropSearch::Empty).unwrap();
     assert_eq!(
@@ -2884,6 +3018,8 @@ fn drop_update(
             },
             None,
             Builder {
+                defaults: MoveDefaults::default(),
+                sprites: no_sprites(),
                 class: VILLAGER,
                 master: 83,
                 held,
@@ -3078,6 +3214,8 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
             },
             None,
             Builder {
+                defaults: MoveDefaults::default(),
+                sprites: no_sprites(),
                 class: VILLAGER,
                 master: 83,
                 held: 10.0,

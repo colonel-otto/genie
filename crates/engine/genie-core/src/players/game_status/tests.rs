@@ -189,6 +189,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         work_rate: 1.0,
         resource: -1,
         id: -1,
+        moving: None,
     };
     let build = add(Unit {
         id: 31,

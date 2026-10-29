@@ -220,6 +220,10 @@ pub(crate) struct Pace {
 pub(crate) struct Beside<'b> {
     pub(crate) players: &'b mut Vec<Player>,
     pub(crate) masters: &'b [Masters],
+    /// The sprites' table.
+    pub(crate) graphics: &'b std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
+    /// The Sprite stream, which a sprite the walk shows draws from.
+    pub(crate) sprite_rng: &'b mut Well512,
 }
 
 impl World {
@@ -238,8 +242,10 @@ impl World {
             pathing,
             groups,
             streams,
+            graphics,
             ..
         } = self;
+        let (object, sprite_rng) = streams.two(Stream::Object, Stream::Sprite);
         let walk = Walk {
             body,
             me,
@@ -249,12 +255,17 @@ impl World {
                 pathing,
                 now: pace.now,
                 computer: pace.computer,
-                object: streams.get(Stream::Object),
+                object,
                 construction_rate: pace.construction_rate,
                 groups,
             }),
         };
-        let beside = Beside { players, masters };
+        let beside = Beside {
+            players,
+            masters,
+            graphics,
+            sprite_rng,
+        };
         (walk, beside)
     }
 }

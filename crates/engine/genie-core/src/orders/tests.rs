@@ -187,6 +187,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
                     work_rate: 1.0,
                     resource: -1,
                     id: -1,
+                    moving: None,
                 },
             )
         })),
@@ -2154,10 +2155,12 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
                 work_rate: 1.0,
                 resource: -1,
                 id: -1,
+                moving: None,
             },
             added: true,
             timer: 0.0,
             move_wait: crate::movement::move_to::MoveWait::default(),
+            move_sprite: None,
             site: -1,
             drop_range: 0.0,
         }));
@@ -3303,6 +3306,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
         work_rate: 1.0,
         resource: 1,
         id: -1,
+        moving: None,
     };
     let v = &mut t.players[1].objects[0];
     v.actions
@@ -3597,6 +3601,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         work_rate: 1.0,
         resource: -1,
         id: 3,
+        moving: None,
     };
     t.players[1].objects[0].actions.set_build(Some(
         crate::construction::build::BuildAction::start(10028, [30.0, 88.0, 0.0], 1.0, build),

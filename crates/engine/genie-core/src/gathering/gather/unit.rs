@@ -6,6 +6,7 @@ use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::release::Releaser;
+use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
 use crate::unit_ai::ActionKind;
@@ -86,7 +87,8 @@ impl Unit {
                         _ => None,
                     };
                     let range = task.map_or(task_range, |(t, _)| t.work_range);
-                    DropSearch::Site { id, range }
+                    let sprite = task.and_then(|(t, _)| sprite_id(t.sprites[3]));
+                    DropSearch::Site { id, range, sprite }
                 }
             }
         } else {

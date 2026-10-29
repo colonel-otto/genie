@@ -300,6 +300,7 @@ mod tests {
             work_rate: 1.0,
             resource: -1,
             id: -1,
+            moving: None,
         };
         Unit {
             actions: ActionList::default()

@@ -178,14 +178,10 @@ pub(super) fn build_task(
         .ok_or(GenieError::unsupported(
             "a builder master without an action part",
         ))?;
-    let (range, work_value, resource, id) = build_range(objects, civ, masters, m, master)?;
-    Ok(genie_core::construction::build::BuildTask {
-        range,
-        work_value,
-        work_rate,
-        resource,
-        id,
-    })
+    let task = master_build_task(objects, civ, masters, m, master)?;
+    Ok(genie_core::construction::build::BuildTask::of(
+        &task, work_rate,
+    ))
 }
 
 /// A bird master's Fly task: its saved task list's, else the `.dat`'s.
@@ -220,14 +216,14 @@ pub(super) fn fly_task(
         ))
 }
 
-/// The work range and value of a builder master's Build task.
-pub(super) fn build_range(
+/// A builder master's Build task: its saved task list's, else the `.dat`'s.
+pub(super) fn master_build_task(
     objects: &PlayerObjects,
     civ: u8,
     masters: Option<&MasterTable>,
     m: &Master,
     master: i16,
-) -> Result<(f32, f32, i16, i16), GenieError> {
+) -> Result<genie_core::objects::masters::Task, GenieError> {
     let saved = m.tribe_master_combat_object.as_deref().and_then(|c| {
         c.rge_master_combat_object
             .rge_master_action_object
@@ -240,14 +236,7 @@ pub(super) fn build_range(
             .list
             .iter()
             .find(|e| e.task.action_type == build)
-            .map(|e| {
-                (
-                    e.task.work_range,
-                    e.task.work_val1,
-                    e.task.attribute_type,
-                    e.task.id,
-                )
-            })
+            .map(|e| core_task(&e.task))
             .ok_or(GenieError::unsupported(
                 "a builder whose master has no Build task",
             ));
@@ -255,7 +244,7 @@ pub(super) fn build_range(
     masters
         .and_then(|t| t.work(civ, objects.dat_master(master)))
         .and_then(|w| w.tasks.iter().find(|t| t.action_type == build))
-        .map(|t| (t.work_range, t.work_val1, t.attribute_type, t.id))
+        .copied()
         .ok_or(GenieError::unsupported(
             "a builder whose Build task is not in the data file",
         ))

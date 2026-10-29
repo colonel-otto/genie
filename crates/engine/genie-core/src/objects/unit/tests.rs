@@ -265,6 +265,7 @@ fn the_top_action_s_object_is_its_target_unless_it_has_none() {
         work_rate: 1.0,
         resource: -1,
         id: -1,
+        moving: None,
     };
     let building = Unit {
         actions: ActionList::default().with_build(Some(BuildAction::start(
@@ -329,6 +330,7 @@ fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
             work_rate: 1.0,
             resource: -1,
             id: -1,
+            moving: None,
         },
     );
     build.move_to = Some(MoveTo::Moving);

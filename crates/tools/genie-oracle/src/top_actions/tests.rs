@@ -107,7 +107,7 @@ fn acting(kind: i16, action: Action) -> genie_save::Object {
 }
 
 /// `object`'s top action imported into `unit`: each task slot's task of range 2, the fly task
-/// 8, the build task 7 (range 1, work rate 2), no sprites' table.
+/// 8, the build task 7 (range 1, work rate 2, moving sprite 9), no sprites' table.
 fn import(
     object: &genie_save::Object,
     objects: &PlayerObjects,
@@ -135,6 +135,7 @@ fn import_drawn(
                 work_rate: 2.0,
                 resource: -1,
                 id: 7,
+                moving: Some(9),
             })
         },
         |_| Ok(task(8, 3.0)),
@@ -554,8 +555,8 @@ fn build(b: RgeAction) -> Action {
     }
 }
 
-/// A Build takes its task with the unit's work-rate powerup, its `MoveTo` and its site; the
-/// drop-off's `MoveTo` keeps its range.
+/// A Build takes its task with the unit's work-rate powerup, its `MoveTo` with its sprite and
+/// its site; the drop-off's `MoveTo` keeps its range.
 #[test]
 fn a_build_takes_its_task_move_to_and_drop_range() {
     let mut b = base(4);
@@ -582,9 +583,20 @@ fn a_build_takes_its_task_move_to_and_drop_range() {
     assert_eq!(a.drop_range.to_bits(), 1.0_f32.to_bits());
     assert_eq!(a.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
     assert_eq!(a.move_wait.state, 2);
+    // a MoveTo without a sprite (−1) keeps none
+    assert_eq!(a.move_sprite, None);
     let mut dropping = b.clone();
     dropping.state = genie_core::construction::build::DROP;
-    let dropping = with_sub(dropping, MOVE_TO, move_to(4, 0.75));
+    // the drop-off's MoveTo with the carrying sprite 12 (its `+0x58`)
+    let mut carrying = move_to(4, 0.75);
+    carrying
+        .rge_action_by_type
+        .as_mut()
+        .and_then(|t| t.rge_action_move_to.as_mut())
+        .expect("a MoveTo")
+        .rge_action
+        .short_val_2 = 12;
+    let dropping = with_sub(dropping, MOVE_TO, carrying);
     let a = import(&acting(BUILD, build(dropping)), &objects, unit)
         .unwrap()
         .actions
@@ -592,6 +604,7 @@ fn a_build_takes_its_task_move_to_and_drop_range() {
         .copied()
         .unwrap();
     assert_eq!(a.drop_range.to_bits(), 0.75_f32.to_bits());
+    assert_eq!(a.move_sprite, Some(12));
     let a = imported(BUILD, build(b.clone()))
         .unwrap()
         .actions
@@ -599,6 +612,8 @@ fn a_build_takes_its_task_move_to_and_drop_range() {
         .copied()
         .unwrap();
     assert_eq!((a.move_to, a.walk_target, a.goal), (None, -1, None));
+    // without a MoveTo, the task's moving sprite for the next
+    assert_eq!(a.move_sprite, Some(9));
     assert_eq!(
         imported(BUILD, build(with_sub(b, 4, explore(base(3))))).unwrap_err(),
         OTHER_SUB_ACTION

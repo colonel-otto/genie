@@ -229,6 +229,7 @@ mod tests {
             work_rate: 1.0,
             resource: -1,
             id: -1,
+            moving: None,
         };
         BuildAction::start(10028, [30.0, 88.0, 0.0], 0.0, task)
     }
