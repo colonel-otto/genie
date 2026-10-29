@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use crate::GenieError;
 use crate::construction::build::{
     AnnexStart, BuildAction, BuildStep, Builder, ClearLook, Completion, DROP, DROPPED_ORDERS,
-    Looks, MainWork, NO_CONSTRUCTION, NOT_HELD, Site, WorkChain,
+    MainWork, NO_CONSTRUCTION, NOT_HELD, Site, WorkChain,
 };
 use crate::gathering::hunt::DropOff;
 use crate::map::spatial::Spatial;
@@ -114,7 +114,7 @@ impl Unit {
             ai: self.ai.as_mut(),
             waits: &mut self.footprint_waits,
             build_targets: &reads.build_targets,
-            look: Looks(&|id| looks.get(&id).copied()),
+            looks: &looks,
             walk_target_state: reads.walk_target_state,
             deposit: reads.deposit,
             attributes,

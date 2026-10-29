@@ -1,11 +1,11 @@
 //! The pather's construction ([`HullPather`]) and `canQuickPath` (object slot 0x3e0).
 
+use std::collections::BTreeSet;
+
 use crate::GenieError;
 use crate::map::spatial::{Spatial, tile_record_id};
 use crate::math::conversions::cvttss2si;
-use crate::pathing::hull_path::{
-    GatePass, HALF, HullPather, KeptHulls, Node, ONE, PATHS, Point, Waypoints,
-};
+use crate::pathing::hull_path::{HALF, HullPather, KeptHulls, Node, ONE, PATHS, Point, Waypoints};
 
 /// A quick path without the map's terrain.
 pub(crate) const NO_TERRAIN: GenieError =
@@ -139,11 +139,11 @@ impl<'w> HullPather<'w> {
         }
     }
 
-    /// The pather with slot 0x678 of the gates in its area for the unit's player: a gate it may
-    /// pass stays out of the hulls.
+    /// The pather with the gates the unit's player may pass (slot 0x678, by id): such a gate in
+    /// its area stays out of the hulls.
     #[must_use]
-    pub const fn with_gates(mut self, passes: &'w dyn Fn(i32, i32) -> bool) -> Self {
-        self.gates = Some(GatePass(passes));
+    pub const fn with_gates(mut self, passable: &'w BTreeSet<i32>) -> Self {
+        self.gates = Some(passable);
         self
     }
 

@@ -2,6 +2,10 @@ use super::*;
 use crate::movement::move_to::Walk;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use std::collections::BTreeMap;
+
+/// A clearing that reads no object's look.
+static NO_LOOKS: BTreeMap<i32, ClearLook> = BTreeMap::new();
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments), by
 /// the quarter its step points into: up-left, down-left, and the rest.
@@ -79,7 +83,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     for (id, p, _) in &objects {
         world.insert(*id, *p);
     }
-    let look = |id: i32| objects.iter().find(|o| o.0 == id).map(|o| o.2);
+    let look: BTreeMap<i32, ClearLook> = objects.iter().map(|o| (o.0, o.2)).collect();
     let site = |class: i16, trees: bool| ClearingSite {
         player: 1,
         master: 70,
@@ -113,6 +117,29 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     assert_eq!(ids(&world, none), Vec::<i32>::new());
     none.radius = [f32::NAN, 0.0];
     assert_eq!(ids(&world, none), Vec::<i32>::new());
+}
+
+/// The objects whose looks the clearing about (10.5, 10.5) reads ([`clearing_objects`]): those
+/// on the tiles from 4 before to 4 past the place each way (6 to 14), rows first, then columns,
+/// then each tile's list; one a tile further stays out, and so does every object off the map.
+#[test]
+fn the_clearing_reads_the_objects_on_its_tiles() {
+    use crate::map::spatial::Tiles;
+    let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+    for (id, x, y) in [
+        (1, 14.9, 6.0),
+        (2, 6.0, 6.2),
+        (3, 6.5, 6.5),
+        (4, 15.0, 10.5),
+        (5, 10.5, 5.9),
+        (6, 10.5, 14.5),
+    ] {
+        world.insert(id, on_map(x, y, 1358, 5, 0.5, 1));
+    }
+    assert_eq!(clearing_objects(&world, [10.5, 10.5]), [2, 3, 1, 6]);
+    // at the map's corner the tiles start at 0 and end at its last
+    assert_eq!(clearing_objects(&world, [17.0, 2.0]), [1]);
+    assert_eq!(clearing_objects(&world, [40.0, 40.0]), Vec::<i32>::new());
 }
 
 /// The record each cleared object loses in the clearing ([`Cleared::record_goes`]): with
@@ -169,7 +196,7 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
         let x = 9.5 + 0.1 * k as f32;
         world.insert(*id, on_map(x, 10.5, 1358, 5, 0.5, 1));
     }
-    let look = |id: i32| looks.iter().find(|o| o.0 == id).map(|o| o.1);
+    let look: BTreeMap<i32, ClearLook> = looks.iter().copied().collect();
     let goes = |trees: bool| -> Vec<i32> {
         let s = ClearingSite {
             player: 1,
@@ -419,7 +446,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
             ai: None,
             waits: &mut 0,
             build_targets: &[],
-            look: Looks(&|_| None),
+            looks: &NO_LOOKS,
             walk_target_state: Some(0),
             deposit: None,
             attributes: 4,
@@ -580,7 +607,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
             ai: None,
             waits,
             build_targets: &[],
-            look: Looks(&|_| None),
+            looks: &NO_LOOKS,
             walk_target_state: state,
             deposit: None,
             attributes: 4,
@@ -860,7 +887,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
                 ai: None,
                 waits: &mut waits,
                 build_targets: &[],
-                look: Looks(&|_| None),
+                looks: &NO_LOOKS,
                 walk_target_state: None,
                 deposit: None,
                 attributes: 4,
@@ -1642,7 +1669,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
                 ai: None,
                 waits: &mut 0,
                 build_targets: &[],
-                look: Looks(&|_| None),
+                looks: &NO_LOOKS,
                 walk_target_state: Some(0),
                 deposit: None,
                 attributes: 4,
@@ -1781,7 +1808,7 @@ fn walk_update_shown(
                 ai: None,
                 waits: &mut 0,
                 build_targets: &[],
-                look: Looks(&|_| None),
+                looks: &NO_LOOKS,
                 walk_target_state: Some(0),
                 deposit: None,
                 attributes: 4,
@@ -2029,16 +2056,17 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
         },
     );
     assert_ne!(world.tiles().word(10, 10).unwrap() >> 23, 0);
-    let looks = |id: i32| {
-        (id == 77).then_some(ClearLook {
+    let looks = BTreeMap::from([(
+        77,
+        ClearLook {
             hp: 0.5,
             height: 1.0,
             roo_called: false,
             kind: 10,
             state: 2,
             desolid: false,
-        })
-    };
+        },
+    )]);
     let mut life = Lifecycle {
         state: 0,
         master_id: 70,
@@ -2110,7 +2138,7 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
                 ai: None,
                 waits: &mut 0,
                 build_targets: &[],
-                look: Looks(&looks),
+                looks: &looks,
                 walk_target_state: Some(0),
                 deposit: None,
                 attributes: 4,
@@ -2169,16 +2197,17 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
         },
     );
     assert_ne!(world.tiles().word(10, 10).unwrap() >> 23, 0);
-    let looks = |id: i32| {
-        (id == 77).then_some(ClearLook {
+    let looks = BTreeMap::from([(
+        77,
+        ClearLook {
             hp: 0.5,
             height: 1.0,
             roo_called: false,
             kind: 10,
             state: 2,
             desolid: false,
-        })
-    };
+        },
+    )]);
     let mut life = Lifecycle {
         state: 0,
         master_id: 70,
@@ -2254,7 +2283,7 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
                 ai: None,
                 waits: &mut 0,
                 build_targets: &[],
-                look: Looks(&looks),
+                looks: &looks,
                 walk_target_state: Some(0),
                 deposit: None,
                 attributes: 4,
@@ -2305,16 +2334,17 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
         },
     );
     assert_ne!(world.tiles().word(10, 10).unwrap() >> 23, 0);
-    let looks = |id: i32| {
-        (id == 77).then_some(ClearLook {
+    let looks = BTreeMap::from([(
+        77,
+        ClearLook {
             hp: 0.5,
             height: 1.0,
             roo_called: false,
             kind: 10,
             state: 2,
             desolid: false,
-        })
-    };
+        },
+    )]);
     let mut life = Lifecycle {
         state: 0,
         master_id: 70,
@@ -2404,7 +2434,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
                 ai: None,
                 waits: &mut waits,
                 build_targets: &[],
-                look: Looks(&looks),
+                looks: &looks,
                 walk_target_state: Some(0),
                 deposit: None,
                 attributes: 4,
@@ -2511,7 +2541,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
                 ai: Some(&mut ai),
                 waits: &mut 0,
                 build_targets: &[],
-                look: Looks(&|_| None),
+                looks: &NO_LOOKS,
                 walk_target_state: Some(2),
                 deposit: None,
                 attributes: 300,
@@ -2561,7 +2591,7 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
             ai: Some(&mut ai),
             waits: &mut 0,
             build_targets: &[],
-            look: Looks(&|_| None),
+            looks: &NO_LOOKS,
             walk_target_state: Some(0),
             deposit: None,
             attributes: 4,
@@ -2745,7 +2775,7 @@ fn a_builder_lets_a_dead_foundation_go() {
                     ai: Some(&mut ai),
                     waits: &mut 0,
                     build_targets: &[],
-                    look: Looks(&|_| None),
+                    looks: &NO_LOOKS,
                     walk_target_state: Some(0),
                     deposit: None,
                     attributes: 4,
@@ -2823,7 +2853,7 @@ fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it()
         ai: None,
         waits: waits.next().expect("a wait count per update"),
         build_targets: &[],
-        look: Looks(&|_| None),
+        looks: &NO_LOOKS,
         walk_target_state: Some(0),
         deposit: None,
         attributes: 4,
@@ -3018,7 +3048,7 @@ fn drop_update(
                 ai,
                 waits: &mut 0,
                 build_targets: &[],
-                look: Looks(&|_| None),
+                looks: &NO_LOOKS,
                 walk_target_state: Some(2),
                 deposit,
                 attributes: 4,
@@ -3214,7 +3244,7 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
                 ai: None,
                 waits: &mut 0,
                 build_targets: &[],
-                look: Looks(&|_| None),
+                looks: &NO_LOOKS,
                 walk_target_state: Some(7),
                 deposit: Some(mill(7, true, 30.0)),
                 attributes: 4,

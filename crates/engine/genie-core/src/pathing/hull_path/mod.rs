@@ -24,6 +24,7 @@
 
 use crate::map::spatial::Spatial;
 use crate::math::fmath::sqrt;
+use std::collections::BTreeSet;
 
 mod area;
 mod convex;
@@ -246,18 +247,6 @@ impl Default for KeptHulls {
     }
 }
 
-/// Slot 0x678 of an object for a player (`FUN_1411d4a30`, a gate's): whether the player may pass
-/// it, `passes(object, player)`. The world's update knows the gates' states and the players'
-/// diplomacy; the pather does not.
-#[derive(Clone, Copy)]
-pub struct GatePass<'w>(pub &'w dyn Fn(i32, i32) -> bool);
-
-impl std::fmt::Debug for GatePass<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("GatePass")
-    }
-}
-
 /// The old short pather over a world, for one unit: its terrain mask, player and radius, and the
 /// ignore list.
 #[derive(Debug)]
@@ -268,8 +257,10 @@ pub struct HullPather<'w> {
     /// `FindShortPath`'s player (its argument 12, the unit's player's number `+0x718`), whom slot
     /// 0x678 asks about a gate.
     player: i32,
-    /// Slot 0x678 of the gates, when the caller gives it ([`HullPather::with_gates`]).
-    gates: Option<GatePass<'w>>,
+    /// The gates its player may pass (slot 0x678, `FUN_1411d4a30`, a gate's), by id, when the
+    /// caller gives them ([`HullPather::with_gates`]): the world's update knows the gates'
+    /// states and the players' diplomacy; the pather does not.
+    gates: Option<&'w BTreeSet<i32>>,
     /// The objects `FindShortPath` includes (its arguments 13 and 14): in the hulls even when
     /// ignored or moving.
     include: Vec<i32>,

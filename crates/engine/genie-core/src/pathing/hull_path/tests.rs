@@ -525,7 +525,7 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     p.hulls = vec![far.clone()];
     assert!(p.add_tile_objects(5, 5, Some(0), 1).is_err());
     // player 1 passes the gate
-    let passes = |id: i32, player: i32| id == 3 && player == 1;
+    let passes = BTreeSet::from([3]);
     let mut p = HullPather::new(&w, 10, 11, 6, 0.2).with_gates(&passes);
     p.hulls = vec![far.clone()];
     p.add_tile_objects(5, 5, Some(0), 1).unwrap();

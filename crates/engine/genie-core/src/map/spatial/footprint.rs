@@ -1,6 +1,8 @@
 //! A footprint's spots, occupants and clearing, foreign marks, clear points and obstruction
 //! candidates.
 
+use std::collections::BTreeMap;
+
 use crate::GenieError;
 use crate::map::spatial::{Placed, QUERY_HITS, Spatial, TESTED_KINDS, tile_record_id};
 
@@ -96,12 +98,12 @@ impl Spatial {
 
     /// The objects whose centre is on `site`'s footprint, edges included, and that the game counts
     /// as occupying it (`FUN_14123bb20`): objects other than the site below state 3, or of a
-    /// type other than a building's below state 7 (their state and type `look`'s); for a site
+    /// type other than a building's below state 7 (their state and type `looks`'); for a site
     /// whose master does not obstruct (`FUN_1411205c0`: obstruction type 0 or 12, `obstructs`
     /// false) only those that do not move (speed 0, slot 0xe8); a desolid building foundation
     /// (`+0xc60`) only of a player that and the site's count each other allied
     /// (`FUN_141663d90` with the ally flag, both ways); not those the site may be built over
-    /// (`can_be_built_on` 1); with all three radii. An object `look` does not give (the owner's
+    /// (`can_be_built_on` 1); with all three radii. An object `looks` does not hold (the owner's
     /// sleeping objects, which the unit's view does not hold: of types below 30, alive, in
     /// state 2 or 6) passes the state and foundation tests.
     pub fn footprint_occupants(
@@ -109,14 +111,14 @@ impl Spatial {
         site_id: i32,
         site: &Placed,
         obstructs: bool,
-        look: &dyn Fn(i32) -> Option<crate::construction::build::ClearLook>,
+        looks: &BTreeMap<i32, crate::construction::build::ClearLook>,
     ) -> Result<Vec<i32>, GenieError> {
         use crate::objects::masters::master_type::BUILDING;
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
         let counts = |id: i32, o: &Placed| {
-            look(id).is_none_or(|l| {
+            looks.get(&id).is_none_or(|l| {
                 let alive = l.state < 3 || (l.kind != BUILDING && l.state < 7);
                 let foundation = l.kind == BUILDING && l.desolid;
                 alive

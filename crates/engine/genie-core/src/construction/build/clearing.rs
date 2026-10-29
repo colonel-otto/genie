@@ -1,5 +1,7 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
+use std::collections::BTreeMap;
+
 use crate::GenieError;
 use crate::construction::build::WALL;
 use crate::map::spatial::Spatial;
@@ -90,12 +92,12 @@ pub(super) const TREE: i16 = 15;
 ///
 /// # Errors
 ///
-/// An object on a tile the caller does not hold (`look` gives none), and for the builder's call a
+/// An object on a tile the caller does not hold (`looks` holds none), and for the builder's call a
 /// frozen object that may be on the tiles ([`Spatial::check_known`]).
 pub(crate) fn footprint_clearing(
     world: &Spatial,
     site: &ClearingSite,
-    look: &dyn Fn(i32) -> Option<ClearLook>,
+    looks: &BTreeMap<i32, ClearLook>,
 ) -> Result<Vec<Cleared>, GenieError> {
     use crate::math::fmath::below_or_unordered;
     let [rx, ry] = site.radius;
@@ -120,13 +122,32 @@ pub(crate) fn footprint_clearing(
     for y in y0..=y1 {
         for x in x0..=x1 {
             for (id, o) in world.objects_on(i32::from(x), i32::from(y)) {
-                if let Some(c) = clearing_takes(site, id, o, look)? {
+                if let Some(c) = clearing_takes(site, id, o, looks)? {
                     cleared.push(c);
                 }
             }
         }
     }
     Ok(cleared)
+}
+
+/// The objects on [`footprint_clearing`]'s tiles about `at` ([`clearing_tiles`]), in its order:
+/// those it may read the [`ClearLook`] of.
+pub(crate) fn clearing_objects(world: &Spatial, at: [f32; 2]) -> Vec<i32> {
+    let Some(([x0, x1], [y0, y1])) = clearing_tiles(at, world.map) else {
+        return Vec::new();
+    };
+    let mut ids = Vec::new();
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            ids.extend(
+                world
+                    .objects_on(i32::from(x), i32::from(y))
+                    .map(|(id, _)| id),
+            );
+        }
+    }
+    ids
 }
 
 /// [`footprint_clearing`]'s tiles: from 4 before the place to 4 past it on each axis
@@ -155,12 +176,12 @@ pub(super) fn clearing_tiles(at: [f32; 2], [w, h]: [i32; 2]) -> Option<([i16; 2]
 ///
 /// # Errors
 ///
-/// An object the caller does not hold (`look` gives none).
+/// An object the caller does not hold (`looks` holds none).
 pub(super) fn clearing_takes(
     site: &ClearingSite,
     id: i32,
     o: &crate::map::spatial::Placed,
-    look: &dyn Fn(i32) -> Option<ClearLook>,
+    looks: &BTreeMap<i32, ClearLook>,
 ) -> Result<Option<Cleared>, GenieError> {
     use crate::math::fmath::below_or_unordered;
     if o.master == site.master {
@@ -172,7 +193,7 @@ pub(super) fn clearing_takes(
     if o.buildable_on == 0 && !own_wall && !tree {
         return Ok(None);
     }
-    let seen = look(id).ok_or(GenieError::unsupported(
+    let seen = *looks.get(&id).ok_or(GenieError::unsupported(
         "a footprint clearing of an object the slice does not hold",
     ))?;
     // the tree's test: COMISS 1.0 against its hit points, JC passes it over (a NaN too)

@@ -1,7 +1,10 @@
 //! A new building's ground: the units on its foundation sent off, its terrain, the footprint
 //! clearing and its place.
 
+use std::collections::BTreeMap;
+
 use crate::GenieError;
+use crate::construction::build::{ClearLook, clearing_objects, footprint_clearing};
 use crate::map::spatial::Placed;
 use crate::objects::lifecycle::death_parts::clear_look_of;
 use crate::objects::masters::{Master, player_master};
@@ -210,8 +213,11 @@ impl World {
             at,
             trees,
         };
-        let look = |id: i32| self.clear_look(id);
-        let cleared = crate::construction::build::footprint_clearing(&self.spatial, &site, &look)?;
+        let looks: BTreeMap<i32, ClearLook> = clearing_objects(&self.spatial, at)
+            .into_iter()
+            .filter_map(|id| Some((id, self.clear_look(id)?)))
+            .collect();
+        let cleared = footprint_clearing(&self.spatial, &site, &looks)?;
         for cl in cleared {
             self.clear_object(cl, false)?;
             if !trees {
@@ -241,7 +247,7 @@ impl World {
     }
 
     /// What the footprint clearing reads of object `id` ([`crate::construction::build::ClearLook`]).
-    pub(crate) fn clear_look(&self, id: i32) -> Option<crate::construction::build::ClearLook> {
+    pub(crate) fn clear_look(&self, id: i32) -> Option<ClearLook> {
         let (p, u) = self.object(id)?;
         clear_look_of(u, self.masters.get(p))
     }

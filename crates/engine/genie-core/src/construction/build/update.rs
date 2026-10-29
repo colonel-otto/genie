@@ -1,11 +1,13 @@
 //! The Build action's start (state 4 toward the foundation) and its update, which runs the
 //! action's state; the AI's build orders whose foundation is gone.
 
+use std::collections::BTreeMap;
+
 use crate::GenieError;
 use crate::construction::build::{
     ARRIVED, AfterWork, BUILDER_UNMOVING, BuildAction, BuildStep, BuildTask, Builder, CLASS_39,
-    CLEAR, DONE, DROP, FAILED, FINISHED, HALTED, IDLE, Load, Looks, MASTER_621, MASTER_1889, MOVE,
-    PLACE, Site, VILLAGER, WAIT, WALK_POINT, WORK,
+    CLEAR, ClearLook, DONE, DROP, FAILED, FINISHED, HALTED, IDLE, Load, MASTER_621, MASTER_1889,
+    MOVE, PLACE, Site, VILLAGER, WAIT, WALK_POINT, WORK,
 };
 use crate::movement::PathAsk;
 use crate::movement::move_to::{
@@ -283,7 +285,7 @@ impl BuildAction {
                 step.done = true;
                 Ok(())
             }
-            (WORK, _) => self.face_and_place(&mut walk, site, (builder.waits, builder.look), step),
+            (WORK, _) => self.face_and_place(&mut walk, site, (builder.waits, builder.looks), step),
             // case 0xdd: the wait runs down by the world's dt, then set_state(7) again
             (WAIT, _) => {
                 self.timer -= walk.dt;
@@ -291,7 +293,7 @@ impl BuildAction {
                     return Ok(());
                 }
                 self.timer = 0.0;
-                self.place(&mut walk, site, (builder.waits, builder.look), step)
+                self.place(&mut walk, site, (builder.waits, builder.looks), step)
             }
             (PLACE, _) => self.work(walk, site, load).map(|(c, d, m)| {
                 step.completed = c;
@@ -378,7 +380,7 @@ impl BuildAction {
         &mut self,
         walk: &mut Walk<'_>,
         site: Option<Site<'_>>,
-        clearing: (&mut u8, Looks<'_>),
+        clearing: (&mut u8, &BTreeMap<i32, ClearLook>),
         step: &mut BuildStep,
     ) -> Result<(), GenieError> {
         let at = walk.position();

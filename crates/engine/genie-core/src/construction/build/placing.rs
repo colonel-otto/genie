@@ -1,11 +1,13 @@
 //! The placement on a foundation no builder started (state 7), a builder's joining and its
 //! work, the walk off the footprint (state 223) and back.
 
+use std::collections::BTreeMap;
+
 use crate::GenieError;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildStep, Built, CLEAR, ClearingSite, Construction, Dropped,
-    EXTRA_BUILDER, FOREIGN_SITE, HALTED, Load, Looks, MAX_WAITS, PLACE, SITE_GONE, Site, VILLAGER,
-    WAIT, WALL, WONDER, WONDER_RATE, Worked, footprint_clearing,
+    BUILDER_UNMOVING, BuildAction, BuildStep, Built, CLEAR, ClearLook, ClearingSite, Construction,
+    Dropped, EXTRA_BUILDER, FOREIGN_SITE, HALTED, Load, MAX_WAITS, PLACE, SITE_GONE, Site,
+    VILLAGER, WAIT, WALL, WONDER, WONDER_RATE, Worked, footprint_clearing,
 };
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveTo, Walk};
@@ -24,7 +26,7 @@ impl BuildAction {
         &mut self,
         walk: &mut Walk<'_>,
         site: Option<Site<'_>>,
-        (waits, look): (&mut u8, Looks<'_>),
+        (waits, looks): (&mut u8, &BTreeMap<i32, ClearLook>),
         step: &mut BuildStep,
     ) -> Result<(), GenieError> {
         let mut site = site.ok_or(FOREIGN_SITE)?;
@@ -50,7 +52,7 @@ impl BuildAction {
             at: [placed.position[0], placed.position[1]],
             trees: true,
         };
-        let cleared = footprint_clearing(walk.world, &clearing, look.0)?;
+        let cleared = footprint_clearing(walk.world, &clearing, looks)?;
         for cl in cleared.iter().filter(|cl| cl.record_goes) {
             if let Some(p) = walk.plan.as_mut() {
                 p.pathing.removed(cl.id);
@@ -65,7 +67,7 @@ impl BuildAction {
         let world = &*walk.world;
         let obstructs = !matches!(site.obstruction_type, 0 | 12);
         let occupants: Vec<i32> = world
-            .footprint_occupants(self.target, site, obstructs, look.0)?
+            .footprint_occupants(self.target, site, obstructs, looks)?
             .into_iter()
             .filter(|&id| !cleared.iter().any(|cl| cl.id == id))
             .collect();

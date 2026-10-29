@@ -131,9 +131,10 @@ impl HullPather<'_> {
         Ok(())
     }
 
-    /// Slot 0x678 of object `id` for `player`: only a gate's (`FUN_1411d4a30`) answers yes, and
-    /// never for player -1 (`processCliffs`'): its ally test `FUN_141663dc0` takes no number at
-    /// or above the player count, unsigned.
+    /// Slot 0x678 of object `id` for `player` (the pather's, or -1): only a gate's
+    /// (`FUN_1411d4a30`) answers yes, one of the gates the caller gave
+    /// ([`HullPather::with_gates`]), and never for player -1 (`processCliffs`'): its ally test
+    /// `FUN_141663dc0` takes no number at or above the player count, unsigned.
     pub(super) fn passes(&self, id: i32, p: &Placed, player: i32) -> Result<bool, GenieError> {
         if p.class != GATE_CLASS || player < 0 {
             return Ok(false);
@@ -141,7 +142,7 @@ impl HullPather<'_> {
         let gates = self.gates.ok_or(GenieError::unsupported(
             "a gate in the old short pather's area (its players' passage, slot 0x678)",
         ))?;
-        Ok((gates.0)(id, player))
+        Ok(gates.contains(&id))
     }
 
     /// One object's box into the hulls ([`HullPather::add_tile_objects`]).

@@ -843,12 +843,12 @@ fn the_free_spot_beside_a_footprint_is_the_closest_empty_tile_around_it() {
 fn the_footprint_s_occupants_are_the_objects_whose_centre_is_on_it() {
     let (mut s, house) = site();
     assert_eq!(
-        s.footprint_occupants(10028, &house, true, &|_| None),
+        s.footprint_occupants(10028, &house, true, &BTreeMap::new()),
         Ok(vec![9175])
     );
     s.insert(9177, villager(28.0, 89.0));
     assert_eq!(
-        s.footprint_occupants(10028, &house, true, &|_| None),
+        s.footprint_occupants(10028, &house, true, &BTreeMap::new()),
         Ok(vec![9175])
     );
     assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![]));
@@ -883,13 +883,7 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
         state,
         desolid,
     };
-    let looks = |wall: ClearLook| {
-        move |id: i32| match id {
-            9175 => Some(look(2, 70, false)),
-            33990 => Some(wall),
-            _ => None,
-        }
-    };
+    let looks = |wall: ClearLook| BTreeMap::from([(9175, look(2, 70, false)), (33990, wall)]);
     let occupants = |s: &Spatial, wall| s.footprint_occupants(10028, &house, true, &looks(wall));
     assert_eq!(occupants(&s, look(0, 80, true)), Ok(vec![9175]));
     // allied both ways, the foundation occupies it; built (not desolid) too
@@ -903,7 +897,7 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     assert_eq!(occupants(&s, look(7, 70, false)), Ok(vec![9175]));
     // the view does not look at it: it counts
     assert_eq!(
-        s.footprint_occupants(10028, &house, true, &|_| None),
+        s.footprint_occupants(10028, &house, true, &BTreeMap::new()),
         Ok(vec![9175, 33990])
     );
 }
@@ -1075,19 +1069,19 @@ fn a_frozen_object_may_be_anywhere_its_speed_could_take_it() {
     s.freeze(9656);
     // frozen at once, the deer is where the save has it
     assert!(
-        s.footprint_occupants(10028, &house, true, &|_| None)
+        s.footprint_occupants(10028, &house, true, &BTreeMap::new())
             .is_ok()
     );
     assert!(s.get_known(9656).is_ok());
     // its box reaches x 33.8; 3 s later it may stand on the footprint, which ends at 31
     s.grow_unknown(2.5);
     assert!(
-        s.footprint_occupants(10028, &house, true, &|_| None)
+        s.footprint_occupants(10028, &house, true, &BTreeMap::new())
             .is_ok()
     );
     s.grow_unknown(0.5);
     let e = s
-        .footprint_occupants(10028, &house, true, &|_| None)
+        .footprint_occupants(10028, &house, true, &BTreeMap::new())
         .unwrap_err();
     assert_eq!(e.context().next(), Some(("object", "9656")));
     let e = s.get_known(9656).unwrap_err();

@@ -12,6 +12,8 @@
 //! the Build end (state 1) and the AI runs its queue.
 
 use self::update::drop_done_orders;
+use std::collections::BTreeMap;
+
 use crate::GenieError;
 use crate::map::spatial::Obstruction;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait, Sprites};
@@ -33,7 +35,7 @@ mod update;
 mod walk_ends;
 pub(crate) mod world_side;
 
-pub(crate) use self::clearing::{CLEARING_REACH, footprint_clearing};
+pub(crate) use self::clearing::{CLEARING_REACH, clearing_objects, footprint_clearing};
 pub use self::clearing::{ClearLook, Cleared, ClearingSite};
 #[cfg(test)]
 use self::clearing::{GATE, TREE};
@@ -441,7 +443,7 @@ pub(crate) fn show_built(
     stats: Option<&mut crate::movement::MoveStats>,
     master: &Master,
     frame: u8,
-    graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
+    graphics: &BTreeMap<i16, crate::objects::sprite::Graphic>,
     sprite_rng: &mut crate::math::rng::Well512,
 ) {
     let standing = (0 <= master.standing_sprite)
@@ -474,7 +476,7 @@ mod built_sprite_tests {
             replay_delay: 0.0,
             flags,
         };
-        let graphics = std::collections::BTreeMap::from([(10, g(10, 1)), (11, g(11, 1))]);
+        let graphics = BTreeMap::from([(10, g(10, 1)), (11, g(11, 1))]);
         let master = Master {
             standing_sprite: 11,
             ..Master::default()
@@ -484,7 +486,7 @@ mod built_sprite_tests {
         show_built(&mut sprite, None, &master, 2, &graphics, &mut rng);
         let s = sprite.unwrap();
         assert_eq!((s.graphic.id, s.frame, s.last_frame), (11, 2, 2));
-        let statics = std::collections::BTreeMap::from([(11, g(11, 0))]);
+        let statics = BTreeMap::from([(11, g(11, 0))]);
         let mut none = None;
         show_built(&mut none, None, &master, 3, &statics, &mut rng);
         assert_eq!(none.map(|s| (s.graphic.id, s.frame)), Some((11, 3)));
@@ -518,8 +520,8 @@ pub struct Builder<'a> {
     /// is gone), as the update starts.
     pub build_targets: &'a [(i32, Option<u8>)],
     /// What the footprint clearing of its `set_state(7)` reads of the objects on the tiles
-    /// ([`ClearLook`]), as the update starts; None for one the caller does not hold.
-    pub look: Looks<'a>,
+    /// ([`ClearLook`]) by id, as the update starts; none for one the caller does not hold.
+    pub looks: &'a BTreeMap<i32, ClearLook>,
     /// The state of its `MoveTo`'s target ([`BuildAction::walk_target`]) as the update starts,
     /// None when the world does not hold it.
     pub walk_target_state: Option<u8>,
@@ -536,16 +538,6 @@ pub struct Builder<'a> {
     /// The foundation's `+0xcb0`: the object its completion's stack unit made
     /// ([`crate::objects::unit::Unit::stack_made`]).
     pub stack_made: Option<i32>,
-}
-
-/// What the footprint clearing reads of the objects on the tiles, by id ([`ClearLook`]).
-#[derive(Clone, Copy)]
-pub struct Looks<'a>(pub &'a dyn Fn(i32) -> Option<ClearLook>);
-
-impl std::fmt::Debug for Looks<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Looks")
-    }
 }
 
 /// What the end of a Build's work leads to (case 0xdf).
