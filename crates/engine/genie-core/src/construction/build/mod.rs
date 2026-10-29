@@ -414,6 +414,7 @@ pub struct StackUnit {
 /// (`+0xc54`, [`crate::objects::unit::Unit::build_frame`]; slot 9 with it, [`ActiveSprite::set_frame`]).
 pub(crate) fn show_built(
     sprite: &mut Option<crate::objects::sprite::ActiveSprite>,
+    stats: Option<&mut crate::movement::MoveStats>,
     master: &Master,
     frame: u8,
     graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
@@ -423,7 +424,7 @@ pub(crate) fn show_built(
         .then(|| graphics.get(&master.standing_sprite).copied())
         .flatten();
     if let Some(g) = standing {
-        crate::combat::attack::set_sprite(sprite, g, sprite_rng);
+        crate::objects::sprite::new_sprite(sprite, stats, g, sprite_rng);
         if let Some(s) = sprite.as_mut().filter(|s| s.graphic.id == g.id) {
             s.set_frame(i16::from(frame));
         }
@@ -456,12 +457,12 @@ mod built_sprite_tests {
         };
         let mut rng = crate::math::rng::Well512::default();
         let mut sprite = Some(ActiveSprite::start(g(10, 1), &mut rng));
-        show_built(&mut sprite, &master, 2, &graphics, &mut rng);
+        show_built(&mut sprite, None, &master, 2, &graphics, &mut rng);
         let s = sprite.unwrap();
         assert_eq!((s.graphic.id, s.frame, s.last_frame), (11, 2, 2));
         let statics = std::collections::BTreeMap::from([(11, g(11, 0))]);
         let mut none = None;
-        show_built(&mut none, &master, 3, &statics, &mut rng);
+        show_built(&mut none, None, &master, 3, &statics, &mut rng);
         assert_eq!(none.map(|s| (s.graphic.id, s.frame)), Some((11, 3)));
     }
 }
@@ -978,6 +979,7 @@ mod stack_tests {
                     m.moving = Some(crate::movement::MoveStats {
                         fly_mode: 0,
                         speed: 0.0,
+                        base: 0.0,
                         walk_speed: 0.0,
                         run_speed: 0.0,
                         stand_speed: 0.0,

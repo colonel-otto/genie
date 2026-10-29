@@ -123,7 +123,12 @@ impl Unit {
         id: i16,
     ) -> Result<(), GenieError> {
         let g = c.w.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
-        crate::combat::attack::set_sprite(&mut self.sprite, g, c.w.streams.get(Stream::Sprite));
+        crate::objects::sprite::new_sprite(
+            &mut self.sprite,
+            self.body.move_stats_mut(),
+            g,
+            c.w.streams.get(Stream::Sprite),
+        );
         if let Some(m) = self.body.mover_mut() {
             m.stats.speed = crate::objects::sprite::top_speed(master.max_speed, Some(&g));
         }

@@ -3,8 +3,9 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::move_to::MoveTo;
+use crate::movement::move_to::{MoveTo, Shows};
 use crate::movement::{GroupSpeed, Me};
+use crate::objects::sprite::{sprite_id, standing};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
@@ -157,7 +158,24 @@ impl Unit {
                     }
                     _ => crate::movement::PathAsk::default(),
                 };
-                move_to.update(c.walk(&mut self.body, me), ask)?
+                // its set_state 1 and 13 show slot 0x798's sprite; slot 0x68 takes the master's
+                // standing sprite for a null one
+                let master =
+                    c.w.masters
+                        .get(c.player)
+                        .and_then(|m| m.get(self.life.master_id));
+                let graphic = |id: Option<i16>| id.and_then(|id| c.w.graphics.get(&id).copied());
+                let look = self.abilities.look.as_ref();
+                let standing = graphic(master.and_then(|m| standing(m, look, false)));
+                let master_standing = graphic(master.and_then(|m| sprite_id(m.standing_sprite)));
+                let (walk, rng) = c.walk_and_sprites(&mut self.body, me);
+                let shows = Shows {
+                    sprite: &mut self.sprite,
+                    rng,
+                    standing,
+                    master_standing,
+                };
+                move_to.update(walk, ask, shows)?
             }
             None => crate::movement::move_to::MoveStep::default(),
         })

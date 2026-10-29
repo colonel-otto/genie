@@ -245,6 +245,11 @@ impl Body {
         }
     }
 
+    /// The movement's values to change (its top speed among them), if the object moves.
+    pub fn move_stats_mut(&mut self) -> Option<&mut crate::movement::MoveStats> {
+        self.mover_mut().map(|m| &mut m.stats)
+    }
+
     /// The animated layer, if the object has one: its own, or its mover's.
     #[must_use]
     pub const fn animated(&self) -> Option<&Animated> {
@@ -391,6 +396,7 @@ mod tests {
         assert_eq!(still, Body::at(at));
     }
 
+    /// FD-045-01M62GVS08: one place setter writes the body and the spatial index.
     #[test]
     fn the_place_setter_moves_the_object_and_its_index_together() {
         let mut world = indexed([1.5, 1.5, 0.0]);

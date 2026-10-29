@@ -32,6 +32,7 @@ impl World {
         notified: bool,
     ) -> Result<(), GenieError> {
         let world_time = self.world_time;
+        let sprite = self.point_move_sprite(p, new)?;
         let villager = self
             .master_of(p, self.players[p].objects[new].life.master_id)?
             .class
@@ -76,7 +77,7 @@ impl World {
         }
         unit.actions
             .set_move_to(Some(crate::movement::move_to::MoveToAction {
-                run: false,
+                sprite,
                 state: crate::movement::move_to::MoveTo::Start,
                 goal: Some(point),
                 target: -1,

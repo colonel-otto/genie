@@ -1,13 +1,14 @@
 //! Leading own livestock to its drop site (state 10), facing an animal and the decay check.
 
 use crate::GenieError;
-use crate::combat::attack::{Strike, set_sprite};
+use crate::combat::attack::Strike;
 use crate::combat::damage::Victim;
 use crate::gathering::hunt::{
     DECAY_TASK, Gatherer, Herd, HuntAction, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH, VILLAGER_CLASS,
 };
 use crate::movement::footprint_gap_squared;
 use crate::movement::move_to::Walk;
+use crate::objects::sprite::new_sprite;
 
 impl HuntAction {
     /// `set_state(10)` (`0x140ac60e0` case 10): `sheep_still_time` clears, the animal's place
@@ -27,7 +28,12 @@ impl HuntAction {
         self.lead.start = [at[0], at[1]];
         self.face_animal(&mut walk, strike)?;
         if let Some(g) = herd.special_graphic {
-            set_sprite(strike.sprite, g, strike.sprite_rng);
+            new_sprite(
+                strike.sprite,
+                walk.body.move_stats_mut(),
+                g,
+                strike.sprite_rng,
+            );
         }
         self.timer = LEAD_WAIT;
         Ok(())

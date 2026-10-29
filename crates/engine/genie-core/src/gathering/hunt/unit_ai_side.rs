@@ -114,7 +114,12 @@ impl<'u> UnitView<'u, '_> {
         (unit.life.attribute_type, unit.life.amount) = held;
         if arrived {
             let g = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
-            crate::combat::attack::set_sprite(&mut unit.sprite, g, self.sprite);
+            crate::objects::sprite::new_sprite(
+                &mut unit.sprite,
+                unit.body.move_stats_mut(),
+                g,
+                self.sprite,
+            );
             unit.body.set_anim_speed(0.0);
         }
         let drops = hunt.target == -1 && hunt.carry_to == target;

@@ -162,8 +162,9 @@ impl World {
         hunt.point = [-1.0; 3];
         hunt.timer = 0.0;
         if let Some(g) = sprite {
-            crate::combat::attack::set_sprite(
+            crate::objects::sprite::new_sprite(
                 &mut unit.sprite,
+                unit.body.move_stats_mut(),
                 g,
                 self.streams.get(Stream::Sprite),
             );

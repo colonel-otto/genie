@@ -262,6 +262,7 @@ pub(super) fn mover(
                 .fly_mode(civ, objects.dat_master(s.master_obj))
                 .unwrap_or(0),
             speed,
+            base,
             turn_rate: genie_core::movement::turn_rate(turn_speed, facets),
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,

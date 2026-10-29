@@ -126,7 +126,12 @@ impl<'u> UnitView<'u, '_> {
                 posted: Vec::new(),
             });
         }
-        crate::combat::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
+        crate::objects::sprite::new_sprite(
+            &mut unit.sprite,
+            unit.body.move_stats_mut(),
+            standing,
+            self.sprite,
+        );
         let mover = unit.body.mover_mut().expect("its speed read above");
         let crate::combat::attack::Commanded {
             mut attack,

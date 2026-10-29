@@ -2,16 +2,16 @@
 //! a farm (0xf3), the search (3) and a move's walk (15).
 
 use crate::GenieError;
-use crate::combat::attack::set_sprite;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::{
     DONE, FARM_CLASS, FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, Gatherer, IDLE,
     NO_GATHER_POINT, Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,
 };
 use crate::math::rng::Well512;
-use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, MoveWait, Walk};
+use crate::movement::{MoveStats, Mover};
 use crate::objects::sprite::ActiveSprite;
+use crate::objects::sprite::new_sprite;
 
 /// Whether a gatherer of `master` whose Gather has the target class `target_type` waits for
 /// another farm where another would search (`set_state(0xf3)`, `0x140a8e1d0`): the farmers'
@@ -118,11 +118,12 @@ impl GatherAction {
         mover: Option<&mut Mover>,
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
-        self.tear_down(mover)?;
+        let mut mover = mover;
+        self.tear_down(mover.as_deref_mut())?;
         self.state = FARM_WAIT;
         self.timer = FARM_WAIT_TIME;
         if let Some(s) = self.stand_sprite(g) {
-            set_sprite(g.sprite, s, g.sprite_rng);
+            new_sprite(g.sprite, mover.map(|m| &mut m.stats), s, g.sprite_rng);
         }
         Ok(Next::Search)
     }
@@ -166,7 +167,7 @@ impl GatherAction {
                 return Ok(Next::Stay);
             }
             self.tear_down(walk.body.mover_mut())?;
-            self.set_idle(g);
+            self.set_idle(walk.body.move_stats_mut(), g);
             return Ok(Next::Stay);
         }
         let mover = walk
@@ -199,7 +200,7 @@ impl GatherAction {
                 if let Some(t) = target
                     && !(2 < t.state && t.state != 6)
                 {
-                    return self.set_face(t, g);
+                    return self.set_face(t, walk.body.move_stats_mut(), g);
                 }
                 Ok(Next::Reseed { arrived: true })
             }
@@ -230,10 +231,11 @@ impl GatherAction {
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
     ) -> Result<[i32; 2], GenieError> {
-        self.tear_down(mover)?;
+        let mut mover = mover;
+        self.tear_down(mover.as_deref_mut())?;
         self.timer = 0.0;
         if let Some(s) = stand {
-            set_sprite(sprite, s, rng);
+            new_sprite(sprite, mover.map(|m| &mut m.stats), s, rng);
         }
         if arrived && computer {
             self.state = DONE;
@@ -255,21 +257,22 @@ impl GatherAction {
         mover: Option<&mut Mover>,
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
-        self.tear_down(mover)?;
+        let mut mover = mover;
+        self.tear_down(mover.as_deref_mut())?;
         self.state = SEARCH;
         self.timer = SEARCH_WAIT;
         if let Some(s) = self.stand_sprite(g) {
-            set_sprite(g.sprite, s, g.sprite_rng);
+            new_sprite(g.sprite, mover.map(|m| &mut m.stats), s, g.sprite_rng);
         }
         Ok(Next::Search)
     }
 
     /// `set_state(1)` (case 1): the timer clears and the unit stands.
-    pub(super) fn set_done(&mut self, g: &mut Gatherer<'_>) {
+    pub(super) fn set_done(&mut self, stats: Option<&mut MoveStats>, g: &mut Gatherer<'_>) {
         self.state = DONE;
         self.timer = 0.0;
         if let Some(s) = self.stand_sprite(g) {
-            set_sprite(g.sprite, s, g.sprite_rng);
+            new_sprite(g.sprite, stats, s, g.sprite_rng);
         }
     }
 
@@ -304,9 +307,9 @@ impl GatherAction {
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
                 if arrived && g.computer {
-                    self.set_done(g);
+                    self.set_done(walk.body.move_stats_mut(), g);
                 } else {
-                    self.set_idle(g);
+                    self.set_idle(walk.body.move_stats_mut(), g);
                 }
                 Ok(Next::Stay)
             }

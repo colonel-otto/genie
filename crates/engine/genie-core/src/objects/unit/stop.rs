@@ -14,7 +14,7 @@ use crate::world::context::Context;
 impl Unit {
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
     /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
-    /// [`crate::combat::attack::set_sprite`]) where the slice holds its sprite.
+    /// [`crate::objects::sprite::new_sprite`]) where the slice holds its sprite.
     pub(crate) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let sprite = c.w.streams.get(Stream::Sprite);
@@ -66,7 +66,7 @@ impl Unit {
 
     /// The unit's slot 0x68 with its master's standing sprite (slot 0x798's, the master's
     /// `+0x470`): its top speed becomes the standing sprite's ([`Mover::shows_standing`]) and,
-    /// where the slice holds its sprite, the sprite starts ([`crate::combat::attack::set_sprite`] on the
+    /// where the slice holds its sprite, the sprite starts ([`crate::objects::sprite::new_sprite`] on the
     /// Sprite stream). Its master is its own or its owner's (`masters`).
     ///
     /// [`Mover::shows_standing`]: crate::movement::Mover::shows_standing
@@ -89,7 +89,12 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "a stopped unit without its standing sprite",
                 ))?;
-            crate::combat::attack::set_sprite(&mut self.sprite, standing, sprite);
+            crate::objects::sprite::new_sprite(
+                &mut self.sprite,
+                self.body.move_stats_mut(),
+                standing,
+                sprite,
+            );
         }
         Ok(())
     }

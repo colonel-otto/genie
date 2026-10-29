@@ -2,10 +2,11 @@
 //! (`set_target_obj`).
 
 use crate::combat::attack::{
-    Attack, BUILDING, CLASS_60, NO_OBJECT_STREAM, SWING, Strike, reset_sprite, set_sprite,
+    Attack, BUILDING, CLASS_60, NO_OBJECT_STREAM, SWING, Strike, reset_sprite,
 };
 use crate::movement::footprint_gap;
 use crate::movement::move_to::Walk;
+use crate::objects::sprite::new_sprite;
 use crate::{GenieError, combat::damage};
 
 /// An object as the Attack's slot 9 ([`Attack::work`]) and slot 0x68 ([`Attack::set_target`])
@@ -106,7 +107,7 @@ impl Attack {
         let g = chosen.or(s.standing).ok_or(GenieError::unsupported(
             "an attacker without an attack or standing sprite",
         ))?;
-        set_sprite(s.sprite, g, s.sprite_rng);
+        new_sprite(s.sprite, walk.body.move_stats_mut(), g, s.sprite_rng);
         // FUN_1413b9f00 on the unit's sprite list with its sprite (`+0x140`)
         if let Some(current) = s.sprite.map(|sp| sp.graphic) {
             let _ = reset_sprite(s.sprite, current);

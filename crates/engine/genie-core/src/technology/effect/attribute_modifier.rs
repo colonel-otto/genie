@@ -154,7 +154,12 @@ impl World {
                 crate::orders::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
             };
             if u.sprite.is_some() {
-                crate::combat::attack::set_sprite(&mut u.sprite, graphic, rng);
+                crate::objects::sprite::new_sprite(
+                    &mut u.sprite,
+                    u.body.move_stats_mut(),
+                    graphic,
+                    rng,
+                );
             } else {
                 // a sprite the slice does not hold is taken to be another one
                 let _ = crate::objects::sprite::ActiveSprite::start(graphic, rng);
@@ -433,6 +438,10 @@ impl World {
             ids.push(u.id);
             if let Some(m) = u.body.mover_mut() {
                 master.follow_moving(&mut m.stats, attribute, &self.graphics, terrain);
+                // the top speed the unit reads with the sprite it shows, from the new base
+                if let Some(shown) = u.sprite.as_ref().map(|s| &s.graphic) {
+                    m.stats.speed = crate::objects::sprite::top_speed(m.stats.base, Some(shown));
+                }
             }
             match attribute {
                 a::DYING_GRAPHIC => {

@@ -49,6 +49,7 @@ fn stats() -> MoveStats {
     MoveStats {
         fly_mode: 0,
         speed: 0.8,
+        base: 0.8,
         turn_rate: f32::MAX,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,

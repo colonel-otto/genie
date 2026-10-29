@@ -348,6 +348,7 @@ pub(super) fn moving_stats(
     Some(genie_core::movement::MoveStats {
         fly_mode: table.fly_mode(civ, s.copy_id()).unwrap_or(0),
         speed: if 0.0 < factor { base * factor } else { base },
+        base,
         turn_rate: genie_core::movement::turn_rate(moving.turn_speed, facets),
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,

@@ -662,6 +662,50 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     assert_eq!(t.players[0].attributes[4], 13.0);
 }
 
+/// A change of the master's speed reaches its moving objects' base (`+0x740`), and their top
+/// speed is the new base times the factor of the sprite each shows (slot 65): a unit showing a
+/// sprite of factor 2 moves at twice the new speed, one whose sprite the slice does not hold
+/// at the master's running speed.
+#[test]
+fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
+    use crate::objects::masters::attribute as a;
+    let fast = crate::objects::sprite::Graphic {
+        id: 7,
+        frames: 1,
+        facets: 1,
+        speed_multiplier: 2.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 0,
+    };
+    let moving = |id| {
+        let mut u = unit_of(id, 4, 30.0);
+        u.body = crate::objects::layers::Body::new(
+            [5.5, 5.5, 0.0],
+            None,
+            Some(crate::gathering::hunt::tests::walker()),
+        );
+        u
+    };
+    let mut shows = moving(1);
+    shows.sprite = Some(crate::objects::sprite::ActiveSprite::start(
+        fast,
+        &mut crate::math::rng::Well512::default(),
+    ));
+    let player = Player {
+        objects: vec![shows, moving(2)].into(),
+        ..Player::default()
+    };
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut m = combat(4, 6, 60);
+    (m.max_speed, m.move_sprite, m.run_sprite, m.standing_sprite) = (1.5, -1, -1, -1);
+    t.masters = vec![Masters::new([m])];
+    t.master_followers(0, 4, a::MOVEMENT_SPEED);
+    let speeds = |u: &Unit| u.body.mover().map(|m| (m.stats.base, m.stats.speed));
+    assert_eq!(speeds(&t.players[0].objects[0]), Some((1.5, 3.0)));
+    assert_eq!(speeds(&t.players[0].objects[1]), Some((1.5, 1.5)));
+}
+
 /// What the slice keeps beside a master follows its change: its objects' (live and asleep)
 /// dying sprite (none below 0), death spawn (a first spawn of 0 or more) and remains (the
 /// second), a foundation's build time and record, a placed object's height test and a

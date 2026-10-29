@@ -206,8 +206,9 @@ impl World {
             .with("master", unit.life.master_id));
         }
         unit.attack_count = 0;
-        crate::combat::attack::set_sprite(
+        crate::objects::sprite::new_sprite(
             &mut unit.sprite,
+            unit.body.move_stats_mut(),
             standing,
             self.streams.get(Stream::Sprite),
         );

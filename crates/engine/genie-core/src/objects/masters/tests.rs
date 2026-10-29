@@ -864,8 +864,8 @@ fn a_building_master_s_setters_fall_back_on_the_combat_master_s() {
     });
 }
 
-/// What a unit moving with a master reads follows the master's values: its radii, its
-/// speeds by its sprites' factors, its turn time and its facets.
+/// What a unit moving with a master reads follows the master's values: its radii, its base
+/// speed and its speeds by its sprites' factors, its turn time and its facets.
 #[test]
 fn a_moving_master_s_derived_values_follow_its_attributes() {
     let graphic = |id, speed_multiplier, facets| crate::objects::sprite::Graphic {
@@ -893,6 +893,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.moving = Some(MoveStats {
         fly_mode: 0,
         speed: 1.5,
+        base: 1.5,
         walk_speed: 1.5,
         run_speed: 1.5,
         stand_speed: 1.0,
@@ -913,8 +914,8 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.follow(attribute::MOVEMENT_SPEED, &graphics, None);
     let s = m.moving.unwrap();
     assert_eq!(
-        (s.speed, s.walk_speed, s.stand_speed),
-        (1.1 * 1.5, 1.1 * 1.5, 1.1)
+        (s.base, s.speed, s.walk_speed, s.stand_speed),
+        (1.1, 1.1 * 1.5, 1.1 * 1.5, 1.1)
     );
     m.set_attribute(attribute::SIZE_Z, 1.0, &world(false));
     m.follow(attribute::SIZE_Z, &graphics, None);

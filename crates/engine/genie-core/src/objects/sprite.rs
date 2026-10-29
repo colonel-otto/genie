@@ -16,6 +16,7 @@
 use crate::combat::abilities::Look;
 use crate::math::fmath;
 use crate::math::rng::Well512;
+use crate::movement::MoveStats;
 use crate::objects::masters::Master;
 use genie_diff::Diff;
 
@@ -61,12 +62,37 @@ const EPSILON: f32 = crate::math::image::sprite::EPSILON;
 /// A moving object's top speed (slot 65, `FUN_14114d1d0`) with the sprite `shown`: its master's
 /// speed `base` (slot 0x1d0's `+0x740`), times the sprite's speed factor (`+0xc`) when that is
 /// above 0 (`COMISS`, `JBE`: a NaN is not). The game reads it from the current sprite (`+0x140`)
-/// each time; genie holds it in [`crate::movement::MoveStats::speed`], set at each sprite change.
+/// each time; genie derives [`MoveStats::speed`] from it where the sprite or the base changes
+/// ([`new_sprite`]).
 #[must_use]
 pub(crate) fn top_speed(base: f32, shown: Option<&Graphic>) -> f32 {
     match shown {
         Some(g) if 0.0 < g.speed_multiplier => base * g.speed_multiplier,
         _ => base,
+    }
+}
+
+/// Slot 0x68, `new_sprite` (a combat object's `FUN_141217000`, the moving object's
+/// `FUN_141158620`, the static object's `FUN_141196580`): the object shows `g`. The sprite it
+/// shows already stays as it runs; another starts a new instance (`FUN_1413b2ef0`, which draws
+/// from the Sprite stream `rng`). A moving object's top speed (`stats`) is the one it reads with
+/// `g` from then on ([`top_speed`]): the game reads the current sprite at each read. The one
+/// writer of a sprite change and of [`MoveStats::speed`], besides a change of the base.
+///
+/// The combat object's own steps are the renderer's (its overlay sprite `+0xa05`, the hero
+/// attachments, the facet of its attached sprites); the moving object's facet (`+0xe`,
+/// `FUN_14114d6c0`) is derived where it is read ([`crate::objects::facing`]).
+pub(crate) fn new_sprite(
+    sprite: &mut Option<ActiveSprite>,
+    stats: Option<&mut MoveStats>,
+    g: Graphic,
+    rng: &mut Well512,
+) {
+    if !sprite.is_some_and(|s| s.graphic.id == g.id) {
+        *sprite = Some(ActiveSprite::start(g, rng));
+    }
+    if let Some(stats) = stats {
+        stats.speed = top_speed(stats.base, Some(&g));
     }
 }
 
@@ -316,7 +342,7 @@ const TRADE_ACTION: i16 = 0x6f;
 const TRADE_TARGET: i16 = 0x54;
 
 /// A master's sprite id as the master's sprite pointer has it: −1 (or below) is none.
-const fn sprite_id(id: i16) -> Option<i16> {
+pub(crate) const fn sprite_id(id: i16) -> Option<i16> {
     if 0 <= id { Some(id) } else { None }
 }
 
@@ -438,6 +464,54 @@ mod tests {
         }
         // update 1057, the 49th
         assert_eq!((n, s.frame), (49, 22));
+    }
+
+    /// Slot 0x68: a new sprite starts its instance (a random first frame draws), the one shown
+    /// keeps its frame; a moving object's top speed is its base times the shown sprite's factor
+    /// above 0 after every call, a static object has none.
+    #[test]
+    fn a_new_sprite_starts_its_instance_and_the_top_speed_follows_it() {
+        let walking = Graphic {
+            id: 1,
+            speed_multiplier: 1.25,
+            flags: 5,
+            ..CHOP
+        };
+        let mut stats = crate::gathering::hunt::tests::walker().stats;
+        stats.base = 0.8;
+        stats.speed = 0.0;
+        let mut rng = Well512::default();
+        let mut sprite = Some(ActiveSprite::start(CHOP, &mut rng));
+        let before = rng.clone();
+        new_sprite(&mut sprite, Some(&mut stats), walking, &mut rng);
+        assert_eq!(sprite.map(|s| s.graphic.id), Some(1));
+        assert_ne!(rng, before);
+        assert_eq!(stats.speed, 1.0);
+        // the sprite shown stays as it runs, and the speed is still the one it reads with it
+        if let Some(s) = sprite.as_mut() {
+            s.frame = 3;
+        }
+        stats.speed = 0.5;
+        let drawn = rng.clone();
+        new_sprite(&mut sprite, Some(&mut stats), walking, &mut rng);
+        assert_eq!(
+            (sprite.map(|s| s.frame), &rng, stats.speed),
+            (Some(3), &drawn, 1.0)
+        );
+        // a factor of 0 or NaN reads the base alone
+        new_sprite(&mut sprite, Some(&mut stats), CHOP, &mut rng);
+        assert_eq!(stats.speed, 0.8);
+        let nan = Graphic {
+            id: 2,
+            speed_multiplier: f32::NAN,
+            ..CHOP
+        };
+        new_sprite(&mut sprite, Some(&mut stats), nan, &mut rng);
+        assert_eq!(stats.speed, 0.8);
+        // an object that does not move shows it alone
+        let mut still = None;
+        new_sprite(&mut still, None, walking, &mut rng);
+        assert_eq!(still.map(|s| s.graphic.id), Some(1));
     }
 
     /// `FUN_1413b5070`'s compares are COMISS: a NaN speed multiplier still multiplies (JA at

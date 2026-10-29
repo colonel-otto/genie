@@ -19,7 +19,8 @@ A unit's movement has two steps in every update, and this folder holds both:
 
 This folder also holds the actions that are walks:
 
-- `MoveTo` (`move_to.rs`): a walk to an object or a point. Many actions use it as a sub-action.
+- `MoveTo` (`move_to/`): a walk to an object or a point. Many actions use it as a sub-action;
+  a unit's own `MoveTo` is in `move_to/action.rs`.
 - Explore (`explore.rs`): the auto scout's walk to the next unexplored area.
 - Fly (`fly.rs`): a bird's flights and rests.
 
@@ -51,7 +52,6 @@ If the object's action walks, the action runs the motion step. The planners that
 | [`fly.rs`](fly.rs) | A bird's Fly action (type 10, vtable `0x142ed4c88`; update `0x140a84b40`, `set_state` `0x140a84a50`): the bird rests (state 2), picks a point to fly to from the Action stream (state 3) and flies there with a `MoveTo` sub-action (state 4) until its flight time runs out or the `MoveTo` ends; then it rests for its task's wait time, or picks the next flight at once. |
 | [`long_walk.rs`](long_walk.rs) | A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers. |
 | [`mod.rs`](mod.rs) | A unit's movement (`RGE_Moving_Object`, MovingObject.cpp in 158041): the velocity step that moves it along its forward vector, and the motion step that steers it along its path. |
-| [`move_to.rs`](move_to.rs) | The `MoveTo` action (`RGE_Action_Move_To`, type 1, vtable `0x142ed6030`): a unit walks to a target object or a point. |
 | [`new_path.rs`](new_path.rs) | A new level's path: no path, its link under the walked level, the short pather's ignore list and a blocked start. |
 | [`path_end.rs`](path_end.rs) | The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses. |
 | [`path_points.rs`](path_points.rs) | Path points, the gaps between footprints and the position setter's tests. |
@@ -62,6 +62,7 @@ If the object's action walks, the action runs the motion step. The planners that
 | [`unit.rs`](unit.rs) | The movement actions in a unit's update: the velocity step, the unit's own `MoveTo`, its Explore and a bird's Fly. |
 | [`walk.rs`](walk.rs) | The walk: its kept hits, the obstruction query's ends, the facets, the steering and the speed control. |
 | [`waypoint.rs`](waypoint.rs) | A reached waypoint and what follows it: the next waypoint, a level's end and the moving state. |
+| [`move_to/`](move_to/) | The `MoveTo` action (`RGE_Action_Move_To`, type 1, vtable `0x142ed6030`): a unit walks to a target object or a point. |
 <!-- /files -->
 
 ## How it connects

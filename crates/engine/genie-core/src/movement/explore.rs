@@ -478,8 +478,9 @@ impl Unit {
                     .ok_or(GenieError::unsupported(
                         "an explorer without its standing sprite",
                     ))?;
-            crate::combat::attack::set_sprite(
+            crate::objects::sprite::new_sprite(
                 &mut self.sprite,
+                self.body.move_stats_mut(),
                 standing,
                 c.w.streams.get(Stream::Sprite),
             );

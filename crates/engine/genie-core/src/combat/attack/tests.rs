@@ -354,6 +354,7 @@ fn soldier_mover(speed: f32) -> Mover {
         stats: MoveStats {
             fly_mode: 0,
             speed,
+            base: speed,
             turn_rate: f32::MAX,
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,
@@ -1835,13 +1836,15 @@ fn a_swing_after_its_hit_ends_readies_or_waits_for_its_sprite() {
 }
 
 /// State 4's `MoveTo` start ([`Attack::walk_start`]) on the house 10028: after a wait `+0x6c`
-/// goes from 1 to 2, a running `MoveTo` takes the running speed and shows its move sprite as it
-/// moves; one in range at once arrives and shows the idle sprite with `+0x7b8` cleared.
+/// goes from 1 to 2, a running `MoveTo` shows its move sprite (the master's running one) as it
+/// moves, whose factor sets the top speed (0.8 × 1.5); one in range at once arrives and shows the
+/// idle sprite with `+0x7b8` cleared.
 #[test]
 fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
     use crate::movement::tests::WalkRig;
     let walking = Graphic {
         id: 301,
+        speed_multiplier: 1.5,
         ..STANDING
     };
     let start = |range| {

@@ -1,14 +1,16 @@
 //! The walk to a dead target (state 4), the face (6) and the gathering (7).
 
 use crate::GenieError;
-use crate::combat::attack::{Strike, set_sprite};
+use crate::combat::attack::Strike;
 use crate::combat::damage::Victim;
 use crate::gathering::hunt::{
     ARRIVED, CLASS_49, FACE, GAP, GATHER, Gatherer, HERD_FAR, HERD_REACH, Herd, HuntAction,
     LAST_BIT, LIVESTOCK, OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,
 };
+use crate::movement::MoveStats;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveTo, MoveWait, Walk};
+use crate::objects::sprite::new_sprite;
 
 impl HuntAction {
     /// `set_state(4)` (`0x140ac60e0` case 4) after the target died, or for live livestock of the
@@ -132,7 +134,12 @@ impl HuntAction {
         }
         .or(gather.sprites.standing);
         if let Some(g) = g {
-            set_sprite(strike.sprite, g, strike.sprite_rng);
+            new_sprite(
+                strike.sprite,
+                walk.body.move_stats_mut(),
+                g,
+                strike.sprite_rng,
+            );
         }
         Ok(())
     }
@@ -140,7 +147,12 @@ impl HuntAction {
     /// `set_state(7)` (case 7): a food task keeps a load of food (`FUN_14119d310` keeps the
     /// amount), any other load is dropped; the unit takes the working sprite (slot 0x68; the
     /// standing one for none); the gathering sound is not held.
-    pub(super) fn set_gather(&mut self, strike: &mut Strike<'_>, gather: &mut Gatherer<'_>) {
+    pub(super) fn set_gather(
+        &mut self,
+        stats: Option<&mut MoveStats>,
+        strike: &mut Strike<'_>,
+        gather: &mut Gatherer<'_>,
+    ) {
         self.state = GATHER;
         let kind = self.task.resource;
         let keeps = food(kind) && food(*gather.held_kind);
@@ -149,7 +161,7 @@ impl HuntAction {
             *gather.held_kind = kind;
         }
         if let Some(g) = gather.sprites.working.or(gather.sprites.standing) {
-            set_sprite(strike.sprite, g, strike.sprite_rng);
+            new_sprite(strike.sprite, stats, g, strike.sprite_rng);
         }
     }
 

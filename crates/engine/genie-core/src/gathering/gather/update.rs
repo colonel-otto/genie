@@ -2,7 +2,6 @@
 //! in the way and the teardown.
 
 use crate::GenieError;
-use crate::combat::attack::set_sprite;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::{
     DONE, FACE, FARM_CLASS, FARM_WAIT, GatherAction, Gatherer, IDLE, MOVED, Next, REGATHERED,
@@ -14,6 +13,7 @@ use crate::movement::Mover;
 use crate::movement::move_to::{
     Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
+use crate::objects::sprite::new_sprite;
 
 impl GatherAction {
     /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::gathering::hunt::asked_drop_off`] on the
@@ -201,7 +201,7 @@ impl GatherAction {
             return Ok(Next::Stay);
         }
         if 0.0 < target.amount || REGATHERED.contains(&target.master_id) {
-            self.set_work(walk.position(), g);
+            self.set_work(walk.position(), walk.body.move_stats_mut(), g);
             self.time_at_stop = 0.0;
             return Ok(Next::Stay);
         }
@@ -261,7 +261,7 @@ impl GatherAction {
                     .mover_mut()
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
-                self.set_face(target, g)
+                self.set_face(target, walk.body.move_stats_mut(), g)
             }
             // code 3: near a target with more than 3 workers it searches (set_state 3), else it
             // waits a random while (LAB_140a8ef80)
@@ -310,7 +310,7 @@ impl GatherAction {
                 if walked.is_none_or(|w| w == MoveTo::Moving)
                     && let Some(s) = self.walk_sprite(g)
                 {
-                    set_sprite(g.sprite, s, g.sprite_rng);
+                    new_sprite(g.sprite, walk.body.move_stats_mut(), s, g.sprite_rng);
                 }
                 match walked {
                     Some(state) => self.move_to = Some(state),

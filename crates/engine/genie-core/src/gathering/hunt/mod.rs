@@ -27,13 +27,14 @@ mod update;
 #[cfg(test)]
 use self::drop_off::DROP_WAIT;
 pub use self::drop_off::Dropped;
-pub use self::sprites::{HuntSprites, Shown, walk_sprite};
+pub use self::sprites::{HuntSprites, walk_sprite};
 pub(crate) use self::sprites::{asked_drop_off, resource_kind, stand_sprite};
 pub use self::start::{PointWalk, PointWalker};
 #[cfg(test)]
 use crate::combat::damage::Victim;
 #[cfg(test)]
 use crate::movement::Mover;
+pub use crate::movement::move_to::Shown;
 #[cfg(test)]
 use crate::movement::move_to::Walk;
 

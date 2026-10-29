@@ -171,11 +171,12 @@ impl World {
             // install (slot 0x808: the MoveTo's slot 0x70, FUN_140a78050, does nothing; the list
             // clears, then the start)
             self.clear_actions(player, idx)?;
+            let sprite = self.point_move_sprite(player, idx)?;
             let unit = &mut self.players[player].objects[idx];
             let move_to = crate::movement::move_to::MoveToAction::to_point(
                 point,
                 0.0,
-                false,
+                sprite,
                 unit.body.mover_mut(),
             );
             if move_to.shows_standing() {
@@ -188,6 +189,23 @@ impl World {
             unit.actions.set_move_to(Some(move_to));
         }
         Ok(taken)
+    }
+
+    /// The sprite (`+0x58`) of the unit at `idx`'s `MoveTo` to a point whose maker gives none
+    /// ([`point_sprite`] with the unit's terrain look; a trade cart's goods are not held, so it
+    /// carries none).
+    ///
+    /// [`point_sprite`]: crate::movement::move_to::point_sprite
+    pub(crate) fn point_move_sprite(
+        &self,
+        player: usize,
+        idx: usize,
+    ) -> Result<Option<crate::objects::sprite::Graphic>, GenieError> {
+        let unit = &self.players[player].objects[idx];
+        let master = self.master_of(player, unit.life.master_id)?;
+        let look = unit.abilities.look.as_ref();
+        Ok(crate::movement::move_to::point_sprite(master, look, false)
+            .and_then(|id| self.graphics.get(&id).copied()))
     }
 
     /// The unit's slot 0x340 from its unit AI's move off a footprint (slot 0x148,

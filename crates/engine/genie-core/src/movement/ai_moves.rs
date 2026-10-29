@@ -5,7 +5,7 @@
 use crate::GenieError;
 use crate::construction::build::BUILD;
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{MoveTo, MoveToAction};
+use crate::movement::move_to::{MoveTo, MoveToAction, ai_sprite, object_sprite, point_sprite};
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
@@ -110,7 +110,14 @@ impl Unit {
             PointMove::Declined => {}
         }
         self.clear_own_actions(releases, builder_leaves, by)?;
-        let move_to = MoveToAction::to_point(m.point, m.range, !m.walk, self.body.mover_mut());
+        let sprite = masters
+            .and_then(|ms| ms.get(self.life.master_id))
+            .and_then(|master| {
+                let look = self.abilities.look.as_ref();
+                ai_sprite(master, m.walk).or_else(|| point_sprite(master, look, false))
+            })
+            .and_then(|id| graphics.get(&id).copied());
+        let move_to = MoveToAction::to_point(m.point, m.range, sprite, self.body.mover_mut());
         if move_to.shows_standing() {
             self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         }
@@ -263,6 +270,9 @@ impl Unit {
                 .get(c.player)
                 .and_then(|m| m.get(self.life.master_id));
         let range = crate::movement::move_to::object_range(range, own);
+        let sprite = own
+            .and_then(|master| ai_sprite(master, false).or_else(|| object_sprite(master)))
+            .and_then(|id| c.w.graphics.get(&id).copied());
         let here = self.position();
         let mover = self.body.mover_mut().expect("tested above");
         let move_to = MoveToAction::to_object(
@@ -271,7 +281,7 @@ impl Unit {
             mover,
             (target, state),
             range,
-            (true, livestock),
+            (sprite, livestock),
         )?;
         if move_to.shows_standing() {
             self.shows_standing_sprite(
@@ -334,7 +344,12 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "an arrived walker without its standing sprite",
                 ))?;
-            crate::combat::attack::set_sprite(&mut self.sprite, standing, sprite_rng);
+            crate::objects::sprite::new_sprite(
+                &mut self.sprite,
+                self.body.move_stats_mut(),
+                standing,
+                sprite_rng,
+            );
         }
         self.body.set_anim_speed(0.0);
         Ok(())

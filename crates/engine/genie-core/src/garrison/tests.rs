@@ -1061,6 +1061,7 @@ fn standing() -> crate::movement::MoveStats {
     crate::movement::MoveStats {
         fly_mode: 0,
         speed: 0.0,
+        base: 0.0,
         walk_speed: 0.0,
         run_speed: 0.0,
         stand_speed: 0.0,
@@ -1516,6 +1517,7 @@ pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
         factor: 1.0,
         stats: crate::movement::MoveStats {
             speed: 0.8,
+            base: 0.8,
             ..standing()
         },
         waiting: 0,
@@ -1801,6 +1803,7 @@ fn shore_world(at: [f32; 2], ship: [f32; 2]) -> World {
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.stats = crate::movement::MoveStats {
         speed: 1.1,
+        base: 1.1,
         ..standing()
     };
     mover.moved_at = [ship[0], ship[1], 0.0];
@@ -1822,8 +1825,23 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
     // the finder's LAB_1412796b4 -> the Enter: FUN_140a85f30 walks from the ship's tile
     // (5, 30) to the villager's (5, 12) and meets it on the beach tile (5, 17), code 1: the
     // ship reaches within 1 of (5, 17) (slot 0x3d8, the long pather's answer) and moves
-    // there (slot 0x340: a MoveTo, running, range 0)
+    // there (slot 0x340: a MoveTo, range 0, with the master's running sprite 2001)
     let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
+    let running = crate::objects::sprite::Graphic {
+        id: 2001,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let _ = t.graphics.insert(2001, running);
+    for m in &mut t.masters {
+        if let Some(s) = m.get_mut(SHIP) {
+            s.run_sprite = 2001;
+        }
+    }
     t.garrison_order(
         player_id(1),
         &object_ids([1000]),
@@ -1834,8 +1852,13 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
     .unwrap();
     let ship = t.object(200).unwrap().1.actions.move_to().copied().unwrap();
     assert_eq!(
-        (ship.goal, ship.range, ship.run, ship.target),
-        (Some([5.5, 17.5, 0.0]), 0.0, true, -1)
+        (
+            ship.goal,
+            ship.range,
+            ship.sprite.map(|g| g.id),
+            ship.target
+        ),
+        (Some([5.5, 17.5, 0.0]), 0.0, Some(2001), -1)
     );
     let enter = t.object(1000).unwrap().1.actions.enter().copied().unwrap();
     assert_eq!(
@@ -1857,7 +1880,7 @@ fn a_villager_meets_a_moving_ship_where_it_goes() {
     let ship = t.object_mut(200).unwrap().1;
     ship.actions
         .set_move_to(Some(crate::movement::move_to::MoveToAction {
-            run: false,
+            sprite: None,
             state: MoveTo::Start,
             goal: Some([9.5, 19.5, 0.0]),
             target: -1,
@@ -1944,6 +1967,7 @@ fn coast_world(ship: [f32; 2]) -> World {
     let mut t = sized_world(30, 20);
     let sails = crate::movement::MoveStats {
         speed: 1.1,
+        base: 1.1,
         stand_speed: 1.1,
         radius: [0.5, 0.5, 2.0],
         restriction: 1,

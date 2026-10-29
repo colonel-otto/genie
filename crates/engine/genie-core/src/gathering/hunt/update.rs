@@ -177,7 +177,7 @@ impl HuntAction {
             rng: strike.sprite_rng,
             graphic: shows,
         }
-        .walking(walked.unwrap_or(MoveTo::Moving));
+        .walking(walked.unwrap_or(MoveTo::Moving), walk.body.move_stats_mut());
         match walked {
             Some(state) => self.move_to = Some(state),
             None => self.give_up(strike),
@@ -271,7 +271,7 @@ impl HuntAction {
             ));
         }
         if 0.0 < strike.victim.amount {
-            self.set_gather(strike, gather);
+            self.set_gather(walk.body.move_stats_mut(), strike, gather);
         } else {
             self.state = SEARCH;
             gather.searches = true;

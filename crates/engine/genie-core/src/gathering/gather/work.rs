@@ -1,16 +1,17 @@
 //! The face (state 6), the work (7), the drop-off's update (8) and a random wait.
 
 use crate::GenieError;
-use crate::combat::attack::set_sprite;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::{
     DROP_REACH, FACE, FARM_CLASS, FARM_FOOD_KIND, GatherAction, Gatherer, LAST_BIT, Next,
     REGATHERED, REMAINDER, SPECIAL_TARGETS, WAIT_SHIFT, WORK,
 };
 use crate::gathering::hunt::Dropped;
+use crate::movement::MoveStats;
 use crate::movement::move_to::{
     Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
+use crate::objects::sprite::new_sprite;
 
 /// Food and the food kinds (0, 15 to 17): a gatherer keeps a load of one for another.
 pub(super) const fn food(kind: i16) -> bool {
@@ -25,6 +26,7 @@ impl GatherAction {
     pub(super) fn set_face(
         &mut self,
         target: &Victim,
+        stats: Option<&mut MoveStats>,
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
         self.state = FACE;
@@ -49,7 +51,7 @@ impl GatherAction {
         }
         self.timer = 0.0;
         if let Some(s) = self.walk_sprite(g).or(g.sprites.standing) {
-            set_sprite(g.sprite, s, g.sprite_rng);
+            new_sprite(g.sprite, stats, s, g.sprite_rng);
         }
         Ok(Next::Stay)
     }
@@ -59,7 +61,12 @@ impl GatherAction {
     /// is dropped unless both are food (`FUN_14119d310` with 0; then the unit keeps the kind it
     /// carries). The unit takes the working sprite (slot 0x68; the standing one for none); the
     /// gathering sound (slot 0x4c0) is not held.
-    pub(super) fn set_work(&mut self, at: [f32; 3], g: &mut Gatherer<'_>) {
+    pub(super) fn set_work(
+        &mut self,
+        at: [f32; 3],
+        stats: Option<&mut MoveStats>,
+        g: &mut Gatherer<'_>,
+    ) {
         self.state = WORK;
         self.worked = true;
         self.timer = 0.0;
@@ -72,7 +79,7 @@ impl GatherAction {
             *g.held = 0.0;
         }
         if let Some(s) = g.sprites.working.or(g.sprites.standing) {
-            set_sprite(g.sprite, s, g.sprite_rng);
+            new_sprite(g.sprite, stats, s, g.sprite_rng);
         }
     }
 
@@ -164,7 +171,7 @@ impl GatherAction {
                 if walked.is_none_or(|w| w == MoveTo::Moving)
                     && let Some(s) = self.walk_sprite(g)
                 {
-                    set_sprite(g.sprite, s, g.sprite_rng);
+                    new_sprite(g.sprite, walk.body.move_stats_mut(), s, g.sprite_rng);
                 }
                 match walked {
                     Some(state) => self.move_to = Some(state),
@@ -218,7 +225,7 @@ impl GatherAction {
             return Ok(Dropped::Again);
         };
         if !site.takes {
-            self.set_idle(g);
+            self.set_idle(walk.body.move_stats_mut(), g);
             return Ok(Dropped::Idle);
         }
         if DROP_REACH < site.gap_squared {

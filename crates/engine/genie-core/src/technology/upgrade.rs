@@ -109,7 +109,12 @@ pub(crate) fn damage_sprites(
             }
             SPRITE_SHOWN if !graphics.is_empty() => {
                 if u.sprite.is_some() {
-                    crate::combat::attack::set_sprite(&mut u.sprite, graphic(e.sprite)?, sprite);
+                    crate::objects::sprite::new_sprite(
+                        &mut u.sprite,
+                        u.body.move_stats_mut(),
+                        graphic(e.sprite)?,
+                        sprite,
+                    );
                 } else {
                     let _ = crate::objects::sprite::ActiveSprite::start(graphic(e.sprite)?, sprite);
                 }
@@ -124,7 +129,12 @@ pub(crate) fn damage_sprites(
     {
         let standing = graphic(master.standing_sprite)?;
         if u.sprite.is_some() {
-            crate::combat::attack::set_sprite(&mut u.sprite, standing, sprite);
+            crate::objects::sprite::new_sprite(
+                &mut u.sprite,
+                u.body.move_stats_mut(),
+                standing,
+                sprite,
+            );
         } else {
             let _ = crate::objects::sprite::ActiveSprite::start(standing, sprite);
         }
@@ -486,7 +496,7 @@ impl World {
     }
 
     /// Slot 0x68 on the object at `place` with sprite `id`: a new instance unless it shows it
-    /// already ([`crate::combat::attack::set_sprite`] on the Sprite stream). Without the graphics (no
+    /// already ([`crate::objects::sprite::new_sprite`] on the Sprite stream). Without the graphics (no
     /// data file) the Sprite stream is not modelled.
     fn show(&mut self, place: Place, id: i16) -> Result<(), GenieError> {
         if self.graphics.is_empty() {
@@ -498,7 +508,7 @@ impl World {
             Place::Live(q, i) => &mut self.players[q].objects[i],
             Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
         };
-        crate::combat::attack::set_sprite(&mut u.sprite, g, rng);
+        crate::objects::sprite::new_sprite(&mut u.sprite, u.body.move_stats_mut(), g, rng);
         Ok(())
     }
 

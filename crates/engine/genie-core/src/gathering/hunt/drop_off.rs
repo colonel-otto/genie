@@ -96,8 +96,13 @@ impl HuntAction {
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.walk_range;
                 walk.me.action_state = self.state;
-                let walked = start_walk_or_give_up(walk, Goal::Target(self.carry_to), range, true)?;
-                shown.walking(walked.unwrap_or(MoveTo::Moving));
+                let walked = start_walk_or_give_up(
+                    walk.reborrow(),
+                    Goal::Target(self.carry_to),
+                    range,
+                    true,
+                )?;
+                shown.walking(walked.unwrap_or(MoveTo::Moving), walk.body.move_stats_mut());
                 match walked {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up_walk(who),

@@ -350,7 +350,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     );
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
     assert_eq!(unit.body.anim_speed(), Some(0.0));
-    assert_eq!(unit.body.mover().map(|m| m.stats.speed), Some(0.0));
+    assert_eq!(unit.body.mover().map(|m| m.stats.speed), Some(0.8));
 }
 
 /// The attack task's aim (`FUN_141189b20`): Gaia's wolf aims at itself; a building annex at
@@ -560,14 +560,16 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
             302,
             Graphic {
                 id: 302,
+                speed_multiplier: 1.5,
                 ..standing
             },
         ),
     ]);
     let mut walker = crate::gathering::hunt::tests::walker();
+    // the soldier's speed 0.8: its standing sprite's factor 1, its walking one's 1.5
     walker.stats.speed = 1.2;
     walker.stats.walk_speed = 1.2;
-    walker.stats.stand_speed = 0.0;
+    walker.stats.stand_speed = 0.8;
     let soldier = t.masters[1].get_mut(4).unwrap();
     soldier.standing_sprite = 300;
     soldier.attack_sprite = 301;
@@ -1808,7 +1810,7 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
     t.players[1].objects[0]
         .actions
         .set_move_to(Some(crate::movement::move_to::MoveToAction {
-            run: false,
+            sprite: None,
             state: crate::movement::move_to::MoveTo::Start,
             goal: Some([30.0, 30.0, 0.0]),
             target: -1,
@@ -2719,8 +2721,8 @@ fn a_lone_unit_patrols_to_its_waypoint() {
     let u = &t.players[1].objects[0];
     let move_to = u.actions.move_to().copied().unwrap();
     assert_eq!(
-        (move_to.goal, move_to.target, move_to.range, move_to.run),
-        (Some([30.0, 20.0, 1.5]), -1, 0.0, false)
+        (move_to.goal, move_to.target, move_to.range),
+        (Some([30.0, 20.0, 1.5]), -1, 0.0)
     );
     let m = u.body.mover().unwrap();
     assert_eq!(
@@ -3576,7 +3578,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
     t.players[1].objects[0]
         .actions
         .set_move_to(Some(crate::movement::move_to::MoveToAction {
-            run: false,
+            sprite: None,
             state: crate::movement::move_to::MoveTo::Moving,
             goal: Some([40.0, 89.5, 0.0]),
             target: -1,

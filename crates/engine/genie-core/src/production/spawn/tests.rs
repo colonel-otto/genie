@@ -602,7 +602,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
     assert_eq!(
         u.actions.move_to().copied(),
         Some(MoveToAction {
-            run: false,
+            sprite: None,
             state: MoveTo::Start,
             goal: Some([40.0, 80.0, 0.0]),
             target: -1,

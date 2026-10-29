@@ -79,7 +79,11 @@ fn explore(b: RgeAction) -> Action {
 fn move_to(state: u8, range: f32) -> Action {
     by_type(|t| {
         t.rge_action_move_to = Some(Box::new(RgeActionMoveTo {
-            rge_action: base(state),
+            // no sprite (`+0x58` null)
+            rge_action: RgeAction {
+                short_val_2: -1,
+                ..base(state)
+            },
             range,
             movement_wait_state: 2,
             timer: 0.25,
@@ -218,8 +222,8 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
     assert_eq!(m.state, MoveTo::Moving);
     assert_eq!(m.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
     assert_eq!(
-        (m.target, m.range.to_bits(), m.run),
-        (-1, 0.5_f32.to_bits(), false)
+        (m.target, m.range.to_bits(), m.sprite),
+        (-1, 0.5_f32.to_bits(), None)
     );
     assert_eq!(
         (m.wait.state, m.wait.timer.to_bits(), m.wait.delay.to_bits()),
@@ -249,16 +253,22 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
     );
 }
 
-/// A `MoveTo` runs where its sprite is the master's running one, other than its walking one.
+/// A `MoveTo`'s sprite (`+0x58`, the save's second `short_val`) comes from the sprites'
+/// table; −1 is none, and an id the table lacks (or no table) is missing data.
 #[test]
-fn a_move_to_runs_with_the_masters_running_sprite() {
-    let mut master = combat_master(83);
-    let moving = master_moving_mut(&mut master);
-    moving.run_sprite_id = 5;
-    moving.move_sprite_id = 4;
-    let objects = with_masters(vec![master]);
+fn a_move_to_takes_its_sprite_from_the_sprites_table() {
+    let walking = Graphic {
+        id: 5,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 1.5,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let graphics = std::collections::BTreeMap::from([(5, walking)]);
     let mut action = move_to(4, 0.5);
-    let mut running = |sprite: i16| {
+    let mut shown = |sprite: i16, graphics| {
         let parts = action.rge_action_by_type.as_deref_mut().unwrap();
         parts
             .rge_action_move_to
@@ -266,11 +276,26 @@ fn a_move_to_runs_with_the_masters_running_sprite() {
             .unwrap()
             .rge_action
             .short_val_2 = sprite;
-        let unit = import(&acting(MOVE_TO, action.clone()), &objects, Unit::default()).unwrap();
-        unit.actions.move_to().copied().unwrap().run
+        let object = acting(MOVE_TO, action.clone());
+        import_drawn(
+            &object,
+            &PlayerObjects::default(),
+            Unit::default(),
+            graphics,
+        )
+        .map(|u| u.actions.move_to().copied().unwrap().sprite)
     };
-    assert!(running(5));
-    assert!(!running(4));
+    assert_eq!(shown(5, Some(&graphics)), Ok(Some(walking)));
+    assert_eq!(shown(-1, None), Ok(None));
+    let lacking = shown(4, Some(&graphics)).unwrap_err();
+    assert_eq!(
+        (lacking.kind(), lacking.reason()),
+        (
+            genie_core::ErrorKind::MissingData,
+            "a saved MoveTo's sprite outside the sprites' table"
+        )
+    );
+    assert!(shown(5, None).is_err());
 }
 
 fn artifact(b: RgeAction) -> Action {

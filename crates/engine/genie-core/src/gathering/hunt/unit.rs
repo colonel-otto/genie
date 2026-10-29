@@ -75,7 +75,12 @@ impl Unit {
             &c.w.graphics,
         );
         if let Some(s) = stand {
-            crate::combat::attack::set_sprite(&mut self.sprite, s, c.w.streams.get(Stream::Sprite));
+            crate::objects::sprite::new_sprite(
+                &mut self.sprite,
+                self.body.move_stats_mut(),
+                s,
+                c.w.streams.get(Stream::Sprite),
+            );
         }
         Ok(())
     }
@@ -539,8 +544,9 @@ impl Unit {
             let standing = c.w.graphics.get(&master.standing_sprite).copied().ok_or(
                 GenieError::unsupported("a hunter without its standing sprite"),
             )?;
-            crate::combat::attack::set_sprite(
+            crate::objects::sprite::new_sprite(
                 &mut self.sprite,
+                self.body.move_stats_mut(),
                 standing,
                 c.w.streams.get(Stream::Sprite),
             );

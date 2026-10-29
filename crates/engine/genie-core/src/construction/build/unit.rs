@@ -567,6 +567,7 @@ pub(crate) fn record_build_step(
             if let (Some(u), Some(m)) = (players[p].objects.by_id_mut(target), master) {
                 crate::construction::build::show_built(
                     &mut u.sprite,
+                    u.body.move_stats_mut(),
                     m,
                     u.build_frame,
                     graphics,

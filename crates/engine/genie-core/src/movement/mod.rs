@@ -153,9 +153,13 @@ pub struct MoveStats {
     /// The master's `fly_mode` (`+0x608`): how its place takes the ground's height
     /// ([`Mover::grounded`]).
     pub fly_mode: u8,
-    /// The top speed (object slot 65, `0x141202c70` -> `FUN_14114d1d0`): the master's speed
-    /// (`+0x740`), times the current sprite's speed factor when that is above 0.
+    /// The top speed (object slot 65, `maximumSpeed`, `0x141202c70` -> `FUN_14114d1d0`): the
+    /// master's speed ([`MoveStats::base`]), times the current sprite's speed factor when that is
+    /// above 0. A column derived from the two: the sprite's one transform writes it
+    /// ([`crate::objects::sprite::new_sprite`]), and so does a change of the base.
     pub speed: f32,
+    /// The master's speed (`+0x740`, the master's slot 0xe8): the top speed's base.
+    pub base: f32,
     /// The top speed with the master's walking sprite (`+0x748`) and with its running one
     /// (`+0x750`, the walking one without it): a `MoveTo` that runs or walks shows one, and the
     /// unit moves at its speed.

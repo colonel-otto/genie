@@ -235,20 +235,29 @@ fn import_move_to(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
         goal: target_point(base),
         target: base.target_id,
         range: sub_range(saved.action)?,
-        // its sprite (`+0x48`'s id) is the master's running one
-        run: saved
-            .objects
-            .master(saved.s.master_obj)
-            .and_then(moving_master)
-            .is_some_and(|m| {
-                0 <= m.run_sprite_id
-                    && m.run_sprite_id != m.move_sprite_id
-                    && base.short_val_2 == m.run_sprite_id
-            }),
+        // its sprite (`+0x58`, the save's second `short_val`; −1 for none)
+        sprite: saved_move_to_sprite(base.short_val_2, saved.graphics)?,
         // its wait (`+0x6c`, `+0x70`, `+0x74`)
         wait: saved_move_wait(saved.action),
     }));
     Ok(())
+}
+
+/// A saved `MoveTo`'s sprite (`id`, −1 for none) from the sprites' table.
+fn saved_move_to_sprite(
+    id: i16,
+    graphics: Option<&BTreeMap<i16, Graphic>>,
+) -> Result<Option<Graphic>, GenieError> {
+    if id < 0 {
+        return Ok(None);
+    }
+    graphics
+        .and_then(|g| g.get(&id).copied())
+        .map(Some)
+        .ok_or_else(|| {
+            GenieError::missing_data("a saved MoveTo's sprite outside the sprites' table")
+                .with("sprite", id)
+        })
 }
 
 /// A missile's action (8): its course and the missile object's own fields.

@@ -4,13 +4,14 @@
 use crate::GenieError;
 use crate::combat::attack::{
     Attack, DONE, FAILED, FARM, GOTO_POINT, GOTO_SEEN, KILLED, LIVESTOCK, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SEEN_RANGE, SWING, Strike, TOUCH, TREE, VILLAGER, VILLAGER_CLASS, set_sprite,
+    READY, Readiness, SEEN_RANGE, SWING, Strike, TOUCH, TREE, VILLAGER, VILLAGER_CLASS,
 };
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{Goal, MoveTo, Walk};
 use crate::objects::layers::Body;
 use crate::objects::sprite::ActiveSprite;
+use crate::objects::sprite::new_sprite;
 
 impl Attack {
     /// The update of an Attack whose target is gone (its target −1 after [`Attack::lost`]): the
@@ -54,7 +55,7 @@ impl Attack {
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
         ))?;
-        set_sprite(sprite, idle, rng);
+        new_sprite(sprite, body.move_stats_mut(), idle, rng);
         Ok((!self.sub_action).then_some((0x1fb, [600, self.target, 0])))
     }
 

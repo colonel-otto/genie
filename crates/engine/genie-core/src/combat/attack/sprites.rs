@@ -73,7 +73,7 @@ pub(crate) fn show_arrived(
     rng: &mut Well512,
 ) -> Result<(), GenieError> {
     let g = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
-    set_sprite(sprite, g, rng);
+    crate::objects::sprite::new_sprite(sprite, body.move_stats_mut(), g, rng);
     body.set_anim_speed(0.0);
     Ok(())
 }
@@ -89,13 +89,6 @@ pub(crate) const fn reset_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic) 
         }
         _ => false,
     }
-}
-
-pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mut Well512) {
-    if sprite.is_some_and(|s| s.graphic.id == g.id) {
-        return;
-    }
-    *sprite = Some(ActiveSprite::start(g, rng));
 }
 
 /// `FUN_141162db0`: the unit at `at` turns to face `to` with its sprites' facets, at once for a

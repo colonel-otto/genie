@@ -188,7 +188,7 @@ impl World {
         );
         // the moving setup (FUN_1411580a0) of every building, a moving object though it never
         // moves (a mule cart does): the walk reads its last move time
-        let mover = self
+        let mut mover = self
             .masters
             .get(player)
             .and_then(|m| m.get(master))
@@ -227,7 +227,12 @@ impl World {
                 .flatten()
                 .or(standing);
             if let Some(g) = shown {
-                crate::combat::attack::set_sprite(&mut sprite, g, self.streams.get(Stream::Sprite));
+                crate::objects::sprite::new_sprite(
+                    &mut sprite,
+                    mover.as_mut().map(|m| &mut m.stats),
+                    g,
+                    self.streams.get(Stream::Sprite),
+                );
             }
         }
         let progress = if foundation {

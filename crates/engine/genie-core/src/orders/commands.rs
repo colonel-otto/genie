@@ -452,7 +452,8 @@ impl World {
                 "a unit without its standing sprite",
             ))?;
         let rng = self.streams.get(Stream::Sprite);
-        crate::combat::attack::set_sprite(&mut self.players[p].objects[idx].sprite, g, rng);
+        let u = &mut self.players[p].objects[idx];
+        crate::objects::sprite::new_sprite(&mut u.sprite, u.body.move_stats_mut(), g, rng);
         Ok(())
     }
 }

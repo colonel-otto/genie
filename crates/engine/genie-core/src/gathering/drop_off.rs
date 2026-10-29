@@ -138,7 +138,12 @@ impl Unit {
         gather.carry_to = -1;
         gather.point = [-1.0; 3];
         if let Some(g) = shows {
-            crate::combat::attack::set_sprite(&mut self.sprite, g, c.w.streams.get(Stream::Sprite));
+            crate::objects::sprite::new_sprite(
+                &mut self.sprite,
+                self.body.move_stats_mut(),
+                g,
+                c.w.streams.get(Stream::Sprite),
+            );
         }
         if carry_to != -1 {
             crate::world::lets::release(c, carry_to, by)?;

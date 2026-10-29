@@ -64,6 +64,7 @@ impl Master {
                 stats.radius = [self.radius[0], self.radius[1], self.height];
             }
             a::MOVEMENT_SPEED | a::STANDING_GRAPHIC | a::WALKING_GRAPHIC | a::RUNNING_GRAPHIC => {
+                stats.base = self.max_speed;
                 let run = if 0 <= self.run_sprite {
                     self.run_sprite
                 } else {

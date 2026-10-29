@@ -26,6 +26,7 @@ use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
 use crate::objects::masters::{Master, Masters};
 use crate::objects::object_list::ObjectList;
 use crate::objects::release::{Releaser, released};
+use crate::objects::sprite::Graphic;
 use crate::objects::unit::{Unit, loses_actions};
 use crate::ownership::artifact::Artifact;
 use crate::ownership::capture::LIVESTOCK;
@@ -316,6 +317,7 @@ pub(crate) fn builder_masters() -> Masters {
         moving: Some(crate::movement::MoveStats {
             fly_mode: 0,
             speed: 0.8,
+            base: 0.8,
             turn_rate: f32::MAX,
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,
@@ -4505,7 +4507,7 @@ fn an_inside_unit_s_update_deletes_its_top_action() {
         .set_move_to(Some(MoveToAction::to_point(
             [40.0, 80.0, 0.0],
             0.0,
-            false,
+            None,
             None,
         )));
     t.tick(50);
@@ -7823,7 +7825,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
             goal: None,
             target: 50,
             range: 0.0,
-            run: false,
+            sprite: None,
             wait: crate::movement::move_to::MoveWait::default(),
         })),
         pasture: -1,
@@ -9437,7 +9439,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
             goal: None,
             target: 77,
             range: 0.0,
-            run: false,
+            sprite: None,
             wait: crate::movement::move_to::MoveWait::default(),
         })),
         ..Unit::default()
@@ -9454,8 +9456,8 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
     assert_eq!(ai_move_of(&mut u, run, 6), Ok(vec![77]));
     let move_to = u.actions.move_to().copied().unwrap();
     assert_eq!(
-        (move_to.goal, move_to.range, move_to.run),
-        (Some([30.0, 20.25, 0.5]), 0.0, true)
+        (move_to.goal, move_to.range, move_to.sprite.map(|g| g.id)),
+        (Some([30.0, 20.25, 0.5]), 0.0, None)
     );
 }
 
@@ -10147,14 +10149,43 @@ fn ai_move_of(u: &mut Unit, m: crate::unit_ai::AiMove, class: i16) -> Result<Vec
     };
     let (mut releases, mut leaves) = (Vec::new(), Vec::new());
     let mut rng = Well512::default();
+    let (masters, graphics) = scout_sprites();
     let _ = u.ai_move_with(
         m,
         (class, 1),
         (&mut releases, &mut leaves, by),
-        (None, &std::collections::BTreeMap::new(), &mut rng),
+        (Some(&masters), &graphics, &mut rng),
     )?;
     assert!(releases.iter().all(|&(_, b)| b == by));
     Ok(releases.into_iter().map(|(t, _)| t).collect())
+}
+
+/// The master 83 of [`mover_unit`] with its running (13154), walking (13153) and standing
+/// (13151) sprites, and their table.
+fn scout_sprites() -> (Masters, std::collections::BTreeMap<i16, Graphic>) {
+    let master = Master {
+        id: 83,
+        run_sprite: 13154,
+        move_sprite: 13153,
+        standing_sprite: 13151,
+        ..Master::default()
+    };
+    let graphics = [13154, 13153, 13151]
+        .into_iter()
+        .map(|id| {
+            let g = Graphic {
+                id,
+                frames: 10,
+                facets: 16,
+                speed_multiplier: 1.0,
+                frame_duration: 0.1,
+                replay_delay: 0.0,
+                flags: 1,
+            };
+            (id, g)
+        })
+        .collect();
+    (Masters::new([master]), graphics)
 }
 
 const AI_POINT: [f32; 3] = [14.5, 12.0, 0.0];
@@ -10182,13 +10213,20 @@ fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
     assert_eq!(u.actions.attack().copied(), None);
     let mt = u.actions.move_to().copied().expect("the AI's MoveTo");
     assert_eq!(
-        (mt.state, mt.goal, mt.target, mt.range, mt.run),
-        (MoveTo::Start, Some(AI_POINT), -1, 0.5, true)
+        (
+            mt.state,
+            mt.goal,
+            mt.target,
+            mt.range,
+            mt.sprite.map(|g| g.id)
+        ),
+        (MoveTo::Start, Some(AI_POINT), -1, 0.5, Some(13154))
     );
     // walking: the master's walking sprite
     let mut u = mover_unit(123);
     assert_eq!(ai_move_of(&mut u, forced(true), 47), Ok(vec![]));
-    assert!(!u.actions.move_to().copied().unwrap().run);
+    let walked = u.actions.move_to().copied().unwrap().sprite;
+    assert_eq!(walked.map(|g| g.id), Some(13153));
 }
 
 /// The Gather's slot 0x40 (`0x140a8b740`) takes a move to a point: the target goes (slot 0x68
@@ -10275,7 +10313,7 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
         force: false,
         ..forced(false)
     };
-    let old = MoveToAction::to_point(AI_POINT, 0.0, false, None);
+    let old = MoveToAction::to_point(AI_POINT, 0.0, None, None);
     let mut u = mover_unit(5);
     u.actions.set_move_to(Some(old));
     assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
@@ -10374,6 +10412,8 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         let mut u = mover_unit(14064);
         u.life.master_id = 65;
         let m = u.body.mover_mut().unwrap();
+        // the deer's speed 0.737 with its standing sprite's factor 1, its walking one's 1.9
+        m.stats.base = 0.737;
         m.stats.speed = 1.4003;
         m.stats.walk_speed = 1.4003;
         m.stats.stand_speed = 0.737;
@@ -10382,7 +10422,7 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         u.actions.set_move_to(Some(MoveToAction::to_point(
             [119.5, 172.5, 0.0],
             0.0,
-            false,
+            None,
             None,
         )));
         u
@@ -11131,6 +11171,7 @@ const fn house_moves() -> crate::movement::MoveStats {
     crate::movement::MoveStats {
         fly_mode: 0,
         speed: 0.0,
+        base: 0.0,
         turn_rate: f32::MAX,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
@@ -11937,6 +11978,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         recyclable: true,
         moving: Some(crate::movement::MoveStats {
             speed: 7.0,
+            base: 7.0,
             ..crate::gathering::hunt::tests::walker().stats
         }),
         missile_stats: Some(crate::combat::missile::MissileStats {
@@ -12960,7 +13002,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
         goal: None,
         target: 600,
         range: 0.25,
-        run: false,
+        sprite: None,
         wait: crate::movement::move_to::MoveWait::default(),
     };
     let mut t = own_move_world(to_bush(MoveTo::Start));
@@ -14543,7 +14585,8 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
 
 /// An Enter's transport moves to the meeting point within the entering unit's update (slot
 /// 0x340, [`World::ship_move`], the unit lent to the world): the transport's `MoveTo` is there
-/// before the update ends; one the world does not hold cannot move.
+/// before the update ends; one the world does not hold cannot move. Its sprite is
+/// [`an_ai_move_replaces_a_done_attack_with_a_move_to_the_point`]'s.
 #[test]
 fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
     let mut t = house_builder();
@@ -14558,11 +14601,11 @@ fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
         in_update(t, (1, 0), 50, |unit, c| {
             c.lend(unit, |w| w.ship_move(ship, meet))?;
             let (_, s) = c.w.object(9176).expect("held");
-            Ok(s.actions.move_to().map(|m| (m.goal, m.range, m.run)))
+            Ok(s.actions.move_to().map(|m| (m.goal, m.range)))
         })
         .map_err(|e| e.reason().to_owned())
     };
-    assert_eq!(moved(&mut t, 9176), Ok(Some((Some(meet), 0.0, true))));
+    assert_eq!(moved(&mut t, 9176), Ok(Some((Some(meet), 0.0))));
     let unreached = crate::garrison::UNREACHED.reason().to_owned();
     assert_eq!(moved(&mut t, 4242), Err(unreached));
 }

@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn a_move_to_s_destructor_stops_the_unit() {
         let mut body = moving();
-        let to = MoveToAction::to_point([5.0, 5.0, 0.0], 0.0, false, body.mover_mut());
+        let to = MoveToAction::to_point([5.0, 5.0, 0.0], 0.0, None, body.mover_mut());
         let torn = Action::MoveTo(to).tear_down(&mut body).unwrap();
         assert_eq!(torn, TornDown::default());
         assert!(!moves(&body));
@@ -306,7 +306,7 @@ mod tests {
         assert_eq!(torn.releases, [10028]);
         assert!(list.is_empty());
         assert_eq!(list.delete_head(&mut body, 2), Ok(TornDown::default()));
-        let to = MoveToAction::to_point([5.0, 5.0, 0.0], 0.0, false, body.mover_mut());
+        let to = MoveToAction::to_point([5.0, 5.0, 0.0], 0.0, None, body.mover_mut());
         let two = ActionList::default()
             .with_build(Some(build()))
             .with_move_to(Some(to));

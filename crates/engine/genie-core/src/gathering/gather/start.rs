@@ -2,16 +2,16 @@
 //! the idle and the halt; a farm's stops and their productivity.
 
 use crate::GenieError;
-use crate::combat::attack::set_sprite;
 use crate::gathering::gather::{
     ARRIVED, DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_CLASS, FARM_STOPS, GatherAction, Gatherer,
     IDLE, MOVED, Resource, SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, food,
 };
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Well512;
-use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::{MoveStats, Mover};
 use crate::objects::sprite::ActiveSprite;
+use crate::objects::sprite::new_sprite;
 
 /// What the constructor reads to time a farm's stops: the gatherer's work rate (its master's
 /// `+0x798` plus its powerup, slot 0x6e8), its capacity (`+0x61c`) and the player's attribute the
@@ -427,11 +427,11 @@ impl GatherAction {
     /// `set_state(2)` (case 2): the timer clears, the unit stands ([`GatherAction::stand_sprite`]),
     /// the target and the second target go (slot 0x68, `FUN_140a7a190` with none; the caller
     /// lets them go) and the point is −1.
-    pub(super) fn set_idle(&mut self, g: &mut Gatherer<'_>) {
+    pub(super) fn set_idle(&mut self, stats: Option<&mut MoveStats>, g: &mut Gatherer<'_>) {
         self.state = IDLE;
         self.timer = 0.0;
         if let Some(s) = self.stand_sprite(g) {
-            set_sprite(g.sprite, s, g.sprite_rng);
+            new_sprite(g.sprite, stats, s, g.sprite_rng);
         }
         self.target = -1;
         self.carry_to = -1;
@@ -454,11 +454,12 @@ impl GatherAction {
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
     ) -> Result<[i32; 2], GenieError> {
-        self.tear_down(mover)?;
+        let mut mover = mover;
+        self.tear_down(mover.as_deref_mut())?;
         self.state = IDLE;
         self.timer = 0.0;
         if let Some(s) = stand {
-            set_sprite(sprite, s, rng);
+            new_sprite(sprite, mover.map(|m| &mut m.stats), s, rng);
         }
         let released = [self.target, self.carry_to];
         self.target = -1;

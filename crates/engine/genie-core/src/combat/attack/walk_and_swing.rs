@@ -3,7 +3,7 @@
 use crate::combat::attack::{
     AfterHit, Attack, DRAW_SCALE, EPSILON, FAILED, HALF, Hit, KILLED, MOVE, NO_OBJECT_STREAM,
     Readiness, Strike, after_hit, blast_so_far, in_the_way, reset_sprite, set_attack_timer,
-    set_sprite, squared_reach, strike,
+    squared_reach, strike,
 };
 use crate::combat::damage::Victim;
 use crate::math::rng::Well512;
@@ -11,6 +11,7 @@ use crate::movement::footprint_gap_squared;
 use crate::movement::move_to::{
     Follow, MoveTo, Walk, follow_path_end, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
+use crate::objects::sprite::new_sprite;
 use crate::{GenieError, combat::damage};
 
 impl Attack {
@@ -116,7 +117,7 @@ impl Attack {
         if walked.is_none_or(|w| w == MoveTo::Moving)
             && let Some(g) = self.arms.move_sprite
         {
-            set_sprite(s.sprite, g, s.sprite_rng);
+            new_sprite(s.sprite, walk.body.move_stats_mut(), g, s.sprite_rng);
         }
         let Some(state) = walked else {
             // the motion step gave up in the update set_state(4) ran; a MoveTo that fails
@@ -128,7 +129,7 @@ impl Attack {
                     .arms
                     .idle_sprite
                     .ok_or(crate::world::NO_STANDING_SPRITE)?;
-                set_sprite(s.sprite, g, s.sprite_rng);
+                new_sprite(s.sprite, walk.body.move_stats_mut(), g, s.sprite_rng);
                 walk.set_anim_speed(0.0);
             }
             return Ok(false);
@@ -140,7 +141,7 @@ impl Attack {
                 .arms
                 .idle_sprite
                 .ok_or(crate::world::NO_STANDING_SPRITE)?;
-            set_sprite(s.sprite, g, s.sprite_rng);
+            new_sprite(s.sprite, walk.body.move_stats_mut(), g, s.sprite_rng);
             walk.set_anim_speed(0.0);
         }
         self.move_to = Some(state);
@@ -354,7 +355,7 @@ impl Attack {
                     "a swing's end without a sprite to wait with",
                 ))?;
             let changed = sprite.graphic.id != g.id;
-            set_sprite(s.sprite, g, s.sprite_rng);
+            new_sprite(s.sprite, walk.body.move_stats_mut(), g, s.sprite_rng);
             if changed && let Some(current) = s.sprite.map(|sp| sp.graphic) {
                 let _ = reset_sprite(s.sprite, current);
             }

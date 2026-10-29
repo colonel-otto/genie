@@ -35,7 +35,7 @@ pub(crate) use self::hits::{Hit, strike};
 use self::ready_to_attack::in_range;
 use self::sprites::{NO_OBJECT_STREAM, set_attack_timer};
 pub use self::sprites::{SwingSprites, swing_sprites};
-pub(crate) use self::sprites::{face_target, reset_sprite, set_sprite, show_arrived, volleys};
+pub(crate) use self::sprites::{face_target, reset_sprite, show_arrived, volleys};
 use self::update::squared_reach;
 pub use self::work_slots::{Mark, Wielder, Worked};
 #[cfg(test)]

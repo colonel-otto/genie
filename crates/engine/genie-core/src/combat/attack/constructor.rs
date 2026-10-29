@@ -4,12 +4,13 @@
 use crate::GenieError;
 use crate::combat::attack::{
     Arms, Attack, Begun, Commanded, Engagement, FAILED, GATE, GOTO_SEEN, LEASH_SLACK, MASTER_1704,
-    MASTER_1706, NONE, Strike, face_target, set_sprite,
+    MASTER_1706, NONE, Strike, face_target,
 };
 use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait, Walk};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::objects::layers::Body;
+use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 
 impl Attack {
@@ -239,7 +240,7 @@ impl Attack {
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
         ))?;
-        set_sprite(sprite, idle, rng);
+        new_sprite(sprite, body.move_stats_mut(), idle, rng);
         Ok(())
     }
 

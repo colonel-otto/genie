@@ -1,9 +1,7 @@
 //! The hunt's sprites: standing, walking and the task's; an asked drop-off and the kind of
 //! what a unit carries.
 
-use crate::combat::attack::set_sprite;
 use crate::gathering::hunt::HuntTask;
-use crate::movement::move_to::MoveTo;
 use crate::objects::sprite::Graphic;
 
 /// `FUN_140ac5210`, the sprite a hunter stands with: the task's carrying sprite while it holds a
@@ -111,28 +109,5 @@ pub const fn walk_sprite(
     match (carrying, sprites.carrying) {
         (true, Some(g)) => Some(g),
         _ => sprites.moving,
-    }
-}
-
-/// The unit's sprite, the Sprite stream and the sprite a walk shows: a `MoveTo` that turns to
-/// state 4 shows its sprite (`0x140aa29e0`, slot 0x68 with `+0x58`).
-#[derive(Debug)]
-pub struct Shown<'a> {
-    /// The unit's sprite.
-    pub sprite: &'a mut Option<crate::objects::sprite::ActiveSprite>,
-    /// The Sprite stream.
-    pub rng: &'a mut crate::math::rng::Well512,
-    /// The `MoveTo`'s sprite.
-    pub graphic: Option<Graphic>,
-}
-
-impl Shown<'_> {
-    /// The `MoveTo` that started turned to state 4: the unit shows its sprite.
-    pub(super) fn walking(&mut self, state: MoveTo) {
-        if state == MoveTo::Moving
-            && let Some(g) = self.graphic
-        {
-            set_sprite(self.sprite, g, self.rng);
-        }
     }
 }

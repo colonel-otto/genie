@@ -458,7 +458,7 @@ impl World {
             crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
             crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
         };
-        crate::combat::attack::set_sprite(&mut u.sprite, g, rng);
+        crate::objects::sprite::new_sprite(&mut u.sprite, u.body.move_stats_mut(), g, rng);
         Ok(true)
     }
 

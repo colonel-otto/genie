@@ -105,7 +105,7 @@ fn an_object_past_state_2_loses_its_actions() {
     let u = &mut t.players[1].objects[0];
     u.life.state = 3;
     u.actions.set_move_to(Some(MoveToAction {
-        run: false,
+        sprite: None,
         state: MoveTo::Moving,
         goal: Some([40.0, 80.0, 0.0]),
         target: -1,

@@ -251,6 +251,7 @@ impl Unit {
         {
             crate::construction::build::show_built(
                 &mut self.sprite,
+                self.body.move_stats_mut(),
                 m,
                 self.build_frame,
                 &c.w.graphics,
@@ -378,7 +379,7 @@ impl Unit {
     /// looped in this update (the sprite list's slot 0x40, the node's slot 12), draws on the
     /// Sprite stream ("Update"); above 0x3fff it shows the other (`FUN_141189760` with the other
     /// index and 0x7fff: `+0x78c` takes the index, slot 0x68 the master's sprite of that index,
-    /// [`crate::combat::attack::set_sprite`], and the list's slot 0x28 puts its node back to its first
+    /// [`crate::objects::sprite::new_sprite`], and the list's slot 0x28 puts its node back to its first
     /// frame, [`crate::objects::sprite::ActiveSprite::reset_frame`]).
     pub(crate) fn idle_swap(
         &mut self,
@@ -413,7 +414,12 @@ impl Unit {
             second
         };
         if let Some(&g) = graphics.get(&next) {
-            crate::combat::attack::set_sprite(&mut self.sprite, g, sprite_rng);
+            crate::objects::sprite::new_sprite(
+                &mut self.sprite,
+                self.body.move_stats_mut(),
+                g,
+                sprite_rng,
+            );
         }
         if let Some(s) = self.sprite.as_mut() {
             s.reset_frame();

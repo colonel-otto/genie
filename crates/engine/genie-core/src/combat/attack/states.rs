@@ -4,13 +4,14 @@
 use crate::GenieError;
 use crate::combat::attack::{
     ARRIVED, Attack, BOAR_AI, DONE, Engagement, FAILED, HALF, LION_AI, MOVE, NO_RANGE, NONE,
-    PREDATOR, Strike, VILLAGER, set_sprite,
+    PREDATOR, Strike, VILLAGER,
 };
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, Walk};
 use crate::objects::layers::Body;
 use crate::objects::sprite::ActiveSprite;
+use crate::objects::sprite::new_sprite;
 
 impl Attack {
     /// A `MoveTo` of the attack that starts arrived (its `set_state` 1, not quiet): the unit shows
@@ -24,7 +25,13 @@ impl Attack {
             .arms
             .idle_sprite
             .ok_or(crate::world::NO_STANDING_SPRITE)?;
-        set_sprite(s.sprite, g, s.sprite_rng);
+        let mut mover = mover;
+        new_sprite(
+            s.sprite,
+            mover.as_mut().map(|m| &mut m.stats),
+            g,
+            s.sprite_rng,
+        );
         if let Some(m) = mover {
             m.animated.speed = 0.0;
         }
@@ -194,7 +201,7 @@ impl Attack {
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
         ))?;
-        set_sprite(sprite, idle, rng);
+        new_sprite(sprite, body.move_stats_mut(), idle, rng);
         Ok(())
     }
 
@@ -210,7 +217,7 @@ impl Attack {
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
         ))?;
-        set_sprite(s.sprite, idle, s.sprite_rng);
+        new_sprite(s.sprite, walk.body.move_stats_mut(), idle, s.sprite_rng);
         Ok(())
     }
 }

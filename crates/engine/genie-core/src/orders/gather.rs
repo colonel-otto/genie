@@ -473,8 +473,9 @@ impl World {
         // its `+0x7b8` clears (`Attack::arrived_sprite`)
         if arrived {
             let g = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
-            crate::combat::attack::set_sprite(
+            crate::objects::sprite::new_sprite(
                 &mut unit.sprite,
+                unit.body.move_stats_mut(),
                 g,
                 self.streams.get(Stream::Sprite),
             );

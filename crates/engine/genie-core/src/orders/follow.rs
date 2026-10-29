@@ -356,6 +356,8 @@ impl World {
         self.clear_actions(player, idx)?;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let range = crate::movement::move_to::object_range(0.0, Some(master));
+        let sprite = crate::movement::move_to::object_sprite(master)
+            .and_then(|id| self.graphics.get(&id).copied());
         let unit = &mut self.players[player].objects[idx];
         let here = unit.position();
         let mover = unit.body.mover_mut().ok_or(GenieError::unsupported(
@@ -367,7 +369,7 @@ impl World {
             mover,
             (target, t_state),
             range,
-            (false, livestock),
+            (sprite, livestock),
         )?;
         if move_to.shows_standing() {
             unit.shows_standing_sprite(

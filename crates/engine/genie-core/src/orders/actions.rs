@@ -367,6 +367,10 @@ pub(crate) fn switch_master(
             m.stats = next.moving.ok_or(GenieError::unsupported(
                 "a moving unit's new master does not move",
             ))?;
+            // the top speed the unit reads with the sprite it shows, from the new master's base
+            if let Some(shown) = unit.sprite.as_ref().map(|s| &s.graphic) {
+                m.stats.speed = crate::objects::sprite::top_speed(m.stats.base, Some(shown));
+            }
         }
         let id = unit.id;
         if let Some(mut placed) = world.spatial.get(id).copied() {
@@ -410,7 +414,12 @@ pub(crate) fn switch_master(
                     "a new master's standing sprite the data file does not have",
                 ))?;
             if unit.sprite.is_some() {
-                crate::combat::attack::set_sprite(&mut unit.sprite, g, world.sprite);
+                crate::objects::sprite::new_sprite(
+                    &mut unit.sprite,
+                    unit.body.move_stats_mut(),
+                    g,
+                    world.sprite,
+                );
             } else {
                 let _ = crate::objects::sprite::ActiveSprite::start(g, world.sprite);
             }

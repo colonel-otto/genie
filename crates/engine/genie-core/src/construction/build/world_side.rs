@@ -248,6 +248,7 @@ impl crate::world::World {
         if let Some(m) = self.masters.get(p).and_then(|m| m.get(u.life.master_id)) {
             show_built(
                 &mut u.sprite,
+                u.body.move_stats_mut(),
                 m,
                 u.build_frame,
                 &self.graphics,
