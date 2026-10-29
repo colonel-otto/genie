@@ -3,15 +3,17 @@
 
 use crate::GenieError;
 use crate::combat::attack::{
-    Arms, Attack, AttackReads, Begun, Commanded, Engagement, FAILED, Fight, GATE, GOTO_SEEN,
-    Ground, LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, face_target,
+    Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, FAILED, Fight, GATE, GOTO_SEEN,
+    Ground, LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
-use crate::math::rng::Well512;
+use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::objects::layers::Body;
 use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
+use crate::objects::unit::Unit;
+use crate::world::step::Step;
 
 impl Attack {
     /// The constructor (`FUN_140a7c210`) on `target`: the range and least range of `e`, its
@@ -55,7 +57,7 @@ impl Attack {
     ///
     /// What the start does not model, and what no hunt's caller takes: a hunter that cannot move
     /// (its Attack's `set_state` 6 or 13 at the start), and readyToAttack's failure before the
-    /// start's `set_state(4)` (the unit's `+0x7b8` at 1, [`Commanded::failed_first`]).
+    /// start's `set_state(4)` (the unit's `+0x7b8` at 1, as [`Attack::command`] leaves it).
     pub fn start(
         target: i32,
         e: &Engagement,
@@ -95,37 +97,94 @@ impl Attack {
     /// A unit's own Attack (the attack command, `FUN_141081a80`): the constructor
     /// (`FUN_140a7c210` with sub-action 0: the master's weapon range and least range, its
     /// sprites, missile and frames, its `MoveTo`'s the running one, slot 0x7d0, or the walking
-    /// one: the running speed either way; `+0x61` clear) and the start ([`Attack::begin`]) on a
-    /// target of `target_owner`, `visible` to the unit's player, in `world` (a gate's reach is to
-    /// its nearest part too).
+    /// one: the running speed either way; `+0x61` clear) and the start's readyToAttack with its
+    /// `set_state(4)` ([`Attack::begin`]) on `cmd`'s target in `world` (a gate's reach is to its
+    /// nearest part too): the Attack, readyToAttack's answer and the notifies it posted.
     ///
     /// # Errors
     ///
     /// What the start does not model, and a target the world does not hold.
-    pub fn command(
-        (target, world): (i32, &crate::map::spatial::Spatial),
-        e: &Engagement,
-        arms: Arms,
-        (visible, target_owner): (bool, usize),
+    pub(super) fn own_start(
+        cmd: &AttackCommand<'_>,
+        world: &crate::map::spatial::Spatial,
         mover: &mut Mover,
-    ) -> Result<Commanded, GenieError> {
+    ) -> Result<(Self, Begun, Vec<Posted>), GenieError> {
+        let e = cmd.engagement;
         let t = *world
-            .get_known(target)?
+            .get_known(cmd.target)?
             .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let reach_gap =
-            crate::movement::gate_gap(world, (e.position, ground), (target, &t), e.gap, |g| g);
-        let mut attack = Self::own(target, e, arms);
+            crate::movement::gate_gap(world, (e.position, ground), (cmd.target, &t), e.gap, |g| g);
+        let mut attack = Self::own(cmd.target, e, cmd.arms);
         let mut posted = Vec::new();
-        let begun = attack.begin((e, reach_gap), (visible, target_owner), mover, &mut posted)?;
-        Ok(Commanded {
-            attack,
-            arrived: begun.arrived,
-            posted,
-            ready: begun.ready,
-            failed: begun.failed,
-            failed_first: begun.failed_first,
-        })
+        let begun = attack.begin(
+            (e, reach_gap),
+            (cmd.visible, cmd.target_owner),
+            mover,
+            &mut posted,
+        )?;
+        Ok((attack, begun, posted))
+    }
+
+    /// The attack command's Attack of `unit` (the step's, out of the world): the constructor and
+    /// readyToAttack with the start's `set_state(4)` ([`Attack::own_start`]), then the start's
+    /// other ends at once (`0x140a7f8c0`): readyToAttack's `set_state(13)` before the
+    /// `set_state(4)` that replaced it leaves the unit's animation at speed 1 (`+0x7b8`; the
+    /// standing sprite it shows is the start's already); a unit that cannot move fails out of
+    /// reach (`set_state(13)`, [`Attack::fail_at_start`]) or goes ready in it (`set_state(6)`,
+    /// [`Attack::enter_ready`] with `cmd`'s [`ReadyReads`]); a `MoveTo` that starts arrived shows
+    /// the standing sprite at its speed and clears `+0x7b8` (`0x140aa29e0`, not quiet). The
+    /// Attack and the notifies the start posted, in order, for the unit's AI (the swing's of
+    /// `set_state(6)` among them).
+    ///
+    /// # Errors
+    ///
+    /// What the start does not model, a target the world does not hold, a unit without its
+    /// movement state, and a start that goes ready on a target the world does not hold live.
+    pub(crate) fn command(
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        cmd: &AttackCommand<'_>,
+    ) -> Result<(Self, Vec<Posted>), GenieError> {
+        let mover = unit
+            .body
+            .mover_mut()
+            .ok_or(crate::world::ATTACKER_UNMOVING)?;
+        let (mut attack, begun, mut posted) = Self::own_start(cmd, &c.w.spatial, mover)?;
+        if begun.failed_first {
+            unit.body.set_anim_speed(1.0);
+        }
+        if begun.failed {
+            attack.fail_at_start(
+                &mut unit.sprite,
+                &mut unit.body,
+                c.w.streams.get(Stream::Sprite),
+            )?;
+        }
+        if begun.ready {
+            let ready = cmd.ready.as_ref().ok_or(GenieError::unsupported(
+                "an attack's target the slice does not hold live",
+            ))?;
+            let mut g = Ground {
+                map: &c.w.spatial,
+                sprite_rng: c.w.streams.get(Stream::Sprite),
+                object_rng: None,
+                buffer: Some(&mut posted),
+            };
+            attack.enter_ready(unit, &mut g, &ready.fight, &ready.reads)?;
+        }
+        if begun.arrived {
+            if let Some(m) = unit.body.mover_mut() {
+                m.shows_standing();
+            }
+            unit.shows_standing_sprite(
+                c.w.masters.get(c.player),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
+            )?;
+        }
+        Ok((attack, posted))
     }
 
     /// The start (slot 5 with 1, `0x140a7f8c0`) after its unit AI and place test, its `+0x900`
@@ -220,7 +279,7 @@ impl Attack {
     }
 
     /// The start's `set_state(13)` for a unit that cannot move out of reach of its target
-    /// ([`Commanded::failed`]), as [`Attack::finish_in`]: the state, the unit's animation at speed
+    /// ([`Attack::command`]), as [`Attack::finish_in`]: the state, the unit's animation at speed
     /// 1 and its standing sprite (a unit that cannot move has no `MoveTo` to stop). Its next update
     /// posts 0x1f9 and removes it.
     ///
@@ -242,7 +301,7 @@ impl Attack {
         Ok(())
     }
 
-    /// The start's `set_state(6)` for a unit that cannot move ([`Commanded::ready`]): the range
+    /// The start's `set_state(6)` for a unit that cannot move ([`Attack::command`]): the range
     /// test again, and the swing when it is ready, on the world's parts `g`.
     ///
     /// # Errors
@@ -250,7 +309,7 @@ impl Attack {
     /// What the range test and the swing do not model.
     pub(crate) fn enter_ready(
         &mut self,
-        unit: &mut crate::objects::unit::Unit,
+        unit: &mut Unit,
         g: &mut Ground<'_>,
         f: &Fight,
         r: &AttackReads,

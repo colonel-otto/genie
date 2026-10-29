@@ -1420,6 +1420,45 @@ fn standing_arms() -> Arms {
     }
 }
 
+/// What the attack command's start found ([`Attack::own_start`] on target 7 of `owner`,
+/// `visible` or not): the Attack, readyToAttack's answer and the notifies it posted.
+#[derive(Debug)]
+struct Started {
+    attack: Attack,
+    arrived: bool,
+    posted: Vec<(i32, [i32; 3])>,
+    ready: bool,
+    failed: bool,
+    failed_first: bool,
+}
+
+fn own_start(
+    world: &Spatial,
+    e: &Engagement,
+    arms: Arms,
+    visible: bool,
+    owner: usize,
+    mover: &mut Mover,
+) -> Result<Started, GenieError> {
+    let cmd = AttackCommand {
+        target: 7,
+        engagement: e,
+        arms,
+        visible,
+        target_owner: owner,
+        ready: None,
+    };
+    let (attack, begun, posted) = Attack::own_start(&cmd, world, mover)?;
+    Ok(Started {
+        attack,
+        arrived: begun.arrived,
+        posted,
+        ready: begun.ready,
+        failed: begun.failed,
+        failed_first: begun.failed_first,
+    })
+}
+
 /// The attack command's start of a unit that cannot move (no top speed, or a unit AI in
 /// stance 2 without an order, 426049998's scout 1222): readyToAttack's ready end in reach
 /// (the target's place the point, a NaN gap within) is `set_state(6)`; out of reach (0x1fd)
@@ -1429,7 +1468,7 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
     let start = |e: Engagement| {
         let mut mover = soldier_mover(e.speed);
         let world = world_with(7, 2, 6, e.target_position);
-        Attack::command((7, &world), &e, standing_arms(), (true, 2), &mut mover).unwrap()
+        own_start(&world, &e, standing_arms(), true, 2, &mut mover).unwrap()
     };
     for e in [
         engaged(0.5, 1.2, false, 2),
@@ -1475,8 +1514,7 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
         let mut mover = soldier_mover(e.speed);
         mover.animated.speed = 1.0;
         let world = world_with(7, 2, 6, e.target_position);
-        let c =
-            Attack::command((7, &world), &e, standing_arms(), (visible, 2), &mut mover).unwrap();
+        let c = own_start(&world, &e, standing_arms(), visible, 2, &mut mover).unwrap();
         assert_eq!((c.attack.state, c.ready, c.failed), (MOVE, false, false));
         assert_eq!(c.attack.move_to, Some(MoveTo::Start));
         (c.failed_first, c.posted, mover.animated.speed == 0.0)
@@ -1516,7 +1554,7 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
     let mut mover = soldier_mover(1.2);
     let e = engaged(3.0, 1.2, false, 2);
     let world = world_with(7, 2, 6, e.target_position);
-    let c = Attack::command((7, &world), &e, standing_arms(), (false, 2), &mut mover).unwrap();
+    let c = own_start(&world, &e, standing_arms(), false, 2, &mut mover).unwrap();
     assert_eq!((c.failed, c.ready, c.posted), (true, false, vec![]));
 }
 
@@ -1533,7 +1571,7 @@ fn the_start_faces_the_target_but_for_masters_1704_and_1706() {
         let mut mover = soldier_mover(0.0);
         mover.angle = 0.0;
         let e = Engagement { master, ..north };
-        let _ = Attack::command((7, &world), &e, standing_arms(), (true, 2), &mut mover).unwrap();
+        let _ = own_start(&world, &e, standing_arms(), true, 2, &mut mover).unwrap();
         mover.angle
     };
     assert_ne!(angle(4), 0.0);
@@ -1567,11 +1605,12 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
         ..engaged(3.0, 0.0, false, 2)
     };
     let mut mover_body = Body::new([10.0, 10.0, 0.0], None, Some(soldier_mover(0.0)));
-    let c = Attack::command(
-        (7, &world),
+    let c = own_start(
+        &world,
         &e,
         standing_arms(),
-        (true, 2),
+        true,
+        2,
         mover_body.mover_mut().unwrap(),
     )
     .unwrap();
@@ -1580,7 +1619,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
     // without its parts the gate is out of reach
     let bare = world_with(7, 0, GATE, gate_at);
     let mut mover = soldier_mover(0.0);
-    let c = Attack::command((7, &bare), &e, standing_arms(), (true, 2), &mut mover).unwrap();
+    let c = own_start(&bare, &e, standing_arms(), true, 2, &mut mover).unwrap();
     assert_eq!((c.ready, c.failed), (false, true));
     // an update's readyToAttack the same way
     let victim = Victim {

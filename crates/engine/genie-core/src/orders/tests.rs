@@ -421,7 +421,7 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
 }
 
 /// The attack task's Attack of a soldier without a unit AI (it cannot move) touching the wolf
-/// goes ready at its start (`set_state(6)`, [`super::attack::ready_at_start`]): with its reload
+/// goes ready at its start (`set_state(6)`, [`crate::combat::attack::Attack::command`]): with its reload
 /// under way it waits ready on its standing sprite; with it done it swings at once on its
 /// attack sprite.
 #[test]
@@ -447,63 +447,6 @@ fn an_attack_task_of_a_unit_that_cannot_move_goes_ready_in_reach() {
         );
         assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(sprite));
     }
-}
-
-/// [`super::attack::ready_at_start`] on an Attack of its own with neither a target nor a
-/// point: at ready it posts the action's end (0x1fa), a part of the swing the start does not
-/// model, and fails.
-#[test]
-fn an_attack_task_s_ready_start_fails_on_a_post_it_does_not_model() {
-    use super::attack::ready_at_start;
-    let (mut t, task) = work_attack(0);
-    let unit = &mut t.players[1].objects[0];
-    unit.ai = None;
-    unit.attack_timer = 0.5;
-    t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
-        .unwrap();
-    let unit = &mut t.players[1].objects[0];
-    let mut attack = unit.actions.take_attack().expect("the soldier's Attack");
-    assert!(!attack.sub_action);
-    attack.target = -1;
-    attack.point = [crate::math::image::attack::NONE; 3];
-    let (reads, fight) = soldier_reads(&t);
-    let unit = &mut t.players[1].objects[0];
-    let r = ready_at_start(
-        &mut attack,
-        unit,
-        (&t.spatial, &mut crate::math::rng::Well512::default()),
-        &reads,
-        &fight,
-    );
-    assert_eq!(
-        r.err().map(|e| e.reason()),
-        Some("an attack task's swing at its start")
-    );
-}
-
-/// What the soldier of [`work_attack`]'s world reads in its Attack, as
-/// [`World::start_attack`] builds it ([`crate::combat::attack::AttackReads::of`]), and a fight
-/// of default combat objects.
-fn soldier_reads(
-    t: &World,
-) -> (
-    crate::combat::attack::AttackReads,
-    crate::combat::attack::Fight,
-) {
-    let u = &t.players[1].objects[0];
-    let master = u.master(&t.masters, 1).expect("the soldier's master");
-    let reads = crate::combat::attack::AttackReads::of(
-        u,
-        master,
-        (t.masters.get(1), &t.graphics),
-        u.ai.as_ref(),
-        (t.players[1].computer, t.world_time),
-    );
-    let fight = crate::combat::attack::Fight {
-        victim: crate::combat::damage::Victim::default(),
-        own: crate::combat::damage::Victim::default(),
-    };
-    (reads, fight)
 }
 
 /// Gaia's main building 60 (master 200, class 3) at (20.5, 20.5) and its annex 61 (master 201,
@@ -3433,52 +3376,46 @@ fn a_drop_off_order_fails_on_what_it_does_not_hold() {
     assert_eq!(t.players[1].objects[0], before);
 }
 
-/// The attack command's answer settled ([`super::attack`]'s `settle_command`): readyToAttack's
-/// failure first runs the animation at speed 1; the start's notifies go to the unit AI; a
-/// failure out of reach fails the Attack; a ready unit without a unit AI waits ready on its
-/// reload; a `MoveTo` started arrived shows the standing sprite at the standing speed; with
-/// none of them the Attack and the unit stay.
+/// The attack task's start ends where the game's start does ([`crate::combat::attack::Attack::command`]
+/// on the soldier's step): with the wolf out of reach a soldier that may move posts 0x1fd to its
+/// unit AI and turns to state 4, and one that cannot move (no unit AI) fails at once
+/// (`set_state(13)`: its animation at speed 1, its standing sprite); with the wolf in reach a
+/// soldier that may move starts its `MoveTo` arrived and shows its standing sprite.
 #[test]
-fn an_attack_task_settles_what_its_command_answered() {
-    use crate::combat::attack::{Commanded, FAILED, READY};
-    fn shown_sprite(t: &World) -> Option<i16> {
-        t.players[1].objects[0].sprite.map(|s| s.graphic.id)
-    }
-    let settled = |f: fn(&mut Commanded), ai: bool| {
+fn an_attack_task_s_start_ends_where_the_start_does() {
+    use crate::combat::attack::{FAILED, MOVE};
+    let started = |ai: bool, at: f32| {
         let (mut t, task) = work_attack(0);
-        if !ai {
-            t.players[1].objects[0].ai = None;
-        }
-        t.players[1].objects[0].attack_timer = 0.5;
-        t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
-            .unwrap();
         let unit = &mut t.players[1].objects[0];
-        let attack = unit.actions.take_attack().expect("the soldier's Attack");
+        if !ai {
+            unit.ai = None;
+        }
         unit.body.set_anim_speed(0.5);
-        let mut commanded = Commanded {
-            attack,
-            arrived: false,
-            posted: Vec::new(),
-            ready: false,
-            failed: false,
-            failed_first: false,
-        };
-        f(&mut commanded);
-        let (reads, fight) = soldier_reads(&t);
-        let attack = t.settle_command(1, 0, commanded, (&reads, &fight)).unwrap();
+        let mut wolf = *t.spatial.get(50).unwrap();
+        wolf.position = [at, 10.0, 0.0];
+        t.spatial.insert(50, wolf);
+        t.players[0].objects[0].body = crate::objects::layers::Body::at([at, 10.0, 0.0]);
+        t.start_attack(1, 0, 50, &task, [at, 10.0, 0.0], true)
+            .unwrap();
         let unit = &t.players[1].objects[0];
+        let state = unit.actions.attack().map(|a| a.state);
         let notifies = unit.ai.as_ref().map(|ai| ai.notifies.len());
-        (attack, shown_sprite(&t), unit.body.anim_speed(), notifies)
+        let sprite = unit.sprite.map(|s| s.graphic.id);
+        (state, unit.body.anim_speed(), sprite, notifies)
     };
-    let (plain, sprite, speed, notifies) = settled(|_| {}, true);
-    assert_eq!((sprite, speed), (Some(300), Some(0.5)));
-    assert_eq!(settled(|c| c.failed_first = true, true).2, Some(1.0));
-    let posted = settled(|c| c.posted = vec![(0x1fd, [600, 0, 0])], true).3;
-    assert_eq!(posted, notifies.map(|n| n + 1));
-    assert_eq!(settled(|c| c.failed = true, true).0.state, FAILED);
-    assert_eq!(settled(|c| c.ready = true, false).0.state, READY);
-    let (arrived, sprite, speed, _) = settled(|c| c.arrived = true, true);
-    assert_eq!((arrived, sprite, speed), (plain, Some(300), Some(0.0)));
+    let (near, _, sprite, near_notifies) = started(true, 10.4);
+    assert_eq!(sprite, Some(300));
+    let (far, _, _, far_notifies) = started(true, 30.0);
+    assert_eq!(
+        (far, far_notifies),
+        (Some(MOVE), near_notifies.map(|n| n + 1))
+    );
+    assert_ne!(near, None);
+    let (failed, speed, sprite, _) = started(false, 30.0);
+    assert_eq!(
+        (failed, speed, sprite),
+        (Some(FAILED), Some(1.0), Some(300))
+    );
 }
 
 /// The work command's task (`FUN_14106ff70`): none on a point; the forager's Gather task 2 on

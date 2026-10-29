@@ -3,7 +3,7 @@
 //! target as a hit reads it, the start's readiness, the target's sight and a villager's swap.
 
 use crate::GenieError;
-use crate::combat::attack::{AttackReads, Fight, Ground};
+use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
 use crate::map::spatial::Placed;
@@ -115,46 +115,16 @@ impl UnitView<'_, '_> {
             standing,
             self.c.w.streams.get(Stream::Sprite),
         );
-        let mover = unit.body.mover_mut().expect("its speed read above");
-        let crate::combat::attack::Commanded {
-            mut attack,
-            arrived,
-            mut posted,
-            ready,
-            failed,
-            failed_first,
-        } = crate::combat::attack::Attack::command(
-            (target, &self.c.w.spatial),
-            &e,
+        let cmd = crate::combat::attack::AttackCommand {
+            target,
+            engagement: &e,
             arms,
-            (visible, t.player),
-            mover,
-        )?;
-        if failed_first {
-            unit.body.set_anim_speed(1.0);
-        }
-        if failed {
-            attack.fail_at_start(
-                &mut unit.sprite,
-                &mut unit.body,
-                self.c.w.streams.get(Stream::Sprite),
-            )?;
-        }
-        if ready {
-            posted.extend(self.ready_at_start(&mut attack, master, ai)?);
-        }
+            visible,
+            target_owner: t.player,
+            ready: self.ready_reads(target, master, ai),
+        };
         let unit = &mut *self.unit;
-        let mover = unit.body.mover_mut().expect("its speed read above");
-        if arrived {
-            // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): the master's standing
-            // sprite with its speed, `+0x7b8` cleared; the next update's state 4 ends the MoveTo
-            mover.shows_standing();
-            unit.shows_standing_sprite(
-                self.c.w.masters.get(self.player),
-                &self.c.w.graphics,
-                self.c.w.streams.get(Stream::Sprite),
-            )?;
-        }
+        let (attack, posted) = crate::combat::attack::Attack::command(self.c, unit, &cmd)?;
         unit.actions.set_attack(Some(attack));
         self.take(target, by);
         Ok(crate::unit_ai::Attacked {
@@ -315,23 +285,19 @@ impl UnitView<'_, '_> {
         ))
     }
 
-    /// The start's `set_state(6)` of the unit's new Attack ([`crate::combat::attack::Attack::enter_ready`])
-    /// with what its readyToAttack and its swing read: the target as a hit reads it
-    /// ([`UnitView::victim_of_target`]), the unit as a combat object, its unit AI's stance, leash
-    /// and queue ([`AttackReads::of`] with the AI that runs). Returns the notifies it posted,
-    /// which the running AI takes. Its swing lands no hit and fires nothing before its update.
-    fn ready_at_start(
-        &mut self,
-        attack: &mut crate::combat::attack::Attack,
+    /// What the start's `set_state(6)` of the unit's new Attack on `target` reads
+    /// ([`crate::combat::attack::ReadyReads`]): the target as a hit reads it
+    /// ([`UnitView::victim_of_target`]; None when the world does not hold it live), the unit as a
+    /// combat object, its unit AI's stance, leash and queue ([`AttackReads::of`] with the AI that
+    /// runs).
+    fn ready_reads(
+        &self,
+        target: i32,
         master: &crate::objects::masters::Master,
         ai: &UnitAi,
-    ) -> Result<Vec<(i32, [i32; 3])>, GenieError> {
-        let victim = self
-            .victim_of_target(attack.target)
-            .ok_or(GenieError::unsupported(
-                "an attack's target the slice does not hold live",
-            ))?;
-        let unit = &mut *self.unit;
+    ) -> Option<crate::combat::attack::ReadyReads> {
+        let victim = self.victim_of_target(target)?;
+        let unit = &*self.unit;
         let own = victim_of(
             unit,
             master,
@@ -347,16 +313,10 @@ impl UnitView<'_, '_> {
             Some(ai),
             (self.computer, self.c.w.world_time),
         );
-        let fight = Fight { victim, own };
-        let mut posted = Vec::new();
-        let mut g = Ground {
-            map: &self.c.w.spatial,
-            sprite_rng: self.c.w.streams.get(Stream::Sprite),
-            object_rng: None,
-            buffer: Some(&mut posted),
-        };
-        attack.enter_ready(unit, &mut g, &fight, &reads)?;
-        Ok(posted)
+        Some(crate::combat::attack::ReadyReads {
+            reads,
+            fight: Fight { victim, own },
+        })
     }
 
     /// The attack command's sight of its target `t` (of master `t_master`): its tile seen by the

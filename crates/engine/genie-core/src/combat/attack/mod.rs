@@ -183,35 +183,48 @@ pub struct Attack {
     pub same_owner: bool,
 }
 
-/// A unit's own Attack as the attack command made it ([`Attack::command`]).
-#[derive(Clone, Debug, PartialEq)]
-pub struct Commanded {
-    /// The attack.
-    pub attack: Attack,
-    /// Its last `MoveTo` started arrived.
-    pub arrived: bool,
-    /// The notifies its start posted (kind and three parameters).
-    pub posted: Vec<(i32, [i32; 3])>,
-    /// A unit that cannot move in reach of its target: its start's `set_state(6)` (READY) is the
-    /// caller's ([`Attack::enter_ready`]), with what the swing reads.
-    pub ready: bool,
-    /// A unit that cannot move out of reach of its target: its start's `set_state(13)` is the
-    /// caller's ([`Attack::fail_at_start`]).
-    pub failed: bool,
-    /// readyToAttack failed it (`set_state(13)`) before the start's `set_state(4)` replaced that:
-    /// the unit's animation runs at speed 1 (`+0x7b8`), the caller's; the standing sprite
-    /// `set_state(13)` shows is the start's already.
-    pub failed_first: bool,
+/// A notify an Attack's start posts to its unit's AI: its kind and three parameters.
+pub(crate) type Posted = (i32, [i32; 3]);
+
+/// A unit's own Attack command ([`Attack::command`]): its target, what it engages and with
+/// which arms, the target's sight and owner, and what the start's `set_state(6)` reads.
+#[derive(Clone, Debug)]
+pub(crate) struct AttackCommand<'a> {
+    /// The target.
+    pub(crate) target: i32,
+    /// What the Attack reads of its unit and its target as it starts.
+    pub(crate) engagement: &'a Engagement,
+    /// Its sprites, missile and frames.
+    pub(crate) arms: Arms,
+    /// The target is in the unit's player's sight (its slot 0x1e0 0xf, or 0x80 with its
+    /// master's fog flag).
+    pub(crate) visible: bool,
+    /// The target's owner.
+    pub(crate) target_owner: usize,
+    /// What the start's `set_state(6)` reads ([`ReadyReads`]); None when the world does not hold
+    /// the target live.
+    pub(crate) ready: Option<ReadyReads>,
 }
 
-/// How the start ([`Attack::begin`]) leaves an Attack.
+/// What the start's `set_state(6)` reads for its range test and swing
+/// ([`Attack::enter_ready`]), read as the command starts.
+#[derive(Clone, Debug)]
+pub(crate) struct ReadyReads {
+    /// The swing's reads of the attacker.
+    pub(crate) reads: AttackReads,
+    /// The target and the attacker as combat objects.
+    pub(crate) fight: Fight,
+}
+
+/// readyToAttack's answer to the start ([`Attack::begin`]), which the start's end follows
+/// ([`Attack::command`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Begun {
     /// Its last `MoveTo` started arrived.
     arrived: bool,
-    /// It ends in `set_state(6)`, the caller's.
+    /// The start ends in `set_state(6)`.
     ready: bool,
-    /// It ends in `set_state(13)`, the caller's.
+    /// The start ends in `set_state(13)`.
     failed: bool,
     /// readyToAttack's `set_state(13)` came before the start's `set_state(4)`.
     failed_first: bool,

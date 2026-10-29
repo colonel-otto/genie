@@ -1,10 +1,8 @@
 //! An attack's start, a hunt's and an action's retarget.
 
 use crate::GenieError;
-use crate::combat::attack::{Attack, AttackReads, Fight, Ground};
-use crate::map::spatial::Spatial;
-use crate::math::rng::{Stream, Well512};
-use crate::objects::unit::Unit;
+use crate::combat::attack::{Attack, AttackReads, Fight};
+use crate::math::rng::Stream;
 use crate::orders::BUILDING;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -22,33 +20,6 @@ pub(super) struct Aim {
     pub(super) aimed: i32,
     pub(super) at: [f32; 3],
     pub(super) aimed_class: i32,
-}
-
-/// The attack task's Attack in reach of a unit that cannot move goes ready at its start
-/// (`set_state(6)`, [`Attack::enter_ready`]) on the map without the Object stream, with what
-/// the swing reads of the attacker (`r`) and its target and itself as combat objects (`f`); a
-/// swing it would start then (a notify) is not modelled.
-pub(super) fn ready_at_start(
-    attack: &mut Attack,
-    unit: &mut Unit,
-    (map, sprite_rng): (&Spatial, &mut Well512),
-    r: &AttackReads,
-    f: &Fight,
-) -> Result<(), GenieError> {
-    let mut posted = Vec::new();
-    let mut g = Ground {
-        map,
-        sprite_rng,
-        object_rng: None,
-        buffer: Some(&mut posted),
-    };
-    attack.enter_ready(unit, &mut g, f, r)?;
-    if !posted.is_empty() {
-        return Err(GenieError::unsupported(
-            "an attack task's swing at its start",
-        ));
-    }
-    Ok(())
 }
 
 impl World {
@@ -115,10 +86,12 @@ impl World {
             self.spatial.terrain.as_ref(),
             self.mode_680,
         );
-        let victim = self.victim(target, player).ok_or(GenieError::unsupported(
-            "an attack's target the slice does not hold live",
-        ))?;
-        let fight = Fight { victim, own };
+        let ready = self
+            .victim(target, player)
+            .map(|victim| crate::combat::attack::ReadyReads {
+                reads,
+                fight: Fight { victim, own },
+            });
         let speed = self.players[player].objects[idx]
             .body
             .mover()
@@ -146,83 +119,28 @@ impl World {
             standing,
             self.streams.get(Stream::Sprite),
         );
-        let mover = unit
-            .body
-            .mover_mut()
-            .ok_or(crate::world::ATTACKER_UNMOVING)?;
-        let commanded = Attack::command(
-            (target, &self.spatial),
-            &e,
+        let cmd = crate::combat::attack::AttackCommand {
+            target,
+            engagement: &e,
             arms,
-            (visible, aim.owner),
-            mover,
-        )?;
-        let mut attack = self.settle_command(player, idx, commanded, (&reads, &fight))?;
-        attack.target2 = target;
-        self.players[player].objects[idx]
-            .actions
-            .set_attack(Some(attack));
-        self.take(target, self.releaser(player, idx));
-        Ok(())
-    }
-
-    /// The attack task's Attack of object `idx` of `player` as its command left it
-    /// ([`Attack::command`]): readyToAttack's failure before the start runs the animation at
-    /// speed 1; the start's notifies go to the unit AI; a unit that cannot move fails out of
-    /// reach ([`Attack::fail_at_start`]) or goes ready in it ([`ready_at_start`], with what the
-    /// swing reads: `start`); a `MoveTo` that starts arrived shows the standing sprite at its
-    /// speed (`0x140aa29e0`).
-    pub(super) fn settle_command(
-        &mut self,
-        player: usize,
-        idx: usize,
-        commanded: crate::combat::attack::Commanded,
-        (reads, fight): (&AttackReads, &Fight),
-    ) -> Result<Attack, GenieError> {
-        let crate::combat::attack::Commanded {
-            mut attack,
-            arrived,
-            posted,
+            visible,
+            target_owner: aim.owner,
             ready,
-            failed,
-            failed_first,
-        } = commanded;
+        };
+        let (mut attack, posted) =
+            self.run_on_step(player, idx, |unit, c| Attack::command(c, unit, &cmd))?;
+        // the start's notifies go to the unit AI (the unit's slot 0x328 -> the AI's slot 0x38)
         let unit = &mut self.players[player].objects[idx];
-        if failed_first {
-            // readyToAttack's set_state(13) before the start's set_state(4)
-            unit.body.set_anim_speed(1.0);
-        }
         let (id, state) = (unit.id, unit.life.state);
         for (kind, p) in posted {
             if let Some(ai) = unit.ai.as_mut() {
                 ai.post(crate::unit_ai::Notify::own(id, kind, p), state)?;
             }
         }
-        if failed {
-            attack.fail_at_start(
-                &mut unit.sprite,
-                &mut unit.body,
-                self.streams.get(Stream::Sprite),
-            )?;
-        }
-        if ready {
-            let sprite_rng = self.streams.get(Stream::Sprite);
-            ready_at_start(&mut attack, unit, (&self.spatial, sprite_rng), reads, fight)?;
-        }
-        if arrived {
-            // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): slot 0x68 with the
-            // standing sprite (slot 0x798) at its speed, `+0x7b8` cleared; the next update's state
-            // 4 ends the MoveTo
-            if let Some(m) = unit.body.mover_mut() {
-                m.shows_standing();
-            }
-            unit.shows_standing_sprite(
-                self.masters.get(player),
-                &self.graphics,
-                self.streams.get(Stream::Sprite),
-            )?;
-        }
-        Ok(attack)
+        attack.target2 = target;
+        unit.actions.set_attack(Some(attack));
+        self.take(target, self.releaser(player, idx));
+        Ok(())
     }
 
     /// Where an attack task on `target` aims (`FUN_141189b20`): a building annex at its main

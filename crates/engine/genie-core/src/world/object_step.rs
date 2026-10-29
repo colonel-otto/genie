@@ -70,21 +70,25 @@ impl World {
 
     /// Runs `f` on object `i` of player `p` with its step outside its update: a command's part
     /// the game runs on the object at once (`UNIT_ORDER`'s drop-off), [`World::step_object`]
-    /// without the update's own parts.
+    /// without the update's own parts. Returns `f`'s answer.
     ///
     /// # Errors
     ///
     /// `f`'s, and what its effects do not model.
-    pub(crate) fn run_on_step(
+    pub(crate) fn run_on_step<R>(
         &mut self,
         p: usize,
         i: usize,
-        f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<(), GenieError>,
-    ) -> Result<(), GenieError> {
+        f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<R, GenieError>,
+    ) -> Result<R, GenieError> {
+        let mut answer = None;
         let _ = self.step_object((p, i), (0, None, false), |unit, c| {
-            f(unit, c).map(|()| Outcome::Stay)
+            answer = Some(f(unit, c)?);
+            Ok(Outcome::Stay)
         })?;
-        Ok(())
+        answer.ok_or(GenieError::unreachable(
+            "a world routine's step without its answer",
+        ))
     }
 
     /// Runs `f` on the unit AI of object `i` of player `p` for a world routine outside its update
