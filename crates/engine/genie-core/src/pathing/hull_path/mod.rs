@@ -35,8 +35,12 @@ mod rounds;
 mod setup;
 mod walks;
 
+#[cfg(test)]
+use self::node_lists::{NewNode, UnrefusedNode};
 pub(crate) use self::setup::{NO_RESTRICTION, NO_TERRAIN};
 pub use self::setup::{quick_reach, quick_reach_from};
+#[cfg(test)]
+use self::walks::{WalkIn, WalkOut};
 #[cfg(test)]
 use crate::map::spatial::{Placed, tile_record_id};
 

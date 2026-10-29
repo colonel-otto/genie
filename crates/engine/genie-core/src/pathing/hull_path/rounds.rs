@@ -2,6 +2,8 @@
 //! the goal's, then the A* over the hulls' points, again after the area grew.
 
 use crate::GenieError;
+use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
+use crate::pathing::hull_path::walks::{WalkIn, WalkOut};
 use crate::pathing::hull_path::{
     GROWTHS, HullPather, HullQuery, ITERATION_CAP, MOST, NUDGE, PATHS, Point, Waypoints,
 };
@@ -106,7 +108,15 @@ impl HullPather<'_> {
         if !keep && rounds.growths == 0 {
             self.build_hulls()?;
         }
-        let root = self.add_unrefused(0, true, None, q.from, Some(q.to), -1, -1);
+        let root = self.add_unrefused(UnrefusedNode {
+            l: 0,
+            open: true,
+            parent: None,
+            at: q.from,
+            goal: Some(q.to),
+            hull: -1,
+            direction: -1,
+        });
         rounds.start_hull = self.hull_of(q.from);
         rounds.goal_hull = self.hull_of(q.to);
         rounds.within = false;
@@ -138,17 +148,17 @@ impl HullPather<'_> {
         if rounds.start_hull == rounds.goal_hull {
             path.points.clear();
             let mut count = 0;
-            let walk = self.walk_out(
-                sh,
-                q.from,
-                Some(q.to),
-                q.target,
-                q.range,
-                false,
-                std::slice::from_mut(path),
-                1,
-                &mut count,
-            )?;
+            let walk = self.walk_out(WalkOut {
+                hull: sh,
+                from: q.from,
+                goal: Some(q.to),
+                target: q.target,
+                range: q.range,
+                nudge: false,
+                paths: std::slice::from_mut(path),
+                most: 1,
+                count: &mut count,
+            })?;
             if walk.result == 0 {
                 let partial = q.target.is_some() && q.target_id < 1;
                 return Ok(Some(if partial { 2 } else { 1 }));
@@ -175,9 +185,17 @@ impl HullPather<'_> {
             e.points.clear();
         }
         let mut count = 0;
-        let walk = self.walk_out(
-            hull, from, None, None, range, true, &mut exits, PATHS, &mut count,
-        );
+        let walk = self.walk_out(WalkOut {
+            hull,
+            from,
+            goal: None,
+            target: None,
+            range,
+            nudge: true,
+            paths: &mut exits,
+            most: PATHS,
+            count: &mut count,
+        });
         self.exits = exits;
         let _ = walk?;
         Ok(count)
@@ -195,10 +213,26 @@ impl HullPather<'_> {
             }
             let mut node = root;
             for &p in &points[1..n - 1] {
-                node = self.add_unrefused(0, false, Some(node), p, Some(to), start_hull, -1);
+                node = self.add_unrefused(UnrefusedNode {
+                    l: 0,
+                    open: false,
+                    parent: Some(node),
+                    at: p,
+                    goal: Some(to),
+                    hull: start_hull,
+                    direction: -1,
+                });
             }
             let last = points[n - 1];
-            let _ = self.add_unrefused(0, true, Some(node), last, Some(to), start_hull, -1);
+            let _ = self.add_unrefused(UnrefusedNode {
+                l: 0,
+                open: true,
+                parent: Some(node),
+                at: last,
+                goal: Some(to),
+                hull: start_hull,
+                direction: -1,
+            });
         }
     }
 
@@ -214,16 +248,16 @@ impl HullPather<'_> {
         self.hulls[hull].entrances = vec![-1; n];
         let mut count = 0;
         let mut sides = [0usize; PATHS];
-        let walk = self.walk_in(
+        let walk = self.walk_in(WalkIn {
             hull,
-            q.to,
-            q.from,
-            q.target,
-            &mut entrances,
-            &mut sides,
-            PATHS,
-            &mut count,
-        );
+            from: q.to,
+            to: q.from,
+            target: q.target,
+            paths: &mut entrances,
+            sides_out: &mut sides,
+            most: PATHS,
+            count: &mut count,
+        });
         self.entrances = entrances;
         let entered_box = walk?.result == 5;
         self.join_entrances(hull, count, &sides);
@@ -272,7 +306,15 @@ impl HullPather<'_> {
         if hit as i32 == self.nodes[best].hull && 0 <= vertex {
             return Ok(Expanded::Next);
         }
-        let node = self.add_unrefused(0, false, Some(best), p, Some(q.to), hit as i32, -1);
+        let node = self.add_unrefused(UnrefusedNode {
+            l: 0,
+            open: false,
+            parent: Some(best),
+            at: p,
+            goal: Some(q.to),
+            hull: hit as i32,
+            direction: -1,
+        });
         rounds.nearer(node, self.nodes[node].to_goal);
         self.around_hull(node, hit, edge, q.to);
         Ok(Expanded::Next)
@@ -330,8 +372,17 @@ impl HullPather<'_> {
     ) -> Result<Expanded, GenieError> {
         let (at, vertex) = (self.nodes[best].at, self.nodes[best].vertex);
         if !self.blocked(at, q.to)? {
-            rounds.best_node =
-                self.add_node(0, false, Some(best), q.to, Some(q.to), -1, -1, -1, false);
+            rounds.best_node = self.add_node(NewNode {
+                l: 0,
+                open: false,
+                parent: Some(best),
+                at: q.to,
+                goal: Some(q.to),
+                hull: -1,
+                vertex: -1,
+                direction: -1,
+                by_place: false,
+            });
             rounds.found = true;
             return Ok(Expanded::End);
         }
@@ -361,21 +412,31 @@ impl HullPather<'_> {
         for _ in 0..np / 2 {
             if let Some(x) = a {
                 let p = self.hulls[hit].points[back as usize];
-                a = self.add_node(0, true, Some(x), p, Some(to), hit as i32, back, -1, false);
+                a = self.add_node(NewNode {
+                    l: 0,
+                    open: true,
+                    parent: Some(x),
+                    at: p,
+                    goal: Some(to),
+                    hull: hit as i32,
+                    vertex: back,
+                    direction: -1,
+                    by_place: false,
+                });
             }
             if let Some(x) = b {
                 let p = self.hulls[hit].points[fwd];
-                b = self.add_node(
-                    0,
-                    true,
-                    Some(x),
-                    p,
-                    Some(to),
-                    hit as i32,
-                    fwd as i32,
-                    -1,
-                    false,
-                );
+                b = self.add_node(NewNode {
+                    l: 0,
+                    open: true,
+                    parent: Some(x),
+                    at: p,
+                    goal: Some(to),
+                    hull: hit as i32,
+                    vertex: fwd as i32,
+                    direction: -1,
+                    by_place: false,
+                });
             }
             back -= 1;
             if back < 0 {
@@ -405,20 +466,30 @@ impl HullPather<'_> {
         match (a, b) {
             (None, None) => {}
             (Some(x), y) if y.is_none_or(|y| self.nodes[x].cost < self.nodes[y].cost) => {
-                let _ = self.add_node(0, true, Some(x), qa, Some(to), hit as i32, back, -1, false);
+                let _ = self.add_node(NewNode {
+                    l: 0,
+                    open: true,
+                    parent: Some(x),
+                    at: qa,
+                    goal: Some(to),
+                    hull: hit as i32,
+                    vertex: back,
+                    direction: -1,
+                    by_place: false,
+                });
             }
             (_, Some(y)) => {
-                let _ = self.add_node(
-                    0,
-                    true,
-                    Some(y),
-                    qb,
-                    Some(to),
-                    hit as i32,
-                    fwd as i32,
-                    -1,
-                    false,
-                );
+                let _ = self.add_node(NewNode {
+                    l: 0,
+                    open: true,
+                    parent: Some(y),
+                    at: qb,
+                    goal: Some(to),
+                    hull: hit as i32,
+                    vertex: fwd as i32,
+                    direction: -1,
+                    by_place: false,
+                });
             }
             (Some(_), None) => unreachable!("taken by the arm above"),
         }

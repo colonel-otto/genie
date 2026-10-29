@@ -6,6 +6,49 @@ use crate::map::spatial::Hit;
 use crate::math::fmath::sqrt;
 use crate::pathing::hull_path::{EPSILON, HullPather, LINE_HITS, Node, Point, Waypoints};
 
+/// A node `MShortPather::addNode` may refuse ([`HullPather::add_node`]'s arguments).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct NewNode {
+    /// The list.
+    pub(super) l: usize,
+    /// Whether it goes into the open list (else straight into the closed one).
+    pub(super) open: bool,
+    /// The node it comes from.
+    pub(super) parent: Option<usize>,
+    /// Its place.
+    pub(super) at: Point,
+    /// The goal its distance is to (none: 0).
+    pub(super) goal: Option<Point>,
+    /// Its hull (−1 none).
+    pub(super) hull: i32,
+    /// Its hull vertex (−1 none).
+    pub(super) vertex: i32,
+    /// The direction it walks (−1 none).
+    pub(super) direction: i32,
+    /// Whether an equal node is one within [`EPSILON`] of the place, not one of the same hull
+    /// point.
+    pub(super) by_place: bool,
+}
+
+/// A node `addNode` cannot refuse ([`HullPather::add_unrefused`]'s arguments).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct UnrefusedNode {
+    /// The list.
+    pub(super) l: usize,
+    /// Whether it goes into the open list (else straight into the closed one).
+    pub(super) open: bool,
+    /// The node it comes from.
+    pub(super) parent: Option<usize>,
+    /// Its place.
+    pub(super) at: Point,
+    /// The goal its distance is to (none: 0).
+    pub(super) goal: Option<Point>,
+    /// Its hull (−1 none).
+    pub(super) hull: i32,
+    /// The direction it walks (−1 none).
+    pub(super) direction: i32,
+}
+
 impl HullPather<'_> {
     // The node lists.
 
@@ -48,19 +91,18 @@ impl HullPather<'_> {
     /// open one of the same hull point (`by_place`: within [`EPSILON`] of the same place) that
     /// costs more, which closes; it is not made when such a node costs no more, nor when a closed
     /// node does (`by_place`: of the closed list but its last).
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn add_node(
-        &mut self,
-        l: usize,
-        open: bool,
-        parent: Option<usize>,
-        at: Point,
-        goal: Option<Point>,
-        hull: i32,
-        vertex: i32,
-        direction: i32,
-        by_place: bool,
-    ) -> Option<usize> {
+    pub(super) fn add_node(&mut self, new: NewNode) -> Option<usize> {
+        let NewNode {
+            l,
+            open,
+            parent,
+            at,
+            goal,
+            hull,
+            vertex,
+            direction,
+            by_place,
+        } = new;
         let (cost, to_goal) = self.node_costs(parent, at, goal);
         let mut after: Option<usize> = None;
         if open && (by_place || (0 <= hull && 0 <= vertex)) {
@@ -126,17 +168,16 @@ impl HullPather<'_> {
     /// without a hull point and not by place, for which `addNode` searches no list. The game's
     /// callers test its answer for null, which then catches only a failed allocation (the roots
     /// of `FindShortPath` and `pathWithinHull`, `FindShortPath`'s crossing node).
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn add_unrefused(
-        &mut self,
-        l: usize,
-        open: bool,
-        parent: Option<usize>,
-        at: Point,
-        goal: Option<Point>,
-        hull: i32,
-        direction: i32,
-    ) -> usize {
+    pub(super) fn add_unrefused(&mut self, new: UnrefusedNode) -> usize {
+        let UnrefusedNode {
+            l,
+            open,
+            parent,
+            at,
+            goal,
+            hull,
+            direction,
+        } = new;
         let (cost, to_goal) = self.node_costs(parent, at, goal);
         self.link_node(
             l,
