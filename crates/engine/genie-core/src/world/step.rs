@@ -59,9 +59,6 @@ pub(crate) struct Step<'a> {
     /// object itself, or of an annex of it: the building `FUN_140aaddb0` gives counts one
     /// builder less ([`World::leave_builders`]), the caller's before the releases.
     pub(crate) builder_leaves: Vec<i32>,
-    /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
-    /// building: the caller runs the group's removeUnit ([`World::remove_unit`]).
-    pub(crate) left_group: Option<(i32, i32)>,
     /// The owner's id: the updating object's player, whose fields the update reads through
     /// the world (`w.players[player]`).
     pub(crate) player: usize,
@@ -94,8 +91,7 @@ pub(crate) struct Step<'a> {
 }
 
 /// What an object's step gathered in its `Step` for the world to apply after it
-/// ([`crate::world::World::step_object`]): the `Step`'s fields of the same meaning; the left
-/// group carries the unit's id.
+/// ([`crate::world::World::step_object`]): the `Step`'s fields of the same meaning.
 pub(crate) struct ObjectOutputs {
     /// [`Step`]'s `order_on_target`.
     pub(in crate::world) ordered: Option<(
@@ -122,16 +118,13 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) releases: Vec<(i32, Releaser)>,
     /// [`Step`]'s `builder_leaves`.
     pub(in crate::world) builder_leaves: Vec<i32>,
-    /// [`Step`]'s `left_group`.
-    pub(in crate::world) left_group: Option<(i32, i32, i32)>,
     /// [`Step`]'s `takes`.
     pub(in crate::world) takes: Vec<(i32, Releaser)>,
 }
 
 impl Step<'_> {
-    /// What the step gathered ([`ObjectOutputs`]), taken out of the `Step`; `id` is the
-    /// unit's.
-    pub(in crate::world) fn outputs(&mut self, id: i32) -> ObjectOutputs {
+    /// What the step gathered ([`ObjectOutputs`]), taken out of the `Step`.
+    pub(in crate::world) fn outputs(&mut self) -> ObjectOutputs {
         ObjectOutputs {
             ordered: self.order_on_target.take(),
             works: std::mem::take(&mut self.works),
@@ -144,7 +137,6 @@ impl Step<'_> {
             ai_resume: self.ai_resume.take(),
             releases: std::mem::take(&mut self.releases),
             builder_leaves: std::mem::take(&mut self.builder_leaves),
-            left_group: self.left_group.take().map(|(g, b)| (g, id, b)),
             takes: std::mem::take(&mut self.takes),
         }
     }

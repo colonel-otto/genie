@@ -104,9 +104,11 @@ impl Unit {
     }
 
     /// The Enter's enter in its update (`FUN_140a867b0` into `target`, [`Unit::enter_building`],
-    /// then the update's own `set_state(1)`): the load the building took goes to the owner, the
-    /// building gains the unit and its firepower at once, and the unit group it left is the
-    /// caller's ([`Step::left_group`]).
+    /// then the update's own `set_state(1)`): the unit group it left, when the world holds it
+    /// (`FUN_14152ff40`), loses it (removeUnit, `FUN_14102c160` with the building and 0:
+    /// [`crate::world::World::remove_unit`] on the unit lent back to its slot), the load the
+    /// building took goes to the owner, and the building gains the unit and its firepower, each
+    /// at once.
     pub(crate) fn enter_in_update(
         &mut self,
         c: &mut Step<'_>,
@@ -143,8 +145,12 @@ impl Unit {
         }
         // the update's own set_state(1) after the enter's
         self.entered(&mut w)?;
-        let firepower = w.firepower;
-        c.left_group = w.left_group.map(|g| (g, target));
+        let (firepower, left_group) = (w.firepower, w.left_group);
+        // removeUnit inside the enter; nothing between it and here reads the group or the gait
+        if let Some(g) = left_group.filter(|&g| c.w.groups.get(g).is_some()) {
+            let id = self.id;
+            c.lend(self, |w| w.remove_unit(g, id, target, false).map(drop))?;
+        }
         // the load the building took, the owner's within the enter (nothing after it in the
         // enter reads the attributes)
         c.w.players[c.player].add_attributes(adds)?;

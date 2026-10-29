@@ -4727,6 +4727,49 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
     assert_eq!(entered(true), Ok((Some(10028), vec![9175])));
 }
 
+/// The Enter's enter takes the unit out of its group in the update (removeUnit, `FUN_14102c160`
+/// inside `FUN_140a867b0`): the group has lost it and the unit its link while the update still
+/// runs.
+#[test]
+fn an_enter_s_unit_leaves_its_group_inside_the_update() {
+    let mut t = enter_world(vec![], 5);
+    let member = |id| crate::groups::Member {
+        id,
+        ..crate::groups::Member::default()
+    };
+    t.groups.groups.push(crate::groups::UnitGroup {
+        id: 7,
+        owner: 1,
+        members: vec![member(9175), member(401)],
+        ..crate::groups::UnitGroup::default()
+    });
+    let mut e = crate::garrison::EnterAction::new(
+        10028,
+        [30.0, 88.0, 0.0],
+        &crate::garrison::tests::enter_task(2.0, 3),
+    );
+    e.move_to = Some(MoveTo::Arrived);
+    let v = &mut t.players[1].objects[0];
+    v.place_for_test([29.5, 89.5, 0.0]);
+    v.actions.set_enter(Some(e));
+    v.group.id = 7;
+    let left = in_update(&mut t, (1, 0), 50, |unit, c| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let code = unit.enter_part(c, me)?;
+        unit.end_head_update(c, code)?;
+        let members: Vec<i32> =
+            c.w.groups
+                .get(7)
+                .map_or_else(Vec::new, |g| g.members.iter().map(|m| m.id).collect());
+        Ok((unit.life.inside, unit.group.id, members))
+    });
+    assert_eq!(left, Ok((Some(10028), -1, vec![401])));
+}
+
 /// An Enter that got the unit in, the unit let out again before its next update: that update's
 /// 1 has the action list remove it (its teardown lets the building go).
 #[test]

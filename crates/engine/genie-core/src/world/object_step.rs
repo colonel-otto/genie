@@ -62,7 +62,6 @@ impl World {
             releases: Vec::new(),
             takes: Vec::new(),
             builder_leaves: Vec::new(),
-            left_group: None,
             player: p,
             work_order: None,
             ai_resume: resume,
@@ -79,7 +78,7 @@ impl World {
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);
         }
-        let out = c.outputs(me);
+        let out = c.outputs();
         if let Some(e) = self.spatial.take_sight_unsupported()
             && result.is_ok()
         {

@@ -214,20 +214,12 @@ impl World {
     }
 
     /// What the hits' write-backs left, in the order the hits made it (the blast's objects, the
-    /// unit itself for a retaliation, its target): the kills and razings; then an entered unit's
-    /// leave of its group, the takes, the builders' leaves and the releases, a construction
-    /// start's clearing and the changed tiles.
+    /// unit itself for a retaliation, its target): the kills and razings; then the takes, the
+    /// builders' leaves and the releases, a construction start's clearing and the changed
+    /// tiles.
     fn apply_hits_and_releases(&mut self, out: &mut ObjectOutputs) -> Result<(), GenieError> {
         for k in std::mem::take(&mut out.kills) {
             self.kill_left(&k)?;
-        }
-        // an entered unit's removeUnit from its group (FUN_14102c160), when the world
-        // holds the group (FUN_14152ff40)
-        if let Some((g, id, building)) = out
-            .left_group
-            .filter(|&(g, ..)| self.groups.get(g).is_some())
-        {
-            let _ = self.remove_unit(g, id, building, false)?;
         }
         for (id, by) in std::mem::take(&mut out.takes) {
             self.take(id, by);
