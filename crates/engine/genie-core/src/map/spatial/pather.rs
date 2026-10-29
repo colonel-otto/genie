@@ -38,7 +38,6 @@ impl Spatial {
     /// map's edge records first ([`Spatial::edge_records`]).
     ///
     /// [`Gait::moving`]: crate::map::spatial::Gait::moving
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn pather_query(
         &mut self,
         a: [f32; 2],

@@ -63,7 +63,6 @@ impl Search<'_> {
 
     /// `FUN_140fa9630`: the trace left the bounds: walk the bounds' border from `pos` in the turn
     /// the side gives, to the first shape side the sweep meets (0) or the border's corner (1).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn border_walk(
         &self,
         pos: &mut Point,

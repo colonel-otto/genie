@@ -432,7 +432,6 @@ fn rank_entries(
 /// the closest moving one by its path; in an attack work state a current target on top;
 /// without path checks the top; else the first three by their paths, each one that fails
 /// ignored for 1 s (moving) or 2 s; last `last_resort`.
-#[allow(clippy::too_many_arguments)]
 fn choose(
     me: &Searcher,
     ask: &Ask,

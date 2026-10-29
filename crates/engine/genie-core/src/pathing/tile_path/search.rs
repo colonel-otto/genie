@@ -169,7 +169,6 @@ impl Planner {
 
     /// `FUN_140f764c0`: the neighbour across edge `dir` (the neighbour's edge back) of a node, at
     /// the level where it is a node cell; Some when it lies in the goal.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn expand(
         &mut self,
         level: u8,

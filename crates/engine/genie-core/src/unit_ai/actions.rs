@@ -92,7 +92,6 @@ impl UnitAi {
     /// to the owner, not held); with one, so does the invalidation of the order's own action
     /// (action + 100 = order); order `0x2d4` and `0x2bd` on action `0x262` are not modelled; any
     /// other invalidated attack forgets the target and stops; the rest go on.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn action_invalidated(
         &mut self,
         n: Notify,
@@ -149,7 +148,6 @@ impl UnitAi {
     /// else the target goes and the action stops, ending the order (slot 0xb0 with 0). With
     /// another order, the completion of the order's own action (action + 100 = order) stops it,
     /// and so do an attack's; order 724 and 701 end their move, 712 a heal's.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn action_completed(
         &mut self,
         n: Notify,

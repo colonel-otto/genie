@@ -19,7 +19,6 @@ impl UnitAi {
     /// else the patrol branch ([`UnitAi::patrol_idle_part`]), class 3's and 52's on actions
     /// `0x26b`/`0x26c` ([`UnitAi::making_idle_part`]) or the end ([`UnitAi::idle_part_end`]).
     /// `busy` and `group` are what the update read before its order queue.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn idle_part(
         &mut self,
         busy: bool,

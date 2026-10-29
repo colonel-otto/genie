@@ -50,7 +50,6 @@ impl UnitAi {
     ///    back; and then still, as long as the target cannot convert it, an attacker that would
     ///    die sooner (its hit points over the unit's damage to it, [`NEVER_KILLED`] for none:
     ///    `COMISS`, `JA`) or could convert it makes it attack back. It returns 2.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn damaged(
         &mut self,
         n: Notify,
@@ -188,7 +187,6 @@ impl UnitAi {
     /// else off the move action it runs from its attackers; 3 either way. With one: not reached,
     /// 2; a human player's unit attacks back from a building, wall or tower target (classes 3,
     /// 27, 52; 3), else 2; a computer player's unit weighs it ([`UnitAi::computer_weighs`]).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn answer_attacker(
         &mut self,
         attacker: &UnitSeen,

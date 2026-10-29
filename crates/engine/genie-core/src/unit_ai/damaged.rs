@@ -38,7 +38,6 @@ impl UnitAi {
     /// evading them."), but on the move action (`0x262`) at a speed other than 0: its current
     /// order goes to the queue's end ([`UnitAi::queue_current`]), its action stops (slot 0xb0
     /// with 1) and it runs from its attackers ([`UnitAi::run_away`] with 1). Both return 3.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn villager_damaged(
         &mut self,
         n: Notify,
@@ -145,7 +144,6 @@ impl UnitAi {
     /// "I have a group that won't let me move and a human owner"). Else, with no action or its
     /// top action in state 2, it runs from its attackers (slot 0x160 with 1,
     /// [`UnitAi::run_away`]) and returns 3.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn transport_damaged(
         &mut self,
         n: Notify,
@@ -230,7 +228,6 @@ impl UnitAi {
     /// action (`0x262`) its order goes to the queue's end (slot 0x30, not immediate:
     /// `FUN_140c55c90` takes none of −1) and its action stops (slot 0xb0 with 1); then it runs
     /// from its attackers (slot 0x160 with 1) and returns 3.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn trade_damaged(
         &mut self,
         n: Notify,
@@ -271,7 +268,6 @@ impl UnitAi {
     /// here, its alert stops the handler first). Off the move action (`0x262`) its order goes to
     /// the queue's end (slot 0x30, not immediate), its action stops (slot 0xb0 with 1) and it
     /// runs from its attackers (slot 0x160 with 1). It returns 3.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn fishing_damaged(
         &mut self,
         n: Notify,

@@ -19,7 +19,6 @@ impl UnitAi {
     /// its class 59; it returns 3. An animal that is not Gaia's first alerts its owner (slot
     /// 0x2e8 with 0x201): a human player's alert list, not held; a computer player's AI, not
     /// modelled.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn hunted_damaged(
         &mut self,
         n: Notify,

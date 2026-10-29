@@ -17,7 +17,6 @@ impl UnitAi {
     /// The hunted animal's handler (`TribeHuntedAnimalUnitAIModule`, `FUN_140c26420`): its
     /// damage notify evades ([`UnitAi::hunted_damaged`]), 0x20f goes on; any other notify is the
     /// base handler's.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn hunted_notify(
         &mut self,
         n: Notify,
@@ -39,7 +38,6 @@ impl UnitAi {
     /// idle timeout the adjusted one plus 1, drops the target (`FUN_140c5e1e0`) and sends it home
     /// on its next idle check (slot 0x1f0, `FUN_140c16d50`: `+0x1fd`), then goes to the base
     /// handler; 0x20f goes on.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn boar_notify(
         &mut self,
         n: Notify,
@@ -70,7 +68,6 @@ impl UnitAi {
     /// (`FUN_140c41bc0` with 1000, then slot 0x1a8), drops the target and stops; a moved target
     /// is [`UnitAi::lion_target_moved`]'s. Both cases, and any other notify, go on to the base
     /// handler.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn lion_notify(
         &mut self,
         n: Notify,
@@ -101,7 +98,6 @@ impl UnitAi {
     /// the target, forced, not any, its group) and the processing breaks. Else ("Target is
     /// invalid or no longer visible, stopping pursuit.") the target goes, the action stops (slot
     /// 0xb0 with 1) and slot 0x48 hands the notify to the owner (not held), the base handler's.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn lion_target_moved(
         &mut self,
         n: Notify,
@@ -150,7 +146,6 @@ impl UnitAi {
     /// (0x1f9 with 600, from and to the unit) and processing goes on. A missile's warning it
     /// does not dodge (the player's `+0xe10`) is its damage; the object its build or hunt made
     /// is [`UnitAi::work_on_made`]'s, a load of another resource [`UnitAi::drop_other_load`]'s.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn villager_notify(
         &mut self,
         n: Notify,
@@ -253,7 +248,6 @@ impl UnitAi {
     /// the same cases; [`UnitAi::transport_damaged`] tells them apart: a human player's tower in a
     /// group that is not idle ignores the damage): its damage notify, and a missile's warning it
     /// takes as damage unless it dodges; any other notify is the base handler's.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn transport_notify(
         &mut self,
         n: Notify,
@@ -274,7 +268,6 @@ impl UnitAi {
 
     /// The trade ship's and cart's handler (`FUN_140c29bf0`): its search when its action needs
     /// one, its damage notify, a missile's warning it takes as damage unless it dodges.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn trader_notify(
         &mut self,
         n: Notify,
@@ -294,7 +287,6 @@ impl UnitAi {
 
     /// The fishing ship's handler (`FUN_140c25ca0`): a builder's search for more to build, its
     /// damage notify, a missile's warning it takes as damage unless it dodges.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn fishing_notify(
         &mut self,
         n: Notify,
@@ -318,7 +310,6 @@ impl UnitAi {
     /// notify ([`UnitAi::packed_damaged`]); a target under its least range (0x1fe) makes it back
     /// up, as does a computer player's ranged unit's executed attack on a drawn chance (0x200);
     /// any other notify is the base handler's.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn siege_notify(
         &mut self,
         n: Notify,
@@ -347,7 +338,6 @@ impl UnitAi {
     /// A computer player's packed siege unit's damage: dead (hit points below 1) it alerts its
     /// owner, its notifies end and it gives up; an attacker the world does not hold ends it
     /// (`FUN_140c54e30`); else it stops and runs away, and the processing breaks.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn packed_damaged(
         &mut self,
         n: Notify,
@@ -372,7 +362,6 @@ impl UnitAi {
 
     /// The soldier's handler (`FUN_140c28bb0`): its own cases are the computer's, a backing-up
     /// and a healer's search.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn soldier_notify(
         &mut self,
         n: Notify,
@@ -396,7 +385,6 @@ impl UnitAi {
 
     /// The tower's handler (`FUN_140c299f0`): its damage notify, alive or dead, and its
     /// destroyed target.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn tower_notify(
         &mut self,
         n: Notify,
@@ -438,7 +426,6 @@ impl UnitAi {
 
     /// The building's handler (`FUN_140c22610`): its damage notify, its attackers' coming and
     /// going; 0x202, 0x216 and 0x21b are the base handler's, any other notify ends there.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn building_notify(
         &mut self,
         n: Notify,
@@ -471,7 +458,6 @@ impl UnitAi {
     /// The livestock's handler (`FUN_140c26ac0`): a unit sent off a footprint (0x216, with the
     /// new sending-off `DAT_1439e60e2` 1) is the base handler's; any notify but 0x202 drops the
     /// action value (`FUN_140c64b50`) and breaks off.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn livestock_notify(
         &mut self,
         n: Notify,

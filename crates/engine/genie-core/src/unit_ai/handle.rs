@@ -14,7 +14,6 @@ use crate::unit_ai::{
 impl UnitAi {
     /// Slot 0x238 per factory type: each type's handler (`type_notifies.rs`), most of which pass
     /// the notify on to the base handler ([`UnitAi::base_notify`]).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn handle(
         &mut self,
         n: Notify,
@@ -54,7 +53,6 @@ impl UnitAi {
     /// sees (`FUN_1416635e0` not 0xf) end in its stop, as any other kind does ("Unprocessed
     /// notify"): the target goes (`FUN_140c5e1e0`), the action stops (slot 0xb0 with 1) and slot
     /// 0x48 hands the notify to the owner (its alerts, not held). Each answers 2.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn artifact_notify(
         &mut self,
         n: Notify,
@@ -169,7 +167,6 @@ impl UnitAi {
     /// ([`UnitAi::action_completed`]), an ownership change (stopAction, `FUN_140c5e1e0`, slot 0xb0
     /// with 1, `FUN_140c5dc10` with the handler's time, the order queue emptied), the kinds it
     /// ignores; anything else is not modelled.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn base_notify(
         &mut self,
         n: Notify,

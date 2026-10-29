@@ -44,7 +44,6 @@ impl Visibility {
     /// # Panics
     ///
     /// Never: the registry is checked before it is updated.
-    #[allow(clippy::too_many_arguments)]
     pub fn combat_sight(
         &mut self,
         id: i32,
