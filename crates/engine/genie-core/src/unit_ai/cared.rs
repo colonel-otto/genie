@@ -3,10 +3,11 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
     BOAR_AI, FISHING_AI, HUNTED_SIGHT_GROWTH, LION_AI, LIVESTOCK_AI, PREDATOR_AI, PRIEST_AI,
-    SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI, TRADE_BOAT_CLASS,
+    SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
 };
 
 /// The hunted animal evades by its speed times this (`FUN_140c1eea0`, `DAT_142eb1c98`), and a
@@ -24,8 +25,6 @@ pub(super) const RUN_LEASH: f32 = crate::math::image::unit_ai::RUN_LEASH;
 /// `evasiveMoveTo` (`FUN_140c4d140`): a coordinate that is not a number becomes the unit's own
 /// plus one, or minus one above this (`DAT_14330ebb8`).
 pub(super) const EVASIVE_NEAR: f32 = crate::math::image::unit_ai::EVASIVE_NEAR;
-/// The class whose attackers make a computer's unit warn its group (`FUN_140c5e900`: 22).
-pub(super) const CLASS_22: i16 = 22;
 pub(super) const EVADE_EDGE: f32 = crate::math::image::unit_ai::EVADE_EDGE;
 
 /// The classes a hunted animal cares about (`+0x190`, the constructor's list).
@@ -176,7 +175,7 @@ pub(crate) const fn cared_classes(
         BUILDING_AI => Ok(&BUILDING_CARED),
         TRANSPORT_AI => Ok(&TRANSPORT_CARED),
         SIEGE_TOWER_AI => Ok(&SIEGE_TOWER_CARED),
-        TRADE_AI if class == TRADE_BOAT_CLASS => Ok(&TRADE_SHIP_CARED),
+        TRADE_AI if class == class::TRADE_BOAT => Ok(&TRADE_SHIP_CARED),
         TRADE_AI => Ok(&TRADE_CART_CARED),
         FISHING_AI => Ok(&FISHING_CARED),
         ARTIFACT_AI => Ok(&ARTIFACT_CARED),

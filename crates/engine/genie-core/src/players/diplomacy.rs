@@ -12,6 +12,7 @@
 
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type;
 use crate::world::World;
 
@@ -25,8 +26,6 @@ const REVEAL_UNIT: usize = 204;
 /// The market (master 84), whose owner's diplomacy change toward a computer player shows it to
 /// that player's tile list.
 const MARKET: i16 = 84;
-/// The siege tower's class (13), whose units leave it for a player no longer allied.
-const SIEGE_CLASS: i16 = 13;
 /// The relation of an ally (0) and of a neutral (1); the stances an ally (4) and a neutral (3)
 /// take, and an enemy's (2).
 const ALLY: u8 = 0;
@@ -197,7 +196,7 @@ impl World {
         let (position, garrison) = (u.position(), u.garrison.clone());
         if relation != ALLY {
             self.leave_foreign_holder(p, id, q, inside)?;
-            if class == SIEGE_CLASS
+            if class == class::SIEGE
                 && garrison
                     .iter()
                     .any(|&g| self.object(g).is_some_and(|(gp, _)| gp == q))
@@ -243,7 +242,7 @@ impl World {
             if !self.let_out(hp, hi, id, [NO_POINT; 2], (None, true))? {
                 self.destroy(p, id)?;
             }
-        } else if holder_master.class == SIEGE_CLASS {
+        } else if holder_master.class == class::SIEGE {
             return Err(crate::garrison::SIEGE_UNLOAD);
         }
         Ok(())

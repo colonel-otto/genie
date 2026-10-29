@@ -13,6 +13,7 @@
 //! the Build end (state 1) and the AI runs its queue.
 
 use self::update::drop_done_orders;
+use crate::objects::masters::class;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -37,8 +38,7 @@ pub(crate) mod world_side;
 
 pub(crate) use self::clearing::{CLEARING_REACH, clearing_objects, footprint_clearing};
 pub use self::clearing::{ClearLook, Cleared, ClearingSite};
-#[cfg(test)]
-use self::clearing::{GATE, TREE};
+
 pub use self::drop_off::DropSearch;
 #[cfg(test)]
 use self::placing::beside_diagonal;
@@ -53,8 +53,6 @@ pub const BUILD: i16 = 101;
 
 /// The gap below which a `MoveTo` has arrived (`DAT_142eb99cc`).
 const ARRIVED: f32 = crate::math::image::build::ARRIVED;
-/// The villager's class (4, `-0xea8` encoded): Build's walk off the footprint returns at once.
-const VILLAGER: i16 = 4;
 /// A builder within this of its foundation's footprint has reached it (`DAT_142eb5690`).
 const REACH: f32 = crate::math::image::build::REACH;
 /// A player's sight of an object it sees (slot 0x1e0).
@@ -241,7 +239,7 @@ impl Completion<'_> {
             ));
         }
         let mut part = FirstPart::default();
-        if master.class == FARM && f32::from(c.build_time) <= c.progress {
+        if master.class == class::FARM && f32::from(c.build_time) <= c.progress {
             let [amount, resource, near] = self.farm_bonus;
             let (resource, near) = (cvttss2si(resource), cvttss2si(near));
             if 0 <= resource && 0 <= near {
@@ -395,8 +393,6 @@ const WONDER_RATE: f32 = crate::math::image::build::WONDER_RATE;
 const CASTLES_BUILT: i16 = 173;
 const WONDERS_BUILT: i16 = 174;
 const CASTLE_WONDER_COST: i16 = 184;
-/// The wall class (27, `0x1b`): two walls beside a builder on a footprint's diagonal stop it.
-const WALL: i16 = 27;
 
 /// The Build action's states the slice models.
 const MOVE: u8 = 4;
@@ -441,9 +437,7 @@ const MASTER_621: i16 = 621;
 pub(crate) const MASTER_1889: i16 = 1889;
 /// The pasture master 1889's stack unit on mangrove or rice terrain (`0x765`).
 pub(crate) const RICE_PASTURE: i16 = 0x765;
-const CLASS_39: i16 = 39;
 const FISH_TRAP: i16 = 199;
-const FARM: i16 = 49;
 
 #[cfg(test)]
 mod stack_tests {

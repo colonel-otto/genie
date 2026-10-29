@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::release::Releaser;
@@ -248,7 +249,7 @@ impl Unit {
             .mover()
             .map(|m| m.angle)
             .ok_or(GenieError::unsupported("a ranged unit that does not move"))?;
-        let building = master.class == crate::garrison::BUILDING_CLASS;
+        let building = master.class == class::BUILDING;
         let at = crate::combat::missile::volley_spawn_point(
             self.position(),
             facing,

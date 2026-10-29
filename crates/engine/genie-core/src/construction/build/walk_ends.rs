@@ -4,9 +4,10 @@
 use crate::GenieError;
 use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, FOREIGN_SITE, REACH, SEEN, SITE_GONE, UNSEEN_SITE,
-    VILLAGER, WALK_POINT, WORK,
+    WALK_POINT, WORK,
 };
 use crate::movement::move_to::MoveTo;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 
@@ -29,7 +30,7 @@ impl BuildAction {
         if self.target == -1 {
             return self.idle(c, builder, reads);
         }
-        if reads.class != VILLAGER {
+        if reads.class != class::VILLAGER {
             let at = builder.position();
             let ground = builder
                 .body

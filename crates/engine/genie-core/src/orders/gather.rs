@@ -5,6 +5,7 @@ use crate::combat::attack::{Arms, Engagement};
 use crate::gathering::gather::{GatherRetarget, GatherStart};
 use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::math::rng::Stream;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::{GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
 use crate::unit_ai::ActionKind;
@@ -70,7 +71,7 @@ impl World {
                         "a gather retargeted to its player's foundation (its build)",
                     ));
                 }
-                if tm.class != crate::gathering::gather::FARM_CLASS {
+                if tm.class != class::FARM {
                     return Ok(false);
                 }
             }

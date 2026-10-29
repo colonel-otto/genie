@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::{QUERY_HITS, Spatial, TESTED_KINDS};
+use crate::objects::masters::class;
 
 /// A record a pather query met (an entry of `FUN_141051900`'s list): an object's (its id) or a
 /// temporary tile record's (`x << 12 | y | 0xf0000000`, `FUN_1410510c0`), with its box
@@ -109,7 +110,7 @@ impl Spatial {
                     "a pather query meeting a record of kind 11 (its own radii)",
                 ));
             }
-            if p.class == GATE_CLASS {
+            if p.class == class::GATE {
                 return Err(GenieError::unsupported(
                     "a pather query meeting a gate (its players' passage, slot 0x678)",
                 ));
@@ -206,9 +207,6 @@ impl Spatial {
         hits
     }
 }
-
-/// The class of a gate, which a player's allies may pass (slot 0x678, `FUN_1411d4a30`).
-pub(crate) const GATE_CLASS: i16 = 39;
 
 /// `FUN_1410576a0`, Sedgewick's ccw: 1 when `p0`, `p1`, `p2` turn counter-clockwise (or lie in
 /// a line with `p2` beyond `p1`), -1 clockwise (or `p0` between), 0 when `p2` lies on the segment.

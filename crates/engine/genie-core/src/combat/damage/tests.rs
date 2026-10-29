@@ -31,6 +31,7 @@ fn a_building_s_relics_scale_its_elevation_factor() {
 }
 
 use super::*;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 
 fn sheep() -> Victim {
@@ -38,7 +39,7 @@ fn sheep() -> Victim {
         id: 9520,
         hp: 14.0,
         kind: 70,
-        class: LIVESTOCK,
+        class: class::LIVESTOCK,
         master_id: 705,
         player: 1,
         position: [10.5, 10.5, 0.0],
@@ -264,7 +265,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     assert_eq!(bonus_damage(&hunter, &sheep), 4.0 * 2.0);
     // by class or master; another class, master or action type adds nothing
     hunter.bonus_tasks = vec![
-        task(LIVESTOCK, 0, 0.0, 0),
+        task(class::LIVESTOCK, 0, 0.0, 0),
         task(-1, 705, 0.0, 0),
         task(3, 0, 0.0, 0),
         task(-1, 9, 0.0, 0),
@@ -858,7 +859,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
     let mut wonder = Victim {
         hp: 1.5,
         master_id: 276,
-        class: WALL,
+        class: class::WALL,
         ..house()
     };
     take(&mut wonder, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
@@ -946,7 +947,7 @@ fn a_building_s_attacker_effects_and_kill_bonus_are_the_game_s() {
     assert!(take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).is_err());
     let mut h = Victim {
         hp: 2.0,
-        class: WALL,
+        class: class::WALL,
         ..house()
     };
     take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
@@ -1398,7 +1399,7 @@ fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
             ..enemy.clone()
         },
         Victim {
-            class: ARTIFACT,
+            class: class::ARTIFACT,
             ..enemy.clone()
         },
         Victim {

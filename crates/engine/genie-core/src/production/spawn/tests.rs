@@ -1,5 +1,6 @@
 use super::*;
 use crate::commands::GatherPoint;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -192,7 +193,7 @@ fn livestock_stays_alive_a_tree_only_once_dead() {
     assert!(sheep(2).stays());
     assert!(!sheep(1).stays());
     let tree = Near {
-        class: TREE,
+        class: class::TREE,
         kind: 10,
         ..sheep(2)
     };
@@ -935,11 +936,11 @@ fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() 
     };
     assert!(ignores(&open, walking));
     let gate = BuildSite {
-        class: GATE,
+        class: class::GATE,
         ..site
     };
     let own_wall = Near {
-        class: WALL,
+        class: class::WALL,
         player: 1,
         ..house
     };
@@ -1004,7 +1005,7 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
         ..still
     }));
     let stump = Near {
-        class: TREE,
+        class: class::TREE,
         kind: 10,
         hp: 1.0,
         ..still
@@ -1054,7 +1055,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
             ..house
         },
         Near {
-            class: TREE,
+            class: class::TREE,
             kind: 10,
             hp: 1.0,
             ..house
@@ -1071,11 +1072,11 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         assert_eq!(blocks(&site, passed), Ok(false), "{passed:?}");
     }
     let gate = BuildSite {
-        class: GATE,
+        class: class::GATE,
         ..site
     };
     let wall = Near {
-        class: WALL,
+        class: class::WALL,
         player: 1,
         ..house
     };

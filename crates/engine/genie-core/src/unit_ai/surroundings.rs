@@ -355,23 +355,13 @@ pub struct Seen {
     pub sight: u8,
 }
 
-/// The class whose busy units skip the idle check (`-0xe98` raw).
-pub(super) const CLASS_20: i16 = 20;
-/// The class of the attackers and targets a villager's damage notify looks at (`-0xea2` raw).
-pub(super) const CLASS_10: i16 = 10;
-/// The class whose stop leaves the state position (`-0xe9a` raw, slot 0xb0).
-pub(super) const CLASS_18: i16 = 18;
 /// A patrol's path goes back and forth when its point is at least this far from the unit
 /// (`0x140aa2a70`, `DAT_142eb1c98`).
 pub(super) const PATROL_TURN_REACH: f32 = crate::math::image::unit_ai::PATROL_TURN_REACH;
-/// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
-/// `-0xe78` raw).
-pub(super) const CLASS_3: i16 = 3;
 
 /// A building on its make action without a missile and with at most this firepower forgets its
 /// target (`DAT_14330eb8c`).
 pub(super) const SINGLE_VOLLEY: f32 = crate::math::image::unit_ai::SINGLE_VOLLEY;
-pub(super) const CLASS_52: i16 = 52;
 
 /// A move the unit AI gives its unit (unit-AI slot 0x130, `FUN_140c55620`, to the unit's slot
 /// 0x340): a `MoveTo` to `point` within `range`.

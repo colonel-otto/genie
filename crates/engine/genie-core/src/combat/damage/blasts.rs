@@ -2,11 +2,11 @@
 //! 0x848).
 
 use crate::combat::damage::{
-    ARTIFACT, Attacker, CONE, ELEPHANT_ARCHER, Kill, LIVESTOCK, MINUS_CONE, RAMS, Victim,
-    WIDE_CONE, armor_damage, bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus,
-    lose, shield, take,
+    Attacker, CONE, ELEPHANT_ARCHER, Kill, MINUS_CONE, RAMS, Victim, WIDE_CONE, armor_damage,
+    bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus, lose, shield, take,
 };
 use crate::math::conversions::cvttss2si;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::{GenieError, math::fmath};
 
@@ -64,7 +64,7 @@ pub(super) fn damage(
             attacker: src.id,
             attacker_player: src.player,
             attacker_class: src.class,
-            to_gaia: t.kind == 70 && t.class == LIVESTOCK && t.player != 0,
+            to_gaia: t.kind == 70 && t.class == class::LIVESTOCK && t.player != 0,
         });
     }
     Ok(())
@@ -204,7 +204,7 @@ pub(super) fn blast_one(
     if (b.spares_friends && t.allied[0])
         || Some(t.id) == b.exclude
         || t.id == attacker.id
-        || t.class == ARTIFACT
+        || t.class == class::ARTIFACT
     {
         return Ok(());
     }

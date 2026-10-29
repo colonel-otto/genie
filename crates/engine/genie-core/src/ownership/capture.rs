@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::ownership::change::change_hands;
 use crate::unit_ai::ActionKind;
@@ -30,7 +31,7 @@ impl Unit {
         let changed = self.change_owner(c, new)?;
         // the scan reads the owner after the change: the old one when `new` lacks the master
         let mut taken = Vec::new();
-        if class == LIVESTOCK && (if changed { new } else { c.player }) != 0 {
+        if class == class::LIVESTOCK && (if changed { new } else { c.player }) != 0 {
             scan_livestock(c, self.position(), new, &mut taken)?;
         }
         Ok((changed, taken))
@@ -89,7 +90,7 @@ impl Unit {
         let trading = top == TRADE_ACTION
             && crate::math::fmath::below_or_unordered(0.0, self.life.amount)
             && self.life.attribute_type != -1;
-        if class != LIVESTOCK
+        if class != class::LIVESTOCK
             && !trading
             && self
                 .ai
@@ -137,7 +138,7 @@ impl Unit {
     /// (`FUN_14120f800` with `FUN_141192d10`).
     pub(crate) fn take_by_sight(&mut self, c: &mut Step<'_>, new: usize) -> Result<(), GenieError> {
         let master = self.master(&c.w.masters, c.player);
-        if master.is_ok_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
+        if master.is_ok_and(|m| m.class == class::SIEGE) && !self.garrison.is_empty() {
             return Err(HANDS_LEFT);
         }
         let _ = self.change_owner(c, new)?;
@@ -175,13 +176,6 @@ impl Unit {
         )
     }
 }
-
-/// The livestock class (`-0xe72` raw).
-pub(crate) const LIVESTOCK: i16 = 58;
-
-/// The siege class (`-0xe9f` raw), whose ownership change drops the units it carries
-/// (`FUN_14120f800`).
-pub(crate) const SIEGE_CLASS: i16 = 13;
 
 /// The ownership changes the slice does not model: a building's (its slot 0x70,
 /// `FUN_1411cd860`: its annexes', its production queue's and researches', its garrison's, its
@@ -246,7 +240,7 @@ fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Vec<i32> {
                 && c.w
                     .spatial
                     .get(u.id)
-                    .is_some_and(|p| p.class == LIVESTOCK && p.player == 0)
+                    .is_some_and(|p| p.class == class::LIVESTOCK && p.player == 0)
         })
         .map(|u| u.id)
         .collect()
@@ -260,7 +254,7 @@ fn take_livestock(c: &mut Step<'_>, id: i32, new: usize) -> Result<Option<[f32; 
         c.w.take_out_own(c.player, id)
             .expect("the scan's own object");
     let done = (|| {
-        unit.capture_stop(c, LIVESTOCK)?;
+        unit.capture_stop(c, class::LIVESTOCK)?;
         unit.change_owner(c, new)
     })();
     let position = unit.position();

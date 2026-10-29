@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
@@ -254,12 +255,10 @@ pub(crate) fn count_class(attributes: &mut [f32], master: &Master, by: f32) {
         }
         return;
     }
-    if master.class == crate::production::spawn::VILLAGER && matches!(master.task_by_group, 1 | 2) {
+    if master.class == class::VILLAGER && matches!(master.task_by_group, 1 | 2) {
         add(38);
     }
-    if master.class == crate::production::spawn::VILLAGER
-        || CIVILIAN_CLASSES.contains(&master.class)
-    {
+    if master.class == class::VILLAGER || CIVILIAN_CLASSES.contains(&master.class) {
         add(37);
     }
 }

@@ -68,8 +68,6 @@ const ARRIVED: f32 = crate::math::image::attack::ARRIVED;
 const EPSILON: f32 = crate::math::image::attack::EPSILON;
 /// The point an attack on an object has none of (`DAT_14330ec20`).
 const NONE: f32 = crate::math::image::attack::NONE;
-/// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
-const VILLAGER_CLASS: i16 = 4;
 /// The milliseconds of a second the reload world time counts (`FUN_141089820`).
 const RELOAD_MS: f32 = crate::math::image::attack::RELOAD_MS;
 /// The hit chance's scale (`0x7fffffff`, the low word of a 64-bit Object-stream draw).
@@ -95,8 +93,6 @@ const GOTO_POINT: u8 = 11;
 /// The least range of a unit that walks onto the point where it saw its target
 /// (`DAT_14330eb8c`, [`GOTO_POINT`]).
 const SEEN_RANGE: f32 = crate::math::image::attack::SEEN_RANGE;
-/// The predators' class (10), whose unit AI's slot 0x1f0 a failed Attack calls.
-const PREDATOR: i16 = 10;
 /// The boar's unit-AI type, whose slot 0x1f0 (`FUN_140c16d50`) sends it home.
 const BOAR_AI: u32 = 4;
 /// The lion's unit-AI type, whose slot 0x1f0 (`FUN_140c16d60`) does nothing.
@@ -456,10 +452,6 @@ const MASTER_1706: i16 = 1706;
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
 const QUIET_SWINGS: [i16; 2] = [73, 559];
 
-/// The livestock (58, `0x3a`) and farm (49, `0x31`) classes: the ally test spares an Attack on
-/// one that was its unit's player's when the Attack took it ([`Attack::same_owner`]).
-pub(crate) const LIVESTOCK: i16 = 58;
-const FARM: i16 = 49;
 /// The class an Attack does not take as its target (`-0xe70` raw, [`Attack::set_target`]).
 const CLASS_60: i16 = 60;
 
@@ -470,13 +462,6 @@ enum Readiness {
     Waiting,
     Away(f32),
 }
-
-/// The gate class, whose parts' gaps readyToAttack measures.
-const GATE: i16 = 39;
-/// The villagers' class, whose attack ends on any dead target.
-const VILLAGER: i16 = 4;
-/// The trees' class, a dead one of which up to state 5 keeps another unit's attack going.
-const TREE: i16 = 15;
 
 #[cfg(test)]
 pub(crate) mod tests;

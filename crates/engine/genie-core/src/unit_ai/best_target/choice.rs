@@ -1,5 +1,6 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
+use crate::objects::masters::class;
 use crate::unit_ai::best_target::{
     Ask, Battlefield, EPSILON, STATISTICS, Searcher, Statistics, Thing, category,
 };
@@ -9,9 +10,6 @@ pub(super) const BOATS: [i16; 5] = [2, 20, 21, 22, 53];
 /// The classes a search without `any_class` passes over: buildings, walls, towers, gates and
 /// the packed units.
 pub(super) const NOT_ANY: [i16; 5] = [3, 27, 52, 39, 51];
-/// The wall's and the gate's classes.
-pub(super) const WALL: i16 = 27;
-pub(super) const GATE: i16 = 39;
 /// The masters whose units attack by priority 0 without the moving rule: the rams, the siege
 /// masters 1744 and 1746, 420 and 691.
 pub(super) const PRIORITY_0_MASTERS: [i16; 8] = [35, 422, 548, 1258, 1744, 1746, 420, 691];
@@ -20,8 +18,6 @@ pub(super) const PRIORITY_0_MASTERS: [i16; 8] = [35, 422, 548, 1258, 1744, 1746,
 pub(super) const BOAT_HUNTERS: [i16; 3] = [82, 45, 109];
 /// The moving targets past which the current target and the closest moving one answer.
 pub(super) const FEW_MOVING: i32 = 5;
-/// Class 13 (siege), whose units keep the walls' owner flag on the attack move order (`0x2dd`).
-pub(super) const SIEGE: i16 = 13;
 /// The retarget entries' times: a moving object's 1 s, another's 2 s.
 pub(super) const RETRY_MOVING: u32 = 1000;
 pub(super) const RETRY_OTHER: u32 = 2000;
@@ -203,7 +199,7 @@ fn current_target(
 /// flag allows them outside the defend patrol of a unit that is no siege.
 const fn attacks_walls(me: &Searcher) -> bool {
     let defending =
-        matches!(me.order, Some(crate::unit_ai::OrderKind::AttackMove)) && me.class != SIEGE;
+        matches!(me.order, Some(crate::unit_ai::OrderKind::AttackMove)) && me.class != class::SIEGE;
     matches!(me.target_types[0], 27 | 39)
         || matches!(me.target_types[1], 27 | 39)
         || (me.walls_allowed && !defending)
@@ -314,7 +310,7 @@ impl Walked {
                     continue;
                 };
                 match t.class {
-                    GATE => {
+                    class::GATE => {
                         if self.gate.1 < 0.0 || gap < self.gate.1 {
                             self.gate = (id, gap);
                         }
@@ -322,7 +318,7 @@ impl Walked {
                             continue;
                         }
                     }
-                    WALL => {
+                    class::WALL => {
                         if !self.note_wall(id, gap) {
                             continue;
                         }
@@ -350,8 +346,8 @@ impl Walked {
                 continue;
             };
             let counts = match t.class {
-                GATE => self.walls,
-                WALL => self.note_wall(id, gap),
+                class::GATE => self.walls,
+                class::WALL => self.note_wall(id, gap),
                 _ => true,
             };
             if counts {

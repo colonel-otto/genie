@@ -8,12 +8,13 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
 use crate::production::spawn::{
-    Facing, NOT_MOVING, Placing, Site, WALL, WorldMap, corner_tiles, placement, spawn_point,
+    Facing, NOT_MOVING, Placing, Site, WorldMap, corner_tiles, placement, spawn_point,
 };
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::World;
@@ -43,9 +44,10 @@ impl World {
                 let (fx, fy) = (x as f32, y as f32);
                 self.spatial.check_known([fx, fy, fx + 1.0, fy + 1.0])?;
             }
-            *wall = tiles
-                .iter()
-                .all(|&(x, y)| self.spatial.object_on_tile(x, y, |o| o.class == WALL));
+            *wall = tiles.iter().all(|&(x, y)| {
+                self.spatial
+                    .object_on_tile(x, y, |o| o.class == class::WALL)
+            });
         }
         let site = Site {
             position,

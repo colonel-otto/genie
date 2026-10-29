@@ -2,13 +2,13 @@
 //! it and its repair.
 
 use crate::GenieError;
+use crate::objects::masters::class;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::BUILDING;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::Finding;
 use crate::unit_ai::task_finder::TaskTarget;
-use crate::unit_ai::task_finder::class;
 use crate::unit_ai::task_finder::first;
 use crate::unit_ai::task_finder::id;
 use crate::unit_ai::task_finder::wanted;
@@ -166,7 +166,7 @@ pub(super) fn repair_finding<'m>(
     let repair_class = t.master.kind == BUILDING
         || [
             class::TRANSPORT,
-            class::FISHING,
+            class::FISHING_SHIP,
             class::WARSHIP,
             class::TRADE_BOAT,
             class::CLASS_53,

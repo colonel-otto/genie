@@ -3,15 +3,15 @@
 
 use crate::GenieError;
 use crate::combat::attack::{
-    AiOrder, Attack, AttackReads, DONE, FAILED, FARM, Fight, GOTO_POINT, GOTO_SEEN, KILLED,
-    LIVESTOCK, MOVE, NO_RANGE, NONE, READY, Readiness, SEEN_RANGE, SWING, TOUCH, TREE, VILLAGER,
-    VILLAGER_CLASS, set_walker_anim,
+    AiOrder, Attack, AttackReads, DONE, FAILED, Fight, GOTO_POINT, GOTO_SEEN, KILLED, MOVE,
+    NO_RANGE, NONE, READY, Readiness, SEEN_RANGE, SWING, TOUCH, set_walker_anim,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{Goal, MoveTo};
 use crate::movement::{Me, footprint_gap};
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
@@ -83,8 +83,10 @@ impl Attack {
         // a dead tree (class 15) up to state 5 keeps a non-villager's attack going: its update
         // goes on, the target not alive (`0x140a8342e`)
         let alive = f.victim.state <= 2;
-        let gone =
-            !alive && (f.victim.class != TREE || f.own.class == VILLAGER || 5 < f.victim.state);
+        let gone = !alive
+            && (f.victim.class != class::TREE
+                || f.own.class == class::VILLAGER
+                || 5 < f.victim.state);
         if self.state != KILLED && gone {
             return self.target_died(c, unit, f, r);
         }
@@ -143,7 +145,7 @@ impl Attack {
         if !self.sub_action {
             return self.lost(c, unit, f, r);
         }
-        if f.own.class != VILLAGER {
+        if f.own.class != class::VILLAGER {
             return Err(GenieError::unsupported(
                 "an Attack of a unit other than a villager whose target died",
             ));
@@ -221,7 +223,7 @@ impl Attack {
         // (set_state 1; its own Attack, not quiet, posts 0x1fb with 600 and the target) and
         // returns 1, unless the target is livestock (58) or a farm (49) that was its player's when
         // the Attack took it (+0x9f)
-        let spared = matches!(f.victim.class, LIVESTOCK | FARM) && self.same_owner;
+        let spared = matches!(f.victim.class, class::LIVESTOCK | class::FARM) && self.same_owner;
         let rng = c.w.streams.get(Stream::Sprite);
         if alive && f.own.player != 0 && !spared && f.victim.allied[0] {
             self.finish(unit, rng)?;
@@ -391,7 +393,7 @@ impl Attack {
     ///
     /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
     pub(super) const fn give_up(&mut self, r: &AttackReads, class: i16) {
-        let waits = !r.computer && class == VILLAGER_CLASS;
+        let waits = !r.computer && class == class::VILLAGER;
         self.move_to = Some(self.move_wait.give_up(waits, r.stance));
     }
 }

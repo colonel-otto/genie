@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::{Spatial, WalkQuery};
+use crate::objects::masters::class;
 use crate::objects::masters::player_master;
 use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, World};
 
@@ -91,7 +92,7 @@ impl World {
             .rev()
             .filter(|&i| {
                 owner.objects[i].master_in(masters).is_ok_and(|m| {
-                    m.class == crate::map::spatial::GATE_CLASS
+                    m.class == class::GATE
                         && m.building.as_ref().is_some_and(|b| 0 <= b.transform_unit)
                 })
             })
@@ -105,8 +106,7 @@ impl World {
     pub(crate) fn gate_passes(&self, q: usize, i: usize, p: usize) -> bool {
         let gate = &self.players[q].objects[i];
         let transforming = gate.master(&self.masters, q).is_ok_and(|m| {
-            m.class == crate::map::spatial::GATE_CLASS
-                && m.building.as_ref().is_some_and(|b| b.transform_unit != -1)
+            m.class == class::GATE && m.building.as_ref().is_some_and(|b| b.transform_unit != -1)
         });
         gate.life.state < 3
             && transforming

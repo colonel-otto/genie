@@ -6,11 +6,12 @@ use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{
-    CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MoveOrder, PASTURE_CLASS, Place, TOO_CLOSE,
-    VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
+    MASTER_1893, MASTER_1897, MoveOrder, PASTURE_CLASS, Place, TOO_CLOSE, Work, ignore_unit, packs,
+    readiness, work_reach,
 };
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -283,7 +284,7 @@ impl World {
             self.players[player].computer,
         );
         // a class 54 under an action the slice does not hold may be under its Pack or Unpack
-        if packs || (class == CLASS_54 && unit.unmodelled_action.is_some()) {
+        if packs || (class == class::CLASS_54 && unit.unmodelled_action.is_some()) {
             return Err(GenieError::unsupported(
                 "a Pack or Unpack of class 54 or 51 (FUN_140ad4ff0, FUN_140ae58a0)",
             ));
@@ -309,7 +310,9 @@ impl World {
         // livestock (class 58) takes the enter command (slot 0x3a0); where it enters nothing, the
         // work command goes to the target's place without a target
         let mut order = *order;
-        if master.class == LIVESTOCK && !self.enter_command(player, idx, order.target, false)? {
+        if master.class == class::LIVESTOCK
+            && !self.enter_command(player, idx, order.target, false)?
+        {
             let at = self
                 .spatial
                 .get_known(order.target)?
@@ -377,7 +380,7 @@ impl World {
             return Ok(Some(-1));
         }
         let target = self.task_target(order.target, 0)?;
-        let pasture = master.class == VILLAGER
+        let pasture = master.class == class::VILLAGER
             && target.master.kind == BUILDING
             && matches!(target.master.id, MASTER_1893 | MASTER_1897);
         if !pasture {
@@ -444,7 +447,7 @@ impl World {
         let villager = self.players[player].objects[idx]
             .master(&self.masters, player)?
             .class
-            == VILLAGER;
+            == class::VILLAGER;
         let unit = &mut self.players[player].objects[idx];
         if villager {
             unit.town_bell.flag = false;

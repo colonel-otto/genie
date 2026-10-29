@@ -13,33 +13,13 @@
 //! its id + 0x609c), the port compares the decoded values and names the encoded ones.
 
 use crate::GenieError;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::task_finder::target_steps::on_target;
 
 mod target_steps;
 pub(crate) mod world;
-
-/// Classes (encoded `-0xeac + c`).
-mod class {
-    pub const ARTIFACT: i16 = 1; // -0xeab
-    pub const TRADE_BOAT: i16 = 2; // -0xeaa
-    pub const BUILDING: i16 = 3; // -0xea9
-    pub const VILLAGER: i16 = 4; // -0xea8
-    pub const PREY: i16 = 9; // -0xea3
-    pub const SIEGE: i16 = 13; // -0xe9f
-    pub const MONK: i16 = 18; // -0xe9a
-    pub const TRANSPORT: i16 = 20; // -0xe98
-    pub const FISHING: i16 = 21; // -0xe97
-    pub const WARSHIP: i16 = 22; // -0xe96
-    pub const CLASS_42: i16 = 42; // -0xe82
-    pub const CLASS_43: i16 = 43; // -0xe81
-    pub const CLASS_51: i16 = 51; // -0xe79
-    pub const CLASS_53: i16 = 53; // -0xe77
-    pub const CLASS_54: i16 = 54; // -0xe76
-    pub const CLASS_55: i16 = 55; // -0xe75
-    pub const LIVESTOCK: i16 = 58; // -0xe72
-}
 
 /// Master ids (encoded `+0x609c`).
 mod id {
@@ -524,7 +504,7 @@ fn finder_tail<'m>(
         ));
     }
     if list.tasks.iter().any(|t| t.action_type == 0x84)
-        && target.is_some_and(|t| t.master.class == class::CLASS_42)
+        && target.is_some_and(|t| t.master.class == class::RELIC)
     {
         return Err(GenieError::unsupported("the task finder's task 0x84"));
     }
@@ -1315,7 +1295,7 @@ mod tests {
             assert!(tail(&list, &own, -1).is_err(), "{}", list.id);
         }
         let relic_cart = master(9, 70, 6, vec![task(0x84, -1, -1, 0.0)]);
-        let c42 = master(1, 70, class::CLASS_42, vec![]);
+        let c42 = master(1, 70, class::RELIC, vec![]);
         assert!(tail(&relic_cart, &building(&c42, 2, 2), -1).is_err());
     }
 }

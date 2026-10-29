@@ -76,20 +76,12 @@ const CONE: f32 = crate::math::image::damage::CONE;
 const MINUS_CONE: f32 = crate::math::image::damage::MINUS_CONE;
 const WIDE_CONE: f32 = crate::math::image::damage::WIDE_CONE;
 
-/// The villager class (4): its hits leave what a static target holds.
-const VILLAGER: i16 = 4;
 /// The class whose damage alerts its target's owner itself (`-0xe6c` raw): its target's unit AI
 /// gets no notify 500.
 const ELEPHANT_ARCHER: i16 = 64;
-/// The livestock class, which goes to Gaia when killed.
-pub(crate) const LIVESTOCK: i16 = 58;
-/// The artifact class (1), which no blast reaches.
-const ARTIFACT: i16 = 1;
 /// The rams (masters 35, 422, 548 and 1258): their blast reaches only buildings and their
 /// target.
 const RAMS: [i16; 4] = [35, 422, 548, 1258];
-/// The wall class (27): its razing counts nothing.
-const WALL: i16 = 27;
 /// 1 (`DAT_14330eb8c`, read into `XMM9` at `0x1411cec8e`): a building's least hit, the hit
 /// points below which a hit razes a building or kills a unit, and what each razing count adds.
 const ONE: f32 = crate::math::image::damage::ONE;

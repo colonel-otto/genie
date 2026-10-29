@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -547,7 +548,7 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
     let off = OffFootprint {
         spot: Some([29.5, 89.5]),
         z: 2.0,
-        class: VILLAGER_CLASS,
+        class: class::VILLAGER,
         computer: false,
         player: 1,
         site: Some(site),
@@ -609,7 +610,7 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     let off = OffFootprint {
         spot: Some([164.5, 51.5]),
         z: 0.0,
-        class: PREY_CLASS,
+        class: class::PREY,
         computer: false,
         player: 0,
         site: None,
@@ -619,7 +620,7 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     let at = Surroundings {
         position: [164.5, 50.5, 0.0],
         state: 2,
-        class: PREY_CLASS,
+        class: class::PREY,
         ..Surroundings::default()
     };
     let fx = u
@@ -1535,7 +1536,7 @@ fn a_fresh_search_s_enemies_set_the_alert_mode() {
 fn a_unit_in_the_way_is_attacked_by_a_wolf_not_by_a_boar() {
     let at = |combat_level| Surroundings {
         id: 29823,
-        class: CLASS_10,
+        class: class::PREDATOR,
         combat_level,
         units: vec![attacker(29001, 4, 1.0)],
         ..Surroundings::default()
@@ -1862,7 +1863,7 @@ fn hit_villager() -> (UnitAi, Surroundings, Notify) {
         id: 20,
         position: [10.0, 10.0, 0.0],
         speed: 1.0,
-        class: CLASS_VILLAGER,
+        class: class::VILLAGER,
         player: 1,
         state: 2,
         map: [100, 100],
@@ -2725,7 +2726,7 @@ fn each_unit_ai_type_searches_its_constructor_s_classes() {
     assert_eq!((list(6, 0, false), list(7, 0, false)), (none, none));
     assert_eq!(list(5, 10, false), &LION_CARED);
     assert_eq!(list(PRIEST_AI, 18, false).len(), 30);
-    assert_eq!(list(TRADE_AI, TRADE_BOAT_CLASS, false), &TRADE_SHIP_CARED);
+    assert_eq!(list(TRADE_AI, class::TRADE_BOAT, false), &TRADE_SHIP_CARED);
     assert_eq!(list(TRADE_AI, 19, false), &TRADE_CART_CARED);
     assert_eq!(list(SOLDIER_AI, 6, true).last(), Some(&10));
     assert_eq!(list(SOLDIER_AI, 6, false), &SOLDIER_CARED);
@@ -3187,13 +3188,13 @@ fn a_hunter_hit_by_its_boar_ignores_the_damage() {
     };
     let boar = UnitSeen {
         owner: 0,
-        ..attacker(9731, CLASS_10, 0.5)
+        ..attacker(9731, class::PREDATOR, 0.5)
     };
     let at = Surroundings {
         id: 10041,
         action_state: Some(12),
         target: Some(Seen {
-            class: CLASS_10,
+            class: class::PREDATOR,
             ..Seen::default()
         }),
         units: vec![boar],
@@ -4248,7 +4249,7 @@ fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
             None
         )
     );
-    let king = UnitAi::constructed(2, &placed([0.0; 3], CLASS_KING), &mut rng()).unwrap();
+    let king = UnitAi::constructed(2, &placed([0.0; 3], class::KING), &mut rng()).unwrap();
     assert_eq!(king.stance, 0);
     let boar = UnitAi::constructed(BOAR_AI, &placed([5.0, 6.0, 0.5], 10), &mut rng()).unwrap();
     assert_eq!(
@@ -5332,7 +5333,7 @@ fn a_making_building_runs_process_idle_only_without_a_target() {
         ..UnitAi::default()
     };
     let at = Surroundings {
-        class: CLASS_3,
+        class: class::BUILDING,
         kind: BUILDING,
         ranged: true,
         busy: true,
@@ -6806,7 +6807,7 @@ fn a_human_player_s_king_s_idle_check_only_caps() {
     let at = Surroundings {
         position: [31.5, 106.5, 0.0],
         player: 1,
-        class: CLASS_KING,
+        class: class::KING,
         master: 434,
         ..Surroundings::default()
     };
@@ -6869,7 +6870,7 @@ fn a_villager_hunts_an_animal_and_attacks_another_object() {
         state: 2,
         attack_priority: priority,
         units: vec![
-            attacker(9731, CLASS_10, 0.5),
+            attacker(9731, class::PREDATOR, 0.5),
             attacker(9800, 6, 1.0),
             attacker(9801, 42, 1.0),
             attacker(9802, 3, 1.0),
@@ -7562,7 +7563,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
         speed: 1.0,
         map: [64, 64],
         player: 1,
-        class: CLASS_KING,
+        class: class::KING,
         state: 2,
         units: vec![UnitSeen {
             id: 77,
@@ -7643,7 +7644,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         units: vec![
             seen(77, 6, 22.0),
             seen(78, 6, 18.0),
-            seen(79, CLASS_22, 22.0),
+            seen(79, class::WARSHIP, 22.0),
         ],
         ..Surroundings::default()
     };
@@ -10090,7 +10091,7 @@ fn a_busy_villager_on_the_attack_order_runs_its_full_update() {
     let at = Surroundings {
         busy: true,
         player: 3,
-        class: CLASS_VILLAGER,
+        class: class::VILLAGER,
         state: 2,
         target: Some(Seen {
             state: 2,
@@ -10368,7 +10369,12 @@ fn the_attack_order_attacks_by_the_unit_ai_s_type_and_becomes_the_ai_s() {
     // a unit of class 18: the tail forgets the target (its class and point stay) and ends
     // the order, the order's priority kept
     let mut u = idle(BOAR_AI);
-    let (r, _, _) = run_order(&mut u, queued(OrderKind::Attack, 72), CLASS_18, &mut side);
+    let (r, _, _) = run_order(
+        &mut u,
+        queued(OrderKind::Attack, 72),
+        class::MONK,
+        &mut side,
+    );
     assert_eq!(r, Ok(1));
     assert_eq!(
         (
@@ -11125,7 +11131,7 @@ fn the_order_tail_takes_the_order_and_leaves_a_patrol_order() {
     );
     // a class-18 unit's attack order: the target goes, the order is -1
     let mut u = patrolling(None);
-    let _ = u.order_tail(Some(OrderKind::Attack), 40, CLASS_18, false, &mut rng());
+    let _ = u.order_tail(Some(OrderKind::Attack), 40, class::MONK, false, &mut rng());
     assert_eq!(
         (u.current_order, u.order_priority, u.current_target),
         (None, 40, -1)

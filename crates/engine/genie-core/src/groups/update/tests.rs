@@ -1,5 +1,6 @@
 use crate::groups::{Member, UnitGroup, UnitGroups};
 use crate::movement::GroupSpeed;
+use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
@@ -536,7 +537,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
         speed: 0.0,
     });
     assert!(t.show_walking(10).is_err());
-    master(&mut t, crate::groups::update::TRADE_CART, [6, 7, 8]);
+    master(&mut t, class::TRADE_CART, [6, 7, 8]);
     let trade = crate::groups::update::TRADE_CART_SPRITES;
     assert_eq!(t.show_walking(10), Err(trade.clone()));
     assert_eq!(t.show_standing(10), Err(trade));

@@ -3,11 +3,12 @@
 
 use crate::GenieError;
 use crate::garrison::{
-    COMPUTER_IDS, FAR, GATE_CLASS, HUMAN_IDS, MASTER_1808, NEARBY, TOWN_BELL_REACH, TRANSPORTED,
-    VILLAGER_CLASS, class_has_flags, has_garrison_task,
+    COMPUTER_IDS, FAR, HUMAN_IDS, MASTER_1808, NEARBY, TOWN_BELL_REACH, TRANSPORTED,
+    class_has_flags, has_garrison_task,
 };
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::{GARRISON, Work};
@@ -85,7 +86,7 @@ impl World {
                 }
             } else {
                 let building = match target_annex {
-                    Some(main) if tm.class != GATE_CLASS => main,
+                    Some(main) if tm.class != class::GATE => main,
                     _ => target,
                 };
                 Shelters {
@@ -132,7 +133,7 @@ impl World {
                 continue;
             };
             let m = u.master(&self.masters, p)?;
-            if m.class == VILLAGER_CLASS && m.kind == COMBAT {
+            if m.class == class::VILLAGER && m.kind == COMBAT {
                 units.push(id);
             }
             if m.id == MASTER_1808 {
@@ -188,7 +189,7 @@ impl World {
             let om = o.master(&self.masters, op)?;
             if om.kind < BUILDING {
                 shelters.transports.push(id);
-            } else if om.class != GATE_CLASS && o.annex_of.is_none() {
+            } else if om.class != class::GATE && o.annex_of.is_none() {
                 shelters.buildings.push(id);
             }
             shelters.counts.push(self.garrisoned(id)?);

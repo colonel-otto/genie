@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::gathering::gather::{
-    ARRIVED, DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_CLASS, FARM_STOPS, GatherAction, GatherReads,
-    IDLE, MOVED, Resource, SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, food,
+    ARRIVED, DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_STOPS, GatherAction, GatherReads, IDLE, MOVED,
+    Resource, SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, food,
 };
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
@@ -147,13 +148,13 @@ impl GatherAction {
         farm_stops: bool,
         rate: StopRate,
     ) -> Result<Self, GenieError> {
-        let farm = if target.class == FARM_CLASS || SPECIAL_TARGETS.contains(&target.master) {
+        let farm = if target.class == class::FARM || SPECIAL_TARGETS.contains(&target.master) {
             [target.position[0], target.position[1]]
         } else {
             [0.0; 2]
         };
         let (stops, time_per_stop) =
-            if farm_stops && target.class == FARM_CLASS && STOP_FARMS.contains(&target.master) {
+            if farm_stops && target.class == class::FARM && STOP_FARMS.contains(&target.master) {
                 (FARM_STOPS, rate.time_per_stop(task.work_value, FARM_STOPS))
             } else {
                 (1, 0.0)
@@ -219,7 +220,7 @@ impl GatherAction {
         // a farm another farmer works (`+0x644` above 1 with this one, which the constructor
         // took): set_state(11) to its point, then the farm goes (slot 0x68 with none; the caller
         // lets it go)
-        if self.target_type == i32::from(FARM_CLASS) && 1 < target.workers + 1 {
+        if self.target_type == i32::from(class::FARM) && 1 < target.workers + 1 {
             let radius = if STOP_FARMS.contains(&target.master) {
                 0.0
             } else {
@@ -303,7 +304,7 @@ impl GatherAction {
                 self.farm = [target.position[0], target.position[1]];
             }
         }
-        if target.class == FARM_CLASS && 1 < workers {
+        if target.class == class::FARM && 1 < workers {
             let radius = if STOP_FARMS.contains(&target.master) {
                 0.0
             } else {

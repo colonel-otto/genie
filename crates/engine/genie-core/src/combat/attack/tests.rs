@@ -2,6 +2,7 @@ use super::*;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::layers::Animated;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
@@ -919,12 +920,12 @@ fn an_attack_on_a_target_out_of_sight_fails() {
     assert_eq!(got, (Ok(3), true, true, false, failed));
     assert_eq!((a.target, a.state), (-1, FAILED));
     let mut a = own_attack(77, MOVE, 1.0);
-    assert!(run(&mut a, PREDATOR, Some(BOAR_AI), false).3);
+    assert!(run(&mut a, class::PREDATOR, Some(BOAR_AI), false).3);
     let mut a = own_attack(77, MOVE, 1.0);
-    let lion = run(&mut a, PREDATOR, Some(LION_AI), false);
+    let lion = run(&mut a, class::PREDATOR, Some(LION_AI), false);
     assert_eq!((lion.2, lion.3, lion.4), (true, false, vec![]));
     let mut a = own_attack(77, MOVE, 1.0);
-    let alone = run(&mut a, PREDATOR, None, true);
+    let alone = run(&mut a, class::PREDATOR, None, true);
     assert_eq!((alone.0, alone.3), (Ok(3), false));
     let mut a = Attack {
         sub_action: true,
@@ -935,7 +936,7 @@ fn an_attack_on_a_target_out_of_sight_fails() {
         (Ok(3), false, false, false, vec![])
     );
     let mut a = own_attack(77, MOVE, 1.0);
-    assert!(run(&mut a, PREDATOR, Some(13), true).0.is_err());
+    assert!(run(&mut a, class::PREDATOR, Some(13), true).0.is_err());
 }
 
 /// readyToAttack on a player's target out of sight: a unit of stance 0 with speed that may
@@ -1226,12 +1227,12 @@ fn a_dead_tree_keeps_a_soldier_s_attack_until_it_is_ready() {
     let run = |unit_class: i16, tree_state: u8| {
         let victim = Victim {
             id: 7,
-            class: TREE,
+            class: class::TREE,
             state: tree_state,
             position: at,
             ..Victim::default()
         };
-        let mut rig = Rig::on(world_with(7, 0, TREE, at), 0.8, victim).holding(7, 0);
+        let mut rig = Rig::on(world_with(7, 0, class::TREE, at), 0.8, victim).holding(7, 0);
         rig.f.own.class = unit_class;
         let mut a = soldier_attack(7, 1.0, 0.0, at);
         a.seen = at;
@@ -1587,7 +1588,7 @@ fn the_start_faces_the_target_but_for_masters_1704_and_1706() {
 fn a_gate_s_reach_is_to_its_nearest_part() {
     let gate_at = [13.4, 10.0, 0.0];
     let gated = || {
-        let mut world = world_with(7, 0, GATE, gate_at);
+        let mut world = world_with(7, 0, class::GATE, gate_at);
         for (id, x) in [(8, 10.9), (9, 20.0), (10, 10.5)] {
             world.insert(
                 id,
@@ -1602,7 +1603,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
     };
     let world = gated();
     let e = Engagement {
-        target_class: GATE,
+        target_class: class::GATE,
         ..engaged(3.0, 0.0, false, 2)
     };
     let mut mover_body = Body::new([10.0, 10.0, 0.0], None, Some(soldier_mover(0.0)));
@@ -1618,7 +1619,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
     // the part 8 is 0.5 off (its footprint 0.1); the part 10, the third, is not read
     assert_eq!((c.ready, c.failed, c.posted), (true, false, vec![]));
     // without its parts the gate is out of reach
-    let bare = world_with(7, 0, GATE, gate_at);
+    let bare = world_with(7, 0, class::GATE, gate_at);
     let mut mover = soldier_mover(0.0);
     let c = own_start(&bare, &e, standing_arms(), true, 2, &mut mover).unwrap();
     assert_eq!((c.ready, c.failed), (false, true));
@@ -2152,7 +2153,7 @@ fn an_attack_whose_target_died_lets_it_go_and_ends() {
     let code = rig.run(20, |c, u, f, r| a.target_died(c, u, f, r));
     assert_eq!((code, rig.workers(7, 0), a.state), (Ok(5), Some(0), DONE));
     let (mut rig, mut a) = on_target(dead(0), true, (READY, true));
-    rig.f.own.class = VILLAGER;
+    rig.f.own.class = class::VILLAGER;
     let code = rig.run(20, |c, u, f, r| a.target_died(c, u, f, r));
     assert_eq!(
         (code, a.target, a.point, a.state),
@@ -2165,7 +2166,7 @@ fn an_attack_whose_target_died_lets_it_go_and_ends() {
         "an Attack of a unit other than a villager whose target died"
     );
     let (mut rig, mut a) = on_target(dead(2), true, (READY, true));
-    rig.f.own.class = VILLAGER;
+    rig.f.own.class = class::VILLAGER;
     let r = rig.run(20, |c, u, f, r| a.target_died(c, u, f, r));
     assert_eq!(
         r.unwrap_err().reason(),
@@ -2245,7 +2246,7 @@ fn a_ready_attack_swings_ends_on_a_dead_tree_or_follows() {
     a.arms.sprite = Some(STANDING);
     let code = rig.run(20, |c, u, f, r| a.ready_step(c, u, f, r, true));
     assert_eq!((code, a.state), (Ok(0), SWING));
-    let (mut rig, mut a) = on_target((0, TREE, 3, [11.0, 10.0, 0.0]), true, (READY, false));
+    let (mut rig, mut a) = on_target((0, class::TREE, 3, [11.0, 10.0, 0.0]), true, (READY, false));
     let code = rig.run(20, |c, u, f, r| a.ready_step(c, u, f, r, false));
     assert_eq!((code, a.state), (Ok(5), DONE));
     let (mut rig, mut a) = on_target((0, 6, 2, [15.0, 10.0, 0.0]), true, (READY, false));
@@ -2311,7 +2312,7 @@ fn an_attack_on_a_dead_target_posts_by_its_unit_ai() {
     let posted_1fa = vec![(0x1fa, [600, 0, 0])];
     let stance_1 = lost(order, |rig| rig.r.stance = 1);
     assert_eq!(stance_1, (Ok(5), posted_1fa, true, Some(0), DONE));
-    let villager = lost(AiOrder::Absent, |rig| rig.f.own.class = VILLAGER);
+    let villager = lost(AiOrder::Absent, |rig| rig.f.own.class = class::VILLAGER);
     assert_eq!((villager.0, villager.2), (Ok(5), false));
     let posted_1fb = vec![(0x1fb, [600, 0, 0x202])];
     assert_eq!(lost(AiOrder::Idle, |_| {}).1, posted_1fb);
@@ -2320,7 +2321,7 @@ fn an_attack_on_a_dead_target_posts_by_its_unit_ai() {
     assert_eq!((queued.0, queued.1, queued.2), (Ok(5), vec![], true));
     // a villager's unit AI keeps Gaia's target
     let gaia = |rig: &mut Rig| {
-        (rig.f.own.class, rig.f.victim.player) = (VILLAGER, 0);
+        (rig.f.own.class, rig.f.victim.player) = (class::VILLAGER, 0);
     };
     assert!(!lost(AiOrder::Idle, gaia).2);
 }

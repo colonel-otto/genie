@@ -3,8 +3,9 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
-use crate::orders::{AUTO_SCOUT_CLASS, Place, lock_gate, set_stance};
+use crate::orders::{Place, lock_gate, set_stance};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -141,7 +142,7 @@ impl World {
             }
             let master = unit.master(&self.masters, p)?;
             if master.object_flags & 0x10 == 0 {
-                if master.class == AUTO_SCOUT_CLASS {
+                if master.class == class::LIVESTOCK {
                     return Err(GenieError::unsupported(
                         "AUTO_SCOUT's class 58 rule (FUN_140eca780)",
                     ));

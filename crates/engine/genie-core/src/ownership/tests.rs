@@ -1,8 +1,9 @@
 use crate::GenieError;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
-use crate::ownership::capture::LIVESTOCK;
+
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -65,7 +66,7 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
         (Some(OrderKind::Move), Some(ActionKind::Move))
     );
     // livestock's unit AI, and one on action 0x2c2, keep their order and target
-    let (u, _) = stopped(walking_forager(), LIVESTOCK).unwrap();
+    let (u, _) = stopped(walking_forager(), class::LIVESTOCK).unwrap();
     assert_eq!(u.actions.move_to().copied(), None);
     let kept = |ai: &crate::unit_ai::UnitAi| (ai.current_order, ai.current_target);
     assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
@@ -90,7 +91,7 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
     t.players[1].objects[0]
         .actions
         .set_artifact(Some(artifact()));
-    let (u, released) = stopped(t, LIVESTOCK).unwrap();
+    let (u, released) = stopped(t, class::LIVESTOCK).unwrap();
     let a = u.actions.artifact().copied().unwrap();
     assert_eq!(
         (a.move_to, a.goal, a.target, a.state),
@@ -103,7 +104,7 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
     u.actions.set_artifact(Some(artifact()));
     u.body.put_mover(None);
     assert_eq!(
-        stopped(t, LIVESTOCK).unwrap_err().reason(),
+        stopped(t, class::LIVESTOCK).unwrap_err().reason(),
         "a walking animal without movement state"
     );
 }

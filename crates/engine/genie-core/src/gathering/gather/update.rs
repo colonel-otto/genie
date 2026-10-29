@@ -4,9 +4,9 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::{
-    DONE, FACE, FARM_CLASS, FARM_WAIT, GatherAction, GatherReads, IDLE, MOVED, Next, REGATHERED,
-    RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, StopRate, VILLAGER_CLASS, WAIT_GAP, WAIT_WORKERS,
-    WALK, WALK_BACK, WORK, waits_for_a_farm,
+    DONE, FACE, FARM_WAIT, GatherAction, GatherReads, IDLE, MOVED, Next, REGATHERED, RESEED_WALK,
+    SEARCH, SEARCH_WAIT, STOP_FARMS, StopRate, WAIT_GAP, WAIT_WORKERS, WALK, WALK_BACK, WORK,
+    waits_for_a_farm,
 };
 use crate::gathering::hunt::walk_sprite;
 use crate::math::rng::Stream;
@@ -14,6 +14,7 @@ use crate::movement::move_to::walk_or_give_up;
 use crate::movement::move_to::{Goal, MoveTo, Shown, start_walk_shown, target_moved};
 use crate::movement::{Me, Mover, PathAsk};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 
@@ -194,7 +195,7 @@ impl GatherAction {
         target: &Victim,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        if target.class == FARM_CLASS {
+        if target.class == class::FARM {
             if target.state < 2 {
                 return self.begin_search(c, unit, r);
             }
@@ -369,7 +370,7 @@ impl GatherAction {
     ///
     /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
     pub(super) const fn give_up(&mut self, r: &GatherReads) {
-        let waits = r.class == VILLAGER_CLASS;
+        let waits = r.class == class::VILLAGER;
         self.move_to = Some(self.move_wait.give_up(waits, r.stance));
     }
 }

@@ -16,6 +16,7 @@
 
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
+use crate::objects::masters::class;
 use crate::vision::registry::MASK;
 use crate::world::World;
 
@@ -26,7 +27,6 @@ pub const LEAVES_GHOSTS: u8 = 2;
 /// The classes a building's watch leaves out (`FUN_1411cc980`) and the gates' class, whose annex
 /// stays watched.
 const UNWATCHED_CLASSES: [i16; 2] = [51, 54];
-const GATE_CLASS: i16 = 39;
 /// The master a building's watch leaves out (`FUN_1411cc980`).
 const UNWATCHED_MASTER: i16 = 1808;
 /// The originals whose ghost's leaving changes the local player's terrain (`FUN_141090ad0`).
@@ -218,7 +218,7 @@ impl World {
         let annex = linked && u.annex_of.is_some();
         !UNWATCHED_CLASSES.contains(&m.class)
             && !u.construction.is_some_and(|c| c.desolid)
-            && (!annex || m.class == GATE_CLASS)
+            && (!annex || m.class == class::GATE)
             && m.id != UNWATCHED_MASTER
     }
 
@@ -298,7 +298,7 @@ impl World {
                 .filter(|u| u.annex_of.is_some())
                 .filter(|u| {
                     u.master(&self.masters, p)
-                        .is_ok_and(|m| m.class != GATE_CLASS)
+                        .is_ok_and(|m| m.class != class::GATE)
                 })
                 .map(|u| u.id)
                 .collect();
@@ -1055,7 +1055,7 @@ mod tests {
         let gate = Master {
             id: 88,
             kind: 80,
-            class: GATE_CLASS,
+            class: class::GATE,
             ..Master::default()
         };
         let annex_master = Master {

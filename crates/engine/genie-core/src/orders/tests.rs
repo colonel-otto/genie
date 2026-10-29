@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -2173,7 +2174,7 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
     t.masters[1] = crate::objects::masters::Masters::new([
         master(4, 70, 6),
         master(42, 70, 42),
-        master(58, 70, LIVESTOCK),
+        master(58, 70, class::LIVESTOCK),
         master(10, 10, 5),
     ]);
     let unit = |id, master, amount| Unit {
@@ -2288,7 +2289,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     let sheep_master = Master {
         id: 594,
         kind: 70,
-        class: LIVESTOCK,
+        class: class::LIVESTOCK,
         radius: [0.2, 0.2],
         moving: Some(walker.stats),
         ..Master::default()
@@ -2324,7 +2325,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     let placed = |player, master, at: [f32; 2], radius| crate::map::spatial::Placed {
         position: [at[0], at[1], 0.0],
         radius: [radius, radius],
-        class: LIVESTOCK,
+        class: class::LIVESTOCK,
         player,
         master,
         obstruction_type: 0,
@@ -3176,7 +3177,7 @@ fn a_gather_takes_a_farm_but_no_other_building() {
         crate::objects::masters::Masters::new(t.masters[1].iter().cloned().chain([Master {
             id: 50,
             kind: BUILDING,
-            class: crate::gathering::gather::FARM_CLASS,
+            class: class::FARM,
             radius: [1.5, 1.5],
             ..Master::default()
         }]));

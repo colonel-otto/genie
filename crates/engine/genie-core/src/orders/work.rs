@@ -5,9 +5,10 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::gather::HuntOrder;
-use crate::orders::{ATTACK_TASK, MASTER_84, VILLAGER, Work};
+use crate::orders::{ATTACK_TASK, MASTER_84, Work};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -134,7 +135,7 @@ impl World {
         if matches!(
             task.action_type,
             ATTACK_TASK | crate::combat::attack::ATTACK
-        ) && class != VILLAGER
+        ) && class != class::VILLAGER
             && let Some(ai) = unit.ai.as_mut()
         {
             ai.retarget_disabled = 1;

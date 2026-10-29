@@ -42,5 +42,5 @@ Units go into buildings and transports, and come out again. This folder holds bo
 
 <!-- uses -->
 - Uses: [`commands`](../commands/), [`gathering`](../gathering/), [`map`](../map/), [`math`](../math/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`ownership`](../ownership/), [`pathing`](../pathing/), [`players`](../players/), [`production`](../production/), [`unit_ai`](../unit_ai/), [`vision`](../vision/), [`world`](../world/).
-- Used by: [`combat`](../combat/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`ownership`](../ownership/), [`players`](../players/), [`technology`](../technology/), [`unit_ai`](../unit_ai/).
+- Used by: [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`ownership`](../ownership/), [`players`](../players/), [`technology`](../technology/), [`unit_ai`](../unit_ai/).
 <!-- /uses -->

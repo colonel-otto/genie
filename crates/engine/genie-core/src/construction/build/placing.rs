@@ -4,12 +4,12 @@
 use crate::GenieError;
 use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
-    HALTED, MAX_WAITS, PLACE, SITE_GONE, VILLAGER, WAIT, WALL, WONDER, WONDER_RATE,
-    footprint_clearing,
+    HALTED, MAX_WAITS, PLACE, SITE_GONE, WAIT, WONDER, WONDER_RATE, footprint_clearing,
 };
 use crate::movement::footprint_gap;
 use crate::movement::move_to::MoveTo;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 
@@ -159,7 +159,7 @@ impl BuildAction {
             let player = placed.player;
             let walled = |[x, y]: [i32; 2]| {
                 c.w.spatial
-                    .object_on_tile(x, y, |o| o.class == WALL && o.player != player)
+                    .object_on_tile(x, y, |o| o.class == class::WALL && o.player != player)
             };
             if walled(a) && walled(b) {
                 return Err(GenieError::unsupported(
@@ -225,7 +225,7 @@ impl BuildAction {
     /// the map.
     pub(super) fn back(&mut self, c: &Step<'_>, builder: &Unit) -> Result<(), GenieError> {
         let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
-        if c.w.spatial.get(builder.id).map(|p| p.class) != Some(VILLAGER) {
+        if c.w.spatial.get(builder.id).map(|p| p.class) != Some(class::VILLAGER) {
             return Err(GenieError::unsupported(
                 "a builder other than a villager returns",
             ));

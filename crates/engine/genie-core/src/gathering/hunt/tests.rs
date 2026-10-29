@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::class;
 
 use crate::combat::attack::tests::Rig;
 use crate::movement::{Me, MoveStats, Velocity};
@@ -520,7 +521,7 @@ fn a_hunt_on_a_live_ally_fails() {
 fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
     let dead = Quarry { state: 3, ..tree() };
     let sheep = Quarry {
-        class: LIVESTOCK,
+        class: class::LIVESTOCK,
         player: 2,
         ..tree()
     };
@@ -556,7 +557,7 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
         target: 28813,
         state: WALK,
         point: [177.272_75, 62.444_31, 0.0],
-        target_class: LIVESTOCK,
+        target_class: class::LIVESTOCK,
         task: CHOP,
         attack: None,
         move_to: Some(MoveTo::Moving),
@@ -602,7 +603,7 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
     };
     let ibex = Victim {
         id: 15371,
-        class: CLASS_49,
+        class: class::FARM,
         kind: 30,
         player: 1,
         state: 5,
@@ -611,7 +612,7 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
     let face = |victim: Victim| {
         let mut hunt = HuntAction {
             state: WALK,
-            target_class: CLASS_49,
+            target_class: class::FARM,
             timer: -3.0,
             ..hunting(15371)
         };
@@ -644,7 +645,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
         target: -1,
         state,
         point: [177.272_75, 62.444_31, 0.0],
-        target_class: LIVESTOCK,
+        target_class: class::LIVESTOCK,
         task: CHOP,
         attack: None,
         move_to: Some(move_to),
@@ -874,7 +875,7 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
         ..Victim::default()
     };
     let own = Victim {
-        class: LIVESTOCK,
+        class: class::LIVESTOCK,
         player: 1,
         state: 2,
         ..Victim::default()
@@ -925,7 +926,7 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
     };
     let animal = |position| Victim {
         id: 10028,
-        class: LIVESTOCK,
+        class: class::LIVESTOCK,
         player: 1,
         state: 2,
         position,
@@ -1084,7 +1085,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
     use crate::combat::attack::tests::own_attack;
     let sheep = || Victim {
         id: 10028,
-        class: LIVESTOCK,
+        class: class::LIVESTOCK,
         player: 1,
         state: 2,
         position: [30.0, 88.0, 0.0],
@@ -1136,7 +1137,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
     );
     assert_eq!((h.state, h.attack), (SEARCH, None));
     let wolf = Victim {
-        class: PREDATOR,
+        class: class::PREDATOR,
         ..sheep()
     };
     let (r, _) = attack(&mut fresh(10028), done, wolf, false, true);
@@ -1191,7 +1192,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     };
     let sheep = |state| Victim {
         id: 10028,
-        class: LIVESTOCK,
+        class: class::LIVESTOCK,
         player: 1,
         state,
         position: [29.5, 89.0, 0.0],

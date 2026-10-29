@@ -8,11 +8,12 @@ use crate::movement::Mover;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
-use crate::world::{BUILDING_COST, FARM, GATE, Gate, PASTURE_1889, World};
+use crate::world::{BUILDING_COST, FARM, Gate, PASTURE_1889, World};
 
 impl World {
     /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108,
@@ -380,7 +381,7 @@ impl World {
         let (_, a) = self.object_mut(aid).ok_or_else(|| not_held.clone())?;
         a.annex_of = Some(id);
         self.spatial.set_annex(aid, Some(id));
-        if made.class != GATE {
+        if made.class != class::GATE {
             self.unwatch(player, aid);
         }
         if 0.0 < am.height {

@@ -1,7 +1,8 @@
 //! A building's test whether it takes a unit in (`FUN_14120eb10`), its room and what it holds.
 
 use crate::GenieError;
-use crate::garrison::{BUILDING_CLASS, CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
+use crate::garrison::{CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
@@ -71,7 +72,7 @@ pub(super) fn has_garrison_task(tasks: &[Task], action: i16, class: i16) -> bool
 /// A garrison task (action type 3) on buildings (class 3).
 #[must_use]
 pub const fn is_garrison_task(task: &Task) -> bool {
-    task.action_type == GARRISON && task.object_group == BUILDING_CLASS
+    task.action_type == GARRISON && task.object_group == class::BUILDING
 }
 
 impl World {
@@ -168,7 +169,7 @@ impl World {
         if !above || bm.garrison == 0 {
             return Ok(false);
         }
-        if !has_garrison_task(&unit.tasks, GARRISON, BUILDING_CLASS) {
+        if !has_garrison_task(&unit.tasks, GARRISON, class::BUILDING) {
             return Ok(false);
         }
         let garrison_type = bm.building.map_or(0, |m| m.garrison_type);

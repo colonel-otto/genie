@@ -4,12 +4,13 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildReads, DONE, FARM, FINISHED, FISH_TRAP, FISHING_SHIPS,
-    HALTED, IDLE, LAST_TAKEN, MOVE, NO_TARGET_POINT, SITE_GONE, VILLAGER, WORK, drop_done_orders,
+    BUILDER_UNMOVING, BuildAction, BuildReads, DONE, FINISHED, FISH_TRAP, FISHING_SHIPS, HALTED,
+    IDLE, LAST_TAKEN, MOVE, NO_TARGET_POINT, SITE_GONE, WORK, drop_done_orders,
 };
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::MoveTo;
+use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::{ActionKind, OrderKind};
@@ -163,8 +164,8 @@ impl BuildAction {
         // LAB_140ab09af: a villager works the farm it built (FUN_141194b20, FUN_141195750), a
         // fishing ship its fish trap (FUN_141194640, FUN_1411945a0): its unit AI drops its build
         // orders (FUN_140c5e020 with 0x2be), then slot 0x7e8 on the building
-        let farm = master.class == FARM && master.id != FISH_TRAP;
-        let works_it = (farm && reads.class == VILLAGER)
+        let farm = master.class == class::FARM && master.id != FISH_TRAP;
+        let works_it = (farm && reads.class == class::VILLAGER)
             || (master.id == FISH_TRAP && FISHING_SHIPS.contains(&builder.life.master_id));
         // a pasture is a farm to the test, so a villager works it as any farm; another builder
         // works it when its livestock's workers (slot 0x780, FUN_1411c5dd0) are its owner's

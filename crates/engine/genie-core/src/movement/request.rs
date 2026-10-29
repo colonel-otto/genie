@@ -6,11 +6,11 @@ use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::Vec3;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::movement::{
-    AfterRequest, BUILDING_CLASS, CONTINUE, EPSILON, GATE, Goal, LONG_PATH_GROW, LONG_PATH_MOVER,
-    LongWalker, Me, Mover, Planning, RANGE_FLOOR, SHORT_REACH, TOWER_CLASS, TRADE_CART,
-    VILLAGER_CLASS, WALL_CLASS, cut_path, footprint_gap, ground, long_path_for, may_plan,
+    AfterRequest, CONTINUE, EPSILON, Goal, LONG_PATH_GROW, LONG_PATH_MOVER, LongWalker, Me, Mover,
+    Planning, RANGE_FLOOR, SHORT_REACH, cut_path, footprint_gap, ground, long_path_for, may_plan,
     point_or_zero, vector,
 };
+use crate::objects::masters::class;
 use crate::pathing::tile_path::Path;
 
 /// What the long pather is asked for a far waypoint ([`Mover::long_plan`]'s arguments after the
@@ -55,7 +55,9 @@ impl Mover {
             return Ok(step);
         }
         let solid = self.stats.radius.iter().all(|&r| 0.0 < r);
-        let trade_cart = world.get(me.id).is_some_and(|p| p.class == TRADE_CART);
+        let trade_cart = world
+            .get(me.id)
+            .is_some_and(|p| p.class == class::TRADE_CART);
         if solid && !self.plan_allowed(me, world, plan, trade_cart, plans)? {
             return Ok(AfterRequest::Paused);
         }
@@ -276,7 +278,7 @@ impl Mover {
         path: &mut Path,
     ) -> Result<bool, GenieError> {
         let me_at = world.get(me.id);
-        if me_at.is_some_and(|p| p.class == VILLAGER_CLASS) {
+        if me_at.is_some_and(|p| p.class == class::VILLAGER) {
             return Ok(true);
         }
         let player = me_at.map(|p| p.player);
@@ -307,8 +309,8 @@ impl Mover {
             })?;
             let walled = hits.iter().any(|&h| {
                 world.get(h).is_some_and(|p| {
-                    matches!(p.class, WALL_CLASS | GATE | TOWER_CLASS)
-                        || (p.class == BUILDING_CLASS && p.speed <= 0.0)
+                    matches!(p.class, class::WALL | class::GATE | class::TOWER)
+                        || (p.class == class::BUILDING && p.speed <= 0.0)
                 })
             });
             if walled {

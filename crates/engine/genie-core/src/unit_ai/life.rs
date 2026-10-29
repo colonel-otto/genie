@@ -3,10 +3,11 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::movement::PathAsk;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, AiMove, BOAR_AI, CLASS_KING, COMPUTER_SOLDIER_IDLE_TIMEOUT,
+    ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, AiMove, BOAR_AI, COMPUTER_SOLDIER_IDLE_TIMEOUT,
     DESIRED_DISTANCE, Effect, Found, HUMAN_ORDER_CAP, HUNTED_IDLE_TIMEOUT, Home, Hunted,
     IDLE_TIMEOUT, LION_IDLE_TIMEOUT, Memory, NewObject, ORDER_HISTORY, OrderRecord,
     PATROL_TURN_REACH, PRIEST_IDLE_TIMEOUT, SIEGE_IDLE_TIMEOUT, SOLDIER_AI, SOLDIER_IDLE_TIMEOUT,
@@ -69,7 +70,7 @@ impl UnitAi {
                     origin: new.position,
                     leash: new.hunt_range,
                 });
-                if new.class == CLASS_KING {
+                if new.class == class::KING {
                     made.stance = 0;
                 }
             }

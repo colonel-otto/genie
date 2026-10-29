@@ -4,14 +4,15 @@ use crate::GenieError;
 use crate::combat::attack::Fight;
 use crate::combat::damage::Victim;
 use crate::gathering::hunt::{
-    ARRIVED, CLASS_49, FACE, GAP, GATHER, HERD_FAR, HERD_REACH, HuntAction, HuntNext, HuntReads,
-    LAST_BIT, LIVESTOCK, OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,
+    ARRIVED, FACE, GAP, GATHER, HERD_FAR, HERD_REACH, HuntAction, HuntNext, HuntReads, LAST_BIT,
+    OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,
 };
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::objects::layers::Body;
+use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -33,7 +34,7 @@ impl HuntAction {
         self.tear_down(body.mover_mut())?;
         self.state = WALK;
         self.timer = 0.0;
-        let own_livestock = victim.class == LIVESTOCK && victim.player == player;
+        let own_livestock = victim.class == class::LIVESTOCK && victim.player == player;
         if victim.state <= 2 && !own_livestock {
             return Err(GenieError::unsupported(
                 "a hunt's set_state 4 on a live target after its attack",
@@ -84,12 +85,12 @@ impl HuntAction {
         // another player's target of class 49 (a farm's or a pasture's livestock): only a building
         // changes hands (FUN_141185360, FUN_1411858f0), any other ends the hunt (set_state 1);
         // the hunter's own goes on to its sprite
-        if f.victim.class == CLASS_49 && f.victim.player != f.own.player {
+        if f.victim.class == class::FARM && f.victim.player != f.own.player {
             return Err(GenieError::unsupported(
                 "a hunt facing a target of class 49 (set_state 6)",
             ));
         }
-        if f.victim.class == LIVESTOCK {
+        if f.victim.class == class::LIVESTOCK {
             if f.victim.state <= 2 {
                 let herd = r.herd.ok_or(GenieError::unsupported(
                     "a hunt facing live livestock unprepared",

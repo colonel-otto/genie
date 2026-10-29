@@ -18,6 +18,7 @@ use crate::math::fmath;
 use crate::math::rng::Well512;
 use crate::movement::MoveStats;
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use genie_diff::Diff;
 
 /// What the clock reads of a sprite (the `.dat` graphic, memory `+0x8`..`+0x1a`).
@@ -334,8 +335,6 @@ impl ActiveSprite {
     }
 }
 
-/// A trade cart's class (`FUN_14106a940`, decoded 0x13).
-pub const TRADE_CART: i16 = 19;
 /// The trade task whose carrying sprite a trade cart with goods shows (`FUN_1412028a0`: action
 /// type 0x6f, `object_id` 0x54).
 const TRADE_ACTION: i16 = 0x6f;
@@ -361,7 +360,7 @@ pub fn trade_sprite(master: &Master) -> Option<i16> {
 /// `FUN_141188160`: an amount above 0 in its resource store, `+0x7a0`).
 #[must_use]
 pub const fn loaded_cart(master: &Master, goods: bool) -> bool {
-    master.class == TRADE_CART && goods
+    master.class == class::TRADE_CART && goods
 }
 
 /// Slot 0x798 of a combat object (`FUN_1412029f0`, types 70 and 80): a loaded trade cart's
@@ -691,7 +690,7 @@ mod tests {
             ..trade
         };
         let cart = Master {
-            class: TRADE_CART,
+            class: class::TRADE_CART,
             standing_sprite: 20,
             move_sprite: 21,
             tasks: vec![other, trade],

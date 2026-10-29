@@ -10,6 +10,7 @@ use crate::GenieError;
 use crate::construction::build::held;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -32,11 +33,6 @@ const TOWN_CENTRE_621: i16 = 621;
 
 /// A capture flag (`+0x924`) under which no delete takes the object.
 const BEING_CAPTURED: u8 = 2;
-
-/// The class a unit's slot 0xd8 (`FUN_141211340`) spares, and the livestock it spares while it
-/// holds some.
-const SPARED_CLASS: i16 = 42;
-pub(crate) const LIVESTOCK: i16 = 58;
 
 /// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
 /// ([`World::delete`]).
@@ -169,7 +165,7 @@ impl World {
         if UNDELETABLE.contains(&class) {
             return Ok(());
         }
-        if class == SPARED_CLASS || (class == LIVESTOCK && 0.0 < unit.life.amount) {
+        if class == class::RELIC || (class == class::LIVESTOCK && 0.0 < unit.life.amount) {
             return Ok(());
         }
         let i = self.wake(id);

@@ -6,11 +6,11 @@ use crate::combat::damage::Victim;
 use crate::gathering::hunt::update::write_target_back;
 use crate::gathering::hunt::{
     DECAY_TASK, Herd, HuntAction, HuntNext, HuntReads, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH,
-    VILLAGER_CLASS,
 };
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap_squared;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -145,7 +145,7 @@ impl HuntAction {
     ///
     /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
     pub(super) const fn give_up(&mut self, r: &AttackReads, class: i16) {
-        let waits = !r.computer && class == VILLAGER_CLASS;
+        let waits = !r.computer && class == class::VILLAGER;
         self.move_to = Some(self.move_wait.give_up(waits, r.stance));
     }
 }

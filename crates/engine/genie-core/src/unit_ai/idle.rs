@@ -2,13 +2,14 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ARTIFACT_AI, AttackAsk, BOAR_AI, CIVILIAN, ENEMY_SIGHTING_GAP, FISHING_AI, FISHING_CARED,
     Found, Memory, Pick, SHIP_EVADE_REACH, SIEGE_AI, SIEGE_CARED, SIEGE_TOWER_AI, SOLDIER_AI,
     SOLDIER_CARED, SOLDIER_IDLE_MASTER, Search, Seeker, Surroundings, TOWER_AI, TOWER_CARED,
-    TRADE_AI, TRADE_BOAT_CLASS, TRADE_CART_CARED, TRADE_SHIP_CARED, UnitAi, UnitSide,
-    attack_search_radius, civilian_search_radius, computer_idle_check, search_radius,
+    TRADE_AI, TRADE_CART_CARED, TRADE_SHIP_CARED, UnitAi, UnitSide, attack_search_radius,
+    civilian_search_radius, computer_idle_check, search_radius,
 };
 
 impl UnitAi {
@@ -74,7 +75,7 @@ impl UnitAi {
                 &FISHING_CARED,
                 civilian_search_radius(at.los, at.search_radius),
             )
-        } else if at.class == TRADE_BOAT_CLASS {
+        } else if at.class == class::TRADE_BOAT {
             (&TRADE_SHIP_CARED, search_radius(at.los, at.search_radius))
         } else {
             (&TRADE_CART_CARED, search_radius(at.los, at.search_radius))

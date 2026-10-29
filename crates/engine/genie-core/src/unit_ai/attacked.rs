@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, PREY_CLASS, Pick,
-    QueuedOrder, RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide,
-    VILLAGER_CLASS, alert_owner, closest_undiscovered_tile,
+    AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, Pick, QueuedOrder,
+    RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide, alert_owner,
+    closest_undiscovered_tile,
 };
 
 impl UnitAi {
@@ -348,14 +349,14 @@ impl UnitAi {
                     point: [x, y, off.z],
                     range: 0.0,
                     force: true,
-                    walk: off.class != PREY_CLASS,
+                    walk: off.class != class::PREY,
                 },
                 side,
                 rng,
             )?;
         }
         if !off.computer
-            && off.class == VILLAGER_CLASS
+            && off.class == class::VILLAGER
             && let (Some(site), Some(target)) = (off.site, off.action_target)
         {
             let order = |o: &Named, order: OrderKind| QueuedOrder {

@@ -3,14 +3,15 @@
 use crate::GenieError;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ACTION_COMPLETED, BREAK, CLASS_10, DEAD, Effect, FISHING_BUILD_FAR, FISHING_BUILDS,
-    FISHING_CARED, FOUNDATION_REACH, GO_ON, Memory, NO_ANIM_SPEED, Notify, Pick, QueuedOrder,
-    SIEGE_TOWER_AI, Search, Surroundings, UnitAi, UnitSeen, UnitSide, alert_owner,
-    civilian_search_radius, closest_undiscovered_tile, held_action_state,
+    ACTION_COMPLETED, BREAK, DEAD, Effect, FISHING_BUILD_FAR, FISHING_BUILDS, FISHING_CARED,
+    FOUNDATION_REACH, GO_ON, Memory, NO_ANIM_SPEED, Notify, Pick, QueuedOrder, SIEGE_TOWER_AI,
+    Search, Surroundings, UnitAi, UnitSeen, UnitSide, alert_owner, civilian_search_radius,
+    closest_undiscovered_tile, held_action_state,
 };
 
 impl UnitAi {
@@ -60,7 +61,7 @@ impl UnitAi {
             ));
         }
         let added = self.add_attacker(n.caller);
-        let fierce = attacker.class == CLASS_10 && attacker.combat_level == 1;
+        let fierce = attacker.class == class::PREDATOR && attacker.combat_level == 1;
         if added && self.current_target != n.caller && !fierce {
             self.ask_for_help(n.caller, at, computer, side)?;
         }
@@ -125,7 +126,7 @@ impl UnitAi {
             || order == Some(OrderKind::Attack)
             || (gathers
                 && state == 12
-                && at.target.is_some_and(|t| t.class == CLASS_10)
+                && at.target.is_some_and(|t| t.class == class::PREDATOR)
                 && attacker.owner == 0)
             || order == Some(OrderKind::Repair)
             || (fierce && gathers && state < 16 && (0x9110u32 >> state) & 1 != 0))

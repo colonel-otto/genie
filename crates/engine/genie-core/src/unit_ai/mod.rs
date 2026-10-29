@@ -72,19 +72,19 @@ pub use self::cared::{
     TRADE_SHIP_CARED, TRANSPORT_CARED, civilian_kind, civilian_search_radius,
 };
 use self::cared::{
-    BUILDING_AI, CLASS_22, EVADE_EDGE, EVADE_REACH, EVASIVE_NEAR, LIVE_TARGET_ACTIONS,
-    RUN_DRAW_SCALE, RUN_EPSILON, RUN_LEASH, RUN_ONE, RUN_REACH, TRANSPORT_AI,
-    adjusted_idle_timeout, attack_search_radius,
+    BUILDING_AI, EVADE_EDGE, EVADE_REACH, EVASIVE_NEAR, LIVE_TARGET_ACTIONS, RUN_DRAW_SCALE,
+    RUN_EPSILON, RUN_LEASH, RUN_ONE, RUN_REACH, TRANSPORT_AI, adjusted_idle_timeout,
+    attack_search_radius,
 };
 pub(crate) use self::cared::{search_area, search_radius};
 #[cfg(test)]
 use self::ids::DEFENSIVE_MASTERS;
 use self::ids::{
     AI_MOVE_RANGE, ARTIFACT_IDLE_TIMEOUT, BOAR_HOME, BOAR_LEASH, BOAR_LEASH_DRAW, BOAR_OFFSET,
-    BOAR_STEP, BOAR_WANDER, CLASS_KING, CLASS_VILLAGER, COMPUTER_SOLDIER_IDLE_TIMEOUT,
-    DEFEND_SLACK, DEFENDLESS_MASTER, DESIRED_DISTANCE, ENDED_ACTIONS, EXPLORE_Z, FOLLOW_SLACK_HIGH,
-    FOLLOW_SLACK_LOW, FOUNDATION_REACH, HUNTED_HOME, HUNTED_IDLE_TIMEOUT, HUNTED_SIGHT_GROWTH,
-    HUNTED_STEP, IDLE_TIMEOUT, INVALID_POINT, KING_UNLED, LION_ATTACKED_TIMEOUT, LION_IDLE_TIMEOUT,
+    BOAR_STEP, BOAR_WANDER, COMPUTER_SOLDIER_IDLE_TIMEOUT, DEFEND_SLACK, DEFENDLESS_MASTER,
+    DESIRED_DISTANCE, ENDED_ACTIONS, EXPLORE_Z, FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW,
+    FOUNDATION_REACH, HUNTED_HOME, HUNTED_IDLE_TIMEOUT, HUNTED_SIGHT_GROWTH, HUNTED_STEP,
+    IDLE_TIMEOUT, INVALID_POINT, KING_UNLED, LION_ATTACKED_TIMEOUT, LION_IDLE_TIMEOUT,
     LION_SIGHT_DIVISOR, LION_SIGHT_SHARE, NO_ANIM_SPEED, OUTSIDE_ORDER, PRIEST_IDLE_TIMEOUT,
     RETARGET_RANGE, RETARGET_REACH, Retarget, RetargetSearch, SIEGE_IDLE_TIMEOUT,
     SOLDIER_IDLE_MASTER, SOLDIER_IDLE_TIMEOUT, TOWER_IDLE_TIMEOUT, TREBUCHET_CLASS,
@@ -102,10 +102,7 @@ pub use self::surroundings::{
     AiMove, Duel, Found, GroupState, Home, Seen, Surroundings, TopTarget, UnitSeen, flood_search,
     no_search,
 };
-use self::surroundings::{
-    CLASS_3, CLASS_10, CLASS_18, CLASS_20, CLASS_52, LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY,
-    group_lets_idle,
-};
+use self::surroundings::{LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_idle};
 #[cfg(test)]
 use crate::math::rng::Well512;
 #[cfg(test)]
@@ -198,10 +195,6 @@ const STILL: f32 = crate::math::image::unit_ai::STILL;
 const NEVER_KILLED: f32 = crate::math::image::unit_ai::NEVER_KILLED;
 /// [`SENT_OFF`]'s radii are hundredths (`DAT_14330ebcc`).
 const RADIUS_SCALE: f32 = crate::math::image::unit_ai::RADIUS_SCALE;
-/// The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
-const PREY_CLASS: i16 = 9;
-/// The villagers' class.
-const VILLAGER_CLASS: i16 = 4;
 
 /// What a notify handler (unit-AI slot 0x238) returns: go on with the next notify.
 const GO_ON: u32 = 2;
@@ -242,9 +235,6 @@ const LIVESTOCK_AI: u32 = 0x13;
 const TRADE_AI: u32 = 0xa;
 /// The fishing ship's factory type (`TribeFishingShipUnitAIModule`, class 21).
 const FISHING_AI: u32 = 0xc;
-/// The trade boat's class (`-0xeaa` raw): its cared classes and its trade partner are not the
-/// trade cart's.
-const TRADE_BOAT_CLASS: i16 = 2;
 /// A computer player's ship evades the object its idle check found by its speed times this
 /// (`FUN_140c21930`, `FUN_140c1eab0`: `DAT_142ec9eb8`).
 const SHIP_EVADE_REACH: f32 = crate::math::image::unit_ai::SHIP_EVADE_REACH;

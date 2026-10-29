@@ -3,7 +3,8 @@
 //! stacking and its new objects.
 
 use crate::GenieError;
-use crate::construction::build::{CLASS_39, Completion, Construction, StackUnit};
+use crate::construction::build::{Completion, Construction, StackUnit};
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, player_master};
@@ -242,8 +243,9 @@ impl crate::world::World {
         let new_master = nu.master(&self.masters, q)?;
         let mut point = None;
         let building_made = new_master.kind == BUILDING;
-        let gate_lock = (building_made && old_class == CLASS_39 && new_master.class == CLASS_39)
-            .then_some(old_lock);
+        let gate_lock =
+            (building_made && old_class == class::GATE && new_master.class == class::GATE)
+                .then_some(old_lock);
         if building_made {
             // a gather point on the old building names the new one; one whose target the world
             // no longer holds keeps its point, none at x or y −1 (compared as floats)

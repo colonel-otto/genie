@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::class;
 use crate::vision::registry::UnitUpdate;
 
 /// The record cells (FD-030-D03) give every query the objects whose record is filed in a
@@ -1083,7 +1084,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
             .is_err()
     );
     let mut gate = villager(4.0, 8.0);
-    gate.class = GATE_CLASS;
+    gate.class = class::GATE;
     gate.obstruction = Some(Obstruction { kind: 2, class: 3 });
     s.insert(7, gate);
     assert!(

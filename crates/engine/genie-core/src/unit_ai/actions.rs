@@ -2,11 +2,12 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    AiMove, CLASS_18, ENDED_ACTIONS, Effect, GO_ON, Notify, PRODUCED, QueuedOrder, Surroundings,
-    UnitAi, UnitSide, WALK_BACK, point_gap_squared,
+    AiMove, ENDED_ACTIONS, Effect, GO_ON, Notify, PRODUCED, QueuedOrder, Surroundings, UnitAi,
+    UnitSide, WALK_BACK, point_gap_squared,
 };
 
 impl UnitAi {
@@ -278,7 +279,7 @@ impl UnitAi {
             let (position, class) = place.ok_or(GenieError::unsupported(
                 "a stop ending an order without the unit's place",
             ))?;
-            if class != CLASS_18 {
+            if class != class::MONK {
                 self.state_position = position;
             }
         }

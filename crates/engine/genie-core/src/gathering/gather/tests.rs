@@ -1,6 +1,7 @@
 use super::*;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Mover};
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 use crate::world::{Player, World};
@@ -166,7 +167,7 @@ fn farm() -> Resource {
     Resource {
         id: 12557,
         position: [112.5, 173.5, 3.0],
-        class: FARM_CLASS,
+        class: class::FARM,
         master: 50,
         player: 1,
         workers: 0,
@@ -283,7 +284,7 @@ fn a_farm_s_food_sold_at_once_goes_to_the_player_and_the_gathering_goes_on() {
     let mut rig = Rig::with_attributes(250);
     rig.set_load(FARM_FOOD_KIND, 0.0);
     let mut field = Victim {
-        class: FARM_CLASS,
+        class: class::FARM,
         master_id: 50,
         ..target(15.0)
     };
@@ -661,7 +662,7 @@ fn waiting(worked: bool) -> GatherAction {
         state: FARM_WAIT,
         timer: -1.0,
         target: -1,
-        target_type: i32::from(FARM_CLASS),
+        target_type: i32::from(class::FARM),
         worked,
         gather_at: [112.0, 173.0],
         ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
@@ -709,7 +710,7 @@ fn a_farmer_at_a_farm_another_works_walks_back_to_search() {
         id: 12557,
         amount: 175.0,
         state: 2,
-        class: FARM_CLASS,
+        class: class::FARM,
         master_id: 50,
         radius: [1.5, 1.5],
         workers: 2,

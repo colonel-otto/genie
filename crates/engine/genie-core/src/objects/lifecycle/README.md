@@ -27,5 +27,5 @@ building's storage, the military and civilian counts.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`construction`](../../construction/), [`map`](../../map/), [`math`](../../math/), [`pathing`](../../pathing/), [`production`](../../production/), [`world`](../../world/).
+- Uses: [`construction`](../../construction/), [`map`](../../map/), [`math`](../../math/), [`pathing`](../../pathing/), [`world`](../../world/).
 <!-- /uses -->

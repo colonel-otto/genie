@@ -9,6 +9,7 @@
 //! ([`crate::production::refund_master`]).
 
 use crate::GenieError;
+use crate::objects::masters::class;
 use crate::objects::masters::player_master;
 use crate::production::{cost_test, pay, refund_master};
 use crate::world::World;
@@ -22,12 +23,6 @@ pub const FARM: i16 = 0x32;
 /// The pasture a mill's queue buys (`0x761`, GAME 0x15 and 0x16).
 pub const PASTURE: i16 = 0x761;
 
-/// The farm class (49), whose masters the reseed takes (`FUN_141658b40`'s `-0xe7b`).
-const FARM_CLASS: i16 = 49;
-/// The villager's class (4, `-0xea8`), which reseeds farms, and the fishing ship's (21, `0x15`),
-/// which reseeds fish traps.
-const VILLAGER_CLASS: i16 = 4;
-const FISHING_SHIP_CLASS: i16 = 21;
 /// The town centre (621, `0x26d`), whose availability also counts the town centres standing
 /// against attribute 218 (`FUN_141663f80`).
 const TOWN_CENTRE_621: i16 = 0x26d;
@@ -195,7 +190,7 @@ impl World {
     pub fn reseed_master(&self, p: usize) -> Option<i16> {
         [FARM, PASTURE].into_iter().find(|&m| {
             self.can_make(p, m)
-                && player_master(&self.masters, p, m).is_some_and(|m| m.class == FARM_CLASS)
+                && player_master(&self.masters, p, m).is_some_and(|m| m.class == class::FARM)
         })
     }
 
@@ -231,11 +226,11 @@ impl World {
         let class = unit.master(&self.masters, p)?.class;
         let owner = &self.players[p];
         let (master, auto, queue) =
-            if (!owner.auto_farm_queue && owner.farm_queue < 1) || class != VILLAGER_CLASS {
+            if (!owner.auto_farm_queue && owner.farm_queue < 1) || class != class::VILLAGER {
                 if !owner.auto_fishtrap_queue && owner.fish_trap_queue < 1 {
                     return Ok(false);
                 }
-                if class != FISHING_SHIP_CLASS {
+                if class != class::FISHING_SHIP {
                     return Ok(false);
                 }
                 (FISH_TRAP, owner.auto_fishtrap_queue, Queue::FishTraps)
@@ -466,8 +461,8 @@ mod tests {
     fn a_master_can_be_made_by_its_base_s_availability() {
         let mut t = world(0.0);
         t.masters[1] = Masters::new([
-            building(FARM, FARM_CLASS, FARM, true, -1),
-            building(PASTURE, FARM_CLASS, 300, false, -1),
+            building(FARM, class::FARM, FARM, true, -1),
+            building(PASTURE, class::FARM, 300, false, -1),
             building(300, 3, 300, true, 301),
             building(301, 3, 302, false, -1),
             building(302, 3, 302, true, -1),
@@ -478,7 +473,7 @@ mod tests {
         assert!(t.can_make(1, PASTURE));
         assert!(!t.can_make(1, 1187));
         assert!(!t.can_make(1, 303));
-        t.masters[1] = Masters::new([building(FARM, FARM_CLASS, FARM, false, -1)]);
+        t.masters[1] = Masters::new([building(FARM, class::FARM, FARM, false, -1)]);
         assert!(!t.can_make(1, FARM));
     }
 
@@ -501,16 +496,16 @@ mod tests {
         let masters = |farm: bool, pasture: bool, class: i16| {
             Masters::new([
                 building(FARM, class, FARM, farm, -1),
-                building(PASTURE, FARM_CLASS, PASTURE, pasture, -1),
+                building(PASTURE, class::FARM, PASTURE, pasture, -1),
             ])
         };
-        t.masters[1] = masters(true, true, FARM_CLASS);
+        t.masters[1] = masters(true, true, class::FARM);
         assert_eq!(t.reseed_master(1), Some(FARM));
-        t.masters[1] = masters(false, true, FARM_CLASS);
+        t.masters[1] = masters(false, true, class::FARM);
         assert_eq!(t.reseed_master(1), Some(PASTURE));
         t.masters[1] = masters(true, true, 3);
         assert_eq!(t.reseed_master(1), Some(PASTURE));
-        t.masters[1] = masters(false, false, FARM_CLASS);
+        t.masters[1] = masters(false, false, class::FARM);
         assert_eq!(t.reseed_master(1), None);
     }
 

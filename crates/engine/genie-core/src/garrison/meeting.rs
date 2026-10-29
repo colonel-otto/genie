@@ -2,13 +2,13 @@
 //! the meeting point and the reach.
 
 use crate::GenieError;
-use crate::garrison::{EnterAction, EnterTarget, NO_SPEED, SIEGE_CLASS, WalkStart};
+use crate::garrison::{EnterAction, EnterTarget, NO_SPEED, WalkStart};
 use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
 use crate::movement::MoveStats;
 use crate::movement::footprint_gap_squared;
 use crate::objects::masters::master_type::BUILDING;
-use crate::objects::masters::{Master, Masters, player_master};
+use crate::objects::masters::{Master, Masters, class, player_master};
 
 /// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up
 /// to which an Enter's reach of a target with speed tests the tiles about the two
@@ -66,7 +66,7 @@ pub fn meet_at(t: &MeetingTarget) -> MeetAt {
     if matches!(t.state, 0 | 2) {
         return MeetAt::Shore;
     }
-    if t.class == SIEGE_CLASS || !matches!(t.state, 11 | 4 | 3) {
+    if t.class == class::SIEGE || !matches!(t.state, 11 | 4 | 3) {
         return MeetAt::Place;
     }
     MeetAt::ActionPoint

@@ -3,10 +3,9 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::masters::class;
 use crate::objects::release::Releaser;
-use crate::players::game_status::{
-    FISHING_BOAT, KEEPING_TYPES, LIVESTOCK, TRADE_ACTION, TRADE_CART, UNSTOPPED_BUILDINGS, VILLAGER,
-};
+use crate::players::game_status::{KEEPING_TYPES, TRADE_ACTION, UNSTOPPED_BUILDINGS};
 use crate::unit_ai::ActionKind;
 use crate::world::World;
 
@@ -29,7 +28,7 @@ impl World {
                     Some(ActionKind::AutoScout | ActionKind::Explore)
                 )
             });
-            if matches!(class, VILLAGER | FISHING_BOAT) || explorer {
+            if matches!(class, class::VILLAGER | class::FISHING_SHIP) || explorer {
                 if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
                     m.ignore_units.clear();
                 }
@@ -38,7 +37,7 @@ impl World {
                     m.stand()?;
                 }
             }
-            if class == crate::garrison::BUILDING_CLASS {
+            if class == class::BUILDING {
                 if !UNSTOPPED_BUILDINGS.contains(&id) {
                     self.object_stop(p, idx)?;
                 }
@@ -71,7 +70,7 @@ impl World {
             ));
         }
         let keeps = self.halt_top_action(p, idx)?;
-        if keeps && class == TRADE_CART {
+        if keeps && class == class::TRADE_CART {
             return Err(GenieError::unsupported(
                 "a trade cart's goods after its stop (+0x7a0, FUN_141188160)",
             ));
@@ -91,7 +90,8 @@ impl World {
         let Some(ai) = unit.ai.as_ref() else {
             return Ok(());
         };
-        if class == LIVESTOCK || ai.current_action == Some(ActionKind::HeroPower) || trading {
+        if class == class::LIVESTOCK || ai.current_action == Some(ActionKind::HeroPower) || trading
+        {
             return Ok(());
         }
         // slot 0xb0 with 0, its stopAction a call on the unit at once

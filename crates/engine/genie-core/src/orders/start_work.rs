@@ -20,17 +20,13 @@ use crate::GenieError;
 use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::masters::class;
 use crate::orders::Work;
 use crate::world::World;
 
 /// The game mode that puts the villagers to work at the start (`+0x34` 13, Empire Wars).
 pub const EMPIRE_WARS: i32 = 13;
 
-/// The classes the pass puts to work: villagers and fishing ships (decoded 4 and 21).
-const VILLAGER: i16 = 4;
-const FISHING_SHIP: i16 = 21;
-/// The farm class a unit's tile is searched for, and the fish trap a fishing ship takes.
-const FARM: i16 = 49;
 const FISH_TRAP: i16 = 199;
 /// The gather groups the resource search tries, in order (0 to 4).
 const GROUPS: u8 = 5;
@@ -51,7 +47,7 @@ enum Start {
 /// `FUN_1415c60b0`) searches. The caller then tests that it is ready (slot 0x2d0 with 1: its
 /// top action may be interrupted and its unit AI holds no order) and has a unit AI.
 const fn start_of(class: i16, building: bool, cart_task: bool) -> Option<Start> {
-    if matches!(class, VILLAGER | FISHING_SHIP) {
+    if matches!(class, class::VILLAGER | class::FISHING_SHIP) {
         return Some(Start::Work);
     }
     if building && cart_task {
@@ -101,7 +97,7 @@ impl World {
             }
             let target = match self.farm_under(p, i, class)? {
                 Some(farm) => Some(farm),
-                None if class == FISHING_SHIP => {
+                None if class == class::FISHING_SHIP => {
                     return Err(GenieError::unsupported(
                         "the Empire Wars start of a fishing ship (its unit AI's slot 0x80)",
                     ));
@@ -140,7 +136,7 @@ impl World {
                 "an object on a tile the slice does not hold",
             ))?;
             let m = o.master(&self.masters, owner)?;
-            if m.class == FARM && (class != FISHING_SHIP || m.id == FISH_TRAP) {
+            if m.class == class::FARM && (class != class::FISHING_SHIP || m.id == FISH_TRAP) {
                 return Ok(Some(id));
             }
         }
@@ -274,8 +270,11 @@ mod tests {
     /// 431096717's four carts of player 2) searches; anything else takes nothing.
     #[test]
     fn the_start_pass_works_villagers_and_lets_mule_carts_search() {
-        assert_eq!(start_of(VILLAGER, false, false), Some(Start::Work));
-        assert_eq!(start_of(FISHING_SHIP, false, false), Some(Start::Work));
+        assert_eq!(start_of(class::VILLAGER, false, false), Some(Start::Work));
+        assert_eq!(
+            start_of(class::FISHING_SHIP, false, false),
+            Some(Start::Work)
+        );
         assert_eq!(start_of(99, true, true), Some(Start::CartSearch));
         assert_eq!(start_of(99, true, false), None);
         assert_eq!(start_of(99, false, true), None);

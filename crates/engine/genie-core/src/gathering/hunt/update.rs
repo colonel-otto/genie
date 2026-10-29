@@ -4,13 +4,14 @@
 use crate::GenieError;
 use crate::combat::attack::{Attack, AttackReads, Fight, set_walker_anim};
 use crate::gathering::hunt::{
-    ATTACK, FACE, GATHER, Herd, HuntAction, HuntNext, HuntReads, LEAD, PREDATOR, SEARCH, Shown,
-    TREE_CLASS, WALK, WALK_SEARCH, walk_sprite,
+    ATTACK, FACE, GATHER, Herd, HuntAction, HuntNext, HuntReads, LEAD, SEARCH, Shown, TREE_CLASS,
+    WALK, WALK_SEARCH, walk_sprite,
 };
 use crate::math::rng::Stream;
 use crate::movement::move_to::{Goal, MoveTo, start_walk_shown, target_moved, walk_or_give_up};
 use crate::movement::{Me, Mover, PathAsk};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 
@@ -103,7 +104,9 @@ impl HuntAction {
                 Ok(HuntNext::Search)
             }
             1 | 2 | 5
-                if r.predator_hunts_end && f.victim.class == PREDATOR && !r.attack.queue_empty =>
+                if r.predator_hunts_end
+                    && f.victim.class == class::PREDATOR
+                    && !r.attack.queue_empty =>
             {
                 Err(GenieError::unsupported(
                     "a hunt that ends with its Attack on a predator (set_state 1)",

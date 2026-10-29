@@ -25,7 +25,7 @@ mod search;
 mod sight;
 
 pub use self::grid::WalkQuery;
-pub(crate) use self::pather::GATE_CLASS;
+
 pub use self::pather::{Hit, SmoothingWalls, tile_record_id};
 use self::pather::{WalkTest, record_meets_segment};
 #[cfg(test)]
@@ -145,8 +145,6 @@ const PASTURES: [i16; 2] = [1893, 1897];
 const FISH_TRAP: i16 = 199;
 /// The fishing ships' masters (`FUN_1411945a0`: 13, 2356, 2171).
 const TRAPPERS: [i16; 3] = [13, 2356, 2171];
-/// The villagers' class, which gathers from farms (`FUN_141195750`).
-const FARMER_CLASS: i16 = 4;
 
 /// Obstruction kinds the query tests (`FUN_141051e00`): boxes (2, 3, 11, 13) and circles (5).
 const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];

@@ -6,9 +6,10 @@ use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::class;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
-use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
+use crate::orders::{Place, TROPHIES, TROPHY, clear_powerups, damage_share};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -223,7 +224,8 @@ impl World {
         };
         let master = u.master(&self.masters, p)?;
         let spared = TRIBE_COMBAT <= master.kind
-            && (master.class == SPARED || (master.class == LIVESTOCK && 0.0 < u.life.amount));
+            && (master.class == SPARED
+                || (master.class == class::LIVESTOCK && 0.0 < u.life.amount));
         if spared {
             return Ok(());
         }

@@ -4,8 +4,9 @@ use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
-use crate::orders::{HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
+use crate::orders::{HERD_MOST, NO_POINT, Place, TOWN_CENTRE};
 use crate::players::PlayerId;
 use crate::world::World;
 
@@ -24,7 +25,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let by = self.releaser(player, idx);
         let unit = &self.players[player].objects[idx];
-        let livestock = unit.master(&self.masters, player)?.class == LIVESTOCK;
+        let livestock = unit.master(&self.masters, player)?.class == class::LIVESTOCK;
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an Artifact's move to an object the slice does not hold",
         ))?;
@@ -117,7 +118,7 @@ impl World {
                     let u = &self.players[q].objects[i];
                     if q != p
                         || u.life.state != 2
-                        || u.master(&self.masters, q)?.class != LIVESTOCK
+                        || u.master(&self.masters, q)?.class != class::LIVESTOCK
                         || !u.top_action_idle()?
                         || listed.contains(&id)
                     {

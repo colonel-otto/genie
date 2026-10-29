@@ -35,7 +35,7 @@ use self::unload::NO_POINT;
 #[cfg(test)]
 use self::unload::unload_group_takes;
 pub use self::walk_in::{ENTER, ENTERED, EnterAction, EnterTarget, FAILED, WalkStart, Walking};
-pub(crate) use self::walk_in::{EnterReads, NO_SPEED, SIEGE_CLASS, SIEGE_UNLOAD};
+pub(crate) use self::walk_in::{EnterReads, NO_SPEED, SIEGE_UNLOAD};
 #[cfg(test)]
 use self::walk_in::{WAIT, WALK};
 #[cfg(test)]
@@ -61,16 +61,10 @@ const ENTER_SLEEPING: GenieError = GenieError::unsupported("an enter into a slee
 pub(crate) const NO_MASTERS: GenieError = GenieError::unsupported("an enter without the masters");
 pub(crate) const TOWN_BELL_REACH: f32 = crate::math::image::garrison::TOWN_BELL_REACH;
 
-/// The class of buildings, which a unit's garrison task names (`FUN_1415c9240` with 3, 3).
-pub(crate) const BUILDING_CLASS: i16 = 3;
-/// A gate's class: its annex is not its main building for a garrison order.
-const GATE_CLASS: i16 = 39;
 /// The ids a command's check reads (`FUN_140e558b0`): a human player's first 60, a computer
 /// player's first 500.
 const HUMAN_IDS: usize = 60;
 const COMPUTER_IDS: usize = 500;
-/// `SEEK_SHELTER`'s villagers: class 4 of type 70.
-const VILLAGER_CLASS: i16 = 4;
 
 /// The class-flags table `FUN_1411205e0` reads (`DAT_1439e37b0`, a u32 per class; its count,
 /// `DAT_1439e2cf8`, is 64), as the image holds it (nothing writes it).

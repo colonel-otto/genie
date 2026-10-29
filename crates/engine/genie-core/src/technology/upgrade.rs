@@ -6,6 +6,7 @@
 
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
+use crate::objects::masters::class;
 use crate::objects::masters::{Master, Task, master_type, player_master};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
@@ -18,8 +19,6 @@ const NO_HIT_POINTS: f32 = f32::EPSILON;
 const WHOLE: f32 = crate::math::image::upgrade::WHOLE;
 /// A sprite the data file does not have.
 const NO_SPRITE: GenieError = GenieError::unsupported("a sprite the data file does not have");
-/// The villager class (4), whose load an upgrade without its master kept goes to its player.
-const VILLAGER: i16 = 4;
 /// The food kinds a villager's load gives as food (15, 16 and 17).
 const FOODS: [i16; 3] = [15, 16, 17];
 /// The resource classes whose damage share is the share of their storage left from state 3 on
@@ -347,7 +346,7 @@ impl World {
         }
         let u = self.object_at(place);
         if master_type::COMBAT <= kind
-            && old.class == VILLAGER
+            && old.class == class::VILLAGER
             && 0.0 < u.life.amount
             && 0 <= u.life.attribute_type
         {
@@ -879,7 +878,7 @@ mod tests {
         let old = Master {
             id: 83,
             kind: master_type::COMBAT,
-            class: VILLAGER,
+            class: class::VILLAGER,
             hit_points: 25,
             volley_fire: 1.0,
             ..Master::default()
@@ -910,7 +909,7 @@ mod tests {
         let a = &t.players[0].attributes;
         assert_eq!((a[37], a[40]), (0.0, 1.0));
         assert_eq!(t.players[0].resources[0], 10.0);
-        assert_eq!(t.masters[0].get(83).map(|m| m.class), Some(VILLAGER));
+        assert_eq!(t.masters[0].get(83).map(|m| m.class), Some(class::VILLAGER));
     }
 
     /// `FUN_140a97970` -> `FUN_140a78150`: each action finds its old task's match among the new
@@ -1169,7 +1168,7 @@ mod tests {
         let villager = Master {
             id: 83,
             kind: master_type::COMBAT,
-            class: VILLAGER,
+            class: class::VILLAGER,
             hit_points: 25,
             ..Master::default()
         };

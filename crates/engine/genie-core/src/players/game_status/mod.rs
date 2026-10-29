@@ -27,17 +27,10 @@ const BATTLE_ROYALE: i32 = 12;
 /// A defeated player's objects stop once the game is this old, in milliseconds (`FUN_141639860`;
 /// in a recording's playback the session check that would stop them earlier passes).
 const STOP_AFTER_MS: u32 = 60_000;
-/// The classes a defeat stops besides explorers: villagers (4) and fishing boats (21).
-const VILLAGER: i16 = 4;
-const FISHING_BOAT: i16 = 21;
 /// The defeat's event weighs the players below this id (`FUN_141639860`'s `CMP R14D, 0x19`).
 const DEFEAT_IDS: usize = 25;
 /// The first of the attributes a defeat's event reads (300 + a player's id).
 const KILLS_OF: usize = 300;
-/// The livestock's class, whose unit AI a stop leaves alone (`FUN_14108c050`: raw `-0xe72`).
-pub(crate) const LIVESTOCK: i16 = 58;
-/// The trade carts' class, which keep their actions while they carry goods (`FUN_14106a940`).
-const TRADE_CART: i16 = 19;
 /// The trade action's type (`0x6f`), whose load keeps a stopped unit's AI going.
 const TRADE_ACTION: i16 = 0x6f;
 /// The action types whose stop keeps a value of the unit's (`+0x88a`, `FUN_14106fa60`).

@@ -7,6 +7,7 @@ use crate::garrison::transport::{
     TransportAction, in_zone, retry_point,
 };
 use crate::math::conversions::cvttss2si;
+use crate::objects::masters::class;
 
 /// The transports' parts that reach the world: the unload command's install, the unload and the
 /// units put ashore.
@@ -383,7 +384,7 @@ impl crate::world::World {
     ) -> Result<(), GenieError> {
         let ship = &self.players[p].objects[i];
         let at = ship.position();
-        if ship.master(&self.masters, p)?.class == crate::garrison::SIEGE_CLASS {
+        if ship.master(&self.masters, p)?.class == class::SIEGE {
             return Err(crate::garrison::SIEGE_UNLOAD);
         }
         let (up, ui) = self.live_inside(id)?;

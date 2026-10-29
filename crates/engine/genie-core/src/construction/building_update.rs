@@ -10,6 +10,7 @@ use crate::math::rng::Well512;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, annexes_of};
@@ -17,7 +18,6 @@ use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use crate::world::{
     BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, MONASTERY,
-    VILLAGER_CLASS,
 };
 
 /// The house's master id (`0x46`), whose update takes the walls' branch ([`walls_branch`]).
@@ -27,7 +27,7 @@ const HOUSE: i16 = 70;
 /// wall) or the house runs only its damage frames by its hit points and its combat update; no
 /// whole seconds, and an annex of it completes as well ([`Unit::complete_on_update`]).
 pub(crate) const fn walls_branch(master: &Master) -> bool {
-    master.class == crate::production::spawn::WALL || master.id == HOUSE
+    master.class == class::WALL || master.id == HOUSE
 }
 
 impl Unit {
@@ -50,7 +50,7 @@ impl Unit {
             .building
             .as_ref()
             .is_some_and(|b| b.transform_unit != -1);
-        if master.class != crate::map::spatial::GATE_CLASS || !transforms || self.life.state != 2 {
+        if master.class != class::GATE || !transforms || self.life.state != 2 {
             return Ok(());
         }
         let height = master.height;
@@ -273,7 +273,7 @@ impl Unit {
                 (u.id, u.life.master_id),
                 c.w.masters.get(c.player),
             )?;
-            if m.class == VILLAGER_CLASS {
+            if m.class == class::VILLAGER {
                 villagers += 1;
             }
             let (class, hit_points) = (m.class, m.hit_points);

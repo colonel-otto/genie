@@ -4,10 +4,11 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::objects::lifecycle::death_parts::count_class;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, player_master};
 use crate::objects::unit::Unit;
-use crate::ownership::capture::LIVESTOCK;
+
 use crate::unit_ai::OWNER_CHANGED;
 use crate::world::World;
 use crate::world::player::Player;
@@ -408,7 +409,7 @@ pub(crate) fn change_hands(
             .map(|d| Box::new(d.clone()));
     }
     own.fog_visibility = to.fog_visibility;
-    if own.class == LIVESTOCK {
+    if own.class == class::LIVESTOCK {
         own.line_of_sight = to.line_of_sight;
     }
     let los = own.line_of_sight;

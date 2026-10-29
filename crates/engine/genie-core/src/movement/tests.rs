@@ -2,6 +2,7 @@ use super::*;
 use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
+use crate::objects::masters::class;
 
 const DT: f32 = 0.02;
 
@@ -997,7 +998,7 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
         unknown: None,
         obstruction: Some(Obstruction { kind: 2, class: 1 }),
     };
-    world.insert(100, wall(10.0, GATE));
+    world.insert(100, wall(10.0, class::GATE));
     world.insert(101, wall(12.0, 27));
     world.insert(102, wall(8.0, 27));
     world.set_annex(101, Some(100));
@@ -1369,22 +1370,22 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
     };
     assert_eq!(walled(true, None), (Ok(true), 3));
     assert_eq!(
-        walled(true, Some(obstacle(WALL_CLASS, 0.0, 82.0))),
+        walled(true, Some(obstacle(class::WALL, 0.0, 82.0))),
         (Ok(true), 2)
     );
     assert_eq!(
-        walled(true, Some(obstacle(GATE, 0.0, 87.0))),
+        walled(true, Some(obstacle(class::GATE, 0.0, 87.0))),
         (Ok(false), 0)
     );
     assert_eq!(
-        walled(true, Some(obstacle(TOWER_CLASS, 0.0, 82.0))),
+        walled(true, Some(obstacle(class::TOWER, 0.0, 82.0))),
         (Ok(true), 2)
     );
-    let still = obstacle(BUILDING_CLASS, 0.0, 82.0);
+    let still = obstacle(class::BUILDING, 0.0, 82.0);
     assert_eq!(walled(true, Some(still)), (Ok(true), 2));
-    let moving = obstacle(BUILDING_CLASS, 1.0, 82.0);
+    let moving = obstacle(class::BUILDING, 1.0, 82.0);
     assert_eq!(walled(true, Some(moving)), (Ok(true), 3));
-    let wall = obstacle(WALL_CLASS, 0.0, 87.0);
+    let wall = obstacle(class::WALL, 0.0, 87.0);
     assert_eq!(walled(false, Some(wall)), (Ok(true), 3));
 }
 

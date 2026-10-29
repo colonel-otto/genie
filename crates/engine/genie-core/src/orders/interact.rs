@@ -3,10 +3,11 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{
-    CLASS_54, Interact, MoveOrder, Place, Split, Work, grid_point, ignore_unit, offset_point,
-    readiness, set_differentiator_groups,
+    Interact, MoveOrder, Place, Split, Work, grid_point, ignore_unit, offset_point, readiness,
+    set_differentiator_groups,
 };
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -47,7 +48,7 @@ impl World {
         let player = p;
         let master = self.players[player].objects[idx].master(&self.masters, player)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-        let still = master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0);
+        let still = master.kind < MOVING || (master.class != class::CLASS_54 && speed <= 0.0);
         if still {
             // an object that does not move takes slot 0x128 at once with 1 (no carried-resource
             // test, any task) at the order's point, z 0; a queued order then goes on as a mover's

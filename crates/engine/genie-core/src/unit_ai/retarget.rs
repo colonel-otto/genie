@@ -2,15 +2,16 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    AiMove, AttackAsk, CLASS_3, CLASS_20, CLASS_52, DEFEND_LEASH, DEFEND_PATROL_LEASH,
-    DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW, GroupState, INVALID_POINT, Pick,
-    RETARGET_RANGE, RETARGET_REACH, RetargetSearch, SINGLE_VOLLEY, STAND_GROUND_PATROL_LEASH,
-    STAND_GROUND_SLACK, Search, Surroundings, UnitAi, UnitSide, group_lets_idle, held_action_state,
-    patrol_distance, point_gap_squared,
+    AiMove, AttackAsk, DEFEND_LEASH, DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH,
+    FOLLOW_SLACK_LOW, GroupState, INVALID_POINT, Pick, RETARGET_RANGE, RETARGET_REACH,
+    RetargetSearch, SINGLE_VOLLEY, STAND_GROUND_PATROL_LEASH, STAND_GROUND_SLACK, Search,
+    Surroundings, UnitAi, UnitSide, group_lets_idle, held_action_state, patrol_distance,
+    point_gap_squared,
 };
 
 impl UnitAi {
@@ -29,7 +30,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
-        let class_20 = busy && at.class == CLASS_20;
+        let class_20 = busy && at.class == class::TRANSPORT;
         if !class_20
             && self.adjusted_idle_timeout < self.idle_timer
             && self.current_action.is_none()
@@ -44,7 +45,7 @@ impl UnitAi {
         if self.patrols(group) {
             return self.patrol_idle_part(at, computer, ai, side);
         }
-        if matches!(at.class, CLASS_3 | CLASS_52)
+        if matches!(at.class, class::BUILDING | class::TOWER)
             && matches!(
                 self.current_action,
                 Some(ActionKind::Make | ActionKind::Research)
@@ -132,7 +133,7 @@ impl UnitAi {
         if self.patrols(group) {
             return Err(GenieError::unsupported("a patrol order's idle part"));
         }
-        if matches!(class, CLASS_3 | CLASS_52)
+        if matches!(class, class::BUILDING | class::TOWER)
             && matches!(
                 self.current_action,
                 Some(ActionKind::Make | ActionKind::Research)

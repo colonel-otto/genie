@@ -2,8 +2,9 @@
 //! cannot cross, the cliffs; a point's hull and the area's bounds.
 
 use crate::GenieError;
-use crate::map::spatial::{GATE_CLASS, Placed, tile_record_id};
+use crate::map::spatial::{Placed, tile_record_id};
 use crate::math::fmath::at_most_or_unordered;
+use crate::objects::masters::class;
 use crate::pathing::hull_path::{HALF, Hull, HullPather, Point, Shape};
 
 impl HullPather<'_> {
@@ -136,7 +137,7 @@ impl HullPather<'_> {
     /// ([`HullPather::with_gates`]), and never for player -1 (`processCliffs`'): its ally test
     /// `FUN_141663dc0` takes no number at or above the player count, unsigned.
     pub(super) fn passes(&self, id: i32, p: &Placed, player: i32) -> Result<bool, GenieError> {
-        if p.class != GATE_CLASS || player < 0 {
+        if p.class != class::GATE || player < 0 {
             return Ok(false);
         }
         let gates = self.gates.ok_or(GenieError::unsupported(

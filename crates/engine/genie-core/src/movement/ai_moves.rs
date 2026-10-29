@@ -8,10 +8,11 @@ use crate::gathering::hunt::HuntMove;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveTo, MoveToAction, ai_sprite, object_sprite, point_sprite};
 use crate::objects::masters::Masters;
+use crate::objects::masters::class;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
-use crate::ownership::capture::LIVESTOCK;
+
 use crate::unit_ai::AiMove;
 use crate::world::step::Step;
 
@@ -263,7 +264,7 @@ impl Unit {
         }
         let livestock = self
             .master(&c.w.masters, c.player)
-            .is_ok_and(|m| m.class == LIVESTOCK);
+            .is_ok_and(|m| m.class == class::LIVESTOCK);
         let master =
             c.w.spatial
                 .get_known(target)?

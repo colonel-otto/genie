@@ -3,10 +3,11 @@
 use crate::GenieError;
 use crate::commands::GatherPoint;
 use crate::math::rng::Stream;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
-use crate::production::spawn::VILLAGER;
+
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -34,7 +35,8 @@ impl World {
     ) -> Result<(), GenieError> {
         let world_time = self.world_time;
         let sprite = self.point_move_sprite(p, new)?;
-        let villager = self.players[p].objects[new].master(&self.masters, p)?.class == VILLAGER;
+        let villager =
+            self.players[p].objects[new].master(&self.masters, p)?.class == class::VILLAGER;
         let unit = &mut self.players[p].objects[new];
         if let Some(m) = unit.body.mover_mut() {
             m.waiting = 1;

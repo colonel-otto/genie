@@ -3,10 +3,11 @@
 
 use crate::GenieError;
 use crate::map::spatial::{
-    AttackField, CLOSEST_RANGE, ClosestChecks, FARMER_CLASS, FISH_TRAP, FarmLook, Filter,
-    LIVESTOCK_CLASS, PASTURE_CLASS, PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED,
-    Spatial, TESTED_KINDS, TRAPPERS, players_seen, record_meets_segment, tile_record_id,
+    AttackField, CLOSEST_RANGE, ClosestChecks, FISH_TRAP, FarmLook, Filter, LIVESTOCK_CLASS,
+    PASTURE_CLASS, PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED, Spatial,
+    TESTED_KINDS, TRAPPERS, players_seen, record_meets_segment, tile_record_id,
 };
+use crate::objects::masters::class;
 use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
 use crate::vision::registry::VisibleQuery;
@@ -368,7 +369,7 @@ impl Spatial {
         let at = self.objects.get(&me);
         let searcher = Searcher {
             class_10: at.is_some_and(|m| m.class == 10),
-            farmer: at.is_some_and(|m| m.class == FARMER_CLASS),
+            farmer: at.is_some_and(|m| m.class == class::VILLAGER),
             trapper: at.is_some_and(|m| TRAPPERS.contains(&m.master)),
         };
         let spared = spared_list(filter.spared);

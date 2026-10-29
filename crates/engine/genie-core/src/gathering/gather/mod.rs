@@ -94,10 +94,6 @@ const WAIT_SHIFT: f32 = crate::math::image::gather::WAIT_SHIFT;
 /// `DAT_142ec9ec0`); else the gatherer searches.
 const WAIT_WORKERS: f32 = crate::math::image::gather::WAIT_WORKERS;
 const WAIT_GAP: f32 = crate::math::image::gather::WAIT_GAP;
-/// The farm class, whose gather the slice does not model yet.
-pub const FARM_CLASS: i16 = 49;
-/// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
-const VILLAGER_CLASS: i16 = 4;
 /// The masters a gatherer may gather from while they hold nothing (the combat object's slot
 /// 0x2b8, `FUN_141216390`: the farm, the rice farm and master 45).
 const REGATHERED: [i16; 3] = [50, 1187, 45];

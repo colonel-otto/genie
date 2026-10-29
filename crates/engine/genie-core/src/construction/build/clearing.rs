@@ -1,9 +1,10 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
+use crate::objects::masters::class;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
-use crate::construction::build::WALL;
+
 use crate::map::spatial::Spatial;
 
 /// What the footprint clearing (`FUN_1415c3620`) reads of the new building: its owner
@@ -71,11 +72,6 @@ pub(super) const FLAG_MASTERS: [i16; 3] = [0x112, 0x699, 0x6f9];
 pub(crate) const CLEARING_REACH: f32 = crate::math::image::build::CLEARING_REACH;
 /// The hit points a tree at most has that the builder's clearing takes (`DAT_14330eb8c`).
 pub(super) const STUMP_HP: f32 = crate::math::image::build::STUMP_HP;
-/// The masters whose classes (39, the gate, and 52) take their owner's walls (27) off their
-/// footprint, and the tree class (15).
-pub(super) const GATE: i16 = 39;
-pub(super) const CLASS_52: i16 = 52;
-pub(super) const TREE: i16 = 15;
 
 /// `FUN_1415c3620` with `param_7` 0, its choice: the objects whose centre is on the tiles from 4
 /// before the building's place to 4 past it (CVTTSS2SI to 16 bits, held on the map), rows then
@@ -187,9 +183,9 @@ pub(super) fn clearing_takes(
     if o.master == site.master {
         return Ok(None);
     }
-    let under_gate = matches!(site.class, GATE | CLASS_52);
-    let own_wall = o.player == site.player && under_gate && o.class == WALL;
-    let tree = site.trees && o.class == TREE;
+    let under_gate = matches!(site.class, class::GATE | class::TOWER);
+    let own_wall = o.player == site.player && under_gate && o.class == class::WALL;
+    let tree = site.trees && o.class == class::TREE;
     if o.buildable_on == 0 && !own_wall && !tree {
         return Ok(None);
     }
@@ -221,7 +217,7 @@ pub(super) fn clearing_takes(
         && (below_or_unordered(0.0, seen.height) || o.obstruction.is_some());
     Ok(Some(Cleared {
         id,
-        wall: o.class == WALL,
+        wall: o.class == class::WALL,
         record_goes: destroy_drops || roo_drops,
     }))
 }

@@ -4,8 +4,8 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::update::UNMOVING;
 use crate::gathering::gather::{
-    DROP_REACH, FACE, FARM_CLASS, FARM_FOOD_KIND, GatherAction, GatherReads, LAST_BIT, Next,
-    REGATHERED, REMAINDER, SPECIAL_TARGETS, WAIT_SHIFT, WORK,
+    DROP_REACH, FACE, FARM_FOOD_KIND, GatherAction, GatherReads, LAST_BIT, Next, REGATHERED,
+    REMAINDER, SPECIAL_TARGETS, WAIT_SHIFT, WORK,
 };
 use crate::gathering::hunt::Dropped;
 use crate::math::rng::Stream;
@@ -13,6 +13,7 @@ use crate::movement::move_to::walk_or_give_up;
 use crate::movement::move_to::{Goal, MoveTo, Shown, start_walk_shown, target_moved};
 use crate::movement::{Me, PathAsk};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, new_sprite};
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -36,7 +37,7 @@ impl GatherAction {
     ) -> Result<Next, GenieError> {
         self.state = FACE;
         // another player's farm is the gatherer's to take (FUN_141185360, FUN_1411858f0)
-        if target.class == FARM_CLASS && target.player != c.player {
+        if target.class == class::FARM && target.player != c.player {
             return Err(GenieError::unsupported(
                 "a gather's set_state 6 on another player's farm (FUN_141185360)",
             ));
@@ -137,7 +138,7 @@ impl GatherAction {
         // a farm's food sold at once (attribute 96): the load goes to the player as food (slot
         // 0xf8 with 1), the unit holds none, and the gathering goes on
         if 0.0 < r.food_sold
-            && target.class == FARM_CLASS
+            && target.class == class::FARM
             && unit.life.attribute_type == FARM_FOOD_KIND
         {
             let sold = std::mem::take(&mut unit.life.amount);

@@ -11,6 +11,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::objects::ObjectId;
+use crate::objects::masters::class;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
@@ -93,23 +94,18 @@ pub(crate) struct Work {
     pub notified: bool,
 }
 
-/// Masters and classes the order handler and slot 0x7e8 treat apart (decoded; the game stores a
-/// class as its value − 0xeac, a master id as its id + 0x609c).
-const VILLAGER: i16 = 4;
-const CLASS_51: i16 = 51;
-const CLASS_54: i16 = 54;
-
 /// [`World::order_work`]'s Pack or Unpack (each through slot 0x808): against a target out of
 /// the unit's `reach` ([`work_reach`]) class 54 packs (`FUN_140ad4ff0`), within it class 51
 /// unpacks (`FUN_140ae58a0`); without a reach, a computer's class 54 packs when the order has
 /// no target the world holds (`targetless`).
 const fn packs(class: i16, reach: Option<(bool, bool)>, targetless: bool, computer: bool) -> bool {
     match reach {
-        None => targetless && class == CLASS_54 && computer,
-        Some((within, _)) => (class == CLASS_54 && !within) || (class == CLASS_51 && within),
+        None => targetless && class == class::CLASS_54 && computer,
+        Some((within, _)) => {
+            (class == class::CLASS_54 && !within) || (class == class::CLASS_51 && within)
+        }
     }
 }
-pub(crate) const LIVESTOCK: i16 = 58;
 /// The town centre (master 109, `0x6109` raw), to which livestock's `MoveTo` goes as to a point
 /// (`FUN_140aa0df0`).
 const TOWN_CENTRE: i16 = 109;
@@ -282,9 +278,6 @@ fn splits_together(
     Ok(crate::math::fmath::at_most_or_unordered(d, f.influence))
 }
 
-/// The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
-/// (raw `0x3a`).
-const AUTO_SCOUT_CLASS: i16 = 58;
 /// The trophy master `TRANSFORM_OBJECT` changes ("Trophy None") and the trophies it may take.
 const TROPHY: i16 = 1649;
 const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;

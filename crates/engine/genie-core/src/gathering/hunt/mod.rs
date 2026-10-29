@@ -100,13 +100,6 @@ const DECAY_TASK: i16 = 0x124;
 
 /// The range of the walk to the hunter's own player's livestock (`DAT_142eb4838`).
 const OWN_LIVESTOCK_RANGE: f32 = crate::math::image::hunt::OWN_LIVESTOCK_RANGE;
-/// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
-const VILLAGER_CLASS: i16 = 4;
-/// Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
-pub const LIVESTOCK: i16 = 58;
-/// The predators' class, whose hunt ends on its own terms (`-0xea2` raw, `0x140ac85fd`).
-const PREDATOR: i16 = 10;
-const CLASS_49: i16 = 49;
 
 /// The Hunt action of a gatherer (`TRIBE_Action_Hunt`, type 110).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]

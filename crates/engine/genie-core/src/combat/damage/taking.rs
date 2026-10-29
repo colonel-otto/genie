@@ -4,9 +4,10 @@
 use crate::GenieError;
 use crate::combat::damage::{
     Armored, Attacker, Building, EPSILON, FACING, LEAST_CLASS_HIT, LEAST_HIT_CLASSES, MINUS_FACING,
-    ONE, RETALIATION_RANGE, RETALIATION_SCALE, Razed, SPECIAL, VILLAGER, Victim, WALL, charge_hit,
-    damage, effective, elevation_factor, facing_offset, hp_floor, lose, special_charge_ready,
+    ONE, RETALIATION_RANGE, RETALIATION_SCALE, Razed, SPECIAL, Victim, charge_hit, damage,
+    effective, elevation_factor, facing_offset, hp_floor, lose, special_charge_ready,
 };
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
@@ -117,7 +118,7 @@ pub(super) fn take_building(
             _ => None,
         };
         let mut adds = Vec::new();
-        if b.main.is_none() && t.class != WALL {
+        if b.main.is_none() && t.class != class::WALL {
             let cost = b.cost;
             // 16-bit adds of the players' ids (`ADD DX, word ptr [.. + 0x718]`)
             let (qa, apa) = (q as i16, ap as i16);
@@ -229,7 +230,7 @@ pub(super) fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)]
     if t.hp < 1.0 {
         t.hp = 0.0;
         t.goto_sleep = false;
-        if src.class != VILLAGER {
+        if src.class != class::VILLAGER {
             t.amount = 0.0;
         }
     }

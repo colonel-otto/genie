@@ -6,10 +6,11 @@ use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::class;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::production::IN_PRODUCTION;
-use crate::production::spawn::{CURRENT_AGE, VILLAGER};
+use crate::production::spawn::CURRENT_AGE;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
@@ -344,7 +345,7 @@ impl World {
         owner.add_attribute(98, cost as f32)?;
         owner.add_attribute(164, cost as f32)?;
         owner.add_attribute(246, cost as f32)?;
-        if made.class == VILLAGER {
+        if made.class == class::VILLAGER {
             owner.add_attribute(248, 1.0)?;
         }
         // the combat setup's class counters (FUN_141226060)

@@ -570,6 +570,7 @@ pub struct Masters {
 }
 
 pub mod attribute;
+pub mod class;
 mod master_id;
 pub mod master_type;
 

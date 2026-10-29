@@ -1,7 +1,8 @@
 //! The drop-site searches (`FUN_1411671e0`): from a unit, or from a point without one.
 
 use crate::GenieError;
-use crate::gathering::gather_search::FARM;
+use crate::objects::masters::class;
+
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning, footprint_gap_squared};
 use crate::objects::masters::{Master, Masters};
@@ -24,19 +25,15 @@ pub(crate) struct Seeker<'a, 'b> {
     pub(crate) by_path: bool,
 }
 
-/// The fishing ship's class (21), whose drop-site search passes over the zones.
-pub(crate) const FISHING_SHIP: i16 = 21;
-/// The villager's class (4), which searches from the farm it works.
-const VILLAGER: i16 = 4;
 /// The point of a search from no point (`DAT_14330ec20`): at or below it on either axis the
 /// search has no zone and goes by distance; at it on both axes the first drop site wins.
 pub(crate) const NO_POINT: f32 = crate::math::image::turn::DROP_NO_POINT;
 
 impl Seeker<'_, '_> {
-    /// A fishing ship ([`FISHING_SHIP`]) seeks in every zone and counts a drop site its path
+    /// A fishing ship ([`class::FISHING_SHIP`]) seeks in every zone and counts a drop site its path
     /// does not reach while near it.
     const fn fishing(&self) -> bool {
-        self.class == FISHING_SHIP
+        self.class == class::FISHING_SHIP
     }
 
     /// What `FUN_1411671e0` measures to the drop site `o` (of `master`, its centre `squared`
@@ -94,7 +91,7 @@ impl Seeker<'_, '_> {
     ///
     /// The villager's top action is not modelled, or the farm's place is unknown.
     fn farm_worked(&self) -> Result<Option<[f32; 2]>, GenieError> {
-        if self.class != VILLAGER {
+        if self.class != class::VILLAGER {
             return Ok(None);
         }
         let Some(target) = self.unit.top_action_object()? else {
@@ -103,7 +100,7 @@ impl Seeker<'_, '_> {
         Ok(self
             .spatial
             .get_known(target)?
-            .filter(|p| p.class == FARM)
+            .filter(|p| p.class == class::FARM)
             .map(|p| [p.position[0], p.position[1]]))
     }
 }
@@ -284,7 +281,7 @@ mod tests {
         Masters::new([
             master(109, 3, 2.0),
             master(68, 3, 1.0),
-            master(50, FARM, 1.5),
+            master(50, class::FARM, 1.5),
         ])
     }
 
@@ -321,7 +318,7 @@ mod tests {
             obstruction: None,
         };
         let mut s = Spatial::default();
-        s.insert(800, placed(farm, FARM));
+        s.insert(800, placed(farm, class::FARM));
         s.insert(801, placed([20.0, 17.0], 3));
         s
     }
@@ -377,21 +374,27 @@ mod tests {
         let near_tc = spatial([20.0, 17.0]);
         // by path without planners: no length, no site
         assert_eq!(
-            search(&sites(), &villager(None), VILLAGER, at, &near_tc),
+            search(&sites(), &villager(None), class::VILLAGER, at, &near_tc),
             Ok(None)
         );
         assert_eq!(
-            search(&sites(), &villager(Some(800)), VILLAGER, at, &near_tc),
+            search(
+                &sites(),
+                &villager(Some(800)),
+                class::VILLAGER,
+                at,
+                &near_tc
+            ),
             Ok(Some(700))
         );
         let tie = spatial([20.0, 19.5]);
         assert_eq!(
-            search(&sites(), &villager(Some(800)), VILLAGER, at, &tie),
+            search(&sites(), &villager(Some(800)), class::VILLAGER, at, &tie),
             Ok(Some(700))
         );
         let reversed: Vec<Unit> = sites().into_iter().rev().collect();
         assert_eq!(
-            search(&reversed, &villager(Some(800)), VILLAGER, at, &tie),
+            search(&reversed, &villager(Some(800)), class::VILLAGER, at, &tie),
             Ok(Some(701))
         );
         // another class, or a target of another class: by path as before
@@ -400,17 +403,29 @@ mod tests {
             Ok(None)
         );
         assert_eq!(
-            search(&sites(), &villager(Some(801)), VILLAGER, at, &near_tc),
+            search(
+                &sites(),
+                &villager(Some(801)),
+                class::VILLAGER,
+                at,
+                &near_tc
+            ),
             Ok(None)
         );
         // a farm the map does not hold: none
         assert_eq!(
-            search(&sites(), &villager(Some(802)), VILLAGER, at, &near_tc),
+            search(
+                &sites(),
+                &villager(Some(802)),
+                class::VILLAGER,
+                at,
+                &near_tc
+            ),
             Ok(None)
         );
         let mut unmodelled = villager(None);
         unmodelled.unmodelled_action = Some(GenieError::unsupported("an action"));
-        assert!(search(&sites(), &unmodelled, VILLAGER, at, &near_tc).is_err());
+        assert!(search(&sites(), &unmodelled, class::VILLAGER, at, &near_tc).is_err());
     }
 
     /// The point (−1, −1) takes the first object of the masters in state 2, before the zones and
@@ -421,24 +436,24 @@ mod tests {
         let map = spatial([20.0, 17.0]);
         let none = [NO_POINT, NO_POINT, 0.0];
         assert_eq!(
-            search(&sites(), &villager(None), VILLAGER, none, &map),
+            search(&sites(), &villager(None), class::VILLAGER, none, &map),
             Ok(Some(700))
         );
         let mut units = sites();
         units[0].life.state = 0;
         assert_eq!(
-            search(&units, &villager(None), VILLAGER, none, &map),
+            search(&units, &villager(None), class::VILLAGER, none, &map),
             Ok(Some(701))
         );
         // (−2, 30): by distance, the mill (22² + 5²) before the town centre (22² + 16²)
         let below = [-2.0, 30.0, 0.0];
         assert_eq!(
-            search(&sites(), &villager(None), VILLAGER, below, &map),
+            search(&sites(), &villager(None), class::VILLAGER, below, &map),
             Ok(Some(701))
         );
         let left = [5.0, NO_POINT, 0.0];
         assert_eq!(
-            search(&sites(), &villager(None), VILLAGER, left, &map),
+            search(&sites(), &villager(None), class::VILLAGER, left, &map),
             Ok(Some(700))
         );
     }

@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
@@ -108,7 +109,7 @@ impl Unit {
         let Some(found) = found else {
             return Ok(None);
         };
-        if found.class == gather_search::FARM {
+        if found.class == class::FARM {
             return Err(GenieError::unsupported(
                 "a builder's search for more work finding a farm",
             ));

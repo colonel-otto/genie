@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::combat::attack::{
-    Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, FAILED, Fight, GATE, GOTO_SEEN,
-    Ground, LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
+    Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, FAILED, Fight, GOTO_SEEN, Ground,
+    LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::objects::layers::Body;
+use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
@@ -69,7 +70,7 @@ impl Attack {
             repaths: true,
             ..Self::own(target, e, arms)
         };
-        if e.target_class == GATE {
+        if e.target_class == class::GATE {
             return Err(GenieError::unsupported(
                 "a hunt's Attack on a gate (its parts' gaps)",
             ));

@@ -18,6 +18,7 @@ use crate::GenieError;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, Vec3};
 use crate::objects::layers::Animated;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use genie_diff::Diff;
 
@@ -307,8 +308,6 @@ const EDGE_GAP: f32 = crate::math::image::movement::EDGE_GAP;
 const EDGE_POSITION_GAP: f32 = crate::math::image::movement::EDGE_POSITION_GAP;
 /// A walk to a point checks its range only above this (`DAT_142eb5690`).
 const RANGE_FLOOR: f32 = crate::math::image::movement::RANGE_FLOOR;
-/// The class the motion step measures by its annexes (`-0xe85` encoded).
-const GATE: i16 = 39;
 /// A point within this many tiles is the short pather's to reach (`FUN_140fa0370`,
 /// `DAT_142eb0f4c`).
 const REACH_SHORT: f32 = crate::math::image::movement::REACH_SHORT;
@@ -322,15 +321,6 @@ pub(crate) const LONG_PATH_MOVER: i16 = 42;
 const WIDE_MASTER: i16 = 45;
 const WIDE_CLASS: i16 = 33;
 const WIDE_RANGE: f32 = crate::math::image::movement::WIDE_RANGE;
-/// The trade cart's class (19), whose path requests the owner's budget limits (`FUN_14165d6f0`).
-const TRADE_CART: i16 = 19;
-/// The classes a long path's stretch may not cross (`0x141150f00` after `FUN_140f9eb70`, raw
-/// `-0xe91`, `-0xe78`, `-0xea9`): walls, towers, and buildings that do not move; gates
-/// ([`GATE`]) too. A villager's (`-0xea8`) path crosses them.
-const WALL_CLASS: i16 = 27;
-const TOWER_CLASS: i16 = 52;
-const BUILDING_CLASS: i16 = 3;
-const VILLAGER_CLASS: i16 = 4;
 /// A long path's stretch is checked for walls with the unit's radius times this
 /// (`DAT_142e85190`).
 const LONG_PATH_GROW: f32 = crate::math::image::movement::LONG_PATH_GROW;
@@ -506,7 +496,7 @@ pub(crate) fn gate_gap(
     own: f32,
     annex: impl Fn(f32) -> f32,
 ) -> f32 {
-    if target.class != GATE {
+    if target.class != class::GATE {
         return own;
     }
     let mut gap = own;

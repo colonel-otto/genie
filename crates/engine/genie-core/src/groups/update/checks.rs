@@ -3,11 +3,12 @@
 
 use crate::GenieError;
 use crate::groups::update::{
-    BUILD, DELIVER_RELIC, FARTHEST, MONASTERY, NO_COMMAND, PICK_UP_RELIC, RELIC_CLASS,
-    RELIC_DELIVERY_ACTION, RELIC_PICKUP_ACTION, Shown, TRADE_BOAT, TRADE_CART, TRADE_CART_SPRITES,
+    BUILD, DELIVER_RELIC, FARTHEST, MONASTERY, NO_COMMAND, PICK_UP_RELIC, RELIC_DELIVERY_ACTION,
+    RELIC_PICKUP_ACTION, Shown, TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
@@ -246,7 +247,7 @@ impl World {
             let delivers = self.has_task(owner, u.life.master_id, RELIC_DELIVERY_ACTION)?;
             let target = self.world_object(ai.current_target);
             let relic = match target {
-                Some(t) => self.master(t.player(), t.master_id())?.class == RELIC_CLASS,
+                Some(t) => self.master(t.player(), t.master_id())?.class == class::RELIC,
                 None => false,
             };
             if g.current_command == PICK_UP_RELIC
@@ -416,8 +417,8 @@ impl World {
             return Ok(false);
         }
         let trade_cart = match shown {
-            Shown::Standing => master.kind == COMBAT && master.class == TRADE_CART,
-            Shown::Walking => ACTION <= master.kind && master.class == TRADE_CART,
+            Shown::Standing => master.kind == COMBAT && master.class == class::TRADE_CART,
+            Shown::Walking => ACTION <= master.kind && master.class == class::TRADE_CART,
             Shown::Running => false,
         };
         if trade_cart {
@@ -517,7 +518,7 @@ impl Unit {
         };
         if 1 < state {
             if state == 2 {
-                if master.class == TRADE_CART || master.class == TRADE_BOAT {
+                if master.class == class::TRADE_CART || master.class == class::TRADE_BOAT {
                     return Ok(true);
                 }
                 if u.top_action_kind() == Some(crate::combat::attack::ATTACK) {

@@ -2,10 +2,10 @@
 //! test and the spawn's.
 
 use crate::GenieError;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::production::spawn::{
-    BuildSite, CLASS_51, CLASS_54, FARM, GATE, INSIDE, PASSABLE, REACH, RELIC, TREE, Tested, WALL,
-    hill_fails, placement_terrains,
+    BuildSite, INSIDE, PASSABLE, REACH, RELIC, Tested, hill_fails, placement_terrains,
 };
 
 /// An object near a candidate, as the placement test and the blocker test read it.
@@ -62,7 +62,10 @@ impl Near {
     /// 40, 41, 58, 61) or from state 3 on (7, 8, 15, 32, 48, 63).
     #[must_use]
     pub const fn stays(&self) -> bool {
-        if self.kind == BUILDING || (self.class == TREE && 2 < self.state) || self.master == RELIC {
+        if self.kind == BUILDING
+            || (self.class == class::TREE && 2 < self.state)
+            || self.master == RELIC
+        {
             return true;
         }
         if self.auto_gather {
@@ -367,9 +370,9 @@ pub(super) fn build_ignores(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near) 
     let player = site.player;
     let alive = o.state < 3 || (o.kind != BUILDING && o.state < 7);
     let standing = site.obstructs || o.kind < 30 || !o.moving;
-    let gate_wall = site.class == GATE && o.class == WALL && o.player == player;
+    let gate_wall = site.class == class::GATE && o.class == class::WALL && o.player == player;
     let foundation = o.kind == BUILDING
-        && !matches!(o.class, CLASS_51 | CLASS_54)
+        && !matches!(o.class, class::CLASS_51 | class::CLASS_54)
         && o.desolid
         && !(map.allied(player, o.player, true) && map.allied(o.player, player, true));
     !alive || !standing || gate_wall || foundation
@@ -389,7 +392,7 @@ pub(super) fn build_passes(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near) -
             || (map.allied(player, o.player, false) && map.allied(o.player, player, false)));
     // a felled tree (at most 1 hit point) passes off a forest (`FUN_140f5efb0` on its
     // tile's terrain)
-    passes || o.buildable_on == 1 || (o.class == TREE && o.hp <= 1.0 && !o.forest_tile)
+    passes || o.buildable_on == 1 || (o.class == class::TREE && o.hp <= 1.0 && !o.forest_tile)
 }
 
 /// How far BUILD's placement scan looks around the point (`FUN_14123aee0`, `DAT_142eb9430`).
@@ -462,7 +465,7 @@ pub fn placement(
                 let listed =
                     o.state < 7 && o.buildable_on != 1 && (o.kind != BUILDING || !o.desolid);
                 let tall = o.tall
-                    || (me.class == TREE && o.class == FARM)
+                    || (me.class == class::TREE && o.class == class::FARM)
                     || (o.kind == BUILDING && o.obstruction_type != 0);
                 listed.then_some(tall && me.tall)
             };
@@ -481,7 +484,10 @@ pub fn placement(
     let counts = |o: &Near| {
         let listed = o.state < 7
             && o.buildable_on != 1
-            && (o.kind != BUILDING || o.class == CLASS_51 || o.class == CLASS_54 || !o.desolid);
+            && (o.kind != BUILDING
+                || o.class == class::CLASS_51
+                || o.class == class::CLASS_54
+                || !o.desolid);
         let tall = o.tall || (o.kind == BUILDING && !matches!(o.obstruction_type, 0 | 12));
         listed.then_some(tall && me.tall)
     };

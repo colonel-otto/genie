@@ -23,6 +23,7 @@ use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::object_list::ObjectList;
@@ -30,7 +31,6 @@ use crate::objects::release::{Releaser, released};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{Unit, loses_actions};
 use crate::ownership::artifact::Artifact;
-use crate::ownership::capture::LIVESTOCK;
 use crate::ownership::change::change_hands;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -5705,7 +5705,7 @@ fn farm_master() -> Master {
     Master {
         id: 50,
         kind: 80,
-        class: crate::gathering::gather::FARM_CLASS,
+        class: class::FARM,
         work_rate: 0.4,
         capacity: 15,
         default_task: Some(0),
@@ -7404,7 +7404,7 @@ fn hands_masters() -> Vec<Masters> {
         let sheep = Master {
             id: 705,
             kind: 70,
-            class: LIVESTOCK,
+            class: class::LIVESTOCK,
             line_of_sight: 2.0 + f32::from(p),
             fog_visibility: p,
             storage: vec![(16, 100.0, 1)],
@@ -7547,7 +7547,7 @@ fn a_taken_gaia_archer_keeps_a_copy_of_gaia_s_master_with_its_new_owner_s_fog() 
 #[test]
 fn a_taken_sheep_sees_with_its_new_owner_s_line_of_sight() {
     let masters = hands_masters();
-    let mut s = hands_world(9520, 1, LIVESTOCK, 705, 3.0);
+    let mut s = hands_world(9520, 1, class::LIVESTOCK, 705, 3.0);
     let mut u = hands_unit(9520, 705);
     assert_eq!(change_hands(&mut u, (1, 2), &masters, &mut s, 0), Ok(true));
     let own = u.own_master.as_deref().unwrap();
@@ -7636,7 +7636,7 @@ fn artifact_players(attribute_97: &[f32], status: &[u8]) -> Vec<Player> {
 #[test]
 fn an_owner_search_passes_over_a_player_out_of_the_game() {
     let unit = owner_search_unit;
-    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    let mut s = hands_world(27530, 0, class::LIVESTOCK, 594, 2.0);
     unit(&mut s, 1, 1, 11.5);
     let none = [0.0; 3];
     assert_eq!(
@@ -7672,7 +7672,7 @@ fn an_owner_search_passes_over_a_player_out_of_the_game() {
 fn an_owner_search_keeps_the_owner_s_animal_unless_attribute_97_takes_it() {
     let unit = owner_search_unit;
     let none = [0.0; 3];
-    let mut s = hands_world(27530, 1, LIVESTOCK, 594, 2.0);
+    let mut s = hands_world(27530, 1, class::LIVESTOCK, 594, 2.0);
     unit(&mut s, 1, 1, 11.5);
     unit(&mut s, 2, 2, 11.5);
     assert_eq!(
@@ -7687,7 +7687,7 @@ fn an_owner_search_keeps_the_owner_s_animal_unless_attribute_97_takes_it() {
         s.artifact_owner(27530, &artifact_players(&[0.0, 1.0, 1.0], &[0, 0, 0])),
         Ok(None)
     );
-    let mut s = hands_world(27530, 1, LIVESTOCK, 594, 2.0);
+    let mut s = hands_world(27530, 1, class::LIVESTOCK, 594, 2.0);
     unit(&mut s, 0, 0, 11.5);
     unit(&mut s, 3, 2, 12.5);
     let building = Placed {
@@ -7699,7 +7699,7 @@ fn an_owner_search_keeps_the_owner_s_animal_unless_attribute_97_takes_it() {
         s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
         Ok(None)
     );
-    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    let mut s = hands_world(27530, 0, class::LIVESTOCK, 594, 2.0);
     unit(&mut s, 1, 1, 11.5);
     s.go_inside(27530, [10.5, 10.5, 0.0]);
     assert_eq!(
@@ -7718,18 +7718,18 @@ fn an_owner_search_s_unmodelled_parts_fail() {
             .unwrap_err()
             .reason()
     };
-    let s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    let s = hands_world(27530, 0, class::LIVESTOCK, 594, 2.0);
     assert_eq!(
         reason(&s, 99, &[0, 0, 0]),
         "an owner search of an object the world does not hold"
     );
-    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    let mut s = hands_world(27530, 0, class::LIVESTOCK, 594, 2.0);
     owner_search_unit(&mut s, 1, 3, 11.5);
     assert_eq!(
         reason(&s, 27530, &[0, 0, 0]),
         "an owner search's unit of a player beyond the list"
     );
-    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    let mut s = hands_world(27530, 0, class::LIVESTOCK, 594, 2.0);
     owner_search_unit(&mut s, 1, 1, 20.5);
     let stopped = Placed {
         unknown: Some(10.0),
@@ -7747,7 +7747,7 @@ fn an_owner_search_s_unmodelled_parts_fail() {
 /// count, one on the next tile does.
 #[test]
 fn an_owner_search_counts_only_the_units_on_the_tiles_lists() {
-    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    let mut s = hands_world(27530, 0, class::LIVESTOCK, 594, 2.0);
     for id in 1000..1250 {
         s.insert(
             id,
@@ -7968,7 +7968,7 @@ fn teardown_world() -> World {
         ..Master::default()
     };
     let table = Masters::new([
-        master(705, 70, LIVESTOCK),
+        master(705, 70, class::LIVESTOCK),
         master(96, 70, 11),
         master(83, 70, 4),
         master(109, 80, 52),
@@ -9204,7 +9204,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         }]));
     }
     t.masters = masters;
-    t.spatial = hands_world(9520, 0, LIVESTOCK, 705, 2.0);
+    t.spatial = hands_world(9520, 0, class::LIVESTOCK, 705, 2.0);
     t.spatial.relations = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
     t.spatial.insert(
         500,

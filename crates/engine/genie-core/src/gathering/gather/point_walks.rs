@@ -5,13 +5,14 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::update::UNMOVING;
 use crate::gathering::gather::{
-    DONE, FARM_CLASS, FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, IDLE,
+    DONE, FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, IDLE,
     NO_GATHER_POINT, Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,
 };
 use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
@@ -23,7 +24,7 @@ use crate::world::step::Step;
 #[must_use]
 pub fn waits_for_a_farm(master: i16, target_type: i32) -> bool {
     FARM_WAITERS.contains(&master)
-        || (TRAP_WAITERS.contains(&master) && target_type == i32::from(FARM_CLASS))
+        || (TRAP_WAITERS.contains(&master) && target_type == i32::from(class::FARM))
 }
 
 impl GatherAction {
@@ -161,7 +162,7 @@ impl GatherAction {
             }
         });
         if !self.worked {
-            if self.target_type == i32::from(FARM_CLASS) && target.is_some_and(|t| 1 < t.workers) {
+            if self.target_type == i32::from(class::FARM) && target.is_some_and(|t| 1 < t.workers) {
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 self.set_walk_back(radius, mover)?;
                 self.target = -1;

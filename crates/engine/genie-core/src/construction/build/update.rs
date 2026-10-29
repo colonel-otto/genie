@@ -3,15 +3,15 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLASS_39, CLEAR, DONE, DROP,
-    FAILED, FINISHED, HALTED, IDLE, MASTER_621, MASTER_1889, MOVE, PLACE, VILLAGER, WAIT,
-    WALK_POINT, WORK,
+    ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLEAR, DONE, DROP, FAILED,
+    FINISHED, HALTED, IDLE, MASTER_621, MASTER_1889, MOVE, PLACE, WAIT, WALK_POINT, WORK,
 };
 use crate::movement::move_to::{
     Goal, MoveDefaults, MoveTo, MoveWait, Sprites, start_walk_shown, walk_or_give_up,
 };
 use crate::movement::{Me, PathAsk};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::OrderKind;
@@ -214,7 +214,7 @@ impl BuildAction {
             return Ok(None);
         }
         let master = site.master(&c.w.masters, c.player).ok();
-        let special = master.is_some_and(|m| m.id == MASTER_621 || m.class == CLASS_39);
+        let special = master.is_some_and(|m| m.id == MASTER_621 || m.class == class::GATE);
         let unbuilt = site
             .construction
             .is_some_and(|k| k.progress < f32::from(k.build_time));
@@ -355,7 +355,7 @@ impl BuildAction {
     /// player's villager waits (by its unit AI's stance).
     pub(super) fn gives_up(c: &Step<'_>, builder: &Unit, reads: &BuildReads) -> (bool, u8) {
         let computer = c.w.players[c.player].computer;
-        let waits = reads.class == VILLAGER && !computer;
+        let waits = reads.class == class::VILLAGER && !computer;
         (waits, builder.ai.as_ref().map_or(0, |ai| ai.stance))
     }
 

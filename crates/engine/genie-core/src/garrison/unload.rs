@@ -2,10 +2,9 @@
 
 use crate::GenieError;
 use crate::commands::unload::UnloadCommand;
-use crate::garrison::{
-    BUILDING_CLASS, MASTER_1808, SIEGE_CLASS, SIEGE_UNLOAD, VILLAGER_CLASS, WHOLE_SHARE_CLASS,
-};
+use crate::garrison::{MASTER_1808, SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
 use crate::objects::ObjectId;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 
@@ -95,7 +94,7 @@ impl World {
                     .map(|(c, _)| c);
                 if flag == 3 || transport.is_some() {
                     self.drop_out(player, idx, transport, unit_type, &mut last)?;
-                } else if master.class == SIEGE_CLASS {
+                } else if master.class == class::SIEGE {
                     return Err(SIEGE_UNLOAD);
                 } else {
                     self.unload_order(player, idx, point)?;
@@ -285,7 +284,7 @@ impl World {
         let unit = &self.players[player].objects[idx];
         let master = unit.master(&self.masters, player)?;
         // UCOMISS with −1, JP and JNZ: a NaN coordinate is not −1
-        let to = if master.class != BUILDING_CLASS && point == [NO_POINT, NO_POINT] {
+        let to = if master.class != class::BUILDING && point == [NO_POINT, NO_POINT] {
             [unit.position()[0], unit.position()[1]]
         } else {
             point
@@ -347,7 +346,7 @@ impl World {
                     continue;
                 };
                 let m = u.master(&self.masters, up)?;
-                if 70 <= m.kind && (m.class == VILLAGER_CLASS || m.id == MASTER_1808) {
+                if 70 <= m.kind && (m.class == class::VILLAGER || m.id == MASTER_1808) {
                     let _ = self.back_to_work(Some((p, idx)), inside)?;
                 }
             }
@@ -455,14 +454,14 @@ impl World {
             3 => id == param,
             4 => match named.filter(|_| same_player) {
                 Some(m) if m.id == master.id => true,
-                Some(m) => class == VILLAGER_CLASS && m.class == VILLAGER_CLASS,
+                Some(m) => class == class::VILLAGER && m.class == class::VILLAGER,
                 None => false,
             },
             5 => same_player && id != param && class != WHOLE_SHARE_CLASS,
             6 => match named.filter(|_| same_player) {
                 Some(m) if m.id != master.id => {
-                    if class == VILLAGER_CLASS {
-                        m.class != VILLAGER_CLASS
+                    if class == class::VILLAGER {
+                        m.class != class::VILLAGER
                     } else {
                         class != WHOLE_SHARE_CLASS
                     }
@@ -479,7 +478,7 @@ impl World {
 /// classes 18, 42 and 43; no other group).
 pub(super) const fn unload_group_takes(group: i32, class: i16) -> bool {
     match group {
-        1 => matches!(class, VILLAGER_CLASS | 19),
+        1 => matches!(class, class::VILLAGER | 19),
         2 => matches!(class, 6 | 45 | 46 | 50 | 56),
         3 => matches!(class, 12 | 23 | 36 | 47 | 57),
         5 => matches!(class, 0 | 44),

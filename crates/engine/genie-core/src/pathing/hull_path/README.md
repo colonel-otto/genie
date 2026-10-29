@@ -37,5 +37,5 @@ lists them.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`map`](../../map/), [`math`](../../math/).
+- Uses: [`map`](../../map/), [`math`](../../math/), [`objects`](../../objects/).
 <!-- /uses -->

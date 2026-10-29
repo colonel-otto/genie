@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::lifecycle::Lifecycle;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::{Player, World};
 use std::collections::BTreeMap;
@@ -64,14 +65,26 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     let objects = [
         (5, on_map(10.5, 10.5, 1358, 5, 0.5, 1), seen(1.0, 0.0)),
         (3, on_map(10.2, 10.2, 1351, 5, 0.5, 1), seen(1.0, 0.0)),
-        (8, on_map(11.2, 10.5, 349, TREE, 0.5, 0), seen(0.5, 1.0)),
-        (9, on_map(11.5, 9.5, 350, TREE, 0.5, 0), seen(100.0, 1.0)),
+        (
+            8,
+            on_map(11.2, 10.5, 349, class::TREE, 0.5, 0),
+            seen(0.5, 1.0),
+        ),
+        (
+            9,
+            on_map(11.5, 9.5, 350, class::TREE, 0.5, 0),
+            seen(100.0, 1.0),
+        ),
         (
             11,
-            on_map(11.7, 9.7, 350, TREE, 0.5, 0),
+            on_map(11.7, 9.7, 350, class::TREE, 0.5, 0),
             seen(f32::NAN, 1.0),
         ),
-        (4, on_map(9.5, 10.5, 72, WALL, 0.5, 0), seen(100.0, 1.0)),
+        (
+            4,
+            on_map(9.5, 10.5, 72, class::WALL, 0.5, 0),
+            seen(100.0, 1.0),
+        ),
         (6, on_map(10.2, 11.5, 0x112, 11, 0.5, 1), seen(1.0, 0.0)),
         (7, on_map(11.5, 11.5, 0x112, 11, 0.5, 1), seen(1.0, 2.0)),
         (10, on_map(13.6, 10.5, 1358, 5, 0.5, 1), seen(1.0, 0.0)),
@@ -98,7 +111,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     };
     assert_eq!(ids(&world, site(3, false)), [5, 3, 7]);
     assert_eq!(ids(&world, site(3, true)), [5, 3, 8, 7]);
-    assert_eq!(ids(&world, site(GATE, false)), [4, 5, 3, 7]);
+    assert_eq!(ids(&world, site(class::GATE, false)), [4, 5, 3, 7]);
     // a wall of another player stays under a gate
     world.insert(
         4,
@@ -107,7 +120,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
             ..objects[5].1
         },
     );
-    assert_eq!(ids(&world, site(GATE, false)), [5, 3, 7]);
+    assert_eq!(ids(&world, site(class::GATE, false)), [5, 3, 7]);
     // a master without radii clears nothing; a NaN radius is not 0 or less
     let mut none = site(3, true);
     none.radius = [0.0, 0.0];
@@ -222,7 +235,7 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
 fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
     let farm = Master {
         id: 50,
-        class: FARM,
+        class: class::FARM,
         ..Master::default()
     };
     let masters = crate::objects::masters::Masters::new([Master {

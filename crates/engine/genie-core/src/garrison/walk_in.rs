@@ -34,9 +34,6 @@ pub(super) const WALK: u8 = 4;
 /// `set_state(2)`'s wait before the Enter walks again, in seconds (`FUN_140a87320`, the constant
 /// `0x3f800000` it stores).
 pub(super) const WAIT_SECONDS: f32 = 1.0;
-/// The class of siege weapons, whose own place an Enter's point keeps (`FUN_140a85f30`, the
-/// short `0xd`).
-pub(crate) const SIEGE_CLASS: i16 = 13;
 
 /// An Enter's `MoveTo` of a unit without speed (`0x140aa2100`'s state 13), or of a unit without
 /// movement state, which is not modelled.

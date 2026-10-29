@@ -4,12 +4,13 @@
 use crate::GenieError;
 use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::gathering::hunt::{
-    ARRIVED, ATTACK, CLASS_49, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE, LIVESTOCK,
-    Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, WALK_POINT, WALK_SEARCH, food,
+    ARRIVED, ATTACK, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE, Lead,
+    OWN_LIVESTOCK_RANGE, Quarry, SEARCH, WALK_POINT, WALK_SEARCH, food,
 };
 use crate::movement::move_to::{Goal, MoveTo, MoveWait, walk_or_give_up};
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -179,7 +180,7 @@ impl HuntAction {
         self.state = 4;
         self.timer = 0.0;
         self.point = target.position;
-        let own_livestock = target.class == LIVESTOCK && target.player == player;
+        let own_livestock = target.class == class::LIVESTOCK && target.player == player;
         if 2 < target.state || own_livestock {
             self.move_wait = MoveWait::default();
             self.walk_range = if 2 < target.state {
@@ -199,7 +200,7 @@ impl HuntAction {
             });
             return Ok(false);
         }
-        if target.class != CLASS_49 && target.allied {
+        if target.class != class::FARM && target.allied {
             // LAB_140ac679d: set_state(13): the timer clears; the unit's sprite (slot 0x68 with
             // FUN_140ac5210's) is the caller's
             self.state = FAILED;

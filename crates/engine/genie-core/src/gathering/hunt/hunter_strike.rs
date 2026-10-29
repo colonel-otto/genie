@@ -11,6 +11,7 @@ use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites}
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::world::TREE_NEAR;
@@ -152,7 +153,7 @@ impl Unit {
     ) -> Result<Option<Herd>, GenieError> {
         let faces =
             action.state == crate::gathering::hunt::WALK && action.move_to == Some(MoveTo::Arrived);
-        if !((faces && victim.class == crate::gathering::hunt::LIVESTOCK && victim.state <= 2)
+        if !((faces && victim.class == class::LIVESTOCK && victim.state <= 2)
             || action.state == crate::gathering::hunt::LEAD)
         {
             return Ok(None);

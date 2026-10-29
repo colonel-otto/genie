@@ -5,12 +5,13 @@ use crate::GenieError;
 use crate::combat::attack::update::let_go;
 use crate::combat::attack::{
     ARRIVED, AiOrder, Attack, AttackReads, BOAR_AI, DONE, Engagement, FAILED, Fight, HALF, LION_AI,
-    MOVE, NO_RANGE, NONE, PREDATOR, VILLAGER, set_walker_anim,
+    MOVE, NO_RANGE, NONE, set_walker_anim,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
 use crate::movement::move_to::MoveTo;
 use crate::objects::layers::Body;
+use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
@@ -111,7 +112,7 @@ impl Attack {
         f: &Fight,
         r: &AttackReads,
     ) -> Result<u8, GenieError> {
-        if r.ai_order.has_ai() && (f.victim.player != 0 || f.own.class != VILLAGER) {
+        if r.ai_order.has_ai() && (f.victim.player != 0 || f.own.class != class::VILLAGER) {
             forget_target(unit);
         }
         let target = std::mem::replace(&mut self.target, -1);
@@ -125,7 +126,7 @@ impl Attack {
         };
         if human && waits {
             let speed = unit.body.mover().map_or(0.0, |m| m.stats.speed);
-            if r.stance == 0 && 0.0 < speed && f.own.class != VILLAGER {
+            if r.stance == 0 && 0.0 < speed && f.own.class != class::VILLAGER {
                 return Err(GenieError::unsupported(
                     "an Attack whose target died waiting for another (set_state 5)",
                 ));
@@ -154,7 +155,7 @@ impl Attack {
     ) -> Result<u8, GenieError> {
         let target = std::mem::replace(&mut self.target, -1);
         self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
-        if f.own.class == PREDATOR && !matches!(r.ai_type, Some(BOAR_AI | LION_AI) | None) {
+        if f.own.class == class::PREDATOR && !matches!(r.ai_type, Some(BOAR_AI | LION_AI) | None) {
             return Err(GenieError::unsupported(
                 "a predator's failed Attack whose unit AI is not a boar's or a lion's (slot 0x1f0)",
             ));
@@ -166,7 +167,7 @@ impl Attack {
         if r.ai_order.has_ai() {
             forget_target(unit);
         }
-        if f.own.class == PREDATOR
+        if f.own.class == class::PREDATOR
             && r.ai_type == Some(BOAR_AI)
             && let Some(home) = unit.ai.as_mut().and_then(|ai| ai.home.as_mut())
         {

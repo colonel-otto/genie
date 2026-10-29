@@ -2,12 +2,12 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::{
     AI_MOVE_RANGE, AiMove, BOAR_HOME, BOAR_LEASH, BOAR_LEASH_DRAW, BOAR_OFFSET, BOAR_STEP,
-    BOAR_WANDER, CLASS_KING, EVADE_REACH, Effect, Found, HUNTED_CARED, HUNTED_HOME,
-    HUNTED_SIGHT_GROWTH, HUNTED_STEP, KING_UNLED, LION_CARED, LION_IDLE_TIMEOUT,
-    LION_SIGHT_DIVISOR, LION_SIGHT_SHARE, Memory, Pick, Search, Surroundings, UnitAi, UnitSide,
-    point_gap_squared,
+    BOAR_WANDER, EVADE_REACH, Effect, Found, HUNTED_CARED, HUNTED_HOME, HUNTED_SIGHT_GROWTH,
+    HUNTED_STEP, KING_UNLED, LION_CARED, LION_IDLE_TIMEOUT, LION_SIGHT_DIVISOR, LION_SIGHT_SHARE,
+    Memory, Pick, Search, Surroundings, UnitAi, UnitSide, point_gap_squared,
 };
 
 impl UnitAi {
@@ -141,7 +141,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
         self.cap_human_order(side, ai)?;
-        if at.class == CLASS_KING {
+        if at.class == class::KING {
             let led = at.master != KING_UNLED
                 && !at.garrisoned
                 && self.current_order.is_none()

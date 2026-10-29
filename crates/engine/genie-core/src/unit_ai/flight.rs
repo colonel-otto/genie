@@ -2,12 +2,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
-    AiMove, BREAK, CLASS_22, CLASS_KING, CLASS_VILLAGER, DEAD, EVADE_EDGE, EVASIVE_NEAR, Effect,
-    FOUNDATION_REACH, GO_ON, Memory, Notify, Pick, REQUIRES_SEARCH, RUN_DRAW_SCALE, RUN_EPSILON,
-    RUN_LEASH, RUN_ONE, RUN_REACH, SIEGE_AI, Search, Surroundings, UnitAi, UnitSide,
-    VILLAGER_NOTIFY, alert_owner, closest_undiscovered_tile, search_area,
+    AiMove, BREAK, DEAD, EVADE_EDGE, EVASIVE_NEAR, Effect, FOUNDATION_REACH, GO_ON, Memory, Notify,
+    Pick, REQUIRES_SEARCH, RUN_DRAW_SCALE, RUN_EPSILON, RUN_LEASH, RUN_ONE, RUN_REACH, SIEGE_AI,
+    Search, Surroundings, UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner,
+    closest_undiscovered_tile, search_area,
 };
 
 impl UnitAi {
@@ -40,7 +41,7 @@ impl UnitAi {
         side.set_under_attack(true);
         // the game also tests the action values 0x25f and 0x268 here, which no unit AI holds
         // ([`ActionKind`])
-        let uncon = at.class != CLASS_KING;
+        let uncon = at.class != class::KING;
         let _ = self.run_away(uncon, at, computer, ai_rng, side)?;
         Ok(BREAK)
     }
@@ -89,7 +90,7 @@ impl UnitAi {
             };
             vx += u.position[0] - x;
             vy += u.position[1] - y;
-            class_22 |= u.class == CLASS_22;
+            class_22 |= u.class == class::WARSHIP;
         }
         if computer && class_22 && 0.0 < at.speed {
             return Err(GenieError::unsupported(
@@ -220,7 +221,7 @@ impl UnitAi {
         let Some(attacker) = at.unit(target) else {
             return Ok(GO_ON);
         };
-        let villager = attacker.class == CLASS_VILLAGER;
+        let villager = attacker.class == class::VILLAGER;
         let furious = if self.current_action == Some(ActionKind::Attack) {
             let _ = self.attack_object(target, false, false, at, side)?;
             true

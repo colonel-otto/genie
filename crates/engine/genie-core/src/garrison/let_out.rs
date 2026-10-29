@@ -2,8 +2,9 @@
 //! place on the map.
 
 use crate::GenieError;
-use crate::garrison::{NO_POINT, SIEGE_CLASS, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
+use crate::garrison::{NO_POINT, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
 use crate::objects::masters::Master;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Work;
@@ -77,7 +78,7 @@ impl World {
         let (up, ui) = self.live_inside(id)?;
         let unit = &self.players[up].objects[ui];
         let made = unit.master(&self.masters, up)?.clone();
-        if bm.class == SIEGE_CLASS {
+        if bm.class == class::SIEGE {
             return Err(SIEGE_UNLOAD);
         }
         if made.class == WHOLE_SHARE_CLASS || made.class == 58 {

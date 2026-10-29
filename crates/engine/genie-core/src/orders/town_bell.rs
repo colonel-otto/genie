@@ -8,9 +8,10 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
-use crate::orders::{GARRISON, VILLAGER, own_order_target};
+use crate::orders::{GARRISON, own_order_target};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -132,7 +133,7 @@ fn record_object(
             .action
             .is_some_and(|a| ENDED_ON_A_BUILDING.contains(&a))
         && o.building
-        && o.class != FARM_CLASS
+        && o.class != class::FARM
         && o.built
     {
         out.target = -1;
@@ -141,9 +142,6 @@ fn record_object(
     }
     (found, out)
 }
-
-/// The farms' class, whose records a built farm does not end.
-const FARM_CLASS: i16 = 49;
 
 impl TownBell {
     /// `FUN_1412035a0`: the work to go back to and the object it is on. The first record's
@@ -179,8 +177,6 @@ impl TownBell {
 const TOWN_CENTRE: i16 = 109;
 /// The master that answers the bell besides the villagers (`0x710`).
 const MASTER_1808: i16 = 0x710;
-/// The villagers' class.
-const VILLAGER_CLASS: i16 = 4;
 /// The town bell's reach ([`crate::garrison::TOWN_BELL_REACH`]).
 const REACH: f32 = crate::garrison::TOWN_BELL_REACH;
 /// A record's point on neither axis (`DAT_14330ec20`).
@@ -249,7 +245,7 @@ impl World {
                 // COMISS REACH, gap; JC: a gap above it, or a NaN, is out
                 Ok(!crate::math::fmath::below_or_unordered(REACH, gap))
             };
-            if (class == VILLAGER_CLASS && kind == COMBAT && near(self)?)
+            if (class == class::VILLAGER && kind == COMBAT && near(self)?)
                 || (master == MASTER_1808 && near(self)?)
             {
                 units.push(id);
@@ -366,7 +362,7 @@ impl World {
                 continue;
             };
             let um = u.master(&self.masters, up)?;
-            if COMBAT <= um.kind && (um.class == VILLAGER_CLASS || um.id == MASTER_1808) {
+            if COMBAT <= um.kind && (um.class == class::VILLAGER || um.id == MASTER_1808) {
                 let _ = self.back_to_work(Some((owner, idx)), inside)?;
             }
         }
@@ -378,7 +374,7 @@ impl World {
     /// from where it is.
     fn workers_back(&mut self, owner: usize) -> Result<(), GenieError> {
         let tracker = &self.players[owner].tracker;
-        let mut ids = tracker.class_list(i32::from(VILLAGER_CLASS)).to_vec();
+        let mut ids = tracker.class_list(i32::from(class::VILLAGER)).to_vec();
         ids.extend_from_slice(tracker.list(i32::from(MASTER_1808)));
         for id in ids {
             // the tracker's keepers follow every object its player gains and loses: the world
@@ -459,7 +455,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];
         let master = unit.master(&self.masters, player)?;
-        if !(master.class == VILLAGER || master.id == MASTER_1808) {
+        if !(master.class == class::VILLAGER || master.id == MASTER_1808) {
             return Ok(());
         }
         let Some((tp, t)) = self.object(target) else {
@@ -600,7 +596,7 @@ mod tests {
         let (building, class, built) = match id {
             7 => (true, 3, true),
             8 => (true, 3, false),
-            9 => (true, FARM_CLASS, true),
+            9 => (true, class::FARM, true),
             10 => (false, 58, false),
             _ => return None,
         };

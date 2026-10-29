@@ -55,8 +55,6 @@ pub(super) const IDLE_TIMEOUT: u32 = 3000;
 pub(super) const TOWER_IDLE_TIMEOUT: u32 = 1000;
 /// The artifact's idle timeout (`FUN_140c11340`'s `FUN_140c41bc0` with 5000).
 pub(super) const ARTIFACT_IDLE_TIMEOUT: u32 = 5000;
-/// The villager class (`-0xea8` raw): a boar attacking one turns furious.
-pub(super) const CLASS_VILLAGER: i16 = 4;
 /// The desired target distance (`+0x5c`) the constructor sets.
 pub(super) const DESIRED_DISTANCE: f32 = 2.0;
 
@@ -142,8 +140,6 @@ pub(super) const LION_SIGHT_SHARE: f32 = crate::math::image::unit_ai::LION_SIGHT
 /// Finding no villager outside mode 1 it attacks within its line of sight over this
 /// (`FUN_140c1fb70`, `DAT_142eb1c98`).
 pub(super) const LION_SIGHT_DIVISOR: f32 = crate::math::image::unit_ai::LION_SIGHT_DIVISOR;
-/// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
-pub(super) const CLASS_KING: i16 = 59;
 /// The king's master that the branch passes over (raw `0x635c`).
 pub(super) const KING_UNLED: i16 = 704;
 

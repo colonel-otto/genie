@@ -2,10 +2,11 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    CIVILIAN, CLASS_18, DEFENDLESS_MASTER, Effect, LiveTop, OUTSIDE_ORDER, QueuedOrder, SOLDIER_AI,
+    CIVILIAN, DEFENDLESS_MASTER, Effect, LiveTop, OUTSIDE_ORDER, QueuedOrder, SOLDIER_AI,
     Surroundings, TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS, UnitAi, UnitCommand, UnitSeen, UnitSide,
     order_move,
 };
@@ -288,7 +289,7 @@ impl UnitAi {
         let new = if order == Some(OrderKind::AttackRoundup) || attack_move {
             self.leave_patrol_timers(ai);
             Some(OrderKind::Attack)
-        } else if order == Some(OrderKind::Attack) && class == CLASS_18 {
+        } else if order == Some(OrderKind::Attack) && class == class::MONK {
             self.leave_patrol_timers(ai);
             self.current_target = -1;
             None

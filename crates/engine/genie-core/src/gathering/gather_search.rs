@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::math::msvc;
+use crate::objects::masters::class;
 use crate::unit_ai::task_finder::DropSite;
 
 /// What the searches read of an object in a map tile's list.
@@ -37,9 +38,6 @@ pub struct Candidate {
     /// Its master's `resource_gather_group` (`+0x683`).
     pub gather_group: u8,
 }
-
-/// The farm class (49), which both searches treat apart.
-pub(crate) const FARM: i16 = 49;
 
 /// What a builder's search reads of the builder and the building it completed.
 #[derive(Clone, Copy, Debug)]
@@ -123,10 +121,10 @@ pub fn more_work(
                 continue;
             }
             for o in objects(i32::from(x), i32::from(y))? {
-                if o.class == FARM {
+                if o.class == class::FARM {
                     // its own tests (owner, pasture, the targeting flag, masters 1893 and 1897)
                     // come before the entry's, which takes no farm without a farm target
-                    if entry.targets.iter().any(|t| t.class == FARM) {
+                    if entry.targets.iter().any(|t| t.class == class::FARM) {
                         return Err(GenieError::unsupported(
                             "a farm in a builder's search for more work",
                         ));

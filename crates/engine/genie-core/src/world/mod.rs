@@ -179,8 +179,6 @@ pub(crate) const EJECT_SHARE: f32 = crate::math::image::turn::EJECT_SHARE;
 pub(crate) const MONASTERY: i16 = 104;
 /// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
 pub(crate) const PETARD: i16 = 440;
-/// The villager's class (4), which a building's repair by its garrison counts.
-pub(crate) const VILLAGER_CLASS: i16 = 4;
 /// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:
 /// 562, 584 and 621 (`0x232` plus the bits of `0x800000000400001`), 68, 1808, 50, 1187 and 199.
 pub(crate) const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];
@@ -211,8 +209,6 @@ pub(crate) const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWE
 /// The pasture master whose foundation keeps its snow and whose stack unit depends on the rice
 /// terrain under it (1889).
 pub(crate) const PASTURE_1889: i16 = 1889;
-/// The gate's class (39), whose annexes stay in their owner's watched list.
-pub(crate) const GATE: i16 = 39;
 /// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
 /// modulo 100.
 pub(crate) const fn villager(draw: u64) -> i16 {

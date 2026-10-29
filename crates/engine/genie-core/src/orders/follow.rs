@@ -3,10 +3,9 @@
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::MOVING;
-use crate::orders::{
-    Followed, GUARD_RANGE, LIVESTOCK, Place, VILLAGER, follow_axis, follow_spread, ignore_unit,
-};
+use crate::orders::{Followed, GUARD_RANGE, Place, follow_axis, follow_spread, ignore_unit};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -308,7 +307,7 @@ impl World {
         let class = self.players[player].objects[idx]
             .master(&self.masters, player)?
             .class;
-        let villager = class == VILLAGER;
+        let villager = class == class::VILLAGER;
         let unit = &mut self.players[player].objects[idx];
         if villager {
             unit.town_bell.flag = false;
@@ -342,7 +341,7 @@ impl World {
         }
         // FUN_140aa0df0 makes the MoveTo first, which takes its target (slot 0x178, quiet 0);
         // slot 0x808 then clears the list (the old actions' teardowns) and starts it
-        let livestock = unit.master(&self.masters, player)?.class == LIVESTOCK;
+        let livestock = unit.master(&self.masters, player)?.class == class::LIVESTOCK;
         let (tp, t) = self
             .object(target)
             .ok_or(crate::movement::move_to::TARGET_LACKING)?;
