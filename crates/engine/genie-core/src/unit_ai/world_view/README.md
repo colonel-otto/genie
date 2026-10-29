@@ -18,7 +18,7 @@ it does to other objects goes into lists that the caller applies afterwards.
 | File | What it holds |
 | --- | --- |
 | [`commands.rs`](commands.rs) | The repair and enter commands of the unit AI and the auto scout's area. |
-| [`mod.rs`](mod.rs) | The views a unit's update and its unit AI read the world through (`UnitView`, `Context`, `Foreign`, `OwnerView`, the pickers). |
+| [`mod.rs`](mod.rs) | The views a unit's update and its unit AI read the world through (`UnitView`, `Step`, `Foreign`, `OwnerView`, the pickers). |
 | [`side.rs`](side.rs) | What the unit AI asks of the world through its view: `crate::unit_ai::UnitSide` for `UnitView`. |
 | [`tests.rs`](tests.rs) | Tests. |
 | [`unit_view.rs`](unit_view.rs) | What the unit AI's view asks of its unit: its picker, a helper's tests and a master switch. |

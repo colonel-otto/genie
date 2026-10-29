@@ -5,13 +5,13 @@ use crate::GenieError;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 impl Unit {
     /// `RGE_Action_Object::update` (`0x14106ac90`) on a unit in state 2 without an action or a
     /// production: the master's default task starts (slot 0x7f0), and its first update comes in
     /// the next update (true). A default task that the slice does not hold is an error.
-    pub(crate) fn start_default_task(&mut self, c: &mut Context<'_>) -> Result<bool, GenieError> {
+    pub(crate) fn start_default_task(&mut self, c: &mut Step<'_>) -> Result<bool, GenieError> {
         if self.life.state != 2 || self.top_action_kind().is_some() || self.production.is_some() {
             return Ok(false);
         }

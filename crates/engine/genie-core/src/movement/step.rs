@@ -3,9 +3,9 @@
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
-    ANNEX_GAP, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion, MoveStats, Mover, Next,
-    Planning, RANGE_FLOOR, Reach, Step, footprint_gap, gate_gap, ground, include_kept,
-    map_position, moved_far, pause_holds, point_or_zero_of, reach, vector,
+    ANNEX_GAP, AfterRequest, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion,
+    MoveStats, Mover, Next, Planning, RANGE_FLOOR, Reach, footprint_gap, gate_gap, ground,
+    include_kept, map_position, moved_far, pause_holds, point_or_zero_of, reach, vector,
 };
 use crate::pathing::Pathing;
 use crate::{GenieError, math::fmath};
@@ -328,10 +328,10 @@ impl Mover {
                     "a path request without the world's planners",
                 ))?;
                 Ok(match self.request(me, world, plan, goal, plans, include)? {
-                    Step::Again => Next::Again,
-                    Step::Walk => Next::Dispatch,
-                    Step::Paused => Next::Done(Motion::Moving),
-                    Step::GaveUp => Next::Done(Motion::Done),
+                    AfterRequest::Again => Next::Again,
+                    AfterRequest::Walk => Next::Dispatch,
+                    AfterRequest::Paused => Next::Done(Motion::Moving),
+                    AfterRequest::GaveUp => Next::Done(Motion::Done),
                 })
             }
             _ => Ok(Next::Dispatch),

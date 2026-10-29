@@ -10,9 +10,9 @@ use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::World;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
 use crate::world::player::Player;
+use crate::world::step::Step;
 
 impl Unit {
     /// The missile action's update (slot 6, `FUN_140a9e6e0`). First its target and the object it
@@ -26,7 +26,7 @@ impl Unit {
     /// ([`Unit::missile_lands`]). A dead shooter's weapons going to the missile
     /// (`FUN_14113e170`), the sprite's pitch facet and the projectile types 1 and 2 are not
     /// modelled.
-    pub(crate) fn fly(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn fly(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let Some(mut missile) = self.missile.take() else {
             return Ok(());
         };
@@ -47,7 +47,7 @@ impl Unit {
     pub(crate) fn missile_ends(
         &self,
         action: &mut crate::combat::missile::MissileAction,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let dead = |state: u8| 2 < state && state != 6;
         let target_state = readable(c, action.target).map(|(_, u, _)| u.life.state);
@@ -87,7 +87,7 @@ impl Unit {
         &mut self,
         missile: &mut crate::combat::missile::Missile,
         slot: &mut Option<crate::combat::missile::MissileAction>,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let master = self.master(&c.w.masters, c.player)?;
         let stats = master.missile_stats.ok_or(GenieError::unsupported(
@@ -166,7 +166,7 @@ impl Unit {
         stats: &crate::combat::missile::MissileStats,
         fired: Fired,
         old: [f32; 3],
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         if !(0.0 < stats.radius[0] && 0.0 < stats.radius[1]) {
             return Ok(());
@@ -232,7 +232,7 @@ impl Unit {
         &self,
         stats: &crate::combat::missile::MissileStats,
         old: [f32; 3],
-        c: &Context<'_>,
+        c: &Step<'_>,
     ) -> Result<Vec<(i32, usize, u8, u8)>, GenieError> {
         let [w, h] = c.w.spatial.map;
         let hold = |v: f32, size: i32| {
@@ -299,7 +299,7 @@ impl Unit {
         &mut self,
         action: &crate::combat::missile::MissileAction,
         fired: Fired,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<u8, GenieError> {
         if fired.charge {
             return Err(GenieError::unsupported("a charge projectile's own hit"));
@@ -369,7 +369,7 @@ impl Unit {
         &mut self,
         action: &crate::combat::missile::MissileAction,
         fired_from: i32,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<u8, GenieError> {
         if action.origin.owner != -1 {
             return Err(GenieError::unsupported(
@@ -426,7 +426,7 @@ impl Unit {
         missile: &crate::combat::missile::Missile,
         slot: &mut Option<crate::combat::missile::MissileAction>,
         stats: &crate::combat::missile::MissileStats,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let fired = Fired {
             charge: missile.charge,
@@ -473,7 +473,7 @@ impl Unit {
         action: &mut crate::combat::missile::MissileAction,
         fired: Fired,
         stats: &crate::combat::missile::MissileStats,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         if action.state == crate::combat::missile::DONE
             || action.target == -1
@@ -509,7 +509,7 @@ impl Unit {
     fn missile_destroyed(
         &mut self,
         slot: &mut Option<crate::combat::missile::MissileAction>,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         if let Some(a) = slot.take() {
             let by = self.releaser(c);

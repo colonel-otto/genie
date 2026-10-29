@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::objects::actions::{Action, ActionList};
 use crate::objects::layers::Body;
 use crate::objects::release::Releaser;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 /// What an action's destructor leaves its unit's world: the targets it lets go (slot 0x180),
 /// in order, and the buildings a counted builder or repairer leaves (`FUN_140aaddb0`).
@@ -31,7 +31,7 @@ impl TornDown {
     /// # Errors
     ///
     /// [`crate::world::lets::torn_down`]'s.
-    pub(crate) fn let_go(self, c: &mut Context<'_>, by: Releaser) -> Result<(), GenieError> {
+    pub(crate) fn let_go(self, c: &mut Step<'_>, by: Releaser) -> Result<(), GenieError> {
         let releases = self.releases.into_iter().map(|t| (t, by)).collect();
         crate::world::lets::torn_down(c, (self.builder_leaves, releases))
     }

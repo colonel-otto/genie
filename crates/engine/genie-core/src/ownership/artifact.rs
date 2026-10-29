@@ -19,7 +19,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
 use crate::unit_ai::ActionKind;
-use crate::world::context::Context;
+use crate::world::step::Step;
 use genie_diff::Diff;
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
@@ -407,7 +407,7 @@ impl Unit {
     /// ([`Unit::artifact_handover`]). In the first tick it waits.
     pub(crate) fn artifact_part(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
     ) -> Result<Option<Captured>, GenieError> {
         let by = self.releaser(c);
@@ -426,7 +426,7 @@ impl Unit {
     /// unit in stays, and the inside update of the next update deletes the Artifact.
     pub(crate) fn artifact_enter_part(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<(), GenieError> {
@@ -466,7 +466,7 @@ impl Unit {
     /// handover found, if any; none without an Artifact.
     pub(crate) fn artifact_walk_and_check(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<Option<Handover>, GenieError> {
@@ -533,7 +533,7 @@ impl Unit {
     /// nothing.
     pub(crate) fn artifact_handover(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         new: Option<Handover>,
     ) -> Result<Option<Captured>, GenieError> {
         match new {

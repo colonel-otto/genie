@@ -15,8 +15,8 @@ use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::TREE_NEAR;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 impl Unit {
     /// The hunt's strike in the hunter's update (`0x140ac7a00`'s states 4, 6, 7, 10 and 12): what
@@ -26,7 +26,7 @@ impl Unit {
     /// a combat object, taken).
     pub(crate) fn hunt_strike(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         own: &mut Option<Victim>,
         tree_lost: bool,
@@ -172,7 +172,7 @@ impl Unit {
     /// 0) takes the next tree within 5 of it ([`Unit::hunt_tree_search`]); any other, or one
     /// that finds none, searches (`set_state(3)` with the target kept,
     /// [`Unit::hunt_search_state`]).
-    pub(crate) fn hunt_attack_failed(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_attack_failed(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let tree = self.ai.as_ref().is_some_and(|ai| {
             let class = if ai.target_type == -1 {
                 self.actions
@@ -198,7 +198,7 @@ impl Unit {
     /// animal's idleness and the hunter's special graphic; none in the other states.
     fn herd_for(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         others: OthersRef<'_>,
         action: &HuntAction,
         master: &Master,
@@ -287,7 +287,7 @@ impl Unit {
 /// The object the hunt's strike reads of the world ([`victim`]): its target, else
 /// its Attack's. A hunt whose start dropped its target (gone or past state 6) and holds no
 /// Attack reads none (state 7's end without a target): a stand-in no object holds.
-fn hunt_victim(c: &Context<'_>, action: &HuntAction) -> Result<Victim, GenieError> {
+fn hunt_victim(c: &Step<'_>, action: &HuntAction) -> Result<Victim, GenieError> {
     let target = match action.target {
         -1 => action.attack.map_or(-1, |a| a.target),
         t => t,

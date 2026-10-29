@@ -12,9 +12,9 @@ from pathlib import Path
 import effects as ef
 
 CONTEXT = '''\
-//! The context.
+//! The step.
 
-pub(crate) struct Context<'a> {
+pub(crate) struct Step<'a> {
     /// The tick.
     pub(crate) tick: u32,
     /// The targets the update let go (slot 0x180, `FUN_140a7a230`), which the caller releases
@@ -25,9 +25,9 @@ pub(crate) struct Context<'a> {
 }
 
 pub(crate) struct ObjectOutputs {
-    /// [`Context`]'s `releases`.
+    /// [`Step`]'s `releases`.
     pub(in crate::world) released: Vec<(i32, Releaser)>,
-    /// [`Context`]'s `completions`.
+    /// [`Step`]'s `completions`.
     pub(in crate::world) completions:
         Vec<(i32, Option<StackUnit>, bool)>,
 }
@@ -79,7 +79,7 @@ pub struct BuildStep {
     pub state: u8,
 }
 
-fn build(c: &mut Context<'_>, step: &BuildStep) {
+fn build(c: &mut Step<'_>, step: &BuildStep) {
     c.releases.push((1, by));
     let _ = Effect::Stop;
 }
@@ -98,12 +98,12 @@ fn after(step: BuildStep) {
 def crate(d: Path) -> Path:
     src = d / "src"
     for path, text in {
-        "world/context.rs": CONTEXT,
+        "world/step.rs": CONTEXT,
         "world/after_step.rs": APPLY,
         "unit_ai/mod.rs": UNIT_AI,
         "construction/build.rs": BUILD,
         "construction/unit.rs": READER,
-        "construction/tests.rs": "use super::*;\nfn t(c: &mut Context) { c.releases.clear(); }\n",
+        "construction/tests.rs": "use super::*;\nfn t(c: &mut Step) { c.releases.clear(); }\n",
     }.items():
         (src / path).parent.mkdir(parents=True, exist_ok=True)
         (src / path).write_text(text)
@@ -123,7 +123,7 @@ class Parsing(unittest.TestCase):
             [(n, t) for n, t, _ in fields["ObjectOutputs"]],
             [("released", "Vec<(i32, Releaser)>"), ("completions", "Vec<(i32, Option<StackUnit>, bool)>")],
         )
-        self.assertEqual([n for n, _, _ in fields["Context"]], ["tick", "releases", "completions"])
+        self.assertEqual([n for n, _, _ in fields["Step"]], ["tick", "releases", "completions"])
 
     def test_an_enum_s_variants_keep_their_docs_and_skip_their_fields(self):
         variants = ef.variants_of(UNIT_AI, "Effect")
@@ -136,14 +136,14 @@ class Parsing(unittest.TestCase):
 
 
 class Inventory(unittest.TestCase):
-    def test_each_world_output_names_its_context_field_its_emitters_and_its_appliers(self):
+    def test_each_world_output_names_its_step_field_its_emitters_and_its_appliers(self):
         with tempfile.TemporaryDirectory() as d:
             text = ef.inventory(crate(Path(d)), "SRC")
         out = rows(text, "The world's outputs")
         self.assertEqual(len(out), 2)
         self.assertIn("| `releases` | `Vec<(i32, Releaser)>` | The targets the update let go", out[0])
         self.assertIn("`slot 0x180`, `FUN_140a7a230`", out[0])
-        # the emitter, not the test file nor the context itself
+        # the emitter, not the test file nor the step itself
         self.assertIn("[`construction/build.rs`](SRC/construction/build.rs) | `apply_releases` |", out[0])
         self.assertNotIn("tests.rs", out[0])
         self.assertIn("`apply_completions`", out[1])
@@ -179,9 +179,9 @@ class Check(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(ef.main([str(src), "--out", str(out)]), 0)
             self.assertEqual(ef.main([str(src), "--out", str(out), "--check"]), 0)
-            (src / "world" / "context.rs").write_text(CONTEXT.replace("    /// The tick.\n", "    /// The world's tick.\n"))
+            (src / "world" / "step.rs").write_text(CONTEXT.replace("    /// The tick.\n", "    /// The world's tick.\n"))
             self.assertEqual(ef.main([str(src), "--out", str(out), "--check"]), 0)
-            (src / "construction" / "build.rs").write_text(BUILD + "fn more(c: &mut Context) { let _ = Effect::MoveToObject { target: 1 }; }\n")
+            (src / "construction" / "build.rs").write_text(BUILD + "fn more(c: &mut Step) { let _ = Effect::MoveToObject { target: 1 }; }\n")
             with redirect_stderr(io.StringIO()):
                 self.assertEqual(ef.main([str(src), "--out", str(out), "--check"]), 1)
 

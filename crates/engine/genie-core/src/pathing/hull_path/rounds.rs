@@ -56,7 +56,7 @@ impl Rounds {
 }
 
 /// What a round's expanded node leads to.
-enum Step {
+enum Expanded {
     /// The next node.
     Next,
     /// The next round (the area grew, or the nodes ran out for this round).
@@ -82,9 +82,9 @@ impl HullPather<'_> {
             }
             loop {
                 match self.expand_best(q, rounds)? {
-                    Step::Next => {}
-                    Step::NextRound => break,
-                    Step::End => return Ok(None),
+                    Expanded::Next => {}
+                    Expanded::NextRound => break,
+                    Expanded::End => return Ok(None),
                 }
             }
         }
@@ -235,31 +235,31 @@ impl HullPather<'_> {
     /// next round) or ends the search. A best within range ends it found; else its walk to the
     /// goal crosses the nearest hull ([`HullPather::around_hull`]) or none
     /// ([`HullPather::no_crossing`]).
-    fn expand_best(&mut self, q: &HullQuery, rounds: &mut Rounds) -> Result<Step, GenieError> {
+    fn expand_best(&mut self, q: &HullQuery, rounds: &mut Rounds) -> Result<Expanded, GenieError> {
         if ITERATION_CAP <= rounds.iterations {
-            return Ok(Step::NextRound);
+            return Ok(Expanded::NextRound);
         }
         rounds.iterations += 1;
         let Some(best) = self.nodes[0].next else {
-            return Ok(Step::End);
+            return Ok(Expanded::End);
         };
         if self.open_off_map(best) {
             self.close(0, best);
-            return Ok(Step::Next);
+            return Ok(Expanded::Next);
         }
         if !self.in_area(self.nodes[best].at) {
             if !self.grow_area()? {
-                return Ok(Step::End);
+                return Ok(Expanded::End);
             }
             rounds.growths += 1;
-            return Ok(Step::NextRound);
+            return Ok(Expanded::NextRound);
         }
         self.close(0, best);
         let at = self.nodes[best].at;
         if self.reached(q, at) {
             rounds.found = q.target.is_none() || q.target_id >= 0;
             rounds.best_node = Some(best);
-            return Ok(Step::End);
+            return Ok(Expanded::End);
         }
         rounds.nearer(best, self.nodes[best].to_goal);
         let vertex = self.nodes[best].vertex;
@@ -267,15 +267,15 @@ impl HullPather<'_> {
             return self.no_crossing(q, best, rounds);
         };
         if rounds.start_hull == -1 && rounds.goal_hull == -1 && self.blocked(at, p)? {
-            return Ok(Step::Next);
+            return Ok(Expanded::Next);
         }
         if hit as i32 == self.nodes[best].hull && 0 <= vertex {
-            return Ok(Step::Next);
+            return Ok(Expanded::Next);
         }
         let node = self.add_unrefused(0, false, Some(best), p, Some(q.to), hit as i32, -1);
         rounds.nearer(node, self.nodes[node].to_goal);
         self.around_hull(node, hit, edge, q.to);
-        Ok(Step::Next)
+        Ok(Expanded::Next)
     }
 
     /// Whether a node of the open list from `best` on lies off the map.
@@ -327,13 +327,13 @@ impl HullPather<'_> {
         q: &HullQuery,
         best: usize,
         rounds: &mut Rounds,
-    ) -> Result<Step, GenieError> {
+    ) -> Result<Expanded, GenieError> {
         let (at, vertex) = (self.nodes[best].at, self.nodes[best].vertex);
         if !self.blocked(at, q.to)? {
             rounds.best_node =
                 self.add_node(0, false, Some(best), q.to, Some(q.to), -1, -1, -1, false);
             rounds.found = true;
-            return Ok(Step::End);
+            return Ok(Expanded::End);
         }
         if 0 <= rounds.goal_hull && rounds.goal_hull == self.nodes[best].hull && 0 <= vertex {
             let hull = &self.hulls[rounds.goal_hull as usize];
@@ -344,10 +344,10 @@ impl HullPather<'_> {
                 rounds.found = true;
                 rounds.best_node = Some(best);
                 rounds.entrance = e;
-                return Ok(Step::End);
+                return Ok(Expanded::End);
             }
         }
-        Ok(Step::Next)
+        Ok(Expanded::Next)
     }
 
     /// The crossed hull `hit`'s points as nodes from the crossing's node, both ways around from

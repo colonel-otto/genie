@@ -1,5 +1,5 @@
 //! The views a unit's update and its unit AI read the world through ([`UnitView`],
-//! [`Context`], [`Foreign`], [`OwnerView`], the pickers).
+//! [`Step`], [`Foreign`], [`OwnerView`], the pickers).
 
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
@@ -25,7 +25,7 @@ use self::world_picker::attacks;
 pub(crate) use self::world_picker::{WorldPicker, patrol_information};
 #[cfg(test)]
 use crate::unit_ai::UnitAi;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 /// What a tick's update of one object needs from the world.
 /// What a hunt's drop-off ([`Unit::drop_off_in`]) reads besides its unit: the owner's masters,
@@ -43,7 +43,7 @@ pub(crate) struct DropWorld<'a> {
     pub groups: &'a crate::groups::UnitGroups,
 }
 
-/// A unit command a unit AI's update gave that the caller runs after it ([`Context::works`]).
+/// A unit command a unit AI's update gave that the caller runs after it ([`Step::works`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum AiWork {
     /// `HuntObject`'s unit part on the target: the stop, then the hunt command
@@ -155,7 +155,7 @@ pub(crate) struct OwnerView {
 impl OwnerView {
     /// The owner's side: player `new`'s when the unit changed hands to it in its update, else
     /// the updating player's (`c`).
-    pub(crate) fn of(c: &Context<'_>, new: Option<usize>) -> Self {
+    pub(crate) fn of(c: &Step<'_>, new: Option<usize>) -> Self {
         let taker = new.filter(|&n| n != c.player);
         let Some((new, q)) = taker.and_then(|n| Some((n, c.w.players.get(n)?))) else {
             return Self {

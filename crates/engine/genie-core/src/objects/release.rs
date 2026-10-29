@@ -6,7 +6,7 @@ use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::world::World;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 /// The object whose action lets its target go (the target's slot 0x180 takes it): its id, its
 /// master's class and its owner.
@@ -146,7 +146,7 @@ impl World {
 
 impl Unit {
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
-    pub(crate) fn releaser(&self, c: &Context<'_>) -> Releaser {
+    pub(crate) fn releaser(&self, c: &Step<'_>) -> Releaser {
         Releaser {
             id: self.id,
             class: self.master(&c.w.masters, c.player).map_or(-1, |m| m.class),

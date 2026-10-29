@@ -14,7 +14,7 @@ use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::ownership::capture::Captured;
 use crate::production::Production;
 use crate::unit_ai::UnitAi;
-use crate::world::context::Context;
+use crate::world::step::Step;
 use crate::world::{Gate, WONDER};
 
 mod death;
@@ -405,7 +405,7 @@ pub(crate) const TAKEN_OUT: i32 = i32::MIN;
 /// own player or a missile, an ally's, and, when it is not the `target`, Gaia's of a type above
 /// 15 or one of a blast defence below the missile's (`blast_level`).
 pub(crate) fn missed_passes(
-    c: &Context<'_>,
+    c: &Step<'_>,
     (id, player, kind, level): (i32, usize, u8, u8),
     target: i32,
     blast_level: u8,
@@ -421,7 +421,7 @@ pub(crate) fn missed_passes(
 
 /// What an object's update leaves of it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Step {
+pub(crate) enum Outcome {
     Stay,
     /// It leaves its list for good (`RGE_Object_List::update` deletes it).
     Leave,

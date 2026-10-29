@@ -15,8 +15,8 @@ use crate::objects::masters::Master;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, annexes_of};
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 use crate::world::{
     BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, MONASTERY,
     VILLAGER_CLASS,
@@ -43,7 +43,7 @@ impl Unit {
     /// open one (a height below the epsilon) with nothing in it starts its close timer at 0.5 s,
     /// or runs it down by the world's dt, and at 0 shuts (slot 0x338, `FUN_1416193e0`: a height
     /// of at most 0).
-    pub(crate) fn gate_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn gate_update(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player);
         let Ok(master) = self.master(&c.w.masters, c.player) else {
             return Ok(());
@@ -92,7 +92,7 @@ impl Unit {
     /// # Errors
     ///
     /// The toggle's, or the gate gone from its owner's live list.
-    fn toggle_own_gate(&mut self, c: &mut Context<'_>, toggles: bool) -> Result<(), GenieError> {
+    fn toggle_own_gate(&mut self, c: &mut Step<'_>, toggles: bool) -> Result<(), GenieError> {
         if !toggles {
             return Ok(());
         }
@@ -109,7 +109,7 @@ impl Unit {
     /// as made): the units in it and how many of them are of an ally.
     pub(crate) fn gate_count(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         others: OthersRef<'_>,
     ) -> Result<(usize, usize), GenieError> {
         let (units, allied) = gate_units(
@@ -129,7 +129,7 @@ impl Unit {
     /// `FUN_1411ce250` maps the terrains 8, 27 and 64 by the local player's view and the tile's
     /// own (`+0x2e8`'s `+10`), which the slice does not hold; the masters' foundations (7, 63,
     /// 117) never give them.
-    pub(crate) fn farm_stage(&self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn farm_stage(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let Some(cons) = self
             .construction
             .filter(|k| self.life.state == 0 && 0 < k.build_time)
@@ -181,7 +181,7 @@ impl Unit {
     /// spawn's). What the completion leaves its owner follows at once
     /// ([`crate::world::World::built`], the building lent to the world). The walls' branch's facet
     /// and the other branch's work before it are not modelled for such a building.
-    pub(crate) fn complete_on_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn complete_on_update(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         self.farm_stage(c)?;
         let due = self.life.state == 0
             && self
@@ -275,7 +275,7 @@ impl Unit {
     /// master's hit points (slot 0x110, [`Unit::heal`]); with villagers inside, a damaged
     /// building with a `garrison_repair_rate` repairs itself at a cost (`FUN_1411d33e0`, not
     /// modelled). Its `damaged_lately_timer` (`+0x30d`) loses one when whole seconds passed.
-    pub(crate) fn building_seconds(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn building_seconds(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         if self.life.state != 2 {
             return Ok(());
         }
@@ -420,14 +420,14 @@ impl Unit {
     /// that blasts at its death ([`blasts_at_death`]) blasts about its place (slot 0x848,
     /// `FUN_14107f690`, [`crate::combat::damage::blast`]: itself left out, no main target, the factor
     /// 1, the hit info `FUN_140aa8720` gives) over the objects its caller gathered
-    /// ([`Context::blasted`], written back to the world right after it,
+    /// ([`Step::blasted`], written back to the world right after it,
     /// [`write_back`]); its death follows in the static update. Its own part of the blast is
     /// written back ([`Unit::hit_back`]); a kill of it changes nothing, as it dies anyway.
     ///
     /// # Errors
     ///
     /// What the blast does not model.
-    pub(crate) fn death_blast(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn death_blast(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let Ok(master) = self.master(&c.w.masters, c.player) else {
             return Ok(());
         };

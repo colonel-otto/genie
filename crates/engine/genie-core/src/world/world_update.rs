@@ -1,10 +1,10 @@
 //! The world update's parts ([`crate::world::schedule`] runs them): the command phase, the
-//! moving objects and the players' relations, each player's frame and its objects' updates.
+//! moving objects, the players' relations and each player's objects' updates.
 
 use crate::GenieError;
 use crate::commands::Command;
 use crate::objects::lifecycle::seconds;
-use crate::objects::unit::{Step, Unit};
+use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
 use crate::unit_ai::unit::AiResume;
 use crate::world::World;
@@ -131,19 +131,19 @@ impl World {
                 tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master).entered();
             let stepped = self.step_object((p, slot), (dt, turn, true), again, Unit::update);
             match stepped {
-                Ok(s) => match (s.step, s.resume, s.after) {
-                    (Step::Stay, Some(ai_resume), _) => resume = Some((ai_resume, s.slot)),
+                Ok(s) => match (s.outcome, s.resume, s.after) {
+                    (Outcome::Stay, Some(ai_resume), _) => resume = Some((ai_resume, s.slot)),
                     // the unit AI's rest after the order on a target it took, which the unit's
                     // update runs again from there ([`crate::unit_ai::UnitAi::after_order`])
-                    (Step::Stay, None, Some(after)) => {
+                    (Outcome::Stay, None, Some(after)) => {
                         let ai_resume = AiResume {
                             captured: None,
-                            leaves: Step::Stay,
+                            leaves: Outcome::Stay,
                             after: Some(after),
                         };
                         resume = Some((ai_resume, s.slot));
                     }
-                    (step, ..) => i += usize::from(self.file_step(p, s.slot, step)),
+                    (outcome, ..) => i += usize::from(self.file_step(p, s.slot, outcome)),
                 },
                 Err(e) => {
                     self.freeze_object(p, (i, id), e);
@@ -159,10 +159,10 @@ impl World {
     /// past one that leaves (the game's loop runs its count again, the list's last object in the
     /// slot), past any other (a sleeper's slot holds the last object too, whose update waits
     /// for the next tick).
-    pub(super) fn file_step(&mut self, p: usize, i: usize, step: Step) -> bool {
+    pub(super) fn file_step(&mut self, p: usize, i: usize, outcome: Outcome) -> bool {
         let player = &mut self.players[p];
-        match step {
-            Step::Leave => {
+        match outcome {
+            Outcome::Leave => {
                 let gone = player.objects.swap_remove(i);
                 if let Err(e) = self.leave_world(p, &gone) {
                     crate::trace::player_unsupported(self.ticks, p, &e);
@@ -173,7 +173,7 @@ impl World {
                 // the list's last object took its place
                 false
             }
-            Step::Sleep => {
+            Outcome::Sleep => {
                 // the list's remove (FUN_1411664a0) puts its last object in the sleeper's place,
                 // and the list's loop (0x141166550) goes on past it: that object's update waits
                 // for the next tick; the player's remove and add (slots 0x2d8, 0x2d0) file it last
@@ -189,7 +189,7 @@ impl World {
                 player.sleeping.push(asleep);
                 true
             }
-            Step::Captured(Captured { new, building, .. }) if building => {
+            Outcome::Captured(Captured { new, building, .. }) if building => {
                 // a building's slot 0x70 (FUN_1411cd860), whole: its annexes, its lists' moves
                 // and its new owner's parts
                 let id = player.objects[i].id;
@@ -202,11 +202,11 @@ impl World {
                 }
                 true
             }
-            Step::Captured(taken) => {
+            Outcome::Captured(taken) => {
                 self.hand_over_units(p, i, taken);
                 true
             }
-            Step::Stay => true,
+            Outcome::Stay => true,
         }
     }
 

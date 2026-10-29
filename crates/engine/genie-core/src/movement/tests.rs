@@ -1444,7 +1444,7 @@ fn a_level_without_a_path_marks_its_waypoint_pauses_or_waits() {
     m.paths[0].flags = 4;
     assert!(matches!(
         m.no_path(false, Some(&target), 0.5),
-        Ok(Step::Paused)
+        Ok(AfterRequest::Paused)
     ));
     assert_eq!(m.paths[0].pause_time, STUCK_PAUSE);
     assert_eq!((m.paths[0].flags, m.paths[1].flags), (0, 4));
@@ -1456,19 +1456,22 @@ fn a_level_without_a_path_marks_its_waypoint_pauses_or_waits() {
         (r, m)
     };
     let (r, m) = out(&|m| m.paths[1].waypoint = 0);
-    assert!(matches!(r, Ok(Step::Again)));
+    assert!(matches!(r, Ok(AfterRequest::Again)));
     assert_eq!(m.paths[0].state, 5);
     assert!(out(&|_| {}).0.is_err());
     assert!(out(&|m| m.paths[0].path_flags |= 1).0.is_err());
     assert!(out(&|m| m.attack_moving = true).0.is_err());
     assert!(out(&|m| m.paths[0].level = 2).0.is_err());
     let (r, m) = out(&|m| m.paths[0].waypoint = 0);
-    assert!(matches!(r, Ok(Step::Again)));
+    assert!(matches!(r, Ok(AfterRequest::Again)));
     assert_eq!(m.paths[0].flags, 1);
     let mut m = builder_9177().placed([28.0, 89.0, 0.0]);
     assert!(m.no_path(true, None, 0.05).is_err());
     m.paths[0].path_flags |= 1;
-    assert!(matches!(m.no_path(true, None, 0.05), Ok(Step::Again)));
+    assert!(matches!(
+        m.no_path(true, None, 0.05),
+        Ok(AfterRequest::Again)
+    ));
     assert_eq!(m.paths[0].flags, 1);
 }
 
@@ -2264,7 +2267,7 @@ fn a_request_in_reach_of_its_target_or_on_its_waypoint_goes_again() {
         to_end: FAR,
     };
     let mut m = builder_9177().placed([28.0, 89.0, 0.0]);
-    assert_eq!(m.in_reach(near, start), Some(Step::Again));
+    assert_eq!(m.in_reach(near, start), Some(AfterRequest::Again));
     assert_eq!(m.paths[0].state, 4);
     let mut m = builder_9177().placed([28.0, 89.0, 0.0]);
     m.paths[0].range = 0.0;
@@ -2272,7 +2275,7 @@ fn a_request_in_reach_of_its_target_or_on_its_waypoint_goes_again() {
         gap: RANGE_FLOOR,
         ..near
     };
-    assert_eq!(m.in_reach(floor, start), Some(Step::Again));
+    assert_eq!(m.in_reach(floor, start), Some(AfterRequest::Again));
     assert_eq!(m.paths[0].state, 4);
     let far = Goal {
         target: None,
@@ -2283,11 +2286,11 @@ fn a_request_in_reach_of_its_target_or_on_its_waypoint_goes_again() {
     assert_eq!(m.in_reach(far, start), None);
     assert_eq!((m.paths[0].state, m.paths[0].flags), (3, 0));
     let waypoint = [30.0, 0.0, 88.0];
-    assert_eq!(m.in_reach(far, waypoint), Some(Step::Again));
+    assert_eq!(m.in_reach(far, waypoint), Some(AfterRequest::Again));
     assert_eq!(m.paths[0].flags, 3);
     let mut m = builder_9177().placed(house.position);
     let on_house = Goal { gap: FAR, ..near };
-    assert_eq!(m.in_reach(on_house, waypoint), Some(Step::Again));
+    assert_eq!(m.in_reach(on_house, waypoint), Some(AfterRequest::Again));
     assert_eq!(m.paths[0].flags, 1);
 }
 
@@ -2316,19 +2319,19 @@ fn a_request_spends_a_try_and_gives_up_or_goes_on_without_more() {
     };
     let mut m = last_try();
     m.paths[1].waypoint = 0;
-    assert_eq!(m.spend_try(), Ok(Some(Step::Again)));
+    assert_eq!(m.spend_try(), Ok(Some(AfterRequest::Again)));
     assert_eq!(m.paths[0].state, 5);
     let mut m = last_try();
-    assert_eq!(m.spend_try(), Ok(Some(Step::GaveUp)));
+    assert_eq!(m.spend_try(), Ok(Some(AfterRequest::GaveUp)));
     assert_eq!((m.paths.len(), m.paths[0].state), (1, 6));
     assert_eq!(m.animated.speed, 0.0);
     let mut m = last_try();
     m.paths[0].level = 2;
-    assert_eq!(m.spend_try(), Ok(Some(Step::GaveUp)));
+    assert_eq!(m.spend_try(), Ok(Some(AfterRequest::GaveUp)));
     let mut m = last_try();
     m.paths[0].level = 2;
     m.paths[0].waypoint = 0;
-    assert_eq!(m.spend_try(), Ok(Some(Step::Again)));
+    assert_eq!(m.spend_try(), Ok(Some(AfterRequest::Again)));
     assert_eq!(
         (m.paths[0].flags, m.paths[0].continue_counter),
         (1, CONTINUE)
@@ -2366,19 +2369,19 @@ fn a_waypoint_in_range_ends_the_level_or_gives_up_on_a_fresh_path() {
     let mut m = builder_9177();
     assert_eq!(
         m.waypoint_in_range(&way_9177(point(0.05), 0.1), 16360),
-        Ok(Step::Again)
+        Ok(AfterRequest::Again)
     );
     assert_eq!(m.paths[0].state, 4);
     let mut m = builder_9177();
     assert_eq!(
         m.waypoint_in_range(&way_9177(point(0.5), 0.1), 16000),
-        Ok(Step::Again)
+        Ok(AfterRequest::Again)
     );
     assert_eq!((m.paths[0].state, m.paths[0].flags), (3, 1));
     let mut m = builder_9177();
     assert_eq!(
         m.waypoint_in_range(&way_9177(point(0.5), 0.1), 16360),
-        Ok(Step::GaveUp)
+        Ok(AfterRequest::GaveUp)
     );
     assert_eq!((m.paths.len(), m.paths[0].state), (1, 6));
     let house = world_target();
@@ -2390,7 +2393,7 @@ fn a_waypoint_in_range_ends_the_level_or_gives_up_on_a_fresh_path() {
     let mut m = builder_9177();
     assert_eq!(
         m.waypoint_in_range(&way_9177(target, 0.0), 16360),
-        Ok(Step::Again)
+        Ok(AfterRequest::Again)
     );
     assert_eq!(m.paths[0].state, 4);
 }

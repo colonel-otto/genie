@@ -5,8 +5,8 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::objects::unit::Unit;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 impl Unit {
     /// The Build's case 0xdf once its work ended without queued orders (`0x140ab0b43`): the
@@ -21,7 +21,7 @@ impl Unit {
     /// no carried-resource test, `+0xa14` as it stands outside slot 0x128: 1; the caller's).
     pub(crate) fn more_work(
         &self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         building: i32,
         built: i16,
     ) -> Result<Option<crate::orders::Work>, GenieError> {

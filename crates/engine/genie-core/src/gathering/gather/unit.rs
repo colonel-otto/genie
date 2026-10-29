@@ -14,8 +14,8 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::unit_ai::world_view::DropWorld;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 impl Unit {
     /// The Build's `set_state(8)` from its update (case 7 searching again): the drop-site table's
@@ -26,7 +26,7 @@ impl Unit {
     /// [`crate::construction::build::BuildAction::set_drop`], whose second targets the caller releases and
     /// takes and whose notify 0x203 goes to the unit AI. A builder of state 8 counts among no
     /// builders (its `set_state(8)` left them).
-    pub(crate) fn build_drop_off(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    pub(crate) fn build_drop_off(&mut self, c: &mut Step<'_>, me: Me) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
         let by = self.releaser(c);
         let build = self.actions.build().expect("the caller's Build");
@@ -128,7 +128,7 @@ impl Unit {
     /// ([`Unit::gather_drop_off`]).
     pub(crate) fn gather_update(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
         let by = self.releaser(c);
@@ -145,11 +145,7 @@ impl Unit {
     /// The Gather's update's check of its targets: a target the world does not hold goes, one
     /// past state 6 is let go and goes (one the slice holds but cannot read is not modelled); a
     /// second target ([`second_target_checked`]) alike.
-    fn gather_check_targets(
-        &mut self,
-        c: &mut Context<'_>,
-        by: Releaser,
-    ) -> Result<(), GenieError> {
+    fn gather_check_targets(&mut self, c: &mut Step<'_>, by: Releaser) -> Result<(), GenieError> {
         let gather = self.actions.gather_mut().expect("the caller's gather");
         if gather.target != -1 {
             let state = readable(c, gather.target).map(|(_, u, _)| u.life.state);
@@ -187,7 +183,7 @@ impl Unit {
     /// task's sprites and the master's standing one, the master's work rate (`+0x798`) plus the
     /// powerup (slot 0x6e8), its capacity and class, the task's productivity (1 for none or not
     /// above 0), the stance, and the player's farm settings.
-    fn gather_view(&self, c: &Context<'_>) -> Result<GatherView, GenieError> {
+    fn gather_view(&self, c: &Step<'_>) -> Result<GatherView, GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
         let master = self.master(&c.w.masters, c.player)?;
         let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
@@ -231,7 +227,7 @@ impl Unit {
     /// the drop-off again ([`Unit::gather_drop_off`]); an idle gather lets its targets go.
     fn gather_drop_update(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         view: GatherView,
         by: Releaser,
@@ -282,7 +278,7 @@ impl Unit {
     /// footprints (`me`: the gatherer's place and radii).
     fn gather_site(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         site: i32,
         (position, radius): ([f32; 3], [f32; 2]),
     ) -> Result<Option<crate::gathering::hunt::DropOff>, GenieError> {
@@ -315,7 +311,7 @@ impl Unit {
     /// footprint, `radius` its radii).
     fn gather_load_dropped(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         by: Releaser,
         (kind, amount): (i16, f32),
         radius: [f32; 2],
@@ -349,7 +345,7 @@ impl Unit {
     /// ([`Unit::gather_next`]).
     fn gather_work_update(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         view: GatherView,
         by: Releaser,
@@ -400,7 +396,7 @@ impl Unit {
     /// build command, or the reseed after the update (state 0xf2's walk ended).
     pub(crate) fn gather_next(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         next: crate::gathering::gather::Next,
         (old_target, old_second): (i32, i32),
         by: Releaser,
@@ -436,7 +432,7 @@ impl Unit {
     /// the Gather's target type (`+0x68`) and a drop site: the second target's, else for a master
     /// with drop sites (`+0x7a0`) the one `FUN_1411671e0` finds from the unit (inside others too:
     /// [`Unit::drop_site_from`]), 0 when it finds none; −1 for a master without.
-    pub(crate) fn gather_search(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn gather_search(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player);
         let gather = self.actions.gather().expect("the caller's gather");
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);

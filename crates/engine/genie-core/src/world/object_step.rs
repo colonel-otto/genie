@@ -1,20 +1,20 @@
-//! One object's step with its context ([`World::run_object`]) and a unit AI run outside its
+//! One object's step with its [`Step`] ([`World::run_object`]) and a unit AI run outside its
 //! update.
 
 use crate::GenieError;
 use crate::construction::building_update::blasts_at_death;
-use crate::objects::unit::{Step, Unit};
+use crate::objects::unit::{Outcome, Unit};
 use crate::unit_ai::unit::AiResume;
 use crate::world::World;
-use crate::world::context::{Context, ObjectOutputs};
+use crate::world::step::{ObjectOutputs, Step};
 
 impl World {
-    /// One object's step with its Context (`f`: the unit's update, or one part of its unit AI
+    /// One object's step with its `Step` (`f`: the unit's update, or one part of its unit AI
     /// for a command): object `i` of player `p` leaves its list (its stand-in holds the slot),
-    /// and `f` gets it and the Context, which holds the world (FD-045-D28; the objects it
+    /// and `f` gets it and the `Step`, which holds the world (FD-045-D28; the objects it
     /// makes join the list at their making). It goes back to the slot its stand-in holds then
     /// ([`World::put_back_own`]). Returns `f`'s result (an error of the put-back, then of the
-    /// sight's registry first) and what the Context gathered for the world
+    /// sight's registry first) and what the `Step` gathered for the world
     /// ([`World::step_object`]).
     #[allow(clippy::too_many_lines)]
     pub(super) fn run_object(
@@ -22,8 +22,8 @@ impl World {
         (p, i): (usize, usize),
         (dt, turn): (u32, Option<u32>),
         resume: Option<AiResume>,
-        f: impl FnOnce(&mut Unit, &mut Context<'_>) -> Result<Step, GenieError>,
-    ) -> (Result<Step, GenieError>, ObjectOutputs) {
+        f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
+    ) -> (Result<Outcome, GenieError>, ObjectOutputs) {
         // the unit AI's target as its update starts, read before the unit leaves its list: a unit
         // may be its own target (an unload's)
         let ai_target = self.players[p].objects[i]
@@ -50,7 +50,7 @@ impl World {
             None => Vec::new(),
         };
         let (tick, me) = (self.ticks, unit.id);
-        let mut c = Context {
+        let mut c = Step {
             w: self,
             me,
             dt,
@@ -115,10 +115,10 @@ impl World {
         ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
     ) -> Result<(), GenieError> {
         let stepped = self.step_object((p, i), (0, None, false), None, |unit, c| {
-            unit.run_ai(c, f).map(|()| Step::Stay)
+            unit.run_ai(c, f).map(|()| Outcome::Stay)
         })?;
-        match stepped.step {
-            Step::Stay => Ok(()),
+        match stepped.outcome {
+            Outcome::Stay => Ok(()),
             _ => Err(GenieError::unsupported(
                 "a unit AI run outside its update that takes the unit out of its list",
             )),

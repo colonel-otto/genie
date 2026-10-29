@@ -5,8 +5,8 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 impl Unit {
     /// The hunt's search for another target (`FUN_140ac4670`) when the class its unit AI targets
@@ -21,7 +21,7 @@ impl Unit {
     /// found one.
     pub(crate) fn hunt_tree_search(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         within: Option<f32>,
         near: Option<f32>,
     ) -> Result<bool, GenieError> {

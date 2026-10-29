@@ -13,9 +13,9 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiMove;
 use crate::world::World;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
 use crate::world::scenario_mode;
+use crate::world::step::Step;
 
 impl Unit {
     /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it
@@ -24,11 +24,7 @@ impl Unit {
     /// [`crate::construction::repair::repair_unit`]) paid from the player's resources. Its changes
     /// go to the objects ([`repair_write_back`]), the payments join the attribute adds, then what
     /// the step leaves ([`Unit::after_repair_step`]).
-    pub(crate) fn repair_part(
-        &mut self,
-        c: &mut Context<'_>,
-        me: Me,
-    ) -> Result<HeadCode, GenieError> {
+    pub(crate) fn repair_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
         let Some(target) = self.actions.repair().map(|r| r.target) else {
             return Ok(HeadCode::Keeps);
         };
@@ -132,7 +128,7 @@ impl Unit {
     /// hears the notifies and the unit stands; its code (the end's 1).
     fn after_repair_step(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         (target, target_kind, counted_in): (i32, u8, Option<(i32, u8)>),
         step: crate::construction::repair::RepairStep,
     ) -> Result<HeadCode, GenieError> {
@@ -227,7 +223,7 @@ impl Unit {
     /// type, place and its master's radii; None without one.
     pub(crate) fn top_target_seen(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         others: OthersRef<'_>,
     ) -> Option<crate::unit_ai::TopTarget> {
         let id = self.top_target().filter(|&t| t != -1)?;
@@ -289,7 +285,7 @@ fn repair_master(every: &[Masters], q: usize, u: &Unit) -> Option<Master> {
 /// What the Repair's update reads of its `target` ([`RepairReads`]): nothing for a target the
 /// world does not hold.
 fn repair_reads(
-    c: &Context<'_>,
+    c: &Step<'_>,
     others: OthersRef<'_>,
     target: i32,
 ) -> Result<RepairReads, GenieError> {
@@ -358,7 +354,7 @@ fn reached_ids(spatial: &Spatial, t: &Unit, target: i32, building: bool) -> Vec<
 /// class, id and hit points, its hit points and powerups, a building's main building or annexes
 /// (sorted), and its owner's repair cost rates.
 fn repaired(
-    c: &Context<'_>,
+    c: &Step<'_>,
     others: OthersRef<'_>,
     (oq, o): (usize, &Unit),
     id: i32,

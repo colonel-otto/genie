@@ -13,7 +13,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::unit_ai::ACTION_EXECUTED;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 impl Unit {
     /// The unit's own Attack in its update: after its target went
@@ -25,7 +25,7 @@ impl Unit {
     /// caller's after the update.
     pub(crate) fn attack_part(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         own: Option<Victim>,
     ) -> Result<HeadCode, GenieError> {
@@ -39,7 +39,7 @@ impl Unit {
     /// The unit's own Attack after its target went
     /// ([`crate::combat::attack::Attack::lost`]): its update without a target, the notify its
     /// disarm posts to the unit AI; codes 1 and 3 delete it.
-    fn attack_lost_part(&mut self, c: &mut Context<'_>) -> Result<HeadCode, GenieError> {
+    fn attack_lost_part(&mut self, c: &mut Step<'_>) -> Result<HeadCode, GenieError> {
         let master = self.master(&c.w.masters, c.player)?;
         let armed = armed(master, self.firepower);
         let attack = self.actions.attack_mut().expect("the caller's test");
@@ -62,7 +62,7 @@ impl Unit {
     /// (`RGE_Action_Object::update`).
     fn attack_strike_part(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         own: Option<Victim>,
     ) -> Result<HeadCode, GenieError> {
@@ -164,7 +164,7 @@ impl Unit {
 impl Unit {
     /// `RGE_Combat_Object::update`'s timers (`0x14107dfb0`, before the actions): the attack timer
     /// runs down, and a reload world time that passed ends the volley under way.
-    pub(crate) fn run_down_attack_timers(&mut self, c: &Context<'_>) {
+    pub(crate) fn run_down_attack_timers(&mut self, c: &Step<'_>) {
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
         // `+0x87c` (a terrain look's rate, [`crate::combat::abilities`])
         if 0.0 < self.attack_timer {
@@ -182,7 +182,7 @@ impl Unit {
 
     /// The hunter or the attacker as a combat object, which its hits read and change: none for a
     /// unit without a Hunt or an Attack, or without its master.
-    pub(crate) fn own_victim(&self, c: &Context<'_>) -> Option<Victim> {
+    pub(crate) fn own_victim(&self, c: &Step<'_>) -> Option<Victim> {
         (self.actions.hunt().is_some() || self.actions.attack().is_some())
             .then_some(())
             .and_then(|()| {

@@ -14,15 +14,15 @@ use crate::objects::unit::{Unit, hunt_walk_sprite, second_target_checked};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 use crate::world::{SEARCH_AGAIN, TREE_SEARCH_WITHIN};
 
 impl Unit {
     /// The Hunt's update (`0x140ac7a00`) first checks its targets: one gone from the world's
     /// table is dropped (slot 0x68 with none), one past state 6 is let go (slot 0x180, its
     /// `+0x60` being 0) and dropped; then the second target ([`second_target_checked`]).
-    pub(crate) fn hunt_targets(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_targets(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         if let Some(target) = self.actions.hunt().map(|h| h.target).filter(|&t| t != -1) {
             let state = readable(c, target).map(|(_, u, _)| u.life.state);
             let gone = match state {
@@ -90,7 +90,7 @@ impl Unit {
     /// Nothing without a hunt. Its code: the failure's 3, the end after a drop-off's 1.
     pub(crate) fn hunt_part(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         own: &mut Option<Victim>,
         tree_lost: bool,
@@ -126,7 +126,7 @@ impl Unit {
     /// Case 7 waiting to try again (state 8 with its timer below 0): the timer runs by dt; at its
     /// end the drop site goes (`FUN_140a7a190` with none: slot 0x180) and `set_state(8)` searches
     /// again ([`Unit::hunt_drop_off`]).
-    pub(crate) fn hunt_drop_wait(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_drop_wait(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         hunt.timer += seconds(c.dt);
         if 0.0 <= hunt.timer {
@@ -140,12 +140,12 @@ impl Unit {
 
     /// State 8, which has no target: its drop site (the second target) is what it walks to
     /// ([`crate::gathering::hunt::HuntAction::update_drop`]); a load dropped goes to the player
-    /// at once ([`Context::give_load`]) and the hunt walks back ([`Unit::hunt_after_drop`]); a
+    /// at once ([`Step::give_load`]) and the hunt walks back ([`Unit::hunt_after_drop`]); a
     /// drop site that does not take it goes and the drop-off searches again. Its idling
     /// (`set_state` 2) is not modelled.
     pub(crate) fn hunt_drop_walk(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
@@ -252,11 +252,7 @@ impl Unit {
     /// `set_state(2)`: the unit takes the hunt's sprite to stand with (slot 0x68 with
     /// `FUN_140ac5210`'s), the target and the second target go; state 11's is `set_state(3)`, the
     /// search ([`Unit::hunt_search_state`]).
-    pub(crate) fn hunt_point_walk(
-        &mut self,
-        c: &mut Context<'_>,
-        me: Me,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn hunt_point_walk(&mut self, c: &mut Step<'_>, me: Me) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let master = object_master(
             self.own_master.as_deref(),
@@ -289,7 +285,7 @@ impl Unit {
 
     /// State 3 (case 2): the timer runs by dt; at its end it starts again at −10 s and the unit
     /// AI is told again (notify 0x202, [`Unit::hunt_search_notify`]).
-    pub(crate) fn hunt_search_wait(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_search_wait(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.timer < 0.0 {
             hunt.timer += seconds(c.dt);
@@ -314,7 +310,7 @@ impl Unit {
 
     /// Case 3 waiting after a given-up `MoveTo`, its target gone: the timer runs by dt, then the
     /// walk to the point (`set_state` 11, [`crate::gathering::hunt::HuntAction::wait_then_walk`]).
-    pub(crate) fn hunt_wait_walk(&mut self, c: &Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_wait_walk(&mut self, c: &Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         hunt.wait_then_walk(seconds(c.dt), mover)

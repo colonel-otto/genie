@@ -10,8 +10,8 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::world_view::DropWorld;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 impl Unit {
     /// The Gather's state 8 after the deposit without a target (`0x140a8e1d0` case 7; its drop
@@ -25,10 +25,7 @@ impl Unit {
     /// one a Gather with its point would walk there to search again (`set_state(11)`, not
     /// modelled, or 0xf3 for a farmer); without a point a computer player's Gather is done, a
     /// human's idles (`set_state(2)`).
-    pub(crate) fn gather_after_drop(
-        &mut self,
-        c: &mut Context<'_>,
-    ) -> Result<HeadCode, GenieError> {
+    pub(crate) fn gather_after_drop(&mut self, c: &mut Step<'_>) -> Result<HeadCode, GenieError> {
         let by = self.releaser(c);
         if self.after_drop_orders(c)? {
             return Ok(HeadCode::Deletes);
@@ -45,7 +42,7 @@ impl Unit {
     /// does not hold, or one its sight sees past state 5) leave (`FUN_140c5de60`); with orders
     /// left the AI ends its order and action and the Gather is done (its deletion lets the drop
     /// site go). True when it is.
-    fn after_drop_orders(&mut self, c: &Context<'_>) -> Result<bool, GenieError> {
+    fn after_drop_orders(&mut self, c: &Step<'_>) -> Result<bool, GenieError> {
         let spatial: &Spatial = &c.w.spatial;
         let gone = |id: i32| match spatial.get(id) {
             None => true,
@@ -75,7 +72,7 @@ impl Unit {
     /// workers, state 2, no point) for the gather group (slot 0x1b0, the civilian's) of its target
     /// class (the AI's `+0x58`, else the Gather's `mTargetType`); -1 for none, a class of no
     /// group, or a unit without a unit AI.
-    fn after_drop_search(&self, c: &mut Context<'_>) -> Result<i32, GenieError> {
+    fn after_drop_search(&self, c: &mut Step<'_>) -> Result<i32, GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
         let Some(ai) = self.ai.as_ref() else {
             return Ok(-1);
@@ -104,7 +101,7 @@ impl Unit {
     /// [`Unit::idle_sprite`]'s) and lets its drop site go.
     fn after_drop_nothing(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         by: Releaser,
     ) -> Result<HeadCode, GenieError> {
         let farm_waits = crate::gathering::gather::waits_for_a_farm(
@@ -155,7 +152,7 @@ impl Unit {
     /// the task's resource, else its master's standing sprite (none the data file lacks).
     fn idle_sprite(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
     ) -> Result<Option<crate::objects::sprite::Graphic>, GenieError> {
         let gather = self.actions.gather().expect("the caller's gather");
         let master = self.master(&c.w.masters, c.player)?;
@@ -182,7 +179,7 @@ impl Unit {
     /// changed is let go and the new one taken (one of its own player's directly, never listed).
     fn after_drop_retarget(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         found: i32,
         by: Releaser,
     ) -> Result<(), GenieError> {
@@ -249,7 +246,7 @@ impl Unit {
     /// the gatherer's drop sites, and the footprint gap to it.
     fn found_resource(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         others: OthersRef<'_>,
         found: i32,
     ) -> Result<(usize, crate::gathering::gather::Resource), GenieError> {
@@ -284,7 +281,7 @@ impl Unit {
     /// ([`Unit::drop_site`]) becomes its second target (`FUN_140a7a190`: slot 0x178) and a quiet
     /// `MoveTo` walks there ([`crate::gathering::gather::GatherAction::set_drop`]). Without one the unit AI's
     /// part (notify 0x203) is not modelled.
-    pub(crate) fn gather_drop_off(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn gather_drop_off(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.w.masters.get(c.player),
             spatial: &c.w.spatial,

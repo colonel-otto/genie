@@ -24,8 +24,8 @@ use crate::objects::unit::{TAKEN_OUT, Unit};
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 use crate::world::{BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_NEEDED, World};
 
 /// What the Build's update reads of the world besides its foundation, as the update starts.
@@ -49,11 +49,7 @@ struct BuildReads {
 impl Unit {
     /// The Build's part of the builder's update (`RGE_Action_Object::update` on its Build, the
     /// action's slot 6) and its code: nothing without a Build.
-    pub(crate) fn build_part(
-        &mut self,
-        c: &mut Context<'_>,
-        me: Me,
-    ) -> Result<HeadCode, GenieError> {
+    pub(crate) fn build_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
         let looks = self.clearing_looks(c, OthersRef::of(&c.w.players, c.player));
         let by = self.releaser(c);
         let Some(action) = self.actions.build().copied() else {
@@ -133,7 +129,7 @@ impl Unit {
     /// What the footprint clearing of the Build's `set_state(7)` reads (`FUN_1415c3620`) of the
     /// objects on the tiles about a desolid foundation, as the update starts: none for a builder
     /// in another state or at another foundation.
-    fn clearing_looks(&self, c: &Context<'_>, others: OthersRef<'_>) -> BTreeMap<i32, ClearLook> {
+    fn clearing_looks(&self, c: &Step<'_>, others: OthersRef<'_>) -> BTreeMap<i32, ClearLook> {
         let mut looks = BTreeMap::new();
         if let Some(f) = self
             .actions
@@ -167,7 +163,7 @@ impl Unit {
     /// What the Build's update reads of the world besides its foundation ([`BuildReads`]).
     fn build_reads(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         others: OthersRef<'_>,
         action: BuildAction,
     ) -> Result<BuildReads, GenieError> {
@@ -209,7 +205,7 @@ impl Unit {
     /// what the builder carries and the gap between their footprints; none without the site.
     fn build_deposit(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         others: OthersRef<'_>,
         site: i32,
     ) -> Result<Option<(u8, DropOff)>, GenieError> {
@@ -273,7 +269,7 @@ impl Unit {
     /// drop-off; its code (the end's 1). `target` is the foundation, `built` its master.
     pub(crate) fn after_build_step(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         (target, built, by): (i32, Option<i16>, Releaser),
         step: BuildStep,
@@ -357,7 +353,7 @@ impl Unit {
     /// without orders: notify 0x202, then the standing sprite) and lets the building go.
     pub(crate) fn build_search(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         (target, built, by): (i32, Option<i16>, Releaser),
     ) -> Result<(), GenieError> {
         let built = built.ok_or(GenieError::unsupported(
@@ -485,7 +481,7 @@ fn build_site<'u>(
 
 /// `FUN_140fde180`: the foundation's master `built` is a drop site (the masters 562, 584, 621,
 /// 68, 1808, 50, 1187 and 199, or one the drop-site table has for every civ or the builder's).
-fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
+fn drop_site_master(c: &Step<'_>, built: Option<i16>) -> bool {
     built.is_some_and(|m| {
         DROP_SITE_MASTERS.contains(&m)
             || c.w.drop_sites.iter().any(|d| {
@@ -501,14 +497,14 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 /// main building takes ([`World::work_building`]), and the completion (taken out of the step)
 /// with its annexes' state ([`World::set_state`]), its tracker part, its standing sprite and
 /// what it leaves its owner ([`World::built`]). The last three run with the builder lent to the
-/// world ([`Context::lend`]): their searches and effects meet it, as the game's do.
+/// world ([`Step::lend`]): their searches and effects meet it, as the game's do.
 ///
 /// # Errors
 ///
 /// What an annex's `set_state`, the main building's work and the completion's outputs do not
 /// model.
 pub(crate) fn record_build_step(
-    c: &mut Context<'_>,
+    c: &mut Step<'_>,
     me: &mut Unit,
     target: i32,
     annex_ids: &[i32],

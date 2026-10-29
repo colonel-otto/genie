@@ -7,7 +7,7 @@ use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::death_parts::{built_death, combat_dies, farm_bonus, refund_of};
 use crate::objects::masters::Master;
 use crate::objects::unit::{NO_DYING_SPRITE, Unit};
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 impl Unit {
     /// The death's `set_state(3)` (from `before`, the state the object had) and the static
@@ -20,7 +20,7 @@ impl Unit {
     /// takes from its owner's attributes; then the base one's (`FUN_14119d710`, whose storage and
     /// sight are the caller's). An animated or moving object (types 20 to 69) shows its
     /// master's dying sprite. Not held: the particles and the sounds.
-    pub(crate) fn died(&mut self, c: &mut Context<'_>, before: u8) -> Result<(), GenieError> {
+    pub(crate) fn died(&mut self, c: &mut Step<'_>, before: u8) -> Result<(), GenieError> {
         // its master as the death starts: the world's calls below change other objects
         let Some(master) = self.master(&c.w.masters, c.player).ok().cloned() else {
             if self.life.dying_sprite.is_some() {
@@ -111,12 +111,7 @@ impl Unit {
     /// ([`crate::objects::sprite::top_speed`]: the deer 9655 of MarvinBlue/426048731, running at
     /// 1.4003 when the spears kill it in update 3147, moves at its master's 0.737 with its
     /// dying sprite).
-    fn show_dying(
-        &mut self,
-        c: &mut Context<'_>,
-        master: &Master,
-        id: i16,
-    ) -> Result<(), GenieError> {
+    fn show_dying(&mut self, c: &mut Step<'_>, master: &Master, id: i16) -> Result<(), GenieError> {
         let g = c.w.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
         crate::objects::sprite::new_sprite(
             &mut self.sprite,
@@ -140,7 +135,7 @@ impl Unit {
     /// the foundation lent to the world).
     pub(crate) fn foundation_died(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         master: &Master,
     ) -> Result<(), GenieError> {
         let construction = self

@@ -12,7 +12,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::ownership::capture::LIVESTOCK;
 use crate::unit_ai::AiMove;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 /// An unpacked trebuchet's class (`-0xe76` raw), whose slot 0x340 packs instead of moving.
 const UNPACKED_TREBUCHET: i16 = 54;
@@ -24,7 +24,7 @@ impl Unit {
         &mut self,
         m: AiMove,
         class: i16,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let sprite_rng = c.w.streams.get(Stream::Sprite);
@@ -237,7 +237,7 @@ impl Unit {
         &mut self,
         (target, state): (i32, u8),
         range: f32,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         if self.unmodelled_action.is_some() {
             return Err(GenieError::unsupported(

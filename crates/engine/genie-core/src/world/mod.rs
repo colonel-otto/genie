@@ -16,17 +16,17 @@
 //! last object takes its slot and updates there in the same tick.
 //!
 //! The module's files: the world as the header save holds it (`setup`), one world update
-//! (`world_update`), one object's step (`object_step`) with what it reads and writes (`context`),
+//! (`world_update`), one object's step (`object_step`) with what it reads and writes (`step`),
 //! a player (`player`), the game options (`settings`), the checkpoint's state block
 //! (`checkpoint`) and the forced replay (`forced`).
 //!
 //! [`Mover::step_velocity`]: crate::movement::Mover::step_velocity
 
 pub mod checkpoint;
-pub(crate) mod context;
 pub(crate) mod lets;
 pub(crate) mod others;
 pub(crate) mod player;
+pub(crate) mod step;
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;

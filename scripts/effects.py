@@ -6,8 +6,8 @@ outside it, generated into `docs/EFFECTS.md`:
 
 Three kinds of channel carry such an effect, one section each:
 
-- the world's outputs: each field of `ObjectOutputs` (`world/context.rs`), the Context field it
-  takes (named in its doc as [`Context`]'s `x`), the files that emit it (`c.x`) and the
+- the world's outputs: each field of `ObjectOutputs` (`world/step.rs`), the `Step` field it
+  takes (named in its doc as [`Step`]'s `x`), the files that emit it (`c.x`) and the
   functions of `world/` that apply it (`out.y`);
 - the unit AI's effects: each variant of `unit_ai::Effect`, what the AI does to its own unit,
   and the files that name it;
@@ -32,7 +32,7 @@ FIELD = re.compile(r"^\s*pub(?:\([^)]*\))? ([a-z_][a-z0-9_]*):\s*(.*)$")
 TYPE_DEF = re.compile(r"^\s*pub(?:\([^)]*\))? (?:struct|enum) ([A-Z][A-Za-z0-9]*)")
 VARIANT = re.compile(r"^    ([A-Z][A-Za-z0-9]*)\b")
 FN = re.compile(r"\bfn ([a-z_][a-z0-9_]*)")
-CONTEXT_FIELD = re.compile(r"\[`Context`\]'s `([a-z_][a-z0-9_]*)`")
+CONTEXT_FIELD = re.compile(r"\[`Step`\]'s `([a-z_][a-z0-9_]*)`")
 
 
 def sentence(doc: list[str]) -> str:
@@ -145,14 +145,14 @@ def links(paths: list[str], src_link: str) -> str:
 
 
 def world_outputs(files: dict[str, str], src_link: str) -> list[str]:
-    context = fields_of(files["world/context.rs"])
-    by_name = {name: (ty, doc) for name, ty, doc in context.get("Context", [])}
+    step = fields_of(files["world/step.rs"])
+    by_name = {name: (ty, doc) for name, ty, doc in step.get("Step", [])}
     rows = ["| Output | Type | What it carries | Game | Emitted in | Applied in |", "| --- | --- | --- | --- | --- | --- |"]
-    for name, ty, doc in context.get("ObjectOutputs", []):
+    for name, ty, doc in step.get("ObjectOutputs", []):
         m = CONTEXT_FIELD.search(" ".join(doc))
         field = m.group(1) if m else name
         _, cdoc = by_name.get(field, (ty, doc))
-        emitted = files_matching(files, re.compile(rf"\b(?:c|ctx|context)\.{field}\b"), "world/context.rs")
+        emitted = files_matching(files, re.compile(rf"\b(?:c|ctx|context)\.{field}\b"), "world/step.rs")
         applied = []
         out_use = re.compile(rf"\bout\.{name}\b")
         for path, text in files.items():
@@ -176,7 +176,7 @@ def hand_offs(files: dict[str, str], src_link: str) -> list[str]:
     rows = ["| Struct | Field | What it carries | Game | Read in |", "| --- | --- | --- | --- | --- |"]
     for path, text in files.items():
         for struct, fields in fields_of(text).items():
-            if struct in ("Context", "ObjectOutputs"):
+            if struct in ("Step", "ObjectOutputs"):
                 continue
             for name, _ty, doc in fields:
                 if not HAND_OFF.search(" ".join(doc)):

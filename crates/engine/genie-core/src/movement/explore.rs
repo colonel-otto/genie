@@ -15,7 +15,7 @@ use crate::objects::sprite::sprite_id;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
-use crate::world::context::Context;
+use crate::world::step::Step;
 use genie_diff::Diff;
 
 /// The Explore action's type.
@@ -432,7 +432,7 @@ impl Unit {
     pub(crate) fn explore_to(
         &mut self,
         point: [f32; 2],
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let at = [point[0], point[1], self.position()[2]];
         let owner = if let Some(e) = self.actions.explore_mut() {
@@ -462,7 +462,7 @@ impl Unit {
     pub(crate) fn explore_owner(
         &mut self,
         owner: Owner,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         use crate::movement::explore::Owner;
         match owner {

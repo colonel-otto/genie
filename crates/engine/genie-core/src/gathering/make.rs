@@ -15,7 +15,7 @@ use crate::objects::masters::Task;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
-use crate::world::context::Context;
+use crate::world::step::Step;
 use genie_diff::Diff;
 
 /// The action type (`+0x8`, 0x15).
@@ -184,7 +184,7 @@ impl MakeAction {
 impl Unit {
     /// A farm's Make in its update: the food it makes, the player's share, the farm that runs
     /// out, and its code (the end's 1).
-    pub(crate) fn make_part(&mut self, c: &mut Context<'_>) -> Result<HeadCode, GenieError> {
+    pub(crate) fn make_part(&mut self, c: &mut Step<'_>) -> Result<HeadCode, GenieError> {
         let Some(make) = self.actions.make_mut() else {
             return Ok(HeadCode::Keeps);
         };

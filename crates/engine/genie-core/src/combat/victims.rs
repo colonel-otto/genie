@@ -9,8 +9,8 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 use crate::world::{BUILDING_KIND, World};
 
 impl World {
@@ -156,7 +156,7 @@ impl KillLeft {
 
 /// The object `id` a hit of the updating unit can read ([`victim`]) with its owner and master:
 /// one of any list, live or asleep, of a master its owner has.
-pub(crate) fn readable<'o>(c: &'o Context<'_>, id: i32) -> Option<(usize, &'o Unit, &'o Master)> {
+pub(crate) fn readable<'o>(c: &'o Step<'_>, id: i32) -> Option<(usize, &'o Unit, &'o Master)> {
     let (p, u, _) = c.w.locate(id)?;
     let master = u.master(&c.w.masters, p).ok()?;
     Some((p, u, master))
@@ -164,7 +164,7 @@ pub(crate) fn readable<'o>(c: &'o Context<'_>, id: i32) -> Option<(usize, &'o Un
 
 /// What a hit of the updating unit reads of object `id` ([`World::victim`] from the update):
 /// an object [`readable`] by the hit.
-pub(crate) fn victim(c: &Context<'_>, id: i32) -> Option<Victim> {
+pub(crate) fn victim(c: &Step<'_>, id: i32) -> Option<Victim> {
     let (p, u, master) = readable(c, id)?;
     let view = OthersRef::of(&c.w.players, c.player);
     let attributes = if p == c.player {
@@ -198,10 +198,7 @@ pub(crate) fn victim(c: &Context<'_>, id: i32) -> Option<Victim> {
 /// # Errors
 ///
 /// A notify its unit AI's queue does not take.
-pub(crate) fn write_back(
-    c: &mut Context<'_>,
-    v: &mut Victim,
-) -> Result<Option<KillLeft>, GenieError> {
+pub(crate) fn write_back(c: &mut Step<'_>, v: &mut Victim) -> Result<Option<KillLeft>, GenieError> {
     let damaged = std::mem::take(&mut v.damaged);
     let left = KillLeft {
         id: v.id,
@@ -265,12 +262,12 @@ pub(crate) fn write_back(
 /// A hit's kill and razings where the hit runs (the damage slot `FUN_1412108e0` kills and counts
 /// at once: `FUN_141082e80`, slot 0x8b0): another object's reach the world now
 /// ([`World::kill_left`]); the updating object's own, its slot holding its stand-in, follow its
-/// step ([`Context::kills`]).
+/// step ([`Step::kills`]).
 ///
 /// # Errors
 ///
 /// What the kill does not model, or an attribute a player lacks.
-pub(crate) fn file_kill(c: &mut Context<'_>, k: KillLeft) -> Result<(), GenieError> {
+pub(crate) fn file_kill(c: &mut Step<'_>, k: KillLeft) -> Result<(), GenieError> {
     if k.id == c.me {
         c.kills.push(k);
         Ok(())
@@ -287,7 +284,7 @@ pub(crate) fn file_kill(c: &mut Context<'_>, k: KillLeft) -> Result<(), GenieErr
 ///
 /// A notify a unit AI's queue does not take, or what a kill does not model.
 pub(crate) fn write_struck(
-    c: &mut Context<'_>,
+    c: &mut Step<'_>,
     mut blasted: Vec<Victim>,
     v: &mut Victim,
 ) -> Result<(), GenieError> {
@@ -309,7 +306,7 @@ pub(crate) fn write_struck(
 /// # Errors
 ///
 /// A notify a unit AI's queue does not take.
-pub(crate) fn write_strike_back(c: &mut Context<'_>, v: &mut Victim) -> Result<(), GenieError> {
+pub(crate) fn write_strike_back(c: &mut Step<'_>, v: &mut Victim) -> Result<(), GenieError> {
     let blasted = std::mem::take(&mut c.blasted);
     write_struck(c, blasted, v)
 }

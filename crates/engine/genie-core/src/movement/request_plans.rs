@@ -7,9 +7,9 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::Vec3;
 use crate::movement::{
-    CLOSE, DETOUR, EPSILON, FAR, Goal, LONG, LONG_PATHER, Me, Mover, PathData, Planning,
-    RANGE_FLOOR, SHORT_PATHER, SHORT_REACH, Step, TARGET_SHORT_REACH, TILE_PATHER, far_waypoint,
-    footprint_gap, ground, ground_line, point_or_zero, short_range, too_short,
+    AfterRequest, CLOSE, DETOUR, EPSILON, FAR, Goal, LONG, LONG_PATHER, Me, Mover, PathData,
+    Planning, RANGE_FLOOR, SHORT_PATHER, SHORT_REACH, TARGET_SHORT_REACH, TILE_PATHER,
+    far_waypoint, footprint_gap, ground, ground_line, point_or_zero, short_range, too_short,
 };
 use crate::pathing::tile_path::Path;
 
@@ -71,7 +71,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
-    ) -> Result<Option<Step>, GenieError> {
+    ) -> Result<Option<AfterRequest>, GenieError> {
         // FUN_141158210 is 1 only on an `E` tile in game type 12
         if plan.pathing.game_type == 12 {
             return Err(GenieError::unsupported(
@@ -243,7 +243,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
-    ) -> Result<ControlFlow<Step, bool>, GenieError> {
+    ) -> Result<ControlFlow<AfterRequest, bool>, GenieError> {
         let near = self.near_goal(w.distance, w.goal.gap, w.goal.to_end);
         if np.found && 3 <= np.path.points.len() {
             return Ok(ControlFlow::Continue(too_short(&np.path)));
@@ -283,7 +283,7 @@ impl Mover {
         w: &Way<'_>,
         near: bool,
         np: &mut NewPath,
-    ) -> Result<Option<Step>, GenieError> {
+    ) -> Result<Option<AfterRequest>, GenieError> {
         np.planned = false;
         np.path.points.clear();
         let r = self.short_path_to(me, world, plan, w, near, np)?;
@@ -311,7 +311,11 @@ impl Mover {
     /// least [`RANGE_FLOOR`] for a target and no range) on the last waypoint of a path made this
     /// update stops the unit (slot 0x5d0), resets the level to state 6 (`FUN_140f9b4b0`) and
     /// gives up; short of it the level goes on (flag 1). Within it the level takes state 4.
-    pub(super) fn waypoint_in_range(&mut self, w: &Way<'_>, now: u32) -> Result<Step, GenieError> {
+    pub(super) fn waypoint_in_range(
+        &mut self,
+        w: &Way<'_>,
+        now: u32,
+    ) -> Result<AfterRequest, GenieError> {
         let reach = if w.goal.target.is_none() || 0.0 < w.range {
             w.range
         } else {
@@ -323,13 +327,13 @@ impl Mover {
                 self.stop()?;
                 self.reset_level();
                 self.paths[0].state = 6;
-                return Ok(Step::GaveUp);
+                return Ok(AfterRequest::GaveUp);
             }
             level.flags |= 1;
         } else {
             level.state = 4;
         }
-        Ok(Step::Again)
+        Ok(AfterRequest::Again)
     }
 
     /// `LAB_141152ec1`: a far waypoint ([`far_waypoint`]; any for a trade cart, else beyond
@@ -342,7 +346,7 @@ impl Mover {
         plan: &Planning<'_>,
         w: &Way<'_>,
         np: &mut NewPath,
-    ) -> Result<Option<Step>, GenieError> {
+    ) -> Result<Option<AfterRequest>, GenieError> {
         if !(LONG_PATHER && (w.trade_cart || SHORT_REACH < w.distance)) {
             return Ok(None);
         }
@@ -370,7 +374,7 @@ impl Mover {
             &mut np.path,
         )?
         else {
-            return Ok(Some(Step::Paused));
+            return Ok(Some(AfterRequest::Paused));
         };
         np.new.created = plan.now;
         np.found = reached;

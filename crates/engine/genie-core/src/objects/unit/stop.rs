@@ -9,13 +9,13 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Effect;
 use crate::unit_ai::world_view::AiWork;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 impl Unit {
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
     /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
     /// [`crate::objects::sprite::new_sprite`]) where the slice holds its sprite.
-    pub(crate) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn stop_action(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let sprite = c.w.streams.get(Stream::Sprite);
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
@@ -132,7 +132,7 @@ impl Unit {
     /// # Errors
     ///
     /// The deletion's, and what it lets go.
-    pub(crate) fn delete_own_head(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn delete_own_head(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let torn = self.actions.delete_head(&mut self.body, self.life.state)?;
         torn.let_go(c, by)
@@ -143,7 +143,7 @@ impl Unit {
         &mut self,
         effects: Vec<Effect>,
         class: Option<i16>,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         for e in effects {
             match e {

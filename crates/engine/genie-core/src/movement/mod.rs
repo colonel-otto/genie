@@ -11,8 +11,8 @@
 
 use self::long_walk::{Reach, include_kept, may_plan, owner_number, reach};
 use self::path_points::{
-    ALLY_PAUSE, Avoided, FAST_TURN, Goal, Next, OTHER_PAUSE, STUCK_PAUSE, Step, cut_path, ground,
-    ground_line, moved_far, point_or_zero, point_or_zero_of, short_range, split, too_short,
+    ALLY_PAUSE, AfterRequest, Avoided, FAST_TURN, Goal, Next, OTHER_PAUSE, STUCK_PAUSE, cut_path,
+    ground, ground_line, moved_far, point_or_zero, point_or_zero_of, short_range, split, too_short,
 };
 use crate::GenieError;
 use crate::map::spatial::{Placed, Spatial};

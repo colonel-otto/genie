@@ -101,9 +101,10 @@ object and the building.
    (`production/`).
 9. The unit AI runs (`unit_ai/`).
 
-The update does not change the world directly. It reads and writes through a `Context`
-(`world/context.rs`), and `World::step_object` (`world/after_step.rs`) applies what it
-collected: new objects, kills, resources, ownership changes.
+The update reads and writes the world through its `Step` (`world/step.rs`). A call on another
+object takes effect at once. What the update does to the object itself waits in the `Step`, and
+`World::step_object` (`world/after_step.rs`) applies it after the update: the object's own
+kills, releases, works and ownership change.
 
 ## The systems
 

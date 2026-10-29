@@ -6,9 +6,10 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::movement::{
-    BUILDING_CLASS, CONTINUE, EPSILON, GATE, Goal, LONG_PATH_GROW, LONG_PATH_MOVER, LongWalker, Me,
-    Mover, Planning, RANGE_FLOOR, SHORT_REACH, Step, TOWER_CLASS, TRADE_CART, VILLAGER_CLASS,
-    WALL_CLASS, cut_path, footprint_gap, ground, long_path_for, may_plan, point_or_zero, vector,
+    AfterRequest, BUILDING_CLASS, CONTINUE, EPSILON, GATE, Goal, LONG_PATH_GROW, LONG_PATH_MOVER,
+    LongWalker, Me, Mover, Planning, RANGE_FLOOR, SHORT_REACH, TOWER_CLASS, TRADE_CART,
+    VILLAGER_CLASS, WALL_CLASS, cut_path, footprint_gap, ground, long_path_for, may_plan,
+    point_or_zero, vector,
 };
 use crate::pathing::tile_path::Path;
 
@@ -32,7 +33,7 @@ impl Mover {
         goal: Goal<'_>,
         plans: &mut u32,
         include: &[i32],
-    ) -> Result<Step, GenieError> {
+    ) -> Result<AfterRequest, GenieError> {
         // the request measures and plans from +0x824 (`pfVar14`, `local_18c8`), where the unit
         // last moved to
         let position = vector(self.moved_at);
@@ -42,7 +43,7 @@ impl Mover {
         let solid = self.stats.radius.iter().all(|&r| 0.0 < r);
         let trade_cart = world.get(me.id).is_some_and(|p| p.class == TRADE_CART);
         if solid && !self.plan_allowed(me, world, plan, trade_cart, plans)? {
-            return Ok(Step::Paused);
+            return Ok(AfterRequest::Paused);
         }
         if let Some(step) = self.spend_try()? {
             return Ok(step);
@@ -81,7 +82,7 @@ impl Mover {
     /// [`RANGE_FLOOR`]) puts the level in state 4; a unit on its waypoint marks the level
     /// (flag 1, and 2 when away from the target's footprint by more than [`EPSILON`] or
     /// without one). Both go again.
-    pub(super) fn in_reach(&mut self, goal: Goal<'_>, position: Vec3) -> Option<Step> {
+    pub(super) fn in_reach(&mut self, goal: Goal<'_>, position: Vec3) -> Option<AfterRequest> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let here = self.position();
         let level = &mut self.paths[0];
@@ -92,7 +93,7 @@ impl Mover {
         };
         if goal.target.is_some() && goal.gap <= reach {
             level.state = 4;
-            return Some(Step::Again);
+            return Some(AfterRequest::Again);
         }
         let waypoint = level.point(level.waypoint);
         if ground(position, waypoint) != 0.0 {
@@ -105,7 +106,7 @@ impl Mover {
             level.flags |= 2;
         }
         level.flags |= 1;
-        Some(Step::Again)
+        Some(AfterRequest::Again)
     }
 
     /// Whether a solid unit may plan: a trade cart plans only within its owner's budget
@@ -140,7 +141,7 @@ impl Mover {
     /// tries: a level 2 short of its last waypoint gets its tries again and goes on (flag 1); a
     /// lower level, or a top without more points, resets and gives up (`FUN_140f9b4b0`:
     /// `FUN_140f98e80`, state 6; the unit stops, slot 0x5d0); else the level takes state 5.
-    pub(super) fn spend_try(&mut self) -> Result<Option<Step>, GenieError> {
+    pub(super) fn spend_try(&mut self) -> Result<Option<AfterRequest>, GenieError> {
         let top_loops = self
             .paths
             .last()
@@ -158,15 +159,15 @@ impl Mover {
             if level.level == 2 && level.waypoint < level.points.len() as i32 - 1 {
                 level.flags |= 1;
                 level.continue_counter = CONTINUE;
-                return Ok(Some(Step::Again));
+                return Ok(Some(AfterRequest::Again));
             }
             self.reset_level();
             self.paths[0].state = 6;
             self.stop()?;
-            return Ok(Some(Step::GaveUp));
+            return Ok(Some(AfterRequest::GaveUp));
         }
         level.state = 5;
-        Ok(Some(Step::Again))
+        Ok(Some(AfterRequest::Again))
     }
 
     /// A unit without a footprint: the straight way to its waypoint (to where it stands past

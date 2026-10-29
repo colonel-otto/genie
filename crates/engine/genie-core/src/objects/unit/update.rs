@@ -8,11 +8,11 @@ use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::seconds;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
-use crate::objects::unit::{Step, Unit, loses_actions};
+use crate::objects::unit::{Outcome, Unit, loses_actions};
 use crate::unit_ai::task_finder::world::wait_progress;
 use crate::unit_ai::unit::AiResume;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 /// An action below the head after the head's update: its idle update (`FUN_140a78470`: a target
 /// or second target past state 6 let go, its sub-actions' idle update) is not ported, and no list
@@ -20,12 +20,12 @@ use crate::world::others::OthersRef;
 const BELOW_HEAD: &str = "an action below the head of the list (its idle update, FUN_140a78470)";
 
 impl Unit {
-    pub(crate) fn update(&mut self, c: &mut Context<'_>) -> Result<Step, GenieError> {
+    pub(crate) fn update(&mut self, c: &mut Step<'_>) -> Result<Outcome, GenieError> {
         if let Some(resume) = c.ai_resume.take() {
             return self.ai_part(c, resume);
         }
         let Some(leaves) = self.update_to_actions(c)? else {
-            return Ok(Step::Sleep);
+            return Ok(Outcome::Sleep);
         };
         let captured = self.update_actions(c)?;
         let resume = AiResume {
@@ -38,7 +38,7 @@ impl Unit {
         // update ([`Unit::ai_part`])
         if c.work_order.is_some() || c.transport_unload {
             c.ai_resume = Some(resume);
-            return Ok(Step::Stay);
+            return Ok(Outcome::Stay);
         }
         self.ai_part(c, resume)
     }
@@ -49,8 +49,8 @@ impl Unit {
     /// the unit AI later reads of it), the animation and the actions past the unit's life.
     pub(crate) fn update_to_actions(
         &mut self,
-        c: &mut Context<'_>,
-    ) -> Result<Option<Step>, GenieError> {
+        c: &mut Step<'_>,
+    ) -> Result<Option<Outcome>, GenieError> {
         self.death_blast(c)?;
         if self.go_to_sleep()? {
             return Ok(None);
@@ -74,7 +74,7 @@ impl Unit {
     /// follows the actions; the Artifact's capture, which the unit AI's part reads.
     pub(crate) fn update_actions(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let started = self.start_default_task(c)?;
         let captured = if started {
@@ -94,7 +94,7 @@ impl Unit {
     /// one.
     fn update_head(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let me = Me {
             id: self.id,
@@ -111,7 +111,7 @@ impl Unit {
     /// `captured`.
     fn head_part(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
         captured: &mut Option<crate::ownership::capture::Captured>,
     ) -> Result<HeadCode, GenieError> {
@@ -151,7 +151,7 @@ impl Unit {
     /// An action below the head, and the deletion's.
     pub(crate) fn end_head_update(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         code: HeadCode,
     ) -> Result<(), GenieError> {
         if self.actions.iter().nth(1).is_some() {
@@ -176,7 +176,7 @@ impl Unit {
     /// The Hunt's update (`0x140ac7a00`): its targets' check ([`Unit::hunt_targets`]), then its
     /// part by state ([`Unit::hunt_part`]) with the hunter as a combat object, which its hits
     /// read and change.
-    fn hunter_update(&mut self, c: &mut Context<'_>, me: Me) -> Result<HeadCode, GenieError> {
+    fn hunter_update(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
         self.hunt_targets(c)?;
         let mut own = self.own_victim(c);
         let tree_lost = self.tree_lost();
@@ -212,7 +212,7 @@ impl Unit {
 
     /// The animated object's update (`0x141071880`): its sprite's clock at its animation speed,
     /// then its idle swap, which reads the loop this update's clock made.
-    pub(crate) fn animate(&mut self, c: &mut Context<'_>) {
+    pub(crate) fn animate(&mut self, c: &mut Step<'_>) {
         if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.body.anim_speed()) {
             sprite.update(seconds(c.dt), speed);
             if let Ok(master) = object_master(
@@ -234,7 +234,7 @@ impl Unit {
     /// `RGE_Action_Object::update` (`0x14106ac90`) after the moving update: an object past state
     /// 2 (the Wonder past state 5) loses its action list (`FUN_140a98620`). An alive object with
     /// an action the slice does not model fails here.
-    pub(crate) fn actions_past_life(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn actions_past_life(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         if let Some(e) = self
             .unmodelled_action
             .clone()
@@ -254,7 +254,7 @@ impl Unit {
     /// After the actions: the units its walk met take their pauses (slot 0x5f0: the walked
     /// level's pause and their gait, in the world; the walk read them from its own list till
     /// now, `Mover::pause_of`). A unit whose walk met others in its way is not modelled.
-    pub(crate) fn after_actions(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn after_actions(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         if let Some(m) = self.body.mover_mut() {
             for (id, pause) in std::mem::take(&mut m.pauses) {
                 let Some((_, u)) = c.w.object_mut(id) else {
@@ -276,7 +276,7 @@ impl Unit {
 
     /// [`Unit::ai_part`]'s first step: the pathing grid takes a unit of a master of kind 40 or
     /// more where it stands, moving or not.
-    pub(crate) fn refresh_pathing(&self, c: &mut Context<'_>) {
+    pub(crate) fn refresh_pathing(&self, c: &mut Step<'_>) {
         if let Some(m) = self
             .master(&c.w.masters, c.player)
             .ok()

@@ -13,8 +13,8 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::Search;
 use crate::unit_ai::world_view::DropWorld;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 use crate::world::{SEARCH_AGAIN, SEARCH_NEEDED};
 
 impl Unit {
@@ -23,7 +23,7 @@ impl Unit {
     /// ([`Unit::hunt_search_notify`]), the unit takes the sprite it stands with (slot 0x68 with
     /// `FUN_140ac5210`'s) and the timer starts at −10 s. A hunt of class 10 would end its search
     /// (`set_state` 2), not modelled.
-    pub(crate) fn hunt_set_search(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_set_search(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.target_class != 10 {
             let target = std::mem::replace(&mut hunt.target, -1);
@@ -36,7 +36,7 @@ impl Unit {
     /// told ([`Unit::hunt_search_notify`]), the unit takes the sprite it stands with and the timer
     /// starts at −10 s. A human player's hunt of class 10 is done instead (`set_state` 2: the
     /// target and the second target go), a computer player's would end (1), not modelled.
-    pub(crate) fn hunt_search_state(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_search_state(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let task = hunt.task;
         if hunt.target_class == 10 {
@@ -60,7 +60,7 @@ impl Unit {
     /// task and what the unit carries; [`crate::gathering::hunt::stand_sprite`]).
     pub(crate) fn hunt_stand(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         task: &crate::gathering::hunt::HuntTask,
     ) -> Result<(), GenieError> {
         let master = self.master(&c.w.masters, c.player)?;
@@ -90,7 +90,7 @@ impl Unit {
     /// The release's.
     pub(crate) fn hunt_release<const N: usize>(
         &self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         ids: [i32; N],
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
@@ -105,7 +105,7 @@ impl Unit {
     /// and its drop site: the second target; −1 for a master without drop sites (`+0x7a0`); else
     /// the closest (`FUN_1411671e0` as `set_state(8)` searches, [`Unit::drop_site`]), with none
     /// found 0, and the hunt's class goes (−1).
-    pub(crate) fn hunt_search_notify(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_search_notify(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player);
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
@@ -159,7 +159,7 @@ impl Unit {
     ///
     /// [`HuntAction::retarget`]: crate::gathering::hunt::HuntAction::retarget
     /// [`HuntAction::search_walk`]: crate::gathering::hunt::HuntAction::search_walk
-    pub(crate) fn hunt_after_drop(&mut self, c: &mut Context<'_>) -> Result<HeadCode, GenieError> {
+    pub(crate) fn hunt_after_drop(&mut self, c: &mut Step<'_>) -> Result<HeadCode, GenieError> {
         let _ = self.master(&c.w.masters, c.player)?;
         if self.actions.hunt().expect("the caller's hunt").target != -1 {
             return self.hunt_back_to_target(c).map(|()| HeadCode::Keeps);
@@ -178,7 +178,7 @@ impl Unit {
     /// and the hunt walks back to it (`set_state(4)`, [`crate::gathering::hunt::HuntAction::chase`]
     /// with the hunter's engagement and arms). A chase that starts arrived, or fails, is not
     /// modelled.
-    fn hunt_back_to_target(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    fn hunt_back_to_target(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let master = self.master(&c.w.masters, c.player)?;
         let v = victim(c, hunt.target).ok_or(GenieError::unsupported(
@@ -246,7 +246,7 @@ impl Unit {
     /// (`FUN_140c5de60`); with orders left the AI's order and action clear (`FUN_140c64b60`,
     /// `FUN_140c64b50`) and the hunt ends (`set_state(1)`; its update returns 1, whose deletion
     /// lets the drop site go): its unit AI runs the queued order. True when it ends.
-    fn hunt_drop_orders(&mut self, c: &Context<'_>) -> Result<bool, GenieError> {
+    fn hunt_drop_orders(&mut self, c: &Step<'_>) -> Result<bool, GenieError> {
         let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
@@ -278,7 +278,7 @@ impl Unit {
     /// point; the probe of 4533's call); a hunt of class 10 searches nothing; any other class
     /// `ClosestObject` ([`Unit::hunt_closest_object`]). The object found (-1 for none) and the
     /// kind.
-    fn hunt_next_search(&mut self, c: &mut Context<'_>) -> Result<(i32, i8), GenieError> {
+    fn hunt_next_search(&mut self, c: &mut Step<'_>) -> Result<(i32, i8), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let ai = self.ai.as_ref().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
@@ -310,7 +310,7 @@ impl Unit {
     /// sight plus a tile, at least its search radius, plus the civilian's growth); its alert
     /// follows the enemies found. A unit in a pasture (`FUN_1411c7670`) and a class-10 searcher
     /// are not modelled. The object found, -1 for none.
-    fn hunt_closest_object(&mut self, c: &mut Context<'_>, class: i32) -> Result<i32, GenieError> {
+    fn hunt_closest_object(&mut self, c: &mut Step<'_>, class: i32) -> Result<i32, GenieError> {
         let others = OthersRef::of(&c.w.players, c.player);
         if self.my_pasture != -1 {
             return Err(GenieError::unsupported(
@@ -386,7 +386,7 @@ impl Unit {
     /// again (`set_state(11)`, its second target kept,
     /// [`crate::gathering::hunt::HuntAction::search_walk`]); one without would wait
     /// (`set_state(2)`), not modelled.
-    fn hunt_found_nothing(&mut self, c: &Context<'_>, kind: i8) -> Result<(), GenieError> {
+    fn hunt_found_nothing(&mut self, c: &Step<'_>, kind: i8) -> Result<(), GenieError> {
         if c.w.players[c.player].computer && kind != 0 {
             return Err(GenieError::unsupported(
                 "a computer player's hunt that found nothing after its drop-off (set_state 1)",
@@ -408,7 +408,7 @@ impl Unit {
     /// of its own player's directly, never listed). A farm found is not modelled. A hunt that
     /// fails at once takes the standing sprite (slot 0x68 with `FUN_140ac5210`'s: the unit
     /// carries nothing now).
-    fn hunt_take_found(&mut self, c: &mut Context<'_>, found: i32) -> Result<(), GenieError> {
+    fn hunt_take_found(&mut self, c: &mut Step<'_>, found: i32) -> Result<(), GenieError> {
         let master = self.master(&c.w.masters, c.player)?;
         let (owner, t) =
             OthersRef::of(&c.w.players, c.player)
@@ -495,7 +495,7 @@ impl Unit {
 
     /// A hunt that failed at once after its retarget: the unit shows standing, and a unit with
     /// a sprite takes its master's standing sprite (none in the data file is not modelled).
-    fn hunt_failed_sprite(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    fn hunt_failed_sprite(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let failed = self
             .actions
             .hunt()
@@ -531,7 +531,7 @@ impl Unit {
     ///
     /// [`HuntAction::set_drop`]: crate::gathering::hunt::HuntAction::set_drop
     /// [`drop_site_search`]: crate::gathering::drop_sites::drop_site_search
-    pub(crate) fn hunt_drop_off(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_drop_off(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.w.masters.get(c.player),
             spatial: &c.w.spatial,

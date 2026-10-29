@@ -4,8 +4,8 @@
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
-    CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, SHORT_PATHER, SPLIT,
-    STUCK_PAUSE, Step, Walker, footprint_gap_squared, owner_number, short_path_including, split,
+    AfterRequest, CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, SHORT_PATHER,
+    SPLIT, STUCK_PAUSE, Walker, footprint_gap_squared, owner_number, short_path_including, split,
     tile_plan_for,
 };
 use crate::pathing::hull_path::HullPather;
@@ -23,7 +23,7 @@ impl Mover {
         found: bool,
         target: Option<&Placed>,
         to_end: f32,
-    ) -> Result<Step, GenieError> {
+    ) -> Result<AfterRequest, GenieError> {
         let top_has_more = self.top_has_more();
         if target.is_some() && self.paths[0].flags & 4 != 0 {
             // FUN_140f9b4d0(level, 2, 0): bit 2 goes off the level and on for its parents
@@ -40,7 +40,7 @@ impl Mover {
                     // (slot 0x5d0); the step returns 0
                     level.pause_time = STUCK_PAUSE;
                     self.stop()?;
-                    return Ok(Step::Paused);
+                    return Ok(AfterRequest::Paused);
                 }
                 if level.path_flags & 1 != 0 || self.attack_moving {
                     return Err(GenieError::unsupported(
@@ -53,7 +53,7 @@ impl Mover {
                     ));
                 }
                 level.state = 5;
-                return Ok(Step::Again);
+                return Ok(AfterRequest::Again);
             }
         } else if level.path_flags & 1 == 0 {
             return Err(GenieError::unsupported(
@@ -61,7 +61,7 @@ impl Mover {
             ));
         }
         level.flags |= 1;
-        Ok(Step::Again)
+        Ok(AfterRequest::Again)
     }
 
     /// The new level goes under the walked one (`0x141150f00` from `0x141153b0c`): the walked
@@ -77,7 +77,7 @@ impl Mover {
         partial: bool,
         planned: bool,
         solid: bool,
-    ) -> Step {
+    ) -> AfterRequest {
         let level = &mut self.paths[0];
         level.state = 0;
         level.continue_counter = CONTINUE;
@@ -92,9 +92,9 @@ impl Mover {
             new.linked_type = if found { 1 } else { 2 };
             self.paths.insert(0, new);
             return if SHORT_PATHER || LONG_PATHER {
-                Step::Again
+                AfterRequest::Again
             } else {
-                Step::Walk
+                AfterRequest::Walk
             };
         }
         let mut i = path.points.len() as i32 - 1;
@@ -123,7 +123,7 @@ impl Mover {
             level.created = 0;
         }
         self.paths.insert(0, new);
-        Step::Walk
+        AfterRequest::Walk
     }
 
     /// The objects the short pather ignores (`FUN_14114ece0`, its path from the unit, `line` the two

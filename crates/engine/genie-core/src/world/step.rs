@@ -1,4 +1,4 @@
-//! What a tick's update of one object reads and writes ([`Context`]) and its walks.
+//! What a tick's update of one object reads and writes ([`Step`]) and its walks.
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
@@ -16,11 +16,11 @@ use crate::unit_ai::world_view::{AiStart, AiWork};
 use crate::world::World;
 use crate::world::player::Player;
 
-pub(crate) struct Context<'a> {
+pub(crate) struct Step<'a> {
     /// The world the update reaches (FD-045-D28): its objects by id, every player and the
     /// world's parts. The updating object is out of its slot (its stand-in, which no lookup by
     /// id finds), so a call on another object is the world's routine at once, and a call on
-    /// the updating object itself goes to this Context for after the step.
+    /// the updating object itself goes to this `Step` for after the step.
     pub(crate) w: &'a mut World,
     /// The updating object's id.
     pub(crate) me: i32,
@@ -47,7 +47,7 @@ pub(crate) struct Context<'a> {
     /// ([`Unit::ai_part`]); given back, the update runs only that part.
     pub(crate) ai_resume: Option<AiResume>,
     /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
-    /// whether it has the unit's master: the update ends with the takeover ([`Step::Captured`]).
+    /// whether it has the unit's master: the update ends with the takeover ([`Outcome::Captured`]).
     pub(crate) taken_over: Option<(usize, bool)>,
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
     /// caller's ([`crate::ownership::capture::Captured::building`]).
@@ -84,9 +84,6 @@ pub(crate) struct Context<'a> {
     /// them, whose unit parts the caller runs after the update in that order ([`AiWork`]): a
     /// later one's stop tears down the action an earlier one made.
     pub(crate) works: Vec<AiWork>,
-    /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
-    /// ([`World::build_object`]).
-
     /// The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on
     /// a target not built yet), which the caller runs after the update ([`World::build_command`]).
     pub(crate) build_command: Option<i32>,
@@ -104,47 +101,47 @@ pub(crate) struct Context<'a> {
     pub(crate) leads: Option<(i32, i32)>,
 }
 
-/// What an object's step gathered in its Context for the world to apply after it
-/// ([`crate::world::World::step_object`]): the Context's fields of the same meaning; the left
+/// What an object's step gathered in its `Step` for the world to apply after it
+/// ([`crate::world::World::step_object`]): the `Step`'s fields of the same meaning; the left
 /// group carries the unit's id.
 pub(crate) struct ObjectOutputs {
-    /// [`Context`]'s `order_on_target`.
+    /// [`Step`]'s `order_on_target`.
     pub(in crate::world) ordered: Option<(
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// [`Context`]'s `works`.
+    /// [`Step`]'s `works`.
     pub(in crate::world) works: Vec<AiWork>,
-    /// [`Context`]'s `leads`.
+    /// [`Step`]'s `leads`.
     pub(in crate::world) leads: Option<(i32, i32)>,
-    /// [`Context`]'s `build_command`.
+    /// [`Step`]'s `build_command`.
     pub(in crate::world) build_command: Option<i32>,
-    /// [`Context`]'s `reseed`.
+    /// [`Step`]'s `reseed`.
     pub(in crate::world) reseed: Option<bool>,
-    /// [`Context`]'s `move_aside`.
+    /// [`Step`]'s `move_aside`.
     pub(in crate::world) move_aside: Vec<AiMove>,
-    /// [`Context`]'s `starts`.
+    /// [`Step`]'s `starts`.
     pub(in crate::world) starts: Vec<AiStart>,
-    /// [`Context`]'s `work_order`.
+    /// [`Step`]'s `work_order`.
     pub(in crate::world) work_order: Option<crate::orders::Work>,
-    /// [`Context`]'s `transport_unload`.
+    /// [`Step`]'s `transport_unload`.
     pub(in crate::world) transport_unload: bool,
-    /// [`Context`]'s `kills`.
+    /// [`Step`]'s `kills`.
     pub(in crate::world) kills: Vec<KillLeft>,
-    /// [`Context`]'s `ai_resume`.
+    /// [`Step`]'s `ai_resume`.
     pub(in crate::world) ai_resume: Option<AiResume>,
-    /// [`Context`]'s `releases`.
+    /// [`Step`]'s `releases`.
     pub(in crate::world) releases: Vec<(i32, Releaser)>,
-    /// [`Context`]'s `builder_leaves`.
+    /// [`Step`]'s `builder_leaves`.
     pub(in crate::world) builder_leaves: Vec<i32>,
-    /// [`Context`]'s `left_group`.
+    /// [`Step`]'s `left_group`.
     pub(in crate::world) left_group: Option<(i32, i32, i32)>,
-    /// [`Context`]'s `takes`.
+    /// [`Step`]'s `takes`.
     pub(in crate::world) takes: Vec<(i32, Releaser)>,
 }
 
-impl Context<'_> {
-    /// What the step gathered ([`ObjectOutputs`]), taken out of the Context; `id` is the
+impl Step<'_> {
+    /// What the step gathered ([`ObjectOutputs`]), taken out of the `Step`; `id` is the
     /// unit's.
     pub(in crate::world) fn outputs(&mut self, id: i32) -> ObjectOutputs {
         ObjectOutputs {
@@ -189,7 +186,7 @@ pub(crate) struct Beside<'b> {
 }
 
 impl World {
-    /// A walk at `pace` ([`Context::walk`]) and the world's parts beside it, each its own
+    /// A walk at `pace` ([`Step::walk`]) and the world's parts beside it, each its own
     /// borrow.
     pub(crate) fn walk_beside<'b>(
         &'b mut self,
@@ -232,7 +229,7 @@ impl World {
     }
 }
 
-impl Context<'_> {
+impl Step<'_> {
     /// Runs `f` on the world with the updating object `me` lent back to its slot (FD-045-Q03:
     /// the game's world holds the object while its update calls a routine that scans the
     /// objects, a technology's effects or a search among them), then takes it out again from
@@ -291,7 +288,7 @@ impl Context<'_> {
     }
 }
 
-impl Context<'_> {
+impl Step<'_> {
     /// A walk and the Sprite stream, for an attacker's update.
     pub(crate) fn walk_and_sprites<'b>(
         &'b mut self,

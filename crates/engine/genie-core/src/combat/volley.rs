@@ -15,7 +15,7 @@ use crate::objects::unit::object_master;
 use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 /// A new missile's storage (its master's `storage`): the entries of flags 1, 2 and 32 with an
 /// attribute go to its `owner` at once; the last of flag 0 with one is what it holds (else
@@ -89,7 +89,7 @@ impl Unit {
     /// 2133..2135, classes 35 and 64 alive), a charge (charge types 6 and 7) and a target of a
     /// computer player (its notify 0x214). Not held: the local player's statistics
     /// (`FUN_140a4ba80`).
-    pub(crate) fn volley(&mut self, c: &mut Context<'_>, aimed: Aimed) -> Result<(), GenieError> {
+    pub(crate) fn volley(&mut self, c: &mut Step<'_>, aimed: Aimed) -> Result<(), GenieError> {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id, self.life.master_id),
@@ -179,7 +179,7 @@ impl Unit {
     /// 559). Not modelled: a target of a computer player, which a shooter whose blast does not
     /// spare friends notifies (0x20f). Not held: the damaged flag of masters 83, 293, 122 and 216
     /// (`+0x683`).
-    pub(crate) fn fire(&mut self, c: &mut Context<'_>, aimed: &Aimed) -> Result<(), GenieError> {
+    pub(crate) fn fire(&mut self, c: &mut Step<'_>, aimed: &Aimed) -> Result<(), GenieError> {
         self.attack_count += 1;
         let master = self.master(&c.w.masters, c.player)?;
         if matches!(master.charge_type, 6 | 7) {
@@ -232,7 +232,7 @@ impl Unit {
     /// master without a missile of either kind.
     pub(crate) fn volley_missile(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         aimed: &Aimed,
         scatter: [f32; 2],
     ) -> Result<(), GenieError> {
@@ -316,7 +316,7 @@ impl Unit {
     /// −1).
     pub(crate) fn launch(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         aimed: &Aimed,
         shot: &Shot,
     ) -> Result<(), GenieError> {

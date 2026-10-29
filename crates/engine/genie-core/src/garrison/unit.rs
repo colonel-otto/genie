@@ -15,8 +15,8 @@ use crate::pathing::Pathing;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::{Actor, DropSite};
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 /// The units inside object `id`, any player's (its slot 0x498).
 fn units_inside(others: OthersRef<'_>, id: i32) -> usize {
@@ -34,7 +34,7 @@ impl Unit {
     /// unit lent to the world).
     pub(crate) fn enter_update(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
         let enter = self
@@ -132,10 +132,10 @@ impl Unit {
     /// then the update's own `set_state(1)`; `again` an enter again,
     /// [`crate::garrison::EnterStep::again`]): the load the building took goes to the owner, the
     /// building gains the unit and its firepower at once, and the unit group it left is the
-    /// caller's ([`Context::left_group`]).
+    /// caller's ([`Step::left_group`]).
     fn enter_in_update(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         target: i32,
         again: bool,
     ) -> Result<(), GenieError> {
@@ -197,10 +197,10 @@ impl Unit {
     /// standing sprite ([`Unit::show_standing`]), a failure notifies its unit AI (0x1f9 with
     /// the transport's action value), the owner hears that it cannot unload
     /// ([`crate::unit_ai::alert_owner`]), the unload is the caller's before the unit AI part
-    /// ([`Context::transport_unload`]); its code, whose 1 or 3 deletes it.
+    /// ([`Step::transport_unload`]); its code, whose 1 or 3 deletes it.
     pub(crate) fn transport_update(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
         let master = object_master(
@@ -591,7 +591,7 @@ impl Unit {
     /// its 1). A unit its actions got in this update waits for the next. An empty list takes the
     /// default task instead: livestock inside makes its Artifact in one update and loses it in
     /// the next.
-    pub(crate) fn inside_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn inside_update(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         if !self.actions.is_empty() {
             return self.end_head_update(c, HeadCode::Deletes);
         }

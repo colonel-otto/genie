@@ -6,18 +6,18 @@ use crate::movement::{Mover, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Master;
 use crate::objects::unit::object_master;
-use crate::objects::unit::{Step, Unit};
+use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
 use crate::unit_ai::Notify;
 use crate::unit_ai::world_view::{OwnerView, UnitView, changed_view};
 use crate::unit_ai::{Effect, Surroundings, UnitAi};
 use crate::world::World;
-use crate::world::context::Context;
 use crate::world::lets::Lets;
 use crate::world::others::{Others, OthersRef};
 use crate::world::player::Player;
 use crate::world::scenario_mode;
 use crate::world::standard_mode;
+use crate::world::step::Step;
 use std::borrow::Cow;
 
 impl Unit {
@@ -27,9 +27,9 @@ impl Unit {
     /// effects it has on the unit; then the step the update ends with.
     pub(crate) fn ai_part(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         resume: AiResume,
-    ) -> Result<Step, GenieError> {
+    ) -> Result<Outcome, GenieError> {
         let AiResume {
             captured,
             leaves,
@@ -154,7 +154,7 @@ impl Unit {
             });
         }
         if let Some(k) = captured {
-            return Ok(Step::Captured(k));
+            return Ok(Outcome::Captured(k));
         }
         Ok(leaves)
     }
@@ -171,7 +171,7 @@ impl Unit {
     #[allow(clippy::too_many_lines)]
     pub(crate) fn surroundings(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         view: &OwnerView,
         (master, class): (Option<&Master>, Option<i16>),
         (player, busy, interruptible): (usize, bool, bool),
@@ -294,7 +294,7 @@ impl Unit {
     /// A unit without a unit AI: the callers ask for one.
     pub(crate) fn with_side<R>(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         view: &OwnerView,
         attacker: crate::unit_ai::Attacker,
         (player, computer): (usize, bool),
@@ -405,7 +405,7 @@ impl Unit {
     /// and what `f` and the effects do not.
     pub(crate) fn run_ai(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         f: impl FnOnce(
             &mut UnitAi,
             &Surroundings,
@@ -447,7 +447,7 @@ impl Unit {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AiResume {
     pub(crate) captured: Option<Captured>,
-    pub(crate) leaves: Step,
+    pub(crate) leaves: Outcome,
     pub(crate) after: Option<crate::unit_ai::AfterOrder>,
 }
 
@@ -458,7 +458,7 @@ impl Unit {
     /// unit AI's target and its footprint's squared gap to the unit's (`FUN_14118f8c0`).
     pub(crate) fn named_units(
         &self,
-        c: &Context<'_>,
+        c: &Step<'_>,
         others: OthersRef<'_>,
         view: &OwnerView,
         master: Option<&Master>,

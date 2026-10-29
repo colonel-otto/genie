@@ -9,8 +9,8 @@ use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{Foreign, UnitView};
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
 pub(crate) struct ResourceWorld<'a, 'b> {
@@ -234,7 +234,7 @@ impl Unit {
     /// stand on; −1 for none.
     pub(crate) fn resource_search(
         &self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         kind: u8,
         cap: i32,
     ) -> Result<i32, GenieError> {
@@ -247,7 +247,7 @@ impl Unit {
     /// unit's zone of its restriction, or a dock: masters 45 and 2172, `0x140c49d17`).
     pub(crate) fn resource_search_from(
         &self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         kind: u8,
         cap: i32,
         site: i32,

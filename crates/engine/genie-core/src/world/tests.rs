@@ -3563,19 +3563,19 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
     assert_eq!(t.players[1].objects[2].workers, 1);
 }
 
-/// Runs `f` on object `i` of player `p` with its Context as its update has it (dt `dt`, outside
-/// a turn), the unit staying in its list, then what the Context gathered
+/// Runs `f` on object `i` of player `p` with its `Step` as its update has it (dt `dt`, outside
+/// a turn), the unit staying in its list, then what the `Step` gathered
 /// ([`World::step_object`]): `f`'s answer, or the first error.
 pub(crate) fn in_update<R>(
     t: &mut World,
     (p, i): (usize, usize),
     dt: u32,
-    f: impl FnOnce(&mut Unit, &mut context::Context<'_>) -> Result<R, GenieError>,
+    f: impl FnOnce(&mut Unit, &mut step::Step<'_>) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
     let mut answer = None;
     let _ = t.step_object((p, i), (dt, None, false), None, |u, c| {
         answer = Some(f(u, c)?);
-        Ok(crate::objects::unit::Step::Stay)
+        Ok(crate::objects::unit::Outcome::Stay)
     })?;
     Ok(answer.unwrap())
 }
@@ -5392,10 +5392,10 @@ fn livestock_without_actions_starts_its_artifact_again() {
 
 /// [`forage_world`]'s villager 9175 (master 120) with `set` run on its master and on itself,
 /// a master 99 for the remains, then `part` on it in an update: what the part left in the
-/// Context, the attribute changes and the remains.
+/// Step, the attribute changes and the remains.
 fn life_part(
     set: impl FnOnce(&mut Master, &mut Unit),
-    part: impl FnOnce(&mut Unit, &mut context::Context<'_>) -> Result<(), GenieError>,
+    part: impl FnOnce(&mut Unit, &mut step::Step<'_>) -> Result<(), GenieError>,
 ) -> Result<LifeLeft, GenieError> {
     let mut t = forage_world();
     let mut master = t.masters[1].get(120).unwrap().clone();
@@ -9067,7 +9067,7 @@ fn a_killed_sheep_goes_to_gaia() {
 }
 
 /// The update lends its object back to its slot for a world call that may reach it
-/// ([`context::Context::lend`], the game's world holding the object while its update runs):
+/// ([`step::Step::lend`], the game's world holding the object while its update runs):
 /// the world holds it as the update left it, what the call changes on it comes back, and its
 /// slot holds the stand-in again after; a removal in the call that moves the object is
 /// followed. One the call takes from its list fails the update, the stand-in in nobody's list.
@@ -9119,7 +9119,7 @@ fn a_kill_in_the_step_reports_the_object_s_new_slot() {
             if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
                 crate::combat::victims::file_kill(c, k)?;
             }
-            Ok(crate::objects::unit::Step::Stay)
+            Ok(crate::objects::unit::Outcome::Stay)
         })
         .unwrap();
     assert_eq!(stepped.slot, 0);
@@ -9160,7 +9160,7 @@ fn a_hit_s_kill_reaches_the_world_where_the_hit_runs() {
 /// stand-in left the list goes to its end, and the step fails.
 #[test]
 fn a_step_puts_its_object_back_where_its_stand_in_went() {
-    use crate::objects::unit::Step;
+    use crate::objects::unit::Outcome;
     let ids = |t: &World| {
         t.players[1]
             .objects
@@ -9174,7 +9174,7 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     let stepped = t
         .step_object((1, last), (50, None, false), None, |_, c| {
             let _ = c.w.players[1].objects.swap_remove(0);
-            Ok(Step::Stay)
+            Ok(Outcome::Stay)
         })
         .unwrap();
     assert_eq!(stepped.slot, 0);
@@ -9183,7 +9183,7 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     let failed = t
         .step_object((1, 0), (50, None, false), None, |_, c| {
             c.w.players[1].objects.truncate(0);
-            Ok(Step::Stay)
+            Ok(Outcome::Stay)
         })
         .err()
         .unwrap();
@@ -9196,13 +9196,13 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
 /// list's last object took.
 #[test]
 fn the_list_s_loop_runs_its_count_again_only_after_a_leave() {
-    use crate::objects::unit::Step;
+    use crate::objects::unit::Outcome;
     let mut t = house_builder();
     let n = t.players[1].objects.len();
-    assert!(t.file_step(1, 0, Step::Stay));
-    assert!(t.file_step(1, 0, Step::Sleep));
+    assert!(t.file_step(1, 0, Outcome::Stay));
+    assert!(t.file_step(1, 0, Outcome::Sleep));
     assert_eq!(t.players[1].objects.len(), n - 1);
-    assert!(!t.file_step(1, 0, Step::Leave));
+    assert!(!t.file_step(1, 0, Outcome::Leave));
     assert_eq!(t.players[1].objects.len(), n - 2);
 }
 
@@ -14645,24 +14645,24 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
 }
 
 /// Object `i` of player `p`'s step (dt 50, outside a turn) whose only part is `step`: what it
-/// leaves in the Context, and its result, which what follows it sees ([`World::step_object`]).
+/// leaves in the `Step`, and its result, which what follows it sees ([`World::step_object`]).
 fn finished_with(
     t: &mut World,
     (p, i): (usize, usize),
-    step: impl FnOnce(&mut context::Context<'_>) -> Result<crate::objects::unit::Step, GenieError>,
-) -> Result<crate::objects::unit::Step, GenieError> {
+    step: impl FnOnce(&mut step::Step<'_>) -> Result<crate::objects::unit::Outcome, GenieError>,
+) -> Result<crate::objects::unit::Outcome, GenieError> {
     t.step_object((p, i), (50, None, false), None, |_, c| step(c))
-        .map(|s| s.step)
+        .map(|s| s.outcome)
 }
 
-/// What a step leaves in its Context for what follows it.
-type Orders<'a> = dyn Fn(&mut context::Context<'_>) + 'a;
+/// What a step leaves in its `Step` for what follows it.
+type Orders<'a> = dyn Fn(&mut step::Step<'_>) + 'a;
 
-/// A unit that leaves its list (`Step::Leave`) cannot take the orders its unit AI gave in the
+/// A unit that leaves its list (`Outcome::Leave`) cannot take the orders its unit AI gave in the
 /// step: each kind fails with its own gap, and a step without orders just leaves.
 #[test]
 fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
-    use crate::objects::unit::Step;
+    use crate::objects::unit::Outcome;
     use crate::unit_ai::world_view::AiWork;
     let work = crate::orders::Work {
         target: 600,
@@ -14693,11 +14693,11 @@ fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
         let mut t = house_builder();
         finished_with(&mut t, (1, 0), |c| {
             orders(c);
-            Ok(Step::Leave)
+            Ok(Outcome::Leave)
         })
         .map_err(|e| e.reason().to_owned())
     };
-    assert_eq!(leaving(&|_| ()), Ok(Step::Leave));
+    assert_eq!(leaving(&|_| ()), Ok(Outcome::Leave));
     let gap = |reason: &str| Err(reason.to_owned());
     let cases: [(&Orders<'_>, _); 6] = [
         (
@@ -14768,19 +14768,19 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
 /// target queued.
 #[test]
 fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
-    use crate::objects::unit::Step;
+    use crate::objects::unit::Outcome;
     use crate::unit_ai::world_view::AiWork;
     let stay = |t: &mut World, orders: &Orders<'_>| {
         finished_with(t, (1, 0), |c| {
             orders(c);
-            Ok(Step::Stay)
+            Ok(Outcome::Stay)
         })
         .map_err(|e| e.reason().to_owned())
     };
     let mut t = house_builder();
     assert_eq!(
         stay(&mut t, &|c| c.works.push(AiWork::Gather(600))),
-        Ok(Step::Stay)
+        Ok(Outcome::Stay)
     );
     let gatherer = &t.players[1].objects[0];
     assert_eq!(
@@ -14791,7 +14791,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
         (Some(crate::gathering::gather::GATHER), Some((600, 4)))
     );
     assert_eq!(t.players[0].objects[0].workers, 1);
-    assert_eq!(stay(&mut t, &|c| c.reseed = Some(true)), Ok(Step::Stay));
+    assert_eq!(stay(&mut t, &|c| c.reseed = Some(true)), Ok(Outcome::Stay));
     let gather = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!((gather.target, gather.state), (-1, 2));
     assert_eq!(t.players[0].objects[0].workers, 0);
@@ -14800,7 +14800,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     t.players[1].objects[0].actions.set_build(None);
     assert_eq!(
         stay(&mut t, &|c| c.build_command = Some(10028)),
-        Ok(Step::Stay)
+        Ok(Outcome::Stay)
     );
     let builder = &t.players[1].objects[0];
     assert_eq!(
@@ -14813,7 +14813,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
 
     let mut t = house_builder();
     let drop = AiWork::DropElsewhere(700, Some(600));
-    assert_eq!(stay(&mut t, &|c| c.works.push(drop)), Ok(Step::Stay));
+    assert_eq!(stay(&mut t, &|c| c.works.push(drop)), Ok(Outcome::Stay));
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();
     let queued: Vec<_> = ai.orders.iter().map(|o| (o.order, o.target)).collect();
     assert_eq!(
@@ -14864,12 +14864,12 @@ fn own_razing(adds: &[(i16, f32)]) -> crate::combat::victims::KillLeft {
     }
 }
 
-/// A step that fails stops what follows it: what its Context gathered does not apply (its own
+/// A step that fails stops what follows it: what its `Step` gathered does not apply (its own
 /// kill's razing counts), and the first effect that fails stops the ones after it (a count of
 /// a negative attribute stops the next one); a step that holds applies it.
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
-    use crate::objects::unit::Step;
+    use crate::objects::unit::Outcome;
     let mut t = house_builder();
     t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
@@ -14886,7 +14886,7 @@ fn a_step_that_fails_stops_what_follows_it() {
     t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
         c.kills.push(own_razing(&[(-1, 5.0), (98, -5.0)]));
-        Ok(Step::Stay)
+        Ok(Outcome::Stay)
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
@@ -14897,9 +14897,9 @@ fn a_step_that_fails_stops_what_follows_it() {
     t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
         c.kills.push(own_razing(&[(98, -5.0)]));
-        Ok(Step::Stay)
+        Ok(Outcome::Stay)
     });
-    assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
+    assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Outcome::Stay));
     assert_eq!(t.players[1].attributes[98], 5.0);
 }
 

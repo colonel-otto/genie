@@ -5,7 +5,7 @@
 //! own view.
 //!
 //! The updating object itself is out of its slot (its stand-in holds it): a call on it goes to
-//! the world after the step (the Context's `takes`, `releases`, `builder_leaves`).
+//! the world after the step (the `Step`'s `takes`, `releases`, `builder_leaves`).
 
 use crate::GenieError;
 use crate::objects::lines::UnitLines;
@@ -13,8 +13,8 @@ use crate::objects::masters::Masters;
 use crate::objects::release::{Releaser, released};
 use crate::objects::unit::TAKEN_OUT;
 use crate::players::tracker::Tracker;
-use crate::world::context::Context;
 use crate::world::others::{Others, OthersRef};
+use crate::world::step::Step;
 use crate::world::{Player, World};
 
 /// What the calls on the objects let go and taken reach besides the view: the updating player
@@ -69,7 +69,7 @@ impl World {
 /// Slot 0x178 on object `id`, which an action of `by` takes, from an update: the world's take
 /// ([`World::take`]); the updating object's own, which the world does not hold while it
 /// updates, waits for the world after the step.
-pub(crate) fn take(c: &mut Context<'_>, id: i32, by: Releaser) {
+pub(crate) fn take(c: &mut Step<'_>, id: i32, by: Releaser) {
     if id == c.me {
         c.takes.push((id, by));
     } else {
@@ -83,7 +83,7 @@ pub(crate) fn take(c: &mut Context<'_>, id: i32, by: Releaser) {
 /// # Errors
 ///
 /// [`World::release`]'s.
-pub(crate) fn release(c: &mut Context<'_>, id: i32, by: Releaser) -> Result<(), GenieError> {
+pub(crate) fn release(c: &mut Step<'_>, id: i32, by: Releaser) -> Result<(), GenieError> {
     if id == c.me {
         c.releases.push((id, by));
         return Ok(());
@@ -98,7 +98,7 @@ pub(crate) fn release(c: &mut Context<'_>, id: i32, by: Releaser) -> Result<(), 
 /// # Errors
 ///
 /// An object of a master its owner lacks.
-pub(crate) fn leave_builders(c: &mut Context<'_>, id: i32) -> Result<(), GenieError> {
+pub(crate) fn leave_builders(c: &mut Step<'_>, id: i32) -> Result<(), GenieError> {
     if id == c.me || c.w.counted_building(id)? == Some(c.me) {
         c.builder_leaves.push(id);
         return Ok(());
@@ -114,7 +114,7 @@ pub(crate) fn leave_builders(c: &mut Context<'_>, id: i32) -> Result<(), GenieEr
 ///
 /// [`leave_builders`]' and [`release`]'s.
 pub(crate) fn torn_down(
-    c: &mut Context<'_>,
+    c: &mut Step<'_>,
     (builder_leaves, releases): (Vec<i32>, Vec<(i32, Releaser)>),
 ) -> Result<(), GenieError> {
     for id in builder_leaves {

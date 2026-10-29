@@ -7,8 +7,8 @@ use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::ownership::change::change_hands;
 use crate::unit_ai::ActionKind;
-use crate::world::context::Context;
 use crate::world::others::OthersRef;
+use crate::world::step::Step;
 
 impl Unit {
     /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,
@@ -22,7 +22,7 @@ impl Unit {
     /// statistics are not held.
     pub(crate) fn capture(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         new: usize,
     ) -> Result<(bool, Vec<i32>), GenieError> {
         let class = self.placed_class(c)?;
@@ -37,7 +37,7 @@ impl Unit {
     }
 
     /// The master class the world files the captured object under.
-    pub(crate) fn placed_class(&self, c: &Context<'_>) -> Result<i16, GenieError> {
+    pub(crate) fn placed_class(&self, c: &Step<'_>) -> Result<i16, GenieError> {
         c.w.spatial
             .get(self.id)
             .map(|p| p.class)
@@ -58,11 +58,7 @@ impl Unit {
     /// that is not a number keeps it).
     ///
     /// [`Artifact::stop`]: crate::ownership::artifact::Artifact::stop
-    pub(crate) fn capture_stop(
-        &mut self,
-        c: &mut Context<'_>,
-        class: i16,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn capture_stop(&mut self, c: &mut Step<'_>, class: i16) -> Result<(), GenieError> {
         let by = self.releaser(c);
         if let Some(artifact) = self.actions.artifact_mut() {
             let (gone, released) = artifact.stop();
@@ -110,16 +106,16 @@ impl Unit {
 
     /// The unit's slot 0x70 as its unit AI asks it ([`Effect::ChangeOwner`], the artifact's
     /// processIdle `FUN_140c1e410`): [`Unit::change_owner`]; once it changed hands the caller
-    /// moves it to the new owner's list after the update ([`Step::Captured`]), and a building's
+    /// moves it to the new owner's list after the update ([`Outcome::Captured`]), and a building's
     /// whole change is the caller's even without the new owner's master.
     ///
     /// [`Effect::ChangeOwner`]: crate::unit_ai::Effect::ChangeOwner
     ///
-    /// [`Step::Captured`]: crate::objects::unit::Step::Captured
+    /// [`Outcome::Captured`]: crate::objects::unit::Outcome::Captured
     pub(crate) fn ai_change_owner(
         &mut self,
         new: usize,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let changed = self.change_owner(c, new)?;
         if changed || c.building_handover {
@@ -133,11 +129,7 @@ impl Unit {
     /// then `+0x924` goes 0. The local player's sound and its capture notice (`FUN_1414c3380`)
     /// are not simulation. Not modelled: a siege weapon's (class 13) drop of the units it carries
     /// (`FUN_14120f800` with `FUN_141192d10`).
-    pub(crate) fn take_by_sight(
-        &mut self,
-        c: &mut Context<'_>,
-        new: usize,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn take_by_sight(&mut self, c: &mut Step<'_>, new: usize) -> Result<(), GenieError> {
         let master = self.master(&c.w.masters, c.player);
         if master.is_ok_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
             return Err(HANDS_LEFT);
@@ -156,7 +148,7 @@ impl Unit {
     /// whether or not `new` has its master.
     pub(crate) fn change_owner(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         new: usize,
     ) -> Result<bool, GenieError> {
         let master = self.master(&c.w.masters, c.player);
@@ -203,7 +195,7 @@ pub(crate) const TRADE_ACTION: i32 = 0x6f;
 /// the new owner sees (`FUN_141663500`), within 3 tiles of `at` (x outer, y inner); each is taken
 /// in turn, with its own scan. Two on one tile would need the tile's object list order.
 pub(crate) fn scan_livestock(
-    c: &mut Context<'_>,
+    c: &mut Step<'_>,
     at: [f32; 3],
     new: usize,
     taken: &mut Vec<i32>,
@@ -236,7 +228,7 @@ pub(crate) fn scan_livestock(
 
 /// The scan's finds on tile (`x`, `y`): Gaia's livestock in state 2 of the updating object's
 /// player's list whose centre is on the tile, not yet `taken`.
-fn livestock_on(c: &Context<'_>, (x, y): (i32, i32), taken: &[i32]) -> Vec<i32> {
+fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Vec<i32> {
     OthersRef::of(&c.w.players, c.player)
         .own_iter()
         .filter(|u| {
@@ -257,11 +249,7 @@ fn livestock_on(c: &Context<'_>, (x, y): (i32, i32), taken: &[i32]) -> Vec<i32> 
 /// The scan takes livestock `id` for `new`: out of its slot while its stop reaches the view, as
 /// the updating object, its capture stop and its ownership change. Its place when `new` took it;
 /// None when `new` lacks the master and the animal stays Gaia's, which scans nothing.
-fn take_livestock(
-    c: &mut Context<'_>,
-    id: i32,
-    new: usize,
-) -> Result<Option<[f32; 3]>, GenieError> {
+fn take_livestock(c: &mut Step<'_>, id: i32, new: usize) -> Result<Option<[f32; 3]>, GenieError> {
     let mut unit =
         c.w.take_out_own(c.player, id)
             .expect("the scan's own object");
@@ -274,12 +262,12 @@ fn take_livestock(
     Ok(done?.then_some(position))
 }
 
-/// What a takeover in an object's update did ([`Step::Captured`]): player `new` took the object
+/// What a takeover in an object's update did ([`Outcome::Captured`]): player `new` took the object
 /// (`main`; without the master it stays) and then `also`, other objects of its player, in order.
 /// Those taken move to the end of the new owner's list; their storage and class counters move
 /// with them.
 ///
-/// [`Step::Captured`]: crate::objects::unit::Step::Captured
+/// [`Outcome::Captured`]: crate::objects::unit::Outcome::Captured
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Captured {
     pub(crate) new: usize,

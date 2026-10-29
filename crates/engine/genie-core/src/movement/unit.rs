@@ -15,7 +15,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
-use crate::world::context::Context;
+use crate::world::step::Step;
 
 /// A group member's own move's reasons slot 0x5e0 tells apart (`FUN_141017590`): moved aside,
 /// and none.
@@ -31,7 +31,7 @@ impl Unit {
     ///
     /// A unit its group may steer whose master the slice does not have or whose action it does
     /// not model.
-    pub(crate) fn motion_step(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn motion_step(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         // RGE_Moving_Object::update counts the last human order time down before its velocity
         // step
         if self.body.mover().is_some() {
@@ -108,7 +108,7 @@ impl Unit {
     /// whose deletion lets the target go and stops the unit).
     pub(crate) fn move_to_part(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
         let step = self.own_move_step(c, me)?;
@@ -141,7 +141,7 @@ impl Unit {
     /// its point (the goal, or the target's place); none without a `MoveTo`.
     fn own_move_step(
         &mut self,
-        c: &mut Context<'_>,
+        c: &mut Step<'_>,
         me: Me,
     ) -> Result<crate::movement::move_to::MoveStep, GenieError> {
         Ok(match self.actions.move_to_mut() {
@@ -199,7 +199,7 @@ impl Unit {
 
     /// The unit's Explore in its update (`0x140a880c0`): its walk in state 11; states 1 (done) and
     /// 13 (failed) are not modelled, and the other states wait.
-    pub(crate) fn explore_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    pub(crate) fn explore_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<(), GenieError> {
         if let Some(explore) = self.actions.explore_mut() {
             // 0x140a880c0: state 1 is done (the action list removes it, the default task's
             // restart is not modelled), 11 walks, 13 fails; the others wait
@@ -275,7 +275,7 @@ impl Unit {
     }
 
     /// A bird's Fly in its update: its step, the stop, and a failed flight's notify.
-    pub(crate) fn fly_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    pub(crate) fn fly_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<(), GenieError> {
         if let Some(fly) = self.actions.fly_mut() {
             let mover = self
                 .body
