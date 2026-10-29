@@ -123,7 +123,7 @@ impl Unit {
             }),
             Some(Action::Build(_)) => self.build_part(c, me),
             Some(Action::Repair(_)) => self.repair_part(c, me),
-            Some(Action::Enter(_)) => self.enter_update(c, me),
+            Some(Action::Enter(_)) => self.enter_part(c, me),
             Some(Action::Transport(_)) => self.transport_update(c, me),
             Some(Action::WaitSolidify(_)) => {
                 Ok(self.wait_solidify_part(OthersRef::of(&c.w.players, c.player)))

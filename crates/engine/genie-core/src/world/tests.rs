@@ -4697,7 +4697,7 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
                 group: unit.group.id,
                 action_state: unit.top_action().map_or(0, |a| a.state),
             };
-            let code = unit.enter_update(c, me)?;
+            let code = unit.enter_part(c, me)?;
             unit.end_head_update(c, code)?;
             let (_, house) = OthersRef::of(&c.w.players, c.player).find(10028).unwrap();
             Ok((unit.life.inside, house.garrison.clone()))

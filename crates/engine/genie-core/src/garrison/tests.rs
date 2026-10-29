@@ -1,8 +1,9 @@
 use super::*;
 use crate::commands::{GatherPoint, UnloadCommand};
 use crate::map::Point;
-use crate::movement::move_to::{MoveDefaults, SubMover};
+use crate::movement::move_to::MoveDefaults;
 use crate::objects::masters::BuildingMaster;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
@@ -134,10 +135,19 @@ fn the_unload_groups() {
     assert_eq!(group(4), [0i16; 0]);
 }
 
+/// [`garrison_world`] with villager 9149 of player 1, and its index.
+fn walk_again_world() -> (World, usize) {
+    let mut t = garrison_world();
+    t.players[1].objects.push(unit(9149, VILLAGER, 25.0));
+    let idx = t.players[1].objects.len() - 1;
+    (t, idx)
+}
+
 #[test]
 fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     // MarvinBlue/426048731's 9171 garrisons the town centre at (104, 47) from 3.5 tiles off:
     // set_state(4)'s MoveTo to it (FUN_140aa0df0), quiet, starts in state 3
+    let (mut t, v) = walk_again_world();
     let tc = EnterTarget {
         state: 2,
         allied: true,
@@ -146,28 +156,28 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
         in_reach: false,
         building: true,
     };
-    let never = || -> Result<([f32; 2], u8), GenieError> { panic!("a building's point") };
-    let mut far = EnterAction::new(9149, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
+    let start = |gap| WalkStart { gap, speed: 0.8 };
+    let mut far = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
     assert_eq!(
-        far.walk_again(&tc, 3.5, 0.8, &mut never.clone()),
+        t.enter_walk_again(1, v, &mut far, &tc, start(3.5)),
         Ok(Walking::Walk(None))
     );
     assert_eq!((far.state, far.move_to), (WALK, Some(MoveTo::Start)));
     // within ARRIVED of its footprint the MoveTo starts arrived (state 1)
-    let mut close = EnterAction::new(9149, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
+    let mut close = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
     assert_eq!(
-        close.walk_again(&tc, 0.0, 0.8, &mut never.clone()),
+        t.enter_walk_again(1, v, &mut close, &tc, start(0.0)),
         Ok(Walking::Walk(None))
     );
     assert_eq!(close.move_to, Some(MoveTo::Arrived));
     // 10049 of update 4409 stands within the task's range: it enters at once
-    let mut near = EnterAction::new(9149, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
+    let mut near = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
     let in_reach = EnterTarget {
         in_reach: true,
         ..tc
     };
     assert_eq!(
-        near.walk_again(&in_reach, 0.6, 0.8, &mut never.clone()),
+        t.enter_walk_again(1, v, &mut near, &in_reach, start(0.6)),
         Ok(Walking::Enter)
     );
     assert_eq!(near.move_to, None);
@@ -196,133 +206,185 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
 
 #[test]
 fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
-    // FUN_140a87320 case 4 on a transport: the point and code of FUN_140a85f30; code 1 sends
-    // the transport there at its own height, code 0 does not; the MoveTo goes to the
-    // transport within 0
+    // FUN_140a87320 case 4 on a transport: the point and code of FUN_140a85f30. An idle ship
+    // meets the villager on the shore on the way (code 1): the transport is sent there at its
+    // own height; one under a MoveTo (state 3) where it goes (code 0): not sent. The MoveTo
+    // goes to the transport within 0
+    let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
+    let v = villager(&t);
     let ship = EnterTarget {
         state: 2,
         allied: true,
         room: true,
-        position: [79.5, 92.5, 0.25],
+        position: [5.5, 30.5, 0.25],
         in_reach: false,
         building: false,
     };
-    let mut enter = EnterAction::new(7420, [79.5, 92.5, 0.0], &enter_task(1.0, 20));
-    let walking = enter.walk_again(&ship, 6.0, 0.8, &mut || Ok(([82.5, 89.5], 1)));
-    assert_eq!(walking, Ok(Walking::Walk(Some([82.5, 89.5, 0.25]))));
+    let start = WalkStart {
+        gap: 6.0,
+        speed: 0.8,
+    };
+    let mut enter = EnterAction::new(200, [5.5, 30.5, 0.0], &enter_task(1.0, 20));
+    assert_eq!(
+        t.enter_walk_again(1, v, &mut enter, &ship, start),
+        Ok(Walking::Walk(Some([5.5, 17.5, 0.25])))
+    );
     assert_eq!(
         (enter.point, enter.move_to),
-        ([82.5, 89.5, 0.0], Some(MoveTo::Start))
+        ([5.5, 17.5, 0.0], Some(MoveTo::Start))
     );
     assert_eq!(enter.walk_range(false), 0.0);
     assert_eq!(enter.walk_range(true), 1.0);
-    let walking = enter.walk_again(&ship, 6.0, 0.8, &mut || Ok(([80.0, 91.0], 0)));
-    assert_eq!(walking, Ok(Walking::Walk(None)));
-    assert_eq!(enter.point, [80.0, 91.0, 0.0]);
-    // a unit without speed beyond ARRIVED: the MoveTo's state 13, not modelled
-    assert!(
-        enter
-            .walk_again(&ship, 6.0, 0.0, &mut || Ok(([80.0, 91.0], 0)))
-            .is_err()
-    );
-}
-
-/// A transport target, room for the unit, 1.0 tiles off its point on y.
-fn moved_ship(y: f32) -> EnterTarget {
-    EnterTarget {
-        state: 2,
-        allied: true,
-        room: true,
-        position: [82.5, y, 0.0],
-        in_reach: false,
-        building: false,
-    }
-}
-
-/// The layers of unit 1 without movement state, at (82.5, 87.5).
-fn idle_body() -> crate::objects::layers::Body {
-    crate::objects::layers::Body::at([82.5, 87.5, 0.0])
-}
-
-/// A walk of unit 1 of `body` without a world's planners, as [`EnterAction::update`] takes it.
-fn idle_walk<'a>(
-    body: &'a mut crate::objects::layers::Body,
-    world: &'a mut crate::map::spatial::Spatial,
-) -> Walk<'a> {
-    Walk {
-        body,
-        me: crate::movement::Me {
-            id: 1,
-            action_state: 4,
-            group: -1,
+    t.object_mut(200).unwrap().1.actions.set_move_to(Some(
+        crate::movement::move_to::MoveToAction {
+            sprite: None,
+            state: MoveTo::Start,
+            goal: Some([9.5, 19.5, 0.0]),
+            target: -1,
+            range: 0.0,
+            wait: crate::movement::move_to::MoveWait::default(),
         },
-        dt: 0.5,
-        world,
-        plan: None,
+    ));
+    assert_eq!(
+        t.enter_walk_again(1, v, &mut enter, &ship, start),
+        Ok(Walking::Walk(None))
+    );
+    assert_eq!(enter.point, [9.5, 19.5, 0.0]);
+    // a unit without speed beyond ARRIVED: the MoveTo's state 13, not modelled
+    let still = WalkStart {
+        gap: 6.0,
+        speed: 0.0,
+    };
+    assert_eq!(EnterAction::walk_start(still), Err(NO_SPEED));
+}
+
+/// Villager 1000's index in player 1's list.
+fn villager(t: &World) -> usize {
+    t.players[1]
+        .objects
+        .iter()
+        .position(|u| u.id == 1000)
+        .expect("the villager")
+}
+
+/// [`shore_world`] with villager 1000 at `at` under `enter`, ship 200 at `ship`; the
+/// villager's master has no sprites (the world's sprites' table is empty), its walk 16 facets.
+fn entering(at: [f32; 2], ship: [f32; 2], enter: EnterAction) -> World {
+    let mut t = shore_world(at, ship);
+    for m in &mut t.masters {
+        if let Some(v) = m.get_mut(VILLAGER) {
+            (v.standing_sprite, v.move_sprite, v.run_sprite) = (-1, -1, -1);
+        }
     }
+    // its walk turns by 16 facets
+    let v = t.object_mut(1000).unwrap().1;
+    if let Some(m) = v.body.mover_mut() {
+        m.sprite_facets = Some(crate::objects::facing::SpriteFacets {
+            count: 16,
+            flag_1: false,
+        });
+    }
+    t.object_mut(1000).unwrap().1.actions.set_enter(Some(enter));
+    t
+}
+
+/// An Enter on ship 200 at `point` whose `MoveTo` is in `state`.
+fn ship_enter(point: [f32; 3], state: MoveTo) -> EnterAction {
+    EnterAction {
+        move_to: Some(state),
+        ..EnterAction::new(200, point, &enter_task(1.0, 20))
+    }
+}
+
+/// One update of `dt` ms of villager 1000's Enter (its part of the unit's update,
+/// [`Unit::enter_part`]) and its code.
+fn enter_update(t: &mut World, dt: u32) -> Result<HeadCode, GenieError> {
+    let v = villager(t);
+    crate::world::tests::in_update(t, (1, v), dt, |u, c| {
+        let me = crate::movement::Me {
+            id: u.id,
+            group: u.group.id,
+            action_state: u.top_action().map_or(0, |a| a.state),
+        };
+        u.enter_part(c, me)
+    })
+}
+
+/// Villager 1000's Enter.
+fn enter_of(t: &World) -> EnterAction {
+    t.object(1000)
+        .unwrap()
+        .1
+        .actions
+        .enter()
+        .copied()
+        .expect("its Enter")
+}
+
+/// Ship 200's `MoveTo` goal, if it has one.
+fn ship_goal(t: &World) -> Option<[f32; 3]> {
+    t.object(200)
+        .unwrap()
+        .1
+        .actions
+        .move_to()
+        .and_then(|m| m.goal)
+}
+
+/// The notifies 0x1fa (`NOTIFY_ACTION_COMPLETED`) villager 1000's unit AI heard.
+fn completed(t: &World) -> usize {
+    t.object(1000)
+        .unwrap()
+        .1
+        .ai
+        .as_ref()
+        .unwrap()
+        .notifies
+        .iter()
+        .filter(|n| n.kind == crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED)
+        .count()
 }
 
 #[test]
 fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
     // FUN_140a87a80 state 4: FUN_140a7bbf0 (not on the point) and FUN_140a7bd10 (more than
-    // half a tile off: COMISS/JA) set_state(4); then the new MoveTo's update; the transport's
-    // order waits on slot 0x3d8
-    let mut world = crate::map::spatial::Spatial::new([100, 100]);
-    let point = [82.5, 89.5, 0.0];
-    let mut enter = EnterAction {
-        move_to: Some(MoveTo::Arrived),
-        ..EnterAction::new(7420, point, &enter_task(1.0, 20))
-    };
-    let reached = std::cell::Cell::new(None);
-    let step = enter
-        .update(
-            idle_walk(&mut idle_body(), &mut world),
-            Some(moved_ship(90.5)),
-            (0.0, 0.8),
-            || Ok(([82.5, 89.5], 1)),
-            |_, to| {
-                reached.set(Some(to));
-                Ok(true)
-            },
-            SubMover::none(false),
-        )
-        .unwrap();
-    assert_eq!(reached.get(), Some([82.5, 89.5, 0.0]));
-    assert_eq!(step.order, Some([82.5, 89.5, 0.0]));
-    // the new MoveTo starts arrived (gap 0): code 1 out of reach waits (set_state(2))
-    assert_eq!((enter.state, enter.timer, step.waits), (WAIT, 1.0, true));
-    // within half a tile on each axis it does not walk again; a NaN is not off
-    for y in [90.0, f32::NAN] {
-        let mut enter = EnterAction {
-            move_to: Some(MoveTo::Arrived),
-            ..EnterAction::new(7420, point, &enter_task(1.0, 20))
-        };
-        let step = enter
-            .update(
-                idle_walk(&mut idle_body(), &mut world),
-                Some(moved_ship(y)),
-                (0.0, 0.8),
-                || panic!("no walk again"),
-                |_, _| panic!("no order"),
-                SubMover::none(false),
-            )
-            .unwrap();
-        assert_eq!(step.order, None);
-    }
-    // a transport that cannot reach the point: set_state(13), not modelled
-    let mut enter = EnterAction {
-        move_to: Some(MoveTo::Arrived),
-        ..EnterAction::new(7420, point, &enter_task(1.0, 20))
-    };
-    let failed = enter.update(
-        idle_walk(&mut idle_body(), &mut world),
-        Some(moved_ship(90.5)),
-        (0.0, 0.8),
-        || Ok(([82.5, 89.5], 1)),
-        |_, _| Ok(false),
-        SubMover::none(false),
+    // half a tile off: COMISS/JA) set_state(4): the ship meets the villager on the shore (code
+    // 1) and is sent there at once (slot 0x3d8, then slot 0x340); then the new MoveTo updates
+    let mut t = entering(
+        [5.5, 12.5],
+        [5.5, 30.5],
+        ship_enter([5.5, 28.0, 0.0], MoveTo::Arrived),
     );
-    assert_eq!(failed, Err(UNREACHED));
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    assert_eq!(ship_goal(&t), Some([5.5, 17.5, 0.0]));
+    let e = enter_of(&t);
+    assert_eq!((e.state, e.point), (WALK, [5.5, 17.5, 0.0]));
+    // within half a tile on each axis it does not walk again, and a NaN is not off: code 1
+    // out of reach waits (set_state(2))
+    for y in [30.0, f32::NAN] {
+        let mut t = entering(
+            [5.5, 12.5],
+            [5.5, 30.5],
+            ship_enter([5.5, y, 0.0], MoveTo::Arrived),
+        );
+        assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+        assert_eq!(ship_goal(&t), None);
+        let e = enter_of(&t);
+        assert_eq!((e.state, e.timer, e.move_to), (WAIT, 1.0, None));
+    }
+    // a transport that cannot reach the point (where it last moved to is off the map):
+    // set_state(13), not modelled
+    let mut t = entering(
+        [5.5, 12.5],
+        [5.5, 30.5],
+        ship_enter([5.5, 28.0, 0.0], MoveTo::Arrived),
+    );
+    let ship = t.object_mut(200).unwrap().1;
+    ship.body.mover_mut().unwrap().moved_at = [-1.0, 30.5, 0.0];
+    assert_eq!(
+        enter_update(&mut t, 500).map_err(|e| e.reason().to_owned()),
+        Err(UNREACHED.reason().to_owned())
+    );
 }
 
 /// The sprite its `MoveTo` shows: the task's moving sprite, else the default of its
@@ -355,125 +417,89 @@ fn an_enter_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
 /// onto its timer (code 0: nothing else happens); at its delay it asks again.
 #[test]
 fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
-    let mut world = crate::map::spatial::Spatial::new([100, 100]);
-    let ship = moved_ship(89.5);
-    let mut enter = EnterAction {
-        move_to: Some(MoveTo::Waiting),
-        move_wait: crate::movement::move_to::MoveWait {
-            state: 1,
-            timer: 0.0,
-            delay: 1.0,
-        },
-        ..EnterAction::new(7420, ship.position, &enter_task(1.0, 20))
+    let mut e = ship_enter([5.5, 30.5, 0.0], MoveTo::Waiting);
+    e.move_wait = crate::movement::move_to::MoveWait {
+        state: 1,
+        timer: 0.0,
+        delay: 1.0,
     };
-    let dt = idle_walk(&mut idle_body(), &mut world).dt;
-    let step = enter
-        .update(
-            idle_walk(&mut idle_body(), &mut world),
-            Some(ship),
-            (0.0, 0.8),
-            || panic!("no walk again"),
-            |_, _| panic!("no order"),
-            SubMover::none(true),
-        )
-        .unwrap();
-    assert_eq!(step, EnterStep::default());
+    let mut t = entering([5.5, 12.5], [5.5, 30.5], e);
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    let e = enter_of(&t);
     assert_eq!(
-        (enter.move_to, enter.move_wait.timer),
-        (Some(MoveTo::Waiting), dt)
+        (e.state, e.move_to, e.move_wait.timer),
+        (WALK, Some(MoveTo::Waiting), 0.5)
     );
-    enter.move_wait.timer = 1.0;
-    let _ = enter
-        .update(
-            idle_walk(&mut idle_body(), &mut world),
-            Some(ship),
-            (0.0, 0.8),
-            || panic!("no walk again"),
-            |_, _| panic!("no order"),
-            SubMover::none(true),
-        )
-        .unwrap();
-    assert_eq!(
-        (enter.move_to, enter.move_wait.timer),
-        (Some(MoveTo::Start), 0.0)
-    );
+    let v = t.object_mut(1000).unwrap().1;
+    v.actions.enter_mut().unwrap().move_wait.timer = 1.0;
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    let e = enter_of(&t);
+    assert_eq!((e.move_to, e.move_wait.timer), (Some(MoveTo::Start), 0.0));
 }
 
 #[test]
 fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
-    // the set_state(4) of a moved transport finds the unit in reach: FUN_140a867b0, then the
-    // update's code 1 (no MoveTo) in reach enters again
-    let mut world = crate::map::spatial::Spatial::new([100, 100]);
-    let mut enter = EnterAction {
-        move_to: Some(MoveTo::Arrived),
-        ..EnterAction::new(7420, [82.5, 89.5, 0.0], &enter_task(1.0, 20))
-    };
-    let ship = EnterTarget {
-        in_reach: true,
-        ..moved_ship(90.5)
-    };
-    let step = enter
-        .update(
-            idle_walk(&mut idle_body(), &mut world),
-            Some(ship),
-            (0.0, 0.8),
-            || panic!("in reach: no point"),
-            |_, _| panic!("no order"),
-            SubMover::none(false),
-        )
-        .unwrap();
-    assert_eq!((step.enter, step.again, enter.move_to), (true, true, None));
+    // the set_state(4) of a moved transport finds the unit in reach: FUN_140a867b0 at once (the
+    // unit inside, the ship's list holding it, notify 0x1fa), then the update's code 1 (no
+    // MoveTo) in reach enters again (notify 0x1fa and set_state(1), then its own)
+    let mut t = entering(
+        [5.5, 29.5],
+        [5.5, 30.5],
+        ship_enter([5.5, 28.0, 0.0], MoveTo::Arrived),
+    );
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+    assert_eq!(t.object(200).unwrap().1.garrison, [1000]);
+    assert_eq!((enter_of(&t).state, completed(&t)), (ENTERED, 2));
     // without the walk again, code 1 in reach enters once
-    let mut enter = EnterAction {
-        move_to: Some(MoveTo::Arrived),
-        ..EnterAction::new(7420, [82.5, 90.5, 0.0], &enter_task(1.0, 20))
-    };
-    let step = enter
-        .update(
-            idle_walk(&mut idle_body(), &mut world),
-            Some(ship),
-            (0.0, 0.8),
-            || panic!("no walk again"),
-            |_, _| panic!("no order"),
-            SubMover::none(false),
-        )
-        .unwrap();
-    assert_eq!((step.enter, step.again), (true, false));
+    let mut t = entering(
+        [5.5, 29.5],
+        [5.5, 30.5],
+        ship_enter([5.5, 30.5, 0.0], MoveTo::Arrived),
+    );
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+    assert_eq!((enter_of(&t).state, completed(&t)), (ENTERED, 1));
 }
 
 #[test]
 fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     // code 3: +0x68 lets one set_state(4); the next waits a second (set_state(2)), whose end
-    // walks again
-    let mut world = crate::map::spatial::Spatial::new([100, 100]);
-    let ship = moved_ship(89.5);
-    let mut enter = EnterAction {
+    // walks again; the town centre is a building: no meeting
+    let failed = EnterAction {
         move_to: Some(MoveTo::Failed),
-        ..EnterAction::new(7420, [82.5, 89.5, 0.0], &enter_task(1.0, 20))
+        ..EnterAction::new(100, [10.0, 10.0, 0.0], &enter_task(1.0, 3))
     };
-    let run = |enter: &mut EnterAction, world: &mut crate::map::spatial::Spatial| {
-        enter.update(
-            idle_walk(&mut idle_body(), world),
-            Some(ship),
-            (2.0, 0.8),
-            || Ok(([82.5, 89.5], 0)),
-            |_, _| panic!("code 0: no order"),
-            SubMover::none(false),
-        )
-    };
-    let step = run(&mut enter, &mut world).unwrap();
+    let mut t = entering([5.5, 5.5], [5.5, 30.5], failed);
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    let e = enter_of(&t);
     assert_eq!(
-        (enter.retry, enter.move_to, step.waits),
-        (false, Some(MoveTo::Start), false)
+        (e.retry, e.move_to, e.state),
+        (false, Some(MoveTo::Start), WALK)
     );
-    enter.move_to = Some(MoveTo::Failed);
-    let step = run(&mut enter, &mut world).unwrap();
-    assert_eq!((enter.state, enter.move_to, step.waits), (WAIT, None, true));
+    let v = t.object_mut(1000).unwrap().1;
+    v.actions.enter_mut().unwrap().move_to = Some(MoveTo::Failed);
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    let e = enter_of(&t);
+    assert_eq!((e.state, e.move_to, e.timer), (WAIT, None, 1.0));
     // the wait counts down by dt (0.5): at 0 it walks again
-    let step = run(&mut enter, &mut world).unwrap();
-    assert_eq!((enter.state, enter.timer, step.waits), (WAIT, 0.5, false));
-    let _ = run(&mut enter, &mut world).unwrap();
-    assert_eq!((enter.state, enter.move_to), (WALK, Some(MoveTo::Start)));
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    assert_eq!((enter_of(&t).state, enter_of(&t).timer), (WAIT, 0.5));
+    assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
+    let e = enter_of(&t);
+    assert_eq!((e.state, e.move_to), (WALK, Some(MoveTo::Start)));
+}
+
+/// A transport target, room for the unit, 1.0 tiles off its point on y.
+fn moved_ship(y: f32) -> EnterTarget {
+    EnterTarget {
+        state: 2,
+        allied: true,
+        room: true,
+        position: [82.5, y, 0.0],
+        in_reach: false,
+        building: false,
+    }
 }
 
 /// The Enter's test of its target (`FUN_140a87a80`'s start): a target gone, dead (state 3 or

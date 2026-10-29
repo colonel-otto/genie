@@ -2,10 +2,18 @@
 //! and its update.
 
 use crate::GenieError;
-use crate::garrison::{ENTER_NEAR, HALF_TILE, UNREACHED};
-use crate::movement::move_to::{Goal, MoveDefaults, MoveTo, SubMover, Walk, sub_move_to_update};
+use crate::garrison::meeting::Meeting;
+use crate::garrison::{ENTER_NEAR, HALF_TILE};
+use crate::math::rng::Stream;
+use crate::movement::Me;
+use crate::movement::move_to::{Goal, MoveDefaults, MoveTo, Sprites, sub_move_to_update};
+use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
+use crate::objects::teardown::HeadCode;
+use crate::objects::unit::Unit;
+use crate::world::others::OthersRef;
+use crate::world::step::Step;
 use genie_diff::Diff;
 
 /// The Enter action's type (`RGE_Action_Enter`, vtable `0x142ed4db8`), which word 9 adds.
@@ -27,6 +35,11 @@ pub(super) const WAIT_SECONDS: f32 = 1.0;
 /// The class of siege weapons, whose own place an Enter's point keeps (`FUN_140a85f30`, the
 /// short `0xd`).
 pub(crate) const SIEGE_CLASS: i16 = 13;
+
+/// An Enter's `MoveTo` of a unit without speed (`0x140aa2100`'s state 13), or of a unit without
+/// movement state, which is not modelled.
+pub(crate) const NO_SPEED: GenieError =
+    GenieError::unsupported("an Enter's MoveTo of a unit without speed");
 
 /// An unload of a siege building or tower (class 13: its spot search `FUN_141192d10` and the
 /// unit's leave), not modelled.
@@ -81,26 +94,31 @@ pub struct EnterTarget {
     pub building: bool,
 }
 
-/// What an Enter's update leaves to its caller.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct EnterStep {
-    /// The update returned 1 (state 1): the action list removes it.
-    pub done: bool,
-    /// The unit reached the target: the caller enters it (`FUN_140a867b0`, whose end is the
-    /// action's `set_state(1)`), then the caller's own `set_state(1)`.
-    pub enter: bool,
-    /// The enter came from the `set_state(4)` of a target that moved, in state 4: the update then
-    /// finds no `MoveTo` (code 1) with the unit in reach and enters again (`FUN_140a867b0` on a
-    /// unit inside it already: notify 0x1fa and `set_state(1)`), then its own `set_state(1)`.
-    pub again: bool,
-    /// `set_state(2)`: the unit shows its master's standing sprite (slot 0x68 with `+0x470`).
-    pub waits: bool,
-    /// `set_state(4)` found the transport where it meets the unit (its [`meeting`] code 1): the
-    /// caller asks the transport to move there (slot 0x3d8 within 1, then slot 0x340), the
-    /// point's height the transport's.
-    ///
-    /// [`meeting`]: crate::garrison::meeting::meeting
-    pub order: Option<[f32; 3]>,
+/// What a new `MoveTo` of an Enter starts by (`0x140aa2100` with 1,
+/// [`EnterAction::walk_start`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WalkStart {
+    /// The footprints' gap of the unit and its target (`FUN_14118f680`).
+    pub gap: f32,
+    /// The unit's speed.
+    pub speed: f32,
+}
+
+/// What an Enter's update (`FUN_140a87a80`) reads as it starts.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EnterReads {
+    /// Its target, of the unit's own player or an ally; None for one the unit's player does not
+    /// find.
+    pub(crate) target: Option<EnterTarget>,
+    /// What a new `MoveTo` starts by.
+    pub(crate) start: WalkStart,
+    /// The `MoveTo`'s give-up waits (a human player's villager), by the unit AI's stance.
+    pub(crate) waits: bool,
+    /// The unit AI's stance.
+    pub(crate) stance: u8,
+    /// The sprites its `MoveTo`s' constructors take for none (`FUN_140aa0d30`,
+    /// `FUN_140aa0df0`).
+    pub(crate) defaults: MoveDefaults,
 }
 
 /// What [`EnterAction::walk_again`] (`set_state(4)`) leaves to its caller.
@@ -109,7 +127,7 @@ pub enum Walking {
     /// The unit is in reach: the caller enters (`FUN_140a867b0`), then `set_state(1)`.
     Enter,
     /// A `MoveTo` to the target started; with a point, the transport is to move there first
-    /// ([`EnterStep::order`]).
+    /// (its slots 0x3d8 and 0x340, [`crate::world::World::move_transport`]).
     Walk(Option<[f32; 3]>),
 }
 
@@ -154,21 +172,23 @@ impl EnterAction {
     /// its room test repeats theirs, which nothing between changes. A unit in reach of the
     /// target (`FUN_140a85c30`) enters it ([`Walking::Enter`]). Else a building's `MoveTo` walks
     /// to it within the task's range (`FUN_140aa0df0`); a transport's takes the point and code
-    /// of [`meeting`] (`FUN_140a85f30`, the action's `+0x38` and `+0x3c`) and walks to the
-    /// transport within 0 (`FUN_140aa0d30` with range 0, then slot 0x68 with the transport: its
-    /// state 3 goes to the transport's place; a point below 0 would make `FUN_140aa0df0` with the
-    /// unit's slot 0x268, 0, alike), and code 1 asks the transport to move to the point. Both
-    /// `MoveTo`s are quiet (`FUN_140a7a170` with 1) and leave a target that moves (`+0x61` 2);
-    /// their start ([`EnterAction::walk_start`]) is `0x140aa2100`'s, by the footprints' gap
-    /// `gap` and the unit's speed.
+    /// of [`meeting`] (`FUN_140a85f30`, [`Meeting::point`]: the action's `+0x38` and `+0x3c`)
+    /// and walks to the transport within 0 (`FUN_140aa0d30` with range 0, then slot 0x68 with
+    /// the transport: its state 3 goes to the transport's place; a point below 0 would make
+    /// `FUN_140aa0df0` with the unit's slot 0x268, 0, alike), and code 1 asks the transport to
+    /// move to the point. Both `MoveTo`s are quiet (`FUN_140a7a170` with 1) and leave a target
+    /// that moves (`+0x61` 2); their start is [`EnterAction::walk_start`]'s.
+    ///
+    /// # Errors
+    ///
+    /// The meeting's and the start's.
     ///
     /// [`meeting`]: crate::garrison::meeting::meeting
-    pub fn walk_again(
+    pub(crate) fn walk_again(
         &mut self,
         t: &EnterTarget,
-        gap: f32,
-        speed: f32,
-        meeting: &mut impl FnMut() -> Result<([f32; 2], u8), GenieError>,
+        start: WalkStart,
+        meeting: Meeting<'_>,
     ) -> Result<Walking, GenieError> {
         self.move_to = None;
         self.state = WALK;
@@ -178,11 +198,11 @@ impl EnterAction {
         let code = if t.building {
             0
         } else {
-            let (point, code) = meeting()?;
+            let (point, code) = meeting.point()?;
             self.point[..2].copy_from_slice(&point);
             code
         };
-        self.move_to = Some(Self::walk_start(gap, speed)?);
+        self.move_to = Some(Self::walk_start(start)?);
         Ok(Walking::Walk((code == 1).then_some([
             self.point[0],
             self.point[1],
@@ -191,13 +211,16 @@ impl EnterAction {
     }
 
     /// The `MoveTo`'s start (`0x140aa2100` with 1): beyond [`ARRIVED`] of the target's footprint
-    /// (`gap`) state 3, or 13 for a unit without speed (not modelled); else state 1.
-    pub(super) fn walk_start(gap: f32, speed: f32) -> Result<MoveTo, GenieError> {
-        if ARRIVED < gap {
-            if speed == 0.0 {
-                return Err(GenieError::unsupported(
-                    "an Enter's MoveTo of a unit without speed",
-                ));
+    /// (`start.gap`) state 3, or 13 for a unit without speed ([`NO_SPEED`], not modelled); else
+    /// state 1.
+    ///
+    /// # Errors
+    ///
+    /// [`NO_SPEED`].
+    pub(super) fn walk_start(start: WalkStart) -> Result<MoveTo, GenieError> {
+        if ARRIVED < start.gap {
+            if start.speed == 0.0 {
+                return Err(NO_SPEED);
             }
             return Ok(MoveTo::Start);
         }
@@ -209,13 +232,22 @@ impl EnterAction {
         if building { self.range } else { 0.0 }
     }
 
-    /// `set_state(2)`: the wait of [`WAIT_SECONDS`] (the standing sprite is the caller's,
-    /// [`EnterStep::waits`]).
-    pub(super) const fn wait(&mut self, step: &mut EnterStep) {
+    /// `set_state(2)` (`FUN_140a87320` case 2): the wait of [`WAIT_SECONDS`], and the unit shows
+    /// its master's standing sprite at once (slot 0x68 with `+0x470`,
+    /// [`Unit::shows_standing_sprite`]).
+    ///
+    /// # Errors
+    ///
+    /// The sprite's.
+    pub(super) fn wait(&mut self, c: &mut Step<'_>, unit: &mut Unit) -> Result<(), GenieError> {
         self.move_to = None;
         self.state = WAIT;
         self.timer = WAIT_SECONDS;
-        step.waits = true;
+        unit.shows_standing_sprite(
+            c.w.masters.get(c.player),
+            &c.w.graphics,
+            c.w.streams.get(Stream::Sprite),
+        )
     }
 
     /// `FUN_140a85c30`: the unit is in reach of the target: their footprints' squared gap
@@ -240,97 +272,108 @@ impl EnterAction {
         Ok(true)
     }
 
-    /// One update (slot 6, `FUN_140a87a80`). It first checks its target
-    /// ([`EnterAction::held_target`]). State 1 is done; state 2 waits its timer (by the world's
-    /// `dt`), then walks again ([`EnterAction::walk_again`]). State 4: a target off the action's
-    /// point ([`EnterAction::target_moved`]) walks it again; then the `MoveTo` updates
-    /// ([`sub_move_to_update`] within the task's range, quiet, with `mover`'s give-up; its start
-    /// shows [`EnterAction::move_shown`]): codes 1 and 2 enter in reach ([`EnterStep::enter`]),
-    /// else wait (`set_state(2)`); code 3 (a `MoveTo` that failed) walks again once (`+0x68`),
-    /// then waits; codes 4 and 5 let the target go (state 11), which is not modelled. State 13
-    /// returns 3, which is not modelled. `gap` and `speed` start a new `MoveTo`
-    /// ([`EnterAction::walk_start`]); `meeting` gives a transport's point ([`meeting`]) and
-    /// `reaches` its reach test there ([`EnterAction::again`]).
+    /// One update (slot 6, `FUN_140a87a80`) of `unit`'s Enter, a copy its caller writes back
+    /// ([`Unit::enter_part`]). It first checks its target ([`EnterAction::held_target`]). State
+    /// 1 is done; state 2 waits its timer (by the world's `dt`), then walks again
+    /// ([`EnterAction::again`]); state 4 walks ([`EnterAction::walk_on`]). State 13 returns 3,
+    /// which deletes it as 1 does. Its code: 1 or 3 delete it.
     ///
-    /// [`meeting`]: crate::garrison::meeting::meeting
-    pub fn update(
+    /// # Errors
+    ///
+    /// A target the update does not hold (state 11), a state not modelled, and what the walk,
+    /// the enter and the transport's move do not model.
+    pub(crate) fn update(
         &mut self,
-        mut walk: Walk<'_>,
-        target: Option<EnterTarget>,
-        (gap, speed): (f32, f32),
-        mut meeting: impl FnMut() -> Result<([f32; 2], u8), GenieError>,
-        mut reaches: impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, GenieError>,
-        mut mover: SubMover<'_>,
-    ) -> Result<EnterStep, GenieError> {
-        let mut step = EnterStep::default();
-        let t = Self::held_target(target)?;
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        reads: &EnterReads,
+    ) -> Result<HeadCode, GenieError> {
+        let t = Self::held_target(reads.target)?;
         match self.state {
             // state 1 returns 1, state 13 returns 3: either way the list removes the action
-            ENTERED | FAILED => step.done = true,
+            ENTERED | FAILED => return Ok(HeadCode::Deletes),
             WAIT => {
-                self.timer -= walk.dt;
+                self.timer -= seconds(c.dt);
                 if self.timer <= 0.0 {
-                    self.again(
-                        &mut walk,
-                        &t,
-                        (gap, speed),
-                        &mut meeting,
-                        &mut reaches,
-                        &mut step,
-                    )?;
+                    let _ = self.again(c, unit, &t, reads)?;
                 }
             }
-            WALK => {
-                let walked_again = self.target_moved(&t);
-                if walked_again {
-                    self.again(
-                        &mut walk,
-                        &t,
-                        (gap, speed),
-                        &mut meeting,
-                        &mut reaches,
-                        &mut step,
-                    )?;
-                }
-                let range = self.walk_range(t.building);
-                let shown = if self.move_to == Some(MoveTo::Start) {
-                    let id = self.move_shown(t.building, mover.defaults);
-                    Some(mover.sprites.shown(id)?)
-                } else {
-                    None
-                };
-                let code = sub_move_to_update(
-                    (&mut self.move_to, &mut self.move_wait),
-                    &mut walk,
-                    Goal::Target(self.target),
-                    (range, true),
-                    (mover.waits, mover.stance),
-                    shown,
-                )?;
-                match code {
-                    // the walk again's enter put the unit inside, at the target's place: still
-                    // in reach, it enters again
-                    1 | 2 if walked_again && step.enter => step.again = true,
-                    1 | 2 if t.in_reach => step.enter = true,
-                    // a failed MoveTo is none a walk again made in this update
-                    3 if self.retry => {
-                        self.retry = false;
-                        self.again(
-                            &mut walk,
-                            &t,
-                            (gap, speed),
-                            &mut meeting,
-                            &mut reaches,
-                            &mut step,
-                        )?;
-                    }
-                    1..=3 => self.wait(&mut step),
-                    _ => {}
-                }
-            }
+            WALK => self.walk_on(c, unit, me, &t, reads)?,
             _ => return Err(GenieError::unsupported("an Enter state not modelled")),
         }
-        Ok(step)
+        Ok(HeadCode::Keeps)
+    }
+
+    /// State 4: a target off the action's point ([`EnterAction::target_moved`]) walks it again;
+    /// then the `MoveTo` updates ([`sub_move_to_update`] within the task's range, quiet, with
+    /// the reads' give-up; its start shows [`EnterAction::move_shown`]): codes 1 and 2 enter in
+    /// reach, a unit that entered in the walk again enters again ([`Unit::entered_again`]), else
+    /// they wait (`set_state(2)`); code 3 (a `MoveTo` that failed) walks again once (`+0x68`),
+    /// then waits; codes 4 and 5 let the target go (state 11), which is not modelled.
+    ///
+    /// # Errors
+    ///
+    /// The walk's, the walk again's, the enter's and the sprite's.
+    fn walk_on(
+        &mut self,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        t: &EnterTarget,
+        reads: &EnterReads,
+    ) -> Result<(), GenieError> {
+        let walked_again = self.target_moved(t);
+        let entered = walked_again && self.again(c, unit, t, reads)?;
+        let code = self.move_to_update(c, unit, me, t, reads)?;
+        match code {
+            // the walk again's enter put the unit inside, at the target's place: still in reach,
+            // it enters again
+            1 | 2 if entered => self.on_unit(unit, |unit| unit.entered_again(c)),
+            1 | 2 if t.in_reach => self.enter_at_once(c, unit),
+            // a failed MoveTo is none a walk again made in this update
+            3 if self.retry => {
+                self.retry = false;
+                self.again(c, unit, t, reads).map(|_| ())
+            }
+            1..=3 => self.wait(c, unit),
+            _ => Ok(()),
+        }
+    }
+
+    /// The `MoveTo`'s update ([`sub_move_to_update`]) toward the target within
+    /// [`EnterAction::walk_range`], quiet, its start showing [`EnterAction::move_shown`]; its
+    /// code.
+    ///
+    /// # Errors
+    ///
+    /// The walk's and the sprite's.
+    fn move_to_update(
+        &mut self,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        t: &EnterTarget,
+        reads: &EnterReads,
+    ) -> Result<u8, GenieError> {
+        let range = self.walk_range(t.building);
+        let id = (self.move_to == Some(MoveTo::Start))
+            .then(|| self.move_shown(t.building, reads.defaults));
+        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
+        let mut sprites = Sprites {
+            sprite: &mut unit.sprite,
+            rng: beside.sprite_rng,
+            graphics: beside.graphics,
+        };
+        let shown = id.map(|id| sprites.shown(id)).transpose()?;
+        sub_move_to_update(
+            (&mut self.move_to, &mut self.move_wait),
+            &mut walk,
+            Goal::Target(self.target),
+            (range, true),
+            (reads.waits, reads.stance),
+            shown,
+        )
     }
 
     /// The update's test of its target first (`FUN_140a87a80`): one gone, dead (state 3 or
@@ -368,35 +411,91 @@ impl EnterAction {
     }
 
     /// The update's `set_state(4)` ([`EnterAction::walk_again`]): its `MoveTo`'s teardown stops
-    /// the unit (slot 0x5d0); an enter is the caller's. A transport's order first tests that the
-    /// transport reaches within 1 of the point's tile (slot 0x3d8, `FUN_14114ffc0` with the
-    /// point truncated: `reaches`); the move itself (slot 0x340) is the caller's
-    /// ([`EnterStep::order`]). A transport that cannot reach it makes `set_state(13)`, which is
-    /// not modelled.
+    /// the unit (slot 0x5d0), then a unit in reach enters at once (`FUN_140a867b0`, then
+    /// `set_state(1)`: [`EnterAction::enter_at_once`]). A transport's code 1 sends it to the
+    /// point at once: it tests that it reaches within 1 of the point's tile (slot 0x3d8,
+    /// `FUN_14114ffc0` with the point truncated), then moves there (slot 0x340,
+    /// [`crate::world::World::move_transport`], the unit lent to the world). A transport that
+    /// cannot reach it makes `set_state(13)`, which is not modelled ([`UNREACHED`]). True when
+    /// the unit entered.
+    ///
+    /// # Errors
+    ///
+    /// The stop's, the walk again's, the enter's and the transport's.
     pub(super) fn again(
         &mut self,
-        walk: &mut Walk<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
         t: &EnterTarget,
-        (gap, speed): (f32, f32),
-        meeting: &mut impl FnMut() -> Result<([f32; 2], u8), GenieError>,
-        reaches: &mut impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, GenieError>,
-        step: &mut EnterStep,
-    ) -> Result<(), GenieError> {
+        reads: &EnterReads,
+    ) -> Result<bool, GenieError> {
         if self.move_to.is_some()
-            && let Some(m) = walk.body.mover_mut()
+            && let Some(m) = unit.body.mover_mut()
         {
             m.stop()?;
         }
-        match self.walk_again(t, gap, speed, meeting)? {
-            Walking::Enter => step.enter = true,
+        let walking = {
+            let w = &mut *c.w;
+            let (tp, target) = OthersRef::of(&w.players, c.player)
+                .find(self.target)
+                .ok_or(GenieError::unreachable(
+                    "an Enter's held target gone in its update",
+                ))?;
+            let master = target.master(&w.masters, tp)?;
+            let meeting = Meeting {
+                spatial: &w.spatial,
+                zones: &mut w.zones,
+                target,
+                master,
+                room: t.room,
+                unit,
+            };
+            self.walk_again(t, reads.start, meeting)?
+        };
+        match walking {
+            Walking::Enter => {
+                self.enter_at_once(c, unit)?;
+                return Ok(true);
+            }
             Walking::Walk(Some(at)) => {
-                if !reaches(walk, at)? {
-                    return Err(UNREACHED);
-                }
-                step.order = Some(at);
+                let target = self.target;
+                self.on_unit(unit, |unit| c.lend(unit, |w| w.move_transport(target, at)))?;
             }
             Walking::Walk(None) => {}
         }
-        Ok(())
+        Ok(false)
+    }
+
+    /// The enter at once (`FUN_140a867b0` into the target, then `set_state(1)`:
+    /// [`Unit::enter_in_update`]) on the unit's Enter: this copy written back first and read back
+    /// after ([`EnterAction::on_unit`]).
+    ///
+    /// # Errors
+    ///
+    /// The enter's.
+    fn enter_at_once(&mut self, c: &mut Step<'_>, unit: &mut Unit) -> Result<(), GenieError> {
+        let target = self.target;
+        self.on_unit(unit, |unit| unit.enter_in_update(c, target))
+    }
+
+    /// Runs `f` on `unit` with this copy of its Enter written back to it (a routine that reads or
+    /// changes the unit's Enter, or lends the unit to the world), then takes the Enter back as
+    /// `f` left it.
+    ///
+    /// # Errors
+    ///
+    /// `f`'s, or a unit whose Enter `f` took.
+    fn on_unit<R>(
+        &mut self,
+        unit: &mut Unit,
+        f: impl FnOnce(&mut Unit) -> Result<R, GenieError>,
+    ) -> Result<R, GenieError> {
+        unit.actions.set_enter(Some(*self));
+        let answer = f(unit);
+        *self = *unit
+            .actions
+            .enter()
+            .ok_or(GenieError::unreachable("an Enter gone in its own update"))?;
+        answer
     }
 }

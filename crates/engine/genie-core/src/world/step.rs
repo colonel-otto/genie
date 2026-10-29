@@ -13,7 +13,6 @@ use crate::unit_ai::AiMove;
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::{AiStart, AiWork};
 use crate::world::World;
-use crate::world::player::Player;
 
 pub(crate) struct Step<'a> {
     /// The world the update reaches (FD-045-D28): its objects by id, every player and the
@@ -176,7 +175,6 @@ pub(crate) struct Pace {
 /// The world's parts beside a walk ([`World::walk_beside`]), which an update reads and changes
 /// while its unit walks.
 pub(crate) struct Beside<'b> {
-    pub(crate) players: &'b mut Vec<Player>,
     /// The sprites' table.
     pub(crate) graphics: &'b std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     /// The Sprite stream, which a sprite the walk shows draws from.
@@ -193,7 +191,6 @@ impl World {
         me: Me,
     ) -> (Walk<'b>, Beside<'b>) {
         let Self {
-            players,
             spatial,
             pathing,
             groups,
@@ -217,7 +214,6 @@ impl World {
             }),
         };
         let beside = Beside {
-            players,
             graphics,
             sprite_rng,
         };

@@ -2,7 +2,7 @@
 //! the meeting point and the reach.
 
 use crate::GenieError;
-use crate::garrison::{EnterAction, EnterTarget, SIEGE_CLASS};
+use crate::garrison::{EnterAction, EnterTarget, NO_SPEED, SIEGE_CLASS, WalkStart};
 use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
 use crate::movement::MoveStats;
@@ -296,23 +296,22 @@ pub(crate) fn enter_reach(
 
 /// What an Enter's update reads of its target `t` (of master `tm`, with `room` for `unit`): the
 /// [`EnterTarget`] (allied: its own player's; the reach by [`enter_reach`] with the task's
-/// `range`), the footprints' gap (`FUN_14118f680`) and the unit's speed for a new `MoveTo`, and
-/// for a transport where the two meet ([`meeting_point`]; nothing the update does before its
-/// `set_state(4)` moves either, so it holds there).
-#[allow(clippy::type_complexity)]
+/// `range`), and the footprints' gap (`FUN_14118f680`) and the unit's speed for a new `MoveTo`
+/// ([`WalkStart`]).
+///
+/// # Errors
+///
+/// A unit without movement state ([`NO_SPEED`]), and what the reach does not model.
 pub(crate) fn enter_view(
     spatial: &Spatial,
-    zones: &mut crate::pathing::zones::Zones,
     masters: &[Masters],
     unit: &crate::objects::unit::Unit,
     (t, tm, room): (&crate::objects::unit::Unit, &Master, bool),
     range: f32,
-) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), GenieError>), GenieError> {
+) -> Result<(EnterTarget, WalkStart), GenieError> {
     let building = tm.kind == BUILDING;
     let mover = unit.body.mover();
-    let stats = mover.map(|m| m.stats).ok_or(GenieError::unsupported(
-        "an Enter's MoveTo of a unit without speed",
-    ))?;
+    let stats = mover.map(|m| m.stats).ok_or(NO_SPEED)?;
     let moved_at = mover.map_or_else(|| unit.position(), |m| m.moved_at);
     let target_mover = if building { None } else { t.body.mover() };
     let in_reach = enter_reach(
@@ -322,17 +321,14 @@ pub(crate) fn enter_view(
         (t.id, target_mover),
         range,
     )?;
-    let (me, them) = (
-        spatial.get(unit.id).expect("placed: in reach above"),
-        spatial.get(t.id).expect("placed: in reach above"),
-    );
-    let gap = crate::movement::footprint_gap(me.position, me.radius, them.position, them.radius);
-    let meeting = if building {
-        Ok(([t.position()[0], t.position()[1]], 0))
-    } else {
-        meeting_target(t, tm, room)
-            .and_then(|mt| meeting_point(&mt, (unit.id, unit.position(), &stats), spatial, zones))
+    let placed = |id| {
+        spatial.get(id).ok_or_else(|| {
+            GenieError::unreachable("an Enter's unit or target unplaced after its reach")
+                .with("object", id)
+        })
     };
+    let (me, them) = (placed(unit.id)?, placed(t.id)?);
+    let gap = crate::movement::footprint_gap(me.position, me.radius, them.position, them.radius);
     Ok((
         EnterTarget {
             state: t.life.state,
@@ -342,9 +338,52 @@ pub(crate) fn enter_view(
             in_reach,
             building,
         },
-        (gap, stats.speed),
-        meeting,
+        WalkStart {
+            gap,
+            speed: stats.speed,
+        },
     ))
+}
+
+/// What `FUN_140a85f30` ([`meeting`]) reads where an Enter's `set_state(4)` or its constructor
+/// meets its target: the map and its zones, the target with its master and whether it has room
+/// for the unit, and the unit.
+pub(crate) struct Meeting<'a> {
+    /// The map, its places and its terrain.
+    pub(crate) spatial: &'a Spatial,
+    /// The zone maps the shore's test reads (built on first use).
+    pub(crate) zones: &'a mut crate::pathing::zones::Zones,
+    /// The target.
+    pub(crate) target: &'a crate::objects::unit::Unit,
+    /// The target's master.
+    pub(crate) master: &'a Master,
+    /// The target has room for the unit (slot 0x198).
+    pub(crate) room: bool,
+    /// The entering unit.
+    pub(crate) unit: &'a crate::objects::unit::Unit,
+}
+
+impl Meeting<'_> {
+    /// Where the unit meets the target and the code `set_state(4)` reads: a building at its
+    /// place (code 0); a transport by [`meeting_target`] and [`meeting_point`].
+    ///
+    /// # Errors
+    ///
+    /// A unit without movement state ([`NO_SPEED`]), and what the meeting does not model.
+    pub(crate) fn point(self) -> Result<([f32; 2], u8), GenieError> {
+        let at = self.target.position();
+        if self.master.kind == BUILDING {
+            return Ok(([at[0], at[1]], 0));
+        }
+        let stats = self.unit.body.mover().map(|m| m.stats).ok_or(NO_SPEED)?;
+        let t = meeting_target(self.target, self.master, self.room)?;
+        meeting_point(
+            &t,
+            (self.unit.id, self.unit.position(), &stats),
+            self.spatial,
+            self.zones,
+        )
+    }
 }
 
 /// A transport's slot 0x3d8 (`FUN_14114ffc0`) for an Enter: whether `ship` reaches within

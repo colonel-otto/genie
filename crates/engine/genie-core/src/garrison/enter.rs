@@ -2,9 +2,10 @@
 //! transport's move.
 
 use crate::GenieError;
+use crate::garrison::meeting::Meeting;
 use crate::garrison::{
     ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, NO_MASTERS, UNPLACED, UNREACHED,
-    Walking, enter_view, ship_reaches,
+    WalkStart, Walking, enter_view, ship_reaches,
 };
 use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
@@ -231,8 +232,8 @@ impl World {
                 "an Enter into a building without room (state 11)",
             ));
         }
-        let (t, (gap, speed), meeting) = self.entering(player, idx, target, task.work_range)?;
-        let walking = action.walk_again(&t, gap, speed, &mut || meeting.clone())?;
+        let (t, start) = self.entering(player, idx, target, task.work_range)?;
+        let walking = self.enter_walk_again(player, idx, &mut action, &t, start)?;
         match walking {
             // the enter's set_state(1) reads the Enter as the unit's; a sub-action goes back
             Walking::Enter => {
@@ -258,26 +259,24 @@ impl World {
 
     /// What the Enter's start reads of unit `idx` of `player` and its target ([`enter_view`],
     /// room by slot 0x198).
-    #[allow(clippy::type_complexity)]
+    ///
+    /// # Errors
+    ///
+    /// A target the world does not place, and [`enter_view`]'s.
     pub(super) fn entering(
-        &mut self,
+        &self,
         player: usize,
         idx: usize,
         target: i32,
         range: f32,
-    ) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), GenieError>), GenieError> {
+    ) -> Result<(EnterTarget, WalkStart), GenieError> {
         let id = self.players[player].objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
         let tm = t.master(&self.masters, tp)?.clone();
         let room = self.has_room(tp, t, Some(id))?;
-        let t = match self.place(target) {
-            Some(crate::orders::Place::Live(p, i)) => &self.players[p].objects[i],
-            Some(crate::orders::Place::Sleeping(p, i)) => &self.players[p].sleeping[i],
-            None => return Err(UNPLACED),
-        };
+        let t = placed_object(&self.players, self.place(target))?;
         enter_view(
             &self.spatial,
-            &mut self.zones,
             &self.masters,
             &self.players[player].objects[idx],
             (t, &tm, room),
@@ -285,8 +284,42 @@ impl World {
         )
     }
 
-    /// `FUN_140a85f30` ([`meeting`]) for unit `idx` of `player` and its target, as the
-    /// constructor reads it ([`enter_view`]).
+    /// The start's `set_state(4)` ([`EnterAction::walk_again`]) of unit `idx` of `player`, with
+    /// what [`meeting`] reads of the world ([`Meeting`]).
+    ///
+    /// # Errors
+    ///
+    /// The walk again's.
+    ///
+    /// [`meeting`]: crate::garrison::meeting::meeting
+    pub(super) fn enter_walk_again(
+        &mut self,
+        player: usize,
+        idx: usize,
+        action: &mut EnterAction,
+        t: &EnterTarget,
+        start: WalkStart,
+    ) -> Result<Walking, GenieError> {
+        let (tp, target) = self.object(action.target).ok_or(UNPLACED)?;
+        let master = target.master(&self.masters, tp)?.clone();
+        let target = placed_object(&self.players, self.place(action.target))?;
+        let meeting = Meeting {
+            spatial: &self.spatial,
+            zones: &mut self.zones,
+            target,
+            master: &master,
+            room: t.room,
+            unit: &self.players[player].objects[idx],
+        };
+        action.walk_again(t, start, meeting)
+    }
+
+    /// `FUN_140a85f30` ([`meeting`], [`Meeting::point`]) for unit `idx` of `player` and its
+    /// target, as the constructor reads it: room by slot 0x198.
+    ///
+    /// # Errors
+    ///
+    /// A target the world does not place, and the meeting's.
     ///
     /// [`meeting`]: crate::garrison::meeting::meeting
     pub(super) fn enter_meeting(
@@ -295,7 +328,20 @@ impl World {
         idx: usize,
         target: i32,
     ) -> Result<([f32; 2], u8), GenieError> {
-        self.entering(player, idx, target, 0.0)?.2
+        let id = self.players[player].objects[idx].id;
+        let (tp, t) = self.object(target).ok_or(UNPLACED)?;
+        let master = t.master(&self.masters, tp)?.clone();
+        let room = self.has_room(tp, t, Some(id))?;
+        let target = placed_object(&self.players, self.place(target))?;
+        Meeting {
+            spatial: &self.spatial,
+            zones: &mut self.zones,
+            target,
+            master: &master,
+            room,
+            unit: &self.players[player].objects[idx],
+        }
+        .point()
     }
 
     /// The transport's part of the Enter's `set_state(4)` with code 1: its slot 0x3d8
@@ -458,5 +504,21 @@ impl World {
         b.firepower += firepower;
         b.garrison.push(id);
         Ok(())
+    }
+}
+
+/// The live or sleeping object at `place` among `players` ([`World::place`]).
+///
+/// # Errors
+///
+/// [`UNPLACED`] for an object the world does not place.
+fn placed_object(
+    players: &[crate::world::Player],
+    place: Option<crate::orders::Place>,
+) -> Result<&crate::objects::unit::Unit, GenieError> {
+    match place {
+        Some(crate::orders::Place::Live(p, i)) => Ok(&players[p].objects[i]),
+        Some(crate::orders::Place::Sleeping(p, i)) => Ok(&players[p].sleeping[i]),
+        None => Err(UNPLACED),
     }
 }

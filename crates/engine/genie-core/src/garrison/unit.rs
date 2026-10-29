@@ -5,7 +5,7 @@ use crate::gathering::gather::unit::give_load;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
-use crate::movement::move_to::{MoveDefaults, MoveTo, Sprites, SubMover};
+use crate::movement::move_to::{MoveDefaults, MoveTo, Sprites};
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
@@ -24,33 +24,49 @@ fn units_inside(others: OthersRef<'_>, id: i32) -> usize {
 }
 
 impl Unit {
-    /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads of its
-    /// target, one of its own player's (another player's is not modelled): room for the unit (its
-    /// count, the units of the player inside it, plus 1 within its master's capacity) and the
-    /// rest of [`crate::garrison::enter_view`]; a transport's reach test is
-    /// [`crate::garrison::ship_reaches`]. Then its step: the enter (`FUN_140a867b0`) and the
-    /// update's `set_state(1)`, with an enter again ([`crate::garrison::EnterStep::again`]); a
-    /// wait's standing sprite; the transport's move at once ([`crate::world::World::ship_move`], the
-    /// unit lent to the world).
-    pub(crate) fn enter_update(
-        &mut self,
-        c: &mut Step<'_>,
-        me: Me,
-    ) -> Result<HeadCode, GenieError> {
-        let enter = self
-            .actions
-            .enter()
-            .copied()
-            .expect("checked by the caller");
-        let found = OthersRef::of(&c.w.players, c.player).find(enter.target);
-        let (building, walking, meeting) = match found {
+    /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads as it
+    /// starts ([`Unit::enter_reads`]), on the Enter copied out of the action list and put back
+    /// after it; its code (1, an Enter that got the unit in and the unit out again before this
+    /// update, or a failed one's 3 delete it, its destructor letting its building go). Nothing
+    /// without an Enter.
+    ///
+    /// # Errors
+    ///
+    /// The reads' and the update's.
+    pub(crate) fn enter_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
+        let Some(mut enter) = self.actions.enter().copied() else {
+            return Ok(HeadCode::Keeps);
+        };
+        let reads = self.enter_reads(c, &enter)?;
+        let updated = enter.update(c, self, me, &reads);
+        if let Some(e) = self.actions.enter_mut() {
+            *e = enter;
+        }
+        updated
+    }
+
+    /// What the Enter's update reads as it starts: its target, one of its own player's or an
+    /// ally's (another player's is not modelled), with room for the unit (its count, the units
+    /// of the player inside it, below its master's capacity) and the rest of
+    /// [`crate::garrison::enter_view`]; the `MoveTo`'s give-up (a human player's villager waits,
+    /// by its unit AI's stance) and the sprites its constructors take for none
+    /// (`FUN_140aa0d30`, `FUN_140aa0df0`).
+    ///
+    /// # Errors
+    ///
+    /// The target's master's and [`crate::garrison::enter_view`]'s.
+    fn enter_reads(
+        &self,
+        c: &Step<'_>,
+        enter: &crate::garrison::EnterAction,
+    ) -> Result<crate::garrison::EnterReads, GenieError> {
+        let others = OthersRef::of(&c.w.players, c.player);
+        let (target, start) = match others.find(enter.target) {
             Some((tp, t)) => {
                 let master = t.master(&c.w.masters, tp)?;
-                let room = units_inside(OthersRef::of(&c.w.players, c.player), t.id)
-                    < usize::from(master.garrison);
-                let (mut view, walking, meeting) = crate::garrison::enter_view(
+                let room = units_inside(others, t.id) < usize::from(master.garrison);
+                let (mut view, start) = crate::garrison::enter_view(
                     &c.w.spatial,
-                    &mut c.w.zones,
                     &c.w.masters,
                     self,
                     (t, master, room),
@@ -64,84 +80,45 @@ impl Unit {
                         tp,
                         true,
                     );
-                (Some(view), walking, meeting)
+                (Some(view), start)
             }
-            None => (None, (0.0, 0.0), Ok(([0.0; 2], 0))),
-        };
-        // the MoveTo's give-up waits for a human player's villager (by its unit AI's stance)
-        let villager = self
-            .master(&c.w.masters, c.player)
-            .is_ok_and(|m| m.class == 4);
-        let (waits, stance) = (
-            villager && !c.w.players[c.player].computer,
-            self.ai.as_ref().map_or(0, |ai| ai.stance),
-        );
-        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-        let defaults = self.master(&c.w.masters, c.player).map_or_else(
-            |_| MoveDefaults::default(),
-            |m| MoveDefaults::of(m, self.abilities.look.as_ref()),
-        );
-        let (p, pace) = (c.player, c.pace());
-        let enter_action = self.actions.enter_mut().expect("checked above");
-        let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
-        let ship = OthersRef::of(beside.players, p)
-            .find(enter.target)
-            .map(|(_, t)| t);
-        let step = enter_action.update(
-            walk,
-            building,
-            walking,
-            || meeting.clone(),
-            |w, to| {
-                let (Some(ship), Some(plan)) = (ship, w.plan.as_mut()) else {
-                    return Ok(false);
-                };
-                crate::garrison::ship_reaches(ship, w.world, plan, to)
-            },
-            SubMover {
-                waits,
-                stance,
-                defaults,
-                sprites: Sprites {
-                    sprite: &mut self.sprite,
-                    rng: beside.sprite_rng,
-                    graphics: beside.graphics,
+            None => (
+                None,
+                crate::garrison::WalkStart {
+                    gap: 0.0,
+                    speed: 0.0,
                 },
-            },
-        )?;
-        if let Some(to) = step.order {
-            // the transport's slot 0x340 within the update, the unit lent for what it lets go
-            c.lend(self, |w| w.ship_move(enter.target, to))?;
-        }
-        if step.waits {
-            self.shows_standing_sprite(
-                c.w.masters.get(c.player),
-                &c.w.graphics,
-                c.w.streams.get(Stream::Sprite),
-            )?;
-        }
-        if step.enter {
-            self.enter_in_update(c, enter.target, step.again)?;
-        }
-        // its 1 (an Enter that got the unit in, the unit out again before this update) or a
-        // failed one's 3 deletes it, its destructor letting its building go
-        Ok(HeadCode::ended(step.done))
+            ),
+        };
+        let master = self.master(&c.w.masters, c.player);
+        let villager = master.as_ref().is_ok_and(|m| m.class == 4);
+        Ok(crate::garrison::EnterReads {
+            target,
+            start,
+            waits: villager && !c.w.players[c.player].computer,
+            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            defaults: master.map_or_else(
+                |_| MoveDefaults::default(),
+                |m| MoveDefaults::of(m, self.abilities.look.as_ref()),
+            ),
+        })
     }
 
     /// The Enter's enter in its update (`FUN_140a867b0` into `target`, [`Unit::enter_building`],
-    /// then the update's own `set_state(1)`; `again` an enter again,
-    /// [`crate::garrison::EnterStep::again`]): the load the building took goes to the owner, the
+    /// then the update's own `set_state(1)`): the load the building took goes to the owner, the
     /// building gains the unit and its firepower at once, and the unit group it left is the
     /// caller's ([`Step::left_group`]).
-    fn enter_in_update(
+    pub(crate) fn enter_in_update(
         &mut self,
         c: &mut Step<'_>,
         target: i32,
-        again: bool,
     ) -> Result<(), GenieError> {
-        let (tp, building) = OthersRef::of(&c.w.players, c.player)
-            .find(target)
-            .expect("the update found it");
+        let (tp, building) =
+            OthersRef::of(&c.w.players, c.player)
+                .find(target)
+                .ok_or(GenieError::unreachable(
+                    "an Enter's enter without the target its update held",
+                ))?;
         let inside = units_inside(OthersRef::of(&c.w.players, c.player), target);
         let mut adds = Vec::new();
         let mut w = EnterWorld {
@@ -167,16 +144,6 @@ impl Unit {
         }
         // the update's own set_state(1) after the enter's
         self.entered(&mut w)?;
-        if again {
-            // FUN_140a867b0 on the unit inside: notify 0x1fa and its set_state(1), then the
-            // update's
-            self.post_own(
-                crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
-                [ActionKind::Enter.value(), 0, 0],
-            )?;
-            self.entered(&mut w)?;
-            self.entered(&mut w)?;
-        }
         let firepower = w.firepower;
         c.left_group = w.left_group.map(|g| (g, target));
         // the load the building took, the owner's within the enter (nothing after it in the
@@ -186,6 +153,28 @@ impl Unit {
         if let Some((_, b)) = c.w.object_mut(target) {
             b.firepower += firepower;
             b.garrison.push(self.id);
+        }
+        Ok(())
+    }
+
+    /// `FUN_140a867b0` on a unit inside its target already (the update's walk again put it in):
+    /// notify 0x1fa with the enter action value and its `set_state(1)`, then the update's own
+    /// `set_state(1)` ([`Unit::set_entered`] twice).
+    ///
+    /// # Errors
+    ///
+    /// The notify's and the `set_state(1)`'s.
+    pub(crate) fn entered_again(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
+        self.post_own(
+            crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
+            [ActionKind::Enter.value(), 0, 0],
+        )?;
+        for _ in 0..2 {
+            self.set_entered(
+                c.w.masters.get(c.player),
+                &c.w.graphics,
+                c.w.streams.get(Stream::Sprite),
+            )?;
         }
         Ok(())
     }
@@ -336,6 +325,21 @@ impl Unit {
     /// sprite ([`Unit::shows_standing_sprite`]) and, the Enter not being quiet, its unit AI gets
     /// notify 0x1f9 with the enter action value.
     pub(crate) fn entered(&mut self, w: &mut EnterWorld<'_>) -> Result<(), GenieError> {
+        self.set_entered(w.masters, w.graphics, w.sprite_rng)
+    }
+
+    /// [`Unit::entered`] with the owner's masters, the sprites' table and the Sprite stream its
+    /// standing sprite reads.
+    ///
+    /// # Errors
+    ///
+    /// A unit without its Enter, and the stop's, the sprite's and the notify's.
+    pub(crate) fn set_entered(
+        &mut self,
+        masters: Option<&Masters>,
+        graphics: &std::collections::BTreeMap<i16, Graphic>,
+        sprite_rng: &mut Well512,
+    ) -> Result<(), GenieError> {
         let enter = self
             .actions
             .enter_mut()
@@ -346,7 +350,7 @@ impl Unit {
             m.stop()?;
         }
         enter.state = crate::garrison::ENTERED;
-        self.shows_standing_sprite(w.masters, w.graphics, w.sprite_rng)?;
+        self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         self.post_own(
             crate::unit_ai::ai_kinds::NOTIFY_ACTION_FAILED,
             [ActionKind::Enter.value(), 0, 0],

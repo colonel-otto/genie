@@ -435,7 +435,7 @@ impl Unit {
         };
         let own = self.actions.take_enter();
         self.actions.set_enter(Some(e));
-        let updated = self.enter_update(c, me);
+        let updated = self.enter_part(c, me);
         let mut after = self.actions.take_enter();
         self.actions.set_enter(own);
         if updated? == HeadCode::Deletes

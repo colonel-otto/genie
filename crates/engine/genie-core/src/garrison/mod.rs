@@ -35,12 +35,12 @@ pub use self::takes_in::{class_has_flags, garrison_type_takes, is_garrison_task}
 use self::unload::NO_POINT;
 #[cfg(test)]
 use self::unload::unload_group_takes;
-pub use self::walk_in::{ENTER, ENTERED, EnterAction, EnterStep, EnterTarget, FAILED, Walking};
-pub(crate) use self::walk_in::{SIEGE_CLASS, SIEGE_UNLOAD};
+pub use self::walk_in::{ENTER, ENTERED, EnterAction, EnterTarget, FAILED, WalkStart, Walking};
+pub(crate) use self::walk_in::{EnterReads, NO_SPEED, SIEGE_CLASS, SIEGE_UNLOAD};
 #[cfg(test)]
 use self::walk_in::{WAIT, WALK};
 #[cfg(test)]
-use crate::movement::move_to::{MoveTo, Walk};
+use crate::movement::move_to::MoveTo;
 #[cfg(test)]
 use crate::objects::masters::{Master, Masters, Task};
 #[cfg(test)]
