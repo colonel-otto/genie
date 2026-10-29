@@ -3048,6 +3048,10 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
         stop,
         Some("a computer player's AI hearing its unit's alert (slot 0x2e8, then slot 0x3c8)")
     );
+    // the list holds the Transport as the update left it before the error (idle), which the
+    // stop's context reads
+    let tr = t.object(200).unwrap().1.actions.transport().copied();
+    assert_eq!(tr.map(|tr| tr.state), Some(transport::IDLE));
     let done = |tr: &mut transport::TransportAction| tr.state = transport::DONE;
     let t = transport_ticked([10.5, 10.5], [17.5, 10.5], done);
     let ship = t.object(200).unwrap().1;

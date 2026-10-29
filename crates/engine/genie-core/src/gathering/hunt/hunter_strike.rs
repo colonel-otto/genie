@@ -49,10 +49,12 @@ impl Unit {
         )?;
         let r = self.hunt_reads(c, master, &hunt, herd, tree_lost);
         let mut f = Fight { victim, own };
-        let next = hunt.update(c, self, me, &mut f, &r)?;
+        // written back before an error too: the stop's context reads the list
+        let next = hunt.update(c, self, me, &mut f, &r);
         if let Some(h) = self.actions.hunt_mut() {
             *h = hunt;
         }
+        let next = next?;
         // the retaliation's kill of the unit itself, which follows its step
         if let Some(k) = self.hit_back(f.own)? {
             file_kill(c, KillLeft::own(self.id, k))?;

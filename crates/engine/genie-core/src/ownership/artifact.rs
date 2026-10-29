@@ -546,11 +546,12 @@ impl Unit {
             searches: !(self.combat && capture == Some(0)),
             by,
         };
-        let new = artifact.update(c, self, me, &r)?;
+        // written back before an error too: the stop's context reads the list
+        let new = artifact.update(c, self, me, &r);
         if let Some(own) = self.actions.artifact_mut() {
             *own = artifact;
         }
-        Ok(new)
+        new
     }
 
     /// The handover the Artifact's check found: to a new owner its capture

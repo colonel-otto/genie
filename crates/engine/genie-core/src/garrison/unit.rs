@@ -209,11 +209,12 @@ impl Unit {
             move_sprite,
             standing: c.w.graphics.get(&master.standing_sprite).copied(),
         };
-        let code = t.update(c, self, me, &reads)?;
+        // written back before an error too: the stop's context reads the list
+        let code = t.update(c, self, me, &reads);
         if let Some(own) = self.actions.transport_mut() {
             *own = t;
         }
-        Ok(HeadCode::of(code))
+        Ok(HeadCode::of(code?))
     }
 
     /// The Transport's slot 8 on a move to `point` ([`crate::garrison::transport::TransportAction::move_to`])

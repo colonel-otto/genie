@@ -88,10 +88,12 @@ impl Unit {
         ))?;
         let own = own.ok_or(crate::world::ATTACKER_MASTER)?;
         let mut f = Fight { victim, own };
-        let code = attack.update(c, self, me, &mut f, &r)?;
+        // written back before an error too: the stop's context reads the list
+        let code = attack.update(c, self, me, &mut f, &r);
         if let Some(a) = self.actions.attack_mut() {
             *a = attack;
         }
+        let code = code?;
         // the retaliation's kill of the unit itself, which follows its step
         if let Some(k) = self.hit_back(f.own)? {
             file_kill(c, KillLeft::own(self.id, k))?;

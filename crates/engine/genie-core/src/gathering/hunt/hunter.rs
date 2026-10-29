@@ -191,10 +191,11 @@ impl Unit {
             villager: master.class == 4,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
-        let dropped = hunt.update_drop(c, self, me, site, who)?;
+        let dropped = hunt.update_drop(c, self, me, site, who);
         if let Some(h) = self.actions.hunt_mut() {
             *h = hunt;
         }
+        let dropped = dropped?;
         match dropped {
             crate::gathering::hunt::Dropped::Going => {}
             crate::gathering::hunt::Dropped::Load(kind, amount) => {
@@ -253,10 +254,11 @@ impl Unit {
             villager: master.class == 4,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
-        let walked = hunt.update_point_walk(c, self, me, who)?;
+        let walked = hunt.update_point_walk(c, self, me, who);
         if let Some(h) = self.actions.hunt_mut() {
             *h = hunt;
         }
+        let walked = walked?;
         match walked {
             crate::gathering::hunt::PointWalk::Walking => {}
             crate::gathering::hunt::PointWalk::Search => self.hunt_search_state(c)?,
