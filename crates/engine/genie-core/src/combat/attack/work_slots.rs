@@ -2,11 +2,12 @@
 //! (`set_target_obj`).
 
 use crate::combat::attack::{
-    Attack, BUILDING, CLASS_60, NO_OBJECT_STREAM, SWING, Strike, reset_sprite,
+    Attack, AttackReads, BUILDING, CLASS_60, Fight, Ground, NO_OBJECT_STREAM, SWING, reset_sprite,
+    set_walker_anim,
 };
 use crate::movement::footprint_gap;
-use crate::movement::move_to::Walk;
 use crate::objects::sprite::new_sprite;
+use crate::objects::unit::Unit;
 use crate::{GenieError, combat::damage};
 
 /// An object as the Attack's slot 9 ([`Attack::work`]) and slot 0x68 ([`Attack::set_target`])
@@ -69,19 +70,21 @@ impl Attack {
     /// [`engagement`]: crate::combat::attack::constructor::engagement
     pub(super) fn set_swing(
         &mut self,
-        walk: &mut Walk<'_>,
-        s: &mut Strike<'_>,
+        unit: &mut Unit,
+        g: &mut Ground<'_>,
+        f: &Fight,
+        r: &AttackReads,
     ) -> Result<(), GenieError> {
-        self.enter(SWING, walk)?;
-        let alternates = walk
+        self.enter(SWING, unit)?;
+        let alternates = unit
             .body
             .mover()
             .is_some_and(|m| m.stats.move_algorithm & 1 != 0);
-        let special = s
+        let special = r
             .swing_sprites
             .special
-            .filter(|_| 70 <= s.own.kind && damage::charge_hit(&s.own.source, s.victim));
-        let chosen = if let Some(look) = s.swing_sprites.look {
+            .filter(|_| 70 <= f.own.kind && damage::charge_hit(&f.own.source, &f.victim));
+        let chosen = if let Some(look) = r.swing_sprites.look {
             Some(look)
         } else if let Some(special) = special {
             Some(special)
@@ -91,11 +94,7 @@ impl Attack {
                     "an attacker with a second attack sprite (its draw)",
                 ));
             }
-            let object = walk
-                .plan
-                .as_mut()
-                .map(|p| &mut *p.object)
-                .ok_or(NO_OBJECT_STREAM)?;
+            let object = g.object_rng.as_deref_mut().ok_or(NO_OBJECT_STREAM)?;
             if object.below_checked(2) == 0 {
                 self.arms.sprite
             } else {
@@ -104,22 +103,30 @@ impl Attack {
         } else {
             self.arms.sprite
         };
-        let g = chosen.or(s.standing).ok_or(GenieError::unsupported(
+        let shown = chosen.or(r.standing).ok_or(GenieError::unsupported(
             "an attacker without an attack or standing sprite",
         ))?;
-        new_sprite(s.sprite, walk.body.move_stats_mut(), g, s.sprite_rng);
+        new_sprite(
+            &mut unit.sprite,
+            unit.body.move_stats_mut(),
+            shown,
+            g.sprite_rng,
+        );
         // FUN_1413b9f00 on the unit's sprite list with its sprite (`+0x140`)
-        if let Some(current) = s.sprite.map(|sp| sp.graphic) {
-            let _ = reset_sprite(s.sprite, current);
+        if let Some(current) = unit.sprite.map(|sp| sp.graphic) {
+            let _ = reset_sprite(&mut unit.sprite, current);
         }
         self.pending = true;
-        let length = f32::from(g.frames) * g.frame_duration;
-        self.rest = s.reload - length;
-        walk.set_anim_speed(if self.rest < 0.0 && 0.0 < s.reload {
-            length / s.reload
-        } else {
-            1.0
-        });
+        let length = f32::from(shown.frames) * shown.frame_duration;
+        self.rest = r.reload - length;
+        set_walker_anim(
+            &mut unit.body,
+            if self.rest < 0.0 && 0.0 < r.reload {
+                length / r.reload
+            } else {
+                1.0
+            },
+        );
         Ok(())
     }
 

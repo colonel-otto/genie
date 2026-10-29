@@ -1,12 +1,9 @@
 //! An attack's start, a hunt's and an action's retarget.
 
 use crate::GenieError;
-use crate::combat::attack::{Attack, Strike, SwingSprites};
-use crate::combat::damage::Victim;
+use crate::combat::attack::{Attack, AttackReads, Fight, Ground};
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::Walk;
-use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::BUILDING;
 use crate::unit_ai::ActionKind;
@@ -27,81 +24,26 @@ pub(super) struct Aim {
     pub(super) aimed_class: i32,
 }
 
-/// What the attack task's swing at its start reads of the attacker ([`ready_at_start`]).
-pub(super) struct StartStrike {
-    pub(super) standing: Graphic,
-    pub(super) volleys: bool,
-    pub(super) reload: f32,
-    pub(super) hit_chance: i16,
-    pub(super) swing_sprites: SwingSprites,
-    pub(super) computer: bool,
-    pub(super) world_time: u32,
-    pub(super) own: Victim,
-}
-
 /// The attack task's Attack in reach of a unit that cannot move goes ready at its start
-/// (`set_state(6)`, [`Attack::enter_ready`]) with a walk of no time and no planning; a swing it
-/// would start then (a hit, a missile or a notify) is not modelled.
+/// (`set_state(6)`, [`Attack::enter_ready`]) on the map without the Object stream, with what
+/// the swing reads of the attacker (`r`) and its target and itself as combat objects (`f`); a
+/// swing it would start then (a notify) is not modelled.
 pub(super) fn ready_at_start(
     attack: &mut Attack,
     unit: &mut Unit,
-    spatial: &mut Spatial,
-    sprite_rng: &mut Well512,
-    start: StartStrike,
-    victim: &mut Victim,
+    (map, sprite_rng): (&Spatial, &mut Well512),
+    r: &AttackReads,
+    f: &Fight,
 ) -> Result<(), GenieError> {
-    let me = crate::movement::Me {
-        id: unit.id,
-        group: unit.group.id,
-        action_state: crate::combat::attack::READY,
-    };
-    let ai = unit.ai.as_ref();
-    let can_move = ai.is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1);
-    let stance = ai.map_or(0, |ai| ai.stance);
-    let state_position = ai.map_or([0.0; 2], |ai| ai.state_position);
-    let queue_empty = ai.is_some_and(|ai| ai.orders.is_empty());
-    let ai_order = ai.map(|ai| ai.current_order);
-    let ai_type = ai.map(|ai| ai.ai_type);
-    let walk = Walk {
-        body: &mut unit.body,
-        me,
-        dt: 0.0,
-        world: spatial,
-        plan: None,
-    };
-    let mut blasted = Vec::new();
-    let mut strike = Strike {
-        sprite: &mut unit.sprite,
-        standing: Some(start.standing),
-        volleys: start.volleys,
-        attack_timer: &mut unit.attack_timer,
-        reload_worldtime: &mut unit.reload_worldtime,
-        reload: start.reload,
-        hit_chance: start.hit_chance,
-        victim,
-        blasted: &mut blasted,
+    let mut posted = Vec::new();
+    let mut g = Ground {
+        map,
         sprite_rng,
-        own: start.own,
-        executed: None,
-        fire: None,
-        can_move,
-        stance,
-        state_position,
-        posted: Vec::new(),
-        queue_empty,
-        world_time: start.world_time,
-        ai_order,
-        ai_type,
-        computer: start.computer,
-        armed: true,
-        volley_under_way: unit.next_volley != 0,
-        let_go: None,
-        forgets: false,
-        sends_home: false,
-        swing_sprites: start.swing_sprites,
+        object_rng: None,
+        buffer: Some(&mut posted),
     };
-    attack.enter_ready(walk, &mut strike)?;
-    if strike.executed.is_some() || strike.fire.is_some() || !strike.posted.is_empty() {
+    attack.enter_ready(unit, &mut g, f, r)?;
+    if !posted.is_empty() {
         return Err(GenieError::unsupported(
             "an attack task's swing at its start",
         ));
@@ -158,33 +100,25 @@ impl World {
         let visible = self.spatial.sees_tile(player, tx, ty)
             || (aim.fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
         let u = &self.players[player].objects[idx];
-        let start = StartStrike {
-            standing,
-            volleys: self
-                .masters
-                .get(player)
-                .is_some_and(|m| crate::combat::attack::volleys(master, m)),
-            reload: u.reload_stinger + (master.reload - u.reload_powerup),
-            hit_chance: master.hit_chance,
-            swing_sprites: crate::combat::attack::swing_sprites(
-                u.abilities.look.as_ref(),
-                master,
-                &self.graphics,
-            ),
-            computer: self.players[player].computer,
-            world_time,
-            own: crate::combat::victims::victim_of(
-                u,
-                master,
-                &self.players[player].attributes,
-                player,
-                self.spatial.terrain.as_ref(),
-                self.mode_680,
-            ),
-        };
-        let mut victim = self.victim(target, player).ok_or(GenieError::unsupported(
+        let reads = AttackReads::of(
+            u,
+            master,
+            (self.masters.get(player), &self.graphics),
+            u.ai.as_ref(),
+            (self.players[player].computer, world_time),
+        );
+        let own = crate::combat::victims::victim_of(
+            u,
+            master,
+            &self.players[player].attributes,
+            player,
+            self.spatial.terrain.as_ref(),
+            self.mode_680,
+        );
+        let victim = self.victim(target, player).ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         ))?;
+        let fight = Fight { victim, own };
         let speed = self.players[player].objects[idx]
             .body
             .mover()
@@ -223,7 +157,7 @@ impl World {
             (visible, aim.owner),
             mover,
         )?;
-        let mut attack = self.settle_command(player, idx, commanded, start, &mut victim)?;
+        let mut attack = self.settle_command(player, idx, commanded, (&reads, &fight))?;
         attack.target2 = target;
         self.players[player].objects[idx]
             .actions
@@ -235,15 +169,15 @@ impl World {
     /// The attack task's Attack of object `idx` of `player` as its command left it
     /// ([`Attack::command`]): readyToAttack's failure before the start runs the animation at
     /// speed 1; the start's notifies go to the unit AI; a unit that cannot move fails out of
-    /// reach ([`Attack::fail_at_start`]) or goes ready in it ([`ready_at_start`]); a `MoveTo`
-    /// that starts arrived shows the standing sprite at its speed (`0x140aa29e0`).
+    /// reach ([`Attack::fail_at_start`]) or goes ready in it ([`ready_at_start`], with what the
+    /// swing reads: `start`); a `MoveTo` that starts arrived shows the standing sprite at its
+    /// speed (`0x140aa29e0`).
     pub(super) fn settle_command(
         &mut self,
         player: usize,
         idx: usize,
         commanded: crate::combat::attack::Commanded,
-        start: StartStrike,
-        victim: &mut Victim,
+        (reads, fight): (&AttackReads, &Fight),
     ) -> Result<Attack, GenieError> {
         let crate::combat::attack::Commanded {
             mut attack,
@@ -273,14 +207,7 @@ impl World {
         }
         if ready {
             let sprite_rng = self.streams.get(Stream::Sprite);
-            ready_at_start(
-                &mut attack,
-                unit,
-                &mut self.spatial,
-                sprite_rng,
-                start,
-                victim,
-            )?;
+            ready_at_start(&mut attack, unit, (&self.spatial, sprite_rng), reads, fight)?;
         }
         if arrived {
             // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): slot 0x68 with the

@@ -529,4 +529,23 @@ impl Unit {
             .as_mut()
             .map_or(Ok(()), |ai| ai.post(Notify::own(id, kind, p), state))
     }
+
+    /// The units in the way the motion step told the unit AI of ([`crate::unit_ai::IN_THE_WAY`],
+    /// [`crate::movement::Mover::in_the_way`]), posted at once in their order (slot 0x328: the
+    /// walker is in state 2).
+    ///
+    /// # Errors
+    ///
+    /// The notifies'.
+    pub(crate) fn post_in_the_way(&mut self) -> Result<(), GenieError> {
+        let in_the_way = self
+            .body
+            .mover_mut()
+            .map(|m| std::mem::take(&mut m.in_the_way))
+            .unwrap_or_default();
+        for id in in_the_way {
+            self.post_own(crate::unit_ai::IN_THE_WAY, [id, -1, -1])?;
+        }
+        Ok(())
+    }
 }

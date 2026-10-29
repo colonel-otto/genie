@@ -328,7 +328,7 @@ impl GatherAction {
                 };
                 let to = (goal, range, true);
                 let walked = start_walk_shown(walk, to, PathAsk::default(), Some(shown))?;
-                Self::post_in_the_way(unit)?;
+                unit.post_in_the_way()?;
                 match walked {
                     Some(state) => self.move_to = Some(state),
                     None => self.give_up(r),
@@ -345,7 +345,7 @@ impl GatherAction {
                 }
                 me.action_state = self.state;
                 let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
-                Self::post_in_the_way(unit)?;
+                unit.post_in_the_way()?;
                 match walked {
                     Some(m) => self.move_to = Some(m),
                     None => self.give_up(r),
@@ -362,24 +362,6 @@ impl GatherAction {
             }
             _ => Ok(()),
         }
-    }
-
-    /// The units in the way the motion step told the unit AI of ([`crate::unit_ai::IN_THE_WAY`]),
-    /// posted at once.
-    ///
-    /// # Errors
-    ///
-    /// The notifies'.
-    pub(super) fn post_in_the_way(unit: &mut Unit) -> Result<(), GenieError> {
-        let in_the_way = unit
-            .body
-            .mover_mut()
-            .map(|m| std::mem::take(&mut m.in_the_way))
-            .unwrap_or_default();
-        for id in in_the_way {
-            unit.post_own(crate::unit_ai::IN_THE_WAY, [id, -1, -1])?;
-        }
-        Ok(())
     }
 
     /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]; quiet). The

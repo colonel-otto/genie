@@ -1530,6 +1530,28 @@ impl WalkRig {
     }
 }
 
+/// [`WalkRig::on_the_path`] as a world for an action's update on the step: Gaia and `owner` as
+/// player 1, whose first object is the builder 9177 in state 2 (no pasture) on its path toward
+/// house 10028, on the open tiles of [`tiled_world`] with the pather's mesh.
+pub(crate) fn path_world(owner: crate::world::Player) -> crate::world::World {
+    let players = vec![crate::world::Player::default(), owner];
+    let mut t = crate::world::World::new(0, 0, 0, vec![0; 2], players);
+    t.spatial = tiled_world(vec![4; 120 * 120]);
+    t.pathing.start_mesh(120);
+    let mut mover = builder_9177().placed([28.0, 89.0, 0.0]);
+    mover.move_to_point = Some([30.0, 88.0, 0.0]);
+    let mut unit = Unit {
+        id: 9177,
+        pasture: -1,
+        my_pasture: -1,
+        body: crate::objects::layers::Body::new(mover.position(), None, Some(mover)),
+        ..Unit::default()
+    };
+    unit.life.state = 2;
+    t.players[1].objects.push(unit);
+    t
+}
+
 /// One tick of the walker: the velocity step, then the motion step from where it got.
 fn tick(m: &mut Mover, at: [f32; 3], world: &mut Spatial) -> ([f32; 3], Motion) {
     let at = m.step_velocity(at, DT, world.map, None, (0, None));

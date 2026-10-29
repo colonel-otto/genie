@@ -3,11 +3,12 @@
 
 use crate::GenieError;
 use crate::combat::attack::{
-    Attack, FAILED, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE, READY, Readiness,
-    SHORT_RANGE_GAP, Strike, face_target,
+    Attack, AttackReads, FAILED, Fight, Ground, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE,
+    NONE, READY, Readiness, SHORT_RANGE_GAP, face_target,
 };
-use crate::movement::move_to::Walk;
-use crate::movement::{Mover, footprint_gap};
+use crate::math::rng::Well512;
+use crate::movement::footprint_gap;
+use crate::objects::unit::Unit;
 
 impl Attack {
     /// `set_state(6)` (case 6): with a target or a point (`+0x38` not −1, `UCOMISS`: a NaN one
@@ -19,21 +20,22 @@ impl Attack {
     /// 0x1fa with 600 (the action completed) and ends (`set_state` 1, [`Attack::finish`]).
     pub(super) fn ready(
         &mut self,
-        walk: &mut Walk<'_>,
-        s: &mut Strike<'_>,
+        unit: &mut Unit,
+        g: &mut Ground<'_>,
+        f: &Fight,
+        r: &AttackReads,
     ) -> Result<(), GenieError> {
-        self.enter(READY, walk)?;
+        self.enter(READY, unit)?;
         if self.target == -1 && self.point[0] == NONE {
             if !self.sub_action {
-                s.posted
-                    .push((crate::unit_ai::ACTION_COMPLETED, [600, 0, 0]));
+                g.post(unit, crate::unit_ai::ACTION_COMPLETED, [600, 0, 0])?;
             }
-            return self.finish(walk, s);
+            return self.finish(unit, g.sprite_rng);
         }
-        match self.ready_to_attack(&mut walk.reborrow(), s, false)? {
-            Readiness::Ready => self.set_swing(walk, s),
+        match self.ready_to_attack(unit, g, f, r, false)? {
+            Readiness::Ready => self.set_swing(unit, g, f, r),
             Readiness::Waiting => Ok(()),
-            Readiness::Away(gap) => self.follow(walk, s, gap),
+            Readiness::Away(gap) => self.follow(unit, g.sprite_rng, f, gap),
         }
     }
 
@@ -42,13 +44,14 @@ impl Attack {
     /// master's weapon range).
     pub(super) fn follow(
         &mut self,
-        walk: &mut Walk<'_>,
-        s: &mut Strike<'_>,
+        unit: &mut Unit,
+        sprite_rng: &mut Well512,
+        f: &Fight,
         gap: f32,
     ) -> Result<(), GenieError> {
-        self.enter(MOVE, walk)?;
-        if self.moving(s.own.source.weapon_range, gap) {
-            self.arrived_sprite(s, walk.body.mover_mut())?;
+        self.enter(MOVE, unit)?;
+        if self.moving(f.own.source.weapon_range, gap) {
+            self.arrived_sprite(unit, sprite_rng)?;
         }
         Ok(())
     }
@@ -75,69 +78,70 @@ impl Attack {
     /// [`crate::movement::gate_gap`]).
     pub(super) fn ready_to_attack(
         &mut self,
-        walk: &mut Walk<'_>,
-        s: &mut Strike<'_>,
+        unit: &mut Unit,
+        g: &mut Ground<'_>,
+        f: &Fight,
+        r: &AttackReads,
         skip_ready: bool,
     ) -> Result<Readiness, GenieError> {
-        let t = *walk
-            .world
+        let t = *g
+            .map
             .get_known(self.target)?
             .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
-        let speed = walk
+        let speed = unit
             .body
             .mover()
             .ok_or(crate::world::ATTACKER_UNMOVING)?
             .stats
             .speed;
-        if target_unseen(walk.world, s, &t)? {
-            if s.stance == 0 && 0.0 < speed && s.can_move {
-                self.wait_at_seen(walk, s)?;
+        if target_unseen(g.map, f, &t)? {
+            if r.stance == 0 && 0.0 < speed && r.can_move {
+                self.wait_at_seen(unit, f)?;
                 return Ok(Readiness::Waiting);
             }
-            return self.fail(walk, s);
+            return self.fail(unit, g.sprite_rng);
         }
-        let at = walk.position();
-        let mover = walk
+        let at = unit.body.position();
+        let ground = unit
             .body
-            .mover_mut()
+            .mover()
+            .map(|m| [m.stats.radius[0], m.stats.radius[1]])
             .ok_or(crate::world::ATTACKER_UNMOVING)?;
-        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(at, ground, t.position, t.radius);
         let near = if self.range <= NO_RANGE {
             gap + SHORT_RANGE_GAP
         } else {
             gap
         };
-        let mobile = 30 <= s.own.kind && 0.0 < speed;
-        if !skip_ready && self.ready_at_once(t.position, near, mobile || s.volley_under_way) {
-            return self.face(mover, at, t.position, s);
+        let mobile = 30 <= f.own.kind && 0.0 < speed;
+        if !skip_ready && self.ready_at_once(t.position, near, mobile || r.volley_under_way) {
+            return self.face(unit, t.position, f, r);
         }
         if gap < self.min_range {
             if !self.sub_action {
-                s.posted.push((0x1fe, [-1; 3]));
+                g.post(unit, 0x1fe, [-1; 3])?;
             }
-            if speed != 0.0 && s.can_move {
+            if speed != 0.0 && r.can_move {
                 return Ok(Readiness::Waiting);
             }
-            return self.fail(walk, s);
+            return self.fail(unit, g.sprite_rng);
         }
         // a gate's reach is to the nearest of it and its first two parts (slot 0x680, MINSS)
-        let gap =
-            crate::movement::gate_gap(walk.world, (at, ground), (self.target, &t), gap, |g| g);
+        let gap = crate::movement::gate_gap(g.map, (at, ground), (self.target, &t), gap, |g| g);
         if self.reach() < gap {
             if !self.sub_action {
-                s.posted.push((0x1fd, [0; 3]));
+                g.post(unit, 0x1fd, [0; 3])?;
             }
-            if (s.stance == 1 && self.off_leash(t.position, s.state_position))
+            if (r.stance == 1 && self.off_leash(t.position, r.state_position))
                 || speed == 0.0
-                || !s.can_move
+                || !r.can_move
             {
-                return self.fail(walk, s);
+                return self.fail(unit, g.sprite_rng);
             }
             return Ok(Readiness::Away(gap));
         }
         self.point = t.position;
-        self.face(mover, at, t.position, s)
+        self.face(unit, t.position, f, r)
     }
 
     /// readyToAttack's ready-at-once test: the target stands on the attack's point
@@ -154,31 +158,36 @@ impl Attack {
     /// readyToAttack's `set_state(13)` (as [`Attack::finish_in`]); it answers 0.
     pub(super) fn fail(
         &mut self,
-        walk: &mut Walk<'_>,
-        s: &mut Strike<'_>,
+        unit: &mut Unit,
+        sprite_rng: &mut Well512,
     ) -> Result<Readiness, GenieError> {
-        self.finish_in(FAILED, walk, s)?;
+        self.finish_in(FAILED, unit, sprite_rng)?;
         Ok(Readiness::Waiting)
     }
 
-    /// readyToAttack's ready end (`0x140a801f2`): the unit at `at` faces its target at `to`
+    /// readyToAttack's ready end (`0x140a801f2`): the unit faces its target at `to`
     /// (`FUN_141162db0`, [`face_target`]; masters 1704 and 1706 skip it); one not facing it yet
     /// waits; one facing it swings once its attack timer ran out (slot 0x100, `FUN_141082d40`:
     /// `COMISS` with 0 then `SETBE`, so a NaN timer has run out).
     pub(super) fn face(
         &self,
-        mover: &mut Mover,
-        at: [f32; 3],
+        unit: &mut Unit,
         to: [f32; 3],
-        s: &Strike<'_>,
+        f: &Fight,
+        r: &AttackReads,
     ) -> Result<Readiness, GenieError> {
-        if !matches!(s.own.master_id, MASTER_1704 | MASTER_1706)
-            && !face_target(mover, at, to, s.world_time)?
+        let at = unit.body.position();
+        let mover = unit
+            .body
+            .mover_mut()
+            .ok_or(crate::world::ATTACKER_UNMOVING)?;
+        if !matches!(f.own.master_id, MASTER_1704 | MASTER_1706)
+            && !face_target(mover, at, to, r.world_time)?
         {
             return Ok(Readiness::Waiting);
         }
         Ok(
-            if crate::math::fmath::at_most_or_unordered(*s.attack_timer, 0.0) {
+            if crate::math::fmath::at_most_or_unordered(unit.attack_timer, 0.0) {
                 Readiness::Ready
             } else {
                 Readiness::Waiting
@@ -205,11 +214,11 @@ pub(super) fn in_range(near: f32, range: f32, min_range: f32) -> bool {
 /// A tile the map's sight does not hold.
 pub(super) fn target_unseen(
     world: &crate::map::spatial::Spatial,
-    s: &Strike<'_>,
+    f: &Fight,
     t: &crate::map::spatial::Placed,
 ) -> Result<bool, GenieError> {
     let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
     Ok(0 < t.player
-        && !world.sees_tile(s.own.player, tx, ty)
-        && !(s.victim.fog_visibility != 0 && world.explored(s.own.player, tx, ty)?))
+        && !world.sees_tile(f.own.player, tx, ty)
+        && !(f.victim.fog_visibility != 0 && world.explored(f.own.player, tx, ty)?))
 }

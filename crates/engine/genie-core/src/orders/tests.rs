@@ -455,7 +455,7 @@ fn an_attack_task_of_a_unit_that_cannot_move_goes_ready_in_reach() {
 /// model, and fails.
 #[test]
 fn an_attack_task_s_ready_start_fails_on_a_post_it_does_not_model() {
-    use super::attack::{StartStrike, ready_at_start};
+    use super::attack::ready_at_start;
     let (mut t, task) = work_attack(0);
     let unit = &mut t.players[1].objects[0];
     unit.ai = None;
@@ -467,28 +467,44 @@ fn an_attack_task_s_ready_start_fails_on_a_post_it_does_not_model() {
     assert!(!attack.sub_action);
     attack.target = -1;
     attack.point = [crate::math::image::attack::NONE; 3];
-    let start = StartStrike {
-        standing: t.graphics[&300],
-        volleys: false,
-        reload: 2.0,
-        hit_chance: 100,
-        swing_sprites: crate::combat::attack::SwingSprites::default(),
-        computer: false,
-        world_time: 0,
-        own: crate::combat::damage::Victim::default(),
-    };
+    let (reads, fight) = soldier_reads(&t);
+    let unit = &mut t.players[1].objects[0];
     let r = ready_at_start(
         &mut attack,
         unit,
-        &mut t.spatial,
-        &mut crate::math::rng::Well512::default(),
-        start,
-        &mut crate::combat::damage::Victim::default(),
+        (&t.spatial, &mut crate::math::rng::Well512::default()),
+        &reads,
+        &fight,
     );
     assert_eq!(
         r.err().map(|e| e.reason()),
         Some("an attack task's swing at its start")
     );
+}
+
+/// What the soldier of [`work_attack`]'s world reads in its Attack, as
+/// [`World::start_attack`] builds it ([`crate::combat::attack::AttackReads::of`]), and a fight
+/// of default combat objects.
+fn soldier_reads(
+    t: &World,
+) -> (
+    crate::combat::attack::AttackReads,
+    crate::combat::attack::Fight,
+) {
+    let u = &t.players[1].objects[0];
+    let master = u.master(&t.masters, 1).expect("the soldier's master");
+    let reads = crate::combat::attack::AttackReads::of(
+        u,
+        master,
+        (t.masters.get(1), &t.graphics),
+        u.ai.as_ref(),
+        (t.players[1].computer, t.world_time),
+    );
+    let fight = crate::combat::attack::Fight {
+        victim: crate::combat::damage::Victim::default(),
+        own: crate::combat::damage::Victim::default(),
+    };
+    (reads, fight)
 }
 
 /// Gaia's main building 60 (master 200, class 3) at (20.5, 20.5) and its annex 61 (master 201,
@@ -3415,7 +3431,6 @@ fn a_drop_off_order_fails_on_what_it_does_not_hold() {
 #[test]
 fn an_attack_task_settles_what_its_command_answered() {
     use crate::combat::attack::{Commanded, FAILED, READY};
-    use crate::combat::damage::Victim;
     fn shown_sprite(t: &World) -> Option<i16> {
         t.players[1].objects[0].sprite.map(|s| s.graphic.id)
     }
@@ -3439,19 +3454,8 @@ fn an_attack_task_settles_what_its_command_answered() {
             failed_first: false,
         };
         f(&mut commanded);
-        let start = attack::StartStrike {
-            standing: t.graphics[&300],
-            volleys: false,
-            reload: 2.0,
-            hit_chance: 100,
-            swing_sprites: crate::combat::attack::SwingSprites::default(),
-            computer: false,
-            world_time: 0,
-            own: Victim::default(),
-        };
-        let attack = t
-            .settle_command(1, 0, commanded, start, &mut Victim::default())
-            .unwrap();
+        let (reads, fight) = soldier_reads(&t);
+        let attack = t.settle_command(1, 0, commanded, (&reads, &fight)).unwrap();
         let unit = &t.players[1].objects[0];
         let notifies = unit.ai.as_ref().map(|ai| ai.notifies.len());
         (attack, shown_sprite(&t), unit.body.anim_speed(), notifies)

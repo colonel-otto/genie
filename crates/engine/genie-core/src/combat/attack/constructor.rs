@@ -3,11 +3,11 @@
 
 use crate::GenieError;
 use crate::combat::attack::{
-    Arms, Attack, Begun, Commanded, Engagement, FAILED, GATE, GOTO_SEEN, LEASH_SLACK, MASTER_1704,
-    MASTER_1706, NONE, Strike, face_target,
+    Arms, Attack, AttackReads, Begun, Commanded, Engagement, FAILED, Fight, GATE, GOTO_SEEN,
+    Ground, LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, face_target,
 };
 use crate::math::rng::Well512;
-use crate::movement::move_to::{MoveTo, MoveWait, Walk};
+use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::objects::layers::Body;
 use crate::objects::sprite::new_sprite;
@@ -243,17 +243,19 @@ impl Attack {
     }
 
     /// The start's `set_state(6)` for a unit that cannot move ([`Commanded::ready`]): the range
-    /// test again, and the swing when it is ready.
+    /// test again, and the swing when it is ready, on the world's parts `g`.
     ///
     /// # Errors
     ///
     /// What the range test and the swing do not model.
-    pub fn enter_ready(
+    pub(crate) fn enter_ready(
         &mut self,
-        mut walk: Walk<'_>,
-        s: &mut Strike<'_>,
+        unit: &mut crate::objects::unit::Unit,
+        g: &mut Ground<'_>,
+        f: &Fight,
+        r: &AttackReads,
     ) -> Result<(), GenieError> {
-        self.ready(&mut walk, s)
+        self.ready(unit, g, f, r)
     }
 }
 

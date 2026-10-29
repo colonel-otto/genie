@@ -7,7 +7,7 @@
 //! 158041: constructor `FUN_140ac2dd0`, start (slot 5) `0x140ac49b0`, update (slot 6)
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
-use crate::combat::attack::{Arms, Attack, Engagement};
+use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
 use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
@@ -219,49 +219,51 @@ pub struct HuntTask {
     pub kind4: i16,
 }
 
-/// What the gathering reads of its unit and changes besides the attack's [`Strike`].
-///
-/// [`Strike`]: crate::combat::attack::Strike
-#[derive(Debug)]
-pub struct Gatherer<'a> {
-    /// `+0x308`, `+0x310`: what the unit carries.
-    pub held_kind: &'a mut i16,
-    /// `+0x310`: how much.
-    pub held: &'a mut f32,
+/// What the hunt's update reads of its unit, its master, its player and the game besides its
+/// Attack's reads, copied as the update starts ([`crate::objects::unit::Unit::hunt_reads`]).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HuntReads {
+    /// What its Attack reads ([`AttackReads::of`]).
+    pub(crate) attack: AttackReads,
     /// The master's work rate (`+0x798`) plus the unit's powerup (slot 0x6e8, `+0xa30`).
-    pub work_rate: f32,
+    pub(crate) work_rate: f32,
     /// The master's `attribute_max_amount` (`+0x61c`): what the unit carries at most.
-    pub capacity: f32,
+    pub(crate) capacity: f32,
     /// The player's attribute the task's `attribute_type2` names, when above 0; else 1.
-    pub productivity: f32,
-    /// The target's master's class and its first storage amount (`+0x610`).
-    pub target_class: i16,
-    /// The target's master's first storage amount (`+0x610`).
-    pub target_storage: f32,
+    pub(crate) productivity: f32,
     /// The player's attribute 292 is 1: a task whose `attribute_type4` is 0x124 stops the
     /// target's decay (`FUN_140ac44b0`).
-    pub stops_decay: bool,
+    pub(crate) stops_decay: bool,
     /// The unit AI's target class (`+0x4c`, `FUN_140c4cc50`), None for a unit without one.
-    pub ai_class: Option<i32>,
+    pub(crate) ai_class: Option<i32>,
     /// The caller ran the search for the next tree a lost target asks ([`HuntAction::update`]'s
     /// `FUN_140ac4670`, `Unit::hunt_tree_search`) and found none.
-    pub tree_searched: bool,
+    pub(crate) tree_searched: bool,
     /// The game's setting [`crate::world::settings::Settings::predator_hunts_end`].
-    pub predator_hunts_end: bool,
+    pub(crate) predator_hunts_end: bool,
     /// The sprites the hunt shows.
-    pub sprites: HuntSprites,
-    /// Out: the hunt let its target go and asks for `set_state(3)`'s search (the caller's: the
-    /// drop site, the notify, the sprite, the timer).
-    pub searches: bool,
-    /// Out: the hunt sends its livestock to this drop site (the target's slot 0x138) with the
-    /// herd around it (`FUN_140ac4c60`), the caller's.
-    pub leads: Option<i32>,
-    /// Out: the Attack's `MoveTo` failed (code 3 in state 12): `FUN_140ac4670` with −1 and 5
-    /// takes the next tree for a tree's class (the caller's, `Unit::hunt_tree_search`), else (or
-    /// with none found) `set_state(3)` with the target kept (the caller's search).
-    pub attack_failed: bool,
-    /// Out: the target the hunt let go (slot 0x68 with none), which the caller releases.
-    pub let_go: Option<i32>,
+    pub(crate) sprites: HuntSprites,
+    /// What `set_state(6)` on live livestock and the lead read ([`Herd`]); none in the other
+    /// states.
+    pub(crate) herd: Option<Herd>,
+}
+
+/// What follows the hunt's update once the hunt is back in its unit's list
+/// ([`HuntAction::update`]): the parts of the unit's own that read the hunt there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HuntNext {
+    /// Nothing more.
+    Stay,
+    /// The gathering ended: `set_state(8)`, its drop site search
+    /// ([`crate::objects::unit::Unit::hunt_drop_off`]).
+    Drop,
+    /// The hunt let its target go and searches: `set_state(3)`
+    /// ([`crate::objects::unit::Unit::hunt_set_search`]).
+    Search,
+    /// The Attack's `MoveTo` failed (code 3 in state 12): `FUN_140ac4670` with −1 and 5 takes
+    /// the next tree for a tree's class, else (or with none found) `set_state(3)` with the
+    /// target kept ([`crate::objects::unit::Unit::hunt_attack_failed`]).
+    AttackFailed,
 }
 
 /// What the hunt reads of its target when it starts.

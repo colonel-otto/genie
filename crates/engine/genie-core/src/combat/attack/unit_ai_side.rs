@@ -3,11 +3,10 @@
 //! target as a hit reads it, the start's readiness, the target's sight and a villager's swap.
 
 use crate::GenieError;
+use crate::combat::attack::{AttackReads, Fight, Ground};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
 use crate::map::spatial::Placed;
-use crate::movement::Me;
-use crate::movement::move_to::Walk;
 use crate::objects::masters::player_master;
 use crate::objects::release::Releaser;
 use crate::unit_ai::UnitAi;
@@ -283,15 +282,15 @@ impl<'u> UnitView<'u, '_> {
     /// The start's `set_state(6)` of the unit's new Attack ([`crate::combat::attack::Attack::enter_ready`])
     /// with what its readyToAttack and its swing read: the target as a hit reads it
     /// ([`UnitView::victim_of_target`]), the unit as a combat object, its unit AI's stance, leash
-    /// and queue. Returns the notifies it posted. Its swing lands no hit and fires nothing before
-    /// its update, nor does readyToAttack let the target go or send the unit home there.
+    /// and queue ([`AttackReads::of`] with the AI that runs). Returns the notifies it posted,
+    /// which the running AI takes. Its swing lands no hit and fires nothing before its update.
     fn ready_at_start(
         &mut self,
         attack: &mut crate::combat::attack::Attack,
         master: &crate::objects::masters::Master,
         ai: &UnitAi,
     ) -> Result<Vec<(i32, [i32; 3])>, GenieError> {
-        let mut victim = self
+        let victim = self
             .victim_of_target(attack.target)
             .ok_or(GenieError::unsupported(
                 "an attack's target the slice does not hold live",
@@ -305,61 +304,23 @@ impl<'u> UnitView<'u, '_> {
             self.spatial.terrain.as_ref(),
             self.mode_680,
         );
-        let me = Me {
-            id: unit.id,
-            group: unit.group.id,
-            action_state: crate::combat::attack::READY,
-        };
-        let walk = Walk {
-            body: &mut unit.body,
-            me,
-            dt: 0.0,
-            world: self.spatial,
-            plan: None,
-        };
-        let mut blasted = Vec::new();
-        let mut strike = crate::combat::attack::Strike {
-            sprite: &mut unit.sprite,
-            standing: self.graphics.get(&master.standing_sprite).copied(),
-            volleys: self
-                .every
-                .get(self.player)
-                .is_some_and(|m| crate::combat::attack::volleys(master, m)),
-            attack_timer: &mut unit.attack_timer,
-            reload_worldtime: &mut unit.reload_worldtime,
-            reload: unit.reload_stinger + (master.reload - unit.reload_powerup),
-            hit_chance: master.hit_chance,
-            victim: &mut victim,
-            blasted: &mut blasted,
+        let reads = AttackReads::of(
+            unit,
+            master,
+            (self.every.get(self.player), self.graphics),
+            Some(ai),
+            (self.computer, self.world_time),
+        );
+        let fight = Fight { victim, own };
+        let mut posted = Vec::new();
+        let mut g = Ground {
+            map: self.spatial,
             sprite_rng: self.sprite,
-            own,
-            executed: None,
-            fire: None,
-            can_move: ai.current_order.is_some() || ai.stance <= 1,
-            stance: ai.stance,
-            state_position: ai.state_position,
-            posted: Vec::new(),
-            queue_empty: ai.orders.is_empty(),
-            world_time: self.world_time,
-            ai_order: Some(ai.current_order),
-            ai_type: Some(ai.ai_type),
-            computer: self.computer,
-            armed: crate::combat::volley::armed(master, unit.firepower),
-            volley_under_way: unit.next_volley != 0,
-            let_go: None,
-            forgets: false,
-            sends_home: false,
-            swing_sprites: crate::combat::attack::swing_sprites(
-                unit.abilities.look.as_ref(),
-                master,
-                self.graphics,
-            ),
+            object_rng: None,
+            buffer: Some(&mut posted),
         };
-        attack.enter_ready(walk, &mut strike)?;
-        // set_state 6 and 7 hit nothing, fire nothing and let nothing go: the update does
-        debug_assert!(strike.executed.is_none() && strike.fire.is_none());
-        debug_assert!(strike.let_go.is_none() && !strike.forgets && !strike.sends_home);
-        Ok(std::mem::take(&mut strike.posted))
+        attack.enter_ready(unit, &mut g, &fight, &reads)?;
+        Ok(posted)
     }
 
     /// The attack command's sight of its target `t` (of master `t_master`): its tile seen by the

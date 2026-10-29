@@ -43,24 +43,14 @@ impl Rig {
             construction_rate: 1.0,
             ..Player::default()
         };
-        let mut t = World::new(0, 0, 0, vec![0; 2], vec![Player::default(), owner]);
-        t.spatial = crate::movement::tests::tiled_world(vec![4; 120 * 120]);
-        t.pathing.start_mesh(120);
-        let mut mover = crate::movement::tests::builder_9177().placed([28.0, 89.0, 0.0]);
-        mover.move_to_point = Some([30.0, 88.0, 0.0]);
-        mover.animated.speed = 1.0;
-        let mut unit = Unit {
-            id: 9177,
-            pasture: -1,
-            my_pasture: -1,
-            body: crate::objects::layers::Body::new(mover.position(), None, Some(mover)),
-            ..Unit::default()
+        let mut rig = Self {
+            t: crate::movement::tests::path_world(owner),
         };
-        unit.life.state = 2;
+        rig.mover_mut().animated.speed = 1.0;
+        let unit = rig.unit_mut();
         unit.life.master_id = 83;
         (unit.life.attribute_type, unit.life.amount) = (17, 3.0);
-        t.players[1].objects.push(unit);
-        Self { t }
+        rig
     }
 
     /// `f` on the villager's step of `dt` ms, in action state `state`.

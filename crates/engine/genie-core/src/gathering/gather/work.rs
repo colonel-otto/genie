@@ -208,7 +208,7 @@ impl GatherAction {
                 }
                 me.action_state = self.state;
                 let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
-                Self::post_in_the_way(unit)?;
+                unit.post_in_the_way()?;
                 match walked {
                     Some(m) => self.move_to = Some(m),
                     None => self.give_up(r),

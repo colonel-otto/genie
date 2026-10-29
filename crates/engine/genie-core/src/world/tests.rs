@@ -12205,7 +12205,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
 /// A flat 40-tile map: player 1's archer 123 at (10, 10) in its Attack's READY on Gaia's deer 50
 /// at (13, 10); its swing fires at frame 5 of 0.1 s. The masters as [`archer_masters`]; the next
 /// reusable id −1.
-fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> World {
+pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> World {
     use crate::garrison::tests::{unit, walker};
     let mut players: Vec<Player> = (0..2).map(|_| Player::default()).collect();
     players[0].relations = vec![0, 3];
@@ -12312,7 +12312,7 @@ fn a_hit_s_flare_is_made_where_the_volley_runs() {
 }
 
 /// The missiles in player 1's list: id, master, place.
-fn missiles(t: &World) -> Vec<(i32, i16, [f32; 3])> {
+pub(crate) fn missiles(t: &World) -> Vec<(i32, i16, [f32; 3])> {
     t.players[1]
         .objects
         .iter()

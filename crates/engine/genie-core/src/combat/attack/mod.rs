@@ -11,10 +11,17 @@
 //! `FUN_1412115e0` -> `FUN_141084230` -> the target's slot 0xe8, whose damage is
 //! [`crate::combat::damage`]'s).
 
+use crate::GenieError;
 use crate::combat::damage::Victim;
-use crate::math::rng::Well512;
-use crate::movement::move_to::{MoveTo, MoveWait, Walk};
-use crate::objects::sprite::{ActiveSprite, Graphic};
+use crate::map::spatial::Spatial;
+use crate::math::rng::{Stream, Well512};
+use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::objects::layers::Body;
+use crate::objects::masters::{Master, Masters};
+use crate::objects::sprite::Graphic;
+use crate::objects::unit::Unit;
+use crate::unit_ai::{OrderKind, UnitAi};
+use crate::world::World;
 use genie_diff::Diff;
 
 mod constructor;
@@ -39,9 +46,11 @@ pub(crate) use self::sprites::{face_target, reset_sprite, show_arrived, volleys}
 use self::update::squared_reach;
 pub use self::work_slots::{Mark, Wielder, Worked};
 #[cfg(test)]
+use crate::combat::damage;
+#[cfg(test)]
 use crate::movement::Mover;
 #[cfg(test)]
-use crate::{GenieError, combat::damage};
+use crate::objects::sprite::ActiveSprite;
 
 /// The Attack action's type, which word 9 adds.
 pub const ATTACK: i16 = 9;
@@ -163,7 +172,7 @@ pub struct Attack {
     /// The sprites and frames from its constructor.
     pub arms: Arms,
     /// `+0x60`, `subActionValue`: the action is another's sub-action (the Hunt's) and posts no
-    /// notifies; a unit's own Attack posts them to its unit AI ([`Strike::posted`]).
+    /// notifies; a unit's own Attack posts them to its unit AI (slot 0x328).
     pub sub_action: bool,
     /// `+0x61`, `mTargetMovedState`, which its `MoveTo` takes: a target that leaves the
     /// `MoveTo`'s point makes it ask for a path at once (the Hunt's `set_state` 12 sets it).
@@ -243,81 +252,181 @@ pub struct Engagement {
     pub same_owner: bool,
 }
 
-/// What the Attack's update reads of its unit besides its movement, and changes.
-#[derive(Debug)]
-pub struct Strike<'a> {
-    /// The unit's active sprite and animation speed (`+0x7b8`), None while the slice does not
-    /// know them.
-    pub sprite: &'a mut Option<ActiveSprite>,
+/// What the Attack's update reads of its unit, its master, its unit AI and its owner, copied as
+/// the update starts ([`AttackReads::of`]).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AttackReads {
     /// Its master's standing sprite (`+0x470`), which slot 0x68 shows for no sprite
     /// (`FUN_141158620`).
-    pub standing: Option<Graphic>,
+    pub(crate) standing: Option<Graphic>,
     /// Its master has a volley missile (`+0x8d4`) or a charge projectile (`+0x928`) its player
     /// has: a hit without a missile is a volley too (`FUN_14120c0a0`), not the melee hit.
-    pub volleys: bool,
-    /// `+0x91c`, the time until it may attack again (slot 0x100: at most 0).
-    pub attack_timer: &'a mut f32,
-    /// `mReloadWorldtime` (`+0x920`, slot 0x248): the world time it may again.
-    pub reload_worldtime: &'a mut u32,
+    pub(crate) volleys: bool,
     /// Slot 0x218 (`FUN_141086c90`): the master's reload time (`speed_of_attack`) with the
     /// unit's reload stinger and powerup.
-    pub reload: f32,
+    pub(crate) reload: f32,
     /// The master's hit chance (`+0x83e`).
-    pub hit_chance: i16,
+    pub(crate) hit_chance: i16,
+    /// `FUN_14120ea30` for a building: it can attack (class 51 or 54, a missile, or a firepower
+    /// above 1); true for the others.
+    pub(crate) armed: bool,
+    /// The swing's own sprites ([`Attack::set_swing`]): its terrain look's attack sprite and its
+    /// master's special graphic.
+    pub(crate) swing_sprites: SwingSprites,
+    /// The unit's player is a computer (`player+0x10 == 3`, `FUN_141659cf0`).
+    pub(crate) computer: bool,
+    /// The world's time (`FUN_1415300d0`), which a facing over time and the reload read.
+    pub(crate) world_time: u32,
+    /// The unit AI's canMoveToAttack (slot 0x1d0, `FUN_140c48420`), which readyToAttack reads
+    /// of a target out of reach.
+    pub(crate) can_move: bool,
+    /// The unit AI's stance (`+0x1a9`).
+    pub(crate) stance: u8,
+    /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`), the centre of stance 1's leash.
+    pub(crate) state_position: [f32; 2],
+    /// The unit has a unit AI whose order queue is empty (`FUN_140c564a0` is 0).
+    pub(crate) queue_empty: bool,
+    /// The unit AI's order (`+0x3c`, `FUN_140c4cc20`).
+    pub(crate) ai_order: AiOrder,
+    /// The unit AI's factory type, None without a unit AI.
+    pub(crate) ai_type: Option<u32>,
+    /// `FUN_1412161a0`: a volley is under way (`next_volley`, `+0xa04`, not 0).
+    pub(crate) volley_under_way: bool,
+}
+
+impl AttackReads {
+    /// What the Attack of `unit` of `master` reads: its player's masters and the sprites' table
+    /// (`tables`), its unit AI `ai` (the unit's own, or the one running outside it), whether its
+    /// owner is a computer player and the world's time (`now`).
+    pub(crate) fn of(
+        unit: &Unit,
+        master: &Master,
+        (masters, graphics): (Option<&Masters>, &std::collections::BTreeMap<i16, Graphic>),
+        ai: Option<&UnitAi>,
+        (computer, now): (bool, u32),
+    ) -> Self {
+        Self {
+            standing: graphics.get(&master.standing_sprite).copied(),
+            volleys: masters.is_some_and(|m| volleys(master, m)),
+            reload: unit.reload_stinger + (master.reload - unit.reload_powerup),
+            hit_chance: master.hit_chance,
+            armed: crate::combat::volley::armed(master, unit.firepower),
+            swing_sprites: swing_sprites(unit.abilities.look.as_ref(), master, graphics),
+            computer,
+            world_time: now,
+            can_move: ai.is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1),
+            stance: ai.map_or(0, |ai| ai.stance),
+            state_position: ai.map_or([0.0; 2], |ai| ai.state_position),
+            queue_empty: ai.is_some_and(|ai| ai.orders.is_empty()),
+            ai_order: AiOrder::of(ai),
+            ai_type: ai.map(|ai| ai.ai_type),
+            volley_under_way: unit.next_volley != 0,
+        }
+    }
+}
+
+/// The unit AI's order as the Attack reads it (`+0x3c`, `FUN_140c4cc20`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AiOrder {
+    /// The unit has no unit AI.
+    Absent,
+    /// Its unit AI has no order (the field's −1).
+    Idle,
+    /// Its unit AI's order.
+    Order(OrderKind),
+}
+
+impl AiOrder {
+    /// The order of the unit AI `ai`.
+    pub(crate) fn of(ai: Option<&UnitAi>) -> Self {
+        ai.map_or(Self::Absent, |ai| {
+            ai.current_order.map_or(Self::Idle, Self::Order)
+        })
+    }
+
+    /// The unit has a unit AI.
+    pub(crate) const fn has_ai(self) -> bool {
+        !matches!(self, Self::Absent)
+    }
+}
+
+/// The strike's combat objects, copies its update reads as it starts: its target (`victim`) and
+/// the unit as a combat object (`own`). A hit changes both: the target goes back to the world
+/// where the hit lands ([`crate::combat::victims::write_strike_back`]), the unit after its
+/// update ([`Unit::hit_back`]).
+#[derive(Clone, Debug)]
+pub(crate) struct Fight {
     /// The target, which the hit changes.
-    pub victim: &'a mut Victim,
-    /// The objects about the unit a blast of it may reach (its master has an area effect),
-    /// besides the unit and its target; empty for others.
-    pub blasted: &'a mut Vec<Victim>,
-    /// The Sprite stream, which a sprite with a random first frame draws from; the hit draws
-    /// from the walk's Object stream.
-    pub sprite_rng: &'a mut Well512,
+    pub(crate) victim: Victim,
     /// The unit as a combat object: what its hits read of it (its attack, its master's weapons,
     /// its place and its player's elevation attributes) and what a retaliation, reflected damage
     /// or its charge changes.
-    pub own: Victim,
-    /// The target of a swing this update, whose executed action (notify 0x200 with 600 and the
-    /// target) the unit posts to its unit AI.
-    pub executed: Option<i32>,
-    /// The target a ranged unit's swing fires at this update (slot 0x858, `FUN_141081020`): the
-    /// missile is the caller's.
-    pub fire: Option<i32>,
-    /// The unit AI's canMoveToAttack (slot 0x1d0, `FUN_140c48420`) and stance (`+0x1a9`), which
-    /// readyToAttack reads of a target out of reach.
-    pub can_move: bool,
-    /// The unit AI's stance (`+0x1a9`).
-    pub stance: u8,
-    /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`), the centre of stance 1's leash.
-    pub state_position: [f32; 2],
-    /// The notifies a unit's own Attack posts to its unit AI this update (slot 0x328: kind and
-    /// three parameters), the caller's.
-    pub posted: Vec<(i32, [i32; 3])>,
-    /// The unit has a unit AI whose order queue is empty (`FUN_140c564a0` is 0).
-    pub queue_empty: bool,
-    /// The world's time (`FUN_1415300d0`), which a facing over time reads.
-    pub world_time: u32,
-    /// The unit AI's order (`+0x3c`, `FUN_140c4cc20`; its None the field's −1), None without a
-    /// unit AI.
-    pub ai_order: Option<Option<crate::unit_ai::OrderKind>>,
-    /// The unit AI's factory type, None without a unit AI.
-    pub ai_type: Option<u32>,
-    /// The unit's player is a computer (`player+0x10 == 3`, `FUN_141659cf0`).
-    pub computer: bool,
-    /// `FUN_14120ea30` for a building: it can attack (class 51 or 54, a missile, or a firepower
-    /// above 1); true for the others.
-    pub armed: bool,
-    /// `FUN_1412161a0`: a volley is under way (`next_volley`, `+0xa04`, not 0).
-    pub volley_under_way: bool,
-    /// The update let its target go (slot 0x68 with none: its slot 0x180), the caller's.
-    pub let_go: Option<i32>,
-    /// The update made the unit AI forget its target (`FUN_140c5e1e0`), the caller's.
-    pub forgets: bool,
-    /// The update sent a boar home at its next idle check (its unit AI's slot 0x1f0,
-    /// `FUN_140c16d50`: `+0x1fd`), the caller's.
-    pub sends_home: bool,
-    /// The swing's own sprites ([`Attack::set_swing`]): its terrain look's attack sprite and its
-    /// master's special graphic.
-    pub swing_sprites: SwingSprites,
+    pub(crate) own: Victim,
+}
+
+/// The world's parts readyToAttack and the swing's start read and draw from, built where they
+/// are needed ([`World::attack_ground`] in an update): the map, the Sprite stream, the Object
+/// stream (none where no update runs, as at the attack command's start: a draw there is not
+/// modelled) and the list the notifies go to while the unit AI is out of the unit (the attack
+/// command's start as the AI runs: the AI posts them itself); else each goes to the unit AI at
+/// once (slot 0x328).
+pub(crate) struct Ground<'a> {
+    /// The map.
+    pub(crate) map: &'a Spatial,
+    /// The Sprite stream, which a new sprite draws from.
+    pub(crate) sprite_rng: &'a mut Well512,
+    /// The Object stream, which a swing's second sprite draws from.
+    pub(crate) object_rng: Option<&'a mut Well512>,
+    /// The notifies' list while the unit AI is out of the unit.
+    pub(crate) buffer: Option<&'a mut Vec<(i32, [i32; 3])>>,
+}
+
+impl Ground<'_> {
+    /// The unit's notify of `kind` with `p` (slot 0x328): to the list while its unit AI is out
+    /// of it, else to its unit AI at once.
+    ///
+    /// # Errors
+    ///
+    /// The notify's.
+    pub(crate) fn post(
+        &mut self,
+        unit: &mut Unit,
+        kind: i32,
+        p: [i32; 3],
+    ) -> Result<(), GenieError> {
+        self.buffer.as_mut().map_or_else(
+            || unit.post_own(kind, p),
+            |b| {
+                b.push((kind, p));
+                Ok(())
+            },
+        )
+    }
+}
+
+impl World {
+    /// The Attack's [`Ground`] in an update: the map, the Sprite and Object streams; the
+    /// notifies go to the unit AI at once.
+    pub(crate) fn attack_ground(&mut self) -> Ground<'_> {
+        let Self {
+            spatial, streams, ..
+        } = self;
+        let (object, sprite) = streams.two(Stream::Object, Stream::Sprite);
+        Ground {
+            map: spatial,
+            sprite_rng: sprite,
+            object_rng: Some(object),
+            buffer: None,
+        }
+    }
+}
+
+/// The unit's animation speed (`+0x7b8`) as the Attack sets it: a mover's; a building's stays
+/// (MISSING.md, "The Attack's animation speed of a building").
+pub(crate) const fn set_walker_anim(body: &mut Body, speed: f32) {
+    if let Some(m) = body.mover_mut() {
+        m.animated.speed = speed;
+    }
 }
 
 /// readyToAttack's gap for a range up to [`NO_RANGE`]: half a tile less (`DAT_142eb6e58`).
@@ -357,19 +466,6 @@ const GATE: i16 = 39;
 const VILLAGER: i16 = 4;
 /// The trees' class, a dead one of which up to state 5 keeps another unit's attack going.
 const TREE: i16 = 15;
-
-/// The units in the way the motion step told the unit AI of (its slot 0x38 with
-/// [`crate::unit_ai::IN_THE_WAY`], [`crate::movement::Mover::in_the_way`]), in the order of the
-/// Attack's posts; the walker is in state 2, which the unit's own post (slot 0x328) asks for.
-pub(crate) fn in_the_way(walk: &mut Walk<'_>, s: &mut Strike<'_>) {
-    if let Some(m) = walk.body.mover_mut() {
-        s.posted.extend(
-            m.in_the_way
-                .drain(..)
-                .map(|id| (crate::unit_ai::IN_THE_WAY, [id, -1, -1])),
-        );
-    }
-}
 
 #[cfg(test)]
 pub(crate) mod tests;

@@ -1,7 +1,7 @@
 //! The swing's and the arrival's sprites, the attack timer and the unit's turn to its target.
 
 use crate::GenieError;
-use crate::combat::attack::{Arms, RELOAD_MS, Strike};
+use crate::combat::attack::{Arms, RELOAD_MS};
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::objects::layers::Body;
@@ -26,8 +26,8 @@ pub fn swing_sprites(
     }
 }
 
-/// An Attack's draw (its hit's, its swing's second sprite) where the caller's walk holds no
-/// Object stream (`Walk::plan`).
+/// An Attack's draw (its swing's second sprite) where the caller holds no Object stream
+/// ([`crate::combat::attack::Ground::object_rng`]).
 pub(super) const NO_OBJECT_STREAM: GenieError =
     GenieError::unsupported("a hit without the Object stream");
 
@@ -43,11 +43,11 @@ pub struct SwingSprites {
     pub special: Option<Graphic>,
 }
 
-/// `FUN_141089820`: the attack timer becomes `t` and the reload world time the world's time plus
-/// `t` in whole milliseconds (slot 0x248).
-pub(super) fn set_attack_timer(s: &mut Strike<'_>, t: f32) {
-    *s.attack_timer = t;
-    *s.reload_worldtime = s.world_time.wrapping_add((t * RELOAD_MS) as i64 as u32);
+/// `FUN_141089820`: the unit's attack timer becomes `t` and its reload world time the world's
+/// time `now` plus `t` in whole milliseconds (slot 0x248).
+pub(super) fn set_attack_timer(unit: &mut crate::objects::unit::Unit, now: u32, t: f32) {
+    unit.attack_timer = t;
+    unit.reload_worldtime = now.wrapping_add((t * RELOAD_MS) as i64 as u32);
 }
 
 /// `FUN_14120c0a0`'s test of `master`: it has a volley missile or a charge projectile its player

@@ -1,14 +1,19 @@
 //! Leading own livestock to its drop site (state 10), facing an animal and the decay check.
 
 use crate::GenieError;
-use crate::combat::attack::Strike;
+use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
+use crate::gathering::hunt::update::write_target_back;
 use crate::gathering::hunt::{
-    DECAY_TASK, Gatherer, Herd, HuntAction, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH, VILLAGER_CLASS,
+    DECAY_TASK, Herd, HuntAction, HuntNext, HuntReads, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH,
+    VILLAGER_CLASS,
 };
+use crate::math::rng::Stream;
 use crate::movement::footprint_gap_squared;
-use crate::movement::move_to::Walk;
+use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::new_sprite;
+use crate::objects::unit::Unit;
+use crate::world::step::Step;
 
 impl HuntAction {
     /// `set_state(10)` (`0x140ac60e0` case 10): `sheep_still_time` clears, the animal's place
@@ -17,43 +22,41 @@ impl HuntAction {
     /// it (slot 0x68 with master `+0x8e8`) and the timer starts at −1 s.
     pub(super) fn set_lead(
         &mut self,
-        mut walk: Walk<'_>,
-        strike: &mut Strike<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        f: &Fight,
+        r: &HuntReads,
         herd: &Herd,
     ) -> Result<(), GenieError> {
-        self.tear_down(walk.body.mover_mut())?;
+        self.tear_down(unit.body.mover_mut())?;
         self.state = LEAD;
         self.lead.still_time = 0;
-        let at = strike.victim.position;
+        let at = f.victim.position;
         self.lead.start = [at[0], at[1]];
-        self.face_animal(&mut walk, strike)?;
+        self.face_animal(unit, at, r.attack.world_time)?;
         if let Some(g) = herd.special_graphic {
             new_sprite(
-                strike.sprite,
-                walk.body.move_stats_mut(),
+                &mut unit.sprite,
+                unit.body.move_stats_mut(),
                 g,
-                strike.sprite_rng,
+                c.w.streams.get(Stream::Sprite),
             );
         }
         self.timer = LEAD_WAIT;
         Ok(())
     }
 
-    /// `FUN_141162db0` on the target at once (a unit without a turn time turns by the facets
-    /// between).
+    /// `FUN_141162db0` on the animal at `to` at once (a unit without a turn time turns by the
+    /// facets between) at the world's time `now`.
     pub(super) fn face_animal(
         &self,
-        walk: &mut Walk<'_>,
-        strike: &Strike<'_>,
+        unit: &mut Unit,
+        to: [f32; 3],
+        now: u32,
     ) -> Result<(), GenieError> {
-        let at = walk.position();
-        let mover = walk.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-        if !crate::combat::attack::face_target(
-            mover,
-            at,
-            strike.victim.position,
-            strike.world_time,
-        )? {
+        let at = unit.body.position();
+        let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
+        if !crate::combat::attack::face_target(mover, at, to, now)? {
             return Err(GenieError::unsupported(
                 "a hunter that turns over time to face its target",
             ));
@@ -69,63 +72,79 @@ impl HuntAction {
     /// second; one farther is walked to (`set_state(4)`).
     pub(super) fn update_lead(
         &mut self,
-        mut walk: Walk<'_>,
-        strike: &mut Strike<'_>,
-        gather: &mut Gatherer<'_>,
-        herd: Option<Herd>,
-    ) -> Result<(), GenieError> {
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        f: &Fight,
+        r: &HuntReads,
+    ) -> Result<HuntNext, GenieError> {
         if self.target == -1 {
             self.state = SEARCH;
-            gather.searches = true;
-            return Ok(());
+            return Ok(HuntNext::Search);
         }
-        let herd = herd.ok_or(GenieError::unsupported(
+        let herd = r.herd.ok_or(GenieError::unsupported(
             "a hunt leading livestock unprepared",
         ))?;
         if herd.idle {
-            return self.start_attack(walk, strike, &herd);
+            self.start_attack(c, unit, &herd)?;
+            return Ok(HuntNext::Stay);
         }
-        self.timer += walk.dt;
+        self.timer += seconds(c.dt);
         if self.timer < 0.0 {
-            return Ok(());
+            return Ok(HuntNext::Stay);
         }
-        let v = strike.victim.position;
+        let v = f.victim.position;
         if v[0] == self.lead.start[0] && v[1] == self.lead.start[1] {
-            return self.start_attack(walk, strike, &herd);
+            self.start_attack(c, unit, &herd)?;
+            return Ok(HuntNext::Stay);
         }
-        let at = walk.position();
-        let ground = walk
+        let ground = unit
             .body
             .mover()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
             .ok_or(crate::world::HUNTER_UNMOVING)?;
-        if footprint_gap_squared(at, ground, v, strike.victim.radius) <= LEAD_REACH {
+        if footprint_gap_squared(unit.body.position(), ground, v, f.victim.radius) <= LEAD_REACH {
             self.lead.start = [v[0], v[1]];
-            self.face_animal(&mut walk, strike)?;
+            self.face_animal(unit, v, r.attack.world_time)?;
             self.timer = LEAD_WAIT;
-            return Ok(());
+            return Ok(HuntNext::Stay);
         }
-        let player = strike.own.player;
-        self.set_walk(&mut walk, strike.victim, player)
+        self.set_walk(&c.w.spatial, &mut unit.body, &f.victim, f.own.player)?;
+        Ok(HuntNext::Stay)
     }
 
     /// `FUN_140ac44b0`: a task whose `attribute_type4` is 0x124, with its player's attribute 292
     /// at 1, stops its target's decay: a target whose master decays (`+0x620` above 0) gets a
     /// master of its own unless it has one (`FUN_141188bc0`, `FUN_141186d10`) and that master's
-    /// decay takes the other sign (its bits XOR `0x80000000`); the caller writes it back to the
-    /// target ([`Victim::decay`]). Otherwise it does nothing.
-    pub(super) fn decay_check(&self, stops_decay: bool, victim: &mut Victim) {
-        if self.task.kind4 == DECAY_TASK && stops_decay && 0.0 < victim.decay {
+    /// decay takes the other sign (its bits XOR `0x80000000`), and the target goes back to the
+    /// world at once ([`Victim::decay`]). Otherwise it does nothing.
+    pub(super) fn decay_check(
+        &self,
+        c: &mut Step<'_>,
+        stops_decay: bool,
+        f: &mut Fight,
+    ) -> Result<(), GenieError> {
+        if self.stops_decay_of(stops_decay, &mut f.victim) {
+            write_target_back(c, f)?;
+        }
+        Ok(())
+    }
+
+    /// [`HuntAction::decay_check`]'s test and its sign change on the target's copy: true when it
+    /// stopped the decay.
+    pub(super) fn stops_decay_of(&self, stops_decay: bool, victim: &mut Victim) -> bool {
+        let stops = self.task.kind4 == DECAY_TASK && stops_decay && 0.0 < victim.decay;
+        if stops {
             victim.decay = f32::from_bits(victim.decay.to_bits() ^ 0x8000_0000);
         }
+        stops
     }
 
     /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]; a stance below 2
-    /// without a unit AI; quiet).
+    /// without a unit AI; quiet) for a unit of `class`.
     ///
     /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
-    pub(super) const fn give_up(&mut self, strike: &Strike<'_>) {
-        let waits = !strike.computer && strike.own.class == VILLAGER_CLASS;
-        self.move_to = Some(self.move_wait.give_up(waits, strike.stance));
+    pub(super) const fn give_up(&mut self, r: &AttackReads, class: i16) {
+        let waits = !r.computer && class == VILLAGER_CLASS;
+        self.move_to = Some(self.move_wait.give_up(waits, r.stance));
     }
 }

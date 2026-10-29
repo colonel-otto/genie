@@ -2,28 +2,31 @@
 //! the herd it leads, the hunt's update and what follows.
 
 use crate::GenieError;
-use crate::combat::attack::Strike;
+use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
-use crate::combat::victims::{KillLeft, file_kill, victim, write_struck};
-use crate::combat::volley::Aimed;
+use crate::combat::victims::{KillLeft, file_kill, victim};
 use crate::gathering::drop_sites::nearest_drop_site;
-use crate::gathering::hunt::{Gatherer, Herd, HuntAction, HuntSprites};
+use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites};
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
-use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::TREE_NEAR;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 
+/// The hunt's strike without its Hunt: the caller's test.
+const NO_HUNT: GenieError = GenieError::unreachable("a hunt's strike without its Hunt");
+
 impl Unit {
     /// The hunt's strike in the hunter's update (`0x140ac7a00`'s states 4, 6, 7, 10 and 12): what
-    /// the hunt reads of the hunter as a gatherer and an attacker, of its target and of the herd
-    /// it leads, the hunt's update, and what follows: the volley, the notifies, the hit back, the
-    /// drop-off, the search, the targets let go and an attack that failed (`own`: the hunter as
-    /// a combat object, taken).
+    /// the hunt reads of the hunter as a gatherer and an attacker ([`Unit::hunt_reads`]), of its
+    /// target and of the herd it leads, the hunt's update on the step with the hunt copied out of
+    /// its list, then the hunt back, the retaliation's changes to the hunter
+    /// ([`Unit::hit_back`]) and what follows that reads the hunt there ([`HuntNext`]): the
+    /// drop-off, the search, or the end of an attack that failed (`own`: the hunter as a combat
+    /// object, taken).
     pub(crate) fn hunt_strike(
         &mut self,
         c: &mut Step<'_>,
@@ -31,140 +34,83 @@ impl Unit {
         own: &mut Option<Victim>,
         tree_lost: bool,
     ) -> Result<(), GenieError> {
-        let computer = c.w.players[c.player].computer;
         let master = object_master(
             self.own_master.as_deref(),
             (self.id, self.life.master_id),
             c.w.masters.get(c.player),
         )?;
-        let action = self.actions.hunt().copied().expect("the caller's test");
-        let mut victim = hunt_victim(c, &action)?;
+        let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
+        let victim = hunt_victim(c, &hunt)?;
         let own = own.take().ok_or(crate::world::HUNTER_MASTER)?;
         let herd = self.herd_for(
             c,
             OthersRef::of(&c.w.players, c.player),
-            &action,
+            &hunt,
             master,
             &victim,
         )?;
-        let hunt = self.actions.hunt_mut().expect("the caller's test");
-        // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
+        let r = self.hunt_reads(c, master, &hunt, herd, tree_lost);
+        let mut f = Fight { victim, own };
+        let next = hunt.update(c, self, me, &mut f, &r)?;
+        if let Some(h) = self.actions.hunt_mut() {
+            *h = hunt;
+        }
+        // the retaliation's kill of the unit itself, which follows its step
+        if let Some(k) = self.hit_back(f.own)? {
+            file_kill(c, KillLeft::own(self.id, k))?;
+        }
+        match next {
+            HuntNext::Stay => Ok(()),
+            HuntNext::Drop => self.hunt_drop_off(c),
+            HuntNext::Search => self.hunt_set_search(c),
+            HuntNext::AttackFailed => self.hunt_attack_failed(c),
+        }
+    }
+
+    /// What the hunt's update reads of the hunter of `master` in `hunt` ([`HuntReads`]): its
+    /// Attack's reads ([`AttackReads::of`]); the master's work rate (`+0x798`) plus the powerup
+    /// (slot 0x6e8), the capacity, the productivity of the task's attribute; the decay's stop
+    /// (attribute 292), the unit AI's target class, the next tree's search done (`tree_lost`),
+    /// the game's predator setting, the task's sprites and the herd it leads (`herd`).
+    pub(crate) fn hunt_reads(
+        &self,
+        c: &Step<'_>,
+        master: &Master,
+        hunt: &HuntAction,
+        herd: Option<Herd>,
+        tree_lost: bool,
+    ) -> HuntReads {
+        let owner = &c.w.players[c.player];
         let productivity = usize::try_from(hunt.task.productivity)
             .ok()
-            .and_then(|i| c.w.players[c.player].attributes.get(i))
+            .and_then(|i| owner.attributes.get(i))
             .copied()
             .filter(|&v| 0.0 < v)
             .unwrap_or(1.0);
         let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
-        let sprites = HuntSprites {
-            moving: g(hunt.task.sprites[0]),
-            working: g(hunt.task.sprites[2]),
-            carrying: g(hunt.task.sprites[3]),
-            standing: g(master.standing_sprite),
-        };
-        let mut gather = Gatherer {
-            held_kind: &mut self.life.attribute_type,
-            held: &mut self.life.amount,
+        HuntReads {
+            attack: AttackReads::of(
+                self,
+                master,
+                (c.w.masters.get(c.player), &c.w.graphics),
+                self.ai.as_ref(),
+                (owner.computer, c.w.world_time),
+            ),
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
             productivity,
-            target_class: victim.class,
-            target_storage: victim.storage,
-            stops_decay: c.w.players[c.player].attributes.get(292) == Some(&1.0),
+            stops_decay: owner.attributes.get(292) == Some(&1.0),
             ai_class: self.ai.as_ref().map(|ai| ai.target_type),
-            sprites,
             tree_searched: tree_lost,
             predator_hunts_end: c.w.settings.predator_hunts_end(),
-            searches: false,
-            leads: None,
-            attack_failed: false,
-            let_go: None,
-        };
-        let mut blasted = std::mem::take(&mut c.blasted);
-        // the unit AI's canMoveToAttack (FUN_140c48420) and stance
-        let can_move = self
-            .ai
-            .as_ref()
-            .is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1);
-        let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
-        let world_time = c.w.world_time;
-        let standing = c.w.graphics.get(&master.standing_sprite).copied();
-        let volleys =
-            c.w.masters
-                .get(c.player)
-                .is_some_and(|m| crate::combat::attack::volleys(master, m));
-        let swing_sprites = crate::combat::attack::swing_sprites(
-            self.abilities.look.as_ref(),
-            master,
-            &c.w.graphics,
-        );
-        let (reload, hit_chance) = (master.reload, master.hit_chance);
-        let (walk, sprite_rng) = c.walk_and_sprites(&mut self.body, me);
-        let mut strike = Strike {
-            sprite: &mut self.sprite,
-            standing,
-            volleys,
-            attack_timer: &mut self.attack_timer,
-            reload_worldtime: &mut self.reload_worldtime,
-            reload: self.reload_stinger + (reload - self.reload_powerup),
-            hit_chance,
-            victim: &mut victim,
-            blasted: &mut blasted,
-            sprite_rng,
-            own,
-            executed: None,
-            fire: None,
-            can_move,
-            stance,
-            state_position: self.ai.as_ref().map_or([0.0; 2], |ai| ai.state_position),
-            posted: Vec::new(),
-            queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
-            world_time,
-            ai_order: self.ai.as_ref().map(|ai| ai.current_order),
-            ai_type: self.ai.as_ref().map(|ai| ai.ai_type),
-            computer,
-            armed: true,
-            volley_under_way: self.next_volley != 0,
-            let_go: None,
-            forgets: false,
-            sends_home: false,
-            swing_sprites,
-        };
-        let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
-        let searches = gather.searches;
-        let (attack_failed, let_go) = (gather.attack_failed, gather.let_go);
-        let posted = std::mem::take(&mut strike.posted);
-        let leads = gather.leads.map(|site| (hunt.target, site));
-        let fired = strike.fire.map(|target| Aimed::at(target, strike.victim));
-        let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
-        write_struck(c, blasted, &mut victim)?;
-        if let Some(aimed) = fired {
-            self.volley(c, aimed)?;
+            sprites: HuntSprites {
+                moving: g(hunt.task.sprites[0]),
+                working: g(hunt.task.sprites[2]),
+                carrying: g(hunt.task.sprites[3]),
+                standing: g(master.standing_sprite),
+            },
+            herd,
         }
-        if let Some(target) = executed {
-            self.post_own(ACTION_EXECUTED, [600, target, 0])?;
-        }
-        for (kind, p) in posted {
-            self.post_own(kind, p)?;
-        }
-        // the retaliation's kill of the unit itself, which follows its step
-        if let Some(k) = self.hit_back(own)? {
-            file_kill(c, KillLeft::own(self.id, k))?;
-        }
-        if full {
-            self.hunt_drop_off(c)?;
-        }
-        if searches {
-            self.hunt_set_search(c)?;
-        }
-        if let Some(target) = let_go {
-            self.hunt_release(c, [target])?;
-        }
-        if attack_failed {
-            self.hunt_attack_failed(c)?;
-        }
-        c.leads = leads;
-        Ok(())
     }
 
     /// The hunt's end of an Attack that failed (`FUN_140ac4670` with -1 and 5): a hunter whose
@@ -186,7 +132,7 @@ impl Unit {
         if tree && self.hunt_tree_search(c, None, Some(TREE_NEAR))? {
             return Ok(());
         }
-        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().ok_or(NO_HUNT)?;
         hunt.tear_down(self.body.mover_mut())?;
         hunt.state = crate::gathering::hunt::SEARCH;
         self.hunt_search_state(c)
