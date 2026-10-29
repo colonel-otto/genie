@@ -8,13 +8,13 @@
 //! `107 + state` for it.
 
 use crate::GenieError;
-use crate::map::spatial::Spatial;
 use crate::movement::Me;
 use crate::movement::PathAsk;
 use crate::movement::move_to::{
-    Goal, MoveDefaults, MoveTo, Shown, Sprites, Walk, start_walk_shown, walk_or_give_up,
+    Goal, MoveDefaults, MoveTo, Sprites, start_walk_shown, walk_or_give_up,
 };
 use crate::objects::actions::Action;
+use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
@@ -34,15 +34,17 @@ pub struct Targets {
     pub taken: Option<i32>,
 }
 
-/// A `MoveTo` that ended in the Artifact's update ([`Artifact::walk`]): its teardown stops the
-/// unit (the caller's); the notify it posts (none for a quiet one) and the target the action let
-/// go (slot 0x68 with none), the caller's.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Ended {
-    /// The notify kind it posts, with the move action value.
-    pub notify: Option<i32>,
-    /// The target the action let go.
-    pub released: Option<i32>,
+/// What the Artifact's update reads of its unit ([`Artifact::update`]).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ArtifactReads {
+    /// The sprites its `MoveTo`s' constructors take for none (`FUN_140aa0d30`, `FUN_140aa0df0`),
+    /// from the unit's master ([`MoveDefaults::of`]).
+    pub(crate) defaults: MoveDefaults,
+    /// The animal may change hands: it is not of the combat type with `+0x924` 0
+    /// (`FUN_14107cc90`).
+    pub(crate) searches: bool,
+    /// The unit as the targets it lets go count it ([`Unit::releaser`]).
+    pub(crate) by: Releaser,
 }
 
 /// What the Artifact's state step asks of its unit ([`Artifact::step`]).
@@ -273,41 +275,61 @@ impl Artifact {
         (released, self.drop_sub_actions())
     }
 
-    /// One update (`0x140aad250`) with the tick's `dt_ms`. Its `MoveTo` goes first: it starts its
-    /// walk, walks on, and once it ended (its update in state 1 returns 1) the sub-actions go, with
-    /// the point and the target (slot 0x68 with none). Then the check (state 6): an animal of the
-    /// combat type whose `+0x924` is 0 (`FUN_14107cc90`, `searches` false) never changes hands; any
-    /// other asks `owner` (`FUN_140aabc40`) and returns the player that takes it, after its
-    /// sub-actions went (`FUN_140a98620`), for the caller's conversion (`FUN_140aab570`). With no
-    /// new owner it waits (`set_state` 10).
-    pub fn update(
+    /// One update (`0x140aad250`) of `unit`'s Artifact on the step, the action copied out of
+    /// its list. Its `MoveTo` goes first ([`Artifact::walk`]). Then the check (state 6): an
+    /// animal of the combat type whose `+0x924` is 0 (`FUN_14107cc90`, `searches` false) never
+    /// changes hands; any other asks for its new owner (`FUN_140aabc40`,
+    /// [`crate::map::spatial::Spatial::artifact_owner`]) and returns the player that takes it,
+    /// after its sub-actions went (`FUN_140a98620`: an Enter's teardown lets its building go, a
+    /// walking `MoveTo`'s stops the unit, at once), for the caller's conversion
+    /// (`FUN_140aab570`). With no new owner it waits (`set_state` 10). In the other states the
+    /// step ([`Artifact::step`]).
+    ///
+    /// # Errors
+    ///
+    /// What the walk, the owner search and the releases give.
+    pub(crate) fn update(
         &mut self,
-        (walk, shown): (Option<Walk<'_>>, Option<Shown<'_>>),
-        dt_ms: u32,
-        searches: bool,
-        owner: &mut dyn FnMut() -> Result<Option<usize>, GenieError>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        r: &ArtifactReads,
     ) -> Result<Option<Handover>, GenieError> {
-        let _ = self.walk(walk, shown)?;
-        self.step(dt_ms, searches, owner)
+        self.walk(c, unit, me, r)?;
+        let owner = if self.state == CHECK && r.searches {
+            c.w.spatial.artifact_owner(unit.id, &c.w.players)?
+        } else {
+            None
+        };
+        let new = self.step(c.dt, owner)?;
+        if let Some(Handover::Taken { gone, .. }) = new {
+            let_go_gone(c, unit, gone, r.by)?;
+        }
+        Ok(new)
     }
 
-    /// The update's first part: its `MoveTo` sub-action (`FUN_140a992b0`), whose start shows its
-    /// sprite (`shown`, [`Artifact::move_shown`]) before the motion step. Once the `MoveTo`
-    /// ended ([`Ended`]): the notify kind the caller sends to the unit AI with the move action
-    /// value (the `MoveTo` to the point is not quiet): its completion (0x1fa) from its update in
-    /// state 1, or its failure (0x1f9) from state 13; a quiet one (to an object) posts none. A
-    /// `MoveTo` whose motion step gave up fails (`set_state` 13: an animal never waits as a
-    /// villager may); the failed one's update returns 3. On either code the Artifact drops it
-    /// (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0, the caller's), its point (−1)
-    /// and its target (slot 0x68 with none: let go, the caller's release). A waiting `MoveTo` is
-    /// not modelled.
-    pub fn walk(
+    /// The update's first part on the step: its `MoveTo` sub-action (`FUN_140a992b0`), whose
+    /// start shows its sprite ([`Artifact::move_shown`]) before the motion step; the units in
+    /// its way go to the unit AI at once (notify 0x215). A `MoveTo` whose motion step gave up
+    /// fails (`set_state` 13: an animal never waits as a villager may); the failed one's update
+    /// returns 3. Once it ended (codes 1 to 5) the Artifact drops it (`FUN_140a98620`: its
+    /// teardown stops the unit, slot 0x5d0), its point (−1) and its target (slot 0x68 with
+    /// none: let go), and the unit AI hears it, with the move action value, unless it was
+    /// quiet (to an object): its completion (0x1fa) from its update in state 1, or its failure
+    /// (0x1f9) from state 13; each at once. A waiting `MoveTo` is not modelled.
+    ///
+    /// # Errors
+    ///
+    /// A `MoveTo` to the point without it, a sprite the table lacks, what the motion step does
+    /// not model, and the release's and the notify's.
+    pub(crate) fn walk(
         &mut self,
-        walk: Option<Walk<'_>>,
-        shown: Option<Shown<'_>>,
-    ) -> Result<Option<Ended>, GenieError> {
-        let need = || GenieError::unsupported("a walking animal without its walk");
-        match self.move_to {
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        r: &ArtifactReads,
+    ) -> Result<(), GenieError> {
+        let notify = match self.move_to {
             Some(MoveTo::Start) => {
                 let (goal, range, quiet) = match self.walk_to {
                     Some((goal, range)) => (goal, range, true),
@@ -322,33 +344,46 @@ impl Artifact {
                 self.move_to = Some(MoveTo::Moving);
                 // a motion step that gives up in the start's update fails the MoveTo, as in
                 // its moving state
-                let walk = walk.ok_or_else(need)?;
+                let (walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
+                let mut sprites = Sprites {
+                    sprite: &mut unit.sprite,
+                    rng: beside.sprite_rng,
+                    graphics: beside.graphics,
+                };
+                let shown = sprites.shown(self.move_shown(r.defaults))?;
                 let ask = PathAsk::default();
-                let started = start_walk_shown(walk, (goal, range, quiet), ask, shown)?;
+                let started = start_walk_shown(walk, (goal, range, quiet), ask, Some(shown))?;
+                unit.post_in_the_way()?;
                 self.move_to = Some(started.unwrap_or(MoveTo::Failed));
+                return Ok(());
             }
             Some(MoveTo::Moving) => {
-                let state = walk_or_give_up(walk.ok_or_else(need)?)?;
+                let (walk, _) = c.w.walk_beside(c.pace(), &mut unit.body, me);
+                let state = walk_or_give_up(walk)?;
+                unit.post_in_the_way()?;
                 self.move_to = Some(state.unwrap_or(MoveTo::Failed));
+                return Ok(());
             }
-            Some(MoveTo::Arrived) => {
-                let (quiet, released) = self.end_walk();
-                let notify = (!quiet).then_some(crate::unit_ai::ACTION_COMPLETED);
-                return Ok(Some(Ended { notify, released }));
-            }
-            Some(MoveTo::Failed) => {
-                let (quiet, released) = self.end_walk();
-                let notify = (!quiet).then_some(crate::unit_ai::ACTION_FAILED);
-                return Ok(Some(Ended { notify, released }));
-            }
+            Some(MoveTo::Arrived) => crate::unit_ai::ACTION_COMPLETED,
+            Some(MoveTo::Failed) => crate::unit_ai::ACTION_FAILED,
             Some(MoveTo::Waiting) => {
                 return Err(GenieError::unsupported(
                     "an Artifact's waiting MoveTo (state 2)",
                 ));
             }
-            None => {}
+            None => return Ok(()),
+        };
+        let (quiet, released) = self.end_walk();
+        if let Some(m) = unit.body.mover_mut() {
+            m.stop()?;
         }
-        Ok(None)
+        if let Some(t) = released {
+            crate::world::lets::release(c, t, r.by)?;
+        }
+        if !quiet {
+            unit.post_own(notify, [ActionKind::Move.value(), 0, 0])?;
+        }
+        Ok(())
     }
 
     /// The `MoveTo` ended (codes 1 to 5): it goes with the point and the target (slot 0x68 with
@@ -360,18 +395,18 @@ impl Artifact {
         (self.walk_to.take().is_some(), released)
     }
 
-    /// The update's second part: the state's step ([`Handover`]): the check's new owner, with
-    /// whether a `MoveTo` went (its teardown stops the unit, the caller's), or state 100's
-    /// handover to Gaia (the action checks again; the stop and the change are the caller's).
+    /// The update's second part after `dt_ms`: the state's step ([`Handover`]): the check's new
+    /// `owner` (the caller's search, none without one), with what went of its sub-actions (the
+    /// caller's), or state 100's handover to Gaia (the action checks again; the stop and the
+    /// change are the caller's).
     pub fn step(
         &mut self,
         dt_ms: u32,
-        searches: bool,
-        owner: &mut dyn FnMut() -> Result<Option<usize>, GenieError>,
+        owner: Option<usize>,
     ) -> Result<Option<Handover>, GenieError> {
         match self.state {
             CHECK => {
-                if searches && let Some(new) = owner()? {
+                if let Some(new) = owner {
                     // its sub-actions go (FUN_140a98620) before the caller's conversion: the
                     // point and the target stay, so the conversion's stop ([`Artifact::stop`])
                     // finds no sub-action
@@ -398,6 +433,30 @@ impl Artifact {
         }
         Ok(None)
     }
+}
+
+/// What went of the Artifact's sub-actions in its update (`gone`), at once: the building or
+/// transport an Enter's teardown let go is released by `by` (slot 0x180), and a walking
+/// `MoveTo`'s teardown stops `unit` (slot 0x5d0).
+///
+/// # Errors
+///
+/// The release's and the stop's.
+fn let_go_gone(
+    c: &mut Step<'_>,
+    unit: &mut Unit,
+    gone: SubActionsGone,
+    by: Releaser,
+) -> Result<(), GenieError> {
+    if let Some(t) = gone.released {
+        crate::world::lets::release(c, t, by)?;
+    }
+    if gone.stops
+        && let Some(m) = unit.body.mover_mut()
+    {
+        m.stop()?;
+    }
+    Ok(())
 }
 
 impl Unit {
@@ -428,7 +487,7 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         me: Me,
-        by: crate::objects::release::Releaser,
+        by: Releaser,
     ) -> Result<(), GenieError> {
         let Some(e) = self.actions.artifact_mut().and_then(|a| a.enter.take()) else {
             return Ok(());
@@ -457,72 +516,39 @@ impl Unit {
         Ok(())
     }
 
-    /// The Artifact's walk and its check for a new owner: an ended `MoveTo` (codes 1 to 5) goes
-    /// (`FUN_140a98620`: its teardown stops the unit, quiet or not) and the action lets its
-    /// target go; the check (`FUN_14107cc90`: an object of the combat types whose `+0x924` is 0
-    /// never changes hands) runs [`Spatial::artifact_owner`]. A handover's check lets its
-    /// sub-actions go (an Enter's teardown lets its building go; a walking `MoveTo`'s, the
-    /// Artifact's own or the Enter's, stops the unit); then the ended `MoveTo`'s notify. The
-    /// handover found, if any; none without an Artifact.
+    /// The Artifact's walk and its check for a new owner ([`Artifact::update`] on the step, the
+    /// action copied out of its list and written back after): what it reads of the unit
+    /// ([`ArtifactReads`]: its master's `MoveTo` defaults; whether it may change hands, the
+    /// combat objects whose sight's capture flag is 0 never do). The handover found, if any;
+    /// none without an Artifact.
     pub(crate) fn artifact_walk_and_check(
         &mut self,
         c: &mut Step<'_>,
         me: Me,
-        by: crate::objects::release::Releaser,
+        by: Releaser,
     ) -> Result<Option<Handover>, GenieError> {
-        if self.actions.artifact().is_none() {
+        let Some(mut artifact) = self.actions.artifact().copied() else {
             return Ok(None);
-        }
-        let (dt, pace) = (c.dt, c.pace());
+        };
         // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
         let defaults = self.master(&c.w.masters, c.player).map_or_else(
             |_| MoveDefaults::default(),
             |m| MoveDefaults::of(m, self.abilities.look.as_ref()),
         );
-        let artifact = self.actions.artifact_mut().expect("checked above");
-        let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
-        let mut sprites = Sprites {
-            sprite: &mut self.sprite,
-            rng: beside.sprite_rng,
-            graphics: beside.graphics,
-        };
-        let shown = if artifact.move_to == Some(MoveTo::Start) {
-            Some(sprites.shown(artifact.move_shown(defaults))?)
-        } else {
-            None
-        };
-        let ended = artifact.walk(Some(walk), shown)?;
-        if ended.is_some()
-            && let Some(m) = self.body.mover_mut()
-        {
-            m.stop()?;
-        }
-        if let Some(t) = ended.and_then(|e| e.released) {
-            crate::world::lets::release(c, t, by)?;
-        }
         let capture =
             c.w.spatial
                 .sight
                 .as_ref()
                 .and_then(|v| v.seer(self.id))
                 .map(|s| s.capture);
-        let searches = !(self.combat && capture == Some(0));
-        let spatial: &Spatial = &c.w.spatial;
-        let players = &c.w.players;
-        let id = self.id;
-        let new = artifact.step(dt, searches, &mut || spatial.artifact_owner(id, players))?;
-        if let Some(Handover::Taken { gone, .. }) = new {
-            if let Some(t) = gone.released {
-                crate::world::lets::release(c, t, by)?;
-            }
-            if gone.stops
-                && let Some(m) = self.body.mover_mut()
-            {
-                m.stop()?;
-            }
-        }
-        if let Some(kind) = ended.and_then(|e| e.notify) {
-            self.post_own(kind, [ActionKind::Move.value(), 0, 0])?;
+        let r = ArtifactReads {
+            defaults,
+            searches: !(self.combat && capture == Some(0)),
+            by,
+        };
+        let new = artifact.update(c, self, me, &r)?;
+        if let Some(own) = self.actions.artifact_mut() {
+            *own = artifact;
         }
         Ok(new)
     }
@@ -566,11 +592,12 @@ impl Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::combat::attack::tests::Rig;
 
     #[test]
     fn a_check_finds_no_owner_and_waits_one_second() {
         let mut a = Artifact::new(false, None);
-        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.step(50, None).unwrap();
         assert_eq!((a.state, a.timer), (10, 1.0));
     }
 
@@ -601,11 +628,11 @@ mod tests {
             }
         );
         assert_eq!(walking.move_to, Some(MoveTo::Start));
-        // its walk needs the animal's movement state
-        assert!(a.update((None, None), 50, true, &mut || Ok(None)).is_err());
         // a MoveTo that ended goes with the point, then the check waits again
         a.move_to = Some(MoveTo::Arrived);
-        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
+        let found = rig.run(50, |c, u, _, _| a.update(c, u, me(), &reads()));
+        assert_eq!(found, Ok(None));
         assert_eq!((a.state, a.timer, a.move_to, a.goal), (10, 1.0, None, None));
     }
 
@@ -693,7 +720,7 @@ mod tests {
         // the check that finds an owner deletes it too
         let mut c = Artifact::new(false, None);
         c.enter = Some(e);
-        let found = c.step(50, true, &mut || Ok(Some(2))).unwrap();
+        let found = c.step(50, Some(2)).unwrap();
         assert_eq!(
             found,
             Some(Handover::Taken {
@@ -739,51 +766,42 @@ mod tests {
     #[test]
     fn gaia_waits_half_a_second() {
         let mut a = Artifact::new(true, None);
-        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.step(50, None).unwrap();
         assert_eq!(a.timer, 0.5);
     }
 
     #[test]
     fn the_wait_ends_when_the_timer_reaches_zero_then_one_check_follows() {
         let mut a = Artifact::new(false, None);
-        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.step(50, None).unwrap();
         // 1.0 - 20 × 0.05 in f32 is -1.56e-7, so the 20th update ends the wait
         let waits = (0..30).take_while(|_| {
-            let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
+            let _ = a.step(50, None).unwrap();
             a.state == 10
         });
         assert_eq!(waits.count(), 19);
         assert_eq!(a.state, 6);
-        let _ = a.update((None, None), 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.step(50, None).unwrap();
         assert_eq!((a.state, a.timer), (10, 1.0));
     }
 
     #[test]
     fn a_check_that_finds_a_new_owner_hands_the_animal_over_and_stays_a_check() {
         let mut a = Artifact::new(true, None);
-        let mut asked = 0;
-        let found = a
-            .update((None, None), 50, true, &mut || {
-                asked += 1;
-                Ok(Some(2))
-            })
-            .unwrap();
+        let found = a.step(50, Some(2)).unwrap();
         assert_eq!(
-            (found, a.state, asked),
+            (found, a.state),
             (
                 Some(Handover::Taken {
                     new: 2,
                     gone: SubActionsGone::default()
                 }),
-                6,
-                1
+                6
             )
         );
-        // a combat-type animal whose +0x924 is 0 never asks
+        // no owner found (a combat-type animal whose +0x924 is 0 never asks): it waits
         let mut b = Artifact::new(true, None);
-        let found = b
-            .update((None, None), 50, false, &mut || Ok(Some(2)))
-            .unwrap();
+        let found = b.step(50, None).unwrap();
         assert_eq!((found, b.state), (None, 10));
         // the conversion's stop: the check again, no MoveTo went
         assert_eq!(b.stop(), (SubActionsGone::default(), None));
@@ -826,7 +844,7 @@ mod tests {
         a.target = 9149;
         a.walk_to = Some((Goal::Target(9149), 1.0));
         a.move_to = Some(MoveTo::Moving);
-        let found = a.step(50, true, &mut || Ok(Some(1))).unwrap();
+        let found = a.step(50, Some(1)).unwrap();
         assert_eq!(
             found,
             Some(Handover::Taken {
@@ -853,9 +871,7 @@ mod tests {
             state: TO_GAIA,
             ..Artifact::new(false, None)
         };
-        let found = a
-            .step(50, true, &mut || Err(GenieError::unsupported("no search")))
-            .unwrap();
+        let found = a.step(50, None).unwrap();
         assert_eq!((found, a.state), (Some(Handover::ToGaia), CHECK));
     }
 
@@ -912,33 +928,54 @@ mod tests {
 
     /// The motion step gives up in the update the start's `set_state(4)` runs (426321525's
     /// livestock in update 2656; a unit without speed here): the `MoveTo` fails, as in its moving
-    /// state, and the next update ends it with its failure.
+    /// state, and the next update ends it with its failure: the unit stops and its AI hears it
+    /// (0x1f9 with the move action value).
     #[test]
     fn a_walk_the_motion_step_gives_up_at_its_start_fails() {
         let mut a = Artifact::new(false, None);
-        let _ = a.take_point([28.5, 93.5, 0.0]);
-        let mut mover = crate::gathering::hunt::tests::walker();
-        mover.stats.speed = 0.0;
-        let mut world = Spatial::new([120, 120]);
-        let mut mover = crate::objects::layers::Body::new([20.5, 90.5, 0.0], None, Some(mover));
-        let walk = Walk {
-            body: &mut mover,
-            me: Me {
-                id: 9517,
-                group: -1,
-                action_state: 0,
-            },
-            dt: 0.05,
-            world: &mut world,
-            plan: None,
-        };
-        assert_eq!(a.walk(Some(walk), None), Ok(None));
-        assert_eq!(a.move_to, Some(MoveTo::Failed));
-        let failed = Ended {
-            notify: Some(crate::unit_ai::ACTION_FAILED),
-            released: None,
-        };
-        assert_eq!(a.walk(None, None), Ok(Some(failed)));
+        let _ = a.take_point([35.5, 88.5, 0.0]);
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
+        rig.mover_mut().stats.speed = 0.0;
+        rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
+            .unwrap();
+        assert_eq!((a.move_to, rig.posted()), (Some(MoveTo::Failed), vec![]));
+        rig.mover_mut().animated.speed = 1.0;
+        rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
+            .unwrap();
+        let failed = (
+            crate::unit_ai::ACTION_FAILED,
+            [ActionKind::Move.value(), 0, 0],
+        );
+        assert_eq!((a.move_to, rig.posted()), (None, vec![failed]));
+        assert_eq!(rig.mover().animated.speed, 0.0);
+    }
+
+    /// The Artifact's reads in [`Rig`]'s world: no defaults, a searching animal, released by
+    /// itself.
+    fn reads() -> ArtifactReads {
+        ArtifactReads {
+            defaults: MoveDefaults::default(),
+            searches: true,
+            by: by(),
+        }
+    }
+
+    /// The unit 9177 as the targets it lets go count it.
+    const fn by() -> Releaser {
+        Releaser {
+            id: 9177,
+            class: 4,
+            player: 1,
+        }
+    }
+
+    /// [`Rig::on_the_path`]'s unit 9177 as the walker.
+    const fn me() -> Me {
+        Me {
+            id: 9177,
+            group: -1,
+            action_state: 0,
+        }
     }
 
     /// The sprite its `MoveTo` shows: the task's moving sprite, else the default of its
@@ -959,27 +996,15 @@ mod tests {
     }
 
     /// The walk's start shows its sprite (`0x140aa29e0`'s `set_state(4)`) before the motion
-    /// step, here one that gives up (a unit without speed).
+    /// step, here one that gives up (a unit without speed); the units in the way of its walk go
+    /// to the unit AI at once, starting or walking on.
     #[test]
     fn an_artifact_s_walk_shows_its_sprite_as_it_starts() {
         let mut a = Artifact::new(false, Some(3));
-        let _ = a.take_point([28.5, 93.5, 0.0]);
-        let mut mover = crate::gathering::hunt::tests::walker();
+        let _ = a.take_point([35.5, 88.5, 0.0]);
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         // the top speed derives from the base and the sprite shown
-        (mover.stats.speed, mover.stats.base) = (0.0, 0.0);
-        let mut world = Spatial::new([120, 120]);
-        let mut mover = crate::objects::layers::Body::new([20.5, 90.5, 0.0], None, Some(mover));
-        let walk = Walk {
-            body: &mut mover,
-            me: Me {
-                id: 9517,
-                group: -1,
-                action_state: 0,
-            },
-            dt: 0.05,
-            world: &mut world,
-            plan: None,
-        };
+        (rig.mover_mut().stats.speed, rig.mover_mut().stats.base) = (0.0, 0.0);
         let graphic = crate::objects::sprite::Graphic {
             id: 3,
             frames: 10,
@@ -989,41 +1014,101 @@ mod tests {
             replay_delay: 0.0,
             flags: 1,
         };
-        let graphics = std::collections::BTreeMap::from([(3, graphic)]);
-        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
-        let mut sprites = Sprites {
-            sprite: &mut sprite,
-            rng: &mut rng,
-            graphics: &graphics,
-        };
-        let shown = sprites
-            .shown(a.move_shown(MoveDefaults::default()))
+        assert_eq!(rig.t.graphics.insert(3, graphic), None);
+        rig.mover_mut().in_the_way = vec![77];
+        rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
-        assert_eq!(a.walk(Some(walk), Some(shown)), Ok(None));
-        assert_eq!(a.move_to, Some(MoveTo::Failed));
-        assert_eq!(sprite.map(|s| s.graphic.id), Some(3));
+        let in_the_way = (crate::unit_ai::IN_THE_WAY, [77, -1, -1]);
+        assert_eq!((a.move_to, rig.sprite()), (Some(MoveTo::Failed), Some(3)));
+        assert_eq!(rig.posted(), vec![in_the_way]);
+        let mut walking = Artifact::new(false, None);
+        let _ = walking.take_point([35.5, 88.5, 0.0]);
+        walking.move_to = Some(MoveTo::Moving);
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
+        rig.mover_mut().in_the_way = vec![77];
+        rig.run(50, |c, u, _, _| walking.walk(c, u, me(), &reads()))
+            .unwrap();
+        assert_eq!(
+            (walking.move_to, rig.posted()),
+            (Some(MoveTo::Moving), vec![in_the_way])
+        );
+        // a MoveTo to the point without its point, and a waiting one, are not modelled
+        let mut lost = Artifact {
+            move_to: Some(MoveTo::Start),
+            ..Artifact::new(false, None)
+        };
+        assert!(
+            rig.run(50, |c, u, _, _| lost.walk(c, u, me(), &reads()))
+                .is_err()
+        );
+        lost.move_to = Some(MoveTo::Waiting);
+        assert!(
+            rig.run(50, |c, u, _, _| lost.walk(c, u, me(), &reads()))
+                .is_err()
+        );
     }
 
-    /// A `MoveTo` that ended goes with the point and lets the target go (slot 0x68 with none).
+    /// A `MoveTo` that ended goes with the point and lets the target go at once (slot 0x68 with
+    /// none); a quiet one (to an object) posts nothing, one to the point posts its end.
     #[test]
     fn an_ended_walk_lets_the_target_go() {
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default())
+            .holding(9149, 1)
+            .holding(77, 1);
         let mut a = Artifact::new(false, None);
         a.target = 9149;
         a.goal = Some([1.0, 1.0, 0.0]);
         a.walk_to = Some((Goal::Target(9149), 1.0));
         a.move_to = Some(MoveTo::Arrived);
-        let quiet = Ended {
-            notify: None,
-            released: Some(9149),
-        };
-        assert_eq!(a.walk(None, None), Ok(Some(quiet)));
+        rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
+            .unwrap();
+        assert_eq!(
+            (a.target, a.goal, rig.workers(9149, 1)),
+            (-1, None, Some(0))
+        );
+        assert_eq!(rig.posted(), vec![]);
         a.target = 77;
         a.move_to = Some(MoveTo::Failed);
-        let failed = Ended {
-            notify: Some(crate::unit_ai::ACTION_FAILED),
-            released: Some(77),
+        rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
+            .unwrap();
+        let failed = (
+            crate::unit_ai::ACTION_FAILED,
+            [ActionKind::Move.value(), 0, 0],
+        );
+        assert_eq!((rig.workers(77, 1), rig.posted()), (Some(0), vec![failed]));
+        // nothing walking: nothing more
+        rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
+            .unwrap();
+        assert_eq!(rig.posted().len(), 1);
+    }
+
+    /// The update on the step: the check that finds no owner (no sight here) waits. A check
+    /// that finds one drops the sub-actions, whose effects follow at once ([`let_go_gone`]): the
+    /// held Enter's transport is let go and the walking unit stops.
+    #[test]
+    fn an_update_checks_after_its_walk_and_lets_go_what_a_handover_drops() {
+        let mut a = Artifact::new(false, None);
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
+        let found = rig.run(50, |c, u, _, _| a.update(c, u, me(), &reads()));
+        assert_eq!((found, a.state), (Ok(None), WAIT));
+        // the step's effects on a handover: the Enter's transport let go, the unit stopped
+        let mut e = crate::garrison::EnterAction::new(
+            11970,
+            [1.0, 2.0, 0.0],
+            &crate::garrison::tests::enter_task(0.0, 20),
+        );
+        e.move_to = Some(MoveTo::Moving);
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default()).holding(11970, 1);
+        rig.mover_mut().animated.speed = 1.0;
+        let mut b = Artifact::new(false, None);
+        b.enter = Some(e);
+        let found = b.step(50, Some(2)).unwrap();
+        let Some(Handover::Taken { new: 2, gone }) = found else {
+            panic!("a handover to player 2: {found:?}");
         };
-        assert_eq!(a.walk(None, None), Ok(Some(failed)));
-        assert_eq!(a.walk(None, None), Ok(None));
+        rig.run(50, |c, u, _, _| let_go_gone(c, u, gone, by()))
+            .unwrap();
+        assert_eq!(rig.mover().animated.speed, 0.0);
+        assert_eq!(rig.workers(11970, 1), Some(0));
     }
 }
