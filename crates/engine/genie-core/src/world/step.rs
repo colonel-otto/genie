@@ -47,7 +47,7 @@ pub(crate) struct Step<'a> {
     /// ([`Unit::ai_part`]); given back, the update runs only that part.
     pub(crate) ai_resume: Option<AiResume>,
     /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
-    /// whether it has the unit's master: the update ends with the takeover ([`Outcome::Captured`]).
+    /// whether it has the unit's master: the update ends with the takeover ([`crate::objects::unit::Outcome::Captured`]).
     pub(crate) taken_over: Option<(usize, bool)>,
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
     /// caller's ([`crate::ownership::capture::Captured::building`]).

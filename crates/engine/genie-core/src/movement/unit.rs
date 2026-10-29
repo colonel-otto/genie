@@ -3,8 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::explore::ExploreAction;
-use crate::movement::move_to::{MoveDefaults, MoveTo, Shows, Sprites};
+use crate::movement::move_to::{MoveTo, Shows};
 use crate::movement::{GroupSpeed, Me};
 use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::{sprite_id, standing};
@@ -12,7 +11,6 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::OrderKind;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
 use crate::world::step::Step;
@@ -197,81 +195,16 @@ impl Unit {
         self.post_own(notify, [ActionKind::Move.value(), 0, 0])
     }
 
-    /// The unit's Explore in its update (`0x140a880c0`): its walk in state 11; states 1 (done) and
-    /// 13 (failed) are not modelled, and the other states wait.
+    /// The unit's Explore in its update ([`crate::movement::explore::ExploreAction::update`]): nothing without one.
     pub(crate) fn explore_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<(), GenieError> {
-        if let Some(explore) = self.actions.explore_mut() {
-            // 0x140a880c0: state 1 is done (the action list removes it, the default task's
-            // restart is not modelled), 11 walks, 13 fails; the others wait
-            match explore.state {
-                crate::movement::explore::DONE => {
-                    return Err(GenieError::unsupported(
-                        "a done Explore (the action list after it)",
-                    ));
-                }
-                crate::movement::explore::FAILED => {
-                    return Err(GenieError::unsupported(
-                        "a failed Explore (notify 0x1f9, set_state 2)",
-                    ));
-                }
-                crate::movement::explore::WALK => {
-                    // the MoveTo's update code (FUN_140a992b0): 1 once it arrived or without
-                    // one, 3 once it failed (quiet: no notify)
-                    let quiet = self.ai.as_ref().is_some_and(|ai| {
-                        !matches!(
-                            ai.current_order,
-                            Some(OrderKind::Patrol | OrderKind::AttackMove)
-                        )
-                    });
-                    // the motion step giving up: a human player's villager waits once, any
-                    // other unit's MoveTo fails (LAB_140aa320c)
-                    let master = object_master(
-                        self.own_master.as_deref(),
-                        (self.id, self.life.master_id),
-                        c.w.masters.get(c.player),
-                    )
-                    .ok();
-                    let villager = master.is_some_and(|m| m.class == 4);
-                    let waits = villager && !c.w.players[c.player].computer;
-                    let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
-                    // the sprite its MoveTo's start shows (FUN_140aa0d30's default for none)
-                    let move_shown = match (explore.move_to, master) {
-                        (Some(MoveTo::Start), Some(m)) => {
-                            let defaults = MoveDefaults::of(m, self.abilities.look.as_ref());
-                            ExploreAction::move_shown(m, defaults)
-                        }
-                        _ => None,
-                    };
-                    let goal = crate::movement::move_to::Goal::Point(explore.point);
-                    let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut self.body, me);
-                    let mut sprites = Sprites {
-                        sprite: &mut self.sprite,
-                        rng: beside.sprite_rng,
-                        graphics: beside.graphics,
-                    };
-                    let shown = match explore.move_to {
-                        Some(MoveTo::Start) => Some(sprites.shown(move_shown)?),
-                        _ => None,
-                    };
-                    let code = crate::movement::move_to::sub_move_to_update(
-                        (&mut explore.move_to, &mut explore.move_wait),
-                        &mut walk,
-                        goal,
-                        (0.0, quiet),
-                        (waits, stance),
-                        shown,
-                    )?;
-                    let walked = explore.move_to.is_some();
-                    let owner = explore.after_walk(code)?;
-                    if walked && self.actions.explore().is_some_and(|e| e.move_to.is_none()) {
-                        self.stop_mover()?;
-                    }
-                    self.explore_owner(owner, c)?;
-                }
-                _ => {}
-            }
+        let Some(mut explore) = self.actions.explore().copied() else {
+            return Ok(());
+        };
+        let explored = explore.update(c, self, me);
+        if let Some(e) = self.actions.explore_mut() {
+            *e = explore;
         }
-        Ok(())
+        explored
     }
 
     /// A bird's Fly in its update ([`crate::movement::fly::Fly::update`]): nothing without one.

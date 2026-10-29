@@ -9,10 +9,11 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::move_to::{MoveDefaults, MoveTo};
+use crate::movement::Me;
+use crate::movement::move_to::{MoveDefaults, MoveTo, Sprites};
 use crate::objects::masters::Master;
 use crate::objects::sprite::sprite_id;
-use crate::objects::unit::Unit;
+use crate::objects::unit::{Unit, object_master};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::step::Step;
@@ -137,6 +138,94 @@ impl ExploreAction {
             // 0 (and any other code) goes on
             _ => Ok(Owner::Nothing),
         }
+    }
+}
+
+impl ExploreAction {
+    /// One update (`0x140a880c0`) of the Explore of `explorer` (`me`) through its step: state 11
+    /// updates its quiet `MoveTo` to the point (the sprite its start shows is the master's
+    /// walking one, [`ExploreAction::move_shown`]) and goes on by the code
+    /// ([`ExploreAction::after_walk`]); a `MoveTo` the update dropped stops the unit (its
+    /// teardown, slot 0x5d0), and what the new state asks of the unit follows at once
+    /// ([`Unit::explore_owner`]). States 1 (done) and 13 (failed) are not modelled, and the
+    /// other states wait.
+    ///
+    /// # Errors
+    ///
+    /// The states and codes the slice does not model, and the walk's.
+    pub(crate) fn update(
+        &mut self,
+        c: &mut Step<'_>,
+        explorer: &mut Unit,
+        me: Me,
+    ) -> Result<(), GenieError> {
+        // 0x140a880c0: state 1 is done (the action list removes it, the default task's restart
+        // is not modelled), 11 walks, 13 fails; the others wait
+        match self.state {
+            DONE => Err(GenieError::unsupported(
+                "a done Explore (the action list after it)",
+            )),
+            FAILED => Err(GenieError::unsupported(
+                "a failed Explore (notify 0x1f9, set_state 2)",
+            )),
+            WALK => self.walk(c, explorer, me),
+            _ => Ok(()),
+        }
+    }
+
+    /// State 11's walk: the `MoveTo`'s update code (`FUN_140a992b0`): 1 once it arrived or
+    /// without one, 3 once it failed (quiet: no notify, but for a unit AI on a patrol or an
+    /// attack move). The motion step giving up makes a human player's villager wait once and
+    /// fails any other unit's `MoveTo` (`LAB_140aa320c`).
+    fn walk(&mut self, c: &mut Step<'_>, explorer: &mut Unit, me: Me) -> Result<(), GenieError> {
+        let quiet = explorer.ai.as_ref().is_some_and(|ai| {
+            !matches!(
+                ai.current_order,
+                Some(OrderKind::Patrol | OrderKind::AttackMove)
+            )
+        });
+        let master = object_master(
+            explorer.own_master.as_deref(),
+            (explorer.id, explorer.life.master_id),
+            c.w.masters.get(c.player),
+        )
+        .ok();
+        let villager = master.is_some_and(|m| m.class == 4);
+        let waits = villager && !c.w.players[c.player].computer;
+        let stance = explorer.ai.as_ref().map_or(0, |ai| ai.stance);
+        // the sprite its MoveTo's start shows (FUN_140aa0d30's default for none)
+        let move_shown = match (self.move_to, master) {
+            (Some(MoveTo::Start), Some(m)) => {
+                let defaults = MoveDefaults::of(m, explorer.abilities.look.as_ref());
+                Self::move_shown(m, defaults)
+            }
+            _ => None,
+        };
+        let goal = crate::movement::move_to::Goal::Point(self.point);
+        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut explorer.body, me);
+        let mut sprites = Sprites {
+            sprite: &mut explorer.sprite,
+            rng: beside.sprite_rng,
+            graphics: beside.graphics,
+        };
+        let shown = match self.move_to {
+            Some(MoveTo::Start) => Some(sprites.shown(move_shown)?),
+            _ => None,
+        };
+        let code = crate::movement::move_to::sub_move_to_update(
+            (&mut self.move_to, &mut self.move_wait),
+            &mut walk,
+            goal,
+            (0.0, quiet),
+            (waits, stance),
+            shown,
+        )?;
+        let walked = self.move_to.is_some();
+        let owner = self.after_walk(code)?;
+        if walked && self.move_to.is_none() {
+            explorer.stop_mover()?;
+        }
+        explorer.explore_owner(owner, c)
     }
 }
 
