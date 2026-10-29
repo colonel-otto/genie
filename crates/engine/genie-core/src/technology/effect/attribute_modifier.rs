@@ -4,7 +4,9 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::{AttributeWorld, Master, master_type, player_master};
-use crate::technology::effect::{CAPPED, Change, has_actions, shows_sprite, within_table};
+use crate::technology::effect::{
+    CAPPED, Change, OBJECT_GONE, has_actions, shows_sprite, within_table,
+};
 use crate::world::World;
 
 impl World {
@@ -103,7 +105,7 @@ impl World {
                 )?);
             }
         }
-        let (_, u) = self.object_mut(id).expect("found above");
+        let (_, u) = self.object_mut(id).ok_or(OBJECT_GONE)?;
         for s in shares {
             u.firepower = if after {
                 s + u.firepower
@@ -147,7 +149,7 @@ impl World {
             let (Some(graphic), false) = (sprite.and_then(g), self.graphics.is_empty()) else {
                 return Ok(());
             };
-            let place = self.place(id).expect("found above");
+            let place = self.place(id).ok_or(OBJECT_GONE)?;
             let rng = self.streams.get(Stream::Sprite);
             let u = match place {
                 crate::orders::Place::Live(q, i) => &mut self.players[q].objects[i],
@@ -174,7 +176,7 @@ impl World {
             second: g(master.attack_sprite2),
             combat: master_type::COMBAT <= master.kind,
         };
-        let (_, u) = self.object_mut(id).expect("found above");
+        let (_, u) = self.object_mut(id).ok_or(OBJECT_GONE)?;
         // a unit's own Attack's task (the work command's attack task) has no sprites
         if let Some(attack) = u.actions.attack_mut() {
             follow_master(&mut attack.arms, None, &sprites);

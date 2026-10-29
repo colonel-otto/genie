@@ -5,6 +5,10 @@ use crate::technology::RESEARCHED;
 use crate::technology::effect::{ONE, RESEARCH_SPENT, ROUND, TECHS_RESEARCHED};
 use crate::world::World;
 
+/// A tech effect's location above 0 that is no index.
+const BAD_LOCATION: GenieError =
+    GenieError::unreachable("a tech location above 0 that is not an index");
+
 /// The modes of `FUN_1415c3f20`'s technology change (kind 8) that change a cost, with the
 /// resource and the cost modifier's mode (`DAT_142ed71b0`'s map: 0 to 3 set food, wood, stone,
 /// gold; 0x4000 to 0x4003 add to them; 0xd to 0x10 multiply them, 0x11 every one).
@@ -65,7 +69,8 @@ impl World {
         let (mut at, mut building) = (None, -1);
         if 0 < location {
             let state = &mut self.players[p].techs[t];
-            let i = usize::try_from(location).expect("above 0");
+            let i =
+                usize::try_from(location).map_err(|_| BAD_LOCATION.with("location", location))?;
             if i < state.locations.len() {
                 building = state.locations[i].building;
                 at = Some(i);

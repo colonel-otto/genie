@@ -30,6 +30,10 @@ use crate::world::World;
 
 /// The attribute counting the technologies researched (`0x15`) and the one summing their costs
 /// (`0x63`), which a research done at a location with a button adds to.
+/// A tech effect finds an object it changes gone from the lists it was found in.
+const OBJECT_GONE: crate::GenieError =
+    crate::GenieError::unreachable("an object a tech effect changes gone from its list");
+
 const TECHS_RESEARCHED: i16 = 0x15;
 const RESEARCH_SPENT: i16 = 0x63;
 /// The attribute the dependents' update sets to 1 when none of them is left (`+0x138`).

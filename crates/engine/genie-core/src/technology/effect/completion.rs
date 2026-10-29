@@ -11,6 +11,10 @@ use crate::technology::effect::{
 };
 use crate::world::World;
 
+/// An enable command finds the master it tested gone.
+const NO_MASTER: GenieError =
+    GenieError::unreachable("an enable command for a master the player lacks");
+
 impl World {
     /// `FUN_1413cdcd0` for player `p`'s technology `t` (`param_3` 0) researched at a building of
     /// master `building`: a technology not in state 0 to 2 is not done (the game's overrides
@@ -380,7 +384,7 @@ impl World {
             }
             return Ok(());
         }
-        let m = self.masters[p].get_mut(master).expect("tested above");
+        let m = self.masters[p].get_mut(master).ok_or(NO_MASTER)?;
         if !m.disabled {
             m.available = enable != 0;
         }

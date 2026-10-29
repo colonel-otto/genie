@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::{master_type, player_master};
+use crate::technology::effect::OBJECT_GONE;
 use crate::world::World;
 
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
@@ -205,7 +206,7 @@ impl World {
             if u.master(&self.masters, q)?.kind < master_type::ACTION {
                 continue;
             }
-            let (_, u) = self.object_mut(id).expect("found above");
+            let (_, u) = self.object_mut(id).ok_or(OBJECT_GONE)?;
             let held = u.life.amount;
             let Some(make) = u.actions.make_mut() else {
                 continue;

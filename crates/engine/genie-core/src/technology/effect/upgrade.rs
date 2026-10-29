@@ -93,8 +93,9 @@ impl World {
                     } else {
                         self.own_and_dead_master(p, i, &old);
                     }
-                } else if table && dead.as_ref().is_some_and(|d| d.id == u.life.master_id) {
-                    let d = dead.clone().expect("checked");
+                } else if table && let Some(d) = dead.as_ref().filter(|d| d.id == u.life.master_id)
+                {
+                    let d = d.clone();
                     self.players[p].objects[i].own_master = Some(Box::new(d));
                 } else if mode == 3
                     && let Some(own) = u.own_master.as_deref().filter(|m| m.id == from)

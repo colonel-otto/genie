@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::{Master, Masters, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::players::attribute;
-use crate::technology::effect::Change;
+use crate::technology::effect::{Change, OBJECT_GONE};
 use crate::world::World;
 
 pub(crate) const POPULATION: i16 = attribute::POPULATION as i16;
@@ -132,7 +132,7 @@ impl World {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => {
-                let (_, u) = self.object_mut(id).expect("found by the caller");
+                let (_, u) = self.object_mut(id).ok_or(OBJECT_GONE)?;
                 let full = f32::from(master.hit_points);
                 let hp = u.life.hp;
                 let short = |x: f32| f32::from(crate::math::conversions::cvttss2si(x) as i16);
@@ -218,12 +218,12 @@ impl World {
         match (attribute, change) {
             (a::HERO_STATUS, Change::Set | Change::Add) => Ok(()),
             (a::MAXIMUM_CHARGE, _) => {
-                let (_, u) = self.object_mut(id).expect("found by the caller");
+                let (_, u) = self.object_mut(id).ok_or(OBJECT_GONE)?;
                 u.charge = charge_after(u.charge, master.max_charge, change, v);
                 Ok(())
             }
             (a::TOTAL_MISSILES, _) => {
-                let (_, u) = self.object_mut(id).expect("found by the caller");
+                let (_, u) = self.object_mut(id).ok_or(OBJECT_GONE)?;
                 u.firepower = match change {
                     Change::Set => v,
                     Change::Add => v + u.firepower,
@@ -283,7 +283,7 @@ impl World {
         match (attribute, change) {
             (a::BUILDING_ICON_OVERRIDE, Change::Set) => Ok(()),
             (a::TRAIN_TIME, _) => {
-                let (_, u) = self.object_mut(id).expect("found by the caller");
+                let (_, u) = self.object_mut(id).ok_or(OBJECT_GONE)?;
                 if let Some(c) = u.construction.as_mut() {
                     c.progress = build_points_after(c.progress, master.build_time, change, v);
                 }
