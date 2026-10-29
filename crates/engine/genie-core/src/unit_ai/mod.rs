@@ -338,10 +338,11 @@ pub enum Effect {
     /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
     CapHumanOrder(u32),
     /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
-    /// then the order's priority becomes the AI's (the caller's, `World::order_on_target`).
+    /// then the order's priority becomes the AI's (`World::order_on_target`, at once on the
+    /// unit back in its slot).
     OrderOnTarget(QueuedOrder),
     /// The full update's tail that reads what the order on a target before it gave the AI
-    /// ([`UnitAi::after_order`], the caller's once it ran the order).
+    /// ([`UnitAi::after_order`]), which the unit's update runs next, in the same update.
     AfterOrder(AfterOrder),
     /// The unit's explore (slot 0x398, `FUN_141084db0`, with its argument 4 set) to the point
     /// (x, y): its Explore takes the point (slot 0x48), else a new Explore to it (`FUN_140a87d30`

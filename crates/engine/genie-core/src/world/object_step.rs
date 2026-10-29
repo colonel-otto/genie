@@ -4,7 +4,6 @@
 use crate::GenieError;
 use crate::construction::building_update::blasts_at_death;
 use crate::objects::unit::{Outcome, Unit};
-use crate::unit_ai::unit::AiResume;
 use crate::world::World;
 use crate::world::step::{ObjectOutputs, Step};
 
@@ -21,7 +20,6 @@ impl World {
         &mut self,
         (p, i): (usize, usize),
         (dt, turn): (u32, Option<u32>),
-        resume: Option<AiResume>,
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> (Result<Outcome, GenieError>, ObjectOutputs) {
         // the unit AI's target as its update starts, read before the unit leaves its list: a unit
@@ -60,10 +58,8 @@ impl World {
             blasted,
             kills: Vec::new(),
             player: p,
-            ai_resume: resume,
             taken_over: None,
             building_handover: false,
-            order_on_target: None,
             starts: Vec::new(),
         };
         let mut result = f(&mut unit, &mut c);
@@ -97,7 +93,7 @@ impl World {
         i: usize,
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<(), GenieError>,
     ) -> Result<(), GenieError> {
-        let _ = self.step_object((p, i), (0, None, false), None, |unit, c| {
+        let _ = self.step_object((p, i), (0, None, false), |unit, c| {
             f(unit, c).map(|()| Outcome::Stay)
         })?;
         Ok(())
@@ -122,7 +118,7 @@ impl World {
             &mut crate::math::rng::Well512,
         ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
     ) -> Result<(), GenieError> {
-        let stepped = self.step_object((p, i), (0, None, false), None, |unit, c| {
+        let stepped = self.step_object((p, i), (0, None, false), |unit, c| {
             unit.run_ai(c, f).map(|()| Outcome::Stay)
         })?;
         match stepped.outcome {

@@ -99,7 +99,8 @@ impl Unit {
             let place = ([x, y], class);
             ai.stop_with(false, Some(place), &mut fx)?;
             ai.forget_targets();
-            self.apply(fx, Some(class), c)?;
+            // a stop takes no order on a target, which leaves no rest
+            let _ = self.apply(fx, Some(class), c)?;
         }
         Ok(())
     }

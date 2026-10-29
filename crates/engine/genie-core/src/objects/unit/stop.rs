@@ -7,7 +7,7 @@ use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
-use crate::unit_ai::{AiCommand, Effect};
+use crate::unit_ai::{AfterOrder, AiCommand, Effect};
 use crate::world::step::Step;
 
 impl Unit {
@@ -137,13 +137,22 @@ impl Unit {
         torn.let_go(c, self, by)
     }
 
-    /// Its unit AI's effects, in order.
+    /// Its unit AI's effects, in order; an order on a target runs at once, on the unit lent back to
+    /// its slot ([`World::order_on_target`]). Returns the full update's rest after that order
+    /// ([`Effect::AfterOrder`]), which the caller runs ([`Unit::ai_part`]).
+    ///
+    /// # Errors
+    ///
+    /// The first effect's.
+    ///
+    /// [`World::order_on_target`]: crate::world::World::order_on_target
     pub(crate) fn apply(
         &mut self,
         effects: Vec<Effect>,
         class: Option<i16>,
         c: &mut Step<'_>,
-    ) -> Result<(), GenieError> {
+    ) -> Result<Option<AfterOrder>, GenieError> {
+        let mut rest = None;
         for e in effects {
             match e {
                 Effect::Stop => self.stop_action(c)?,
@@ -164,18 +173,9 @@ impl Unit {
                     }
                 }
                 Effect::OrderOnTarget(order) => {
-                    if c.order_on_target.replace((order, None)).is_some() {
-                        return Err(GenieError::unsupported(
-                            "two orders on targets in one update",
-                        ));
-                    }
+                    c.lend_at(self, |w, p, i| w.order_on_target(p, i, order))?;
                 }
-                Effect::AfterOrder(after) => {
-                    let (_, tail) = c.order_on_target.as_mut().ok_or(GenieError::unsupported(
-                        "a unit AI's tail after an order it did not take",
-                    ))?;
-                    *tail = Some(after);
-                }
+                Effect::AfterOrder(after) => rest = Some(after),
                 Effect::Command(command) => self.ai_command(command, c)?,
                 Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
                 Effect::Explore(point) => self.explore_to(point, c)?,
@@ -186,7 +186,7 @@ impl Unit {
                 } => self.move_to_object((target, state), range, c)?,
             }
         }
-        Ok(())
+        Ok(rest)
     }
 
     /// The unit's own command its unit AI gives ([`AiCommand`]), at once on the unit lent back

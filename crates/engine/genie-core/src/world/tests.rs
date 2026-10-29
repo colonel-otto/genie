@@ -2876,12 +2876,12 @@ fn the_unit_ai_s_moves_and_works_apply_in_order() {
 /// The unit AI's hunt and build commands and its order on a target, as its effects give them
 /// after the run: `HuntObject` hunts the deer (the hunt command, `FUN_1412151f0`); `BuildObject`
 /// sends the villager to build its foundation (the build command, slot 0x380, as the builder);
-/// `OrderOnTarget` works on the foundation with the order's priority. A tail after an order the
-/// AI did not take, and an AI move of a master the slice does not have, are not modelled; a
-/// restored patrol without one saved does nothing, and the stop stops.
+/// `OrderOnTarget` works on the foundation with the order's priority, at once, a second one
+/// again. An AI move of a master the slice does not have is not modelled; a restored patrol
+/// without one saved does nothing, and the stop stops.
 #[test]
 fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
-    use crate::unit_ai::{AfterOrder, AiMove, Effect, QueuedOrder};
+    use crate::unit_ai::{AiMove, Effect, QueuedOrder};
     let mut t = hunt_world();
     with_effects(&mut t, vec![Effect::Command(AiCommand::HuntObject(500))]).unwrap();
     assert_eq!(
@@ -2913,18 +2913,10 @@ fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
     assert_eq!(v.actions.build().map(|b| b.target), Some(10028));
     assert_eq!(v.ai.as_ref().map(|ai| ai.order_priority), Some(3));
     let mut t = sent_off_world(vec![]);
-    let after = AfterOrder {
-        busy: false,
-        group: None,
-    };
-    assert!(with_effects(&mut t, vec![Effect::AfterOrder(after)]).is_err());
-    assert!(
-        with_effects(
-            &mut t,
-            vec![Effect::OrderOnTarget(order), Effect::OrderOnTarget(order)]
-        )
-        .is_err()
-    );
+    let twice = vec![Effect::OrderOnTarget(order), Effect::OrderOnTarget(order)];
+    assert_eq!(with_effects(&mut t, twice), Ok(()));
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.actions.build().map(|b| b.target), Some(10028));
     let mut t = sent_off_world(vec![]);
     t.players[1].objects[0].life.master_id = 4444;
     let walk = AiMove {
@@ -2938,6 +2930,70 @@ fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
     let before = t.players[1].objects[0].clone();
     with_effects(&mut t, vec![Effect::RestorePatrol]).unwrap();
     assert_eq!(t.players[1].objects[0], before);
+}
+
+/// A full update whose unit AI takes an order on a target (`0x2db`) runs the order and the
+/// update's rest after it inside the one update (slot 0x230): the villager builds the
+/// foundation with the order's priority within its update, the rest after the order runs (its
+/// look-around check redraws the timeout past it), and the regeneration after the unit AI runs
+/// once, as in an update without the order.
+#[test]
+fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
+    use crate::unit_ai::QueuedOrder;
+    let order = QueuedOrder {
+        issuer: 1,
+        order: OrderKind::OnTarget,
+        priority: 3,
+        target: 10028,
+        target_owner: 1,
+        point: [0.0; 3],
+        range: 0.0,
+        shown: [0.0; 2],
+        ready: true,
+        target_type: 80,
+    };
+    let run = |orders| {
+        let mut t = forage_world();
+        let p = *t.spatial.get(700).unwrap();
+        let site = Placed {
+            position: [30.0, 88.0, 0.0],
+            radius: [1.0, 1.0],
+            class: 80,
+            master: 70,
+            ..p
+        };
+        t.spatial.insert(10028, site);
+        t.players[1].objects[0].ai.as_mut().unwrap().orders = orders;
+        // the villager, the forager and the builder it becomes regenerate 20 a minute
+        for masters in &mut t.masters {
+            for id in [83, 118, 120] {
+                if let Some(m) = masters.get_mut(id) {
+                    (m.kind, m.hit_points, m.regeneration) = (70, 25, 20.0);
+                }
+            }
+        }
+        let v = &mut t.players[1].objects[0];
+        v.life.hp = 20.0;
+        let ai = v.ai.as_mut().unwrap();
+        (ai.idle_timer, ai.look_around_timer) = (5000, 2000);
+        t.update_objects(1, (50, Some(50)));
+        let v = &t.players[1].objects[0];
+        let ai = v.ai.as_ref().unwrap();
+        (
+            v.regen_timer,
+            v.actions.build().map(|b| b.target),
+            (ai.order_priority, ai.orders.len(), ai.look_around_timer),
+        )
+    };
+    let (idle_regen, idle_build, _) = run(vec![]);
+    assert_eq!(idle_build, None);
+    let (regen, build, (priority, queued, look)) = run(vec![order]);
+    assert_eq!((build, priority, queued), (Some(10028), 3, 0));
+    assert_eq!(regen, idle_regen);
+    assert!(
+        look < 2000,
+        "the rest after the order ran its look-around check"
+    );
 }
 
 /// The base handler's case 0x216 from the forager's side ([`UnitSide::off_footprint`],
@@ -3574,7 +3630,7 @@ pub(crate) fn in_update<R>(
     f: impl FnOnce(&mut Unit, &mut step::Step<'_>) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
     let mut answer = None;
-    let _ = t.step_object((p, i), (dt, None, false), None, |u, c| {
+    let _ = t.step_object((p, i), (dt, None, false), |u, c| {
         answer = Some(f(u, c)?);
         Ok(crate::objects::unit::Outcome::Stay)
     })?;
@@ -9217,7 +9273,7 @@ fn a_lent_object_is_the_world_s_for_the_call() {
 fn a_kill_in_the_step_reports_the_object_s_new_slot() {
     let (mut t, mut v) = killed_sheep(true);
     let stepped = t
-        .step_object((1, 1), (0, None, false), None, |_, c| {
+        .step_object((1, 1), (0, None, false), |_, c| {
             if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
                 crate::combat::victims::file_kill(c, k)?;
             }
@@ -9274,7 +9330,7 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     let before = ids(&t);
     let last = before.len() - 1;
     let stepped = t
-        .step_object((1, last), (50, None, false), None, |_, c| {
+        .step_object((1, last), (50, None, false), |_, c| {
             let _ = c.w.players[1].objects.swap_remove(0);
             Ok(Outcome::Stay)
         })
@@ -9283,7 +9339,7 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     assert_eq!(ids(&t)[0], before[last]);
     let mut t = house_builder();
     let failed = t
-        .step_object((1, 0), (50, None, false), None, |_, c| {
+        .step_object((1, 0), (50, None, false), |_, c| {
             c.w.players[1].objects.truncate(0);
             Ok(Outcome::Stay)
         })
@@ -14530,47 +14586,8 @@ fn finished_with(
     (p, i): (usize, usize),
     step: impl FnOnce(&mut step::Step<'_>) -> Result<crate::objects::unit::Outcome, GenieError>,
 ) -> Result<crate::objects::unit::Outcome, GenieError> {
-    t.step_object((p, i), (50, None, false), None, |_, c| step(c))
+    t.step_object((p, i), (50, None, false), |_, c| step(c))
         .map(|s| s.outcome)
-}
-
-/// What a step leaves in its `Step` for what follows it.
-type Orders<'a> = dyn Fn(&mut step::Step<'_>) + 'a;
-
-/// A unit that leaves its list (`Outcome::Leave`) cannot take the orders its unit AI gave in the
-/// step: each kind fails with its own gap, and a step without orders just leaves.
-#[test]
-fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
-    use crate::objects::unit::Outcome;
-    let order = crate::unit_ai::QueuedOrder {
-        issuer: 1,
-        order: OrderKind::OnTarget,
-        priority: 100,
-        target: 600,
-        target_owner: 0,
-        point: [32.5, 89.5, 0.0],
-        range: 0.0,
-        shown: [32.5, 89.5],
-        ready: true,
-        target_type: 7,
-    };
-    let leaving = |orders: &Orders<'_>| {
-        let mut t = house_builder();
-        finished_with(&mut t, (1, 0), |c| {
-            orders(c);
-            Ok(Outcome::Leave)
-        })
-        .map_err(|e| e.reason().to_owned())
-    };
-    assert_eq!(leaving(&|_| ()), Ok(Outcome::Leave));
-    let gap = |reason: &str| Err(reason.to_owned());
-    let cases: [(&Orders<'_>, _); 1] = [(
-        &|c| c.order_on_target = Some((order, None)),
-        gap("an order on a target of a unit that leaves its list"),
-    )];
-    for (orders, failed) in cases {
-        assert_eq!(leaving(orders), failed);
-    }
 }
 
 /// A dying building lets its annexes go at once (the static update's death, `0x14118ad50`): in
@@ -14620,7 +14637,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     // the effects applied in the unit's step, and its top action right after them
     let applied = |t: &mut World, effects: Vec<Effect>| {
         in_update(t, (1, 0), 50, |unit, c| {
-            unit.apply(effects, None, c)?;
+            let _ = unit.apply(effects, None, c)?;
             Ok(unit.top_action_kind())
         })
         .map_err(|e| e.reason().to_owned())

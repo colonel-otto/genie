@@ -10,7 +10,6 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Outcome, Unit, loses_actions};
 use crate::unit_ai::task_finder::world::wait_progress;
-use crate::unit_ai::unit::AiResume;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 
@@ -21,19 +20,11 @@ const BELOW_HEAD: &str = "an action below the head of the list (its idle update,
 
 impl Unit {
     pub(crate) fn update(&mut self, c: &mut Step<'_>) -> Result<Outcome, GenieError> {
-        if let Some(resume) = c.ai_resume.take() {
-            return self.ai_part(c, resume);
-        }
         let Some(leaves) = self.update_to_actions(c)? else {
             return Ok(Outcome::Sleep);
         };
         let captured = self.update_actions(c)?;
-        let resume = AiResume {
-            captured,
-            leaves,
-            after: None,
-        };
-        self.ai_part(c, resume)
+        self.ai_part(c, (captured, leaves))
     }
 
     /// `RGE_Static_Object::update` and the combat object's steps before the actions: the death

@@ -79,9 +79,9 @@ impl UnitAi {
         {
             self.run_orders(at, side, computer, ai, &mut fx)?;
         }
-        // an order on a target ran its work here (slot 0x230's case 0x2db, the unit's slot
-        // 0x128): the caller gives it, then the rest of the update reads what it gave the AI
-        // ([`UnitAi::after_order`])
+        // an order on a target runs its work here (slot 0x230's case 0x2db, the unit's slot
+        // 0x128): the unit runs it, then the rest of the update, which reads what it gave the
+        // AI ([`UnitAi::after_order`])
         if fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_))) {
             fx.push(Effect::AfterOrder(AfterOrder {
                 busy,
@@ -96,7 +96,8 @@ impl UnitAi {
     }
 
     /// The full update's rest after the order on a target it took ([`AfterOrder`]), which the
-    /// game runs after the order's work inside the update and the caller once it gave the work:
+    /// game runs after the order's work inside the update, and the unit's update once it ran
+    /// the order:
     /// [`UnitAi::update`]'s tail with what the order gave the AI and the unit, `at` its
     /// surroundings then; the idle part reads the update's own `busy` and group from before the
     /// order.

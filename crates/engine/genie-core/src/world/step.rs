@@ -8,7 +8,6 @@ use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
-use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::AiStart;
 use crate::world::World;
 
@@ -39,9 +38,6 @@ pub(crate) struct Step<'a> {
     /// after the update ([`World::kill_left`]); another object's kill reaches the world at the
     /// hit.
     pub(crate) kills: Vec<KillLeft>,
-    /// The rest of the unit AI's full update after the order on a target the caller ran
-    /// ([`Unit::ai_part`]); given, the update runs only that part.
-    pub(crate) ai_resume: Option<AiResume>,
     /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
     /// whether it has the unit's master: the update ends with the takeover ([`crate::objects::unit::Outcome::Captured`]).
     pub(crate) taken_over: Option<(usize, bool)>,
@@ -51,13 +47,6 @@ pub(crate) struct Step<'a> {
     /// The owner's id: the updating object's player, whose fields the update reads through
     /// the world (`w.players[player]`).
     pub(crate) player: usize,
-    /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
-    /// runs after the update ([`World::order_on_target`]), and the full update's tail that reads
-    /// what the order gave ([`crate::unit_ai::UnitAi::after_order`]).
-    pub(crate) order_on_target: Option<(
-        crate::unit_ai::QueuedOrder,
-        Option<crate::unit_ai::AfterOrder>,
-    )>,
     /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
     /// which the caller makes the unit's after the update, in order.
     pub(crate) starts: Vec<AiStart>,
@@ -66,11 +55,6 @@ pub(crate) struct Step<'a> {
 /// What an object's step gathered in its `Step` for the world to apply after it
 /// ([`crate::world::World::step_object`]): the `Step`'s fields of the same meaning.
 pub(crate) struct ObjectOutputs {
-    /// [`Step`]'s `order_on_target`.
-    pub(in crate::world) ordered: Option<(
-        crate::unit_ai::QueuedOrder,
-        Option<crate::unit_ai::AfterOrder>,
-    )>,
     /// [`Step`]'s `starts`.
     pub(in crate::world) starts: Vec<AiStart>,
     /// [`Step`]'s `kills`.
@@ -81,7 +65,6 @@ impl Step<'_> {
     /// What the step gathered ([`ObjectOutputs`]), taken out of the `Step`.
     pub(in crate::world) fn outputs(&mut self) -> ObjectOutputs {
         ObjectOutputs {
-            ordered: self.order_on_target.take(),
             starts: std::mem::take(&mut self.starts),
             kills: std::mem::take(&mut self.kills),
         }

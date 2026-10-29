@@ -10,7 +10,7 @@ use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
 use crate::unit_ai::Notify;
 use crate::unit_ai::world_view::{OwnerView, UnitView, changed_view};
-use crate::unit_ai::{Effect, Surroundings, UnitAi};
+use crate::unit_ai::{AfterOrder, Effect, Surroundings, UnitAi};
 use crate::world::World;
 use crate::world::lets::Lets;
 use crate::world::others::{Others, OthersRef};
@@ -21,30 +21,24 @@ use crate::world::step::Step;
 use std::borrow::Cow;
 
 impl Unit {
-    /// The end of [`Unit::update`] after the actions: `RGE_Action_Object::update`'s end
-    /// (`FUN_141163080`: the action object's shape), `RGE_Combat_Object::update`'s sight mask,
-    /// then the unit AI's full update on its owner's turn, else its check between turns, and the
-    /// effects it has on the unit; then the step the update ends with.
+    /// The end of [`Unit::update`] after the actions (`captured`: the Artifact's capture, `leaves`:
+    /// the step its life step left): `RGE_Action_Object::update`'s end (`FUN_141163080`: the
+    /// action object's shape), `RGE_Combat_Object::update`'s sight mask, then the unit AI's full
+    /// update on its owner's turn, else its check between turns, and the effects it has on the
+    /// unit ([`Unit::ai_run`]); an order on a target the full update took runs at once, then the
+    /// update's rest after it ([`crate::unit_ai::UnitAi::after_order`]), as the game runs both
+    /// inside the update (slot 0x230). Then the step the update ends with.
     pub(crate) fn ai_part(
         &mut self,
         c: &mut Step<'_>,
-        resume: AiResume,
+        (captured, leaves): (Option<Captured>, Outcome),
     ) -> Result<Outcome, GenieError> {
-        let AiResume {
-            captured,
-            leaves,
-            after,
-        } = resume;
-        // the rest of a full update after its order on a target ran its part before that already
-        if after.is_none() {
-            self.refresh_pathing(c);
-        }
+        self.refresh_pathing(c);
         // RGE_Combat_Object::update after the actions: the object's sight mask; a changed mask of
         // an object others take over by seeing it (`+0x924` 1) gives it to the first player that
         // sees it ([`crate::vision::visibility::sight_taker`]) when that one has its master
         let mut captured = captured;
-        if after.is_none()
-            && self.combat
+        if self.combat
             && let Some(mask) = c.w.spatial.combat_sight(self.id)?
             && let Some(q) = crate::vision::visibility::sight_taker(
                 mask,
@@ -66,84 +60,9 @@ impl Unit {
                 building: std::mem::take(&mut c.building_handover),
             });
         }
-        let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
-        // the unit's master: its own (a captured unit's copy), else its owner's
-        let master = object_master(
-            self.own_master.as_deref(),
-            (self.id, self.life.master_id),
-            c.w.masters.get(c.player),
-        )
-        .ok();
-        let class = master.map(|ms| ms.class);
-        // a captured unit's unit AI runs as its new owner's (RGE_Combat_Object::update reads the
-        // owner then): on that player's turn, with its time as it stands
-        let (turn, player, computer) = match &captured {
-            Some(k) if k.main => (
-                (k.new == c.w.player_turn)
-                    .then(|| c.w.player_time.get(k.new).copied())
-                    .flatten(),
-                k.new,
-                c.w.players.get(k.new).is_some_and(|q| q.computer),
-            ),
-            _ => (c.turn, c.player, c.w.players[c.player].computer),
-        };
-        let view = OwnerView::of(c, captured.as_ref().filter(|k| k.main).map(|k| k.new));
-        // RGE_Combat_Object::update: on the owner's turn the full update (slot 4), else
-        // FUN_140c68980 for a unit not inside another; a dead unit's full update only adds the
-        // world's dt to its time since the last enemy sighting (`+0x1b4`) before it returns
-        if turn.is_some() && self.ai.is_some() && after.is_none() {
-            // the full update's start lets the unit AIs' search cache go
-            c.w.spatial.forget_search();
-        }
-        if turn.is_some()
-            && !self.life.is_alive()
-            && let Some(ai) = self.ai.as_mut()
-        {
-            ai.time_since_enemy += seconds(c.dt);
-        }
-        let runs = turn.is_some() || self.life.inside.is_none();
-        if let Some(orders) = self
-            .ai
-            .as_ref()
-            .filter(|_| self.life.is_alive() && runs)
-            .map(|ai| !ai.orders.is_empty())
-        {
-            // slot 0x2d0 matters only to a queue with orders
-            let interruptible = match self.interruptible() {
-                Ok(i) => i,
-                Err(e) if orders => return Err(e),
-                Err(_) => false,
-            };
-            let at = self.surroundings(c, &view, (master, class), (player, busy, interruptible))?;
-            // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
-            let world_time = c.w.world_time;
-            let ai_type = self.ai.as_ref().map_or(0, |ai| ai.ai_type);
-            let attacker = self.attacker_of(
-                ai_type,
-                master,
-                (player, computer),
-                scenario_mode(c.w.settings.game_mode),
-                at.capture,
-            );
-            let effects = self.with_side(
-                c,
-                &view,
-                attacker,
-                (player, computer),
-                |ai, side, ai_stream| {
-                    // an order on a target comes only from a full update, on the owner's turn
-                    match (turn, after) {
-                        (Some(_), Some(after)) => {
-                            ai.after_order(after, world_time, computer, &at, ai_stream, side)
-                        }
-                        (Some(dt), None) => {
-                            ai.update(dt, world_time, computer, &at, ai_stream, side)
-                        }
-                        (None, _) => ai.off_turn(&at, side, computer, ai_stream),
-                    }
-                },
-            )?;
-            self.apply(effects, class, c)?;
+        let mut after = self.ai_run(c, captured.as_ref(), None)?;
+        while let Some(tail) = after {
+            after = self.ai_run(c, captured.as_ref(), Some(tail))?;
         }
         if let Some((new, main)) = c.taken_over.take() {
             captured = Some(Captured {
@@ -440,22 +359,106 @@ impl Unit {
         let effects = self.with_side(c, &view, attacker, (player, computer), |ai, side, rng| {
             f(ai, &at, side, computer, rng)
         })?;
+        // a command's run is no full update: it takes no order on a target, which leaves no rest
+        self.apply(effects, class, c).map(drop)
+    }
+
+    /// One pass of the unit AI ([`Unit::ai_part`]) as the player `captured` names (its new
+    /// owner's for a main capture, else the owner's): on the owner's turn the full update, or with
+    /// `after` its rest after an order on a target ([`crate::unit_ai::UnitAi::after_order`]),
+    /// else its check between turns; then its effects on the unit ([`Unit::apply`]). Returns the
+    /// rest an order on a target the full update took leaves ([`Effect::AfterOrder`]).
+    ///
+    /// # Errors
+    ///
+    /// The unit AI's, its surroundings' and its effects'.
+    fn ai_run(
+        &mut self,
+        c: &mut Step<'_>,
+        captured: Option<&Captured>,
+        after: Option<AfterOrder>,
+    ) -> Result<Option<AfterOrder>, GenieError> {
+        let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
+        // the unit's master: its own (a captured unit's copy), else its owner's
+        let master = object_master(
+            self.own_master.as_deref(),
+            (self.id, self.life.master_id),
+            c.w.masters.get(c.player),
+        )
+        .ok();
+        let class = master.map(|ms| ms.class);
+        // a captured unit's unit AI runs as its new owner's (RGE_Combat_Object::update reads the
+        // owner then): on that player's turn, with its time as it stands
+        let (turn, player, computer) = match captured {
+            Some(k) if k.main => (
+                (k.new == c.w.player_turn)
+                    .then(|| c.w.player_time.get(k.new).copied())
+                    .flatten(),
+                k.new,
+                c.w.players.get(k.new).is_some_and(|q| q.computer),
+            ),
+            _ => (c.turn, c.player, c.w.players[c.player].computer),
+        };
+        let view = OwnerView::of(c, captured.filter(|k| k.main).map(|k| k.new));
+        // RGE_Combat_Object::update: on the owner's turn the full update (slot 4), else
+        // FUN_140c68980 for a unit not inside another; a dead unit's full update only adds the
+        // world's dt to its time since the last enemy sighting (`+0x1b4`) before it returns
+        if turn.is_some() && self.ai.is_some() && after.is_none() {
+            // the full update's start lets the unit AIs' search cache go
+            c.w.spatial.forget_search();
+        }
+        if turn.is_some()
+            && after.is_none()
+            && !self.life.is_alive()
+            && let Some(ai) = self.ai.as_mut()
+        {
+            ai.time_since_enemy += seconds(c.dt);
+        }
+        let runs = turn.is_some() || self.life.inside.is_none();
+        let Some(orders) = self
+            .ai
+            .as_ref()
+            .filter(|_| self.life.is_alive() && runs)
+            .map(|ai| !ai.orders.is_empty())
+        else {
+            return Ok(None);
+        };
+        // slot 0x2d0 matters only to a queue with orders
+        let interruptible = match self.interruptible() {
+            Ok(i) => i,
+            Err(e) if orders => return Err(e),
+            Err(_) => false,
+        };
+        let at = self.surroundings(c, &view, (master, class), (player, busy, interruptible))?;
+        // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
+        let world_time = c.w.world_time;
+        let ai_type = self.ai.as_ref().map_or(0, |ai| ai.ai_type);
+        let attacker = self.attacker_of(
+            ai_type,
+            master,
+            (player, computer),
+            scenario_mode(c.w.settings.game_mode),
+            at.capture,
+        );
+        let effects = self.with_side(
+            c,
+            &view,
+            attacker,
+            (player, computer),
+            |ai, side, ai_stream| {
+                // an order on a target comes only from a full update, on the owner's turn
+                match (turn, after) {
+                    (Some(_), Some(after)) => {
+                        ai.after_order(after, world_time, computer, &at, ai_stream, side)
+                    }
+                    (Some(dt), None) => ai.update(dt, world_time, computer, &at, ai_stream, side),
+                    (None, _) => ai.off_turn(&at, side, computer, ai_stream),
+                }
+            },
+        )?;
         self.apply(effects, class, c)
     }
-}
 
-/// What a unit's update hands its unit AI part when that runs after the caller gave the work its
-/// builder found ([`Unit::ai_part`]): a takeover and the step the update ends with; or, with
-/// `after`, the rest of the unit AI's full update once the caller gave the order on a target
-/// the update took ([`crate::unit_ai::UnitAi::after_order`]).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiResume {
-    pub(crate) captured: Option<Captured>,
-    pub(crate) leaves: Outcome,
-    pub(crate) after: Option<crate::unit_ai::AfterOrder>,
-}
-
-impl Unit {
     /// The objects its unit AI names besides its target, as the world's table holds them
     /// ([`crate::unit_ai::Surroundings::units`]): its attackers and the callers of its damage
     /// notifies, from its own list or another player's, each with its master's class, state, its

@@ -4,8 +4,6 @@
 use crate::GenieError;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
-use crate::unit_ai::AfterOrder;
-use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::AiStart;
 use crate::world::World;
 use crate::world::step::{ObjectOutputs, Step};
@@ -14,8 +12,6 @@ use crate::world::step::{ObjectOutputs, Step};
 pub(super) struct Stepped {
     /// The step.
     pub(super) outcome: Outcome,
-    /// The tail after an order on a target.
-    pub(super) after: Option<AfterOrder>,
     /// The object's slot in its owner's live list after the step: a removal that put the list's
     /// last object in another's slot (`FUN_1411664a0`) may have moved it.
     pub(super) slot: usize,
@@ -25,10 +21,8 @@ impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
     /// AI for a command) and what follows it: what its `Step` gathered, applied in the order the
     /// game's update makes them (the regeneration, passive abilities and production of a full
-    /// update, the unit AI's waits and order on a target, the own kill). `resume` is the rest of
-    /// a unit AI's full update after its order on a target ([`Unit::ai_part`]). Returns the step,
-    /// the tail after an order on a target and the object's slot, which it looks up by id after
-    /// each part that may move it.
+    /// update, the unit AI's waits, the own kill). Returns the step and the object's slot, which
+    /// it looks up by id after each part that may move it.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
     /// runs (regeneration, passive abilities, production) do not.
     ///
@@ -39,21 +33,17 @@ impl World {
         &mut self,
         (p, i): (usize, usize),
         (dt, turn, full): (u32, Option<u32>, bool),
-        resume: Option<AiResume>,
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Stepped, GenieError> {
         let id = self.players[p].objects[i].id;
-        let (outcome, mut out) = self.run_object((p, i), (dt, turn), resume, f);
+        let (outcome, mut out) = self.run_object((p, i), (dt, turn), f);
         let outcome = outcome?;
-        // the tail after an order on a target, which stops the unit AI's rest
-        let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);
         let at = (p, self.slot_of(p, id)?, id);
-        self.finish_own_update(at, (dt, full), after_order, &outcome)?;
+        self.finish_own_update(at, (dt, full), &outcome)?;
         self.apply_ai_starts((p, self.slot_of(p, id)?), &mut out, &outcome)?;
         self.apply_hits_and_releases(&mut out)?;
         Ok(Stepped {
             outcome,
-            after: after_order,
             slot: self.slot_of(p, id)?,
         })
     }
@@ -77,7 +67,6 @@ impl World {
         &mut self,
         (p, i, id): (usize, usize, i32),
         (dt, own_update): (u32, bool),
-        after_order: Option<AfterOrder>,
         outcome: &Outcome,
     ) -> Result<(), GenieError> {
         // TRIBE_Combat_Object::update's regeneration after RGE_Combat_Object::update
@@ -96,15 +85,14 @@ impl World {
             // then its hit point powerup check
             self.clamp_object_powerup((p, i, id));
         }
-        // TRIBE_Building_Object::update: the production after the combat update (after the
-        // unit AI's rest, when an order on a target stopped it)
-        if matches!(outcome, Outcome::Stay) && own_update && after_order.is_none() {
+        // TRIBE_Building_Object::update: the production after the combat update
+        if matches!(outcome, Outcome::Stay) && own_update {
             self.produce(p, i, seconds(dt))?;
         }
         Ok(())
     }
 
-    /// The unit AI's starts: the waits and repairs, and the order on a target.
+    /// The unit AI's starts: the waits, repairs, enters and transports.
     fn apply_ai_starts(
         &mut self,
         (p, i): (usize, usize),
@@ -128,14 +116,6 @@ impl World {
                 AiStart::Enter(e) => self.enter_order(p, i, e),
                 AiStart::Transport(to) => self.transport_order(p, i, to),
             }?;
-        }
-        if let Some((order, _)) = out.ordered {
-            if !matches!(outcome, Outcome::Stay) {
-                return Err(GenieError::unsupported(
-                    "an order on a target of a unit that leaves its list",
-                ));
-            }
-            self.order_on_target(p, i, order)?;
         }
         Ok(())
     }
