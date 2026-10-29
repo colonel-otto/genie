@@ -519,9 +519,16 @@ impl World {
                 .map_or(-1, |ai| own_order_target(ai, unit.id));
             found = held(own).map(|(_, t)| t);
         }
-        let (target, point) = found.map_or((-1, [unit.position[0], unit.position[1]]), |t| {
-            (t.id, [t.position[0], t.position[1]])
-        });
+        let (target, point) = found.map_or_else(
+            || {
+                let [x, y, _] = unit.position();
+                (-1, [x, y])
+            },
+            |t| {
+                let [x, y, _] = t.position();
+                (t.id, [x, y])
+            },
+        );
         let actions = &unit.actions;
         let target_type = match unit.top_action_kind() {
             Some(HUNT) => actions.hunt().map_or(-1, |h| i32::from(h.target_class)),

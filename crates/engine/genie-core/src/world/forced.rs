@@ -246,8 +246,8 @@ impl World {
             }
         }
         let (before, state) = (unit.life.state, forced.life.state);
-        if forced.position != unit.position {
-            self.spatial.set_position(id, forced.position);
+        if forced.position() != unit.position() {
+            self.spatial.set_position(id, forced.position());
         }
         if state != before {
             if before <= 2 && 3 <= state {
@@ -261,7 +261,7 @@ impl World {
                     .masters
                     .get(p)
                     .and_then(|m| m.get(forced.life.master_id));
-                forget_resource(&mut self.spatial, master, id, forced.position);
+                forget_resource(&mut self.spatial, master, id, forced.position());
             }
         }
         self.spatial.unfreeze(id);
@@ -351,7 +351,7 @@ mod tests {
         forager.stopped = true;
         forager.ai.as_mut().unwrap().hunted = hunted;
         let mut theirs = t.players[1].objects.clone();
-        theirs[0].position = [29.5, 88.5, 0.0];
+        theirs[0].place_for_test([29.5, 88.5, 0.0]);
         theirs[0].stopped = false;
         theirs[0].ai.as_mut().unwrap().hunted = None;
         let mut game = GameState {
@@ -362,7 +362,7 @@ mod tests {
         assert!(notes.is_empty(), "{notes:?}");
         let forager = &t.players[1].objects[0];
         assert_eq!(
-            (forager.position, forager.stopped),
+            (forager.position(), forager.stopped),
             ([29.5, 88.5, 0.0], false)
         );
         assert_eq!(forager.ai.as_ref().unwrap().hunted, hunted);

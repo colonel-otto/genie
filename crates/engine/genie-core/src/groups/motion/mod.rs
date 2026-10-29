@@ -234,7 +234,7 @@ impl World {
         });
         Some(Lead {
             walker: mover.walker(id),
-            position: u.position,
+            position: u.position(),
             radius: [mover.stats.radius[0], mover.stats.radius[1]],
             moves: mover.stats.speed != 0.0 || u.life.master_id == crate::movement::LONG_PATH_MOVER,
             solid: mover.stats.radius.iter().all(|&r| 0.0 < r),

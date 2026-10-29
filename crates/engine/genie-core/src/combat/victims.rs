@@ -62,13 +62,13 @@ impl World {
                     .ok_or(GenieError::unsupported(
                         "a unit AI's target of a master the slice does not have",
                     ))?;
-                let [x, y, _] = u.position;
+                let [x, y, _] = u.position();
                 return Ok(Some(crate::unit_ai::Seen {
                     state: u.life.state,
                     kind: master.kind,
                     owner: p,
                     class: master.class,
-                    position: u.position,
+                    position: u.position(),
                     radius: master.radius,
                     visible: self.spatial.visible(viewer, x as i32, y as i32),
                     flags: master.object_flags,
@@ -106,7 +106,7 @@ impl World {
             .filter(|&r| 0.0 < r)
             .map(|r| r + 6.0 + 2.0);
         let mut near: Vec<Victim> = reach.map_or_else(Vec::new, |reach| {
-            let [x, y, _] = unit.position;
+            let [x, y, _] = unit.position();
             self.spatial
                 .objects_within(x - reach, y - reach, x + reach, y + reach)
                 .filter(|&(id, _)| id != unit.id && id != target)
@@ -503,8 +503,8 @@ pub(crate) fn victim_of(
         terrain.and_then(|t| {
             t.defense(
                 master.terrain_bonus,
-                u.position[0] as i32,
-                u.position[1] as i32,
+                u.position()[0] as i32,
+                u.position()[1] as i32,
             )
         })
     };
@@ -516,7 +516,7 @@ pub(crate) fn victim_of(
         hp: u.life.hp,
         amount: u.life.amount,
         state: u.life.state,
-        position: u.position,
+        position: u.position(),
         kind,
         class: master.class,
         master_id: master.id,

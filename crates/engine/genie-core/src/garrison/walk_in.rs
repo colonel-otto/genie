@@ -357,7 +357,7 @@ impl EnterAction {
         step: &mut EnterStep,
     ) -> Result<(), GenieError> {
         if self.move_to.is_some()
-            && let Some(m) = walk.mover.as_deref_mut()
+            && let Some(m) = walk.body.mover_mut()
         {
             m.stop()?;
         }

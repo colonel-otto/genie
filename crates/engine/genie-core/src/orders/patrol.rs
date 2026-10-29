@@ -246,8 +246,8 @@ impl World {
             }
             let g = self.groups.get(group).expect("the caller holds the group");
             let at = g.motion.position[0];
-            let from = [u.position[0], u.position[1]];
-            let moved = u.body.mover().map_or(u.position, |m| m.moved_at);
+            let from = [u.position()[0], u.position()[1]];
+            let moved = u.body.mover().map_or_else(|| u.position(), |m| m.moved_at);
             let restriction = u.body.mover().map(|m| m.stats.restriction);
             let tiles = self.spatial.tiles();
             if let Some(planner) = restriction.and_then(|r| self.pathing.planner(r, tiles)) {
@@ -335,7 +335,7 @@ impl World {
                 }
             }
         }
-        let [x, y, z] = u.position;
+        let [x, y, z] = u.position();
         let kept = waypoints_from([x, y], waypoints);
         let Some((&[lx, ly], before)) = kept.split_last() else {
             return Ok(());

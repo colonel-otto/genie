@@ -111,7 +111,7 @@ impl UnitView<'_, '_> {
             drop_sites: self.drop_sites,
         };
         // slot 0x820's point: the target's place
-        let at = find(target).map_or([0.0; 3], |(_, u)| u.position);
+        let at = find(target).map_or([0.0; 3], |(_, u)| u.position());
         let terrain = point_terrain(self.spatial.terrain.as_ref(), at);
         let Some((task, switch)) = task_search(masters, &actor, &t, &general, terrain, -1, &dip)?
         else {

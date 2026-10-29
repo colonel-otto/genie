@@ -52,7 +52,6 @@ pub(super) fn ready_at_start(
 ) -> Result<(), GenieError> {
     let me = crate::movement::Me {
         id: unit.id,
-        position: unit.position,
         group: unit.group.id,
         action_state: crate::combat::attack::READY,
     };
@@ -64,7 +63,7 @@ pub(super) fn ready_at_start(
     let ai_order = ai.map(|ai| ai.current_order);
     let ai_type = ai.map(|ai| ai.ai_type);
     let walk = Walk {
-        mover: unit.body.mover_mut(),
+        body: &mut unit.body,
         me,
         dt: 0.0,
         world: spatial,
@@ -319,7 +318,7 @@ impl World {
             class: i32::from(tm.class),
             fog_visibility: tm.fog_visibility,
             aimed,
-            at: a.position,
+            at: a.position(),
             aimed_class: i32::from(self.master_of(ap, a.life.master_id)?.class),
         })
     }

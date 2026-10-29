@@ -407,7 +407,7 @@ mod tests {
     fn unit(id: i32, x: f32, y: f32) -> crate::objects::unit::Unit {
         let mut u = crate::objects::unit::Unit {
             id,
-            position: [x, y, 0.0],
+            body: crate::objects::layers::Body::at([x, y, 0.0]),
             ..crate::objects::unit::Unit::default()
         };
         u.life.master_id = 4;
@@ -454,7 +454,7 @@ mod tests {
             t.spatial.insert(
                 u.id,
                 Placed {
-                    position: u.position,
+                    position: u.position(),
                     radius: [0.4, 0.4],
                     class: 6,
                     player: 0,
@@ -573,7 +573,7 @@ mod tests {
         // the lead moves (slot 0x270 is `FUN_141158940`), where it last moved to its place
         let mut lead = unit(10, 15.0, 10.5);
         let mut mover = crate::gathering::hunt::tests::walker();
-        mover.moved_at = lead.position;
+        mover.moved_at = lead.position();
         lead.body.put_mover(Some(mover));
         let units = vec![lead, unit(11, 10.2, 10.1)];
         let flanked = |t: &mut World| {

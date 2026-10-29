@@ -233,7 +233,7 @@ impl World {
             ));
         };
         let h = &self.players[hp].objects[hi];
-        let at = h.position;
+        let at = h.position();
         let [rx, ry] = self.master_of(hp, h.life.master_id)?.radius;
         let around = crate::garrison::transport::Around {
             center: [at[0], at[1]],
@@ -243,10 +243,14 @@ impl World {
             return Ok(());
         };
         let (up, ui) = self.live_inside(inner)?;
-        self.players[up].objects[ui].position = at;
+        let unit = &mut self.players[up].objects[ui];
+        let inner_id = unit.id;
+        unit.body
+            .base_mut()
+            .inside_at(inner_id, at, &mut self.spatial);
         self.leave_container((hp, hi), (up, ui), &made, [spot[0], spot[1], at[2]])?;
         let unit = &mut self.players[up].objects[ui];
-        let place = ([unit.position[0], unit.position[1]], made.class);
+        let place = ([unit.position()[0], unit.position()[1]], made.class);
         if let Some(ai) = unit.ai.as_mut() {
             let mut fx = Vec::new();
             let stance = ai.stance;
@@ -287,7 +291,7 @@ impl World {
         let master = self.master_of(player, unit.life.master_id)?;
         // UCOMISS with −1, JP and JNZ: a NaN coordinate is not −1
         let to = if master.class != BUILDING_CLASS && point == [NO_POINT, NO_POINT] {
-            [unit.position[0], unit.position[1]]
+            [unit.position()[0], unit.position()[1]]
         } else {
             point
         };

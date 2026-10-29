@@ -14,7 +14,11 @@ impl Unit {
     /// (`FUN_141196c10`).
     #[must_use]
     pub(crate) fn moved_vector(&self) -> GameVector {
-        GameVector::of_place(self.body.mover().map_or(self.position, |m| m.moved_at))
+        GameVector::of_place(
+            self.body
+                .mover()
+                .map_or_else(|| self.position(), |m| m.moved_at),
+        )
     }
 
     /// The stand-in left in a list for a unit taken out of it ([`TAKEN_OUT`]).

@@ -24,7 +24,7 @@ impl Mover {
     /// is not modelled.
     pub(super) fn reached(
         &mut self,
-        me: &mut Me,
+        me: &Me,
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
         goal: Goal<'_>,
@@ -48,7 +48,7 @@ impl Mover {
                 Next::Dispatch
             });
         }
-        self.drop_held_waypoint(me, world)?;
+        self.drop_held_waypoint(world)?;
         let parent_is_level_1 = self
             .paths
             .get(1)
@@ -60,23 +60,20 @@ impl Mover {
         let level = &self.paths[0];
         let left = point_or_zero_of(level, level.waypoint - 1);
         let back = footprint_gap(
-            me.position,
+            self.position(),
             ground_radius,
             [left[0], left[2], 0.0],
             [0.0, 0.0],
         );
         let range = level.range;
-        let mut beyond = match goal.target {
-            None => (back - range) - RANGE_FLOOR,
-            Some(t) => {
-                let own = (footprint_gap(me.position, ground_radius, t.position, t.radius) - range)
-                    - RANGE_FLOOR;
-                let near = (me.position, ground_radius);
-                gate_gap(world, near, (level.target, t), own, |g| {
-                    (g - range) - RANGE_FLOOR
-                })
-            }
-        };
+        let mut beyond = goal.target.map_or((back - range) - RANGE_FLOOR, |t| {
+            let own = (footprint_gap(self.position(), ground_radius, t.position, t.radius) - range)
+                - RANGE_FLOOR;
+            let near = (self.position(), ground_radius);
+            gate_gap(world, near, (level.target, t), own, |g| {
+                (g - range) - RANGE_FLOOR
+            })
+        });
         if goal.target.is_some() && level.flags & 4 != 0 {
             self.clear_bit_2();
             beyond = 0.0;
@@ -106,7 +103,7 @@ impl Mover {
     /// setter, on the ground), and the bit goes.
     pub(super) fn take_waypoint_place(
         &mut self,
-        me: &mut Me,
+        me: &Me,
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
         now: u32,
@@ -131,17 +128,13 @@ impl Mover {
     /// # Errors
     ///
     /// A frozen object the query may meet.
-    pub(super) fn drop_held_waypoint(
-        &mut self,
-        me: &Me,
-        world: &Spatial,
-    ) -> Result<(), GenieError> {
+    pub(super) fn drop_held_waypoint(&mut self, world: &Spatial) -> Result<(), GenieError> {
         let level = &self.paths[0];
         let next = level.waypoint + 1;
         if level.level == 0 || level.points.len() as i32 <= next {
             return Ok(());
         }
-        let d = fmath::sub(vector(me.position), level.points[next as usize]);
+        let d = fmath::sub(vector(self.position()), level.points[next as usize]);
         // a NaN distance is not within
         if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
             let [x, _, y] = level.points[level.waypoint as usize];
@@ -409,23 +402,19 @@ impl Mover {
         Ok(())
     }
 
-    /// The unit's place changed inside the motion step: the world's places and the mesh follow
-    /// (`0x1411a58b0` -> `FUN_14118c540`), and the time of the last move with them
-    /// (`FUN_141161950`, `+0x870`).
+    /// The unit's place changed inside the motion step: the time of the last move
+    /// (`FUN_141161950`, `+0x870`), then the place setter, which the world's places and the
+    /// mesh follow (`0x1411a58b0` -> `FUN_14118c540`, [`Mover::new_position`]).
     pub(super) fn moved_to(
         &mut self,
-        me: &mut Me,
+        me: &Me,
         at: [f32; 3],
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
         now: u32,
     ) {
         self.mark_move(at, now);
-        me.position = at;
-        world.set_position(me.id, at);
-        if let (Some(pathing), Some(p)) = (pathing, world.get(me.id)) {
-            pathing.moved(me.id, p, self.is_moving());
-        }
+        self.new_position(me.id, at, (world, pathing));
     }
 
     /// `FUN_140f96050` on the walked level: up its parents (`+0x8`) to the top level, the last of

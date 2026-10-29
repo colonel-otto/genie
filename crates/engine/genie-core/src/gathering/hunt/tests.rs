@@ -503,14 +503,15 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
         move_wait: MoveWait::default(),
         lead: Lead::default(),
     };
-    let mut mover = walker();
+    let mover = walker();
     let mut world = crate::map::spatial::Spatial::default();
     let (mut kind, mut held) = (-1, 0.0);
+    let mut mover =
+        crate::objects::layers::Body::new([171.888_89, 59.053_39, 0.0], None, Some(mover));
     let mut walk = Walk {
-        mover: Some(&mut mover),
+        body: &mut mover,
         me: crate::movement::Me {
             id: 31110,
-            position: [171.888_89, 59.053_39, 0.0],
             group: -1,
             action_state: WALK,
         },
@@ -547,7 +548,7 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
         (hunt.state, hunt.move_to, hunt.timer, hunt.point[0]),
         (WALK_SEARCH, Some(MoveTo::Start), 0.0, 177.272_75)
     );
-    assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(mover.mover().unwrap().velocity.unwrap().velocity[2], 0.0);
 }
 
 /// `set_state(6)` on a target of class 49 (429381190's villager 15295 hunting its pasture's
@@ -582,13 +583,13 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
             ..hunting(15371)
         };
         let mut rig = Rig::new(victim);
-        let mut mover = walker();
+        let mover = walker();
         let mut world = crate::map::spatial::Spatial::default();
+        let mut mover = crate::objects::layers::Body::new([134.5, 70.5, 0.0], None, Some(mover));
         let walk = Walk {
-            mover: Some(&mut mover),
+            body: &mut mover,
             me: crate::movement::Me {
                 id: 15295,
-                position: [134.5, 70.5, 0.0],
                 group: -1,
                 action_state: WALK,
             },
@@ -656,14 +657,15 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
         stance: 1,
     };
     let run = |h: &mut HuntAction, who: PointWalker| {
-        let mut mover = walker();
+        let mover = walker();
         let mut world = crate::map::spatial::Spatial::default();
         let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
+        let mut mover =
+            crate::objects::layers::Body::new([171.888_89, 59.053_39, 0.0], None, Some(mover));
         let walk = Walk {
-            mover: Some(&mut mover),
+            body: &mut mover,
             me: crate::movement::Me {
                 id: 31110,
-                position: [171.888_89, 59.053_39, 0.0],
                 group: -1,
                 action_state: h.state,
             },
@@ -672,7 +674,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
             plan: None,
         };
         let got = h.update_point_walk(walk, who, shown(&mut sprite, &mut rng));
-        (got, mover.velocity.unwrap().velocity[2])
+        (got, mover.mover().unwrap().velocity.unwrap().velocity[2])
     };
     let done = PointWalk::Done {
         target: -1,
@@ -762,26 +764,26 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         ..hunting(-1)
     };
     let mut rig = WalkRig::on_the_path();
-    rig.mover.paths.clear();
+    rig.mover_mut().paths.clear();
     let mut h = dropping(Some(MoveTo::Start));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Moving));
-    assert_eq!(rig.mover.paths.len(), 2);
+    assert_eq!(rig.mover_mut().paths.len(), 2);
     let mut rig = WalkRig::on_the_path();
     let mut h = dropping(Some(MoveTo::Moving));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Moving));
-    rig.mover.move_to_point = Some([35.0, 88.0, 0.0]);
+    rig.mover_mut().move_to_point = Some([35.0, 88.0, 0.0]);
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Start));
     let mut h = dropping(Some(MoveTo::Waiting));
     h.move_wait.delay = 0.05;
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Start));
-    rig.mover.animated.speed = 1.0;
+    rig.mover_mut().animated.speed = 1.0;
     let mut h = dropping(Some(MoveTo::Failed));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
-    assert_eq!((h.timer, rig.mover.animated.speed), (DROP_WAIT, 0.0));
+    assert_eq!((h.timer, rig.mover_mut().animated.speed), (DROP_WAIT, 0.0));
     h.timer = -0.05;
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Again));
     assert_eq!(h.timer, 0.0);
@@ -801,12 +803,12 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         ..hunting(-1)
     };
     let mut rig = WalkRig::on_the_path();
-    rig.mover.paths.clear();
+    rig.mover_mut().paths.clear();
     let mut h = walking(Some(MoveTo::Start));
     h.move_wait.state = 1;
     assert_eq!(point_walk(&mut h, &mut rig, who), Ok(PointWalk::Walking));
     assert_eq!((h.move_to, h.move_wait.state), (Some(MoveTo::Moving), 2));
-    assert_eq!(rig.mover.paths.len(), 2);
+    assert_eq!(rig.mover_mut().paths.len(), 2);
     let mut rig = WalkRig::on_the_path();
     let mut h = walking(Some(MoveTo::Moving));
     assert_eq!(point_walk(&mut h, &mut rig, who), Ok(PointWalk::Walking));
@@ -887,7 +889,7 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
     assert_eq!(h.move_to, Some(MoveTo::Arrived));
     let alive = Victim { player: 2, ..own };
     assert!(set_walk(&mut hunting(10028), &mut rig, &alive).is_err());
-    rig.mover.stats.speed = 0.0;
+    rig.mover_mut().stats.speed = 0.0;
     assert!(set_walk(&mut hunting(10028), &mut rig, &dead).is_err());
 }
 
@@ -1039,7 +1041,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
     let mut h = walking(10028, 0.0, MoveTo::Moving);
     assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), false));
     assert_eq!((h.state, h.move_to), (WALK, Some(MoveTo::Moving)));
-    rig.mover.move_to_point = Some([35.0, 88.0, 0.0]);
+    rig.mover_mut().move_to_point = Some([35.0, 88.0, 0.0]);
     let mut h = walking(10028, 0.0, MoveTo::Moving);
     assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), false));
     assert_eq!((h.state, h.move_to), (WALK, Some(MoveTo::Start)));
@@ -1251,12 +1253,14 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
 /// the unit carries nothing after; the hunt has no target to go back to.
 #[test]
 fn a_drop_off_gives_the_load_to_the_player() {
-    fn walk<'a>(mover: &'a mut Mover, world: &'a mut crate::map::spatial::Spatial) -> Walk<'a> {
+    fn walk<'a>(
+        body: &'a mut crate::objects::layers::Body,
+        world: &'a mut crate::map::spatial::Spatial,
+    ) -> Walk<'a> {
         Walk {
-            mover: Some(mover),
+            body,
             me: crate::movement::Me {
                 id: 9181,
-                position: [26.820_372, 94.718_056, 0.0],
                 group: -1,
                 action_state: DROP,
             },
@@ -1280,7 +1284,8 @@ fn a_drop_off_gives_the_load_to_the_player() {
         move_wait: MoveWait::default(),
         lead: Lead::default(),
     };
-    let mut mover = walker();
+    let mut mover =
+        crate::objects::layers::Body::new([26.820_372, 94.718_056, 0.0], None, Some(walker()));
     let mut world = crate::map::spatial::Spatial::default();
     let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
     let (mut kind, mut held) = (1, 7.057_053_6);
@@ -1346,7 +1351,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
         gap_squared: 1.5,
         ..site
     };
-    let step = |hunt: &mut HuntAction, mover: &mut Mover| {
+    let step = |hunt: &mut HuntAction, mover: &mut crate::objects::layers::Body| {
         let mut world = crate::map::spatial::Spatial::default();
         let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         hunt.update_drop(
@@ -1360,9 +1365,9 @@ fn a_drop_off_gives_the_load_to_the_player() {
         )
         .unwrap()
     };
-    mover.animated.speed = 1.0;
+    mover.set_anim_speed(1.0);
     assert_eq!(step(&mut hunt, &mut mover), Dropped::Going);
-    assert_eq!((hunt.timer, mover.animated.speed), (DROP_WAIT, 0.0));
+    assert_eq!((hunt.timer, mover.anim_speed()), (DROP_WAIT, Some(0.0)));
     hunt.timer = -0.01;
     assert_eq!(step(&mut hunt, &mut mover), Dropped::Again);
     assert_eq!(hunt.timer, 0.0);

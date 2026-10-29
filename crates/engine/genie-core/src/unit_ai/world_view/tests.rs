@@ -116,7 +116,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
     };
     let unit = |id, x, master_id, ai: Option<UnitAi>| Unit {
         id,
-        position: [x, 10.0, 0.0],
+        body: crate::objects::layers::Body::at([x, 10.0, 0.0]),
         ai,
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
@@ -260,7 +260,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     };
     let unit = |id, x, master_id| Unit {
         id,
-        position: [x, 10.0, 0.0],
+        body: crate::objects::layers::Body::at([x, 10.0, 0.0]),
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
             state: 2,

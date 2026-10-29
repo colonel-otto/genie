@@ -23,7 +23,7 @@ impl HuntAction {
         victim: &Victim,
         player: usize,
     ) -> Result<(), GenieError> {
-        self.tear_down(walk.mover.as_deref_mut())?;
+        self.tear_down(walk.body.mover_mut())?;
         self.state = WALK;
         self.timer = 0.0;
         let own_livestock = victim.class == LIVESTOCK && victim.player == player;
@@ -43,9 +43,9 @@ impl HuntAction {
             self.task.range
         };
         self.move_wait = MoveWait::default();
-        let mover = walk.mover.as_deref().ok_or(crate::world::HUNTER_UNMOVING)?;
+        let mover = walk.body.mover().ok_or(crate::world::HUNTER_UNMOVING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-        let gap = footprint_gap(walk.me.position, ground, t.position, t.radius);
+        let gap = footprint_gap(walk.position(), ground, t.position, t.radius);
         self.move_to = Some(if ARRIVED < gap {
             if mover.stats.speed == 0.0 {
                 return Err(GenieError::unsupported(
@@ -108,10 +108,10 @@ impl HuntAction {
                 .world
                 .get_known(self.target)?
                 .ok_or(GenieError::unsupported("a hunt's target without a place"))?;
-            let me = walk.me.position;
+            let me = walk.position();
             let ground = walk
-                .mover
-                .as_deref()
+                .body
+                .mover()
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
                 .ok_or(crate::world::HUNTER_UNMOVING)?;
             if self.task.range + GAP < footprint_gap(me, ground, t.position, t.radius) {

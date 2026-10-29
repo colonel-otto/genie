@@ -285,7 +285,7 @@ impl World {
             } else {
                 stack
             };
-            let at = self.object(id).map_or([0.0; 3], |(_, u)| u.position);
+            let at = self.object(id).map_or([0.0; 3], |(_, u)| u.position());
             self.remains(owner, stack, at, None)?;
         }
         if let Some(tech) = building.map(|b| b.tech).filter(|&t| 0 <= t) {

@@ -107,7 +107,7 @@ impl World {
             "a unit sent off without movement state",
         ))?;
         let spot = self.spatial.spot_off(
-            first.position,
+            first.position(),
             (first.id, mover.stats.radius[0]),
             mover.stats.restriction_mask,
             (site_at, radius),
@@ -121,7 +121,7 @@ impl World {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
             };
-            let z = self.players[q].objects[i].position[2];
+            let z = self.players[q].objects[i].position()[2];
             if let Some(ai) = self.players[q].objects[i].ai.as_mut() {
                 ai.set_action(Some(ActionKind::MoveAside));
             }

@@ -158,15 +158,14 @@ fn a_siege_unit_s_repair_pays_its_unit_share() {
 fn me() -> Me {
     Me {
         id: 9,
-        position: [10.0, 10.0, 0.0],
         group: -1,
         action_state: 0,
     }
 }
 
-fn walk<'a>(world: &'a mut Spatial, mover: Option<&'a mut crate::movement::Mover>) -> Walk<'a> {
+fn walk<'a>(world: &'a mut Spatial, body: &'a mut crate::objects::layers::Body) -> Walk<'a> {
     Walk {
-        mover,
+        body,
         me: me(),
         dt: 0.05,
         world,
@@ -196,7 +195,11 @@ fn update(
     amounts: &mut Vec<f32>,
 ) -> RepairStep {
     let mut world = Spatial::default();
-    let mut mover = crate::gathering::hunt::tests::walker();
+    let mut body = crate::objects::layers::Body::new(
+        [10.0, 10.0, 0.0],
+        None,
+        Some(crate::gathering::hunt::tests::walker()),
+    );
     let mut can_path = |_: &Spatial| Ok(paths);
     let mut repair = |a: f32| {
         amounts.push(a);
@@ -214,7 +217,7 @@ fn update(
         can_path: &mut can_path,
         repair: &mut repair,
     };
-    r.update(walk(&mut world, Some(&mut mover)), view).unwrap()
+    r.update(walk(&mut world, &mut body), view).unwrap()
 }
 
 /// A target the world no longer holds, another player's or a dead one ends the Repair

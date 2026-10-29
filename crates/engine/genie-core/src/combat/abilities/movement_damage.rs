@@ -169,11 +169,11 @@ impl World {
         let hitter = Hitter {
             id: unit.id,
             blast_level: master.blast_level,
-            position: unit.position,
+            position: unit.position(),
             radius: master.radius,
         };
         let range = task.work_range;
-        let (low, high) = reach(unit.position, range, self.spatial.map);
+        let (low, high) = reach(unit.position(), range, self.spatial.map);
         for y in low[1]..=high[1] {
             for x in low[0]..=high[0] {
                 if x < 0 || y < 0 || self.spatial.map[0] <= x || self.spatial.map[1] <= y {
@@ -219,7 +219,7 @@ impl World {
                 class: m.class,
                 state: u.life.state,
                 blast_defense: m.blast_defense,
-                position: u.position,
+                position: u.position(),
                 radius: m.radius,
             }));
         }

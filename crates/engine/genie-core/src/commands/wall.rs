@@ -314,8 +314,8 @@ impl World {
                 let g = ((f32::from(end) + HALF) - at).abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
             };
-            let gx = gap(w.to[0], u.position[0], r[0]);
-            let gy = gap(w.to[1], u.position[1], r[1]);
+            let gx = gap(w.to[0], u.position()[0], r[0]);
+            let gy = gap(w.to[1], u.position()[1], r[1]);
             sorted.push((id, gy * gy + gx * gx));
         }
         if INSERTION_SORT_MAX < sorted.len() {

@@ -90,14 +90,14 @@ impl<'u> UnitView<'u, '_> {
             drop_sites: self.drop_sites,
         };
         // slot 0x820's point: the foundation's place
-        let terrain = point_terrain(self.spatial.terrain.as_ref(), f.position);
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), f.position());
         let found = task_search(masters, &actor, &t, &general, terrain, -1, &dip)?;
         Ok(found.map(|(task, switch)| BuildFound {
             task,
             switch,
             own,
             site,
-            at: f.position,
+            at: f.position(),
         }))
     }
 
@@ -127,7 +127,8 @@ impl<'u> UnitView<'u, '_> {
         let player = self.player;
         let unit = &*self.unit;
         let builder = switch.unwrap_or(own);
-        let gap = crate::movement::footprint_gap(unit.position, builder.radius, f_at, site.radius);
+        let gap =
+            crate::movement::footprint_gap(unit.position(), builder.radius, f_at, site.radius);
         let build = BuildAction::start(
             foundation,
             f_at,
@@ -194,7 +195,7 @@ impl<'u> UnitView<'u, '_> {
         } else {
             master.search_radius
         } as i32;
-        let (ux, uy) = (unit.position[0] as i32, unit.position[1] as i32);
+        let (ux, uy) = (unit.position()[0] as i32, unit.position()[1] as i32);
         let (player, others, masters, spatial) = (
             self.player,
             owner_view(self.others, self.new_owner),
@@ -242,7 +243,7 @@ impl<'u> UnitView<'u, '_> {
                 id,
                 master: i32::from(u.life.master_id),
                 owner: p as i32,
-                vector: [u.position[0], u.position[2]],
+                vector: [u.position()[0], u.position()[2]],
             })
         };
         let spot = match self.spatial.get(site) {
@@ -251,7 +252,7 @@ impl<'u> UnitView<'u, '_> {
                     "a unit sent off without movement state",
                 ))?;
                 self.spatial.spot_off(
-                    unit.position,
+                    unit.position(),
                     (unit.id, mover.stats.radius[0]),
                     mover.stats.restriction_mask,
                     (placed.position, radius),
@@ -263,7 +264,7 @@ impl<'u> UnitView<'u, '_> {
         let target = unit.top_target().filter(|&t| t != -1);
         Ok(crate::unit_ai::OffFootprint {
             spot,
-            z: unit.position[2],
+            z: unit.position()[2],
             class: master.class,
             computer: self.computer,
             player: player as i32,

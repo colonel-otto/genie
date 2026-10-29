@@ -145,7 +145,7 @@ impl World {
         let idx = self.put_back_own(p, cart)?;
         let found = result?;
         let cart_master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
-        let at = self.players[p].objects[idx].position;
+        let at = self.players[p].objects[idx].position();
         let mut best: Option<(i32, [f32; 3])> = None;
         let mut best_d = CART_REACH;
         for f in found {

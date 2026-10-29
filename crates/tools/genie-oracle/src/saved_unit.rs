@@ -40,7 +40,6 @@ pub(super) fn unit(
     };
     let mut unit = Unit {
         id: s.id,
-        position: [s.t_x, s.t_y, s.t_z],
         life: lifecycle(object, s, objects, civ, masters),
         ai,
         construction: construction(object, s, objects),
@@ -145,11 +144,10 @@ pub(super) fn unit(
         charge: object.combat().map_or(0.0, |c| c.charge),
         // the animated layer (types 20 and up); a moving object's mover takes it below
         body: genie_core::objects::layers::Body::new(
+            [s.t_x, s.t_y, s.t_z],
             object
                 .animated_part()
-                .map(|a| genie_core::objects::layers::Animated {
-                    speed: a.current_speed,
-                }),
+                .map(|a| genie_core::objects::layers::Animated::new(a.current_speed)),
             None,
         ),
         // every animated object's current sprite, which slot 0x68 and the sprite list read

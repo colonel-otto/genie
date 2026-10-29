@@ -98,7 +98,7 @@ impl Unit {
             &c.w.graphics,
         );
         let (reload, hit_chance) = (master.reload, master.hit_chance);
-        let (walk, sprite_rng) = c.walk_and_sprites(self.body.mover_mut(), me);
+        let (walk, sprite_rng) = c.walk_and_sprites(&mut self.body, me);
         let mut strike = Strike {
             sprite: &mut self.sprite,
             standing,

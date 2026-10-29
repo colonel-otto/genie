@@ -263,10 +263,11 @@ impl Unit {
                 .get(c.player)
                 .and_then(|m| m.get(self.life.master_id));
         let range = crate::movement::move_to::object_range(range, own);
+        let here = self.position();
         let mover = self.body.mover_mut().expect("tested above");
         let move_to = MoveToAction::to_object(
             &c.w.spatial,
-            self.position,
+            here,
             mover,
             (target, state),
             range,

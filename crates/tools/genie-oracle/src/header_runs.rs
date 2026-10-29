@@ -149,7 +149,7 @@ pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Playe
             main_id: unit.life.master_id,
             state: unit.life.state,
             amount_held: unit.life.amount,
-            position: unit.position,
+            position: unit.position(),
             retarget_timer: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
             top_action: checkpoint_action(unit),
         })

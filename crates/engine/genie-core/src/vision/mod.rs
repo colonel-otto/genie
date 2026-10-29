@@ -105,7 +105,7 @@ impl World {
                             .objects
                             .iter()
                             .filter(|u| u.life.master_id == TOWN_CENTRE)
-                            .map(|u| (p, q, u.position)),
+                            .map(|u| (p, q, u.position())),
                     );
                 }
             }
@@ -230,7 +230,7 @@ mod tests {
                 .objects
                 .iter()
                 .filter(|u| u.life.master_id == FLARE4)
-                .map(|u| (u.id, u.position))
+                .map(|u| (u.id, u.position()))
                 .collect()
         };
         t.tick_with(50, &[]);
@@ -239,7 +239,7 @@ mod tests {
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
         t.players[1].objects.push(crate::objects::unit::Unit {
             id: 50,
-            position: [7.0, 8.0, 0.0],
+            body: crate::objects::layers::Body::at([7.0, 8.0, 0.0]),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: TOWN_CENTRE,
                 state: 2,

@@ -28,7 +28,7 @@ impl BuildAction {
             self.added = false;
         }
         if self.move_to.take().is_some()
-            && let Some(m) = walk.mover.as_deref_mut()
+            && let Some(m) = walk.body.mover_mut()
         {
             m.stop()?;
         }
@@ -146,7 +146,7 @@ impl BuildAction {
         state: Option<u8>,
     ) -> Result<(), GenieError> {
         self.leave(walk, builders)?;
-        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
+        let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
         let moves = mover.stats.speed != 0.0;
         if self.target == -1 {
             let mut new = self.restarted(-1, self.point, f32::MAX);
@@ -158,7 +158,7 @@ impl BuildAction {
         }
         let at = walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-        let gap = footprint_gap(walk.me.position, ground, at.position, at.radius);
+        let gap = footprint_gap(walk.position(), ground, at.position, at.radius);
         *self = self.restarted(self.target, at.position, gap);
         if state.is_some_and(|s| LAST_TAKEN < s) {
             self.refuse_walk_target(moves);
@@ -315,7 +315,7 @@ impl BuildAction {
         site: Option<Site<'_>>,
         step: &mut BuildStep,
     ) -> Result<(), GenieError> {
-        let (counted, [target, second]) = self.halt(walk.mover.as_deref_mut())?;
+        let (counted, [target, second]) = self.halt(walk.body.mover_mut())?;
         if counted && let Some(b) = site.map(Site::into_builders) {
             *b = b.wrapping_sub(1);
         }

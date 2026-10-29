@@ -90,11 +90,11 @@ impl Mover {
             }
         }
         let long_target = if let Some((_, t)) = target {
-            let gap2 = footprint_gap_squared(me.position, ground, t.position, t.radius);
+            let gap2 = footprint_gap_squared(self.position(), ground, t.position, t.radius);
             if gap2 < REACH_NEAR {
                 return Ok(false);
             }
-            let gap = footprint_gap(me.position, ground, t.position, t.radius);
+            let gap = footprint_gap(self.position(), ground, t.position, t.radius);
             Some(crate::pathing::long_path::LongTarget::new(
                 t.position, t.radius, gap, gap2,
             ))
@@ -104,7 +104,7 @@ impl Mover {
                 if 0.0 <= g { g } else { 0.0 }
             };
             // the gap from the unit's place (its decoded x and y), not +0x824
-            let [px, py, _] = me.position;
+            let [px, py, _] = self.position();
             let (gx, gy) = (gap(to[0] - px, radius[0]), gap(to[1] - py, radius[1]));
             if gx * gx + gy * gy < REACH_NEAR {
                 return Ok(false);
@@ -115,7 +115,7 @@ impl Mover {
         // ignore units that wait or move, or its group's differentiator units, then the target
         let walker = LongWalker {
             id: me.id,
-            position: me.position,
+            position: self.position(),
             radius: ground,
             mask: self.stats.restriction_mask,
             moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
@@ -388,7 +388,7 @@ impl Mover {
         let top = self.paths.last().filter(|l| !l.points.is_empty());
         let [rx, ry, _] = self.stats.radius;
         let o = vector(other.position);
-        let now_overlap = overlap(vector(me.position), [rx, ry], o, other.radius);
+        let now_overlap = overlap(vector(self.position()), [rx, ry], o, other.radius);
         let next_overlap = overlap(projected, [rx, ry], o, other.radius);
         let last_move = world.gait(id).map_or(0, |g| g.last_move);
         let mut pushed = false;

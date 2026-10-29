@@ -148,7 +148,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
     let unit = |id, state: u8, inside: Option<i32>| {
         let mut u = Unit {
             id,
-            position: [5.5, 5.5, 0.0],
+            body: crate::objects::layers::Body::at([5.5, 5.5, 0.0]),
             ..Unit::default()
         };
         u.life.master_id = 70;
@@ -1552,7 +1552,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
 #[test]
 fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
     let mut house = unit_of(1, 70, 550.0);
-    house.position = [5.5, 5.5, 0.0];
+    house.place_for_test([5.5, 5.5, 0.0]);
     house.construction = Some(built());
     let mut soldier = unit_of(2, 4, 30.0);
     soldier.group.id = 7;

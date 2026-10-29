@@ -351,10 +351,7 @@ impl BuildAction {
         clearing: (&mut u8, Looks<'_>),
         step: &mut BuildStep,
     ) -> Result<(), GenieError> {
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
+        let at = walk.position();
         let to = walk
             .world
             .get_known(self.target)?
@@ -362,7 +359,7 @@ impl BuildAction {
                 "a builder's foundation without a place",
             ))?
             .position;
-        let mover = walk.mover.as_deref_mut().ok_or(BUILDER_UNMOVING)?;
+        let mover = walk.body.mover_mut().ok_or(BUILDER_UNMOVING)?;
         let now = walk.plan.as_ref().map_or(0, |p| p.now);
         if !crate::combat::attack::face_target(mover, at, to, now)? {
             return Err(GenieError::unsupported(

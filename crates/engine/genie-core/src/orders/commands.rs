@@ -58,7 +58,7 @@ impl World {
             }
             let class = master.class;
             let unit = &mut self.players[p].objects[idx];
-            let place = ([unit.position[0], unit.position[1]], class);
+            let place = ([unit.position()[0], unit.position()[1]], class);
             let ai = unit.ai.as_mut().expect("checked above");
             let mut fx = Vec::new();
             set_stance(ai, state, place, &mut fx)?;
@@ -158,7 +158,7 @@ impl World {
             }
             let class = master.class;
             let unit = &mut self.players[p].objects[idx];
-            let (state, position) = (unit.life.state, unit.position);
+            let (state, position) = (unit.life.state, unit.position());
             let ai = unit.ai.as_mut().expect("checked above");
             let order = QueuedOrder {
                 issuer: p as i32,
@@ -403,7 +403,7 @@ impl World {
                 "a command's explore of a unit with an action",
             ));
         }
-        let (e, owner) = ExploreAction::new([point[0], point[1], unit.position[2]]);
+        let (e, owner) = ExploreAction::new([point[0], point[1], unit.position()[2]]);
         unit.actions.set_explore(Some(e));
         match owner {
             Owner::Nothing => return Ok(()),

@@ -194,7 +194,7 @@ impl World {
             return Ok(());
         }
         let inside = u.life.inside;
-        let (position, garrison) = (u.position, u.garrison.clone());
+        let (position, garrison) = (u.position(), u.garrison.clone());
         if relation != ALLY {
             self.leave_foreign_holder(p, id, q, inside)?;
             if class == SIEGE_CLASS

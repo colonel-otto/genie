@@ -306,11 +306,11 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     };
     let ask = PathAsk::default();
     let mut rig = WalkRig::on_the_path();
-    rig.mover.paths.clear();
+    rig.mover_mut().paths.clear();
     let mut t = sailing(Some(MoveTo::Start));
     assert_eq!(t.walk(Some(rig.walk(SAIL)), ask), Ok(0));
     assert_eq!(t.move_to, Some(MoveTo::Moving));
-    assert_eq!(rig.mover.paths.len(), 2);
+    assert_eq!(rig.mover_mut().paths.len(), 2);
     let mut rig = WalkRig::on_the_path();
     let mut t = sailing(Some(MoveTo::Moving));
     assert_eq!(t.walk(Some(rig.walk(SAIL)), ask), Ok(0));

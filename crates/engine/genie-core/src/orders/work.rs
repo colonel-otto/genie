@@ -550,7 +550,7 @@ impl World {
         let t = self.task_target(target, 1)?;
         let general = self.task_target(target, 2)?;
         // slot 0x820's point: the target's place
-        let at = self.object(target).map_or([0.0; 3], |(_, u)| u.position);
+        let at = self.object(target).map_or([0.0; 3], |(_, u)| u.position());
         let terrain = self.task_terrain(at);
         let find = |list: &Master, filter: i16| {
             crate::unit_ai::task_finder::find_task(

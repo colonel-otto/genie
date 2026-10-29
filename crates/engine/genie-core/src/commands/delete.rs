@@ -449,7 +449,7 @@ impl World {
         let (_, u) = self.object(id).ok_or(GenieError::unsupported(
             "a set_state of an object the slice does not hold",
         ))?;
-        let (old, position) = (u.life.state, u.position);
+        let (old, position) = (u.life.state, u.position());
         if old == new || (new < old && new != 0) {
             return Ok(());
         }
@@ -734,7 +734,7 @@ mod clearing_tests {
     fn object(id: i32, master: i16, x: f32, y: f32) -> Unit {
         Unit {
             id,
-            position: [x, y, 0.0],
+            body: crate::objects::layers::Body::at([x, y, 0.0]),
             life: Lifecycle {
                 master_id: master,
                 ..Lifecycle::default()
@@ -748,7 +748,7 @@ mod clearing_tests {
     /// Its place on the map, from its master.
     fn placed(u: &Unit, m: &Master, player: usize) -> Placed {
         Placed {
-            position: u.position,
+            position: u.position(),
             radius: m.radius,
             class: m.class,
             player,

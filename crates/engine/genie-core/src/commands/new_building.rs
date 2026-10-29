@@ -241,7 +241,6 @@ impl World {
         owner.objects.push(Unit {
             id,
             footprint_waits: 0,
-            position,
             life: Lifecycle {
                 class: Class::Animated,
                 state: 0,
@@ -263,6 +262,7 @@ impl World {
             builders: 0,
             // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             body: crate::objects::layers::Body::new(
+                position,
                 Some(crate::objects::layers::Animated::default()),
                 mover,
             ),

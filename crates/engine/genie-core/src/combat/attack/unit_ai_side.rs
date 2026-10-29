@@ -230,7 +230,7 @@ impl<'u> UnitView<'u, '_> {
         let wielder = crate::combat::attack::Wielder {
             area_effect: master.area_effect,
             speed: unit.body.mover().map_or(0.0, |m| m.stats.speed),
-            position: unit.position,
+            position: unit.position(),
             radius: master.radius,
         };
         let can_move = ai.current_order.is_some() || ai.stance <= 1;
@@ -310,12 +310,11 @@ impl<'u> UnitView<'u, '_> {
         );
         let me = Me {
             id: unit.id,
-            position: unit.position,
             group: unit.group.id,
             action_state: crate::combat::attack::READY,
         };
         let walk = Walk {
-            mover: unit.body.mover_mut(),
+            body: &mut unit.body,
             me,
             dt: 0.0,
             world: self.spatial,

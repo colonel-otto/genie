@@ -384,7 +384,8 @@ impl Mover {
         let to = [t.position[0], t.position[1]];
         let mask = self.stats.restriction_mask;
         let mut pather = HullPather::new(world, me.id, target, mask, self.stats.radius[0]);
-        let (result, path) = pather.find([me.position[0], me.position[1]], to, target, range)?;
+        let (result, path) =
+            pather.find([self.position()[0], self.position()[1]], to, target, range)?;
         // the slot removes the manager's temporary tile records after (FUN_1410561f0)
         world.clear_tile_records();
         Ok((result < 2).then(|| path.length()))
@@ -395,7 +396,6 @@ impl Mover {
     /// the planner's result; None without a planner for the unit's restriction.
     pub fn plan_length(
         &self,
-        me: &Me,
         world: &Spatial,
         plan: &mut Planning<'_>,
         to: [f32; 2],
@@ -406,7 +406,7 @@ impl Mover {
             return Ok(None);
         };
         let req = Request {
-            from: [me.position[0], me.position[1]],
+            from: [self.position()[0], self.position()[1]],
             to,
             radii,
             range: 0.0,

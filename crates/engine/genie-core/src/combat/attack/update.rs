@@ -161,13 +161,10 @@ impl Attack {
         let seen = walk.world.sees_tile(s.own.player, tx, ty)
             || (s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?);
         if seen && matches!(self.state, GOTO_SEEN | GOTO_POINT) {
-            let at = walk
-                .world
-                .get(walk.me.id)
-                .map_or(walk.me.position, |p| p.position);
+            let at = walk.position();
             let ground = walk
-                .mover
-                .as_ref()
+                .body
+                .mover()
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
                 .ok_or(crate::world::ATTACKER_UNMOVING)?;
             let gap = footprint_gap(at, ground, t.position, t.radius);
@@ -316,8 +313,8 @@ impl Attack {
         self.goto = self.seen;
         self.timer = 0.0;
         let speed = walk
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .ok_or(crate::world::ATTACKER_UNMOVING)?
             .stats
             .speed;

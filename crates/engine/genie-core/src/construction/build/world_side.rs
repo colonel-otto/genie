@@ -373,7 +373,7 @@ impl crate::world::World {
                 let target = if g.target == building { new } else { g.target };
                 match self.object(target) {
                     Some((_, t)) => Some(crate::commands::GatherPoint {
-                        point: [t.position[0], t.position[1], 0.0],
+                        point: [t.position()[0], t.position()[1], 0.0],
                         target,
                         target_master: t.life.master_id,
                     }),

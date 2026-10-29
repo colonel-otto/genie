@@ -17,7 +17,7 @@ impl crate::world::World {
         let unit = &self.players[p].objects[i];
         let master = self.master_of(p, unit.life.master_id)?;
         Ok(Ship {
-            position: unit.position,
+            position: unit.position(),
             radius: master.radius,
             loaded: !unit.garrison.is_empty(),
             map: self.spatial.map,
@@ -149,7 +149,7 @@ impl crate::world::World {
                 &mut self.zones,
                 &mut self.pathing,
                 restriction,
-                unit.position,
+                unit.position(),
             )?;
             u32::from(shore.zone(cvttss2si(x), cvttss2si(y))?)
         };
@@ -221,7 +221,7 @@ impl crate::world::World {
             radius: [0.0; 2],
         }; SPOTS + 1];
         spots[1] = Around {
-            center: [ship.position[0], ship.position[1]],
+            center: [ship.position()[0], ship.position()[1]],
             radius,
         };
         let mut k = 1;
@@ -382,12 +382,16 @@ impl crate::world::World {
         spot: [f32; 2],
     ) -> Result<(), GenieError> {
         let ship = &self.players[p].objects[i];
-        let at = ship.position;
+        let at = ship.position();
         if self.master_of(p, ship.life.master_id)?.class == crate::garrison::SIEGE_CLASS {
             return Err(crate::garrison::SIEGE_UNLOAD);
         }
         let (up, ui) = self.live_inside(id)?;
-        self.players[up].objects[ui].position = at;
+        let unit = &mut self.players[up].objects[ui];
+        let inner_id = unit.id;
+        unit.body
+            .base_mut()
+            .inside_at(inner_id, at, &mut self.spatial);
         self.leave_container((p, i), (up, ui), made, [spot[0], spot[1], at[2]])?;
         if let Some(ai) = self.players[up].objects[ui].ai.as_mut() {
             ai.state_position = spot;

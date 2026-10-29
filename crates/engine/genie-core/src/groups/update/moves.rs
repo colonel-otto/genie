@@ -386,9 +386,8 @@ impl World {
         let computer = self.players[p].computer;
         let construction_rate = self.players[p].construction_rate;
         let unit = &mut self.players[p].objects[idx];
-        let mut me = Me {
+        let me = Me {
             id,
-            position: unit.position,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -401,13 +400,10 @@ impl World {
             construction_rate,
             groups: &self.groups,
         };
-        let motion = mover.motion(&mut me, self.dt_seconds, &mut self.spatial, Some(&mut plan))?;
+        let motion = mover.motion(&me, self.dt_seconds, &mut self.spatial, Some(&mut plan))?;
         let pauses = std::mem::take(&mut mover.pauses);
         if !mover.in_the_way.is_empty() {
             return Err(crate::world::IN_THE_WAY);
-        }
-        if let Some(at) = self.spatial.get(id).map(|o| o.position) {
-            self.players[p].objects[idx].position = at;
         }
         for (other, pause) in pauses {
             self.pause(other, pause);

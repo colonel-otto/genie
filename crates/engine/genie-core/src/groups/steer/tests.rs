@@ -21,14 +21,13 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
     mover.stats.stand_speed = 0.0;
     let mut u = Unit {
         id,
-        position: [x, y, 0.0],
         ai: Some(UnitAi {
             current_order: None,
             current_action: None,
             current_target: -1,
             ..UnitAi::default()
         }),
-        body: crate::objects::layers::Body::Moving(mover),
+        body: crate::objects::layers::Body::new([x, y, 0.0], None, Some(mover)),
         ..Unit::default()
     };
     u.life.master_id = 4;
@@ -350,7 +349,7 @@ fn a_due_slot_takes_its_member() {
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), 3);
     assert_eq!(mover(&t, 10).animated.speed, 0.0);
-    assert_eq!(unit(&t, 10).position, [5.0, 5.0, 0.0]);
+    assert_eq!(unit(&t, 10).position(), [5.0, 5.0, 0.0]);
     let mut t = world();
     t.players[1].objects[0]
         .body
@@ -378,7 +377,7 @@ fn a_due_slot_takes_its_member() {
     s.state = 2;
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), 3);
-    assert_eq!(unit(&t, 10).position, [10.0, 5.0, 0.0]);
+    assert_eq!(unit(&t, 10).position(), [10.0, 5.0, 0.0]);
     let m = mover(&t, 10);
     assert_eq!(m.moved_at, [10.0, 5.0, 0.0]);
     assert_eq!(m.last_move, 100);

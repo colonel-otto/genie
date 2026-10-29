@@ -100,9 +100,7 @@ impl GatherAction {
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
         match self.move_to {
-            Some(MoveTo::Arrived | MoveTo::Failed) => {
-                self.begin_search(walk.mover.as_deref_mut(), g)
-            }
+            Some(MoveTo::Arrived | MoveTo::Failed) => self.begin_search(walk.body.mover_mut(), g),
             Some(_) => {
                 self.step_move(walk.reborrow(), g)?;
                 Ok(Next::Stay)
@@ -138,7 +136,7 @@ impl GatherAction {
     /// more does nothing.
     pub(super) fn update_farm_wait(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         target: Option<&Victim>,
         g: &mut Gatherer<'_>,
         dt: f32,
@@ -160,20 +158,20 @@ impl GatherAction {
         if !self.worked {
             if self.target_type == i32::from(FARM_CLASS) && target.is_some_and(|t| 1 < t.workers) {
                 let mover = walk
-                    .mover
-                    .as_deref_mut()
+                    .body
+                    .mover_mut()
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 self.set_walk_back(radius, mover)?;
                 self.target = -1;
                 return Ok(Next::Stay);
             }
-            self.tear_down(walk.mover.as_deref_mut())?;
+            self.tear_down(walk.body.mover_mut())?;
             self.set_idle(g);
             return Ok(Next::Stay);
         }
         let mover = walk
-            .mover
-            .as_deref_mut()
+            .body
+            .mover_mut()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         self.begin_reseed_walk(radius, mover)?;
         Ok(Next::Stay)
@@ -186,7 +184,7 @@ impl GatherAction {
     /// answers none of the codes: nothing happens.
     pub(super) fn update_reseed_walk(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         target: Option<&Victim>,
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
@@ -194,8 +192,8 @@ impl GatherAction {
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
                 self.walk_to = None;
-                walk.mover
-                    .as_deref_mut()
+                walk.body
+                    .mover_mut()
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
                 if let Some(t) = target
@@ -293,7 +291,7 @@ impl GatherAction {
     /// (`set_state(2)`); a failed walk (code 3) idles both.
     pub(super) fn update_moved(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
         match self.move_to {
@@ -301,8 +299,8 @@ impl GatherAction {
                 let arrived = self.move_to == Some(MoveTo::Arrived);
                 self.move_to = None;
                 self.walk_to = None;
-                walk.mover
-                    .as_deref_mut()
+                walk.body
+                    .mover_mut()
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
                 if arrived && g.computer {

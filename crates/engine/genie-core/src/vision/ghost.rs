@@ -233,7 +233,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        let [x, y] = Self::tile_at(u.position);
+        let [x, y] = Self::tile_at(u.position());
         let _ = self.watch(p, id, x, y)?;
         Ok(())
     }
@@ -278,7 +278,7 @@ impl World {
                     continue;
                 };
                 let (state, kind, ghosts, position) =
-                    (u.life.state, m.kind, m.ghost_on_death, u.position);
+                    (u.life.state, m.kind, m.ghost_on_death, u.position());
                 let [x, y] = Self::tile_at(position);
                 // the static load's watch of a dead object (FUN_14119df60)
                 if ghosts == LEAVES_GHOSTS && 2 < state {
@@ -329,7 +329,7 @@ impl World {
             state: u.life.state,
             master: u.life.master_id,
         };
-        let position = u.position;
+        let position = u.position();
         if id < 0
             || self
                 .masters
@@ -590,7 +590,7 @@ impl World {
             match self.object(w.id) {
                 None => gone = Some(w.id),
                 Some((owner, u)) => {
-                    let at = u.position;
+                    let at = u.position();
                     let original = Original {
                         id: w.id,
                         owner,
@@ -667,7 +667,7 @@ mod tests {
     fn object(id: i32, master: i16, state: u8, position: [f32; 3]) -> Unit {
         let mut u = Unit {
             id,
-            position,
+            body: crate::objects::layers::Body::at(position),
             ..Unit::default()
         };
         u.life.master_id = master;

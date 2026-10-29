@@ -90,7 +90,7 @@ impl BuildAction {
         if occupants.is_empty() {
             return self.join(walk, site_ref);
         }
-        let [bx, by, _] = walk.me.position;
+        let [bx, by, _] = walk.position();
         let [sx, sy, _] = site.position;
         let inside = (bx - sx).abs() <= site.radius[0] && (by - sy).abs() <= site.radius[1];
         if inside {
@@ -119,7 +119,7 @@ impl BuildAction {
     /// the foundation's builders. Its work sprite and sound are not held by the slice.
     pub(super) fn join(&mut self, walk: &Walk<'_>, site: &mut Site<'_>) -> Result<(), GenieError> {
         let placed = walk.world.get(self.target).ok_or(SITE_GONE)?;
-        let [bx, by] = [walk.me.position[0] as i32, walk.me.position[1] as i32];
+        let [bx, by] = [walk.position()[0] as i32, walk.position()[1] as i32];
         let [tx, mut ty] = [placed.position[0] as i32, placed.position[1] as i32];
         let [rx, ry] = placed.radius;
         if (rx as i32) as f32 == rx && (ry as i32) as f32 == ry {
@@ -209,7 +209,7 @@ impl BuildAction {
     /// touch, as [`BuildAction::start`]'s. Only a villager returns at once (`0x140ab0370` case
     /// 0xde; any other builder in range would work, state 6).
     pub(super) fn back(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
-        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
+        let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
         if walk.world.get(walk.me.id).map(|p| p.class) != Some(VILLAGER) {
             return Err(GenieError::unsupported(
                 "a builder other than a villager returns",
@@ -217,7 +217,7 @@ impl BuildAction {
         }
         let site = walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-        let gap = footprint_gap(walk.me.position, ground, site.position, site.radius);
+        let gap = footprint_gap(walk.position(), ground, site.position, site.radius);
         *self = self.restarted(self.target, site.position, gap);
         Ok(())
     }
@@ -225,12 +225,12 @@ impl BuildAction {
     /// `set_state(223)`: a `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`); it starts
     /// in state 3, as a `MoveTo` to a point is far from it (`FUN_140aa2100`).
     pub(super) fn clear(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
-        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
+        let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
         let site = walk.world.get(self.target).expect("place found it");
         let spot = walk
             .world
             .spot_beside(
-                walk.me.position,
+                walk.position(),
                 (walk.me.id, mover.stats.radius[0]),
                 mover.stats.restriction_mask,
                 site,
@@ -246,7 +246,7 @@ impl BuildAction {
         self.state = CLEAR;
         self.move_to = Some(MoveTo::Start);
         self.walk_target = -1;
-        self.goal = Some([spot[0], spot[1], walk.me.position[2]]);
+        self.goal = Some([spot[0], spot[1], walk.position()[2]]);
         Ok(())
     }
 

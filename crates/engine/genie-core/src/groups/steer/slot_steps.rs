@@ -88,7 +88,7 @@ impl World {
         } else {
             let walker = crate::movement::LongWalker {
                 id,
-                position: u.position,
+                position: u.position(),
                 radius: [mover.stats.radius[0], mover.stats.radius[1]],
                 mask: mover.stats.restriction_mask,
                 moves: mover.stats.speed != 0.0
@@ -98,7 +98,7 @@ impl World {
             };
             crate::movement::long_path_for(
                 &walker,
-                [u.position[0], u.position[1]],
+                [u.position()[0], u.position()[1]],
                 &self.spatial,
                 computer,
                 (to, 0.0),
@@ -272,13 +272,8 @@ impl World {
         let at = mover.set_position([x, y, h], map);
         let at = mover.grounded(at, self.spatial.terrain.as_ref());
         mover.mark_move(at, self.world_time);
-        let moving = mover.is_moving();
         let (speed, radius) = (mover.stats.speed, mover.stats.radius);
-        u.position = at;
-        self.spatial.set_position(id, at);
-        if let Some(placed) = self.spatial.get(id) {
-            self.pathing.moved(id, placed, moving);
-        }
+        mover.new_position(id, at, (&mut self.spatial, Some(&mut self.pathing)));
         if 0 <= id
             && kind < BUILDING_KIND
             && speed == 0.0

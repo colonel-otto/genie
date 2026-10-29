@@ -49,7 +49,7 @@ impl World {
             let z = unit.gather_point.map_or(0.0, |g| g.point[2]);
             let gather = if own {
                 Some(GatherPoint {
-                    point: [unit.position[0], unit.position[1], z],
+                    point: [unit.position()[0], unit.position()[1], z],
                     target: unit.id,
                     target_master: unit.life.master_id,
                 })

@@ -11,7 +11,7 @@ use crate::world::{Player, World};
 fn soldier(id: i32, x: f32, y: f32) -> Unit {
     let mut u = Unit {
         id,
-        position: [x, y, 0.0],
+        body: crate::objects::layers::Body::at([x, y, 0.0]),
         ai: Some(UnitAi {
             current_order: None,
             current_action: None,
@@ -571,7 +571,7 @@ fn the_formation_turns_past_a_quarter_turn() {
 #[test]
 fn the_centroid_front_is_the_members_mean_place() {
     let mut t = world();
-    t.players[1].objects[2].position = [1.0, 4.0, 3.0];
+    t.players[1].objects[2].place_for_test([1.0, 4.0, 3.0]);
     t.groups.get_mut(1).unwrap().motion.position[1] = [1.0, 0.0, 0.0];
     t.front_by_centroid(1);
     let g = t.groups.get(1).unwrap();
@@ -986,7 +986,7 @@ fn a_group_update_leaves_its_members_gaits_current() {
     let walker = crate::gathering::hunt::tests::walker();
     for u in &mut t.players[1].objects {
         u.body.put_mover(Some(walker.clone()));
-        u.body.mover_mut().unwrap().moved_at = u.position;
+        u.body.mover_mut().unwrap().moved_at = u.position();
         u.ai = None;
         t.spatial.set_gait(u.id, u.gait());
     }
@@ -1079,14 +1079,14 @@ fn a_player_s_groups_update_before_its_objects() {
     let walker = crate::gathering::hunt::tests::walker();
     for u in &mut t.players[1].objects {
         u.body.put_mover(Some(walker.clone()));
-        u.body.mover_mut().unwrap().moved_at = u.position;
+        u.body.mover_mut().unwrap().moved_at = u.position();
         u.ai = None;
     }
-    let before = t.object(10).unwrap().1.position;
+    let before = t.object(10).unwrap().1.position();
     t.tick(69);
     let u = t.object(10).unwrap().1;
     assert_eq!(u.group.id, -1);
-    assert_eq!(u.position, before);
+    assert_eq!(u.position(), before);
     assert_eq!(u.body.mover().unwrap().velocity.unwrap().velocity[2], 0.0);
 }
 
@@ -1101,7 +1101,7 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
     let walker = crate::gathering::hunt::tests::walker();
     for u in &mut t.players[1].objects {
         let mut m = walker.clone();
-        m.moved_at = u.position;
+        m.moved_at = u.position();
         m.velocity = Some(crate::movement::Velocity {
             velocity: [0.0, 0.0, 1.0],
             acceleration: [0.0; 3],
@@ -1120,7 +1120,7 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
     g.members[1].specific_move.reason = -1;
     g.members[2].specific_move.reason = 0;
     let before: Vec<_> = (10..=12)
-        .map(|id| t.object(id).unwrap().1.position)
+        .map(|id| t.object(id).unwrap().1.position())
         .collect();
     t.tick(100);
     assert_eq!(t.players[1].unsupported, None);
@@ -1136,11 +1136,11 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
             .velocity[2]
     };
     assert_eq!(speed(&t, 10), 0.0);
-    assert_eq!(t.object(10).unwrap().1.position, before[0]);
+    assert_eq!(t.object(10).unwrap().1.position(), before[0]);
     assert_eq!(speed(&t, 11), 1.0);
-    assert_eq!(t.object(11).unwrap().1.position, [1.9, 1.0, 0.0]);
+    assert_eq!(t.object(11).unwrap().1.position(), [1.9, 1.0, 0.0]);
     assert_eq!(speed(&t, 12), 0.0);
-    assert_eq!(t.object(12).unwrap().1.position, before[2]);
+    assert_eq!(t.object(12).unwrap().1.position(), before[2]);
 }
 
 /// [`Unit::group_speed`]: the group steers a free member while its motion moves or the member
@@ -1221,7 +1221,7 @@ fn the_update_end_stores_a_moved_group_s_new_position() {
 fn the_lead_is_the_member_nearest_the_targets_place() {
     let at = |id, x: f32, y: f32| Unit {
         id,
-        position: [x, y, 0.0],
+        body: crate::objects::layers::Body::at([x, y, 0.0]),
         ..Unit::default()
     };
     let player = Player {
@@ -1353,7 +1353,7 @@ fn grounded() -> World {
         for u in &mut t.players[p].objects {
             u.ai.as_mut().unwrap().ai_type = crate::unit_ai::SOLDIER_AI;
             u.body.put_mover(Some(crate::movement::Mover {
-                moved_at: u.position,
+                moved_at: u.position(),
                 ..crate::gathering::hunt::tests::walker()
             }));
         }
@@ -1361,7 +1361,7 @@ fn grounded() -> World {
             t.spatial.insert(
                 u.id,
                 crate::map::spatial::Placed {
-                    position: u.position,
+                    position: u.position(),
                     radius: [0.2, 0.2],
                     class: 6,
                     player: p,

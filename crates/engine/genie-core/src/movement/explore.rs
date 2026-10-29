@@ -424,7 +424,7 @@ impl Unit {
         point: [f32; 2],
         c: &mut Context<'_>,
     ) -> Result<(), GenieError> {
-        let at = [point[0], point[1], self.position[2]];
+        let at = [point[0], point[1], self.position()[2]];
         let owner = if let Some(e) = self.actions.explore_mut() {
             let walked = e.move_to.is_some();
             let owner = e.take_point(at);

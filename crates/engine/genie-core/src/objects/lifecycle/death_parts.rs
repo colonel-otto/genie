@@ -85,7 +85,7 @@ pub(crate) fn combat_dies(
         && u.life.inside.is_none()
         && let Some(v) = spatial.sight.as_mut()
     {
-        v.unlink_building(u.position, master.radius);
+        v.unlink_building(u.position(), master.radius);
     }
     u.roo_called = true;
     Ok(())
@@ -160,7 +160,7 @@ pub(crate) fn built_death(
             "a dying building of foundation terrain 28 (its terrain 1, FUN_1411ce250)",
         ));
     }
-    let unlink = (u.annex_of.is_none() && u.life.inside.is_none()).then_some(u.position);
+    let unlink = (u.annex_of.is_none() && u.life.inside.is_none()).then_some(u.position());
     let count = match master.id {
         MONASTERY => Some(MONASTERIES),
         WONDER => Some(WONDERS),

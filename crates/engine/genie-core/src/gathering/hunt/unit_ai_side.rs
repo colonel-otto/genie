@@ -196,13 +196,13 @@ impl<'u> UnitView<'u, '_> {
             drop_sites: self.drop_sites,
         };
         // slot 0x820's point: the target's place
-        let terrain = point_terrain(self.spatial.terrain.as_ref(), t.position);
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), t.position());
         let (task, switch) = task_search(masters, &actor, &task_t, &general, terrain, -1, &dip)?
             .ok_or(crate::orders::NO_HUNT_TASK)?;
         let hunter = switch.unwrap_or(own);
         let quarry = Quarry {
             id: target,
-            position: t.position,
+            position: t.position(),
             class: t_master.class,
             kind: t_master.kind,
             state: t.life.state,

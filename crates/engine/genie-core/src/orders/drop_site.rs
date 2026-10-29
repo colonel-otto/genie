@@ -30,7 +30,7 @@ impl World {
         let (kind, class, at) = (
             master.kind,
             master.class,
-            [unit.position[0], unit.position[1]],
+            [unit.position()[0], unit.position()[1]],
         );
         let held = unit.life.attribute_type;
         let mut site = None;
@@ -88,7 +88,7 @@ impl World {
                 &self.players[p].objects,
                 masters,
                 &master.drop_sites,
-                unit.position,
+                unit.position(),
                 None,
                 (false, -1),
             );
@@ -126,7 +126,7 @@ impl World {
         class: i16,
     ) -> Option<i32> {
         let player = &self.players[p];
-        let look = |id: i32| self.object(id).map(|(_, o)| (o.life.state, o.position));
+        let look = |id: i32| self.object(id).map(|(_, o)| (o.life.state, o.position()));
         nearest_table_site(
             (&self.drop_sites, player.civ, &player.tracker),
             (at, held, class),
@@ -151,7 +151,7 @@ impl World {
         let (amount, held, at) = (
             unit.life.amount,
             unit.life.attribute_type,
-            [unit.position[0], unit.position[1]],
+            [unit.position()[0], unit.position()[1]],
         );
         let class = self.master_of(p, unit.life.master_id)?.class;
         let search = if 0.0 < amount {
@@ -173,14 +173,13 @@ impl World {
         let unit = &mut self.players[p].objects[idx];
         let me = crate::movement::Me {
             id: unit.id,
-            position: unit.position,
             group: unit.group.id,
             action_state: crate::construction::build::DROP,
         };
         let build = unit.actions.build_mut().expect("the caller's Build");
         build.added = false;
         let mut walk = crate::movement::move_to::Walk {
-            mover: unit.body.mover_mut(),
+            body: &mut unit.body,
             me,
             dt: 0.0,
             world: &mut self.spatial,
@@ -235,11 +234,11 @@ impl World {
     ) -> Result<(), GenieError> {
         let back = back.filter(|&t| 0 <= t).and_then(|t| {
             let (q, o) = self.object(t)?;
-            Some((t, o.life.master_id, q, o.position))
+            Some((t, o.life.master_id, q, o.position()))
         });
         let point = self
             .object(site)
-            .map(|(_, o)| o.position)
+            .map(|(_, o)| o.position())
             .ok_or(GenieError::unreachable("the drop site found"))?;
         let work = Work {
             target: site,
@@ -304,7 +303,7 @@ impl World {
                     f.id,
                     i32::from(master),
                     op as i32,
-                    [o.position[0], o.position[1]],
+                    [o.position()[0], o.position()[1]],
                 )
             }
             None => (record.target, record.target_type, -1, record.point),

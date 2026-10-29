@@ -88,11 +88,8 @@ impl BuildAction {
             self.restart(walk, None, None)?;
             return Ok(out);
         };
-        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
+        let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
+        let at = walk.position();
         let to = walk
             .world
             .get_known(id)?
@@ -158,7 +155,7 @@ impl BuildAction {
             return Ok(());
         }
         if self.move_to.take().is_some()
-            && let Some(m) = walk.mover.as_deref_mut()
+            && let Some(m) = walk.body.mover_mut()
         {
             m.stop()?;
         }

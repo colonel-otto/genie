@@ -433,6 +433,14 @@ impl Spatial {
         }
     }
 
+    /// The record of object `id` inside another takes the place `at` (its object's copy of the
+    /// container's place); nothing for an object not inside.
+    pub fn set_inside_position(&mut self, id: i32, at: [f32; 3]) {
+        if let Some(p) = self.inside.get_mut(&id) {
+            p.position = at;
+        }
+    }
+
     /// The object `id` comes out of the object it was inside ([`Spatial::go_inside`]): its record,
     /// which the caller puts on the map again.
     pub fn come_out(&mut self, id: i32) -> Option<Placed> {

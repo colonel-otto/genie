@@ -350,7 +350,7 @@ impl Mover {
         let far = far_waypoint(
             w.distance,
             w.goal.target.map(|t| {
-                let gap = footprint_gap(me.position, ground_radius, t.position, t.radius);
+                let gap = footprint_gap(self.position(), ground_radius, t.position, t.radius);
                 (gap, t.master)
             }),
         );

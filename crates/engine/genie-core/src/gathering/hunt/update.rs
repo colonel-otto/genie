@@ -41,10 +41,7 @@ impl HuntAction {
             ATTACK => self.update_attack(walk, strike, gather),
             // case 3: a hunt that gave up on its MoveTo waits (its timer below 0), then set_state 11
             WALK if self.timer < 0.0 => {
-                let mover = walk
-                    .mover
-                    .as_deref_mut()
-                    .ok_or(crate::world::HUNTER_UNMOVING)?;
+                let mover = walk.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
                 self.wait_then_walk(walk.dt, mover)
             }
             WALK => self.update_walk(walk, strike, gather, herd),
@@ -90,7 +87,7 @@ impl HuntAction {
         match attack.update(walk.reborrow(), strike)? {
             0 | 6.. => Ok(()),
             1 | 2 | 5 if self.target == -1 => {
-                self.tear_down(walk.mover.as_deref_mut())?;
+                self.tear_down(walk.body.mover_mut())?;
                 self.state = SEARCH;
                 gather.searches = true;
                 Ok(())
@@ -115,10 +112,7 @@ impl HuntAction {
             }
             _ => {
                 gather.let_go = Some(self.let_go());
-                let mover = walk
-                    .mover
-                    .as_deref_mut()
-                    .ok_or(crate::world::HUNTER_UNMOVING)?;
+                let mover = walk.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
                 self.set_point_walk(WALK_SEARCH, mover)
             }
         }
@@ -240,14 +234,14 @@ impl HuntAction {
     /// and `set_state(6)`.
     fn walk_arrived(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         strike: &mut Strike<'_>,
         gather: &mut Gatherer<'_>,
         herd: Option<Herd>,
     ) -> Result<(), GenieError> {
         self.move_to = None;
-        walk.mover
-            .as_deref_mut()
+        walk.body
+            .mover_mut()
             .ok_or(crate::world::HUNTER_UNMOVING)?
             .stop()?;
         self.decay_check(gather.stops_decay, strike.victim);
@@ -260,18 +254,12 @@ impl HuntAction {
     /// the hunt searches (`set_state(3)`).
     fn update_face(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         strike: &mut Strike<'_>,
         gather: &mut Gatherer<'_>,
     ) -> Result<(), GenieError> {
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
-        let mover = walk
-            .mover
-            .as_deref_mut()
-            .ok_or(crate::world::HUNTER_UNMOVING)?;
+        let at = walk.position();
+        let mover = walk.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         if !crate::combat::attack::face_target(
             mover,
             at,
@@ -312,10 +300,7 @@ impl HuntAction {
                 ));
             }
         }
-        let mover = walk
-            .mover
-            .as_deref_mut()
-            .ok_or(crate::world::HUNTER_UNMOVING)?;
+        let mover = walk.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         self.set_point_walk(WALK_SEARCH, mover)
     }
 
@@ -328,7 +313,7 @@ impl HuntAction {
         strike: &mut Strike<'_>,
         herd: &Herd,
     ) -> Result<(), GenieError> {
-        let mover = walk.mover.ok_or(crate::world::HUNTER_UNMOVING)?;
+        let mover = walk.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         self.move_to = None;
         self.state = ATTACK;
         let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;

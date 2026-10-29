@@ -75,8 +75,8 @@ impl World {
                 continue;
             };
             let at = match king.life.inside.and_then(|h| self.object(h)) {
-                Some((_, holder)) => holder.position,
-                None => king.position,
+                Some((_, holder)) => holder.position(),
+                None => king.position(),
             };
             for j in 1..n {
                 if crate::unit_ai::task_finder::allied(&self.players[p].relations, p, j, false) {
@@ -152,7 +152,7 @@ mod tests {
     fn king(id: i32, position: [f32; 3], inside: Option<i32>) -> Unit {
         Unit {
             id,
-            position,
+            body: crate::objects::layers::Body::at(position),
             life: Lifecycle {
                 master_id: KING,
                 inside,
@@ -183,7 +183,7 @@ mod tests {
                 .objects
                 .iter()
                 .filter(|u| u.life.master_id == FLARE4)
-                .map(|u| (u.id, u.position))
+                .map(|u| (u.id, u.position()))
                 .collect()
         };
         assert_eq!(flares(&t, 1), [(100, [5.0, 6.0, 0.0])]);

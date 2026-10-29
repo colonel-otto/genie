@@ -367,7 +367,7 @@ const TREE: i16 = 15;
 /// [`crate::unit_ai::IN_THE_WAY`], [`crate::movement::Mover::in_the_way`]), in the order of the
 /// Attack's posts; the walker is in state 2, which the unit's own post (slot 0x328) asks for.
 pub(crate) fn in_the_way(walk: &mut Walk<'_>, s: &mut Strike<'_>) {
-    if let Some(m) = walk.mover.as_deref_mut() {
+    if let Some(m) = walk.body.mover_mut() {
         s.posted.extend(
             m.in_the_way
                 .drain(..)

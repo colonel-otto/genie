@@ -336,7 +336,7 @@ impl Unit {
         let radius =
             crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
         let search = Search {
-            at: [self.position[0], self.position[1]],
+            at: [self.position()[0], self.position()[1]],
             radius,
             classes: &crate::unit_ai::CIVILIAN_CARED,
             size: master.radius,
@@ -353,7 +353,6 @@ impl Unit {
         };
         let me = Me {
             id: self.id,
-            position: self.position,
             group: self.group.id,
             action_state: self.actions.hunt().expect("the caller's hunt").state,
         };
@@ -454,7 +453,7 @@ impl Unit {
         }
         let quarry = crate::gathering::hunt::Quarry {
             id: found,
-            position: t.position,
+            position: t.position(),
             class: t_master.class,
             kind: t_master.kind,
             state: t.life.state,

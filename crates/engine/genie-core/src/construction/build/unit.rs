@@ -78,7 +78,7 @@ impl Unit {
         let (attribute_204, mode_680, computer, now) =
             (c.attribute_204, c.mode_680, c.computer, c.world_time);
         let build = self.actions.build_mut().expect("above");
-        let (walk, beside) = c.w.walk_beside(pace, self.body.mover_mut(), me);
+        let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
         let template = Completion {
             master: None,
             annexed,
@@ -128,7 +128,7 @@ impl Unit {
             .and_then(|b| others.own(b.target))
             .filter(|u| u.construction.is_some_and(|k| k.desolid))
         {
-            let [fx, fy, _] = f.position;
+            let [fx, fy, _] = f.position();
             let reach = crate::construction::build::CLEARING_REACH + 1.0;
             for (id, _) in
                 c.w.spatial

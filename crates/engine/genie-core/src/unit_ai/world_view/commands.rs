@@ -35,7 +35,7 @@ impl UnitView<'_, '_> {
             return Ok(false);
         };
         // slot 0x820's point: the target's place
-        let terrain = point_terrain(self.spatial.terrain.as_ref(), t_unit.position);
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), t_unit.position());
         if unit.top_action_kind() == Some(crate::construction::repair::REPAIR) {
             self.starts
                 .push(AiStart::Repair(RepairOrder::Retake(target)));
@@ -145,7 +145,7 @@ impl UnitView<'_, '_> {
             drop_sites: self.drop_sites,
         };
         // slot 0x820's point: the target's place
-        let terrain = point_terrain(self.spatial.terrain.as_ref(), t_unit.position);
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), t_unit.position());
         let Some((task, switch)) = task_search(
             masters,
             &actor,
@@ -206,7 +206,6 @@ impl UnitView<'_, '_> {
         let zones = self.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: unit.id,
-            position: unit.position,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -253,7 +252,10 @@ pub(crate) fn town_centre(units: OthersRef<'_>) -> Result<Option<[i32; 2]>, Geni
                 "two town centres (the order of the player's index)",
             ));
         }
-        return Ok(Some([first.position[0] as i32, first.position[1] as i32]));
+        return Ok(Some([
+            first.position()[0] as i32,
+            first.position()[1] as i32,
+        ]));
     }
     Ok(None)
 }
@@ -292,7 +294,7 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
     }
 
     fn own_zone(&mut self) -> u16 {
-        let [x, y, _] = self.me.position;
+        let [x, y, _] = self.mover.position();
         self.zones.zone(x as i32, y as i32)
     }
 
@@ -320,8 +322,8 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
             let g = d.abs() - r;
             if g <= 0.0 { 0.0 } else { g }
         };
-        let gx = gap(x as f32 - self.me.position[0], self.radius[0]);
-        let gy = gap(y as f32 - self.me.position[1], self.radius[1]);
+        let gx = gap(x as f32 - self.mover.position()[0], self.radius[0]);
+        let gy = gap(y as f32 - self.mover.position()[1], self.radius[1]);
         crate::math::fmath::sqrt(gy * gy + gx * gx)
     }
 }

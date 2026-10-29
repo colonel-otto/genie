@@ -32,7 +32,7 @@ impl Unit {
         };
         let hunt = self.actions.hunt().expect("the caller's");
         if let Some(within) = within
-            && beyond(hunt.point, self.position, within)
+            && beyond(hunt.point, self.position(), within)
         {
             return Ok(false);
         }
@@ -49,9 +49,9 @@ impl Unit {
                 ))?;
         if let Some(near) = near {
             let (dx, dz, dy) = (
-                self.position[0] - t.position[0],
-                self.position[2] - t.position[2],
-                self.position[1] - t.position[1],
+                self.position()[0] - t.position()[0],
+                self.position()[2] - t.position()[2],
+                self.position()[1] - t.position()[1],
             );
             if near < crate::math::fmath::sqrt(dx * dx + dz * dz + dy * dy) {
                 return Ok(false);
@@ -73,7 +73,7 @@ impl Unit {
                 ))?;
         let quarry = crate::gathering::hunt::Quarry {
             id: found,
-            position: t.position,
+            position: t.position(),
             class: t_master.class,
             kind: t_master.kind,
             state: t.life.state,

@@ -176,7 +176,7 @@ pub(crate) fn meeting_target(
         speed: t.body.mover().map_or(0.0, |m| m.stats.speed),
         state: t.top_action().map_or(0, |a| a.state),
         class: tm.class,
-        position: [t.position[0], t.position[1]],
+        position: [t.position()[0], t.position()[1]],
         action_point,
     })
 }
@@ -291,7 +291,7 @@ pub(crate) fn enter_view(
     let stats = mover.map(|m| m.stats).ok_or(GenieError::unsupported(
         "an Enter's MoveTo of a unit without speed",
     ))?;
-    let moved_at = mover.map_or(unit.position, |m| m.moved_at);
+    let moved_at = mover.map_or_else(|| unit.position(), |m| m.moved_at);
     let target_mover = if building { None } else { t.body.mover() };
     let in_reach = enter_reach(
         spatial,
@@ -306,17 +306,17 @@ pub(crate) fn enter_view(
     );
     let gap = crate::movement::footprint_gap(me.position, me.radius, them.position, them.radius);
     let meeting = if building {
-        Ok(([t.position[0], t.position[1]], 0))
+        Ok(([t.position()[0], t.position()[1]], 0))
     } else {
         meeting_target(t, tm, room)
-            .and_then(|mt| meeting_point(&mt, (unit.id, unit.position, &stats), spatial, zones))
+            .and_then(|mt| meeting_point(&mt, (unit.id, unit.position(), &stats), spatial, zones))
     };
     Ok((
         EnterTarget {
             state: t.life.state,
             allied: true,
             room,
-            position: t.position,
+            position: t.position(),
             in_reach,
             building,
         },
@@ -339,7 +339,6 @@ pub(crate) fn ship_reaches(
     };
     let me = crate::movement::Me {
         id: ship.id,
-        position: ship.position,
         action_state: ship.top_action().map_or(0, |a| a.state),
         group: ship.group.id,
     };

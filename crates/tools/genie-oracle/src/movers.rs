@@ -251,9 +251,7 @@ pub(super) fn mover(
         .collect::<Result<Vec<_>, _>>()?;
     loaded_ignored(&mut levels, &s.temp_int);
     Ok(Some(Mover {
-        animated: genie_core::objects::layers::Animated {
-            speed: m.rge_animated_object.current_speed,
-        },
+        animated: genie_core::objects::layers::Animated::new(m.rge_animated_object.current_speed),
         forward: vec3(&m.orientation_forward_value),
         right: vec3(&m.orientation_right_value),
         velocity,

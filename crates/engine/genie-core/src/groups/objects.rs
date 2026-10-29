@@ -58,7 +58,7 @@ impl WorldObject<'_> {
     /// Its place: x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`).
     pub(crate) const fn position(&self) -> crate::math::fmath::Vec3 {
         match *self {
-            Self::Unit(_, u) => u.position,
+            Self::Unit(_, u) => u.position(),
             Self::Ghost(_, g) => g.position,
         }
     }

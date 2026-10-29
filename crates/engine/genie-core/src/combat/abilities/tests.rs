@@ -454,7 +454,7 @@ fn give_master(t: &mut World, id: i16, kind: u8, class: i16, tasks: Vec<Task>) {
 fn put(t: &mut World, p: usize, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
     let mut u = Unit {
         id,
-        position: [x, y, 0.0],
+        body: crate::objects::layers::Body::at([x, y, 0.0]),
         ..Unit::default()
     };
     u.life.master_id = m;

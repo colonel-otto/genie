@@ -123,7 +123,7 @@ impl Mover {
     ) -> Self {
         Self {
             // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
-            animated: crate::objects::layers::Animated { speed: 0.0 },
+            animated: crate::objects::layers::Animated::at(0.0, at),
             forward: [1.0, 0.0, 0.0],
             right: [0.0, 0.0, crate::production::spawn::START_RIGHT_Z],
             velocity: None,
@@ -166,6 +166,42 @@ impl Mover {
         }
         let to = fmath::add(vector(self.moved_at), fmath::scale(d, self.forward));
         Some(self.set_position(map_position(to), map))
+    }
+
+    /// x, y, z on the map: the place of the static layer below it
+    /// ([`crate::objects::layers::Static`]).
+    #[must_use]
+    pub const fn position(&self) -> [f32; 3] {
+        self.animated.base().position()
+    }
+
+    /// A test's fixture puts the unit at `at` without the world's index, which the test sets
+    /// itself.
+    #[cfg(test)]
+    pub(crate) const fn place_for_test(&mut self, at: [f32; 3]) {
+        self.animated.base_mut().place_for_test(at);
+    }
+
+    /// The same mover at `at`, for a test's fixture.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) const fn placed(mut self, at: [f32; 3]) -> Self {
+        self.place_for_test(at);
+        self
+    }
+
+    /// The unit's place setter from its moving layer ([`crate::objects::layers::Static::new_position`]):
+    /// its shape goes from the mesh while it moves (slot 185, [`Mover::is_moving`]).
+    pub(crate) fn new_position(
+        &mut self,
+        id: i32,
+        at: [f32; 3],
+        places: (&mut Spatial, Option<&mut Pathing>),
+    ) {
+        let moving = self.is_moving();
+        self.animated
+            .base_mut()
+            .new_position(id, at, moving, places);
     }
 
     /// The position setter (slot 11 -> `FUN_141161950` -> `0x1411a58b0`): a unit that can move
@@ -213,7 +249,7 @@ impl Mover {
     /// reached waypoint's), in `me` and `world`.
     pub fn motion(
         &mut self,
-        me: &mut Me,
+        me: &Me,
         dt: f32,
         world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
@@ -236,7 +272,6 @@ impl Mover {
     /// A target whose place the slice does not know.
     pub(super) fn level_gaps(
         &self,
-        me: &Me,
         world: &Spatial,
         target_id: i32,
         ground_radius: [f32; 2],
@@ -251,8 +286,8 @@ impl Mover {
         // least over it and its first two annexes (slot 0x680), each annex's less 0.1
         // (`MINSS`, 0x1411512b8)
         let gap = target.as_ref().map_or(FAR, |t| {
-            let own = footprint_gap(me.position, ground_radius, t.position, t.radius);
-            let near = (me.position, ground_radius);
+            let own = footprint_gap(self.position(), ground_radius, t.position, t.radius);
+            let near = (self.position(), ground_radius);
             gate_gap(world, near, (target_id, t), own, |g| g - ANNEX_GAP)
         });
         let to_end = match (&target, self.paths.len()) {
@@ -262,7 +297,7 @@ impl Mover {
                 .top_path()
                 .and_then(|p| p.last())
                 .map_or(FAR, |&[x, _, y]| {
-                    footprint_gap(me.position, ground_radius, [x, y, 0.0], [0.0, 0.0])
+                    footprint_gap(self.position(), ground_radius, [x, y, 0.0], [0.0, 0.0])
                 }),
         };
         Ok((target, gap, to_end))
@@ -306,7 +341,7 @@ impl Mover {
     /// [`Mover::motion`]'s passes.
     pub(super) fn motion_passes(
         &mut self,
-        me: &mut Me,
+        me: &Me,
         dt: f32,
         world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
@@ -337,7 +372,7 @@ impl Mover {
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
                 return Ok(Motion::Done);
             };
-            let (target, gap, to_end) = self.level_gaps(me, world, level.target, ground_radius)?;
+            let (target, gap, to_end) = self.level_gaps(world, level.target, ground_radius)?;
             let goal = Goal {
                 target: target.as_ref(),
                 gap,
@@ -475,8 +510,9 @@ impl Mover {
         match goal.target {
             Some(t) => {
                 let range = level.range;
-                let own = footprint_gap(me.position, ground_radius, t.position, t.radius) - range;
-                let near = (me.position, ground_radius);
+                let own =
+                    footprint_gap(self.position(), ground_radius, t.position, t.radius) - range;
+                let near = (self.position(), ground_radius);
                 let gap = gate_gap(world, near, (level.target, t), own, |g| g - range);
                 if gap < EPSILON {
                     // in range of the target: the waypoint counts as reached
@@ -489,7 +525,8 @@ impl Mover {
             // a walk to a point with a range ends where its top level's path ends
             None if level.path_flags & 1 == 0 && RANGE_FLOOR < level.range => {
                 if let Some(&[x, _, y]) = self.top_path().and_then(|p| p.last()) {
-                    let gap = footprint_gap(me.position, ground_radius, [x, y, 0.0], [0.0, 0.0]);
+                    let gap =
+                        footprint_gap(self.position(), ground_radius, [x, y, 0.0], [0.0, 0.0]);
                     if gap - level.range < EPSILON {
                         self.reset_level();
                         self.stop()?;

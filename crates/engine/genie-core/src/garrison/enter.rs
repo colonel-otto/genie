@@ -142,7 +142,7 @@ impl World {
             .ok_or(GenieError::unsupported("an Enter whose building is gone"))?;
         let (tp, t) = self.object(target).expect("found above");
         let tm = self.master_of(tp, t.life.master_id)?;
-        let (class, height) = (i32::from(tm.class), t.position[2]);
+        let (class, height) = (i32::from(tm.class), t.position()[2]);
         let (at, _) = self.enter_meeting(player, idx, target)?;
         let action = EnterAction::new(
             target,

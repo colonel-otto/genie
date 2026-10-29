@@ -130,8 +130,11 @@ impl WorldPicker<'_> {
         let terrain = self.spatial.terrain.as_ref();
         let target = victim_of(t, tm, ta, tq, terrain, self.mode_680);
         let unit = victim_of(f, fm, fa, fq, terrain, self.mode_680);
-        let mut factor =
-            crate::combat::damage::elevation_factor(f.position[2], unit.attack_elevation, &target);
+        let mut factor = crate::combat::damage::elevation_factor(
+            f.position()[2],
+            unit.attack_elevation,
+            &target,
+        );
         if fm.kind == crate::orders::BUILDING {
             factor = crate::combat::damage::building_elevation_factor(
                 factor, f.relics, tm.kind, t.relics,
@@ -204,7 +207,8 @@ impl WorldPicker<'_> {
             let Some((_, a, _, am)) = self.held(id) else {
                 continue;
             };
-            let gap = crate::movement::footprint_gap(t.position, tm.radius, a.position, am.radius);
+            let gap =
+                crate::movement::footprint_gap(t.position(), tm.radius, a.position(), am.radius);
             if best.is_none_or(|(least, _)| gap < least) {
                 best = Some((gap, id));
             }

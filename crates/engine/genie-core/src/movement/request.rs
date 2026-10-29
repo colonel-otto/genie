@@ -36,7 +36,7 @@ impl Mover {
         // the request measures and plans from +0x824 (`pfVar14`, `local_18c8`), where the unit
         // last moved to
         let position = vector(self.moved_at);
-        if let Some(step) = self.in_reach(me, goal, position) {
+        if let Some(step) = self.in_reach(goal, position) {
             return Ok(step);
         }
         let solid = self.stats.radius.iter().all(|&r| 0.0 < r);
@@ -81,8 +81,9 @@ impl Mover {
     /// [`RANGE_FLOOR`]) puts the level in state 4; a unit on its waypoint marks the level
     /// (flag 1, and 2 when away from the target's footprint by more than [`EPSILON`] or
     /// without one). Both go again.
-    pub(super) fn in_reach(&mut self, me: &Me, goal: Goal<'_>, position: Vec3) -> Option<Step> {
+    pub(super) fn in_reach(&mut self, goal: Goal<'_>, position: Vec3) -> Option<Step> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
+        let here = self.position();
         let level = &mut self.paths[0];
         let reach = if level.range <= 0.0 {
             RANGE_FLOOR
@@ -97,9 +98,9 @@ impl Mover {
         if ground(position, waypoint) != 0.0 {
             return None;
         }
-        let away = goal.target.is_none_or(|t| {
-            EPSILON < footprint_gap(me.position, ground_radius, t.position, t.radius)
-        });
+        let away = goal
+            .target
+            .is_none_or(|t| EPSILON < footprint_gap(here, ground_radius, t.position, t.radius));
         if away {
             level.flags |= 2;
         }
@@ -208,7 +209,7 @@ impl Mover {
         let master = world.get(me.id).map_or(-1, |p| p.master);
         let walker = LongWalker {
             id: me.id,
-            position: me.position,
+            position: self.position(),
             radius: [self.stats.radius[0], self.stats.radius[1]],
             mask: self.stats.restriction_mask,
             moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,

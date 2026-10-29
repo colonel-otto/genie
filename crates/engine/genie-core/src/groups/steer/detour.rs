@@ -127,7 +127,7 @@ impl World {
             },
             computer: self.players.get(p).is_some_and(|q| q.computer),
             at: u.moved_vector().xhy(),
-            here: u.position,
+            here: u.position(),
             mask: mover.stats.restriction_mask,
             restriction: mover.stats.restriction,
             grow,
@@ -339,7 +339,7 @@ impl World {
         let computer = self.players.get(p).is_some_and(|q| q.computer);
         let walker = crate::movement::LongWalker {
             id,
-            position: u.position,
+            position: u.position(),
             radius: [mover.stats.radius[0], mover.stats.radius[1]],
             mask: mover.stats.restriction_mask,
             moves: mover.stats.speed != 0.0 || u.life.master_id == crate::movement::LONG_PATH_MOVER,

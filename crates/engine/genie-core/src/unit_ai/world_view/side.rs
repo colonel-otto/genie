@@ -25,11 +25,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             .and_then(|m| m.get(self.unit.life.master_id))
             .map(|m| m.class)
             .ok_or(crate::world::OBJECT_MASTER)?;
-        let at = [self.unit.position[0], self.unit.position[1]];
+        let at = [self.unit.position()[0], self.unit.position()[1]];
         let look = |id: i32| {
             owner_view(self.others, self.new_owner)
                 .own(id)
-                .map(|u| (u.life.state, u.position))
+                .map(|u| (u.life.state, u.position()))
         };
         Ok(crate::orders::nearest_table_site(
             (self.drop_sites, self.civ, &*self.lets.tracker),
@@ -118,7 +118,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             if owner != self.player && !self.spatial.allied_with(owner, self.player) {
                 continue;
             }
-            let gap = footprint_gap_squared(self.unit.position, my_radius, u.position, m.radius);
+            let gap =
+                footprint_gap_squared(self.unit.position(), my_radius, u.position(), m.radius);
             if HELP_REACH < gap {
                 continue;
             }
@@ -166,7 +167,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             combat_level: m.combat_level,
             state: u.life.state,
             target: u.ai.as_ref().map(|a| a.current_target),
-            gap_squared: footprint_gap_squared(self.unit.position, me.radius, p.position, p.radius),
+            gap_squared: footprint_gap_squared(
+                self.unit.position(),
+                me.radius,
+                p.position,
+                p.radius,
+            ),
             position: p.position,
             hp: u.life.hp,
             master: u.life.master_id,
@@ -207,7 +213,6 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let unit = &*self.unit;
         let walker = Me {
             id: unit.id,
-            position: unit.position,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -262,7 +267,6 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let unit = &*self.unit;
         let walker = Me {
             id: unit.id,
-            position: unit.position,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -359,7 +363,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         rng: &mut Well512,
     ) -> Result<Option<[i32; 2]>, GenieError> {
         let tc = town_centre(owner_view(self.others, self.new_owner))?;
-        let (at, computer) = (self.unit.position, self.computer);
+        let (at, computer) = (self.unit.position(), self.computer);
         // the search about the town centre only while the player has no scout map
         let scout_map = self.spatial.scout_map(self.player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
@@ -380,7 +384,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     }
 
     fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
-        let (at, player) = (self.unit.position, self.player);
+        let (at, player) = (self.unit.position(), self.player);
         let scouted = self.spatial.scout_map(player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
         area.scouted = scouted;

@@ -767,7 +767,7 @@ mod stack_tests {
         let ms = masters();
         let foundation = Unit {
             id: 8759,
-            position: [54.0, 147.0, 0.0],
+            body: crate::objects::layers::Body::at([54.0, 147.0, 0.0]),
             life: Lifecycle {
                 class: Class::Animated,
                 state: 0,

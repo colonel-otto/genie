@@ -24,7 +24,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         .map(|&(id, master, x, y)| {
             let mut u = crate::objects::unit::Unit {
                 id,
-                position: [x, y, 0.0],
+                body: crate::objects::layers::Body::at([x, y, 0.0]),
                 ..crate::objects::unit::Unit::default()
             };
             u.life.master_id = master;
@@ -80,7 +80,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         t.spatial.insert(
             u.id,
             Placed {
-                position: u.position,
+                position: u.position(),
                 radius: [0.2, 0.2],
                 class: 6,
                 player: 1,

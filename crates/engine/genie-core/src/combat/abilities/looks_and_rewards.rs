@@ -92,7 +92,10 @@ impl World {
             return false;
         };
         let unit = &self.players[p].objects[i];
-        let at = unit.body.mover().map_or(unit.position, |m| m.moved_at);
+        let at = unit
+            .body
+            .mover()
+            .map_or_else(|| unit.position(), |m| m.moved_at);
         let (x, y) = (
             crate::math::conversions::cvttss2si(at[0]),
             crate::math::conversions::cvttss2si(at[1]),

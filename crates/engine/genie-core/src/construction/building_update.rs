@@ -160,7 +160,7 @@ impl Unit {
             ));
         }
         let f = crate::map::terrain::Foundation {
-            position: self.position,
+            position: self.position(),
             clearance: m.clearance,
             terrain,
             snow: false,
@@ -454,7 +454,7 @@ impl Unit {
         let mut targets: Vec<&mut Victim> = c.blasted.iter_mut().collect();
         let _ = crate::combat::damage::blast(
             &mut own,
-            self.position,
+            self.position(),
             Some(self.id),
             None,
             &mut targets,

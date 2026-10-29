@@ -48,7 +48,7 @@ impl Unit {
         let (scenario, now, computer) = (c.scenario, c.world_time, c.computer);
         let (my_id, stance) = (self.id, self.ai.as_ref().map_or(0, |ai| ai.stance));
         let repair_action = self.actions.repair_mut().expect("checked above");
-        let (walk, beside) = c.w.walk_beside(pace, self.body.mover_mut(), me);
+        let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
         let masters = beside
             .masters
             .get(player)
@@ -196,7 +196,7 @@ impl Unit {
             area_effect: master.map_or(0.0, |m| m.area_effect),
             blast_level: master.map_or(0, |m| m.blast_level),
             los: master.map_or(0.0, |m| m.line_of_sight),
-            position: self.position,
+            position: self.position(),
             radius: master.map_or([0.0; 2], |m| m.radius),
             speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
             scenario,
@@ -219,7 +219,7 @@ impl Unit {
         Some(crate::unit_ai::TopTarget {
             id,
             kind: m.kind,
-            position: u.position,
+            position: u.position(),
             radius: m.radius,
         })
     }
@@ -301,7 +301,7 @@ fn repair_reads(
             q,
             true,
         ),
-        position: t.position,
+        position: t.position(),
         radius: tm.radius,
         class: tm.class,
         moves: 29 < tm.kind && tm.moving.as_ref().is_some_and(|m| 0.0 < m.speed),

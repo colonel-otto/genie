@@ -36,8 +36,6 @@ pub struct Unit {
     /// `+0x889`: its waits as a builder for an occupied footprint (not saved; 0 at a load).
     #[diff(unsaved)]
     pub footprint_waits: u8,
-    /// x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`, obfuscated in the game's memory).
-    pub position: [f32; 3],
     /// Its life cycle: state, hit points, master, what it holds, its dying sprite.
     pub life: Lifecycle,
     /// Its unit AI, when it has one.
@@ -55,8 +53,9 @@ pub struct Unit {
     /// counted among its repairers. A building's is its construction's
     /// ([`Construction::builders`]).
     pub builders: u8,
-    /// Its layers below the action layer ([`Body`]): the animated layer (`+0x7b8`, types 20 and
-    /// up) and the moving one with its movement state (types 30 and up).
+    /// Its layers below the action layer ([`Body`]): the static layer with its place (every
+    /// object), the animated layer (`+0x7b8`, types 20 and up) and the moving one with its
+    /// movement state (types 30 and up).
     pub body: Body,
     /// Its action list (`RGE_Action_List`, [`ActionList`]): the actions it holds, its current one
     /// first.
@@ -250,6 +249,36 @@ pub struct Unit {
     /// `+0x986`) as their target, once per take, in order ([`Unit::lists_taker`]); its stack
     /// unit's completion tells each of the new object.
     pub attacking_units: Vec<i32>,
+}
+
+impl Unit {
+    /// x, y, z on the map (`+0x3c8`, `+0x4c8`, `+0x5a8`, obfuscated in the game's memory): its
+    /// static layer's ([`crate::objects::layers::Static`]).
+    #[must_use]
+    pub const fn position(&self) -> [f32; 3] {
+        self.body.position()
+    }
+
+    /// The object's place setter (`RGE_Static_Object::new_position`, `0x1411a58b0`): the place
+    /// and the world's index of the places together, and its mesh shape where the caller holds
+    /// the mesh ([`crate::objects::layers::Static::new_position`]).
+    pub(crate) fn new_position(
+        &mut self,
+        at: [f32; 3],
+        places: (
+            &mut crate::map::spatial::Spatial,
+            Option<&mut crate::pathing::Pathing>,
+        ),
+    ) {
+        self.body.new_position(self.id, at, places);
+    }
+
+    /// A test's fixture puts the object at `at` without the world's index, which the test sets
+    /// itself.
+    #[cfg(test)]
+    pub(crate) const fn place_for_test(&mut self, at: [f32; 3]) {
+        self.body.base_mut().place_for_test(at);
+    }
 }
 
 /// The sprite a hunt's walk shows ([`crate::gathering::hunt::walk_sprite`]) from its task's sprites.

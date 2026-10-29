@@ -54,7 +54,7 @@ impl World {
                 }
             }
         }
-        let (t_at, t_radius) = (t.position, tm.radius);
+        let (t_at, t_radius) = (t.position(), tm.radius);
         let unit = &self.players[player].objects[idx];
         let me = self.master_of(player, unit.life.master_id)?;
         let resource = crate::gathering::gather::Resource {
@@ -65,7 +65,7 @@ impl World {
             player: tp,
             workers: t.workers,
             drop_site: self.drops_at_main(player, idx, target)?,
-            gap: crate::movement::footprint_gap(unit.position, me.radius, t_at, t_radius),
+            gap: crate::movement::footprint_gap(unit.position(), me.radius, t_at, t_radius),
             radius: t_radius,
         };
         let computer = self.players[player].computer;
@@ -134,14 +134,14 @@ impl World {
             "a move to an object the slice does not hold",
         ))?;
         let tm = self.master_of(tp, o.life.master_id)?;
-        let (at, radius) = (o.position, tm.radius);
+        let (at, radius) = (o.position(), tm.radius);
         let unit = &self.players[player].objects[idx];
         let me = self.master_of(player, unit.life.master_id)?;
         let moved_to = Some(crate::gathering::gather::MoveTarget {
             id: target,
             player: tp,
             drop_site: self.drops_at_main(player, idx, target)?,
-            gap: crate::movement::footprint_gap(unit.position, me.radius, at, radius),
+            gap: crate::movement::footprint_gap(unit.position(), me.radius, at, radius),
         });
         let by = self.releaser(player, idx);
         let unit = &mut self.players[player].objects[idx];
@@ -258,7 +258,7 @@ impl World {
         };
         Ok(Quarry {
             id: target,
-            position: t.position,
+            position: t.position(),
             class: t_master.class,
             kind: t_master.kind,
             state: t.life.state,
@@ -289,7 +289,7 @@ impl World {
             "a gather's target the slice does not hold",
         ))?;
         let tm = self.master_of(tp, t.life.master_id)?;
-        let (t_at, t_radius) = (t.position, tm.radius);
+        let (t_at, t_radius) = (t.position(), tm.radius);
         let unit = &self.players[player].objects[idx];
         let me = self.master_of(player, unit.life.master_id)?;
         let resource = crate::gathering::gather::Resource {
@@ -300,7 +300,7 @@ impl World {
             player: tp,
             workers: t.workers,
             drop_site: self.drops_at_main(player, idx, target)?,
-            gap: crate::movement::footprint_gap(unit.position, me.radius, t_at, t_radius),
+            gap: crate::movement::footprint_gap(unit.position(), me.radius, t_at, t_radius),
             radius: t_radius,
         };
         let task = HuntTask {

@@ -50,7 +50,7 @@ impl Unit {
         let held = if REACH_FLOOR <= los { los } else { REACH_LOW };
         let reach = if held <= REACH_CAP { held } else { REACH_CAP };
         let builder = gather_search::Builder {
-            position: self.position,
+            position: self.position(),
             radius: master.radius[0],
             building: at.position,
             range: reach as i32 as i16,
@@ -82,7 +82,7 @@ impl Unit {
                 gather_group: m.gather_group,
             })
         };
-        let me = candidate(me_id, player, self, self.position)?;
+        let me = candidate(me_id, player, self, self.position())?;
         let spatial: &Spatial = &c.w.spatial;
         let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
             spatial

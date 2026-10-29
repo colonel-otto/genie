@@ -132,7 +132,7 @@ impl World {
 
     /// The first farm in the object list of the unit's tile (a fish trap for a fishing ship).
     fn farm_under(&self, p: usize, i: usize, class: i16) -> Result<Option<i32>, GenieError> {
-        let at = self.players[p].objects[i].position;
+        let at = self.players[p].objects[i].position();
         let (x, y) = (at[0] as i32, at[1] as i32);
         self.spatial.check_known([at[0], at[1], at[0], at[1]])?;
         for (id, _) in self.spatial.objects_on(x, y) {
@@ -179,7 +179,7 @@ impl World {
         ))?;
         let seeker = gather_search::Seeker {
             player: p,
-            position: unit.position,
+            position: unit.position(),
             line_of_sight: master.line_of_sight,
             state: unit.life.state,
             current_target: ai.current_target,
@@ -188,7 +188,6 @@ impl World {
         };
         let me_walk = Me {
             id: unit.id,
-            position: unit.position,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -212,7 +211,7 @@ impl World {
                 .get(owner)
                 .and_then(|m| m.get(u.life.master_id))
                 .ok_or(crate::world::OBJECT_MASTER)?;
-            let position = spatial.get(id).map_or(u.position, |o| o.position);
+            let position = spatial.get(id).map_or_else(|| u.position(), |o| o.position);
             Ok(Candidate {
                 id,
                 player: owner,

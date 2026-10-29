@@ -450,7 +450,7 @@ impl Unit {
             return Ok(None);
         };
         let dt = c.dt;
-        let ended = artifact.walk(Some(c.walk(self.body.mover_mut(), me)))?;
+        let ended = artifact.walk(Some(c.walk(&mut self.body, me)))?;
         if ended.is_some()
             && let Some(m) = self.body.mover_mut()
         {
@@ -866,11 +866,11 @@ mod tests {
         let mut mover = crate::gathering::hunt::tests::walker();
         mover.stats.speed = 0.0;
         let mut world = Spatial::new([120, 120]);
+        let mut mover = crate::objects::layers::Body::new([20.5, 90.5, 0.0], None, Some(mover));
         let walk = Walk {
-            mover: Some(&mut mover),
+            body: &mut mover,
             me: Me {
                 id: 9517,
-                position: [20.5, 90.5, 0.0],
                 group: -1,
                 action_state: 0,
             },

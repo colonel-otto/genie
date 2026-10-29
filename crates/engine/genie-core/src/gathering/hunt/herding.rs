@@ -20,7 +20,7 @@ impl HuntAction {
         strike: &mut Strike<'_>,
         herd: &Herd,
     ) -> Result<(), GenieError> {
-        self.tear_down(walk.mover.as_deref_mut())?;
+        self.tear_down(walk.body.mover_mut())?;
         self.state = LEAD;
         self.lead.still_time = 0;
         let at = strike.victim.position;
@@ -40,14 +40,8 @@ impl HuntAction {
         walk: &mut Walk<'_>,
         strike: &Strike<'_>,
     ) -> Result<(), GenieError> {
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
-        let mover = walk
-            .mover
-            .as_deref_mut()
-            .ok_or(crate::world::HUNTER_UNMOVING)?;
+        let at = walk.position();
+        let mover = walk.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         if !crate::combat::attack::face_target(
             mover,
             at,
@@ -93,13 +87,10 @@ impl HuntAction {
         if v[0] == self.lead.start[0] && v[1] == self.lead.start[1] {
             return self.start_attack(walk, strike, &herd);
         }
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
+        let at = walk.position();
         let ground = walk
-            .mover
-            .as_deref()
+            .body
+            .mover()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
             .ok_or(crate::world::HUNTER_UNMOVING)?;
         if footprint_gap_squared(at, ground, v, strike.victim.radius) <= LEAD_REACH {

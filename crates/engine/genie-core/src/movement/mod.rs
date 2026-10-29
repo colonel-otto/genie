@@ -265,13 +265,12 @@ pub struct Mover {
     pub sprite_facets: Option<crate::objects::facing::SpriteFacets>,
 }
 
-/// The moving unit, as the motion step needs it besides its [`Mover`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// The moving unit, as the motion step needs it besides its [`Mover`], whose place it walks
+/// ([`Mover::position`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Me {
     /// The unit.
     pub id: i32,
-    /// x, y, z on the map.
-    pub position: [f32; 3],
     /// Its top action's state (slot 0x2b0, `RGE_Action_Object::actionState`; 0 without one),
     /// which the short pather's ignore list reads: an action that walks after changing its state
     /// sets its own.

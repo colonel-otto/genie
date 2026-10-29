@@ -89,7 +89,7 @@ impl World {
     pub(crate) fn setup_pasture(&mut self, p: usize, id: i32) -> Result<(), GenieError> {
         let (at, master) = self
             .object(id)
-            .map(|(_, u)| (u.position, u.life.master_id))
+            .map(|(_, u)| (u.position(), u.life.master_id))
             .ok_or(GenieError::unreachable("a pasture its completion names"))?;
         let radius_x = self.master_of(p, master)?.radius[0];
         let mut points = edge_points(at, radius_x);
@@ -183,8 +183,12 @@ impl World {
                 continue;
             };
             let radius = self.master_of(r, l.life.master_id)?.radius;
-            let gap =
-                crate::movement::footprint_gap_squared(l.position, radius, unit.position, reach);
+            let gap = crate::movement::footprint_gap_squared(
+                l.position(),
+                radius,
+                unit.position(),
+                reach,
+            );
             tended.push((id, l.workers, gap));
         }
         crate::math::msvc::sort(&mut tended, &|a, b| a.2 < b.2);

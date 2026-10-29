@@ -90,10 +90,10 @@ pub(crate) fn closest_resource_of(
                 .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
             let zones = c.zones.of(w, h, &terrain.kinds, values);
             let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
-            zone(s.position) == zone(unit.position)
+            zone(s.position()) == zone(unit.position())
         };
         Some(gather_search::SearchSite {
-            position: s.position,
+            position: s.position(),
             radius: m.radius,
             line_of_sight: m.line_of_sight,
             footprint,
@@ -133,7 +133,7 @@ pub(crate) fn closest_resource_of(
             gather_group: m.gather_group,
         })
     };
-    let me = candidate(me_id, player, unit, unit.position)?;
+    let me = candidate(me_id, player, unit, unit.position())?;
     let spatial: &Spatial = c.spatial;
     let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
         spatial
@@ -149,7 +149,7 @@ pub(crate) fn closest_resource_of(
             })
             .collect()
     };
-    let position = search_origin(point, site.is_some(), unit.position);
+    let position = search_origin(point, site.is_some(), unit.position());
     let seeker = gather_search::Seeker {
         player,
         position,
@@ -161,7 +161,6 @@ pub(crate) fn closest_resource_of(
     };
     let me_walk = Me {
         id: unit.id,
-        position: unit.position,
         group: unit.group.id,
         action_state: unit.top_action().map_or(0, |a| a.state),
     };
@@ -241,7 +240,7 @@ impl UnitView<'_, '_> {
             .class;
         Ok(Some(crate::unit_ai::Gatherable {
             id,
-            position: u.position,
+            position: u.position(),
             class,
         }))
     }

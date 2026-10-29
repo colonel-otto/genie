@@ -117,7 +117,7 @@ impl Unit {
         let (step, flying) = action.fly(c.dt_seconds, missile.max_range, &stats)?;
         missile.step = step;
         missile.flying = flying;
-        let old = self.position;
+        let old = self.position();
         let to = [old[0] + step[0], old[1] + step[1], old[2] + step[2]];
         let [w, h] = c.w.spatial.map;
         if to[0] < 0.0 || w as f32 <= to[0] || to[1] < 0.0 || h as f32 <= to[1] {
@@ -138,8 +138,7 @@ impl Unit {
                 .ground(at[0], at[1])?;
         at[2] = crate::combat::missile::grounded(at[2], ground, flying, stats.fly_mode);
         mover.mark_move(at, c.world_time);
-        self.position = at;
-        c.w.spatial.set_position(self.id, at);
+        mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
         if matches!(stats.projectile_type, 0..=2) {
             let fired = Fired {
                 charge: missile.charge,
@@ -251,7 +250,7 @@ impl Unit {
                 v
             }
         };
-        let at = self.position;
+        let at = self.position();
         let from = [hold(old[0], w), hold(old[1], h)];
         let to = [hold(at[0], w), hold(at[1], h)];
         let rect = [
@@ -353,7 +352,7 @@ impl Unit {
             "a missile's target the slice does not hold live",
         ))?;
         let hit = crate::combat::attack::Hit {
-            at: self.position,
+            at: self.position(),
             from_z: Some(action.origin.position[2]),
             missile: true,
             chance: master.hit_chance,
@@ -419,7 +418,7 @@ impl Unit {
         ))?;
         let victim = &mut victim;
         let hit = crate::combat::attack::Hit {
-            at: self.position,
+            at: self.position(),
             from_z: None,
             missile: true,
             chance: master.hit_chance,
@@ -507,7 +506,12 @@ impl Unit {
         ))?;
         let mode = stats.hit_mode;
         if (matches!(mode, 0 | 2) || (mode == 1 && c.player != v.player))
-            && crate::combat::missile::on_target(self.position, stats.radius, v.position, v.radius)
+            && crate::combat::missile::on_target(
+                self.position(),
+                stats.radius,
+                v.position,
+                v.radius,
+            )
         {
             let result = self.missile_strike(action, fired, c)?;
             action.result = result;
@@ -549,7 +553,7 @@ impl Unit {
                     c.w.masters
                         .get(c.player)
                         .and_then(|m| m.get(self.life.master_id));
-                forget_resource(&mut c.w.spatial, master, self.id, self.position);
+                forget_resource(&mut c.w.spatial, master, self.id, self.position());
             }
         }
         Ok(())

@@ -157,10 +157,14 @@ impl World {
                 grouped: master.formation_category != 0,
                 flag_1: master.object_flags & 2 != 0,
                 speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
-                position: u.position,
-                moved_at: u.body.mover().map_or([u.position[0], u.position[1]], |m| {
-                    [m.moved_at[0], m.moved_at[1]]
-                }),
+                position: u.position(),
+                moved_at: u.body.mover().map_or_else(
+                    || {
+                        let [x, y, _] = u.position();
+                        [x, y]
+                    },
+                    |m| [m.moved_at[0], m.moved_at[1]],
+                ),
                 state: u.life.state,
                 radius: master.radius[0],
                 restriction: u.body.mover().map(|m| m.stats.restriction),
@@ -309,7 +313,7 @@ impl World {
             let master = self.master_of(p, u.life.master_id)?;
             let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
             if (MOVING <= master.kind && 0.0 < speed) || queued {
-                points.push([u.position[0], u.position[1]]);
+                points.push([u.position()[0], u.position()[1]]);
             }
         }
         Ok(centroid(&points))

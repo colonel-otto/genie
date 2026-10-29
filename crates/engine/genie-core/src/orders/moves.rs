@@ -154,7 +154,7 @@ impl World {
             .master_of(player, self.players[player].objects[idx].life.master_id)?
             .class;
         let unit = &mut self.players[player].objects[idx];
-        let place = ([unit.position[0], unit.position[1]], class);
+        let place = ([unit.position()[0], unit.position()[1]], class);
         if let Some(ai) = unit.ai.as_mut()
             && ai.clear_notifies_at(world_time, place)?
         {
@@ -373,7 +373,7 @@ impl World {
             }
             let point = self
                 .object(pick)
-                .map(|(_, l)| l.position)
+                .map(|(_, l)| l.position())
                 .ok_or(GenieError::unreachable("the livestock picked"))?;
             let on_it = Work {
                 target: pick,

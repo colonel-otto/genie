@@ -99,7 +99,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
     ];
     let pen = |id, x: f32, state| Unit {
         id,
-        position: [x, 10.0, 0.0],
+        body: crate::objects::layers::Body::at([x, 10.0, 0.0]),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 1897,
             state,
@@ -117,7 +117,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         },
     ]);
     t.players[0].objects[0].life.attribute_type = 0;
-    t.players[0].objects[0].position = [10.0, 10.0, 0.0];
+    t.players[0].objects[0].place_for_test([10.0, 10.0, 0.0]);
     for (id, x, state) in [
         (500, 30.0, 2),
         (501, 12.0, 0),
@@ -162,7 +162,6 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     };
     let villager = Unit {
         id: 10,
-        position: [10.0, 10.0, 0.0],
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 83,
             state: 2,
@@ -170,7 +169,11 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             amount: 5.0,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
-        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
+        body: crate::objects::layers::Body::new(
+            [10.0, 10.0, 0.0],
+            None,
+            Some(crate::gathering::hunt::tests::walker()),
+        ),
         actions: ActionList::default().with_build(Some(crate::construction::build::BuildAction {
             state: 6,
             added: true,
@@ -191,7 +194,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     };
     let foundation = Unit {
         id: 600,
-        position: [5.0, 10.0, 0.0],
+        body: crate::objects::layers::Body::at([5.0, 10.0, 0.0]),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 70,
             ..crate::objects::lifecycle::Lifecycle::default()
@@ -211,7 +214,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     };
     let mill = Unit {
         id: 503,
-        position: [15.0, 10.0, 0.0],
+        body: crate::objects::layers::Body::at([15.0, 10.0, 0.0]),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 68,
             state: 2,
@@ -510,7 +513,7 @@ fn annexed(t: &mut World) {
     ]);
     let building = |id, master_id, position, annex_of| Unit {
         id,
-        position,
+        body: crate::objects::layers::Body::at(position),
         annex_of,
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
@@ -580,7 +583,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     }]);
     t.players[0].objects.push(Unit {
         id: 50,
-        position: [10.4, 10.0, 0.0],
+        body: crate::objects::layers::Body::at([10.4, 10.0, 0.0]),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 126,
             state: 2,
@@ -640,7 +643,7 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
         .iter()
         .map(|&(id, master, [x, y])| Unit {
             id,
-            position: [x, y, 0.0],
+            body: crate::objects::layers::Body::at([x, y, 0.0]),
             group: crate::groups::GroupLink {
                 id: if members.contains(&id) { 5 } else { -1 },
                 flag: -2,
@@ -1416,7 +1419,7 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
     };
     let unit = |id| Unit {
         id,
-        position: [20.0, 20.0, 0.0],
+        body: crate::objects::layers::Body::at([20.0, 20.0, 0.0]),
         ai: Some(ai.clone()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 448,
@@ -1548,7 +1551,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     spatial.go_inside(7, [5.0, 5.0, 0.0]);
     let mut unit = Unit {
         id: 7,
-        position: [5.0, 5.0, 0.0],
+        body: crate::objects::layers::Body::at([5.0, 5.0, 0.0]),
         life: crate::objects::lifecycle::Lifecycle {
             hp: 20.0,
             master_id: 4,
@@ -1673,7 +1676,7 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
     let (old, next) = switch_masters();
     let unit = |hp, state| Unit {
         id: 7,
-        position: [3.5, 3.5, 0.0],
+        body: crate::objects::layers::Body::at([3.5, 3.5, 0.0]),
         life: crate::objects::lifecycle::Lifecycle {
             hp,
             state,
@@ -1889,7 +1892,7 @@ fn followers() -> World {
         }]));
     t.players[2].objects.push(Unit {
         id: 30,
-        position: [40.0, 20.0, 0.0],
+        body: crate::objects::layers::Body::at([40.0, 20.0, 0.0]),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 5,
             state: 2,
@@ -1925,7 +1928,7 @@ fn followers() -> World {
 fn a_guard_gives_its_units_the_defend_order_at_once() {
     for x in [20.3, 40.0] {
         let mut t = followers();
-        t.players[2].objects[0].position = [x, 20.0, 0.0];
+        t.players[2].objects[0].place_for_test([x, 20.0, 0.0]);
         t.spatial.set_position(30, [x, 20.0, 0.0]);
         t.guard(1, &[11], 30).unwrap();
         let ai = t.players[1].objects[0].ai.as_ref().unwrap();
@@ -2325,8 +2328,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         .push(crate::objects::masters::Masters::new([sheep_master]));
     let sheep = |id, x: f32, y: f32| Unit {
         id,
-        position: [x, y, 0.0],
-        body: crate::objects::layers::Body::Moving(walker.clone()),
+        body: crate::objects::layers::Body::new([x, y, 0.0], None, Some(walker.clone())),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 594,
             state: 2,
@@ -2418,7 +2420,7 @@ fn a_target_is_in_reach_within_the_weapon_range_and_not_below_the_least() {
 fn soldier_and_enemy(x: f32, class: i16) -> World {
     let unit = |id, master, x: f32| Unit {
         id,
-        position: [x, 10.0, 0.0],
+        body: crate::objects::layers::Body::at([x, 10.0, 0.0]),
         ai: Some(crate::unit_ai::UnitAi::default()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master,
@@ -2705,7 +2707,8 @@ fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
 #[test]
 fn a_lone_unit_patrols_to_its_waypoint() {
     let mut t = patrollers(&[(11, 4, [20.0, 20.0])], &[]);
-    t.players[1].objects[0].position[2] = 1.5;
+    let [x, y, _] = t.players[1].objects[0].position();
+    t.players[1].objects[0].place_for_test([x, y, 1.5]);
     t.patrol(
         player_id(1),
         &object_ids([11]),
@@ -2971,7 +2974,7 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
     let mut t = soldiers(&units, &[11, 12]);
     for u in &mut t.players[1].objects {
         let mut m = crate::gathering::hunt::tests::walker();
-        m.moved_at = u.position;
+        m.moved_at = u.position();
         u.body.put_mover(Some(m));
     }
     t.groups.get_mut(5).unwrap().motion.position[0] = [21.0, 0.0, 20.0];
@@ -3200,7 +3203,7 @@ fn a_gather_takes_a_farm_but_no_other_building() {
         }]));
     let farm = |id, state, annex_of| Unit {
         id,
-        position: [26.5, 89.5, 0.0],
+        body: crate::objects::layers::Body::at([26.5, 89.5, 0.0]),
         annex_of,
         life: crate::objects::lifecycle::Lifecycle {
             state,
@@ -3522,7 +3525,7 @@ fn a_work_command_s_retarget_to_its_player_s_master_84_fails() {
         }
         t.players[1].objects.push(Unit {
             id: 800,
-            position: [33.5, 89.5, 0.0],
+            body: crate::objects::layers::Body::at([33.5, 89.5, 0.0]),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: 84,
                 state: 2,

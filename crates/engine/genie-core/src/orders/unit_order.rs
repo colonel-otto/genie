@@ -95,7 +95,7 @@ impl World {
             return Ok(());
         }
         // the animal's own place (+0x3c8, +0x4c8), truncated; send_to_site found it live
-        let at = self.object(sheep).expect("sent to the site").1.position;
+        let at = self.object(sheep).expect("sent to the site").1.position();
         let (x, y) = (
             crate::math::conversions::cvttss2si(at[0]),
             crate::math::conversions::cvttss2si(at[1]),

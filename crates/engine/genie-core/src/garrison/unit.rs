@@ -85,7 +85,7 @@ impl Unit {
         );
         let (p, pace) = (c.player, c.pace());
         let enter_action = self.actions.enter_mut().expect("checked above");
-        let (walk, beside) = c.w.walk_beside(pace, self.body.mover_mut(), me);
+        let (walk, beside) = c.w.walk_beside(pace, &mut self.body, me);
         let ship = OthersRef::of(beside.players, p)
             .find(enter.target)
             .map(|(_, t)| t);
@@ -205,16 +205,14 @@ impl Unit {
         let t = self.actions.transport_mut().expect("checked by the caller");
         let ask = match t.move_to {
             Some(MoveTo::Start) => {
-                let (at, to) = ([me.position[0], me.position[1]], [t.point[0], t.point[1]]);
+                let [x, y, _] = self.body.position();
+                let (at, to) = ([x, y], [t.point[0], t.point[1]]);
                 UnitAi::path_ask(self.ai.as_mut(), at, to)
             }
             _ => crate::movement::PathAsk::default(),
         };
-        let walked = t.walk(Some(c.walk(self.body.mover_mut(), me)), ask)?;
-        let position =
-            c.w.spatial
-                .get(self.id)
-                .map_or(self.position, |p| p.position);
+        let walked = t.walk(Some(c.walk(&mut self.body, me)), ask)?;
+        let position = self.body.position();
         let ship = crate::garrison::transport::Ship {
             position,
             radius,
@@ -272,7 +270,7 @@ impl Unit {
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::garrison::transport::NO_MASTER)?;
         let ship = crate::garrison::transport::Ship {
-            position: self.position,
+            position: self.position(),
             radius: master.radius,
             loaded: !self.garrison.is_empty(),
             map: spatial.map,
@@ -284,7 +282,7 @@ impl Unit {
             zones,
             pathing,
             restriction,
-            self.position,
+            self.position(),
         )?;
         let t = self
             .actions
@@ -458,10 +456,11 @@ impl Unit {
             .copied()
             .ok_or(GenieError::unsupported("an entering unit without a place"))?;
         if let Some(v) = w.spatial.sight.as_mut() {
-            v.sight_off(self.id, self.position, placed.radius, false, false);
+            v.sight_off(self.id, self.position(), placed.radius, false, false);
         }
-        let at = building.position;
-        w.spatial.go_inside(self.id, at);
+        let at = building.position();
+        let id = self.id;
+        self.body.base_mut().go_inside(id, at, w.spatial);
         w.pathing.removed(self.id);
         // a member of a unit group (+0x6d0) leaves the group the world holds (removeUnit with the
         // building and 0, FUN_14102c160: the caller's, `left_group`), then stands (slot 0x560)
@@ -480,14 +479,13 @@ impl Unit {
             let rate = crate::garrison::attack_rate(bm, own, building.reload_powerup);
             w.firepower = crate::garrison::share(me, masters, self.reload_powerup, rate)?;
         }
-        self.position = [at[0], at[1], self.position[2]];
         if let Some(v) = w.spatial.sight.as_mut() {
             if let Some(r) = v.registry.as_mut().filter(|_| 0 <= self.id) {
                 let mask = r.entry(self.id).map_or(0, |e| e.mask);
                 r.update_unit(
                     self.id,
                     w.player as u8,
-                    [self.position[0], self.position[1]],
+                    [self.position()[0], self.position()[1]],
                     placed.radius,
                     placed.class,
                     mask & 0xffff_ffff,

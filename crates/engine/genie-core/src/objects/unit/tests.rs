@@ -78,7 +78,11 @@ fn an_animated_object_s_sprite_runs_by_the_update_s_dt() {
             &mut crate::math::rng::Well512::default(),
         ));
         // a static object has no animation speed, so no clock
-        u.body = speed.map_or(Body::Static, |speed| Body::Animated(Animated { speed }));
+        let at = u.position();
+        u.body = speed.map_or_else(
+            || Body::at(at),
+            |speed| Body::new(at, Some(Animated::new(speed)), None),
+        );
         let before = u.sprite;
         in_update(&mut t, (1, 0), 50, |u, c| {
             u.animate(c);
@@ -118,14 +122,15 @@ fn an_object_past_state_2_loses_its_actions() {
     assert_eq!(r.unwrap_err().reason(), "an action");
 }
 
-/// After the actions the unit takes its place as the world has it, and the units its walk met
-/// take their pauses at once (slot 0x5f0: the walked level's and the gait): Gaia's 600 with a
-/// path level; 601 without a mover and an id the world does not hold take none. A walk that
-/// met others in its way is not modelled.
+/// After the actions the units the unit's walk met take their pauses at once (slot 0x5f0: the
+/// walked level's and the gait): Gaia's 600 with a path level; 601 without a mover and an id
+/// the world does not hold take none. The unit's place is its own, which the world's index
+/// follows (FD-045-D15): nothing copies the index's place back. A walk that met others in its
+/// way is not modelled.
 #[test]
-fn after_its_actions_a_unit_takes_the_world_s_place_and_pauses_the_units_it_met() {
+fn after_its_actions_the_units_a_walk_met_take_their_pauses() {
     let mut t = forage_world();
-    t.spatial.set_position(9175, [29.75, 89.5, 0.0]);
+    let at = t.players[1].objects[0].position();
     let mut met = crate::gathering::hunt::tests::walker();
     met.paths = vec![crate::movement::PathData::without_path()];
     t.players[0].objects[0].body.put_mover(Some(met));
@@ -140,7 +145,8 @@ fn after_its_actions_a_unit_takes_the_world_s_place_and_pauses_the_units_it_met(
     .unwrap();
     assert_eq!(paused, (0.5, Some(0.5)));
     let u = &t.players[1].objects[0];
-    assert_eq!(u.position, [29.75, 89.5, 0.0]);
+    assert_eq!(u.position(), at);
+    assert_eq!(t.spatial.get(9175).map(|p| p.position), Some(at));
     assert_eq!(u.body.mover().unwrap().pauses, []);
     t.players[1].objects[0].body.mover_mut().unwrap().in_the_way = vec![600];
     let r = in_update(&mut t, (1, 0), 50, Unit::after_actions);
@@ -225,7 +231,7 @@ fn the_list_s_update_stops_at_an_action_below_its_head() {
 fn an_object_inside_another_runs_its_inside_update() {
     let mut t = forage_world();
     t.gather_command(1, 0, 600).unwrap();
-    let at = t.players[1].objects[0].position;
+    let at = t.players[1].objects[0].position();
     t.players[1].objects[0].life.inside = Some(700);
     assert_eq!(
         in_update(&mut t, (1, 0), 50, Unit::update_actions),
@@ -233,7 +239,7 @@ fn an_object_inside_another_runs_its_inside_update() {
     );
     let unit = &t.players[1].objects[0];
     assert!(unit.actions.is_empty());
-    assert_eq!(unit.position, at);
+    assert_eq!(unit.position(), at);
     let unit = &mut t.players[1].objects[0];
     unit.life.inside = None;
     unit.default_artifact = true;

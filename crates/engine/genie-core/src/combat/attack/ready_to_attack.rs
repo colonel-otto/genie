@@ -48,7 +48,7 @@ impl Attack {
     ) -> Result<(), GenieError> {
         self.enter(MOVE, walk)?;
         if self.moving(s.own.source.weapon_range, gap) {
-            self.arrived_sprite(s, walk.mover.as_deref_mut())?;
+            self.arrived_sprite(s, walk.body.mover_mut())?;
         }
         Ok(())
     }
@@ -84,8 +84,8 @@ impl Attack {
             .get_known(self.target)?
             .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
         let speed = walk
-            .mover
-            .as_deref()
+            .body
+            .mover()
             .ok_or(crate::world::ATTACKER_UNMOVING)?
             .stats
             .speed;
@@ -96,13 +96,10 @@ impl Attack {
             }
             return self.fail(walk, s);
         }
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
+        let at = walk.position();
         let mover = walk
-            .mover
-            .as_deref_mut()
+            .body
+            .mover_mut()
             .ok_or(crate::world::ATTACKER_UNMOVING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(at, ground, t.position, t.radius);

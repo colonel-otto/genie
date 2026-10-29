@@ -216,7 +216,7 @@ mod tests {
             velocity: [0.0, 0.0, 0.7],
             acceleration: [0.0, 0.0, 1.0],
         });
-        let mut body = Body::new(None, Some(m));
+        let mut body = Body::new([0.0; 3], None, Some(m));
         body.set_anim_speed(0.8);
         body
     }

@@ -190,7 +190,7 @@ impl Unit {
             villager: master.class == 4,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
-        let (walk, rng) = c.walk_and_sprites(self.body.mover_mut(), me);
+        let (walk, rng) = c.walk_and_sprites(&mut self.body, me);
         let shown = crate::gathering::hunt::Shown {
             sprite: &mut self.sprite,
             rng,
@@ -267,7 +267,7 @@ impl Unit {
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
         let shows = hunt_walk_sprite(hunt, &c.w.graphics, &self.life);
-        let (walk, rng) = c.walk_and_sprites(self.body.mover_mut(), me);
+        let (walk, rng) = c.walk_and_sprites(&mut self.body, me);
         let shown = crate::gathering::hunt::Shown {
             sprite: &mut self.sprite,
             rng,

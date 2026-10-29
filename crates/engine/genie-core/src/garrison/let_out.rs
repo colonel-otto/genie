@@ -95,7 +95,7 @@ impl World {
                 "an unload whose unit finds no spot (its later rings)",
             ));
         };
-        let z = self.players[player].objects[building].position[2];
+        let z = self.players[player].objects[building].position()[2];
         let at = [spot[0], spot[1], z];
         // slot 0x1a8 (`FUN_141213120`) does its part only for a unit inside an object (`+0x2f0`):
         // a new unit an effect could not take in (`FUN_1416136f0`) comes out from where it stands
@@ -159,7 +159,7 @@ impl World {
             b.firepower = bm.volley_fire;
         }
         // a building's sight lets the circle of 5 go (slot 0x1d8 with 5)
-        let (b_at, b_radius) = (b.position, bm.radius);
+        let (b_at, b_radius) = (b.position(), bm.radius);
         if bm.kind == BUILDING
             && let Some(v) = self.spatial.sight.as_mut()
         {
@@ -171,19 +171,19 @@ impl World {
                 .with("unit", id)
                 .with("building", bid)
         })?;
-        placed.position = at;
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         placed.obstruction =
             (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
                 kind: made.obstruction_type,
                 class: made.obstruction_class,
             });
-        self.spatial.insert(id, placed);
-        self.pathing.moved(id, &placed, false);
-        self.pathing.tiles_changed(self.spatial.take_changes());
         let world_time = self.world_time;
         let unit = &mut self.players[up].objects[ui];
-        unit.position = at;
+        let _ =
+            unit.body
+                .base_mut()
+                .put_down(id, at, placed, (&mut self.spatial, &mut self.pathing));
+        self.pathing.tiles_changed(self.spatial.take_changes());
         unit.life.inside = None;
         // a unit out of its container no longer counts down to its raid (`+0x9a0` 0)
         unit.raider_countdown = 0;
@@ -256,7 +256,7 @@ impl World {
             // takes its own stance again at the unit's place (slot 0x1c0 with `+0x1a9`); a unit
             // without a unit AI stays where it came out
             let unit = &mut self.players[up].objects[ui];
-            let place = ([unit.position[0], unit.position[1]], class);
+            let place = ([unit.position()[0], unit.position()[1]], class);
             if let Some(ai) = unit.ai.as_mut() {
                 let mut fx = Vec::new();
                 ai.stop_with(true, Some(place), &mut fx)?;
@@ -306,23 +306,24 @@ impl World {
         let from = placed.position;
         self.pathing.removed(id);
         self.spatial.remove(id);
-        placed.position = at;
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         placed.obstruction =
             (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
                 kind: made.obstruction_type,
                 class: made.obstruction_class,
             });
-        self.spatial.insert(id, placed);
-        self.pathing.moved(id, &placed, false);
+        let world_time = self.world_time;
+        let unit = &mut self.players[up].objects[ui];
+        let placed =
+            unit.body
+                .base_mut()
+                .put_down(id, at, placed, (&mut self.spatial, &mut self.pathing));
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {
             v.moved(id, from, at, placed.radius);
             v.registry_moved(id, placed.class, from, at);
         }
-        let world_time = self.world_time;
         let unit = &mut self.players[up].objects[ui];
-        unit.position = at;
         if let Some(m) = unit.body.mover_mut() {
             m.mark_move(at, world_time);
         }

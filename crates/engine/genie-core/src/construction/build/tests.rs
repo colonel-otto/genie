@@ -353,10 +353,9 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
             main_builders: Some(main),
         };
         let walk = Walk {
-            mover: None,
+            body: &mut crate::objects::layers::Body::at([32.0, 88.0, 0.0]),
             me: Me {
                 id: 5,
-                position: [32.0, 88.0, 0.0],
                 group: -1,
                 action_state: build.state,
             },
@@ -452,10 +451,9 @@ fn a_builder_drops_its_load_at_a_drop_site_it_completes() {
             ..BuildAction::start(31500, [0.0; 3], 0.0, TASK)
         };
         let mut walk = Walk {
-            mover: None,
+            body: &mut crate::objects::layers::Body::at([0.0; 3]),
             me: Me {
                 id: 1,
-                position: [0.0; 3],
                 group: -1,
                 action_state: 0,
             },
@@ -548,9 +546,13 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
             stack_made: None,
         }
     }
-    fn walk<'a>(mover: &'a mut crate::movement::Mover, world: &'a mut Spatial, me: Me) -> Walk<'a> {
+    fn walk<'a>(
+        body: &'a mut crate::objects::layers::Body,
+        world: &'a mut Spatial,
+        me: Me,
+    ) -> Walk<'a> {
         Walk {
-            mover: Some(mover),
+            body,
             me,
             dt: 0.02,
             world,
@@ -575,7 +577,11 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
             obstruction: None,
         },
     );
-    let mut mover = crate::gathering::hunt::tests::walker();
+    let mut mover_body = crate::objects::layers::Body::new(
+        [58.0, 90.0, 0.0],
+        None,
+        Some(crate::gathering::hunt::tests::walker()),
+    );
     let mut c = Construction {
         progress: 3.0,
         desolid: false,
@@ -622,14 +628,13 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
     };
     let me = Me {
         id: 8774,
-        position: [58.0, 90.0, 0.0],
         group: -1,
         action_state: MOVE,
     };
     let mut waits = 0;
     let step = b
         .update(
-            walk(&mut mover, &mut world, me),
+            walk(&mut mover_body, &mut world, me),
             Some(site),
             builder(&mut waits, Some(7)),
         )
@@ -648,7 +653,10 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
             [61.5, 92.5, 0.0]
         )
     );
-    assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(
+        mover_body.mover_mut().unwrap().velocity.unwrap().velocity[2],
+        0.0
+    );
     // a foundation the world removed (425984813's 4045, built and replaced by its stack
     // unit) is no longer the MoveTo's target, which walks on: no walk to the point
     let mut gone = BuildAction {
@@ -658,7 +666,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
     };
     let _ = gone
         .update(
-            walk(&mut mover, &mut world, me),
+            walk(&mut mover_body, &mut world, me),
             None,
             builder(&mut waits, None),
         )
@@ -668,6 +676,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
     // a unit without speed: its MoveTo fails at the start (13)
     let mut still = crate::gathering::hunt::tests::walker();
     still.stats.speed = 0.0;
+    let mut still = crate::objects::layers::Body::new([58.0, 90.0, 0.0], None, Some(still));
     let mut held = BuildAction {
         target: -1,
         move_to: Some(MoveTo::Moving),
@@ -692,7 +701,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
         };
         let step = w
             .update(
-                walk(&mut mover, &mut world, me),
+                walk(&mut mover_body, &mut world, me),
                 None,
                 builder(&mut waits, None),
             )
@@ -728,7 +737,11 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
             obstruction: None,
         },
     );
-    let mut mover = crate::gathering::hunt::tests::walker();
+    let mut mover_body = crate::objects::layers::Body::new(
+        [67.05, 112.0, 0.0],
+        None,
+        Some(crate::gathering::hunt::tests::walker()),
+    );
     let mut c = Construction {
         progress: 0.0,
         desolid: false,
@@ -777,7 +790,6 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
     // within the task's range of the place, so the walk ends without a path
     let me = Me {
         id: 8676,
-        position: [67.05, 112.0, 0.0],
         group: -1,
         action_state: WAIT,
     };
@@ -785,7 +797,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
     let step = b
         .update(
             Walk {
-                mover: Some(&mut mover),
+                body: &mut mover_body,
                 me,
                 dt: 0.02,
                 world: &mut world,
@@ -820,7 +832,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
     // a foundation the MoveTo takes (state 0) stays its target
     let mut taken = BuildAction::start(10645, [67.0, 112.0, 0.0], 0.8, TASK);
     let mut walk = Walk {
-        mover: Some(&mut mover),
+        body: &mut mover_body,
         me,
         dt: 0.02,
         world: &mut world,
@@ -1455,50 +1467,54 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
     };
     world.insert(9175, unit(30.0, 89.0, 0.2, 118, 5));
     world.insert(10028, unit(30.0, 88.0, 1.0, 70, 2));
-    let mut mover = Mover {
-        forward: [1.0, 0.0, 0.0],
-        right: [0.0, 0.0, -1.0],
-        velocity: None,
-        paths: vec![],
-        factor: 1.0,
-        stats: MoveStats {
-            fly_mode: 0,
-            speed: 0.8,
-            turn_rate: f32::MAX,
-            turn_radius: 0.0,
-            turn_radius_speed: f32::MAX,
-            radius: [0.2, 0.2, 0.5],
-            restriction: 7,
-            restriction_mask: 6,
-            turn_time: 0.0,
-            move_algorithm: 0,
-            min_collision: 1.0,
-            fast_turn: false,
-            walk_speed: 1.0,
-            stand_speed: 1.0,
-            run_speed: 1.0,
-            facets: Some(crate::objects::facing::SpriteFacets {
-                count: 16,
-                flag_1: true,
-            }),
-            weapon_range: 0.0,
-        },
-        waiting: 0,
-        wait_delays: 0,
-        attack_moving: false,
-        last_move: 0,
-        moved_at: [0.0; 3],
-        substitute_count: 0,
-        ignore_units: Vec::new(),
-        user_waypoints: Vec::new(),
-        last_turn: 0.0,
-        angle: 0.0,
-        move_to_point: None,
-        animated: crate::objects::layers::Animated::default(),
-        pauses: Vec::new(),
-        in_the_way: Vec::new(),
-        sprite_facets: None,
-    };
+    let mut mover_body = crate::objects::layers::Body::new(
+        [30.0, 89.0, 0.0],
+        None,
+        Some(Mover {
+            forward: [1.0, 0.0, 0.0],
+            right: [0.0, 0.0, -1.0],
+            velocity: None,
+            paths: vec![],
+            factor: 1.0,
+            stats: MoveStats {
+                fly_mode: 0,
+                speed: 0.8,
+                turn_rate: f32::MAX,
+                turn_radius: 0.0,
+                turn_radius_speed: f32::MAX,
+                radius: [0.2, 0.2, 0.5],
+                restriction: 7,
+                restriction_mask: 6,
+                turn_time: 0.0,
+                move_algorithm: 0,
+                min_collision: 1.0,
+                fast_turn: false,
+                walk_speed: 1.0,
+                stand_speed: 1.0,
+                run_speed: 1.0,
+                facets: Some(crate::objects::facing::SpriteFacets {
+                    count: 16,
+                    flag_1: true,
+                }),
+                weapon_range: 0.0,
+            },
+            waiting: 0,
+            wait_delays: 0,
+            attack_moving: false,
+            last_move: 0,
+            moved_at: [0.0; 3],
+            substitute_count: 0,
+            ignore_units: Vec::new(),
+            user_waypoints: Vec::new(),
+            last_turn: 0.0,
+            angle: 0.0,
+            move_to_point: None,
+            animated: crate::objects::layers::Animated::default(),
+            pauses: Vec::new(),
+            in_the_way: Vec::new(),
+            sprite_facets: None,
+        }),
+    );
     let mut build = BuildAction {
         target: 10028,
         state: 6,
@@ -1555,10 +1571,9 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
     let _ = build
         .update(
             Walk {
-                mover: Some(&mut mover),
+                body: &mut mover_body,
                 me: Me {
                     id: 9175,
-                    position: [30.0, 89.0, 0.0],
                     group: -1,
                     action_state: 0,
                 },
@@ -1660,8 +1675,9 @@ fn walk_update_planned(
         chain: WorkChain::default(),
         main_builders: None,
     };
-    let mut mover = crate::gathering::hunt::tests::walker();
-    mover.moved_at = at;
+    let mut mover_body =
+        crate::objects::layers::Body::new(at, None, Some(crate::gathering::hunt::tests::walker()));
+    mover_body.mover_mut().unwrap().moved_at = at;
     let (mut object, groups) = (
         crate::math::rng::Well512::default(),
         crate::groups::UnitGroups::default(),
@@ -1677,10 +1693,9 @@ fn walk_update_planned(
     let step = build
         .update(
             Walk {
-                mover: Some(&mut mover),
+                body: &mut mover_body,
                 me: Me {
                     id: 5,
-                    position: at,
                     group: -1,
                     action_state: 0,
                 },
@@ -1969,10 +1984,9 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
     let step = build
         .update(
             Walk {
-                mover: None,
+                body: &mut crate::objects::layers::Body::at([12.5, 10.5, 0.0]),
                 me: Me {
                     id: 5,
-                    position: [12.5, 10.5, 0.0],
                     group: -1,
                     action_state: 0,
                 },
@@ -2112,10 +2126,9 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
     let step = build
         .update(
             Walk {
-                mover: None,
+                body: &mut crate::objects::layers::Body::at([12.5, 10.5, 0.0]),
                 me: Me {
                     id: 5,
-                    position: [12.5, 10.5, 0.0],
                     group: -1,
                     action_state: 0,
                 },
@@ -2261,10 +2274,9 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
     let step = build
         .update(
             Walk {
-                mover: None,
+                body: &mut crate::objects::layers::Body::at([12.5, 10.5, 0.0]),
                 me: Me {
                     id: 5,
-                    position: [12.5, 10.5, 0.0],
                     group: -1,
                     action_state: 0,
                 },
@@ -2367,10 +2379,9 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     let step = b
         .update(
             Walk {
-                mover: None,
+                body: &mut crate::objects::layers::Body::at([0.0; 3]),
                 me: Me {
                     id: 9,
-                    position: [0.0; 3],
                     group: -1,
                     action_state: 0,
                 },
@@ -2417,10 +2428,9 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
     fn update(b: &mut BuildAction, world: &mut Spatial) -> BuildStep {
         let mut ai = UnitAi::default();
         let walk = Walk {
-            mover: None,
+            body: &mut crate::objects::layers::Body::at([0.0; 3]),
             me: Me {
                 id: 9,
-                position: [0.0; 3],
                 group: -1,
                 action_state: 0,
             },
@@ -2570,15 +2580,14 @@ fn a_builder_lets_a_dead_foundation_go() {
             added: true,
             ..BuildAction::start(10028, [0.0; 3], 0.0, TASK)
         };
-        let mut m = mover();
+        let mut m_body = crate::objects::layers::Body::new([30.0, 89.1, 0.0], None, Some(mover()));
         let mut ai = UnitAi::default();
         let step = b
             .update(
                 Walk {
-                    mover: Some(&mut m),
+                    body: &mut m_body,
                     me: Me {
                         id: 9,
-                        position: [30.0, 89.1, 0.0],
                         group: -1,
                         action_state: 0,
                     },
@@ -2662,12 +2671,15 @@ fn a_builder_lets_a_dead_foundation_go() {
 
 #[test]
 fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it() {
-    fn walk(id: i32, world: &mut Spatial) -> Walk<'_> {
+    fn walk<'a>(
+        id: i32,
+        body: &'a mut crate::objects::layers::Body,
+        world: &'a mut Spatial,
+    ) -> Walk<'a> {
         Walk {
-            mover: None,
+            body,
             me: Me {
                 id,
-                position: [0.0; 3],
                 group: -1,
                 action_state: 0,
             },
@@ -2700,13 +2712,18 @@ fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it()
         stack_made: None,
     };
     world.insert(10028, house());
-    let _ = near.update(walk(1, &mut world), None, builder()).unwrap();
+    let mut body = crate::objects::layers::Body::default();
+    let _ = near
+        .update(walk(1, &mut body, &mut world), None, builder())
+        .unwrap();
     assert_eq!((near.state, near.move_to), (6, None));
     // census v5's 208 stops "a Build whose foundation is gone": the far one finds its
     // foundation's id gone from the world (0x140ab0370's prelude): slot 0x68 with none, then
     // set_state(3): its MoveTo goes, and without orders it tells its unit AI (0x202)
     let mut empty = Spatial::default();
-    let step = far.update(walk(2, &mut empty), None, builder()).unwrap();
+    let step = far
+        .update(walk(2, &mut body, &mut empty), None, builder())
+        .unwrap();
     assert_eq!(
         (far.state, far.target, far.move_to, step.notified, step.done),
         (IDLE, -1, None, true, false)
@@ -2746,10 +2763,13 @@ fn drop_world() -> Spatial {
 #[test]
 fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     let mut world = drop_world();
-    let mut mover = crate::gathering::hunt::tests::walker();
+    let mut mover_body = crate::objects::layers::Body::new(
+        [2.5, 2.5, 0.0],
+        None,
+        Some(crate::gathering::hunt::tests::walker()),
+    );
     let me = Me {
         id: 5,
-        position: [2.5, 2.5, 0.0],
         group: -1,
         action_state: 0,
     };
@@ -2760,7 +2780,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     };
     let mut builders = 3;
     let mut walk = Walk {
-        mover: Some(&mut mover),
+        body: &mut mover_body,
         me,
         dt: 0.0,
         world: &mut world,
@@ -2806,7 +2826,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     assert_eq!((out.let_go, out.took, out.notified), (-1, -1, false));
     assert_eq!((b.state, b.move_to), (MOVE, Some(MoveTo::Start)));
     // beside the site already: arrived at once
-    walk.me.position = [14.5, 10.5, 0.0];
+    walk.body.base_mut().place_for_test([14.5, 10.5, 0.0]);
     let _ = b
         .set_drop(
             &mut walk,
@@ -2842,14 +2862,17 @@ fn drop_update(
     gone: &[i32],
 ) -> BuildStep {
     let mut world = drop_world();
-    let mut mover = crate::gathering::hunt::tests::walker();
+    let mut mover_body = crate::objects::layers::Body::new(
+        [14.0, 10.5, 0.0],
+        None,
+        Some(crate::gathering::hunt::tests::walker()),
+    );
     build
         .update(
             Walk {
-                mover: Some(&mut mover),
+                body: &mut mover_body,
                 me: Me {
                     id: 5,
-                    position: [14.0, 10.5, 0.0],
                     group: -1,
                     action_state: 0,
                 },
@@ -3033,14 +3056,17 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
         ..at_the_mill()
     };
     let mut world = drop_world();
-    let mut mover = crate::gathering::hunt::tests::walker();
+    let mut mover_body = crate::objects::layers::Body::new(
+        [2.5, 2.5, 0.0],
+        None,
+        Some(crate::gathering::hunt::tests::walker()),
+    );
     let step = b
         .update(
             Walk {
-                mover: Some(&mut mover),
+                body: &mut mover_body,
                 me: Me {
                     id: 5,
-                    position: [2.5, 2.5, 0.0],
                     group: -1,
                     action_state: 0,
                 },

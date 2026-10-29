@@ -72,7 +72,7 @@ impl UnitView<'_, '_> {
         };
         if let Some((tq, t)) = u.top_target().filter(|&t| t != -1).and_then(find) {
             let tm = master_of(tq, t).ok_or(NOT_HELD)?;
-            let gap = footprint_gap_squared(u.position, m.radius, t.position, tm.radius);
+            let gap = footprint_gap_squared(u.position(), m.radius, t.position(), tm.radius);
             let in_range =
                 gap <= m.weapon_range * m.weapon_range && m.min_range * m.min_range <= gap;
             let spared = patrolling && tm.kind == crate::orders::BUILDING && tm.weapons.is_empty();

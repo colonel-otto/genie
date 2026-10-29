@@ -31,7 +31,7 @@ impl Unit {
         // the scan reads the owner after the change: the old one when `new` lacks the master
         let mut taken = Vec::new();
         if class == LIVESTOCK && (if changed { new } else { c.player }) != 0 {
-            scan_livestock(c, self.position, new, &mut taken)?;
+            scan_livestock(c, self.position(), new, &mut taken)?;
         }
         Ok((changed, taken))
     }
@@ -99,7 +99,8 @@ impl Unit {
             && ai.current_action != Some(ActionKind::HeroPower)
         {
             let mut fx = Vec::new();
-            let place = ([self.position[0], self.position[1]], class);
+            let [x, y, _] = self.body.position();
+            let place = ([x, y], class);
             ai.stop_with(false, Some(place), &mut fx)?;
             ai.forget_targets();
             self.apply(fx, Some(class), c)?;
@@ -222,35 +223,10 @@ pub(crate) fn scan_livestock(
             if !c.w.spatial.sees_tile(new, x, y) {
                 continue;
             }
-            let on: Vec<i32> = OthersRef::of(&c.w.players, c.player)
-                .own_iter()
-                .filter(|u| {
-                    u.life.state == 2
-                        && u.position[0] as i32 == x
-                        && u.position[1] as i32 == y
-                        && !taken.contains(&u.id)
-                        && c.w
-                            .spatial
-                            .get(u.id)
-                            .is_some_and(|p| p.class == LIVESTOCK && p.player == 0)
-                })
-                .map(|u| u.id)
-                .collect();
-            match on[..] {
+            match livestock_on(c, (x, y), taken)[..] {
                 [] => {}
                 [id] => {
-                    // out of its slot while its stop reaches the view, as the updating object
-                    let mut unit =
-                        c.w.take_out_own(c.player, id)
-                            .expect("the scan's own object");
-                    let done = (|| {
-                        unit.capture_stop(c, LIVESTOCK)?;
-                        unit.change_owner(c, new)
-                    })();
-                    let position = unit.position;
-                    let _ = c.w.put_back_own(c.player, unit)?;
-                    // without the master the animal stays Gaia's, which scans nothing
-                    if done? {
+                    if let Some(position) = take_livestock(c, id, new)? {
                         taken.push(id);
                         scan_livestock(c, position, new, taken)?;
                     }
@@ -264,6 +240,46 @@ pub(crate) fn scan_livestock(
         }
     }
     Ok(())
+}
+
+/// The scan's finds on tile (`x`, `y`): Gaia's livestock in state 2 of the updating object's
+/// player's list whose centre is on the tile, not yet `taken`.
+fn livestock_on(c: &Context<'_>, (x, y): (i32, i32), taken: &[i32]) -> Vec<i32> {
+    OthersRef::of(&c.w.players, c.player)
+        .own_iter()
+        .filter(|u| {
+            let [ux, uy, _] = u.position();
+            u.life.state == 2
+                && ux as i32 == x
+                && uy as i32 == y
+                && !taken.contains(&u.id)
+                && c.w
+                    .spatial
+                    .get(u.id)
+                    .is_some_and(|p| p.class == LIVESTOCK && p.player == 0)
+        })
+        .map(|u| u.id)
+        .collect()
+}
+
+/// The scan takes livestock `id` for `new`: out of its slot while its stop reaches the view, as
+/// the updating object, its capture stop and its ownership change. Its place when `new` took it;
+/// None when `new` lacks the master and the animal stays Gaia's, which scans nothing.
+fn take_livestock(
+    c: &mut Context<'_>,
+    id: i32,
+    new: usize,
+) -> Result<Option<[f32; 3]>, GenieError> {
+    let mut unit =
+        c.w.take_out_own(c.player, id)
+            .expect("the scan's own object");
+    let done = (|| {
+        unit.capture_stop(c, LIVESTOCK)?;
+        unit.change_owner(c, new)
+    })();
+    let position = unit.position();
+    let _ = c.w.put_back_own(c.player, unit)?;
+    Ok(done?.then_some(position))
 }
 
 /// What a takeover in an object's update did ([`Step::Captured`]): player `new` took the object

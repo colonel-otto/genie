@@ -119,7 +119,7 @@ impl GatherAction {
     /// modelled.
     fn update_without_target(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
         if !matches!(self.state, WALK | FACE | WORK) {
@@ -131,9 +131,9 @@ impl GatherAction {
             return Ok(Next::Drop);
         }
         if waits_for_a_farm(g.master, self.target_type) {
-            return self.begin_farm_wait(walk.mover.as_deref_mut(), g);
+            return self.begin_farm_wait(walk.body.mover_mut(), g);
         }
-        self.begin_search(walk.mover.as_deref_mut(), g)
+        self.begin_search(walk.body.mover_mut(), g)
     }
 
     /// Case 3's wait after a failed walk (the timer below 0 counts up by dt): at its end a
@@ -141,7 +141,7 @@ impl GatherAction {
     /// target's radius, 0 for a farm of stops), one of a farm's stops to the next (4).
     fn update_walk_wait(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         target: &Victim,
         g: &mut Gatherer<'_>,
         dt: f32,
@@ -152,8 +152,8 @@ impl GatherAction {
         }
         self.timer = 0.0;
         let mover = walk
-            .mover
-            .as_deref_mut()
+            .body
+            .mover_mut()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         if self.stops < 2 {
             let radius = if STOP_FARMS.contains(&target.master_id) {
@@ -175,13 +175,13 @@ impl GatherAction {
     /// 0) on a target holding something or one regathered; an empty one is not modelled.
     fn update_face(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         target: &Victim,
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
         if target.class == FARM_CLASS {
             if target.state < 2 {
-                return self.begin_search(walk.mover.as_deref_mut(), g);
+                return self.begin_search(walk.body.mover_mut(), g);
             }
             if (target.master_id - 0x765) & !4 == 0 {
                 return Err(GenieError::unsupported(
@@ -189,22 +189,19 @@ impl GatherAction {
                 ));
             }
             if 1 < target.workers {
-                return self.begin_farm_wait(walk.mover.as_deref_mut(), g);
+                return self.begin_farm_wait(walk.body.mover_mut(), g);
             }
         }
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
+        let at = walk.position();
         let mover = walk
-            .mover
-            .as_deref_mut()
+            .body
+            .mover_mut()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         if !crate::combat::attack::face_target(mover, at, target.position, g.world_time)? {
             return Ok(Next::Stay);
         }
         if 0.0 < target.amount || REGATHERED.contains(&target.master_id) {
-            self.set_work(walk.me.position, g);
+            self.set_work(walk.position(), g);
             self.time_at_stop = 0.0;
             return Ok(Next::Stay);
         }
@@ -219,7 +216,7 @@ impl GatherAction {
     /// ([`GatherAction::gather`]).
     fn update_work(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         target: &mut Victim,
         g: &mut Gatherer<'_>,
         dt: f32,
@@ -233,8 +230,8 @@ impl GatherAction {
                     self.current_stop += 1;
                 }
                 let mover = walk
-                    .mover
-                    .as_deref_mut()
+                    .body
+                    .mover_mut()
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 self.set_walk(target.position, target.radius, 0.0, mover, g.action_rng)?;
                 return Ok(Next::Stay);
@@ -249,7 +246,7 @@ impl GatherAction {
     /// modelled.
     pub(super) fn update_walk(
         &mut self,
-        mut walk: Walk<'_>,
+        walk: Walk<'_>,
         target: &Victim,
         g: &mut Gatherer<'_>,
     ) -> Result<Next, GenieError> {
@@ -260,8 +257,8 @@ impl GatherAction {
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
                 self.walk_to = None;
-                walk.mover
-                    .as_deref_mut()
+                walk.body
+                    .mover_mut()
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
                 self.set_face(target, g)
@@ -270,21 +267,18 @@ impl GatherAction {
             // waits a random while (LAB_140a8ef80)
             Some(MoveTo::Failed) => {
                 let mover = walk
-                    .mover
-                    .as_deref()
+                    .body
+                    .mover()
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 let me = [mover.stats.radius[0], mover.stats.radius[1]];
-                let at = walk
-                    .world
-                    .get(walk.me.id)
-                    .map_or(walk.me.position, |p| p.position);
+                let at = walk.position();
                 let gap =
                     crate::movement::footprint_gap_squared(at, me, target.position, target.radius);
                 if target.workers as f32 <= WAIT_WORKERS || WAIT_GAP <= gap {
                     self.random_wait(g);
                     return Ok(Next::Stay);
                 }
-                self.begin_search(walk.mover.as_deref_mut(), g)
+                self.begin_search(walk.body.mover_mut(), g)
             }
             None => Err(GenieError::unsupported(
                 "a Gather in state 4 without its MoveTo",
@@ -353,7 +347,7 @@ impl GatherAction {
 
     /// The units in the way the motion step told the unit AI of ([`crate::unit_ai::IN_THE_WAY`]).
     pub(super) fn post_in_the_way(&self, walk: &mut Walk<'_>, g: &mut Gatherer<'_>) {
-        if let Some(m) = walk.mover.as_deref_mut() {
+        if let Some(m) = walk.body.mover_mut() {
             g.posted.extend(
                 m.in_the_way
                     .drain(..)

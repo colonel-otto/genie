@@ -77,15 +77,17 @@ impl World {
                 ));
             }
         }
-        let point = match centroid {
-            None => order.point.xy(),
-            Some(c) => offset_point(
-                [unit.position[0], unit.position[1]],
-                c,
-                order.point.xy(),
-                map,
-            ),
-        };
+        let point = centroid.map_or_else(
+            || order.point.xy(),
+            |c| {
+                offset_point(
+                    [unit.position()[0], unit.position()[1]],
+                    c,
+                    order.point.xy(),
+                    map,
+                )
+            },
+        );
         let takes_it = unit
             .ai
             .as_ref()
@@ -187,7 +189,7 @@ impl World {
         let (_, t) = self.object(order.target).ok_or(GenieError::unsupported(
             "a queued order on a target that is gone",
         ))?;
-        let point = t.position;
+        let point = t.position();
         if order.target != self.players[player].objects[idx].id {
             let work = Work {
                 target: order.target,

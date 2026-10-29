@@ -47,8 +47,8 @@ impl Attack {
             }
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
-                walk.mover
-                    .as_deref_mut()
+                walk.body
+                    .mover_mut()
                     .ok_or(crate::world::ATTACKER_UNMOVING)?
                     .stop()?;
                 if self.state != MOVE {
@@ -75,14 +75,11 @@ impl Attack {
             }
         };
         let ground = walk
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
             .ok_or(crate::world::ATTACKER_UNMOVING)?;
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
+        let at = walk.position();
         let reach = squared_reach(self.range);
         if reach.abs() <= EPSILON || reach < footprint_gap_squared(at, ground, target, radius) {
             return Ok(code);
@@ -107,7 +104,7 @@ impl Attack {
         }
         // the MoveTo's sprite sets the unit's speed: a running one the running speed
         if self.runs
-            && let Some(m) = walk.mover.as_deref_mut()
+            && let Some(m) = walk.body.mover_mut()
         {
             m.stats.speed = m.stats.run_speed;
         }

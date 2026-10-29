@@ -123,7 +123,7 @@ fn summary(u: &Unit) -> String {
         u.life.master_id,
         u.life.state,
         u.life.hp,
-        u.position,
+        u.position(),
         crate::top_action(u).map(|a| (a.kind, a.state))
     )
 }

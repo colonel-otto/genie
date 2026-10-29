@@ -96,7 +96,6 @@ impl Unit {
     ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let me = Me {
             id: self.id,
-            position: self.position,
             group: self.group.id,
             action_state: self.top_action().map_or(0, |a| a.state),
         };
@@ -244,15 +243,10 @@ impl Unit {
         Ok(())
     }
 
-    /// After the actions: the unit takes its place as the world has it (the motion step may have
-    /// put it onto a waypoint it reached) and the units its walk met take their pauses (slot
-    /// 0x5f0: the walked level's pause and their gait, in the world; the walk read
-    /// them from its own list till now, `Mover::pause_of`). A unit whose walk met others in
-    /// its way is not modelled.
+    /// After the actions: the units its walk met take their pauses (slot 0x5f0: the walked
+    /// level's pause and their gait, in the world; the walk read them from its own list till
+    /// now, `Mover::pause_of`). A unit whose walk met others in its way is not modelled.
     pub(crate) fn after_actions(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        if let Some(p) = c.w.spatial.get(self.id) {
-            self.position = p.position;
-        }
         if let Some(m) = self.body.mover_mut() {
             for (id, pause) in std::mem::take(&mut m.pauses) {
                 let Some((_, u)) = c.w.object_mut(id) else {

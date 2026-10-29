@@ -5,7 +5,7 @@ use crate::combat::damage::Victim;
 use crate::combat::victims::KillLeft;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::Walk;
-use crate::movement::{Me, Mover, Planning};
+use crate::movement::{Me, Planning};
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
@@ -228,7 +228,7 @@ impl World {
     pub(crate) fn walk_beside<'b>(
         &'b mut self,
         pace: Pace,
-        mover: Option<&'b mut Mover>,
+        body: &'b mut crate::objects::layers::Body,
         me: Me,
     ) -> (Walk<'b>, Beside<'b>) {
         let Self {
@@ -241,7 +241,7 @@ impl World {
             ..
         } = self;
         let walk = Walk {
-            mover,
+            body,
             me,
             dt: pace.dt,
             world: spatial,
@@ -319,13 +319,13 @@ impl Context<'_> {
     /// A walk and the Sprite stream, for an attacker's update.
     pub(crate) fn walk_and_sprites<'b>(
         &'b mut self,
-        mover: Option<&'b mut Mover>,
+        body: &'b mut crate::objects::layers::Body,
         me: Me,
     ) -> (Walk<'b>, &'b mut Well512) {
         let (object, sprite) = self.w.streams.two(Stream::Object, Stream::Sprite);
         (
             Walk {
-                mover,
+                body,
                 me,
                 dt: self.dt_seconds,
                 world: &mut self.w.spatial,
@@ -345,7 +345,7 @@ impl Context<'_> {
     /// A walk with the Sprite and the Action streams (a farmer's stops draw from the second).
     pub(crate) fn walk_sprites_action<'b>(
         &'b mut self,
-        mover: Option<&'b mut Mover>,
+        body: &'b mut crate::objects::layers::Body,
         me: Me,
     ) -> (Walk<'b>, &'b mut Well512, &'b mut Well512) {
         let [object, sprite, action] =
@@ -354,7 +354,7 @@ impl Context<'_> {
                 .three(Stream::Object, Stream::Sprite, Stream::Action);
         (
             Walk {
-                mover,
+                body,
                 me,
                 dt: self.dt_seconds,
                 world: &mut self.w.spatial,
@@ -375,14 +375,14 @@ impl Context<'_> {
     /// A walk and another stream than the walk's Object stream.
     pub(crate) fn walk_with<'b>(
         &'b mut self,
-        mover: Option<&'b mut Mover>,
+        body: &'b mut crate::objects::layers::Body,
         me: Me,
         other: Stream,
     ) -> (Walk<'b>, &'b mut Well512) {
         let (object, other) = self.w.streams.two(Stream::Object, other);
         (
             Walk {
-                mover,
+                body,
                 me,
                 dt: self.dt_seconds,
                 world: &mut self.w.spatial,
@@ -400,9 +400,13 @@ impl Context<'_> {
     }
 
     /// What an object's walking action needs from the tick.
-    pub(crate) const fn walk<'b>(&'b mut self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
+    pub(crate) const fn walk<'b>(
+        &'b mut self,
+        body: &'b mut crate::objects::layers::Body,
+        me: Me,
+    ) -> Walk<'b> {
         Walk {
-            mover,
+            body,
             me,
             dt: self.dt_seconds,
             world: &mut self.w.spatial,

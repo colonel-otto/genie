@@ -57,15 +57,13 @@ impl Seeker<'_, '_> {
         last: &mut f32,
     ) -> Result<Option<f32>, GenieError> {
         let radii = self.mover.stats.radius[0] + master.radius[0];
-        let to = [o.position[0], o.position[1]];
+        let to = [o.position()[0], o.position()[1]];
         let ground = [self.mover.stats.radius[0], self.mover.stats.radius[1]];
         let near = || {
-            footprint_gap_squared(self.me.position, ground, o.position, master.radius)
+            footprint_gap_squared(self.mover.position(), ground, o.position(), master.radius)
                 <= FISHING_REACH
         };
-        let planned = self
-            .mover
-            .plan_length(&self.me, self.spatial, self.plan, to, radii)?;
+        let planned = self.mover.plan_length(self.spatial, self.plan, to, radii)?;
         Ok(match planned {
             Some((code, length)) if counted(code, by_path, self.fishing(), near) => {
                 if !by_path {
@@ -170,7 +168,7 @@ pub(crate) fn drop_site_search<'u>(
                 "a drop site of a master the slice does not have",
             ))?;
         if let (Some(s), Some(zone)) = (seeker.as_ref(), own_zone)
-            && s.zones.zone(o.position[0] as i32, o.position[1] as i32) != zone
+            && s.zones.zone(o.position()[0] as i32, o.position()[1] as i32) != zone
         {
             continue;
         }
@@ -190,7 +188,7 @@ pub(crate) fn drop_site_search<'u>(
             [x, y] = farm;
             by_path = false;
         }
-        let (dx, dy) = (x - o.position[0], y - o.position[1]);
+        let (dx, dy) = (x - o.position()[0], y - o.position()[1]);
         let squared = dy * dy + dx * dx;
         let d = match seeker.as_mut() {
             Some(s) => match s.measure(o, master, by_path, squared, &mut last)? {
@@ -234,7 +232,7 @@ pub(crate) fn nearest_drop_site(
             continue;
         }
         let [x, y, _] = at;
-        let (dx, dy) = (x - o.position[0], y - o.position[1]);
+        let (dx, dy) = (x - o.position()[0], y - o.position()[1]);
         let d = dy * dy + dx * dx;
         if best.is_none_or(|(_, b)| d < b) {
             best = Some((o.id, d));
@@ -261,7 +259,7 @@ mod tests {
     fn object(id: i32, master_id: i16, at: [f32; 2]) -> Unit {
         Unit {
             id,
-            position: [at[0], at[1], 0.0],
+            body: crate::objects::layers::Body::at([at[0], at[1], 0.0]),
             life: Lifecycle {
                 state: 2,
                 master_id,
@@ -357,7 +355,6 @@ mod tests {
             unit,
             me: Me {
                 id: unit.id,
-                position: unit.position,
                 action_state: 0,
                 group: -1,
             },

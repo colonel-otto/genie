@@ -8,6 +8,7 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Motion, Mover, PathAsk, Planning, footprint_gap, footprint_gap_squared};
+use crate::objects::layers::Body;
 use genie_diff::Diff;
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.
@@ -88,12 +89,13 @@ impl MoveTo {
     }
 }
 
-/// What a walking unit's update needs: its movement state, where it is, and the world; the
-/// planners and the world's time for a path request (None where the caller has none).
+/// What a walking unit's update needs: its layers below the action layer (its place and, if it
+/// moves, its movement state), who it is, and the world; the planners and the world's time for
+/// a path request (None where the caller has none).
 #[derive(Debug)]
 pub struct Walk<'a> {
-    /// The unit's movement state, if it moves.
-    pub mover: Option<&'a mut Mover>,
+    /// The unit's layers: its place ([`Body::position`]) and its mover, if it moves.
+    pub body: &'a mut Body,
     /// The unit.
     pub me: Me,
     /// The world's dt in seconds.
@@ -105,9 +107,15 @@ pub struct Walk<'a> {
 }
 
 impl Walk<'_> {
+    /// x, y, z on the map: the unit's place as it is now, after any step of its walk.
+    #[must_use]
+    pub const fn position(&self) -> [f32; 3] {
+        self.body.position()
+    }
+
     /// Sets the walking unit's animation speed (`+0x7b8`, the animated layer in its mover).
-    pub fn set_anim_speed(&mut self, speed: f32) {
-        if let Some(m) = self.mover.as_deref_mut() {
+    pub const fn set_anim_speed(&mut self, speed: f32) {
+        if let Some(m) = self.body.mover_mut() {
             m.animated.speed = speed;
         }
     }
@@ -115,7 +123,7 @@ impl Walk<'_> {
     /// The same walk for a call that ends before this one is used again.
     pub fn reborrow(&mut self) -> Walk<'_> {
         Walk {
-            mover: self.mover.as_deref_mut(),
+            body: &mut *self.body,
             me: self.me,
             dt: self.dt,
             world: &mut *self.world,
@@ -172,13 +180,15 @@ pub fn start_walk_asked(
         }
         Goal::Point(p) => (p, -1, [0.0, 0.0]),
     };
-    let mover = walk.mover.ok_or(crate::world::WALKER_UNMOVING)?;
+    let now = walk.plan.as_ref().map_or(0, |p| p.now);
+    let mover = walk.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
+    let here = mover.position();
     let ground = [mover.stats.radius[0], mover.stats.radius[1]];
     let squared = if target == -1 {
-        let gap = footprint_gap(walk.me.position, ground, point, radius);
+        let gap = footprint_gap(here, ground, point, radius);
         gap * gap
     } else {
-        footprint_gap_squared(walk.me.position, ground, point, radius)
+        footprint_gap_squared(here, ground, point, radius)
     };
     if ask.ends_in_range && squared <= range * range {
         if !quiet {
@@ -186,14 +196,10 @@ pub fn start_walk_asked(
         }
         return Ok(Some(MoveTo::Arrived));
     }
-    let now = walk.plan.as_ref().map_or(0, |p| p.now);
-    mover.request_path_asked(walk.me.position, point, range, target, now, ask);
+    mover.request_path_asked(here, point, range, target, now, ask);
     // the MoveTo's point (`+0x38`): the target's place when it asks for the path
     mover.move_to_point = (target != -1).then_some(point);
-    walk_or_give_up(Walk {
-        mover: Some(mover),
-        ..walk
-    })
+    walk_or_give_up(walk)
 }
 
 /// A moving `MoveTo`'s update (state 4, `0x140aa2a70` from `LAB_140aa320c`): the motion step
@@ -203,19 +209,22 @@ pub fn start_walk_asked(
 /// and `FUN_14114d810` its facet; the slice holds neither). A `MoveTo` without its path is not
 /// modelled.
 pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, GenieError> {
-    let mover = walk.mover.ok_or(crate::world::WALKER_UNMOVING)?;
+    let Walk {
+        body,
+        me,
+        dt,
+        world,
+        mut plan,
+    } = walk;
+    let mover = body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
     if mover.paths.is_empty() {
         return Err(GenieError::unsupported("the path request (FUN_14114e410)"));
     }
-    let mut plan = walk.plan;
-    let mut me = walk.me;
-    Ok(
-        match mover.motion(&mut me, walk.dt, walk.world, plan.as_mut())? {
-            Motion::Moving => Some(MoveTo::Moving),
-            Motion::Arrived => Some(MoveTo::Arrived),
-            Motion::Done => None,
-        },
-    )
+    Ok(match mover.motion(&me, dt, world, plan.as_mut())? {
+        Motion::Moving => Some(MoveTo::Moving),
+        Motion::Arrived => Some(MoveTo::Arrived),
+        Motion::Done => None,
+    })
 }
 
 /// A `MoveTo` sub-action's update (`0x140aa2a70`, which an action's sub-action list runs,
@@ -296,10 +305,7 @@ impl Follow {
 ///
 /// A walker without movement state.
 pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), GenieError> {
-    let mover = walk
-        .mover
-        .as_deref_mut()
-        .ok_or(crate::world::WALKER_UNMOVING)?;
+    let mover = walk.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
     mover.follow_path_end(point);
     mover.move_to_point = Some(point);
     Ok(())
@@ -323,8 +329,8 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
         .get_known(target)?
         .ok_or(GenieError::unsupported("a MoveTo whose target is gone"))?;
     let point = walk
-        .mover
-        .as_deref()
+        .body
+        .mover()
         .ok_or(crate::world::WALKER_UNMOVING)?
         .move_to_point
         .ok_or(GenieError::unsupported(
@@ -337,12 +343,9 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
     if quiet {
         return Ok(Follow::Again);
     }
-    let mover = walk.mover.as_deref().ok_or(crate::world::WALKER_UNMOVING)?;
+    let mover = walk.body.mover().ok_or(crate::world::WALKER_UNMOVING)?;
     if mover.walks_to_path_end()? {
-        let me = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
+        let me = walk.position();
         let (a, b) = ([me[0], me[1]], [t.position[0], t.position[1]]);
         let grow = walk.world.manager_grow();
         walk.world.check_known_records([
@@ -572,9 +575,9 @@ impl MoveToAction {
 
     /// A `MoveTo` of its own is not quiet: its `set_state` 1 or 13 shows the standing sprite
     /// ([`Mover::shows_standing`]).
-    fn ended(&self, walk: &mut Walk<'_>) {
+    const fn ended(&self, walk: &mut Walk<'_>) {
         if matches!(self.state, MoveTo::Arrived | MoveTo::Failed)
-            && let Some(m) = walk.mover.as_deref_mut()
+            && let Some(m) = walk.body.mover_mut()
         {
             m.shows_standing();
         }
@@ -669,7 +672,7 @@ impl MoveToAction {
             }
             (id, _) => Goal::Target(id),
         };
-        if let Some(m) = walk.mover.as_deref_mut() {
+        if let Some(m) = walk.body.mover_mut() {
             m.stats.speed = if self.run {
                 m.stats.run_speed
             } else {
@@ -718,17 +721,23 @@ mod tests {
     fn a_move_to_of_its_own_starts_moves_and_reports_its_end() {
         use crate::movement::tests::WalkRig;
         let mut rig = WalkRig::on_the_path();
-        (rig.mover.stats.walk_speed, rig.mover.stats.run_speed) = (0.8, 1.2);
+        (
+            rig.mover_mut().stats.walk_speed,
+            rig.mover_mut().stats.run_speed,
+        ) = (0.8, 1.2);
         let mut m = own_move_to(MoveTo::Start, true, -1);
         let step = m.update(rig.walk(0), PathAsk::default()).unwrap();
         assert_eq!(step, MoveStep::default());
         assert_eq!((m.state, m.wait.state), (MoveTo::Moving, 2));
-        assert_eq!(rig.mover.stats.speed, 1.2);
+        assert_eq!(rig.mover_mut().stats.speed, 1.2);
         let step = m.update(rig.walk(0), PathAsk::default()).unwrap();
         assert_eq!((m.state, step), (MoveTo::Moving, MoveStep::default()));
         let mut on = own_move_to(MoveTo::Start, false, 10028);
         let _ = on.update(rig.walk(0), PathAsk::default()).unwrap();
-        assert_eq!((on.state, rig.mover.stats.speed), (MoveTo::Moving, 0.8));
+        assert_eq!(
+            (on.state, rig.mover_mut().stats.speed),
+            (MoveTo::Moving, 0.8)
+        );
         let ended = |state| {
             let mut rig = WalkRig::on_the_path();
             let mut m = own_move_to(state, false, -1);
@@ -776,8 +785,8 @@ mod tests {
         use crate::movement::tests::WalkRig;
         let walked = |point: [f32; 3], waypoint| {
             let mut rig = WalkRig::on_the_path();
-            rig.mover.move_to_point = Some(point);
-            rig.mover.paths[0].waypoint = waypoint;
+            rig.mover_mut().move_to_point = Some(point);
+            rig.mover_mut().paths[0].waypoint = waypoint;
             let mut m = own_move_to(MoveTo::Moving, false, 10028);
             let step = m.update(rig.walk(0), PathAsk::default()).unwrap();
             (m.state, step.target_moved)
@@ -917,11 +926,11 @@ mod tests {
             let mut world = crate::movement::tests::tiled_world(classes.to_vec());
             let mut mover = crate::movement::tests::builder_9177();
             mover.move_to_point = point;
+            let mut mover = Body::new([28.0, 89.0, 0.0], None, Some(mover));
             let walk = Walk {
-                mover: Some(&mut mover),
+                body: &mut mover,
                 me: Me {
                     id: 9177,
-                    position: [28.0, 89.0, 0.0],
                     group: -1,
                     action_state: 4,
                 },

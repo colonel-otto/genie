@@ -131,8 +131,8 @@ impl HuntAction {
             }
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
-                walk.mover
-                    .as_deref_mut()
+                walk.body
+                    .mover_mut()
                     .ok_or(crate::world::HUNTER_UNMOVING)?
                     .stop()?;
             }

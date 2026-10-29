@@ -37,7 +37,7 @@ impl World {
         let tm = self.master_of(tp, t.life.master_id)?;
         let followed = Followed {
             id: target,
-            place: [t.position[0], t.position[1]],
+            place: [t.position()[0], t.position()[1]],
             class: (0.0 < tm.radius[0] || 0.0 < tm.radius[1]).then_some(i32::from(tm.class)),
         };
         let cap = if self.players[player].computer {
@@ -94,7 +94,7 @@ impl World {
             return Ok(());
         };
         let tm = self.master_of(tp, t.life.master_id)?;
-        let [x, y, z] = t.position;
+        let [x, y, z] = t.position();
         let order = crate::unit_ai::QueuedOrder {
             issuer: -1,
             order: OrderKind::Defend,
@@ -164,7 +164,7 @@ impl World {
         let master = self.master_of(p, u.life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         let moves = MOVING <= master.kind && crate::math::fmath::below_or_unordered(0.0, speed);
-        Ok(moves.then_some([u.position[0], u.position[1]]))
+        Ok(moves.then_some([u.position()[0], u.position()[1]]))
     }
 
     /// A follower's start (`FUN_14161c920`, both loops): its ignore list empties
@@ -321,7 +321,7 @@ impl World {
         if target == unit.id {
             return Ok(false);
         }
-        let place = ([unit.position[0], unit.position[1]], class);
+        let place = ([unit.position()[0], unit.position()[1]], class);
         if let Some(ai) = unit.ai.as_mut()
             && ai.clear_notifies_at(world_time, place)?
         {
@@ -357,12 +357,13 @@ impl World {
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let range = crate::movement::move_to::object_range(0.0, Some(master));
         let unit = &mut self.players[player].objects[idx];
+        let here = unit.position();
         let mover = unit.body.mover_mut().ok_or(GenieError::unsupported(
             "a moved unit without movement state",
         ))?;
         let move_to = crate::movement::move_to::MoveToAction::to_object(
             &self.spatial,
-            unit.position,
+            here,
             mover,
             (target, t_state),
             range,

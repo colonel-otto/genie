@@ -73,8 +73,8 @@ impl Attack {
     ) -> Result<(), GenieError> {
         self.enter(SWING, walk)?;
         let alternates = walk
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .is_some_and(|m| m.stats.move_algorithm & 1 != 0);
         let special = s
             .swing_sprites

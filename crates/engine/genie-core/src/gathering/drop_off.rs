@@ -271,13 +271,18 @@ impl Unit {
             owner,
             crate::gathering::gather::Resource {
                 id: found,
-                position: t.position,
+                position: t.position(),
                 class: t_master.class,
                 master: t_master.id,
                 player: owner,
                 workers: t.workers,
                 drop_site: master.drop_sites.contains(&t.life.master_id),
-                gap: footprint_gap(self.position, master.radius, t.position, t_master.radius),
+                gap: footprint_gap(
+                    self.position(),
+                    master.radius,
+                    t.position(),
+                    t_master.radius,
+                ),
                 radius: t_master.radius,
             },
         ))
@@ -393,7 +398,7 @@ impl Unit {
                     others.own_iter(),
                     masters,
                     sites,
-                    self.position,
+                    self.position(),
                     None,
                     (true, crate::gathering::drop_sites::UNPACK),
                 )?,
@@ -410,7 +415,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a drop site without a place"))?;
         Ok((
             site,
-            footprint_gap(self.position, ground, s.position, s.radius),
+            footprint_gap(self.position(), ground, s.position, s.radius),
         ))
     }
 
@@ -464,7 +469,6 @@ impl Unit {
         let zones = c.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: self.id,
-            position: self.position,
             group: self.group.id,
             action_state: state,
         };
@@ -490,7 +494,7 @@ impl Unit {
             others.own_iter(),
             masters,
             &master.drop_sites,
-            self.position,
+            self.position(),
             Some(seeker),
             (outside, at_work),
         )

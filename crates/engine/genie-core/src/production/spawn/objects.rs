@@ -31,7 +31,7 @@ impl World {
     ) -> Result<[f32; 2], GenieError> {
         let building = &self.players[p].objects[i];
         let site_master = self.master_of(p, building.life.master_id)?;
-        let position = building.position;
+        let position = building.position();
         let mut walls = [false; 4];
         for (wall, tiles) in
             walls
@@ -282,7 +282,6 @@ impl World {
         };
         owner.objects.push(Unit {
             id,
-            position: at,
             life: Lifecycle {
                 class: if made.kind == 10 {
                     Class::Static
@@ -304,6 +303,7 @@ impl World {
             },
             // an animated one's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             body: crate::objects::layers::Body::new(
+                at,
                 (20 <= made.kind).then(crate::objects::layers::Animated::default),
                 moving.map(|stats| Mover::new_object(stats, at, self.world_time, angle, facets)),
             ),

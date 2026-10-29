@@ -215,7 +215,7 @@ impl World {
                 let Some((_, building)) = self.object(b) else {
                     break;
                 };
-                let position = building.position;
+                let position = building.position();
                 let Some(new) = self.make_new_object(owner, made, position, true)? else {
                     continue;
                 };

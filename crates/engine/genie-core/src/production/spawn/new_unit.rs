@@ -65,7 +65,7 @@ impl World {
             .map(|a| a.building_orders.clone())
             .unwrap_or_default();
         let gather = building.gather_point;
-        let position = building.position;
+        let position = building.position();
         let toward = match (gather, queue.first()) {
             (None, Some(first)) => Some([first.point[0], first.point[1]]),
             _ => gather
@@ -351,7 +351,6 @@ impl World {
         crate::objects::lifecycle::death_parts::count_class(&mut owner.attributes, made, 1.0);
         owner.objects.push(Unit {
             id,
-            position,
             life: Lifecycle {
                 class: Class::Animated,
                 state: 2,

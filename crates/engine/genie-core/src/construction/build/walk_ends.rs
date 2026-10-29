@@ -29,13 +29,10 @@ impl BuildAction {
             return self.idle(walk, site, builder, step);
         }
         if builder.class != VILLAGER {
-            let at = walk
-                .world
-                .get(walk.me.id)
-                .map_or(walk.me.position, |p| p.position);
+            let at = walk.position();
             let ground = walk
-                .mover
-                .as_deref()
+                .body
+                .mover()
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
                 .ok_or(BUILDER_UNMOVING)?;
             let t = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
@@ -90,7 +87,7 @@ impl BuildAction {
                 }
             }
         }
-        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
+        let mover = walk.body.mover().ok_or(BUILDER_UNMOVING)?;
         let (restriction, ground, [mx, my, _]) = (
             mover.stats.restriction,
             mover.stats.radius[0],
@@ -161,7 +158,7 @@ impl BuildAction {
         self.leave(walk, builders)?;
         self.state = WALK_POINT;
         self.goal = Some(self.point);
-        let moves = walk.mover.as_deref().is_some_and(|m| m.stats.speed != 0.0);
+        let moves = walk.body.mover().is_some_and(|m| m.stats.speed != 0.0);
         self.move_to = Some(if moves { MoveTo::Start } else { MoveTo::Failed });
         Ok(())
     }

@@ -162,7 +162,7 @@ impl Unit {
         (player, busy, interruptible): (usize, bool, bool),
     ) -> Result<Surroundings, GenieError> {
         Ok(Surroundings {
-            position: self.position,
+            position: self.position(),
             hp: self.life.hp,
             speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
             map: c.w.spatial.map,
@@ -248,7 +248,10 @@ impl Unit {
             min_range: master.map_or(0.0, |m| m.min_range),
             attack_moving: self.body.mover().is_some_and(|m| m.attack_moving),
             moved_at: {
-                let [x, y, height] = self.body.mover().map_or(self.position, |m| m.moved_at);
+                let [x, y, height] = self
+                    .body
+                    .mover()
+                    .map_or_else(|| self.position(), |m| m.moved_at);
                 [x, height, y]
             },
             dodge_chance: c.dodge_chances.get(player).copied().unwrap_or(0),
@@ -482,7 +485,12 @@ impl Unit {
                 combat_level: m.combat_level,
                 state: u.life.state,
                 target: u.ai.as_ref().map(|a| a.current_target),
-                gap_squared: footprint_gap_squared(self.position, me.radius, p.position, p.radius),
+                gap_squared: footprint_gap_squared(
+                    self.position(),
+                    me.radius,
+                    p.position,
+                    p.radius,
+                ),
                 position: p.position,
                 hp: u.life.hp,
                 master: u.life.master_id,

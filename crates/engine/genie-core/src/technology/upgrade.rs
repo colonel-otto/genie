@@ -506,7 +506,7 @@ impl World {
     /// the factory's type for `new` makes another ([`crate::unit_ai::factory_type`],
     /// [`crate::unit_ai::UnitAi::constructed`] on the AI stream), none for a class without.
     fn new_unit_ai(&mut self, p: usize, place: Place, new: &Master) -> Result<(), GenieError> {
-        let position = self.object_at(place).position;
+        let position = self.object_at(place).position();
         let made = self.new_object(p, new.id, new, position)?;
         let ai = new.unit_ai_type(new.id).and_then(|t| {
             crate::unit_ai::UnitAi::constructed(t, &made, self.streams.get(Stream::Ai))
@@ -1206,7 +1206,7 @@ mod tests {
         };
         let sighted = |state: u8, inside: Option<i32>, keep: bool| {
             let mut u = object(10, 4, state, 10.0);
-            u.position = [5.5, 5.5, 0.0];
+            u.place_for_test([5.5, 5.5, 0.0]);
             u.life.inside = inside;
             let mut t = one_player(vec![u], vec![old.clone()], &[]);
             t.spatial = crate::map::spatial::Spatial::new([20, 20]);

@@ -478,12 +478,13 @@ impl World {
                 continue;
             };
             // the game's vector (x, height, y) of where it last moved to (x, y, height)
-            let at = u
-                .body
-                .mover()
-                .map_or([u.position[0], u.position[2], u.position[1]], |mv| {
-                    [mv.moved_at[0], mv.moved_at[2], mv.moved_at[1]]
-                });
+            let at = u.body.mover().map_or_else(
+                || {
+                    let [x, y, h] = u.position();
+                    [x, h, y]
+                },
+                |mv| [mv.moved_at[0], mv.moved_at[2], mv.moved_at[1]],
+            );
             let d = [at[0] - to[0], at[1] - to[1], at[2] - to[2]];
             let squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
             if squared < best {

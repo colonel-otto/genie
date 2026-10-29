@@ -304,15 +304,16 @@ impl Unit {
                 ))?;
         self.actions.set_fly(Some(Fly::start(
             task,
-            self.position,
+            self.position(),
             c.w.streams.get(Stream::Action),
         )));
         if fly_mode == 1 {
-            self.position[2] = HEIGHT;
-            c.w.spatial.set_position(self.id, self.position);
+            let [x, y, _] = self.position();
+            let at = [x, y, HEIGHT];
+            self.new_position(at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
             // the position setter marks the move (`+0x824`, `+0x870`)
             if let Some(m) = self.body.mover_mut() {
-                m.mark_move(self.position, c.world_time);
+                m.mark_move(at, c.world_time);
             }
         }
         Ok(())
@@ -325,12 +326,16 @@ mod tests {
     use crate::map::spatial::Spatial;
     use crate::movement::Me;
 
-    fn walk(world: &mut Spatial) -> Walk<'_> {
+    /// The hawk's layers without movement state, at its place.
+    fn still() -> crate::objects::layers::Body {
+        crate::objects::layers::Body::at([57.845_688, 104.499_275, 9.0])
+    }
+
+    fn walk<'a>(body: &'a mut crate::objects::layers::Body, world: &'a mut Spatial) -> Walk<'a> {
         Walk {
-            mover: None,
+            body,
             me: Me {
                 id: 9925,
-                position: [57.845_688, 104.499_275, 9.0],
                 group: -1,
                 action_state: 0,
             },
@@ -383,7 +388,9 @@ mod tests {
         let mut r = Well512::default();
         r.set_seed(1);
         let mut e = r.clone();
-        let step = fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        let step = fly
+            .update(walk(&mut still(), &mut world), sky(&mut r))
+            .unwrap();
         assert!(step.stopped && !step.failed);
         let t = ((e.rand15() as i32 * 10) / 0x7fff + 5) as f32;
         assert_eq!((fly.state, fly.timer, fly.move_to), (CHOOSING, t, None));
@@ -452,7 +459,9 @@ mod tests {
         let mut r = Well512::default();
         r.set_seed(7);
         let mut e = r.clone();
-        let _ = fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        let _ = fly
+            .update(walk(&mut still(), &mut world), sky(&mut r))
+            .unwrap();
         let angle = e.below_checked(360) as i32;
         let d = 1.32 * (10.0f32 - 0.021) * 1.0;
         let theta = angle as f32 * DEGREE;
@@ -479,7 +488,9 @@ mod tests {
             ..hawk(FLYING, 5.0)
         };
         let mut r = Well512::default();
-        let step = fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        let step = fly
+            .update(walk(&mut still(), &mut world), sky(&mut r))
+            .unwrap();
         assert!(step.failed && step.stopped);
         assert_eq!(fly.move_to, None);
     }
@@ -497,13 +508,14 @@ mod tests {
         let mut mover = crate::gathering::hunt::tests::walker();
         mover.stats.speed = 0.0;
         let mut r = Well512::default();
-        let walking = Walk {
-            mover: Some(&mut mover),
-            ..walk(&mut world)
-        };
+        let mut body =
+            crate::objects::layers::Body::new([57.845_688, 104.499_275, 9.0], None, Some(mover));
+        let walking = walk(&mut body, &mut world);
         assert_eq!(fly.update(walking, sky(&mut r)), Ok(FlyStep::default()));
         assert_eq!(fly.move_to, Some(MoveTo::Failed));
-        let step = fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        let step = fly
+            .update(walk(&mut still(), &mut world), sky(&mut r))
+            .unwrap();
         assert!(step.failed && step.stopped);
     }
 
@@ -513,12 +525,14 @@ mod tests {
         let mut fly = hawk(RESTING, 0.5);
         let mut r = Well512::default();
         assert_eq!(
-            fly.update(walk(&mut world), sky(&mut r)),
+            fly.update(walk(&mut still(), &mut world), sky(&mut r)),
             Ok(FlyStep::default())
         );
         assert_eq!((fly.state, r.draws), (RESTING, 0));
         fly.timer = 0.01;
-        let _ = fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        let _ = fly
+            .update(walk(&mut still(), &mut world), sky(&mut r))
+            .unwrap();
         assert_eq!((fly.state, r.draws), (CHOOSING, 1));
     }
 

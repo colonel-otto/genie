@@ -74,7 +74,7 @@ impl World {
     pub(crate) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
         self.track_remove(p, gone.id, gone.life.master_id);
         let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
-        forget_resource(&mut self.spatial, master, gone.id, gone.position);
+        forget_resource(&mut self.spatial, master, gone.id, gone.position());
         if let Some(m) = master.filter(|m| 70 <= m.kind) {
             count_class(&mut self.players[p].attributes, m, -1.0);
         }

@@ -225,13 +225,20 @@ fn moved_ship(y: f32) -> EnterTarget {
     }
 }
 
-/// A walk of unit 1 without movement state or world, as [`EnterAction::update`] takes it.
-fn idle_walk(world: &mut crate::map::spatial::Spatial) -> Walk<'_> {
+/// The layers of unit 1 without movement state, at (82.5, 87.5).
+fn idle_body() -> crate::objects::layers::Body {
+    crate::objects::layers::Body::at([82.5, 87.5, 0.0])
+}
+
+/// A walk of unit 1 of `body` without a world's planners, as [`EnterAction::update`] takes it.
+fn idle_walk<'a>(
+    body: &'a mut crate::objects::layers::Body,
+    world: &'a mut crate::map::spatial::Spatial,
+) -> Walk<'a> {
     Walk {
-        mover: None,
+        body,
         me: crate::movement::Me {
             id: 1,
-            position: [82.5, 87.5, 0.0],
             action_state: 4,
             group: -1,
         },
@@ -255,7 +262,7 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
     let reached = std::cell::Cell::new(None);
     let step = enter
         .update(
-            idle_walk(&mut world),
+            idle_walk(&mut idle_body(), &mut world),
             Some(moved_ship(90.5)),
             (0.0, 0.8),
             || Ok(([82.5, 89.5], 1)),
@@ -278,7 +285,7 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
         };
         let step = enter
             .update(
-                idle_walk(&mut world),
+                idle_walk(&mut idle_body(), &mut world),
                 Some(moved_ship(y)),
                 (0.0, 0.8),
                 || panic!("no walk again"),
@@ -294,7 +301,7 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
         ..EnterAction::new(7420, point, 1.0, 20)
     };
     let failed = enter.update(
-        idle_walk(&mut world),
+        idle_walk(&mut idle_body(), &mut world),
         Some(moved_ship(90.5)),
         (0.0, 0.8),
         || Ok(([82.5, 89.5], 1)),
@@ -319,10 +326,10 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
         },
         ..EnterAction::new(7420, ship.position, 1.0, 20)
     };
-    let dt = idle_walk(&mut world).dt;
+    let dt = idle_walk(&mut idle_body(), &mut world).dt;
     let step = enter
         .update(
-            idle_walk(&mut world),
+            idle_walk(&mut idle_body(), &mut world),
             Some(ship),
             (0.0, 0.8),
             || panic!("no walk again"),
@@ -338,7 +345,7 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
     enter.move_wait.timer = 1.0;
     let _ = enter
         .update(
-            idle_walk(&mut world),
+            idle_walk(&mut idle_body(), &mut world),
             Some(ship),
             (0.0, 0.8),
             || panic!("no walk again"),
@@ -367,7 +374,7 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
     };
     let step = enter
         .update(
-            idle_walk(&mut world),
+            idle_walk(&mut idle_body(), &mut world),
             Some(ship),
             (0.0, 0.8),
             || panic!("in reach: no point"),
@@ -383,7 +390,7 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
     };
     let step = enter
         .update(
-            idle_walk(&mut world),
+            idle_walk(&mut idle_body(), &mut world),
             Some(ship),
             (0.0, 0.8),
             || panic!("no walk again"),
@@ -406,7 +413,7 @@ fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     };
     let run = |enter: &mut EnterAction, world: &mut crate::map::spatial::Spatial| {
         enter.update(
-            idle_walk(world),
+            idle_walk(&mut idle_body(), world),
             Some(ship),
             (2.0, 0.8),
             || Ok(([82.5, 89.5], 0)),
@@ -1133,7 +1140,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
         vec![false; 4],
     ));
     let tc = &mut t.players[1].objects[0];
-    tc.position = [10.0, 10.0, 0.0];
+    tc.place_for_test([10.0, 10.0, 0.0]);
     tc.firepower = 1.0;
     t.spatial.insert(
         100,
@@ -1192,7 +1199,7 @@ fn a_gather_point_on_its_own_building_takes_the_new_unit_in() {
 fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     let mut t = let_out_world();
     let mut v = unit(400, VILLAGER, 25.0);
-    v.position = [12.5, 10.0, 0.0];
+    v.place_for_test([12.5, 10.0, 0.0]);
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = standing();
     v.body.put_mover(Some(walker));
@@ -1245,7 +1252,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
 fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>, World) {
     let mut t = let_out_world();
     let mut v = unit(400, VILLAGER, 25.0);
-    v.position = [12.5, 10.0, 0.0];
+    v.place_for_test([12.5, 10.0, 0.0]);
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = standing();
     v.body.put_mover(Some(walker));
@@ -1353,7 +1360,7 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
 /// Puts unit `id` of player `p` and master `m` inside the town centre.
 pub(crate) fn inside_tc(t: &mut World, p: usize, id: i32, m: i16) {
     let mut u = unit(id, m, 25.0);
-    u.position = [10.0, 10.0, 0.0];
+    u.place_for_test([10.0, 10.0, 0.0]);
     u.life.inside = Some(100);
     t.players[p].objects.push(u);
     t.spatial.insert(
@@ -1493,7 +1500,7 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
 /// A villager of player `p` with a unit AI and speed at (`x`, `y`).
 pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
     let mut v = unit(id, m, 25.0);
-    v.position = [at[0], at[1], 0.0];
+    v.place_for_test([at[0], at[1], 0.0]);
     v.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 8,
         current_order: None,
@@ -1549,7 +1556,7 @@ pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
 /// A building of player 1 of master `m` (radius 2) at `at`, `annex_of` its main building.
 pub(crate) fn building_at(t: &mut World, id: i32, m: i16, at: [f32; 2], annex_of: Option<i32>) {
     let mut b = unit(id, m, 2400.0);
-    b.position = [at[0], at[1], 0.0];
+    b.place_for_test([at[0], at[1], 0.0]);
     b.annex_of = annex_of;
     t.players[1].objects.push(b);
     t.spatial.insert(
@@ -1686,7 +1693,7 @@ fn a_garrison_through_the_unit_ais_queues_their_enter_orders() {
 /// [`let_out_world`] with ship 200 at (`x`, `y`) on the map.
 fn ship_at(t: &mut World, at: [f32; 2]) {
     let ship = t.object_mut(200).expect("the ship").1;
-    ship.position = [at[0], at[1], 0.0];
+    ship.place_for_test([at[0], at[1], 0.0]);
     t.spatial.insert(
         200,
         crate::map::spatial::Placed {
@@ -2275,7 +2282,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
     t.transport_unload(1, idx).unwrap();
     let v = t.object(1000).unwrap().1;
     assert_eq!(v.life.inside, None);
-    assert_eq!(v.position, [spot[0], spot[1], 0.0]);
+    assert_eq!(v.position(), [spot[0], spot[1], 0.0]);
     assert_eq!(v.ai.as_ref().unwrap().state_position, spot);
     assert_eq!(
         t.spatial.get(1000).map(|p| p.position),
@@ -2379,7 +2386,7 @@ fn a_unit_inside_a_transport_unloaded_goes_ashore_about_it() {
     .unwrap();
     let v = t.object(1000).unwrap().1;
     assert_eq!(v.life.inside, None);
-    assert_eq!(v.position, [spot[0], spot[1], 0.0]);
+    assert_eq!(v.position(), [spot[0], spot[1], 0.0]);
     assert_eq!(v.ai.as_ref().unwrap().state_position, spot);
     assert!(!v.town_bell.flag);
     let ship = t.object(200).unwrap().1;
@@ -2398,7 +2405,10 @@ fn a_unit_inside_a_transport_unloaded_goes_ashore_about_it() {
     }
     .run(&mut t)
     .unwrap();
-    assert_eq!(t.object(1000).unwrap().1.position, [spot[0], spot[1], 0.0]);
+    assert_eq!(
+        t.object(1000).unwrap().1.position(),
+        [spot[0], spot[1], 0.0]
+    );
     // a named unit elsewhere stays
     let mut t = coast_world([14.5, 10.5]);
     UnloadCommand {
@@ -2447,7 +2457,7 @@ fn a_unit_inside_an_ally_s_transport_unloaded_goes_ashore() {
     .unwrap();
     let v = t.object(1000).unwrap().1;
     assert_eq!(v.life.inside, None);
-    assert_eq!(v.position, [spot[0], spot[1], 0.0]);
+    assert_eq!(v.position(), [spot[0], spot[1], 0.0]);
     let mut t = ally(false);
     UnloadCommand {
         player: player_id(1),
@@ -2479,7 +2489,7 @@ fn a_villager_beside_a_ship_enters_it_at_once() {
     .unwrap();
     let v = t.object(1000).unwrap().1;
     assert_eq!(v.life.inside, Some(200));
-    assert_eq!([v.position[0], v.position[1]], [5.5, 20.5]);
+    assert_eq!([v.position()[0], v.position()[1]], [5.5, 20.5]);
     assert_eq!(v.actions.enter().map(|e| e.state), Some(ENTERED));
     assert!(!v.town_bell.flag);
     assert_eq!(
@@ -2688,7 +2698,7 @@ fn a_unit_let_out_toward_nothing_stops_and_keeps_its_stance() {
         ),
         (None, -1, 1, Some(ActionKind::Gather))
     );
-    assert_eq!(ai.state_position, [v.position[0], v.position[1]]);
+    assert_eq!(ai.state_position, [v.position()[0], v.position()[1]]);
 }
 
 /// `FUN_1411e7220` on a unit that is not inside (an effect's new unit the building could not
@@ -2697,7 +2707,7 @@ fn a_unit_let_out_toward_nothing_stops_and_keeps_its_stance() {
 #[test]
 fn a_unit_on_the_map_let_out_moves_beside_the_building() {
     let mut t = let_out_world();
-    let tc_at = t.players[1].objects[0].position;
+    let tc_at = t.players[1].objects[0].position();
     walker(&mut t, 1, 1000, VILLAGER, [tc_at[0], tc_at[1]]);
     let firepower = t.players[1].objects[0].firepower;
     assert_eq!(
@@ -2705,8 +2715,8 @@ fn a_unit_on_the_map_let_out_moves_beside_the_building() {
         Ok(true)
     );
     let v = t.object(1000).unwrap().1;
-    assert_ne!([v.position[0], v.position[1]], [tc_at[0], tc_at[1]]);
-    assert_eq!(t.spatial.get(1000).unwrap().position, v.position);
+    assert_ne!([v.position()[0], v.position()[1]], [tc_at[0], tc_at[1]]);
+    assert_eq!(t.spatial.get(1000).unwrap().position, v.position());
     let tc = &t.players[1].objects[0];
     assert_eq!((tc.garrison.len(), tc.firepower), (0, firepower));
 }
@@ -2893,7 +2903,7 @@ fn let_out_beside_a_second_centre(
         ..crate::unit_ai::UnitAi::default()
     });
     let mut second = unit(101, TC, 2400.0);
-    second.position = [16.0, 4.0, 0.0];
+    second.place_for_test([16.0, 4.0, 0.0]);
     t.players[1].objects.push(second);
     let placed = *t.spatial.get(100).unwrap();
     t.spatial.insert(
@@ -2996,7 +3006,7 @@ fn a_market_tells_a_computer_ally_of_its_tile() {
             *m = Masters::new(m.iter().cloned().chain([market]));
         }
         t.players[1].objects[0].life.master_id = 84;
-        t.players[1].objects[0].position = [10.5, 12.5, 0.0];
+        t.players[1].objects[0].place_for_test([10.5, 12.5, 0.0]);
         t.players[2].computer = computer_ally;
         t.players[1].computer = own_computer;
         let mut v = crate::vision::visibility::Visibility::new(

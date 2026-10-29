@@ -12,7 +12,7 @@ use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
 fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
     let unit = |id, master, x: f32, y: f32| Unit {
         id,
-        position: [x, y, 0.0],
+        body: crate::objects::layers::Body::at([x, y, 0.0]),
         life: Lifecycle {
             master_id: master,
             ..Lifecycle::default()

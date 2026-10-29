@@ -39,19 +39,16 @@ impl Unit {
             None => None,
         };
         if let Some(mover) = self.body.mover_mut() {
+            let here = mover.position();
             let at = mover.step_velocity(
-                self.position,
+                here,
                 c.dt_seconds,
                 c.w.spatial.map,
                 c.w.spatial.terrain.as_ref(),
                 (c.world_time, group),
             );
-            if at != self.position {
-                self.position = at;
-                c.w.spatial.set_position(self.id, at);
-                if let Some(p) = c.w.spatial.get(self.id) {
-                    c.w.pathing.moved(self.id, p, mover.is_moving());
-                }
+            if at != here {
+                mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
             }
             // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
             if let Some(v) = mover.velocity.as_ref() {
@@ -154,12 +151,13 @@ impl Unit {
                 };
                 let ask = match point {
                     Some(p) if move_to.state == MoveTo::Start => {
-                        let at = [me.position[0], me.position[1]];
+                        let [x, y, _] = self.body.position();
+                        let at = [x, y];
                         UnitAi::path_ask(self.ai.as_mut(), at, p)
                     }
                     _ => crate::movement::PathAsk::default(),
                 };
-                move_to.update(c.walk(self.body.mover_mut(), me), ask)?
+                move_to.update(c.walk(&mut self.body, me), ask)?
             }
             None => crate::movement::move_to::MoveStep::default(),
         })
@@ -215,7 +213,7 @@ impl Unit {
                     let goal = crate::movement::move_to::Goal::Point(explore.point);
                     let code = crate::movement::move_to::sub_move_to_update(
                         (&mut explore.move_to, &mut explore.move_wait),
-                        &mut c.walk(self.body.mover_mut(), me),
+                        &mut c.walk(&mut self.body, me),
                         goal,
                         (0.0, quiet),
                         (waits, stance),
@@ -238,23 +236,26 @@ impl Unit {
         if let Some(fly) = self.actions.fly_mut() {
             let mover = self
                 .body
-                .mover_mut()
+                .mover()
                 .ok_or(GenieError::unsupported("a bird without movement state"))?;
-            let (speed, radius) = (
+            let (speed, radius, position) = (
                 mover.stats.speed,
                 [mover.stats.radius[0], mover.stats.radius[1]],
+                mover.position(),
             );
             let map = c.w.spatial.map;
-            let (walk, action) = c.walk_with(Some(&mut *mover), me, Stream::Action);
+            let (walk, action) = c.walk_with(&mut self.body, me, Stream::Action);
             let sky = crate::movement::fly::Sky {
                 speed,
-                position: me.position,
+                position,
                 radius,
                 map,
                 action,
             };
             let step = fly.update(walk, sky)?;
-            if step.stopped {
+            if step.stopped
+                && let Some(mover) = self.body.mover_mut()
+            {
                 mover.stop()?;
             }
             // a failed flight's MoveTo posts its failure (notify 0x1f9, the move action value)

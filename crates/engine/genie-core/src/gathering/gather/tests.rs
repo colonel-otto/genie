@@ -256,7 +256,7 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
 #[test]
 fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
     let run = |computer: bool| {
-        let mut mover = crate::gathering::hunt::tests::walker();
+        let mover = crate::gathering::hunt::tests::walker();
         let mut g = GatherAction {
             state: MOVED,
             target: -1,
@@ -265,11 +265,11 @@ fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
             ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
         };
         let mut world = crate::map::spatial::Spatial::default();
+        let mut mover = crate::objects::layers::Body::new([30.0, 40.0, 0.0], None, Some(mover));
         let walk = Walk {
-            mover: Some(&mut mover),
+            body: &mut mover,
             me: crate::movement::Me {
                 id: 1,
-                position: [30.0, 40.0, 0.0],
                 group: -1,
                 action_state: MOVED,
             },
@@ -314,13 +314,13 @@ fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
 fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
     // the 4v4's forager 31237 at update 10820: its bush went while it walked there
     let run = |master: i16, g: &mut GatherAction, dt: f32| {
-        let mut mover = crate::gathering::hunt::tests::walker();
+        let mover = crate::gathering::hunt::tests::walker();
         let mut world = crate::map::spatial::Spatial::default();
+        let mut mover = crate::objects::layers::Body::new([30.0, 40.0, 0.0], None, Some(mover));
         let walk = Walk {
-            mover: Some(&mut mover),
+            body: &mut mover,
             me: crate::movement::Me {
                 id: 1,
-                position: [30.0, 40.0, 0.0],
                 group: -1,
                 action_state: g.state,
             },
@@ -387,13 +387,13 @@ fn farm_update(
     dt: f32,
     computer: bool,
 ) -> Result<Next, GenieError> {
-    let mut mover = crate::gathering::hunt::tests::walker();
+    let mover = crate::gathering::hunt::tests::walker();
     let mut world = crate::map::spatial::Spatial::default();
+    let mut mover = crate::objects::layers::Body::new([30.0, 40.0, 0.0], None, Some(mover));
     let walk = Walk {
-        mover: Some(&mut mover),
+        body: &mut mover,
         me: crate::movement::Me {
             id: 1,
-            position: [30.0, 40.0, 0.0],
             group: -1,
             action_state: g.state,
         },
@@ -448,11 +448,11 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
     mover.angle = 0.0;
     let before = mover.angle;
     let mut world = crate::map::spatial::Spatial::default();
+    let mut mover = crate::objects::layers::Body::new([30.0, 40.0, 0.0], None, Some(mover));
     let walk = Walk {
-        mover: Some(&mut mover),
+        body: &mut mover,
         me: crate::movement::Me {
             id: 1,
-            position: [30.0, 40.0, 0.0],
             group: -1,
             action_state: FACE,
         },
@@ -496,7 +496,7 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
         Ok(Next::Stay)
     );
     assert_eq!(g.state, FACE);
-    assert_ne!(mover.angle, before);
+    assert_ne!(mover.mover().unwrap().angle, before);
 }
 
 /// What a gatherer's update borrows besides the action: the walk of
@@ -629,16 +629,16 @@ fn a_gatherer_walks_to_its_drop_site_and_starts_again_when_it_moved() {
         })
     };
     let mut rig = Rig::on_the_path();
-    rig.walker.mover.paths.clear();
+    rig.walker.mover_mut().paths.clear();
     let mut g = dropping(MoveTo::Start);
     assert_eq!(drop(&mut g, &mut rig), Ok(Dropped::Going));
     assert_eq!(g.move_to, Some(MoveTo::Moving));
-    assert_eq!(rig.walker.mover.paths.len(), 2);
+    assert_eq!(rig.walker.mover_mut().paths.len(), 2);
     let mut rig = Rig::on_the_path();
     let mut g = dropping(MoveTo::Moving);
     assert_eq!(drop(&mut g, &mut rig), Ok(Dropped::Going));
     assert_eq!(g.move_to, Some(MoveTo::Moving));
-    rig.walker.mover.move_to_point = Some([35.0, 88.0, 0.0]);
+    rig.walker.mover_mut().move_to_point = Some([35.0, 88.0, 0.0]);
     assert_eq!(drop(&mut g, &mut rig), Ok(Dropped::Going));
     assert_eq!(g.move_to, Some(MoveTo::Start));
 }
@@ -670,16 +670,16 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
         })
     };
     let mut rig = Rig::on_the_path();
-    rig.walker.mover.paths.clear();
+    rig.walker.mover_mut().paths.clear();
     let mut g = walking(Some(MoveTo::Start));
     assert_eq!(walk(&mut g, &mut rig, 0), Ok(Next::Stay));
     assert_eq!((g.state, g.move_to), (WALK, Some(MoveTo::Moving)));
-    assert_eq!(rig.walker.mover.paths.len(), 2);
+    assert_eq!(rig.walker.mover_mut().paths.len(), 2);
     let mut rig = Rig::on_the_path();
     let mut g = walking(Some(MoveTo::Moving));
     assert_eq!(walk(&mut g, &mut rig, 0), Ok(Next::Stay));
     assert_eq!(g.move_to, Some(MoveTo::Moving));
-    rig.walker.mover.move_to_point = Some([35.0, 88.0, 0.0]);
+    rig.walker.mover_mut().move_to_point = Some([35.0, 88.0, 0.0]);
     assert_eq!(walk(&mut g, &mut rig, 0), Ok(Next::Stay));
     assert_eq!(g.move_to, Some(MoveTo::Start));
     let mut g = walking(Some(MoveTo::Waiting));
@@ -716,7 +716,7 @@ fn a_gatherer_facing_its_target_works_it() {
         flags: 0,
     };
     let mut rig = Rig::on_the_path();
-    rig.walker.mover.stats.turn_time = 0.0;
+    rig.walker.mover_mut().stats.turn_time = 0.0;
     rig.load = (2, 4.0);
     let mut g = GatherAction {
         state: FACE,

@@ -110,11 +110,8 @@ impl RepairAction {
         let t = view.target.ok_or(GenieError::unreachable(
             "a Repair facing its target without one",
         ))?;
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
-        let mover = walk.mover.as_deref_mut().ok_or(GenieError::unreachable(
+        let at = walk.position();
+        let mover = walk.body.mover_mut().ok_or(GenieError::unreachable(
             "a repairer without movement state (an action object always has one)",
         ))?;
         if crate::combat::attack::face_target(mover, at, t.position, view.now)? {
@@ -225,10 +222,7 @@ impl RepairAction {
         } else {
             0.0
         };
-        let at = walk
-            .world
-            .get(walk.me.id)
-            .map_or(walk.me.position, |p| p.position);
+        let at = walk.position();
         footprint_gap(at, view.radius, t.position, t.radius) - margin
     }
 
@@ -308,7 +302,7 @@ impl RepairAction {
             self.counted = false;
         }
         if self.move_to.take().is_some()
-            && let Some(m) = walk.mover.as_deref_mut()
+            && let Some(m) = walk.body.mover_mut()
         {
             m.stop()?;
         }

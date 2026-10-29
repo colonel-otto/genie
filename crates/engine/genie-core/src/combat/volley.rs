@@ -144,7 +144,7 @@ impl Unit {
             // its amount, +0x310, doubled)
             let (trebuchet, [x_spread, y_spread, _]) = (master.class == 54, master.volley_spread);
             if 0 < aimed.player {
-                c.w.make_flare(aimed.player, self.position, trebuchet)?;
+                c.w.make_flare(aimed.player, self.position(), trebuchet)?;
             }
             for _ in 0..extra {
                 let object = c.w.streams.get(Stream::Object);
@@ -197,7 +197,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a ranged unit that does not move"))?;
         let shot = Shot {
             made: master.missile,
-            at: crate::combat::missile::spawn_point(self.position, facing, master.weapon_offset),
+            at: crate::combat::missile::spawn_point(self.position(), facing, master.weapon_offset),
             point: aimed.position,
             reach: crate::combat::missile::reach(master.radius, master.weapon_range),
             shooter: true,
@@ -255,7 +255,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a ranged unit that does not move"))?;
         let building = master.class == crate::garrison::BUILDING_CLASS;
         let at = crate::combat::missile::volley_spawn_point(
-            self.position,
+            self.position(),
             facing,
             master.weapon_offset,
             master.volley_spread[2],
@@ -462,7 +462,7 @@ impl Unit {
             result: 0,
             origin: if shot.shooter {
                 crate::combat::missile::Origin {
-                    position: self.position,
+                    position: self.position(),
                     radius: made.radius,
                     master: i32::from(self.life.master_id),
                     owner: c.player as i32,
@@ -491,7 +491,6 @@ impl Unit {
         let remains = made.death_spawns[1];
         let missile = Self {
             id,
-            position,
             life: Lifecycle {
                 class: Class::Animated,
                 state: 2,
@@ -507,7 +506,7 @@ impl Unit {
                 master_id: made.id,
                 master: made.life,
             },
-            body: crate::objects::layers::Body::new(None, Some(mover)),
+            body: crate::objects::layers::Body::new(position, None, Some(mover)),
             missile: Some(crate::combat::missile::Missile {
                 max_range: shot.reach,
                 fired_from: self.id,

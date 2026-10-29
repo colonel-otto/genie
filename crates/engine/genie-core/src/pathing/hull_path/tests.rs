@@ -185,12 +185,11 @@ fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
     w.insert(9171, placed(2.0, 5.5, 0.2, 5));
     w.insert(48, placed(5.5, 5.5, 0.5, 2));
     w.insert(9149, placed(10.5, 5.5, 0.5, 2));
-    let mut mover = crate::gathering::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker().placed([2.0, 5.5, 0.0]);
     mover.stats.radius = [0.2, 0.2, 0.2];
     mover.stats.restriction_mask = 6;
     let me = crate::movement::Me {
         id: 9171,
-        position: [2.0, 5.5, 0.0],
         action_state: 0,
         group: -1,
     };

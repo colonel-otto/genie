@@ -123,7 +123,7 @@ impl World {
                 if self.master_of(0, u.life.master_id)?.class != class {
                     continue;
                 }
-                let (dx, dy) = (x - u.position[0], y - u.position[1]);
+                let (dx, dy) = (x - u.position()[0], y - u.position()[1]);
                 let d = dy * dy + dx * dx;
                 if best.is_none_or(|(_, b)| d < b) {
                     best = Some((u, d));
@@ -137,7 +137,7 @@ impl World {
                 let g = d.abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
             };
-            let (gx, gy) = (gap(x - u.position[0], rx), gap(y - u.position[1], ry));
+            let (gx, gy) = (gap(x - u.position()[0], rx), gap(y - u.position()[1], ry));
             Ok((gy * gy + gx * gx <= los * los).then_some(u.id))
         };
         if let Some(id) = closest(&gaia.objects)? {

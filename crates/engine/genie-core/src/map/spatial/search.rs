@@ -87,8 +87,11 @@ impl Spatial {
         }))
     }
 
-    /// The object's new place (`new_position`, `0x1411a58b0`): its tile's counts and, on a new
-    /// tile, its sight follow.
+    /// The index's part of the object's new place (`new_position`, `0x1411a58b0`): its record's
+    /// place, its tile's counts and, on a new tile, its sight follow. The engine calls it only
+    /// through the object's place setter ([`crate::objects::layers::Static::new_position`]),
+    /// which moves the object with it (FD-045-D15); a tool that asks a query from another place
+    /// moves the index alone.
     pub fn set_position(&mut self, id: i32, position: [f32; 3]) {
         if let Some(p) = self.objects.get_mut(&id) {
             let from = p.position;

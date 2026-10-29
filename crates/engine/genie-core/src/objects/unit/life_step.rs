@@ -152,7 +152,7 @@ impl Unit {
                 c.w.masters
                     .get(c.player)
                     .and_then(|m| m.get(self.life.master_id));
-            forget_resource(&mut c.w.spatial, master, self.id, self.position);
+            forget_resource(&mut c.w.spatial, master, self.id, self.position());
         }
     }
 
@@ -174,7 +174,7 @@ impl Unit {
                 .body
                 .mover()
                 .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
-            let (p, remains, at) = (c.player, self.life.remains, self.position);
+            let (p, remains, at) = (c.player, self.life.remains, self.position());
             c.lend(self, |w| w.remains(p, remains, at, facet))?;
         }
         Ok(())
@@ -197,7 +197,7 @@ impl Unit {
             .body
             .mover()
             .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
-        let (p, at) = (c.player, self.position);
+        let (p, at) = (c.player, self.position());
         c.lend(self, |w| w.remains(p, spawn, at, facet))
     }
 }

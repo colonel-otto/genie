@@ -174,12 +174,13 @@ impl World {
                 id,
                 unit,
                 // the game's vector (x, height, y) of where it last moved to (x, y, height)
-                at: u
-                    .body
-                    .mover()
-                    .map_or([u.position[0], u.position[2], u.position[1]], |m| {
-                        [m.moved_at[0], m.moved_at[2], m.moved_at[1]]
-                    }),
+                at: u.body.mover().map_or_else(
+                    || {
+                        let [x, y, h] = u.position();
+                        [x, h, y]
+                    },
+                    |m| [m.moved_at[0], m.moved_at[2], m.moved_at[1]],
+                ),
                 speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
                 range: weapon_range(master),
                 under_attack: u.under_attack,
@@ -427,7 +428,7 @@ impl World {
             false,
         )?;
         let search = crate::unit_ai::Search {
-            at: [u.position[0], u.position[1]],
+            at: [u.position()[0], u.position()[1]],
             radius,
             classes,
             size: master.radius,
@@ -719,7 +720,7 @@ mod tests {
         let unit = |id: i32, master: i16, x: f32, y: f32| {
             let mut u = Unit {
                 id,
-                position: [x, y, 0.0],
+                body: crate::objects::layers::Body::at([x, y, 0.0]),
                 ..Unit::default()
             };
             u.life.master_id = master;
@@ -850,7 +851,7 @@ mod tests {
             let mut t = searched_world();
             let mut far = t.players[2].objects[0].clone();
             far.id = 22;
-            far.position = [13.0, 5.0, 0.0];
+            far.place_for_test([13.0, 5.0, 0.0]);
             t.players[2].objects.push(far);
             let sight = t.spatial.sight.as_mut().unwrap();
             sight
@@ -937,7 +938,7 @@ mod tests {
             }
             let mut stray = t.players[1].objects[0].clone();
             stray.id = 11;
-            stray.position = [6.0, 6.0, 0.0];
+            stray.place_for_test([6.0, 6.0, 0.0]);
             stray
                 .body
                 .put_mover(Some(crate::gathering::hunt::tests::walker()));

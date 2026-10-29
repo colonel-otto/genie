@@ -425,7 +425,7 @@ mod tests {
         let unit = |id: i32, master: i16, x: f32| {
             let mut u = Unit {
                 id,
-                position: [x, 0.0, 0.0],
+                body: crate::objects::layers::Body::at([x, 0.0, 0.0]),
                 ..Unit::default()
             };
             u.life.master_id = master;

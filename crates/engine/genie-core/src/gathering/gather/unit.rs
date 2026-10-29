@@ -36,8 +36,8 @@ impl Unit {
                     .get(c.player)
                     .and_then(|m| Some((m, m.get(self.life.master_id)?)))
                     .ok_or(crate::world::OBJECT_MASTER)?;
-            let at = [self.position[0], self.position[1]];
-            let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position));
+            let at = [self.position()[0], self.position()[1]];
+            let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
             let found = crate::orders::nearest_table_site(
                 (&c.w.drop_sites, c.civ, &c.w.players[c.player].tracker),
                 (at, self.life.attribute_type, own.class),
@@ -92,7 +92,7 @@ impl Unit {
         } else {
             DropSearch::Empty
         };
-        let mut walk = c.walk(self.body.mover_mut(), me);
+        let mut walk = c.walk(&mut self.body, me);
         let build = self.actions.build_mut().expect("the caller's Build");
         let out = build.set_drop(&mut walk, None, search)?;
         if out.let_go != -1 {
@@ -243,7 +243,7 @@ impl Unit {
         let site = self.gather_site(c, carry_to, (position, radius))?;
         let attributes = c.w.players[c.player].attributes.len();
         let gather = self.actions.gather_mut().expect("the caller's gather");
-        let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.body.mover_mut(), me);
+        let (walk, sprite_rng, action_rng) = c.walk_sprites_action(&mut self.body, me);
         let mut work = view.gatherer(
             (&mut self.life.attribute_type, &mut self.life.amount),
             &mut self.sprite,
@@ -332,7 +332,7 @@ impl Unit {
             c.w.spatial
                 .get_known(gather.target)?
                 .ok_or(GenieError::unsupported("a gather's target without a place"))?;
-        let gap = footprint_gap(self.position, radius, t.position, t.radius);
+        let gap = footprint_gap(self.body.position(), radius, t.position, t.radius);
         let mover = self
             .body
             .mover_mut()
@@ -360,7 +360,7 @@ impl Unit {
         let mut victim = victim(c, gather.target);
         let old = (gather.target, gather.carry_to);
         let (next, posted, sold, anim_stopped) = {
-            let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.body.mover_mut(), me);
+            let (walk, sprite_rng, action_rng) = c.walk_sprites_action(&mut self.body, me);
             let mut work = view.gatherer(
                 (&mut self.life.attribute_type, &mut self.life.amount),
                 &mut self.sprite,

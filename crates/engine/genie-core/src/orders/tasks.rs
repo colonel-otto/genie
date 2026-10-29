@@ -29,7 +29,7 @@ impl World {
             self.standing_sprite(player, idx)?;
         }
         let (_, t) = self.object(target).ok_or(HUNT_TARGET_GONE)?;
-        let point = t.position;
+        let point = t.position();
         let task = self
             .find_work_task(player, idx, target, -1, true)?
             .ok_or(NO_HUNT_TASK)?;
@@ -107,10 +107,10 @@ impl World {
             "a Build's foundation the slice does not hold",
         ))?;
         let tm = self.master_of(tp, t.life.master_id)?;
-        let (t_at, t_radius, class) = (t.position, tm.radius, i32::from(tm.class));
+        let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
         let builder = self.master_of(player, unit.life.master_id)?;
-        let gap = crate::movement::footprint_gap(unit.position, builder.radius, t_at, t_radius);
+        let gap = crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius);
         let build_task = crate::construction::build::BuildTask {
             range: task.work_range,
             work_value: task.work_val1,
@@ -162,7 +162,7 @@ impl World {
         if crate::construction::repair::SHIPS.contains(&tm.class) {
             return Err(crate::construction::repair::SHIP_REPAIR);
         }
-        let (t_at, class) = (t.position, i32::from(tm.class));
+        let (t_at, class) = (t.position(), i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
         let range = self.master_of(player, unit.life.master_id)?.weapon_range;
         self.take(target, self.releaser(player, idx));
@@ -302,7 +302,7 @@ impl World {
         ))?;
         let tm = self.master_of(tp, t.life.master_id)?;
         let (t_at, class, ship) = (
-            t.position,
+            t.position(),
             i32::from(tm.class),
             crate::construction::repair::SHIPS.contains(&tm.class),
         );
@@ -392,7 +392,7 @@ impl World {
             ));
         }
         let tm = self.master_of(tp, t.life.master_id)?;
-        let (t_at, t_radius, class) = (t.position, tm.radius, i32::from(tm.class));
+        let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
         let old = unit
             .actions
@@ -402,7 +402,7 @@ impl World {
                 "a Build's retarget without its Build",
             ))?;
         let builder = self.master_of(player, unit.life.master_id)?;
-        let gap = crate::movement::footprint_gap(unit.position, builder.radius, t_at, t_radius);
+        let gap = crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius);
         if old.target != target {
             // the task finder took the new target below state 3, which slot 0x68 keeps
             let _ = self.build_set_target(player, idx, (old.target, old.added), target)?;

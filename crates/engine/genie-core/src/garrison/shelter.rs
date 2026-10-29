@@ -359,7 +359,7 @@ impl World {
             }
             self.ai_takes(bp, b, p, u.life.master_id)
         };
-        let (point, owner, master) = (b.position, bp, b.life.master_id);
+        let (point, owner, master) = (b.position(), bp, b.life.master_id);
         let mut kept = Vec::with_capacity(going.len());
         for &id in going {
             if self.object(id).is_some() && keeps(id)? {

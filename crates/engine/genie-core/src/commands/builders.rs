@@ -191,7 +191,7 @@ impl World {
         let builder = masters
             .get(with)
             .expect("work_master returns a master the player has");
-        let gap = footprint_gap(unit.position, builder.radius, position, site.radius);
+        let gap = footprint_gap(unit.position(), builder.radius, position, site.radius);
         let task = BuildTask {
             range: task.work_range,
             work_value: task.work_val1,
@@ -341,7 +341,7 @@ impl World {
         }
         let gone = FOUNDATION_GONE;
         let (fp, f) = self.object(foundation).ok_or_else(|| gone.clone())?;
-        let (site, f_at) = (self.master_of(fp, f.life.master_id)?, f.position);
+        let (site, f_at) = (self.master_of(fp, f.life.master_id)?, f.position());
         let find = |id: i32| self.object(id);
         let t =
             task_target_with(foundation, 1, &find, &self.masters)?.ok_or_else(|| gone.clone())?;
@@ -378,7 +378,7 @@ impl World {
             return Ok(false);
         };
         let builder = switch.unwrap_or(actor.master);
-        let gap = footprint_gap(unit.position, builder.radius, f_at, site.radius);
+        let gap = footprint_gap(unit.position(), builder.radius, f_at, site.radius);
         let build = BuildAction::start(
             foundation,
             f_at,
