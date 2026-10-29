@@ -3,15 +3,19 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::gathering::gather::update::UNMOVING;
 use crate::gathering::gather::{
-    DONE, FARM_CLASS, FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, Gatherer, IDLE,
+    DONE, FARM_CLASS, FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, IDLE,
     NO_GATHER_POINT, Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,
 };
 use crate::math::rng::Well512;
-use crate::movement::move_to::{MoveTo, MoveWait, Walk};
-use crate::movement::{MoveStats, Mover};
+use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::{Me, Mover};
+use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
+use crate::objects::unit::Unit;
+use crate::world::step::Step;
 
 /// Whether a gatherer of `master` whose Gather has the target class `target_type` waits for
 /// another farm where another would search (`set_state(0xf3)`, `0x140a8e1d0`): the farmers'
@@ -96,13 +100,15 @@ impl GatherAction {
     /// [`GatherAction::begin_search`]).
     pub(super) fn update_walk_back(
         &mut self,
-        mut walk: Walk<'_>,
-        g: &mut Gatherer<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        r: &GatherReads,
     ) -> Result<Next, GenieError> {
         match self.move_to {
-            Some(MoveTo::Arrived | MoveTo::Failed) => self.begin_search(walk.body.mover_mut(), g),
+            Some(MoveTo::Arrived | MoveTo::Failed) => self.begin_search(c, unit, r),
             Some(_) => {
-                self.step_move(walk.reborrow(), g)?;
+                self.step_move(c, unit, me, r)?;
                 Ok(Next::Stay)
             }
             None => Err(GenieError::unsupported(
@@ -115,16 +121,14 @@ impl GatherAction {
     /// ([`GatherAction::begin_search`], the same notify) with a timer of a second.
     pub(super) fn begin_farm_wait(
         &mut self,
-        mover: Option<&mut Mover>,
-        g: &mut Gatherer<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        let mut mover = mover;
-        self.tear_down(mover.as_deref_mut())?;
+        self.tear_down(unit.body.mover_mut())?;
         self.state = FARM_WAIT;
         self.timer = FARM_WAIT_TIME;
-        if let Some(s) = self.stand_sprite(g) {
-            new_sprite(g.sprite, mover.map(|m| &mut m.stats), s, g.sprite_rng);
-        }
+        Self::show(c, unit, self.stand_sprite(unit, r));
         Ok(Next::Search)
     }
 
@@ -137,15 +141,15 @@ impl GatherAction {
     /// more does nothing.
     pub(super) fn update_farm_wait(
         &mut self,
-        walk: Walk<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
         target: Option<&Victim>,
-        g: &mut Gatherer<'_>,
-        dt: f32,
+        r: &GatherReads,
     ) -> Result<Next, GenieError> {
         if 0.0 <= self.timer {
             return Ok(Next::Stay);
         }
-        self.timer += dt;
+        self.timer += seconds(c.dt);
         if self.timer < 0.0 {
             return Ok(Next::Stay);
         }
@@ -158,22 +162,16 @@ impl GatherAction {
         });
         if !self.worked {
             if self.target_type == i32::from(FARM_CLASS) && target.is_some_and(|t| 1 < t.workers) {
-                let mover = walk
-                    .body
-                    .mover_mut()
-                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
+                let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 self.set_walk_back(radius, mover)?;
                 self.target = -1;
                 return Ok(Next::Stay);
             }
-            self.tear_down(walk.body.mover_mut())?;
-            self.set_idle(walk.body.move_stats_mut(), g);
+            self.tear_down(unit.body.mover_mut())?;
+            self.set_idle(c, unit, r);
             return Ok(Next::Stay);
         }
-        let mover = walk
-            .body
-            .mover_mut()
-            .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
+        let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
         self.begin_reseed_walk(radius, mover)?;
         Ok(Next::Stay)
     }
@@ -185,28 +183,27 @@ impl GatherAction {
     /// answers none of the codes: nothing happens.
     pub(super) fn update_reseed_walk(
         &mut self,
-        walk: Walk<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
         target: Option<&Victim>,
-        g: &mut Gatherer<'_>,
+        r: &GatherReads,
     ) -> Result<Next, GenieError> {
         match self.move_to {
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
                 self.walk_to = None;
-                walk.body
-                    .mover_mut()
-                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?
-                    .stop()?;
+                unit.body.mover_mut().ok_or(UNMOVING)?.stop()?;
                 if let Some(t) = target
                     && !(2 < t.state && t.state != 6)
                 {
-                    return self.set_face(t, walk.body.move_stats_mut(), g);
+                    return self.set_face(c, unit, t, r);
                 }
                 Ok(Next::Reseed { arrived: true })
             }
             Some(MoveTo::Failed) => Ok(Next::Reseed { arrived: false }),
             Some(_) => {
-                self.step_move(walk, g)?;
+                self.step_move(c, unit, me, r)?;
                 Ok(Next::Stay)
             }
             None => Ok(Next::Stay),
@@ -254,38 +251,36 @@ impl GatherAction {
     /// unit stands ([`GatherAction::stand_sprite`]).
     pub(super) fn begin_search(
         &mut self,
-        mover: Option<&mut Mover>,
-        g: &mut Gatherer<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        let mut mover = mover;
-        self.tear_down(mover.as_deref_mut())?;
+        self.tear_down(unit.body.mover_mut())?;
         self.state = SEARCH;
         self.timer = SEARCH_WAIT;
-        if let Some(s) = self.stand_sprite(g) {
-            new_sprite(g.sprite, mover.map(|m| &mut m.stats), s, g.sprite_rng);
-        }
+        Self::show(c, unit, self.stand_sprite(unit, r));
         Ok(Next::Search)
     }
 
     /// `set_state(1)` (case 1): the timer clears and the unit stands.
-    pub(super) fn set_done(&mut self, stats: Option<&mut MoveStats>, g: &mut Gatherer<'_>) {
+    pub(super) fn set_done(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &GatherReads) {
         self.state = DONE;
         self.timer = 0.0;
-        if let Some(s) = self.stand_sprite(g) {
-            new_sprite(g.sprite, stats, s, g.sprite_rng);
-        }
+        Self::show(c, unit, self.stand_sprite(unit, r));
     }
 
     /// The sprite the gatherer stands with (`FUN_140a8b6b0`): the task's carrying sprite while
     /// it carries at least 1 of the task's resource, else its master's standing sprite.
     pub(super) const fn stand_sprite(
         &self,
-        g: &Gatherer<'_>,
+        unit: &Unit,
+        r: &GatherReads,
     ) -> Option<crate::objects::sprite::Graphic> {
-        let r = self.task.resource;
-        match g.sprites.carrying {
-            Some(c) if r != -1 && *g.held_kind == r && 1 <= *g.held as i32 => Some(c),
-            _ => g.sprites.standing,
+        let resource = self.task.resource;
+        let (kind, held) = (unit.life.attribute_type, unit.life.amount);
+        match r.sprites.carrying {
+            Some(c) if resource != -1 && kind == resource && 1 <= held as i32 => Some(c),
+            _ => r.sprites.standing,
         }
     }
 
@@ -294,27 +289,26 @@ impl GatherAction {
     /// (`set_state(2)`); a failed walk (code 3) idles both.
     pub(super) fn update_moved(
         &mut self,
-        walk: Walk<'_>,
-        g: &mut Gatherer<'_>,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        r: &GatherReads,
     ) -> Result<Next, GenieError> {
         match self.move_to {
             Some(MoveTo::Arrived | MoveTo::Failed) => {
                 let arrived = self.move_to == Some(MoveTo::Arrived);
                 self.move_to = None;
                 self.walk_to = None;
-                walk.body
-                    .mover_mut()
-                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?
-                    .stop()?;
-                if arrived && g.computer {
-                    self.set_done(walk.body.move_stats_mut(), g);
+                unit.body.mover_mut().ok_or(UNMOVING)?.stop()?;
+                if arrived && r.computer {
+                    self.set_done(c, unit, r);
                 } else {
-                    self.set_idle(walk.body.move_stats_mut(), g);
+                    self.set_idle(c, unit, r);
                 }
                 Ok(Next::Stay)
             }
             Some(_) => {
-                self.step_move(walk, g)?;
+                self.step_move(c, unit, me, r)?;
                 Ok(Next::Stay)
             }
             None => Err(GenieError::unsupported(

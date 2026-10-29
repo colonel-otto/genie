@@ -15,9 +15,7 @@
 //! walk or a drop-off out of reach (the Action stream's `"update"` draws) are in `work.rs`.
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
-use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait};
-use crate::objects::sprite::ActiveSprite;
 use genie_diff::Diff;
 
 mod point_walks;
@@ -35,8 +33,6 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 #[cfg(test)]
 use crate::gathering::hunt::Dropped;
-#[cfg(test)]
-use crate::movement::move_to::Walk;
 
 /// The Gather action's type, which word 9 adds.
 pub const GATHER: i16 = 5;
@@ -155,7 +151,7 @@ pub struct GatherAction {
     /// `+0x84`, `+0x88`: `mFarmX`, `mFarmY`, a farm's place.
     pub farm: [f32; 2],
     /// `+0x8c`, `+0x90`: `mGatherX`, `mGatherY`, where the gathering started (−1 while the
-    /// game's farm setting holds them, [`Gatherer::farm_stops`]).
+    /// game's farm setting holds them, [`GatherReads::farm_stops`]).
     pub gather_at: [f32; 2],
     /// The sub-action of states 4 and 8: a `MoveTo` to the target or the drop site within the
     /// task's range, quiet (its `+0x60` and `+0x61` set).
@@ -198,55 +194,35 @@ pub struct Resource {
     pub radius: [f32; 2],
 }
 
-/// What the gathering reads of its unit and changes.
-#[derive(Debug)]
-pub struct Gatherer<'a> {
-    /// `+0x308`: the resource the unit carries.
-    pub held_kind: &'a mut i16,
-    /// `+0x310`: how much.
-    pub held: &'a mut f32,
+/// What the Gather's update reads of the gatherer and its player as it starts.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GatherReads {
     /// The master's work rate (`+0x798`) plus the unit's powerup (slot 0x6e8, `+0xa30`).
-    pub work_rate: f32,
+    pub(crate) work_rate: f32,
     /// The master's `attribute_max_amount` (`+0x61c`): what the unit carries at most.
-    pub capacity: f32,
+    pub(crate) capacity: f32,
     /// The player's attribute the task's `attribute_type2` names, when above 0; else 1.
-    pub productivity: f32,
+    pub(crate) productivity: f32,
     /// The sprites the gather shows.
-    pub sprites: HuntSprites,
-    /// The unit's sprite.
-    pub sprite: &'a mut Option<ActiveSprite>,
-    /// The Sprite stream.
-    pub sprite_rng: &'a mut Well512,
+    pub(crate) sprites: HuntSprites,
     /// The unit's master's class: a villager's `MoveTo` waits once when the motion step gives up.
-    pub class: i16,
+    pub(crate) class: i16,
     /// The unit's master: a farmer's gather without a target waits for another farm
     /// (`set_state(0xf3)`, [`FARM_WAITERS`]).
-    pub master: i16,
+    pub(crate) master: i16,
     /// The unit AI's stance (`+0x1a9`), 0 without a unit AI.
-    pub stance: u8,
-    /// The world's time.
-    pub world_time: u32,
+    pub(crate) stance: u8,
     /// The game's setting at `FUN_140c87b90()`'s `+0x69` (farmers walk their farm's stops); with
     /// it `set_state(7)` leaves `mGatherX`, `mGatherY` as they are.
-    pub farm_stops: bool,
-    /// The notifies the walk posts to the unit AI (the units in its way).
-    pub posted: Vec<(i32, [i32; 3])>,
-    /// The Action stream, which a farm stop's point draws from.
-    pub action_rng: &'a mut Well512,
-    /// The gatherer's player.
-    pub player: usize,
-    /// That player is a computer (`FUN_141659cf0`): its moved gatherer is done at the point.
-    pub computer: bool,
+    pub(crate) farm_stops: bool,
+    /// The gatherer's player is a computer (`FUN_141659cf0`): its moved gatherer is done at the
+    /// point.
+    pub(crate) computer: bool,
     /// The player's attribute the task's `attribute_type2` names (none: 1.0), as the time per
     /// stop reads it.
-    pub stop_productivity: f32,
+    pub(crate) stop_productivity: f32,
     /// The player's attribute 96: a farm's food is sold at once.
-    pub food_sold: f32,
-    /// The food the gathering sold at once, which the caller gives to the player (slot 0xf8 with
-    /// 1, [`crate::world`]'s `give_load`).
-    pub sold: f32,
-    /// Out: the unit's animation stops (`FUN_141161850`: its `+0x7b8` 0).
-    pub anim_stopped: bool,
+    pub(crate) food_sold: f32,
 }
 
 /// What an update asks of the caller.

@@ -3,9 +3,8 @@
 use crate::GenieError;
 use crate::combat::victims::{readable, victim, write_back};
 use crate::gathering::hunt::HuntSprites;
-use crate::math::rng::{Stream, Well512};
+use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
-use crate::objects::lifecycle::seconds;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
@@ -15,6 +14,9 @@ use crate::unit_ai::task_finder::world::state_of;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
+
+/// The Gather's update, or what follows it, without the Gather its caller found.
+const NO_GATHER: GenieError = GenieError::unreachable("a Gather's update without its Gather");
 
 impl Unit {
     /// The Gather's update (slot 6, `0x140a8e1d0`). It first checks its targets: a target gone
@@ -33,20 +35,26 @@ impl Unit {
     ) -> Result<HeadCode, GenieError> {
         let by = self.releaser(c);
         self.gather_check_targets(c, by)?;
-        let view = self.gather_view(c)?;
-        if self.actions.gather().expect("the caller's gather").state
-            == crate::gathering::gather::DROP
-        {
-            return self.gather_drop_update(c, me, view, by);
+        let gather = *self.actions.gather().ok_or(NO_GATHER)?;
+        let reads = self.gather_reads(c, &gather)?;
+        if gather.state == crate::gathering::gather::DROP {
+            return self.gather_drop_update(c, me, gather, &reads, by);
         }
-        self.gather_work_update(c, me, view, by)
+        self.gather_work_update(c, me, gather, &reads, by)
+    }
+
+    /// The Gather's copy `gather` back in the action list, as its update left it.
+    fn put_gather(&mut self, gather: crate::gathering::gather::GatherAction) {
+        if let Some(g) = self.actions.gather_mut() {
+            *g = gather;
+        }
     }
 
     /// The Gather's update's check of its targets: a target the world does not hold goes, one
     /// past state 6 is let go and goes (one the slice holds but cannot read is not modelled); a
     /// second target ([`second_target_checked`]) alike.
     fn gather_check_targets(&mut self, c: &mut Step<'_>, by: Releaser) -> Result<(), GenieError> {
-        let gather = self.actions.gather_mut().expect("the caller's gather");
+        let gather = self.actions.gather_mut().ok_or(NO_GATHER)?;
         if gather.target != -1 {
             let state = readable(c, gather.target).map(|(_, u, _)| u.life.state);
             let gone = match state {
@@ -79,21 +87,30 @@ impl Unit {
         Ok(())
     }
 
-    /// What the Gather's update reads of the gatherer and its player ([`GatherView`]): the
-    /// task's sprites and the master's standing one, the master's work rate (`+0x798`) plus the
-    /// powerup (slot 0x6e8), its capacity and class, the task's productivity (1 for none or not
-    /// above 0), the stance, and the player's farm settings.
-    fn gather_view(&self, c: &Step<'_>) -> Result<GatherView, GenieError> {
-        let gather = self.actions.gather().expect("the caller's gather");
+    /// What the Gather's update reads of the gatherer and its player as it starts
+    /// ([`crate::gathering::gather::GatherReads`]): the task's sprites and the master's standing
+    /// one, the master's work rate (`+0x798`) plus the powerup (slot 0x6e8), its capacity and
+    /// class, the task's productivity (1 for none or not above 0), the stance, and the player's
+    /// farm settings.
+    ///
+    /// # Errors
+    ///
+    /// A gatherer whose master the slice lacks.
+    fn gather_reads(
+        &self,
+        c: &Step<'_>,
+        gather: &crate::gathering::gather::GatherAction,
+    ) -> Result<crate::gathering::gather::GatherReads, GenieError> {
         let master = self.master(&c.w.masters, c.player)?;
         let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
         let task = gather.task;
-        Ok(GatherView {
+        let attributes = &c.w.players[c.player].attributes;
+        Ok(crate::gathering::gather::GatherReads {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
             productivity: usize::try_from(task.productivity)
                 .ok()
-                .and_then(|i| c.w.players[c.player].attributes.get(i))
+                .and_then(|i| attributes.get(i))
                 .copied()
                 .filter(|&v| 0.0 < v)
                 .unwrap_or(1.0),
@@ -104,17 +121,15 @@ impl Unit {
                 standing: g(master.standing_sprite),
             },
             class: master.class,
+            master: self.life.master_id,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
-            world_time: c.w.world_time,
             farm_stops: c.w.settings.walkable_farms,
-            player: c.player,
             computer: c.w.players[c.player].computer,
             stop_productivity: crate::gathering::gather::productivity_of(
                 task.productivity,
-                &c.w.players[c.player].attributes,
+                attributes,
             ),
-            food_sold: c.w.players[c.player]
-                .attributes
+            food_sold: attributes
                 .get(crate::gathering::gather::FARM_FOOD_SOLD)
                 .copied()
                 .unwrap_or(0.0),
@@ -129,7 +144,8 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         me: Me,
-        view: GatherView,
+        mut gather: crate::gathering::gather::GatherAction,
+        reads: &crate::gathering::gather::GatherReads,
         by: Releaser,
     ) -> Result<HeadCode, GenieError> {
         use crate::gathering::hunt::Dropped;
@@ -138,27 +154,11 @@ impl Unit {
                 .get_known(self.id)?
                 .map(|p| (p.position, p.radius))
                 .ok_or(GenieError::unsupported("a gatherer without a place"))?;
-        let carry_to = self.actions.gather().expect("the caller's gather").carry_to;
-        let site = self.gather_site(c, carry_to, (position, radius))?;
-        let attributes = c.w.players[c.player].attributes.len();
-        let gather = self.actions.gather_mut().expect("the caller's gather");
-        let (walk, sprite_rng, action_rng) = c.walk_sprites_action(&mut self.body, me);
-        let mut work = view.gatherer(
-            (&mut self.life.attribute_type, &mut self.life.amount),
-            &mut self.sprite,
-            self.life.master_id,
-            (sprite_rng, action_rng),
-        );
+        let site = self.gather_site(c, gather.carry_to, (position, radius))?;
         let before = [gather.target, gather.carry_to];
-        let dropped = gather.update_drop(walk, &mut work, attributes, site)?;
-        let (posted, anim_stopped) = (std::mem::take(&mut work.posted), work.anim_stopped);
-        for (kind, p) in posted {
-            self.post_own(kind, p)?;
-        }
-        if anim_stopped {
-            self.body.set_anim_speed(0.0);
-        }
-        match dropped {
+        let dropped = gather.update_drop(c, self, me, reads, site);
+        self.put_gather(gather);
+        match dropped? {
             Dropped::Going => Ok(HeadCode::Keeps),
             Dropped::Load(kind, amount) => self.gather_load_dropped(c, by, (kind, amount), radius),
             // set_state(8) again: the drop site kept or searched
@@ -217,7 +217,7 @@ impl Unit {
         radius: [f32; 2],
     ) -> Result<HeadCode, GenieError> {
         c.give_load(kind, amount)?;
-        let gather = self.actions.gather_mut().expect("the caller's gather");
+        let gather = self.actions.gather_mut().ok_or(NO_GATHER)?;
         if gather.target == -1 {
             return self.gather_after_drop(c);
         }
@@ -239,53 +239,27 @@ impl Unit {
     }
 
     /// The Gather's other states ([`crate::gathering::gather::GatherAction::update`]) on the
-    /// target the caller holds (back in the context after): what it posts goes to the unit AI, a
-    /// random wait stops the animation (`FUN_141161850`: its `+0x7b8` 0), a farm's food sold
-    /// goes to the player at once ([`give_load`], food), then what follows
+    /// target the caller holds, read as the update starts and written back after it where the
+    /// work ran (a kill it made filed: [`crate::combat::victims::file_kill`]); then what follows
     /// ([`Unit::gather_next`]).
     fn gather_work_update(
         &mut self,
         c: &mut Step<'_>,
         me: Me,
-        view: GatherView,
+        mut gather: crate::gathering::gather::GatherAction,
+        reads: &crate::gathering::gather::GatherReads,
         by: Releaser,
     ) -> Result<HeadCode, GenieError> {
-        let dt = seconds(c.dt);
-        let gather = self.actions.gather_mut().expect("the caller's gather");
         let mut victim = victim(c, gather.target);
         let old = (gather.target, gather.carry_to);
-        let (next, posted, sold, anim_stopped) = {
-            let (walk, sprite_rng, action_rng) = c.walk_sprites_action(&mut self.body, me);
-            let mut work = view.gatherer(
-                (&mut self.life.attribute_type, &mut self.life.amount),
-                &mut self.sprite,
-                self.life.master_id,
-                (sprite_rng, action_rng),
-            );
-            let target = victim.as_mut();
-            let next = gather.update(walk, target, &mut work, dt);
-            (
-                next,
-                std::mem::take(&mut work.posted),
-                work.sold,
-                work.anim_stopped,
-            )
-        };
+        let next = gather.update(c, self, me, victim.as_mut(), reads);
+        self.put_gather(gather);
         let next = next?;
         // what the work changed on its target, where it ran
         if let Some(v) = victim.as_mut()
             && let Some(k) = write_back(c, v)?
         {
             crate::combat::victims::file_kill(c, k)?;
-        }
-        for (kind, p) in posted {
-            self.post_own(kind, p)?;
-        }
-        if anim_stopped {
-            self.body.set_anim_speed(0.0);
-        }
-        if 0.0 < sold {
-            c.give_load(0, sold)?;
         }
         self.gather_next(c, next, old, by)
     }
@@ -334,7 +308,7 @@ impl Unit {
     /// [`Unit::drop_site_from`]), 0 when it finds none; −1 for a master without.
     pub(crate) fn gather_search(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player);
-        let gather = self.actions.gather().expect("the caller's gather");
+        let gather = self.actions.gather().ok_or(NO_GATHER)?;
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
         let master = self.master(&c.w.masters, c.player)?;
         let site = if carry_to != -1 {
@@ -393,58 +367,4 @@ pub(crate) fn give_load(
         _ => {}
     }
     Ok(())
-}
-
-/// What the Gather's update reads of the gatherer and its player besides its own state
-/// ([`crate::gathering::gather::Gatherer`] without its borrows).
-#[derive(Clone, Copy)]
-struct GatherView {
-    work_rate: f32,
-    capacity: f32,
-    productivity: f32,
-    sprites: HuntSprites,
-    class: i16,
-    stance: u8,
-    world_time: u32,
-    farm_stops: bool,
-    player: usize,
-    computer: bool,
-    stop_productivity: f32,
-    food_sold: f32,
-}
-
-impl GatherView {
-    /// The gatherer the Gather's update works with: the held resource, the sprite, the master
-    /// and the sprite and action streams.
-    const fn gatherer<'a>(
-        self,
-        (held_kind, held): (&'a mut i16, &'a mut f32),
-        sprite: &'a mut Option<crate::objects::sprite::ActiveSprite>,
-        master: i16,
-        (sprite_rng, action_rng): (&'a mut Well512, &'a mut Well512),
-    ) -> crate::gathering::gather::Gatherer<'a> {
-        crate::gathering::gather::Gatherer {
-            held_kind,
-            held,
-            work_rate: self.work_rate,
-            capacity: self.capacity,
-            productivity: self.productivity,
-            sprites: self.sprites,
-            sprite,
-            sprite_rng,
-            class: self.class,
-            master,
-            stance: self.stance,
-            world_time: self.world_time,
-            farm_stops: self.farm_stops,
-            posted: Vec::new(),
-            action_rng,
-            player: self.player,
-            computer: self.computer,
-            stop_productivity: self.stop_productivity,
-            food_sold: self.food_sold,
-            sold: 0.0,
-            anim_stopped: false,
-        }
-    }
 }

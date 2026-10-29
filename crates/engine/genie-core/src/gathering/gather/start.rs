@@ -3,15 +3,17 @@
 
 use crate::GenieError;
 use crate::gathering::gather::{
-    ARRIVED, DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_CLASS, FARM_STOPS, GatherAction, Gatherer,
+    ARRIVED, DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_CLASS, FARM_STOPS, GatherAction, GatherReads,
     IDLE, MOVED, Resource, SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, food,
 };
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Well512;
+use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, MoveWait};
-use crate::movement::{MoveStats, Mover};
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
+use crate::objects::unit::Unit;
+use crate::world::step::Step;
 
 /// What the constructor reads to time a farm's stops: the gatherer's work rate (its master's
 /// `+0x798` plus its powerup, slot 0x6e8), its capacity (`+0x61c`) and the player's attribute the
@@ -427,12 +429,10 @@ impl GatherAction {
     /// `set_state(2)` (case 2): the timer clears, the unit stands ([`GatherAction::stand_sprite`]),
     /// the target and the second target go (slot 0x68, `FUN_140a7a190` with none; the caller
     /// lets them go) and the point is −1.
-    pub(super) fn set_idle(&mut self, stats: Option<&mut MoveStats>, g: &mut Gatherer<'_>) {
+    pub(super) fn set_idle(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &GatherReads) {
         self.state = IDLE;
         self.timer = 0.0;
-        if let Some(s) = self.stand_sprite(g) {
-            new_sprite(g.sprite, stats, s, g.sprite_rng);
-        }
+        Self::show(c, unit, self.stand_sprite(unit, r));
         self.target = -1;
         self.carry_to = -1;
         self.point = [-1.0; 3];
