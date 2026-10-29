@@ -81,7 +81,6 @@ const fn construction(progress: f32, builders: u8, desolid: bool) -> Constructio
         record: Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: false,
     }
 }
 

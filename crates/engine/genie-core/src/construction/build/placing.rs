@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
-    HALTED, MAX_WAITS, PLACE, SITE_GONE, VILLAGER, WAIT, WALL, WONDER, WONDER_RATE, Worked,
+    HALTED, MAX_WAITS, PLACE, SITE_GONE, VILLAGER, WAIT, WALL, WONDER, WONDER_RATE,
     footprint_clearing,
 };
 use crate::movement::footprint_gap;
@@ -203,9 +203,8 @@ impl BuildAction {
         if 1.0 < n {
             rate *= ((n - 1.0) * EXTRA_BUILDER + 1.0) / n;
         }
-        match self.work_on(c, builder, reads, rate)? {
-            Worked::Going | Worked::Main { going: true, .. } => return Ok(()),
-            Worked::Main { .. } | Worked::Done | Worked::Completed(_) => {}
+        if self.work_on(c, builder, rate)? {
+            return Ok(());
         }
         // a finished foundation with hit points ends the work (its `+0x278`, decoded); one
         // without (deleted, it dies in its own update) leaves the Build as it is

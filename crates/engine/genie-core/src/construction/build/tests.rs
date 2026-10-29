@@ -1,4 +1,7 @@
 use super::*;
+use crate::objects::lifecycle::Lifecycle;
+use crate::objects::unit::Unit;
+use crate::world::{Player, World};
 use std::collections::BTreeMap;
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments), by
@@ -235,21 +238,14 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
         record: Obstruction { kind: 0, class: 0 },
         snow: false,
         sprite_override: false,
-        started: false,
     };
     let part = |bonus: [f32; 3], c: &Construction| {
         Completion {
             master: Some(&farm),
-            annexed: false,
-            attribute_204: false,
-            mode_680: 0,
             farm_bonus: bonus,
             masters: Some(&masters),
             computer: false,
             ai: false,
-            main: false,
-            now: 0,
-            rice: false,
         }
         .first_part(c)
     };
@@ -291,16 +287,10 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
     let searches = |ai: bool| {
         Completion {
             master: Some(&cart),
-            annexed: false,
-            attribute_204: false,
-            mode_680: 0,
             farm_bonus: [0.0; 3],
             masters: None,
             computer: false,
             ai,
-            main: false,
-            now: 0,
-            rice: false,
         }
         .first_part(&built)
         .unwrap()
@@ -447,7 +437,6 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
         record: Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: false,
     };
     let mut b = BuildAction {
         state: PLACE,
@@ -473,10 +462,95 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
     assert_eq!(c.builders, 1);
 }
 
+/// A world of player 1 holding the foundations `units` on `spatial`, `masters` its masters'
+/// table (and Gaia's): the work and the completion on the world.
+fn site_world(spatial: Spatial, masters: Vec<Master>, units: Vec<Unit>) -> World {
+    let ms = crate::objects::masters::Masters::new(masters);
+    let mut t = World::new(
+        0,
+        1,
+        0,
+        vec![0; 2],
+        vec![
+            Player::default(),
+            Player {
+                objects: units.into(),
+                attributes: vec![0.0; 600],
+                ..Player::default()
+            },
+        ],
+    );
+    t.spatial = spatial;
+    t.masters = vec![ms.clone(), ms];
+    t
+}
+
+/// The foundation `id` at `at` with its life cycle and construction.
+fn foundation_at(id: i32, at: [f32; 3], life: Lifecycle, construction: Construction) -> Unit {
+    Unit {
+        id,
+        body: crate::objects::layers::Body::at(at),
+        life,
+        construction: Some(construction),
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    }
+}
+
+/// A building master `id` of class 3 without a stack unit, a foundation terrain or a
+/// technology, costing `cost`.
+fn built_master(id: i16, cost: Vec<(i16, i16, bool)>) -> Master {
+    Master {
+        id,
+        kind: 80,
+        class: 3,
+        cost,
+        building: Some(crate::objects::masters::BuildingMaster {
+            adjacent_mode: 0,
+            disappears_when_built: false,
+            stack_unit: -1,
+            foundation_terrain: -1,
+            tech: -1,
+            garrison_type: 0,
+            garrison_heal_rate: 0.0,
+            garrison_repair_rate: 0.0,
+            annexes: [-1; 4],
+            annex_offsets: [[0.0; 2]; 4],
+            head_unit: -1,
+            transform_unit: -1,
+            destruction_sprite: -1,
+            construction_sprite: -1,
+        }),
+        ..Master::default()
+    }
+}
+
+/// A 4 by 4 map of buildable tiles with its terrain (terrain 0, no layer).
+fn small_map() -> Spatial {
+    use crate::map::spatial::Tiles;
+    use crate::map::terrain::{Terrain, TerrainKind};
+    let mut world = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+    let kind = TerrainKind {
+        shown: true,
+        flags: 0x20,
+        forest: false,
+    };
+    world.terrain = Some(Terrain::new(
+        4,
+        4,
+        vec![(0, 255, -1); 16],
+        vec![kind; 40],
+        vec![vec![0.0; 40]; 5],
+    ));
+    world
+}
+
 /// MarvinBlue/426048731's house 10026 in update 1115 (player 1): the work that reaches 25 s
-/// completes it: its build points hold the build time, its storage (population headroom, 4,
-/// of mode 4) and attributes 98 and 165 go to its owner, it stands in state 2 and its
-/// foundation (27) covers its snow with terrain 6 under layer 32.
+/// completes it on the world, each part at once: its build points hold the build time, its
+/// storage (population headroom, 4, of mode 4) and attributes 98 and 165 go to its owner, it
+/// stands in state 2 and its foundation (27) covers its snow with terrain 6 under layer 32.
+/// The work's answer: its construction no longer goes on.
 #[test]
 fn the_work_that_reaches_the_build_time_completes_the_building() {
     use crate::map::spatial::Tiles;
@@ -505,40 +579,21 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         kinds,
         vec![vec![0.0; 40]; 5],
     ));
-    let master = Master {
-        id: 70,
-        kind: 80,
-        class: 3,
-        clearance: [1.0, 1.0],
-        terrain_bonus: 4,
-        storage: vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)],
-        // a house's cost: 25 wood paid; the unpaid entry does not count
-        cost: vec![(1, 25, true), (4, 5, false)],
-        building: Some(crate::objects::masters::BuildingMaster {
-            adjacent_mode: 0,
-            disappears_when_built: false,
-            stack_unit: -1,
-            foundation_terrain: 27,
-            tech: -1,
-            garrison_type: 0,
-            garrison_heal_rate: 0.0,
-            garrison_repair_rate: 0.0,
-            annexes: [-1; 4],
-            annex_offsets: [[0.0; 2]; 4],
-            head_unit: -1,
-            transform_unit: -1,
-            destruction_sprite: -1,
-            construction_sprite: -1,
-        }),
-        ..Master::default()
-    };
-    let mut life = Lifecycle {
+    let mut master = built_master(70, vec![(1, 25, true), (4, 5, false)]);
+    // a house's cost: 25 wood paid; the unpaid entry does not count
+    master.clearance = [1.0, 1.0];
+    master.terrain_bonus = 4;
+    master.storage = vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)];
+    if let Some(b) = master.building.as_mut() {
+        b.foundation_terrain = 27;
+    }
+    let life = Lifecycle {
         state: 0,
         hp: 548.0,
         master_id: 70,
         ..Lifecycle::default()
     };
-    let mut c = Construction {
+    let c = Construction {
         progress: 24.99,
         desolid: false,
         builders: 2,
@@ -547,62 +602,33 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         record: Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: false,
     };
-    let mut site = Site {
-        id: 10026,
-        life: &mut life,
-        construction: &mut c,
-        mover: None,
-        firepower: None,
-        roo_called: None,
-        store: None,
-        completion: Completion {
-            master: Some(&master),
-            annexed: false,
-            attribute_204: false,
-            mode_680: 0,
-            farm_bonus: [0.0, -1.0, -1.0],
-            masters: None,
-            computer: false,
-            ai: false,
-            main: false,
-            now: 0,
-            rice: false,
-        },
-        chain: WorkChain::default(),
-    };
-    let worked = Construction::work(&mut site, 0.02, &mut world, &mut Pathing::default(), 0);
+    let house = foundation_at(10026, [2.0, 2.0, 0.0], life, c);
+    let mut t = site_world(world, vec![master], vec![house]);
+    assert_eq!(t.work_building(10026, 0.02), Ok(false));
+    let h = t.players[1].objects.by_id(10026).unwrap();
+    let c = h.construction.unwrap();
+    assert_eq!((h.life.state, c.progress, c.snow), (2, 25.0, true));
+    let a = &t.players[1].attributes;
+    assert_eq!((a[4], a[98], a[165]), (5.0, 25.0, 25.0));
+    let terrain = t.spatial.terrain.as_ref().unwrap();
     assert_eq!(
-        worked,
-        Ok(Worked::Completed(Built {
-            attributes: vec![(4, 5.0), (98, 25.0), (165, 25.0)],
-            history: None,
-            tech: None,
-            cart: None,
-            stack: None,
-            vanishes: false,
-            started: false,
-            pasture: false,
-        }))
+        (terrain.kinds[5], terrain.layers[5], terrain.kinds[0]),
+        (6, 32, 32)
     );
-    assert_eq!((life.state, c.progress, c.snow), (2, 25.0, true));
-    let t = world.terrain.as_ref().unwrap();
-    assert_eq!((t.kinds[5], t.layers[5], t.kinds[0]), (6, 32, 32));
 }
 
 /// `FUN_1411dbb70`'s tail (`0x1411dd094`..): the castle (82) and the wonder (276) record
-/// their building in their owner's history (events 6 and 4, [`Built::history`]), count in
-/// attributes 134 and 173, 42 and 174, and add their paid cost to 184 rather than to 98 and
-/// 165, an annex's too; the monastery (104) counts in 52 and adds its paid cost to 98 and
-/// 165 as other buildings do, but as an annex.
+/// their building in their owner's history (events 6 and 4), count in attributes 134 and 173,
+/// 42 and 174, and add their paid cost to 184 rather than to 98 and 165, an annex's too; the
+/// monastery (104) counts in 52 and adds its paid cost to 98 and 165 as other buildings do,
+/// but as an annex.
 #[test]
 fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
-    use crate::map::spatial::Tiles;
-    use crate::map::terrain::{Terrain, TerrainKind};
     use crate::players::history::{CASTLE_BUILT, WONDER_BUILT};
-    fn complete(id: i16, cost: Vec<(i16, i16, bool)>, main: bool) -> Built {
-        let mut world = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+    /// The attributes the completion of master `id` gave, by index, and its history events.
+    fn complete(id: i16, cost: Vec<(i16, i16, bool)>, main: bool) -> (Vec<(usize, f32)>, Vec<u8>) {
+        let mut world = small_map();
         world.insert(
             10026,
             crate::map::spatial::Placed {
@@ -611,48 +637,13 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
                 ..house()
             },
         );
-        let kind = TerrainKind {
-            shown: true,
-            flags: 0x20,
-            forest: false,
-        };
-        world.terrain = Some(Terrain::new(
-            4,
-            4,
-            vec![(0, 255, -1); 16],
-            vec![kind; 40],
-            vec![vec![0.0; 40]; 5],
-        ));
-        let master = Master {
-            id,
-            kind: 80,
-            class: 3,
-            cost,
-            building: Some(crate::objects::masters::BuildingMaster {
-                adjacent_mode: 0,
-                disappears_when_built: false,
-                stack_unit: -1,
-                foundation_terrain: -1,
-                tech: -1,
-                garrison_type: 0,
-                garrison_heal_rate: 0.0,
-                garrison_repair_rate: 0.0,
-                annexes: [-1; 4],
-                annex_offsets: [[0.0; 2]; 4],
-                head_unit: -1,
-                transform_unit: -1,
-                destruction_sprite: -1,
-                construction_sprite: -1,
-            }),
-            ..Master::default()
-        };
-        let mut life = Lifecycle {
+        let life = Lifecycle {
             state: 0,
             hp: 100.0,
             master_id: id,
             ..Lifecycle::default()
         };
-        let mut c = Construction {
+        let c = Construction {
             progress: 100.0,
             desolid: false,
             builders: 1,
@@ -661,82 +652,67 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
             record: Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: false,
         };
-        let mut site = Site {
-            id: 10026,
-            life: &mut life,
-            construction: &mut c,
-            mover: None,
-            firepower: None,
-            roo_called: None,
-            store: None,
-            completion: Completion {
-                master: Some(&master),
-                annexed: false,
-                attribute_204: false,
-                mode_680: 0,
-                farm_bonus: [0.0, -1.0, -1.0],
-                masters: None,
-                computer: false,
-                ai: false,
-                main,
-                now: 0,
-                rice: false,
-            },
-            chain: WorkChain::default(),
-        };
-        let built = Construction::complete(&mut site, &mut world, &mut Pathing::default());
-        assert_eq!(life.state, 2);
-        built.unwrap()
+        let mut h = foundation_at(10026, [2.0, 2.0, 0.0], life, c);
+        h.annex_of = main.then_some(10027);
+        let mut t = site_world(world, vec![built_master(id, cost)], vec![h]);
+        // a history records events from its first time slice on
+        t.players[1].history.add_entry(0, 3.0, 0.0);
+        t.complete_building(10026).unwrap();
+        assert_eq!(t.players[1].objects.by_id(10026).unwrap().life.state, 2);
+        let gained = t.players[1]
+            .attributes
+            .iter()
+            .enumerate()
+            .filter(|&(_, &v)| v != 0.0)
+            .map(|(k, &v)| (k, v))
+            .collect();
+        let events = t.players[1].history.events.iter().map(|e| e.kind).collect();
+        (gained, events)
     }
     let castle = || vec![(2, 650, true)];
     let wonder = || vec![(0, 1000, true), (1, 1000, true), (2, 1000, false)];
-    let built = |attributes, history| Built {
-        attributes,
-        history,
-        ..Built::default()
-    };
     for main in [false, true] {
         assert_eq!(
             complete(82, castle(), main),
-            built(
+            (
                 vec![(134, 1.0), (173, 1.0), (184, 650.0)],
-                Some(CASTLE_BUILT)
+                vec![CASTLE_BUILT]
             )
         );
         assert_eq!(
             complete(276, wonder(), main),
-            built(
+            (
                 vec![(42, 1.0), (174, 1.0), (184, 2000.0)],
-                Some(WONDER_BUILT)
+                vec![WONDER_BUILT]
             )
         );
     }
     assert_eq!(
         complete(104, vec![(1, 175, true)], false),
-        built(vec![(52, 1.0), (98, 175.0), (165, 175.0)], None)
+        (vec![(52, 1.0), (98, 175.0), (165, 175.0)], vec![])
     );
     assert_eq!(
         complete(104, vec![(1, 175, true)], true),
-        built(vec![(52, 1.0)], None)
+        (vec![(52, 1.0)], vec![])
     );
 }
 
 /// MarvinBlue/426048731's house 10028 in update 731: 9177's first work starts it (its record
 /// marks its tiles) and adds 0.021 s of work: 550 hit points over 25 s, so 1.462 hit points.
+/// Its construction goes on.
 #[test]
 fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
     world.insert(10028, house());
-    let mut life = Lifecycle {
+    let life = Lifecycle {
         state: 0,
         hp: 1.0,
         master_id: 70,
         ..Lifecycle::default()
     };
-    let mut c = Construction {
+    let c = Construction {
         progress: 0.0,
         desolid: true,
         builders: 1,
@@ -745,48 +721,23 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
         record: Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: false,
     };
-    let mut pathing = Pathing::default();
-    let mut site = Site {
-        id: 10028,
-        life: &mut life,
-        construction: &mut c,
-        mover: None,
-        firepower: None,
-        roo_called: None,
-        store: None,
-        completion: Completion {
-            master: None,
-            annexed: false,
-            attribute_204: false,
-            mode_680: 0,
-            farm_bonus: [0.0, -1.0, -1.0],
-            masters: None,
-            computer: false,
-            ai: false,
-            main: false,
-            now: 0,
-            rice: false,
-        },
-        chain: WorkChain::default(),
-    };
+    let site = foundation_at(10028, house().position, life, c);
+    let mut t = site_world(world, vec![built_master(70, Vec::new())], vec![site]);
     let rate = 1.0f32 * 1.0 * 0.021;
-    assert_eq!(
-        Construction::work(&mut site, rate, &mut world, &mut pathing, 0),
-        Ok(Worked::Going)
-    );
-    assert_eq!(life.hp, 1.462);
+    assert_eq!(t.work_building(10028, rate), Ok(true));
+    let h = t.players[1].objects.by_id(10028).unwrap();
+    let c = h.construction.unwrap();
+    assert_eq!(h.life.hp, 1.462);
     assert!(!c.desolid);
     assert_eq!(c.progress, f32::from_bits(STARTED) + rate);
-    assert!(world.get(10028).unwrap().obstruction.is_some());
-    assert!(world.tiles().word(29, 87).unwrap() & crate::map::spatial::BLOCKED != 0);
+    assert!(t.spatial.get(10028).unwrap().obstruction.is_some());
+    assert!(t.spatial.tiles().word(29, 87).unwrap() & crate::map::spatial::BLOCKED != 0);
 }
 
 /// A gate's foundation (master 665) with its two posts (1192, annexes of a building type):
-/// `FUN_1411cc430` starts each desolid post first (its record, its missiles per volley, the
-/// clearing after the update), a post already started stays as it is, then the gate's own
-/// first work starts it.
+/// `FUN_1411cc430` starts each desolid post first (its record, its missiles per volley), a post
+/// already started stays as it is, then the gate's own first work starts it.
 #[test]
 fn the_work_starts_the_desolid_annexes_first() {
     use crate::map::spatial::Tiles;
@@ -799,6 +750,8 @@ fn the_work_starts_the_desolid_annexes_first() {
     world.insert(10028, at(30.0, 665));
     world.insert(10029, at(28.5, 1192));
     world.insert(10030, at(31.5, 1192));
+    world.set_annex(10029, Some(10028));
+    world.set_annex(10030, Some(10028));
     let foundation = |desolid| Construction {
         progress: 0.0,
         desolid,
@@ -808,70 +761,41 @@ fn the_work_starts_the_desolid_annexes_first() {
         record: Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: false,
     };
-    let (mut post, mut started_post) = (foundation(true), foundation(false));
-    let (mut post_fire, mut started_fire) = (0.0, 0.0);
-    let mut life = Lifecycle {
+    let life = |master_id| Lifecycle {
         state: 0,
         hp: 1.0,
-        master_id: 665,
+        master_id,
         ..Lifecycle::default()
     };
-    let mut c = foundation(true);
-    let mut pathing = Pathing::default();
-    let mut site = Site {
-        id: 10028,
-        life: &mut life,
-        construction: &mut c,
-        mover: None,
-        firepower: None,
-        roo_called: None,
-        store: None,
-        completion: Completion {
-            master: None,
-            annexed: true,
-            attribute_204: false,
-            mode_680: 0,
-            farm_bonus: [0.0, -1.0, -1.0],
-            masters: None,
-            computer: false,
-            ai: false,
-            main: false,
-            now: 0,
-            rice: false,
-        },
-        chain: WorkChain {
-            annexes: vec![
-                AnnexStart {
-                    id: 10029,
-                    construction: &mut post,
-                    mover: None,
-                    firepower: &mut post_fire,
-                    volley: 2.0,
-                },
-                AnnexStart {
-                    id: 10030,
-                    construction: &mut started_post,
-                    mover: None,
-                    firepower: &mut started_fire,
-                    volley: 2.0,
-                },
-            ],
-            main: None,
-        },
+    let unit = |id, x, master, desolid| {
+        let mut u = foundation_at(id, [x, 88.0, 0.0], life(master), foundation(desolid));
+        u.annex_of = (master == 1192).then_some(10028);
+        u
     };
-    assert_eq!(
-        Construction::work(&mut site, 0.021, &mut world, &mut pathing, 0),
-        Ok(Worked::Going)
+    let mut post = built_master(1192, Vec::new());
+    post.volley_fire = 2.0;
+    let mut t = site_world(
+        world,
+        vec![built_master(665, Vec::new()), post],
+        vec![
+            unit(10028, 30.0, 665, true),
+            unit(10029, 28.5, 1192, true),
+            unit(10030, 31.5, 1192, false),
+        ],
     );
-    assert_eq!(world.take_started(), vec![10029, 10028]);
-    assert!(!post.desolid && post.started);
+    assert_eq!(t.work_building(10028, 0.021), Ok(true));
+    let u = |id| t.players[1].objects.by_id(id).unwrap();
+    let post = u(10029).construction.unwrap();
+    assert!(!post.desolid);
     assert_eq!(post.progress, f32::from_bits(STARTED));
-    assert_eq!(post_fire, 2.0);
-    assert!(world.get(10029).unwrap().obstruction.is_some());
-    assert_eq!((started_post, started_fire), (foundation(false), 0.0));
-    assert!(!c.desolid);
+    assert_eq!(u(10029).firepower, 2.0);
+    assert!(t.spatial.get(10029).unwrap().obstruction.is_some());
+    assert_eq!(
+        (u(10030).construction.unwrap(), u(10030).firepower),
+        (foundation(false), 0.0)
+    );
+    assert!(!u(10028).construction.unwrap().desolid);
 }
 
 /// The construction's start (`FUN_1411e5670`) sets the foundation's last move time to the
@@ -905,7 +829,6 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
         record: Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: false,
     };
     let mut mover = crate::gathering::hunt::tests::walker();
     let started = Construction::begin(
@@ -922,12 +845,11 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
 }
 
 /// An annex (a gate's post) whose main building is in state 0 with a hit point gives it the
-/// work (`FUN_1411cc430`'s loop): the post itself is not worked, and the result is the main
-/// building's (its start's build points, then the work): 0 while it goes on, 1 once it
-/// reaches its build time.
+/// work (`FUN_1411cc430`'s loop): the post itself is not worked, and the answer is the main
+/// building's (its start's build points, then the work): its construction goes on, and no
+/// longer once the work reaches its build time and completes it.
 #[test]
 fn an_annex_s_work_goes_to_its_main_building() {
-    let mut world = Spatial::default();
     let foundation = Construction {
         progress: 0.0,
         desolid: true,
@@ -937,72 +859,56 @@ fn an_annex_s_work_goes_to_its_main_building() {
         record: Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: false,
     };
-    let mut run = |main: Construction, amount: f32| {
-        let mut life = Lifecycle {
+    let run = |main: Construction, amount: f32| {
+        let mut world = small_map();
+        world.insert(
+            10028,
+            crate::map::spatial::Placed {
+                position: [2.0, 2.0, 0.0],
+                master: 665,
+                ..house()
+            },
+        );
+        let life = Lifecycle {
             state: 0,
             hp: 1.0,
             master_id: 1192,
             ..Lifecycle::default()
         };
-        let mut c = foundation;
-        let mut site = Site {
-            id: 10029,
-            life: &mut life,
-            construction: &mut c,
-            mover: None,
-            firepower: None,
-            roo_called: None,
-            store: None,
-            completion: Completion {
-                master: None,
-                annexed: false,
-                attribute_204: false,
-                mode_680: 0,
-                farm_bonus: [0.0, -1.0, -1.0],
-                masters: None,
-                computer: false,
-                ai: false,
-                main: true,
-                now: 0,
-                rice: false,
+        let mut post = foundation_at(10029, [1.0, 2.0, 0.0], life, foundation);
+        post.annex_of = Some(10028);
+        let gate = foundation_at(
+            10028,
+            [2.0, 2.0, 0.0],
+            Lifecycle {
+                master_id: 665,
+                ..life
             },
-            chain: WorkChain {
-                annexes: Vec::new(),
-                main: Some(MainWork {
-                    construction: main,
-                    hp: 1.0,
-                }),
-            },
-        };
-        let worked = Construction::work(&mut site, amount, &mut world, &mut Pathing::default(), 0);
+            main,
+        );
+        let masters = vec![
+            built_master(665, Vec::new()),
+            built_master(1192, Vec::new()),
+        ];
+        let mut t = site_world(world, masters, vec![gate, post]);
+        let going = t.work_building(10029, amount);
+        let post = t.players[1].objects.by_id(10029).unwrap();
         assert_eq!(
-            (c, life.hp),
-            (foundation, 1.0),
+            (post.construction, post.life.hp),
+            (Some(foundation), 1.0),
             "the post itself is not worked"
         );
-        worked
+        let state = t.players[1].objects.by_id(10028).unwrap().life.state;
+        (going, state)
     };
-    assert_eq!(
-        run(foundation, 0.021),
-        Ok(Worked::Main {
-            amount: 0.021,
-            going: true
-        })
-    );
+    assert_eq!(run(foundation, 0.021), (Ok(true), 0));
     let nearly = Construction {
         progress: 24.99,
         desolid: false,
         ..foundation
     };
-    assert_eq!(
-        run(nearly, 0.021),
-        Ok(Worked::Main {
-            amount: 0.021,
-            going: false
-        })
-    );
+    assert_eq!(run(nearly, 0.021), (Ok(false), 2));
 }
 
 use crate::map::spatial::Spatial;

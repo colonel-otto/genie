@@ -1,31 +1,25 @@
 //! The builder's part of its update: what the Build action reads as it starts (its
-//! foundation, the foundation's annexes and main building, the builder and its unit AI's
-//! orders), the action's update on the Build copied out of the action list, and the work's
-//! part that runs on the world: the foundation's work, its starts and its completion.
+//! foundation, the builder and its unit AI's orders), the action's update on the Build copied
+//! out of the action list, and the work, which runs on the world with the builder lent: the
+//! foundation's work, its starts and its completion.
 
-use crate::objects::unit::object_master;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
-use crate::construction::build::{
-    AnnexStart, BuildAction, BuildReads, Built, ClearLook, Completion, Construction, DROP,
-    DROPPED_ORDERS, FOREIGN_SITE, MainWork, NO_CONSTRUCTION, Site, WorkChain, Worked,
-};
+use crate::construction::build::{BuildAction, BuildReads, ClearLook, DROP, DROPPED_ORDERS};
 use crate::gathering::hunt::DropOff;
 use crate::map::spatial::Spatial;
-use crate::math::rng::Stream;
 use crate::movement::move_to::MoveDefaults;
 use crate::movement::{Me, footprint_gap_squared};
-use crate::objects::lifecycle::death_parts::{clear_look_of, farm_bonus};
-use crate::objects::object_list::ObjectList;
+use crate::objects::lifecycle::death_parts::clear_look_of;
 use crate::objects::teardown::HeadCode;
-use crate::objects::unit::{TAKEN_OUT, Unit};
+use crate::objects::unit::Unit;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
-use crate::world::{BUILDING_KIND, DROP_SITE_MASTERS, World};
+use crate::world::{DROP_SITE_MASTERS, World};
 
 impl Unit {
     /// The Build's update ([`BuildAction::update`]) with what it reads as it starts
@@ -126,7 +120,6 @@ impl Unit {
             build_targets,
             deposit,
             gone_orders,
-            main_work: main_work_of(others, target)?,
             looks: self.clearing_looks(c, others, action),
             // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
             defaults: master
@@ -137,8 +130,6 @@ impl Unit {
                 }),
             class: master.map_or(-1, |m| m.class),
             drop_site: drop_site_master(c, built) && has_kind,
-            annexed: others.own_iter().any(|u| u.annex_of == Some(target)),
-            annex_ids: c.w.spatial.annexes_of(target),
             by: self.releaser(c),
         })
     }
@@ -232,237 +223,24 @@ impl BuildAction {
         answer
     }
 
-    /// `FUN_1411cc430`'s `rate` seconds of work on the foundation ([`Construction::work`] on
-    /// its [`Site`], built here), then at once what the work started and completed: each
-    /// construction that started (its annexes' first) its owner watches (`FUN_1411e5670`'s
-    /// `FUN_141090430`), the main building of an annex takes the work
-    /// ([`World::work_building`] with the builder lent) and the completion's parts follow
-    /// ([`BuildAction::completed`]). Returns what the work did.
+    /// `FUN_1411cc430`'s `rate` seconds of work on the foundation, the builder lent to the
+    /// world ([`World::work_building`]): its annexes' and its own construction's start with
+    /// its owner's watch, and the completion of the work that reaches its build time
+    /// (`set_state(2)`, [`World::complete_building`]), each where the routine makes it. True
+    /// while its construction goes on (the routine's 0).
     ///
     /// # Errors
     ///
-    /// Another player's foundation, and what the work, the watches and the completion do not
-    /// model.
+    /// What the work, the starts and the completion do not model.
     pub(super) fn work_on(
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
-        reads: &BuildReads,
         rate: f32,
-    ) -> Result<Worked, GenieError> {
+    ) -> Result<bool, GenieError> {
         let target = self.target;
-        let worked = work_site(c, target, reads, rate)?;
-        for id in reads.annex_ids.iter().copied().chain([target]) {
-            if let Some(cons) = c.w.players[c.player]
-                .objects
-                .by_id_mut(id)
-                .and_then(|u| u.construction.as_mut())
-                .filter(|cons| cons.started)
-            {
-                cons.started = false;
-                c.w.watch_started(c.player, id)?;
-            }
-        }
-        match &worked {
-            Worked::Main { amount, .. } => {
-                let amount = *amount;
-                self.lend(c, builder, |w, _, _| w.work_building(target, amount))?;
-            }
-            Worked::Completed(built) => self.completed(c, builder, built.clone())?,
-            Worked::Going | Worked::Done => {}
-        }
-        Ok(worked)
+        self.lend(c, builder, |w, _, _| w.work_building(target, rate))
     }
-
-    /// The completion's parts after [`Construction::complete`]: its `set_state(2)` takes its
-    /// annexes along (`FUN_1411dbb70`: their slot 0xa0, [`World::set_state`]), the first
-    /// part's tracker part (`FUN_1411c6bd0` -> `FUN_14104eac0`), its standing sprite
-    /// ([`crate::construction::build::show_built`]) and what it leaves its owner
-    /// ([`World::built`]), at once and in the game's order, the builder lent to the world for
-    /// the searches and effects; the start's watch is [`BuildAction::work_on`]'s.
-    ///
-    /// # Errors
-    ///
-    /// What an annex's `set_state` and the completion's outputs do not model.
-    fn completed(
-        &mut self,
-        c: &mut Step<'_>,
-        builder: &mut Unit,
-        built: Built,
-    ) -> Result<(), GenieError> {
-        let target = self.target;
-        for annex in c.w.spatial.annexes_of(target) {
-            if let Some((q, _)) = c.w.object(annex) {
-                self.lend(c, builder, |w, _, _| w.set_state(q, annex, 2))?;
-            }
-        }
-        let p = c.player;
-        if let Some(master_id) = c.w.players[p]
-            .objects
-            .by_id(target)
-            .map(|u| u.life.master_id)
-        {
-            let k = crate::players::tracker::key(c.w.masters.get(p), &c.w.lines, master_id);
-            c.w.players[p].tracker.complete(target, k);
-            // its set_state(2)'s standing sprite (FUN_1411dbb70)
-            let World {
-                players,
-                masters,
-                graphics,
-                streams,
-                ..
-            } = &mut *c.w;
-            if let Some(u) = players[p].objects.by_id_mut(target)
-                && let Ok(m) = object_master(
-                    u.own_master.as_deref(),
-                    (u.id, u.life.master_id),
-                    masters.get(p),
-                )
-            {
-                crate::construction::build::show_built(
-                    &mut u.sprite,
-                    u.body.move_stats_mut(),
-                    m,
-                    u.build_frame,
-                    graphics,
-                    streams.get(Stream::Sprite),
-                );
-            }
-        }
-        let built = Built {
-            started: false,
-            ..built
-        };
-        self.lend(c, builder, |w, _, _| w.built(p, target, built))
-    }
-}
-
-/// [`Construction::work`] of `rate` seconds on the foundation `target` of the builder's
-/// player, its [`Site`] built from the world as it stands ([`build_site`]).
-///
-/// # Errors
-///
-/// A foundation the player does not hold, and what the work does not model.
-fn work_site(
-    c: &mut Step<'_>,
-    target: i32,
-    reads: &BuildReads,
-    rate: f32,
-) -> Result<Worked, GenieError> {
-    let p = c.player;
-    let (attribute_204, now) = (c.w.attribute_204(), c.w.world_time);
-    let World {
-        players,
-        masters,
-        spatial,
-        pathing,
-        mode_680,
-        ..
-    } = &mut *c.w;
-    let template = Completion {
-        master: None,
-        annexed: reads.annexed,
-        attribute_204,
-        mode_680: *mode_680,
-        farm_bonus: farm_bonus(&players[p].attributes),
-        masters: masters.get(p),
-        computer: players[p].computer,
-        ai: false,
-        main: false,
-        now,
-        rice: false,
-    };
-    let own = &mut players[p].objects;
-    let mut site = build_site(own, target, &reads.annex_ids, template, reads.main_work)?
-        .ok_or(FOREIGN_SITE)?;
-    Construction::work(&mut site, rate, spatial, pathing, now)
-}
-
-/// `FUN_1411cc430`'s way to the building that takes the work: while the foundation `target` is
-/// an annex of a main building in state 0 with at least 1 hit point (COMISS: a NaN too), that
-/// main building, the last one found.
-fn main_work_of(others: OthersRef<'_>, target: i32) -> Result<Option<MainWork>, GenieError> {
-    let mut worked = target;
-    let mut main_work = None;
-    while let Some(m) = others
-        .own(worked)
-        .and_then(|u| u.annex_of)
-        .and_then(|m| others.own(m))
-        .filter(|m| m.life.state == 0 && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp))
-    {
-        worked = m.id;
-        main_work = Some(MainWork {
-            construction: m.construction.ok_or(NO_CONSTRUCTION)?,
-            hp: m.life.hp,
-        });
-    }
-    Ok(main_work)
-}
-
-/// The foundation `target` as the Build's work works it ([`Site`]): its construction and its
-/// completion (`template` with the foundation's own master, unit AI, main building and rice),
-/// the foundation's annexes of a building type (`annex_ids`), whose work starts first (none when
-/// the work goes on to a main building, `main_work`). None when this player does not hold the
-/// foundation.
-fn build_site<'u>(
-    own: &'u mut ObjectList,
-    target: i32,
-    annex_ids: &[i32],
-    template: Completion<'u>,
-    main_work: Option<MainWork>,
-) -> Result<Option<Site<'u>>, GenieError> {
-    let masters = template.masters;
-    let mut site = None;
-    let mut starts = Vec::new();
-    for u in own.iter_mut().filter(|u| u.id != TAKEN_OUT) {
-        if u.id == target {
-            site = Some(u);
-            continue;
-        }
-        if main_work.is_some() || !annex_ids.contains(&u.id) {
-            continue;
-        }
-        let Some(am) = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters)
-            .ok()
-            .filter(|m| BUILDING_KIND <= m.kind)
-        else {
-            continue;
-        };
-        let construction = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
-        starts.push(AnnexStart {
-            id: u.id,
-            construction,
-            mover: u.body.mover_mut(),
-            firepower: &mut u.firepower,
-            volley: am.volley_fire,
-        });
-    }
-    // the slot order: the constructor made them, and their ids, in it
-    starts.sort_by_key(|a| a.id);
-    Ok(site.and_then(|u| {
-        let master = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters).ok();
-        let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
-        Some(Site {
-            id: u.id,
-            life: &mut u.life,
-            construction: u.construction.as_mut()?,
-            mover: u.body.mover_mut(),
-            firepower: Some(&mut u.firepower),
-            roo_called: Some(&mut u.roo_called),
-            store: Some(&mut u.store),
-            completion: Completion {
-                master,
-                ai,
-                main,
-                rice,
-                ..template
-            },
-            chain: WorkChain {
-                annexes: starts,
-                main: main_work,
-            },
-        })
-    }))
 }
 
 /// `FUN_140fde180`: the foundation's master `built` is a drop site (the masters 562, 584, 621,

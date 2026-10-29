@@ -209,7 +209,6 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: false,
         }),
         ..Unit::default()
     };
@@ -1113,7 +1112,6 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: true,
         }),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: TROPHY,
@@ -2047,7 +2045,6 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
         record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: true,
     };
     let building = |id, annex_of| Unit {
         id,
@@ -2159,7 +2156,6 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: true,
         }),
         workers: 1,
         life: crate::objects::lifecycle::Lifecycle {

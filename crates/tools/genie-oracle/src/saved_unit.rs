@@ -340,7 +340,6 @@ pub(super) fn construction(
         },
         snow: b.snow_flag != 0,
         sprite_override: s.sprite_override_id != -1,
-        started: false,
     })
 }
 

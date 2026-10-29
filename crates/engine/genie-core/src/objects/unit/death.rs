@@ -144,16 +144,10 @@ impl Unit {
             .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
         let completion = Completion {
             master: Some(master),
-            annexed: false,
-            attribute_204: false,
-            mode_680: c.w.mode_680,
             farm_bonus: farm_bonus(&c.w.players[c.player].attributes),
             masters: c.w.masters.get(c.player),
             computer: c.w.players[c.player].computer,
             ai: self.ai.is_some(),
-            main: self.annex_of.is_some(),
-            now: c.w.world_time,
-            rice: self.rice,
         };
         let part = completion.first_part(construction)?;
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
@@ -191,7 +185,6 @@ impl Unit {
             c.w.world_time,
         )?;
         if started {
-            construction.started = false;
             self.firepower = master.volley_fire;
             let (p, id) = (c.player, self.id);
             c.lend(self, |w| w.watch_started(p, id))?;

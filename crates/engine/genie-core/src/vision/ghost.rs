@@ -1110,7 +1110,6 @@ mod tests {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: false,
         });
         t.players[1].sleeping.push(foundation);
         t.build_watched().unwrap();

@@ -4,12 +4,10 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_of, write_back};
-use crate::construction::build::{Completion, Construction, Site};
 use crate::construction::gates::gate_units;
 use crate::map::spatial::Spatial;
-use crate::math::rng::{Stream, Well512};
+use crate::math::rng::Well512;
 use crate::objects::lifecycle::Lifecycle;
-use crate::objects::lifecycle::death_parts::farm_bonus;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Master;
 use crate::objects::sprite::Graphic;
@@ -174,13 +172,16 @@ impl Unit {
 
     /// `TRIBE_Building_Object::update` (`0x1411c9000`) before its combat update: a building in
     /// state 0 whose build points (`+0xc50`, the construction's progress) reached its build time
-    /// (its master's first train time, `FUN_140ace5e0`) completes (`set_state(2)`,
-    /// [`Construction::complete`]); outside the walls' branch (class 27, master 70) only one that
-    /// is not an annex (`+0xbb8`). A builder's work completes a foundation itself
-    /// (`FUN_1411cc430`); this one completes a building made without a build time (a death
-    /// spawn's). What the completion leaves its owner follows at once
-    /// ([`crate::world::World::built`], the building lent to the world). The walls' branch's facet
-    /// and the other branch's work before it are not modelled for such a building.
+    /// (its master's first train time, `FUN_140ace5e0`) completes (`set_state(2)`: its annexes
+    /// first, then [`crate::world::World::complete_building`], the building lent to the world);
+    /// outside the walls' branch (class 27, master 70) only one that is not an annex (`+0xbb8`).
+    /// A builder's work completes a foundation itself (`FUN_1411cc430`); this one completes a
+    /// building made without a build time (a death spawn's). The walls' branch's facet and the
+    /// other branch's work before it are not modelled for such a building.
+    ///
+    /// # Errors
+    ///
+    /// What the completion does not model.
     pub(crate) fn complete_on_update(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         self.farm_stage(c)?;
         let due = self.life.state == 0
@@ -194,73 +195,8 @@ impl Unit {
         if !master.is_some_and(walls_branch) && self.annex_of.is_some() {
             return Ok(());
         }
-        // its set_state(2) takes its annexes along first (FUN_1411dbb70: their slot 0xa0), the
-        // building lent to the world for what their completion reaches
-        for annex in c.w.spatial.annexes_of(self.id) {
-            if let Some((q, _)) = c.w.object(annex) {
-                c.lend(self, |w| w.set_state(q, annex, 2))?;
-            }
-        }
-        let master = object_master(
-            self.own_master.as_deref(),
-            (self.id, self.life.master_id),
-            c.w.masters.get(c.player),
-        )
-        .ok();
-        let others = OthersRef::of(&c.w.players, c.player);
-        let annexed = others.own_iter().any(|u| u.annex_of == Some(self.id));
-        let Some(construction) = self.construction.as_mut() else {
-            return Ok(());
-        };
-        let mut site = Site {
-            id: self.id,
-            life: &mut self.life,
-            construction,
-            mover: self.body.mover_mut(),
-            firepower: Some(&mut self.firepower),
-            roo_called: Some(&mut self.roo_called),
-            store: Some(&mut self.store),
-            completion: Completion {
-                master,
-                annexed,
-                attribute_204: c.w.attribute_204(),
-                mode_680: c.w.mode_680,
-                farm_bonus: farm_bonus(&c.w.players[c.player].attributes),
-                masters: c.w.masters.get(c.player),
-                computer: c.w.players[c.player].computer,
-                ai: self.ai.is_some(),
-                main: self.annex_of.is_some(),
-                now: c.w.world_time,
-                rice: self.rice,
-            },
-            chain: crate::construction::build::WorkChain::default(),
-        };
-        let built = Construction::complete(&mut site, &mut c.w.spatial, &mut c.w.pathing)?;
-        if let Ok(m) = object_master(
-            self.own_master.as_deref(),
-            (self.id, self.life.master_id),
-            c.w.masters.get(c.player),
-        ) {
-            crate::construction::build::show_built(
-                &mut self.sprite,
-                self.body.move_stats_mut(),
-                m,
-                self.build_frame,
-                &c.w.graphics,
-                c.w.streams.get(Stream::Sprite),
-            );
-        }
-        // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
-        let k = crate::players::tracker::key(
-            c.w.masters.get(c.player),
-            &c.w.lines,
-            self.life.master_id,
-        );
-        c.w.players[c.player].tracker.complete(self.id, k);
-        // what it leaves its owner, as a builder's completion does, the building lent to the
-        // world for the searches, effects and destroy among them
         let (p, id) = (c.player, self.id);
-        c.lend(self, |w| w.built(p, id, built))
+        c.lend(self, |w| w.set_state(p, id, 2))
     }
 
     /// `TRIBE_Building_Object::update`'s whole seconds of a building in state 2 (`0x1411c9000`,

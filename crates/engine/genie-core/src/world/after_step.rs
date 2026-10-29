@@ -38,7 +38,7 @@ impl World {
         let outcome = self.run_object((p, i), (dt, turn), f)?;
         let at = (p, self.slot_of(p, id)?, id);
         self.finish_own_update(at, (dt, full), &outcome)?;
-        self.clear_started()?;
+        self.hand_changed_tiles();
         Ok(Stepped {
             outcome,
             slot: self.slot_of(p, id)?,
@@ -89,14 +89,8 @@ impl World {
         Ok(())
     }
 
-    /// A construction start's clearing and the changed tiles, after the update.
-    fn clear_started(&mut self) -> Result<(), GenieError> {
-        // a construction start's clearing of the desolid foundations it overlaps
-        // (FUN_1411cd0d0), after the builder's update
-        for id in self.spatial.take_started() {
-            self.clear_foundations_under(id)?;
-        }
+    /// The tiles whose static marks the update changed, to the planners.
+    fn hand_changed_tiles(&mut self) {
         self.pathing.tiles_changed(self.spatial.take_changes());
-        Ok(())
     }
 }

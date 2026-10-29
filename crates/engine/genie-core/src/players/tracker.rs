@@ -627,7 +627,6 @@ mod tests {
                     record: crate::map::spatial::Obstruction { kind: 0, class: 0 },
                     snow: false,
                     sprite_override: false,
-                    started: false,
                 }),
                 ..Unit::default()
             };

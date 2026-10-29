@@ -28,7 +28,6 @@ impl Spatial {
             inside: BTreeMap::new(),
             tiles,
             changed: Vec::new(),
-            started: Vec::new(),
             frozen_for: BTreeMap::new(),
             fastest: 0.0,
             reach: 0.0,
@@ -189,16 +188,6 @@ impl Spatial {
     /// The tile rectangles whose static marks changed since the last call.
     pub fn take_changes(&mut self) -> Vec<[i16; 4]> {
         std::mem::take(&mut self.changed)
-    }
-
-    /// A foundation's construction started ([`crate::construction::build::Construction`]'s start).
-    pub fn started(&mut self, id: i32) {
-        self.started.push(id);
-    }
-
-    /// The foundations whose construction started since the last call.
-    pub fn take_started(&mut self) -> Vec<i32> {
-        std::mem::take(&mut self.started)
     }
 
     /// Player `player`'s masks both meet the unified map's bits of tile (`x`, `y`): what it sees

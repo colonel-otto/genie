@@ -3,12 +3,8 @@
 //! stacking and its new objects.
 
 use crate::GenieError;
-use crate::construction::build::{
-    BUILDING_TYPE, Built, CLASS_39, Completion, Construction, Site, StackUnit, WorkChain,
-    show_built,
-};
+use crate::construction::build::{BUILDING_TYPE, CLASS_39, Completion, Construction, StackUnit};
 use crate::objects::masters::{Master, player_master};
-use crate::objects::unit::object_master;
 use crate::orders::Place;
 
 impl crate::world::World {
@@ -49,18 +45,12 @@ impl crate::world::World {
         let construction = u.construction.ok_or(NO_CONSTRUCTION)?;
         let completion = Completion {
             master: Some(master),
-            annexed: false,
-            attribute_204: false,
-            mode_680: self.mode_680,
             farm_bonus: crate::objects::lifecycle::death_parts::farm_bonus(
                 &self.players[owner].attributes,
             ),
             masters: self.masters.get(owner),
             computer: self.players[owner].computer,
             ai: u.ai.is_some(),
-            main: u.annex_of.is_some(),
-            now: self.world_time,
-            rice: u.rice,
         };
         let part = completion.first_part(&construction)?;
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
@@ -78,8 +68,9 @@ impl crate::world::World {
     }
 
     /// The construction's start (`FUN_1411e5670`, [`Construction::begin`]) of the foundation
-    /// `id` of `owner` outside its update: a desolid one starts, its missiles per volley are its
-    /// master's, and its owner watches it ([`crate::world::World::watch_started`]).
+    /// `id` of `owner`: a desolid one starts, its missiles per volley are its master's (its own
+    /// first, `+0xa0`), and its owner watches it at once (`FUN_141090430`,
+    /// [`crate::world::World::watch_started`]).
     ///
     /// # Errors
     ///
@@ -87,8 +78,9 @@ impl crate::world::World {
     pub(crate) fn construction_starts(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         let place = self.place(id).ok_or(NOT_HELD)?;
         let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
-        let master = held(&mut self.players, place).life.master_id;
-        let volley = player_master(&self.masters, p, master).map_or(0.0, |m| m.volley_fire);
+        let volley = held(&mut self.players, place)
+            .master(&self.masters, p)
+            .map_or(0.0, |m| m.volley_fire);
         let now = self.world_time;
         let u = held(&mut self.players, place);
         let Some(c) = u.construction.as_mut() else {
@@ -102,7 +94,6 @@ impl crate::world::World {
             &mut self.pathing,
             now,
         )? {
-            c.started = false;
             u.firepower = volley;
             self.watch_started(owner, id)?;
         }
@@ -144,11 +135,13 @@ impl crate::world::World {
     /// the main building, whose annexes start alike. A building in state 0 with at least 1 hit
     /// point (a NaN not) starts if desolid and takes the work ([`Construction::add_work`]); one
     /// that reaches its build time completes (`set_state(2)`, [`crate::world::World::set_state`]).
+    /// True while its construction goes on (the routine's 0): false for one done before the work
+    /// (not in state 0, or below 1 hit point) and one the work completed.
     ///
     /// # Errors
     ///
     /// What the starts and the completion do not model.
-    pub(crate) fn work_building(&mut self, id: i32, amount: f32) -> Result<(), GenieError> {
+    pub(crate) fn work_building(&mut self, id: i32, amount: f32) -> Result<bool, GenieError> {
         let mut at = id;
         loop {
             for annex in self.spatial.annexes_of(at) {
@@ -177,7 +170,7 @@ impl crate::world::World {
         }
         let (q, u) = self.object(at).ok_or(NOT_HELD)?;
         if u.life.state != 0 || crate::math::fmath::below_or_unordered(u.life.hp, 1.0) {
-            return Ok(());
+            return Ok(false);
         }
         if u.construction.is_some_and(|c| c.desolid) {
             self.clear_foundations_under(at)?;
@@ -185,129 +178,11 @@ impl crate::world::World {
         }
         let (q, u) = self.object_mut(at).ok_or(NOT_HELD)?;
         let c = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
-        if c.add_work(&mut u.life.hp, amount) {
-            self.set_state(q, at, 2)?;
+        if !c.add_work(&mut u.life.hp, amount) {
+            return Ok(true);
         }
-        Ok(())
-    }
-
-    /// The building `id`'s `set_state(2)` from state 0 outside a builder's update, after its
-    /// annexes' (`FUN_1411dbb70`; [`crate::world::World::set_state`] runs them first): the
-    /// completion ([`Construction::complete`]), then what it leaves its owner
-    /// ([`crate::world::World::built`]).
-    ///
-    /// # Errors
-    ///
-    /// What the completion does not model.
-    pub(crate) fn complete_building(&mut self, id: i32) -> Result<(), GenieError> {
-        let attribute_204 = self
-            .players
-            .iter()
-            .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0));
-        let place = self.place(id).ok_or(NOT_HELD)?;
-        let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
-        let farm_bonus =
-            crate::objects::lifecycle::death_parts::farm_bonus(&self.players[p].attributes);
-        let computer = self.players[p].computer;
-        let annexed = !self.spatial.annexes_of(id).is_empty();
-        let (mode_680, now) = (self.mode_680, self.world_time);
-        let masters = self.masters.get(p);
-        let u = held(&mut self.players, place);
-        let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
-        let master = object_master(u.own_master.as_deref(), (u.id, u.life.master_id), masters).ok();
-        let construction = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
-        let mut site = Site {
-            id,
-            life: &mut u.life,
-            construction,
-            mover: u.body.mover_mut(),
-            firepower: Some(&mut u.firepower),
-            roo_called: Some(&mut u.roo_called),
-            store: Some(&mut u.store),
-            completion: Completion {
-                master,
-                annexed,
-                attribute_204,
-                mode_680,
-                farm_bonus,
-                masters,
-                computer,
-                ai,
-                main,
-                now,
-                rice,
-            },
-            chain: WorkChain::default(),
-        };
-        let built = Construction::complete(&mut site, &mut self.spatial, &mut self.pathing)?;
-        let u = held(&mut self.players, place);
-        if let Ok(m) = object_master(
-            u.own_master.as_deref(),
-            (u.id, u.life.master_id),
-            self.masters.get(p),
-        ) {
-            show_built(
-                &mut u.sprite,
-                u.body.move_stats_mut(),
-                m,
-                u.build_frame,
-                &self.graphics,
-                self.streams.get(crate::math::rng::Stream::Sprite),
-            );
-        }
-        // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
-        let master_id = held(&mut self.players, place).life.master_id;
-        self.track_complete(p, id, master_id);
-        self.built(p, id, built)
-    }
-
-    /// What a completion leaves the owner `p` of the building `id` ([`Built`]), in the game's
-    /// order: its history event (the owner's id, `+0x718`, as `data1`; the game records it
-    /// between the storage's attributes and the counts, which it does not read), the attributes
-    /// it gains, a pasture's livestock ([`crate::world::World::setup_pasture`]), a mule cart's
-    /// search (`FUN_1411c6bd0`'s tail), the watch of
-    /// a construction that started (`FUN_1411e5670`), the stack unit
-    /// ([`crate::world::World::stack_unit`]), the technology (`FUN_1413cdcd0`,
-    /// [`crate::world::World::research_built`]) and the destroy of a building that disappears
-    /// when built (slot 0xd0, [`crate::world::World::destroy`]).
-    ///
-    /// # Errors
-    ///
-    /// What the parts do not model.
-    pub(crate) fn built(&mut self, p: usize, id: i32, built: Built) -> Result<(), GenieError> {
-        if let Some(kind) = built.history {
-            let now = self.world_time;
-            self.players[p]
-                .history
-                .add_event(kind, p as f32, 0.0, 0, now);
-        }
-        for (kind, amount) in built.attributes {
-            self.players[p].add_attribute(kind, amount)?;
-        }
-        if built.pasture {
-            self.setup_pasture(p, id)?;
-        }
-        if let Some(state) = built.cart {
-            self.cart_search(p, id, state)?;
-        }
-        if built.started {
-            if let Some((_, u)) = self.object_mut(id)
-                && let Some(c) = u.construction.as_mut()
-            {
-                c.started = false;
-            }
-            self.watch_started(p, id)?;
-        }
-        if let Some(stack) = built.stack {
-            self.stack_unit(p, id, stack)?;
-        }
-        if let Some(t) = built.tech {
-            self.research_built(p, t)?;
-        }
-        if built.vanishes {
-            self.destroy(p, id)?;
-        }
-        Ok(())
+        self.set_state(q, at, 2)?;
+        Ok(false)
     }
 
     /// The stack unit (`+0x986`) of the completed building `building` of player `p`
@@ -471,7 +346,7 @@ impl crate::world::World {
         let (id, _) = self.make_building(p, master, ai, at)?;
         if flagged {
             self.clear_footprint(p, master, [at[0], at[1]], true)?;
-            self.work_building(id, STACK_WORK)?;
+            let _ = self.work_building(id, STACK_WORK)?;
         }
         if made.auto_gather {
             if self.players[p].objects.last().map(|u| u.id) != Some(id) {

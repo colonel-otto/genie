@@ -332,7 +332,6 @@ fn built() -> crate::construction::build::Construction {
         record: crate::map::spatial::Obstruction { kind: 0, class: 0 },
         snow: false,
         sprite_override: false,
-        started: false,
     }
 }
 

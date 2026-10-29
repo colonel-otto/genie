@@ -6,9 +6,10 @@
 //! A builder at a foundation faces it and joins its work (state 7): at a foundation no one started
 //! it first checks the footprint, and a builder standing on it walks to a free tile beside it
 //! (state 223) and comes back (state 4). The work adds to the foundation's construction each
-//! update ([`Construction::work`]); the first work starts it: the foundation gets its obstruction
-//! record. The work that reaches the build time completes the building ([`Construction::complete`])
-//! and ends the builder's work (state 224); a builder whose unit AI holds queued orders then lets
+//! update ([`crate::world::World::work_building`], the builder lent to the world); the first work
+//! starts it: the foundation gets its obstruction record. The work that reaches the build time
+//! completes the building ([`crate::world::World::complete_building`]) and ends the builder's work
+//! (state 224); a builder whose unit AI holds queued orders then lets
 //! the Build end (state 1) and the AI runs its queue.
 
 use self::update::drop_done_orders;
@@ -17,12 +18,12 @@ use std::collections::BTreeMap;
 use crate::GenieError;
 use crate::map::spatial::Obstruction;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait};
-use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::OrderKind;
 use genie_diff::Diff;
 
 mod clearing;
+mod completion;
 mod construction;
 mod drop_off;
 pub(crate) mod more_work;
@@ -173,87 +174,14 @@ pub struct Construction {
     pub snow: bool,
     /// `+0x788`, `sprite_override_id`, is not −1.
     pub sprite_override: bool,
-    /// Its construction started in this update: its owner's watched list takes it
-    /// (`FUN_1411e5670`'s `FUN_141090430`, the caller's).
-    pub started: bool,
 }
 
-/// What a builder's work reaches of its foundation: the split borrow [`Construction::work`] and
-/// [`Construction::complete`] take, built where the work runs.
-#[derive(Debug)]
-pub struct Site<'a> {
-    /// The foundation.
-    pub id: i32,
-    /// Its life cycle.
-    pub life: &'a mut Lifecycle,
-    /// Its construction.
-    pub construction: &'a mut Construction,
-    /// The foundation's movement state (its last move time), if the slice holds it.
-    pub mover: Option<&'a mut crate::movement::Mover>,
-    /// Its missiles per volley (`+0xa00`), which its construction's start sets to its master's.
-    pub firepower: Option<&'a mut f32>,
-    /// Its `mROOAlreadyCalled` (`+0x686`), which its stack unit's completion sets.
-    pub roo_called: Option<&'a mut bool>,
-    /// Its own store (`+0xae0`), which its storage entries of mode 16 fill at its completion.
-    pub store: Option<&'a mut Vec<(i16, f32)>>,
-    /// What its completion reads ([`Construction::complete`]).
-    pub completion: Completion<'a>,
-    /// What its work (`FUN_1411cc430`) reaches besides it: its annexes of a building type,
-    /// which it starts first, and the main building that takes the work when it is an annex
-    /// ([`WorkChain`]).
-    pub chain: WorkChain<'a>,
-}
-
-/// What a foundation's work (`FUN_1411cc430`) reaches besides it ([`Construction::work`]).
-#[derive(Debug, Default)]
-pub struct WorkChain<'a> {
-    /// Its annexes (`+0xbc0`..`+0xbd8`) of a building type (above 0x4f), in their order.
-    pub annexes: Vec<AnnexStart<'a>>,
-    /// The building the work goes to instead while the foundation is an annex of a main
-    /// building in state 0 with at least 1 hit point (that one's own main alike).
-    pub main: Option<MainWork>,
-}
-
-/// An annex the work on its building starts first while it is desolid (`+0xc60`):
-/// `FUN_1411cd0d0` (after the builder's update, as the building's own), then `FUN_1411e5670`
-/// ([`Construction::begin`]; its missiles per volley become its master's).
-#[derive(Debug)]
-pub struct AnnexStart<'a> {
-    /// The annex.
-    pub id: i32,
-    /// Its construction.
-    pub construction: &'a mut Construction,
-    /// Its movement state, if the slice holds it.
-    pub mover: Option<&'a mut crate::movement::Mover>,
-    /// Its missiles per volley (`+0xa00`).
-    pub firepower: &'a mut f32,
-    /// Its master's volley fire.
-    pub volley: f32,
-}
-
-/// The main building an annex's work goes to: its construction and hit points as they stand,
-/// from which the work's result follows. The work itself (the annexes' starts on the way, the
-/// main building's start, work and completion) is the caller's after the builder's update
-/// ([`crate::world::World::work_building`] on the annex, [`Worked::Main`]).
-#[derive(Clone, Copy, Debug)]
-pub struct MainWork {
-    /// Its construction.
-    pub construction: Construction,
-    /// Its hit points.
-    pub hp: f32,
-}
-
-/// What a building's completion reads besides its construction.
+/// What the completion's first part ([`Completion::first_part`]) reads besides the building's
+/// construction.
 #[derive(Clone, Copy, Debug)]
 pub struct Completion<'a> {
     /// The building's master.
     pub master: Option<&'a Master>,
-    /// Another object is its annex (its `+0xbc0` list).
-    pub annexed: bool,
-    /// Some player's attribute 204 is not 0 (`FUN_14152bcb0`).
-    pub attribute_204: bool,
-    /// The game's setting at `+0x680` ([`crate::world::World::mode_680`]).
-    pub mode_680: i32,
     /// The owner's attributes 237, 238 and 239 (`player+0x768`..`+0x778`): a farm's bonus when
     /// built, its amount, its resource and a master near which it is given
     /// ([`Completion::first_part`]).
@@ -264,14 +192,6 @@ pub struct Completion<'a> {
     pub computer: bool,
     /// The building has a unit AI (`+0x6b0`): a mule cart's.
     pub ai: bool,
-    /// The building is an annex (`+0xbb8`, its main building's): no paid cost goes to attributes
-    /// 98 and 165, its tiles keep their links.
-    pub main: bool,
-    /// The world's time (`FUN_1415300d0`), which a construction's start reads.
-    pub now: u32,
-    /// The building stands on mangrove or rice terrain (`+0xcd0`, `FUN_141188db0` at its
-    /// constructor): master 1889's stack unit is the pasture 1893 then.
-    pub rice: bool,
 }
 
 /// What the completion's first part (`FUN_1411c6bd0`) gives its caller: the attributes its owner
@@ -344,58 +264,9 @@ impl Completion<'_> {
     }
 }
 
-/// What a builder's work did to its foundation ([`Construction::work`]).
-#[derive(Clone, Debug, PartialEq)]
-pub enum Worked {
-    /// The construction goes on.
-    Going,
-    /// The foundation was no longer under construction (state not 0, or no hit points).
-    Done,
-    /// This work completed it.
-    Completed(Built),
-    /// The foundation is an annex whose main building takes the `amount` seconds of work, the
-    /// caller's after the update ([`WorkChain::main`]); `going` while its construction goes on
-    /// (the routine's 0).
-    Main {
-        /// The seconds of work.
-        amount: f32,
-        /// The main building's construction goes on.
-        going: bool,
-    },
-}
-
 /// The action type of the mule cart's tasks (its moves to resources, `0x99`): the action
 /// factory makes no action of it.
 pub const CART_TASK: i16 = 0x99;
-
-/// What a completion gives its owner ([`Construction::complete`]).
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Built {
-    /// The attributes it gains, (attribute, amount), in the order the game adds them.
-    pub attributes: Vec<(i16, f32)>,
-    /// The event its owner's history records with the owner's id (`FUN_141560ae0`, the
-    /// caller's): the castle's (6) and the wonder's (4), none for other masters.
-    pub history: Option<u8>,
-    /// The master's technology (`+0x98c`, the building's `tech`), which the completion researches
-    /// last (`FUN_1413cdcd0` without a building): the caller's.
-    pub tech: Option<i16>,
-    /// The building's master has a task of action type 0x99 (a mule cart, `FUN_1415c60b0`): its
-    /// unit AI's search for resources follows (`FUN_1411c6bd0`'s tail, the caller's), in the
-    /// state the building had before the completion (`set_state(2)` puts it in 2 after).
-    pub cart: Option<u8>,
-    /// Its stack unit (`+0x986`), which its owner's slot 0x1c0 makes in its place (the
-    /// caller's, [`crate::world::World::stack_unit`]).
-    pub stack: Option<StackUnit>,
-    /// Its master disappears when built (`+0x984`): its destroy (slot 0xd0) ends the
-    /// completion, after its technology (the caller's).
-    pub vanishes: bool,
-    /// Its construction started in the completion (`FUN_1411e5670` on a desolid one): its owner
-    /// watches it (the caller's).
-    pub started: bool,
-    /// The completion's first part fills the pasture ([`FirstPart::pasture`], the caller's after
-    /// the attributes).
-    pub pasture: bool,
-}
 
 /// A completed building's stack unit (`FUN_1411dbb70`'s block for `+0x986`): the master its
 /// owner's slot 0x1c0 makes (`FUN_14162ce00` with its flag set), the place, and the hit points
@@ -493,8 +364,6 @@ pub(crate) struct BuildReads {
     /// In state 8, the targets of its unit AI's queued orders 0x2c5, 0x2c9 and 0x2db the world
     /// no longer holds or whose seen state is above 5 (`FUN_140c5de60`).
     pub(crate) gone_orders: Vec<i32>,
-    /// The main building that takes the work instead (`FUN_1411cc430`, [`WorkChain::main`]).
-    pub(crate) main_work: Option<MainWork>,
     /// What the footprint clearing of its `set_state(7)` reads of the objects on the tiles
     /// ([`ClearLook`]) by id; none for one the world does not hold.
     pub(crate) looks: BTreeMap<i32, ClearLook>,
@@ -505,10 +374,6 @@ pub(crate) struct BuildReads {
     /// Its foundation's master is a drop site for its civ (`FUN_140fde180`) and it carries a
     /// kind its player has: the end of the work gives its load to its player.
     pub(crate) drop_site: bool,
-    /// Another object is the foundation's annex (its `+0xbc0` list), which its completion reads.
-    pub(crate) annexed: bool,
-    /// The foundation's annexes on the map, whose constructions the work starts first.
-    pub(crate) annex_ids: Vec<i32>,
     /// The builder as the releaser of its targets (slot 0x180's argument).
     pub(crate) by: crate::objects::release::Releaser,
 }
@@ -699,7 +564,6 @@ mod stack_tests {
                 record: Obstruction { kind: 2, class: 2 },
                 snow: false,
                 sprite_override: false,
-                started: false,
             }),
             pasture: -1,
             my_pasture: -1,
@@ -755,24 +619,20 @@ mod stack_tests {
         t
     }
 
-    /// A completion's history event goes to its owner's history first, the owner's id as
-    /// `data1` at the world's time (`FUN_1411dbb70`: `FUN_141560ae0` on `+0xdb8` with
-    /// `(float)+0x718`, 0 and 0), then its attributes.
+    /// A castle's completion records its event in its owner's history between its storage and
+    /// its counts, the owner's id as `data1` at the world's time (`FUN_1411dbb70`:
+    /// `FUN_141560ae0` on `+0xdb8` with `(float)+0x718`, 0 and 0), then counts it.
     #[test]
     fn a_castle_s_completion_records_its_owner_s_id_in_its_history() {
         let mut t = world();
         t.world_time = 912_000;
         t.players[1].history.add_entry(0, 3.0, 0.0);
-        t.built(
-            1,
-            8759,
-            Built {
-                attributes: vec![(134, 1.0)],
-                history: Some(crate::players::history::CASTLE_BUILT),
-                ..Built::default()
-            },
-        )
-        .unwrap();
+        for ms in &mut t.masters {
+            let castle = building(82, (2.0, 4.0, 2), (150, 2400), -1, &[]);
+            *ms = Masters::new(ms.iter().cloned().chain([castle]));
+        }
+        t.players[1].objects[0].life.master_id = 82;
+        assert_eq!(t.work_building(8759, 1.0), Ok(false));
         assert_eq!(
             t.players[1].history.events,
             [crate::players::history::Event {
@@ -799,7 +659,7 @@ mod stack_tests {
     #[test]
     fn a_town_centre_foundation_completes_into_the_town_centre_and_its_annexes() {
         let mut t = world();
-        t.work_building(8759, 1.0).unwrap();
+        assert_eq!(t.work_building(8759, 1.0), Ok(false));
         let ids: Vec<(i32, i16, u8)> = t.players[1]
             .objects
             .iter()
@@ -947,7 +807,7 @@ mod stack_tests {
     fn a_stack_unit_s_completion_reads_the_foundation_s_attacking_units() {
         let mut gone = world();
         gone.players[1].objects[0].attacking_units = vec![99_999];
-        assert_eq!(gone.work_building(8759, 1.0), Ok(()));
+        assert_eq!(gone.work_building(8759, 1.0), Ok(false));
         let mut held = world();
         let first = held.players[1].objects[0].id;
         held.players[1].objects[0].attacking_units = vec![first];

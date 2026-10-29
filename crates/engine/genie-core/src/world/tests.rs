@@ -1635,7 +1635,6 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: false,
         }),
         pasture: -1,
         my_pasture: -1,
@@ -1868,7 +1867,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
         );
     }
     t.spatial.set_annex(10031, Some(10028));
-    t.work_building(10031, 0.021).unwrap();
+    assert_eq!(t.work_building(10031, 0.021), Ok(true));
     let c = |id: i32| t.object(id).unwrap().1.construction.unwrap();
     let started = f32::from_bits(0x2edb_e6ff);
     assert!(!c(10031).desolid);
@@ -3407,7 +3406,6 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: false,
         }),
         ..Unit::default()
     };
@@ -7908,7 +7906,6 @@ fn teardown_world() -> World {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: true,
         }),
         ..Unit::default()
     };
@@ -8212,7 +8209,6 @@ fn deaths_world() -> World {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: true,
         }),
         ..Unit::default()
     };
@@ -8909,7 +8905,6 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: true,
         }),
         gather_point: Some(GatherPoint {
             point: [12.0, 12.0, 0.0],
@@ -10245,7 +10240,6 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: false,
         }),
         ..Unit::default()
     };
@@ -10351,7 +10345,6 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
             record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
-            started: true,
         }),
         ..Unit::default()
     };
@@ -10627,7 +10620,6 @@ fn building_short_of_its_build_time_dies(state: u8) {
             record: crate::map::spatial::Obstruction { kind: 2, class: 0 },
             snow: false,
             sprite_override: false,
-            started: false,
         }),
         sprite: Some(ActiveSprite::at_rest(g(207), 0)),
         pasture: -1,
@@ -13870,7 +13862,6 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
         record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
-        started: false,
     });
     setup(&mut t);
     let r = in_update(&mut t, (1, 0), 50, |unit, c| {
@@ -13967,7 +13958,7 @@ fn a_builder_s_first_work_starts_the_site_its_owner_watches() {
         .unwrap()
         .construction
         .unwrap();
-    assert_eq!((k.desolid, k.started), (false, false));
+    assert!(!k.desolid);
     assert_eq!(watches(&t, 1, 10028), 1);
 }
 
@@ -14084,7 +14075,7 @@ fn a_foundation_whose_build_points_reached_its_build_time_completes() {
     assert_eq!(r, (vec![(98, 25.0), (165, 25.0)], 1));
     let h = &t.players[1].objects[1];
     let k = h.construction.unwrap();
-    assert_eq!((h.life.state, k.desolid, k.started), (2, false, false));
+    assert_eq!((h.life.state, k.desolid), (2, false));
     let key = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
     assert_eq!(t.players[1].tracker.list(key.master), [10028]);
     let short: fn(&mut Unit) = |h| h.construction.as_mut().unwrap().progress = 24.0;
@@ -14157,13 +14148,9 @@ fn a_dying_desolid_foundation_s_owner_watches_it_within_its_update() {
     let seen = in_update(&mut t, (1, 1), 0, |unit, c| {
         unit.life.state = 3;
         unit.died(c, 0)?;
-        let started = unit.construction.map(|k| k.started);
-        Ok((watches(c.w, 1, 10028), started))
+        Ok(watches(c.w, 1, 10028))
     });
-    assert_eq!(
-        seen.map_err(|e| e.reason().to_owned()),
-        Ok((1, Some(false)))
-    );
+    assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(1));
 }
 
 /// [`house_builder`]'s town centre 700 (master 109: 2400 hit points, a garrison heal rate of 2)
@@ -14902,42 +14889,44 @@ fn the_own_razings_count_where_the_hit_runs() {
     assert_eq!(razed(&[(-1, 5.0), (98, -5.0)]), (negative, 10.0));
 }
 
-/// A step that fails stops what follows it: a construction start it marked is not cleared after
-/// it ([`World::step_object`]'s `clear_started`); a step that holds clears it.
+/// A step that fails stops what follows it: the tiles whose marks it changed are not handed to
+/// the planners after it ([`World::step_object`]'s `hand_changed_tiles`); a step that holds
+/// hands them on.
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
+    use crate::map::spatial::Obstruction;
     use crate::objects::unit::Outcome;
+    let record = Obstruction { kind: 2, class: 2 };
     let mut t = house_builder();
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.w.spatial.started(10028);
+        c.w.spatial.add_record(10028, record);
         Err(GenieError::unsupported("the step's own gap"))
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
         Err("the step's own gap".to_owned())
     );
-    assert_eq!(t.spatial.take_started(), vec![10028]);
+    assert_ne!(t.spatial.take_changes(), Vec::<[i16; 4]>::new());
     let mut t = house_builder();
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.w.spatial.started(10028);
+        c.w.spatial.add_record(10028, record);
         Ok(Outcome::Stay)
     });
     assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Outcome::Stay));
-    assert_eq!(t.spatial.take_started(), vec![]);
+    assert_eq!(t.spatial.take_changes(), Vec::<[i16; 4]>::new());
 }
 
-/// What a completion leaves its owner ([`World::built`]): a pasture puts its livestock on its
-/// edges, a building's stack unit is made at its place, a completion's technology is
-/// researched, and a building that disappears when built is destroyed. A completed mule cart
-/// with nothing to find keeps its state.
+/// What a completion leaves its owner, each at once ([`World::complete_building`] and the
+/// routines it calls): a pasture puts its livestock on its edges
+/// ([`World::setup_pasture`], from its first part), a building's stack unit is made at its
+/// place ([`World::stack_unit`]), its master's technology is researched, and a master that
+/// disappears when built is destroyed. A completed mule cart with nothing to find keeps its
+/// state ([`World::cart_search`], from its first part).
 #[test]
 fn a_completion_s_parts_reach_their_owner() {
-    use crate::construction::build::{Built, StackUnit};
+    use crate::construction::build::StackUnit;
     use crate::gathering::pasture::LIVESTOCK;
     use crate::technology::{TechDef, TechState};
-    let stay = |t: &mut World, id: i32, built: Built| {
-        t.built(1, id, built).map_err(|e| e.reason().to_owned())
-    };
     let made = |t: &World| -> Vec<(i32, i16, [f32; 3])> {
         t.players[1].objects[1..]
             .iter()
@@ -14945,11 +14934,7 @@ fn a_completion_s_parts_reach_their_owner() {
             .collect()
     };
     let mut t = pasture_game([60.0, 60.0, 0.0], 2.0, &LIVESTOCK);
-    let pasture = Built {
-        pasture: true,
-        ..Built::default()
-    };
-    assert_eq!(stay(&mut t, 50, pasture), Ok(()));
+    assert_eq!(t.setup_pasture(1, 50), Ok(()));
     assert_eq!(
         made(&t),
         [
@@ -14963,41 +14948,38 @@ fn a_completion_s_parts_reach_their_owner() {
         at: [60.0, 60.0, 0.0],
         hp_lost: 0.0,
     };
-    let stacked = Built {
-        stack: Some(stack),
-        ..Built::default()
-    };
-    assert_eq!(stay(&mut t, 50, stacked), Ok(()));
+    assert_eq!(t.stack_unit(1, 50, stack), Ok(()));
     assert_eq!(made(&t), [(100, 1899, [60.0, 60.0, 0.0])]);
 
-    let mut t = house_builder();
-    t.techs = vec![TechDef::default()];
-    t.players[1].techs = vec![TechState {
-        state: 1,
-        research_cap: -1,
-        building_master: -1,
-        ..TechState::default()
-    }];
-    let tech = Built {
-        tech: Some(0),
-        ..Built::default()
+    // the house's completion with its master's technology, or disappearing when built
+    let completed = |setup: fn(&mut crate::objects::masters::BuildingMaster)| {
+        let mut t = house_builder();
+        for masters in &mut t.masters {
+            if let Some(b) = masters.get_mut(70).and_then(|m| m.building.as_mut()) {
+                setup(b);
+            }
+        }
+        t.techs = vec![TechDef::default()];
+        t.players[1].techs = vec![TechState {
+            state: 1,
+            research_cap: -1,
+            building_master: -1,
+            ..TechState::default()
+        }];
+        let r = t
+            .complete_building(10028)
+            .map_err(|e| e.reason().to_owned());
+        (t, r)
     };
-    assert_eq!(stay(&mut t, 10028, tech), Ok(()));
+    let (t, r) = completed(|b| b.tech = 0);
+    assert_eq!(r, Ok(()));
     assert_eq!(t.players[1].techs[0].state, 3);
-    let mut t = house_builder();
-    let vanishes = Built {
-        vanishes: true,
-        ..Built::default()
-    };
-    assert_eq!(stay(&mut t, 10028, vanishes), Ok(()));
+    let (t, r) = completed(|b| b.disappears_when_built = true);
+    assert_eq!(r, Ok(()));
     let house = &t.players[1].objects[1].life;
     assert_eq!((house.state, house.hp), (7, 0.0));
     let mut t = house_builder();
-    let cart = Built {
-        cart: Some(2),
-        ..Built::default()
-    };
-    assert_eq!(stay(&mut t, 9175, cart), Ok(()));
+    assert_eq!(t.cart_search(1, 9175, 2), Ok(()));
     let cart = &t.players[1].objects[0];
     assert_eq!(
         (cart.life.state, cart.ai.as_ref().map(|a| a.current_target)),

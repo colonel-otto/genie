@@ -269,7 +269,6 @@ impl World {
                 },
                 snow,
                 sprite_override: false,
-                started: false,
             }),
             work_rate_powerup: 0.0,
             attackable: true,

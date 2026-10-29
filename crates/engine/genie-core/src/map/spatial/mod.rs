@@ -515,10 +515,6 @@ pub struct Spatial {
     /// The tile rectangles (x0, y0, x1, y1) whose static marks changed, for the planners
     /// ([`Spatial::take_changes`]).
     changed: Vec<[i16; 4]>,
-    /// The foundations whose construction started this update, whose clearing of the desolid
-    /// foundations they overlap (`FUN_1411cd0d0`) the update runs after the builder's
-    /// ([`Spatial::take_started`]).
-    started: Vec<i32>,
     /// The seconds since each frozen object froze.
     frozen_for: BTreeMap<i32, f32>,
     /// What a stopped player's units may have done since: the fastest any of the players' unit

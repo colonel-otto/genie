@@ -570,7 +570,6 @@ mod tests {
                 record: Obstruction { kind: 2, class: 0 },
                 snow: false,
                 sprite_override: false,
-                started: false,
             }),
             ..Unit::default()
         };
