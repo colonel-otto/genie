@@ -520,6 +520,33 @@ fn rng() -> Well512 {
     r
 }
 
+/// A `size` by `size` map of terrain `fill` but for `tiles` (x, y and their terrain), every
+/// terrain up to 23 shown.
+fn terrain(size: i32, fill: u8, tiles: &[([i16; 2], u8)]) -> crate::map::terrain::Terrain {
+    let mut kinds = vec![(fill, 255, -1); (size * size) as usize];
+    for &([x, y], t) in tiles {
+        kinds[(i32::from(y) * size + i32::from(x)) as usize] = (t, 255, -1);
+    }
+    let shown = crate::map::terrain::TerrainKind {
+        shown: true,
+        ..crate::map::terrain::TerrainKind::default()
+    };
+    crate::map::terrain::Terrain::new(size, size, kinds, vec![shown; 24], Vec::new())
+}
+
+/// The tile of the retry's `n`th draw (from 1) about (20, 20) from [`rng`]'s seed `seed`.
+fn draw_tile(seed: u32, n: usize) -> [i16; 2] {
+    let mut r = Well512::default();
+    r.set_seed(seed);
+    let mut at = [0; 2];
+    for _ in 0..n {
+        let x = (r.rand15() / RETRY_STEP) as f32 + 20.0 - RETRY_SPREAD;
+        let y = (r.rand15() / RETRY_STEP) as f32 + 20.0 - RETRY_SPREAD;
+        at = [x as i32 as i16, y as i32 as i16];
+    }
+    at
+}
+
 #[test]
 fn a_retry_draws_about_the_old_point_until_it_leaves_the_water() {
     // the draws as the game makes them: x then y, each r / 0xccc tiles
@@ -535,59 +562,40 @@ fn a_retry_draws_about_the_old_point_until_it_leaves_the_water() {
     // land (terrain 0) everywhere: the first draw leaves the water
     let mut r = rng();
     assert_eq!(
-        retry_point(point, [40, 40], |_, _| 0, &mut r),
+        retry_point(point, [40, 40], &terrain(40, 0, &[]), &mut r),
         (at(0), true)
     );
     // water 22, 23 and 1 keep drawing: the third draw's tile is land
     let first = [at(0), at(1)].map(|p| [p[0] as i16, p[1] as i16]);
+    let wet = terrain(40, 0, &[(first[0], 0x17), (first[1], 1)]);
     let mut r = rng();
-    let (found, sails) = retry_point(
-        point,
-        [40, 40],
-        |x, y| match [x, y] {
-            t if t == first[0] => 0x17,
-            t if t == first[1] => 1,
-            _ => 0,
-        },
-        &mut r,
-    );
+    let (found, sails) = retry_point(point, [40, 40], &wet, &mut r);
     assert_eq!((found, sails), (at(2), true));
     assert_eq!(r, copy);
     // off the map the last terrain stays: all water, 100 draws, the last one taken
     let mut r = rng();
-    let (_, sails) = retry_point(point, [40, 40], |_, _| 0x16, &mut r);
+    let (_, sails) = retry_point(point, [40, 40], &terrain(40, 0x16, &[]), &mut r);
     assert!(!sails);
     assert_eq!(r.draws, rng().draws + 200);
 }
 
 #[test]
 fn the_99th_draw_leaving_the_water_comes_too_late() {
-    // water until the 99th draw: the loop breaks with no draws to spare
-    let mut r = rng();
-    let count = std::cell::Cell::new(0);
-    let (_, sails) = retry_point(
-        [20.0, 20.0],
-        [400, 400],
-        |_, _| {
-            count.set(count.get() + 1);
-            if count.get() < 99 { 0x16 } else { 0 }
-        },
-        &mut r,
-    );
-    assert!(!sails);
-    // the 98th: one to spare
-    let mut r = rng();
-    count.set(0);
-    let (_, sails) = retry_point(
-        [20.0, 20.0],
-        [400, 400],
-        |_, _| {
-            count.set(count.get() + 1);
-            if count.get() < 98 { 0x16 } else { 0 }
-        },
-        &mut r,
-    );
-    assert!(sails);
+    // water but the tile of the nth draw, which no draw before lands on (a seed that gives
+    // one): the 99th breaks the loop with no draws to spare, the 98th with one
+    for (n, sails) in [(99, false), (98, true)] {
+        let seed = (0..1000)
+            .find(|&seed| (1..n).all(|k| draw_tile(seed, k) != draw_tile(seed, n)))
+            .expect("a seed whose nth draw lands on a new tile");
+        let shore = terrain(400, 0x16, &[(draw_tile(seed, n), 0)]);
+        let mut r = Well512::default();
+        r.set_seed(seed);
+        assert_eq!(
+            retry_point([20.0, 20.0], [400, 400], &shore, &mut r).1,
+            sails,
+            "{n}"
+        );
+    }
 }
 
 #[test]
@@ -610,56 +618,52 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     };
     let mut last = None;
     let mut r = rng();
-    let found = find_drop_location(
-        around,
-        [0.5, 0.5],
-        [40, 40],
-        &mut last,
-        &mut r,
-        &mut |_| Ok(true),
-        &mut |_| Ok(true),
-    )
-    .unwrap();
-    assert_eq!(found, Some(expected));
+    let first = DropDraws::new(around, [0.5, 0.5], [40, 40], &mut last, &mut r).next_on_map();
+    assert_eq!(first, Ok(Some(expected)));
     assert_eq!(last, Some(expected));
     assert_eq!(r, copy);
-    // nothing free: 50 tries, the last place kept for the next call
+    // 50 draws in all, the last place kept for the next call
     let mut r = rng();
+    let mut draws = DropDraws::new(around, [0.5, 0.5], [40, 40], &mut last, &mut r);
     let mut tries = 0;
-    let none = find_drop_location(
-        around,
-        [0.5, 0.5],
-        [40, 40],
-        &mut last,
-        &mut r,
-        &mut |_| Ok(true),
-        &mut |_| {
-            tries += 1;
-            Ok(false)
-        },
-    )
-    .unwrap();
-    assert_eq!((none, tries), (None, 50));
-    // off the map: neither test runs
+    while draws.next_on_map().unwrap().is_some() {
+        tries += 1;
+    }
+    assert_eq!(tries, 50);
+    // off the map: those draws use their tries up, and none comes out
     let mut r = rng();
     let edge = Around {
         center: [0.0, 0.0],
         radius: [5.0, 5.0],
     };
-    let mut tested = 0;
-    let _ = find_drop_location(
-        edge,
-        [0.5, 0.5],
-        [4, 4],
-        &mut None,
-        &mut r,
-        &mut |p| {
-            tested += 1;
-            assert!(0.0 <= p[0] && 0.0 <= p[1] && p[0] < 4.0 && p[1] < 4.0);
-            Ok(true)
-        },
-        &mut |_| Ok(false),
-    )
-    .unwrap();
-    assert!(tested < 50);
+    let mut none = None;
+    let mut draws = DropDraws::new(edge, [0.5, 0.5], [4, 4], &mut none, &mut r);
+    let mut on_map = 0;
+    while let Some(p) = draws.next_on_map().unwrap() {
+        on_map += 1;
+        assert!(0.0 <= p[0] && 0.0 <= p[1] && p[0] < 4.0 && p[1] < 4.0);
+    }
+    assert!(on_map < 50);
+    // a first draw of side 4 keeps a place no draw left: not modelled
+    let mut stack = Well512::default();
+    let seed = (0..100_000)
+        .find(|&seed| {
+            stack.set_seed(seed);
+            stack.rand15() == 0x7fff
+        })
+        .expect("a seed whose first draw is 0x7fff");
+    stack.set_seed(seed);
+    let mut none = None;
+    let mut draws = DropDraws::new(around, [0.5, 0.5], [40, 40], &mut none, &mut stack);
+    assert_eq!(draws.next_on_map(), Err(STACK_PLACE));
+}
+
+/// A drop location's zone ([`in_zone`]): any for −1; else the tile's zone (its low byte) or
+/// one beside it on the zone map; without a map only zone 0's tiles, none beside.
+#[test]
+fn a_drop_location_lies_in_the_transport_s_zone_or_beside_it() {
+    assert_eq!(in_zone([3.5, 4.5], u32::MAX, None), Ok(true));
+    assert_eq!(in_zone([3.5, 4.5], 0, None), Ok(true));
+    assert_eq!(in_zone([3.5, 4.5], 2, None), Ok(false));
+    assert_eq!(in_zone([-0.5, 4.5], 0, None), Ok(true));
 }

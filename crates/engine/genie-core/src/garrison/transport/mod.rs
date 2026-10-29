@@ -22,8 +22,9 @@ mod shore;
 mod unload;
 mod work;
 
+pub use self::shore::Around;
 pub(crate) use self::shore::MapShore;
-pub use self::shore::{Around, find_drop_location, retry_point};
+pub(crate) use self::shore::{DropDraws, in_zone, retry_point};
 #[cfg(test)]
 use crate::math::rng::Well512;
 

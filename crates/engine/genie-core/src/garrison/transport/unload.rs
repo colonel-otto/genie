@@ -3,8 +3,8 @@
 
 use crate::GenieError;
 use crate::garrison::transport::{
-    Around, Changed, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT, TransportAction,
-    find_drop_location, retry_point,
+    Around, Changed, DropDraws, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT,
+    TransportAction, in_zone, retry_point,
 };
 use crate::math::conversions::cvttss2si;
 
@@ -158,7 +158,7 @@ impl crate::world::World {
                 .as_ref()
                 .ok_or(crate::pathing::zones::NO_TERRAIN)?;
             let rng = self.streams.get(crate::math::rng::Stream::Action);
-            let (point, sails) = retry_point([x, y], ship.map, |tx, ty| terrain.read(tx, ty), rng);
+            let (point, sails) = retry_point([x, y], ship.map, terrain, rng);
             let mut shore = MapShore::new(
                 &self.spatial,
                 &mut self.zones,
@@ -255,11 +255,9 @@ impl crate::world::World {
     }
 
     /// `FUN_141192d10` for the unit `id` (of master `made`) about `around`, in `zone` of the
-    /// transport at (`p`, `i`) ([`find_drop_location`] on the Object stream, the place `last`
-    /// across the caller's units). A place is in the zone when the zone of its tile on the
-    /// transport's zone map (`FUN_1411958c0` on its `CVTTSS2SI` tile, 0 below 0 or without a map),
-    /// cut to its low byte, is it, or touches it (`FUN_141414f70` on both low bytes; without a
-    /// map none does); −1 takes any. A place is free where the unit's master may stand for the
+    /// transport at (`p`, `i`) ([`DropDraws`] on the Object stream, the place `last` across the
+    /// caller's units): the first place on the map in the zone ([`in_zone`] on the transport's
+    /// zone map) that is free. A place is free where the unit's master may stand for the
     /// transport's owner (its slot 0x50, [`crate::production::spawn::placement`] with the spawn's arguments:
     /// its arguments 9 and 12, 1 and 0 here, change nothing the slice reads) and the unit could
     /// stand (its slot 0x278, [`crate::map::spatial::Spatial::point_clear`] by its radius and its
@@ -322,44 +320,25 @@ impl crate::world::World {
         let mut rng = self.streams.get(crate::math::rng::Stream::Object).clone();
         let map = crate::production::spawn::WorldMap { turns: self };
         let spatial = &self.spatial;
-        let found = find_drop_location(
-            around,
-            made.radius,
-            [w, h],
-            last,
-            &mut rng,
-            &mut |[x, y]| {
-                if zone == u32::MAX {
-                    return Ok(true);
-                }
-                let (tx, ty) = (cvttss2si(x), cvttss2si(y));
-                let tile_zone = match zone_map {
-                    Some(m) if 0 <= tx && 0 <= ty => m.zone(tx, ty),
-                    _ => 0,
-                };
-                let low = tile_zone & 0xff;
-                if u32::from(low) == zone {
-                    return Ok(true);
-                }
-                let Some(m) = zone_map else {
-                    return Ok(false);
-                };
-                m.adjacent(low, (zone & 0xff) as u16)
-                    .ok_or(GenieError::unreachable("a zone adjacency past its table"))
-            },
-            &mut |[x, y]| {
-                let [rx, ry] = made.radius;
-                spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
-                if crate::production::spawn::placement(&placing, &map, [x, y], false)?
-                    != crate::production::spawn::Tested::Free
-                {
-                    return Ok(false);
-                }
-                spatial.point_clear(id, [x, y], grow, mask)
-            },
-        );
+        let mut draws = DropDraws::new(around, made.radius, [w, h], last, &mut rng);
+        let mut found = None;
+        // the place's tests, each only after the one before passed
+        while let Some([x, y]) = draws.next_on_map()? {
+            if !in_zone([x, y], zone, zone_map)? {
+                continue;
+            }
+            let [rx, ry] = made.radius;
+            spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
+            if crate::production::spawn::placement(&placing, &map, [x, y], false)?
+                == crate::production::spawn::Tested::Free
+                && spatial.point_clear(id, [x, y], grow, mask)?
+            {
+                found = Some([x, y]);
+                break;
+            }
+        }
         *self.streams.get(crate::math::rng::Stream::Object) = rng;
-        found
+        Ok(found)
     }
 
     /// `FUN_141191b40`'s put ashore of the unit `id` (of master `made`) from the transport at
