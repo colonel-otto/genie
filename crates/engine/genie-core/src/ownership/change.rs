@@ -9,6 +9,7 @@ use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, player_master};
 use crate::objects::unit::Unit;
+use crate::players::attribute;
 
 use crate::unit_ai::OWNER_CHANGED;
 use crate::world::World;
@@ -445,8 +446,8 @@ pub(crate) fn lose_built_storage(
             p.add_attribute(kind, -amount)?;
         }
     }
-    if held == POPULATION_HEADROOM {
-        p.add_attribute(POPULATION_HEADROOM, -amount)?;
+    if held == attribute::HEADROOM {
+        p.add_attribute(attribute::HEADROOM, -amount)?;
     }
     Ok(())
 }
@@ -468,8 +469,8 @@ pub(crate) fn gain_built_storage(
             p.add_attribute(kind, amount)?;
         }
     }
-    if held == POPULATION_HEADROOM {
-        p.add_attribute(POPULATION_HEADROOM, amount)?;
+    if held == attribute::HEADROOM {
+        p.add_attribute(attribute::HEADROOM, amount)?;
     }
     Ok(())
 }
@@ -478,7 +479,5 @@ pub(crate) fn gain_built_storage(
 pub(crate) const STORAGE_WHILE_BUILT: u8 = 4;
 /// The other storage flag a building's new owner gains on an ownership change (slot 0x70's).
 pub(crate) const STORAGE_8: u8 = 8;
-/// The population headroom attribute, which a building's held amount gives (`+0x308` 4).
-pub(crate) const POPULATION_HEADROOM: i16 = 4;
 /// The point a building's units leave toward on an ownership change: none (`DAT_14330ec20`).
 pub(crate) const HANDOVER_NO_POINT: f32 = crate::math::image::turn::HANDOVER_NO_POINT;

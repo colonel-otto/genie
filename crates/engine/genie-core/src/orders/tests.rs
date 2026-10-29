@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::action_state::FAILED;
@@ -3566,7 +3567,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         crate::construction::build::BuildAction::start(10028, [30.0, 88.0, 0.0], 1.0, build),
     ));
     let building = Task {
-        action_type: crate::construction::build::BUILD,
+        action_type: action_type::BUILD,
         ..task
     };
     assert_eq!(

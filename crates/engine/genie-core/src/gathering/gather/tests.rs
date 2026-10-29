@@ -1,4 +1,5 @@
 use super::*;
+use crate::gathering::make::FARM_FOOD_KIND;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Mover};
 use crate::objects::masters::class;

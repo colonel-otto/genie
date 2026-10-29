@@ -22,6 +22,7 @@ use crate::gathering::make::MakeAction;
 use crate::movement::explore::ExploreAction;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::masters::action_type;
 use crate::ownership::artifact::Artifact;
 use genie_diff::Diff;
 
@@ -123,7 +124,7 @@ impl Action {
     pub const fn kind(&self) -> i16 {
         match self {
             Self::Artifact(_) => crate::ownership::artifact::ARTIFACT_TYPE,
-            Self::Build(_) => crate::construction::build::BUILD,
+            Self::Build(_) => action_type::BUILD,
             Self::Repair(_) => crate::construction::repair::REPAIR,
             Self::MoveTo(_) => crate::movement::move_to::MOVE_TO,
             Self::Fly(_) => crate::movement::fly::FLY,

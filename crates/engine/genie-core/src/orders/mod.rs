@@ -119,9 +119,6 @@ const MASTER_1897: i16 = 1897;
 const GUARD_RANGE: f32 = crate::math::image::order::GUARD_RANGE;
 /// The task filter of garrisoning (3).
 pub(crate) const GARRISON: i16 = 3;
-/// The action type of a building packing or unpacking (0x7d), whose target a gather drops
-/// (`FUN_140a903a0`).
-const PACK_ACTION: i16 = 0x7d;
 /// A master's object flag 0x20: a building a gather takes as its target as any other.
 const GATHERED_BUILDING: u32 = 0x20;
 /// A task's action type of attacking (7), whose factory makes an Attack (type 9).

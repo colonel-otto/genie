@@ -20,7 +20,7 @@ mod upgrade;
 pub(crate) use self::attribute_modifier::{MasterSprites, follow_master};
 use self::object_slots::{CAPPED, ONE, ROUND, has_actions, shows_sprite, within_table};
 #[cfg(test)]
-use self::object_slots::{HEADROOM, POPULATION, RESOURCE_19, charge_after};
+use self::object_slots::{POPULATION, RESOURCE_19, charge_after};
 #[cfg(test)]
 use crate::math::rng::Stream;
 #[cfg(test)]
@@ -45,8 +45,6 @@ const TECH_DISABLE: u8 = b'f';
 const TECH_TIME: u8 = b'g';
 /// The technology type that a disable command makes available instead (`FUN_1413cdb00`: 0x21).
 const REENABLED_KIND: i16 = 0x21;
-/// A researched technology's state, which a disable command keeps (`FUN_1413cdb00`).
-const RESEARCHED: i16 = 3;
 
 /// The `RGE_Effects` command kinds the base (`FUN_140ec2ac0`) switches on: the player's own (0 to
 /// 8), the same for its mutual allies (10 to 18), enemies (20 to 28), neutrals (30 to 38) and Gaia

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::movement::ASIDE;
 use crate::movement::move_to::{MoveTo, Shows};
 use crate::movement::{GroupSpeed, Me};
 use crate::objects::lifecycle::seconds;
@@ -15,9 +16,6 @@ use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
 use crate::world::step::Step;
 
-/// A group member's own move's reasons slot 0x5e0 tells apart (`FUN_141017590`): moved aside,
-/// and none.
-const ASIDE: i32 = 2;
 const NO_OWN_MOVE: i32 = -1;
 
 impl Unit {

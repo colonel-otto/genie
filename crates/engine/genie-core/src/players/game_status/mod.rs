@@ -31,8 +31,6 @@ const STOP_AFTER_MS: u32 = 60_000;
 const DEFEAT_IDS: usize = 25;
 /// The first of the attributes a defeat's event reads (300 + a player's id).
 const KILLS_OF: usize = 300;
-/// The trade action's type (`0x6f`), whose load keeps a stopped unit's AI going.
-const TRADE_ACTION: i16 = 0x6f;
 /// The action types whose stop keeps a value of the unit's (`+0x88a`, `FUN_14106fa60`).
 const KEEPING_TYPES: [i16; 2] = [0x7c, 0x7d];
 /// The buildings a stop leaves alone (`FUN_1411e6290`).

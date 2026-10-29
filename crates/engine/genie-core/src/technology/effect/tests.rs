@@ -1,6 +1,7 @@
 use super::*;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
+use crate::players::attribute;
 use crate::world::Player;
 
 /// A combat unit's charge after its master's maximum charge changes (`FUN_1412163c0`'s
@@ -125,7 +126,7 @@ fn a_population_set_moves_each_storage_entry_to_the_new_value() {
     let master = Master {
         id: 70,
         storage: vec![
-            (HEADROOM, -5.0, 0),
+            (attribute::HEADROOM, -5.0, 0),
             (POPULATION, 3.0, 0),
             (7, 1.0, 0),
             (RESOURCE_19, 2.0, 0),
@@ -135,7 +136,12 @@ fn a_population_set_moves_each_storage_entry_to_the_new_value() {
     t.population_storage(0, &master, -8.0).unwrap();
     let at = |i: i16| t.players[0].attributes[i as usize];
     assert_eq!(
-        [at(HEADROOM), at(POPULATION), at(7), at(RESOURCE_19)],
+        [
+            at(attribute::HEADROOM),
+            at(POPULATION),
+            at(7),
+            at(RESOURCE_19)
+        ],
         [-3.0, 5.0, 0.0, 0.0]
     );
 }

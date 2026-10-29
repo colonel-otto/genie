@@ -14,7 +14,6 @@ use crate::objects::masters::{Masters, player_master};
 use crate::orders::Place;
 use crate::players::attribute;
 use crate::production::Production;
-use crate::world::player::POPULATION;
 use crate::world::{
     COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, VILLAGER_ANY, World, villager,
 };
@@ -113,7 +112,7 @@ impl World {
             let (costed, annex) = crate::production::costed(masters, unit);
             let short = |count: i32| -> Result<bool, GenieError> {
                 for &(attribute, each, paid) in costed.cost.iter().take(3) {
-                    if attribute < 0 || (annex && !paid) || attribute == POPULATION {
+                    if attribute < 0 || (annex && !paid) || attribute == attribute::HEADROOM {
                         continue;
                     }
                     let held = crate::technology::Attributes::get(owner, attribute)?;

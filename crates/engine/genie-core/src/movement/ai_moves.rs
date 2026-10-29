@@ -3,7 +3,8 @@
 //! `MoveTo` that ends at its start.
 
 use crate::GenieError;
-use crate::construction::build::BUILD;
+use crate::objects::masters::action_type;
+
 use crate::gathering::hunt::HuntMove;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveTo, MoveToAction, ai_sprite, object_sprite, point_sprite};
@@ -161,7 +162,7 @@ impl Unit {
             | Some(
                 crate::movement::move_to::MOVE_TO
                 | crate::movement::explore::EXPLORE
-                | BUILD
+                | action_type::BUILD
                 | crate::combat::attack::ATTACK
                 | crate::garrison::ENTER
                 | crate::movement::fly::FLY

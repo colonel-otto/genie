@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::action_type;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
@@ -238,10 +239,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         t.halt_other(1, gather, crate::gathering::gather::GATHER),
         Ok(true)
     );
-    assert_eq!(
-        t.halt_other(1, build, crate::construction::build::BUILD),
-        Ok(true)
-    );
+    assert_eq!(t.halt_other(1, build, action_type::BUILD), Ok(true));
     assert_eq!(
         t.halt_other(1, repair, crate::construction::repair::REPAIR),
         Ok(true)

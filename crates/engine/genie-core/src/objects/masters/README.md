@@ -28,6 +28,7 @@ file for what the save does not hold.
 <!-- files -->
 | File | What it holds |
 | --- | --- |
+| [`action_type.rs`](action_type.rs) | The task action types (`Task::action_type`, `i16`) that more than one routine names: the action a task makes a unit do. |
 | [`attribute.rs`](attribute.rs) | The attributes an effect changes on a master and on its objects (the game's attribute list: string 12200 plus the number names each). |
 | [`class.rs`](class.rs) | The master classes (`+0x18`, an `i16`): the one definition of the class values. |
 | [`combat_setters.rs`](combat_setters.rs) | The RGE combat and missile masters' setters: the armor and attack amounts. |

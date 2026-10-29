@@ -17,6 +17,7 @@ use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
 use crate::objects::ObjectId;
+use crate::objects::masters::action_type;
 use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{MasterId, player_master};
@@ -35,8 +36,6 @@ const BUILDER_TYPE: u8 = 0x27;
 /// The villagers' class (`FUN_141195750`: the master's class is 4), tested by the wall's train
 /// locations.
 const CIVILIAN: i16 = 4;
-/// The action type of the task another unit builds with (`FUN_141262270`: `0x65`).
-const BUILD_TASK: i16 = 0x65;
 /// The builders the game's sort (`FUN_140e6eee0`) orders by insertion: 0x100 bytes of 8-byte
 /// entries. More go to its quicksort, which is not stable.
 const INSERTION_SORT_MAX: usize = 32;
@@ -393,7 +392,7 @@ impl World {
             return Ok(m
                 .tasks
                 .iter()
-                .find(|t| t.action_type == BUILD_TASK)
+                .find(|t| t.action_type == action_type::BUILD)
                 .is_some_and(|t| t.object_id == building));
         }
         Ok(trained_at.contains(&BUILDER) || trained_at.contains(&m.id))

@@ -4,9 +4,10 @@
 use crate::GenieError;
 use crate::objects::masters::{master_type, player_master};
 use crate::technology::EffectCommand;
+use crate::technology::RESEARCHED;
 use crate::technology::effect::{
     ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, RESEARCH_SPENT,
-    RESEARCHED, TECH_DISABLE, TECHS_RESEARCHED, kind,
+    TECH_DISABLE, TECHS_RESEARCHED, kind,
 };
 use crate::world::World;
 

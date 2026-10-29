@@ -282,9 +282,9 @@ pub struct MakeObj {
 
 impl MakeObj {
     /// The make action's state while it works.
-    pub const MAKING: u8 = 6;
+    pub const MAKING: u8 = crate::gathering::make::MAKING;
     /// Its state once its unit came.
-    pub const DONE: u8 = 1;
+    pub const DONE: u8 = crate::orders::action_state::DONE;
 
     /// The building's update's make action (`FUN_140acb140` with the first entry's master, −1,
     /// 0, its train time and button): paid, nothing done, state 0 until the list starts it.
@@ -404,13 +404,10 @@ impl Production {
 pub fn population(storage: &[(i16, f32, u8)]) -> f32 {
     storage
         .iter()
-        .filter(|&&(kind, _, _)| kind == HEADROOM)
+        .filter(|&&(kind, _, _)| kind == attribute::HEADROOM)
         .fold(0.0, |pop, &(_, amount, _)| pop - amount)
 }
 
-/// The population headroom (attribute 4), the population (11), the population cap (32), the
-/// units queued (80) and the units in production (81).
-pub const HEADROOM: i16 = 4;
 /// The population cap (attribute 32).
 pub const POPULATION_CAP: usize = 32;
 /// The units queued (attribute 80).
@@ -426,7 +423,7 @@ pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
     let in_production = a(IN_PRODUCTION as usize)?;
     Ok(
         a(POPULATION_CAP)? < a(attribute::POPULATION)? + in_production + pop
-            || (a(HEADROOM as usize)? - in_production) - pop < 0.0,
+            || (a(attribute::HEADROOM as usize)? - in_production) - pop < 0.0,
     )
 }
 

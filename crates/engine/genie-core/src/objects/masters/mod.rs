@@ -569,6 +569,7 @@ pub struct Masters {
     by_id: Vec<Option<Master>>,
 }
 
+pub mod action_type;
 pub mod attribute;
 pub mod class;
 pub mod ids;

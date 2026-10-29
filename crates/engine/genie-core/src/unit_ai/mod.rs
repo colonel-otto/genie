@@ -210,7 +210,7 @@ const DEAD: u32 = 4;
 /// "`ProcessIdle` produced an action."
 const PRODUCED: u32 = 0xd;
 /// The boar's unit-AI type (`TribePreditorUnitAIModule`).
-const BOAR_AI: u32 = 4;
+pub(crate) const BOAR_AI: u32 = 4;
 /// The soldier's factory type (`TribeSoldierUnitAIModule`).
 pub(crate) const SOLDIER_AI: u32 = 13;
 /// The tower's factory type (`TribeTowerUnitAIModule`, the town centre's too).
@@ -227,7 +227,7 @@ const SIEGE_AI: u32 = 0x10;
 /// The predator's factory type (`TribePreditorUnitAIModule`, `FUN_140c11da0`).
 const PREDATOR_AI: u32 = 3;
 /// The lion's factory type (`TribeLionUnitAIModule`, `FUN_140c11bd0`).
-const LION_AI: u32 = 5;
+pub(crate) const LION_AI: u32 = 5;
 /// The livestock's factory type (`TribeLivestockUnitAIModule`, `FUN_140c11d70`).
 const LIVESTOCK_AI: u32 = 0x13;
 /// The trade ship's and the trade cart's factory type (`TribeTradeShipUnitAIModule`, classes 2

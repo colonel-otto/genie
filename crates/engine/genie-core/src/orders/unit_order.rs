@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::objects::masters::master_type::BUILDING;
@@ -258,7 +259,7 @@ impl World {
                 .actions
                 .gather()
                 .map(|g| (DropOffBy::Gather, g.target, g.point, g.task.resource)),
-            Some(crate::construction::build::BUILD) => unit
+            Some(action_type::BUILD) => unit
                 .actions
                 .build()
                 .map(|b| (DropOffBy::Build, b.target, b.point, b.task.resource)),

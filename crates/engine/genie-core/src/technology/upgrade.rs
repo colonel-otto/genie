@@ -620,6 +620,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
 
     /// An animated graphic of `frames` frames with a random first frame (flags 5).
@@ -917,7 +918,7 @@ mod tests {
     /// action without a match keeps its task.
     #[test]
     fn an_upgrade_s_actions_take_the_new_master_s_last_matching_task() {
-        use crate::construction::build::{BUILD, BuildAction, BuildTask};
+        use crate::construction::build::{BuildAction, BuildTask};
         use crate::gathering::gather::GATHER;
         use crate::gathering::hunt::HuntTask;
         use crate::objects::masters::Task;
@@ -933,7 +934,7 @@ mod tests {
         let mut t = crate::world::tests::forage_world();
         t.gather_command(1, 0, 600).unwrap();
         let mut old = t.masters[1].get(120).unwrap().clone();
-        old.tasks.push(task(3, BUILD, 3, 0.25));
+        old.tasks.push(task(3, action_type::BUILD, 3, 0.25));
         let make = task(4, crate::gathering::make::MAKE, -1, 0.0);
         let waiting = task(9, 0x9a, 3, 0.0);
         let new = Master {
@@ -943,7 +944,7 @@ mod tests {
                 task(6, GATHER, 7, 0.75),
                 Task {
                     sprites: [12, -1, -1, -1],
-                    ..task(7, BUILD, 3, 1.5)
+                    ..task(7, action_type::BUILD, 3, 1.5)
                 },
                 task(8, crate::gathering::make::MAKE, -1, 2.0),
             ],

@@ -28,6 +28,9 @@ const SCALED_BY_38: i16 = 0x2f3;
 const ATTRIBUTE_38: i16 = 38;
 /// The resource a cost the player cannot meet takes the rest from (`+0x18`: gold).
 const GOLD: i16 = 3;
+/// A researched technology's state (3), which a disable command keeps (`FUN_1413cdb00`) and the
+/// player's tree counts.
+pub(crate) const RESEARCHED: i16 = 3;
 /// The technology type whose research the buildings that may do it share (`FUN_1413d1020`).
 pub const SHARED_KIND: i16 = 0x20;
 

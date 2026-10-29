@@ -110,8 +110,6 @@ const DEFAULT_PRODUCTIVITY: f32 = crate::math::image::gather::DEFAULT_PRODUCTIVI
 const STOP_DRAWS: u32 = 10;
 /// The player's attribute that sells a farm's food at once (`player+0x100` at `+0x300`).
 pub(crate) const FARM_FOOD_SOLD: usize = 96;
-/// The food kind a farm holds (`+0x308` 16): the food sold at once.
-const FARM_FOOD_KIND: i16 = 16;
 
 /// The Gather action of a gatherer (`RGE_Action_Gather`, type 5), with the save's fields.
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]

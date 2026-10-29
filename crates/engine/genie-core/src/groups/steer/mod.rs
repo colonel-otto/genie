@@ -22,8 +22,6 @@ const CLEARANCE: f32 = crate::math::image::group::CLEARANCE;
 const MOST_FAILURES: i32 = 10;
 /// The timer of the move aside after too many failures (`DAT_142eb5690`).
 const ASIDE_TIMER: f32 = crate::math::image::group::ASIDE_TIMER;
-/// A member's own move for being moved aside (`mReason`).
-const ASIDE: i32 = 2;
 /// A member within this many radii of its slot, or this far, walks at its top speed
 /// (`DAT_14330ebb8`, loaded once at `0x1410279d1` for both).
 const SLOT_REACH: f32 = crate::math::image::group::SLOT_REACH;

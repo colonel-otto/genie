@@ -3,6 +3,8 @@
 
 use crate::GenieError;
 use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
+use crate::movement::CONTINUE;
+use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
@@ -13,10 +15,6 @@ use crate::world::World;
 const EPSILON: f32 = crate::math::image::group::EPSILON;
 /// The group's command while it moves (`mCurrentCommand` 1).
 pub const MOVE_COMMAND: i32 = 1;
-/// A new path's flags (`FUN_14152eea0`'s construction).
-const NEW_PATH_FLAGS: u32 = 6;
-/// The plans a path level may still try (`FUN_140f9b800`, `FUN_140f98e80`).
-const CONTINUE: i32 = 10;
 /// A patrol's leg goes back and forth when its point is at least this far from the group on
 /// the ground (`commandMoveTo` at 0x141010ddb, `DAT_14330ebb8`).
 const PATROL_LEG_REACH: f32 = crate::math::image::group::PATROL_LEG_REACH;

@@ -23,6 +23,7 @@ use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::masters::master_type::BUILDING;
@@ -2007,7 +2008,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
     t.order_work(1, 0, &work).unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
-    assert_eq!(v.top_action_kind(), Some(crate::construction::build::BUILD));
+    assert_eq!(v.top_action_kind(), Some(action_type::BUILD));
     let b = v.actions.build().copied().unwrap();
     assert_eq!(
         (
@@ -13940,7 +13941,6 @@ type BuildSearched = Result<((Option<i16>, Option<i32>), Vec<i32>), GenieError>;
 /// Build waits without a target, lets the centre go and asks its unit AI for a search.
 #[test]
 fn a_builder_finds_more_work_around_the_building_it_finished() {
-    use crate::construction::build::BUILD;
     use crate::gathering::gather::GATHER;
     let (t, found) = built_the_centre(|_| ());
     assert_eq!(found, Ok(((Some(GATHER), Some(600)), vec![])));
@@ -13953,7 +13953,10 @@ fn a_builder_finds_more_work_around_the_building_it_finished() {
     };
     for setup in [off, short] {
         let (t, found) = built_the_centre(setup);
-        assert_eq!(found, Ok(((Some(BUILD), Some(-1)), vec![SEARCH_NEEDED])));
+        assert_eq!(
+            found,
+            Ok(((Some(action_type::BUILD), Some(-1)), vec![SEARCH_NEEDED]))
+        );
         let b = t.players[1].objects[0].actions.build().copied().unwrap();
         assert_eq!((b.state, b.target), (crate::construction::build::IDLE, -1));
         assert_eq!(t.players[1].objects[2].workers, 0);
@@ -14839,10 +14842,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
         Ok((Some(1), None, Some(10028)))
     );
     let builder = &t.players[1].objects[0];
-    assert_eq!(
-        builder.top_action_kind(),
-        Some(crate::construction::build::BUILD)
-    );
+    assert_eq!(builder.top_action_kind(), Some(action_type::BUILD));
 
     let mut t = house_builder();
     let drop = Effect::Command(AiCommand::DropElsewhere {

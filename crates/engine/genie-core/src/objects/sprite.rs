@@ -18,6 +18,7 @@ use crate::math::fmath;
 use crate::math::rng::Well512;
 use crate::movement::MoveStats;
 use crate::objects::masters::Master;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use genie_diff::Diff;
 
@@ -335,9 +336,6 @@ impl ActiveSprite {
     }
 }
 
-/// The trade task whose carrying sprite a trade cart with goods shows (`FUN_1412028a0`: action
-/// type 0x6f, `object_id` 0x54).
-const TRADE_ACTION: i16 = 0x6f;
 const TRADE_TARGET: i16 = 0x54;
 
 /// A master's sprite id as the master's sprite pointer has it: −1 (or below) is none.
@@ -352,7 +350,7 @@ pub fn trade_sprite(master: &Master) -> Option<i16> {
     master
         .tasks
         .iter()
-        .find(|t| t.action_type == TRADE_ACTION && t.object_id == TRADE_TARGET)
+        .find(|t| t.action_type == action_type::TRADE && t.object_id == TRADE_TARGET)
         .and_then(|t| sprite_id(t.sprites[3]))
 }
 

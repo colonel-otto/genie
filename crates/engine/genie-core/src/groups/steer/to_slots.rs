@@ -4,9 +4,10 @@
 use crate::groups::SpecificMove;
 use crate::groups::motion::hold;
 use crate::groups::steer::{
-    ASIDE, ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO, MOVES,
+    ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO, MOVES,
 };
 use crate::math::fmath::{Vec3, below_or_unordered};
+use crate::movement::ASIDE;
 use crate::objects::masters::master_type::ACTION;
 use crate::world::World;
 use crate::{GenieError, math::fmath};

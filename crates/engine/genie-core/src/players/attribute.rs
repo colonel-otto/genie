@@ -10,6 +10,9 @@ pub const GOLD: usize = 3;
 /// The current age (`+0x30`, `player+0x100`), as the `i16` game mode 16's QUEUE, a new soldier's
 /// unit AI (`FUN_140c12300`) and a command compare; the mode's bound is `DAT_14330eb8c`.
 pub const CURRENT_AGE: i16 = 6;
+/// The population headroom (`+0x308` 4): a building's held amount gives it, and a cost check
+/// skips it (`FUN_141618db0` with its fifth argument 1).
+pub const HEADROOM: i16 = 4;
 /// The population.
 pub const POPULATION: usize = 11;
 /// The units owned.

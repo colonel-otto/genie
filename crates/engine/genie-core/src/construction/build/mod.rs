@@ -48,9 +48,6 @@ use crate::map::spatial::Spatial;
 #[cfg(test)]
 use crate::pathing::Pathing;
 
-/// The Build action's type, which word 9 adds.
-pub const BUILD: i16 = 101;
-
 /// The gap below which a `MoveTo` has arrived (`DAT_142eb99cc`).
 const ARRIVED: f32 = crate::math::image::build::ARRIVED;
 /// A builder within this of its foundation's footprint has reached it (`DAT_142eb5690`).

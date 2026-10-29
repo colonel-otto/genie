@@ -4,11 +4,13 @@
 use crate::GenieError;
 use crate::groups::Motion;
 use crate::groups::motion::{
-    CLOSE, CONTINUE, EPSILON, LAST_TRIES, Lead, LeadGroup, NEAR, NEW_PATH_FLAGS, PATROL_PAUSE,
-    Pass, SHORT_LENGTH, SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
+    CLOSE, EPSILON, LAST_TRIES, Lead, LeadGroup, NEAR, PATROL_PAUSE, Pass, SHORT_LENGTH,
+    SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
 };
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
+use crate::movement::CONTINUE;
+use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::{
     LongWalker, PathData, TileAsk, long_path_for, short_path_for, tile_plan_for,
 };

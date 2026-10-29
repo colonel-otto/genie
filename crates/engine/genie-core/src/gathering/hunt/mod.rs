@@ -70,8 +70,6 @@ pub const WALK_SEARCH: u8 = 11;
 /// The class of trees, for which the civilian unit AI's slot 0x1b0 (`FUN_140c1c4f0`) gives 0: a
 /// hunt whose target went searches for the next one (`FUN_140ac4670`).
 pub const TREE_CLASS: i32 = 15;
-/// A building whose top action is this (a farm at work) takes a hunt sent to it to `set_state` 15.
-const FARM_AT_WORK: i16 = 0x7d;
 
 /// A `MoveTo` starts in place within this gap of its target (`0x140aa2100`).
 const ARRIVED: f32 = 0.01;

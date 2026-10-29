@@ -4,10 +4,11 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::update::UNMOVING;
 use crate::gathering::gather::{
-    DROP_REACH, FACE, FARM_FOOD_KIND, GatherAction, GatherReads, LAST_BIT, Next, REGATHERED,
-    REMAINDER, SPECIAL_TARGETS, WAIT_SHIFT, WORK,
+    DROP_REACH, FACE, GatherAction, GatherReads, LAST_BIT, Next, REGATHERED, REMAINDER,
+    SPECIAL_TARGETS, WAIT_SHIFT, WORK,
 };
 use crate::gathering::hunt::Dropped;
+use crate::gathering::make::FARM_FOOD_KIND;
 use crate::math::rng::Stream;
 use crate::movement::move_to::walk_or_give_up;
 use crate::movement::move_to::{Goal, MoveTo, Shown, start_walk_shown, target_moved};

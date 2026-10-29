@@ -5,6 +5,7 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::master_type::BUILDING;
@@ -284,9 +285,7 @@ impl World {
                 self.retarget_hunt_work(player, idx, (target, point, clears))?;
                 true
             }
-            _ if top == Some(task.action_type)
-                && task.action_type == crate::construction::build::BUILD =>
-            {
+            _ if top == Some(task.action_type) && task.action_type == action_type::BUILD => {
                 if !same_master {
                     return Err(GenieError::unsupported(
                         "a work command on the Build task of the unit's former master",
@@ -438,9 +437,7 @@ impl World {
                 clears,
                 notify: true,
             }),
-            crate::construction::build::BUILD => {
-                self.start_build(player, idx, target, task, point, clears)
-            }
+            action_type::BUILD => self.start_build(player, idx, target, task, point, clears),
             crate::construction::repair::REPAIR => {
                 self.start_repair(player, idx, target, task, point, clears)
             }

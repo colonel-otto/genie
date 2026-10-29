@@ -8,6 +8,8 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::BOAR_AI;
+use crate::unit_ai::LION_AI;
 use crate::world::Player;
 use crate::world::step::Step;
 

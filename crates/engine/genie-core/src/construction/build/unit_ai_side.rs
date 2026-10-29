@@ -3,6 +3,7 @@
 //! spot off a foundation's footprint.
 
 use crate::GenieError;
+use crate::objects::masters::action_type;
 use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
@@ -18,7 +19,7 @@ impl UnitView<'_, '_> {
         if self.find_object(foundation).is_none() {
             return Ok(false);
         }
-        if self.unit.top_action_kind() == Some(crate::construction::build::BUILD) {
+        if self.unit.top_action_kind() == Some(action_type::BUILD) {
             return Ok(true);
         }
         self.build_found(foundation)

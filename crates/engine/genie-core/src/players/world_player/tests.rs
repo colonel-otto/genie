@@ -4,6 +4,7 @@ use crate::objects::masters::{BuildingMaster, Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::game_status::{LOST, PLAYING};
 use crate::players::tracker::Key;
+use crate::technology::RESEARCHED;
 use crate::vision::visibility::{Visibility, VisibleMap};
 use crate::world::Player;
 

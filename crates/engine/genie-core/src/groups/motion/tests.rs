@@ -1,4 +1,5 @@
 use super::*;
+use crate::movement::NEW_PATH_FLAGS;
 use crate::objects::actions::ActionList;
 
 /// Slot 0x280 (`FUN_141082d60`) passes only a target id above -1 the world holds: a

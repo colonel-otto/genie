@@ -45,10 +45,6 @@ const PULL_KEEP: f32 = crate::math::image::group::PULL_KEEP;
 const PASSES: u32 = 20;
 /// A level with fewer plans left than this gives up rather than wait (`FUN_140f95bf0 < 3`).
 const LAST_TRIES: i32 = 3;
-/// A level's plans (`FUN_140f8f670`, `FUN_140f9b800`).
-const CONTINUE: i32 = 10;
-/// A new path's flags (`FUN_14152eea0`).
-const NEW_PATH_FLAGS: u32 = 6;
 /// A patrolling group at its last waypoint pauses this long (the immediate `0x3f000000`).
 const PATROL_PAUSE: f32 = 0.5;
 /// A group without a path left pauses this long (the immediate `0x3dcccccd`).

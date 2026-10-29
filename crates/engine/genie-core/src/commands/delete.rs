@@ -17,6 +17,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Place;
 use crate::players::PlayerId;
+use crate::players::game_status::LOST;
 use crate::world::World;
 
 /// The classes no delete takes (`DAT_142f925c0`, and `FUN_14120f620`'s own test): livestock,
@@ -25,9 +26,6 @@ const UNDELETABLE: [i16; 4] = [58, 42, 1, 60];
 
 /// The first master type a delete takes (`FUN_1416257c0`: above `0x45`).
 const DELETABLE_TYPE: u8 = 70;
-
-/// A player's game status once it lost (`+0x89`).
-const LOST: u8 = 2;
 
 /// A capture flag (`+0x924`) under which no delete takes the object.
 const BEING_CAPTURED: u8 = 2;

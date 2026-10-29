@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{Followed, GUARD_RANGE, Place, follow_axis, follow_spread, ignore_unit};
@@ -409,7 +410,7 @@ impl World {
             | Some(
                 crate::movement::move_to::MOVE_TO
                 | crate::movement::explore::EXPLORE
-                | crate::construction::build::BUILD
+                | action_type::BUILD
                 | crate::combat::attack::ATTACK
                 | crate::garrison::ENTER
                 | crate::movement::fly::FLY

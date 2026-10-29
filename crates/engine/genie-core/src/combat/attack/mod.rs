@@ -88,10 +88,6 @@ const GOTO_POINT: u8 = 11;
 /// The least range of a unit that walks onto the point where it saw its target
 /// (`DAT_14330eb8c`, [`GOTO_POINT`]).
 const SEEN_RANGE: f32 = crate::math::image::attack::SEEN_RANGE;
-/// The boar's unit-AI type, whose slot 0x1f0 (`FUN_140c16d50`) sends it home.
-const BOAR_AI: u32 = 4;
-/// The lion's unit-AI type, whose slot 0x1f0 (`FUN_140c16d60`) does nothing.
-const LION_AI: u32 = 5;
 
 /// The sprites and frames the Attack takes from its constructor.
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]

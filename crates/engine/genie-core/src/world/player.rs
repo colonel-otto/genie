@@ -302,7 +302,3 @@ impl Player {
         Ok(())
     }
 }
-
-/// The population's resource, which a cost check skips (`FUN_141618db0` with its fifth argument
-/// 1).
-pub(crate) const POPULATION: i16 = 4;

@@ -2,10 +2,11 @@
 
 use crate::{OTHER_SUB_ACTION, combat_master, saved_attack, saved_move_wait, saved_sprite};
 use genie_core::GenieError;
-use genie_core::construction::build::{BUILD, BuildAction, BuildTask};
+use genie_core::construction::build::{BuildAction, BuildTask};
 use genie_core::movement::fly::{FLY, Fly};
 use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo, MoveToAction};
 use genie_core::objects::masters::Task;
+use genie_core::objects::masters::action_type::BUILD;
 use genie_core::objects::sprite::Graphic;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;

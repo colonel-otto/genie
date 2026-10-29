@@ -376,8 +376,14 @@ const PLANS: u32 = 3;
 /// What a gate's annex's gap loses against the gate's own (`XMM14`, the motion step's load at
 /// 0x1411510e7, the same as [`RANGE_FLOOR`]'s).
 const ANNEX_GAP: f32 = crate::math::image::movement::RANGE_FLOOR;
-/// A level's plans before it gives up (`FUN_140f8f670`).
-const CONTINUE: i32 = 10;
+/// A path level's plans before it gives up and the plans it may still try (`FUN_140f8f670`,
+/// `FUN_140f9b800`, `FUN_140f98e80`).
+pub(crate) const CONTINUE: i32 = 10;
+/// A new path's flags (`FUN_14152eea0`'s construction).
+pub(crate) const NEW_PATH_FLAGS: u32 = 6;
+/// A group member's own move's reason (`mReason`, slot 0x5e0, `FUN_141017590`): moved aside
+/// (`NO_OWN_MOVE` is none).
+pub(crate) const ASIDE: i32 = 2;
 /// The widest unit the new short pather takes (`DAT_142e7f384`, `FUN_140f9e540`'s load at
 /// 0x140f9e713).
 const NEW_PATHER_RADIUS: f32 = crate::math::image::movement::NEW_PATHER_RADIUS;

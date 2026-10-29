@@ -230,7 +230,7 @@ pub(super) fn master_build_task(
             .tasks
             .as_deref()
     });
-    let build = genie_core::construction::build::BUILD;
+    let build = genie_core::objects::masters::action_type::BUILD;
     if let Some(tasks) = saved {
         return tasks
             .list

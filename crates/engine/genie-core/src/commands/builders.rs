@@ -3,9 +3,10 @@
 
 use crate::GenieError;
 use crate::commands::FOUNDATION_GONE;
-use crate::construction::build::{BUILD, BuildAction, BuildTask};
+use crate::construction::build::{BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
+use crate::objects::masters::action_type;
 use crate::objects::masters::player_master;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -171,7 +172,7 @@ impl World {
                 .ok_or(GenieError::unsupported(
                     "a builder with no task for its foundation",
                 ))?;
-        if task.action_type != BUILD {
+        if task.action_type != action_type::BUILD {
             return Err(GenieError::unsupported(
                 "a builder whose task for its foundation is not Build",
             ));
@@ -322,7 +323,7 @@ impl World {
         if self.object(foundation).is_none() {
             return Ok(false);
         }
-        if self.players[player].objects[idx].top_action_kind() == Some(BUILD) {
+        if self.players[player].objects[idx].top_action_kind() == Some(action_type::BUILD) {
             let _ = self.build_take(player, idx, foundation)?;
             return Ok(true);
         }

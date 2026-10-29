@@ -6,6 +6,7 @@ use crate::gathering::gather::GatherRetarget;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning, footprint_gap};
+use crate::objects::masters::action_type;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -389,7 +390,7 @@ impl Unit {
                     sites,
                     self.position(),
                     None,
-                    (true, crate::gathering::drop_sites::UNPACK),
+                    (true, action_type::UNPACK),
                 )?,
             }
             .unwrap_or(-1);
@@ -420,12 +421,7 @@ impl Unit {
         outside: bool,
     ) -> Result<Option<i32>, GenieError> {
         let by_path = !c.computer;
-        self.drop_site_with(
-            c,
-            others,
-            state,
-            (outside, by_path, crate::gathering::drop_sites::UNPACK),
-        )
+        self.drop_site_with(c, others, state, (outside, by_path, action_type::UNPACK))
     }
 
     /// [`Unit::drop_site_from`] with the search's arguments 10, 9 and 8: `outside`, `by_path`

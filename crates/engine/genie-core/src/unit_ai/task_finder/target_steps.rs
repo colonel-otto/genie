@@ -2,6 +2,7 @@
 //! it and its repair.
 
 use crate::GenieError;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::{Master, Task};
@@ -12,9 +13,6 @@ use crate::unit_ai::task_finder::Finding;
 use crate::unit_ai::task_finder::TaskTarget;
 use crate::unit_ai::task_finder::first;
 use crate::unit_ai::task_finder::wanted;
-
-/// The trade task's action type (`0x6f`).
-const TRADE: i16 = 0x6f;
 
 /// The task finder's steps on a `target` (`LAB_1412795f5` to `LAB_1412796b4`): the drop-off
 /// ([`drop_off_finding`]), its player's foundation ([`build_task`]), the garrison into it
@@ -65,7 +63,7 @@ fn trade_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&
     trades
         .then(|| {
             first(list, |task| {
-                task.action_type == TRADE
+                task.action_type == action_type::TRADE
                     && (task.object_id == t.master.id || task.object_group == t.master.class)
                     && wanted(filter, task)
             })

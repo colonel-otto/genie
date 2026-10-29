@@ -5,9 +5,10 @@ use crate::combat::attack::{Arms, Engagement};
 use crate::gathering::gather::{GatherRetarget, GatherStart};
 use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::math::rng::Stream;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
-use crate::orders::{GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
+use crate::orders::{GATHERED_BUILDING, MASTER_1893, MASTER_1897};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -51,7 +52,7 @@ impl World {
         ))?;
         let tm = t.master(&self.masters, tp)?;
         if tm.kind == BUILDING {
-            if t.top_action_kind() == Some(PACK_ACTION) || t.unmodelled_action.is_some() {
+            if t.top_action_kind() == Some(action_type::UNPACK) || t.unmodelled_action.is_some() {
                 return Err(GenieError::unsupported(
                     "a gather retargeted to a building with an action (packing)",
                 ));

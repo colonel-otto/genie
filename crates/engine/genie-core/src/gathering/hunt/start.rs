@@ -4,12 +4,13 @@
 use crate::GenieError;
 use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::gathering::hunt::{
-    ARRIVED, ATTACK, DROP, FARM_AT_WORK, HuntAction, HuntTask, IDLE, Lead, OWN_LIVESTOCK_RANGE,
-    Quarry, SEARCH, WALK_POINT, WALK_SEARCH, food,
+    ARRIVED, ATTACK, DROP, HuntAction, HuntTask, IDLE, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH,
+    WALK_POINT, WALK_SEARCH, food,
 };
 use crate::movement::move_to::{Goal, MoveTo, MoveWait, walk_or_give_up};
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
@@ -237,7 +238,7 @@ impl HuntAction {
             held,
             drops_here,
         } = retarget;
-        if target.kind == BUILDING && target.top_action == Some(FARM_AT_WORK) {
+        if target.kind == BUILDING && target.top_action == Some(action_type::UNPACK) {
             return Err(GenieError::unsupported(
                 "a hunt sent to a farm at work (set_state 15)",
             ));

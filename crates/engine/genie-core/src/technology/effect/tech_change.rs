@@ -1,7 +1,8 @@
 //! A technology's change (kind 8): its state, a forced research and its research time.
 
 use crate::GenieError;
-use crate::technology::effect::{ONE, RESEARCH_SPENT, RESEARCHED, ROUND, TECHS_RESEARCHED};
+use crate::technology::RESEARCHED;
+use crate::technology::effect::{ONE, RESEARCH_SPENT, ROUND, TECHS_RESEARCHED};
 use crate::world::World;
 
 /// The modes of `FUN_1415c3f20`'s technology change (kind 8) that change a cost, with the

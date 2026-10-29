@@ -6,8 +6,9 @@ use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::player_master;
 use crate::players::attribute;
 use crate::players::world_player::{
-    AGES, BUILDING_CLASS, RESEARCHED, TOWN_CENTRES, TreeQuery, full_tree_civ, get,
+    AGES, BUILDING_CLASS, TOWN_CENTRES, TreeQuery, full_tree_civ, get,
 };
+use crate::technology::RESEARCHED;
 use crate::world::World;
 
 impl World {

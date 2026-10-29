@@ -85,8 +85,6 @@ const UNPACKED_CLASS: u32 = 54;
 /// The ages' technologies (Feudal, Castle, Imperial: `0x3284`, `0x3304`, `0x3384` in the
 /// player's technologies), whose state −1 puts their units out of the player's tree.
 const AGES: [i32; 3] = [101, 102, 103];
-/// A technology's state once researched.
-const RESEARCHED: i16 = 3;
 /// `FUN_140c7e6f0`: the civilisation the full tech tree reads, by the game's tagged value at
 /// `+0x680` ([`crate::world::World::mode_680`]): 18 for 1, 59 for 2, else 0.
 const fn full_tree_civ(mode_680: i32) -> i32 {

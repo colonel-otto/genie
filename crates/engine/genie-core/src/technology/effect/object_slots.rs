@@ -4,12 +4,10 @@
 use crate::GenieError;
 use crate::objects::masters::{Master, Masters, master_type, player_master};
 use crate::objects::unit::Unit;
+use crate::players::attribute;
 use crate::technology::effect::Change;
 use crate::world::World;
 
-/// The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):
-/// headroom (4), and current population (11) and 19, which hold its magnitude.
-pub(super) const HEADROOM: i16 = 4;
 pub(crate) const POPULATION: i16 = 11;
 pub(super) const RESOURCE_19: i16 = 19;
 /// A storage flag of `'@'` (64): the object's storage stays with it (`FUN_141195a50`).
@@ -251,9 +249,9 @@ impl World {
         let owner = &mut self.players[p];
         for &(kind, amount, _) in master.storage.iter().take(3) {
             match kind {
-                HEADROOM => {
-                    owner.add_attribute(HEADROOM, amount.abs())?;
-                    owner.add_attribute(HEADROOM, v)?;
+                attribute::HEADROOM => {
+                    owner.add_attribute(attribute::HEADROOM, amount.abs())?;
+                    owner.add_attribute(attribute::HEADROOM, v)?;
                 }
                 POPULATION | RESOURCE_19 => {
                     owner.add_attribute(kind, -amount)?;

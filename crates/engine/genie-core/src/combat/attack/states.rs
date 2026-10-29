@@ -4,8 +4,8 @@
 use crate::GenieError;
 use crate::combat::attack::update::let_go;
 use crate::combat::attack::{
-    ARRIVED, AiOrder, Attack, AttackReads, BOAR_AI, Engagement, Fight, HALF, LION_AI, MOVE,
-    NO_RANGE, NONE, set_walker_anim,
+    ARRIVED, AiOrder, Attack, AttackReads, Engagement, Fight, HALF, MOVE, NO_RANGE, NONE,
+    set_walker_anim,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
@@ -17,6 +17,8 @@ use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::unit_ai::BOAR_AI;
+use crate::unit_ai::LION_AI;
 use crate::world::step::Step;
 
 impl Attack {

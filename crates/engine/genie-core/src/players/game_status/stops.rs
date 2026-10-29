@@ -3,9 +3,10 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::release::Releaser;
-use crate::players::game_status::{KEEPING_TYPES, TRADE_ACTION, UNSTOPPED_BUILDINGS};
+use crate::players::game_status::{KEEPING_TYPES, UNSTOPPED_BUILDINGS};
 use crate::unit_ai::ActionKind;
 use crate::world::World;
 
@@ -84,7 +85,7 @@ impl World {
         let place = ([unit.position()[0], unit.position()[1]], class);
         // slot 0x438 is the top action's type: a trade (0x6f) with a load held (COMISS 0, held;
         // JNC at 0x14108c11e: a NaN load counts) keeps the unit AI going
-        let trading = unit.top_action_kind() == Some(TRADE_ACTION)
+        let trading = unit.top_action_kind() == Some(action_type::TRADE)
             && crate::math::fmath::below_or_unordered(0.0, unit.life.amount)
             && unit.life.attribute_type != -1;
         let Some(ai) = unit.ai.as_ref() else {
@@ -196,7 +197,7 @@ impl World {
         let standing = self.master(p, master_id)?.standing_sprite;
         match kind {
             crate::gathering::gather::GATHER => self.halt_gather(p, idx, standing, by)?,
-            crate::construction::build::BUILD => self.halt_build(p, idx, by)?,
+            action_type::BUILD => self.halt_build(p, idx, by)?,
             crate::construction::repair::REPAIR => self.halt_repair(p, idx)?,
             crate::combat::attack::ATTACK => {
                 let unit = &mut self.players[p].objects[idx];

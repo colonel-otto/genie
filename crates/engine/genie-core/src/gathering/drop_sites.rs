@@ -1,6 +1,7 @@
 //! The drop-site searches (`FUN_1411671e0`): from a unit, or from a point without one.
 
 use crate::GenieError;
+use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 
 use crate::map::spatial::Spatial;
@@ -167,8 +168,9 @@ pub(crate) fn drop_site_search<'u>(
         }
         let busy = at_work != -1
             && 40 <= master.kind
-            && o.top_action_kind()
-                .is_some_and(|k| k == at_work || (at_work == UNPACK && k == PACK));
+            && o.top_action_kind().is_some_and(|k| {
+                k == at_work || (at_work == action_type::UNPACK && k == action_type::PACK)
+            });
         if busy || (outside && o.life.inside.is_some()) {
             continue;
         }
@@ -197,11 +199,6 @@ pub(crate) fn drop_site_search<'u>(
     }
     Ok(best)
 }
-
-/// The action types the Gather's drop-site searches pass over (`FUN_1411671e0`'s argument 8
-/// `0x7d`, which takes `0x7c` with it).
-pub(crate) const UNPACK: i16 = 0x7d;
-pub(crate) const PACK: i16 = 0x7c;
 
 /// A drop site within this path length is measured by the short path too (`FUN_1411671e0`,
 /// `DAT_142eb0f4c`).
