@@ -31,7 +31,7 @@ impl World {
             .ok_or(NO_HUNT_TASK)?;
         self.start_hunt(HuntOrder {
             player,
-            idx,
+            index: idx,
             target,
             task: HuntTask {
                 id: task.id,

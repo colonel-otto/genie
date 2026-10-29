@@ -7,19 +7,19 @@ use crate::pathing::short_path::{Kind, NONE, Node, Point, RECT_HEURISTIC, Search
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Corner {
     /// The cost to the corner.
-    pub(super) g: i32,
+    pub(super) cost: i32,
     /// The node it was reached from.
     pub(super) parent: u32,
     /// The walk's direction round the polygon (0 forward, 1 backward).
     pub(super) dir: u8,
     /// The first vertex of the walked run.
-    pub(super) lo: u32,
+    pub(super) low: u32,
     /// The last vertex of the walked run.
-    pub(super) hi: u32,
+    pub(super) high: u32,
     /// The polygon.
     pub(super) poly: u32,
     /// The corner's point.
-    pub(super) pt: Point,
+    pub(super) point: Point,
 }
 
 /// A polygon's axis edge whose foot the goal may lie on (`FUN_140fa8210`'s arguments,
@@ -29,19 +29,19 @@ pub(super) struct Foot {
     /// The polygon.
     pub(super) poly: u32,
     /// The edge's start.
-    pub(super) a: Point,
+    pub(super) start: Point,
     /// The edge's end.
-    pub(super) b: Point,
+    pub(super) end: Point,
     /// The edge's x extent: horizontal when not 0.
-    pub(super) dx: i32,
+    pub(super) x_extent: i32,
     /// The first vertex of the walked run.
-    pub(super) lo: u32,
+    pub(super) low: u32,
     /// The last vertex of the walked run.
-    pub(super) hi: u32,
+    pub(super) high: u32,
     /// The walk's direction round the polygon (0 forward, 1 backward).
     pub(super) dir: u8,
     /// The cost at the edge's start.
-    pub(super) g0: i32,
+    pub(super) start_cost: i32,
     /// The node it was reached from.
     pub(super) parent: u32,
 }
@@ -192,13 +192,13 @@ impl Search<'_> {
     /// so far, it becomes the goal (true); else, nearer than the best so far, the best.
     pub(super) fn goal_test(&mut self, corner: Corner) -> bool {
         let Corner {
-            g,
+            cost: g,
             parent,
             dir,
-            lo,
-            hi,
+            low: lo,
+            high: hi,
             poly,
-            pt,
+            point: pt,
         } = corner;
         let d2: i64 = if RECT_HEURISTIC {
             self.goal.rect_distance2(pt)
@@ -236,13 +236,13 @@ impl Search<'_> {
     pub(super) fn foot_test(&mut self, edge: Foot) {
         let Foot {
             poly,
-            a,
-            b,
-            dx,
-            lo,
-            hi,
+            start: a,
+            end: b,
+            x_extent: dx,
+            low: lo,
+            high: hi,
             dir,
-            g0,
+            start_cost: g0,
             parent,
         } = edge;
         let (s, e, gv) = if dx != 0 {
@@ -256,13 +256,13 @@ impl Search<'_> {
             let foot = if dx != 0 { [gv, a[1]] } else { [a[0], gv] };
             let g = g0.wrapping_add((gv.wrapping_sub(s)).wrapping_abs());
             let _ = self.goal_test(Corner {
-                g,
+                cost: g,
                 parent,
                 dir,
-                lo,
-                hi,
+                low: lo,
+                high: hi,
                 poly,
-                pt: foot,
+                point: foot,
             });
         }
     }

@@ -109,10 +109,10 @@ impl HullPather<'_> {
             self.build_hulls()?;
         }
         let root = self.add_unrefused(UnrefusedNode {
-            l: 0,
+            list: 0,
             open: true,
             parent: None,
-            at: q.from,
+            position: q.from,
             goal: Some(q.to),
             hull: -1,
             direction: -1,
@@ -150,7 +150,7 @@ impl HullPather<'_> {
             let mut count = 0;
             let walk = self.walk_out(WalkOut {
                 hull: sh,
-                from: q.from,
+                start: q.from,
                 goal: Some(q.to),
                 target: q.target,
                 range: q.range,
@@ -187,7 +187,7 @@ impl HullPather<'_> {
         let mut count = 0;
         let walk = self.walk_out(WalkOut {
             hull,
-            from,
+            start: from,
             goal: None,
             target: None,
             range,
@@ -214,10 +214,10 @@ impl HullPather<'_> {
             let mut node = root;
             for &p in &points[1..n - 1] {
                 node = self.add_unrefused(UnrefusedNode {
-                    l: 0,
+                    list: 0,
                     open: false,
                     parent: Some(node),
-                    at: p,
+                    position: p,
                     goal: Some(to),
                     hull: start_hull,
                     direction: -1,
@@ -225,10 +225,10 @@ impl HullPather<'_> {
             }
             let last = points[n - 1];
             let _ = self.add_unrefused(UnrefusedNode {
-                l: 0,
+                list: 0,
                 open: true,
                 parent: Some(node),
-                at: last,
+                position: last,
                 goal: Some(to),
                 hull: start_hull,
                 direction: -1,
@@ -250,8 +250,8 @@ impl HullPather<'_> {
         let mut sides = [0usize; PATHS];
         let walk = self.walk_in(WalkIn {
             hull,
-            from: q.to,
-            to: q.from,
+            goal: q.to,
+            start: q.from,
             target: q.target,
             paths: &mut entrances,
             sides_out: &mut sides,
@@ -307,10 +307,10 @@ impl HullPather<'_> {
             return Ok(Expanded::Next);
         }
         let node = self.add_unrefused(UnrefusedNode {
-            l: 0,
+            list: 0,
             open: false,
             parent: Some(best),
-            at: p,
+            position: p,
             goal: Some(q.to),
             hull: hit as i32,
             direction: -1,
@@ -373,10 +373,10 @@ impl HullPather<'_> {
         let (at, vertex) = (self.nodes[best].at, self.nodes[best].vertex);
         if !self.blocked(at, q.to)? {
             rounds.best_node = self.add_node(NewNode {
-                l: 0,
+                list: 0,
                 open: false,
                 parent: Some(best),
-                at: q.to,
+                position: q.to,
                 goal: Some(q.to),
                 hull: -1,
                 vertex: -1,
@@ -413,10 +413,10 @@ impl HullPather<'_> {
             if let Some(x) = a {
                 let p = self.hulls[hit].points[back as usize];
                 a = self.add_node(NewNode {
-                    l: 0,
+                    list: 0,
                     open: true,
                     parent: Some(x),
-                    at: p,
+                    position: p,
                     goal: Some(to),
                     hull: hit as i32,
                     vertex: back,
@@ -427,10 +427,10 @@ impl HullPather<'_> {
             if let Some(x) = b {
                 let p = self.hulls[hit].points[fwd];
                 b = self.add_node(NewNode {
-                    l: 0,
+                    list: 0,
                     open: true,
                     parent: Some(x),
-                    at: p,
+                    position: p,
                     goal: Some(to),
                     hull: hit as i32,
                     vertex: fwd as i32,
@@ -467,10 +467,10 @@ impl HullPather<'_> {
             (None, None) => {}
             (Some(x), y) if y.is_none_or(|y| self.nodes[x].cost < self.nodes[y].cost) => {
                 let _ = self.add_node(NewNode {
-                    l: 0,
+                    list: 0,
                     open: true,
                     parent: Some(x),
-                    at: qa,
+                    position: qa,
                     goal: Some(to),
                     hull: hit as i32,
                     vertex: back,
@@ -480,10 +480,10 @@ impl HullPather<'_> {
             }
             (_, Some(y)) => {
                 let _ = self.add_node(NewNode {
-                    l: 0,
+                    list: 0,
                     open: true,
                     parent: Some(y),
-                    at: qb,
+                    position: qb,
                     goal: Some(to),
                     hull: hit as i32,
                     vertex: fwd as i32,

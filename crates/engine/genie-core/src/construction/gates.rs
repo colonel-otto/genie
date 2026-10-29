@@ -46,8 +46,8 @@ pub(crate) fn gate_units(
         rect[3] + GATE_GROW,
     ])?;
     let hits = spatial.walk_hits(WalkQuery {
-        from,
-        to,
+        start: from,
+        end: to,
         rect,
         grow: GATE_GROW,
         ally_factor: 1.0,

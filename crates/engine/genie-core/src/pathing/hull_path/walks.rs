@@ -15,7 +15,7 @@ pub(super) struct WalkOut<'a> {
     /// The hull the start is inside.
     pub(super) hull: usize,
     /// The start.
-    pub(super) from: Point,
+    pub(super) start: Point,
     /// The goal (none: the ways out are kept).
     pub(super) goal: Option<Point>,
     /// The target whose range ends the walk too.
@@ -38,9 +38,9 @@ pub(super) struct WalkIn<'a> {
     /// The hull the goal is inside.
     pub(super) hull: usize,
     /// The goal, where the walk starts.
-    pub(super) from: Point,
+    pub(super) goal: Point,
     /// The start it walks toward.
-    pub(super) to: Point,
+    pub(super) start: Point,
     /// The target.
     pub(super) target: Option<Target>,
     /// The entrance paths it leaves.
@@ -220,10 +220,10 @@ impl HullPather<'_> {
         let mut add = |me: &mut Self, q: Point| {
             if near(q) && me.hulls[hull].box_holding(q).is_none() {
                 let _ = me.add_node(NewNode {
-                    l: 1,
+                    list: 1,
                     open: true,
                     parent: Some(root),
-                    at: q,
+                    position: q,
                     goal: None,
                     hull: -1,
                     vertex: -1,
@@ -287,10 +287,10 @@ impl HullPather<'_> {
             }
             if self.hulls[hull].box_holding(q).is_none() {
                 let _ = self.add_node(NewNode {
-                    l: 1,
+                    list: 1,
                     open: true,
                     parent: Some(root),
-                    at: q,
+                    position: q,
                     goal,
                     hull: -1,
                     vertex: -1,
@@ -359,7 +359,7 @@ impl HullPather<'_> {
     pub(super) fn walk_out(&mut self, walk: WalkOut<'_>) -> Result<Within, GenieError> {
         let WalkOut {
             hull,
-            from,
+            start: from,
             goal,
             target,
             range,
@@ -376,10 +376,10 @@ impl HullPather<'_> {
             sqrt((from[1] - g[1]) * (from[1] - g[1]) + (from[0] - g[0]) * (from[0] - g[0]))
         });
         let root = self.add_unrefused(UnrefusedNode {
-            l: 1,
+            list: 1,
             open: true,
             parent: None,
-            at: from,
+            position: from,
             goal,
             hull: -1,
             direction: -1,
@@ -442,10 +442,10 @@ impl HullPather<'_> {
                 }
                 if !self.blocked(at, g)? {
                     let end = self.add_node(NewNode {
-                        l: 1,
+                        list: 1,
                         open: false,
                         parent: Some(node),
-                        at: g,
+                        position: g,
                         goal: Some(g),
                         hull: -1,
                         vertex: -1,
@@ -509,10 +509,10 @@ impl HullPather<'_> {
             }
             if let Some((q, b, box_side)) = self.hulls[hull].ray_to_box(at, side, n.hull) {
                 let _ = self.add_node(NewNode {
-                    l: 1,
+                    list: 1,
                     open: true,
                     parent: Some(node),
-                    at: q,
+                    position: q,
                     goal,
                     hull: b as i32,
                     vertex: box_side,
@@ -527,10 +527,10 @@ impl HullPather<'_> {
             };
             if goal.is_some() {
                 let _ = self.add_node(NewNode {
-                    l: 1,
+                    list: 1,
                     open: true,
                     parent: Some(node),
-                    at: q,
+                    position: q,
                     goal,
                     hull: -1,
                     vertex: edge as i32,
@@ -545,10 +545,10 @@ impl HullPather<'_> {
                     q = [q[0] + s[0] * NUDGE, q[1] + s[1] * NUDGE];
                 }
                 if let Some(end) = self.add_node(NewNode {
-                    l: 1,
+                    list: 1,
                     open: false,
                     parent: Some(node),
-                    at: q,
+                    position: q,
                     goal: None,
                     hull: -1,
                     vertex: -1,
@@ -571,8 +571,8 @@ impl HullPather<'_> {
     pub(super) fn walk_in(&mut self, walk: WalkIn<'_>) -> Result<Within, GenieError> {
         let WalkIn {
             hull,
-            from,
-            to,
+            goal: from,
+            start: to,
             target,
             paths,
             sides_out,
@@ -583,10 +583,10 @@ impl HullPather<'_> {
         let mut left_boxes = false;
         self.empty(1);
         let root = self.add_unrefused(UnrefusedNode {
-            l: 1,
+            list: 1,
             open: true,
             parent: None,
-            at: from,
+            position: from,
             goal: Some(to),
             hull: -1,
             direction: -1,
@@ -641,10 +641,10 @@ impl HullPather<'_> {
                 }
                 if let Some((q, b, box_side)) = self.hulls[hull].ray_to_box(at, side, n.hull) {
                     let _ = self.add_node(NewNode {
-                        l: 1,
+                        list: 1,
                         open: true,
                         parent: Some(node),
-                        at: q,
+                        position: q,
                         goal: Some(to),
                         hull: b as i32,
                         vertex: box_side,
@@ -663,10 +663,10 @@ impl HullPather<'_> {
                 let s = SIDES[side as usize];
                 q = [q[0] - s[0] * NUDGE, q[1] - s[1] * NUDGE];
                 if let Some(end) = self.add_node(NewNode {
-                    l: 1,
+                    list: 1,
                     open: false,
                     parent: Some(node),
-                    at: q,
+                    position: q,
                     goal: Some(to),
                     hull: -1,
                     vertex: -1,

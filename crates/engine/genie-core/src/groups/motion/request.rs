@@ -180,7 +180,7 @@ fn tile_plan(
         spatial,
         &mut planning,
         TileAsk {
-            to: leg.waypoint,
+            goal: leg.waypoint,
             radii,
             range: leg.range,
             target,

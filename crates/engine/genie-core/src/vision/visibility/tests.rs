@@ -110,7 +110,7 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
     r.update_unit(UnitUpdate {
         id: 7,
         owner: 0,
-        at: [10.5, 10.5],
+        position: [10.5, 10.5],
         radii: [0.2, 0.2],
         class: 6,
         old: 0,

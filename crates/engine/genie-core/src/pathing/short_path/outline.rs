@@ -13,13 +13,13 @@ use crate::pathing::short_path::{
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Traced {
     /// The vertex.
-    pub(super) pos: Point,
+    pub(super) vertex: Point,
     /// The outline's first vertex.
     pub(super) first: Point,
     /// Whether the start side runs vertically.
     pub(super) vertical: bool,
     /// The start side.
-    pub(super) s0: u32,
+    pub(super) start_side: u32,
     /// The side the vertex is on.
     pub(super) side: u8,
     /// The shape it lies on.
@@ -34,10 +34,10 @@ impl Search<'_> {
     /// line. On closing, a first vertex whose side repeats the last one's is dropped.
     pub(super) fn append(poly: &mut Poly, vertex: Traced) -> bool {
         let Traced {
-            pos,
+            vertex: pos,
             first,
             vertical,
-            s0,
+            start_side: s0,
             side,
             shape,
             winding,
@@ -195,10 +195,10 @@ impl Search<'_> {
                     if Self::append(
                         poly,
                         Traced {
-                            pos,
+                            vertex: pos,
                             first,
                             vertical,
-                            s0,
+                            start_side: s0,
                             side: side as u8,
                             shape,
                             winding: wp,
@@ -434,24 +434,24 @@ impl Search<'_> {
         let dyf = v[0][1] - p[1];
         self.foot_test(Foot {
             poly: pi,
-            a: p,
-            b: v[last as usize],
-            dx: dxb,
-            lo: last,
-            hi: 0,
+            start: p,
+            end: v[last as usize],
+            x_extent: dxb,
+            low: last,
+            high: 0,
             dir: 1,
-            g0,
+            start_cost: g0,
             parent,
         });
         self.foot_test(Foot {
             poly: pi,
-            a: p,
-            b: v[0],
-            dx: dxf,
-            lo: 0,
-            hi: 0,
+            start: p,
+            end: v[0],
+            x_extent: dxf,
+            low: 0,
+            high: 0,
             dir: 0,
-            g0,
+            start_cost: g0,
             parent,
         });
         let mut cb = (if dyb.wrapping_abs() < dxb.wrapping_abs() {
@@ -478,13 +478,13 @@ impl Search<'_> {
                 let sn = poly.sides[bi as usize];
                 let sh = poly.shapes[bi as usize];
                 if !self.goal_test(Corner {
-                    g: cb,
+                    cost: cb,
                     parent,
                     dir: 1,
-                    lo: bi,
-                    hi: 0,
+                    low: bi,
+                    high: 0,
                     poly: pi,
-                    pt: vv,
+                    point: vv,
                 }) && sp != sn
                     && sh != NONE
                     && let Some(token) = corner_emits(sp, sn, vv, self.goal.at)
@@ -508,13 +508,13 @@ impl Search<'_> {
                 let dx = vv[0] - w[0];
                 self.foot_test(Foot {
                     poly: pi,
-                    a: vv,
-                    b: w,
-                    dx,
-                    lo: bi - 1,
-                    hi: 0,
+                    start: vv,
+                    end: w,
+                    x_extent: dx,
+                    low: bi - 1,
+                    high: 0,
                     dir: 1,
-                    g0: cb,
+                    start_cost: cb,
                     parent,
                 });
                 cb = cb.wrapping_add(cheb(vv, w));
@@ -525,13 +525,13 @@ impl Search<'_> {
                 let sh = poly.shapes[fi as usize];
                 let sp = poly.sides[((n - 1 + fi) % n) as usize];
                 if !self.goal_test(Corner {
-                    g: cf,
+                    cost: cf,
                     parent,
                     dir: 0,
-                    lo: 0,
-                    hi: fi,
+                    low: 0,
+                    high: fi,
                     poly: pi,
-                    pt: vv,
+                    point: vv,
                 }) && sp != sn
                     && sh != NONE
                     && let Some(token) = corner_emits(sp, sn, vv, self.goal.at)
@@ -556,13 +556,13 @@ impl Search<'_> {
                 let dx = vv[0] - w[0];
                 self.foot_test(Foot {
                     poly: pi,
-                    a: vv,
-                    b: w,
-                    dx,
-                    lo: 0,
-                    hi: fi,
+                    start: vv,
+                    end: w,
+                    x_extent: dx,
+                    low: 0,
+                    high: fi,
                     dir: 0,
-                    g0: cf,
+                    start_cost: cf,
                     parent,
                 });
                 cf = cf.wrapping_add(cheb(vv, w));

@@ -91,13 +91,13 @@ impl Search<'_> {
                 let sh = poly.shapes[fv as usize];
                 if poly.costs[fv as usize] != UNSET
                     && !self.goal_test(Corner {
-                        g: gf,
+                        cost: gf,
                         parent: n.idx,
                         dir: 0,
-                        lo: e,
-                        hi: fv,
+                        low: e,
+                        high: fv,
                         poly: pi,
-                        pt: v,
+                        point: v,
                     })
                     && sp != sn
                     && sh != NONE
@@ -135,13 +135,13 @@ impl Search<'_> {
                 let sh = poly.shapes[bv as usize];
                 if poly.costs[bv as usize] != UNSET
                     && !self.goal_test(Corner {
-                        g: gb,
+                        cost: gb,
                         parent: n.idx,
                         dir: 1,
-                        lo: bv,
-                        hi: next0,
+                        low: bv,
+                        high: next0,
                         poly: pi,
-                        pt: v,
+                        point: v,
                     })
                     && sp != sn
                     && sh != NONE

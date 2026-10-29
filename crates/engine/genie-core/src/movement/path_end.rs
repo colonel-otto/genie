@@ -20,7 +20,7 @@ const KEPT_BY_MEMBERS: [i16; 4] = [3, 27, 39, 52];
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ReachAsk {
     /// The goal (x, y on the map).
-    pub(super) to: [f32; 2],
+    pub(super) goal: [f32; 2],
     /// The target object's id.
     pub(super) target: Option<i32>,
     /// How near the goal counts.
@@ -52,7 +52,7 @@ impl Mover {
         ask: ReachAsk,
     ) -> Result<bool, GenieError> {
         let ReachAsk {
-            to,
+            goal: to,
             target,
             range,
             master,
@@ -103,7 +103,7 @@ impl Mover {
             let line = ([x, height_at], [to[0], height]);
             let ignore = self.ignore_list(me, world, plan, placed, target_id, line)?;
             let ask = ShortAsk {
-                to: goal,
+                goal,
                 range,
                 target: target_id,
                 ignore: &ignore,

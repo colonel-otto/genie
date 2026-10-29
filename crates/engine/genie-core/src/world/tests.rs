@@ -7427,7 +7427,7 @@ fn hands_world(id: i32, p: usize, class: i16, master: i16, los: f32) -> Spatial 
     r.update_unit(UnitUpdate {
         id,
         owner: p as u8,
-        at: [10.5, 10.5],
+        position: [10.5, 10.5],
         radii: [0.2, 0.2],
         class,
         old: 0,
@@ -8994,7 +8994,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
     r.update_unit(UnitUpdate {
         id: 500,
         owner: 1,
-        at: [11.5, 10.5],
+        position: [11.5, 10.5],
         radii: [0.2, 0.2],
         class: 4,
         old: 0,
@@ -9113,7 +9113,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
     r.update_unit(UnitUpdate {
         id: 500,
         owner: 1,
-        at: [11.5, 10.5],
+        position: [11.5, 10.5],
         radii: [0.2, 0.2],
         class: 4,
         old: 0,
@@ -13706,7 +13706,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
         r.update_unit(UnitUpdate {
             id,
             owner: 0,
-            at: [x, 89.5],
+            position: [x, 89.5],
             radii: [0.2, 0.2],
             class: 9,
             old: 0,

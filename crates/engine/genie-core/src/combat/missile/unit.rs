@@ -262,8 +262,8 @@ impl Unit {
             rect[3] + grow,
         ])?;
         let crossed = c.w.spatial.walk_hits(WalkQuery {
-            from,
-            to,
+            start: from,
+            end: to,
             rect,
             grow,
             ally_factor: 1.0,

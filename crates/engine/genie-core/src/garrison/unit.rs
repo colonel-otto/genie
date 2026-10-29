@@ -490,7 +490,7 @@ impl Unit {
             r.update_unit(UnitUpdate {
                 id,
                 owner: c.player as u8,
-                at: [self.position()[0], self.position()[1]],
+                position: [self.position()[0], self.position()[1]],
                 radii: placed.radius,
                 class: placed.class,
                 old: mask & 0xffff_ffff,

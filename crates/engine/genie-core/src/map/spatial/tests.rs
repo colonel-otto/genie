@@ -147,7 +147,7 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
     r.update_unit(UnitUpdate {
         id: 1,
         owner: 1,
-        at: [12.0, 10.0],
+        position: [12.0, 10.0],
         radii: [0.2, 0.2],
         class: 4,
         old: 0,
@@ -173,7 +173,7 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
     let mut search = |s: &mut Spatial, at| {
         let f = s
             .search(SearchQuery {
-                me: 9,
+                searcher: 9,
                 player: 2,
                 search: &look(at),
                 attack: &mut never,
@@ -370,8 +370,8 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
     s.set_manager_buffer(Some(0.1));
     let _ = s
         .walk_hits(WalkQuery {
-            from: [2.0, 2.0],
-            to: [3.0, 2.0],
+            start: [2.0, 2.0],
+            end: [3.0, 2.0],
             rect: [2.0, 2.0, 3.0, 2.0],
             grow: 0.2,
             ally_factor: 1.0,
@@ -405,8 +405,8 @@ fn a_walk_past_the_maps_edge_meets_its_record_first() {
     let rect = [0.1, 5.5, 2.0, 5.5];
     let hits = s
         .walk_hits(WalkQuery {
-            from,
-            to,
+            start: from,
+            end: to,
             rect,
             grow: 0.2,
             ally_factor: 1.0,
@@ -551,8 +551,8 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     // the box (29.8..30.2, 88.8..89.2) grown by 0.25 reaches 88.55, past the step's end
     assert_eq!(
         s.walk_hits(WalkQuery {
-            from,
-            to,
+            start: from,
+            end: to,
             rect,
             grow: 0.25,
             ally_factor: 0.5,
@@ -566,8 +566,8 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     let rect = [29.5, 88.0, 29.5, 88.5];
     assert_eq!(
         s.walk_hits(WalkQuery {
-            from: longer.0,
-            to: longer.1,
+            start: longer.0,
+            end: longer.1,
             rect,
             grow: 0.4,
             ally_factor: 1.0,
@@ -578,8 +578,8 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     );
     assert_eq!(
         s.walk_hits(WalkQuery {
-            from: longer.0,
-            to: longer.1,
+            start: longer.0,
+            end: longer.1,
             rect,
             grow: 0.4,
             ally_factor: 1.0,
@@ -598,8 +598,8 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     );
     assert_eq!(
         s.walk_hits(WalkQuery {
-            from: longer.0,
-            to: longer.1,
+            start: longer.0,
+            end: longer.1,
             rect,
             grow: 0.4,
             ally_factor: 0.5,
@@ -612,8 +612,8 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     s.relations[2][1] = 3;
     assert_eq!(
         s.walk_hits(WalkQuery {
-            from: longer.0,
-            to: longer.1,
+            start: longer.0,
+            end: longer.1,
             rect,
             grow: 0.4,
             ally_factor: 0.5,
@@ -1189,8 +1189,8 @@ fn the_manager_keeps_the_last_ignore_list_set() {
     let rect = [2.0, 5.0, 3.0, 5.0];
     let _ = s
         .walk_hits(WalkQuery {
-            from: [2.0, 5.0],
-            to: [3.0, 5.0],
+            start: [2.0, 5.0],
+            end: [3.0, 5.0],
             rect,
             grow: 0.2,
             ally_factor: 1.0,

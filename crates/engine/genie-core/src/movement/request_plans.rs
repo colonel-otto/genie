@@ -170,7 +170,7 @@ impl Mover {
             .filter(|_| !target_moves)
             .map_or(0.0, |t| t.radius[0]);
         let ask = TileAsk {
-            to: w.waypoint,
+            goal: w.waypoint,
             radii: target_radius + w.radius,
             range: w.range,
             target: w.goal.target,
@@ -213,7 +213,7 @@ impl Mover {
         let line = ground_line(self.moved_at, w.waypoint);
         let ignore = self.ignore_list(me, world, plan, w.goal.target, w.target_id, line)?;
         let ask = ShortAsk {
-            to: w.waypoint,
+            goal: w.waypoint,
             range: short_range(near, w.range),
             target: w.target_id,
             ignore: &ignore,
@@ -395,7 +395,7 @@ impl Mover {
             .map_or(0.0, |t| t.radius[0]);
         let mut other = Path::default();
         let ask = TileAsk {
-            to: w.waypoint,
+            goal: w.waypoint,
             radii: target_radius + w.radius,
             range: w.range,
             target: w.goal.target,

@@ -106,17 +106,17 @@ impl OpenList {
 
 /// A node from the pool ([`Planner::alloc`]'s arguments, `FUN_140f79c90`'s).
 #[derive(Clone, Copy, Debug)]
-pub(super) struct NewNode {
+pub(super) struct TileNode {
     /// The tile's x.
-    pub(super) x: i16,
+    pub(super) tile_x: i16,
     /// The tile's y.
-    pub(super) y: i16,
+    pub(super) tile_y: i16,
     /// The level of the tile's cell.
     pub(super) level: u8,
     /// The cost so far.
-    pub(super) g: f32,
+    pub(super) cost: f32,
     /// The estimate to the goal.
-    pub(super) h: f32,
+    pub(super) estimate: f32,
     /// The node it comes from.
     pub(super) parent: Option<usize>,
     /// The edge it was entered by.
@@ -127,13 +127,13 @@ pub(super) struct NewNode {
 
 impl Planner {
     /// `FUN_140f79c90`: a new node from the pool.
-    pub(super) fn alloc(&mut self, new: NewNode) -> usize {
-        let NewNode {
-            x,
-            y,
+    pub(super) fn alloc(&mut self, new: TileNode) -> usize {
+        let TileNode {
+            tile_x: x,
+            tile_y: y,
             level,
-            g,
-            h,
+            cost: g,
+            estimate: h,
             parent,
             dir,
             entry,
@@ -245,12 +245,12 @@ impl Planner {
         let dy = i32::from(ey) - i32::from(cy);
         let d = fmath::sqrt((dy * dy + dx * dx) as f32);
         let h = self.estimate_from(cx, cy);
-        let n = self.alloc(NewNode {
-            x,
-            y,
+        let n = self.alloc(TileNode {
+            tile_x: x,
+            tile_y: y,
             level,
-            g: d + g0,
-            h,
+            cost: d + g0,
+            estimate: h,
             parent: Some(parent),
             dir,
             entry: [cx, cy],
@@ -286,12 +286,12 @@ impl Planner {
         let dy = i32::from(ey) - i32::from(y);
         let d = fmath::sqrt((dy * dy + dx * dx) as f32);
         let h = self.estimate_from(x, y);
-        let n = self.alloc(NewNode {
-            x,
-            y,
+        let n = self.alloc(TileNode {
+            tile_x: x,
+            tile_y: y,
             level: 0,
-            g: d + g0,
-            h,
+            cost: d + g0,
+            estimate: h,
             parent: Some(parent),
             dir,
             entry: [x, y],
@@ -337,12 +337,12 @@ impl Planner {
         }
         let h0 = self.start_estimate(start[0], start[1]);
         let mut count: u32 = 0;
-        let n = self.alloc(NewNode {
-            x: lx,
-            y: ly,
+        let n = self.alloc(TileNode {
+            tile_x: lx,
+            tile_y: ly,
             level,
-            g: 0.0,
-            h: h0,
+            cost: 0.0,
+            estimate: h0,
             parent: None,
             dir: 0,
             entry: start,
@@ -384,12 +384,12 @@ impl Planner {
             return None;
         }
         let h0 = self.start_estimate(x, y);
-        let n = self.alloc(NewNode {
-            x,
-            y,
+        let n = self.alloc(TileNode {
+            tile_x: x,
+            tile_y: y,
             level: 0,
-            g: 0.0,
-            h: h0,
+            cost: 0.0,
+            estimate: h0,
             parent: None,
             dir: 0,
             entry: start,

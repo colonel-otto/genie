@@ -10,9 +10,9 @@ use crate::map::spatial::{
 #[derive(Clone, Copy, Debug)]
 pub struct WalkQuery<'a> {
     /// The step's start.
-    pub from: [f32; 2],
+    pub start: [f32; 2],
     /// The step's end.
-    pub to: [f32; 2],
+    pub end: [f32; 2],
     /// The step's rectangle.
     pub rect: [f32; 4],
     /// The walker's radius, which grows the records' boxes and the rectangle.
@@ -339,8 +339,8 @@ impl Spatial {
     /// first ([`Spatial::set_manager_ignore`]).
     pub fn walk_hits(&mut self, walk: WalkQuery<'_>) -> Result<Vec<i32>, GenieError> {
         let WalkQuery {
-            from,
-            to,
+            start: from,
+            end: to,
             rect,
             grow,
             ally_factor,

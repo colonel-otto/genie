@@ -297,8 +297,8 @@ impl Mover {
                 rect[3] + grow,
             ])?;
             let hits = world.walk_hits(WalkQuery {
-                from,
-                to,
+                start: from,
+                end: to,
                 rect,
                 grow,
                 ally_factor: self.stats.min_collision,

@@ -10,15 +10,15 @@ use crate::pathing::short_path::{
 #[derive(Debug)]
 pub(super) struct RayTile<'a> {
     /// The callback over the tile's shapes.
-    pub(super) cb: Callback,
+    pub(super) callback: Callback,
     /// The tile's shapes.
     pub(super) list: &'a [u32],
     /// The ray's start.
-    pub(super) a: Point,
+    pub(super) start: Point,
     /// The ray's end.
-    pub(super) b: Point,
+    pub(super) end: Point,
     /// The ray's fraction so far, which a hit lowers.
-    pub(super) t: &'a mut i32,
+    pub(super) fraction: &'a mut i32,
     /// The hit it leaves.
     pub(super) hit: &'a mut Hit,
     /// The token a hit ignores, as the callback leaves it.
@@ -59,11 +59,11 @@ impl Ctx<'_> {
     /// One tile of the raycast: the callback over the tile's shapes.
     pub(super) fn ray_tile(&self, tile: RayTile<'_>) -> i32 {
         let RayTile {
-            cb,
+            callback: cb,
             list,
-            a,
-            b,
-            t,
+            start: a,
+            end: b,
+            fraction: t,
             hit,
             token,
         } = tile;
@@ -201,11 +201,11 @@ impl Ctx<'_> {
             let e = err;
             let list = self.tile(tx, ty);
             let r = self.ray_tile(RayTile {
-                cb,
+                callback: cb,
                 list,
-                a,
-                b,
-                t,
+                start: a,
+                end: b,
+                fraction: t,
                 hit,
                 token,
             });

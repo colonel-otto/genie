@@ -69,7 +69,7 @@ pub struct UnitUpdate {
     /// The owner's id (`player+0x718`).
     pub owner: u8,
     /// Its place (x, y).
-    pub at: [f32; 2],
+    pub position: [f32; 2],
     /// Its master's radii (x, y).
     pub radii: [f32; 2],
     /// Its master's class.
@@ -87,7 +87,7 @@ pub struct VisibleQuery<'a> {
     /// The player whose lists it reads.
     pub player: usize,
     /// The searcher's place (x, y).
-    pub at: [f32; 2],
+    pub position: [f32; 2],
     /// How far, at most 44.
     pub radius: f32,
     /// 0: a rounded box, 1: a box.
@@ -140,7 +140,7 @@ impl Registry {
         let UnitUpdate {
             id,
             owner,
-            at: [x, y],
+            position: [x, y],
             radii: [rx, ry],
             class,
             old,
@@ -262,7 +262,7 @@ impl Registry {
     ) -> Result<Option<[Vec<Record>; 5]>, GenieError> {
         let VisibleQuery {
             player,
-            at: [x, y],
+            position: [x, y],
             radius,
             mode,
             classes,
@@ -352,7 +352,7 @@ mod tests {
             r.update_unit(UnitUpdate {
                 id,
                 owner: 1,
-                at: [id as f32, 5.0],
+                position: [id as f32, 5.0],
                 radii: [0.2, 0.2],
                 class: 4,
                 old: 0,
@@ -370,7 +370,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 1,
             owner: 1,
-            at: [1.0, 5.0],
+            position: [1.0, 5.0],
             radii: [0.2, 0.2],
             class: 4,
             old: 0b101,
@@ -394,7 +394,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 1,
             owner: 1,
-            at: [12.0, 10.0],
+            position: [12.0, 10.0],
             radii: [0.2, 0.2],
             class: 4,
             old: 0,
@@ -404,7 +404,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 2,
             owner: 2,
-            at: [10.0, 13.5],
+            position: [10.0, 13.5],
             radii: [0.2, 0.2],
             class: 4,
             old: 0,
@@ -414,7 +414,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 3,
             owner: 2,
-            at: [13.0, 13.0],
+            position: [13.0, 13.0],
             radii: [0.2, 0.2],
             class: 4,
             old: 0,
@@ -424,7 +424,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 4,
             owner: 0,
-            at: [10.5, 10.5],
+            position: [10.5, 10.5],
             radii: [0.2, 0.2],
             class: 9,
             old: 0,
@@ -435,7 +435,7 @@ mod tests {
         let found = r
             .visible_units(VisibleQuery {
                 player: 0,
-                at: [10.0, 10.0],
+                position: [10.0, 10.0],
                 radius: 3.0,
                 mode: 0,
                 classes: &[4, 9],
@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(
             r.visible_units(VisibleQuery {
                 player: 0,
-                at: [10.0, 10.0],
+                position: [10.0, 10.0],
                 radius: 3.0,
                 mode: 0,
                 classes: &[],
@@ -473,7 +473,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 1,
             owner: 1,
-            at: [53.5, 10.0],
+            position: [53.5, 10.0],
             radii: [0.2, 0.2],
             class: 4,
             old: 0,
@@ -483,7 +483,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 2,
             owner: 1,
-            at: [60.0, 10.0],
+            position: [60.0, 10.0],
             radii: [0.2, 0.2],
             class: 4,
             old: 0,
@@ -493,7 +493,7 @@ mod tests {
         let found = r
             .visible_units(VisibleQuery {
                 player: 0,
-                at: [10.0, 10.0],
+                position: [10.0, 10.0],
                 radius: 100.0,
                 mode: 1,
                 classes: &[4],
@@ -513,7 +513,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 1,
             owner: 1,
-            at: [15.0, 10.0],
+            position: [15.0, 10.0],
             radii: [2.0, 2.0],
             class: 4,
             old: 0,
@@ -523,7 +523,7 @@ mod tests {
         let found = r
             .visible_units(VisibleQuery {
                 player: 0,
-                at: [10.0, 10.0],
+                position: [10.0, 10.0],
                 radius: 3.0,
                 mode: 0,
                 classes: &[4],

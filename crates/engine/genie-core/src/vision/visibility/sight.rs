@@ -19,7 +19,7 @@ pub(super) struct SightOn {
     /// Whether it explores its footprint as a rectangle.
     pub(super) square: bool,
     /// Its line of sight.
-    pub(super) los: i32,
+    pub(super) line_of_sight: i32,
     /// The circle's offset.
     pub(super) offset: bool,
 }
@@ -83,7 +83,7 @@ impl Visibility {
             position,
             radius,
             square,
-            los,
+            line_of_sight: los,
             offset,
         })
     }
@@ -96,7 +96,7 @@ impl Visibility {
             position,
             radius,
             square,
-            los,
+            line_of_sight: los,
             offset,
         } = on;
         let square = square && s.master != CIRCLE_MASTER;

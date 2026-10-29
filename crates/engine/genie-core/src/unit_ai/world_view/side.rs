@@ -285,7 +285,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         // a farm's workers (`+0x644`) and its pasture (`+0x790`)
         let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
         self.c.w.spatial.search(SearchQuery {
-            me: unit.id,
+            searcher: unit.id,
             player: self.player,
             search,
             attack: &mut picker,

@@ -18,7 +18,7 @@ pub(super) struct HuntOrder {
     /// The hunter's player.
     pub(super) player: usize,
     /// The hunter's index in the player's objects.
-    pub(super) idx: usize,
+    pub(super) index: usize,
     /// The target.
     pub(super) target: i32,
     /// The task.
@@ -459,7 +459,7 @@ impl World {
     pub(super) fn start_hunt(&mut self, order: HuntOrder) -> Result<(), GenieError> {
         let HuntOrder {
             player,
-            idx,
+            index: idx,
             target,
             task,
             point,

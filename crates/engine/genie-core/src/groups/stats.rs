@@ -785,7 +785,7 @@ mod tests {
             r.update_unit(UnitUpdate {
                 id,
                 owner,
-                at,
+                position: at,
                 radii: [0.2, 0.2],
                 class,
                 old: 0,
@@ -870,7 +870,7 @@ mod tests {
                 .update_unit(UnitUpdate {
                     id: 22,
                     owner: 2,
-                    at: [13.0, 5.0],
+                    position: [13.0, 5.0],
                     radii: [0.2, 0.2],
                     class: 6,
                     old: 0,

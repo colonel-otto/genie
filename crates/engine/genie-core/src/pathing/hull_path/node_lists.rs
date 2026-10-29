@@ -10,13 +10,13 @@ use crate::pathing::hull_path::{EPSILON, HullPather, LINE_HITS, Node, Point, Way
 #[derive(Clone, Copy, Debug)]
 pub(super) struct NewNode {
     /// The list.
-    pub(super) l: usize,
+    pub(super) list: usize,
     /// Whether it goes into the open list (else straight into the closed one).
     pub(super) open: bool,
     /// The node it comes from.
     pub(super) parent: Option<usize>,
     /// Its place.
-    pub(super) at: Point,
+    pub(super) position: Point,
     /// The goal its distance is to (none: 0).
     pub(super) goal: Option<Point>,
     /// Its hull (−1 none).
@@ -34,13 +34,13 @@ pub(super) struct NewNode {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct UnrefusedNode {
     /// The list.
-    pub(super) l: usize,
+    pub(super) list: usize,
     /// Whether it goes into the open list (else straight into the closed one).
     pub(super) open: bool,
     /// The node it comes from.
     pub(super) parent: Option<usize>,
     /// Its place.
-    pub(super) at: Point,
+    pub(super) position: Point,
     /// The goal its distance is to (none: 0).
     pub(super) goal: Option<Point>,
     /// Its hull (−1 none).
@@ -93,10 +93,10 @@ impl HullPather<'_> {
     /// node does (`by_place`: of the closed list but its last).
     pub(super) fn add_node(&mut self, new: NewNode) -> Option<usize> {
         let NewNode {
-            l,
+            list: l,
             open,
             parent,
-            at,
+            position: at,
             goal,
             hull,
             vertex,
@@ -170,10 +170,10 @@ impl HullPather<'_> {
     /// of `FindShortPath` and `pathWithinHull`, `FindShortPath`'s crossing node).
     pub(super) fn add_unrefused(&mut self, new: UnrefusedNode) -> usize {
         let UnrefusedNode {
-            l,
+            list: l,
             open,
             parent,
-            at,
+            position: at,
             goal,
             hull,
             direction,

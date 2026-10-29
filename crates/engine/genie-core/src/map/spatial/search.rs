@@ -158,7 +158,7 @@ impl Spatial {
     /// [`SearchCache`]: crate::map::spatial::SearchCache
     pub fn search(&mut self, query: SearchQuery<'_>) -> Result<Found, GenieError> {
         let SearchQuery {
-            me,
+            searcher: me,
             player,
             search,
             attack,
@@ -239,7 +239,7 @@ impl Spatial {
             self.check_sight(player, rect)?;
             if let Some(lists) = r.visible_units(VisibleQuery {
                 player,
-                at: search.at,
+                position: search.at,
                 radius: search.radius,
                 mode: 0,
                 classes: search.classes,
@@ -436,7 +436,7 @@ impl Spatial {
 /// callers' answers for what the search reads of the world beyond the spatial index.
 pub struct SearchQuery<'a> {
     /// The searching object.
-    pub me: i32,
+    pub searcher: i32,
     /// Its player.
     pub player: usize,
     /// What it searches for.
@@ -455,7 +455,11 @@ pub struct SearchQuery<'a> {
 
 impl std::fmt::Debug for SearchQuery<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SearchQuery").finish_non_exhaustive()
+        f.debug_struct("SearchQuery")
+            .field("searcher", &self.searcher)
+            .field("player", &self.player)
+            .field("search", &self.search)
+            .finish_non_exhaustive()
     }
 }
 

@@ -38,7 +38,7 @@ pub enum GroupSpeed {
 #[derive(Debug)]
 pub(super) struct WalkStep<'a> {
     /// The step's time.
-    pub(super) dt: f32,
+    pub(super) time_step: f32,
     /// The world's spatial index.
     pub(super) world: &'a mut Spatial,
     /// The world's unit groups (none for a walk without the world's planners).
@@ -427,7 +427,7 @@ impl Mover {
             let step = self.walk(
                 me,
                 WalkStep {
-                    dt,
+                    time_step: dt,
                     world,
                     groups,
                     pathing,
@@ -455,7 +455,7 @@ impl Mover {
     /// world's unit groups (none for a walk without the world's planners).
     pub(super) fn walk(&mut self, me: &Me, step: WalkStep<'_>) -> Result<Next, GenieError> {
         let WalkStep {
-            dt,
+            time_step: dt,
             world,
             groups,
             pathing,
@@ -508,8 +508,8 @@ impl Mover {
             ])?;
             let player = world.get(me.id).map(|p| p.player);
             let hits = world.walk_hits(WalkQuery {
-                from,
-                to,
+                start: from,
+                end: to,
                 rect,
                 grow,
                 ally_factor: self.stats.min_collision,

@@ -92,7 +92,7 @@ impl Visibility {
         registry.update_unit(UnitUpdate {
             id,
             owner: owner as u8,
-            at: [x, y],
+            position: [x, y],
             radii: radius,
             class,
             old: old & 0xffff_ffff,
@@ -129,7 +129,7 @@ impl Visibility {
         r.update_unit(UnitUpdate {
             id,
             owner: owner as u8,
-            at: place,
+            position: place,
             radii: old.0,
             class: old.1,
             old: mask & 0xffff_ffff,
@@ -138,7 +138,7 @@ impl Visibility {
         r.update_unit(UnitUpdate {
             id,
             owner: owner as u8,
-            at: place,
+            position: place,
             radii: new.0,
             class: new.1,
             old: 0,
@@ -162,7 +162,7 @@ impl Visibility {
         r.update_unit(UnitUpdate {
             id,
             owner: owner as u8,
-            at: [at[0], at[1]],
+            position: [at[0], at[1]],
             radii: radius,
             class,
             old: mask & 0xffff_ffff,

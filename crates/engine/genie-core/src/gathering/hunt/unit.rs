@@ -364,7 +364,7 @@ impl Unit {
         };
         let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
         let result = c.w.spatial.search(SearchQuery {
-            me: self.id,
+            searcher: self.id,
             player: c.player,
             search: &search,
             attack: &mut no_attack,

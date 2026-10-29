@@ -289,8 +289,8 @@ impl Mover {
         }
         let player = world.get(me.id).map(|q| q.player);
         let hits = world.walk_hits(WalkQuery {
-            from,
-            to,
+            start: from,
+            end: to,
             rect,
             grow: rx,
             ally_factor: self.stats.min_collision,

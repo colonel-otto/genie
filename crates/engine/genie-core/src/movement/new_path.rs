@@ -333,7 +333,7 @@ impl Mover {
         master: i16,
     ) -> Result<bool, GenieError> {
         let ask = ReachAsk {
-            to,
+            goal: to,
             target: None,
             range,
             master,
@@ -358,7 +358,7 @@ impl Mover {
         };
         let to = [t.position[0], t.position[1]];
         let ask = ReachAsk {
-            to,
+            goal: to,
             target: Some(target),
             range,
             master,

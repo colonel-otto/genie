@@ -40,35 +40,35 @@ fn a_goal_candidate_in_range_and_cheaper_becomes_the_goal_else_maybe_the_best() 
     let mesh = Mesh::new(64);
     let mut s = search_toward(&mesh, [10 * ONE, 10 * ONE], 2 * ONE);
     assert!(s.goal_test(Corner {
-        g: 5 * ONE,
+        cost: 5 * ONE,
         parent: 0,
         dir: 0,
-        lo: 0,
-        hi: 0,
+        low: 0,
+        high: 0,
         poly: 0,
-        pt: [11 * ONE, 10 * ONE]
+        point: [11 * ONE, 10 * ONE]
     }));
     assert_eq!(s.goal_node, 1);
     // in range but dearer: the best instead, as it lies nearer than the start's estimate
     assert!(!s.goal_test(Corner {
-        g: 6 * ONE,
+        cost: 6 * ONE,
         parent: 0,
         dir: 0,
-        lo: 0,
-        hi: 0,
+        low: 0,
+        high: 0,
         poly: 0,
-        pt: [11 * ONE, 10 * ONE]
+        point: [11 * ONE, 10 * ONE]
     }));
     assert_eq!((s.goal_node, s.best), (1, 2));
     // out of range and farther than the best's estimate (one tile): nothing
     assert!(!s.goal_test(Corner {
-        g: ONE,
+        cost: ONE,
         parent: 0,
         dir: 0,
-        lo: 0,
-        hi: 0,
+        low: 0,
+        high: 0,
         poly: 0,
-        pt: [30 * ONE, 30 * ONE]
+        point: [30 * ONE, 30 * ONE]
     }));
     assert_eq!((s.arena.len(), s.best), (3, 2));
 }
@@ -82,25 +82,25 @@ fn the_goal_s_foot_on_a_spanning_edge_is_a_goal_candidate() {
     let mut s = search_toward(&mesh, [10 * ONE, 10 * ONE], 2 * ONE);
     s.foot_test(Foot {
         poly: 0,
-        a: [9 * ONE, 12 * ONE],
-        b: [9 * ONE, 20 * ONE],
-        dx: 0,
-        lo: 0,
-        hi: 0,
+        start: [9 * ONE, 12 * ONE],
+        end: [9 * ONE, 20 * ONE],
+        x_extent: 0,
+        low: 0,
+        high: 0,
         dir: 0,
-        g0: ONE,
+        start_cost: ONE,
         parent: 0,
     });
     assert_eq!(s.arena.len(), 1);
     s.foot_test(Foot {
         poly: 0,
-        a: [15 * ONE, 9 * ONE],
-        b: [5 * ONE, 9 * ONE],
-        dx: 1,
-        lo: 0,
-        hi: 0,
+        start: [15 * ONE, 9 * ONE],
+        end: [5 * ONE, 9 * ONE],
+        x_extent: 1,
+        low: 0,
+        high: 0,
         dir: 0,
-        g0: ONE,
+        start_cost: ONE,
         parent: 0,
     });
     let goal = s.arena[s.goal_node as usize];

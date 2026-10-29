@@ -153,7 +153,7 @@ pub(crate) fn long_path_for(
 #[derive(Clone, Copy, Debug)]
 pub struct TileAsk<'a> {
     /// The goal (x, height, y).
-    pub to: Vec3,
+    pub goal: Vec3,
     /// The walker's and the target's radii added.
     pub radii: f32,
     /// How near the goal counts.
@@ -167,7 +167,7 @@ pub struct TileAsk<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct ShortAsk<'a> {
     /// The goal (x, height, y).
-    pub to: Vec3,
+    pub goal: Vec3,
     /// How near the goal counts.
     pub range: f32,
     /// The target object (-1 for none).
@@ -200,7 +200,7 @@ pub(crate) fn tile_plan_for(
     out: &mut Path,
 ) -> Result<Option<u8>, GenieError> {
     let TileAsk {
-        to,
+        goal: to,
         radii,
         range,
         target,
@@ -324,7 +324,7 @@ pub(crate) fn short_path_for(
     let player = owner_number(world, walker.id);
     let (to, range, target) = goal;
     let ask = ShortAsk {
-        to,
+        goal: to,
         range,
         target,
         ignore,
@@ -366,7 +366,7 @@ pub(crate) fn short_path_including(
     out: &mut Path,
 ) -> Result<u8, GenieError> {
     let ShortAsk {
-        to,
+        goal: to,
         range,
         target,
         ignore,

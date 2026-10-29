@@ -420,7 +420,7 @@ impl World {
             ATTACK_TASK => self.start_attack(player, idx, target, task, point, clears),
             HUNT => self.start_hunt(HuntOrder {
                 player,
-                idx,
+                index: idx,
                 target,
                 task: HuntTask {
                     id: task.id,
