@@ -124,7 +124,7 @@ impl UnitView<'_, '_> {
         let unit = &mut *self.unit;
         let (attack, posted) = crate::combat::attack::Attack::command(self.c, unit, &cmd)?;
         unit.actions.set_attack(Some(attack));
-        self.take(target, by);
+        self.take(target, by)?;
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted,
@@ -161,7 +161,7 @@ impl UnitView<'_, '_> {
         )?;
         let target = attack.target;
         unit.actions.set_attack(Some(attack));
-        self.take(target, by);
+        self.take(target, by)?;
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted: Vec::new(),
@@ -245,7 +245,7 @@ impl UnitView<'_, '_> {
             self.release(old, by)?;
         }
         if let Some(new) = w.takes {
-            self.take(new, by);
+            self.take(new, by)?;
         }
         Ok(())
     }

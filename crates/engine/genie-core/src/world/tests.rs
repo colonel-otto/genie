@@ -4236,11 +4236,11 @@ fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
     let own = in_update(&mut t, (1, 0), 50, |unit, c| {
         let by = unit.releaser(c);
         for id in [520, 521, 530, 9999] {
-            take(c, unit, id, by);
+            take(c, unit, id, by).unwrap();
         }
         let before = unit.workers;
-        take(c, unit, unit.id, by);
-        take(c, unit, 530, gaia);
+        take(c, unit, unit.id, by).unwrap();
+        take(c, unit, 530, gaia).unwrap();
         Ok((before, unit.workers))
     });
     assert_eq!(own, Ok((0, 1)));
@@ -4309,7 +4309,7 @@ fn outside_an_update_the_lets_run_on_the_whole_world() {
         class: 4,
         player: 1,
     };
-    t.take(521, by);
+    t.take(521, by).unwrap();
     assert_eq!(t.players[0].objects.iter().last().map(|u| u.id), Some(521));
     let k = crate::players::tracker::key(t.masters.first(), &t.lines, 349);
     assert_eq!(t.players[0].tracker.list(k.master).last(), Some(&521));
@@ -8774,8 +8774,8 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
     let by = |t: &World, p, i| t.releaser(p, i);
     let (enemy, other, ally) = (by(&t, 2, 0), by(&t, 2, 1), by(&t, 3, 0));
     for taker in [enemy, other, enemy, ally] {
-        t.take(10028, taker);
-        t.take(10029, taker);
+        t.take(10028, taker).unwrap();
+        t.take(10029, taker).unwrap();
     }
     let site = |t: &World| t.players[1].objects[0].clone();
     assert_eq!(site(&t).attacking_units, [40, 41, 40]);
@@ -8789,7 +8789,7 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
     t.release(10028, ally).unwrap();
     assert_eq!(site(&t).attacking_units, [41, 40]);
     t.players[1].objects[0].life.state = 2;
-    t.take(10028, other);
+    t.take(10028, other).unwrap();
     t.release(10028, enemy).unwrap();
     assert_eq!(site(&t).attacking_units, [41, 40]);
 }

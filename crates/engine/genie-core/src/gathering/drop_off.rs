@@ -240,7 +240,7 @@ impl Unit {
                 u.taken(false, by.id);
             } else {
                 let by = self.releaser(c);
-                crate::world::lets::take(c, self, new, by);
+                crate::world::lets::take(c, self, new, by)?;
             }
         }
         Ok(())
@@ -300,7 +300,7 @@ impl Unit {
         };
         if let Some(site) = self.gather_drop_off_in(w, OthersRef::of(&c.w.players, c.player)?)? {
             let by = self.releaser(c);
-            crate::world::lets::take(c, self, site, by);
+            crate::world::lets::take(c, self, site, by)?;
         }
         Ok(())
     }

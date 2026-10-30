@@ -139,12 +139,12 @@ impl World {
                     self.release(old, by)?;
                 }
                 if new != -1 {
-                    self.take(new, by);
+                    self.take(new, by)?;
                 }
             }
         }
         if waits && old_target != target {
-            self.take(target, by);
+            self.take(target, by)?;
             self.release(target, by)?;
         }
         Ok(took)
@@ -190,7 +190,7 @@ impl World {
                     self.release(old, by)?;
                 }
                 if new != -1 {
-                    self.take(new, by);
+                    self.take(new, by)?;
                 }
             }
         }
@@ -273,7 +273,7 @@ impl World {
             if old_second != -1 {
                 self.release(old_second, by)?;
             }
-            self.take(new_second, by);
+            self.take(new_second, by)?;
         }
         Ok(true)
     }
@@ -360,7 +360,7 @@ impl World {
             self.settings.walkable_farms,
             rate,
         )?;
-        self.take(target, self.releaser(player, idx));
+        self.take(target, self.releaser(player, idx))?;
         let unit = &mut self.players[player].objects[idx];
         if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {
             ai.notify_work(
@@ -404,7 +404,7 @@ impl World {
         let waits = gather.target == -1 && gather.carry_to != target;
         unit.actions.set_gather(Some(gather));
         if drops {
-            self.take(target, self.releaser(player, idx));
+            self.take(target, self.releaser(player, idx))?;
         }
         if drops || waits {
             let by = self.releaser(player, idx);
@@ -475,7 +475,7 @@ impl World {
         } = order;
         let mut quarry = self.quarry(player, target)?;
         quarry.drop_site = self.drops_at_main(player, idx, target)?;
-        self.take(target, self.releaser(player, idx));
+        self.take(target, self.releaser(player, idx))?;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut().filter(|_| notify) {
             ai.notify_work(
@@ -527,7 +527,7 @@ impl World {
         // a load to its own drop site: the target taken as the second (FUN_140a7a190), then let
         // go as the first (slot 0x68 with none)
         if drops {
-            self.take(target, self.releaser(player, idx));
+            self.take(target, self.releaser(player, idx))?;
             let by = self.releaser(player, idx);
             self.release(target, by)?;
         }

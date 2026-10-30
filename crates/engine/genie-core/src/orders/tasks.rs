@@ -118,7 +118,7 @@ impl World {
             task,
             builder.work_rate + unit.work_rate_powerup,
         );
-        self.take(target, self.releaser(player, idx));
+        self.take(target, self.releaser(player, idx))?;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
@@ -178,7 +178,7 @@ impl World {
             master.weapon_range,
             &sprites,
         )?;
-        self.take(target, self.releaser(player, idx));
+        self.take(target, self.releaser(player, idx))?;
         Ok((repair, class))
     }
 
@@ -501,6 +501,6 @@ impl World {
     /// unit's its own); none once the world no longer holds `id`. Outside an update
     /// ([`crate::world::lets::Lets::leave_builders`] on the whole world).
     pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), GenieError> {
-        self.with_lets(0, |lets, others| lets.leave_builders(others, None, id))
+        self.with_lets(0, |lets, others| lets.leave_builders(others, None, id))?
     }
 }

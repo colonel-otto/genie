@@ -172,8 +172,12 @@ impl UnitView<'_, '_> {
 impl UnitView<'_, '_> {
     /// Slot 0x178 on object `id`, which the unit's action of `by` takes
     /// ([`crate::world::lets::take`]); the unit itself, out of its slot, is taken where it is.
-    pub(crate) fn take(&mut self, id: i32, by: Releaser) {
-        crate::world::lets::take(self.c, self.unit, id, by);
+    ///
+    /// # Errors
+    ///
+    /// [`crate::world::lets::take`]'s.
+    pub(crate) fn take(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
+        crate::world::lets::take(self.c, self.unit, id, by)
     }
 
     /// Slot 0x180 on object `id`, which the unit's action of `by` lets go

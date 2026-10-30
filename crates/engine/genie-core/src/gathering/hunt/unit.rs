@@ -491,7 +491,7 @@ impl Unit {
                     c.w.streams.get(Stream::Sprite),
                 )?;
             }
-            crate::world::lets::take(c, self, found, by);
+            crate::world::lets::take(c, self, found, by)?;
         }
         self.hunt_failed_sprite(c)
     }
@@ -545,7 +545,7 @@ impl Unit {
         };
         if let Some(site) = self.drop_off_in(w, OthersRef::of(&c.w.players, c.player)?)? {
             let by = self.releaser(c);
-            crate::world::lets::take(c, self, site, by);
+            crate::world::lets::take(c, self, site, by)?;
         }
         Ok(())
     }

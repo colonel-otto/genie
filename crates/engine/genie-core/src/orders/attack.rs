@@ -141,7 +141,7 @@ impl World {
         }
         attack.target2 = target;
         unit.actions.set_attack(Some(attack));
-        self.take(target, self.releaser(player, idx));
+        self.take(target, self.releaser(player, idx))?;
         Ok(())
     }
 
@@ -191,7 +191,7 @@ impl World {
             ai.set_action(Some(ActionKind::Attack));
             ai.set_target(aim.aimed, aim.aimed_class, aim.at);
         }
-        self.take(target, self.releaser(player, idx));
+        self.take(target, self.releaser(player, idx))?;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.last_retarget_time = world_time;
@@ -301,7 +301,7 @@ impl World {
             return Ok(-1);
         }
         if !quiet {
-            self.take(new, self.releaser(player, idx));
+            self.take(new, self.releaser(player, idx))?;
         }
         Ok(new)
     }

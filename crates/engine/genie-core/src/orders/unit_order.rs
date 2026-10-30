@@ -60,7 +60,7 @@ impl World {
             self.release(t, by)?;
         }
         if let Some(t) = targets.taken {
-            self.take(t, by);
+            self.take(t, by)?;
         }
         // set_state(5)'s sub-actions went: the Enter it held lets its building or transport go
         if let Some(t) = gone.released {
@@ -352,7 +352,7 @@ impl World {
         };
         let idx = self.put_back_own(p, unit)?;
         if let Some(site) = result? {
-            self.take(site, self.releaser(p, idx));
+            self.take(site, self.releaser(p, idx))?;
         }
         Ok(())
     }

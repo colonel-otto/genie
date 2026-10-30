@@ -349,7 +349,7 @@ impl World {
         let t_state = t.life.state;
         let t_master = t.master(&self.masters, tp)?.id;
         if crate::movement::move_to::holds_object(livestock, t_master, t_state) {
-            self.take(target, self.releaser(player, idx));
+            self.take(target, self.releaser(player, idx))?;
         }
         self.clear_actions(player, idx)?;
         let master = self.players[player].objects[idx].master(&self.masters, player)?;

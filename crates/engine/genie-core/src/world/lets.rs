@@ -44,7 +44,7 @@ impl World {
         &mut self,
         player: usize,
         f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
-    ) -> R {
+    ) -> Result<R, GenieError> {
         // no unit AI's side runs here: an updating unit holds its AI (one without has none to
         // tell), so nothing waits for a side's return
         self.with_lets_for(player, &mut Vec::new(), f)
@@ -57,9 +57,16 @@ impl World {
         player: usize,
         own_notifies: &mut Vec<(Notify, u8)>,
         f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
-    ) -> R {
-        let (before, rest) = self.players.split_at_mut(player);
-        let (own, after) = rest.split_first_mut().expect("a player of the world");
+    ) -> Result<R, GenieError> {
+        let no_player = || {
+            GenieError::unreachable("lets for a player the world does not hold")
+                .with("player", player)
+        };
+        let (before, rest) = self
+            .players
+            .split_at_mut_checked(player)
+            .ok_or_else(no_player)?;
+        let (own, after) = rest.split_first_mut().ok_or_else(no_player)?;
         let Player {
             objects,
             sleeping,
@@ -76,13 +83,16 @@ impl World {
             tracker,
             own_notifies,
         };
-        f(&mut lets, &mut others)
+        Ok(f(&mut lets, &mut others))
     }
 }
 
 /// `f` with the updating player's [`Lets`] for a call on the updating object itself: its unit
 /// AI's notifies go to the side's buffer while its side runs ([`Step::side_notifies`]).
-fn own_lets<R>(c: &mut Step<'_>, f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R) -> R {
+fn own_lets<R>(
+    c: &mut Step<'_>,
+    f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
+) -> Result<R, GenieError> {
     match c.side_notifies.as_mut() {
         Some(own) => c.w.with_lets_for(c.player, own, f),
         None => c.w.with_lets(c.player, f),
@@ -91,11 +101,20 @@ fn own_lets<R>(c: &mut Step<'_>, f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) 
 
 /// Slot 0x178 on object `id`, which an action of `by` takes, from an update: the world's take
 /// ([`World::take`]); the updating object's own runs on `me` ([`Lets::take`]).
-pub(crate) fn take(c: &mut Step<'_>, me: &mut Unit, id: i32, by: Releaser) {
+///
+/// # Errors
+///
+/// [`World::take`]'s and [`Lets::take`]'s.
+pub(crate) fn take(
+    c: &mut Step<'_>,
+    me: &mut Unit,
+    id: i32,
+    by: Releaser,
+) -> Result<(), GenieError> {
     if id == c.me {
-        own_lets(c, |lets, others| lets.take(others, Some(me), id, by));
+        own_lets(c, |lets, others| lets.take(others, Some(me), id, by))?
     } else {
-        c.w.take(id, by);
+        c.w.take(id, by)
     }
 }
 
@@ -112,7 +131,7 @@ pub(crate) fn release(
     by: Releaser,
 ) -> Result<(), GenieError> {
     if id == c.me {
-        return own_lets(c, |lets, others| lets.release(others, Some(me), id, by));
+        return own_lets(c, |lets, others| lets.release(others, Some(me), id, by))?;
     }
     c.w.release(id, by)
 }
@@ -126,7 +145,7 @@ pub(crate) fn release(
 /// An object of a master its owner lacks.
 pub(crate) fn leave_builders(c: &mut Step<'_>, me: &mut Unit, id: i32) -> Result<(), GenieError> {
     // the updating player's lets: the updating object's own site is reckoned by its owner
-    own_lets(c, |lets, others| lets.leave_builders(others, Some(me), id))
+    own_lets(c, |lets, others| lets.leave_builders(others, Some(me), id))?
 }
 
 /// What an action list's teardown left the world, applied at once from an update: the buildings
@@ -159,6 +178,10 @@ impl Lets<'_> {
     /// object `me` of the lets' player (None outside an update), which no lookup finds while it
     /// updates, is taken itself, a live object.
     ///
+    /// # Errors
+    ///
+    /// An object the lookup located that the view then does not hold.
+    ///
     /// [`World::take`]: crate::world::World::take
     pub(crate) fn take(
         &mut self,
@@ -166,26 +189,27 @@ impl Lets<'_> {
         me: Option<&mut Unit>,
         id: i32,
         by: Releaser,
-    ) {
+    ) -> Result<(), GenieError> {
         if let Some(u) = me.filter(|u| u.id == id) {
             let allied = self.allied(others.view(), by.player, self.player);
             self.taken_live(u, (self.player, allied), by);
-            return;
+            return Ok(());
         }
         let Some((p, _, sleeps)) = others.locate(id) else {
-            return;
+            return Ok(());
         };
         if sleeps {
-            let (_, u) = others.get_mut(id).expect("located");
+            let (_, u) = others.get_mut(id).ok_or_else(|| object_gone(id))?;
             if u.workers < 550 {
                 u.workers += 1;
             }
             let _ = others.wake(id, self.tracker, (self.masters, self.lines));
-            return;
+            return Ok(());
         }
         let allied = self.allied(others.view(), by.player, p);
-        let (_, u) = others.get_mut(id).expect("located");
+        let (_, u) = others.get_mut(id).ok_or_else(|| object_gone(id))?;
         self.taken_live(u, (p, allied), by);
+        Ok(())
     }
 
     /// Slot 0x178 on the live object `u` of player `p`, `allied` to the taker's player: it counts

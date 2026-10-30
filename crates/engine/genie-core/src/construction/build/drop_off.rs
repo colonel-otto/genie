@@ -175,7 +175,7 @@ impl BuildAction {
                 crate::world::lets::release(c, builder, old, by)?;
             }
             if new != -1 {
-                crate::world::lets::take(c, builder, new, by);
+                crate::world::lets::take(c, builder, new, by)?;
             }
         }
         let Some((id, range)) = found else {

@@ -170,7 +170,7 @@ impl World {
         let (class, height) = (i32::from(tm.class), t.position()[2]);
         let (at, _) = self.enter_meeting(player, idx, target)?;
         let action = EnterAction::new(target, [at[0], at[1], height], task);
-        self.take(target, self.releaser(player, idx));
+        self.take(target, self.releaser(player, idx))?;
         Ok((action, target, class))
     }
 
