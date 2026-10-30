@@ -15,7 +15,7 @@ use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
-use crate::world::slots::Held;
+use crate::world::slots::CheckedIndex;
 use crate::world::slots::PlayerSlots;
 
 impl World {
@@ -264,7 +264,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let mut i = 0;
         while i < split.loose.len() {
-            let id = *split.loose.at(i)?;
+            let id = *split.loose.checked(i)?;
             let Some((p, u)) = self.object(id) else {
                 i += 1;
                 continue;
@@ -347,7 +347,7 @@ impl World {
         waypoints: &[[f32; 2]],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
-        let id = *loose.at(i)?;
+        let id = *loose.checked(i)?;
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };

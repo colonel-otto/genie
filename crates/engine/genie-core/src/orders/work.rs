@@ -17,7 +17,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::unit_ai::task_finder::{Actor, enabled};
 use crate::world::World;
-use crate::world::slots::Held;
+use crate::world::slots::CheckedIndex;
 use crate::world::slots::PlayerSlots;
 
 impl World {
@@ -584,7 +584,7 @@ impl World {
         }
         let mut found = None;
         // the master table exists: master_of found the unit's own in it
-        for candidate in self.masters.at(player)?.iter() {
+        for candidate in self.masters.checked(player)?.iter() {
             if candidate.class != own.class
                 || candidate.kind != own.kind
                 || candidate.task_by_group != own.task_by_group

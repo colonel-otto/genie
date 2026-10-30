@@ -2,7 +2,7 @@
 //! the ranks and the sort, and the order history's weights.
 
 use crate::unit_ai::best_target::ORDER_WINDOW;
-use crate::world::slots::Held;
+use crate::world::slots::CheckedIndex;
 
 /// The statistics' table holds at most this many objects (`FUN_140c66590`: `+0x1668` below
 /// 0x80).
@@ -311,10 +311,10 @@ impl Statistics {
     ///
     /// A slot or an entry the sort does not hold.
     pub(super) fn partition(&mut self, lo: usize, hi: usize) -> Result<usize, crate::GenieError> {
-        let pivot = *self.entries.at(*self.order.at(hi)?)?;
+        let pivot = *self.entries.checked(*self.order.checked(hi)?)?;
         let mut i = lo;
         for j in lo..hi {
-            let e = *self.entries.at(*self.order.at(j)?)?;
+            let e = *self.entries.checked(*self.order.checked(j)?)?;
             if pivot.rank < e.rank || (e.rank == pivot.rank && e.id < pivot.id) {
                 self.order.swap(i, j);
                 i += 1;

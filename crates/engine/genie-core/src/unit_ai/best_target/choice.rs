@@ -5,7 +5,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::best_target::{
     Ask, Battlefield, EPSILON, STATISTICS, Searcher, Statistics, Thing, category,
 };
-use crate::world::slots::Held;
+use crate::world::slots::CheckedIndex;
 
 /// The boats' classes (2, 20, 21, 22, 53), which a computer player's land unit passes over.
 pub(super) const BOATS: [i16; 5] = [2, 20, 21, 22, 53];
@@ -300,7 +300,7 @@ impl Walked {
     ) -> Result<(), crate::GenieError> {
         let lowest = if me.scenario && !me.computer { 2 } else { 0 };
         for kind in (lowest..=4).rev() {
-            for &id in lists.at(kind)? {
+            for &id in lists.checked(kind)? {
                 if STATISTICS <= st.entries.len() {
                     return Ok(());
                 }
@@ -459,7 +459,7 @@ fn choose(
             }
             tried = closest;
         }
-        let top = st.entries.at(*st.order.at(0)?)?.id;
+        let top = st.entries.checked(*st.order.checked(0)?)?.id;
         if ask.work_state && top == me.target {
             me.target
         } else if ask.paths == 0 {
@@ -500,7 +500,7 @@ fn quick_pick(
     world: &mut dyn Battlefield,
 ) -> Result<Option<i32>, crate::GenieError> {
     for &i in st.order.iter().take(3) {
-        let e = *st.entries.at(i)?;
+        let e = *st.entries.checked(i)?;
         if (e.moving || st.moving < 1 || !ranked) && world.quick_path(e.id, range)? {
             return Ok(Some(e.id));
         }
@@ -518,7 +518,7 @@ fn path_pick(
     retries: &mut Vec<(i32, u32)>,
 ) -> Result<Option<i32>, crate::GenieError> {
     for &i in st.order.iter().take(3) {
-        let e = *st.entries.at(i)?;
+        let e = *st.entries.checked(i)?;
         if e.id != tried && world.path(e.id, me.range)? {
             return Ok(Some(e.id));
         }

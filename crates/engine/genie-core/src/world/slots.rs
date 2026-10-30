@@ -80,28 +80,28 @@ pub(crate) trait PlayerSlots {
 
 /// A position of a slice the caller holds, as an error where `v[i]` would panic: the index
 /// comes from the code's own loop or search, so a miss is an invariant broken.
-pub(crate) trait Held<T> {
+pub(crate) trait CheckedIndex<T> {
     /// The element at `i`.
     ///
     /// # Errors
     ///
     /// A position the slice does not hold.
-    fn at(&self, i: usize) -> Result<&T, GenieError>;
+    fn checked(&self, i: usize) -> Result<&T, GenieError>;
 
     /// The element at `i`, to change.
     ///
     /// # Errors
     ///
     /// A position the slice does not hold.
-    fn at_mut(&mut self, i: usize) -> Result<&mut T, GenieError>;
+    fn checked_mut(&mut self, i: usize) -> Result<&mut T, GenieError>;
 }
 
-impl<T> Held<T> for [T] {
-    fn at(&self, i: usize) -> Result<&T, GenieError> {
+impl<T> CheckedIndex<T> for [T] {
+    fn checked(&self, i: usize) -> Result<&T, GenieError> {
         self.get(i).ok_or_else(|| NO_ELEMENT.with("index", i))
     }
 
-    fn at_mut(&mut self, i: usize) -> Result<&mut T, GenieError> {
+    fn checked_mut(&mut self, i: usize) -> Result<&mut T, GenieError> {
         self.get_mut(i).ok_or_else(|| NO_ELEMENT.with("index", i))
     }
 }
@@ -166,12 +166,12 @@ mod tests {
     #[test]
     fn a_position_past_the_end_is_an_error_naming_it() {
         let mut v = [1, 2, 3];
-        assert_eq!(*v.at(2).unwrap(), 3);
-        *v.at_mut(0).unwrap() = 9;
+        assert_eq!(*v.checked(2).unwrap(), 3);
+        *v.checked_mut(0).unwrap() = 9;
         assert_eq!(v, [9, 2, 3]);
-        let e = v.at(3).unwrap_err();
+        let e = v.checked(3).unwrap_err();
         assert_eq!(e.context().collect::<Vec<_>>(), [("index", "3")]);
-        assert!(v.at_mut(4).is_err());
+        assert!(v.checked_mut(4).is_err());
     }
 
     /// A player or a position the table does not hold is an error that names it.

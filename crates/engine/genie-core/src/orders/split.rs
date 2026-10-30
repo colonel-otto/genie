@@ -5,7 +5,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{Interact, MAX_UNGROUPED, Split, Splittable, centroid, splits_together};
 use crate::world::World;
-use crate::world::slots::Held;
+use crate::world::slots::CheckedIndex;
 use crate::world::slots::PlayerSlots;
 
 impl World {
@@ -177,18 +177,18 @@ impl World {
         // the units in a group the world holds, with the order's other members of their group
         let mut taken = vec![false; left.len()];
         for (i, first) in left.iter().enumerate() {
-            if *taken.at(i)? {
+            if *taken.checked(i)? {
                 continue;
             }
             let Some(group) = self.groups.get(first.group) else {
                 continue;
             };
-            *taken.at_mut(i)? = true;
+            *taken.checked_mut(i)? = true;
             let mut members = vec![first.id];
             for (j, u) in left.iter().enumerate() {
-                if !*taken.at(j)? && group.has(u.id) {
+                if !*taken.checked(j)? && group.has(u.id) {
                     members.push(u.id);
-                    *taken.at_mut(j)? = true;
+                    *taken.checked_mut(j)? = true;
                 }
             }
             match members[..] {
@@ -258,7 +258,7 @@ impl World {
                 while i < left.len() {
                     if splits_together(
                         &chosen,
-                        left.at(i)?,
+                        left.checked(i)?,
                         formations,
                         true,
                         &mut path,

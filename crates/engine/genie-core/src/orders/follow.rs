@@ -10,7 +10,7 @@ use crate::orders::{Followed, GUARD_RANGE, Place, follow_axis, follow_spread, ig
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
-use crate::world::slots::Held;
+use crate::world::slots::CheckedIndex;
 use crate::world::slots::PlayerSlots;
 
 impl World {
@@ -176,7 +176,7 @@ impl World {
         loose: &[i32],
         i: usize,
     ) -> Result<(usize, usize), GenieError> {
-        let Some(Place::Live(p, idx)) = self.place(*loose.at(i)?) else {
+        let Some(Place::Live(p, idx)) = self.place(*loose.checked(i)?) else {
             return Err(GenieError::unsupported(
                 "a FOLLOW of a sleeping object of a type of 30 or more",
             ));
@@ -213,8 +213,8 @@ impl World {
         i: usize,
         followed: Followed,
     ) -> Result<(), GenieError> {
-        self.leave_group_of(*loose.at(i)?, followed.id)?;
-        if self.follower(*loose.at(i)?)?.is_none() {
+        self.leave_group_of(*loose.checked(i)?, followed.id)?;
+        if self.follower(*loose.checked(i)?)?.is_none() {
             return Ok(());
         }
         let (p, idx) = self.follower_start(loose, i)?;
@@ -246,7 +246,7 @@ impl World {
         followed: Followed,
         mean: [f32; 2],
     ) -> Result<(), GenieError> {
-        let Some([x, y]) = self.follower(*loose.at(i)?)? else {
+        let Some([x, y]) = self.follower(*loose.checked(i)?)? else {
             return Ok(());
         };
         let (p, idx) = self.follower_start(loose, i)?;
