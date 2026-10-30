@@ -5,6 +5,7 @@ use crate::combat::damage::{
     Attacker, CONE, ELEPHANT_ARCHER, Kill, MINUS_CONE, RAMS, Victim, WIDE_CONE, armor_damage,
     bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus, lose, shield, take,
 };
+use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -81,15 +82,15 @@ pub(super) fn damage(
 /// The blast's rectangle of tiles about `center` for radius `r` (`FUN_14107f690`): the tiles
 /// from `(int)(c - r) - 6` (at least 0) to before `(int)(c + r) + 6` (at most the map's edge,
 /// which no object passes), each `CVTTSS2SI` into 32 bits kept as a short.
-pub(super) fn blast_tiles(center: [f32; 3], r: f32) -> ([i32; 2], [i32; 2]) {
+pub(super) fn blast_tiles(center: Position, r: f32) -> ([i32; 2], [i32; 2]) {
     let low = |c: f32| {
         let t = (cvttss2si(c - r) as i16).wrapping_sub(6);
         i32::from(t.max(0))
     };
     let high = |c: f32| i32::from((cvttss2si(c + r) as i16).wrapping_add(6));
     (
-        [low(center[0]), low(center[1])],
-        [high(center[0]), high(center[1])],
+        [low(center.x()), low(center.y())],
+        [high(center.x()), high(center.y())],
     )
 }
 
@@ -121,7 +122,7 @@ pub(super) fn blast_tiles(center: [f32; 3], r: f32) -> ([i32; 2], [i32; 2]) {
 /// neither caller reads.
 pub fn blast(
     attacker: &mut Victim,
-    center: [f32; 3],
+    center: Position,
     exclude: Option<i32>,
     main: Option<i32>,
     targets: &mut [&mut Victim],
@@ -144,7 +145,7 @@ pub fn blast(
         main,
         factor,
     };
-    targets.sort_by_key(|t| (t.position[1] as i32, t.position[0] as i32, t.tile_place));
+    targets.sort_by_key(|t| (t.position.y() as i32, t.position.x() as i32, t.tile_place));
     // every building on the tiles starts the blast with nothing taken (+0xb90, first pass)
     for t in targets
         .iter_mut()
@@ -170,7 +171,7 @@ pub fn blast(
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Blast {
     pub(super) a: Attacker,
-    pub(super) center: [f32; 3],
+    pub(super) center: Position,
     pub(super) r: f32,
     pub(super) wide: f32,
     pub(super) tiles: ([i32; 2], [i32; 2]),
@@ -184,7 +185,7 @@ impl Blast {
     /// Whether the object stands on the blast's tiles (its place truncated).
     pub(super) const fn on_tiles(&self, t: &Victim) -> bool {
         let (from, to) = self.tiles;
-        let tile = [t.position[0] as i32, t.position[1] as i32];
+        let tile = [t.position.x() as i32, t.position.y() as i32];
         from[0] <= tile[0] && tile[0] < to[0] && from[1] <= tile[1] && tile[1] < to[1]
     }
 }
@@ -299,7 +300,7 @@ pub(super) fn ledger_values(
 /// The square distance from the blast's `center` to the object's box (the gap past each
 /// radius, a NaN gap 0: `COMISS`/`JBE`); None beyond the radius `r` (a NaN square distance is
 /// beyond it: `JBE`). The hit's slack (its info's `+0xc`, `+0x10`) is 0 for a melee hit.
-pub(super) fn blast_distance2(t: &Victim, center: [f32; 3], r: f32) -> Option<f32> {
+pub(super) fn blast_distance2(t: &Victim, center: Position, r: f32) -> Option<f32> {
     let gap = |d: f32, radius: f32| {
         if fmath::at_most_or_unordered(d, radius) {
             0.0
@@ -307,8 +308,8 @@ pub(super) fn blast_distance2(t: &Victim, center: [f32; 3], r: f32) -> Option<f3
             d - radius
         }
     };
-    let dx = gap((t.position[0] - center[0]).abs(), t.radius[0]);
-    let dy = gap((t.position[1] - center[1]).abs(), t.radius[1]);
+    let dx = gap((t.position.x() - center.x()).abs(), t.radius[0]);
+    let dy = gap((t.position.y() - center.y()).abs(), t.radius[1]);
     let d2 = dy * dy + dx * dx;
     if fmath::at_most_or_unordered(r * r, d2) {
         None
@@ -329,7 +330,7 @@ pub(super) fn blast_falloff(
     (r, d2): (f32, f32),
     is_main: bool,
 ) -> f32 {
-    let mut f = elevation_factor(attacker.position[2], attacker.attack_elevation, t);
+    let mut f = elevation_factor(attacker.position.z(), attacker.attack_elevation, t);
     if COMBAT <= t.kind && (t.player == attacker.player || t.allied[1]) {
         f *= t.armored.as_ref().map_or(1.0, |x| x.friendly_fire);
     }

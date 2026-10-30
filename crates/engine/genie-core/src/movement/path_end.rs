@@ -1,12 +1,12 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
+use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::{
     Avoided, EPSILON, LONG_PATH_MOVER, LongWalker, Me, Mover, PUSHED, PathAsk, PathData, Planning,
     REACH_NEAR, REACH_SHORT, ShortAsk, USER_WAYPOINT_MIDDLE, WIDE_CLASS, WIDE_RANGE, footprint_gap,
     footprint_gap_squared, lowered_units, overlap, pause_rank, point_or_zero, point_or_zero_of,
-    vector,
 };
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -62,7 +62,7 @@ impl Mover {
             master,
         } = ask;
         // FUN_14114fea0 and FUN_14114ffc0 hand the unit's +0x824 (x, height, y) as the start
-        let [x, y, height_at] = self.moved_at;
+        let (x, y, height_at) = (self.moved_at.x(), self.moved_at.y(), self.moved_at.z());
         let [w, h] = world.map;
         // COMISS 0, v; JA and COMISS v, size; JNC (0x140fa03f1..0x140fa0459): a NaN passes
         let on_map = |px: f32, py: f32| {
@@ -100,10 +100,10 @@ impl Mover {
         let solid = 0.0 < radius[2] && 0.0 < radius[0] && 0.0 < radius[1];
         let (dx, dy) = (to[0] - x, to[1] - y);
         if solid && fmath::sqrt(dx * dx + 0.0 + dy * dy) <= REACH_SHORT {
-            let goal = [to[0], 0.0, to[1]];
+            let goal = BVector::new(to[0], 0.0, to[1]);
             // FUN_140fa0370 hands the start test both vectors' first two floats: x and the
             // height, the unit's (`+0x824`) and the target's (slot 0x520), not x and y
-            let height = placed.map_or(0.0, |t| t.position[2]);
+            let height = placed.map_or(0.0, |t| t.position.z());
             let line = ([x, height_at], [to[0], height]);
             let ignore = self.ignore_list(me, world, plan, placed, target_id, line)?;
             let ask = ShortAsk {
@@ -132,7 +132,7 @@ impl Mover {
                 if 0.0 <= g { g } else { 0.0 }
             };
             // the gap from the unit's place (its decoded x and y), not +0x824
-            let [px, py, _] = self.position();
+            let (px, py) = (self.position().x(), self.position().y());
             let (gx, gy) = (gap(to[0] - px, radius[0]), gap(to[1] - py, radius[1]));
             if gx * gx + gy * gy < REACH_NEAR {
                 return Ok(false);
@@ -154,7 +154,7 @@ impl Mover {
             .into_iter()
             .filter_map(|id| world.get(id))
             .filter(|p| p.tall)
-            .map(|p| [p.position[0] as i32, p.position[1] as i32])
+            .map(|p| [p.position.x() as i32, p.position.y() as i32])
             .collect();
         let req = crate::pathing::long_path::LongRequest {
             from: [
@@ -206,8 +206,8 @@ impl Mover {
     /// test): the walked level's current waypoint (`FUN_140f9b890` at its index) and the top
     /// path's last point take it (the paths' layout, [`vector`]); bits 1 and 0 go off the walked
     /// level (`FUN_140f9b4d0` twice).
-    pub fn follow_path_end(&mut self, point: [f32; 3]) {
-        let point = vector(point);
+    pub fn follow_path_end(&mut self, point: Position) {
+        let point = point.vector();
         if let Some(level) = self.paths.first_mut() {
             if let Some(w) = usize::try_from(level.waypoint)
                 .ok()
@@ -224,7 +224,7 @@ impl Mover {
 
     /// The path of the top level (`FUN_140f960f0`): the last level's, or the walked level's when
     /// it has no parent; None when that level holds no path.
-    pub(super) fn top_path(&self) -> Option<&Vec<Vec3>> {
+    pub(super) fn top_path(&self) -> Option<&Vec<BVector>> {
         self.paths
             .last()
             .map(|l| &l.points)
@@ -235,8 +235,8 @@ impl Mover {
     /// with [`PathAsk::default`]).
     pub fn request_path(
         &mut self,
-        from: [f32; 3],
-        goal: [f32; 3],
+        from: Position,
+        goal: Position,
         range: f32,
         target: i32,
         now: u32,
@@ -252,7 +252,7 @@ impl Mover {
     /// time `now`.
     pub(crate) fn take_record_path(
         &mut self,
-        points: Vec<Vec3>,
+        points: Vec<BVector>,
         length: f32,
         now: u32,
         planned: bool,
@@ -286,14 +286,14 @@ impl Mover {
     /// another way, which the slice does not model (it holds none).
     pub fn request_path_asked(
         &mut self,
-        from: [f32; 3],
-        goal: [f32; 3],
+        from: Position,
+        goal: Position,
         range: f32,
         target: i32,
         now: u32,
         ask: PathAsk,
     ) {
-        let start = vector(from);
+        let start = from.vector();
         let mut path = Path::default();
         if ask.resume == -1 {
             let _ = path.insert(0, start);
@@ -303,17 +303,17 @@ impl Mover {
         }
         self.clear_user_waypoints();
         if ask.resume == -1 {
-            let end = vector(goal);
+            let end = goal.vector();
             let last = point_or_zero(&path, path.points.len() as i32 - 1);
             let mut d = fmath::sub(end, last);
-            d[1] = 0.0;
-            if EPSILON < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]) {
+            d = d.with_height(0.0);
+            if EPSILON < fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y()) {
                 let _ = path.push(end);
             }
         }
         if path.points.is_empty() {
             let _ = path.insert(0, start);
-            let _ = path.push([goal[0], 0.0, goal[1]]);
+            let _ = path.push(BVector::new(goal.x(), 0.0, goal.y()));
         }
         // a new path's flags are 6 (FUN_14152eea0); bit 0 by the patrol, cleared again by an
         // attack move, then bit 1 by the back and forth. The walked level, if any, is reset for
@@ -359,7 +359,7 @@ impl Mover {
                 v
             }
         };
-        self.user_waypoints.push([snap(x), z, snap(y)]);
+        self.user_waypoints.push(BVector::new(snap(x), z, snap(y)));
     }
 
     /// Slot 0x450 (`FUN_141070ce0`): the unit's own waypoints go (their count `+0x7fc` 0).
@@ -369,14 +369,14 @@ impl Mover {
 
     /// The unit vector on the ground from `from` to `to` (slot 194, `0x14114f210`); the forward
     /// vector when the two are less than 1e-7 apart or on the same point.
-    pub(crate) fn direction_to(&self, from: Vec3, to: Vec3) -> Vec3 {
-        if from[0] != to[0] || from[2] != to[2] {
-            let x = to[0] - from[0];
-            let z = to[2] - from[2];
+    pub(crate) fn direction_to(&self, from: BVector, to: BVector) -> BVector {
+        if from.x() != to.x() || from.y() != to.y() {
+            let x = to.x() - from.x();
+            let z = to.y() - from.y();
             let length = fmath::sqrt(x * x + 0.0 + z * z);
             // COMISS eps, length; JBE at 0x14114f2aa: a NaN length divides too
             if fmath::at_most_or_unordered(EPSILON, length) {
-                return [x / length, 0.0, z / length];
+                return BVector::new(x / length, 0.0, z / length);
             }
         }
         self.forward
@@ -385,16 +385,16 @@ impl Mover {
     /// Where this tick's speed would take the unit along `direction` (slot 199, `0x141161860`)
     /// from where it last moved to (`+0x824`, [`Mover::moved_at`]): the forward speed after one
     /// more step of acceleration, capped by the top speed (COMISS/JA, then JC: a NaN speed stays).
-    pub(crate) fn projected(&self, direction: Vec3, dt: f32) -> Vec3 {
-        let position = vector(self.moved_at);
+    pub(crate) fn projected(&self, direction: BVector, dt: f32) -> BVector {
+        let position = self.moved_at.vector();
         let Some(v) = &self.velocity else {
             return position;
         };
         let mut next = fmath::add(v.velocity, fmath::scale(dt, v.acceleration));
-        if self.stats.speed < next[2] || next[2] <= 0.0 {
-            next[2] = self.stats.speed;
+        if self.stats.speed < next.y() || next.y() <= 0.0 {
+            next = next.with_y(self.stats.speed);
         }
-        fmath::add(position, fmath::scale(dt * next[2], direction))
+        fmath::add(position, fmath::scale(dt * next.y(), direction))
     }
 
     /// [`Mover::avoid`]'s first loop's test of the hit `id` (`other` its record): kept unless
@@ -408,15 +408,15 @@ impl Mover {
         me: &Me,
         player: PlayerId,
         (id, other): (i32, &Placed),
-        projected: Vec3,
+        projected: BVector,
         world: &Spatial,
         now: u32,
     ) -> bool {
         let level = &self.paths[0];
         let top = self.paths.last().filter(|l| !l.points.is_empty());
         let [rx, ry, _] = self.stats.radius;
-        let o = vector(other.position);
-        let now_overlap = overlap(vector(self.position()), [rx, ry], o, other.radius);
+        let o = other.position.vector();
+        let now_overlap = overlap(self.position().vector(), [rx, ry], o, other.radius);
         let next_overlap = overlap(projected, [rx, ry], o, other.radius);
         let last_move = world.gait(id).map_or(0, |g| g.last_move);
         let mut pushed = false;
@@ -460,7 +460,7 @@ impl Mover {
         me: &Me,
         (world, groups): (&Spatial, Option<&crate::groups::UnitGroups>),
         hits: &[i32],
-        projected: Vec3,
+        projected: BVector,
         dt: f32,
         (now, computer): (u32, bool),
     ) -> Result<Avoided, GenieError> {

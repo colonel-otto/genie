@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::groups::motion::NEAR;
 use crate::math::fmath;
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::PathData;
 use crate::world::slots::CheckedIndex;
 
@@ -71,33 +71,33 @@ pub(super) const fn looping_next(level: &mut PathData, index: i32) -> i32 {
 }
 
 /// The waypoint at `index` (`FUN_140f9bcd0`), the game's static zero point outside the path.
-pub(super) fn point(level: &PathData, index: i32) -> Vec3 {
+pub(super) fn point(level: &PathData, index: i32) -> BVector {
     usize::try_from(index)
         .ok()
         .and_then(|i| level.points.get(i))
         .copied()
-        .unwrap_or([0.0; 3])
+        .unwrap_or(BVector::ZERO)
 }
 
 /// The length on the ground from `a` to `b` (`FUN_14087e560`, the height zeroed).
-pub(super) fn ground(a: Vec3, b: Vec3) -> f32 {
+pub(super) fn ground(a: BVector, b: BVector) -> f32 {
     let mut d = fmath::sub(a, b);
-    d[1] = 0.0;
-    fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2])
+    d = d.with_height(0.0);
+    fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y())
 }
 
 /// `FUN_141046130` for a walk from `at` toward `waypoint` that would end at `next`: 0 short of
 /// it (`COMISS` then `JBE`: a NaN step or distance is short), 2 past it (or a step under 0.1),
 /// 1 on it.
-pub(in crate::groups) fn passes_waypoint(waypoint: Vec3, at: Vec3, next: Vec3) -> u8 {
+pub(in crate::groups) fn passes_waypoint(waypoint: BVector, at: BVector, next: BVector) -> u8 {
     let mut a = fmath::sub(waypoint, at);
     let mut b = fmath::sub(waypoint, next);
     let c = fmath::sub(next, at);
-    a[1] = 0.0;
-    b[1] = 0.0;
-    let to_waypoint = fmath::sqrt(a[0] * a[0] + 0.0 + a[2] * a[2]);
-    let beyond = fmath::sqrt(b[0] * b[0] + b[1] * b[1] + b[2] * b[2]);
-    let step = fmath::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+    a = a.with_height(0.0);
+    b = b.with_height(0.0);
+    let to_waypoint = fmath::sqrt(a.x() * a.x() + 0.0 + a.y() * a.y());
+    let beyond = fmath::sqrt(b.x() * b.x() + b.height() * b.height() + b.y() * b.y());
+    let step = fmath::sqrt(c.x() * c.x() + c.height() * c.height() + c.y() * c.y());
     if fmath::at_most_or_unordered(step, to_waypoint) {
         0
     } else if to_waypoint < beyond || step < NEAR {
@@ -109,7 +109,7 @@ pub(in crate::groups) fn passes_waypoint(waypoint: Vec3, at: Vec3, next: Vec3) -
 
 /// `FUN_1411570c0`'s ends held inside the map: below 0 at 0, from the map's size on at the size
 /// less 0.1, per axis.
-pub(in crate::groups) fn hold(p: Vec3, map: [i32; 2]) -> [f32; 2] {
+pub(in crate::groups) fn hold(p: BVector, map: [i32; 2]) -> [f32; 2] {
     let axis = |v: f32, size: i32| {
         if v < 0.0 {
             0.0
@@ -119,5 +119,5 @@ pub(in crate::groups) fn hold(p: Vec3, map: [i32; 2]) -> [f32; 2] {
             v
         }
     };
-    [axis(p[0], map[0]), axis(p[2], map[1])]
+    [axis(p.x(), map[0]), axis(p.y(), map[1])]
 }

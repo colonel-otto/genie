@@ -8,6 +8,7 @@ use crate::gathering::hunt::walks::QUIET_CODE;
 use crate::gathering::hunt::{
     DROP, DropOff, HuntAction, Lead, PointWalker, SEARCH, asked_drop_off, resource_kind,
 };
+use crate::map::Position;
 use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
@@ -42,7 +43,7 @@ impl HuntAction {
     /// range starts ([`HuntAction::move_to_object`]).
     pub(crate) fn set_drop(
         &mut self,
-        site: [f32; 3],
+        site: Position,
         gap: f32,
         mover: &mut Mover,
         walks: &Walks<'_>,

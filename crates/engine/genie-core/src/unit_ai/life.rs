@@ -1,6 +1,7 @@
 //! A unit AI's construction, its order and target, its patrol and its moves.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::PathAsk;
 use crate::objects::masters::class;
@@ -124,7 +125,7 @@ impl UnitAi {
     /// `UnitAIModule`'s constructor (`0x140c2e080`): its three draws, the base's fields, the
     /// stance (`+0x1a9`) 3 of the two bytes at `+0x1a8` (0x300) and the state position the
     /// object's place.
-    pub(super) fn base_constructed(ai_type: u32, position: [f32; 3], ai: &mut Well512) -> Self {
+    pub(super) fn base_constructed(ai_type: u32, position: Position, ai: &mut Well512) -> Self {
         let last_retarget_time = ai.rand15() % 500;
         let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
         let retarget_timer = 750 + ai.rand15() % 500;
@@ -135,7 +136,7 @@ impl UnitAi {
             current_action: None,
             current_target: -1,
             target_type: -1,
-            target_point: [-1.0; 3],
+            target_point: Position::from([-1.0; 3]),
             desired_distance: DESIRED_DISTANCE,
             defend_target: -1,
             last_order: None,
@@ -154,7 +155,7 @@ impl UnitAi {
             // the constructor's word at +0x1d4 (0x140c2e080)
             formation_type: 0,
             // the object's place
-            state_position: [position[0], position[1]],
+            state_position: position.ground(),
             retarget_disabled: 0,
             alert_mode: false,
             time_since_enemy: 0.0,
@@ -403,7 +404,7 @@ impl UnitAi {
     /// `FUN_140c64c10`: the target and its class become the last ones (`+0x6c`, `+0x70`), the
     /// target takes `id` and the point (`+0x50`..`+0x58`); the class (`+0x4c`) is the master's
     /// of the object the world holds under `id` (`FUN_1415417a0`; `class`), else it stays.
-    pub(crate) const fn target_at(&mut self, id: i32, class: Option<i32>, point: [f32; 3]) {
+    pub(crate) const fn target_at(&mut self, id: i32, class: Option<i32>, point: Position) {
         self.last_target = self.current_target;
         self.last_target_type = self.target_type;
         self.current_target = id;
@@ -414,7 +415,7 @@ impl UnitAi {
     }
 
     /// `FUN_140c64be0`: the target, its class and its point.
-    pub(crate) const fn set_target(&mut self, target: i32, class: i32, point: [f32; 3]) {
+    pub(crate) const fn set_target(&mut self, target: i32, class: i32, point: Position) {
         self.last_target = self.current_target;
         self.last_target_type = self.target_type;
         self.target_type = class;
@@ -434,7 +435,7 @@ impl UnitAi {
         order: Option<OrderKind>,
         action: Option<ActionKind>,
         target: Option<(i32, i32)>,
-        point: [f32; 3],
+        point: Position,
         clears: bool,
         ai: &mut Well512,
     ) -> Result<(), GenieError> {
@@ -464,7 +465,7 @@ impl UnitAi {
             self.forget_targets();
         }
         let (id, class) = target.unwrap_or((-1, -1));
-        self.set_target(id, class, [point[0], point[1], 0.0]);
+        self.set_target(id, class, Position::new(point[0], point[1], 0.0));
     }
 
     /// MOVE's notify to a unit that took its cell of the grid (`FUN_140e67800`): the move order
@@ -473,7 +474,7 @@ impl UnitAi {
     pub fn notify_grid_move(&mut self, cell: [f32; 2], ai: &mut Well512) {
         self.set_order(Some(OrderKind::Move), ai);
         self.set_action(Some(ActionKind::Move));
-        self.set_target(-1, -1, [cell[0], cell[1], 0.0]);
+        self.set_target(-1, -1, Position::new(cell[0], cell[1], 0.0));
     }
 
     /// The AI's move (slot 0x130, `FUN_140c55620`): with `force` or no action value, the unit takes

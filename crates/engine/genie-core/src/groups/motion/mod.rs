@@ -5,7 +5,8 @@
 
 use crate::GenieError;
 use crate::groups::Motion;
-use crate::math::fmath::{self, Vec3};
+use crate::map::Position;
+use crate::math::fmath::{self, BVector};
 use crate::movement::Walker;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -59,7 +60,7 @@ pub(crate) struct Lead {
     /// What the planners read of it.
     pub(crate) walker: Walker,
     /// Its own place (x, y, height), from which the long pather measures its target.
-    pub(crate) position: [f32; 3],
+    pub(crate) position: Position,
     /// Its master's radii on the ground.
     pub(crate) radius: [f32; 2],
     /// It moves (slot 0x208 not 0, or master 42), as the long pather reads it.
@@ -111,7 +112,7 @@ impl World {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct GroupView {
     pub(crate) computer: bool,
-    pub(crate) members: Vec<Option<(i32, Vec3)>>,
+    pub(crate) members: Vec<Option<(i32, BVector)>>,
 }
 
 impl Motion {
@@ -120,7 +121,7 @@ impl Motion {
     #[must_use]
     pub fn moving(&self) -> bool {
         let v = self.velocity;
-        0.0 < fmath::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+        0.0 < fmath::sqrt(v.x() * v.x() + v.height() * v.height() + v.y() * v.y())
     }
 
     /// `FUN_141046640`: the walked level waits for a path (its state 1 or 2); false without one.
@@ -153,8 +154,8 @@ impl Motion {
 
     /// The walk's stop (`LAB_14104bd7e`): the forward speed and its acceleration go to 0.
     const fn stand(&mut self) {
-        self.acceleration[2] = 0.0;
-        self.velocity[2] = 0.0;
+        self.acceleration = self.acceleration.with_y(0.0);
+        self.velocity = self.velocity.with_y(0.0);
     }
 
     /// `FUN_14104a050`: the motion stops ([`Motion::stand`]) and its walked level resets
@@ -172,12 +173,18 @@ impl Motion {
     /// not for a NaN). The warning for a `dt` of `f32::MAX` with a yaw per second above 1 and
     /// the one of the result are log lines only.
     #[must_use]
-    pub fn calculate_yaw_angle(&self, forward: Vec3, direction: Vec3, dt: f32, clamp: bool) -> f32 {
+    pub fn calculate_yaw_angle(
+        &self,
+        forward: BVector,
+        direction: BVector,
+        dt: f32,
+        clamp: bool,
+    ) -> f32 {
         let mut angle = fmath::angle_between(direction, forward);
         if clamp {
             angle = fmath::minss(self.maximum_yaw_per_second_moving * dt, angle);
         }
-        if 0.0 < fmath::cross(direction, forward)[1] {
+        if 0.0 < fmath::cross(direction, forward).height() {
             -angle
         } else {
             angle
@@ -203,17 +210,19 @@ impl Motion {
     /// speed along its vector (forward, right, up) when that is above 1e-7 in size (motion flags
     /// bit 0); then the position is the new position, all four vectors.
     pub fn integrate(&mut self, dt: f32) -> Result<(), GenieError> {
-        self.velocity[2] += dt * self.acceleration[2];
+        self.velocity = self
+            .velocity
+            .with_y(self.velocity.y() + dt * self.acceleration.y());
         for (speed, along) in [
-            (self.velocity[2], 1),
-            (self.velocity[0], 3),
-            (self.velocity[1], 2),
+            (self.velocity.y(), 1),
+            (self.velocity.x(), 3),
+            (self.velocity.height(), 2),
         ] {
             let d = dt * speed;
             if EPSILON < d.abs() {
                 let v = fmath::scale(d, *self.new_position.checked(along)?);
                 let p = &mut self.new_position[0];
-                *p = [p[0] + v[0], v[1] + p[1], v[2] + p[2]];
+                *p = BVector::new(p.x() + v.x(), v.height() + p.height(), v.y() + p.y());
                 self.flags |= 1;
             }
         }

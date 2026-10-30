@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{ENTER_NEAR, HALF_TILE};
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
@@ -60,7 +61,7 @@ pub struct EnterAction {
     /// target that moves leaves.
     ///
     /// [`meeting`]: crate::garrison::meeting::meeting_point
-    pub point: [f32; 3],
+    pub point: Position,
     /// The task's work range (`+0x30`): a building's `MoveTo` stops this near, and the enter
     /// needs it.
     pub range: f32,
@@ -84,7 +85,7 @@ pub struct EnterTarget {
     /// It has room for the unit (slot 0x198).
     pub room: bool,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// The unit is in reach of it ([`EnterAction::in_reach`]).
     pub in_reach: bool,
     /// It is a building (type 80); else a transport.
@@ -123,7 +124,7 @@ pub enum Walking {
     Enter,
     /// A `MoveTo` to the target started; with a point, the transport is to move there first
     /// (its slots 0x3d8 and 0x340, [`crate::world::World::move_transport`]).
-    Walk(Option<[f32; 3]>),
+    Walk(Option<Position>),
 }
 
 impl EnterAction {
@@ -134,7 +135,7 @@ impl EnterAction {
     ///
     /// [`meeting`]: crate::garrison::meeting::meeting_point
     #[must_use]
-    pub const fn new(target: i32, point: [f32; 3], task: &Task) -> Self {
+    pub const fn new(target: i32, point: Position, task: &Task) -> Self {
         Self {
             target,
             state: WALK,
@@ -182,8 +183,8 @@ impl EnterAction {
         let code = if t.building {
             0
         } else {
-            let (point, code) = meeting.point()?;
-            self.point[..2].copy_from_slice(&point);
+            let ([x, y], code) = meeting.point()?;
+            self.point = self.point.with_x(x).with_y(y);
             code
         };
         // `FUN_140aa0df0`'s: the target's place; `FUN_140aa0d30`'s: the meeting point toward a
@@ -194,7 +195,7 @@ impl EnterAction {
             gap: start.gap,
             state: Some(t.state),
         };
-        self.move_to = if t.building || self.point[0] < 0.0 || self.point[1] < 0.0 {
+        self.move_to = if t.building || self.point.x() < 0.0 || self.point.y() < 0.0 {
             reads.to_object(
                 to,
                 self.walk_range(t.building),
@@ -209,11 +210,11 @@ impl EnterAction {
                 TargetMoved::Ignores,
             )?
         };
-        Ok(Walking::Walk((code == 1).then_some([
-            self.point[0],
-            self.point[1],
-            t.position[2],
-        ])))
+        Ok(Walking::Walk((code == 1).then_some(Position::new(
+            self.point.x(),
+            self.point.y(),
+            t.position.z(),
+        ))))
     }
 
     /// The Enter with a `MoveTo` in `state` to its target within the task's range, as
@@ -222,7 +223,7 @@ impl EnterAction {
     pub(crate) const fn walking(mut self, state: crate::movement::move_to::MoveTo) -> Self {
         self.move_to = Some(MoveToAction {
             state,
-            point: [0.0; 3],
+            point: Position::ORIGIN,
             target: self.target,
             range: self.range,
             sprite: None,
@@ -406,10 +407,10 @@ impl EnterAction {
     /// height not equal) by more than [`HALF_TILE`] on an axis (`FUN_140a7bd10`: `COMISS`/`JA`,
     /// a NaN is not).
     pub(super) fn target_moved(&self, t: &EnterTarget) -> bool {
-        let [x, y, z] = t.position;
+        let (x, y, z) = (t.position.x(), t.position.y(), t.position.z());
         let moved = |d: f32| HALF_TILE < d.abs();
         t.position != self.point
-            && (moved(x - self.point[0]) || moved(y - self.point[1]) || moved(z - self.point[2]))
+            && (moved(x - self.point.x()) || moved(y - self.point.y()) || moved(z - self.point.z()))
     }
 
     /// The update's `set_state(4)` ([`EnterAction::walk_again`]): its `MoveTo`'s teardown stops

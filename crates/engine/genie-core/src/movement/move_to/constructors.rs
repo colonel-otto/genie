@@ -3,6 +3,7 @@
 //! object (`FUN_140aa0df0`), to a point (`FUN_140aa0d30`) and to none.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveWait, NO_TARGET_GAP, SpriteReads, TargetMoved,
@@ -19,7 +20,7 @@ use std::collections::BTreeMap;
 const LAST_TAKEN: u8 = 6;
 
 /// The point a `MoveTo` without a target walks to (`FUN_140aa0df0` leaves its zeroed `+0x38`).
-const NO_TARGET_POINT: [f32; 3] = [0.0; 3];
+const NO_TARGET_POINT: Position = Position::ORIGIN;
 
 /// What a new sub-action `MoveTo` reads of its unit: the sprites its constructor takes for none
 /// (the defaults of the unit's master and terrain look, and the sprites' table), the unit's
@@ -35,7 +36,7 @@ pub struct MoveToReads<'a> {
     /// The unit's speed.
     pub speed: f32,
     /// The unit's place.
-    pub at: [f32; 3],
+    pub at: Position,
     /// Its master's x and y radii (`+0x5d8`, `+0x5dc`).
     pub ground: [f32; 2],
 }
@@ -47,7 +48,7 @@ pub struct WalkTo {
     /// Its id.
     pub id: i32,
     /// Its place, the `MoveTo`'s point (`+0x38`).
-    pub at: [f32; 3],
+    pub at: Position,
     /// The unit's footprint gap to it.
     pub gap: f32,
     /// Its object state.
@@ -58,7 +59,7 @@ impl WalkTo {
     /// A `MoveTo` that holds no object but walks to `at` as to a point that is far (a livestock
     /// `MoveTo` to a town centre, `FUN_140aa0df0`): no target, [`NO_TARGET_GAP`].
     #[must_use]
-    pub const fn unheld(at: [f32; 3]) -> Self {
+    pub const fn unheld(at: Position) -> Self {
         Self {
             id: -1,
             at,
@@ -172,7 +173,7 @@ impl<'g> MoveToReads<'g> {
     pub fn to_point_of(
         &self,
         to: WalkTo,
-        (point, range): ([f32; 3], f32),
+        (point, range): (Position, f32),
         given: Option<i16>,
         on_target_moved: TargetMoved,
     ) -> Result<Option<MoveToAction>, GenieError> {
@@ -218,7 +219,7 @@ impl<'g> MoveToReads<'g> {
     /// A sprite the table lacks.
     pub fn to_point(
         &self,
-        point: [f32; 3],
+        point: Position,
         range: f32,
         given: Option<i16>,
     ) -> Result<Option<MoveToAction>, GenieError> {
@@ -268,12 +269,12 @@ mod tests {
             },
             state: 2,
             speed: 1.0,
-            at: [10.0, 10.0, 0.0],
+            at: Position::new(10.0, 10.0, 0.0),
             ground: [0.2, 0.2],
         };
         let house = WalkTo {
             id: 10028,
-            at: [10.5, 10.5, 0.0],
+            at: Position::new(10.5, 10.5, 0.0),
             gap: 5.0,
             state: Some(0),
         };
@@ -285,7 +286,7 @@ mod tests {
         let m = to(&move_reads, house, None);
         assert_eq!(
             (m.state, m.target, m.point, m.range),
-            (MoveTo::Start, 10028, [10.5, 10.5, 0.0], 0.1)
+            (MoveTo::Start, 10028, Position::new(10.5, 10.5, 0.0), 0.1)
         );
         assert_eq!(
             (m.sprite.map(|g| g.id), m.quiet, m.wait),
@@ -315,10 +316,10 @@ mod tests {
         let nothing = move_reads.to_nothing(0.1, None).unwrap().unwrap();
         assert_eq!(
             (nothing.state, nothing.target, nothing.point),
-            (MoveTo::Start, -1, [0.0; 3])
+            (MoveTo::Start, -1, Position::ORIGIN)
         );
         let point = move_reads
-            .to_point([4.0, 5.0, 0.0], 0.0, None)
+            .to_point(Position::new(4.0, 5.0, 0.0), 0.0, None)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -338,7 +339,14 @@ mod tests {
             dying.to_object(house, 0.1, None, TargetMoved::Follows),
             Ok(None)
         );
-        assert_eq!(dying.to_point([4.0, 5.0, 0.0], 0.0, None), Ok(None));
-        assert!(move_reads.to_point([4.0, 5.0, 0.0], 0.0, Some(99)).is_err());
+        assert_eq!(
+            dying.to_point(Position::new(4.0, 5.0, 0.0), 0.0, None),
+            Ok(None)
+        );
+        assert!(
+            move_reads
+                .to_point(Position::new(4.0, 5.0, 0.0), 0.0, Some(99))
+                .is_err()
+        );
     }
 }

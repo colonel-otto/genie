@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::{Formation, FormationLine, Slot};
+use crate::math::fmath::BVector;
 use crate::world::slots::CheckedIndex;
 
 mod column_line;
@@ -22,8 +23,6 @@ pub use self::desired_positions::{find_point_from_front, on_last_high_level_wayp
 use self::passability::{cell_mark, count_up, passability_box, slot_tile};
 #[cfg(test)]
 use crate::groups::UnitGroup;
-#[cfg(test)]
-use crate::math::fmath::Vec3;
 #[cfg(test)]
 use crate::movement::PathData;
 #[cfg(test)]
@@ -65,7 +64,7 @@ impl Formation {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            transform_orientation: [1.0, 0.0, 0.0],
+            transform_orientation: BVector::new(1.0, 0.0, 0.0),
             ..Self::default()
         }
     }

@@ -6,6 +6,7 @@ use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
     HALTED, MAX_WAITS, PLACE, SITE_GONE, WAIT, WONDER_RATE, footprint_clearing,
 };
+use crate::map::Position;
 use crate::map::spatial::Placed;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
@@ -60,7 +61,7 @@ impl BuildAction {
             master: placed.master,
             class: placed.class,
             radius: placed.radius,
-            at: [placed.position[0], placed.position[1]],
+            at: placed.position.ground(),
             trees: true,
         };
         let cleared = footprint_clearing(&c.w.spatial, &clearing, &reads.looks)?;
@@ -109,8 +110,8 @@ impl BuildAction {
             }
             return self.join(c, builder);
         }
-        let [bx, by, _] = builder.position();
-        let [sx, sy, _] = placed.position;
+        let (bx, by) = (builder.position().x(), builder.position().y());
+        let (sx, sy) = (placed.position.x(), placed.position.y());
         let inside = (bx - sx).abs() <= placed.radius[0] && (by - sy).abs() <= placed.radius[1];
         if inside {
             return self.clear(c, builder);
@@ -191,10 +192,10 @@ impl BuildAction {
         builder: &Unit,
         radius: [f32; 2],
     ) -> Result<Option<i32>, GenieError> {
-        let [bx, by, _] = builder.position();
+        let (bx, by) = (builder.position().x(), builder.position().y());
         for annex in c.w.spatial.annexes_of(self.target) {
             let placed = c.w.spatial.get_known(annex)?.ok_or(SITE_GONE)?;
-            let [ax, ay, _] = placed.position;
+            let (ax, ay) = (placed.position.x(), placed.position.y());
             let sized = EPSILON < placed.radius[0] && EPSILON < placed.radius[1];
             if sized && (bx - ax).abs() < radius[0] && (by - ay).abs() < radius[1] {
                 return Ok(Some(annex));
@@ -242,7 +243,7 @@ impl BuildAction {
         Self::stand(c, builder)?;
         let target = std::mem::replace(&mut self.target, -1);
         crate::world::lets::release(c, builder, target, reads.by)?;
-        self.point = [-1.0; 3];
+        self.point = Position::from([-1.0; 3]);
         self.state = HALTED;
         Ok(())
     }
@@ -257,8 +258,8 @@ impl BuildAction {
     /// A foundation gone from the map, the walls beside a diagonal builder, and the count's.
     pub(super) fn join(&mut self, c: &mut Step<'_>, builder: &Unit) -> Result<(), GenieError> {
         let placed = *c.w.spatial.get(self.target).ok_or(SITE_GONE)?;
-        let [bx, by] = [builder.position()[0] as i32, builder.position()[1] as i32];
-        let [tx, mut ty] = [placed.position[0] as i32, placed.position[1] as i32];
+        let [bx, by] = [builder.position().x() as i32, builder.position().y() as i32];
+        let [tx, mut ty] = [placed.position.x() as i32, placed.position.y() as i32];
         let [rx, ry] = placed.radius;
         if (rx as i32) as f32 == rx && (ry as i32) as f32 == ry {
             if by < ty {
@@ -359,7 +360,11 @@ impl BuildAction {
                 ))?;
         self.state = CLEAR;
         let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
-        self.move_to = move_reads.to_point([spot[0], spot[1], at[2]], 0.0, self.task.moving)?;
+        self.move_to = move_reads.to_point(
+            Position::new(spot[0], spot[1], at.z()),
+            0.0,
+            self.task.moving,
+        )?;
         Ok(())
     }
 }

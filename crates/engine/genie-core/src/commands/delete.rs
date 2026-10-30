@@ -109,7 +109,7 @@ impl World {
         let Some(site) = self.spatial.get(id).copied() else {
             return Ok(());
         };
-        let [x, y, _] = site.position;
+        let (x, y) = (site.position.x(), site.position.y());
         let [rx, ry] = site.radius;
         let [w, h] = self.spatial.map;
         let (x0, y0) = (
@@ -144,8 +144,8 @@ impl World {
                     {
                         continue;
                     }
-                    let dx = (o.position[0] - x).abs();
-                    let dy = (o.position[1] - y).abs();
+                    let dx = (o.position.x() - x).abs();
+                    let dy = (o.position.y() - y).abs();
                     if dx < o.radius[0] + rx && dy < ry + o.radius[1] {
                         gone.push((owner, oid));
                     }
@@ -734,6 +734,7 @@ mod tests {
 #[cfg(test)]
 mod clearing_tests {
     use super::*;
+    use crate::map::Position;
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{Master, Masters};
@@ -745,7 +746,7 @@ mod clearing_tests {
     fn object(id: i32, master: i16, x: f32, y: f32) -> Unit {
         Unit {
             id: object_id(id),
-            body: crate::objects::layers::Body::at([x, y, 0.0]),
+            body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
             life: Lifecycle {
                 master_id: master,
                 ..Lifecycle::default()

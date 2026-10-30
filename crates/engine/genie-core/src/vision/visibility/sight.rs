@@ -2,6 +2,7 @@
 //! its master's change.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::ids::MARKET;
 use crate::vision::registry::MASK;
 use crate::vision::visibility::{CIRCLE_MASTER, EDGE, Seer, Visibility, tile_of};
@@ -16,7 +17,7 @@ pub(super) struct SightOn {
     /// Its seer.
     pub(super) seer: Seer,
     /// Its place (x, y, z).
-    pub(super) position: [f32; 3],
+    pub(super) position: Position,
     /// Its master's radii (x, y).
     pub(super) radius: [f32; 2],
     /// Whether it explores its footprint as a rectangle.
@@ -34,7 +35,7 @@ impl Visibility {
     pub fn sight_on(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
         square: bool,
         offset: bool,
@@ -50,7 +51,7 @@ impl Visibility {
     pub fn sight_on_los(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
         square: bool,
         los: i32,
@@ -113,7 +114,7 @@ impl Visibility {
         if los <= 0 {
             return Ok(0);
         }
-        let [x, y, _] = position;
+        let (x, y) = (position.x(), position.y());
         let newly = if square {
             let [rx, ry] = radius;
             if rx <= 0.0 || ry <= 0.0 {
@@ -140,7 +141,7 @@ impl Visibility {
     pub fn sight_off(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
         square: bool,
         offset: bool,
@@ -157,7 +158,7 @@ impl Visibility {
     pub fn sight_off_los(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
         square: bool,
         los: i32,
@@ -181,7 +182,7 @@ impl Visibility {
         if los <= 0 {
             return Ok(());
         }
-        let [x, y, _] = position;
+        let (x, y) = (position.x(), position.y());
         if square {
             let [rx, ry] = radius;
             if rx <= 0.0 || ry <= 0.0 {
@@ -205,11 +206,11 @@ impl Visibility {
     pub fn moved(
         &mut self,
         id: i32,
-        from: [f32; 3],
-        to: [f32; 3],
+        from: Position,
+        to: Position,
         radius: [f32; 2],
     ) -> Result<(), GenieError> {
-        let tile = |p: [f32; 3]| [tile_of(p[0], self.width), tile_of(p[1], self.height)];
+        let tile = |p: Position| [tile_of(p.x(), self.width), tile_of(p.y(), self.height)];
         if tile(from) == tile(to) {
             return Ok(());
         }
@@ -225,7 +226,7 @@ impl Visibility {
     pub fn state_changed(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
         new: u8,
     ) -> Result<(), GenieError> {
@@ -256,7 +257,7 @@ impl Visibility {
     pub fn master_changed(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         old_radius: [f32; 2],
         new_radius: [f32; 2],
         master: i16,

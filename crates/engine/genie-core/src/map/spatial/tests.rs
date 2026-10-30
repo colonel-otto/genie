@@ -18,7 +18,7 @@ fn the_record_cells_answer_as_the_full_scan_does() {
     };
     let kinds = [1u8, 2, 3, 5, 10, 11, 13];
     let placed = |position: [f32; 2], r: f32, kind: Option<u8>| Placed {
-        position: [position[0], position[1], 0.0],
+        position: Position::new(position[0], position[1], 0.0),
         radius: [r, r * 0.5],
         class: class::CLASS_0,
         player: PlayerId::new(1),
@@ -45,12 +45,11 @@ fn the_record_cells_answer_as_the_full_scan_does() {
         let kind = (next() % 8 != 0).then(|| kinds[(next() % 7) as usize]);
         match next() % 7 {
             0 | 1 => s.insert(id, placed(position, r, kind)),
-            2 | 3 => s.set_position(id, [position[0], position[1], 0.0]).unwrap(),
+            2 | 3 => s
+                .set_position(id, Position::new(position[0], position[1], 0.0))
+                .unwrap(),
             4 => {
-                let here = s
-                    .objects
-                    .get(&id)
-                    .map_or(position, |p| [p.position[0], p.position[1]]);
+                let here = s.objects.get(&id).map_or(position, |p| p.position.ground());
                 s.change_master(id, placed(here, r, kind));
             }
             5 => match kind {
@@ -122,7 +121,7 @@ fn a_circle_record_s_box_is_read_unordered_and_another_s_ordered() {
 
 fn villager(x: f32, y: f32) -> Placed {
     Placed {
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         radius: [0.2, 0.2],
         class: class::VILLAGER,
         player: PlayerId::new(2),
@@ -475,7 +474,7 @@ fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
     assert!(s.segment_blocked([32.2, 154.59375], to, 0.25, 0xff, &[]));
     // off a half tile, the box's far edge is its tile: (31.6 ± 0.5) spans tiles 31 and 32,
     // which share only level 2's cells of 64 tiles
-    bush.position = [31.6, 154.5, 0.0];
+    bush.position = Position::new(31.6, 154.5, 0.0);
     assert_eq!(s.filed(&bush, 2), (2, 0, 2));
 }
 
@@ -518,7 +517,7 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     assert_eq!(s.get(1).and_then(|p| p.obstruction), rock.obstruction);
     let mut other = rock;
     other.obstruction_type = 12;
-    other.position = [8.5, 8.5, 0.0];
+    other.position = Position::new(8.5, 8.5, 0.0);
     s.insert(2, other);
     assert!(!s.dropped_record(2));
     assert!(s.tiles().word(8, 8).is_some_and(|w| w & BLOCKED != 0));
@@ -526,7 +525,7 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     let mut wall = rock;
     wall.obstruction_type = 2;
     wall.obstruction = Some(Obstruction { kind: 2, class: 1 });
-    wall.position = [12.5, 12.5, 0.0];
+    wall.position = Position::new(12.5, 12.5, 0.0);
     s.insert(3, wall);
     let mut site = wall;
     site.obstruction = None;
@@ -632,7 +631,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
 fn a_static_record_marks_its_tiles_with_its_class_and_player() {
     let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
     let centre = Placed {
-        position: [2.0, 2.0, 0.0],
+        position: Position::new(2.0, 2.0, 0.0),
         radius: [1.0, 1.0],
         class: class::BUILDING,
         player: PlayerId::new(2),
@@ -646,7 +645,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
     };
     s.insert(9157, centre);
     let tree = Placed {
-        position: [0.5, 0.5, 0.0],
+        position: Position::new(0.5, 0.5, 0.0),
         radius: [0.5, 0.5],
         class: class::TREE,
         player: PlayerId::new(0),
@@ -676,7 +675,7 @@ fn a_unit_counts_on_the_tile_its_centre_is_on_and_marks_nothing() {
     s.insert(9177, villager(1.9, 1.0));
     assert_eq!(s.tiles().objects(1, 1), Some(1));
     assert_eq!(s.tiles().word(1, 1), Some(4));
-    s.set_position(9177, [2.05, 1.0, 0.0]).unwrap();
+    s.set_position(9177, Position::new(2.05, 1.0, 0.0)).unwrap();
     assert_eq!(
         (s.tiles().objects(1, 1), s.tiles().objects(2, 1)),
         (Some(0), Some(1))
@@ -693,14 +692,14 @@ fn a_tile_s_list_keeps_the_game_s_order() {
     assert_eq!(s.tiles().list(1, 1), [9171, 10029, 9173]);
     assert_eq!(s.tile_place(9173), 2);
     // the leaving object's slot goes to the last
-    s.set_position(9171, [2.1, 1.0, 0.0]).unwrap();
+    s.set_position(9171, Position::new(2.1, 1.0, 0.0)).unwrap();
     assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
     assert_eq!((s.tile_place(9173), s.tile_place(9171)), (0, 0));
     // a move within the tile and a master change keep the slot
-    s.set_position(9173, [1.2, 1.0, 0.0]).unwrap();
+    s.set_position(9173, Position::new(1.2, 1.0, 0.0)).unwrap();
     s.change_master(9173, villager(1.2, 1.0));
     assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
-    s.set_position(9171, [1.0, 1.0, 0.0]).unwrap();
+    s.set_position(9171, Position::new(1.0, 1.0, 0.0)).unwrap();
     assert_eq!(s.tiles().list(1, 1), [9173, 10029, 9171]);
     assert_eq!(
         (s.tiles().objects(1, 1), s.tiles().tall(1, 1)),
@@ -746,11 +745,11 @@ fn a_ghost_entering_or_leaving_a_tile_redoes_its_tall_count() {
     s.insert(2, villager(1.5, 1.5));
     s.set_tall(1, false);
     assert_eq!(s.tiles().tall(1, 1), Some(2));
-    s.insert_ghost(-5, [1.5, 1.5, 0.0]);
+    s.insert_ghost(-5, Position::new(1.5, 1.5, 0.0));
     assert_eq!(s.tiles().list(1, 1), [1, 2, -5]);
     assert_eq!(s.tiles().tall(1, 1), Some(1));
     s.set_tall(2, false);
-    s.remove_ghost(-5, [1.5, 1.5, 0.0]);
+    s.remove_ghost(-5, Position::new(1.5, 1.5, 0.0));
     assert_eq!(s.tiles().tall(1, 1), Some(0));
 }
 
@@ -912,7 +911,7 @@ fn the_free_spot_beside_a_footprint_is_the_closest_empty_tile_around_it() {
     let (mut s, house) = site();
     assert_eq!(
         s.spot_beside(
-            [30.0, 89.0, 0.0],
+            Position::new(30.0, 89.0, 0.0),
             (1, 0.2),
             6,
             (house.position, house.radius)
@@ -997,7 +996,7 @@ fn foreign_marks_read_the_players_in_32_bits_and_skip_a_nan_place() {
     assert!(!t.foreign_marks(&house));
     // a NaN place reads nothing, not tile 0 (here marked by player 3)
     s.tiles.mark_for_test(0, 0, 0x80_0000 << 3);
-    house.position = [f32::NAN, f32::NAN, 0.0];
+    house.position = Position::new(f32::NAN, f32::NAN, 0.0);
     assert!(!s.foreign_marks(&house));
 }
 

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::transport::{Changed, MapShore, Ship, TRANSPORT, TransportAction};
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -28,7 +29,7 @@ impl crate::world::World {
     pub(crate) fn start_transport(
         &mut self,
         (p, i): (PlayerId, usize),
-        (target, point): (i32, [f32; 3]),
+        (target, point): (i32, Position),
         task: &Task,
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -56,7 +57,7 @@ impl crate::world::World {
     pub(crate) fn retake_transport(
         &mut self,
         (p, i): (PlayerId, usize),
-        (target, point): (i32, [f32; 3]),
+        (target, point): (i32, Position),
         task: &Task,
         clears: bool,
     ) -> Result<bool, GenieError> {
@@ -109,7 +110,7 @@ impl crate::world::World {
     fn notify_transport(
         &mut self,
         (p, i): (PlayerId, usize),
-        (target, point): (i32, [f32; 3]),
+        (target, point): (i32, Position),
         clears: bool,
     ) -> Result<(), GenieError> {
         let named = match self.object(target) {

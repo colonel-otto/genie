@@ -11,6 +11,7 @@
 //! reaches ([`repair_target`]).
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
@@ -111,7 +112,7 @@ pub struct RepairAction {
     pub move_to: Option<MoveToAction>,
     /// `+0x38`..`+0x40`: the target's place as the action last took it (the constructor, states
     /// 4, 6 and 7), or the point the unit was sent to.
-    pub point: [f32; 3],
+    pub point: Position,
     /// `+0x44`: state 10's wait.
     pub timer: f32,
     /// The task it repairs with (`+0x48`).
@@ -138,7 +139,7 @@ pub struct Repairee {
     /// ally flag).
     pub allied: bool,
     /// Its place and its master's radii.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii.
     pub radius: [f32; 2],
     /// Its master's class.

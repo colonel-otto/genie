@@ -3,6 +3,7 @@
 
 use crate::combat::attack::{DRAW_SCALE, QUIET_SWINGS};
 use crate::combat::damage::Victim;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -17,7 +18,7 @@ use crate::{GenieError, combat::damage};
 /// shield of charge type 4 blocks it instead of 5) and the attacker's hit chance (`+0x83e`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Hit {
-    pub at: [f32; 3],
+    pub at: Position,
     pub from_z: Option<f32>,
     pub missile: bool,
     pub chance: i16,

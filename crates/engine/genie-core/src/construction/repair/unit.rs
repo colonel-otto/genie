@@ -3,7 +3,9 @@
 use crate::GenieError;
 use crate::construction::repair::payment::PaidAttributes;
 use crate::construction::repair::{CountedIn, RepairReads, Repairee};
+use crate::map::Position;
 use crate::map::spatial::Spatial;
+use crate::math::fmath::BVector;
 use crate::movement::Me;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -149,15 +151,15 @@ impl Unit {
             .ok()
             .and_then(|i| points.get(i))
             .copied()
-            .unwrap_or([0.0; 3]);
+            .unwrap_or(BVector::ZERO);
         if let Some(m) = self.body.mover_mut() {
             m.clear_user_waypoints();
             for p in &points {
-                m.add_user_waypoint(p[0], p[2], p[1]);
+                m.add_user_waypoint(p.x(), p.y(), p.height());
             }
         }
         Some(AiMove {
-            point: [w[0], w[2], w[1]],
+            point: Position::new(w.x(), w.y(), w.height()),
             range: 0.0,
             force: true,
             walk: false,

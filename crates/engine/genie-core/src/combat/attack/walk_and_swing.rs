@@ -9,6 +9,7 @@ use crate::combat::attack::{
 use crate::combat::damage::Victim;
 use crate::combat::victims::write_strike_back;
 use crate::combat::volley::Aimed;
+use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap_squared};
@@ -41,7 +42,7 @@ impl Attack {
         me: Me,
         f: &Fight,
         r: &AttackReads,
-        (target, radius): ([f32; 3], [f32; 2]),
+        (target, radius): (Position, [f32; 2]),
     ) -> Result<u8, GenieError> {
         let gives_up = GiveUp {
             waits: !r.computer && f.own.class == class::VILLAGER,
@@ -71,7 +72,7 @@ impl Attack {
         unit: &mut Unit,
         f: &Fight,
         r: &AttackReads,
-        (target, radius): ([f32; 3], [f32; 2]),
+        (target, radius): (Position, [f32; 2]),
     ) -> Result<u8, GenieError> {
         let ground = unit
             .body
@@ -324,7 +325,7 @@ impl Attack {
     ) -> Result<Option<i32>, GenieError> {
         let hit = Hit {
             at: f.own.position,
-            from_z: Some(f.own.position[2]),
+            from_z: Some(f.own.position.z()),
             missile: false,
             chance,
         };
@@ -355,7 +356,7 @@ impl Attack {
         let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
         if r <= i64::from(chance) {
             let factor =
-                damage::elevation_factor(f.own.position[2], f.own.attack_elevation, &f.victim);
+                damage::elevation_factor(f.own.position.z(), f.own.attack_elevation, &f.victim);
             if !damage::shield(&mut f.victim, false) {
                 let weapons = f.own.weapons.clone();
                 let mut others: Vec<&mut Victim> = blasted.iter_mut().collect();

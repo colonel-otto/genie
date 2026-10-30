@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::commands::GatherPoint;
 use crate::garrison::{NO_POINT, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
@@ -65,13 +66,13 @@ impl World {
         let queue_first =
             b.ai.as_ref()
                 .and_then(|a| a.building_orders.first())
-                .map(|o| [o.point[0], o.point[1]]);
+                .map(|o| o.point.ground());
         let toward = if point[0] == NO_POINT {
             match (gather, queue_first) {
                 (None, Some(q)) => Some(q),
                 _ => gather
                     .filter(|g| g.target != bid.get())
-                    .map(|g| [g.point[0], g.point[1]]),
+                    .map(|g| g.point.ground()),
             }
         } else {
             Some(point)
@@ -100,8 +101,10 @@ impl World {
                 "an unload whose unit finds no spot (its later rings)",
             ));
         };
-        let z = self.players[player.index()].objects[building].position()[2];
-        let at = [spot[0], spot[1], z];
+        let z = self.players[player.index()].objects[building]
+            .position()
+            .z();
+        let at = Position::new(spot[0], spot[1], z);
         // slot 0x1a8 (`FUN_141213120`) does its part only for a unit inside an object (`+0x2f0`):
         // a new unit an effect could not take in (`FUN_1416136f0`) comes out from where it stands
         let inside = self.players[up.index()].objects[ui].life.inside.is_some();
@@ -137,7 +140,7 @@ impl World {
         (player, container): (PlayerId, usize),
         (up, ui): (usize, usize),
         made: &Master,
-        at: [f32; 3],
+        at: Position,
     ) -> Result<(), GenieError> {
         let b = &self.players[player.index()].objects[container];
         let (bid, id) = (b.id, self.players[up].objects[ui].id);
@@ -235,7 +238,7 @@ impl World {
         if let Some(target) = work_on {
             let work = Work {
                 target,
-                point: [point[0], point[1], 0.0],
+                point: Position::new(point[0], point[1], 0.0),
                 carry_test: false,
                 filter: -1,
                 notified: false,
@@ -255,7 +258,7 @@ impl World {
                     self.gather(up, ui, g, bid, false, false)?;
                     return Ok(true);
                 }
-                [g.point[0], g.point[1]]
+                g.point.ground()
             }
             LetOutAim::Point(p) => p,
         };
@@ -265,7 +268,7 @@ impl World {
             // takes its own stance again at the unit's place (slot 0x1c0 with `+0x1a9`); a unit
             // without a unit AI stays where it came out
             let unit = &mut self.players[up.index()].objects[ui];
-            let place = ([unit.position()[0], unit.position()[1]], Some(class));
+            let place = (unit.position().ground(), Some(class));
             if unit.ai.is_some() {
                 self.run_ai_calls((up, ui), |ai, side, rng| {
                     ai.stop_with(true, Some(place), side, rng)?;
@@ -281,7 +284,7 @@ impl World {
         if let Some(ai) = self.players[up.index()].objects[ui].ai.as_mut() {
             ai.remove_target();
         }
-        self.gather_move(up, ui, [to[0], to[1], 0.0], false)?;
+        self.gather_move(up, ui, Position::new(to[0], to[1], 0.0), false)?;
         Ok(true)
     }
 
@@ -297,7 +300,7 @@ impl World {
         &mut self,
         up: PlayerId,
         ui: usize,
-        (made, at): (&Master, [f32; 3]),
+        (made, at): (&Master, Position),
         rest: ([f32; 2], Option<GatherPoint>, i32, Option<i32>),
     ) -> Result<bool, GenieError> {
         let id = self.players[up.index()].objects[ui].id;
@@ -356,7 +359,7 @@ pub(super) fn let_out_aim(
         Some(g) if point[0] == NO_POINT && g.state == 1 && g.target != building => {
             LetOutAim::Target(g)
         }
-        Some(g) if g.state == GatherPoint::KEPT => LetOutAim::Point([g.point[0], g.point[1]]),
+        Some(g) if g.state == GatherPoint::KEPT => LetOutAim::Point(g.point.ground()),
         _ => LetOutAim::Point(point),
     }
 }

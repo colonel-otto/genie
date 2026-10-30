@@ -672,6 +672,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Position;
     use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
     use crate::test_ids::object_id;
@@ -1035,7 +1036,7 @@ mod tests {
         u.actions
             .set_build(Some(crate::construction::build::tests::started(
                 10028,
-                [30.0, 88.0, 0.0],
+                Position::new(30.0, 88.0, 0.0),
                 1.0,
                 build,
             )));
@@ -1295,14 +1296,14 @@ mod tests {
         };
         let sighted = |state: u8, inside: Option<i32>, keep: bool| {
             let mut u = object(10, 4, state, 10.0);
-            u.place_for_test([5.5, 5.5, 0.0]);
+            u.place_for_test(Position::new(5.5, 5.5, 0.0));
             u.life.inside = inside;
             let mut t = one_player(vec![u], vec![old.clone()], &[]);
             t.spatial = crate::map::spatial::Spatial::new([20, 20]);
             t.spatial.insert(
                 10,
                 crate::map::spatial::Placed {
-                    position: [5.5, 5.5, 0.0],
+                    position: Position::new(5.5, 5.5, 0.0),
                     radius: [0.2, 0.2],
                     class: class::CLASS_6,
                     player: PlayerId::new(0),

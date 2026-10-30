@@ -6,6 +6,7 @@ use crate::groups::CommandArgs;
 use crate::groups::attack::AttackOrder;
 use crate::groups::group_list::member_gone;
 use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
+use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
@@ -80,7 +81,7 @@ impl UnitGroup {
             let t = &mut self.current_target;
             t.target = -1;
             t.kind = -1;
-            t.original_position = [0.0; 3];
+            t.original_position = BVector::ZERO;
             t.range = 0.0;
             t.target_radius = 0.0;
             t.disable_retargeting = 0;
@@ -88,7 +89,7 @@ impl UnitGroup {
         for m in &mut self.members {
             m.seconds_since_attacking = f32::MAX;
         }
-        self.waypoints.push([x, self.desired_height, z]);
+        self.waypoints.push(BVector::new(x, self.desired_height, z));
     }
 }
 
@@ -141,7 +142,7 @@ impl World {
         how: &MoveTo,
     ) -> Result<Option<bool>, GenieError> {
         let g = self.groups.held_mut(group)?;
-        let at = [point[0], 0.0, point[1]];
+        let at = BVector::new(point[0], 0.0, point[1]);
         if how.queued {
             g.queue_command(GroupCommand {
                 command: MOVE_COMMAND,
@@ -240,7 +241,7 @@ impl World {
             let t = &mut g.current_target;
             t.target = -1;
             t.kind = -1;
-            t.original_position = [0.0; 3];
+            t.original_position = BVector::ZERO;
             t.range = 0.0;
             t.target_radius = 0.0;
             t.disable_retargeting = 0;
@@ -277,8 +278,11 @@ impl World {
             .get(owner.index())
             .map_or(0, |p| p.formations.min_column_distance);
         let g = self.groups.held_mut(group)?;
-        g.current_target.original_position[0] = point[0];
-        g.current_target.original_position[2] = point[1];
+        g.current_target.original_position = g
+            .current_target
+            .original_position
+            .with_x(point[0])
+            .with_y(point[1]);
         g.current_command = MOVE_COMMAND;
         if g.motion.flags & 2 == 0 && !patrol {
             let column =
@@ -326,7 +330,7 @@ impl World {
             let _ = path.push(w);
         }
         g.waypoints.clear();
-        let at = [point[0], g.desired_height, point[1]];
+        let at = BVector::new(point[0], g.desired_height, point[1]);
         let _ = path.push(at);
         let mut path_flags = move_path_flags(g.motion.position[0], at, how.leg);
         // `keep_flag` sets bit 11 (0x141010dc1) off a leg, which the hold's test then decides
@@ -431,7 +435,7 @@ impl World {
             let _ = self.command_move_to(
                 group,
                 -1,
-                [last.point[0], last.point[2]],
+                last.point.ground(),
                 MoveTo {
                     range: last.range,
                     forget_target: true,
@@ -461,7 +465,7 @@ impl World {
         match node.command {
             c if TARGET_COMMANDS.contains(&c) && held => {
                 let target = held_id(node.target_id)?;
-                let [x, y, _] = self
+                let at = self
                     .world_object(node.target_id)
                     .ok_or_else(|| member_gone(node.target_id))?
                     .position();
@@ -471,7 +475,7 @@ impl World {
                     disable_retargeting: false,
                     filter: -1,
                 };
-                let _ = self.general_command(group, (c, target), [x, y], node.range, order)?;
+                let _ = self.general_command(group, (c, target), at.ground(), node.range, order)?;
                 Ok(true)
             }
             c if ATTACK_COMMANDS.contains(&c) && held => {
@@ -490,7 +494,7 @@ impl World {
             {
                 self.groups
                     .held_mut(group)?
-                    .add_waypoint(node.point[0], node.point[2], false);
+                    .add_waypoint(node.point.x(), node.point.y(), false);
                 Ok(false)
             }
             _ => Ok(false),
@@ -575,11 +579,11 @@ impl World {
 /// [`World::command_move_to`]'s path flags: a patrol leg sets bit 0 and, when the group's place
 /// `from` lies at least [`PATROL_LEG_REACH`] from `to` on the ground (`COMISS`/`JBE`: a NaN
 /// too), bit 1; any other move clears bit 0 and sets bit 1.
-fn move_path_flags(from: [f32; 3], to: [f32; 3], leg: bool) -> u32 {
+fn move_path_flags(from: BVector, to: BVector, leg: bool) -> u32 {
     if leg {
         let mut d = crate::math::fmath::sub(from, to);
-        d[1] = 0.0;
-        let length = crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+        d = d.with_height(0.0);
+        let length = crate::math::fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y());
         if crate::math::fmath::at_most_or_unordered(PATROL_LEG_REACH, length) {
             // A new path's flags (`FUN_14152eea0`'s construction).
             // The plans a path level may still try (`FUN_140f9b800`, `FUN_140f98e80`).
@@ -684,7 +688,7 @@ mod tests {
             command,
             target_id: target,
             range: 0.5,
-            point: [x, 0.0, z],
+            point: BVector::new(x, 0.0, z),
             approved,
             disable_retargeting: 0,
             approved_2: 0xffff,
@@ -737,7 +741,10 @@ mod tests {
             g.command_queue,
             [command(9, -1, 9.0, 9.0, 0), command(3, 99, 8.0, 6.0, 1)]
         );
-        assert_eq!(g.motion.paths[0].points, [[0.0; 3], [5.0, 0.0, 5.0]]);
+        assert_eq!(
+            g.motion.paths[0].points,
+            [BVector::ZERO, BVector::new(5.0, 0.0, 5.0)]
+        );
         assert_eq!((g.current_command, g.replaces_queue), (MOVE_COMMAND, 0));
         // two moves: the first is a waypoint, the group goes through it to the second
         let mut t = moving_world();
@@ -748,7 +755,11 @@ mod tests {
         assert!(g.command_queue.is_empty() && g.waypoints.is_empty());
         assert_eq!(
             g.motion.paths[0].points,
-            [[0.0; 3], [5.0, 0.0, 5.0], [8.0, 0.0, 8.0]]
+            [
+                BVector::ZERO,
+                BVector::new(5.0, 0.0, 5.0),
+                BVector::new(8.0, 0.0, 8.0)
+            ]
         );
         // a general command on a target the world holds is the group's command and ends the run
         let mut t = moving_world();
@@ -778,7 +789,10 @@ mod tests {
         assert!(t.command_move_to(1, -1, [2.0, 3.0], how).unwrap());
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.command_queue, Vec::<GroupCommand>::new());
-        assert_eq!(g.motion.paths[0].points, [[0.0; 3], [2.0, 0.0, 3.0]]);
+        assert_eq!(
+            g.motion.paths[0].points,
+            [BVector::ZERO, BVector::new(2.0, 0.0, 3.0)]
+        );
     }
 
     /// `param_8` (hold) clears the path's bit 0 and leaves flags bit 11 set; a patrol is read

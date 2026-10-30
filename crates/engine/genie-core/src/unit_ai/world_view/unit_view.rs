@@ -1,6 +1,7 @@
 //! What the unit AI's view asks of its unit: its picker, a helper's tests and a master switch.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
@@ -42,7 +43,7 @@ impl UnitView<'_, '_> {
         &self,
         target: i32,
         seeker: &crate::unit_ai::Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         let picker = self.picker(Some(*seeker))?;
         let (t, _) = picker.target(&self.c.w.spatial, target)?;
         Ok(

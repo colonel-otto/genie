@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::construction::build::{
     BuildAction, BuildReads, FINISHED, FISHING_SHIPS, HALTED, IDLE, MOVE, WORK, drop_done_orders,
 };
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::class;
@@ -336,7 +337,7 @@ impl BuildAction {
     /// A builder counted among the builders of a foundation the caller does not hold.
     pub fn retake(
         &mut self,
-        at: [f32; 3],
+        at: Position,
         walk: Option<MoveToAction>,
         mover: Option<&mut crate::movement::Mover>,
         builders: Option<&mut u8>,
@@ -374,7 +375,7 @@ impl BuildAction {
     pub fn retarget(
         &mut self,
         target: i32,
-        at: [f32; 3],
+        at: Position,
         walk: Option<MoveToAction>,
         mover: Option<&mut crate::movement::Mover>,
     ) -> Result<(), GenieError> {
@@ -409,7 +410,7 @@ impl BuildAction {
         {
             m.stop()?;
         }
-        self.point = [-1.0; 3];
+        self.point = Position::from([-1.0; 3]);
         self.state = HALTED;
         let target = std::mem::replace(&mut self.target, -1);
         let site = std::mem::replace(&mut self.site, -1);

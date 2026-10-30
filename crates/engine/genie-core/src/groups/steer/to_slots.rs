@@ -5,7 +5,7 @@ use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::motion::hold;
 use crate::groups::steer::{ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO};
-use crate::math::fmath::{Vec3, below_or_unordered};
+use crate::math::fmath::{BVector, below_or_unordered};
 use crate::movement::ASIDE;
 use crate::objects::masters::master_type::ACTION;
 use crate::players::PlayerId;
@@ -174,8 +174,8 @@ impl World {
     pub(super) fn line_clear(
         &mut self,
         id: i32,
-        from: Vec3,
-        to: Vec3,
+        from: BVector,
+        to: BVector,
         grow: f32,
         ignore: &[i32],
     ) -> Result<bool, GenieError> {
@@ -278,8 +278,8 @@ impl World {
         let late = s.time < self.world_time;
         let at = u.moved_vector().xhy();
         let mut d = fmath::sub(to, at);
-        d[1] = 0.0;
-        let gap = fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+        d = d.with_height(0.0);
+        let gap = fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y());
         if !below_or_unordered(EPSILON, gap) && s.state == 3 {
             self.groups
                 .held_mut(group)?

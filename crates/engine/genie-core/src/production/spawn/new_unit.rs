@@ -2,6 +2,7 @@
 //! constructor.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
@@ -72,10 +73,10 @@ impl World {
         let gather = building.gather_point;
         let position = building.position();
         let toward = match (gather, queue.first()) {
-            (None, Some(first)) => Some([first.point[0], first.point[1]]),
+            (None, Some(first)) => Some(first.point.ground()),
             _ => gather
                 .filter(|g| g.target != building.id.get())
-                .map(|g| [g.point[0], g.point[1]]),
+                .map(|g| g.point.ground()),
         };
         if made.moving.is_none() {
             return Err(GenieError::unsupported(
@@ -83,7 +84,12 @@ impl World {
             ));
         }
         let point = self.spot_beside(p, i, &made, toward)?;
-        let new = self.combat_object(p, master, &made, [point[0], point[1], position[2]])?;
+        let new = self.combat_object(
+            p,
+            master,
+            &made,
+            Position::new(point[0], point[1], position.z()),
+        )?;
         let class = self.tracker_key(p, master).class;
         let owner = &mut self.players[p.index()];
         owner.add_attribute(IN_PRODUCTION, -pop)?;
@@ -104,7 +110,7 @@ impl World {
         if !queue.is_empty() {
             // FUN_140ace9c0 with a command queue: the building unit AI's slot 0x200 hands it to
             // the new unit (FUN_140c15e50), its gather point's work skipped
-            self.hand_queue(p, new, &queue, position[2])?;
+            self.hand_queue(p, new, &queue, position.z())?;
         } else if let Some(gather) = gather.filter(|g| g.state == 1) {
             // only a state of 1 sends it (`FUN_140ace9c0`'s `+0xc30 != 1` return)
             self.gather(p, new, gather, building_id.get(), true, true)?;
@@ -167,7 +173,7 @@ impl World {
             if let Some(ai) = unit.ai.as_mut() {
                 let order = crate::unit_ai::QueuedOrder {
                     priority: 100,
-                    point: [o.point[0], o.point[1], z],
+                    point: Position::new(o.point.x(), o.point.y(), z),
                     range: 0.0,
                     ready: true,
                     ..*o
@@ -190,7 +196,7 @@ impl World {
         p: PlayerId,
         master: i16,
         made: &crate::objects::masters::Master,
-        position: [f32; 3],
+        position: Position,
     ) -> Result<NewObject, GenieError> {
         let owner = &self.players[p.index()];
         Ok(NewObject {
@@ -250,7 +256,7 @@ impl World {
         p: PlayerId,
         master: i16,
         made: &crate::objects::masters::Master,
-        position: [f32; 3],
+        position: Position,
     ) -> Result<usize, GenieError> {
         if self.players[p.index()].computer {
             return Err(GenieError::unsupported(
@@ -273,12 +279,12 @@ impl World {
         // the constructor's new_position: the ground's height by the master's fly mode (slot
         // 0x60, FUN_141193a10)
         let position = self.spatial.terrain.as_ref().map_or(position, |t| {
-            t.ground(position[0], position[1]).map_or(position, |g| {
-                [
-                    position[0],
-                    position[1],
-                    crate::combat::missile::grounded(position[2], g, false, made.fly_mode),
-                ]
+            t.ground(position.x(), position.y()).map_or(position, |g| {
+                Position::new(
+                    position.x(),
+                    position.y(),
+                    crate::combat::missile::grounded(position.z(), g, false, made.fly_mode),
+                )
             })
         });
         let ai_type = made.unit_ai_type(master).ok_or(GenieError::unsupported(

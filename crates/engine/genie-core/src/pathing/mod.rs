@@ -12,6 +12,7 @@
 //! and every change of a static record's tiles rebuilds the planners' cells over them (the
 //! manager's callback `FUN_140f7d4b0` -> `FUN_140f7e4b0`).
 
+use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Placed, Tiles};
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 use crate::pathing::short_path::Pather;
@@ -117,7 +118,7 @@ impl Pathing {
 /// point by truncation.
 #[must_use]
 pub fn shape_rect(p: &Placed) -> Rect {
-    let [x, y, _] = p.position;
+    let (x, y) = (p.position.x(), p.position.y());
     let [rx, ry] = p.radius;
     let fixed = |v: f32| (v * ONE as f32) as i64 as i32;
     [
@@ -131,9 +132,9 @@ pub fn shape_rect(p: &Placed) -> Rect {
 /// A shape's rectangle at the end of an action object's update (`FUN_141054fe0`): the place and
 /// the radii each in fixed point by truncation, the box grown by half a tile (`0x200000`).
 #[must_use]
-pub fn refreshed_rect(position: [f32; 3], radius: [f32; 2]) -> Rect {
+pub fn refreshed_rect(position: Position, radius: [f32; 2]) -> Rect {
     let fixed = |v: f32| (v * ONE as f32) as i64 as i32;
-    let [x, y, _] = position;
+    let (x, y) = (position.x(), position.y());
     let (rx, ry) = (fixed(radius[0]), fixed(radius[1]));
     let half = ONE / 2;
     [
@@ -486,7 +487,7 @@ mod tests {
 
     fn villager(x: f32, y: f32) -> Placed {
         Placed {
-            position: [x, y, 0.0],
+            position: Position::new(x, y, 0.0),
             radius: [0.2, 0.2],
             class: class::VILLAGER,
             player: PlayerId::new(2),

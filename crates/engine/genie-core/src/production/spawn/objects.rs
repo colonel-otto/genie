@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Point;
+use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
@@ -97,7 +98,7 @@ impl World {
         &mut self,
         p: PlayerId,
         master: i16,
-        at: [f32; 3],
+        at: Position,
         facet: Option<u8>,
     ) -> Result<(), GenieError> {
         let made = self.master(p, master)?.clone();
@@ -136,7 +137,7 @@ impl World {
         id: i32,
         (p, master): (PlayerId, i16),
         made: &crate::objects::masters::Master,
-        at: [f32; 3],
+        at: Position,
     ) -> Result<(), GenieError> {
         if let Some(v) = self.spatial.sight.as_mut() {
             v.add_seer(
@@ -183,7 +184,7 @@ impl World {
         p: PlayerId,
         master: i16,
         made: &crate::objects::masters::Master,
-        at: [f32; 3],
+        at: Position,
         facing: Facing,
     ) -> Result<usize, GenieError> {
         if made.kind != STATIC && !(20..40).contains(&made.kind) {
@@ -363,7 +364,7 @@ impl World {
         } else {
             self.spatial.get(target).map(|p| p.position)
         };
-        let at = at.unwrap_or([point[0], point[1], 0.0]);
+        let at = at.unwrap_or_else(|| Position::new(point[0], point[1], 0.0));
         for p in PlayerId::each(usize::from(players)).skip(1) {
             self.remains(p, FLARE, at, None)?;
             self.made_new_object(p)?;
@@ -382,7 +383,7 @@ impl World {
     pub(crate) fn make_flare(
         &mut self,
         p: PlayerId,
-        at: [f32; 3],
+        at: Position,
         doubled: bool,
     ) -> Result<(), GenieError> {
         /// The flare a hit leaves (`0x70`, FLARE).
@@ -409,7 +410,7 @@ impl World {
         &mut self,
         p: PlayerId,
         made: &crate::objects::masters::Master,
-        at: [f32; 3],
+        at: Position,
     ) -> Result<(), GenieError> {
         if self.players[p.index()].computer {
             return Err(GenieError::unsupported(

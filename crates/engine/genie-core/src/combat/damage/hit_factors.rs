@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::damage::{
     Attacker, Facing, HIGHER, LOWER, RELIC_BOOST, SPECIFIC_RELIC_BOOST, Victim,
 };
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -13,7 +14,7 @@ use crate::objects::masters::master_type::BUILDING;
 /// 272, one from lower down 75% and attributes 212 and 273.
 #[must_use]
 pub fn elevation_factor(z: f32, up_down: [f32; 2], to: &Victim) -> f32 {
-    let tz = to.position[2];
+    let tz = to.position.z();
     if tz < z {
         up_down[0] + HIGHER + to.elevation[0]
     } else if z < tz {
@@ -56,14 +57,14 @@ pub fn building_elevation_factor(
 /// faces, in facets (at least 8): the angle to it (`atan2f`, 0 to 2π) less the facing angle,
 /// wrapped into −π to π, times the facets over 2π; 0 on the same point or without facets.
 #[must_use]
-pub fn facing_offset(at: [f32; 3], facing: Facing, other: [f32; 3]) -> f32 {
+pub fn facing_offset(at: Position, facing: Facing, other: Position) -> f32 {
     if facing.facets <= 0 {
         return 0.0;
     }
     let n = if 7 < facing.facets { facing.facets } else { 8 };
     crate::objects::facing::offset_in_facets(
-        other[0] - at[0],
-        other[1] - at[1],
+        other.x() - at.x(),
+        other.y() - at.y(),
         facing.angle,
         i32::from(n),
     )

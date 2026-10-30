@@ -8,7 +8,7 @@
 //! ([`SpriteFacets`]); the slice takes them from the unit's master when every sprite of the
 //! master has the same ([`crate::movement::MoveStats::facets`]).
 
-use crate::math::fmath::{self, Vec3};
+use crate::math::fmath::{self, BVector};
 use genie_diff::Diff;
 
 const TWO_PI: f32 = crate::math::image::facing::TWO_PI;
@@ -70,13 +70,16 @@ pub fn modulo(x: f32, m: f32) -> f32 {
 /// (1, 0, 1) (`acosf`), in facets of 2π over the count, rounded half up, counted the other way
 /// when the cross product's height is below 0.
 #[must_use]
-pub fn facet_of_forward(forward: Vec3, s: SpriteFacets) -> u8 {
-    let [f0, f1, f2] = forward;
-    let length = fmath::sqrt(f0 * f0 + 0.0 + f2 * f2);
-    let u = [f0 / length, f1 / length, f2 / length];
+pub fn facet_of_forward(forward: BVector, s: SpriteFacets) -> u8 {
+    let length = fmath::sqrt(forward.x() * forward.x() + 0.0 + forward.y() * forward.y());
+    let u = BVector::new(
+        forward.x() / length,
+        forward.height() / length,
+        forward.y() / length,
+    );
     let root = fmath::sqrt(TWO);
-    let d = [ONE / root, 0.0 / root, ONE / root];
-    let dot = d[0] * u[0] + d[1] * u[1] + d[2] * u[2];
+    let d = BVector::new(ONE / root, 0.0 / root, ONE / root);
+    let dot = fmath::dot(d, u);
     let angle = if dot < ONE {
         if MINUS_ONE < dot {
             fmath::acos(dot)
@@ -86,7 +89,7 @@ pub fn facet_of_forward(forward: Vec3, s: SpriteFacets) -> u8 {
     } else {
         0.0
     };
-    let side = fmath::cross(u, d)[1];
+    let side = fmath::cross(u, d).height();
     let n = at_least_eight(s);
     let q = angle / (TWO_PI / n as f32);
     let floor = libm::floorf(q);
@@ -250,11 +253,11 @@ mod tests {
     #[test]
     fn a_forward_vector_takes_its_facet_and_the_facet_its_angle() {
         // facing the diagonal (1, 0, 1): facet 0, a quarter of π
-        let f = facet_of_forward([1.0, 0.0, 1.0], VILLAGER);
+        let f = facet_of_forward(BVector::new(1.0, 0.0, 1.0), VILLAGER);
         assert_eq!(f, 0);
         assert_eq!(angle_of_facet(f, VILLAGER), QUARTER_PI);
         // facing x: an eighth of a turn round, two facets of sixteen, the other way
-        let f = facet_of_forward([1.0, 0.0, 0.0], VILLAGER);
+        let f = facet_of_forward(BVector::new(1.0, 0.0, 0.0), VILLAGER);
         assert_eq!(f, 14);
         assert_eq!(
             angle_of_facet(14, VILLAGER),

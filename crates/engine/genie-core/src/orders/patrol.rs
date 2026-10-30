@@ -2,6 +2,8 @@
 
 use crate::GenieError;
 use crate::map::Point;
+use crate::map::Position;
+use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::COMBAT;
@@ -191,8 +193,7 @@ impl World {
             let commands = self.groups.commands;
             let g = self.groups.held_mut(id)?;
             g.differentiator_id = commands;
-            let [x, _, z] = g.motion.position[0];
-            let kept = waypoints_from([x, z], waypoints);
+            let kept = waypoints_from(g.motion.position[0].ground(), waypoints);
             let Some((&last, before)) = kept.split_last() else {
                 continue;
             };
@@ -280,14 +281,14 @@ impl World {
             }
             let g = self.groups.held(group)?;
             let at = g.motion.position[0];
-            let from = [u.position()[0], u.position()[1]];
+            let from = u.position().ground();
             let moved = u.body.mover().map_or_else(|| u.position(), |m| m.moved_at);
             let restriction = u.body.mover().map(|m| m.stats.restriction);
             let tiles = self.spatial.tiles();
             if let Some(planner) = restriction.and_then(|r| self.pathing.planner(r, tiles)) {
                 let req = crate::pathing::tile_path::Request {
                     from,
-                    to: [at[0], at[2]],
+                    to: at.ground(),
                     radii: 0.0,
                     range: 0.0,
                     closed: Vec::new(),
@@ -304,9 +305,9 @@ impl World {
                 }
             }
             // slot 0x520: +0x824 as the game holds it (x, height, y)
-            let d = crate::math::fmath::sub([moved[0], moved[2], moved[1]], at);
+            let d = crate::math::fmath::sub(BVector::new(moved.x(), moved.z(), moved.y()), at);
             let influence = self.players.player(p)?.formations.influence;
-            if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] <= influence * influence {
+            if d.x() * d.x() + d.height() * d.height() + d.y() * d.y() <= influence * influence {
                 let _ = split.loose.remove(i);
                 let _ = self.add_to_group(group, id)?;
                 if let Some(g) = self.groups.get_mut(group) {
@@ -369,7 +370,7 @@ impl World {
                 }
             }
         }
-        let [x, y, z] = u.position();
+        let (x, y, z) = (u.position().x(), u.position().y(), u.position().z());
         let kept = waypoints_from([x, y], waypoints);
         let Some((&[lx, ly], before)) = kept.split_last() else {
             return Ok(());
@@ -384,7 +385,7 @@ impl World {
             && let Some(Place::Live(p, idx)) = self.place(id)
         {
             let walk = crate::unit_ai::AiMove {
-                point: [lx, ly, z],
+                point: Position::new(lx, ly, z),
                 range: 0.0,
                 force: sweep.patrol,
                 walk: true,
@@ -408,7 +409,7 @@ impl World {
                 rng,
             );
             ai.set_action(Some(ActionKind::Move));
-            ai.set_target(-1, -1, [shown[0], shown[1], z]);
+            ai.set_target(-1, -1, Position::new(shown[0], shown[1], z));
         }
         Ok(())
     }

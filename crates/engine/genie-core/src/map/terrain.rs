@@ -8,6 +8,7 @@
 //! minimap) are not held.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::TOWN_CENTRE;
@@ -156,7 +157,7 @@ fn slope_share(shape: u8, fx: f32, fy: f32) -> f32 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Foundation {
     /// The building's place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's `clearance_size` (`+0x5fc`).
     pub clearance: [f32; 2],
     /// The foundation terrain, the master's `+0x988` byte.
@@ -436,7 +437,7 @@ impl Terrain {
     pub fn cover(&mut self, f: &Foundation) -> Result<(), GenieError> {
         /// `DAT_142eb1e9c`.
         const INSIDE: f32 = crate::math::image::terrain::INSIDE;
-        let [x, y, _] = f.position;
+        let (x, y) = (f.position.x(), f.position.y());
         let [cx, cy] = f.clearance;
         let (mut x0, mut y0) = ((x - cx) as i32, (y - cy) as i32);
         let (mut x1, mut y1) = (((x + cx) - INSIDE) as i32, ((y + cy) - INSIDE) as i32);
@@ -673,7 +674,7 @@ mod tests {
         assert!(t.snow_under(0, 0).unwrap());
         assert!(t.snow_under(1, 1).unwrap());
         t.cover(&Foundation {
-            position: [1.0, 1.0, 0.0],
+            position: Position::new(1.0, 1.0, 0.0),
             clearance: [1.0, 1.0],
             terrain: FOUNDATION,
             snow: true,
@@ -702,7 +703,7 @@ mod tests {
         t.restore = vec![255; 16];
         t.restrictions[4][0] = 0.5;
         t.cover(&Foundation {
-            position: [2.0, 2.0, 0.0],
+            position: Position::new(2.0, 2.0, 0.0),
             clearance: [2.0, 2.0],
             terrain: FOUNDATION,
             snow: false,
@@ -728,7 +729,7 @@ mod tests {
         let mut t = map(vec![0, 2, 9, 47], vec![-1, -1, -1, -1]);
         assert!(!t.snow_under(0, 0).unwrap());
         t.cover(&Foundation {
-            position: [1.0, 1.0, 0.0],
+            position: Position::new(1.0, 1.0, 0.0),
             clearance: [1.0, 1.0],
             terrain: FOUNDATION,
             snow: false,
@@ -748,7 +749,7 @@ mod tests {
     fn a_farm_s_foundation_lays_its_terrain_into_the_terrain() {
         let mut t = map(vec![0, 3, 29, 47], vec![-1, -1, -1, -1]);
         let farm = Foundation {
-            position: [1.0, 1.0, 0.0],
+            position: Position::new(1.0, 1.0, 0.0),
             clearance: [1.0, 1.0],
             terrain: 29,
             snow: false,
@@ -776,7 +777,7 @@ mod tests {
     #[test]
     fn masters_357_and_1188_lay_their_terrain_into_the_terrain() {
         let site = |master| Foundation {
-            position: [1.0, 1.0, 0.0],
+            position: Position::new(1.0, 1.0, 0.0),
             clearance: [1.0, 1.0],
             terrain: 14,
             snow: false,

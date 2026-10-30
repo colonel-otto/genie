@@ -8,7 +8,7 @@ use crate::groups::motion::{
     SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
 };
 use crate::map::spatial::{Placed, Spatial};
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::{
@@ -24,8 +24,8 @@ struct Leg {
     level: u8,
     range: f32,
     target_id: i32,
-    waypoint: Vec3,
-    at: Vec3,
+    waypoint: BVector,
+    at: BVector,
     from: [f32; 2],
     way: f32,
 }
@@ -70,7 +70,7 @@ pub(super) fn request(
         target_id: level.target,
         waypoint,
         at,
-        from: [at[0], at[2]],
+        from: at.ground(),
         way: ground(waypoint, at),
     };
     let mut plan = PathSoFar::default();
@@ -192,7 +192,7 @@ fn tile_plan(
         }
         Some(r) if (1..=2).contains(&r) || 4 < r => {
             (plan.planned, plan.found, plan.has_plan) = (true, true, true);
-            let end = plan.path.points.last().copied().unwrap_or([0.0; 3]);
+            let end = plan.path.points.last().copied().unwrap_or(BVector::ZERO);
             if leg.way < ground(leg.waypoint, end) {
                 plan.path.points.clear();
                 (plan.found, plan.has_plan) = (false, false);
@@ -348,7 +348,7 @@ fn long_plan(
     plan.found = reached;
     if EPSILON <= plan.path.length {
         if plan.found {
-            let end = plan.path.points.last().copied().unwrap_or([0.0; 3]);
+            let end = plan.path.points.last().copied().unwrap_or(BVector::ZERO);
             if leg.way < ground(leg.waypoint, end) {
                 plan.path.points.clear();
                 plan.path.length = 0.0;

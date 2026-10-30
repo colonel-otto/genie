@@ -2,6 +2,7 @@
 //! and refund, a built building's death and storage, and the military and civilian counts.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -35,7 +36,7 @@ pub(crate) fn forget_resource(
     spatial: &mut Spatial,
     master: Option<&Master>,
     id: i32,
-    position: [f32; 3],
+    position: Position,
 ) -> Result<(), GenieError> {
     if id < 0 {
         return Ok(());
@@ -136,7 +137,7 @@ pub(crate) fn refund_of(master: &Master, main: Option<i32>) -> Vec<(i16, f32)> {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BuiltDeath {
     pub(crate) adds: Vec<(i16, f32)>,
-    pub(crate) unlink: Option<[f32; 3]>,
+    pub(crate) unlink: Option<Position>,
     pub(crate) building: BuildingDeath,
 }
 

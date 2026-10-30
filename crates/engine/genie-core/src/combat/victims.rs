@@ -83,7 +83,7 @@ impl World {
         viewer: PlayerId,
     ) -> Result<crate::unit_ai::Seen, GenieError> {
         let master = u.master(&self.masters, p)?;
-        let [x, y, _] = u.position();
+        let (x, y) = (u.position().x(), u.position().y());
         Ok(crate::unit_ai::Seen {
             state: u.life.state,
             kind: master.kind,
@@ -118,7 +118,7 @@ impl World {
             .filter(|&r| 0.0 < r)
             .map(|r| r + 6.0 + 2.0);
         let mut near: Vec<Victim> = reach.map_or_else(Vec::new, |reach| {
-            let [x, y, _] = unit.position();
+            let (x, y) = (unit.position().x(), unit.position().y());
             self.spatial
                 .objects_within(x - reach, y - reach, x + reach, y + reach)
                 .filter(|&(id, _)| id != unit.id.get() && id != target)
@@ -565,8 +565,8 @@ pub(crate) fn victim_of(
         terrain.and_then(|t| {
             t.defense(
                 master.terrain_bonus,
-                u.position()[0] as i32,
-                u.position()[1] as i32,
+                u.position().x() as i32,
+                u.position().y() as i32,
             )
         })
     };

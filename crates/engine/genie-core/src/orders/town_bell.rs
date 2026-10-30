@@ -6,6 +6,7 @@
 use crate::GenieError;
 use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
+use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -420,7 +421,7 @@ impl World {
                 up,
                 ui,
                 crate::unit_ai::AiMove {
-                    point: [x, y, 0.0],
+                    point: Position::new(x, y, 0.0),
                     range: 0.0,
                     force: true,
                     walk: false,
@@ -431,7 +432,7 @@ impl World {
                 ui,
                 &crate::orders::Work {
                     target,
-                    point: [x, y, 0.0],
+                    point: Position::new(x, y, 0.0),
                     carry_test: true,
                     filter: -1,
                     notified: false,
@@ -522,14 +523,8 @@ impl World {
             found = held(own).map(|(_, t)| t);
         }
         let (target, point) = found.map_or_else(
-            || {
-                let [x, y, _] = unit.position();
-                (-1, [x, y])
-            },
-            |t| {
-                let [x, y, _] = t.position();
-                (t.id.get(), [x, y])
-            },
+            || (-1, unit.position().ground()),
+            |t| (t.id.get(), t.position().ground()),
         );
         let actions = &unit.actions;
         let target_type = match unit.top_action_kind() {
@@ -696,6 +691,7 @@ mod tests {
         use crate::garrison::tests::{
             ARCHER, VILLAGER, inside_tc, let_out_world, sized_world, tracked, walker,
         };
+        use crate::map::Position;
         use crate::players::PlayerId;
         use crate::test_ids::object_id;
         use crate::test_ids::player_id;
@@ -772,7 +768,7 @@ mod tests {
                     u.town_bell.flag,
                 )
             };
-            assert_eq!(goal(&t, 1001), (Some([3.5, 3.5, 0.0]), false));
+            assert_eq!(goal(&t, 1001), (Some(Position::new(3.5, 3.5, 0.0)), false));
             assert_eq!(goal(&t, 1002), (None, false));
             assert_eq!(goal(&t, 1003), (None, true));
             // a record without a point on an axis (an exact -1) keeps the unit and its flag
@@ -817,7 +813,7 @@ mod tests {
                     u.actions.move_to().copied().and_then(|m| m.goal()),
                     u.town_bell.flag
                 ),
-                (Some([3.5, 3.5, 0.0]), false)
+                (Some(Position::new(3.5, 3.5, 0.0)), false)
             );
             // another player's command does nothing without the game's cheats
             let mut t = world();

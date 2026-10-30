@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::construction::build::{Completion, Construction, StackUnit};
+use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -259,14 +260,14 @@ impl crate::world::World {
                 match self.object(target) {
                     Some((_, t)) => Some(crate::commands::GatherPoint {
                         state: 1,
-                        point: [t.position()[0], t.position()[1], 0.0],
+                        point: Position::new(t.position().x(), t.position().y(), 0.0),
                         target,
                         target_master: t.life.master_id,
                     }),
-                    None => (g.point[0] != -1.0 && g.point[1] != -1.0).then_some(
+                    None => (g.point.x() != -1.0 && g.point.y() != -1.0).then_some(
                         crate::commands::GatherPoint {
                             state: 1,
-                            point: [g.point[0], g.point[1], 0.0],
+                            point: Position::new(g.point.x(), g.point.y(), 0.0),
                             target: -1,
                             target_master: -1,
                         },
@@ -315,7 +316,7 @@ impl crate::world::World {
         &mut self,
         p: PlayerId,
         master: i16,
-        at: [f32; 3],
+        at: Position,
         flagged: bool,
     ) -> Result<Option<i32>, GenieError> {
         let Some(made) = player_master(&self.masters, p, master).cloned() else {
@@ -327,7 +328,7 @@ impl crate::world::World {
             let idx = self.combat_object(p, master, &made, at)?;
             let id = self.players[p.index()].objects[idx].id;
             if flagged {
-                self.clear_footprint(p, master, [at[0], at[1]], true)?;
+                self.clear_footprint(p, master, at.ground(), true)?;
             }
             if made.auto_gather {
                 self.made_new_object(p)?;
@@ -346,7 +347,7 @@ impl crate::world::World {
             )?;
             let id = self.players[p.index()].objects[idx].id;
             if flagged {
-                self.clear_footprint(p, master, [at[0], at[1]], true)?;
+                self.clear_footprint(p, master, at.ground(), true)?;
             }
             if made.auto_gather {
                 self.made_new_object(p)?;
@@ -356,7 +357,7 @@ impl crate::world::World {
         let ai = Ok(made.unit_ai_type(master));
         let (id, _) = self.make_building(p, master, ai, at)?;
         if flagged {
-            self.clear_footprint(p, master, [at[0], at[1]], true)?;
+            self.clear_footprint(p, master, at.ground(), true)?;
             let _ = self.work_building(id, STACK_WORK)?;
         }
         if made.auto_gather {

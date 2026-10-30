@@ -104,6 +104,7 @@ pub use self::surroundings::{
     no_search,
 };
 use self::surroundings::{LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_idle};
+use crate::map::Position;
 #[cfg(test)]
 use crate::math::rng::Well512;
 #[cfg(test)]
@@ -281,7 +282,7 @@ pub struct QueuedOrder {
     /// The target's owner.
     pub target_owner: i32,
     /// `+0x14`..`+0x1c`: the point; `+0x20`: the range.
-    pub point: [f32; 3],
+    pub point: Position,
     /// The range.
     pub range: f32,
     /// `+0x24`, `+0x28`: the point the unit's slot 0x2d8 shows (not held).
@@ -321,7 +322,7 @@ impl QueuedOrder {
             priority: w(8)?,
             target: w(12)?,
             target_owner: w(16)?,
-            point: [f(20)?, f(24)?, f(28)?],
+            point: Position::new(f(20)?, f(24)?, f(28)?),
             range: f(32)?,
             shown: [f(36)?, f(40)?],
             ready: le_word(b, 44)?[0] != 0,
@@ -401,7 +402,7 @@ pub enum AiCommand {
         /// The object.
         target: i32,
         /// Its place.
-        point: [f32; 3],
+        point: Position,
     },
     /// The villager's case 0x21c ([`OTHER_LOAD`]) with the drop-site table's building for its load
     /// ([`UnitSide::table_drop_site`]): the unit's slot 0x128 on it at its place, then its unit
@@ -454,7 +455,7 @@ pub struct UnitAi {
     /// `+0x4c`, the target's class (−1 for none), and `+0x50`..`+0x58`, its point.
     pub target_type: i32,
     /// `+0x50`..`+0x58`: the target's point.
-    pub target_point: [f32; 3],
+    pub target_point: Position,
     /// `+0x5c`, `desiredTargetDistance`: how near the follow order keeps the unit to its target
     /// (the constructor's 2).
     pub desired_distance: f32,
@@ -587,7 +588,7 @@ pub const ORDER_HISTORY: usize = 8;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Hunted {
     /// `+0x1f0`..`+0x1f8`: the unit's place when its AI was made.
-    pub origin: [f32; 3],
+    pub origin: Position,
     /// `+0x1fc`: the unit's slot 0x7b0 then (`+0xb74`, the work range of its master's last task
     /// of action type 6, `FUN_141206d50`): beyond it the animal goes home.
     pub leash: f32,

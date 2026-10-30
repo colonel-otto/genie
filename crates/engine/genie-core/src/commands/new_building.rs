@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::construction::build::Construction;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::actions::ActionList;
@@ -27,8 +28,8 @@ impl World {
         &mut self,
         player: PlayerId,
         master: i16,
-        position: [f32; 3],
-    ) -> Result<(i32, [f32; 3]), GenieError> {
+        position: Position,
+    ) -> Result<(i32, Position), GenieError> {
         let unit_ai = self.master(player, master)?.unit_ai_type(master);
         let made = self.make_building(player, master, Ok(unit_ai), position)?;
         let cost = self.master(player, master)?.cost.clone();
@@ -132,13 +133,13 @@ impl World {
         player: PlayerId,
         master: i16,
         unit_ai: Result<Option<u32>, GenieError>,
-        position: [f32; 3],
-    ) -> Result<(i32, [f32; 3]), GenieError> {
+        position: Position,
+    ) -> Result<(i32, Position), GenieError> {
         let made = self.master(player, master)?.clone();
         let building = made.building.ok_or(GenieError::unsupported(
             "a building constructor of a master without its building part",
         ))?;
-        let given_z = position[2];
+        let given_z = position.z();
         // the new object's new_position: the ground's height (slot 0x60)
         let position = self.on_ground(player, master, position);
         let id = self.take_object_id(player, master);
@@ -186,7 +187,7 @@ impl World {
             .and_then(|m| m.moving)
             .map(|stats| Mover::new_object(stats, position, self.world_time, angle, None));
         // the constructor (FUN_1411de5f0)
-        let [x, y, _] = position;
+        let (x, y) = (position.x(), position.y());
         let (tx, ty) = (
             crate::math::conversions::cvttss2si(x),
             crate::math::conversions::cvttss2si(y),
@@ -352,10 +353,10 @@ impl World {
             // part, which the constructor below refuses
             let [ox, oy] = building.annex_offsets[slot];
             let ai = Ok(am.unit_ai_type(annex));
-            let at = [position[0] + ox, position[1] + oy, given_z];
+            let at = Position::new(position.x() + ox, position.y() + oy, given_z);
             let (aid, at) = self.make_building(player, annex, ai, at)?;
             self.link_annex(player, id.get(), aid, &made, &am)?;
-            self.clear_footprint(player, annex, [at[0], at[1]], false)?;
+            self.clear_footprint(player, annex, at.ground(), false)?;
         }
         self.watch_started(player, id.get())?;
         Ok((id.get(), position))
@@ -368,7 +369,7 @@ impl World {
         player: PlayerId,
         id: i32,
         made: &Master,
-        (position, desolid): ([f32; 3], bool),
+        (position, desolid): (Position, bool),
         foundation: bool,
     ) -> Result<(), GenieError> {
         let master = made.id;
@@ -377,7 +378,7 @@ impl World {
         if foundation && 0 < made.build_time {
             self.construction_terrain(player, master, position)?;
         }
-        self.clear_footprint(player, master, [position[0], position[1]], false)
+        self.clear_footprint(player, master, position.ground(), false)
     }
 
     /// The building constructor's link of a new annex `aid` (master `am`) to its building `id`

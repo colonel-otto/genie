@@ -76,7 +76,7 @@ impl BuildAction {
                 .get(c.player.index())
                 .ok_or(crate::world::OBJECT_MASTER)?;
         let own = builder.master_in(Some(masters))?;
-        let at = [builder.position()[0], builder.position()[1]];
+        let at = builder.position().ground();
         let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
         let found = crate::orders::nearest_table_site(
             (
@@ -286,7 +286,7 @@ impl BuildAction {
             return Ok(HeadCode::Keeps);
         }
         // UCOMISS against −1 (DAT_14330ec20): a NaN is not
-        if self.point[0] == -1.0 || self.point[1] == -1.0 {
+        if self.point.x() == -1.0 || self.point.y() == -1.0 {
             if c.w.players[c.player.index()].computer {
                 self.end(c, builder, DONE)?;
             } else {

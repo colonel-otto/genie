@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::commands::GatherPoint;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -31,7 +32,7 @@ impl World {
         &mut self,
         p: PlayerId,
         new: usize,
-        point: [f32; 3],
+        point: Position,
         notified: bool,
     ) -> Result<(), GenieError> {
         let world_time = self.world_time;
@@ -124,7 +125,7 @@ impl World {
         let los = self.players[p.index()].objects[new]
             .master(&self.masters, p)?
             .line_of_sight;
-        let [x, y, _] = g.point;
+        let (x, y) = (g.point.x(), g.point.y());
         let gaia = self
             .players
             .first()
@@ -135,7 +136,7 @@ impl World {
                 if Some(u.master(&self.masters, PlayerId::GAIA)?.class) != class {
                     continue;
                 }
-                let (dx, dy) = (x - u.position()[0], y - u.position()[1]);
+                let (dx, dy) = (x - u.position().x(), y - u.position().y());
                 let d = dy * dy + dx * dx;
                 if best.is_none_or(|(_, b)| d < b) {
                     best = Some((u, d));
@@ -149,7 +150,7 @@ impl World {
                 let g = d.abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
             };
-            let (gx, gy) = (gap(x - u.position()[0], rx), gap(y - u.position()[1], ry));
+            let (gx, gy) = (gap(x - u.position().x(), rx), gap(y - u.position().y(), ry));
             Ok((gy * gy + gx * gx <= los * los).then_some(u.id.get()))
         };
         if let Some(id) = closest(&gaia.objects)? {
@@ -184,8 +185,10 @@ impl World {
         notified: bool,
         finder: bool,
     ) -> Result<(), GenieError> {
+        // the walk's place is the point on the ground (height 0)
+        let at = g.point.with_z(0.0);
         if g.target == -1 {
-            return self.gather_move(p, new, [g.point[0], g.point[1], 0.0], notified);
+            return self.gather_move(p, new, at, notified);
         }
         // its own building takes it at once (slot 0x1a0 forced) while it holds fewer than 10 or
         // fewer than its master's capacity (its slot 0x498 against `+0x5d4`); else the building
@@ -204,9 +207,7 @@ impl World {
         } else {
             match self.lost_gather_target(p, new, g)? {
                 Some(id) => id,
-                None => {
-                    return self.gather_move(p, new, [g.point[0], g.point[1], 0.0], notified);
-                }
+                None => return self.gather_move(p, new, at, notified),
             }
         };
         let (owner, t) = self.object(target).ok_or(GenieError::unreachable(
@@ -216,12 +217,10 @@ impl World {
         if let Some(m) = self.players[p.index()].objects[new].body.mover_mut() {
             m.waiting = 1;
         }
-        let garrison = finder
-            && on_building
-            && self.garrison_task_found(p, new, target, [g.point[0], g.point[1], 0.0])?;
+        let garrison = finder && on_building && self.garrison_task_found(p, new, target, at)?;
         let work = Work {
             target,
-            point: [g.point[0], g.point[1], 0.0],
+            point: at,
             carry_test: false,
             filter: if garrison { 3 } else { -1 },
             notified: garrison || notified,

@@ -327,7 +327,7 @@ impl Unit {
         let radius =
             crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
         let search = Search {
-            at: [self.position()[0], self.position()[1]],
+            at: self.position().ground(),
             radius,
             classes: &crate::unit_ai::CIVILIAN_CARED,
             size: master.radius,
@@ -402,7 +402,7 @@ impl Unit {
         }
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
-        if hunt.point[0] == -1.0 || hunt.point[1] == -1.0 {
+        if hunt.point.x() == -1.0 || hunt.point.y() == -1.0 {
             return Err(GenieError::unsupported(
                 "a hunt without a point that found nothing after its drop-off (set_state 2)",
             ));

@@ -171,7 +171,7 @@ impl HullPather<'_> {
         p: &Placed,
         hull: Option<usize>,
     ) -> Result<(), GenieError> {
-        let [x, y, _] = p.position;
+        let (x, y) = (p.position.x(), p.position.y());
         let [rx, ry] = p.radius;
         let bounds = [(x - rx) - r, (y - ry) - r, x + rx + r, y + ry + r];
         // `COMISS`/`JA` (0x140f8b772, 0x140f8b7a4): an unordered radius takes the given hull

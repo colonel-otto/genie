@@ -1,6 +1,7 @@
 //! A building's tile links (the map tile's `+0x19` bits) and its UMV extent entry.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::vision::visibility::{ANCHOR, EDGE, Extent, LINKED, STEP, Visibility};
 use crate::world::slots::CheckedIndex;
 
@@ -223,8 +224,8 @@ impl Visibility {
 
     /// A building's footprint as `FUN_1411e6780` links it: from its low edge to its high edge
     /// less 0.01, around the tile of its centre.
-    pub(super) fn footprint(position: [f32; 3], radius: [f32; 2]) -> ([i32; 2], [i32; 4]) {
-        let [x, y, _] = position;
+    pub(super) fn footprint(position: Position, radius: [f32; 2]) -> ([i32; 2], [i32; 4]) {
+        let (x, y) = (position.x(), position.y());
         let [rx, ry] = radius;
         (
             [x as i32, y as i32],
@@ -241,7 +242,7 @@ impl Visibility {
     /// base `new_position`); returns its UMV entry (`+0x904`).
     pub fn link_building(
         &mut self,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
     ) -> Result<i32, GenieError> {
         let ([ax, ay], [x0, y0, x1, y1]) = Self::footprint(position, radius);
@@ -250,7 +251,7 @@ impl Visibility {
 
     /// A building's UMV entry for its footprint (`FUN_1411e6780`'s `FUN_140f68650`), without
     /// linking its tiles.
-    pub fn building_entry(&mut self, position: [f32; 3], radius: [f32; 2]) -> i32 {
+    pub fn building_entry(&mut self, position: Position, radius: [f32; 2]) -> i32 {
         let ([ax, ay], [x0, y0, x1, y1]) = Self::footprint(position, radius);
         self.extent_entry(ax, ay, x0, y0, x1, y1)
     }
@@ -258,7 +259,7 @@ impl Visibility {
     /// The building leaves its tiles (`FUN_1411e6780` before a move, `FUN_1411dbb70`).
     pub fn unlink_building(
         &mut self,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
     ) -> Result<(), GenieError> {
         let (_, [x0, y0, x1, y1]) = Self::footprint(position, radius);

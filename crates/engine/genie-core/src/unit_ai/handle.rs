@@ -119,7 +119,7 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius: search_radius(at.los, at.search_radius),
             classes: &ARTIFACT_CARED,
             size: at.size,

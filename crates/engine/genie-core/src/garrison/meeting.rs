@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::{EnterAction, EnterTarget, NO_SPEED, WalkStart};
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
 use crate::movement::MoveStats;
@@ -213,12 +214,12 @@ pub(crate) fn meeting_target(
         return Err(e);
     }
     let action_point = match (t.top_action_kind(), t.actions.move_to().copied()) {
-        (Some(crate::movement::move_to::MOVE_TO), Some(m)) => Ok([m.point[0], m.point[1]]),
+        (Some(crate::movement::move_to::MOVE_TO), Some(m)) => Ok(m.point.ground()),
         // the Transport's point (+0x38, +0x3c), where it sails
         (Some(crate::garrison::transport::TRANSPORT), _) => t
             .actions
             .transport()
-            .map(|tr| [tr.point[0], tr.point[1]])
+            .map(|tr| tr.point.ground())
             .ok_or(UNPLACED),
         _ => Err(UNPLACED),
     };
@@ -227,7 +228,7 @@ pub(crate) fn meeting_target(
         speed: t.body.mover().map_or(0.0, |m| m.stats.speed),
         state: t.top_action().map_or(0, |a| a.state),
         class: tm.class,
-        position: [t.position()[0], t.position()[1]],
+        position: t.position().ground(),
         action_point,
     })
 }
@@ -246,7 +247,7 @@ pub(super) const UNPLACED: GenieError =
 /// A target under an action whose point the slice does not keep, and the shore's search's.
 pub(crate) fn meeting_point(
     t: &MeetingTarget,
-    unit: (i32, [f32; 3], &MoveStats),
+    unit: (i32, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<([f32; 2], u8), GenieError> {
@@ -267,11 +268,11 @@ pub(crate) fn meeting_point(
 /// The shore's search's.
 fn shore_or_beach(
     t: &MeetingTarget,
-    unit: (i32, [f32; 3], &MoveStats),
+    unit: (i32, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<([f32; 2], u8), GenieError> {
-    let [ux, uy, _] = unit.1;
+    let (ux, uy) = (unit.1.x(), unit.1.y());
     if let Some([x, y]) = shore(t, unit, spatial, zones)? {
         return Ok(([x as f32 + HALF_TILE, y as f32 + HALF_TILE], 1));
     }
@@ -293,10 +294,11 @@ fn shore_or_beach(
 /// A map without terrain or the unit's restriction, and slot 0x278's.
 fn shore(
     t: &MeetingTarget,
-    (id, [ux, uy, _], stats): (i32, [f32; 3], &MoveStats),
+    (id, at, stats): (i32, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<Option<[i32; 2]>, GenieError> {
+    let (ux, uy) = (at.x(), at.y());
     let terrain = spatial
         .terrain
         .as_ref()
@@ -367,7 +369,7 @@ impl Walls<'_> {
 pub(crate) fn enter_reach(
     spatial: &mut Spatial,
     masters: &[Masters],
-    (id, stats, moved_at): (i32, &MoveStats, [f32; 3]),
+    (id, stats, moved_at): (i32, &MoveStats, Position),
     (target, target_mover): (i32, Option<&crate::movement::Mover>),
     range: f32,
 ) -> Result<bool, GenieError> {
@@ -381,8 +383,8 @@ pub(crate) fn enter_reach(
     let speed = target_mover.map_or(0.0, |m| m.stats.speed);
     let them_at = target_mover.map_or(them.position, |m| m.moved_at);
     let mut walls = Walls {
-        me: [moved_at[0], moved_at[1]],
-        them: [them_at[0], them_at[1]],
+        me: moved_at.ground(),
+        them: them_at.ground(),
         spatial,
         masters,
         id,
@@ -467,7 +469,7 @@ impl Meeting<'_> {
     pub(crate) fn point(self) -> Result<([f32; 2], u8), GenieError> {
         let at = self.target.position();
         if self.master.kind == BUILDING {
-            return Ok(([at[0], at[1]], 0));
+            return Ok((at.ground(), 0));
         }
         let stats = self.unit.body.mover().map(|m| m.stats).ok_or(NO_SPEED)?;
         let t = meeting_target(self.target, self.master, self.room)?;
@@ -487,7 +489,7 @@ pub(crate) fn ship_reaches(
     ship: &crate::objects::unit::Unit,
     world: &mut Spatial,
     plan: &mut crate::movement::Planning<'_>,
-    to: [f32; 3],
+    to: Position,
 ) -> Result<bool, GenieError> {
     let Some(m) = ship.body.mover() else {
         return Ok(false);
@@ -497,6 +499,6 @@ pub(crate) fn ship_reaches(
         action_state: ship.top_action().map_or(0, |a| a.state),
         group: ship.group.id,
     };
-    let goal = [cvttss2si(to[0]) as f32, cvttss2si(to[1]) as f32];
+    let goal = [cvttss2si(to.x()) as f32, cvttss2si(to.y()) as f32];
     m.reaches(&me, world, plan, goal, ENTER_NEAR, ship.life.master_id)
 }

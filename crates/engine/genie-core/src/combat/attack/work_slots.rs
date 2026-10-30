@@ -5,6 +5,7 @@ use crate::combat::attack::{
     Attack, AttackReads, CLASS_60, Fight, Ground, NO_OBJECT_STREAM, SWING, reset_sprite,
     set_walker_anim,
 };
+use crate::map::Position;
 use crate::movement::footprint_gap;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
@@ -26,7 +27,7 @@ pub struct Mark {
     /// Its state (`+0x640`).
     pub state: u8,
     /// Its place (decoded `x`, `y`, `z`).
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii on the ground, which the footprint gap (`FUN_14118f680`) reads.
     pub radius: [f32; 2],
 }
@@ -39,7 +40,7 @@ pub struct Wielder {
     /// Its top speed (slot 0x208).
     pub speed: f32,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii on the ground.
     pub radius: [f32; 2],
 }

@@ -1,5 +1,6 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
+use crate::map::Position;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::MISSILE;
 use crate::objects::masters::master_type::TREE;
@@ -292,7 +293,7 @@ impl Unit {
     /// x, y, z on the map (`+0x3c8`, `+0x4c8`, `+0x5a8`, obfuscated in the game's memory): its
     /// static layer's ([`crate::objects::layers::Static`]).
     #[must_use]
-    pub const fn position(&self) -> [f32; 3] {
+    pub const fn position(&self) -> Position {
         self.body.position()
     }
 
@@ -301,7 +302,7 @@ impl Unit {
     /// the mesh ([`crate::objects::layers::Static::new_position`]).
     pub(crate) fn new_position(
         &mut self,
-        at: [f32; 3],
+        at: Position,
         places: (
             &mut crate::map::spatial::Spatial,
             Option<&mut crate::pathing::Pathing>,
@@ -314,7 +315,7 @@ impl Unit {
     /// A test's fixture puts the object at `at` without the world's index, which the test sets
     /// itself.
     #[cfg(test)]
-    pub(crate) const fn place_for_test(&mut self, at: [f32; 3]) {
+    pub(crate) const fn place_for_test(&mut self, at: Position) {
         self.body.base_mut().place_for_test(at);
     }
 }

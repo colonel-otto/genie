@@ -2,6 +2,7 @@
 //! seek and explore; an order on a target and one taken at once.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -53,7 +54,7 @@ impl UnitAi {
             return false;
         }
         self.set_action(Some(ActionKind::Defend));
-        self.target_at(-1, None, [point[0], point[1], at.position[2]]);
+        self.target_at(-1, None, Position::new(point[0], point[1], at.position.z()));
         self.desired_distance = range;
         self.defend_target = -1;
         true
@@ -86,7 +87,7 @@ impl UnitAi {
         self.set_action(Some(ActionKind::Build));
         match Self::world_object(target, at, side)? {
             Some(t) => self.set_target(target, i32::from(t.class.get()), t.position),
-            None => self.set_target(target, -1, [0.0; 3]),
+            None => self.set_target(target, -1, Position::ORIGIN),
         }
         Ok(true)
     }
@@ -113,7 +114,7 @@ impl UnitAi {
         self.set_action(Some(action));
         match Self::world_object(target, at, side)? {
             Some(t) => self.set_target(target, i32::from(t.class.get()), t.position),
-            None => self.set_target(target, -1, [0.0; 3]),
+            None => self.set_target(target, -1, Position::ORIGIN),
         }
         Ok(true)
     }
@@ -227,7 +228,11 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Enter));
-        self.target_at(target, held.map(|t| i32::from(t.class.get())), [-1.0; 3]);
+        self.target_at(
+            target,
+            held.map(|t| i32::from(t.class.get())),
+            Position::from([-1.0; 3]),
+        );
         Ok(true)
     }
 
@@ -237,7 +242,7 @@ impl UnitAi {
     /// point (`FUN_140c64c10` with −1).
     pub(super) fn transport_to(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         force: bool,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
@@ -266,7 +271,7 @@ impl UnitAi {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
-        let to = [point[0], point[1], at.position[2]];
+        let to = Position::new(point[0], point[1], at.position.z());
         if !side.command(UnitCommand::Unload { to, over_wall })? {
             return Ok(false);
         }
@@ -299,7 +304,11 @@ impl UnitAi {
         }
         self.set_action(Some(ActionKind::SeekAndDestroy));
         let class = Self::world_object(target, at, side)?.map(|t| i32::from(t.class.get()));
-        self.target_at(target, class, [tile[0] as f32, tile[1] as f32, EXPLORE_Z]);
+        self.target_at(
+            target,
+            class,
+            Position::new(tile[0] as f32, tile[1] as f32, EXPLORE_Z),
+        );
         Ok(true)
     }
 
@@ -320,7 +329,7 @@ impl UnitAi {
         let point = [tile[0] as f32, tile[1] as f32];
         side.effect_now(Effect::Explore(point), self, rng)?;
         self.set_action(Some(ActionKind::ExploreAndDestroy));
-        self.target_at(-1, None, [point[0], point[1], EXPLORE_Z]);
+        self.target_at(-1, None, Position::new(point[0], point[1], EXPLORE_Z));
         Ok(true)
     }
 
@@ -453,7 +462,7 @@ impl UnitAi {
         let point = [x as f32, y as f32];
         side.effect_now(Effect::Explore(point), self, rng)?;
         self.last_action = self.current_action.replace(ActionKind::Explore);
-        self.target_at(-1, None, [point[0], point[1], EXPLORE_Z]);
+        self.target_at(-1, None, Position::new(point[0], point[1], EXPLORE_Z));
         Ok(true)
     }
 
@@ -497,7 +506,7 @@ impl UnitAi {
         if 2 < at.state {
             return Ok(());
         }
-        let place = ([at.position[0], at.position[1]], at.class);
+        let place = (at.position.ground(), at.class);
         self.order_now(order, None, Some(place), Some((at, computer)), ai, side)
     }
 }

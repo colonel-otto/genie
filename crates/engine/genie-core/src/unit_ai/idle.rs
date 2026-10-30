@@ -1,6 +1,7 @@
 //! The idle checks of ships, siege, soldiers, units that do not attack and towers.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
@@ -83,7 +84,7 @@ impl UnitAi {
             (&TRADE_CART_CARED, search_radius(at.los, at.search_radius))
         };
         let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius,
             classes,
             size: at.size,
@@ -106,11 +107,11 @@ impl UnitAi {
             return Ok(false);
         };
         let reach = at.speed * SHIP_EVADE_REACH;
-        let [x, y, z] = at.position;
-        let dx = u.position[0] - x;
-        let dy = u.position[1] - y;
+        let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
+        let dx = u.position.x() - x;
+        let dy = u.position.y() - y;
         let d = crate::math::fmath::sqrt(dy * dy + dx * dx);
-        let point = [x - (dx / d) * reach, y - (dy / d) * reach, z];
+        let point = Position::new(x - (dx / d) * reach, y - (dy / d) * reach, z);
         let _ = self.evasive_move(point, (true, true), at, ai, side)?;
         Ok(true)
     }
@@ -221,7 +222,7 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
         let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius: attack_search_radius(at),
             classes: &SIEGE_CARED,
             size: at.size,
@@ -251,7 +252,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<i32, GenieError> {
         let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius: attack_search_radius(at),
             classes: &SIEGE_CARED,
             size: at.size,
@@ -363,7 +364,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<i32, GenieError> {
         let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius: attack_search_radius(at),
             classes: &SOLDIER_CARED,
             size: at.size,
@@ -479,7 +480,7 @@ impl UnitAi {
             ));
         }
         let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius: attack_search_radius(at),
             classes: &SOLDIER_CARED,
             size: at.size,
@@ -526,7 +527,7 @@ impl UnitAi {
         self.cap_human_order(side, rng)?;
         if self.stance == 3 {
             let found = side.closest(&Search {
-                at: [at.position[0], at.position[1]],
+                at: at.position.ground(),
                 radius: attack_search_radius(at),
                 classes: &TOWER_CARED,
                 size: at.size,
@@ -537,7 +538,7 @@ impl UnitAi {
             return Ok(false);
         }
         let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius: attack_search_radius(at),
             classes: &TOWER_CARED,
             size: at.size,

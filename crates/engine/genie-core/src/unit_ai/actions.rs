@@ -1,6 +1,7 @@
 //! The actions' outcomes, the stops and the order queue.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -35,7 +36,7 @@ impl UnitAi {
     ) -> Result<u32, GenieError> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
         if order.is_some() {
-            self.state_position = [at.position[0], at.position[1]];
+            self.state_position = at.position.ground();
             if order == Some(OrderKind::Scout) {
                 return Err(GenieError::unsupported(
                     "a failed action on the scout order (the player's slot 0x2e8 with 0x211)",
@@ -163,7 +164,7 @@ impl UnitAi {
         let order = self.current_order;
         let action = self.current_action;
         if order.is_some() || at.group.is_some_and(|g| g.commanded) {
-            self.state_position = [at.position[0], at.position[1]];
+            self.state_position = at.position.ground();
         }
         let attack = ActionKind::Attack.value();
         if order.is_none() {
@@ -224,13 +225,13 @@ impl UnitAi {
     }
 
     /// `FUN_140c5e1e0`: the target becomes the last one, and none (its point −1).
-    pub(crate) const fn remove_target(&mut self) {
+    pub(crate) fn remove_target(&mut self) {
         if self.current_target != -1 {
             self.last_target = self.current_target;
             self.last_target_type = self.target_type;
             self.current_target = -1;
             self.target_type = -1;
-            self.target_point = [-1.0; 3];
+            self.target_point = Position::from([-1.0; 3]);
         }
     }
 
@@ -249,7 +250,7 @@ impl UnitAi {
     ) -> Result<(), GenieError> {
         self.stop_with(
             keep_order,
-            Some(([at.position[0], at.position[1]], at.class)),
+            Some((at.position.ground(), at.class)),
             side,
             rng,
         )
@@ -297,12 +298,12 @@ impl UnitAi {
     /// `FUN_140c4dcb0` ("Forgetting current target"): the last target (`+0x6c`, `+0x70`) and the
     /// current one (`+0x48`, `+0x4c`) go, the target point with them. Its only other line is the
     /// debug log behind `DAT_143f0900d`, which changes no state.
-    pub(crate) const fn forget_targets(&mut self) {
+    pub(crate) fn forget_targets(&mut self) {
         self.last_target = -1;
         self.last_target_type = -1;
         self.current_target = -1;
         self.target_type = -1;
-        self.target_point = [-1.0; 3];
+        self.target_point = Position::from([-1.0; 3]);
     }
 
     /// `FUN_140c5e7d0`, the walk back to the state position: a unit more than a tile from it
@@ -326,7 +327,7 @@ impl UnitAi {
         let [x, y] = self.state_position;
         side.effect_now(
             Effect::Move(AiMove {
-                point: [x, y, at.position[2]],
+                point: Position::new(x, y, at.position.z()),
                 range: WALK_BACK,
                 force: true,
                 walk: false,
@@ -347,7 +348,7 @@ impl UnitAi {
             .is_some_and(|a| ENDED_ACTIONS.contains(&a))
         {
             if self.current_action == Some(ActionKind::MoveAside) && self.stance == 2 {
-                self.state_position = [at.position[0], at.position[1]];
+                self.state_position = at.position.ground();
             }
             self.current_action = None;
         }

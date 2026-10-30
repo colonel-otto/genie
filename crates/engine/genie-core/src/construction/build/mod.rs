@@ -13,6 +13,7 @@
 //! the Build end (state 1) and the AI runs its queue.
 
 use self::update::drop_done_orders;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
@@ -82,7 +83,7 @@ pub struct BuildAction {
     /// `+0x38`..`+0x40`, the action's own point: the foundation's place from the constructor
     /// (`FUN_140aad4e0`) and each `set_state(4)` with a target, −1 each from `set_state(2)`;
     /// `set_state(11)` walks there.
-    pub point: [f32; 3],
+    pub point: Position,
     /// The task it builds with.
     pub task: BuildTask,
     /// `+0x68`, `added_to_num_builders`: the builder counts among the foundation's builders.
@@ -256,7 +257,7 @@ pub struct StackUnit {
     /// The master (`+0x986`; master 1889 on mangrove or rice terrain, `+0xcd0`, makes 1893).
     pub master: i16,
     /// The building's place.
-    pub at: [f32; 3],
+    pub at: Position,
     /// Its master's hit points (`+0x530`, a short) less its own.
     pub hp_lost: f32,
 }
@@ -498,7 +499,7 @@ mod stack_tests {
         let ms = masters();
         let foundation = Unit {
             id: object_id(8759),
-            body: crate::objects::layers::Body::at([54.0, 147.0, 0.0]),
+            body: crate::objects::layers::Body::at(Position::new(54.0, 147.0, 0.0)),
             life: Lifecycle {
                 class: Class::Animated,
                 state: 0,
@@ -552,7 +553,7 @@ mod stack_tests {
         t.spatial.insert(
             8759,
             Placed {
-                position: [54.0, 147.0, 0.0],
+                position: Position::new(54.0, 147.0, 0.0),
                 radius: [2.0, 2.0],
                 class: class::BUILDING,
                 player: PlayerId::new(1),
@@ -632,10 +633,10 @@ mod stack_tests {
         assert_eq!(
             [at(8769), at(8770), at(8771), at(8772)],
             [
-                [55.0, 146.0, 0.0],
-                [53.5, 147.5, 0.0],
-                [54.25, 146.75, 0.0],
-                [53.0, 148.0, 0.0]
+                Position::new(55.0, 146.0, 0.0),
+                Position::new(53.5, 147.5, 0.0),
+                Position::new(54.25, 146.75, 0.0),
+                Position::new(53.0, 148.0, 0.0)
             ]
         );
         let unit = |id: i32| t.players[1].objects.by_id(id).unwrap();
@@ -679,7 +680,12 @@ mod stack_tests {
                 m.building.as_mut().unwrap().annexes = [-1; 4];
             }
             let (id, _) = t
-                .make_building(PlayerId::new(1), 109, Ok(None), [80.0, 80.0, 0.0])
+                .make_building(
+                    PlayerId::new(1),
+                    109,
+                    Ok(None),
+                    Position::new(80.0, 80.0, 0.0),
+                )
                 .unwrap();
             let placed = t.spatial.get(id).unwrap().obstruction;
             assert_eq!(placed.map(|o| (o.kind, o.class)), record, "height {height}");
@@ -732,7 +738,7 @@ mod stack_tests {
                 8759,
                 StackUnit {
                     master: 109,
-                    at: [54.0, 147.0, 0.0],
+                    at: Position::new(54.0, 147.0, 0.0),
                     hp_lost: 0.0,
                 },
             )

@@ -4,6 +4,7 @@
 //! the `MoveTo` ends; then it rests for its task's wait time, or picks the next flight at once.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
@@ -70,12 +71,12 @@ impl Fly {
     /// (`position`), then `set_state(3)` draws the flight's time from the Action stream. The
     /// first's other parts are the caller's: a player's bird whose task has `+0x15` set goes to
     /// state 1 first, and a master of fly mode 1 lifts the bird to [`HEIGHT`] (slot 0x58).
-    pub fn start(task: Task, position: [f32; 3], action: &mut Well512) -> Self {
+    pub fn start(task: Task, position: Position, action: &mut Well512) -> Self {
         let mut fly = Self {
             state: 0,
             timer: 0.0,
             move_to: None,
-            home: [position[0], position[1]],
+            home: position.ground(),
             task,
         };
         let _ = fly.set_state(CHOOSING, action);
@@ -205,7 +206,7 @@ impl Fly {
             t.work_val1
         };
         let distance = speed * self.timer * factor;
-        let [x, y, z] = position;
+        let (x, y, z) = (position.x(), position.y(), position.z());
         let [w, h] = map;
         let mut tries = 0;
         let point = loop {
@@ -247,7 +248,7 @@ impl Fly {
         // FUN_140aa0d30 to the point within 0 with the flight's sprite, not quiet
         self.move_to = Some(MoveToAction {
             quiet: false,
-            ..MoveToAction::sub_to_point([point[0], point[1], z], 0.0, sprite)
+            ..MoveToAction::sub_to_point(Position::new(point[0], point[1], z), 0.0, sprite)
         });
         let _ = self.set_state(FLYING, action);
         Ok(false)
@@ -284,14 +285,14 @@ impl Fly {
 
     /// The leash test of state 3: the bird within it of the centre (the squared footprint
     /// distance, `FUN_140a847c0`), or the point within it, or no farther than the bird.
-    fn near_home(&self, at: [f32; 3], radius: [f32; 2], point: [f32; 2], leash: f32) -> bool {
+    fn near_home(&self, at: Position, radius: [f32; 2], point: [f32; 2], leash: f32) -> bool {
         let [hx, hy] = self.home;
         let gap = |d: f32, r: f32| {
             let g = d.abs() - r;
             if 0.0 <= g { g } else { 0.0 }
         };
-        let gx = gap(hx - at[0], radius[0]);
-        let gy = gap(hy - at[1], radius[1]);
+        let gx = gap(hx - at.x(), radius[0]);
+        let gy = gap(hy - at.y(), radius[1]);
         let bird = gy * gy + gx * gx;
         if bird <= leash {
             return true;
@@ -347,8 +348,8 @@ impl Unit {
     /// The bird goes to the fly height on its tile (slot 0x58, the position setter), which marks
     /// the move (`+0x824`, `+0x870`).
     fn lift_to_fly_height(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let [x, y, _] = self.position();
-        let at = [x, y, HEIGHT];
+        let (x, y) = (self.position().x(), self.position().y());
+        let at = Position::new(x, y, HEIGHT);
         self.new_position(at, (&mut c.w.spatial, Some(&mut c.w.pathing)))?;
         if let Some(m) = self.body.mover_mut() {
             m.mark_move(at, c.w.world_time);
@@ -368,7 +369,7 @@ mod tests {
     use crate::world::{Player, World};
 
     /// The hawk's place.
-    const AT: [f32; 3] = [57.845_688, 104.499_275, 9.0];
+    const AT: Position = Position::new(57.845_688, 104.499_275, 9.0);
 
     /// The hawk's movement state: top speed `speed`, radii 0.2, waiting to move (a stop clears
     /// it).
@@ -380,7 +381,7 @@ mod tests {
     }
 
     /// A flight's `MoveTo` in `state` to `point` within 0, not quiet, without a sprite.
-    fn flight(state: MoveTo, point: [f32; 3]) -> MoveToAction {
+    fn flight(state: MoveTo, point: Position) -> MoveToAction {
         MoveToAction {
             state,
             quiet: false,
@@ -489,7 +490,10 @@ mod tests {
         // stops), the empty list's update is 1 and the task has no rest: set_state(3) draws the
         // next flight's time
         let fly = Fly {
-            move_to: Some(flight(MoveTo::Moving, [57.844_986, 104.49953, 9.0])),
+            move_to: Some(flight(
+                MoveTo::Moving,
+                Position::new(57.844_986, 104.49953, 9.0),
+            )),
             ..hawk(FLYING, 0.015_977_083)
         };
         let mut t = sky_world(fly, 1.32, 1);
@@ -615,12 +619,12 @@ mod tests {
         let d = 1.32 * (10.0f32 - 0.021) * 1.0;
         let theta = angle as f32 * DEGREE;
         let (c, s) = (cos(theta), sin(theta));
-        let point = [(c * 0.0 - s) * d + AT[0], (s * 0.0 + c) * d + AT[1]];
+        let point = [(c * 0.0 - s) * d + AT.x(), (s * 0.0 + c) * d + AT.y()];
         let inside = |p: [f32; 2]| 0.0 < p[0] && p[0] <= 119.0 && 0.0 < p[1] && p[1] <= 119.0;
         assert!(inside(point), "the seed's first angle lands on the map");
         // the sprite draw: the task's moving 846, working 846, proceeding 1595 from r % 3 on
         let drawn = [846, 846, 1595][e.rand15() as usize % 3];
-        let to = [point[0], point[1], 9.0];
+        let to = Position::new(point[0], point[1], 9.0);
         let sprite = hawk_graphics().get(&drawn).copied();
         assert_eq!(
             (fly.state, fly.move_to),
@@ -641,7 +645,10 @@ mod tests {
         // records/425906646's update 2025: the hawk 30594's MoveTo failed (state 13) the update
         // before; its update returns 3, the flight ends as an arrived one does
         let fly = Fly {
-            move_to: Some(flight(MoveTo::Failed, [57.844_986, 104.49953, 9.0])),
+            move_to: Some(flight(
+                MoveTo::Failed,
+                Position::new(57.844_986, 104.49953, 9.0),
+            )),
             ..hawk(FLYING, 5.0)
         };
         let mut t = sky_world(fly, 1.32, 1);
@@ -656,7 +663,7 @@ mod tests {
     #[test]
     fn a_flight_the_motion_step_gives_up_at_its_start_fails() {
         let fly = Fly {
-            move_to: Some(flight(MoveTo::Start, [60.5, 104.5, 9.0])),
+            move_to: Some(flight(MoveTo::Start, Position::new(60.5, 104.5, 9.0))),
             ..hawk(FLYING, 5.0)
         };
         let mut t = sky_world(fly, 0.0, 1);
@@ -703,8 +710,8 @@ mod tests {
         };
         // the bird 5 tiles off with a leash of 3 (9 squared): a point nearer home passes, one
         // farther does not
-        assert!(fly.near_home([15.0, 10.0, 0.0], [0.0; 2], [12.0, 10.0], 9.0));
-        assert!(!fly.near_home([15.0, 10.0, 0.0], [0.0; 2], [16.0, 10.0], 9.0));
-        assert!(fly.near_home([12.0, 10.0, 0.0], [0.0; 2], [40.0, 10.0], 9.0));
+        assert!(fly.near_home(Position::new(15.0, 10.0, 0.0), [0.0; 2], [12.0, 10.0], 9.0));
+        assert!(!fly.near_home(Position::new(15.0, 10.0, 0.0), [0.0; 2], [16.0, 10.0], 9.0));
+        assert!(fly.near_home(Position::new(12.0, 10.0, 0.0), [0.0; 2], [40.0, 10.0], 9.0));
     }
 }

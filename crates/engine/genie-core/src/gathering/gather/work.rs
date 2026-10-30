@@ -79,7 +79,7 @@ impl GatherAction {
         self.timer = 0.0;
         if !r.farm_stops {
             let at = unit.body.position();
-            self.gather_at = [at[0], at[1]];
+            self.gather_at = at.ground();
         }
         let kind = self.task.resource;
         let held = unit.life.attribute_type;

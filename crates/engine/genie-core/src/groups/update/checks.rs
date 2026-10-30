@@ -353,7 +353,7 @@ impl World {
         player: PlayerId,
     ) -> Result<bool, GenieError> {
         let master = self.master(object.player(), object.master_id())?;
-        let [x, y, _] = object.position();
+        let (x, y) = (object.position().x(), object.position().y());
         let (x, y) = (
             crate::math::conversions::cvttss2si(x),
             crate::math::conversions::cvttss2si(y),
@@ -514,16 +514,9 @@ impl World {
             let Some((_, u)) = self.object(m.id) else {
                 continue;
             };
-            // the game's vector (x, height, y) of where it last moved to (x, y, height)
-            let at = u.body.mover().map_or_else(
-                || {
-                    let [x, y, h] = u.position();
-                    [x, h, y]
-                },
-                |mv| [mv.moved_at[0], mv.moved_at[2], mv.moved_at[1]],
-            );
-            let d = [at[0] - to[0], at[1] - to[1], at[2] - to[2]];
-            let squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            // slot 0x520: the game's vector of where it last moved to
+            let d = crate::math::fmath::sub(crate::groups::attack::moved_place(u), to);
+            let squared = d.x() * d.x() + d.height() * d.height() + d.y() * d.y();
             if squared < best {
                 lead = m.id;
                 best = squared;

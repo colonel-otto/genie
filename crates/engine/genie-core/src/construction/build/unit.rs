@@ -54,7 +54,7 @@ impl Unit {
             .and_then(|b| others.own(b.target))
             .filter(|u| u.construction.is_some_and(|k| k.desolid))
         {
-            let [fx, fy, _] = f.position();
+            let (fx, fy) = (f.position().x(), f.position().y());
             let reach = crate::construction::build::CLEARING_REACH + 1.0;
             for (id, _) in
                 c.w.spatial

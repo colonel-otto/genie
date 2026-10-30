@@ -2,7 +2,7 @@
 //! can walk straight.
 
 use crate::math::fmath;
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::pathing::tile_path::Path;
 
 /// The longest step between the points the smoothing puts on a straight stretch
@@ -30,12 +30,12 @@ pub trait SegmentTest<E> {
 }
 
 /// The point at `index`, or the zero point outside the path (`FUN_140f9bcd0`).
-pub(super) fn point_at(path: &Path, index: i32) -> Vec3 {
+pub(super) fn point_at(path: &Path, index: i32) -> BVector {
     usize::try_from(index)
         .ok()
         .and_then(|i| path.points.get(i))
         .copied()
-        .unwrap_or([0.0; 3])
+        .unwrap_or(BVector::ZERO)
 }
 
 /// `FUN_140f761b0`: the points between `first` and `last` replaced by evenly spaced points at
@@ -48,13 +48,13 @@ pub(super) fn straighten(path: &mut Path, first: i32, last: i32) -> i32 {
     }
     let a = point_at(path, first);
     let d = fmath::sub(point_at(path, last), a);
-    let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    let length = fmath::sqrt(d.x() * d.x() + d.height() * d.height() + d.y() * d.y());
     let steps = crate::math::conversions::cvttss2si(length / SMOOTH_STEP);
     let fewer = between - steps;
     let at = (first + 1) as usize;
     if fewer < 0 {
         for _ in 0..-fewer {
-            let _ = path.insert(at, [0.0; 3]);
+            let _ = path.insert(at, BVector::ZERO);
         }
     } else {
         for _ in 0..fewer {
@@ -63,7 +63,7 @@ pub(super) fn straighten(path: &mut Path, first: i32, last: i32) -> i32 {
             }
         }
     }
-    let direction = [d[0] / length, d[1] / length, d[2] / length];
+    let direction = BVector::new(d.x() / length, d.height() / length, d.y() / length);
     for t in 1..=steps {
         let step = fmath::scale(length / (steps + 1) as f32, direction);
         let p = fmath::add(a, fmath::scale(t as f32, step));
@@ -102,7 +102,7 @@ pub(super) fn smooth_pass<E>(path: &mut Path, walls: &mut dyn SegmentTest<E>) ->
     while (probe as usize) < path.points.len() {
         let (a, b) = (point_at(path, first), point_at(path, probe));
         let next;
-        if walls.blocked([a[0], a[2]], [b[0], b[2]])? {
+        if walls.blocked(a.ground(), b.ground())? {
             let between = (probe - first) - 2;
             if between < 1 {
                 first = probe - 1;

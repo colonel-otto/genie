@@ -2,7 +2,8 @@
 //! and what it has seen.
 
 use crate::GenieError;
-use crate::math::fmath::Vec3;
+use crate::map::Position;
+use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::unit_ai::Search;
@@ -18,7 +19,7 @@ pub struct Found {
     /// The lists read hold enemies.
     pub enemies: bool,
     /// The object's place (x, y, z), for the caller's use.
-    pub position: Option<[f32; 3]>,
+    pub position: Option<Position>,
     /// Its query ran (else it read the last answer).
     pub fresh: bool,
     /// `ClosestObject`'s count of the players but Gaia whose objects the lists read hold
@@ -93,7 +94,7 @@ pub const fn no_search(_: &Search<'_>) -> Result<Found, GenieError> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Home {
     /// `+0x1f0`..`+0x1f8`, `origin`: the point it wanders around.
-    pub origin: [f32; 3],
+    pub origin: Position,
     /// `+0x1fc`, `furious`: it does not wander.
     pub furious: bool,
     /// `+0x1fd`: its next idle check sends it home; its slot 0x1f0 (`FUN_140c16d50`) sets it
@@ -107,7 +108,7 @@ pub struct Home {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Surroundings {
     /// The unit's position (`+0x3c8`, `+0x4c8`, `+0x5a8`).
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its hit points (`+0x278`).
     pub hp: f32,
     /// Its top speed (slot 0x208, `FUN_141202c70`; 0 for a unit that does not move), the map's
@@ -200,7 +201,7 @@ pub struct Surroundings {
     pub attack_moving: bool,
     /// Where the unit last moved to (slot 0x520: `+0x824`), as the game's vector (x, height,
     /// y); an object without movement state, its place.
-    pub moved_at: Vec3,
+    pub moved_at: BVector,
     /// Its owner's `chance_to_dodge_missiles` (`player+0xe10`, saved): a ship's handler takes a
     /// missile's warning (`0x20f`) as damage unless a draw below it dodges.
     pub dodge_chance: u8,
@@ -229,7 +230,7 @@ pub struct TopTarget {
     /// Its type (`+0xf`).
     pub kind: u8,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii.
     pub radius: [f32; 2],
 }
@@ -295,7 +296,7 @@ pub struct UnitSeen {
     /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
     pub gap_squared: f32,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its hit points (`+0x278`).
     pub hp: f32,
     /// Its master's id and type (`+0xf`).
@@ -345,7 +346,7 @@ pub struct Seen {
     /// Its master's class.
     pub class: ClassId,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii.
     pub radius: [f32; 2],
     /// Its tile is visible to the viewer.
@@ -370,7 +371,7 @@ pub(super) const SINGLE_VOLLEY: f32 = crate::math::image::unit_ai::SINGLE_VOLLEY
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AiMove {
     /// The point.
-    pub point: [f32; 3],
+    pub point: Position,
     /// The range within which it arrives.
     pub range: f32,
     /// The sixth argument: the move replaces even a `MoveTo` to the same point.

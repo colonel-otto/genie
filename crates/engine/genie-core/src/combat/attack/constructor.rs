@@ -6,6 +6,7 @@ use crate::combat::attack::{
     Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, Fight, GOTO_SEEN, Ground,
     LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
+use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveToReads, TargetMoved};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
@@ -23,7 +24,7 @@ impl Attack {
     /// sprites and frames of `arms`, whether the target is its unit's player's (`+0x9f`); a
     /// unit's own Attack (`+0x60` 0), its `MoveTo` not repathing at once (`+0x61` 0) and running
     /// (slot 0x7d0's sprite).
-    pub(crate) const fn own(target: i32, e: &Engagement, arms: Arms) -> Self {
+    pub(crate) fn own(target: i32, e: &Engagement, arms: Arms) -> Self {
         Self {
             target,
             target2: -1,
@@ -31,7 +32,7 @@ impl Attack {
             timer: 0.0,
             range: e.range,
             min_range: e.min_range,
-            point: [NONE; 3],
+            point: Position::from([NONE; 3]),
             seen: e.target_position,
             move_to: None,
             pending: false,
@@ -278,8 +279,8 @@ impl Attack {
     /// readyToAttack's leash of stance 1 on a target at `at` out of reach: its distance from the
     /// unit AI's `state_position` (`+0x1ac`, `+0x1b0`; `FUN_14099ef70` of y's square plus x's) at
     /// least the range plus [`LEASH_SLACK`] (`COMISS`/`JNC`: a NaN distance is within).
-    pub(super) fn off_leash(&self, at: [f32; 3], centre: [f32; 2]) -> bool {
-        let (dx, dy) = (at[0] - centre[0], at[1] - centre[1]);
+    pub(super) fn off_leash(&self, at: Position, centre: [f32; 2]) -> bool {
+        let (dx, dy) = (at.x() - centre[0], at.y() - centre[1]);
         crate::math::fmath::sqrt(dy * dy + dx * dx) >= self.range + LEASH_SLACK
     }
 
@@ -403,7 +404,7 @@ pub fn engagement(
 
 /// The gap between two footprints, for an [`Engagement`].
 #[must_use]
-pub fn gaps(a: [f32; 3], a_radius: [f32; 2], b: [f32; 3], b_radius: [f32; 2]) -> (f32, f32) {
+pub fn gaps(a: Position, a_radius: [f32; 2], b: Position, b_radius: [f32; 2]) -> (f32, f32) {
     let squared = footprint_gap_squared(a, a_radius, b, b_radius);
     (squared, footprint_gap(a, a_radius, b, b_radius))
 }

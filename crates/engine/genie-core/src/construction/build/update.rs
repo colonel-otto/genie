@@ -6,6 +6,7 @@ use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLEAR, DROP, FINISHED, HALTED, IDLE,
     MOVE, PLACE, WAIT, WALK_POINT, WORK,
 };
+use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, WalkTo};
 use crate::objects::lifecycle::seconds;
@@ -51,7 +52,7 @@ impl BuildAction {
     pub(super) const fn restarted(
         &self,
         target: i32,
-        at: [f32; 3],
+        at: Position,
         move_to: Option<MoveToAction>,
     ) -> Self {
         Self {

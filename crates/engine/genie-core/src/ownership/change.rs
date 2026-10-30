@@ -2,6 +2,7 @@
 //! foundation, annexes and garrison, and the attributes and storage it moves.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::masters::class;
@@ -137,8 +138,8 @@ impl World {
             let _ = self.watch(
                 new,
                 id,
-                crate::math::conversions::cvttss2si(p.position[0]),
-                crate::math::conversions::cvttss2si(p.position[1]),
+                crate::math::conversions::cvttss2si(p.position.x()),
+                crate::math::conversions::cvttss2si(p.position.y()),
             )?;
         }
         if state == 0 {
@@ -308,7 +309,9 @@ impl World {
             } else {
                 stack
             };
-            let at = self.object(id).map_or([0.0; 3], |(_, u)| u.position());
+            let at = self
+                .object(id)
+                .map_or(Position::ORIGIN, |(_, u)| u.position());
             self.remains(owner, stack, at, None)?;
         }
         if let Some(tech) = building.map(|b| b.tech).filter(|&t| 0 <= t) {

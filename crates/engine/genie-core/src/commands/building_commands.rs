@@ -5,6 +5,7 @@ use crate::commands::gather_point::GatherPointCommand;
 use crate::commands::research::ResearchCommand;
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
 use crate::map::Point;
+use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
@@ -57,7 +58,7 @@ impl World {
             let unit = &self.players[player.index()].objects[i];
             let old = unit.gather_point;
             let kept = old.is_some_and(|g| g.state == GatherPoint::KEPT);
-            let z = old.map_or(0.0, |g| g.point[2]);
+            let z = old.map_or(0.0, |g| g.point.z());
             let gather = if own {
                 let (target, target_master) = match old {
                     Some(g) if kept => (g.target, g.target_master),
@@ -65,7 +66,7 @@ impl World {
                 };
                 Some(GatherPoint {
                     state: 1,
-                    point: [unit.position()[0], unit.position()[1], z],
+                    point: Position::new(unit.position().x(), unit.position().y(), z),
                     target,
                     target_master,
                 })
@@ -78,7 +79,7 @@ impl World {
                 };
                 Some(GatherPoint {
                     state: if kept { GatherPoint::KEPT } else { 1 },
-                    point: [x, y, z],
+                    point: Position::new(x, y, z),
                     target,
                     target_master,
                 })
@@ -168,7 +169,7 @@ impl World {
                 priority: -1,
                 target,
                 target_owner: owner,
-                point: [at[0], at[1], -1.0],
+                point: Position::new(at[0], at[1], -1.0),
                 range: 0.0,
                 shown: [-1.0, -1.0],
                 ready: false,
@@ -196,7 +197,7 @@ impl World {
                 && g.target != unit.id.get()
             {
                 // the gather point's own target id stays even when the world lost it
-                let mut first = step(self, g.target, [g.point[0], g.point[1]])?;
+                let mut first = step(self, g.target, g.point.ground())?;
                 if first.target == -1 && g.target != -1 {
                     first.target = g.target;
                     first.order = OrderKind::OnTarget;

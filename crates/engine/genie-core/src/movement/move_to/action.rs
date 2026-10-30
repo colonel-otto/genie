@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::abilities::Look;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::movement::move_to::Shown;
@@ -27,7 +28,7 @@ pub struct MoveToAction {
     /// place when it was made or last asked for a path (its state 3), which a path's end that
     /// follows the target moves ([`TargetMoved::Follows`]). A target the world removed leaves the
     /// `MoveTo` walking to it.
-    pub point: [f32; 3],
+    pub point: Position,
     /// The target object it walks to (`+0x20`, its id at `+0x30`), −1 for a point.
     pub target: i32,
     /// `+0x68`.
@@ -202,7 +203,7 @@ impl MoveToAction {
     /// place.
     pub fn to_target(
         world: &Spatial,
-        me: [f32; 3],
+        me: Position,
         mover: &mut Mover,
         target: i32,
         range: f32,
@@ -243,7 +244,7 @@ impl MoveToAction {
     /// A target the world lacks.
     pub fn to_object(
         world: &Spatial,
-        me: [f32; 3],
+        me: Position,
         mover: &mut Mover,
         (target, state): (i32, u8),
         range: f32,
@@ -252,11 +253,11 @@ impl MoveToAction {
         let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
         let at = t.position;
         let goal = if livestock && t.master == TOWN_CENTRE {
-            [
-                at[0] - TOWN_CENTRE_OFFSET,
-                at[1] - TOWN_CENTRE_OFFSET,
-                at[2],
-            ]
+            Position::new(
+                at.x() - TOWN_CENTRE_OFFSET,
+                at.y() - TOWN_CENTRE_OFFSET,
+                at.z(),
+            )
         } else if holds_object(livestock, t.master, state) {
             return Self::to_target(world, me, mover, target, range, sprite);
         } else {
@@ -274,7 +275,7 @@ impl MoveToAction {
     /// caller's, [`MoveToAction::shows_standing`]). A unit without movement state has no speed.
     #[must_use]
     pub fn to_point(
-        point: [f32; 3],
+        point: Position,
         range: f32,
         sprite: Option<Graphic>,
         mover: Option<&mut Mover>,
@@ -307,7 +308,7 @@ impl MoveToAction {
     /// The point it walks to when it has no target object, None for one to a target: what the
     /// tests compare.
     #[cfg(test)]
-    pub(crate) const fn goal(&self) -> Option<[f32; 3]> {
+    pub(crate) const fn goal(&self) -> Option<Position> {
         if self.target == -1 {
             Some(self.point)
         } else {
@@ -520,7 +521,7 @@ mod tests {
         MoveToAction {
             sprite,
             state,
-            point: [30.0, 88.0, 0.0],
+            point: Position::new(30.0, 88.0, 0.0),
             target,
             range: 0.1,
             quiet: false,
@@ -657,7 +658,7 @@ mod tests {
         rig.body.set_anim_speed(1.0);
         let mut looks = Looks::default();
         let mut at = own_move_to(MoveTo::Start, Some(RUNNING), -1);
-        at.point = [28.0, 89.0, 0.0];
+        at.point = Position::new(28.0, 89.0, 0.0);
         let ask = PathAsk {
             ends_in_range: true,
             ..PathAsk::default()
@@ -716,7 +717,7 @@ mod tests {
     #[test]
     fn a_move_to_of_its_own_turns_to_its_start_when_its_target_moved() {
         use crate::movement::tests::WalkRig;
-        let walked = |point: [f32; 3], waypoint| {
+        let walked = |point: Position, waypoint| {
             let mut rig = WalkRig::on_the_path();
             rig.mover_mut().paths[0].waypoint = waypoint;
             let mut m = own_move_to(MoveTo::Moving, Some(WALKING), 10028);
@@ -726,9 +727,18 @@ mod tests {
                 .unwrap();
             (m.state, step.target_moved)
         };
-        assert_eq!(walked([30.0, 88.0, 0.0], 1), (MoveTo::Moving, false));
-        assert_eq!(walked([36.0, 88.0, 0.0], 1), (MoveTo::Moving, false));
-        assert_eq!(walked([36.0, 88.0, 0.0], 0), (MoveTo::Start, true));
+        assert_eq!(
+            walked(Position::new(30.0, 88.0, 0.0), 1),
+            (MoveTo::Moving, false)
+        );
+        assert_eq!(
+            walked(Position::new(36.0, 88.0, 0.0), 1),
+            (MoveTo::Moving, false)
+        );
+        assert_eq!(
+            walked(Position::new(36.0, 88.0, 0.0), 0),
+            (MoveTo::Start, true)
+        );
     }
 
     /// `FUN_140aa0df0` with no range takes the unit's slot 0x268: 0.75 for a building whose
@@ -772,7 +782,7 @@ mod tests {
         world.insert(9186, sheep(35.0, 40.0));
         let mut walker = crate::gathering::hunt::tests::walker();
         // footprints 0 apart: within ARRIVED, state 1 (its owner shows the standing sprite)
-        let me = [30.0, 40.0, 0.0];
+        let me = Position::new(30.0, 40.0, 0.0);
         let at_hand = MoveToAction::to_target(&world, me, &mut walker, 9185, 0.0, None).unwrap();
         assert!(at_hand.arrived());
         // 4.6 tiles on it starts walking (state 3)
@@ -798,7 +808,7 @@ mod tests {
                 ..sheep(50.0, 40.0)
             },
         );
-        let me = [30.0, 40.0, 0.0];
+        let me = Position::new(30.0, 40.0, 0.0);
         let to = |target, livestock, speed: f32| {
             let mut walker = crate::gathering::hunt::tests::walker();
             walker.stats.speed = speed;
@@ -813,7 +823,7 @@ mod tests {
         let gone = to((9186, 7), false, 0.8);
         assert_eq!(
             (gone.target, gone.goal(), gone.state),
-            (-1, Some([35.0, 40.0, 0.0]), MoveTo::Start)
+            (-1, Some(Position::new(35.0, 40.0, 0.0)), MoveTo::Start)
         );
         assert_eq!(to((9186, 7), false, 0.0).state, MoveTo::Failed);
         // a villager to the town centre holds it; livestock walks beside it
@@ -821,7 +831,7 @@ mod tests {
         let beside = to((9149, 2), true, 0.8);
         assert_eq!(
             (beside.target, beside.goal()),
-            (-1, Some([50.0 - 0.2, 40.0 - 0.2, 0.0]))
+            (-1, Some(Position::new(50.0 - 0.2, 40.0 - 0.2, 0.0)))
         );
     }
 
@@ -831,7 +841,7 @@ mod tests {
     /// a unit has no speed. Its point is `+0x38`.
     #[test]
     fn a_move_to_a_point_starts_unless_its_unit_has_no_speed() {
-        let point = [12.0, 34.0, 1.0];
+        let point = Position::new(12.0, 34.0, 1.0);
         let start = |speed: f32| {
             let mut walker = crate::gathering::hunt::tests::walker();
             walker.stats.speed = speed;
@@ -867,10 +877,10 @@ mod tests {
     fn a_move_to_an_object_holds_its_place_and_a_unit_without_speed_fails_standing() {
         let mut world = Spatial::new([120, 120]);
         world.insert(9186, sheep(35.0, 40.0));
-        let me = [30.0, 40.0, 0.0];
+        let me = Position::new(30.0, 40.0, 0.0);
         let mut walker = crate::gathering::hunt::tests::walker();
         let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();
-        assert_eq!(far.point, [35.0, 40.0, 0.0]);
+        assert_eq!(far.point, Position::new(35.0, 40.0, 0.0));
         assert_eq!(walker.stats.speed, 0.8);
         walker.stats.speed = 0.0;
         let stuck = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();

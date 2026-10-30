@@ -3,6 +3,7 @@
 //! `ClosestResourceObject` names it.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -66,7 +67,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let restriction = mover.stats.restriction;
         let (player, me_id, every) = (c.player, self.id, &c.w.masters);
-        let candidate = |id: i32, owner: PlayerId, u: &Self, position: [f32; 3]| {
+        let candidate = |id: i32, owner: PlayerId, u: &Self, position: Position| {
             let m = u.master(every, owner)?;
             Ok(Candidate {
                 id,

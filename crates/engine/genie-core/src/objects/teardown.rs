@@ -212,6 +212,8 @@ impl ActionList {
 mod tests {
     use super::*;
     use crate::construction::build::{BuildAction, BuildTask};
+    use crate::map::Position;
+    use crate::math::fmath::BVector;
     use crate::movement::move_to::MoveToAction;
     use crate::objects::masters::TaskId;
 
@@ -219,10 +221,10 @@ mod tests {
     fn moving() -> Body {
         let mut m = crate::gathering::hunt::tests::walker();
         m.velocity = Some(crate::movement::Velocity {
-            velocity: [0.0, 0.0, 0.7],
-            acceleration: [0.0, 0.0, 1.0],
+            velocity: BVector::new(0.0, 0.0, 0.7),
+            acceleration: BVector::new(0.0, 0.0, 1.0),
         });
-        let mut body = Body::new([0.0; 3], None, Some(m));
+        let mut body = Body::new(Position::ORIGIN, None, Some(m));
         body.set_anim_speed(0.8);
         body
     }
@@ -237,7 +239,7 @@ mod tests {
             id: TaskId::of_task(-1),
             moving: None,
         };
-        crate::construction::build::tests::started(10028, [30.0, 88.0, 0.0], 0.0, task)
+        crate::construction::build::tests::started(10028, Position::new(30.0, 88.0, 0.0), 0.0, task)
     }
 
     /// `RGE_Action_Object::update` deletes the head on codes 1 and 3 alone.
@@ -254,7 +256,7 @@ mod tests {
     /// Whether `body` still moves.
     fn moves(body: &Body) -> bool {
         body.mover()
-            .is_some_and(|m| m.velocity.is_some_and(|v| v.velocity[2] != 0.0))
+            .is_some_and(|m| m.velocity.is_some_and(|v| v.velocity.y() != 0.0))
     }
 
     /// A Build's destructor (`FUN_140aadbf0`): a counted builder leaves its building's builders,
@@ -301,7 +303,7 @@ mod tests {
     #[test]
     fn a_move_to_s_destructor_stops_the_unit() {
         let mut body = moving();
-        let to = MoveToAction::to_point([5.0, 5.0, 0.0], 0.0, None, body.mover_mut());
+        let to = MoveToAction::to_point(Position::new(5.0, 5.0, 0.0), 0.0, None, body.mover_mut());
         let torn = Action::MoveTo(to).tear_down(&mut body).unwrap();
         assert_eq!(torn, TornDown::default());
         assert!(!moves(&body));
@@ -318,7 +320,7 @@ mod tests {
         assert_eq!(torn.releases, [10028]);
         assert!(list.is_empty());
         assert_eq!(list.delete_head(&mut body, 2), Ok(TornDown::default()));
-        let to = MoveToAction::to_point([5.0, 5.0, 0.0], 0.0, None, body.mover_mut());
+        let to = MoveToAction::to_point(Position::new(5.0, 5.0, 0.0), 0.0, None, body.mover_mut());
         let two = ActionList::default()
             .with_build(Some(build()))
             .with_move_to(Some(to));

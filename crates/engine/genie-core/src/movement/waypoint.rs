@@ -1,11 +1,12 @@
 //! A reached waypoint and what follows it: the next waypoint, a level's end and the moving state.
 
+use crate::map::Position;
 use crate::map::spatial::{Spatial, WalkQuery};
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::{
     CLOSE, EPSILON, Goal, LOOK_AHEAD, Me, Motion, Mover, Next, PathData, RANGE_FLOOR,
     STRAIGHT_GROW, TARGET_SHORT_REACH, drop_edge_waypoints, footprint_gap, gate_gap, looping_next,
-    map_position, point_or_zero_of, remove_point, vector,
+    point_or_zero_of, remove_point,
 };
 use crate::pathing::Pathing;
 use crate::{GenieError, math::fmath};
@@ -62,7 +63,7 @@ impl Mover {
         let back = footprint_gap(
             self.position(),
             ground_radius,
-            [left[0], left[2], 0.0],
+            Position::new(left.x(), left.y(), 0.0),
             [0.0, 0.0],
         );
         let range = level.range;
@@ -111,7 +112,7 @@ impl Mover {
         let level = &self.paths[0];
         if level.waypoint < level.points.len() as i32 {
             let p = level.point(level.waypoint);
-            let at = self.set_position(map_position(p), world.map);
+            let at = self.set_position(p.position(), world.map);
             let at = self.grounded(at, world.terrain.as_ref());
             self.moved_to(me, at, world, pathing, now)?;
         }
@@ -135,10 +136,10 @@ impl Mover {
         if level.level == 0 || level.points.len() as i32 <= next {
             return Ok(());
         }
-        let d = fmath::sub(vector(self.position()), level.points[next as usize]);
+        let d = fmath::sub(self.position().vector(), level.points[next as usize]);
         // a NaN distance is not within
-        if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
-            let [x, _, y] = level.points[level.waypoint as usize];
+        if d.x() * d.x() + d.height() * d.height() + d.y() * d.y() < TARGET_SHORT_REACH {
+            let [x, _, y] = (level.points[level.waypoint as usize]).get();
             let ignore = world.manager_ignore();
             if world.object_holds([x, y], world.manager_grow(), &ignore, false)? {
                 let level = &mut self.paths[0];
@@ -194,14 +195,14 @@ impl Mover {
         let target = self.paths[0].target;
         let parent = &self.paths[1];
         // the motion step's place of the unit: +0x824, where it last moved to
-        let at = vector(self.moved_at);
+        let at = self.moved_at.vector();
         let last = parent.points.len() as i32 - 1;
         let from = parent.waypoint;
         let mut k = (from + 5).min(last);
         while from < k {
             let p = parent.points[k as usize];
             let d = fmath::sub(p, at);
-            if d[0] * d[0] + 0.0 + d[2] * d[2] <= LOOK_AHEAD
+            if d.x() * d.x() + 0.0 + d.y() * d.y() <= LOOK_AHEAD
                 && self.straight(me, p, target, world)?
             {
                 break;
@@ -228,19 +229,19 @@ impl Mover {
     pub(super) fn straight(
         &self,
         me: &Me,
-        p: Vec3,
+        p: BVector,
         target: i32,
         world: &mut Spatial,
     ) -> Result<bool, GenieError> {
         let [rx, ry, rz] = self.stats.radius;
         let [w, h] = world.map;
-        let (x, y) = (p[0], p[2]);
+        let (x, y) = (p.x(), p.y());
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
             return Ok(false);
         }
         let ignore = world.query_ignore(&[me.id, target]);
         // the query starts at +0x824, where the unit last moved to
-        let (from, to) = self.query_ends(vector(self.moved_at), p, world.map);
+        let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
         let grow = rx * STRAIGHT_GROW;
         world.check_known_records([
             from[0].min(to[0]) - grow,
@@ -263,19 +264,19 @@ impl Mover {
     pub(super) fn close_in(
         &self,
         me: &Me,
-        p: Vec3,
+        p: BVector,
         target: i32,
         world: &mut Spatial,
     ) -> Result<bool, GenieError> {
         let [rx, ry, rz] = self.stats.radius;
         let [w, h] = world.map;
-        let (x, y) = (p[0], p[2]);
+        let (x, y) = (p.x(), p.y());
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
             return Ok(false);
         }
         let ignore = world.query_ignore(&[me.id, target]);
         // the query starts at +0x824, where the unit last moved to
-        let (from, to) = self.query_ends(vector(self.moved_at), p, world.map);
+        let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
         let rect = [
             from[0].min(to[0]),
             from[1].min(to[1]),
@@ -394,8 +395,8 @@ impl Mover {
             ));
         }
         if let Some(v) = self.velocity.as_mut() {
-            v.velocity[2] = 0.0;
-            v.acceleration[2] = 0.0;
+            v.velocity = v.velocity.with_y(0.0);
+            v.acceleration = v.acceleration.with_y(0.0);
         }
         self.waiting = 0;
         self.ignore_units.clear();
@@ -409,7 +410,7 @@ impl Mover {
     pub(super) fn moved_to(
         &mut self,
         me: &Me,
-        at: [f32; 3],
+        at: Position,
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
         now: u32,
@@ -430,7 +431,7 @@ impl Mover {
     #[must_use]
     pub fn is_moving(&self) -> bool {
         self.velocity.as_ref().is_some_and(|v| {
-            let [x, y, z] = v.velocity;
+            let [x, y, z] = v.velocity.get();
             0.0 < fmath::sqrt(x * x + y * y + z * z)
         })
     }

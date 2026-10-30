@@ -1,4 +1,5 @@
 use crate::GenieError;
+use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::actions::ActionList;
 use crate::objects::layers::{Animated, Body};
@@ -110,7 +111,7 @@ fn an_object_past_state_2_loses_its_actions() {
     u.actions.set_move_to(Some(MoveToAction {
         sprite: None,
         state: MoveTo::Moving,
-        point: [40.0, 80.0, 0.0],
+        point: Position::new(40.0, 80.0, 0.0),
         target: -1,
         range: 0.0,
         quiet: false,
@@ -277,7 +278,12 @@ fn the_top_action_s_object_is_its_target_unless_it_has_none() {
     };
     let building = Unit {
         actions: ActionList::default().with_build(Some(
-            crate::construction::build::tests::started(800, [1.0, 2.0, 0.0], 0.0, task),
+            crate::construction::build::tests::started(
+                800,
+                Position::new(1.0, 2.0, 0.0),
+                0.0,
+                task,
+            ),
         )),
         ..Unit::default()
     };
@@ -327,7 +333,7 @@ fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
     assert_eq!(resting.top_sub_action(), None);
     let mut build = crate::construction::build::tests::started(
         800,
-        [1.0, 2.0, 0.0],
+        Position::new(1.0, 2.0, 0.0),
         0.0,
         crate::construction::build::BuildTask {
             range: 0.1,
@@ -369,7 +375,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     assert_eq!(of(Action::Artifact(artifact)), walking);
     let mut enter = crate::garrison::EnterAction::new(
         7,
-        [1.0, 2.0, 0.0],
+        Position::new(1.0, 2.0, 0.0),
         &crate::garrison::tests::enter_task(0.5, crate::objects::masters::class::NO_CLASS),
     );
     artifact.move_to = None;
@@ -385,7 +391,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     assert_eq!(of(Action::Enter(enter)), walking);
     let mut fly = crate::movement::fly::Fly::start(
         crate::objects::masters::Task::default(),
-        [1.0, 2.0, 0.0],
+        Position::new(1.0, 2.0, 0.0),
         &mut crate::math::rng::Well512::default(),
     );
     fly.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
@@ -394,7 +400,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     attack.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Attack(attack)), walking);
     let (mut explore, _) = crate::movement::explore::ExploreAction::new(
-        [1.0, 2.0, 0.0],
+        Position::new(1.0, 2.0, 0.0),
         &crate::movement::explore::bare_walk(),
     )
     .unwrap();
@@ -402,7 +408,8 @@ fn every_kind_of_top_action_shows_its_sub_action() {
         m.state = MoveTo::Moving;
     }
     assert_eq!(of(Action::Explore(explore)), walking);
-    let mut transport = crate::garrison::transport::TransportAction::new([1.0, 2.0, 0.0]);
+    let mut transport =
+        crate::garrison::transport::TransportAction::new(Position::new(1.0, 2.0, 0.0));
     transport.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Transport(transport)), walking);
     let wait = crate::construction::wait_solidify::WaitSolidify {

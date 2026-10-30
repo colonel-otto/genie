@@ -60,7 +60,7 @@ const fn move_reads(
         },
         state: 2,
         speed: 1.0,
-        at: [10.0, 10.0, 0.0],
+        at: Position::new(10.0, 10.0, 0.0),
         ground: [0.2, 0.2],
     }
 }
@@ -68,7 +68,7 @@ const fn move_reads(
 /// The tests' target, the object 20 at (11, 10), 0.3 from the repairer and alive.
 const TARGET: WalkTo = WalkTo {
     id: 20,
-    at: [11.0, 10.0, 0.0],
+    at: Position::new(11.0, 10.0, 0.0),
     gap: 0.3,
     state: Some(2),
 };
@@ -227,15 +227,15 @@ fn a_siege_unit_s_repair_pays_its_unit_share() {
 }
 
 /// Within the Repair's reach of the house 10028 (its footprint touching the house's).
-const NEAR: [f32; 3] = [30.0, 89.2, 0.0];
+const NEAR: Position = Position::new(30.0, 89.2, 0.0);
 /// 0.3 tiles off the house: out of reach, and no quick path closer.
-const OFF: [f32; 3] = [29.5, 89.5, 0.0];
+const OFF: Position = Position::new(29.5, 89.5, 0.0);
 
 /// [`crate::world::tests::repairing`] with the repairer 9175 at `at` on its work command's
 /// Repair of the house 10028 (300 of 550 hit points), the Repair then set by `set`; its master
 /// 118 with the standing sprite 5 and the walking sprite 20, the sprites' table [`graphics`],
 /// the repairer showing its standing sprite.
-fn repair_at(at: [f32; 3], set: impl FnOnce(&mut RepairAction)) -> crate::world::World {
+fn repair_at(at: Position, set: impl FnOnce(&mut RepairAction)) -> crate::world::World {
     let mut t = crate::world::tests::repairing(at);
     t.graphics = graphics();
     for masters in &mut t.masters {
@@ -244,7 +244,7 @@ fn repair_at(at: [f32; 3], set: impl FnOnce(&mut RepairAction)) -> crate::world:
     }
     let work = crate::orders::Work {
         target: 10028,
-        point: [30.0, 88.0, 0.0],
+        point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
         filter: -1,
         notified: true,
@@ -316,7 +316,7 @@ fn a_repair_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
         let id = |m: MoveToAction| m.sprite.map(|s| s.id);
         [
             id(r.walk(&move_reads(&g), Some(TARGET)).unwrap().unwrap()),
-            id(r.to_point([1.0, 2.0, 0.0], &move_reads(&g))
+            id(r.to_point(Position::new(1.0, 2.0, 0.0), &move_reads(&g))
                 .unwrap()
                 .unwrap()),
         ]
@@ -332,7 +332,10 @@ fn a_repair_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
         ..started()
     };
     assert!(r.walk(&move_reads(&g), Some(TARGET)).is_err());
-    assert!(r.to_point([1.0, 2.0, 0.0], &move_reads(&g)).is_err());
+    assert!(
+        r.to_point(Position::new(1.0, 2.0, 0.0), &move_reads(&g))
+            .is_err()
+    );
 }
 
 /// Every `MoveTo` of the Repair is quiet (`0x140ad9c60`: `FUN_140a7a170` with 1): the start's
@@ -343,7 +346,7 @@ fn a_repair_s_move_tos_are_quiet() {
     let r = RepairAction::start(TARGET, TASK, 1.5, &move_reads(&g)).unwrap();
     let to_target = MoveToAction {
         state: MoveTo::Start,
-        point: [11.0, 10.0, 0.0],
+        point: Position::new(11.0, 10.0, 0.0),
         target: 20,
         range: 1.5,
         sprite: Some(g[&21]),
@@ -353,9 +356,9 @@ fn a_repair_s_move_tos_are_quiet() {
     };
     assert_eq!(r.move_to, Some(to_target));
     assert_eq!(
-        r.to_point([1.0, 2.0, 0.0], &move_reads(&g)),
+        r.to_point(Position::new(1.0, 2.0, 0.0), &move_reads(&g)),
         Ok(Some(MoveToAction::sub_to_point(
-            [1.0, 2.0, 0.0],
+            Position::new(1.0, 2.0, 0.0),
             0.0,
             Some(g[&20])
         )))
@@ -390,7 +393,7 @@ fn a_repair_s_move_to_starts_as_its_list_adds_it() {
     };
     assert_eq!(state(TARGET, dying), None);
     let none = started().walk(&move_reads(&g), None).unwrap().unwrap();
-    assert_eq!((none.target, none.point), (-1, [0.0; 3]));
+    assert_eq!((none.target, none.point), (-1, Position::ORIGIN));
 }
 
 /// Its states show the task's sprites (slot 0x68, `set_state` `0x140ad9c60`): the turn toward
@@ -427,7 +430,7 @@ fn a_repair_s_walk_to_its_point_shows_its_sprite_as_it_starts() {
         let r = v.actions.repair_mut().unwrap();
         let g = graphics();
         let _ = r
-            .take_point([35.5, 95.5, 0.0], mover, &move_reads(&g))
+            .take_point(Position::new(35.5, 95.5, 0.0), mover, &move_reads(&g))
             .unwrap();
         assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         assert_eq!(repair_of(&t).move_to.map(|m| m.state), Some(MoveTo::Moving));
@@ -525,7 +528,7 @@ fn a_repairer_at_its_target_faces_it_or_waits_or_fails() {
     let mut t = repair_at(NEAR, |r| r.move_to = None);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(repair_of(&t).state, FACE);
-    let mut t = repair_at([30.0, 95.0, 0.0], arrived);
+    let mut t = repair_at(Position::new(30.0, 95.0, 0.0), arrived);
     passable(&mut t);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     let r = repair_of(&t);
@@ -595,7 +598,7 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
         .repair_mut()
         .unwrap()
         .counted = true;
-    t.players[1].objects[1].place_for_test([30.0, 80.0, 0.0]);
+    t.players[1].objects[1].place_for_test(Position::new(30.0, 80.0, 0.0));
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     let r = repair_of(&t);
     assert_eq!(
@@ -614,7 +617,7 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
 #[test]
 fn a_waiting_repairer_looks_again_each_second() {
     let waiting = |r: &mut RepairAction| (r.state, r.move_to, r.timer) = (WAIT, None, 0.1);
-    let mut t = repair_at([30.0, 95.0, 0.0], waiting);
+    let mut t = repair_at(Position::new(30.0, 95.0, 0.0), waiting);
     passable(&mut t);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(
@@ -641,7 +644,11 @@ fn a_move_sends_the_repairer_to_its_point() {
     };
     let g = graphics();
     assert_eq!(
-        r.take_point([30.0, 5.0, 0.0], Some(&mut mover), &move_reads(&g)),
+        r.take_point(
+            Position::new(30.0, 5.0, 0.0),
+            Some(&mut mover),
+            &move_reads(&g)
+        ),
         Ok((20, true))
     );
     assert_eq!(
@@ -651,7 +658,7 @@ fn a_move_sends_the_repairer_to_its_point() {
             r.move_to.and_then(|m| m.goal()),
             r.counted
         ),
-        (WALK_POINT, -1, Some([30.0, 5.0, 0.0]), false)
+        (WALK_POINT, -1, Some(Position::new(30.0, 5.0, 0.0)), false)
     );
     let mut t = repair_at(NEAR, |a| *a = r);
     t.players[1].objects[0]
@@ -695,7 +702,7 @@ fn walking_again_starts_a_new_move_to_the_target() {
         state: WALK_POINT,
         move_to: Some(MoveToAction {
             state: MoveTo::Arrived,
-            ..r.to_point([3.0, 4.0, 0.0], &move_reads(&g))
+            ..r.to_point(Position::new(3.0, 4.0, 0.0), &move_reads(&g))
                 .unwrap()
                 .unwrap()
         }),

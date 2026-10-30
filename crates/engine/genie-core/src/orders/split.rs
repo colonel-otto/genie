@@ -163,13 +163,10 @@ impl World {
                 flag_1: master.object_flags & 2 != 0,
                 speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
                 position: u.position(),
-                moved_at: u.body.mover().map_or_else(
-                    || {
-                        let [x, y, _] = u.position();
-                        [x, y]
-                    },
-                    |m| [m.moved_at[0], m.moved_at[1]],
-                ),
+                moved_at: u
+                    .body
+                    .mover()
+                    .map_or_else(|| u.position().ground(), |m| m.moved_at.ground()),
                 state: u.life.state,
                 radius: master.radius[0],
                 restriction: u.body.mover().map(|m| m.stats.restriction),
@@ -226,8 +223,8 @@ impl World {
                 return Ok(None);
             };
             let req = crate::pathing::tile_path::Request {
-                from: [b.position[0], b.position[1]],
-                to: [a.position[0], a.position[1]],
+                from: b.position.ground(),
+                to: a.position.ground(),
                 radii: a.radius,
                 range: b.radius,
                 closed: Vec::new(),
@@ -318,7 +315,7 @@ impl World {
             let master = u.master(&self.masters, p)?;
             let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
             if (MOVING <= master.kind && 0.0 < speed) || queued {
-                points.push([u.position()[0], u.position()[1]]);
+                points.push(u.position().ground());
             }
         }
         Ok(centroid(&points))

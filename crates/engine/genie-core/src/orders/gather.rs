@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::attack::{Arms, Engagement};
 use crate::gathering::gather::{GatherRetarget, GatherStart};
 use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -32,7 +33,7 @@ pub(super) struct HuntOrder {
     /// The task.
     pub(super) task: HuntTask,
     /// The command's point.
-    pub(super) point: [f32; 3],
+    pub(super) point: Position,
     /// The install clears the action list.
     pub(super) clears: bool,
     /// The work command's unit AI notify runs.
@@ -151,7 +152,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<bool, GenieError> {
         let (tp, o) = self.object(target).ok_or(GenieError::unsupported(
             "a move to an object the slice does not hold",
@@ -221,7 +222,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<bool, GenieError> {
         let mut q = self.quarry(player, target)?;
         q.drop_site = self.drops_at_main(player, idx, target)?;
@@ -301,7 +302,7 @@ impl World {
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
-        notify: Option<([f32; 3], bool)>,
+        notify: Option<(Position, bool)>,
     ) -> Result<(), GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a gather's target the slice does not hold",

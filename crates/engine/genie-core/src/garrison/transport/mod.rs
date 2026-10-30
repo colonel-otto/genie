@@ -14,6 +14,7 @@
 //! (HD's `next_to_drop_off_terrain`).
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction, MoveToReads};
 use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
@@ -94,7 +95,7 @@ pub struct TransportAction {
     /// 0 after a move (slot 8).
     pub mode: i32,
     /// `+0x38`..`+0x40`: where it sails or unloads; x [`NONE`] for nowhere.
-    pub point: [f32; 3],
+    pub point: Position,
     /// Its `MoveTo` sub-action to the point within [`MOVE_RANGE`]: quiet, with the sprite
     /// [`Ship::given`] (`set_state` 4 and 11).
     pub move_to: Option<MoveToAction>,
@@ -109,7 +110,7 @@ pub struct TransportAction {
 #[derive(Clone, Copy, Debug)]
 pub struct Ship<'a> {
     /// The unit's place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii (x, y).
     pub radius: [f32; 2],
     /// An object is inside it (`+0x2f8` holds one).

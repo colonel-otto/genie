@@ -8,6 +8,7 @@
 //! The layers below the action layer an object has are its [`Body`].
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
 use crate::pathing::Pathing;
@@ -20,20 +21,20 @@ use genie_diff::Diff;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Static {
     /// x, y, z on the map.
-    position: [f32; 3],
+    position: Position,
 }
 
 impl Static {
     /// The layer of an object made or loaded at `position` (its constructor, or the load's read
     /// of the three fields): the world's index takes the place when the object goes into it.
     #[must_use]
-    pub const fn at(position: [f32; 3]) -> Self {
+    pub const fn at(position: Position) -> Self {
         Self { position }
     }
 
     /// x, y, z on the map.
     #[must_use]
-    pub const fn position(&self) -> [f32; 3] {
+    pub const fn position(&self) -> Position {
         self.position
     }
 
@@ -45,7 +46,7 @@ impl Static {
     pub(crate) fn new_position(
         &mut self,
         id: i32,
-        at: [f32; 3],
+        at: Position,
         moving: bool,
         (world, pathing): (&mut Spatial, Option<&mut Pathing>),
     ) -> Result<(), GenieError> {
@@ -59,8 +60,8 @@ impl Static {
 
     /// The object goes inside one at `at` (`FUN_14118c890`): it takes the container's x and y
     /// and keeps its height, and it leaves the world's index ([`Spatial::go_inside`]).
-    pub(crate) fn go_inside(&mut self, id: i32, at: [f32; 3], world: &mut Spatial) {
-        self.position = [at[0], at[1], self.position[2]];
+    pub(crate) fn go_inside(&mut self, id: i32, at: Position, world: &mut Spatial) {
+        self.position = Position::new(at.x(), at.y(), self.position.z());
         world.go_inside(id, self.position);
     }
 
@@ -71,7 +72,7 @@ impl Static {
     pub(crate) fn put_down(
         &mut self,
         id: i32,
-        at: [f32; 3],
+        at: Position,
         mut placed: crate::map::spatial::Placed,
         (world, pathing): (&mut Spatial, &mut Pathing),
     ) -> crate::map::spatial::Placed {
@@ -85,14 +86,14 @@ impl Static {
     /// A test's fixture puts the object at `at` without the world's index, which the test sets
     /// itself.
     #[cfg(test)]
-    pub(crate) const fn place_for_test(&mut self, at: [f32; 3]) {
+    pub(crate) const fn place_for_test(&mut self, at: Position) {
         self.position = at;
     }
 
     /// An object inside another takes the container's place `at` as a copy of its fields
     /// (`FUN_141191b40` before the unload: an object inside takes no `new_position`), and so
     /// does its record inside ([`Spatial::set_inside_position`]).
-    pub(crate) fn inside_at(&mut self, id: i32, at: [f32; 3], world: &mut Spatial) {
+    pub(crate) fn inside_at(&mut self, id: i32, at: Position, world: &mut Spatial) {
         self.position = at;
         world.set_inside_position(id, at);
     }
@@ -117,13 +118,13 @@ impl Animated {
     pub const fn new(speed: f32) -> Self {
         Self {
             speed,
-            base: Static::at([0.0; 3]),
+            base: Static::at(Position::ORIGIN),
         }
     }
 
     /// An animated layer at `speed` whose object stands at `position`.
     #[must_use]
-    pub const fn at(speed: f32, position: [f32; 3]) -> Self {
+    pub const fn at(speed: f32, position: Position) -> Self {
         Self {
             speed,
             base: Static::at(position),
@@ -171,7 +172,7 @@ impl Body {
     /// the animated layer stands alone, else the object is static. The lowest layer takes the
     /// place.
     #[must_use]
-    pub fn new(position: [f32; 3], animated: Option<Animated>, mover: Option<Mover>) -> Self {
+    pub fn new(position: Position, animated: Option<Animated>, mover: Option<Mover>) -> Self {
         let base = Static::at(position);
         match (animated, mover) {
             (a, Some(mut m)) => {
@@ -191,7 +192,7 @@ impl Body {
 
     /// A static object's layers at `position`.
     #[must_use]
-    pub const fn at(position: [f32; 3]) -> Self {
+    pub const fn at(position: Position) -> Self {
         Self::Static(Static::at(position))
     }
 
@@ -214,7 +215,7 @@ impl Body {
 
     /// x, y, z on the map.
     #[must_use]
-    pub const fn position(&self) -> [f32; 3] {
+    pub const fn position(&self) -> Position {
         self.base().position()
     }
 
@@ -223,7 +224,7 @@ impl Body {
     pub(crate) fn new_position(
         &mut self,
         id: i32,
-        at: [f32; 3],
+        at: Position,
         places: (&mut Spatial, Option<&mut Pathing>),
     ) -> Result<(), GenieError> {
         let moving = self.mover().is_some_and(Mover::is_moving);
@@ -318,7 +319,7 @@ mod tests {
     }
 
     /// A small map with object 7 indexed at `at`.
-    fn indexed(at: [f32; 3]) -> Spatial {
+    fn indexed(at: Position) -> Spatial {
         let mut world = Spatial::new([10, 10]);
         world.insert(
             7,
@@ -341,7 +342,7 @@ mod tests {
 
     #[test]
     fn a_body_holds_the_layers_its_type_has() {
-        let at = [1.5, 2.5, 0.0];
+        let at = Position::new(1.5, 2.5, 0.0);
         let a = Animated::new(0.5);
         assert_eq!(Body::new(at, None, None), Body::at(at));
         assert_eq!(Body::new(at, Some(a), None).anim_speed(), Some(0.5));
@@ -359,7 +360,7 @@ mod tests {
 
     #[test]
     fn every_layer_holds_the_place_at_its_bottom() {
-        let at = [1.5, 2.5, 0.25];
+        let at = Position::new(1.5, 2.5, 0.25);
         for body in [
             Body::at(at),
             Body::new(at, Some(Animated::new(1.0)), None),
@@ -380,7 +381,7 @@ mod tests {
         let mut flag = Body::Animated(Animated::default());
         flag.set_anim_speed(1.0);
         assert_eq!((flag.anim_speed(), flag.mover()), (Some(1.0), None));
-        let mut walker = Body::new([0.0; 3], None, Some(mover()));
+        let mut walker = Body::new(Position::ORIGIN, None, Some(mover()));
         walker.set_anim_speed(2.0);
         assert_eq!(walker.mover_mut().map(|m| m.animated.speed), Some(2.0));
         assert_eq!(walker.animated_mut().map(|a| a.speed), Some(2.0));
@@ -388,7 +389,7 @@ mod tests {
 
     #[test]
     fn a_taken_mover_leaves_the_animated_layer_and_comes_back_with_it() {
-        let at = [3.0, 4.0, 0.0];
+        let at = Position::new(3.0, 4.0, 0.0);
         let mut body = Body::new(at, Some(Animated::new(1.0)), Some(mover()));
         let taken = body.take_mover();
         assert_eq!(body, Body::new(at, Some(Animated::new(1.0)), None));
@@ -404,12 +405,15 @@ mod tests {
     /// FD-045-01M62GVS08: one place setter writes the body and the spatial index.
     #[test]
     fn the_place_setter_moves_the_object_and_its_index_together() {
-        let mut world = indexed([1.5, 1.5, 0.0]);
-        let mut body = Body::new([1.5, 1.5, 0.0], None, Some(mover()));
-        body.new_position(7, [2.5, 1.25, 0.0], (&mut world, None))
+        let mut world = indexed(Position::new(1.5, 1.5, 0.0));
+        let mut body = Body::new(Position::new(1.5, 1.5, 0.0), None, Some(mover()));
+        body.new_position(7, Position::new(2.5, 1.25, 0.0), (&mut world, None))
             .unwrap();
-        assert_eq!(body.position(), [2.5, 1.25, 0.0]);
-        assert_eq!(world.get(7).map(|p| p.position), Some([2.5, 1.25, 0.0]));
+        assert_eq!(body.position(), Position::new(2.5, 1.25, 0.0));
+        assert_eq!(
+            world.get(7).map(|p| p.position),
+            Some(Position::new(2.5, 1.25, 0.0))
+        );
         assert_eq!(
             world.tiles().list(2, 1),
             [7],
@@ -423,25 +427,43 @@ mod tests {
 
     #[test]
     fn an_object_going_inside_takes_its_containers_ground_place() {
-        let mut world = indexed([1.5, 1.5, 0.5]);
-        let mut base = Static::at([1.5, 1.5, 0.5]);
-        base.go_inside(7, [4.0, 5.0, 0.0], &mut world);
-        assert_eq!(base.position(), [4.0, 5.0, 0.5], "it keeps its height");
-        assert_eq!(world.get(7).map(|p| p.position), Some([4.0, 5.0, 0.5]));
-        assert!(world.tiles().list(1, 1).is_empty(), "it leaves its tile");
-        base.inside_at(7, [4.0, 5.0, 1.0], &mut world);
+        let mut world = indexed(Position::new(1.5, 1.5, 0.5));
+        let mut base = Static::at(Position::new(1.5, 1.5, 0.5));
+        base.go_inside(7, Position::new(4.0, 5.0, 0.0), &mut world);
         assert_eq!(
             base.position(),
-            [4.0, 5.0, 1.0],
+            Position::new(4.0, 5.0, 0.5),
+            "it keeps its height"
+        );
+        assert_eq!(
+            world.get(7).map(|p| p.position),
+            Some(Position::new(4.0, 5.0, 0.5))
+        );
+        assert!(world.tiles().list(1, 1).is_empty(), "it leaves its tile");
+        base.inside_at(7, Position::new(4.0, 5.0, 1.0), &mut world);
+        assert_eq!(
+            base.position(),
+            Position::new(4.0, 5.0, 1.0),
             "a copy of the container's place"
         );
-        assert_eq!(world.get(7).map(|p| p.position), Some([4.0, 5.0, 1.0]));
+        assert_eq!(
+            world.get(7).map(|p| p.position),
+            Some(Position::new(4.0, 5.0, 1.0))
+        );
         let record = world.come_out(7).expect("its record inside");
         let mut pathing = Pathing::default();
-        let filed = base.put_down(7, [2.5, 2.5, 0.0], record, (&mut world, &mut pathing));
-        assert_eq!(base.position(), [2.5, 2.5, 0.0]);
-        assert_eq!(filed.position, [2.5, 2.5, 0.0]);
-        assert_eq!(world.get(7).map(|p| p.position), Some([2.5, 2.5, 0.0]));
+        let filed = base.put_down(
+            7,
+            Position::new(2.5, 2.5, 0.0),
+            record,
+            (&mut world, &mut pathing),
+        );
+        assert_eq!(base.position(), Position::new(2.5, 2.5, 0.0));
+        assert_eq!(filed.position, Position::new(2.5, 2.5, 0.0));
+        assert_eq!(
+            world.get(7).map(|p| p.position),
+            Some(Position::new(2.5, 2.5, 0.0))
+        );
         assert_eq!(world.tiles().list(2, 2), [7], "back on a tile's list");
     }
 }

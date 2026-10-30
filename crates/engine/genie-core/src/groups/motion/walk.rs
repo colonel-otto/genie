@@ -6,8 +6,9 @@ use crate::groups::motion::{
     EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, StepWorld, ground,
     hold, passes_waypoint, path_step, point, reset_level, set_flag,
 };
+use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::{Planning, footprint_gap};
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
@@ -36,10 +37,10 @@ pub(super) fn steer(
     }
     // FUN_141046080: the direction on the ground
     let mut direction = fmath::sub(waypoint, at);
-    direction[1] = 0.0;
-    let l = fmath::sqrt(direction[0] * direction[0] + 0.0 + direction[2] * direction[2]);
-    direction = [direction[0] / l, direction[1] / l, direction[2] / l];
-    let step = (dt * motion.acceleration[2] + motion.velocity[2]) * dt;
+    direction = direction.with_height(0.0);
+    let l = fmath::sqrt(direction.x() * direction.x() + 0.0 + direction.y() * direction.y());
+    direction = BVector::new(direction.x() / l, direction.height() / l, direction.y() / l);
+    let step = (dt * motion.acceleration.y() + motion.velocity.y()) * dt;
     let next = fmath::add(at, fmath::scale(step, direction));
     match passes_waypoint(waypoint, at, next) {
         2 => {
@@ -60,7 +61,7 @@ pub(super) fn steer(
     }
     turn_toward(motion, direction, dt);
     pull_to_members(motion, group);
-    motion.velocity[2] = motion.maximum_velocity_forward;
+    motion.velocity = motion.velocity.with_y(motion.maximum_velocity_forward);
     Ok(Pass::Done(true))
 }
 
@@ -74,8 +75,8 @@ fn way_blocked(
     motion: &mut Motion,
     lead: &Lead,
     spatial: &mut Spatial,
-    at: Vec3,
-    next: Vec3,
+    at: BVector,
+    next: BVector,
 ) -> Result<Option<Pass>, GenieError> {
     let ignore = match lead.group.as_ref() {
         Some(g) if !g.differentiator_units.is_empty() => g.differentiator_units.clone(),
@@ -150,7 +151,7 @@ fn back_to_parent(motion: &mut Motion, lead: &Lead, spatial: &Spatial) -> Result
             break;
         }
         let p = point(parent, parent.waypoint);
-        if spatial.standable(p[0] as i32, p[2] as i32, lead.walker.mask) {
+        if spatial.standable(p.x() as i32, p.y() as i32, lead.walker.mask) {
             break;
         }
     }
@@ -164,7 +165,7 @@ fn back_to_parent(motion: &mut Motion, lead: &Lead, spatial: &Spatial) -> Result
 /// (within [`EPSILON`]) counts the waypoint reached. None when the walk goes on.
 fn walk_ends(
     motion: &mut Motion,
-    at: Vec3,
+    at: BVector,
     target: Option<&Placed>,
 ) -> Result<Option<Pass>, GenieError> {
     let level = motion.paths.checked(0)?;
@@ -177,7 +178,7 @@ fn walk_ends(
             {
                 let end = point(top, top.points.len() as i32 - 1);
                 let d = fmath::sub(at, end);
-                let gap = fmath::sqrt(d[1] * d[1] + d[0] * d[0] + d[2] * d[2]);
+                let gap = fmath::sqrt(d.height() * d.height() + d.x() * d.x() + d.y() * d.y());
                 if gap - level.range < EPSILON {
                     reset_level(&mut motion.paths)?;
                     motion.stand();
@@ -186,7 +187,12 @@ fn walk_ends(
             }
         }
         Some(t) => {
-            let gap = footprint_gap(t.position, t.radius, [at[0], at[2], 0.0], [0.0, 0.0]);
+            let gap = footprint_gap(
+                t.position,
+                t.radius,
+                Position::new(at.x(), at.y(), 0.0),
+                [0.0, 0.0],
+            );
             if (gap - level.range).abs() < EPSILON {
                 return Ok(Some(Pass::Reached));
             }
@@ -197,11 +203,10 @@ fn walk_ends(
 
 /// The turn toward the waypoint (`direction`, on the ground) from the forward on the ground, by
 /// the yaw the turn rate allows in `dt` ([`Motion::calculate_yaw_angle`], [`Motion::turn`]).
-fn turn_toward(motion: &mut Motion, direction: Vec3, dt: f32) {
-    let mut forward = motion.position[1];
-    forward[1] = 0.0;
-    let f = fmath::sqrt(forward[0] * forward[0] + 0.0 + forward[2] * forward[2]);
-    let forward = [forward[0] / f, forward[1] / f, forward[2] / f];
+fn turn_toward(motion: &mut Motion, direction: BVector, dt: f32) {
+    let forward = motion.position[1].with_height(0.0);
+    let f = fmath::sqrt(forward.x() * forward.x() + 0.0 + forward.y() * forward.y());
+    let forward = BVector::new(forward.x() / f, forward.height() / f, forward.y() / f);
     let yaw = motion.calculate_yaw_angle(forward, direction, dt, true);
     motion.turn(yaw);
 }
@@ -219,18 +224,22 @@ fn pull_to_members(motion: &mut Motion, group: &GroupView) {
         return;
     }
     let n = group.members.len();
-    let mut centre = [0.0f32; 3];
+    let mut centre = BVector::ZERO;
     if n != 0 {
         for &(_, p) in group.members.iter().flatten() {
-            centre = [centre[0] + p[0], p[1] + centre[1], p[2] + centre[2]];
+            centre = BVector::new(
+                centre.x() + p.x(),
+                p.height() + centre.height(),
+                p.y() + centre.y(),
+            );
         }
         let n = n as f32;
-        centre = [centre[0] / n, centre[1] / n, centre[2] / n];
+        centre = BVector::new(centre.x() / n, centre.height() / n, centre.y() / n);
     }
-    let c = [centre[0], 0.0, centre[2]];
-    let here = [motion.position[0][0], 0.0, motion.position[0][2]];
+    let c = centre.with_height(0.0);
+    let here = motion.position[0].with_height(0.0);
     let d = fmath::sub(here, c);
-    if PULL_DISTANCE <= d[0] * d[0] + d[1] * d[1] + d[2] * d[2] {
+    if PULL_DISTANCE <= d.x() * d.x() + d.height() * d.height() + d.y() * d.y() {
         motion.new_position[0] = fmath::add(
             fmath::scale(PULL_SHARE, c),
             fmath::scale(PULL_KEEP, motion.new_position[0]),

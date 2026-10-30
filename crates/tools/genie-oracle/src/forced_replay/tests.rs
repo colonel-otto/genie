@@ -6,6 +6,7 @@ use crate::forced_replay::{
 };
 use crate::setup::slice;
 use genie_core::groups::{UnitGroup, UnitGroups};
+use genie_core::map::Position;
 use genie_core::vision::ghost::Ghost;
 use genie_core::world::{GameState, World};
 
@@ -22,7 +23,7 @@ fn ghost(id: i32) -> Ghost {
         original_id: id + 100,
         original_master: None,
         original_owner: 0,
-        position: [1.0, 2.0, 0.0],
+        position: Position::new(1.0, 2.0, 0.0),
         tile: [1, 2],
         footprint: 0,
         bits: 0,

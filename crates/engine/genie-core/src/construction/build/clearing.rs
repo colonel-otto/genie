@@ -204,8 +204,8 @@ pub(super) fn clearing_takes(
         return Ok(None);
     }
     let [rx, ry] = site.radius;
-    let dx = (o.position[0] - site.at[0]).abs();
-    let dy = (o.position[1] - site.at[1]).abs();
+    let dx = (o.position.x() - site.at[0]).abs();
+    let dy = (o.position.y() - site.at[1]).abs();
     if !(dx < o.radius[0] + rx && dy < o.radius[1] + ry) {
         return Ok(None);
     }

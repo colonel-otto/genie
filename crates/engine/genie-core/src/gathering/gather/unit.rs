@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::victims::{readable, victim, write_back};
 use crate::gathering::gather::Walks;
 use crate::gathering::hunt::HuntSprites;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::move_to::WalkTo;
 use crate::movement::move_to::{MoveDefaults, SpriteReads};
@@ -209,7 +210,7 @@ impl Unit {
         &self,
         c: &Step<'_>,
         site: i32,
-        (position, radius): ([f32; 3], [f32; 2]),
+        (position, radius): (Position, [f32; 2]),
     ) -> Result<Option<crate::gathering::hunt::DropOff>, GenieError> {
         let Some(s) = c.w.spatial.get_known(site)? else {
             return Ok(None);

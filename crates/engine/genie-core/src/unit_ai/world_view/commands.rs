@@ -267,7 +267,7 @@ pub(crate) const TOWN_CENTRES: [i16; 2] = [109, 444];
 /// index's order within a master is not held: two objects of the first master found are not
 /// modelled.
 pub(crate) fn town_centre(units: OthersRef<'_>) -> Result<Option<[i32; 2]>, GenieError> {
-    Ok(town_centre_unit(units)?.map(|u| [u.position()[0] as i32, u.position()[1] as i32]))
+    Ok(town_centre_unit(units)?.map(|u| [u.position().x() as i32, u.position().y() as i32]))
 }
 
 /// [`town_centre`] as the object.
@@ -325,7 +325,7 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
     }
 
     fn own_zone(&mut self) -> u16 {
-        let [x, y, _] = self.mover.position();
+        let (x, y) = (self.mover.position().x(), self.mover.position().y());
         self.zones.zone(x as i32, y as i32)
     }
 
@@ -353,8 +353,8 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
             let g = d.abs() - r;
             if g <= 0.0 { 0.0 } else { g }
         };
-        let gx = gap(x as f32 - self.mover.position()[0], self.radius[0]);
-        let gy = gap(y as f32 - self.mover.position()[1], self.radius[1]);
+        let gx = gap(x as f32 - self.mover.position().x(), self.radius[0]);
+        let gy = gap(y as f32 - self.mover.position().y(), self.radius[1]);
         crate::math::fmath::sqrt(gy * gy + gx * gx)
     }
 }

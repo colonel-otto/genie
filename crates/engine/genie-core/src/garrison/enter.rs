@@ -7,6 +7,7 @@ use crate::garrison::{
     ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, UNPLACED, UNREACHED, WalkStart, Walking,
     enter_view, ship_reaches,
 };
+use crate::map::Position;
 use crate::movement::move_to::MoveToReads;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
@@ -28,7 +29,7 @@ impl World {
         idx: usize,
         target: i32,
         task: &Task,
-        point: [f32; 3],
+        point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
         let (action, target, class) = self.new_enter(player, idx, target, task)?;
@@ -168,9 +169,9 @@ impl World {
             .ok_or(GenieError::unsupported("an Enter whose building is gone"))?;
         let (tp, t) = self.object(target).ok_or_else(|| object_gone(target))?;
         let tm = t.master(&self.masters, tp)?;
-        let (class, height) = (i32::from(tm.class.get()), t.position()[2]);
+        let (class, height) = (i32::from(tm.class.get()), t.position().z());
         let (at, _) = self.enter_meeting(player, idx, target)?;
-        let action = EnterAction::new(target, [at[0], at[1], height], task);
+        let action = EnterAction::new(target, Position::new(at[0], at[1], height), task);
         self.take(target, self.releaser(player, idx))?;
         Ok((action, target, class))
     }
@@ -379,7 +380,7 @@ impl World {
     pub(crate) fn move_transport(
         &mut self,
         transport: i32,
-        to: [f32; 3],
+        to: Position,
     ) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(tp, ti)) = self.place(transport) else {
             return Err(UNREACHED);
@@ -401,7 +402,7 @@ impl World {
 
     /// The transport's slot 0x340 (`FUN_141216c50`, [`World::move_aside`]: range 0, forced,
     /// running) to `to`, where it meets an entering unit.
-    pub(crate) fn ship_move(&mut self, ship: i32, to: [f32; 3]) -> Result<(), GenieError> {
+    pub(crate) fn ship_move(&mut self, ship: i32, to: Position) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(p, i)) = self.place(ship) else {
             return Err(UNREACHED);
         };

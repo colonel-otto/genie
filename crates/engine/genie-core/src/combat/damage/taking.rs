@@ -7,6 +7,7 @@ use crate::combat::damage::{
     ONE, RETALIATION_RANGE, RETALIATION_SCALE, Razed, SPECIAL, Victim, charge_hit, damage,
     effective, elevation_factor, facing_offset, hp_floor, lose, special_charge_ready,
 };
+use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::WONDER;
@@ -294,7 +295,7 @@ pub(super) fn take_unit(
 /// # Errors
 ///
 /// A target without its facing (`+0x7e8`).
-pub(super) fn facing_to(a: &Armored, at: [f32; 3], src: &Victim) -> Result<f32, GenieError> {
+pub(super) fn facing_to(a: &Armored, at: Position, src: &Victim) -> Result<f32, GenieError> {
     let facing = a.facing.ok_or(GenieError::unsupported(
         "the facing of a target with a special attack or a retaliation (+0x7e8)",
     ))?;
@@ -331,7 +332,7 @@ pub(super) fn retaliates(
     if !(MINUS_FACING < off && off < FACING) {
         return Ok(false);
     }
-    let mut f = elevation_factor(t.position[2], t.attack_elevation, src);
+    let mut f = elevation_factor(t.position.z(), t.attack_elevation, src);
     if src.kind == COMBAT && special_charge_ready(&src.source)? {
         f *= RETALIATION_SCALE;
     }

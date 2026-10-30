@@ -113,7 +113,7 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
     v.add_seer(8, unit(PlayerId::new(0), 2.0));
     let i = 10 * 120 + 10;
     v.unified[i] = 0b011;
-    let at = [10.5, 10.5, 0.0];
+    let at = Position::new(10.5, 10.5, 0.0);
     assert_eq!(
         v.combat_sight(7, PlayerId::new(0), at, [0.2, 0.2], class::CLASS_6, None),
         Ok(Some(0b011))
@@ -162,7 +162,7 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
 /// of sight alone.
 #[test]
 fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
-    let at = [10.5, 10.5, 0.0];
+    let at = Position::new(10.5, 10.5, 0.0);
     let mut v = world(PlayerId::new(3));
     v.add_seer(7, unit(PlayerId::new(0), 2.0));
     let _ = v.sight_on(7, at, [0.2, 0.2], false, false).unwrap();
@@ -282,7 +282,8 @@ fn a_resource_leaves_the_lists_of_the_players_that_explored_its_tile() {
         r.add(7, 1, 20.5, 30.5);
     }
     let _ = v.explore(PlayerId::new(2), 20, 30, 0, false).unwrap();
-    v.forget_resource(7, [20.5, 30.5, 0.0], 1).unwrap();
+    v.forget_resource(7, Position::new(20.5, 30.5, 0.0), 1)
+        .unwrap();
     assert_eq!(v.resources[2].lists[1], []);
     assert_eq!(v.resources[0].lists[1], [rec(7, 20.5, 30.5)]);
     assert_eq!(v.resources[1].lists[1], [rec(7, 20.5, 30.5)]);
@@ -316,14 +317,29 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
     let mut v = world(PlayerId::new(3));
     v.add_seer(7, unit(PlayerId::new(1), 2.0));
     let r = [0.5, 0.5];
-    let _ = v.sight_on(7, [5.5, 5.5, 0.0], r, false, false).unwrap();
+    let _ = v
+        .sight_on(7, Position::new(5.5, 5.5, 0.0), r, false, false)
+        .unwrap();
     let before = v.maps[1].counts.clone();
-    v.moved(7, [5.5, 5.5, 0.0], [5.9, 5.2, 0.0], r).unwrap();
+    v.moved(
+        7,
+        Position::new(5.5, 5.5, 0.0),
+        Position::new(5.9, 5.2, 0.0),
+        r,
+    )
+    .unwrap();
     assert_eq!(v.maps[1].counts, before, "the same tile");
-    v.moved(7, [5.9, 5.2, 0.0], [6.1, 5.2, 0.0], r).unwrap();
+    v.moved(
+        7,
+        Position::new(5.9, 5.2, 0.0),
+        Position::new(6.1, 5.2, 0.0),
+        r,
+    )
+    .unwrap();
     assert_eq!(v.maps[1].counts[v.index(8, 5)], 1);
     assert_eq!(v.maps[1].counts[v.index(3, 5)], 0);
-    v.state_changed(7, [6.1, 5.2, 0.0], r, 3).unwrap();
+    v.state_changed(7, Position::new(6.1, 5.2, 0.0), r, 3)
+        .unwrap();
     let seen: Vec<_> = (0..120 * 120)
         .filter(|&i| 0 < v.maps[1].counts[i])
         .collect();
@@ -331,7 +347,8 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
         seen,
         vec![v.index(5, 4), v.index(6, 4), v.index(5, 5), v.index(6, 5)]
     );
-    v.state_changed(7, [6.1, 5.2, 0.0], r, 7).unwrap();
+    v.state_changed(7, Position::new(6.1, 5.2, 0.0), r, 7)
+        .unwrap();
     assert!(v.maps[1].counts.iter().all(|&c| c <= 0));
 }
 
@@ -387,7 +404,11 @@ fn the_extent_list_matches_the_saved_entries_of_a_town_centre_and_a_house() {
 #[test]
 fn a_first_sight_of_a_building_s_tile_explores_the_building() {
     let mut v = world(PlayerId::new(3));
-    assert_eq!(v.link_building([29.0, 94.0, 0.0], [2.0, 2.0]).unwrap(), 1);
+    assert_eq!(
+        v.link_building(Position::new(29.0, 94.0, 0.0), [2.0, 2.0])
+            .unwrap(),
+        1
+    );
     assert_eq!(v.link(29, 94).unwrap(), (ANCHOR, 1));
     assert_eq!(v.link(28, 93).unwrap(), (LINKED, 0xff));
     assert_eq!(v.link(30, 95).unwrap(), (LINKED, 0x11));
@@ -398,7 +419,8 @@ fn a_first_sight_of_a_building_s_tile_explores_the_building() {
     assert_eq!(v.maps[1].counts[v.index(27, 92)], 1);
     assert_eq!(v.maps[1].counts[v.index(30, 95)], 0);
     assert_eq!(v.maps[1].explored, 16);
-    v.unlink_building([29.0, 94.0, 0.0], [2.0, 2.0]).unwrap();
+    v.unlink_building(Position::new(29.0, 94.0, 0.0), [2.0, 2.0])
+        .unwrap();
     assert_eq!(v.link(29, 94).unwrap(), (0, 0));
 }
 
@@ -413,7 +435,7 @@ fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner(
         ..unit(PlayerId::new(2), 2.0)
     };
     v.add_seer(9, site);
-    let (at, r) = ([10.0, 10.0, 0.0], [1.0, 1.0]);
+    let (at, r) = (Position::new(10.0, 10.0, 0.0), [1.0, 1.0]);
     assert_eq!(
         v.sight_on(9, at, r, false, false).unwrap(),
         0,

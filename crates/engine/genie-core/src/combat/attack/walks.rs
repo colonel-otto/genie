@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::attack::{ATTACK_WITHOUT_TARGET, Attack, AttackReads, GOTO_POINT};
+use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, SpriteReads, WalkTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
@@ -72,7 +73,7 @@ impl Attack {
     /// An Attack without a target, and a sprite the table lacks.
     pub(super) fn walk_to_target(
         &mut self,
-        at: [f32; 3],
+        at: Position,
         gap: f32,
         reads: &MoveToReads<'_>,
     ) -> Result<bool, GenieError> {

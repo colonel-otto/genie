@@ -1,8 +1,9 @@
 //! Path points, the gaps between footprints and the position setter's tests.
 
+use crate::map::Position;
 use crate::map::spatial::Placed;
 use crate::math::fmath;
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::math::rng::Well512;
 use crate::movement::{EPSILON, Motion, PathData, RANGE_FLOOR, SHORTEST};
 use crate::pathing::Pathing;
@@ -24,40 +25,42 @@ pub(super) fn cut_path(path: &mut Path, i: i32) -> bool {
 
 /// A point of a path (`FUN_140f9bcd0`): outside it, the game's static point (`DAT_143f0dc88`),
 /// zero.
-pub(super) fn point_or_zero(path: &Path, index: i32) -> Vec3 {
+pub(super) fn point_or_zero(path: &Path, index: i32) -> BVector {
     usize::try_from(index)
         .ok()
         .and_then(|i| path.points.get(i))
         .copied()
-        .unwrap_or([0.0; 3])
+        .unwrap_or(BVector::ZERO)
 }
 
 /// A waypoint of a level's path, or the game's static zero point outside it.
-pub(super) fn point_or_zero_of(level: &PathData, index: i32) -> Vec3 {
+pub(super) fn point_or_zero_of(level: &PathData, index: i32) -> BVector {
     usize::try_from(index)
         .ok()
         .and_then(|i| level.points.get(i))
         .copied()
-        .unwrap_or([0.0; 3])
+        .unwrap_or(BVector::ZERO)
 }
 
 /// The position setter's test for a move (`FUN_141161950`): a coordinate changed by more than
 /// 1e-7.
-pub(super) fn moved_far(a: [f32; 3], b: [f32; 3]) -> bool {
-    (0..3).any(|i| EPSILON < (b[i] - a[i]).abs())
+pub(super) fn moved_far(a: Position, b: Position) -> bool {
+    [b.x() - a.x(), b.y() - a.y(), b.z() - a.z()]
+        .iter()
+        .any(|d| EPSILON < d.abs())
 }
 
 /// The motion step's start-test line for the ignore list (`FUN_141150f00`'s calls of
 /// `FUN_14114ece0`): from the unit's place to the waypoint, both on the ground (x, y).
-pub(super) const fn ground_line(at: [f32; 3], waypoint: Vec3) -> ([f32; 2], [f32; 2]) {
-    ([at[0], at[1]], [waypoint[0], waypoint[2]])
+pub(super) const fn ground_line(at: Position, waypoint: BVector) -> ([f32; 2], [f32; 2]) {
+    (at.ground(), waypoint.ground())
 }
 
 /// The length on the ground from `a` to `b`.
-pub(super) fn ground(a: Vec3, b: Vec3) -> f32 {
+pub(super) fn ground(a: BVector, b: BVector) -> f32 {
     let mut d = fmath::sub(a, b);
-    d[1] = 0.0;
-    fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2])
+    d = d.with_height(0.0);
+    fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y())
 }
 
 /// The short pather's range for a request (`0x141150f00`): the level's range less 0.1 when its
@@ -179,17 +182,17 @@ pub(super) fn split(path: &mut Path, i: i32) {
     }
     let (a, b) = (path.points[at], path.points[at + 1]);
     let d = fmath::sub(b, a);
-    let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    let length = fmath::sqrt(d.x() * d.x() + d.height() * d.height() + d.y() * d.y());
     if length < EPSILON {
         return;
     }
-    let again = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    let again = fmath::sqrt(d.x() * d.x() + d.height() * d.height() + d.y() * d.y());
     let half = length * 0.5;
-    let step = [
-        (d[0] / again) * half,
-        (d[1] / again) * half,
-        (d[2] / again) * half,
-    ];
+    let step = BVector::new(
+        (d.x() / again) * half,
+        (d.height() / again) * half,
+        (d.y() / again) * half,
+    );
     let _ = path.insert(at + 1, fmath::add(a, step));
 }
 
@@ -268,21 +271,21 @@ pub(crate) enum AfterRequest {
 /// centre distance minus both radii, at least 0, squared and summed.
 #[must_use]
 pub fn footprint_gap_squared(
-    a: [f32; 3],
+    a: Position,
     a_radius: [f32; 2],
-    b: [f32; 3],
+    b: Position,
     b_radius: [f32; 2],
 ) -> f32 {
-    let x = ((b[0] - a[0]).abs() - (a_radius[0] + b_radius[0])).max(0.0);
-    let y = ((b[1] - a[1]).abs() - (a_radius[1] + b_radius[1])).max(0.0);
+    let x = ((b.x() - a.x()).abs() - (a_radius[0] + b_radius[0])).max(0.0);
+    let y = ((b.y() - a.y()).abs() - (a_radius[1] + b_radius[1])).max(0.0);
     x * x + y * y
 }
 
 /// The distance between two footprints on the ground (`FUN_14118f680`): per axis the centre
 /// distance minus both radii, at least 0, then the length of the two.
 #[must_use]
-pub fn footprint_gap(a: [f32; 3], a_radius: [f32; 2], b: [f32; 3], b_radius: [f32; 2]) -> f32 {
-    let x = ((b[0] - a[0]).abs() - (b_radius[0] + a_radius[0])).max(0.0);
-    let y = ((b[1] - a[1]).abs() - (b_radius[1] + a_radius[1])).max(0.0);
+pub fn footprint_gap(a: Position, a_radius: [f32; 2], b: Position, b_radius: [f32; 2]) -> f32 {
+    let x = ((b.x() - a.x()).abs() - (b_radius[0] + a_radius[0])).max(0.0);
+    let y = ((b.y() - a.y()).abs() - (b_radius[1] + a_radius[1])).max(0.0);
     fmath::sqrt(x * x + y * y)
 }

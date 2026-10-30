@@ -30,7 +30,7 @@ fn on_map(
     buildable: u8,
 ) -> crate::map::spatial::Placed {
     crate::map::spatial::Placed {
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         radius: [r, r],
         class,
         player: PlayerId::new(1),
@@ -377,7 +377,7 @@ pub(crate) fn graphics() -> BTreeMap<i16, crate::objects::sprite::Graphic> {
 
 /// A Build started on the foundation `id` (state 0) at `at`, `gap` from its builder (state 2,
 /// speed 1, no default sprites), with `task` ([`BuildAction::start`]).
-pub(crate) fn started(id: i32, at: [f32; 3], gap: f32, task: BuildTask) -> BuildAction {
+pub(crate) fn started(id: i32, at: Position, gap: f32, task: BuildTask) -> BuildAction {
     let graphics = graphics();
     let move_reads = MoveToReads {
         sprites: SpriteReads {
@@ -386,7 +386,7 @@ pub(crate) fn started(id: i32, at: [f32; 3], gap: f32, task: BuildTask) -> Build
         },
         state: 2,
         speed: 1.0,
-        at: [at[0] - gap, at[1], 0.0],
+        at: Position::new(at.x() - gap, at.y(), 0.0),
         ground: [0.2, 0.2],
     };
     let to = WalkTo {
@@ -402,14 +402,14 @@ pub(crate) fn started(id: i32, at: [f32; 3], gap: f32, task: BuildTask) -> Build
 /// `MoveTo` ([`BuildTask::walk`]).
 #[test]
 fn a_build_s_move_to_takes_its_task_s_moving_sprite() {
-    let moving = started(10028, [10.5, 10.5, 0.0], 5.0, MOVING_TASK);
+    let moving = started(10028, Position::new(10.5, 10.5, 0.0), 5.0, MOVING_TASK);
     assert_eq!(moving.move_to.and_then(|m| m.sprite).map(|g| g.id), Some(3));
 }
 
 /// MarvinBlue/426048731's house 10028 as BUILD placed it: a foundation of master 70.
 fn house() -> crate::map::spatial::Placed {
     crate::map::spatial::Placed {
-        position: [30.0, 88.0, 0.0],
+        position: Position::new(30.0, 88.0, 0.0),
         radius: [1.0, 1.0],
         class: class::BUILDING,
         player: PlayerId::new(2),
@@ -436,20 +436,20 @@ fn a_stop_halts_the_build_and_lets_its_foundation_go() {
         state: MOVE,
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         added: true,
-        ..started(31148, [0.0; 3], 0.0, TASK)
+        ..started(31148, Position::ORIGIN, 0.0, TASK)
     };
     assert_eq!(b.halt(Some(&mut mover)), Ok((true, [31148, -1])));
     assert_eq!(
         (b.state, b.added, b.move_to, b.target),
         (HALTED, false, None, -1)
     );
-    assert_eq!(b.point, [-1.0; 3]);
-    assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(b.point, Position::new(-1.0, -1.0, -1.0));
+    assert_eq!(mover.velocity.unwrap().velocity.y(), 0.0);
     // one not counted among the builders, standing: nothing to stop
     let mut idle = BuildAction {
         state: WORK,
         move_to: None,
-        ..started(31150, [0.0; 3], 0.0, TASK)
+        ..started(31150, Position::ORIGIN, 0.0, TASK)
     };
     assert_eq!(idle.halt(None), Ok((false, [31150, -1])));
 }
@@ -458,11 +458,16 @@ fn a_stop_halts_the_build_and_lets_its_foundation_go() {
 /// as the action's point (`+0x38`..`+0x40`) and its `MoveTo` the foundation as its target.
 #[test]
 fn a_build_s_point_is_its_foundation_s_place() {
-    let b = started(10913, [61.5, 92.5, 1.0], 0.8, TASK);
+    let b = started(10913, Position::new(61.5, 92.5, 1.0), 0.8, TASK);
     let walk = b.move_to.unwrap();
     assert_eq!(
         (b.point, walk.target, walk.point, walk.state),
-        ([61.5, 92.5, 1.0], 10913, [61.5, 92.5, 1.0], MoveTo::Start)
+        (
+            Position::new(61.5, 92.5, 1.0),
+            10913,
+            Position::new(61.5, 92.5, 1.0),
+            MoveTo::Start
+        )
     );
 }
 
@@ -473,16 +478,16 @@ fn a_builder_sent_to_another_foundation_starts_over() {
         move_to: None,
         added: true,
         timer: 0.5,
-        ..started(31148, [0.0; 3], 0.0, TASK)
+        ..started(31148, Position::ORIGIN, 0.0, TASK)
     };
-    let walk = started(31150, [0.0; 3], 0.0, TASK).move_to;
-    b.retarget(31150, [0.0; 3], walk, None).unwrap();
+    let walk = started(31150, Position::ORIGIN, 0.0, TASK).move_to;
+    b.retarget(31150, Position::ORIGIN, walk, None).unwrap();
     // set_state(4) keeps the timer
     assert_eq!(
         b,
         BuildAction {
             timer: 0.5,
-            ..started(31150, [0.0; 3], 0.0, TASK)
+            ..started(31150, Position::ORIGIN, 0.0, TASK)
         }
     );
     assert_eq!(
@@ -510,22 +515,22 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
         state: PLACE,
         move_to: None,
         added: true,
-        ..started(31011, [0.0; 3], 0.0, TASK)
+        ..started(31011, Position::ORIGIN, 0.0, TASK)
     };
-    let walk = started(31011, [0.0; 3], 0.0, TASK).move_to;
-    b.retake([0.0; 3], walk, None, Some(&mut c.builders), false)
+    let walk = started(31011, Position::ORIGIN, 0.0, TASK).move_to;
+    b.retake(Position::ORIGIN, walk, None, Some(&mut c.builders), false)
         .unwrap();
     assert_eq!(c.builders, 1);
-    assert_eq!(b, started(31011, [0.0; 3], 0.0, TASK));
+    assert_eq!(b, started(31011, Position::ORIGIN, 0.0, TASK));
     assert_eq!(b.move_to.map(|m| m.state), Some(MoveTo::Arrived));
     let mut working = BuildAction {
         state: WORK,
         move_to: None,
-        ..started(31011, [0.0; 3], 0.0, TASK)
+        ..started(31011, Position::ORIGIN, 0.0, TASK)
     };
     let before = working;
     working
-        .retake([0.0; 3], walk, None, Some(&mut c.builders), false)
+        .retake(Position::ORIGIN, walk, None, Some(&mut c.builders), false)
         .unwrap();
     assert_eq!(working, before);
     assert_eq!(c.builders, 1);
@@ -555,7 +560,7 @@ fn site_world(spatial: Spatial, masters: Vec<Master>, units: Vec<Unit>) -> World
 }
 
 /// The foundation `id` at `at` with its life cycle and construction.
-fn foundation_at(id: i32, at: [f32; 3], life: Lifecycle, construction: Construction) -> Unit {
+fn foundation_at(id: i32, at: Position, life: Lifecycle, construction: Construction) -> Unit {
     Unit {
         id: object_id(id),
         body: crate::objects::layers::Body::at(at),
@@ -628,7 +633,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
     world.insert(
         10026,
         crate::map::spatial::Placed {
-            position: [2.0, 2.0, 0.0],
+            position: Position::new(2.0, 2.0, 0.0),
             ..house()
         },
     );
@@ -672,7 +677,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         snow: false,
         sprite_override: false,
     };
-    let house = foundation_at(10026, [2.0, 2.0, 0.0], life, c);
+    let house = foundation_at(10026, Position::new(2.0, 2.0, 0.0), life, c);
     let mut t = site_world(world, vec![master], vec![house]);
     assert_eq!(t.work_building(10026, 0.02), Ok(false));
     let h = t.players[1].objects.by_id(10026).unwrap();
@@ -701,7 +706,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
         world.insert(
             10026,
             crate::map::spatial::Placed {
-                position: [2.0, 2.0, 0.0],
+                position: Position::new(2.0, 2.0, 0.0),
                 master: id,
                 ..house()
             },
@@ -722,7 +727,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
             snow: false,
             sprite_override: false,
         };
-        let mut h = foundation_at(10026, [2.0, 2.0, 0.0], life, c);
+        let mut h = foundation_at(10026, Position::new(2.0, 2.0, 0.0), life, c);
         h.annex_of = main.then_some(10027);
         let mut t = site_world(world, vec![built_master(id, cost)], vec![h]);
         // a history records events from its first time slice on
@@ -812,7 +817,7 @@ fn the_work_starts_the_desolid_annexes_first() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
     let at = |x: f32, id: i16| crate::map::spatial::Placed {
-        position: [x, 88.0, 0.0],
+        position: Position::new(x, 88.0, 0.0),
         master: id,
         ..house()
     };
@@ -838,7 +843,12 @@ fn the_work_starts_the_desolid_annexes_first() {
         ..Lifecycle::default()
     };
     let unit = |id, x, master, desolid| {
-        let mut u = foundation_at(id, [x, 88.0, 0.0], life(master), foundation(desolid));
+        let mut u = foundation_at(
+            id,
+            Position::new(x, 88.0, 0.0),
+            life(master),
+            foundation(desolid),
+        );
         u.annex_of = (master == 1192).then_some(10028);
         u
     };
@@ -878,7 +888,7 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
     world.insert(
         33439,
         crate::map::spatial::Placed {
-            position: [194.0, 64.0, 0.0],
+            position: Position::new(194.0, 64.0, 0.0),
             ..house()
         },
     );
@@ -934,7 +944,7 @@ fn an_annex_s_work_goes_to_its_main_building() {
         world.insert(
             10028,
             crate::map::spatial::Placed {
-                position: [2.0, 2.0, 0.0],
+                position: Position::new(2.0, 2.0, 0.0),
                 master: 665,
                 ..house()
             },
@@ -945,11 +955,11 @@ fn an_annex_s_work_goes_to_its_main_building() {
             master_id: 1192,
             ..Lifecycle::default()
         };
-        let mut post = foundation_at(10029, [1.0, 2.0, 0.0], life, foundation);
+        let mut post = foundation_at(10029, Position::new(1.0, 2.0, 0.0), life, foundation);
         post.annex_of = Some(10028);
         let gate = foundation_at(
             10028,
-            [2.0, 2.0, 0.0],
+            Position::new(2.0, 2.0, 0.0),
             Lifecycle {
                 master_id: 665,
                 ..life

@@ -1,4 +1,5 @@
 use super::*;
+use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
@@ -222,7 +223,7 @@ impl UnitSide for Recorder {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
 
@@ -275,7 +276,7 @@ impl UnitSide for HelpSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -300,7 +301,7 @@ impl UnitSide for HelpSide {
             state: 4,
             target: None,
             gap_squared: 0.0,
-            position: [101.5, 158.5, 0.0],
+            position: Position::new(101.5, 158.5, 0.0),
             hp: 0.0,
             master: 0,
             kind: 0,
@@ -442,7 +443,7 @@ fn the_retarget_entries_expire_and_a_dead_target_empties_them() {
 #[test]
 fn a_call_for_help_searches_what_the_unit_cares_about_then_walks_the_lists() {
     let at = Surroundings {
-        position: [124.5, 174.5, 0.0],
+        position: Position::new(124.5, 174.5, 0.0),
         los: 6.0,
         search_radius: 4.0,
         class: Some(class::GATE),
@@ -522,7 +523,7 @@ impl UnitSide for OffSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -590,7 +591,7 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
     assert_eq!(
         fx,
         vec![Effect::Command(AiCommand::MoveAside(AiMove {
-            point: [29.5, 89.5, 2.0],
+            point: Position::new(29.5, 89.5, 2.0),
             range: 0.0,
             force: true,
             walk: true,
@@ -608,9 +609,21 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
     assert_eq!(
         orders,
         vec![
-            (OrderKind::Foundation, 10028, [30.0, 2.0, 0.0], 100, true),
-            (OrderKind::Move, 0, [0.0; 3], 0, false),
-            (OrderKind::OnTarget, 600, [33.5, 2.0, 0.0], 100, true),
+            (
+                OrderKind::Foundation,
+                10028,
+                Position::new(30.0, 2.0, 0.0),
+                100,
+                true
+            ),
+            (OrderKind::Move, 0, Position::ORIGIN, 0, false),
+            (
+                OrderKind::OnTarget,
+                600,
+                Position::new(33.5, 2.0, 0.0),
+                100,
+                true
+            ),
         ]
     );
 }
@@ -635,7 +648,7 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     };
     let mut side = OffSide(off, Vec::new());
     let at = Surroundings {
-        position: [164.5, 50.5, 0.0],
+        position: Position::new(164.5, 50.5, 0.0),
         state: 2,
         class: Some(class::PREY),
         ..Surroundings::default()
@@ -646,7 +659,7 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     assert_eq!(
         fx,
         vec![Effect::Command(AiCommand::MoveAside(AiMove {
-            point: [164.5, 51.5, 0.0],
+            point: Position::new(164.5, 51.5, 0.0),
             range: 0.0,
             force: true,
             walk: false,
@@ -697,7 +710,7 @@ impl UnitSide for WaitSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -728,7 +741,7 @@ fn sent_off_queue() -> UnitAi {
         priority: 100,
         target,
         target_owner: 1,
-        point: [x, 2.0, 0.0],
+        point: Position::new(x, 2.0, 0.0),
         range: 0.0,
         shown: [x, 2.0],
         ready: true,
@@ -766,7 +779,7 @@ fn the_build_order_builds_and_takes_the_order_at_once() {
             priority: -1,
             target: 10028,
             target_owner: 1,
-            point: [30.0, 88.0, 0.0],
+            point: Position::new(30.0, 88.0, 0.0),
             range: 2.0,
             shown: [30.0, 88.0],
             ready: true,
@@ -778,7 +791,7 @@ fn the_build_order_builds_and_takes_the_order_at_once() {
         units: vec![UnitSeen {
             id: 10028,
             class: class::BUILDING,
-            position: [30.0, 88.0, 0.0],
+            position: Position::new(30.0, 88.0, 0.0),
             ..UnitSeen::default()
         }],
         ..scout_at(true, false)
@@ -806,7 +819,12 @@ fn the_build_order_builds_and_takes_the_order_at_once() {
             ai.target_type,
             ai.target_point
         ),
-        (Some(ActionKind::Build), 10028, 3, [30.0, 88.0, 0.0])
+        (
+            Some(ActionKind::Build),
+            10028,
+            3,
+            Position::new(30.0, 88.0, 0.0)
+        )
     );
     assert_eq!((ai.last_target, ai.last_target_type), (7, 10));
     assert_eq!(
@@ -955,7 +973,7 @@ impl UnitSide for ResourceSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -987,7 +1005,7 @@ fn found_at(id: i32) -> Found {
     Found {
         id,
         enemies: false,
-        position: (id != -1).then_some([5.0, 6.0, 0.0]),
+        position: (id != -1).then_some(Position::new(5.0, 6.0, 0.0)),
         fresh: true,
         players: 0,
         distance: -1,
@@ -1178,7 +1196,7 @@ fn a_villager_searches_by_its_action() {
         units: vec![UnitSeen {
             id: 10028,
             class: class::BUILDING,
-            position: [7.0, 8.0, 0.0],
+            position: Position::new(7.0, 8.0, 0.0),
             ..UnitSeen::default()
         }],
         ..Surroundings::default()
@@ -1234,7 +1252,7 @@ fn a_build_object_whose_build_command_answers_0_changes_nothing() {
         units: vec![UnitSeen {
             id: 10028,
             class: class::BUILDING,
-            position: [7.0, 8.0, 0.0],
+            position: Position::new(7.0, 8.0, 0.0),
             ..UnitSeen::default()
         }],
         ..Surroundings::default()
@@ -1290,7 +1308,7 @@ fn a_build_object_whose_build_command_answers_0_changes_nothing() {
 fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
     let bush = Gatherable {
         id: 28200,
-        position: [111.5, 16.5, 0.0],
+        position: Position::new(111.5, 16.5, 0.0),
         class: 7,
     };
     let mut ai = UnitAi {
@@ -1326,7 +1344,7 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
     assert_eq!(fx, vec![Effect::Command(AiCommand::GatherObject(28200))]);
     assert_eq!(
         (ai.current_target, ai.last_target, ai.target_point),
-        (28200, 28202, [111.5, 16.5, 0.0])
+        (28200, 28202, Position::new(111.5, 16.5, 0.0))
     );
     // gold is searched below 4 workers; finding nothing a human's villager stays as it is
     let mut ai = UnitAi {
@@ -1364,7 +1382,7 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
 fn a_hunter_of_a_kind_searches_by_it_from_its_drop_site() {
     let tree = Gatherable {
         id: 28300,
-        position: [50.5, 60.5, 0.0],
+        position: Position::new(50.5, 60.5, 0.0),
         class: 15,
     };
     let mut ai = UnitAi {
@@ -1438,7 +1456,7 @@ fn attacker(id: i32, class: ClassId, gap_squared: f32) -> UnitSeen {
         state: 2,
         target: Some(9729),
         gap_squared,
-        position: [100.0, 40.0, 0.0],
+        position: Position::new(100.0, 40.0, 0.0),
         ..UnitSeen::default()
     }
 }
@@ -1636,7 +1654,7 @@ impl UnitSide for LionSide {
         Ok(Found {
             id,
             enemies: id != -1,
-            position: Some([0.0; 3]),
+            position: Some(Position::ORIGIN),
             fresh: true,
             players: 0,
             distance: -1,
@@ -1655,7 +1673,7 @@ impl UnitSide for LionSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -1744,7 +1762,7 @@ impl UnitSide for SoldierSide {
         Ok(Found {
             id: self.found,
             enemies: self.found != -1,
-            position: Some([10.0, 11.0, 0.0]),
+            position: Some(Position::new(10.0, 11.0, 0.0)),
             fresh: true,
             players: 0,
             distance: -1,
@@ -1763,8 +1781,8 @@ impl UnitSide for SoldierSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
-        Ok((!self.refuses).then_some((class::LIVESTOCK, [10.0, 11.0, 0.0])))
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
+        Ok((!self.refuses).then_some((class::LIVESTOCK, Position::new(10.0, 11.0, 0.0))))
     }
     fn seek_unexplored(
         &mut self,
@@ -1831,7 +1849,7 @@ impl UnitSide for DamageSide {
         &mut self,
         target: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Ok(self
             .units
             .iter()
@@ -1897,7 +1915,7 @@ fn hit_villager() -> (UnitAi, Surroundings, Notify) {
     };
     let at = Surroundings {
         id: 20,
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         speed: 1.0,
         class: Some(class::VILLAGER),
         player: PlayerId::new(1),
@@ -1949,7 +1967,7 @@ fn a_villager_evades_another_player_s_attacker() {
     let Some(Effect::Move(m)) = fx.last() else {
         panic!("no move: {fx:?}");
     };
-    assert!(m.point[0] < 10.0 && m.point[1] == 10.0, "{m:?}");
+    assert!(m.point.x() < 10.0 && m.point.y() == 10.0, "{m:?}");
     assert_eq!(side.attacks, Vec::<i32>::new());
     assert_eq!(u.current_action, Some(ActionKind::Move));
 }
@@ -2145,7 +2163,7 @@ fn an_invalidated_action_of_the_order_or_an_attack_stops_the_unit() {
 fn a_completed_action_of_the_order_or_an_attack_stops_the_unit() {
     let at = Surroundings {
         id: 20,
-        position: [12.0, 13.0, 0.0],
+        position: Position::new(12.0, 13.0, 0.0),
         player: PlayerId::new(1),
         kind: 70,
         state: 2,
@@ -2449,7 +2467,7 @@ fn ward(gap_squared: f32) -> UnitSeen {
         class: class::CLASS_6,
         owner: PlayerId::new(1),
         state: 2,
-        position: [11.0, 10.0, 0.0],
+        position: Position::new(11.0, 10.0, 0.0),
         gap_squared,
         kind: 70,
         allied: true,
@@ -2465,7 +2483,7 @@ fn guarding(defend_target: i32) -> UnitAi {
         current_target: defend_target,
         defend_target,
         desired_distance: 2.5,
-        target_point: [11.0, 10.0, 0.0],
+        target_point: Position::new(11.0, 10.0, 0.0),
         ..idle(13)
     }
 }
@@ -2523,7 +2541,7 @@ fn a_defend_order_ends_with_its_ward_gone_foreign_or_dead() {
     // on the attack action only the unset point takes the ward's place
     let mut u = UnitAi {
         current_action: Some(ActionKind::Attack),
-        target_point: [-1.0, -1.0, 3.0],
+        target_point: Position::new(-1.0, -1.0, 3.0),
         ..guarding(20)
     };
     let mut side = DamageSide {
@@ -2535,7 +2553,10 @@ fn a_defend_order_ends_with_its_ward_gone_foreign_or_dead() {
         u.defend_misc(&at, false, &mut rng(), &mut With::new(&mut side, &mut fx)),
         Ok(false)
     );
-    assert_eq!((u.target_point, fx), ([11.0, 10.0, 3.0], Vec::new()));
+    assert_eq!(
+        (u.target_point, fx),
+        (Position::new(11.0, 10.0, 3.0), Vec::new())
+    );
 }
 
 /// processMisc's defend order beyond the desired distance plus 1: the soldier walks to its
@@ -2581,7 +2602,7 @@ fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
     assert_eq!(side.attacks, vec![40]);
     // a point to defend, beyond reach: the forced run to it
     let mut u = UnitAi {
-        target_point: [20.0, 10.0, 0.0],
+        target_point: Position::new(20.0, 10.0, 0.0),
         ..guarding(-1)
     };
     let mut fx = Vec::new();
@@ -2597,7 +2618,7 @@ fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
     assert_eq!(
         fx,
         vec![Effect::Move(AiMove {
-            point: [20.0, 10.0, 0.0],
+            point: Position::new(20.0, 10.0, 0.0),
             range: 2.5,
             force: true,
             walk: false
@@ -2605,7 +2626,7 @@ fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
     );
     // within reach of its point, nothing
     let mut u = UnitAi {
-        target_point: [12.0, 10.0, 0.0],
+        target_point: Position::new(12.0, 10.0, 0.0),
         ..guarding(-1)
     };
     assert_eq!(
@@ -2626,7 +2647,7 @@ fn foe(id: i32, class: ClassId) -> UnitSeen {
         class,
         owner: PlayerId::new(2),
         state: 2,
-        position: [12.0, 10.0, 0.0],
+        position: Position::new(12.0, 10.0, 0.0),
         hp: 30.0,
         kind: 70,
         ..UnitSeen::default()
@@ -2644,7 +2665,7 @@ fn soldier_at() -> Surroundings {
         los: 4.0,
         weapon_range: 0.0,
         action_state: Some(0),
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         ..Surroundings::default()
     }
 }
@@ -3116,7 +3137,7 @@ fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
             current_action: Some(ActionKind::Attack),
             current_target: 25954,
             target_type: 58,
-            target_point: [5.0, 6.0, 0.0],
+            target_point: Position::new(5.0, 6.0, 0.0),
             stance: 2,
             ..idle(13)
         };
@@ -3156,7 +3177,7 @@ fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
     assert_eq!(attacks, vec![]);
     assert!(
         fx.iter()
-            .any(|e| matches!(e, Effect::Move(m) if m.point == [5.0, 6.0, 0.0]))
+            .any(|e| matches!(e, Effect::Move(m) if m.point == Position::new(5.0, 6.0, 0.0)))
     );
     assert_eq!(
         (scout.current_order, scout.last_order),
@@ -3172,7 +3193,7 @@ fn a_patrol_s_kill_ends_the_patrol_order_with_its_timers() {
         current_order: Some(OrderKind::Patrol),
         current_action: Some(ActionKind::Attack),
         current_target: 25954,
-        target_point: [5.0, 6.0, 0.0],
+        target_point: Position::new(5.0, 6.0, 0.0),
         idle_timeout: 3000,
         adjusted_idle_timeout: 750,
         secondary_timer: 900,
@@ -3453,7 +3474,7 @@ fn a_builder_s_idle_timer_stays_0_and_its_look_around_is_redrawn() {
     };
     let mut r = rng();
     let at = Surroundings {
-        position: [29.5, 89.5, 0.0],
+        position: Position::new(29.5, 89.5, 0.0),
         busy: true,
         player: PlayerId::new(2),
         class: Some(class::VILLAGER),
@@ -3499,7 +3520,7 @@ fn a_work_notify_sets_the_order_and_redraws_a_timeout_left_by_order_711() {
         Some(OrderKind::Hunt),
         Some(ActionKind::Hunt),
         Some((9365, 15)),
-        [24.5, 97.5, 0.0],
+        Position::new(24.5, 97.5, 0.0),
         true,
         &mut r,
     )
@@ -3513,7 +3534,7 @@ fn a_work_notify_sets_the_order_and_redraws_a_timeout_left_by_order_711() {
         Some(OrderKind::Hunt),
         Some(ActionKind::Hunt),
         Some((9365, 15)),
-        [24.5, 97.5, 0.0],
+        Position::new(24.5, 97.5, 0.0),
         true,
         &mut r,
     )
@@ -3537,7 +3558,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
             ..idle(13)
         };
         let at = Surroundings {
-            position: [x, 10.0, 0.0],
+            position: Position::new(x, 10.0, 0.0),
             size: [0.5, 0.5],
             ..Surroundings::default()
         };
@@ -3575,7 +3596,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
         vec![
             Effect::Stop,
             Effect::Move(AiMove {
-                point: [10.0, 10.0, 0.0],
+                point: Position::new(10.0, 10.0, 0.0),
                 range: 1.0,
                 force: true,
                 walk: false,
@@ -3789,7 +3810,12 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
     // UnitAIModule's constructor: last retarget r % 500, adjusted idle timeout r % 1500 + 2250,
     // retarget timer 750 + r % 500, in that order
     let mut r = rng();
-    let ai = UnitAi::constructed(17, &placed([30.0, 88.0, 0.0], class::BUILDING), &mut r).unwrap();
+    let ai = UnitAi::constructed(
+        17,
+        &placed(Position::new(30.0, 88.0, 0.0), class::BUILDING),
+        &mut r,
+    )
+    .unwrap();
     let mut expected = rng();
     let (a, b, c) = (expected.rand15(), expected.rand15(), expected.rand15());
     assert_eq!(r.draws, 3);
@@ -3801,7 +3827,7 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             current_action: None,
             current_target: -1,
             target_type: -1,
-            target_point: [-1.0; 3],
+            target_point: Position::new(-1.0, -1.0, -1.0),
             desired_distance: 2.0,
             defend_target: -1,
             last_order: None,
@@ -3853,7 +3879,7 @@ fn a_new_artifact_unit_ai_draws_four_timers() {
     let mut r = rng();
     let ai = UnitAi::constructed(
         ARTIFACT_AI,
-        &placed([136.0, 100.0, 0.0], class::ARTIFACT),
+        &placed(Position::new(136.0, 100.0, 0.0), class::ARTIFACT),
         &mut r,
     )
     .unwrap();
@@ -3904,7 +3930,7 @@ impl ArtifactSide {
                 id,
                 players,
                 distance: -1,
-                position: Some([140.0, 100.0, 0.0]),
+                position: Some(Position::new(140.0, 100.0, 0.0)),
                 ..Found::NONE
             },
             owner,
@@ -3940,7 +3966,7 @@ impl UnitSide for ArtifactSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Ok(None)
     }
     fn seek_unexplored(
@@ -3988,7 +4014,7 @@ impl UnitSide for ScoutSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -4094,7 +4120,7 @@ fn rock_church() -> (UnitAi, Surroundings) {
         ..UnitAi::default()
     };
     let at = Surroundings {
-        position: [136.0, 100.0, 0.0],
+        position: Position::new(136.0, 100.0, 0.0),
         size: [2.0, 2.0],
         los: 5.0,
         search_radius: 5.0,
@@ -4261,8 +4287,12 @@ fn the_artifact_s_notifies_stop_it_or_go_on() {
 #[test]
 fn a_new_tower_unit_ai_draws_four_timers() {
     let mut r = rng();
-    let ai =
-        UnitAi::constructed(TOWER_AI, &placed([54.0, 147.0, 0.0], class::TOWER), &mut r).unwrap();
+    let ai = UnitAi::constructed(
+        TOWER_AI,
+        &placed(Position::new(54.0, 147.0, 0.0), class::TOWER),
+        &mut r,
+    )
+    .unwrap();
     let mut expected = rng();
     let (a, _, c, d) = (
         expected.rand15(),
@@ -4286,7 +4316,7 @@ fn a_new_tower_unit_ai_draws_four_timers() {
 
 /// A new object of class `class` at `position`, of master 83 (its own copy), a human
 /// player's in the Dark Age with posture 0.
-fn placed(position: [f32; 3], class: ClassId) -> NewObject {
+fn placed(position: Position, class: ClassId) -> NewObject {
     NewObject {
         position,
         master: 83,
@@ -4324,7 +4354,12 @@ fn each_unit_ai_constructor_draws_its_timers_and_sets_its_stance() {
     ];
     for (ai_type, class, timeout, fourth, stance, capacity) in types {
         let mut r = rng();
-        let ai = UnitAi::constructed(ai_type, &placed([12.5, 40.0, 1.0], class), &mut r).unwrap();
+        let ai = UnitAi::constructed(
+            ai_type,
+            &placed(Position::new(12.5, 40.0, 1.0), class),
+            &mut r,
+        )
+        .unwrap();
         let mut expected = rng();
         let (a, b, c) = (expected.rand15(), expected.rand15(), expected.rand15());
         let adjusted = if fourth {
@@ -4360,7 +4395,12 @@ fn each_unit_ai_constructor_draws_its_timers_and_sets_its_stance() {
         );
     }
     let mut r = rng();
-    let livestock = UnitAi::constructed(0x13, &placed([1.0; 3], class::LIVESTOCK), &mut r).unwrap();
+    let livestock = UnitAi::constructed(
+        0x13,
+        &placed(Position::from([1.0; 3]), class::LIVESTOCK),
+        &mut r,
+    )
+    .unwrap();
     assert_eq!(
         (r.draws, livestock.stance, livestock.notify_capacity),
         (3, 1, 5)
@@ -4374,7 +4414,7 @@ fn a_unit_ai_type_without_a_constructor_makes_none_and_draws_nothing() {
     for ai_type in [0, 1, 0x14, 99] {
         let mut r = rng();
         assert_eq!(
-            UnitAi::constructed(ai_type, &placed([0.0; 3], class::CLASS_6), &mut r),
+            UnitAi::constructed(ai_type, &placed(Position::ORIGIN, class::CLASS_6), &mut r),
             None
         );
         assert_eq!(r.draws, 0);
@@ -4387,7 +4427,7 @@ fn a_unit_ai_type_without_a_constructor_makes_none_and_draws_nothing() {
 /// furious nor sent home.
 #[test]
 fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
-    let mut deer = placed([20.0, 30.0, 2.0], class::PREY);
+    let mut deer = placed(Position::new(20.0, 30.0, 2.0), class::PREY);
     deer.hunt_range = 7.5;
     let mut r = rng();
     let ai = UnitAi::constructed(2, &deer, &mut r).unwrap();
@@ -4395,18 +4435,18 @@ fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
         (ai.hunted, ai.stance, ai.home),
         (
             Some(Hunted {
-                origin: [20.0, 30.0, 2.0],
+                origin: Position::new(20.0, 30.0, 2.0),
                 leash: 7.5,
             }),
             3,
             None
         )
     );
-    let king = UnitAi::constructed(2, &placed([0.0; 3], class::KING), &mut rng()).unwrap();
+    let king = UnitAi::constructed(2, &placed(Position::ORIGIN, class::KING), &mut rng()).unwrap();
     assert_eq!(king.stance, 0);
     let boar = UnitAi::constructed(
         BOAR_AI,
-        &placed([5.0, 6.0, 0.5], class::PREDATOR),
+        &placed(Position::new(5.0, 6.0, 0.5), class::PREDATOR),
         &mut rng(),
     )
     .unwrap();
@@ -4414,7 +4454,7 @@ fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
         (boar.home, boar.hunted, boar.stance),
         (
             Some(Home {
-                origin: [5.0, 6.0, 0.5],
+                origin: Position::new(5.0, 6.0, 0.5),
                 furious: false,
                 go_home: false,
             }),
@@ -4428,7 +4468,7 @@ fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
 /// (the fourth draw `r % 750 + 1125`); its stance by the rules of [`soldier_stance`].
 #[test]
 fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
-    let mut computer = placed([0.0; 3], class::CLASS_6);
+    let mut computer = placed(Position::ORIGIN, class::CLASS_6);
     computer.computer = true;
     computer.posture = 1;
     let mut r = rng();
@@ -4440,7 +4480,7 @@ fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
         (1500, expected.rand15() % 750 + 1125, 1)
     );
     let stance = |f: &dyn Fn(&mut NewObject)| {
-        let mut new = placed([0.0; 3], class::CLASS_6);
+        let mut new = placed(Position::ORIGIN, class::CLASS_6);
         f(&mut new);
         soldier_stance(&new)
     };
@@ -4574,11 +4614,11 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
         tasks: vec![task(6, 2.0), task(7, 9.0), task(6, 3.5), task(5, 1.0)],
         ..crate::objects::masters::Master::default()
     };
-    let new = NewObject::of([1.0, 2.0, 3.0], 1239, &made);
+    let new = NewObject::of(Position::new(1.0, 2.0, 3.0), 1239, &made);
     assert_eq!(
         new,
         NewObject {
-            position: [1.0, 2.0, 3.0],
+            position: Position::new(1.0, 2.0, 3.0),
             master: 1239,
             copy_id: 1240,
             class: class::PREY,
@@ -4588,7 +4628,11 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
             ..NewObject::default()
         }
     );
-    let none = NewObject::of([0.0; 3], 1, &crate::objects::masters::Master::default());
+    let none = NewObject::of(
+        Position::ORIGIN,
+        1,
+        &crate::objects::masters::Master::default(),
+    );
     assert_eq!(none.hunt_range, 0.0);
 }
 
@@ -4630,21 +4674,21 @@ fn boar() -> UnitAi {
         look_around_timeout: 5426,
         retarget_timer: 1205,
         target_type: -1,
-        target_point: [-1.0; 3],
+        target_point: Position::new(-1.0, -1.0, -1.0),
         last_order: None,
         last_action: None,
         last_target: -1,
         last_target_type: -1,
         stance: 0,
         home: Some(Home {
-            origin: [23.5, 105.5, 0.0],
+            origin: Position::new(23.5, 105.5, 0.0),
             ..Home::default()
         }),
         ..idle(4)
     }
 }
 
-fn at(position: [f32; 3]) -> Surroundings {
+fn at(position: Position) -> Surroundings {
     Surroundings {
         position,
         class: Some(class::CLASS_11),
@@ -4679,7 +4723,7 @@ fn a_boar_at_home_draws_its_leash_and_mostly_stays() {
         10,
         0,
         false,
-        &at([23.5, 105.5, 0.0]),
+        &at(Position::new(23.5, 105.5, 0.0)),
         &mut r,
         &mut no_search,
     );
@@ -4700,13 +4744,13 @@ fn a_boar_wanders_up_to_three_tiles_once_in_seven() {
             10,
             0,
             false,
-            &at([23.5, 105.5, 0.0]),
+            &at(Position::new(23.5, 105.5, 0.0)),
             &mut r,
             &mut no_search,
         )
         .unwrap()
         .unwrap();
-    let point = [dx as f32 - 3.0 + 23.5, dy as f32 - 3.0 + 105.5, 0.0];
+    let point = Position::new(dx as f32 - 3.0 + 23.5, dy as f32 - 3.0 + 105.5, 0.0);
     assert_eq!(
         moved,
         AiMove {
@@ -4739,13 +4783,13 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
             10,
             0,
             false,
-            &at([26.0, 105.5, 0.5]),
+            &at(Position::new(26.0, 105.5, 0.5)),
             &mut r,
             &mut no_search,
         )
         .unwrap()
         .unwrap();
-    assert_eq!(moved.point, [23.5, 105.5, 0.5]);
+    assert_eq!(moved.point, Position::new(23.5, 105.5, 0.5));
     assert_eq!(r.draws, 2);
     // beyond the leash (more than 144 + 80, squared) it heads home unless it already does
     let mut far = boar();
@@ -4754,14 +4798,17 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
         10,
         0,
         false,
-        &at([43.5, 105.5, 0.0]),
+        &at(Position::new(43.5, 105.5, 0.0)),
         &mut r,
         &mut no_search,
     );
-    assert_eq!(moved.unwrap().map(|m| m.point), Some([23.5, 105.5, 0.0]));
+    assert_eq!(
+        moved.unwrap().map(|m| m.point),
+        Some(Position::new(23.5, 105.5, 0.0))
+    );
     assert_eq!(r.draws, 1);
     let mut heading = UnitAi {
-        target_point: [23.5, 0.0, 0.0],
+        target_point: Position::new(23.5, 0.0, 0.0),
         ..boar()
     };
     let mut r = seed_for(false);
@@ -4769,7 +4816,7 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
         10,
         0,
         false,
-        &at([43.5, 105.5, 0.0]),
+        &at(Position::new(43.5, 105.5, 0.0)),
         &mut r,
         &mut no_search,
     );
@@ -4781,7 +4828,7 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
         let mut r = rng();
         let place = Surroundings {
             mode_1,
-            ..at([23.5, 105.5, 0.0])
+            ..at(Position::new(23.5, 105.5, 0.0))
         };
         assert_eq!(
             u.update_idle(10, 0, false, &place, &mut r, &mut no_search),
@@ -4831,7 +4878,7 @@ fn a_move_forgets_the_target_and_an_order_keeps_its_history() {
         ),
         (None, None, -1, -1)
     );
-    assert_eq!(u.target_point, [21.947_916, 92.489_586, 0.0]);
+    assert_eq!(u.target_point, Position::new(21.947_916, 92.489_586, 0.0));
 }
 
 #[test]
@@ -4864,20 +4911,20 @@ fn deer() -> UnitAi {
         look_around_timeout: 5424,
         retarget_timer: 1212,
         target_type: -1,
-        target_point: [-1.0; 3],
+        target_point: Position::new(-1.0, -1.0, -1.0),
         last_order: None,
         last_action: None,
         last_target: -1,
         last_target_type: -1,
         hunted: Some(Hunted {
-            origin: [31.5, 106.5, 0.0],
+            origin: Position::new(31.5, 106.5, 0.0),
             leash: 0.0,
         }),
         ..idle(2)
     }
 }
 
-fn deer_at(position: [f32; 3]) -> Surroundings {
+fn deer_at(position: Position) -> Surroundings {
     Surroundings {
         position,
         class: Some(class::PREY),
@@ -4910,7 +4957,7 @@ fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
     };
     let mut u = deer();
     let mut r = wander_seed(false);
-    let place = deer_at([31.5, 106.5, 0.0]);
+    let place = deer_at(Position::new(31.5, 106.5, 0.0));
     let moved = u
         .update_idle(10, 0, false, &place, &mut r, &mut nothing)
         .unwrap();
@@ -4931,7 +4978,10 @@ fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
         })
         .unwrap()
         .unwrap();
-    assert_eq!(moved.point, [31.5 + dx as f32, 106.5 + dy as f32, 0.0]);
+    assert_eq!(
+        moved.point,
+        Position::new(31.5 + dx as f32, 106.5 + dy as f32, 0.0)
+    );
     assert!(dx != 0 && dy != 0 && dx.abs() <= 3 && dy.abs() <= 3);
     assert_eq!(r.draws, 3);
 }
@@ -4940,14 +4990,14 @@ fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
 fn a_deer_away_from_home_goes_back_and_one_beyond_its_leash_at_once() {
     let mut u = deer();
     let mut r = wander_seed(true);
-    let away = deer_at([34.5, 106.5, 0.5]);
+    let away = deer_at(Position::new(34.5, 106.5, 0.5));
     let moved = u
         .update_idle(10, 0, false, &away, &mut r, &mut |_: &Search<'_>| {
             Ok(Found::NONE)
         })
         .unwrap()
         .unwrap();
-    assert_eq!((moved.point, r.draws), ([31.5, 106.5, 0.5], 1));
+    assert_eq!((moved.point, r.draws), (Position::new(31.5, 106.5, 0.5), 1));
     // a fox's leash of 2.5: 3 tiles off (2.8 from its footprint) it goes home without a
     // search or a draw
     let mut u = deer();
@@ -4957,7 +5007,7 @@ fn a_deer_away_from_home_goes_back_and_one_beyond_its_leash_at_once() {
         .update_idle(10, 0, false, &away, &mut r, &mut no_search)
         .unwrap()
         .unwrap();
-    assert_eq!((moved.point, r.draws), ([31.5, 106.5, 0.5], 0));
+    assert_eq!((moved.point, r.draws), (Position::new(31.5, 106.5, 0.5), 0));
 }
 
 /// A deer that sees an object runs from it by three times its speed (slot 0x150), forced
@@ -4973,13 +5023,13 @@ fn a_deer_that_sees_an_object_evades_it() {
     let place = Surroundings {
         speed: 1.2,
         map: [120, 120],
-        ..deer_at([31.5, 106.5, 0.0])
+        ..deer_at(Position::new(31.5, 106.5, 0.0))
     };
     let enemy = |_: &Search<'_>| {
         Ok(Found {
             id: 9183,
             enemies: true,
-            position: Some([33.5, 106.5, 0.0]),
+            position: Some(Position::new(33.5, 106.5, 0.0)),
             fresh: true,
             players: 0,
             distance: -1,
@@ -4992,7 +5042,12 @@ fn a_deer_that_sees_an_object_evades_it() {
         .unwrap();
     assert_eq!(
         (moved.point, moved.range, moved.force, moved.walk),
-        ([31.5 - 1.2 * 3.0, 106.5, 0.0], 0.0, true, false)
+        (
+            Position::new(31.5 - 1.2 * 3.0, 106.5, 0.0),
+            0.0,
+            true,
+            false
+        )
     );
     assert_eq!(
         (u.current_action, u.target_point),
@@ -5009,7 +5064,7 @@ fn an_animal_whose_wander_ended_drops_its_move_action_and_turns_idle() {
         ..deer()
     };
     let mut r = wander_seed(false);
-    let place = deer_at([31.5, 106.5, 0.0]);
+    let place = deer_at(Position::new(31.5, 106.5, 0.0));
     let moved = u
         .update_fx(10, 0, false, &place, &mut r, &mut no_search)
         .unwrap();
@@ -5041,7 +5096,7 @@ fn scout() -> UnitAi {
         priority: 100,
         target: -1,
         target_owner: -1,
-        point: [x, y, 0.0],
+        point: Position::new(x, y, 0.0),
         range: 0.0,
         shown: [x, y],
         ready: true,
@@ -5052,7 +5107,7 @@ fn scout() -> UnitAi {
         order_priority: -1,
         current_action: Some(ActionKind::Move),
         target_type: -1,
-        target_point: [93.583_336, 57.791_668, 0.0],
+        target_point: Position::new(93.583_336, 57.791_668, 0.0),
         last_order: Some(OrderKind::Move),
         last_action: Some(ActionKind::Move),
         last_target: -1,
@@ -5065,7 +5120,7 @@ fn scout() -> UnitAi {
 
 fn scout_at(interruptible: bool, busy: bool) -> Surroundings {
     Surroundings {
-        position: [93.5, 58.25, 0.0],
+        position: Position::new(93.5, 58.25, 0.0),
         busy,
         player: PlayerId::new(1),
         class: Some(class::CLASS_12),
@@ -5086,7 +5141,7 @@ fn between_turns_an_arrived_move_runs_the_next_queued_order() {
     assert_eq!(
         fx,
         vec![Effect::Move(AiMove {
-            point: [89.09375, 60.677_082, 0.0],
+            point: Position::new(89.09375, 60.677_082, 0.0),
             range: 0.0,
             force: true,
             walk: true,
@@ -5096,9 +5151,12 @@ fn between_turns_an_arrived_move_runs_the_next_queued_order() {
         (u.current_order, u.order_priority, u.current_action),
         (Some(OrderKind::Move), 100, Some(ActionKind::Move))
     );
-    assert_eq!(u.target_point, [89.09375, 60.677_082, 0.0]);
+    assert_eq!(u.target_point, Position::new(89.09375, 60.677_082, 0.0));
     assert_eq!(u.orders.len(), 1);
-    assert_eq!(u.orders[0].point, [91.822_914, 52.489_582, 0.0]);
+    assert_eq!(
+        u.orders[0].point,
+        Position::new(91.822_914, 52.489_582, 0.0)
+    );
 }
 
 #[test]
@@ -5129,7 +5187,7 @@ fn between_turns_a_walking_unit_or_one_with_notifies_keeps_its_queue() {
         .off_turn_fx(&scout_at(true, true), &mut no_search, false, &mut rng())
         .unwrap();
     assert_eq!(u.orders.len(), 1);
-    assert_eq!(u.orders[0].point, [89.09375, 60.677_082, 0.0]);
+    assert_eq!(u.orders[0].point, Position::new(89.09375, 60.677_082, 0.0));
 }
 
 #[test]
@@ -5184,7 +5242,7 @@ fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it
     assert_eq!(
         u.action_failed(
             n,
-            &at([10.0, 10.0, 0.0]),
+            &at(Position::new(10.0, 10.0, 0.0)),
             false,
             &mut rng(),
             &mut With::new(&mut Recorder::default(), &mut fx)
@@ -5207,7 +5265,7 @@ fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it
     let _ = u
         .action_failed(
             n,
-            &at([10.0, 12.0, 0.0]),
+            &at(Position::new(10.0, 12.0, 0.0)),
             false,
             &mut rng(),
             &mut With::new(&mut Recorder::default(), &mut fx),
@@ -5225,7 +5283,7 @@ fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it
     let _ = u
         .action_failed(
             n,
-            &at([10.0, 12.0, 0.0]),
+            &at(Position::new(10.0, 12.0, 0.0)),
             false,
             &mut rng(),
             &mut With::new(&mut Recorder::default(), &mut fx),
@@ -5240,7 +5298,7 @@ fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it
     assert!(
         u.action_failed(
             attack,
-            &at([10.0, 12.0, 0.0]),
+            &at(Position::new(10.0, 12.0, 0.0)),
             false,
             &mut rng(),
             &mut With::new(&mut Recorder::default(), &mut fx)
@@ -5255,7 +5313,7 @@ fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it
 #[test]
 fn a_boar_s_failed_attack_runs_its_idle_check() {
     let home = |go_home, furious| Home {
-        origin: [171.5, 51.5, 0.0],
+        origin: Position::new(171.5, 51.5, 0.0),
         furious,
         go_home,
     };
@@ -5272,13 +5330,16 @@ fn a_boar_s_failed_attack_runs_its_idle_check() {
     let mut fx = Vec::new();
     let r = u.action_failed(
         attack,
-        &at([169.5, 50.6, 0.0]),
+        &at(Position::new(169.5, 50.6, 0.0)),
         false,
         &mut rng(),
         &mut With::new(&mut Recorder::default(), &mut fx),
     );
     assert_eq!(r, Ok(PRODUCED));
-    assert_eq!(first_move(&fx).map(|m| m.point), Some([171.5, 51.5, 0.0]));
+    assert_eq!(
+        first_move(&fx).map(|m| m.point),
+        Some(Position::new(171.5, 51.5, 0.0))
+    );
     assert_eq!(
         (u.current_action, u.last_action),
         (Some(ActionKind::Move), Some(ActionKind::Attack))
@@ -5288,7 +5349,7 @@ fn a_boar_s_failed_attack_runs_its_idle_check() {
     let mut fx = Vec::new();
     let r = u.action_failed(
         attack,
-        &at([169.5, 50.6, 0.0]),
+        &at(Position::new(169.5, 50.6, 0.0)),
         false,
         &mut rng(),
         &mut With::new(&mut Recorder::default(), &mut fx),
@@ -5318,7 +5379,7 @@ fn an_animal_s_completed_wander_becomes_its_last_action() {
             60,
             0,
             false,
-            &deer_at([31.5, 106.5, 0.0]),
+            &deer_at(Position::new(31.5, 106.5, 0.0)),
             &mut r,
             &mut no_search,
         )
@@ -5441,7 +5502,7 @@ fn a_saved_order_and_notify_read_as_the_game_wrote_them() {
             1,
             OrderKind::Move,
             100,
-            [91.822_914, 52.489_582, 0.0],
+            Position::new(91.822_914, 52.489_582, 0.0),
             0.0,
             true,
             -1
@@ -5471,7 +5532,7 @@ fn builder_done() -> UnitAi {
         current_action: Some(ActionKind::Build),
         current_target: 10028,
         target_type: 3,
-        target_point: [30.0, 88.0, 0.0],
+        target_point: Position::new(30.0, 88.0, 0.0),
         idle_timeout: 3000,
         ..idle(8)
     }
@@ -5744,7 +5805,7 @@ fn a_dead_target_stops_an_action_that_needs_a_live_one() {
         vec![
             Effect::CapHumanOrder(HUMAN_ORDER_CAP),
             Effect::Move(AiMove {
-                point: [30.0, 88.0, 0.0],
+                point: Position::new(30.0, 88.0, 0.0),
                 range: 0.0,
                 force: true,
                 walk: false,
@@ -5769,20 +5830,20 @@ fn a_dead_target_stops_an_action_that_needs_a_live_one() {
 
 /// Player 1's scout 9183 following the deer 9655 (FOLLOW at 2604): order 712, action 612,
 /// the target and its place when FOLLOW ran, the constructor's desired distance.
-fn follower(deer: [f32; 3], visible: bool) -> (UnitAi, Surroundings) {
+fn follower(deer: Position, visible: bool) -> (UnitAi, Surroundings) {
     let u = UnitAi {
         ai_type: 13,
         current_order: Some(OrderKind::Follow),
         current_action: Some(ActionKind::Follow),
         current_target: 9655,
         target_type: 9,
-        target_point: [115.6998, 39.299_213, 0.0],
+        target_point: Position::new(115.6998, 39.299_213, 0.0),
         desired_distance: 2.0,
         stance: 2,
         ..UnitAi::default()
     };
     let at = Surroundings {
-        position: [110.0, 40.0, 0.0],
+        position: Position::new(110.0, 40.0, 0.0),
         size: [0.2, 0.2],
         state: 2,
         busy: true,
@@ -5804,7 +5865,7 @@ fn follower(deer: [f32; 3], visible: bool) -> (UnitAi, Surroundings) {
 #[test]
 fn the_follow_order_moves_to_a_target_that_left_its_point() {
     // 2652: the deer is more than a tile off the point in y; beyond 2 the AI moves to it
-    let deer = [114.75516, 40.34795, 0.0];
+    let deer = Position::new(114.75516, 40.34795, 0.0);
     let (mut u, at) = follower(deer, true);
     let mut fx = Vec::new();
     assert!(u.follow(&at, &mut fx, &mut rng()).unwrap());
@@ -5826,16 +5887,16 @@ fn the_follow_order_moves_to_a_target_that_left_its_point() {
     );
     assert_eq!(u.target_point, deer);
     // less than a tile off on both axes it stays
-    let (mut u, at) = follower([115.0, 40.2, 0.0], true);
+    let (mut u, at) = follower(Position::new(115.0, 40.2, 0.0), true);
     let mut fx = Vec::new();
     assert!(!u.follow(&at, &mut fx, &mut rng()).unwrap());
     assert_eq!(fx, Vec::<Effect>::new());
-    assert_eq!(u.target_point, [115.6998, 39.299_213, 0.0]);
+    assert_eq!(u.target_point, Position::new(115.6998, 39.299_213, 0.0));
 }
 
 #[test]
 fn the_follow_order_ends_on_a_target_out_of_sight() {
-    let (mut u, at) = follower([114.75516, 40.34795, 0.0], false);
+    let (mut u, at) = follower(Position::new(114.75516, 40.34795, 0.0), false);
     let mut fx = Vec::new();
     assert!(u.follow(&at, &mut fx, &mut rng()).unwrap());
     assert_eq!(fx, vec![Effect::Stop]);
@@ -5853,7 +5914,7 @@ fn the_follow_order_ends_on_a_target_out_of_sight() {
 /// patrol; with one processIdle runs (slot 0x240 with 1; this Gaia soldier only caps).
 #[test]
 fn a_moved_target_notify_runs_process_idle_with_a_saved_patrol() {
-    let (mut u, at) = follower([115.0, 40.2, 0.0], true);
+    let (mut u, at) = follower(Position::new(115.0, 40.2, 0.0), true);
     let n = Notify::own(9183, TARGET_MOVED, [0, 0, 0]);
     let (mut r, mut side) = (rng(), Recorder::default());
     let mut fx = Vec::new();
@@ -5882,7 +5943,7 @@ fn idle_scout() -> (UnitAi, Surroundings) {
         ..idle(13)
     };
     let at = Surroundings {
-        position: [21.947_916, 92.489_586, 0.0],
+        position: Position::new(21.947_916, 92.489_586, 0.0),
         player: PlayerId::new(2),
         class: Some(class::CLASS_12),
         size: [0.2, 0.2],
@@ -5920,7 +5981,7 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
         Ok(Found {
             id: 9731,
             enemies: false,
-            position: Some([0.0; 3]),
+            position: Some(Position::ORIGIN),
             fresh: true,
             players: 0,
             distance: -1,
@@ -5945,7 +6006,7 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
         vec![
             Effect::CapHumanOrder(5000),
             Effect::Move(AiMove {
-                point: [25.0, 92.5, 0.0],
+                point: Position::new(25.0, 92.5, 0.0),
                 range: 1.0,
                 force: true,
                 walk: false,
@@ -5991,7 +6052,7 @@ const TC: Attacker = Attacker {
     area_effect: 0.0,
     blast_level: 0,
     los: 8.0,
-    position: [29.0, 94.0, 0.0],
+    position: Position::new(29.0, 94.0, 0.0),
     radius: [2.0, 2.0],
     speed: 0.0,
     scenario: false,
@@ -6012,7 +6073,7 @@ const BOAR: Target = Target {
     targeting: true,
     attackable: true,
     desolid: false,
-    position: [30.0, 98.0, 0.0],
+    position: Position::new(30.0, 98.0, 0.0),
     radius: [0.5, 0.5],
 };
 
@@ -6147,7 +6208,7 @@ const SCOUT: Attacker = Attacker {
     missile: -1,
     range: 0.0,
     los: 4.0,
-    position: [118.5, 183.5, 0.0],
+    position: Position::new(118.5, 183.5, 0.0),
     radius: [0.4, 0.4],
     speed: 1.2,
     ..TC
@@ -6164,7 +6225,7 @@ fn a_soldier_standing_its_ground_attacks_within_its_range_of_its_state_position(
         owner: PlayerId::new(2),
         class: class::VILLAGER,
         master: 83,
-        position: [x, 183.5, 0.0],
+        position: Position::new(x, 183.5, 0.0),
         radius: [0.2, 0.2],
         ..BOAR
     };
@@ -6213,7 +6274,7 @@ fn an_idle_tower_searches_with_its_classes() {
         ..idle(15)
     };
     let at = Surroundings {
-        position: [29.0, 94.0, 0.0],
+        position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
         size: [2.0, 2.0],
         los: 8.0,
@@ -6244,7 +6305,7 @@ fn forgetting_the_targets_clears_the_current_and_the_last_and_the_point() {
         current_action: Some(ActionKind::Attack),
         current_target: 12,
         target_type: 4,
-        target_point: [3.0, 4.0, 0.5],
+        target_point: Position::new(3.0, 4.0, 0.5),
         last_target: 11,
         last_target_type: 9,
         ..idle(13)
@@ -6259,7 +6320,7 @@ fn forgetting_the_targets_clears_the_current_and_the_last_and_the_point() {
         ),
         (-1, -1, -1, -1)
     );
-    assert_eq!(u.target_point, [-1.0; 3]);
+    assert_eq!(u.target_point, Position::new(-1.0, -1.0, -1.0));
     assert_eq!(
         (u.current_order, u.current_action),
         (Some(OrderKind::Attack), Some(ActionKind::Attack))
@@ -6281,7 +6342,7 @@ fn forgetting_the_targets_clears_the_current_and_the_last_and_the_point() {
         ),
         (-1, -1, -1)
     );
-    assert_eq!(moved.target_point, [5.0, 6.0, 0.0]);
+    assert_eq!(moved.target_point, Position::new(5.0, 6.0, 0.0));
 }
 
 /// `FUN_140c4eea0`: a master with a task of action type 0x99 refuses orders while its target
@@ -6400,7 +6461,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         current_action: Some(ActionKind::Build),
         current_target: 50,
         target_type: 3,
-        target_point: [20.0, 21.0, 0.0],
+        target_point: Position::new(20.0, 21.0, 0.0),
         desired_distance: 2.0,
         ..idle(8)
     };
@@ -6410,7 +6471,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         priority: 7,
         target: -1,
         target_owner: -1,
-        point: [10.0, 11.0, 0.0],
+        point: Position::new(10.0, 11.0, 0.0),
         range: 0.5,
         shown: [10.0, 11.0],
         ready: true,
@@ -6432,7 +6493,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         priority: 2,
         target: 50,
         target_owner: -1,
-        point: [20.0, 21.0, 0.0],
+        point: Position::new(20.0, 21.0, 0.0),
         range: 2.0,
         shown: [10.0, 11.0],
         ready: true,
@@ -6444,7 +6505,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         vec![
             Effect::Stop,
             Effect::Move(AiMove {
-                point: [10.0, 11.0, 0.0],
+                point: Position::new(10.0, 11.0, 0.0),
                 range: 0.5,
                 force: true,
                 walk: true,
@@ -6547,7 +6608,7 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
         ..idle(13)
     };
     let at = |x: f32| Surroundings {
-        position: [x, 10.0, 2.5],
+        position: Position::new(x, 10.0, 2.5),
         size: [0.5, 0.5],
         ..Surroundings::default()
     };
@@ -6559,7 +6620,7 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
     assert_eq!(
         fx,
         vec![Effect::Move(AiMove {
-            point: [10.0, 10.0, 2.5],
+            point: Position::new(10.0, 10.0, 2.5),
             range: 1.0,
             force: true,
             walk: false,
@@ -6584,10 +6645,10 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
 #[test]
 fn the_point_gap_keeps_a_gap_that_is_not_a_number() {
     assert_eq!(
-        point_gap_squared([3.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0]),
+        point_gap_squared([3.0, 0.0], Position::ORIGIN, [1.0, 1.0]),
         4.0
     );
-    assert!(point_gap_squared([f32::NAN, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0]).is_nan());
+    assert!(point_gap_squared([f32::NAN, 0.0], Position::ORIGIN, [1.0, 1.0]).is_nan());
 }
 
 /// `FUN_140c20db0` in `NoAttack` ("searching and returning to state pos."): the search alone
@@ -6611,7 +6672,7 @@ fn a_no_attack_soldier_searches_then_walks_back_to_its_state_position() {
         vec![
             Effect::CapHumanOrder(5000),
             Effect::Move(AiMove {
-                point: [25.0, 92.5, 0.0],
+                point: Position::new(25.0, 92.5, 0.0),
                 range: 1.0,
                 force: true,
                 walk: false,
@@ -6657,7 +6718,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         ..idle(11)
     };
     let at = |group| Surroundings {
-        position: [3.0, 4.0, 0.0],
+        position: Position::new(3.0, 4.0, 0.0),
         player: PlayerId::new(1),
         class: Some(class::TRANSPORT),
         group,
@@ -6690,7 +6751,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         priority: 100,
         target: -1,
         target_owner: -1,
-        point: [9.0, 9.0, 0.0],
+        point: Position::new(9.0, 9.0, 0.0),
         range: 0.0,
         shown: [9.0, 9.0],
         ready: true,
@@ -6722,7 +6783,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         kind: 70,
         owner: PlayerId::new(2),
         class: class::CLASS_6,
-        position: [5.0, 5.0, 0.0],
+        position: Position::new(5.0, 5.0, 0.0),
         radius: [0.2, 0.2],
         visible: true,
         flags: 0,
@@ -6826,7 +6887,7 @@ fn a_villager_whose_attack_target_died_walks_to_its_point() {
         order_priority: 100,
         current_action: Some(ActionKind::Attack),
         current_target: 50,
-        target_point: [5.0, 6.0, 0.0],
+        target_point: Position::new(5.0, 6.0, 0.0),
         ..idle(8)
     };
     let at = Surroundings {
@@ -6846,7 +6907,7 @@ fn a_villager_whose_attack_target_died_walks_to_its_point() {
         vec![
             Effect::CapHumanOrder(HUMAN_ORDER_CAP),
             Effect::Move(AiMove {
-                point: [5.0, 6.0, 0.0],
+                point: Position::new(5.0, 6.0, 0.0),
                 range: 0.25,
                 force: true,
                 walk: false,
@@ -6868,7 +6929,7 @@ fn a_wolf_whose_attack_target_died_attacks_the_next_villager() {
     let mut u = UnitAi {
         current_action: Some(ActionKind::Attack),
         current_target: 50,
-        target_point: [5.0, 6.0, 0.0],
+        target_point: Position::new(5.0, 6.0, 0.0),
         ..idle(5)
     };
     let at = Surroundings {
@@ -6911,7 +6972,7 @@ fn a_no_attack_tower_only_searches() {
         ..idle(15)
     };
     let at = Surroundings {
-        position: [29.0, 94.0, 0.0],
+        position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
         size: [2.0, 2.0],
         los: 8.0,
@@ -6950,7 +7011,7 @@ fn an_idle_tower_attacks_what_its_search_found() {
         ..idle(15)
     };
     let at = Surroundings {
-        position: [29.0, 94.0, 0.0],
+        position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
         size: [2.0, 2.0],
         los: 8.0,
@@ -6982,7 +7043,7 @@ fn an_idle_tower_attacks_what_its_search_found() {
 #[test]
 fn a_human_player_s_king_s_idle_check_only_caps() {
     let at = Surroundings {
-        position: [31.5, 106.5, 0.0],
+        position: Position::new(31.5, 106.5, 0.0),
         player: PlayerId::new(1),
         class: Some(class::KING),
         master: 434,
@@ -7229,13 +7290,13 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
     assert_eq!((u.current_target, u.current_action), (-1, None));
     // the villager 700 the lion attacks (class 4, which it attacks by its classes)
     let at = |x: f32| Surroundings {
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         size: [0.5, 0.5],
         los: 4.0,
         target: Some(Seen {
             state: 2,
             class: class::VILLAGER,
-            position: [x, 10.0, 0.0],
+            position: Position::new(x, 10.0, 0.0),
             radius: [0.5, 0.5],
             ..Seen::default()
         }),
@@ -7244,7 +7305,7 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
             class: class::VILLAGER,
             owner: PlayerId::new(1),
             state: 2,
-            position: [x, 10.0, 0.0],
+            position: Position::new(x, 10.0, 0.0),
             ..UnitSeen::default()
         }],
         ..Surroundings::default()
@@ -7334,13 +7395,13 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
     let place = Surroundings {
         speed: 1.2,
         map: [120, 120],
-        ..deer_at([31.5, 106.5, 0.0])
+        ..deer_at(Position::new(31.5, 106.5, 0.0))
     };
     let on_top = |_: &Search<'_>| {
         Ok(Found {
             id: 9183,
             enemies: false,
-            position: Some([31.5, 106.5, 0.0]),
+            position: Some(Position::new(31.5, 106.5, 0.0)),
             fresh: true,
             players: 0,
             distance: -1,
@@ -7351,18 +7412,18 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
         .update_idle(10, 0, false, &place, &mut r, &mut on_top.clone())
         .unwrap()
         .unwrap();
-    assert_eq!(moved.point, [30.5, 105.5, 0.0]);
+    assert_eq!(moved.point, Position::new(30.5, 105.5, 0.0));
     let near_edge = Surroundings {
         speed: 1.2,
         map: [120, 120],
-        ..deer_at([3.5, 4.5, 0.0])
+        ..deer_at(Position::new(3.5, 4.5, 0.0))
     };
     let mut u = deer();
     let on_it = |_: &Search<'_>| {
         Ok(Found {
             id: 9183,
             enemies: false,
-            position: Some([3.5, 4.5, 0.0]),
+            position: Some(Position::new(3.5, 4.5, 0.0)),
             fresh: true,
             players: 0,
             distance: -1,
@@ -7380,7 +7441,7 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
         )
         .unwrap()
         .unwrap();
-    assert_eq!(moved.point, [4.5, 5.5, 0.0]);
+    assert_eq!(moved.point, Position::new(4.5, 5.5, 0.0));
 }
 
 /// A unit side whose stand test fails a given number of times.
@@ -7404,7 +7465,7 @@ impl UnitSide for StandSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -7437,7 +7498,7 @@ impl UnitSide for StandSide {
 #[test]
 fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
     let at = Surroundings {
-        position: [10.0, 20.0, 1.5],
+        position: Position::new(10.0, 20.0, 1.5),
         map: [64, 64],
         ..Surroundings::default()
     };
@@ -7452,7 +7513,7 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
     let mut fx = Vec::new();
     assert_eq!(
         busy.evasive_move(
-            [12.0, 22.0, 1.5],
+            Position::new(12.0, 22.0, 1.5),
             (false, true),
             &at,
             &mut rng(),
@@ -7477,7 +7538,7 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
     let ey = step(&mut expected, 22.0);
     assert_eq!(
         u.evasive_move(
-            [12.0, 22.0, 1.5],
+            Position::new(12.0, 22.0, 1.5),
             (false, true),
             &at,
             &mut r,
@@ -7490,7 +7551,7 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
     assert_eq!(
         fx,
         vec![Effect::Move(AiMove {
-            point: [ex, ey, 1.5],
+            point: Position::new(ex, ey, 1.5),
             range: 0.0,
             force: true,
             walk: false,
@@ -7498,7 +7559,7 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
     );
     assert_eq!(
         (u.current_action, u.target_point),
-        (Some(ActionKind::Move), [ex, ey, 1.5])
+        (Some(ActionKind::Move), Position::new(ex, ey, 1.5))
     );
     // a point past the far edge is held a tile in, below 0 at 0
     let mut u = idle(2);
@@ -7508,13 +7569,16 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
         tested: Vec::new(),
     };
     let _ = u.evasive_move(
-        [70.0, -3.0, 0.0],
+        Position::new(70.0, -3.0, 0.0),
         (true, false),
         &at,
         &mut rng(),
         &mut With::new(&mut side, &mut fx),
     );
-    assert_eq!(first_move(&fx).map(|m| m.point), Some([63.0, 0.0, 0.0]));
+    assert_eq!(
+        first_move(&fx).map(|m| m.point),
+        Some(Position::new(63.0, 0.0, 0.0))
+    );
 }
 
 /// Slot 0x148 (`FUN_140c4d0d0`): unforced, a unit AI with an action value takes no move off
@@ -7523,7 +7587,7 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
 #[test]
 fn a_move_off_a_footprint_needs_force_or_no_action() {
     let m = |force| AiMove {
-        point: [4.0, 5.0, 0.0],
+        point: Position::new(4.0, 5.0, 0.0),
         range: 0.0,
         force,
         walk: true,
@@ -7554,7 +7618,7 @@ fn a_move_off_a_footprint_needs_force_or_no_action() {
 #[test]
 fn an_ai_move_needs_force_or_no_action_and_keeps_the_target_class() {
     let m = |force| AiMove {
-        point: [4.0, 5.0, 0.5],
+        point: Position::new(4.0, 5.0, 0.5),
         range: 0.5,
         force,
         walk: true,
@@ -7584,7 +7648,7 @@ fn an_ai_move_needs_force_or_no_action_and_keeps_the_target_class() {
         ),
         (40, 9, -1, 9)
     );
-    assert_eq!(u.target_point, [4.0, 5.0, 0.5]);
+    assert_eq!(u.target_point, Position::new(4.0, 5.0, 0.5));
 }
 
 /// `FUN_140c64b60`: leaving a patrol order (711, 733) redraws an adjusted idle timeout of
@@ -7628,7 +7692,7 @@ fn the_order_setter_caps_by_a_signed_compare_and_may_keep_the_last_order() {
 #[test]
 fn a_villager_on_the_attack_order_without_a_target_gives_it_up() {
     let at = Surroundings {
-        position: [12.0, 13.0, 0.0],
+        position: Position::new(12.0, 13.0, 0.0),
         class: Some(class::VILLAGER),
         ..Surroundings::default()
     };
@@ -7742,7 +7806,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
     };
     let at = Surroundings {
         id: 500,
-        position: [20.0, 30.0, 0.0],
+        position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
         map: [64, 64],
         player: PlayerId::new(1),
@@ -7754,7 +7818,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
             owner: PlayerId::new(2),
             state: 2,
             target: Some(500),
-            position: [22.0, 30.0, 0.0],
+            position: Position::new(22.0, 30.0, 0.0),
             ..UnitSeen::default()
         }],
         ..Surroundings::default()
@@ -7778,7 +7842,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
     assert_eq!(
         fx,
         vec![Effect::Move(AiMove {
-            point: [18.0, 30.0, 0.0],
+            point: Position::new(18.0, 30.0, 0.0),
             range: 0.0,
             force: true,
             walk: false,
@@ -7813,12 +7877,12 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         owner: PlayerId::new(2),
         state: 2,
         target: Some(500),
-        position: [x, 30.0, 0.0],
+        position: Position::new(x, 30.0, 0.0),
         ..UnitSeen::default()
     };
     let at = Surroundings {
         id: 500,
-        position: [20.0, 30.0, 0.0],
+        position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
         map: [64, 64],
         player: PlayerId::new(1),
@@ -7872,7 +7936,10 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
             stance,
             ..runner(vec![77])
         };
-        assert_eq!(run(&mut u, &gaia, true, false).1, to([18.0, 30.0, 0.0]));
+        assert_eq!(
+            run(&mut u, &gaia, true, false).1,
+            to(Position::new(18.0, 30.0, 0.0))
+        );
     }
     let mut u = UnitAi {
         current_action: Some(ActionKind::Attack),
@@ -7880,7 +7947,10 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
     };
     assert_eq!(run(&mut u, &at, false, false), (Ok(false), vec![]));
     let mut u = runner(vec![77, 4242]);
-    assert_eq!(run(&mut u, &at, true, false).1, to([18.0, 30.0, 0.0]));
+    assert_eq!(
+        run(&mut u, &at, true, false).1,
+        to(Position::new(18.0, 30.0, 0.0))
+    );
     // 77 and 78 on either side: the way two draws give
     let mut e = rng();
     let mut part = || {
@@ -7889,7 +7959,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
     };
     let (vx, vy) = (part(), part());
     let d = crate::math::fmath::sqrt(vy * vy + vx * vx);
-    let away = [20.0 - (vx / d) * 2.0, 30.0 - (vy / d) * 2.0, 0.0];
+    let away = Position::new(20.0 - (vx / d) * 2.0, 30.0 - (vy / d) * 2.0, 0.0);
     let mut u = runner(vec![77, 78]);
     assert_eq!(run(&mut u, &at, true, false).1, to(away));
     // a defensive unit with its state position 5 tiles east runs no farther than that
@@ -7898,7 +7968,10 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         state_position: [25.0, 30.0],
         ..runner(vec![77])
     };
-    assert_eq!(run(&mut u, &at, true, false).1, to([20.0, 30.0, 0.0]));
+    assert_eq!(
+        run(&mut u, &at, true, false).1,
+        to(Position::new(20.0, 30.0, 0.0))
+    );
     assert!(run(&mut runner(vec![79]), &at, true, true).0.is_err());
     let ship = Surroundings {
         class: Some(class::TRANSPORT),
@@ -7917,7 +7990,7 @@ fn a_target_takes_its_class_only_from_an_object_the_world_holds() {
         target_type: 9,
         ..idle(13)
     };
-    u.target_at(41, None, [1.0, 2.0, 3.0]);
+    u.target_at(41, None, Position::new(1.0, 2.0, 3.0));
     assert_eq!(
         (
             u.last_target,
@@ -7927,8 +8000,8 @@ fn a_target_takes_its_class_only_from_an_object_the_world_holds() {
         ),
         (40, 9, 41, 9)
     );
-    assert_eq!(u.target_point, [1.0, 2.0, 3.0]);
-    u.target_at(42, Some(4), [5.0, 6.0, 0.0]);
+    assert_eq!(u.target_point, Position::new(1.0, 2.0, 3.0));
+    u.target_at(42, Some(4), Position::new(5.0, 6.0, 0.0));
     assert_eq!(
         (
             u.last_target,
@@ -8050,7 +8123,7 @@ fn patroller(secondary: u32) -> (UnitAi, Surroundings) {
         ..idle(SOLDIER_AI)
     };
     let at = Surroundings {
-        position: [20.0, 20.0, 0.0],
+        position: Position::new(20.0, 20.0, 0.0),
         player: PlayerId::new(1),
         kind: 70,
         state: 2,
@@ -8124,7 +8197,7 @@ fn a_patrol_attacking_a_building_keeps_at_it() {
     at.top_target = Some(TopTarget {
         id: 50,
         kind: 80,
-        position: [30.0, 30.0, 0.0],
+        position: Position::new(30.0, 30.0, 0.0),
         radius: [1.0, 1.0],
     });
     let mut side = SoldierSide {
@@ -8150,7 +8223,7 @@ fn a_soldier_s_idle_check_attacks_its_top_action_s_target_in_range() {
     let near = TopTarget {
         id: 50,
         kind: 70,
-        position: [21.0, 20.0, 0.0],
+        position: Position::new(21.0, 20.0, 0.0),
         radius: [0.2, 0.2],
     };
     at.top_target = Some(near);
@@ -8182,7 +8255,7 @@ fn a_soldier_s_idle_check_attacks_its_top_action_s_target_in_range() {
     let (mut u, mut at) = patroller(0);
     u.current_order = None;
     at.top_target = Some(TopTarget {
-        position: [25.0, 20.0, 0.0],
+        position: Position::new(25.0, 20.0, 0.0),
         ..near
     });
     side.attacks.clear();
@@ -8257,7 +8330,7 @@ fn a_soldier_stopped_in_the_update_finds_no_top_action_s_target() {
     at.top_target = Some(TopTarget {
         id: 50,
         kind: 70,
-        position: [21.0, 20.0, 0.0],
+        position: Position::new(21.0, 20.0, 0.0),
         radius: [0.2, 0.2],
     });
     let mut side = SoldierSide {
@@ -8585,7 +8658,7 @@ fn attacked_transport() -> (UnitAi, Surroundings) {
     };
     let at = Surroundings {
         id: 500,
-        position: [20.0, 30.0, 0.0],
+        position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
         map: [64, 64],
         player: PlayerId::new(1),
@@ -8597,7 +8670,7 @@ fn attacked_transport() -> (UnitAi, Surroundings) {
             owner: PlayerId::new(2),
             state: 2,
             target: Some(500),
-            position: [22.0, 30.0, 0.0],
+            position: Position::new(22.0, 30.0, 0.0),
             ..UnitSeen::default()
         }],
         ..Surroundings::default()
@@ -8663,7 +8736,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     assert_eq!(
         fx,
         vec![Effect::Move(AiMove {
-            point: [18.0, 30.0, 0.0],
+            point: Position::new(18.0, 30.0, 0.0),
             range: 0.0,
             force: true,
             walk: false,
@@ -8864,7 +8937,7 @@ fn the_base_attack_check_lets_every_type_without_its_own_attack() {
             units: vec![UnitSeen {
                 id: 77,
                 class: class::CLASS_6,
-                position: [3.0, 4.0, 0.0],
+                position: Position::new(3.0, 4.0, 0.0),
                 ..UnitSeen::default()
             }],
             ..Surroundings::default()
@@ -8917,7 +8990,7 @@ impl UnitSide for ShipSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -8952,7 +9025,7 @@ impl UnitSide for ShipSide {
 fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
     let at = Surroundings {
         id: 500,
-        position: [20.0, 30.0, 0.0],
+        position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
         map: [64, 64],
         los: 4.0,
@@ -8978,7 +9051,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
         }],
         units: vec![UnitSeen {
             id: 77,
-            position: [22.0, 30.0, 0.0],
+            position: Position::new(22.0, 30.0, 0.0),
             ..UnitSeen::default()
         }],
         ..ShipSide::default()
@@ -8993,7 +9066,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
         vec![
             Effect::CapHumanOrder(HUMAN_ORDER_CAP),
             Effect::Move(AiMove {
-                point: [13.0, 30.0, 0.0],
+                point: Position::new(13.0, 30.0, 0.0),
                 range: 0.0,
                 force: true,
                 walk: false,
@@ -9166,7 +9239,7 @@ fn a_fishing_ship_on_the_move_takes_its_damage_without_running() {
 fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
     let at = Surroundings {
         id: 500,
-        position: [20.0, 30.0, 0.0],
+        position: Position::new(20.0, 30.0, 0.0),
         los: 4.0,
         player: PlayerId::new(1),
         state: 2,
@@ -9271,7 +9344,7 @@ const MANGONEL: Attacker = Attacker {
     missile: 656,
     range: 7.0,
     los: 9.0,
-    position: [20.0, 20.0, 0.0],
+    position: Position::new(20.0, 20.0, 0.0),
     radius: [0.6, 0.6],
     speed: 0.6,
     ..TC
@@ -9329,7 +9402,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         owner: PlayerId::new(2),
         class: class::VILLAGER,
         master: 83,
-        position: [x, 20.0, 0.0],
+        position: Position::new(x, 20.0, 0.0),
         radius: [0.2, 0.2],
         ..BOAR
     };
@@ -9454,7 +9527,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
 #[derive(Default)]
 struct SiegeSide {
     found: Option<Found>,
-    allowed: Option<(ClassId, [f32; 3])>,
+    allowed: Option<(ClassId, Position)>,
     attacks: Vec<(i32, bool)>,
     reach: bool,
     searches: usize,
@@ -9480,7 +9553,7 @@ impl UnitSide for SiegeSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Ok(self.allowed)
     }
     fn seek_unexplored(
@@ -9509,7 +9582,7 @@ impl UnitSide for SiegeSide {
 fn a_siege_unit_attacks_what_its_idle_search_finds() {
     let at = Surroundings {
         id: 500,
-        position: [20.0, 20.0, 0.0],
+        position: Position::new(20.0, 20.0, 0.0),
         player: PlayerId::new(1),
         class: Some(class::SIEGE),
         kind: 70,
@@ -9527,7 +9600,7 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
             id: 77,
             ..Found::NONE
         }),
-        allowed: Some((class::VILLAGER, [25.0, 20.0, 0.0])),
+        allowed: Some((class::VILLAGER, Position::new(25.0, 20.0, 0.0))),
         ..SiegeSide::default()
     };
     let mut fx = Vec::new();
@@ -9594,7 +9667,7 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
 fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
     let at = Surroundings {
         id: 500,
-        position: [20.0, 20.0, 0.0],
+        position: Position::new(20.0, 20.0, 0.0),
         player: PlayerId::new(1),
         class: Some(class::SIEGE),
         kind: 70,
@@ -9604,7 +9677,7 @@ fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
         top_target: Some(TopTarget {
             id: 88,
             kind: 70,
-            position: [24.0, 20.0, 0.0],
+            position: Position::new(24.0, 20.0, 0.0),
             radius: [0.2, 0.2],
         }),
         ..Surroundings::default()
@@ -9629,7 +9702,7 @@ fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
     );
     assert_eq!((u.retarget_disabled, side.attacks.len()), (1, 0));
     let mut side = SiegeSide {
-        allowed: Some((class::VILLAGER, [24.0, 20.0, 0.0])),
+        allowed: Some((class::VILLAGER, Position::new(24.0, 20.0, 0.0))),
         ..SiegeSide::default()
     };
     assert_eq!(
@@ -9799,7 +9872,7 @@ impl UnitSide for TailSide {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
     fn seek_unexplored(
@@ -9849,7 +9922,7 @@ fn on_target(action: Option<ActionKind>) -> UnitAi {
         current_action: action,
         current_target: 500,
         target_type: 6,
-        target_point: [10.0, 10.0, 0.0],
+        target_point: Position::new(10.0, 10.0, 0.0),
         ..idle(5)
     }
 }
@@ -9999,7 +10072,7 @@ fn the_tail_reads_the_top_target_the_update_s_commands_left() {
         Effect::Stop,
         Effect::Explore([1.0, 2.0]),
         Effect::Move(AiMove {
-            point: [1.0, 2.0, 0.0],
+            point: Position::new(1.0, 2.0, 0.0),
             range: 0.0,
             force: true,
             walk: false,
@@ -10096,7 +10169,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
     // slot 73's stand ground leash (0x140c57bc4): the squared gap to the state position
     // (4 tiles: 16) against the range plus 0.25
     let at = Surroundings {
-        position: [14.0, 10.0, 0.0],
+        position: Position::new(14.0, 10.0, 0.0),
         weapon_range: 15.0,
         player: PlayerId::new(1),
         ..Surroundings::default()
@@ -10125,7 +10198,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
     assert_eq!(
         fx[1],
         Effect::Move(AiMove {
-            point: [10.0, 10.0, 0.0],
+            point: Position::new(10.0, 10.0, 0.0),
             range: WALK_BACK,
             force: true,
             walk: false,
@@ -10198,26 +10271,41 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
 #[test]
 fn a_patrol_s_distance_is_the_least_to_the_lines_through_its_points() {
     assert_eq!(
-        line_distance([3.0, 0.0, 4.0], [0.0; 3], [10.0, 0.0, 0.0]),
+        line_distance(
+            BVector::new(3.0, 0.0, 4.0),
+            BVector::ZERO,
+            BVector::new(10.0, 0.0, 0.0)
+        ),
         4.0
     );
     // beyond the segment's end the line still counts
     assert_eq!(
-        line_distance([30.0, 0.0, 4.0], [0.0; 3], [10.0, 0.0, 0.0]),
+        line_distance(
+            BVector::new(30.0, 0.0, 4.0),
+            BVector::ZERO,
+            BVector::new(10.0, 0.0, 0.0)
+        ),
         4.0
     );
-    let path = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.0, 10.0]];
-    assert_eq!(patrol_distance(&path, [9.0, 0.0, 4.0]), Ok(1.0));
+    let path = [
+        BVector::ZERO,
+        BVector::new(10.0, 0.0, 0.0),
+        BVector::new(10.0, 0.0, 10.0),
+    ];
+    assert_eq!(patrol_distance(&path, BVector::new(9.0, 0.0, 4.0)), Ok(1.0));
     assert_eq!(
-        patrol_distance(&path[..1], [9.0, 0.0, 4.0]),
+        patrol_distance(&path[..1], BVector::new(9.0, 0.0, 4.0)),
         Ok(PATROL_FARTHEST)
     );
-    assert!(patrol_distance(&[], [9.0, 0.0, 4.0]).is_err());
+    assert!(patrol_distance(&[], BVector::new(9.0, 0.0, 4.0)).is_err());
     // two equal points make a NaN, which the next line replaces
-    let doubled = [[0.0; 3], [0.0; 3], [10.0, 0.0, 0.0]];
-    assert_eq!(patrol_distance(&doubled, [3.0, 0.0, 4.0]), Ok(4.0));
+    let doubled = [BVector::ZERO, BVector::ZERO, BVector::new(10.0, 0.0, 0.0)];
+    assert_eq!(
+        patrol_distance(&doubled, BVector::new(3.0, 0.0, 4.0)),
+        Ok(4.0)
+    );
     assert!(
-        patrol_distance(&doubled[..2], [3.0, 0.0, 4.0])
+        patrol_distance(&doubled[..2], BVector::new(3.0, 0.0, 4.0))
             .unwrap()
             .is_nan()
     );
@@ -10232,15 +10320,15 @@ fn a_patrol_s_distance_is_the_least_to_the_lines_through_its_points() {
 fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
     let path = PatrolPath {
         path: crate::pathing::tile_path::Path {
-            points: vec![[0.0, 0.0, 10.0], [20.0, 0.0, 10.0]],
+            points: vec![BVector::new(0.0, 0.0, 10.0), BVector::new(20.0, 0.0, 10.0)],
             length: 20.0,
         },
         flags: 3,
     };
     // where the unit last moved to: on the path's line, 1 or 6 off it
     let at = |y: f32| Surroundings {
-        position: [14.0, y, 0.0],
-        moved_at: [14.0, 0.0, y],
+        position: Position::new(14.0, y, 0.0),
+        moved_at: BVector::new(14.0, 0.0, y),
         weapon_range: 15.0,
         player: PlayerId::new(1),
         ..Surroundings::default()
@@ -10367,7 +10455,7 @@ impl OrderSide {
                     class,
                     state: 2,
                     gap_squared: 1.0,
-                    position: [10.0, 20.0, 0.0],
+                    position: Position::new(10.0, 20.0, 0.0),
                     ..UnitSeen::default()
                 })
                 .collect(),
@@ -10402,7 +10490,7 @@ impl UnitSide for OrderSide {
         &mut self,
         target: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Ok(self.seen_unit(target)?.map(|t| (t.class, t.position)))
     }
     fn seek_unexplored(
@@ -10463,7 +10551,7 @@ fn queued(order: OrderKind, target: i32) -> QueuedOrder {
         priority: 40,
         target,
         target_owner: -1,
-        point: [12.7, 30.2, 0.5],
+        point: Position::new(12.7, 30.2, 0.5),
         range: 3.0,
         shown: [12.5, 30.5],
         ready: true,
@@ -10481,7 +10569,7 @@ fn run_order(
 ) -> (Result<u32, GenieError>, Vec<Effect>, u32) {
     let at = Surroundings {
         id: 9,
-        position: [5.0, 6.0, 0.25],
+        position: Position::new(5.0, 6.0, 0.25),
         map: [100, 100],
         class: Some(class),
         master: 4,
@@ -10559,7 +10647,7 @@ fn the_attack_order_attacks_by_the_unit_ai_s_type_and_becomes_the_ai_s() {
     );
     assert_eq!(
         (u.current_target, u.target_type, u.target_point),
-        (70, 6, [10.0, 20.0, 0.0])
+        (70, 6, Position::new(10.0, 20.0, 0.0))
     );
     let mut u = idle(SOLDIER_AI);
     let mut side = OrderSide::holding(&[(70, class::CLASS_6)]);
@@ -10674,7 +10762,7 @@ fn the_defend_order_keeps_near_its_target_or_its_point() {
     );
     assert_eq!(
         (u.current_target, u.target_type, u.target_point),
-        (70, 6, [10.0, 20.0, 0.0])
+        (70, 6, Position::new(10.0, 20.0, 0.0))
     );
     assert_eq!((u.desired_distance, u.defend_target), (3.0, 70));
     // without a target: the point at the unit's height, no defend target
@@ -10691,7 +10779,7 @@ fn the_defend_order_keeps_near_its_target_or_its_point() {
     );
     assert_eq!(
         (u.current_target, u.target_point, u.defend_target),
-        (-1, [12.7, 30.2, 0.25], -1)
+        (-1, Position::new(12.7, 30.2, 0.25), -1)
     );
     // a target the world does not hold: not taken
     let mut u = idle(SOLDIER_AI);
@@ -10752,7 +10840,7 @@ fn the_heal_conversion_and_repair_orders_give_the_unit_s_commands() {
         );
         assert_eq!(
             (u.current_target, u.target_type, u.target_point),
-            (70, 3, [10.0, 20.0, 0.0])
+            (70, 3, Position::new(10.0, 20.0, 0.0))
         );
         assert_eq!((u.last_target, u.last_target_type), (5, 9));
         // refused: nothing changes
@@ -10804,12 +10892,12 @@ fn the_explore_orders_explore_their_point_cut_to_tiles() {
             (u.current_order, u.current_action, u.last_action),
             (Some(order), Some(action), last)
         );
-        assert_eq!(u.target_point, [12.0, 30.0, EXPLORE_Z]);
+        assert_eq!(u.target_point, Position::new(12.0, 30.0, EXPLORE_Z));
     }
     // a point that is not a number cuts to i32::MIN (CVTTSS2SI)
     let mut u = idle(SOLDIER_AI);
     let o = QueuedOrder {
-        point: [f32::NAN, 1.5, 0.0],
+        point: Position::new(f32::NAN, 1.5, 0.0),
         ..queued(OrderKind::Explore, -1)
     };
     let (_, fx, _) = run_order(&mut u, o, class::CLASS_12, &mut side);
@@ -10863,7 +10951,7 @@ fn the_run_away_order_runs_from_the_unit_s_attackers() {
     assert_eq!(
         fx,
         vec![Effect::Move(AiMove {
-            point: [5.0, 6.0, 0.25],
+            point: Position::new(5.0, 6.0, 0.25),
             range: 0.0,
             force: true,
             walk: false,
@@ -10979,7 +11067,7 @@ fn the_move_orders_move_to_their_point_within_their_range() {
             (
                 Ok(1),
                 vec![Effect::Move(AiMove {
-                    point: [12.7, 30.2, 0.5],
+                    point: Position::new(12.7, 30.2, 0.5),
                     range: 3.0,
                     force: true,
                     walk: true,
@@ -11069,7 +11157,10 @@ fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
     let mut u = idle(11);
     let (r, _, _) = run_order(&mut u, queued(transport, -1), class::TRANSPORT, &mut side);
     assert_eq!(r, Ok(1));
-    assert_eq!(side.commands, [UnitCommand::Transport([12.7, 30.2, 0.5])]);
+    assert_eq!(
+        side.commands,
+        [UnitCommand::Transport(Position::new(12.7, 30.2, 0.5))]
+    );
     assert_eq!(
         (
             u.current_order,
@@ -11081,7 +11172,7 @@ fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
             Some(transport),
             Some(ActionKind::Transport),
             -1,
-            [12.7, 30.2, 0.5]
+            Position::new(12.7, 30.2, 0.5)
         )
     );
     // the enter: the target at (-1, -1, -1) with its class
@@ -11098,7 +11189,7 @@ fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
             u.target_type,
             u.target_point
         ),
-        (Some(ActionKind::Enter), 70, 3, [-1.0; 3])
+        (Some(ActionKind::Enter), 70, 3, Position::from([-1.0; 3]))
     );
     // a villager takes no enter into an object the world does not hold; others ask
     let mut u = idle(CIVILIAN);
@@ -11129,7 +11220,7 @@ fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
         assert_eq!(
             side.commands,
             [UnitCommand::Unload {
-                to: [12.7, 30.2, 0.25],
+                to: Position::new(12.7, 30.2, 0.25),
                 over_wall,
             }]
         );
@@ -11142,7 +11233,7 @@ fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
             ),
             (Some(order), Some(action), 9, 20)
         );
-        assert_eq!(u.target_point, [5.0, 6.0, 0.25]);
+        assert_eq!(u.target_point, Position::new(5.0, 6.0, 0.25));
     }
 }
 
@@ -11163,7 +11254,7 @@ fn seek_and_destroy_attacks_and_explore_and_destroy_explores_at_tiles() {
         ),
         (Some(seek), Some(ActionKind::SeekAndDestroy), 70, 6)
     );
-    assert_eq!(u.target_point, [12.0, 30.0, EXPLORE_Z]);
+    assert_eq!(u.target_point, Position::new(12.0, 30.0, EXPLORE_Z));
     let destroy = OrderKind::ExploreAndDestroy;
     let mut u = idle(SOLDIER_AI);
     let (r, fx, _) = run_order(&mut u, queued(destroy, -1), class::CLASS_6, &mut side);
@@ -11179,7 +11270,7 @@ fn seek_and_destroy_attacks_and_explore_and_destroy_explores_at_tiles() {
             Some(destroy),
             Some(ActionKind::ExploreAndDestroy),
             -1,
-            [12.0, 30.0, EXPLORE_Z]
+            Position::new(12.0, 30.0, EXPLORE_Z)
         )
     );
 }
@@ -11273,7 +11364,7 @@ fn the_order_on_a_target_goes_to_the_caller_or_moves_to_a_gone_one_s_point() {
         assert_eq!(
             fx,
             vec![Effect::Move(AiMove {
-                point: [12.7, 30.2, 0.5],
+                point: Position::new(12.7, 30.2, 0.5),
                 range: 3.0,
                 force: true,
                 walk: true,
@@ -11290,7 +11381,7 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
     // finds (slot 0x7e8) and the order is not taken
     let tree = Gatherable {
         id: 80,
-        position: [13.5, 31.5, 0.0],
+        position: Position::new(13.5, 31.5, 0.0),
         class: 15,
     };
     let mut side = OrderSide {
@@ -11313,7 +11404,7 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
             Ok(0),
             vec![Effect::Command(AiCommand::WorkOn {
                 target: 80,
-                point: [13.5, 31.5, 0.0],
+                point: Position::new(13.5, 31.5, 0.0),
             })]
         )
     );
@@ -11601,7 +11692,7 @@ fn a_villager_drops_another_resource_at_the_table_s_building() {
 fn a_villager_works_the_pasture_it_built() {
     let pasture = UnitSeen {
         id: 15342,
-        position: [136.0, 72.0, 0.0],
+        position: Position::new(136.0, 72.0, 0.0),
         ..UnitSeen::default()
     };
     let at = Surroundings {
@@ -11618,7 +11709,7 @@ fn a_villager_works_the_pasture_it_built() {
             fx,
             [Effect::Command(AiCommand::WorkOn {
                 target: 15342,
-                point: [136.0, 72.0, 0.0]
+                point: Position::new(136.0, 72.0, 0.0)
             })]
         );
     }
@@ -11645,7 +11736,7 @@ fn an_attack_completed_on_the_attack_order_looks_for_the_next_or_ends_it() {
         ..idle(11)
     };
     let here = Surroundings {
-        position: [5.0, 6.0, 0.0],
+        position: Position::new(5.0, 6.0, 0.0),
         class: Some(class::TRANSPORT),
         ..Surroundings::default()
     };
@@ -11672,7 +11763,7 @@ fn an_attack_completed_on_the_attack_order_looks_for_the_next_or_ends_it() {
     let r = u.handle(
         done,
         0,
-        &at([43.5, 105.5, 0.0]),
+        &at(Position::new(43.5, 105.5, 0.0)),
         false,
         &mut seed_for(false),
         &mut With::new(&mut Recorder::default(), &mut fx),
@@ -11720,19 +11811,19 @@ fn packed_siege() -> (UnitAi, Surroundings) {
     let at = Surroundings {
         id: 500,
         class: Some(PACKED_UNIT_CLASS),
-        position: [20.0, 30.0, 0.0],
+        position: Position::new(20.0, 30.0, 0.0),
         units: vec![UnitSeen {
             id: 77,
             class: class::WARSHIP,
             owner: PlayerId::new(2),
             state: 2,
-            position: [22.0, 30.0, 0.0],
+            position: Position::new(22.0, 30.0, 0.0),
             ..UnitSeen::default()
         }],
         top_target: Some(TopTarget {
             id: 90,
             kind: 70,
-            position: [25.0, 30.0, 0.0],
+            position: Position::new(25.0, 30.0, 0.0),
             radius: [0.5, 0.5],
         }),
         ..Surroundings::default()
@@ -11841,7 +11932,7 @@ impl UnitSide for RetargetSide {
         &mut self,
         id: i32,
         s: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         self.soldier.may_attack(id, s)
     }
     fn seek_unexplored(
@@ -11877,14 +11968,14 @@ fn retargeting(target: i32) -> (UnitAi, Surroundings) {
         state: 2,
         kind,
         main,
-        position: [12.0, 10.0, 0.0],
+        position: Position::new(12.0, 10.0, 0.0),
         ..UnitSeen::default()
     };
     let at = Surroundings {
         id: 500,
         class: Some(class::CLASS_6),
         player: PlayerId::new(1),
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         los: 6.0,
         units: vec![
             seen(25954, class::LIVESTOCK, 70, None),

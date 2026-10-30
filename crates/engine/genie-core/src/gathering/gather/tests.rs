@@ -46,7 +46,7 @@ fn walks(held: (i16, f32)) -> Walks<'static> {
             },
             state: 2,
             speed: 1.0,
-            at: [0.0; 3],
+            at: Position::ORIGIN,
             ground: [0.0; 2],
         },
         held,
@@ -57,7 +57,7 @@ fn walks(held: (i16, f32)) -> Walks<'static> {
 /// asks again when its target moves (`FUN_140aa0df0`, `+0x61` 1).
 fn to_house(state: MoveTo) -> MoveToAction {
     MoveToAction {
-        point: [30.0, 88.0, 0.0],
+        point: Position::new(30.0, 88.0, 0.0),
         target: 10028,
         range: task().range,
         on_target_moved: TargetMoved::AsksAgain,
@@ -183,7 +183,7 @@ fn task() -> HuntTask {
 fn bush() -> Resource {
     Resource {
         id: 28222,
-        position: [23.5, 93.5, 0.0],
+        position: Position::new(23.5, 93.5, 0.0),
         class: class::CLASS_7,
         master: 59,
         player: PlayerId::new(0),
@@ -220,7 +220,7 @@ fn target(amount: f32) -> Victim {
 fn farm() -> Resource {
     Resource {
         id: 12557,
-        position: [112.5, 173.5, 3.0],
+        position: Position::new(112.5, 173.5, 3.0),
         class: class::FARM,
         master: 50,
         player: PlayerId::new(1),
@@ -238,14 +238,19 @@ fn a_farm_s_stop_is_a_tile_centre_of_its_footprint_other_than_the_last() {
     rng.set_seed(29910);
     let mut last = [0.0; 2];
     for _ in 0..50 {
-        let [x, y] = stop_point([112.5, 173.5, 3.0], [1.5, 1.5], last, &mut rng);
+        let [x, y] = stop_point(Position::new(112.5, 173.5, 3.0), [1.5, 1.5], last, &mut rng);
         assert!([111.5, 112.5, 113.5].contains(&x) && [172.5, 173.5, 174.5].contains(&y));
         assert_ne!([x, y], last);
         last = [x, y];
     }
     // no footprint: the farm's own tile, drawn ten times when it is the last stop's
     let mut rng = Well512::default();
-    let at = stop_point([10.0, 20.0, 0.0], [0.0, 0.0], [10.5, 20.5], &mut rng);
+    let at = stop_point(
+        Position::new(10.0, 20.0, 0.0),
+        [0.0, 0.0],
+        [10.5, 20.5],
+        &mut rng,
+    );
     assert_eq!((at, rng.draws), ([10.5, 20.5], 20));
 }
 
@@ -281,7 +286,7 @@ fn a_stop_idles_the_gather_and_lets_its_targets_go() {
         state: WALK,
         target: 31,
         carry_to: 9,
-        point: [5.0, 6.0, 0.0],
+        point: Position::new(5.0, 6.0, 0.0),
         timer: 2.0,
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
@@ -302,10 +307,10 @@ fn a_stop_idles_the_gather_and_lets_its_targets_go() {
     assert_eq!(released, [31, 9]);
     assert_eq!(
         (g.state, g.timer, g.target, g.carry_to, g.point, g.move_to),
-        (IDLE, 0.0, -1, -1, [-1.0; 3], None)
+        (IDLE, 0.0, -1, -1, Position::from([-1.0; 3]), None)
     );
     assert_eq!(sprite.map(|s| s.graphic.id), Some(4));
-    assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(mover.velocity.unwrap().velocity.y(), 0.0);
 }
 
 /// `FUN_140aa0df0` takes a target in state 6 or below and holds a later one as none
@@ -316,7 +321,7 @@ fn a_gather_s_move_to_refuses_a_target_past_state_6() {
     let g = GatherAction::new(task(), &farm(), true, rate()).unwrap();
     let to = |state| WalkTo {
         id: 31,
-        at: [5.0, 6.0, 0.0],
+        at: Position::new(5.0, 6.0, 0.0),
         gap: 0.0,
         state: Some(state),
     };
@@ -325,8 +330,14 @@ fn a_gather_s_move_to_refuses_a_target_past_state_6() {
             .unwrap()
             .map(|m| (m.target, m.point, m.state))
     };
-    assert_eq!(walk(6), Some((31, [5.0, 6.0, 0.0], MoveTo::Arrived)));
-    assert_eq!(walk(7), Some((-1, [5.0, 6.0, 0.0], MoveTo::Start)));
+    assert_eq!(
+        walk(6),
+        Some((31, Position::new(5.0, 6.0, 0.0), MoveTo::Arrived))
+    );
+    assert_eq!(
+        walk(7),
+        Some((-1, Position::new(5.0, 6.0, 0.0), MoveTo::Start))
+    );
 }
 
 #[test]
@@ -339,11 +350,16 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
         ..GatherAction::new(task(), &farm(), true, rate()).unwrap()
     };
     let mut rng = Well512::default();
-    let at = stop_point([112.5, 173.5, 3.0], [1.5, 1.5], [0.0; 2], &mut rng.clone());
+    let at = stop_point(
+        Position::new(112.5, 173.5, 3.0),
+        [1.5, 1.5],
+        [0.0; 2],
+        &mut rng.clone(),
+    );
     let walks = walks((-1, 0.0));
     let to = WalkTo {
         id: g.target,
-        at: [112.5, 173.5, 3.0],
+        at: Position::new(112.5, 173.5, 3.0),
         gap: 0.0,
         state: Some(2),
     };
@@ -353,7 +369,7 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
     // again when it moves (`+0x61` 1)
     let to_stop = MoveToAction {
         on_target_moved: TargetMoved::AsksAgain,
-        ..MoveToAction::sub_to_point([at[0], at[1], 3.0], task().range, None)
+        ..MoveToAction::sub_to_point(Position::new(at[0], at[1], 3.0), task().range, None)
     };
     assert_eq!((g.state, g.last_stop, g.move_to), (WALK, at, Some(to_stop)));
 }
@@ -403,37 +419,43 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
     let loaded = walks((17, 5.0));
     g.take_move(
         None,
-        [30.0, 40.0, 0.0],
+        Position::new(30.0, 40.0, 0.0),
         PlayerId::new(7),
         &mut mover,
         &loaded,
     )
     .unwrap();
     // a quiet MoveTo to the point within the task's range; its `+0x61` stays 0
-    let to_point = MoveToAction::sub_to_point([30.0, 40.0, 0.0], task().range, None);
+    let to_point = MoveToAction::sub_to_point(Position::new(30.0, 40.0, 0.0), task().range, None);
     assert_eq!(
         (g.state, g.target, g.point, g.move_to),
-        (MOVED, -1, [30.0, 40.0, 0.0], Some(to_point))
+        (MOVED, -1, Position::new(30.0, 40.0, 0.0), Some(to_point))
     );
     // a loaded gatherer moved to its own mill carries the load there
     let mill = MoveTarget {
         id: 500,
         player: PlayerId::new(7),
         drop_site: true,
-        position: [12.5, 5.5, 0.0],
+        position: Position::new(12.5, 5.5, 0.0),
         gap: 3.0,
     };
     let mut g = gatherer();
-    g.take_move(Some(mill), [1.0; 3], PlayerId::new(7), &mut mover, &loaded)
-        .unwrap();
+    g.take_move(
+        Some(mill),
+        Position::from([1.0; 3]),
+        PlayerId::new(7),
+        &mut mover,
+        &loaded,
+    )
+    .unwrap();
     assert_eq!(
         (g.state, g.target, g.carry_to, g.point),
-        (DROP, -1, 500, [-1.0; 3])
+        (DROP, -1, 500, Position::from([-1.0; 3]))
     );
     // a quiet MoveTo to the mill that asks again when it moves, from where the mill stands
     let to_mill = MoveToAction {
         state: MoveTo::Start,
-        point: [12.5, 5.5, 0.0],
+        point: Position::new(12.5, 5.5, 0.0),
         target: 500,
         range: task().range,
         sprite: None,
@@ -444,13 +466,19 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
     assert_eq!(g.move_to, Some(to_mill));
     // already on its way there, nothing changes; empty-handed it walks to the point
     let walking = g.move_to;
-    g.take_move(Some(mill), [1.0; 3], PlayerId::new(7), &mut mover, &loaded)
-        .unwrap();
+    g.take_move(
+        Some(mill),
+        Position::from([1.0; 3]),
+        PlayerId::new(7),
+        &mut mover,
+        &loaded,
+    )
+    .unwrap();
     assert_eq!((g.state, g.move_to), (DROP, walking));
     let mut g = gatherer();
     g.take_move(
         Some(mill),
-        [1.0; 3],
+        Position::from([1.0; 3]),
         PlayerId::new(7),
         &mut mover,
         &walks((17, 0.0)),
@@ -478,7 +506,7 @@ fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
         assert_eq!(moved, Ok(Next::Stay));
         (g.state, g.point, g.move_to)
     };
-    assert_eq!(run(false), (IDLE, [-1.0; 3], None));
+    assert_eq!(run(false), (IDLE, Position::from([-1.0; 3]), None));
     assert_eq!(run(true).0, DONE);
 }
 
@@ -552,14 +580,15 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
     let mut rig = Rig::on_the_path();
     rig.t.world_time = 5000;
     rig.set_load(-1, 0.0);
-    rig.unit_mut().body = crate::objects::layers::Body::new([30.0, 40.0, 0.0], None, Some(mover));
+    rig.unit_mut().body =
+        crate::objects::layers::Body::new(Position::new(30.0, 40.0, 0.0), None, Some(mover));
     let r = GatherReads {
         master: 259,
         ..reads()
     };
     // the bush straight behind the unit (the angle 0 faces +x)
     let mut bush = Victim {
-        position: [20.0, 40.0, 0.0],
+        position: Position::new(20.0, 40.0, 0.0),
         ..target(10.0)
     };
     let faced = rig.run(FACE, 100, |c, u, me| {
@@ -688,7 +717,7 @@ fn a_gatherer_walks_to_its_drop_site_and_starts_again_when_it_moved() {
     assert_eq!(state(&g), Some(MoveTo::Moving));
     // the site left the point the MoveTo holds: it starts again
     g.move_to = g.move_to.map(|m| MoveToAction {
-        point: [35.0, 88.0, 0.0],
+        point: Position::new(35.0, 88.0, 0.0),
         ..m
     });
     assert_eq!(drop(&mut g, &mut rig), Ok(Dropped::Going));
@@ -711,7 +740,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
     let state = |g: &GatherAction| g.move_to.map(|m| m.state);
     let house = |workers| Victim {
         id: 10028,
-        position: [30.0, 88.0, 0.0],
+        position: Position::new(30.0, 88.0, 0.0),
         radius: [1.0, 1.0],
         workers,
         ..target(10.0)
@@ -734,7 +763,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
     assert_eq!(state(&g), Some(MoveTo::Moving));
     // the target left the point the MoveTo holds: it starts again
     g.move_to = g.move_to.map(|m| MoveToAction {
-        point: [35.0, 88.0, 0.0],
+        point: Position::new(35.0, 88.0, 0.0),
         ..m
     });
     assert_eq!(walk(&mut g, &mut rig, 0), Ok(Next::Stay));
@@ -777,13 +806,13 @@ fn a_gatherer_whose_move_to_lost_its_target_walks_back_to_its_point() {
     let mut g = GatherAction {
         state: WALK,
         target: 10028,
-        point: [30.0, 88.0, 0.0],
+        point: Position::new(30.0, 88.0, 0.0),
         move_to: Some(to_house(MoveTo::Moving)),
         ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
     };
     let mut house = Victim {
         id: 10028,
-        position: [30.0, 88.0, 0.0],
+        position: Position::new(30.0, 88.0, 0.0),
         ..target(10.0)
     };
     let next = rig.run(WALK, 100, |c, u, me| {
@@ -791,7 +820,7 @@ fn a_gatherer_whose_move_to_lost_its_target_walks_back_to_its_point() {
     });
     assert_eq!(next, Ok(Next::Stay));
     assert_eq!((g.state, g.target), (WALK_BACK, -1));
-    let to_point = MoveToAction::sub_to_point([30.0, 88.0, 0.0], task().range, None);
+    let to_point = MoveToAction::sub_to_point(Position::new(30.0, 88.0, 0.0), task().range, None);
     assert_eq!(g.move_to, Some(to_point));
 }
 
@@ -867,7 +896,7 @@ fn a_gatherer_facing_its_target_works_it() {
     };
     let mut house = Victim {
         id: 10028,
-        position: [30.0, 88.0, 0.0],
+        position: Position::new(30.0, 88.0, 0.0),
         ..target(10.0)
     };
     let mut r = reads();
@@ -906,20 +935,26 @@ fn a_farmer_without_its_farm_waits_a_second_then_walks_back_to_reseed() {
     assert_eq!((g.state, g.timer), (FARM_WAIT, -1.0 + 0.6));
     assert_eq!(farm_update(&mut g, None, 600, false), Ok(Next::Stay));
     assert_eq!(g.state, RESEED_WALK);
-    assert_eq!([g.point[0], g.point[1]], [112.0, 173.0]);
+    assert_eq!(g.point.ground(), [112.0, 173.0]);
     // a quiet MoveTo to the point within the task's range (`+0x61` 0), its start `0x140aa2100`
-    let to_point = MoveToAction::sub_to_point([112.0, 173.0, 3.0], task().range, None);
+    let to_point = MoveToAction::sub_to_point(Position::new(112.0, 173.0, 3.0), task().range, None);
     assert_eq!(g.move_to, Some(to_point));
     // without a gather point the walk goes to the point it holds
     let mut g = waiting(true);
     g.gather_at = [-1.0, -1.0];
-    g.point = [5.0, 6.0, 0.0];
+    g.point = Position::new(5.0, 6.0, 0.0);
     assert_eq!(farm_update(&mut g, None, 1000, false), Ok(Next::Stay));
-    assert_eq!((g.state, g.point), (RESEED_WALK, [5.0, 6.0, 0.0]));
+    assert_eq!(
+        (g.state, g.point),
+        (RESEED_WALK, Position::new(5.0, 6.0, 0.0))
+    );
     // a farmer that never gathered idles
     let mut g = waiting(false);
     assert_eq!(farm_update(&mut g, None, 1000, false), Ok(Next::Stay));
-    assert_eq!((g.state, g.target, g.point), (IDLE, -1, [-1.0; 3]));
+    assert_eq!(
+        (g.state, g.target, g.point),
+        (IDLE, -1, Position::from([-1.0; 3]))
+    );
     // a timer at 0 or more waits on
     let mut g = waiting(true);
     g.timer = 0.0;
@@ -1047,7 +1082,7 @@ fn a_forager_walks_to_its_bush() {
     .unwrap();
     // a quiet MoveTo to the bush that asks again when it moves
     let to_bush = MoveToAction {
-        point: [23.5, 93.5, 0.0],
+        point: Position::new(23.5, 93.5, 0.0),
         target: 28222,
         range: task().range,
         on_target_moved: TargetMoved::AsksAgain,
@@ -1104,7 +1139,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
         Ok(true)
     );
     let to_bush = MoveToAction {
-        point: [23.5, 93.5, 0.0],
+        point: Position::new(23.5, 93.5, 0.0),
         target: 28222,
         range: task().range,
         on_target_moved: TargetMoved::AsksAgain,
@@ -1119,7 +1154,14 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
             g.point,
             g.target_type
         ),
-        (WALK, Some(to_bush), 28222, -1, [23.5, 93.5, 0.0], 7)
+        (
+            WALK,
+            Some(to_bush),
+            28222,
+            -1,
+            Position::new(23.5, 93.5, 0.0),
+            7
+        )
     );
     // the gathering is not started any more (+0x80 cleared first)
     assert!(!g.worked);
@@ -1169,7 +1211,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
     );
     assert_eq!(
         (g.state, g.target, g.carry_to, g.point),
-        (DROP, -1, 500, [-1.0; 3])
+        (DROP, -1, 500, Position::from([-1.0; 3]))
     );
 }
 

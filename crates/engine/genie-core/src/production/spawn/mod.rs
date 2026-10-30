@@ -31,6 +31,7 @@ pub use self::terrains::{BuildSite, placement_terrains};
 pub(crate) use self::world_map::WorldMap;
 #[cfg(test)]
 use crate::GenieError;
+use crate::map::Position;
 #[cfg(test)]
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::player_master;
@@ -71,7 +72,7 @@ pub enum Facing {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Site {
     /// The building's place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii.
     pub radius: [f32; 2],
     /// Its gather point (`+0xc34`, `+0xc38`), when it has one (`+0xc30`) that is not on itself
@@ -98,18 +99,18 @@ impl World {
     /// A new object of player `p`'s `master` placed at `at` (the static `new_position`,
     /// `0x1411a58b0`, slot 0x60's `FUN_141193a10`): its height the ground's by the master's fly
     /// mode; without the map's elevations the height stays.
-    pub(crate) fn on_ground(&self, p: PlayerId, master: i16, at: [f32; 3]) -> [f32; 3] {
+    pub(crate) fn on_ground(&self, p: PlayerId, master: i16, at: Position) -> Position {
         let fly_mode = player_master(&self.masters, p, master).map_or(0, |m| m.fly_mode);
         self.spatial
             .terrain
             .as_ref()
-            .and_then(|t| t.ground(at[0], at[1]).ok())
+            .and_then(|t| t.ground(at.x(), at.y()).ok())
             .map_or(at, |g| {
-                [
-                    at[0],
-                    at[1],
-                    crate::combat::missile::grounded(at[2], g, false, fly_mode),
-                ]
+                Position::new(
+                    at.x(),
+                    at.y(),
+                    crate::combat::missile::grounded(at.z(), g, false, fly_mode),
+                )
             })
     }
 }

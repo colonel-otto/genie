@@ -2,6 +2,7 @@
 //! spots.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Spatial};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -57,7 +58,7 @@ impl Spatial {
                 "an owner search of an object the world does not hold",
             ))?;
         let reach = (p.radius[0] as i32 as i16).wrapping_add(3);
-        let [x, y, _] = p.position;
+        let (x, y) = (p.position.x(), p.position.y());
         let (x0, x1) = (
             (x as i32 as i16).wrapping_sub(reach),
             (x as i32 as i16).wrapping_add(reach),
@@ -266,12 +267,12 @@ impl Spatial {
     /// when neither: a ghost of it on its tile that the player is not among the blind of decides
     /// then (0xf), which the world does not hold. Without the players' sight: 0.
     #[must_use]
-    pub fn building_sight(&self, id: i32, position: [f32; 3], player: PlayerId) -> Option<u8> {
+    pub fn building_sight(&self, id: i32, position: Position, player: PlayerId) -> Option<u8> {
         use crate::math::conversions::cvttss2si;
         let Some(v) = self.sight.as_ref() else {
             return Some(0);
         };
-        let (x, y) = (cvttss2si(position[0]), cvttss2si(position[1]));
+        let (x, y) = (cvttss2si(position.x()), cvttss2si(position.y()));
         if self.tile_sight(player, x, y) == Some(0xf) {
             return Some(0xf);
         }
@@ -427,7 +428,7 @@ impl Spatial {
     /// the ghost counts as not tall.
     ///
     /// [`Tiles`]: crate::map::spatial::Tiles
-    pub fn insert_ghost(&mut self, id: i32, position: [f32; 3]) {
+    pub fn insert_ghost(&mut self, id: i32, position: Position) {
         if let Some(i) = self.tiles.tile_of(position) {
             let objects = &self.objects;
             self.tiles.append(i, id, |o| Self::is_tall(objects, o));
@@ -436,7 +437,7 @@ impl Spatial {
 
     /// A ghost leaves its tile's list (its last object takes its place) and the tile's tall count
     /// is redone (`FUN_140f5f560`).
-    pub fn remove_ghost(&mut self, id: i32, position: [f32; 3]) {
+    pub fn remove_ghost(&mut self, id: i32, position: Position) {
         if let Some(i) = self.tiles.tile_of(position) {
             let objects = &self.objects;
             self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
@@ -521,10 +522,10 @@ impl Spatial {
     /// As [`Spatial::spot_off`].
     pub fn spot_beside(
         &mut self,
-        from: [f32; 3],
+        from: Position,
         me: (i32, f32),
         mask: u8,
-        site: ([f32; 3], [f32; 2]),
+        site: (Position, [f32; 2]),
     ) -> Result<Option<[f32; 2]>, GenieError> {
         self.spot_off(from, me, mask, site, false)
     }

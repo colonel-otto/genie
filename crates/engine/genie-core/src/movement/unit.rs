@@ -58,7 +58,7 @@ impl Unit {
             }
             // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
             if let Some(v) = mover.velocity.as_ref() {
-                let [x, y, z] = v.velocity;
+                let [x, y, z] = v.velocity.get();
                 let speed = crate::math::fmath::sqrt(x * x + y * y + z * z);
                 if SPEED_EPSILON < speed {
                     self.body.set_anim_speed(speed);
@@ -178,14 +178,12 @@ impl Unit {
                 // its state 3 reads the unit's AI for the path it asks (0x140aa2a70), with its
                 // point: its own, or the target's place (a target gone fails the update first)
                 let point = match move_to.target {
-                    -1 => Some([move_to.point[0], move_to.point[1]]),
-                    id => c.w.spatial.get(id).map(|t| [t.position[0], t.position[1]]),
+                    -1 => Some(move_to.point.ground()),
+                    id => c.w.spatial.get(id).map(|t| t.position.ground()),
                 };
                 let ask = match point {
                     Some(p) if move_to.state == MoveTo::Start => {
-                        let [x, y, _] = self.body.position();
-                        let at = [x, y];
-                        UnitAi::path_ask(self.ai.as_mut(), at, p)
+                        UnitAi::path_ask(self.ai.as_mut(), self.body.position().ground(), p)
                     }
                     _ => crate::movement::PathAsk::default(),
                 };

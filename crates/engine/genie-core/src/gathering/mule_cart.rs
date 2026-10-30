@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::players::PlayerId;
@@ -80,7 +81,7 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-    ) -> Result<(i32, [f32; 3]), GenieError> {
+    ) -> Result<(i32, Position), GenieError> {
         const CART_REACH: f32 = crate::math::image::turn::CART_REACH;
         let id = self.players[p.index()].objects[idx].id;
         let current = self.players[p.index()].objects[idx]
@@ -152,7 +153,7 @@ impl World {
         let found = result?;
         let cart_master = self.players[p.index()].objects[idx].master(&self.masters, p)?;
         let at = self.players[p.index()].objects[idx].position();
-        let mut best: Option<(i32, [f32; 3])> = None;
+        let mut best: Option<(i32, Position)> = None;
         let mut best_d = CART_REACH;
         for f in found {
             let Some(o) = self.spatial.get(f) else {
@@ -174,7 +175,7 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-        (target, point): (i32, [f32; 3]),
+        (target, point): (i32, Position),
     ) -> Result<(), GenieError> {
         let work = crate::orders::Work {
             target,

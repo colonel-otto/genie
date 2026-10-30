@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::commands::unload::UnloadCommand;
 use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
+use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -239,7 +240,7 @@ impl World {
         let at = h.position();
         let [rx, ry] = h.master(&self.masters, hp)?.radius;
         let around = crate::garrison::transport::Around {
-            center: [at[0], at[1]],
+            center: at.ground(),
             radius: [rx + rx, ry + ry],
         };
         let Some(spot) = self.drop_location((hp, hi), inner, &made, around, u32::MAX, last)? else {
@@ -251,9 +252,14 @@ impl World {
         unit.body
             .base_mut()
             .inside_at(inner_id.get(), at, &mut self.spatial);
-        self.leave_container((hp, hi), (up.index(), ui), &made, [spot[0], spot[1], at[2]])?;
+        self.leave_container(
+            (hp, hi),
+            (up.index(), ui),
+            &made,
+            Position::new(spot[0], spot[1], at.z()),
+        )?;
         let unit = &mut self.players[up.index()].objects[ui];
-        let place = ([unit.position()[0], unit.position()[1]], Some(made.class));
+        let place = (unit.position().ground(), Some(made.class));
         if unit.ai.is_some() {
             self.run_ai_calls((up, ui), |ai, side, rng| {
                 let stance = ai.stance;
@@ -292,7 +298,7 @@ impl World {
         let master = unit.master(&self.masters, player)?;
         // UCOMISS with −1, JP and JNZ: a NaN coordinate is not −1
         let to = if master.class != class::BUILDING && point == [NO_POINT, NO_POINT] {
-            [unit.position()[0], unit.position()[1]]
+            unit.position().ground()
         } else {
             point
         };
@@ -302,7 +308,7 @@ impl World {
             priority: 100,
             target: id.get(),
             target_owner: player.index() as i32,
-            point: [to[0], to[1], 0.0],
+            point: Position::new(to[0], to[1], 0.0),
             range: UNLOAD_RANGE,
             shown: to,
             ready: true,

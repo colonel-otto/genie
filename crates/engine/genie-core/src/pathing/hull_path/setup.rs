@@ -35,7 +35,7 @@ pub fn quick_reach(
             "a quick path of an object without a place",
         ))?
         .position;
-    let reach = quick_reach_from(world, me, [from[0], from[1]], target, mask, radius, range)?;
+    let reach = quick_reach_from(world, me, from.ground(), target, mask, radius, range)?;
     Ok(reach.is_some())
 }
 
@@ -62,7 +62,7 @@ pub fn quick_reach_from(
     let Some(t) = world.get_known(target)? else {
         return Ok(None);
     };
-    let to = [t.position[0], t.position[1]];
+    let to = t.position.ground();
     let mut pather = HullPather::new(world, me, target, mask, radius);
     let (result, path) = pather.find_quick(from, to, target, range)?;
     // the slot removes the manager's temporary tile records after (FUN_1410561f0), which the
@@ -113,7 +113,7 @@ impl<'w> HullPather<'w> {
             let Some(p) = world.get(id) else {
                 continue;
             };
-            let [x, y, _] = p.position;
+            let (x, y) = (p.position.x(), p.position.y());
             if p.radius == [HALF, HALF] && x % ONE == HALF && y % ONE == HALF {
                 let (tx, ty) = (cvttss2si(x.floor()), cvttss2si(y.floor()));
                 let word = world.tiles().word(tx, ty).unwrap_or(0);

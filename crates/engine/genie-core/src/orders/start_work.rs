@@ -135,8 +135,8 @@ impl World {
     /// The first farm in the object list of the unit's tile (a fish trap for a fishing ship).
     fn farm_under(&self, p: PlayerId, i: usize, class: ClassId) -> Result<Option<i32>, GenieError> {
         let at = self.players.live(p, i)?.position();
-        let (x, y) = (at[0] as i32, at[1] as i32);
-        self.spatial.check_known([at[0], at[1], at[0], at[1]])?;
+        let (x, y) = (at.x() as i32, at.y() as i32);
+        self.spatial.check_known([at.x(), at.y(), at.x(), at.y()])?;
         for (id, _) in self.spatial.objects_on(x, y) {
             let (owner, o) = self.object(id).ok_or(GenieError::unsupported(
                 "an object on a tile the slice does not hold",

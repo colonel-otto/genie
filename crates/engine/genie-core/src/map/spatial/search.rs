@@ -2,6 +2,7 @@
 //! best unit to attack.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::{
     AttackField, CLOSEST_RANGE, ClosestChecks, FarmLook, Filter, LIVESTOCK_CLASS, PASTURE_CLASS,
     PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED, Spatial, TESTED_KINDS, TRAPPERS,
@@ -97,7 +98,7 @@ impl Spatial {
     /// through the object's place setter ([`crate::objects::layers::Static::new_position`]),
     /// which moves the object with it (FD-045-D15); a tool that asks a query from another place
     /// moves the index alone.
-    pub fn set_position(&mut self, id: i32, position: [f32; 3]) -> Result<(), GenieError> {
+    pub fn set_position(&mut self, id: i32, position: Position) -> Result<(), GenieError> {
         if let Some(p) = self.objects.get_mut(&id) {
             let from = p.position;
             p.position = position;

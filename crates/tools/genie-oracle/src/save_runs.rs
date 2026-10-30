@@ -350,7 +350,7 @@ pub(super) fn frame_commands(turns: &mut World, decoder: &mut Decoder, frame: Op
 /// start (`start`, the recording's header save, whose load made the AI), the leash its master's
 /// last task of action type 6's work range (the unit's `+0xb74`, `FUN_141206d50`).
 pub(super) fn hunted_origins(turns: &mut World, start: &Header) {
-    let places: std::collections::BTreeMap<i32, [f32; 3]> = start
+    let places: std::collections::BTreeMap<i32, genie_core::map::Position> = start
         .players()
         .iter()
         .flat_map(|p| {
@@ -358,7 +358,10 @@ pub(super) fn hunted_origins(turns: &mut World, start: &Header) {
                 .chain(p.sleeping_objects())
                 .collect::<Vec<_>>()
         })
-        .filter_map(|o| o.static_part().map(|s| (s.id, [s.t_x, s.t_y, s.t_z])))
+        .filter_map(|o| {
+            o.static_part()
+                .map(|s| (s.id, genie_core::map::Position::new(s.t_x, s.t_y, s.t_z)))
+        })
         .collect();
     for (p, player) in turns.players.iter_mut().enumerate() {
         let masters = turns.masters.get(p);

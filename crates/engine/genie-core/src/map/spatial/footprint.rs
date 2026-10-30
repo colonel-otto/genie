@@ -1,6 +1,7 @@
 //! A footprint's spots, occupants and clearing, foreign marks, clear points and obstruction
 //! candidates.
 
+use crate::map::Position;
 use crate::objects::masters::class;
 use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
@@ -22,10 +23,10 @@ impl Spatial {
     /// A tile whose objects the slice does not know.
     pub fn spot_off(
         &mut self,
-        from: [f32; 3],
+        from: Position,
         (me, radius_x): (i32, f32),
         mask: u8,
-        (at, radius): ([f32; 3], [f32; 2]),
+        (at, radius): (Position, [f32; 2]),
         farthest: bool,
     ) -> Result<Option<[f32; 2]>, GenieError> {
         /// The footprint's last tile stops short of its edge by this (`DAT_142eb1e9c`).
@@ -34,7 +35,7 @@ impl Spatial {
         const CENTRE: f32 = crate::math::image::spatial::TILE_CENTRE;
         /// The closest search's first best (`DAT_14330ebf4`).
         const NO_SPOT: f32 = crate::math::image::spatial::NO_SPOT;
-        let [tx, ty, _] = at;
+        let (tx, ty) = (at.x(), at.y());
         let [rx, ry] = radius;
         let size = (((ry + rx) as i32) + 2).max(1) * 2;
         let half = size / 2;
@@ -78,11 +79,11 @@ impl Spatial {
             if count == Some(0) {
                 empty = true;
             }
-            let centre = [x as f32 + CENTRE, from[2], y as f32 + CENTRE];
+            let centre = [x as f32 + CENTRE, from.z(), y as f32 + CENTRE];
             let d = [
-                from[0] - centre[0],
-                from[2] - centre[1],
-                from[1] - centre[2],
+                from.x() - centre[0],
+                from.z() - centre[1],
+                from.y() - centre[2],
             ];
             let distance = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
             let beats = if farthest {
@@ -116,7 +117,7 @@ impl Spatial {
         looks: &BTreeMap<i32, crate::construction::build::ClearLook>,
     ) -> Result<Vec<i32>, GenieError> {
         use crate::objects::masters::master_type::BUILDING;
-        let [sx, sy, _] = site.position;
+        let (sx, sy) = (site.position.x(), site.position.y());
         let [rx, ry] = site.radius;
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
         let counts = |id: i32, o: &Placed| {
@@ -138,8 +139,8 @@ impl Spatial {
                     && o.buildable_on != 1
                     && o.tall
                     && o.radius.iter().all(|&r| 0.0 < r)
-                    && (o.position[0] - sx).abs() <= rx
-                    && (o.position[1] - sy).abs() <= ry
+                    && (o.position.x() - sx).abs() <= rx
+                    && (o.position.y() - sy).abs() <= ry
                     && counts(id, o)
             })
             .map(|(&id, _)| id)
@@ -151,7 +152,7 @@ impl Spatial {
     /// be built over (`can_be_built_on`) or are trees (class 15, which it clears when their hit
     /// points are at most 1).
     pub fn footprint_clearing(&self, site_id: i32, site: &Placed) -> Result<Vec<i32>, GenieError> {
-        let [sx, sy, _] = site.position;
+        let (sx, sy) = (site.position.x(), site.position.y());
         let [rx, ry] = site.radius;
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
         Ok(self
@@ -161,8 +162,8 @@ impl Spatial {
                 id != site_id
                     && o.master != site.master
                     && (o.buildable_on != 0 || o.class == class::TREE)
-                    && (o.position[0] - sx).abs() < o.radius[0] + rx
-                    && (o.position[1] - sy).abs() < o.radius[1] + ry
+                    && (o.position.x() - sx).abs() < o.radius[0] + rx
+                    && (o.position.y() - sy).abs() < o.radius[1] + ry
             })
             .map(|(&id, _)| id)
             .collect())
@@ -176,7 +177,7 @@ impl Spatial {
     #[must_use]
     pub fn foreign_marks(&self, site: &Placed) -> bool {
         use crate::math::conversions::cvttss2si;
-        let [sx, sy, _] = site.position;
+        let (sx, sy) = (site.position.x(), site.position.y());
         let [rx, ry] = site.radius;
         let (w, h) = (self.tiles.width, self.tiles.height);
         let (x0, y0) = (cvttss2si(sx - rx).max(0), cvttss2si(sy - ry).max(0));

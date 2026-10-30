@@ -2,7 +2,8 @@
 //! types.
 
 use crate::GenieError;
-use crate::math::fmath::Vec3;
+use crate::map::Position;
+use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -291,9 +292,9 @@ pub(super) const PATROL_FARTHEST: f32 = crate::math::image::unit_ai::PATROL_FART
 /// `FUN_14087e7c0`: the distance from `p` to the line through `a` and `b` (the cross product's
 /// length over the direction's, its squares divided before `sqrtf`, in the routine's order).
 /// Its flag whether `p` lies between the two (the dot products' signs) is not read here.
-pub(super) fn line_distance(p: Vec3, a: Vec3, b: Vec3) -> f32 {
-    let [px, py, pz] = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
-    let [dx, dy, dz] = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+pub(super) fn line_distance(p: BVector, a: BVector, b: BVector) -> f32 {
+    let [px, py, pz] = [p.x() - a.x(), p.height() - a.height(), p.y() - a.y()];
+    let [dx, dy, dz] = [b.x() - a.x(), b.height() - a.height(), b.y() - a.y()];
     let c1 = py * dz - pz * dy;
     let c3 = px * dy - py * dx;
     let c2 = pz * dx - px * dz;
@@ -310,7 +311,7 @@ pub(super) fn line_distance(p: Vec3, a: Vec3, b: Vec3) -> f32 {
 /// # Errors
 ///
 /// An empty path, whose loop the game runs past its end.
-pub(crate) fn patrol_distance(points: &[Vec3], point: Vec3) -> Result<f32, GenieError> {
+pub(crate) fn patrol_distance(points: &[BVector], point: BVector) -> Result<f32, GenieError> {
     if points.is_empty() {
         return Err(GenieError::unreachable("a saved patrol without points"));
     }
@@ -324,9 +325,9 @@ pub(crate) fn patrol_distance(points: &[Vec3], point: Vec3) -> Result<f32, Genie
 
 /// `FUN_14118faf0`: the gap from an object at `at` with radii `radius` to `point`: each axis's
 /// distance less the radius, `MAXSS` 0 (an unordered one is 0), then the length (`sqrtf`).
-pub(super) fn footprint_point_gap(at: [f32; 3], radius: [f32; 2], point: [f32; 2]) -> f32 {
-    let gx = crate::math::fmath::maxss((point[0] - at[0]).abs() - radius[0], 0.0);
-    let gy = crate::math::fmath::maxss((point[1] - at[1]).abs() - radius[1], 0.0);
+pub(super) fn footprint_point_gap(at: Position, radius: [f32; 2], point: [f32; 2]) -> f32 {
+    let gx = crate::math::fmath::maxss((point[0] - at.x()).abs() - radius[0], 0.0);
+    let gy = crate::math::fmath::maxss((point[1] - at.y()).abs() - radius[1], 0.0);
     crate::math::fmath::sqrt(gy * gy + gx * gx)
 }
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::{ClassId, class};
 use crate::objects::unit::Unit;
@@ -20,8 +21,13 @@ fn a_new_motion_holds_the_constructor_s_values() {
         (f32::MAX, f32::MAX, f32::MAX)
     );
     assert_eq!((m.flags, m.lead, m.number_wait_delays), (3, -1, 0));
-    assert_eq!((m.velocity, m.acceleration), ([0.0; 3], [0.0; 3]));
-    let frame = [[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]];
+    assert_eq!((m.velocity, m.acceleration), (BVector::ZERO, BVector::ZERO));
+    let frame = [
+        BVector::ZERO,
+        BVector::new(1.0, 0.0, 0.0),
+        BVector::new(0.0, 1.0, 0.0),
+        BVector::new(0.0, 0.0, -1.0),
+    ];
     assert_eq!((m.position, m.new_position), (frame, frame));
     assert_eq!(m.paths, vec![PathData::without_path()]);
 }
@@ -139,7 +145,7 @@ fn clearing_a_lines_points_keeps_its_lengths() {
 #[test]
 fn the_stored_positions_keep_their_desired_length() {
     let at = |x: f32, h: f32| LinePoint {
-        point: [x, h, 0.0],
+        point: BVector::new(x, h, 0.0),
         ..LinePoint::default()
     };
     let mut line = PointLine {
@@ -149,7 +155,7 @@ fn the_stored_positions_keep_their_desired_length() {
     line.add_at_front(at(0.0, 0.0)).unwrap();
     assert_eq!((line.points.len(), line.length), (1, 0.0));
     line.add_at_front(at(1.0, 5.0)).unwrap();
-    assert_eq!(line.points[0].point, [1.0, 0.0, 0.0]);
+    assert_eq!(line.points[0].point, BVector::new(1.0, 0.0, 0.0));
     assert_eq!(line.length, 1.0);
     line.add_at_front(at(2.0, 0.0)).unwrap();
     // 3 is longer than 2, but not without its last stretch (2): all stay
@@ -157,7 +163,7 @@ fn the_stored_positions_keep_their_desired_length() {
     assert_eq!((line.points.len(), line.length), (4, 3.0));
     // 4 less 1 is 3: the oldest goes; 3 less 1 is 2: the rest stay
     line.add_at_front(at(4.0, 0.0)).unwrap();
-    let xs: Vec<f32> = line.points.iter().map(|p| p.point[0]).collect();
+    let xs: Vec<f32> = line.points.iter().map(|p| p.point.x()).collect();
     assert_eq!(xs, [4.0, 3.0, 2.0, 1.0]);
     assert_eq!(line.length, 3.0);
 }
@@ -416,7 +422,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         .iter()
         .map(|&(id, master, x, y)| Unit {
             id: object_id(id),
-            body: crate::objects::layers::Body::at([x, y, 0.0]),
+            body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
             group: GroupLink { id: 1, flag: -2 },
             life: Lifecycle {
                 master_id: master,
@@ -429,7 +435,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         .collect();
     let target = Unit {
         id: object_id(60),
-        body: crate::objects::layers::Body::at([40.0, 45.0, 0.0]),
+        body: crate::objects::layers::Body::at(Position::new(40.0, 45.0, 0.0)),
         attackable: true,
         life: Lifecycle {
             master_id: 70,
@@ -555,7 +561,7 @@ fn a_group_commanded_on_a_target_out_of_reach_moves_to_it() {
         TargetData {
             target: 60,
             kind: 1,
-            original_position: [40.0, 0.0, 45.0],
+            original_position: BVector::new(40.0, 0.0, 45.0),
             range: 4.0,
             target_radius: radius,
             disable_retargeting: 0,
@@ -577,11 +583,11 @@ fn a_group_commanded_on_a_target_out_of_reach_moves_to_it() {
 fn a_group_already_on_its_target_only_notes_the_place() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
     assert!(t.command_attack(1, building_60(), attack_on(-1)).unwrap());
-    t.players[2].objects[0].body = crate::objects::layers::Body::at([41.0, 45.0, 0.0]);
+    t.players[2].objects[0].body = crate::objects::layers::Body::at(Position::new(41.0, 45.0, 0.0));
     assert!(!t.command_attack(1, building_60(), attack_on(-1)).unwrap());
     assert_eq!(
         t.groups.get(1).unwrap().current_target.original_position,
-        [41.0, 0.0, 45.0]
+        BVector::new(41.0, 0.0, 45.0)
     );
     t.groups.get_mut(1).unwrap().flags |= 0x2_0000;
     assert!(t.command_attack(1, building_60(), attack_on(-1)).unwrap());
@@ -685,7 +691,7 @@ fn a_general_command_moves_the_group_to_the_target_and_takes_the_command() {
         TargetData {
             target: 60,
             kind: 1,
-            original_position: [40.0, 0.0, 45.0],
+            original_position: BVector::new(40.0, 0.0, 45.0),
             range: 3.0,
             target_radius: crate::math::fmath::sqrt(8.0),
             disable_retargeting: 0,
@@ -745,7 +751,7 @@ fn a_general_command_queues_or_runs_the_queue() {
             node.approved,
             node.approved_2
         ),
-        (5, 60, 3.0, [40.0, 0.0, 45.0], 1, u16::MAX)
+        (5, 60, 3.0, BVector::new(40.0, 0.0, 45.0), 1, u16::MAX)
     );
     assert!(
         t.general_command(
@@ -921,7 +927,7 @@ fn a_queued_attack_joins_the_command_queue() {
             command: 7,
             target_id: 60,
             range: 1.5,
-            point: [40.0, 0.0, 45.0],
+            point: BVector::new(40.0, 0.0, 45.0),
             approved: 1,
             disable_retargeting: 1,
             approved_2: 0xffff,
@@ -943,7 +949,7 @@ fn an_indirect_attack_behind_queued_commands_runs_the_queue() {
         command: 7,
         target_id: 60,
         range: 1.5,
-        point: [40.0, 0.0, 45.0],
+        point: BVector::new(40.0, 0.0, 45.0),
         approved: 0,
         disable_retargeting: 0,
         approved_2: 0xffff,
@@ -967,7 +973,7 @@ fn a_queued_attack_on_a_held_target_ends_the_run_with_the_attack() {
         command: 7,
         target_id: 60,
         range: 1.5,
-        point: [40.0, 0.0, 45.0],
+        point: BVector::new(40.0, 0.0, 45.0),
         approved: 1,
         disable_retargeting: 1,
         approved_2: 0x0102,

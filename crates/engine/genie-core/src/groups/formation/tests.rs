@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::players::PlayerId;
@@ -28,7 +29,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         .map(|&(id, master, x, y)| {
             let mut u = crate::objects::unit::Unit {
                 id: object_id(id),
-                body: crate::objects::layers::Body::at([x, y, 0.0]),
+                body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
                 ..crate::objects::unit::Unit::default()
             };
             u.life.master_id = master;
@@ -107,8 +108,8 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
             ..crate::groups::Member::default()
         })
         .collect();
-    g.motion.position[1] = [1.0, 0.0, 0.0];
-    g.motion.position[2] = [0.0, 1.0, 0.0];
+    g.motion.position[1] = BVector::new(1.0, 0.0, 0.0);
+    g.motion.position[2] = BVector::new(0.0, 1.0, 0.0);
     g.desired_spacing = 2.0;
     t.groups = crate::groups::UnitGroups {
         groups: vec![g],
@@ -118,7 +119,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
 }
 
 /// A slot at `at` (x, height, y) of category `category`, transformed and active.
-pub(crate) fn slot_at(at: Vec3, category: i32) -> Slot {
+pub(crate) fn slot_at(at: BVector, category: i32) -> Slot {
     Slot {
         unit_id: -1,
         transform_position: at,
@@ -136,26 +137,41 @@ pub(crate) fn slot_at(at: Vec3, category: i32) -> Slot {
 /// point is no line.
 #[test]
 fn the_point_from_the_front_runs_along_the_stored_positions() {
-    let point = |p: Vec3| crate::groups::LinePoint {
+    let point = |p: BVector| crate::groups::LinePoint {
         point: p,
         ..crate::groups::LinePoint::default()
     };
     let line = crate::groups::PointLine {
         points: vec![
-            point([0.0, 7.0, 0.0]),
-            point([3.0, 1.0, 4.0]),
-            point([3.0, 0.0, 10.0]),
+            point(BVector::new(0.0, 7.0, 0.0)),
+            point(BVector::new(3.0, 1.0, 4.0)),
+            point(BVector::new(3.0, 0.0, 10.0)),
         ],
         ..crate::groups::PointLine::default()
     };
-    assert_eq!(find_point_from_front(&line, 0.0), Some([0.0, 7.0, 0.0]));
-    assert_eq!(find_point_from_front(&line, -1.0), Some([0.0, 7.0, 0.0]));
-    assert_eq!(find_point_from_front(&line, 2.5), Some([1.5, 7.0, 2.0]));
-    assert_eq!(find_point_from_front(&line, 8.0), Some([3.0, 1.0, 7.0]));
-    assert_eq!(find_point_from_front(&line, 11.0), Some([3.0, 1.0, 10.0]));
+    assert_eq!(
+        find_point_from_front(&line, 0.0),
+        Some(BVector::new(0.0, 7.0, 0.0))
+    );
+    assert_eq!(
+        find_point_from_front(&line, -1.0),
+        Some(BVector::new(0.0, 7.0, 0.0))
+    );
+    assert_eq!(
+        find_point_from_front(&line, 2.5),
+        Some(BVector::new(1.5, 7.0, 2.0))
+    );
+    assert_eq!(
+        find_point_from_front(&line, 8.0),
+        Some(BVector::new(3.0, 1.0, 7.0))
+    );
+    assert_eq!(
+        find_point_from_front(&line, 11.0),
+        Some(BVector::new(3.0, 1.0, 10.0))
+    );
     assert_eq!(find_point_from_front(&line, 12.0), None);
     let one = crate::groups::PointLine {
-        points: vec![point([0.0; 3])],
+        points: vec![point(BVector::ZERO)],
         ..crate::groups::PointLine::default()
     };
     assert_eq!(find_point_from_front(&one, 0.0), None);
@@ -198,7 +214,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
         original_id: -1,
         original_master: None,
         original_owner: 1,
-        position: [3.0, 4.0, 0.0],
+        position: Position::new(3.0, 4.0, 0.0),
         tile: [3, 4],
         footprint: 0,
         bits: 0,
@@ -229,7 +245,7 @@ fn the_closest_unit_matches_its_slots_category_and_type() {
         &[],
     );
     let g = t.groups.get(1).unwrap();
-    let o = [0.0; 3];
+    let o = BVector::ZERO;
     assert_eq!(t.closest_unit(g, o, -1, -1, &[]).unwrap(), 12);
     assert_eq!(t.closest_unit(g, o, 1, -1, &[]).unwrap(), 11);
     assert_eq!(t.closest_unit(g, o, 1, 4, &[]).unwrap(), 10);
@@ -247,7 +263,10 @@ fn the_slots_take_their_units_in_the_shorter_of_two_orders() {
         let t = slot_world(&[(10, 4, 1.0, 0.0), (11, 4, second, 0.0)], &[]);
         let g = t.groups.get(1).unwrap().clone();
         let mut f = Formation::new();
-        f.slots = vec![slot_at([0.0; 3], 1), slot_at([3.0, 0.0, 0.0], 1)];
+        f.slots = vec![
+            slot_at(BVector::ZERO, 1),
+            slot_at(BVector::new(3.0, 0.0, 0.0), 1),
+        ];
         t.populate_slots(&mut f, &g).unwrap();
         f.slots
             .iter()
@@ -276,7 +295,10 @@ fn the_feature_s_assignment_keeps_the_start_of_least_variance() {
         }
         let g = t.groups.get(1).unwrap().clone();
         let mut f = Formation::new();
-        f.slots = vec![slot_at([0.0; 3], 1), slot_at([3.0, 0.0, 0.0], 1)];
+        f.slots = vec![
+            slot_at(BVector::ZERO, 1),
+            slot_at(BVector::new(3.0, 0.0, 0.0), 1),
+        ];
         if feature {
             t.assign_slots_by_variance(&mut f, &g, &mut Vec::new())
                 .unwrap();
@@ -301,7 +323,12 @@ fn the_feature_s_costs_of_a_gone_member_are_its_last() {
     let mut t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 3.0, 0.0)], &[]);
     let g = t.groups.get(1).unwrap().clone();
     let mut costs = Vec::new();
-    let two = || vec![slot_at([0.0; 3], 1), slot_at([3.0, 0.0, 0.0], 1)];
+    let two = || {
+        vec![
+            slot_at(BVector::ZERO, 1),
+            slot_at(BVector::new(3.0, 0.0, 0.0), 1),
+        ]
+    };
     let mut f = Formation::new();
     f.slots = two();
     t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
@@ -316,9 +343,9 @@ fn the_feature_s_costs_of_a_gone_member_are_its_last() {
     let t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 3.0, 0.0)], &[]);
     let mut f = Formation::new();
     f.slots = vec![
-        slot_at([0.0; 3], 1),
-        slot_at([3.0, 0.0, 0.0], 1),
-        slot_at([1.0, 0.0, 0.0], 1),
+        slot_at(BVector::ZERO, 1),
+        slot_at(BVector::new(3.0, 0.0, 0.0), 1),
+        slot_at(BVector::new(1.0, 0.0, 0.0), 1),
     ];
     let mut costs = Vec::new();
     t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
@@ -332,8 +359,8 @@ fn a_slot_takes_the_unit_nearest_its_transform_position() {
     let t = slot_world(&[(10, 4, 1.0, 0.0), (11, 4, 9.0, 0.0)], &[]);
     let g = t.groups.get(1).unwrap().clone();
     let mut f = Formation::new();
-    let mut s = slot_at([10.0, 0.0, 0.0], 1);
-    s.desired_transform_position = [0.0; 3];
+    let mut s = slot_at(BVector::new(10.0, 0.0, 0.0), 1);
+    s.desired_transform_position = BVector::ZERO;
     f.slots = vec![s];
     t.populate_slots(&mut f, &g).unwrap();
     assert_eq!(f.slots[0].unit_id, 11);
@@ -359,7 +386,7 @@ fn a_line_after_a_column_fills_from_its_middle_out() {
         f.maximum_depth = 1;
         f.number_transformed_slots = transformed;
         f.slots = (0..width)
-            .map(|i| slot_at([i as f32, 0.0, 0.0], -1))
+            .map(|i| slot_at(BVector::new(i as f32, 0.0, 0.0), -1))
             .collect();
         t.from_previous_column(&mut f, &g).unwrap();
         f.slots.iter().map(|s| s.unit_id).collect::<Vec<_>>()
@@ -378,16 +405,16 @@ fn a_line_after_a_column_fills_from_its_middle_out() {
 #[test]
 fn the_group_target_and_horde_transforms_place_every_slot() {
     let mut t = slot_world(&[(10, 4, 3.0, 3.0)], &[]);
-    t.groups.groups[0].motion.position[0] = [5.0, 0.0, 5.0];
-    t.groups.groups[0].motion.position[1] = [0.0, 0.0, 1.0];
-    t.groups.groups[0].current_target.original_position = [9.0, 0.0, 9.0];
+    t.groups.groups[0].motion.position[0] = BVector::new(5.0, 0.0, 5.0);
+    t.groups.groups[0].motion.position[1] = BVector::new(0.0, 0.0, 1.0);
+    t.groups.groups[0].current_target.original_position = BVector::new(9.0, 0.0, 9.0);
     let mut run = |kind: i32| {
         let mut f = Formation::new();
         f.transform_type = kind;
-        f.transform_orientation = [0.0, 0.0, 1.0];
+        f.transform_orientation = BVector::new(0.0, 0.0, 1.0);
         f.slots = vec![Slot {
-            offset: [1.0, 0.0, 0.0],
-            ..slot_at([0.0; 3], 1)
+            offset: BVector::new(1.0, 0.0, 0.0),
+            ..slot_at(BVector::ZERO, 1)
         }];
         f.spare_slots = vec![Slot::default()];
         let took = t.formation_transform(&mut f, 1, false).unwrap();
@@ -401,16 +428,16 @@ fn the_group_target_and_horde_transforms_place_every_slot() {
     assert_eq!(n, 2);
     // the offset ahead (x) turned to the group's forward (z)
     assert!(
-        (turned[0] - 5.0).abs() < 1e-6 && (turned[2] - 6.0).abs() < 1e-6,
+        (turned.x() - 5.0).abs() < 1e-6 && (turned.y() - 6.0).abs() < 1e-6,
         "{turned:?}"
     );
-    assert_eq!(run(3), (false, [6.0, 0.0, 5.0], 2));
-    assert_eq!(run(2), (false, [10.0, 0.0, 9.0], 2));
+    assert_eq!(run(3), (false, BVector::new(6.0, 0.0, 5.0), 2));
+    assert_eq!(run(2), (false, BVector::new(10.0, 0.0, 9.0), 2));
     // facing back: the slot takes its (only) unit anew
     let mut f = Formation::new();
     f.transform_type = 3;
-    f.transform_orientation = [0.0, 0.0, -1.0];
-    f.slots = vec![slot_at([0.0; 3], 1)];
+    f.transform_orientation = BVector::new(0.0, 0.0, -1.0);
+    f.slots = vec![slot_at(BVector::ZERO, 1)];
     assert!(t.formation_transform(&mut f, 1, false).unwrap());
     assert_eq!((f.slots[0].unit_id, f.slots[0].position_filled), (10, 1));
 }
@@ -423,18 +450,18 @@ fn the_group_target_and_horde_transforms_place_every_slot() {
 fn an_unreachable_slot_moves_to_the_reachable_cell_its_unit_finds() {
     let run = |spacing: f32| {
         let mut t = slot_world(&[(10, 4, 5.5, 5.5), (11, 4, 7.5, 5.5)], &[(8, 5)]);
-        t.groups.groups[0].motion.position[0] = [5.5, 0.0, 5.5];
+        t.groups.groups[0].motion.position[0] = BVector::new(5.5, 0.0, 5.5);
         t.groups.groups[0].motion.lead = 10;
         t.groups.groups[0].desired_spacing = spacing;
         let mut f = Formation::new();
         f.slots = vec![
             Slot {
                 unit_id: 10,
-                ..slot_at([5.5, 0.0, 5.5], 1)
+                ..slot_at(BVector::new(5.5, 0.0, 5.5), 1)
             },
             Slot {
                 unit_id: 11,
-                ..slot_at([8.5, 0.0, 5.5], 1)
+                ..slot_at(BVector::new(8.5, 0.0, 5.5), 1)
             },
         ];
         t.passable_slots(&mut f, 1).unwrap();
@@ -443,17 +470,26 @@ fn an_unreachable_slot_moves_to_the_reachable_cell_its_unit_finds() {
             .map(|s| s.transform_position)
             .collect::<Vec<_>>()
     };
-    assert_eq!(run(2.0), [[5.5, 0.0, 5.5], [5.5, 0.0, 5.5]]);
-    assert_eq!(run(0.5), [[5.5, 0.0, 5.5], [5.75, 0.0, 5.5]]);
+    assert_eq!(
+        run(2.0),
+        [BVector::new(5.5, 0.0, 5.5), BVector::new(5.5, 0.0, 5.5)]
+    );
+    assert_eq!(
+        run(0.5),
+        [BVector::new(5.5, 0.0, 5.5), BVector::new(5.75, 0.0, 5.5)]
+    );
     // COMISS/JC at 0x14103cde3: a NaN spacing nudges as one below 1
-    assert_eq!(run(f32::NAN), [[5.5, 0.0, 5.5], [5.75, 0.0, 5.5]]);
+    assert_eq!(
+        run(f32::NAN),
+        [BVector::new(5.5, 0.0, 5.5), BVector::new(5.75, 0.0, 5.5)]
+    );
     // every slot standable: nothing moves
     let mut t = slot_world(&[(10, 4, 5.5, 5.5)], &[]);
     t.groups.groups[0].motion.lead = 10;
     let mut f = Formation::new();
-    f.slots = vec![slot_at([12.5, 0.0, 5.5], 1)];
+    f.slots = vec![slot_at(BVector::new(12.5, 0.0, 5.5), 1)];
     t.passable_slots(&mut f, 1).unwrap();
-    assert_eq!(f.slots[0].transform_position, [12.5, 0.0, 5.5]);
+    assert_eq!(f.slots[0].transform_position, BVector::new(12.5, 0.0, 5.5));
 }
 
 /// A ghost of id `id` at (`x`, `y`) in its player's doppelganger list.
@@ -464,7 +500,7 @@ pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::vision::ghost::Ghost {
         original_id: -1,
         original_master: None,
         original_owner: 1,
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         tile: [x as i32, y as i32],
         footprint: 0,
         bits: 0,
@@ -508,17 +544,17 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
         if ghost {
             t.players[1].ghosts = vec![ghost_at(-1, 1.0, 1.0)];
         }
-        t.groups.groups[0].motion.position[0] = [5.5, 0.0, 5.5];
+        t.groups.groups[0].motion.position[0] = BVector::new(5.5, 0.0, 5.5);
         assert_eq!(t.groups.groups[0].motion.lead, -1);
         let mut f = Formation::new();
         f.slots = vec![
             Slot {
                 unit_id: 10,
-                ..slot_at([5.5, 0.0, 5.5], 1)
+                ..slot_at(BVector::new(5.5, 0.0, 5.5), 1)
             },
             Slot {
                 unit_id: 11,
-                ..slot_at([8.5, 0.0, 5.5], 1)
+                ..slot_at(BVector::new(8.5, 0.0, 5.5), 1)
             },
         ];
         t.passable_slots(&mut f, 1).unwrap();
@@ -527,8 +563,14 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
             .map(|s| s.transform_position)
             .collect::<Vec<_>>()
     };
-    assert_eq!(run(false), [[5.5, 0.0, 5.5], [5.5, 0.0, 5.5]]);
-    assert_eq!(run(true), [[5.5, 0.0, 5.5], [8.5, 0.0, 5.5]]);
+    assert_eq!(
+        run(false),
+        [BVector::new(5.5, 0.0, 5.5), BVector::new(5.5, 0.0, 5.5)]
+    );
+    assert_eq!(
+        run(true),
+        [BVector::new(5.5, 0.0, 5.5), BVector::new(8.5, 0.0, 5.5)]
+    );
 }
 
 /// The passability's extra step: slot 1's unit at (7.5, 7.5) finds slot 2's cell (6, 7)
@@ -537,23 +579,23 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
 #[test]
 fn a_found_cell_steps_toward_the_nearest_slot_when_the_way_is_clear() {
     let mut t = slot_world(&[(10, 4, 5.5, 5.5), (11, 4, 7.5, 7.5)], &[(8, 5)]);
-    t.groups.groups[0].motion.position[0] = [5.5, 0.0, 5.5];
+    t.groups.groups[0].motion.position[0] = BVector::new(5.5, 0.0, 5.5);
     t.groups.groups[0].motion.lead = 10;
     let mut f = Formation::new();
     f.slots = vec![
         Slot {
             unit_id: 10,
-            ..slot_at([5.5, 0.0, 5.5], 1)
+            ..slot_at(BVector::new(5.5, 0.0, 5.5), 1)
         },
         Slot {
             unit_id: 11,
-            ..slot_at([8.5, 0.0, 5.5], 1)
+            ..slot_at(BVector::new(8.5, 0.0, 5.5), 1)
         },
-        slot_at([6.5, 0.0, 7.5], 1),
+        slot_at(BVector::new(6.5, 0.0, 7.5), 1),
     ];
     t.passable_slots(&mut f, 1).unwrap();
-    assert_eq!(f.slots[1].transform_position, [6.5, 0.0, 6.5]);
-    assert_eq!(f.slots[2].transform_position, [6.5, 0.0, 7.5]);
+    assert_eq!(f.slots[1].transform_position, BVector::new(6.5, 0.0, 6.5));
+    assert_eq!(f.slots[2].transform_position, BVector::new(6.5, 0.0, 7.5));
 }
 
 /// The passability's box and nearest slot as the assembly takes them: a NaN place keeps the
@@ -561,24 +603,32 @@ fn a_found_cell_steps_toward_the_nearest_slot_when_the_way_is_clear() {
 /// (`COMISS`/`CMOVBE`); an inactive slot counts for neither.
 #[test]
 fn the_passability_box_keeps_its_bounds_and_nearest_for_a_nan_place() {
-    let nan = [f32::NAN, 0.0, f32::NAN];
-    let mut idle = slot_at([50.0, 0.0, 50.0], 1);
+    let nan = BVector::new(f32::NAN, 0.0, f32::NAN);
+    let mut idle = slot_at(BVector::new(50.0, 0.0, 50.0), 1);
     idle.active = 0;
     let slots = [
-        slot_at([4.0, 0.0, 6.0], 1),
+        slot_at(BVector::new(4.0, 0.0, 6.0), 1),
         slot_at(nan, 1),
         idle,
-        slot_at([3.0, 0.0, 2.0], 1),
+        slot_at(BVector::new(3.0, 0.0, 2.0), 1),
     ];
-    let (bounds, nearest) = passability_box(&slots, [5.0, 0.0, 5.0], [3.0, 0.0, 3.0]);
+    let (bounds, nearest) = passability_box(
+        &slots,
+        BVector::new(5.0, 0.0, 5.0),
+        BVector::new(3.0, 0.0, 3.0),
+    );
     assert_eq!(bounds, [3.0, 2.0, 5.0, 6.0]);
     assert_eq!(nearest, Some(3));
-    let (_, nearest) = passability_box(&slots[..2], [5.0, 0.0, 5.0], [3.0, 0.0, 3.0]);
+    let (_, nearest) = passability_box(
+        &slots[..2],
+        BVector::new(5.0, 0.0, 5.0),
+        BVector::new(3.0, 0.0, 3.0),
+    );
     assert_eq!(nearest, Some(0));
     // a NaN tester place keeps the starting bounds for its part too
-    let (bounds, _) = passability_box(&slots[..1], nan, [3.0, 0.0, 3.0]);
+    let (bounds, _) = passability_box(&slots[..1], nan, BVector::new(3.0, 0.0, 3.0));
     assert_eq!(bounds, [4.0, 6.0, 4.0, 6.0]);
-    assert_eq!(passability_box(&slots[1..2], nan, [0.0; 3]).1, None);
+    assert_eq!(passability_box(&slots[1..2], nan, BVector::ZERO).1, None);
 }
 
 /// A reachable slot's cell mark: along y for `|dx| <= |dz|` and for a NaN (bit 7 for a `dz`
@@ -595,7 +645,7 @@ fn a_cell_mark_points_toward_the_nearest_slot_and_a_nan_along_y() {
     assert_eq!(cell_mark(0, 3.0, f32::NAN), 0x83);
     assert_eq!(cell_mark(0, f32::NAN, f32::NAN), 0x83);
     // a slot's tile by CVTTSS2SI: a NaN place is off any map
-    assert_eq!(slot_tile([f32::NAN, 0.0, 2.5]), (i32::MIN, 2));
+    assert_eq!(slot_tile(BVector::new(f32::NAN, 0.0, 2.5)), (i32::MIN, 2));
 }
 
 /// The line transform's distance back (0x14103a850, `COMISS`/`JA`): a line's own when it is
@@ -603,12 +653,12 @@ fn a_cell_mark_points_toward_the_nearest_slot_and_a_nan_along_y() {
 #[test]
 fn a_nan_distance_back_takes_the_index_times_the_spacing() {
     let mut t = slot_world(&[(10, 4, 5.0, 5.0)], &[]);
-    t.groups.groups[0].motion.position[0] = [9.0, 0.0, 5.0];
+    t.groups.groups[0].motion.position[0] = BVector::new(9.0, 0.0, 5.0);
     t.groups.groups[0].desired_spacing = 2.0;
     let mut f = Formation::new();
     f.transform_type = 0;
     f.number_lines = 2;
-    f.slots = vec![slot_at([0.0; 3], 1), slot_at([0.0; 3], 1)];
+    f.slots = vec![slot_at(BVector::ZERO, 1), slot_at(BVector::ZERO, 1)];
     f.lines = vec![
         FormationLine {
             indices: vec![0],
@@ -621,7 +671,7 @@ fn a_nan_distance_back_takes_the_index_times_the_spacing() {
         },
     ];
     let _ = t.formation_transform(&mut f, 1, false).unwrap();
-    assert_eq!(f.slots[1].transform_position, [7.0, 0.0, 5.0]);
+    assert_eq!(f.slots[1].transform_position, BVector::new(7.0, 0.0, 5.0));
 }
 
 /// `FUN_141041810`: every slot of the array, spare ones too, loses its unit and filled mark.
@@ -683,7 +733,7 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
             &[],
         );
         one_statistic(&mut t, &[10, 11, 12]);
-        t.groups.groups[0].motion.position[0] = [6.5, 0.0, 6.5];
+        t.groups.groups[0].motion.position[0] = BVector::new(6.5, 0.0, 6.5);
         let mut before = Formation::new();
         before.kind = previous;
         t.groups.groups[0].previous_formation = Some(before);
@@ -704,7 +754,7 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
 }
 
 /// A path level of `points` points at waypoint `waypoint` (none without points).
-fn level(points: &[Vec3], waypoint: i32, flags: u32) -> PathData {
+fn level(points: &[BVector], waypoint: i32, flags: u32) -> PathData {
     PathData {
         level: 0,
         linked_type: 0,
@@ -779,8 +829,16 @@ fn own(t: &World) -> i32 {
 /// no ancestor, a top without a path is not on it.
 #[test]
 fn the_last_high_level_waypoint_is_the_top_levels_last_point() {
-    let top = level(&[[0.0; 3], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]], 2, 0);
-    let walked = level(&[[0.0; 3], [1.0, 0.0, 0.0]], 0, 0);
+    let top = level(
+        &[
+            BVector::ZERO,
+            BVector::new(1.0, 0.0, 0.0),
+            BVector::new(2.0, 0.0, 0.0),
+        ],
+        2,
+        0,
+    );
+    let walked = level(&[BVector::ZERO, BVector::new(1.0, 0.0, 0.0)], 0, 0);
     assert!(on_last_high_level_waypoint(&[walked.clone(), top.clone()]));
     assert!(!on_last_high_level_waypoint(std::slice::from_ref(&top)));
     let mut early = top;
@@ -797,11 +855,11 @@ fn the_last_high_level_waypoint_is_the_top_levels_last_point() {
 #[test]
 fn a_group_chooses_a_column_far_along_its_path_and_a_line_near_its_end() {
     assert_eq!(own(&type_world(Vec::new())), LINE);
-    let walked = level(&[[0.0; 3], [1.0, 0.0, 0.0]], 0, 0);
+    let walked = level(&[BVector::ZERO, BVector::new(1.0, 0.0, 0.0)], 0, 0);
     let path_to = |x: f32, waypoint: i32, flags: u32| {
         vec![
             walked.clone(),
-            level(&[[0.0; 3], [x, 9.0, 0.0]], waypoint, flags),
+            level(&[BVector::ZERO, BVector::new(x, 9.0, 0.0)], waypoint, flags),
         ]
     };
     assert_eq!(own(&type_world(path_to(30.0, 0, 0))), COLUMN);
@@ -823,8 +881,8 @@ fn a_group_chooses_a_column_far_along_its_path_and_a_line_near_its_end() {
     g.current_target.range = 2.5;
     assert_eq!(own(&t), LINE);
     // a lone level measures its own path; one point measures to the origin
-    let mut t = type_world(vec![level(&[[30.0, 0.0, 0.0]], 0, 0)]);
-    t.groups.groups[0].motion.position[0] = [40.0, 0.0, 0.0];
+    let mut t = type_world(vec![level(&[BVector::new(30.0, 0.0, 0.0)], 0, 0)]);
+    t.groups.groups[0].motion.position[0] = BVector::new(40.0, 0.0, 0.0);
     assert_eq!(own(&t), COLUMN);
 }
 
@@ -832,8 +890,11 @@ fn a_group_chooses_a_column_far_along_its_path_and_a_line_near_its_end() {
 /// type, or locked to one (not -1 or 0), the group takes it.
 #[test]
 fn a_lock_or_a_given_type_overrides_the_groups_own_choice() {
-    let walked = level(&[[0.0; 3], [1.0, 0.0, 0.0]], 0, 0);
-    let far = vec![walked, level(&[[0.0; 3], [30.0, 0.0, 0.0]], 1, 0)];
+    let walked = level(&[BVector::ZERO, BVector::new(1.0, 0.0, 0.0)], 0, 0);
+    let far = vec![
+        walked,
+        level(&[BVector::ZERO, BVector::new(30.0, 0.0, 0.0)], 1, 0),
+    ];
     let mut t = type_world(far);
     t.groups.groups[0].flags |= 4;
     assert_eq!(own(&t), LINE);
@@ -902,8 +963,8 @@ fn a_line_of_two_unit_types_alternates_its_slots() {
     assert!(column_line_slots(&mut f, &g, false, (false, false), 77).unwrap());
     assert_eq!((f.kind, f.maximum_width, f.maximum_depth), (LINE, 5, 2));
     assert_eq!(f.slots.len(), 10);
-    assert_eq!(f.slots[0].offset, [0.0, 0.0, -2.0]);
-    assert_eq!(f.slots[4].offset, [0.0, 0.0, 2.0]);
+    assert_eq!(f.slots[0].offset, BVector::new(0.0, 0.0, -2.0));
+    assert_eq!(f.slots[4].offset, BVector::new(0.0, 0.0, 2.0));
     let subs: Vec<i32> = f.slots.iter().map(|s| s.desired_sub_category).collect();
     assert_eq!(subs, [4, 24, 4, 24, 4, 4, 24, 4, 24, 24]);
     assert_eq!(f.lines[1].distance_back, 1.0);
@@ -919,7 +980,7 @@ fn a_staggered_line_shifts_its_lines_and_a_flanked_one_parts_them() {
     let offsets = |f: &Formation, line: usize| -> Vec<f32> {
         f.slots[line * 5..line * 5 + 5]
             .iter()
-            .map(|s| s.offset[2])
+            .map(|s| s.offset.y())
             .collect()
     };
     let mut f = Formation::new();
@@ -956,7 +1017,7 @@ fn a_narrow_sub_formation_takes_one_line_ahead_of_a_wider_one() {
     assert_eq!((f.maximum_width, f.maximum_depth), (5, 3));
     let first: Vec<(f32, i32)> = f.slots[..3]
         .iter()
-        .map(|s| (s.offset[2], s.desired_category))
+        .map(|s| (s.offset.y(), s.desired_category))
         .collect();
     assert_eq!(first, [(-1.0, 0), (0.0, 0), (1.0, 0)]);
     assert_eq!(f.lines[0].indices, [0, 1, 2]);

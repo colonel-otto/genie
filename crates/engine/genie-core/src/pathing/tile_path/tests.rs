@@ -93,8 +93,8 @@ fn the_tile_search_reaches_a_goal_on_an_open_map() {
     };
     let mut out = Path::default();
     assert_eq!(p.search_on_tiles(&req, &mut out), Found::Goal);
-    assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
-    assert_eq!(out.points.last(), Some(&[6.5, 0.0, 5.5]));
+    assert_eq!(out.points.first(), Some(&BVector::new(1.5, 0.0, 2.5)));
+    assert_eq!(out.points.last(), Some(&BVector::new(6.5, 0.0, 5.5)));
     // the search leaves its marks behind: the same search again finds the same path
     let mut again = Path::default();
     assert_eq!(p.search_on_tiles(&req, &mut again), Found::Goal);
@@ -117,8 +117,8 @@ fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
     };
     let mut out = Path::default();
     assert_eq!(p.search_on_tiles(&req, &mut out), Found::Nearest);
-    assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
-    assert_eq!(out.points.last(), Some(&[2.5, 0.0, 2.5]));
+    assert_eq!(out.points.first(), Some(&BVector::new(1.5, 0.0, 2.5)));
+    assert_eq!(out.points.last(), Some(&BVector::new(2.5, 0.0, 2.5)));
 }
 
 /// `FUN_140f7c530` for a human player's search (`full`): a short path over the levels is
@@ -138,8 +138,8 @@ fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
         };
         let mut out = Path::default();
         assert_eq!(p.plan::<()>(&req, false, &mut out, None), Ok(Found::Goal));
-        assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
-        assert_eq!(out.points.last(), Some(&[to[0], 0.0, to[1]]));
+        assert_eq!(out.points.first(), Some(&BVector::new(1.5, 0.0, 2.5)));
+        assert_eq!(out.points.last(), Some(&BVector::new(to[0], 0.0, to[1])));
     }
 }
 
@@ -179,9 +179,9 @@ fn a_wall_splits_its_level_three_cell_into_its_children() {
 #[test]
 fn a_path_skips_a_point_equal_to_its_neighbour() {
     let mut path = Path::default();
-    assert!(path.push([1.0, 0.0, 2.0]));
-    assert!(!path.push([1.0, 0.0, 2.0]));
-    assert!(path.push([4.0, 0.0, 6.0]));
+    assert!(path.push(BVector::new(1.0, 0.0, 2.0)));
+    assert!(!path.push(BVector::new(1.0, 0.0, 2.0)));
+    assert!(path.push(BVector::new(4.0, 0.0, 6.0)));
     path.measure();
     assert_eq!(path.length, 5.0);
 }
@@ -190,7 +190,11 @@ fn a_path_skips_a_point_equal_to_its_neighbour() {
 #[test]
 fn a_stretch_without_points_between_is_left_as_it_is() {
     let mut path = Path {
-        points: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [30.0, 0.0, 0.0]],
+        points: vec![
+            BVector::ZERO,
+            BVector::new(1.0, 0.0, 0.0),
+            BVector::new(30.0, 0.0, 0.0),
+        ],
         length: 0.0,
     };
     let before = path.points.clone();
@@ -220,13 +224,16 @@ fn the_smoothing_keeps_the_points_before_a_blocked_walk() {
         [103.604_164, 46.854_168],
     ];
     let mut path = Path {
-        points: points.iter().map(|&[x, y]| [x, 0.0, y]).collect(),
+        points: points
+            .iter()
+            .map(|&[x, y]| BVector::new(x, 0.0, y))
+            .collect(),
         length: 0.0,
     };
     // blocked: any walk from the start that ends beyond y = 44.5
     let mut walls = Walls::default();
     smooth(&mut path, &mut walls).unwrap();
-    let ends: Vec<[f32; 2]> = path.points.iter().map(|p| [p[0], p[2]]).collect();
+    let ends: Vec<[f32; 2]> = path.points.iter().map(|p| p.ground()).collect();
     assert_eq!(
         ends,
         [[109.5, 42.5], [103.5, 44.5], [103.604_164, 46.854_168]]
@@ -234,7 +241,7 @@ fn the_smoothing_keeps_the_points_before_a_blocked_walk() {
     assert_eq!(walls.passes, 1);
     // a path of two points tests nothing and ends no pass
     let mut short = Path {
-        points: vec![[0.0, 0.0, 0.0], [5.0, 0.0, 5.0]],
+        points: vec![BVector::ZERO, BVector::new(5.0, 0.0, 5.0)],
         length: 0.0,
     };
     smooth(&mut short, &mut walls).unwrap();
@@ -271,13 +278,16 @@ impl SegmentTest<()> for Walls {
 #[test]
 fn an_appended_path_takes_the_source_s_length_or_measures_a_short_or_nan_one() {
     let mut path = Path::default();
-    let _ = path.push([0.0, 0.0, 0.0]);
+    let _ = path.push(BVector::ZERO);
     let other = Path {
-        points: vec![[0.0, 0.0, 0.0], [3.0, 0.0, 4.0]],
+        points: vec![BVector::ZERO, BVector::new(3.0, 0.0, 4.0)],
         length: 9.0,
     };
     path.append(&other);
-    assert_eq!(path.points, [[0.0, 0.0, 0.0], [3.0, 0.0, 4.0]]);
+    assert_eq!(
+        path.points,
+        [BVector::new(0.0, 0.0, 0.0), BVector::new(3.0, 0.0, 4.0)]
+    );
     assert_eq!(path.length, 9.0);
     for short in [1e-7, 0.0, f32::NAN] {
         let mut path = Path::default();

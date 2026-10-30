@@ -28,8 +28,9 @@
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Tiles};
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::pathing::tile_path::Path;
 use crate::world::slots::CheckedIndex;
 
@@ -107,8 +108,8 @@ pub struct LongTarget {
 impl LongTarget {
     /// The target at `position` with radii `radius`, `gap` and `gap_squared` from the unit.
     #[must_use]
-    pub fn new(position: [f32; 3], radius: [f32; 2], gap: f32, gap_squared: f32) -> Self {
-        let [x, y, _] = position;
+    pub fn new(position: Position, radius: [f32; 2], gap: f32, gap_squared: f32) -> Self {
+        let (x, y) = (position.x(), position.y());
         Self {
             tile: [x as i32, y as i32],
             rect: [
@@ -291,7 +292,9 @@ fn trace(
             .flatten()
             .unwrap_or(0xff)
     };
-    let centre = |[x, y]: [i32; 2]| -> Vec3 { [x as f32 + TILE_CENTRE, z, y as f32 + TILE_CENTRE] };
+    let centre = |[x, y]: [i32; 2]| -> BVector {
+        BVector::new(x as f32 + TILE_CENTRE, z, y as f32 + TILE_CENTRE)
+    };
     let mut path = Path::default();
     let mut at = end;
     let mut came = direction(at);
@@ -710,16 +713,19 @@ mod tests {
         assert!(reached);
         let first = walk.points[0];
         let last = *walk.points.last().unwrap();
-        assert_eq!((first, last), ([1.5, 0.25, 2.5], [8.5, 0.25, 2.5]));
+        assert_eq!(
+            (first, last),
+            (BVector::new(1.5, 0.25, 2.5), BVector::new(8.5, 0.25, 2.5))
+        );
         // every stretch between two points is a straight or diagonal run of tiles
         for w in walk.points.windows(2) {
-            let (dx, dy) = (w[1][0] - w[0][0], w[1][2] - w[0][2]);
+            let (dx, dy) = (w[1].x() - w[0].x(), w[1].y() - w[0].y());
             assert!(dx == 0.0 || dy == 0.0 || dx.abs() == dy.abs(), "{w:?}");
         }
         assert!(
             walk.points
                 .iter()
-                .all(|p| p[2] != 2.5 || p[0] < 5.0 || 6.0 < p[0])
+                .all(|p| p.y() != 2.5 || p.x() < 5.0 || 6.0 < p.x())
         );
         // behind a closed wall the search runs out: the path to the tile nearest the goal
         let (t, map) = tiles(&[
@@ -731,8 +737,8 @@ mod tests {
         ]);
         let (reached, walk) = path(&t, map, &request([1, 2], [8, 2]), 0.0).unwrap();
         assert!(!reached);
-        assert_eq!(walk.points.first(), Some(&[1.5, 0.0, 2.5]));
-        assert_eq!(walk.points.last(), Some(&[4.5, 0.0, 2.5]));
+        assert_eq!(walk.points.first(), Some(&BVector::new(1.5, 0.0, 2.5)));
+        assert_eq!(walk.points.last(), Some(&BVector::new(4.5, 0.0, 2.5)));
         // a goal within the range: yes, and no path
         let mut req = request([0, 1], [4, 1]);
         req.range = 4.5;
@@ -750,11 +756,15 @@ mod tests {
         let p = trace([0, 0], [3, 1], &entered, w as i32, 0.0).unwrap();
         assert_eq!(
             p.points,
-            [[0.5, 0.0, 0.5], [2.5, 0.0, 0.5], [3.5, 0.0, 1.5]]
+            [
+                BVector::new(0.5, 0.0, 0.5),
+                BVector::new(2.5, 0.0, 0.5),
+                BVector::new(3.5, 0.0, 1.5)
+            ]
         );
         // the end on the start: its centre only
         let p = trace([0, 0], [0, 0], &entered, w as i32, 0.0).unwrap();
-        assert_eq!(p.points, [[0.5, 0.0, 0.5]]);
+        assert_eq!(p.points, [BVector::new(0.5, 0.0, 0.5)]);
     }
 
     #[test]

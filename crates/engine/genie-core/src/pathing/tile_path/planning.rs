@@ -2,6 +2,7 @@
 //! start and the search on the tiles.
 
 use crate::math::fmath;
+use crate::math::fmath::BVector;
 use crate::pathing::tile_path::{
     Found, GOAL_GAP, NODE, Path, Planner, Request, SHORTCUT_REACH, SegmentTest, TILE_SEARCH_LENGTH,
     smooth, tile,
@@ -41,7 +42,8 @@ impl Planner {
             (None, _) => Found::Nothing,
             (Some(n), result) => {
                 self.last = [gx, gy];
-                let mut end = [req.to[0], 0.0, req.to[1]];
+                let [to_x, to_y] = req.to;
+                let mut end = BVector::new(to_x, 0.0, to_y);
                 let toward = result != Found::Goal || self.cell(0, gx, gy)[0] == 0;
                 if toward {
                     let (cx, cy) = self.tile_toward(n, gx, gy);
@@ -55,7 +57,8 @@ impl Planner {
                 }
                 self.points.push(end);
                 self.trace_back(n, [sx, sy]);
-                self.points.push([req.from[0], 0.0, req.from[1]]);
+                self.points
+                    .push(BVector::new(req.from[0], 0.0, req.from[1]));
                 result
             }
         };
@@ -161,8 +164,8 @@ impl Planner {
         path.points
             .iter()
             .rev()
-            .find(|p| self.cell(0, tile(p[0]), tile(p[2]))[0] != 0)
-            .map(|p| [p[0], p[2]])
+            .find(|p| self.cell(0, tile(p.x()), tile(p.y()))[0] != 0)
+            .map(|p| p.ground())
     }
 
     /// `FUN_140f7c530`'s shortcut: the last point of the path within 10 tiles of its start (past
@@ -181,9 +184,9 @@ impl Planner {
             let Some(&pi) = levels.points.get(i) else {
                 return;
             };
-            let d = (p0[1] - pi[1]) * (p0[1] - pi[1])
-                + (p0[0] - pi[0]) * (p0[0] - pi[0])
-                + (p0[2] - pi[2]) * (p0[2] - pi[2]);
+            let d = (p0.height() - pi.height()) * (p0.height() - pi.height())
+                + (p0.x() - pi.x()) * (p0.x() - pi.x())
+                + (p0.y() - pi.y()) * (p0.y() - pi.y());
             if SHORTCUT_REACH < d {
                 i -= 1;
                 break;
@@ -201,7 +204,7 @@ impl Planner {
         };
         let mut shortcut = Path::default();
         let to_point = Request {
-            to: [pt[0], pt[2]],
+            to: pt.ground(),
             ..req.clone()
         };
         if self.search_on_tiles(&to_point, &mut shortcut) == Found::Goal {
@@ -238,14 +241,16 @@ impl Planner {
             (Some(n), result) => {
                 self.last = [gx, gy];
                 let end = if result == Found::Goal && self.cell(0, gx, gy)[0] != 0 {
-                    [req.to[0], 0.0, req.to[1]]
+                    let [to_x, to_y] = req.to;
+                    BVector::new(to_x, 0.0, to_y)
                 } else {
                     let (cx, cy) = self.tile_toward(n, gx, gy);
                     Self::centre(cx, cy)
                 };
                 self.points.push(end);
                 self.trace_back(n, [sx, sy]);
-                self.points.push([req.from[0], 0.0, req.from[1]]);
+                self.points
+                    .push(BVector::new(req.from[0], 0.0, req.from[1]));
                 result
             }
         };

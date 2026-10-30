@@ -3,12 +3,12 @@
 
 use crate::GenieError;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::movement::{
     AfterRequest, CONTINUE, EPSILON, Goal, LONG_PATH_GROW, LONG_PATH_MOVER, LongWalker, Me, Mover,
     Planning, RANGE_FLOOR, SHORT_REACH, cut_path, footprint_gap, ground, long_path_for, may_plan,
-    point_or_zero, vector,
+    point_or_zero,
 };
 use crate::objects::masters::class;
 use crate::pathing::tile_path::Path;
@@ -18,7 +18,7 @@ use crate::pathing::tile_path::Path;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct LongAsk<'a> {
     /// The waypoint (x, height, y).
-    pub(super) waypoint: Vec3,
+    pub(super) waypoint: BVector,
     /// The unit's ground distance to it.
     pub(super) way: f32,
     /// How near the waypoint counts.
@@ -50,7 +50,7 @@ impl Mover {
     ) -> Result<AfterRequest, GenieError> {
         // the request measures and plans from +0x824 (`pfVar14`, `local_18c8`), where the unit
         // last moved to
-        let position = vector(self.moved_at);
+        let position = self.moved_at.vector();
         if let Some(step) = self.in_reach(goal, position) {
             return Ok(step);
         }
@@ -102,7 +102,7 @@ impl Mover {
     /// [`RANGE_FLOOR`]) puts the level in state 4; a unit on its waypoint marks the level
     /// (flag 1, and 2 when away from the target's footprint by more than [`EPSILON`] or
     /// without one). Both go again.
-    pub(super) fn in_reach(&mut self, goal: Goal<'_>, position: Vec3) -> Option<AfterRequest> {
+    pub(super) fn in_reach(&mut self, goal: Goal<'_>, position: BVector) -> Option<AfterRequest> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let here = self.position();
         let level = &mut self.paths[0];
@@ -192,7 +192,7 @@ impl Mover {
 
     /// A unit without a footprint: the straight way to its waypoint (to where it stands past
     /// the level's last).
-    pub(super) fn straight_way(&self, position: Vec3, np: &mut NewPath) {
+    pub(super) fn straight_way(&self, position: BVector, np: &mut NewPath) {
         let level = &self.paths[0];
         let _ = np.path.insert(0, position);
         let to = if level.waypoint < level.points.len() as i32 {
@@ -243,7 +243,7 @@ impl Mover {
         // from +0x824, the motion step's `local_18c8`
         let (mut found, long) = long_path_for(
             &walker,
-            [self.moved_at[0], self.moved_at[1]],
+            self.moved_at.ground(),
             world,
             plan.computer,
             (waypoint, range),

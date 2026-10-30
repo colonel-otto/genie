@@ -2,6 +2,7 @@
 //! candidates (`FUN_1411c5b60`) and the corners' wall checks.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::production::spawn::{GAP, NONE, SIDE_SHARE, SMALL, Site, Tested};
 
 /// One spot (`FUN_1411c5b60`'s argument): its candidates `i` in `0..=count` lie at
@@ -113,7 +114,7 @@ impl Frame {
             sy = sy + sy + GAP;
         }
         let [bx, by] = site.radius;
-        let [x, y, _] = site.position;
+        let (x, y) = (site.position.x(), site.position.y());
         let [gx, gy] = site.gather.unwrap_or([NONE, NONE]);
         Self {
             step: [sx, sy],
@@ -260,7 +261,7 @@ const fn run(side: Side, (start, step, end): (f32, f32, f32), rising: bool, fixe
 /// The corners' tile pairs (`FUN_1411d12d0`'s wall checks, left top, right top, right bottom,
 /// left bottom) for a unit of radii `unit` beside `site`.
 pub(super) fn corner_tiles(
-    position: [f32; 3],
+    position: Position,
     radius: [f32; 2],
     unit: [f32; 2],
 ) -> [[(i32, i32); 2]; 4] {
@@ -269,7 +270,7 @@ pub(super) fn corner_tiles(
         sx = sx + sx + GAP;
         sy = sy + sy + GAP;
     }
-    let [x, y, _] = position;
+    let (x, y) = (position.x(), position.y());
     let [bx, by] = radius;
     let left = (x - (bx + sx)) as i32;
     let right = (x + bx + sx) as i32;

@@ -4,6 +4,7 @@
 //! [`World::run`]: crate::world::World::run
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -91,7 +92,7 @@ pub struct GatherPoint {
     /// makes, which SET GATHER POINT does not move to another target.
     pub state: i32,
     /// The point its trained units walk to.
-    pub point: [f32; 3],
+    pub point: Position,
     /// The object it is on, −1 for none.
     pub target: i32,
     /// The target's master, −1 without a target.

@@ -331,7 +331,7 @@ impl UnitView<'_, '_> {
         t: &Placed,
         t_master: &crate::objects::masters::Master,
     ) -> Result<bool, GenieError> {
-        let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
+        let (tx, ty) = (t.position.x() as i32, t.position.y() as i32);
         Ok(self.c.w.spatial.sees_tile(self.player, tx, ty)
             || (t_master.fog_visibility != 0 && self.c.w.spatial.explored(self.player, tx, ty)?))
     }

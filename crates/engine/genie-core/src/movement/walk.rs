@@ -2,9 +2,9 @@
 //! control.
 
 use crate::map::spatial::Spatial;
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::{
-    ALLY_PAUSE, EPSILON, FAST_TURN, Me, Motion, Mover, Next, OTHER_PAUSE, UP, Velocity, vector,
+    ALLY_PAUSE, EPSILON, FAST_TURN, Me, Motion, Mover, Next, OTHER_PAUSE, UP, Velocity,
 };
 use crate::players::PlayerId;
 use crate::{GenieError, math::fmath};
@@ -80,12 +80,17 @@ impl Mover {
 
     /// The obstruction query's ends (`FUN_14114cc60`): the step's two ends, each held within 0.1
     /// of the map's far edges (`FUN_141051900` orders them into its rectangle).
-    pub(super) fn query_ends(&self, from: Vec3, to: Vec3, map: [i32; 2]) -> ([f32; 2], [f32; 2]) {
+    pub(super) fn query_ends(
+        &self,
+        from: BVector,
+        to: BVector,
+        map: [i32; 2],
+    ) -> ([f32; 2], [f32; 2]) {
         let far = |size: i32| size as f32 - 0.1;
         let hold = |v: f32, max: f32| if v < 0.0 { 0.0 } else { v.min(max) };
         (
-            [hold(from[0], far(map[0])), hold(from[2], far(map[1]))],
-            [hold(to[0], far(map[0])), hold(to[2], far(map[1]))],
+            [hold(from.x(), far(map[0])), hold(from.y(), far(map[1]))],
+            [hold(to.x(), far(map[0])), hold(to.y(), far(map[1]))],
         )
     }
 
@@ -100,9 +105,9 @@ impl Mover {
     /// renormalised, with [`Mover::turn_dt`]), then the yaw by the turn ([`Mover::yaw`]) unless
     /// the walked level's flags have bit 0 and the turn is 0. Returns whether the turn fell short
     /// (the angle was above the most), which brakes the unit ([`Mover::control_speed`]).
-    pub(super) fn steer(&mut self, direction: Vec3, dt: f32) -> Result<bool, GenieError> {
+    pub(super) fn steer(&mut self, direction: BVector, dt: f32) -> Result<bool, GenieError> {
         let mut flat = self.forward;
-        flat[1] = 0.0;
+        flat = flat.with_height(0.0);
         let flat = fmath::normalize(flat);
         let (turn, clipped) = self.turn_toward(flat, direction, self.turn_dt(dt));
         if self.paths[0].flags & 1 != 0 && turn == 0.0 {
@@ -131,7 +136,7 @@ impl Mover {
     /// either NaN turns whole, unclipped); else the most, negated for a negative angle, and
     /// clipped. The turn is negated when the cross product of the direction and `forward` has a
     /// height above 0.
-    pub(crate) fn turn_toward(&self, forward: Vec3, direction: Vec3, dt: f32) -> (f32, bool) {
+    pub(crate) fn turn_toward(&self, forward: BVector, direction: BVector, dt: f32) -> (f32, bool) {
         let angle = fmath::angle_between(direction, forward);
         let most = self.stats.turn_rate * dt;
         let (mut turn, clipped) = if fmath::at_most_or_unordered(angle, most) {
@@ -141,7 +146,7 @@ impl Mover {
         } else {
             (most, true)
         };
-        if 0.0 < fmath::cross(direction, forward)[1] {
+        if 0.0 < fmath::cross(direction, forward).height() {
             turn = -turn;
         }
         (turn, clipped)
@@ -176,7 +181,7 @@ impl Mover {
     /// (`+0x83c`) the cross product of `up` and it, renormalised. The facet it takes of the
     /// forward vector (`+0xe`, `FUN_14119d0c0`) is not held: the slice derives the facet from the
     /// angle (`+0x7e8`), which this slot leaves.
-    pub(crate) fn set_orientation(&mut self, forward: Vec3, up: Vec3) {
+    pub(crate) fn set_orientation(&mut self, forward: BVector, up: BVector) {
         self.forward = forward;
         self.right = fmath::normalize(fmath::cross(up, forward));
     }
@@ -190,12 +195,12 @@ impl Mover {
                 return;
             }
             self.velocity = Some(Velocity {
-                velocity: [0.0; 3],
-                acceleration: [0.0; 3],
+                velocity: BVector::ZERO,
+                acceleration: BVector::ZERO,
             });
         }
         if let Some(v) = self.velocity.as_mut() {
-            v.velocity[2] = speed;
+            v.velocity = v.velocity.with_y(speed);
         }
     }
 
@@ -211,43 +216,43 @@ impl Mover {
     /// unless the waypoint lies inside the turning circle, where it brakes. The way to the
     /// waypoint and the circle start where the unit last moved to (`+0x824`,
     /// [`Mover::moved_at`]).
-    pub(super) fn control_speed(&mut self, waypoint: Vec3, clipped: bool) {
-        let position = vector(self.moved_at);
+    pub(super) fn control_speed(&mut self, waypoint: BVector, clipped: bool) {
+        let position = self.moved_at.vector();
         let Some(v) = self.velocity.as_mut() else {
             self.velocity = Some(Velocity {
-                velocity: [0.0; 3],
-                acceleration: [0.0, 0.0, f32::MAX],
+                velocity: BVector::ZERO,
+                acceleration: BVector::new(0.0, 0.0, f32::MAX),
             });
             return;
         };
         if clipped {
-            v.acceleration[2] = -f32::MAX;
-            v.velocity[2] = 0.0;
+            v.acceleration = v.acceleration.with_y(-f32::MAX);
+            v.velocity = v.velocity.with_y(0.0);
             return;
         }
         let d = fmath::sub(waypoint, position);
-        let length = fmath::sqrt(d[1] * d[1] + d[0] * d[0] + d[2] * d[2]);
-        let toward = [d[0] / length, d[1] / length, d[2] / length];
+        let length = fmath::sqrt(d.height() * d.height() + d.x() * d.x() + d.y() * d.y());
+        let toward = BVector::new(d.x() / length, d.height() / length, d.y() / length);
         let angle = fmath::angle_between(self.forward, toward);
-        let radius = (self.stats.turn_radius * v.velocity[2]) / self.stats.turn_radius_speed;
-        if 0.0 < v.velocity[2] && EPSILON < angle.abs() {
+        let radius = (self.stats.turn_radius * v.velocity.y()) / self.stats.turn_radius_speed;
+        if 0.0 < v.velocity.y() && EPSILON < angle.abs() {
             let mut side = self.right;
-            if 0.0 < fmath::cross(toward, self.forward)[1] {
-                side = side.map(|c| -c);
+            if 0.0 < fmath::cross(toward, self.forward).height() {
+                side = -side;
             }
-            let centre = [
-                side[0] * radius + position[0],
-                side[1] * radius + position[1],
-                side[2] * radius + position[2],
-            ];
+            let centre = BVector::new(
+                side.x() * radius + position.x(),
+                side.height() * radius + position.height(),
+                side.y() * radius + position.y(),
+            );
             if fmath::length(fmath::sub(waypoint, centre)) < radius {
-                v.acceleration[2] = -f32::MAX;
+                v.acceleration = v.acceleration.with_y(-f32::MAX);
                 return;
             }
         }
-        if self.stats.speed <= v.velocity[2] {
+        if self.stats.speed <= v.velocity.y() {
             return;
         }
-        v.acceleration[2] = f32::MAX;
+        v.acceleration = v.acceleration.with_y(f32::MAX);
     }
 }

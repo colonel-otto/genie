@@ -1,7 +1,8 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
+use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::{
     EPSILON, INCLUDED, NEW_PATHER_RADIUS, PLANS, Planning, footprint_gap, footprint_gap_squared,
 };
@@ -24,12 +25,12 @@ pub(super) enum Reach {
 
 /// Compare the distances on the ground: waypoint to position, waypoint to the step's end, and the
 /// step's own length.
-pub(super) fn reach(waypoint: Vec3, position: Vec3, projected: Vec3) -> Reach {
+pub(super) fn reach(waypoint: BVector, position: BVector, projected: BVector) -> Reach {
     let mut now = fmath::sub(waypoint, position);
     let mut after = fmath::sub(waypoint, projected);
     let step = fmath::sub(projected, position);
-    now[1] = 0.0;
-    after[1] = 0.0;
+    now = now.with_height(0.0);
+    after = after.with_height(0.0);
     let (now, after, step) = (
         fmath::length(now),
         fmath::length(after),
@@ -54,7 +55,7 @@ pub(super) fn reach(waypoint: Vec3, position: Vec3, projected: Vec3) -> Reach {
 #[derive(Clone, Debug)]
 pub(crate) struct LongWalker<'a> {
     pub(crate) id: i32,
-    pub(crate) position: [f32; 3],
+    pub(crate) position: Position,
     pub(crate) radius: [f32; 2],
     pub(crate) mask: u8,
     pub(crate) moves: bool,
@@ -116,7 +117,7 @@ pub(crate) fn long_path_for(
     from: [f32; 2],
     world: &Spatial,
     computer: bool,
-    (to, range): (Vec3, f32),
+    (to, range): (BVector, f32),
     target: Option<(i32, &Placed)>,
 ) -> Result<(bool, Path), GenieError> {
     let long_target = target.map(|(_, t)| {
@@ -129,11 +130,11 @@ pub(crate) fn long_path_for(
         .into_iter()
         .filter_map(|id| world.get(id))
         .filter(|p| p.tall)
-        .map(|p| [p.position[0] as i32, p.position[1] as i32])
+        .map(|p| [p.position.x() as i32, p.position.y() as i32])
         .collect();
     let req = crate::pathing::long_path::LongRequest {
         from: [from[0] as i32, from[1] as i32],
-        to: [to[0] as i32, to[2] as i32],
+        to: [to.x() as i32, to.y() as i32],
         range,
         target: long_target,
         moves: walker.moves,
@@ -146,14 +147,14 @@ pub(crate) fn long_path_for(
             .get(walker.id)
             .map_or(0, |p| world.allies_of(p.player)),
     };
-    crate::pathing::long_path::path(world.tiles(), world.map, &req, walker.position[2])
+    crate::pathing::long_path::path(world.tiles(), world.map, &req, walker.position.z())
 }
 
 /// What the tile pathfinder is asked besides its walker ([`tile_plan_for`]'s arguments).
 #[derive(Clone, Copy, Debug)]
 pub struct TileAsk<'a> {
     /// The goal (x, height, y).
-    pub goal: Vec3,
+    pub goal: BVector,
     /// The walker's and the target's radii added.
     pub radii: f32,
     /// How near the goal counts.
@@ -167,7 +168,7 @@ pub struct TileAsk<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct ShortAsk<'a> {
     /// The goal (x, height, y).
-    pub goal: Vec3,
+    pub goal: BVector,
     /// How near the goal counts.
     pub range: f32,
     /// The target object (-1 for none).
@@ -210,7 +211,7 @@ pub(crate) fn tile_plan_for(
         .is_some_and(|o| matches!(o.kind, 2 | 10 | 11 | 13));
     let req = Request {
         from,
-        to: [to[0], to[2]],
+        to: to.ground(),
         radii,
         range,
         closed: Vec::new(),
@@ -317,7 +318,7 @@ pub(crate) fn short_path_for(
     from: [f32; 2],
     world: &mut Spatial,
     plan: &mut Planning<'_>,
-    goal: (Vec3, f32, i32),
+    goal: (BVector, f32, i32),
     ignore: &[i32],
     out: &mut Path,
 ) -> Result<u8, GenieError> {
@@ -375,7 +376,7 @@ pub(crate) fn short_path_including(
         -1 => None,
         id => world.get_known(id)?.map(|t| short_path::Target {
             id,
-            position: [t.position[0], t.position[1]],
+            position: t.position.ground(),
             half_size: t.radius,
         }),
     };
@@ -388,7 +389,7 @@ pub(crate) fn short_path_including(
         .collect();
     let call = Call {
         from: [x, y],
-        to: [to[0], to[2]],
+        to: to.ground(),
         radius: walker.radius,
         range,
         target: target_object,
@@ -399,10 +400,10 @@ pub(crate) fn short_path_including(
     // the search's box: four tiles around its ends
     let reach = 4.0 + walker.radius;
     world.check_known_records([
-        x.min(to[0]) - reach,
-        y.min(to[2]) - reach,
-        x.max(to[0]) + reach,
-        y.max(to[2]) + reach,
+        x.min(to.x()) - reach,
+        y.min(to.y()) - reach,
+        x.max(to.x()) + reach,
+        y.max(to.y()) + reach,
     ])?;
     let (query, shapes) = match call.entry() {
         Entry::InRange => {
@@ -419,9 +420,9 @@ pub(crate) fn short_path_including(
     if old_pather_for(walker.radius) {
         let mut pather = HullPather::for_list(world, ignore, walker.mask, walker.radius, player)
             .including(include);
-        let (result, path) = pather.find(from, [to[0], to[2]], target, range)?;
+        let (result, path) = pather.find(from, to.ground(), target, range)?;
         for &[px, py] in &path.points {
-            let _ = out.push([px, 0.0, py]);
+            let _ = out.push(BVector::new(px, 0.0, py));
         }
         return Ok(result);
     }

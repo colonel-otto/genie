@@ -1,6 +1,8 @@
 use super::*;
 use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
+use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
+use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
@@ -37,7 +39,7 @@ const DT: f32 = 0.069;
 /// hunt tests' walker (top speed 0.8, radius 0.2, turn rate the largest).
 fn member(id: i32, x: f32, y: f32) -> Unit {
     let mut mover = crate::gathering::hunt::tests::walker();
-    mover.moved_at = [x, y, 0.0];
+    mover.moved_at = Position::new(x, y, 0.0);
     let mut u = Unit {
         id: object_id(id),
         ai: Some(UnitAi {
@@ -46,7 +48,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
             current_target: -1,
             ..UnitAi::default()
         }),
-        body: crate::objects::layers::Body::new([x, y, 0.0], None, Some(mover)),
+        body: crate::objects::layers::Body::new(Position::new(x, y, 0.0), None, Some(mover)),
         ..Unit::default()
     };
     u.life.master_id = 4;
@@ -60,7 +62,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
 fn slot(unit: i32, x: f32, y: f32) -> Slot {
     Slot {
         unit_id: unit,
-        transform_position: [x, 0.0, y],
+        transform_position: BVector::new(x, 0.0, y),
         time: 100,
         ..Slot::default()
     }
@@ -140,7 +142,7 @@ fn widen(t: &mut World, r: f32) {
 /// An obstruction of player 2 at (`x`, `y`).
 fn post(x: f32, y: f32) -> Placed {
     Placed {
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         radius: [0.2, 0.2],
         class: class::VILLAGER,
         player: PlayerId::new(2),
@@ -183,7 +185,7 @@ fn a_member_s_own_move_is_set_or_ended() {
         .specific_move
         .consecutive_move_failures = 4;
     assert!(
-        t.set_specific_move(1, 10, (7, 0), ([1.0, 2.0, 3.0], 3.0, 2.5))
+        t.set_specific_move(1, 10, (7, 0), (BVector::new(1.0, 2.0, 3.0), 3.0, 2.5))
             .unwrap()
     );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
@@ -193,15 +195,15 @@ fn a_member_s_own_move_is_set_or_ended() {
             active: 1,
             path_id: 7,
             reason: 0,
-            goal: [1.0, 2.0, 3.0],
+            goal: BVector::new(1.0, 2.0, 3.0),
             timer: 3.0,
             consecutive_move_failures: 4,
             distance: 2.5,
-            last_position: [5.0, 0.0, 5.0],
+            last_position: BVector::new(5.0, 0.0, 5.0),
         }
     );
     assert!(
-        t.set_specific_move(1, 10, (7, -1), ([1.0; 3], 1.0, 1.0))
+        t.set_specific_move(1, 10, (7, -1), (BVector::from([1.0; 3]), 1.0, 1.0))
             .unwrap()
     );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
@@ -214,7 +216,7 @@ fn a_member_s_own_move_is_set_or_ended() {
         }
     );
     assert!(
-        !t.set_specific_move(1, 12, (0, 0), ([0.0; 3], 0.0, 0.0))
+        !t.set_specific_move(1, 12, (0, 0), (BVector::ZERO, 0.0, 0.0))
             .unwrap()
     );
     t.groups.get_mut(1).unwrap().members.push(Member {
@@ -222,7 +224,7 @@ fn a_member_s_own_move_is_set_or_ended() {
         ..Member::default()
     });
     assert!(
-        !t.set_specific_move(1, 99, (0, 0), ([0.0; 3], 0.0, 0.0))
+        !t.set_specific_move(1, 99, (0, 0), (BVector::ZERO, 0.0, 0.0))
             .unwrap()
     );
 }
@@ -234,7 +236,7 @@ fn a_member_s_own_move_is_set_or_ended() {
 fn a_member_in_place_or_failing_too_often() {
     let mut t = world();
     let g = t.groups.get_mut(1).unwrap();
-    g.current_formation.as_mut().unwrap().slots[0].transform_position = [5.0, 0.0, 5.0];
+    g.current_formation.as_mut().unwrap().slots[0].transform_position = BVector::new(5.0, 0.0, 5.0);
     g.current_formation.as_mut().unwrap().slots[0].state = 3;
     g.members[0].specific_move.consecutive_move_failures = 11;
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
@@ -251,7 +253,7 @@ fn a_member_in_place_or_failing_too_often() {
     assert_eq!((own.active, own.path_id, own.reason), (1, -1, ASIDE));
     assert_eq!(
         (own.goal, own.timer, own.distance),
-        ([5.0, 0.0, 5.0], 0.1, 0.0)
+        (BVector::new(5.0, 0.0, 5.0), 0.1, 0.0)
     );
     assert_eq!(own.consecutive_move_failures, 11);
     assert_eq!(g.flags & 0x200, 0x200);
@@ -259,7 +261,8 @@ fn a_member_in_place_or_failing_too_often() {
     assert_eq!(unit(&t, 10).ai.as_ref().unwrap().state_position, [0.0; 2]);
     // a NaN gap is not in place
     let mut t = world();
-    t.players[1].objects[0].body.mover_mut().unwrap().moved_at[0] = f32::NAN;
+    let m = t.players[1].objects[0].body.mover_mut().unwrap();
+    m.moved_at = m.moved_at.with_x(f32::NAN);
     let g = t.groups.get_mut(1).unwrap();
     g.current_formation.as_mut().unwrap().slots[0].state = 3;
     g.members[0].specific_move.consecutive_move_failures = 11;
@@ -301,8 +304,8 @@ fn a_far_member_turns_and_walks_to_its_slot() {
     let mut t = world();
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     let m = mover(&t, 10);
-    assert!(0.99 < m.forward[0]);
-    assert_eq!(m.velocity.unwrap().velocity[2], 0.8);
+    assert!(0.99 < m.forward.x());
+    assert_eq!(m.velocity.unwrap().velocity.y(), 0.8);
     assert_eq!(m.stats.speed, WALKING);
     assert_eq!(t.groups.get(1).unwrap().flags & 0x200, 0x200);
     assert_eq!(state(&t, 0), 0);
@@ -338,10 +341,10 @@ fn a_near_member_catches_up_or_takes_the_group_s_speed() {
             .current_formation
             .as_mut()
             .unwrap();
-        f.slots[0].transform_position = [5.0 + gap, 0.0, 5.0];
+        f.slots[0].transform_position = BVector::new(5.0 + gap, 0.0, 5.0);
         t.steer_to_slot(1, 0, 0, &[]).unwrap();
         let m = mover(&t, 10);
-        assert_eq!(m.velocity.unwrap().velocity[2], v, "{gap}");
+        assert_eq!(m.velocity.unwrap().velocity.y(), v, "{gap}");
         assert_eq!(m.stats.speed, shown, "{gap}");
         assert_eq!(t.groups.get(1).unwrap().flags & 0x200, flags, "{gap}");
     }
@@ -359,12 +362,12 @@ fn a_member_about_to_pass_its_slot_stops() {
         .current_formation
         .as_mut()
         .unwrap();
-    f.slots[0].transform_position = [5.05, 0.0, 5.0];
+    f.slots[0].transform_position = BVector::new(5.05, 0.0, 5.0);
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), 2);
     let m = mover(&t, 10);
     assert_eq!(m.animated.speed, 0.0);
-    assert_eq!(m.velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(m.velocity.unwrap().velocity.y(), 0.0);
     // the standing sprite has no factor: the top speed
     assert_eq!(m.stats.speed, 0.8);
 }
@@ -377,14 +380,14 @@ fn a_member_about_to_pass_its_slot_stops() {
 fn a_due_slot_takes_its_member() {
     let mut t = world();
     let g = t.groups.get_mut(1).unwrap();
-    g.motion.velocity = [0.0, 0.0, 1.0];
+    g.motion.velocity = BVector::new(0.0, 0.0, 1.0);
     let s = &mut g.current_formation.as_mut().unwrap().slots[0];
     s.time = 50;
     s.state = 1;
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), 3);
     assert_eq!(mover(&t, 10).animated.speed, 0.0);
-    assert_eq!(unit(&t, 10).position(), [5.0, 5.0, 0.0]);
+    assert_eq!(unit(&t, 10).position(), Position::new(5.0, 5.0, 0.0));
     let mut t = world();
     t.players[1].objects[0]
         .body
@@ -412,13 +415,16 @@ fn a_due_slot_takes_its_member() {
     s.state = 2;
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), 3);
-    assert_eq!(unit(&t, 10).position(), [10.0, 5.0, 0.0]);
+    assert_eq!(unit(&t, 10).position(), Position::new(10.0, 5.0, 0.0));
     let m = mover(&t, 10);
-    assert_eq!(m.moved_at, [10.0, 5.0, 0.0]);
+    assert_eq!(m.moved_at, Position::new(10.0, 5.0, 0.0));
     assert_eq!(m.last_move, 100);
-    assert_eq!(m.forward, [1.0, 0.0, 0.0]);
-    assert_eq!(m.right, [0.0, 0.0, -1.0]);
-    assert_eq!(t.spatial.get(10).unwrap().position, [10.0, 5.0, 0.0]);
+    assert_eq!(m.forward, BVector::new(1.0, 0.0, 0.0));
+    assert_eq!(m.right, BVector::new(0.0, 0.0, -1.0));
+    assert_eq!(
+        t.spatial.get(10).unwrap().position,
+        Position::new(10.0, 5.0, 0.0)
+    );
     // in state 3 the member only shows standing, its goal left
     let mut t = world();
     let s = &mut t
@@ -459,10 +465,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
         ),
         (1, 0, 3, 1, -1)
     );
-    assert_eq!(
-        walked.points.last().map(|p| [p[0], p[2]]),
-        Some([10.0, 5.0])
-    );
+    assert_eq!(walked.points.last().map(|p| p.ground()), Some([10.0, 5.0]));
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!(
         (
@@ -492,11 +495,11 @@ fn a_slot_a_record_holds_takes_a_step_toward_it() {
     t.steer_to_slot(1, 0, 0, &[11]).unwrap();
     let m = mover(&t, 10);
     assert_eq!(
-        m.paths[0].points.last().map(|p| [p[0], p[2]]),
+        m.paths[0].points.last().map(|p| p.ground()),
         Some([6.0, 5.0])
     );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
-    assert_eq!((own.active, own.goal), (1, [6.0, 0.0, 5.0]));
+    assert_eq!((own.active, own.goal), (1, BVector::new(6.0, 0.0, 5.0)));
 }
 
 /// The members' moves: a member whose own move is active with a clear line to its slot
@@ -514,8 +517,8 @@ fn the_members_moves_end_wait_or_stop() {
     let mut stray = member(12, 20.0, 20.0);
     stray.body.set_anim_speed(1.0);
     stray.body.mover_mut().unwrap().velocity = Some(crate::movement::Velocity {
-        velocity: [0.0, 0.0, 0.5],
-        acceleration: [0.0; 3],
+        velocity: BVector::new(0.0, 0.0, 0.5),
+        acceleration: BVector::ZERO,
     });
     t.players[1].objects.push(stray);
     let g = t.groups.get_mut(1).unwrap();
@@ -574,7 +577,7 @@ fn the_members_moves_end_wait_or_stop() {
 
 /// What the way round reads of a member at `at` (x, height, y) of radius 0.2 and height
 /// radius 0.5.
-fn rounder(at: crate::math::fmath::Vec3) -> detour::Rounder<'static> {
+fn rounder(at: BVector) -> detour::Rounder<'static> {
     detour::Rounder {
         id: 10,
         walker: crate::movement::Walker {
@@ -585,7 +588,7 @@ fn rounder(at: crate::math::fmath::Vec3) -> detour::Rounder<'static> {
         },
         computer: false,
         at,
-        here: [at[0], at[2], at[1]],
+        here: at.position(),
         mask: 2,
         restriction: 0,
         grow: 0.1,
@@ -602,15 +605,33 @@ fn rounder(at: crate::math::fmath::Vec3) -> detour::Rounder<'static> {
 #[test]
 fn the_way_round_s_step_goes_one_tile_toward_the_slot_inside_the_map() {
     use detour::one_step_toward;
-    let (map, forward) = ([32, 32], [0.0, 0.0, 1.0]);
+    let (map, forward) = ([32, 32], BVector::new(0.0, 0.0, 1.0));
     let step = |at, to| one_step_toward(&rounder(at), to, forward, map);
-    assert_eq!(step([5.0, 0.0, 5.0], [9.0, 0.0, 5.0]), [6.0, 0.0, 5.0]);
-    assert_eq!(step([5.0, 0.0, 5.0], [5.0, 0.0, 5.0]), [5.0, 0.0, 6.0]);
-    assert_eq!(step([0.5, 0.0, 5.0], [-9.0, 0.0, 5.0]), [0.2, 0.0, 5.0]);
-    assert_eq!(step([31.5, 0.0, 5.0], [40.0, 0.0, 5.0]), [31.8, 0.0, 5.0]);
-    assert_eq!(step([5.0, 0.0, 0.8], [5.0, 0.0, -9.0]), [5.0, 0.0, 0.5]);
-    assert_eq!(step([5.0, 0.0, 31.2], [5.0, 0.0, 40.0]), [5.0, 0.0, 31.5]);
-    let r = rounder([5.0, 0.0, 5.0]);
+    assert_eq!(
+        step(BVector::new(5.0, 0.0, 5.0), BVector::new(9.0, 0.0, 5.0)),
+        BVector::new(6.0, 0.0, 5.0)
+    );
+    assert_eq!(
+        step(BVector::new(5.0, 0.0, 5.0), BVector::new(5.0, 0.0, 5.0)),
+        BVector::new(5.0, 0.0, 6.0)
+    );
+    assert_eq!(
+        step(BVector::new(0.5, 0.0, 5.0), BVector::new(-9.0, 0.0, 5.0)),
+        BVector::new(0.2, 0.0, 5.0)
+    );
+    assert_eq!(
+        step(BVector::new(31.5, 0.0, 5.0), BVector::new(40.0, 0.0, 5.0)),
+        BVector::new(31.8, 0.0, 5.0)
+    );
+    assert_eq!(
+        step(BVector::new(5.0, 0.0, 0.8), BVector::new(5.0, 0.0, -9.0)),
+        BVector::new(5.0, 0.0, 0.5)
+    );
+    assert_eq!(
+        step(BVector::new(5.0, 0.0, 31.2), BVector::new(5.0, 0.0, 40.0)),
+        BVector::new(5.0, 0.0, 31.5)
+    );
+    let r = rounder(BVector::new(5.0, 0.0, 5.0));
     assert!(r.near(15.1, 5.0));
     assert!(!r.near(15.3, 5.0));
 }
@@ -622,11 +643,19 @@ fn a_way_round_that_ends_farther_than_the_gap_falls_short() {
     use crate::pathing::tile_path::Path;
     use detour::ends_farther;
     let mut way = Path::default();
-    let _ = way.push([9.0, 3.0, 5.0]);
-    assert!(ends_farther(&way, [10.0, 0.0, 5.0], 0.5));
-    assert!(!ends_farther(&way, [10.0, 0.0, 5.0], 1.5));
-    assert!(ends_farther(&Path::default(), [3.0, 0.0, 4.0], 4.9));
-    assert!(!ends_farther(&Path::default(), [3.0, 0.0, 4.0], 5.0));
+    let _ = way.push(BVector::new(9.0, 3.0, 5.0));
+    assert!(ends_farther(&way, BVector::new(10.0, 0.0, 5.0), 0.5));
+    assert!(!ends_farther(&way, BVector::new(10.0, 0.0, 5.0), 1.5));
+    assert!(ends_farther(
+        &Path::default(),
+        BVector::new(3.0, 0.0, 4.0),
+        4.9
+    ));
+    assert!(!ends_farther(
+        &Path::default(),
+        BVector::new(3.0, 0.0, 4.0),
+        5.0
+    ));
 }
 
 /// The way round's third try: records on the slot and on the step toward it, the member's way
@@ -642,9 +671,9 @@ fn a_member_with_its_slot_and_step_held_goes_round_to_the_group() {
         t.spatial.insert(50, post(10.0, 5.0));
         t.spatial.insert(51, post(6.0, 5.0));
         let g = t.groups.get_mut(1).unwrap();
-        g.motion.position[0] = [5.0, 0.0, 8.0];
+        g.motion.position[0] = BVector::new(5.0, 0.0, 8.0);
         if moving {
-            g.motion.velocity = [0.0, 0.0, 0.9];
+            g.motion.velocity = BVector::new(0.0, 0.0, 0.9);
         }
         t.steer_to_slot(1, 0, 0, &[11]).unwrap();
         t
@@ -657,10 +686,10 @@ fn a_member_with_its_slot_and_step_held_goes_round_to_the_group() {
     let t = run(true);
     let m = mover(&t, 10);
     assert_eq!(
-        m.paths[0].points.last().map(|p| [p[0], p[2]]),
+        m.paths[0].points.last().map(|p| p.ground()),
         Some([5.0, 8.0])
     );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
-    assert_eq!((own.active, own.goal), (1, [5.0, 0.0, 8.0]));
+    assert_eq!((own.active, own.goal), (1, BVector::new(5.0, 0.0, 8.0)));
     assert_eq!(state(&t, 0), 0);
 }

@@ -101,8 +101,8 @@ impl Mover {
         while 0 < i {
             let (a, b) = (path.points[i as usize], path.points[i as usize - 1]);
             let mut d = fmath::sub(a, b);
-            d[1] = 0.0;
-            if SPLIT < d[0] * d[0] + 0.0 + d[2] * d[2] {
+            d = d.with_height(0.0);
+            if SPLIT < d.x() * d.x() + 0.0 + d.y() * d.y() {
                 split(&mut path, i - 1);
             }
             i -= 1;
@@ -169,7 +169,7 @@ impl Mover {
         {
             let grow = self.stats.radius[0] + RANGE_FLOOR;
             // the query's point: slot 0x520, +0x824
-            let [x, y, _] = self.moved_at;
+            let (x, y) = (self.moved_at.x(), self.moved_at.y());
             let rect = [x, y, x, y];
             world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
             let owner = world.get(me.id).map(|p| p.player);
@@ -279,7 +279,7 @@ impl Mover {
         // from +0x824: the motion step's `local_18c8`, the reach test's start (FUN_14114fea0)
         short_path_including(
             walker,
-            [self.moved_at[0], self.moved_at[1]],
+            self.moved_at.ground(),
             world,
             plan,
             ask,
@@ -321,7 +321,7 @@ impl Mover {
         // from +0x824, the motion step's `local_18c8`
         tile_plan_for(
             self.walker(me.id),
-            [self.moved_at[0], self.moved_at[1]],
+            self.moved_at.ground(),
             level_target,
             world,
             plan,
@@ -366,7 +366,7 @@ impl Mover {
         let Some(t) = world.get_known(target)? else {
             return Ok(false);
         };
-        let to = [t.position[0], t.position[1]];
+        let to = t.position.ground();
         let ask = ReachAsk {
             goal: to,
             target: Some(target),
@@ -392,11 +392,10 @@ impl Mover {
         let Some(t) = world.get_known(target)? else {
             return Ok(None);
         };
-        let to = [t.position[0], t.position[1]];
+        let to = t.position.ground();
         let mask = self.stats.restriction_mask;
         let mut pather = HullPather::new(world, me.id, target, mask, self.stats.radius[0]);
-        let (result, path) =
-            pather.find([self.position()[0], self.position()[1]], to, target, range)?;
+        let (result, path) = pather.find(self.position().ground(), to, target, range)?;
         // the slot removes the manager's temporary tile records after (FUN_1410561f0)
         world.clear_tile_records();
         Ok((result < 2).then(|| path.length()))
@@ -417,7 +416,7 @@ impl Mover {
             return Ok(None);
         };
         let req = Request {
-            from: [self.position()[0], self.position()[1]],
+            from: self.position().ground(),
             to,
             radii,
             range: 0.0,

@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -40,7 +41,7 @@ impl World {
         let tm = t.master(&self.masters, tp)?;
         let followed = Followed {
             id: target,
-            place: [t.position()[0], t.position()[1]],
+            place: t.position().ground(),
             class: (0.0 < tm.radius[0] || 0.0 < tm.radius[1]).then_some(i32::from(tm.class.get())),
         };
         let cap = if self.players.player(player)?.computer {
@@ -97,14 +98,14 @@ impl World {
             return Ok(());
         };
         let tm = t.master(&self.masters, tp)?;
-        let [x, y, z] = t.position();
+        let (x, y, z) = (t.position().x(), t.position().y(), t.position().z());
         let order = crate::unit_ai::QueuedOrder {
             issuer: -1,
             order: OrderKind::Defend,
             priority: 100,
             target,
             target_owner: tp.index() as i32,
-            point: [x, y, z],
+            point: Position::new(x, y, z),
             range: GUARD_RANGE,
             shown: [x, y],
             ready: true,
@@ -165,7 +166,7 @@ impl World {
         let master = u.master(&self.masters, p)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         let moves = MOVING <= master.kind && crate::math::fmath::below_or_unordered(0.0, speed);
-        Ok(moves.then_some([u.position()[0], u.position()[1]]))
+        Ok(moves.then_some(u.position().ground()))
     }
 
     /// A follower's start (`FUN_14161c920`, both loops): its ignore list empties
@@ -220,7 +221,8 @@ impl World {
         }
         let (p, idx) = self.follower_start(loose, i)?;
         let [x, y] = followed.place;
-        let taken = self.move_to_object_with(p, idx, followed.id, [x, y, 0.0], true)?;
+        let taken =
+            self.move_to_object_with(p, idx, followed.id, Position::new(x, y, 0.0), true)?;
         let rng = self.streams.get(Stream::Ai);
         if let Some(ai) = self.players.live_mut(p, idx)?.ai.as_mut() {
             if !taken {
@@ -228,7 +230,7 @@ impl World {
                 ai.set_action(Some(ActionKind::Follow));
             }
             let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
-            ai.set_target(t, class, [x, y, 0.0]);
+            ai.set_target(t, class, Position::new(x, y, 0.0));
         }
         Ok(())
     }
@@ -252,11 +254,11 @@ impl World {
         };
         let (p, idx) = self.follower_start(loose, i)?;
         let map = self.spatial.map;
-        let at = [
+        let at = Position::new(
             follow_axis(x - mean[0] + followed.place[0], map[0]),
             follow_axis(y - mean[1] + followed.place[1], map[1]),
             0.0,
-        ];
+        );
         match followed.class {
             Some(_) => {
                 let _ = self.move_to_object_with(p, idx, followed.id, at, true)?;
@@ -280,7 +282,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<(), GenieError> {
         self.move_to_object_with(player, idx, target, point, true)
             .map(|_| ())
@@ -305,7 +307,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 3],
+        point: Position,
         a14: bool,
     ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
@@ -325,7 +327,7 @@ impl World {
         if target == unit.id.get() {
             return Ok(false);
         }
-        let place = ([unit.position()[0], unit.position()[1]], Some(class));
+        let place = (unit.position().ground(), Some(class));
         if unit.ai.is_some() {
             // a completion's stop (slot 0xb0 with 1): the unit's stopAction at once
             self.run_ai_calls((player, idx), |ai, side, rng| {
@@ -420,7 +422,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: Option<i32>,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<bool, GenieError> {
         let unit = self.players.live_mut(player, idx)?;
         let Some(target) = target else {
@@ -470,7 +472,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<bool, GenieError> {
         let by = self.releaser(player, idx);
         let (released, left) = match self.players.live_mut(player, idx)?.head_takes_point(

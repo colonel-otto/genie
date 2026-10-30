@@ -67,7 +67,7 @@ pub(super) fn lay_foundation(
     let terrain = world.terrain.as_mut().ok_or(GenieError::unsupported(
         "a completion without the map's terrain",
     ))?;
-    let [x, y, _] = placed.position;
+    let (x, y) = (placed.position.x(), placed.position.y());
     if !c.snow && 0 <= x as i32 && 0 <= y as i32 && terrain.snow_under(x as i32, y as i32)? {
         c.snow = true;
     }

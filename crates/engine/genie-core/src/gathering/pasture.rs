@@ -4,6 +4,7 @@
 //! pasture's food.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
@@ -38,9 +39,9 @@ const END: f32 = crate::math::image::pasture::END;
 /// edge from the first corner to the second, the right one from the third to the second, the
 /// top one from the third to the fourth and the left one from the first to the fourth.
 #[must_use]
-pub fn edge_points(at: [f32; 3], radius_x: f32) -> Vec<[f32; 2]> {
+pub fn edge_points(at: Position, radius_x: f32) -> Vec<[f32; 2]> {
     let r = radius_x - INSET;
-    let [x, y, _] = at;
+    let (x, y) = (at.x(), at.y());
     let c = [
         [x - r, y - r],
         [x + r, y - r],
@@ -116,7 +117,7 @@ impl World {
                 i = draw_below(self, points.len());
             }
             let [x, y] = points[i];
-            if let Some(new) = self.make_new_object(p, kind, [x, y, at[2]], false)? {
+            if let Some(new) = self.make_new_object(p, kind, Position::new(x, y, at.z()), false)? {
                 let _ = points.remove(i);
                 if let Some((_, u)) = self.object_mut(id) {
                     u.livestock.push(new);
@@ -264,7 +265,7 @@ mod tests {
     /// 72.3) and the bottom edge's fourth (137.2, 70.5).
     #[test]
     fn a_pasture_s_edges_take_four_points_each() {
-        let points = edge_points([136.0, 72.0, 0.0], 2.0);
+        let points = edge_points(Position::new(136.0, 72.0, 0.0), 2.0);
         assert_eq!(points.len(), 16);
         let t = [0.0f32, 0.3, 0.6, 0.3 + 0.3 + 0.3];
         assert_eq!(points[0], [134.5, 70.5]);

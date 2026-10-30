@@ -1,6 +1,8 @@
 //! An object of the world's id table ([`WorldObject`]) as the groups read it, and a unit's
 //! sub-formation.
 
+use crate::map::Position;
+use crate::math::fmath::BVector;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 
@@ -59,7 +61,7 @@ impl WorldObject<'_> {
     }
 
     /// Its place: x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`).
-    pub(crate) const fn position(&self) -> crate::math::fmath::Vec3 {
+    pub(crate) const fn position(&self) -> Position {
         match *self {
             Self::Unit(_, u) => u.position(),
             Self::Ghost(_, g) => g.position,
@@ -78,10 +80,10 @@ impl WorldObject<'_> {
 
     /// Slot 0x648, its forward: a moving object's `+0x830` (`FUN_14106d500`), a static,
     /// animated or doppelganger object's (0, 0, 0) (`FUN_141071e10`).
-    pub(crate) fn forward(&self) -> crate::math::fmath::Vec3 {
+    pub(crate) fn forward(&self) -> BVector {
         match *self {
-            Self::Unit(_, u) => u.body.mover().map_or([0.0; 3], |m| m.forward),
-            Self::Ghost(..) => [0.0; 3],
+            Self::Unit(_, u) => u.body.mover().map_or(BVector::ZERO, |m| m.forward),
+            Self::Ghost(..) => BVector::ZERO,
         }
     }
 

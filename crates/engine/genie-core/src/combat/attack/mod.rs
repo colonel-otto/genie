@@ -13,6 +13,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveDefaults, MoveToAction, TargetMoved};
@@ -136,9 +137,9 @@ pub struct Attack {
     /// `+0x94`: the least range it attacks from.
     pub min_range: f32,
     /// `+0x38`..`+0x40`: the point it attacks; -1 for none.
-    pub point: [f32; 3],
+    pub point: Position,
     /// `+0xa4`..`+0xac`: where it last saw its target.
-    pub seen: [f32; 3],
+    pub seen: Position,
     /// The `MoveTo` sub-action (quiet) of states 4, 5 and 11: to the target within the attack's
     /// range, to where it saw its target within it, or onto that point.
     pub move_to: Option<MoveToAction>,
@@ -224,9 +225,9 @@ pub struct Engagement {
     /// The gap's root (`FUN_14118f680`).
     pub gap: f32,
     /// The unit's and the target's positions.
-    pub position: [f32; 3],
+    pub position: Position,
     /// The target's place.
-    pub target_position: [f32; 3],
+    pub target_position: Position,
     /// The unit's top speed (slot 0x208), its master's weapon range with any bonus against the
     /// target (slot 0x238) and its least range.
     pub speed: f32,

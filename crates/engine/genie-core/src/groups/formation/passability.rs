@@ -10,7 +10,7 @@ use crate::world::slots::CheckedIndex;
 const NO_NEAREST_SLOT: GenieError =
     GenieError::unreachable("no active slot lies nearer than f32::MAX");
 use crate::math::conversions::cvttss2si;
-use crate::math::fmath::{Vec3, scale, sub};
+use crate::math::fmath::{BVector, scale, sub};
 use crate::math::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
 use crate::world::World;
 
@@ -74,7 +74,7 @@ impl World {
         }
         let g = self.groups.held(group)?;
         let world = (self.world_time, self.spatial.map);
-        let canon = [
+        let canon = BVector::new(
             if formation.about_faced == 0 {
                 1.0
             } else {
@@ -82,7 +82,7 @@ impl World {
             },
             0.0,
             0.0,
-        ];
+        );
         let [position, forward, up, _right] = g.motion.position;
         // calculateYawAngle without its clamp (`param_5` 0), with the world's update time
         let dt = self.dt_seconds;
@@ -180,8 +180,8 @@ impl World {
             };
             let unit_mask = self.master_mask(unit.player(), unit.master_id())?;
             let unit_at = unit.position();
-            let gx = cvttss2si(unit_at[0] - ox as f32);
-            let gy = cvttss2si(unit_at[1] - oz as f32);
+            let gx = cvttss2si(unit_at.x() - ox as f32);
+            let gy = cvttss2si(unit_at.y() - oz as f32);
             let Some((fx, fy, nudge)) = self.search_cell(grid, &mut visited, (gx, gy), unit_mask)
             else {
                 continue;
@@ -191,7 +191,7 @@ impl World {
                 (fx, fy)
             } else {
                 let Some(at) =
-                    self.step_once_more(grid, (fx, fy), [unit_at[0], unit_at[1]], grow, members)?
+                    self.step_once_more(grid, (fx, fy), unit_at.ground(), grow, members)?
                 else {
                     continue;
                 };
@@ -200,11 +200,15 @@ impl World {
             let s = formation.slots.checked_mut(u)?;
             // COMISS/JC at 0x14103cde3: a NaN spacing nudges too
             if crate::math::fmath::below_or_unordered(un.spacing, PASS_ONE) {
-                s.transform_position[0] = x as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?[0];
-                s.transform_position[2] = y as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?[1];
+                s.transform_position = s
+                    .transform_position
+                    .with_x(x as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?[0])
+                    .with_y(y as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?[1]);
             } else {
-                s.transform_position[0] = x as f32 + PASS_HALF;
-                s.transform_position[2] = y as f32 + PASS_HALF;
+                s.transform_position = s
+                    .transform_position
+                    .with_x(x as f32 + PASS_HALF)
+                    .with_y(y as f32 + PASS_HALF);
             }
         }
         Ok(())
@@ -260,7 +264,7 @@ impl World {
             return Ok(());
         };
         let mask = self.master_mask(tester.player(), tester.master_id())?;
-        let stands = |at: Vec3| {
+        let stands = |at: BVector| {
             let (x, z) = slot_tile(at);
             self.spatial.standable(x, z, mask)
         };
@@ -281,8 +285,10 @@ impl World {
                 return Ok(());
             }
             let s = formation.slots.checked_mut(k)?;
-            s.transform_position[0] = position[0];
-            s.transform_position[2] = position[2];
+            s.transform_position = s
+                .transform_position
+                .with_x(position.x())
+                .with_y(position.y());
         }
         // the box's temporary tile records (FUN_141052b90 at 0x14103b8fa) with the buffer the
         // last FUN_1410562d0 left, which the lines grow by too
@@ -300,8 +306,10 @@ impl World {
             unreachable.append(&mut reachable);
             reachable.push(k);
             let s = formation.slots.checked_mut(k)?;
-            s.transform_position[0] = position[0];
-            s.transform_position[2] = position[2];
+            s.transform_position = s
+                .transform_position
+                .with_x(position.x())
+                .with_y(position.y());
         }
         // CVTTSS2SI at 0x14103bedd, 0x14103bef9, 0x14103bf1c and 0x14103bf2e
         let w = cvttss2si((max_x - min_x) + PASS_MARGIN + PASS_ONE);
@@ -343,7 +351,7 @@ impl World {
     pub(super) fn slot_reach(
         &self,
         formation: &Formation,
-        position: Vec3,
+        position: BVector,
         grow: f32,
         members: &[i32],
     ) -> Result<(Vec<usize>, Vec<usize>), GenieError> {
@@ -354,12 +362,10 @@ impl World {
                 continue;
             }
             let p = t.transform_position;
-            if self.spatial.still_line_hit(
-                [position[0], position[2]],
-                [p[0], p[2]],
-                grow,
-                members,
-            )? {
+            if self
+                .spatial
+                .still_line_hit(position.ground(), p.ground(), grow, members)?
+            {
                 unreachable.push(j);
             } else {
                 reachable.push(j);
@@ -494,8 +500,8 @@ pub(super) const fn count_up(b: u8) -> u8 {
 
 /// The tile of a slot's place the passability tests (`FUN_141185690`'s arguments): x and y
 /// by `CVTTSS2SI` (0x14103b5df, 0x14103b777), a NaN or out of range one `i32::MIN`.
-pub(super) fn slot_tile(at: Vec3) -> (i32, i32) {
-    (cvttss2si(at[0]), cvttss2si(at[2]))
+pub(super) fn slot_tile(at: BVector) -> (i32, i32) {
+    (cvttss2si(at.x()), cvttss2si(at.y()))
 }
 
 /// The passability's box and nearest slot (0x14103b650..0x14103b758): from the box
@@ -507,8 +513,8 @@ pub(super) fn slot_tile(at: Vec3) -> (i32, i32) {
 /// when no slot lies below `f32::MAX`). Returns min x, min y, max x, max y and the nearest.
 pub(super) fn passability_box(
     slots: &[Slot],
-    at: Vec3,
-    position: Vec3,
+    at: BVector,
+    position: BVector,
 ) -> ([f32; 4], Option<usize>) {
     use crate::math::fmath::{maxss, minss};
     let (mut min_x, mut min_z, mut max_x, mut max_z) = (PASS_FAR, PASS_FAR, 0.0f32, 0.0f32);
@@ -519,18 +525,18 @@ pub(super) fn passability_box(
             continue;
         }
         let d3 = sub(t.transform_position, position);
-        let d = d3[0] * d3[0] + d3[1] * d3[1] + d3[2] * d3[2];
+        let d = d3.x() * d3.x() + d3.height() * d3.height() + d3.y() * d3.y();
         let earlier = best;
         if d < best {
             best = d;
         }
-        let (a, b) = (minss(at[0], min_x), minss(at[2], min_z));
-        let (c, e) = (maxss(at[0], max_x), maxss(at[2], max_z));
+        let (a, b) = (minss(at.x(), min_x), minss(at.y(), min_z));
+        let (c, e) = (maxss(at.x(), max_x), maxss(at.y(), max_z));
         let p = t.transform_position;
-        min_x = minss(p[0], a);
-        min_z = minss(p[2], b);
-        max_x = maxss(p[0], c);
-        max_z = maxss(p[2], e);
+        min_x = minss(p.x(), a);
+        min_z = minss(p.y(), b);
+        max_x = maxss(p.x(), c);
+        max_z = maxss(p.y(), e);
         if d < earlier {
             nearest = Some(j);
         }
@@ -580,14 +586,17 @@ fn mark_reachable(
     let near = formation.slots.checked(k)?.transform_position;
     for &r in reachable {
         let p = formation.slots.checked(r)?.transform_position;
-        let gx = cvttss2si(p[0] - ox as f32);
-        let gz = cvttss2si(p[2] - oz as f32);
+        let gx = cvttss2si(p.x() - ox as f32);
+        let gz = cvttss2si(p.y() - oz as f32);
         if !(0 <= gx && gx < w && 0 <= gz && gz < h) {
             continue;
         }
         let cell = (gz * w + gx) as usize;
-        *grid.cells.checked_mut(cell)? =
-            cell_mark(*grid.cells.checked(cell)?, near[0] - p[0], near[2] - p[2]);
+        *grid.cells.checked_mut(cell)? = cell_mark(
+            *grid.cells.checked(cell)?,
+            near.x() - p.x(),
+            near.y() - p.y(),
+        );
     }
     Ok(())
 }

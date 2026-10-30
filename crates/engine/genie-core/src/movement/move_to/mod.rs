@@ -6,6 +6,7 @@
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::movement::{Me, Motion, Planning, footprint_gap, footprint_gap_squared};
@@ -158,7 +159,7 @@ pub struct Walk<'a> {
 impl Walk<'_> {
     /// x, y, z on the map: the unit's place as it is now, after any step of its walk.
     #[must_use]
-    pub const fn position(&self) -> [f32; 3] {
+    pub const fn position(&self) -> Position {
         self.body.position()
     }
 
@@ -187,7 +188,7 @@ pub enum Goal {
     /// A target object.
     Target(i32),
     /// A point.
-    Point([f32; 3]),
+    Point(Position),
 }
 
 /// A starting `MoveTo`'s update (state 3, `0x140aa2a70`): unless the unit is within `range` of its
@@ -217,7 +218,7 @@ pub fn ask_walk(
     (goal, range): (Goal, f32),
     ask: PathAsk,
     shown: Option<Shown<'_>>,
-) -> Result<(Option<MoveTo>, Option<[f32; 3]>), GenieError> {
+) -> Result<(Option<MoveTo>, Option<Position>), GenieError> {
     let (point, target, radius) = match goal {
         Goal::Target(id) => {
             let t = walk
@@ -409,7 +410,7 @@ pub enum Follow {
     /// (notify 0x1fc), turns to state 3 and the motion step runs on.
     Blocked,
     /// The path's end follows the target to this point ([`Mover::follow_path_end`]); the walk goes on.
-    PathEnd([f32; 3]),
+    PathEnd(Position),
 }
 
 impl Follow {
@@ -441,7 +442,7 @@ impl Follow {
 pub fn target_left(
     walk: &mut Walk<'_>,
     target: i32,
-    point: [f32; 3],
+    point: Position,
     mode: TargetMoved,
 ) -> Result<Follow, GenieError> {
     if mode == TargetMoved::Ignores {
@@ -452,7 +453,7 @@ pub fn target_left(
         .get_known(target)?
         .ok_or(GenieError::unsupported("a MoveTo whose target is gone"))?;
     let at = t.position;
-    let (dx, dy) = (point[0] - at[0], point[1] - at[1]);
+    let (dx, dy) = (point.x() - at.x(), point.y() - at.y());
     if !(dx < OFF_LOW || OFF_HIGH < dx || dy < OFF_LOW || OFF_HIGH < dy) {
         return Ok(Follow::Stays);
     }
@@ -462,7 +463,7 @@ pub fn target_left(
     let mover = walk.body.mover().ok_or(crate::world::WALKER_UNMOVING)?;
     if mover.walks_to_path_end()? {
         let me = walk.position();
-        let (a, b) = ([me[0], me[1]], [at[0], at[1]]);
+        let (a, b) = (me.ground(), at.ground());
         let grow = walk.world.manager_grow();
         walk.world.check_known_records([
             a[0].min(b[0]) - grow,
@@ -501,7 +502,7 @@ mod tests {
         use crate::movement::tests::WalkRig;
         let mut rig = WalkRig::on_the_path();
         let mut m = MoveToAction {
-            point: [30.0, 88.0, 0.0],
+            point: Position::new(30.0, 88.0, 0.0),
             target: 10028,
             range: 0.1,
             wait: MoveWait {
@@ -575,7 +576,7 @@ mod tests {
 
     pub(super) fn sheep(x: f32, y: f32) -> Placed {
         Placed {
-            position: [x, y, 0.0],
+            position: Position::new(x, y, 0.0),
             radius: [0.2, 0.2],
             class: class::PREDATOR,
             player: PlayerId::new(1),
@@ -608,7 +609,7 @@ mod tests {
                 rig.world = tiled_world(classes);
             }
             let mut m = MoveToAction {
-                point: [30.6, 88.0, 0.0],
+                point: Position::new(30.6, 88.0, 0.0),
                 target: 10028,
                 range: 0.1,
                 on_target_moved: mode,
@@ -628,7 +629,7 @@ mod tests {
                 ai.map_or(vec![], |ai| ai.notifies.iter().map(|n| n.kind).collect());
             (code, m.state, posted, rig.mover_mut().angle != 0.0, m.point)
         };
-        let off = [30.6, 88.0, 0.0];
+        let off = Position::new(30.6, 88.0, 0.0);
         assert_eq!(
             walk_on(TargetMoved::AsksAgain, false),
             (Ok(0), MoveTo::Start, vec![], false, off)
@@ -639,7 +640,13 @@ mod tests {
         );
         assert_eq!(
             walk_on(TargetMoved::Follows, false),
-            (Ok(0), MoveTo::Moving, vec![], true, [30.0, 88.0, 0.0])
+            (
+                Ok(0),
+                MoveTo::Moving,
+                vec![],
+                true,
+                Position::new(30.0, 88.0, 0.0)
+            )
         );
         assert_eq!(
             walk_on(TargetMoved::Follows, true),
@@ -768,7 +775,7 @@ mod tests {
     /// farther it starts with speed (a NaN speed too) and fails without; one to a point is far.
     #[test]
     fn an_added_sub_move_to_arrives_starts_or_fails_and_a_dying_unit_adds_none() {
-        let m = MoveToAction::sub_to_point([1.0, 2.0, 0.0], 0.5, None);
+        let m = MoveToAction::sub_to_point(Position::new(1.0, 2.0, 0.0), 0.5, None);
         let state = |unit_state, gap, speed| m.added(unit_state, gap, speed).map(|a| a.state);
         assert_eq!(state(2, 0.01, 0.0), Some(MoveTo::Arrived));
         assert_eq!(state(2, 0.0, 1.0), Some(MoveTo::Arrived));
@@ -809,10 +816,10 @@ mod tests {
         for y in 85..92 {
             walled[y * 120 + 29] = 1;
         }
-        let moved = |classes: &[u8], point: [f32; 3], target, mode| {
+        let moved = |classes: &[u8], point: Position, target, mode| {
             let mut world = crate::movement::tests::tiled_world(classes.to_vec());
             let mover = crate::movement::tests::builder_9177();
-            let mut mover = Body::new([28.0, 89.0, 0.0], None, Some(mover));
+            let mut mover = Body::new(Position::new(28.0, 89.0, 0.0), None, Some(mover));
             let mut walk = Walk {
                 body: &mut mover,
                 me: Me {
@@ -827,14 +834,14 @@ mod tests {
             target_left(&mut walk, target, point, mode)
         };
         let (again, follows) = (TargetMoved::AsksAgain, TargetMoved::Follows);
-        let on = [30.4, 88.0, 0.0];
-        let off = [30.6, 88.0, 0.0];
+        let on = Position::new(30.4, 88.0, 0.0);
+        let off = Position::new(30.6, 88.0, 0.0);
         assert_eq!(moved(&open, on, 10028, again), Ok(Follow::Stays));
         assert_eq!(moved(&open, on, 10028, follows), Ok(Follow::Stays));
         assert_eq!(moved(&open, off, 10028, again), Ok(Follow::Again));
         assert_eq!(
             moved(&open, off, 10028, follows),
-            Ok(Follow::PathEnd([30.0, 88.0, 0.0]))
+            Ok(Follow::PathEnd(Position::new(30.0, 88.0, 0.0)))
         );
         assert_eq!(moved(&walled, off, 10028, follows), Ok(Follow::Blocked));
         assert!(moved(&open, on, 4242, again).is_err());

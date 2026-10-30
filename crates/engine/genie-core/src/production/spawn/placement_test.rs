@@ -2,6 +2,7 @@
 //! test and the spawn's.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::RELIC;
@@ -17,7 +18,7 @@ pub struct Near {
     /// The object.
     pub id: i32,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii on the ground and whether its height radius is above 0.
     pub radius: [f32; 2],
     /// Its master's height radius is above 0.
@@ -188,8 +189,8 @@ pub(super) fn overlapping(
             if !(0.0 < o.radius[0] && 0.0 < o.radius[1] && tall) {
                 continue;
             }
-            let dx = (o.position[0] - p[0]).abs();
-            let dy = (o.position[1] - p[1]).abs();
+            let dx = (o.position.x() - p[0]).abs();
+            let dy = (o.position.y() - p[1]).abs();
             if dx < o.radius[0] + r[0] && dy < o.radius[1] + r[1] {
                 out.push(((tx, ty), o));
             }
@@ -428,8 +429,8 @@ pub(super) fn blocks_build(
     0.0 < orx
         && 0.0 < ory
         && tall
-        && (o.position[0] - x).abs() < orx + rx
-        && (o.position[1] - y).abs() < ory + ry
+        && (o.position.x() - x).abs() < orx + rx
+        && (o.position.y() - y).abs() < ory + ry
 }
 
 /// The objects BUILD's scan ignores: one dead, a moving one where the site does not obstruct,

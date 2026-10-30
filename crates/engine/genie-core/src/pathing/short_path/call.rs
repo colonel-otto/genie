@@ -1,6 +1,7 @@
 //! The short pather's call ([`Call`], [`Query`]) and its state between searches
 //! ([`Pather`]): the terrain's shapes, the start test and the core.
 
+use crate::math::fmath::BVector;
 use crate::pathing::mesh::{Mesh, ONE};
 use crate::pathing::short_path::{
     Ctx, Goal, NONE, Point, Search, TO_FIXED, TO_FLOAT, clip, tile_of,
@@ -186,7 +187,7 @@ impl Call {
 pub fn to_path(points: &[Point]) -> crate::pathing::tile_path::Path {
     let mut path = crate::pathing::tile_path::Path::default();
     for &[x, y] in points {
-        let _ = path.push([x as f32 * TO_FLOAT, 0.0, y as f32 * TO_FLOAT]);
+        let _ = path.push(BVector::new(x as f32 * TO_FLOAT, 0.0, y as f32 * TO_FLOAT));
     }
     path
 }

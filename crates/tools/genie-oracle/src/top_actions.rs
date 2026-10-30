@@ -3,6 +3,7 @@
 use crate::{OTHER_SUB_ACTION, combat_master, saved_attack, saved_move_wait, saved_sprite};
 use genie_core::GenieError;
 use genie_core::construction::build::{BuildAction, BuildTask};
+use genie_core::map::Position;
 use genie_core::movement::fly::{FLY, Fly};
 use genie_core::movement::move_to::{MOVE_TO, MoveTo, MoveToAction, TargetMoved};
 use genie_core::objects::masters::Task;
@@ -133,8 +134,8 @@ impl Saved<'_> {
     }
 
     /// The action's target point.
-    const fn point(&self) -> [f32; 3] {
-        [self.base.target_x, self.base.target_y, self.base.target_z]
+    const fn point(&self) -> Position {
+        Position::new(self.base.target_x, self.base.target_y, self.base.target_z)
     }
 }
 
@@ -159,8 +160,8 @@ fn sub_range(sub: &Action) -> Result<f32, GenieError> {
 }
 
 /// The point of an action without a target.
-fn target_point(b: &RgeAction) -> Option<[f32; 3]> {
-    (b.target_id == -1).then_some([b.target_x, b.target_y, b.target_z])
+fn target_point(b: &RgeAction) -> Option<Position> {
+    (b.target_id == -1).then_some(Position::new(b.target_x, b.target_y, b.target_z))
 }
 
 /// The Artifact action (107): its state and timer, its `MoveTo` to its target and its task's
@@ -224,7 +225,7 @@ pub(crate) fn saved_move_to(
     Ok(MoveToAction {
         state: move_to_state(base.state)?,
         // its point (`+0x38`..`+0x40`), for a target object the target's place it last took
-        point: [base.target_x, base.target_y, base.target_z],
+        point: Position::new(base.target_x, base.target_y, base.target_z),
         target: base.target_id,
         range: sub_range(action)?,
         // its sprite (`+0x58`, the save's second `short_val`; −1 for none)

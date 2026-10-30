@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HuntTask;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::gather::HuntOrder;
@@ -109,7 +110,7 @@ impl World {
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
-        point: [f32; 3],
+        point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
@@ -204,7 +205,7 @@ impl World {
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
-        point: [f32; 3],
+        point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
         // the task finder found the task on the target, which the world holds
@@ -280,7 +281,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 3],
+        point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
         let class = self.repair_retarget(player, idx, target)?;
@@ -379,7 +380,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 3],
+        point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
         let class = self.build_take(player, idx, target)?;

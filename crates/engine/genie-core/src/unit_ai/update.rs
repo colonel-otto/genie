@@ -69,7 +69,7 @@ impl UnitAi {
         // a unit with an order, or in a group with a command (`+0x3a8`), keeps its place as its
         // state position (0x140c674c9)
         if self.current_order.is_some() || at.group.is_some_and(|g| g.commanded) {
-            self.state_position = [at.position[0], at.position[1]];
+            self.state_position = at.position.ground();
         }
         self.secondary_timer = self.secondary_timer.saturating_sub(dt);
         self.look_around_timer = self.look_around_timer.wrapping_add(dt);
@@ -383,7 +383,7 @@ impl UnitAi {
         let kind = civilian_kind(class);
         let found = if kind == -1 {
             let found = side.closest(&Search {
-                at: [at.position[0], at.position[1]],
+                at: at.position.ground(),
                 radius: civilian_search_radius(at.los, at.search_radius),
                 classes: &CIVILIAN_CARED,
                 size: at.size,
@@ -476,7 +476,7 @@ impl UnitAi {
                 -1
             };
             let found = side.closest(&Search {
-                at: [at.position[0], at.position[1]],
+                at: at.position.ground(),
                 radius: civilian_search_radius(at.los, at.search_radius),
                 classes: &CIVILIAN_CARED,
                 size: at.size,

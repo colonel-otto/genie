@@ -49,8 +49,8 @@ impl World {
             .as_mut()
             .and_then(|v| v.resources.get_mut(p.index()))
         {
-            for (id, group, [x, y, _]) in found {
-                r.add(id, group, x, y);
+            for (id, group, at) in found {
+                r.add(id, group, at.x(), at.y());
             }
         }
         Ok(())
@@ -71,7 +71,8 @@ impl World {
         let Some(u) = self.players.player(p)?.objects.last() else {
             return Ok(());
         };
-        let (id, [x, y, _]) = (u.id, u.position());
+        let (id, at) = (u.id, u.position());
+        let (x, y) = (at.x(), at.y());
         let master = u.master(&self.masters, p)?;
         if !master.auto_gather {
             return Ok(());

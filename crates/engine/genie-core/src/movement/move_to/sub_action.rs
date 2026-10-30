@@ -2,6 +2,7 @@
 //! update through the owner's sub-action list (`FUN_140a992b0`).
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::movement::PathAsk;
 use crate::movement::move_to::action::ARRIVED;
 use crate::movement::move_to::{
@@ -34,7 +35,7 @@ impl MoveToAction {
     /// (`FUN_140aa0d30`, then `FUN_140a7a170` with 1: quiet, `+0x60`), with `sprite` (`+0x58`) as
     /// the constructor resolves it; the action list starts it in state 3 (`FUN_140a977e0`).
     #[must_use]
-    pub const fn sub_to_point(point: [f32; 3], range: f32, sprite: Option<Graphic>) -> Self {
+    pub const fn sub_to_point(point: Position, range: f32, sprite: Option<Graphic>) -> Self {
         Self {
             state: MoveTo::Start,
             point,
@@ -169,7 +170,7 @@ impl MoveToAction {
     pub(crate) const fn sub_in(state: MoveTo) -> Self {
         Self {
             state,
-            ..Self::sub_to_point([0.0; 3], 0.0, None)
+            ..Self::sub_to_point(Position::ORIGIN, 0.0, None)
         }
     }
 }

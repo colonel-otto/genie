@@ -8,6 +8,7 @@
 //! is done it goes back to state 3.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveToAction, MoveToReads, SpriteReads};
@@ -65,7 +66,7 @@ pub struct ExploreAction {
     /// `+0x18`.
     pub state: u8,
     /// The point it walks to (`+0x38`..`+0x40`), x −1 for none.
-    pub point: [f32; 3],
+    pub point: Position,
     /// Its `MoveTo` to the point: state 11's sub-action, quiet, range 0, with the master's walking
     /// sprite ([`ExploreAction::move_shown`]).
     pub move_to: Option<MoveToAction>,
@@ -101,13 +102,13 @@ impl ExploreAction {
     /// # Errors
     ///
     /// A sprite the table lacks.
-    pub fn new(point: [f32; 3], walk: &ExploreMove<'_>) -> Result<(Self, Owner), GenieError> {
+    pub fn new(point: Position, walk: &ExploreMove<'_>) -> Result<(Self, Owner), GenieError> {
         let mut a = Self {
             state: 0,
             point,
             move_to: None,
         };
-        let state = if a.point[0] == NO_POINT { WAIT } else { WALK };
+        let state = if a.point.x() == NO_POINT { WAIT } else { WALK };
         let owner = a.set_state(state, Some(walk))?;
         Ok((a, owner))
     }
@@ -129,7 +130,7 @@ impl ExploreAction {
         self.state = state;
         Ok(match state {
             STOPPED => {
-                self.point = [-1.0; 3];
+                self.point = Position::from([-1.0; 3]);
                 Owner::Stopped
             }
             WAIT => Owner::WantsPoint,
@@ -153,10 +154,10 @@ impl ExploreAction {
     /// A sprite the table lacks.
     pub fn take_point(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         walk: &ExploreMove<'_>,
     ) -> Result<Owner, GenieError> {
-        if 0.0 <= point[0] && 0.0 <= point[1] {
+        if 0.0 <= point.x() && 0.0 <= point.y() {
             self.point = point;
             return self.set_state(WALK, Some(walk));
         }
@@ -372,7 +373,7 @@ const SEARCH_ABOUT_POINT: i32 = 7;
 #[derive(Clone, Copy, Debug)]
 pub struct Seeker {
     /// The unit's place.
-    pub at: [f32; 3],
+    pub at: Position,
     /// Its master's line of sight (`+0x5d0`).
     pub line_of_sight: f32,
     /// The unit AI's current order (`+0x3c`).
@@ -402,7 +403,7 @@ pub fn closest_undiscovered(
     if seeker.computer {
         return Ok(None);
     }
-    let [ux, uy, _] = seeker.at;
+    let (ux, uy) = (seeker.at.x(), seeker.at.y());
     let reach = (seeker.line_of_sight as i32 + SEARCH_PAST_SIGHT) as f32;
     let (mut x0, mut x1) = ((ux - reach) as i32, (reach + ux) as i32);
     let (mut y0, mut y1) = ((uy - reach) as i32, (reach + uy) as i32);
@@ -461,7 +462,7 @@ const SQUARE_PAST_SIGHT: i32 = 2;
 /// found is marked in it (the caller's).
 pub fn beyond_sight(
     area: &mut dyn Area,
-    at: [f32; 3],
+    at: Position,
     line_of_sight: f32,
     map: [i32; 2],
     ai: &mut crate::math::rng::Well512,
@@ -469,7 +470,7 @@ pub fn beyond_sight(
     let own = area.own_zone();
     let [w, h] = map;
     let r = line_of_sight as i32 + SQUARE_PAST_SIGHT;
-    let (ux, uy) = (at[0] as i32, at[1] as i32);
+    let (ux, uy) = (at.x() as i32, at.y() as i32);
     let (x0, x1, y0, y1) = (ux - r, ux + r, uy - r, uy + r);
     let on_x = |x: i32| 0 <= x && x < w;
     let on_y = |y: i32| 0 <= y && y < h;
@@ -533,7 +534,7 @@ impl Unit {
         point: [f32; 2],
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
-        let at = [point[0], point[1], self.position()[2]];
+        let at = Position::new(point[0], point[1], self.position().z());
         let walk = self.explore_move(c);
         let owner = if let Some(e) = self.actions.explore_mut() {
             let walked = e.move_to.is_some();
@@ -637,7 +638,7 @@ pub(crate) fn bare_walk() -> ExploreMove<'static> {
             },
             state: 2,
             speed: 1.0,
-            at: [0.0; 3],
+            at: Position::ORIGIN,
             ground: [0.0; 2],
         },
         given: None,
@@ -670,7 +671,7 @@ mod tests {
                 sprites: SpriteReads { defaults, graphics },
                 state: 2,
                 speed: 1.0,
-                at: [0.0; 3],
+                at: Position::ORIGIN,
                 ground: [0.0; 2],
             },
             given,
@@ -685,7 +686,7 @@ mod tests {
         let table = BTreeMap::from([(7, WALKING), (20, other)]);
         let sprite = |given| {
             let walk = walk_of(&table, given);
-            let (a, _) = ExploreAction::new([5.0, 5.0, 0.0], &walk).unwrap();
+            let (a, _) = ExploreAction::new(Position::new(5.0, 5.0, 0.0), &walk).unwrap();
             a.move_to.and_then(|m| m.sprite).map(|g| g.id)
         };
         assert_eq!(sprite(Some(7)), Some(7));
@@ -723,13 +724,16 @@ mod tests {
     fn an_explore_without_a_point_waits_for_one_then_walks() {
         let table = BTreeMap::from([(7, WALKING)]);
         let walk = walk_of(&table, Some(7));
-        let (mut a, owner) = ExploreAction::new([-1.0, -1.0, 0.0], &walk).unwrap();
+        let (mut a, owner) = ExploreAction::new(Position::new(-1.0, -1.0, 0.0), &walk).unwrap();
         assert_eq!((a.state, owner, a.move_to), (WAIT, Owner::WantsPoint, None));
         let walking = WALKING;
-        assert_eq!(a.take_point([19.0, 84.0, 0.0], &walk), Ok(Owner::Nothing));
+        assert_eq!(
+            a.take_point(Position::new(19.0, 84.0, 0.0), &walk),
+            Ok(Owner::Nothing)
+        );
         let made = MoveToAction {
             state: crate::movement::move_to::MoveTo::Start,
-            point: [19.0, 84.0, 0.0],
+            point: Position::new(19.0, 84.0, 0.0),
             target: -1,
             range: 0.0,
             sprite: Some(walking),
@@ -741,17 +745,20 @@ mod tests {
         assert_eq!(a.after_walk(0), Ok(Owner::Nothing));
         assert_eq!(a.after_walk(1), Ok(Owner::WantsPoint));
         assert_eq!((a.state, a.move_to), (WAIT, None));
-        assert_eq!(a.take_point([-1.0, 5.0, 0.0], &walk), Ok(Owner::WantsPoint));
+        assert_eq!(
+            a.take_point(Position::new(-1.0, 5.0, 0.0), &walk),
+            Ok(Owner::WantsPoint)
+        );
         // a unit without speed fails its MoveTo (13), one in state 3 or later adds none
         let mut stuck = walk;
         stuck.reads.speed = 0.0;
-        let (b, _) = ExploreAction::new([5.0, 5.0, 0.0], &stuck).unwrap();
+        let (b, _) = ExploreAction::new(Position::new(5.0, 5.0, 0.0), &stuck).unwrap();
         assert_eq!(
             b.move_to.map(|m| m.state),
             Some(crate::movement::move_to::MoveTo::Failed)
         );
         stuck.reads.state = 3;
-        let (b, _) = ExploreAction::new([5.0, 5.0, 0.0], &stuck).unwrap();
+        let (b, _) = ExploreAction::new(Position::new(5.0, 5.0, 0.0), &stuck).unwrap();
         assert_eq!(b.move_to, None);
     }
 
@@ -801,14 +808,26 @@ mod tests {
             explored: square.iter().copied().filter(|&p| p != [24, 90]).collect(),
             unreachable: vec![],
         };
-        let found = beyond_sight(&mut area, [20.5, 92.5, 0.0], 2.0, [120, 120], &mut rng());
+        let found = beyond_sight(
+            &mut area,
+            Position::new(20.5, 92.5, 0.0),
+            2.0,
+            [120, 120],
+            &mut rng(),
+        );
         assert_eq!(found, Ok(Some([24, 90])));
         // all of the square seen: the flood leaves it left first, at (15, 92)
         let mut area = Open {
             explored: square,
             unreachable: vec![],
         };
-        let found = beyond_sight(&mut area, [20.5, 92.5, 0.0], 2.0, [120, 120], &mut rng());
+        let found = beyond_sight(
+            &mut area,
+            Position::new(20.5, 92.5, 0.0),
+            2.0,
+            [120, 120],
+            &mut rng(),
+        );
         assert_eq!(found, Ok(Some([15, 92])));
     }
 
@@ -919,7 +938,7 @@ mod tests {
     #[test]
     fn the_unit_ai_s_search_takes_the_nearest_unexplored_tile_it_reaches() {
         let seeker = Seeker {
-            at: [20.5, 92.5, 0.0],
+            at: Position::new(20.5, 92.5, 0.0),
             line_of_sight: 4.0,
             order: None,
             target_point: [NO_POINT, NO_POINT],

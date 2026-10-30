@@ -5,7 +5,8 @@
 use crate::GenieError;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
-use crate::math::fmath::{self, Vec3, cross, normalize};
+use crate::math::fmath::BVector;
+use crate::math::fmath::{self, cross, normalize};
 use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
@@ -70,8 +71,8 @@ impl Motion {
     /// product `up × forward` (normalized) as its right; the new position takes all three, and
     /// with `both` (`param_4` 1) the position too. Motion flags bit 0 is set. False, with nothing
     /// changed, when the dot product of the two lies outside [`SQUARE_MIN`] to [`SQUARE_MAX`].
-    pub fn set_orientation(&mut self, forward: Vec3, up: Vec3, both: bool) -> bool {
-        let d = up[1] * forward[1] + up[0] * forward[0] + up[2] * forward[2];
+    pub fn set_orientation(&mut self, forward: BVector, up: BVector, both: bool) -> bool {
+        let d = up.height() * forward.height() + up.x() * forward.x() + up.y() * forward.y();
         if d < SQUARE_MIN || SQUARE_MAX < d {
             return false;
         }
@@ -138,7 +139,7 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn clear_spot(&mut self, group: i32, centroid: Vec3) -> Result<Vec3, GenieError> {
+    pub fn clear_spot(&mut self, group: i32, centroid: BVector) -> Result<BVector, GenieError> {
         let g = self.groups.held(group)?;
         let Some(first) = g.members.first() else {
             return Ok(centroid);
@@ -150,18 +151,18 @@ impl World {
         // the centroid's temporary tile records, with the buffer the last FUN_1410562d0 left,
         // which no one removes here: they stay for the queries after (FUN_141052b90)
         let grow = self.spatial.manager_grow();
-        let at = [centroid[0], centroid[2]];
+        let at = centroid.ground();
         self.spatial.put_tile_records(at, at, grow, mask);
         let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
         // the manager's ignore list (FUN_1410562e0 with the group's +0xf0, +0xe4)
         self.spatial.set_manager_ignore(&members);
-        let mut spiral = Spiral::from([centroid[0], centroid[2]]);
+        let mut spiral = Spiral::from(centroid.ground());
         for _ in 0..SPIRAL_POINTS {
-            let at = on_map([spiral.at[0], centroid[1], spiral.at[1]], self.spatial.map);
-            if !self
-                .spatial
-                .point_hit([at[0], at[2]], grow, &members, true)?
-            {
+            let at = on_map(
+                BVector::new(spiral.at[0], centroid.height(), spiral.at[1]),
+                self.spatial.map,
+            );
+            if !self.spatial.point_hit(at.ground(), grow, &members, true)? {
                 return Ok(at);
             }
             spiral.step()?;
@@ -182,14 +183,14 @@ impl World {
     /// caller ([`World::set_initial_position`]) holds it.
     pub fn set_initial_orientation(&mut self, group: i32) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
-        let forwards: Vec<Vec3> = g
+        let forwards: Vec<BVector> = g
             .members
             .iter()
             .filter_map(|m| self.world_object(m.id).map(|o| o.forward()))
             .collect();
         let mut sum = [0.0f32; 3];
         for f in &forwards {
-            sum = [sum[0] + f[0], sum[1] + f[1], sum[2] + f[2]];
+            sum = [sum[0] + f.x(), sum[1] + f.height(), sum[2] + f.y()];
         }
         if !forwards.is_empty() {
             let n = forwards.len() as f32;
@@ -200,13 +201,15 @@ impl World {
             forwards
                 .first()
                 .copied()
-                .unwrap_or([DEFAULT_FORWARD, 0.0, 0.0])
+                .unwrap_or(BVector::new(DEFAULT_FORWARD, 0.0, 0.0))
         } else {
             let l = fmath::sqrt(squared);
-            [sum[0] / l, sum[1] / l, sum[2] / l]
+            BVector::new(sum[0] / l, sum[1] / l, sum[2] / l)
         };
         let g = self.groups.held_mut(group)?;
-        let _ = g.motion.set_orientation(forward, [0.0, 1.0, 0.0], true);
+        let _ = g
+            .motion
+            .set_orientation(forward, BVector::new(0.0, 1.0, 0.0), true);
         Ok(())
     }
 }
@@ -240,7 +243,7 @@ impl World {
         let m = &g.motion;
         let forward = m.position[1];
         let front = fmath::add(fmath::scale(ahead, forward), m.position[0]);
-        let held: Vec<(i32, Vec3)> = g
+        let held: Vec<(i32, BVector)> = g
             .members
             .iter()
             .filter_map(|mb| {
@@ -253,10 +256,10 @@ impl World {
         } else {
             let mut c = [0.0f32; 3];
             for &(_, p) in &held {
-                c = [c[0] + p[0], c[1] + p[1], c[2] + p[2]];
+                c = [c[0] + p.x(), c[1] + p.height(), c[2] + p.y()];
             }
             let n = g.members.len() as f32;
-            [c[0] / n, c[1] / n, c[2] / n]
+            BVector::new(c[0] / n, c[1] / n, c[2] / n)
         };
         // the lead's slot 0x270: an object that does not move (a ghost found by the lead -1)
         // stands nowhere (`FUN_141071e30`)
@@ -270,7 +273,7 @@ impl World {
             let members: Vec<i32> = g.members.iter().map(|mb| mb.id).collect();
             if self.spatial.point_clear_among(
                 lead.id(),
-                [centre[0], centre[2]],
+                centre.ground(),
                 FRONT_SHARE * master.radius[0],
                 mask,
                 &members,
@@ -286,12 +289,12 @@ impl World {
         } else {
             g.desired_spacing * FRONT_SHARE
         };
-        let through = [centre[0], 0.0, centre[2]];
-        let mut in_front: Vec<(i32, Vec3)> = Vec::new();
+        let through = centre.with_height(0.0);
+        let mut in_front: Vec<(i32, BVector)> = Vec::new();
         let mut nearest = -1;
         let mut nearest_d = FARTHEST;
         for &(id, p) in &held {
-            let q = [p[0], 0.0, p[2]];
+            let q = p.with_height(0.0);
             if fmath::line_distance(q, through, forward) < limit {
                 in_front.push((id, p));
             }
@@ -312,8 +315,8 @@ impl World {
             let d = ground_squared(p, front);
             if d < chosen_d {
                 chosen = id;
-                beside = (p[2] - centre[2]) * (p[2] - centre[2])
-                    + (p[0] - centre[0]) * (p[0] - centre[0]);
+                beside = (p.y() - centre.y()) * (p.y() - centre.y())
+                    + (p.x() - centre.x()) * (p.x() - centre.x());
                 chosen_d = d;
             }
         }
@@ -372,14 +375,15 @@ const FARTHEST: f32 = crate::math::image::group::FARTHEST;
 
 /// `p − q` squared on the ground, the height difference zeroed (`FUN_14087e560`, then
 /// `x² + 0 + y²`).
-fn ground_squared(p: Vec3, q: Vec3) -> f32 {
+fn ground_squared(p: BVector, q: BVector) -> f32 {
     let d = fmath::sub(p, q);
-    d[0] * d[0] + 0.0 + d[2] * d[2]
+    d.x() * d.x() + 0.0 + d.y() * d.y()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Position;
     use crate::objects::masters::class;
     use crate::test_ids::object_id;
 
@@ -388,20 +392,28 @@ mod tests {
     fn an_orientation_takes_the_cross_product_of_up_and_forward_as_its_right() {
         let mut m = Motion::new();
         m.flags = 0;
-        assert!(m.set_orientation([2.0, 0.0, 0.0], [0.0, 1.0, 0.0], true));
-        assert_eq!(m.position[1], [1.0, 0.0, 0.0]);
-        assert_eq!(m.position[3], [0.0, 0.0, -1.0]);
-        assert_eq!(m.new_position[3], [0.0, 0.0, -1.0]);
+        assert!(m.set_orientation(
+            BVector::new(2.0, 0.0, 0.0),
+            BVector::new(0.0, 1.0, 0.0),
+            true
+        ));
+        assert_eq!(m.position[1], BVector::new(1.0, 0.0, 0.0));
+        assert_eq!(m.position[3], BVector::new(0.0, 0.0, -1.0));
+        assert_eq!(m.new_position[3], BVector::new(0.0, 0.0, -1.0));
         assert_eq!(m.flags, 1);
         // a forward too far from square to the up is refused
-        assert!(!m.set_orientation([1.0, 0.1, 0.0], [0.0, 1.0, 0.0], true));
+        assert!(!m.set_orientation(
+            BVector::new(1.0, 0.1, 0.0),
+            BVector::new(0.0, 1.0, 0.0),
+            true
+        ));
     }
 
     /// A unit at `[x, y]` (the unit's order: x, y, height) of master 4.
     fn unit(id: i32, x: f32, y: f32) -> crate::objects::unit::Unit {
         let mut u = crate::objects::unit::Unit {
             id: object_id(id),
-            body: crate::objects::layers::Body::at([x, y, 0.0]),
+            body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
             ..crate::objects::unit::Unit::default()
         };
         u.life.master_id = 4;
@@ -470,8 +482,8 @@ mod tests {
                 ..crate::groups::Member::default()
             })
             .collect();
-        g.motion.position[0] = [10.0, 0.0, 10.0];
-        g.motion.position[1] = [1.0, 0.0, 0.0];
+        g.motion.position[0] = BVector::new(10.0, 0.0, 10.0);
+        g.motion.position[1] = BVector::new(1.0, 0.0, 0.0);
         g.motion.flags = 0;
         g.desired_spacing = 2.0;
         g.stored_positions.points = vec![crate::groups::LinePoint::default(); 2];
@@ -483,7 +495,7 @@ mod tests {
         t
     }
 
-    fn placed(t: &World) -> (Vec3, Vec3, usize) {
+    fn placed(t: &World) -> (BVector, BVector, usize) {
         let g = &t.groups.groups[0];
         (
             g.motion.position[0],
@@ -504,7 +516,14 @@ mod tests {
             unit(12, 19.0, 15.0),
         ]);
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t), ([15.0, 0.0, 10.5], [15.0, 0.0, 10.5], 0));
+        assert_eq!(
+            placed(&t),
+            (
+                BVector::new(15.0, 0.0, 10.5),
+                BVector::new(15.0, 0.0, 10.5),
+                0
+            )
+        );
         assert_eq!(t.groups.groups[0].stored_positions.length, 3.0);
     }
 
@@ -514,14 +533,24 @@ mod tests {
     fn without_a_member_in_front_the_group_moves_onto_the_nearest() {
         let mut t = front_world(vec![unit(11, 13.0, 12.0), unit(12, 19.0, 15.0)]);
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t), ([19.0, 0.0, 15.0], [19.0, 0.0, 15.0], 0));
+        assert_eq!(
+            placed(&t),
+            (
+                BVector::new(19.0, 0.0, 15.0),
+                BVector::new(19.0, 0.0, 15.0),
+                0
+            )
+        );
         let mut t = front_world(Vec::new());
         t.groups.groups[0].members = vec![crate::groups::Member {
             id: 99,
             ..crate::groups::Member::default()
         }];
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t), ([10.0, 0.0, 10.0], [0.0; 3], 2));
+        assert_eq!(
+            placed(&t),
+            (BVector::new(10.0, 0.0, 10.0), BVector::ZERO, 2)
+        );
         // a group the world does not hold is left alone
         t.move_position_to_front(2, 100.0).unwrap();
     }
@@ -534,10 +563,10 @@ mod tests {
         let mut t = front_world(units.clone());
         t.groups.groups[0].formation_locked_type = crate::groups::formation::STAGGERED;
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t).0, [13.0, 0.0, 11.5]);
+        assert_eq!(placed(&t).0, BVector::new(13.0, 0.0, 11.5));
         let mut t = front_world(units);
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t).0, [19.0, 0.0, 13.0]);
+        assert_eq!(placed(&t).0, BVector::new(19.0, 0.0, 13.0));
     }
 
     /// Motion flags bit 1 take the line through the members' centre, (13, 0, 12): 11 at
@@ -552,10 +581,10 @@ mod tests {
         let mut t = front_world(units.clone());
         t.groups.groups[0].motion.flags = 2;
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t).0, [13.0, 0.0, 12.2]);
+        assert_eq!(placed(&t).0, BVector::new(13.0, 0.0, 12.2));
         let mut t = front_world(units);
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t).0, [6.0, 0.0, 10.1]);
+        assert_eq!(placed(&t).0, BVector::new(6.0, 0.0, 10.1));
     }
 
     /// A flanked group (8) whose lead could stand on the group's place among the members stays
@@ -577,14 +606,28 @@ mod tests {
         let mut t = front_world(units.clone());
         flanked(&mut t);
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t), ([10.0, 0.0, 10.0], [10.0, 0.0, 10.0], 2));
+        assert_eq!(
+            placed(&t),
+            (
+                BVector::new(10.0, 0.0, 10.0),
+                BVector::new(10.0, 0.0, 10.0),
+                2
+            )
+        );
         let mut other = units[1].clone();
         other.id = object_id(50);
         let mut t = front_world(vec![units[0].clone(), units[1].clone(), other]);
         flanked(&mut t);
         t.groups.groups[0].members.truncate(2);
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t), ([15.0, 0.0, 10.5], [15.0, 0.0, 10.5], 0));
+        assert_eq!(
+            placed(&t),
+            (
+                BVector::new(15.0, 0.0, 10.5),
+                BVector::new(15.0, 0.0, 10.5),
+                0
+            )
+        );
     }
 
     /// The lead finds the world's object of its id (`FUN_1410465d0`): a moving one (a missile,
@@ -605,12 +648,26 @@ mod tests {
         let mut t = front_world(vec![units[0].clone(), units[1].clone(), missile]);
         flanked(&mut t);
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t), ([10.0, 0.0, 10.0], [10.0, 0.0, 10.0], 2));
+        assert_eq!(
+            placed(&t),
+            (
+                BVector::new(10.0, 0.0, 10.0),
+                BVector::new(10.0, 0.0, 10.0),
+                2
+            )
+        );
         let mut t = front_world(units);
         flanked(&mut t);
         t.players[0].ghosts = vec![crate::groups::formation::tests::ghost_at(-2, 3.0, 3.0)];
         t.move_position_to_front(1, 100.0).unwrap();
-        assert_eq!(placed(&t), ([15.0, 0.0, 10.5], [15.0, 0.0, 10.5], 0));
+        assert_eq!(
+            placed(&t),
+            (
+                BVector::new(15.0, 0.0, 10.5),
+                BVector::new(15.0, 0.0, 10.5),
+                0
+            )
+        );
     }
 
     /// `FUN_141039680`: slot 0x648 of a member that moves is its forward, of one that does not
@@ -618,7 +675,7 @@ mod tests {
     /// cancel out give the first held member's; no member held, x.
     #[test]
     fn the_initial_orientation_averages_the_members_forwards() {
-        let facing = |forwards: &[Option<Vec3>]| {
+        let facing = |forwards: &[Option<BVector>]| {
             let units: Vec<crate::objects::unit::Unit> = forwards
                 .iter()
                 .enumerate()
@@ -636,19 +693,28 @@ mod tests {
             t.set_initial_orientation(1).unwrap();
             t.groups.groups[0].motion.position[1]
         };
-        assert_eq!(facing(&[Some([0.0, 0.0, 1.0]), None]), [0.0, 0.0, 1.0]);
         assert_eq!(
-            facing(&[Some([0.0, 0.0, 1.0]), Some([0.0, 0.0, -1.0])]),
-            [0.0, 0.0, 1.0]
+            facing(&[Some(BVector::new(0.0, 0.0, 1.0)), None]),
+            BVector::new(0.0, 0.0, 1.0)
+        );
+        assert_eq!(
+            facing(&[
+                Some(BVector::new(0.0, 0.0, 1.0)),
+                Some(BVector::new(0.0, 0.0, -1.0))
+            ]),
+            BVector::new(0.0, 0.0, 1.0)
         );
         let mut t = front_world(Vec::new());
         t.groups.groups[0].members = vec![crate::groups::Member {
             id: 99,
             ..crate::groups::Member::default()
         }];
-        t.groups.groups[0].motion.position[1] = [0.0, 0.0, 1.0];
+        t.groups.groups[0].motion.position[1] = BVector::new(0.0, 0.0, 1.0);
         t.set_initial_orientation(1).unwrap();
-        assert_eq!(t.groups.groups[0].motion.position[1], [1.0, 0.0, 0.0]);
+        assert_eq!(
+            t.groups.groups[0].motion.position[1],
+            BVector::new(1.0, 0.0, 0.0)
+        );
     }
 
     /// The spiral's first points from (10, 10): the leg's count and turns as `FUN_141007630`

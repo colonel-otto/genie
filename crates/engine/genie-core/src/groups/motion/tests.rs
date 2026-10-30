@@ -58,7 +58,10 @@ use crate::pathing::Pathing;
 fn level(level: u8, points: &[[f32; 2]], waypoint: i32, state: i32) -> PathData {
     PathData {
         level,
-        points: points.iter().map(|&[x, y]| [x, 0.0, y]).collect(),
+        points: points
+            .iter()
+            .map(|&[x, y]| BVector::new(x, 0.0, y))
+            .collect(),
         has_path: true,
         path_flags: NEW_PATH_FLAGS,
         waypoint,
@@ -73,7 +76,7 @@ fn level(level: u8, points: &[[f32; 2]], waypoint: i32, state: i32) -> PathData 
 fn a_motion_moves_with_a_velocity_and_waits_for_a_path() {
     let mut m = Motion::new();
     assert!(!m.moving() && !m.waits_to_move());
-    m.velocity = [0.0, 0.0, -0.5];
+    m.velocity = BVector::new(0.0, 0.0, -0.5);
     assert!(m.moving());
     m.paths = vec![level(0, &[], 0, 2)];
     assert!(m.waits_to_move());
@@ -86,8 +89,8 @@ fn a_motion_moves_with_a_velocity_and_waits_for_a_path() {
 #[test]
 fn stopping_the_walk_stands_the_motion_and_resets_its_level() {
     let mut m = Motion::new();
-    m.velocity = [1.0, 2.0, 3.0];
-    m.acceleration = [4.0, 5.0, 6.0];
+    m.velocity = BVector::new(1.0, 2.0, 3.0);
+    m.acceleration = BVector::new(4.0, 5.0, 6.0);
     m.paths = vec![
         level(0, &[[1.0, 1.0], [2.0, 2.0]], 1, 3),
         level(1, &[[2.0, 2.0]], 1, 0),
@@ -95,7 +98,7 @@ fn stopping_the_walk_stands_the_motion_and_resets_its_level() {
     m.stop_walk().unwrap();
     assert_eq!(
         (m.velocity, m.acceleration),
-        ([1.0, 2.0, 0.0], [4.0, 5.0, 0.0])
+        (BVector::new(1.0, 2.0, 0.0), BVector::new(4.0, 5.0, 0.0))
     );
     assert_eq!(m.paths, [PathData::without_path()]);
 }
@@ -183,28 +186,64 @@ fn a_looping_path_goes_round_or_back_and_forth() {
 /// `FUN_141046130`: short of the waypoint, on it, or past it (or a step under 0.1).
 #[test]
 fn a_step_falls_short_of_reaches_or_passes_its_waypoint() {
-    let w = [10.0, 0.0, 0.0];
-    assert_eq!(passes_waypoint(w, [0.0; 3], [5.0, 0.0, 0.0]), 0);
+    let w = BVector::new(10.0, 0.0, 0.0);
+    assert_eq!(
+        passes_waypoint(w, BVector::ZERO, BVector::new(5.0, 0.0, 0.0)),
+        0
+    );
     // a step that ends on the waypoint is not past it
-    assert_eq!(passes_waypoint(w, [9.95, 0.0, 0.0], [10.0, 0.0, 0.0]), 0);
+    assert_eq!(
+        passes_waypoint(
+            w,
+            BVector::new(9.95, 0.0, 0.0),
+            BVector::new(10.0, 0.0, 0.0)
+        ),
+        0
+    );
     // one past it by less than 0.1 is
-    assert_eq!(passes_waypoint(w, [9.95, 0.0, 0.0], [10.02, 0.0, 0.0]), 2);
-    assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [10.0, 0.0, 0.0]), 0);
+    assert_eq!(
+        passes_waypoint(
+            w,
+            BVector::new(9.95, 0.0, 0.0),
+            BVector::new(10.02, 0.0, 0.0)
+        ),
+        2
+    );
+    assert_eq!(
+        passes_waypoint(w, BVector::new(9.0, 0.0, 0.0), BVector::new(10.0, 0.0, 0.0)),
+        0
+    );
     // past it, but no farther beyond than it was before: on it
-    assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [10.5, 0.0, 0.0]), 1);
-    assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [11.0, 0.0, 0.0]), 1);
-    assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [12.0, 0.0, 0.0]), 2);
+    assert_eq!(
+        passes_waypoint(w, BVector::new(9.0, 0.0, 0.0), BVector::new(10.5, 0.0, 0.0)),
+        1
+    );
+    assert_eq!(
+        passes_waypoint(w, BVector::new(9.0, 0.0, 0.0), BVector::new(11.0, 0.0, 0.0)),
+        1
+    );
+    assert_eq!(
+        passes_waypoint(w, BVector::new(9.0, 0.0, 0.0), BVector::new(12.0, 0.0, 0.0)),
+        2
+    );
     // a NaN step is short (COMISS step, to the waypoint; JBE at 0x14104621d), where an
     // ordered compare would pass it on to the next tests
-    assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [f32::NAN, 0.0, 0.0]), 0);
+    assert_eq!(
+        passes_waypoint(
+            w,
+            BVector::new(9.0, 0.0, 0.0),
+            BVector::new(f32::NAN, 0.0, 0.0)
+        ),
+        0
+    );
 }
 
 /// `FUN_1411570c0`'s ends held inside the map.
 #[test]
 fn a_querys_ends_stay_inside_the_map() {
-    assert_eq!(hold([-1.0, 5.0, 3.0], [10, 20]), [0.0, 3.0]);
+    assert_eq!(hold(BVector::new(-1.0, 5.0, 3.0), [10, 20]), [0.0, 3.0]);
     assert_eq!(
-        hold([10.0, 0.0, 25.0], [10, 20]),
+        hold(BVector::new(10.0, 0.0, 25.0), [10, 20]),
         [10.0 - NEAR, 20.0 - NEAR]
     );
 }
@@ -214,7 +253,7 @@ fn a_querys_ends_stay_inside_the_map() {
 #[test]
 fn a_turn_is_limited_by_the_yaw_per_second() {
     let mut m = Motion::new();
-    let (x, z) = ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+    let (x, z) = (BVector::new(1.0, 0.0, 0.0), BVector::new(0.0, 0.0, 1.0));
     let free = m.calculate_yaw_angle(x, z, 0.1, true);
     assert_eq!(free, -std::f32::consts::FRAC_PI_2);
     m.maximum_yaw_per_second_moving = 1.0;
@@ -232,14 +271,14 @@ fn a_turn_is_limited_by_the_yaw_per_second() {
 #[test]
 fn the_yaw_clamp_keeps_the_angle_for_a_nan_operand() {
     let mut m = Motion::new();
-    let (x, z) = ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+    let (x, z) = (BVector::new(1.0, 0.0, 0.0), BVector::new(0.0, 0.0, 1.0));
     m.maximum_yaw_per_second_moving = f32::NAN;
     assert_eq!(
         m.calculate_yaw_angle(x, z, 0.1, true),
         -std::f32::consts::FRAC_PI_2
     );
     m.maximum_yaw_per_second_moving = 1.0;
-    let nan = m.calculate_yaw_angle([f32::NAN, 0.0, 0.0], z, 0.1, true);
+    let nan = m.calculate_yaw_angle(BVector::new(f32::NAN, 0.0, 0.0), z, 0.1, true);
     assert!(nan.is_nan(), "{nan}");
 }
 
@@ -255,14 +294,14 @@ fn the_motion_turns_then_moves_along_its_forward() {
     m.turn(-std::f32::consts::FRAC_PI_2);
     assert_eq!(m.flags, 1);
     let f = m.new_position[1];
-    assert!((f[2] - 1.0).abs() < 1e-6 && f[0].abs() < 1e-6, "{f:?}");
+    assert!((f.y() - 1.0).abs() < 1e-6 && f.x().abs() < 1e-6, "{f:?}");
     m.flags = 0;
-    m.velocity = [0.0, 0.0, 2.0];
-    m.acceleration = [0.0, 0.0, 1.0];
+    m.velocity = BVector::new(0.0, 0.0, 2.0);
+    m.acceleration = BVector::new(0.0, 0.0, 1.0);
     m.integrate(0.5).unwrap();
-    assert_eq!(m.velocity[2], 2.5);
+    assert_eq!(m.velocity.y(), 2.5);
     let p = m.position[0];
-    assert!((p[2] - 1.25).abs() < 1e-6 && p[0].abs() < 1e-6, "{p:?}");
+    assert!((p.y() - 1.25).abs() < 1e-6 && p.x().abs() < 1e-6, "{p:?}");
     assert_eq!(m.position, m.new_position);
     assert_eq!(m.flags, 1);
 }
@@ -310,7 +349,7 @@ fn lead() -> Lead {
             restriction: 0,
             mask: 0xff,
         },
-        position: [5.0, 5.0, 0.0],
+        position: Position::new(5.0, 5.0, 0.0),
         radius: [0.2, 0.2],
         moves: true,
         solid: true,
@@ -326,15 +365,15 @@ fn lead() -> Lead {
 fn a_walked_level_turns_the_group_toward_its_waypoint() {
     let mut fx = Fixture::new();
     let mut m = Motion::new();
-    m.position[0] = [5.0, 0.0, 5.0];
-    m.new_position[0] = [5.0, 0.0, 5.0];
+    m.position[0] = BVector::new(5.0, 0.0, 5.0);
+    m.new_position[0] = BVector::new(5.0, 0.0, 5.0);
     m.maximum_velocity_forward = 1.2;
     m.paths = vec![level(0, &[[5.0, 5.0], [5.0, 9.0]], 1, 3)];
     let group = GroupView::default();
     assert!(fx.step(&mut m, &group, &lead()));
-    assert_eq!(m.velocity[2], 1.2);
+    assert_eq!(m.velocity.y(), 1.2);
     let f = m.new_position[1];
-    assert!((f[2] - 1.0).abs() < 1e-6 && f[0].abs() < 1e-6, "{f:?}");
+    assert!((f.y() - 1.0).abs() < 1e-6 && f.x().abs() < 1e-6, "{f:?}");
 }
 
 /// A reached last waypoint of a top level without a parent arrives: the level resets and
@@ -343,14 +382,14 @@ fn a_walked_level_turns_the_group_toward_its_waypoint() {
 fn the_last_waypoint_of_the_top_level_ends_the_walk() {
     let mut fx = Fixture::new();
     let mut m = Motion::new();
-    m.position[0] = [5.0, 0.0, 9.0];
-    m.velocity = [0.0, 0.0, 1.2];
+    m.position[0] = BVector::new(5.0, 0.0, 9.0);
+    m.velocity = BVector::new(0.0, 0.0, 1.2);
     let mut top = level(2, &[[5.0, 5.0], [5.0, 9.0]], 1, 3);
     top.flags = 1;
     m.paths = vec![top];
     assert!(fx.step(&mut m, &GroupView::default(), &lead()));
     assert_eq!(m.paths, vec![PathData::without_path()]);
-    assert_eq!(m.velocity[2], 0.0);
+    assert_eq!(m.velocity.y(), 0.0);
 }
 
 /// An arrived walked level linked as found hands over to its parent, whose waypoint then
@@ -359,7 +398,7 @@ fn the_last_waypoint_of_the_top_level_ends_the_walk() {
 fn an_arrived_level_hands_over_and_a_pause_waits() {
     let mut fx = Fixture::new();
     let mut m = Motion::new();
-    m.position[0] = [5.0, 0.0, 9.0];
+    m.position[0] = BVector::new(5.0, 0.0, 9.0);
     let mut walked = level(0, &[[5.0, 5.0], [5.0, 9.0]], 1, 4);
     walked.linked_type = 1;
     let parent = level(2, &[[5.0, 5.0], [5.0, 9.0]], 1, 0);
@@ -369,12 +408,12 @@ fn an_arrived_level_hands_over_and_a_pause_waits() {
     assert_eq!(m.paths.len(), 1);
     assert_eq!(m.paths[0].state, 0);
     let mut m = Motion::new();
-    m.velocity = [0.0, 0.0, 1.0];
+    m.velocity = BVector::new(0.0, 0.0, 1.0);
     let mut paused = level(0, &[[5.0, 5.0], [5.0, 9.0]], 1, 3);
     paused.pause_time = 0.3;
     m.paths = vec![paused];
     assert!(!fx.step(&mut m, &GroupView::default(), &lead()));
-    assert_eq!(m.velocity[2], 0.0);
+    assert_eq!(m.velocity.y(), 0.0);
     assert!((m.paths[0].pause_time - 0.2).abs() < 1e-6);
 }
 
@@ -408,7 +447,7 @@ impl Fixture {
 /// A group at (5, 5) whose walked level (level `n`, state 2) heads for (5, `y`).
 fn requesting(n: u8, y: f32) -> Motion {
     let mut m = Motion::new();
-    m.position[0] = [5.0, 0.0, 5.0];
+    m.position[0] = BVector::new(5.0, 0.0, 5.0);
     m.paths = vec![level(n, &[[5.0, 5.0], [5.0, y]], 1, 2)];
     m
 }
@@ -416,7 +455,7 @@ fn requesting(n: u8, y: f32) -> Motion {
 /// A target of radius 0.5 at (5, `y`).
 fn target_at(y: f32) -> Placed {
     Placed {
-        position: [5.0, y, 0.0],
+        position: Position::new(5.0, y, 0.0),
         radius: [0.5, 0.5],
         class: class::CLASS_0,
         player: PlayerId::new(0),
@@ -457,12 +496,12 @@ fn a_request_over_the_budget_waits_and_the_last_plan_spent_gives_up() {
     };
     fx.pathing.budgets = vec![budget(0), budget(1)];
     let mut m = requesting(0, 30.0);
-    m.velocity = [0.0, 0.0, 1.0];
+    m.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(matches!(
         fx.request(&mut m, &lead(), true, None, f32::MAX),
         Some(Pass::Done(false))
     ));
-    assert_eq!((m.number_wait_delays, m.velocity[2]), (1, 0.0));
+    assert_eq!((m.number_wait_delays, m.velocity.y()), (1, 0.0));
     assert_eq!(fx.pathing.budgets[1].plans, 1);
     let mut m = requesting(0, 6.0);
     m.paths[0].continue_counter = 1;
@@ -505,7 +544,10 @@ fn a_top_level_without_a_planner_plans_the_straight_way() {
         (new.level, new.state, new.linked_type, new.waypoint),
         (1, 2, 1, 1)
     );
-    assert_eq!(new.points, [[5.0, 0.0, 5.0], [5.0, 0.0, 30.0]]);
+    assert_eq!(
+        new.points,
+        [BVector::new(5.0, 0.0, 5.0), BVector::new(5.0, 0.0, 30.0)]
+    );
     assert_eq!((new.length, new.created), (25.0, 100));
     assert_eq!((top.state, top.continue_counter), (0, 10));
 }
@@ -527,13 +569,13 @@ fn a_near_waypoint_without_a_way_is_reached_or_arrived_at() {
         Some(Pass::Reached)
     ));
     m.paths[0].created = 100;
-    m.velocity = [0.0, 0.0, 1.0];
+    m.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(matches!(
         fx.request(&mut m, &lead, false, None, f32::MAX),
         Some(Pass::Done(true))
     ));
     assert_eq!((m.paths[0].state, m.paths[0].has_path), (6, false));
-    assert_eq!(m.velocity[2], 0.0);
+    assert_eq!(m.velocity.y(), 0.0);
     let mut m = requesting(0, 6.0);
     let placed = target_at(6.0);
     assert!(matches!(
@@ -561,7 +603,10 @@ fn a_near_target_takes_the_straight_way() {
     );
     let new = &m.paths[0];
     assert_eq!((new.level, new.state, new.linked_type), (0, 3, 1));
-    assert_eq!(new.points, [[5.0, 0.0, 5.0], [5.0, 0.0, 30.0]]);
+    assert_eq!(
+        new.points,
+        [BVector::new(5.0, 0.0, 5.0), BVector::new(5.0, 0.0, 30.0)]
+    );
 }
 
 /// [`Fixture::new`] on an open map of 40 by 40 tiles.
@@ -585,8 +630,8 @@ fn a_near_waypoint_takes_the_short_pather_s_path() {
     assert!(fx.request(&mut m, &lead, false, None, f32::MAX).is_none());
     let new = &m.paths[0];
     assert_eq!((new.level, new.state, new.linked_type), (0, 3, 1));
-    assert_eq!(new.points.first(), Some(&[5.0, 0.0, 5.0]));
-    assert_eq!(new.points.last(), Some(&[5.0, 0.0, 9.0]));
+    assert_eq!(new.points.first(), Some(&BVector::new(5.0, 0.0, 5.0)));
+    assert_eq!(new.points.last(), Some(&BVector::new(5.0, 0.0, 9.0)));
     assert_eq!(m.paths[1].state, 0);
 }
 
@@ -599,7 +644,10 @@ fn a_far_waypoint_takes_the_long_pather_s_path() {
     assert!(fx.request(&mut m, &lead(), false, None, f32::MAX).is_none());
     let new = &m.paths[0];
     assert_eq!((new.level, new.state, new.linked_type), (0, 3, 1));
-    assert_eq!(new.points, [[5.5, 0.0, 5.5], [5.5, 0.0, 30.5]]);
+    assert_eq!(
+        new.points,
+        [BVector::new(5.5, 0.0, 5.5), BVector::new(5.5, 0.0, 30.5)]
+    );
 }
 
 /// The request's end (`LAB_14104b4c5`) without a path to link (a top level's not found, or
@@ -614,7 +662,7 @@ fn a_request_without_a_path_pauses_waits_gives_up_or_counts_its_waypoint() {
     use crate::pathing::tile_path::Path;
     let at = |n: u8, waypoints: &[[f32; 2]], counter| {
         let mut m = Motion::new();
-        m.velocity = [0.0, 0.0, 1.0];
+        m.velocity = BVector::new(0.0, 0.0, 1.0);
         m.paths = vec![level(n, waypoints, waypoints.len() as i32 - 1, 2)];
         m.paths[0].continue_counter = counter;
         m
@@ -647,7 +695,7 @@ fn a_request_without_a_path_pauses_waits_gives_up_or_counts_its_waypoint() {
         Some(Pass::Done(false))
     ));
     assert_eq!(
-        (m.paths.clone(), m.velocity[2]),
+        (m.paths.clone(), m.velocity.y()),
         (vec![PathData::without_path()], 0.0)
     );
     let mut m = at(2, &last, 2);
@@ -658,7 +706,7 @@ fn a_request_without_a_path_pauses_waits_gives_up_or_counts_its_waypoint() {
         end(&mut m, &lead(), false),
         Some(Pass::Done(false))
     ));
-    assert_eq!((m.paths[0].pause_time, m.velocity[2]), (STUCK_PAUSE, 0.0));
+    assert_eq!((m.paths[0].pause_time, m.velocity.y()), (STUCK_PAUSE, 0.0));
     let mut m = at(0, &last, 5);
     assert!(matches!(end(&mut m, &lead(), true), Some(Pass::Done(true))));
     assert_eq!(m.paths, vec![PathData::without_path()]);
@@ -680,7 +728,7 @@ fn a_reached_waypoint_moves_the_level_on() {
     reached(&mut m, None).unwrap();
     assert_eq!(
         (m.position[0], m.new_position[0]),
-        ([5.0, 0.0, 9.0], [5.0, 0.0, 9.0])
+        (BVector::new(5.0, 0.0, 9.0), BVector::new(5.0, 0.0, 9.0))
     );
     let l = &m.paths[0];
     assert_eq!((l.flags & 3, l.waypoint, l.state), (0, 2, 2));
@@ -703,7 +751,7 @@ fn past_its_last_waypoint_a_level_steps_back_or_arrived() {
     let two = [[5.0, 5.0], [5.0, 9.0]];
     let state = |n: u8, at: [f32; 2], target: Option<&Placed>, flags: u32| {
         let mut m = Motion::new();
-        m.position[0] = [at[0], 0.0, at[1]];
+        m.position[0] = BVector::new(at[0], 0.0, at[1]);
         m.paths = vec![level(n, &two, 1, 3)];
         m.paths[0].flags = flags;
         reached(&mut m, target).unwrap();
@@ -783,7 +831,7 @@ fn an_arrived_level_hands_over_by_its_link() {
 /// A target of radius 0.2 at (`x`, `y`) with its obstruction record (a circle).
 fn placed_at(x: f32, y: f32) -> Placed {
     Placed {
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         radius: [0.2, 0.2],
         obstruction: Some(crate::map::spatial::Obstruction { kind: 5, class: 2 }),
         ..target_at(y)
@@ -826,10 +874,10 @@ fn what_stands_in_the_way_stops_the_walk() {
         (1, 2, 2)
     );
     let mut m = walking(-1);
-    m.velocity = [0.0, 0.0, 1.0];
+    m.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
     assert_eq!(
-        (m.paths.clone(), m.velocity[2]),
+        (m.paths.clone(), m.velocity.y()),
         (vec![PathData::without_path()], 0.0)
     );
     // one that moved before the level was made: the walk goes on at its top speed
@@ -837,7 +885,7 @@ fn what_stands_in_the_way_stops_the_walk() {
     m.paths[0].created = 70;
     m.maximum_velocity_forward = 1.2;
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
-    assert_eq!((m.paths[0].state, m.velocity[2]), (3, 1.2));
+    assert_eq!((m.paths[0].state, m.velocity.y()), (3, 1.2));
 }
 
 /// The walk's end in range: a group within the walked level's range of the top level's last
@@ -871,10 +919,10 @@ fn a_walk_in_range_of_its_end_stops() {
 #[test]
 fn the_members_centre_pulls_a_group_whose_members_all_act() {
     let mut fx = open_fixture();
-    let walk = |fx: &mut Fixture, members: Vec<Option<(i32, Vec3)>>| {
+    let walk = |fx: &mut Fixture, members: Vec<Option<(i32, BVector)>>| {
         let mut m = requesting(0, 9.0);
         m.paths[0].state = 3;
-        m.new_position[0] = [5.0, 0.0, 5.0];
+        m.new_position[0] = BVector::new(5.0, 0.0, 5.0);
         let group = GroupView {
             computer: false,
             members,
@@ -900,13 +948,22 @@ fn the_members_centre_pulls_a_group_whose_members_all_act() {
     };
     let far = walk(
         &mut fx,
-        vec![Some((20, [15.0, 1.0, 5.0])), Some((20, [15.0, 3.0, 5.0]))],
+        vec![
+            Some((20, BVector::new(15.0, 1.0, 5.0))),
+            Some((20, BVector::new(15.0, 3.0, 5.0))),
+        ],
     );
     let pulled = |c: f32, own: f32| PULL_SHARE * c + PULL_KEEP * own;
-    assert_eq!(far, [pulled(15.0, 5.0), pulled(0.0, 0.0), pulled(5.0, 5.0)]);
+    assert_eq!(
+        far,
+        BVector::new(pulled(15.0, 5.0), pulled(0.0, 0.0), pulled(5.0, 5.0))
+    );
     let idle = walk(
         &mut fx,
-        vec![Some((20, [15.0, 1.0, 5.0])), Some((-1, [15.0, 3.0, 5.0]))],
+        vec![
+            Some((20, BVector::new(15.0, 1.0, 5.0))),
+            Some((-1, BVector::new(15.0, 3.0, 5.0))),
+        ],
     );
-    assert_eq!(idle, [5.0, 0.0, 5.0]);
+    assert_eq!(idle, BVector::new(5.0, 0.0, 5.0));
 }

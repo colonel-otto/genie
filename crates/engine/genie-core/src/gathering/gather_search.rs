@@ -4,6 +4,7 @@
 //! (`0x140ab0370` case 0xdf).
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::msvc;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -26,7 +27,7 @@ pub struct Candidate {
     /// `+0x644`, `worker_num`.
     pub workers: i32,
     /// x, y, z.
-    pub position: [f32; 3],
+    pub position: Position,
     /// `+0x790`, `parent_pasture_id` (−1 for none).
     pub pasture: i32,
     /// `+0x689` is 0 ([`crate::objects::unit::Unit::untargetable`]).
@@ -45,11 +46,11 @@ pub struct Candidate {
 #[derive(Clone, Copy, Debug)]
 pub struct Builder {
     /// The builder's place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's x radius (`+0x5d8`).
     pub radius: f32,
     /// The building's place.
-    pub building: [f32; 3],
+    pub building: Position,
     /// The search's reach in tiles: the building's line of sight held to 4 to 20 (`DAT_142eb0f48`,
     /// `DAT_142e7f38c`), truncated.
     pub range: i16,
@@ -90,8 +91,8 @@ pub fn more_work(
         .range
         .wrapping_add((builder.radius + 0.5) as i32 as i16);
     let (bx, by) = (
-        builder.building[0] as i32 as i16,
-        builder.building[1] as i32 as i16,
+        builder.building.x() as i32 as i16,
+        builder.building.y() as i32 as i16,
     );
     let x0 = bx.wrapping_sub(r).max(0);
     let y0 = by.wrapping_sub(r).max(0);
@@ -105,8 +106,8 @@ pub fn more_work(
     }
     let (w, h) = (i32::from(x1 - x0) + 1, i32::from(y1 - y0) + 1);
     let start = [
-        builder.position[0] as i32 - i32::from(x0),
-        builder.position[1] as i32 - i32::from(y0),
+        builder.position.x() as i32 - i32::from(x0),
+        builder.position.y() as i32 - i32::from(y0),
     ];
     let grid = blocked.and_then(|b| {
         reached(start, [w, h], &|x, y| {
@@ -147,8 +148,8 @@ pub fn more_work(
                     1 => 3,
                     _ => continue,
                 };
-                let dx = o.position[0] - builder.position[0];
-                let dy = o.position[1] - builder.position[1];
+                let dx = o.position.x() - builder.position.x();
+                let dy = o.position.y() - builder.position.y();
                 let d = crate::math::conversions::cvttss2si(crate::math::fmath::sqrt(
                     dy * dy + dx * dx,
                 )) as f32;
@@ -217,7 +218,7 @@ pub struct Seeker {
     /// The owner.
     pub player: PlayerId,
     /// The unit's place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's line of sight (`+0x5d0`).
     pub line_of_sight: f32,
     /// `+0x640`.
@@ -246,7 +247,7 @@ const TESTED: i32 = 30;
 #[derive(Clone, Copy, Debug)]
 pub struct SearchSite {
     /// The site's place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
     pub radius: [f32; 2],
     /// Its master's line of sight (`+0x5d0`).
@@ -378,7 +379,7 @@ pub fn closest_resource_at<W>(
             "a resource search by a unit with a pasture of its own",
         ));
     }
-    let [ux, uy, _] = seeker.position;
+    let (ux, uy) = (seeker.position.x(), seeker.position.y());
     let los = seeker.line_of_sight as i32;
     let unit_tile = (ux as i32, uy as i32);
     // the sort's point, and the box's side (fixed for both passes)
@@ -485,13 +486,13 @@ fn search_passes(
             let mut seeds = footprint_seeds(s, map, passable);
             msvc::sort(&mut seeds, nearer);
             passes.push(Pass {
-                origin: (s.position[0] as i32, s.position[1] as i32),
+                origin: (s.position.x() as i32, s.position.y() as i32),
                 max_steps: s.line_of_sight as i32 + 10,
                 seeds,
             });
             passes.push(single(unit_tile));
         }
-        Some(s) => passes.push(single((s.position[0] as i32, s.position[1] as i32))),
+        Some(s) => passes.push(single((s.position.x() as i32, s.position.y() as i32))),
         None => passes.push(single(unit_tile)),
     }
     passes
@@ -530,7 +531,7 @@ fn sort_point_and_side(at: [f32; 2], los: i32, site: Option<&SearchSite>) -> ((f
     const UNIT_SHARE: f32 = crate::math::image::gather_search::UNIT_SHARE;
     let [ux, uy] = at;
     site.map_or(((ux, uy), (los + 10) * 3), |s| {
-        let [sx, sy, _] = s.position;
+        let (sx, sy) = (s.position.x(), s.position.y());
         let at = (
             sx * SITE_SHARE + ux * UNIT_SHARE,
             sy * SITE_SHARE + uy * UNIT_SHARE,
@@ -560,7 +561,7 @@ fn footprint_seeds(
     map: [i32; 2],
     passable: &dyn Fn(i32, i32) -> bool,
 ) -> Vec<Cell> {
-    let [sx, sy, _] = s.position;
+    let (sx, sy) = (s.position.x(), s.position.y());
     let [rx, ry] = s.radius;
     let x0 = ((sx - rx) as i32).max(1) - 1;
     let x1 = ((sx + rx) as i32).min(map[0] - 1);
@@ -648,7 +649,7 @@ mod tests {
             master: 349,
             state: 2,
             workers: 0,
-            position: [x, y, 0.0],
+            position: Position::new(x, y, 0.0),
             pasture: -1,
             untargetable: false,
             attribute: 1,
@@ -696,9 +697,9 @@ mod tests {
     fn more_work_takes_the_first_nearest_tree_then_fewer_workers_at_no_lesser_distance() {
         let entry = lumber_camp();
         let b = Builder {
-            position: [10.5, 10.5, 0.0],
+            position: Position::new(10.5, 10.5, 0.0),
             radius: 0.2,
-            building: [12.0, 10.0, 0.0],
+            building: Position::new(12.0, 10.0, 0.0),
             range: 6,
         };
         // 3 and 4 both 3 tiles away (truncated): x outer, so 3 (x 7) comes first; 4 is as far
@@ -708,7 +709,7 @@ mod tests {
         let objects = |x: i32, y: i32| {
             Ok(trees
                 .iter()
-                .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
                 .copied()
                 .collect())
         };
@@ -732,9 +733,9 @@ mod tests {
             attribute: 3,
         });
         let b = Builder {
-            position: [10.5, 10.5, 0.0],
+            position: Position::new(10.5, 10.5, 0.0),
             radius: 0.2,
-            building: [10.0, 10.0, 0.0],
+            building: Position::new(10.0, 10.0, 0.0),
             range: 6,
         };
         let mut gold = tree(7, 14.5, 10.5);
@@ -744,7 +745,7 @@ mod tests {
         let objects = |x: i32, y: i32| {
             Ok(all
                 .iter()
-                .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
                 .copied()
                 .collect())
         };
@@ -760,9 +761,9 @@ mod tests {
     fn more_work_takes_the_first_listed_of_two_trees_on_one_tile() {
         let entry = lumber_camp();
         let b = Builder {
-            position: [10.5, 10.5, 0.0],
+            position: Position::new(10.5, 10.5, 0.0),
             radius: 0.2,
-            building: [12.0, 10.0, 0.0],
+            building: Position::new(12.0, 10.0, 0.0),
             range: 6,
         };
         let listed = |first: i32, second: i32| {
@@ -770,7 +771,7 @@ mod tests {
             let objects = |x: i32, y: i32| {
                 Ok(trees
                     .iter()
-                    .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                    .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
                     .copied()
                     .collect())
             };
@@ -786,7 +787,7 @@ mod tests {
     fn the_resource_search_walks_out_from_the_unit_and_takes_the_first_it_reaches() {
         let seeker = Seeker {
             player: PlayerId::new(1),
-            position: [10.2, 10.7, 0.0],
+            position: Position::new(10.2, 10.7, 0.0),
             line_of_sight: 4.0,
             state: 2,
             current_target: -1,
@@ -798,14 +799,14 @@ mod tests {
         let objects = |(): &(), x: i32, y: i32| {
             Ok(trees
                 .iter()
-                .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
                 .copied()
                 .collect())
         };
         let tree_at = |x: i32, y: i32| {
             trees
                 .iter()
-                .any(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                .any(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
         };
         let mut asked = Vec::new();
         let found = closest_resource(
@@ -852,7 +853,7 @@ mod tests {
     fn a_search_from_a_drop_site_starts_from_its_footprint_then_from_the_unit() {
         let seeker = Seeker {
             player: PlayerId::new(1),
-            position: [10.2, 10.7, 0.0],
+            position: Position::new(10.2, 10.7, 0.0),
             line_of_sight: 4.0,
             state: 2,
             current_target: -1,
@@ -861,7 +862,7 @@ mod tests {
         };
         // a 2x2 site at (14, 10): its own tiles are blocked
         let site = SearchSite {
-            position: [14.0, 10.0, 0.0],
+            position: Position::new(14.0, 10.0, 0.0),
             radius: [1.0, 1.0],
             line_of_sight: 6.0,
             footprint: true,
@@ -870,7 +871,7 @@ mod tests {
             let objects = |(): &(), x: i32, y: i32| {
                 Ok(trees
                     .iter()
-                    .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                    .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
                     .copied()
                     .collect())
             };
@@ -878,7 +879,7 @@ mod tests {
                 (13..=14).contains(&x) && (9..=10).contains(&y)
                     || trees
                         .iter()
-                        .any(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                        .any(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
             };
             closest_resource_at(
                 &seeker,
@@ -921,7 +922,7 @@ mod tests {
     /// (its distance at most 9), in state 2.
     const SEEKER: Seeker = Seeker {
         player: PlayerId::new(1),
-        position: [10.2, 10.7, 0.0],
+        position: Position::new(10.2, 10.7, 0.0),
         line_of_sight: 4.0,
         state: 2,
         current_target: -1,
@@ -942,7 +943,7 @@ mod tests {
         let objects = |(): &(), x: i32, y: i32| {
             Ok(trees
                 .iter()
-                .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
                 .copied()
                 .collect())
         };

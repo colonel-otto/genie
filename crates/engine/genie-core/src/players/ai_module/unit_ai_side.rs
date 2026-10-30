@@ -81,11 +81,10 @@ impl UnitView<'_, '_> {
         }
         let own = self.unit.master(&self.c.w.masters, self.player)?;
         let (class_id, sight, flags) = (own.class, own.line_of_sight, own.object_flags);
-        let [x, y, _] = self.unit.position();
         let id = self.unit.id;
         let unit = SearchUnit {
             id,
-            position: [x, y],
+            position: self.unit.position().ground(),
             civilian: class_id == class::VILLAGER,
         };
         let now = self.c.w.world_time;
@@ -99,7 +98,7 @@ impl UnitView<'_, '_> {
             let centre = match town_centre_unit(view)? {
                 Some(u) => {
                     let sight = u.master(&self.c.w.masters, self.player)?.line_of_sight;
-                    Some(([u.position()[0], u.position()[1]], sight))
+                    Some((u.position().ground(), sight))
                 }
                 None => None,
             };

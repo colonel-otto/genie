@@ -133,7 +133,7 @@ impl WorldPicker<'_> {
         let target = victim_of(t, tm, ta, tq, terrain, self.mode_680);
         let unit = victim_of(f, fm, fa, fq, terrain, self.mode_680);
         let mut factor = crate::combat::damage::elevation_factor(
-            f.position()[2],
+            f.position().z(),
             unit.attack_elevation,
             &target,
         );

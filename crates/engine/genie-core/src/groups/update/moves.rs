@@ -8,6 +8,7 @@ use crate::groups::update::{
     ATTACK, CLOSE, FOLLOW, FOLLOW_SHARE, IDLE_LIMIT, IDLE_SPAN, NO_COMMAND, OTHER_COMMANDS,
 };
 use crate::groups::{SpecificMove, UnitGroup};
+use crate::math::fmath::BVector;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -47,7 +48,7 @@ impl World {
                     -1
                 };
                 match to {
-                    Some((moved, [x, y, _])) if lead != -1 => {
+                    Some((moved, at)) if lead != -1 => {
                         let g = self.groups.held(group)?;
                         let leader = self
                             .lead_object(&g.motion)
@@ -57,12 +58,12 @@ impl World {
                             .line_of_sight;
                         let range = sight * FOLLOW_SHARE;
                         let d = crate::math::fmath::sub(from, moved);
-                        let squared = d[0] * d[0] + 0.0 + d[2] * d[2];
+                        let squared = d.x() * d.x() + 0.0 + d.y() * d.y();
                         if !crate::math::fmath::below_or_unordered(squared, range * range) {
                             let _ = self.command_move_to(
                                 group,
                                 target,
-                                [x, y],
+                                at.ground(),
                                 crate::groups::command::MoveTo {
                                     range,
                                     leg: false,
@@ -215,10 +216,10 @@ impl World {
                 let end = match top.points.as_slice() {
                     [.., _, last] => *last,
                     // DAT_143f0dc78, zero-initialised (.bss) and written by nothing
-                    _ => [0.0; 3],
+                    _ => BVector::ZERO,
                 };
                 let d = crate::math::fmath::sub(end, target.moved_vector().xhy());
-                let squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+                let squared = d.x() * d.x() + d.height() * d.height() + d.y() * d.y();
                 if !crate::math::fmath::below_or_unordered(squared, CLOSE) {
                     self.groups.held_mut(group)?.current_command = FOLLOW;
                     return Ok(false);
@@ -352,8 +353,8 @@ impl World {
                     .checked_mut(i - 1)?
                     .specific_move;
                 let mut d = crate::math::fmath::sub(at, own.last_position);
-                d[1] = 0.0;
-                own.distance -= crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+                d = d.with_height(0.0);
+                own.distance -= crate::math::fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y());
                 own.last_position = at;
                 continue;
             }

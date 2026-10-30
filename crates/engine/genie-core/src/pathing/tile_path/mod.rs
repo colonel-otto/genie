@@ -15,7 +15,7 @@
 //! in the world, not in the save: the slice builds it from the map's terrain, the restriction's
 //! passability and the obstruction manager's blocked tiles, as the game does at load.
 
-use crate::math::fmath::{self, Vec3};
+use crate::math::fmath::{self, BVector};
 use genie_diff::Diff;
 
 mod goal_marks;
@@ -102,7 +102,7 @@ impl Found {
 #[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct Path {
     /// The points.
-    pub points: Vec<Vec3>,
+    pub points: Vec<BVector>,
     /// The length.
     pub length: f32,
 }
@@ -110,7 +110,7 @@ pub struct Path {
 impl Path {
     /// Insert `p` at `index` (`FUN_140f95060`) unless it equals the point before or the point at
     /// `index`; false when it does or `index` lies beyond the end.
-    pub fn insert(&mut self, index: usize, p: Vec3) -> bool {
+    pub fn insert(&mut self, index: usize, p: BVector) -> bool {
         let n = self.points.len();
         if n < index
             || (0 < index && self.points.get(index - 1) == Some(&p))
@@ -123,7 +123,7 @@ impl Path {
     }
 
     /// Append `p` (`FUN_140f95a10`).
-    pub fn push(&mut self, p: Vec3) -> bool {
+    pub fn push(&mut self, p: BVector) -> bool {
         self.insert(self.points.len(), p)
     }
 
@@ -135,7 +135,7 @@ impl Path {
                 continue;
             };
             let d = fmath::sub(*b, *a);
-            total += fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+            total += fmath::sqrt(d.x() * d.x() + d.height() * d.height() + d.y() * d.y());
         }
         self.length = total;
     }

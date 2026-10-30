@@ -6,6 +6,7 @@ use crate::combat::attack::update::let_go;
 use crate::combat::attack::{
     AiOrder, Attack, AttackReads, Engagement, Fight, HALF, MOVE, NO_RANGE, NONE, set_walker_anim,
 };
+use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
 use crate::movement::move_to::MoveToReads;
@@ -73,7 +74,7 @@ impl Attack {
     pub(super) fn moving(
         &mut self,
         range: f32,
-        at: [f32; 3],
+        at: Position,
         gap: f32,
         reads: &MoveToReads<'_>,
     ) -> Result<bool, GenieError> {
@@ -130,7 +131,7 @@ impl Attack {
         }
         let target = std::mem::replace(&mut self.target, -1);
         let_go(c, unit, target)?;
-        self.point = [NONE; 3];
+        self.point = Position::from([NONE; 3]);
         let human = f.own.player != PlayerId::new(0) && !r.computer;
         let waits = match r.ai_order {
             AiOrder::Absent => true,
@@ -262,7 +263,7 @@ impl Attack {
 }
 
 /// `FUN_140c5e1e0` at once: the unit AI forgets its target ([`crate::unit_ai::UnitAi::remove_target`]).
-const fn forget_target(unit: &mut Unit) {
+fn forget_target(unit: &mut Unit) {
     if let Some(ai) = unit.ai.as_mut() {
         ai.remove_target();
     }

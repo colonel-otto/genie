@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::attack::gaps;
 use crate::map::Point;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
@@ -99,7 +100,7 @@ impl World {
                     -1
                 },
                 target_owner,
-                point: [point2[0], point2[1], 0.0],
+                point: Position::new(point2[0], point2[1], 0.0),
                 range: 0.0,
                 shown: order.point.xy(),
                 ready: order.direct,
@@ -128,7 +129,11 @@ impl World {
             point: Point::new(point2[0], point2[1]),
             ..*order
         };
-        let taken = self.move_to_point(player, idx, [order.point.x(), order.point.y(), 0.0])?;
+        let taken = self.move_to_point(
+            player,
+            idx,
+            Position::new(order.point.x(), order.point.y(), 0.0),
+        )?;
         // the order handler's notify: a unit that took the move as a MoveTo gets the move order
         // and action, its target forgotten (FUN_140c4dcb0); every unit then the point
         // (FUN_140c64be0); in a grid every unit gets the order, the action and its cell, its
@@ -152,7 +157,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<bool, GenieError> {
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
         // head action's slot 0x40 take the point unless it stops after a kill (FUN_140c41c10)
@@ -163,7 +168,7 @@ impl World {
             .master(&self.masters, player)?
             .class;
         let unit = self.players.live_mut(player, idx)?;
-        let place = ([unit.position()[0], unit.position()[1]], Some(class));
+        let place = (unit.position().ground(), Some(class));
         if unit.ai.is_some() {
             // a completion's stop (slot 0xb0 with 1): the unit's stopAction at once
             self.run_ai_calls((player, idx), |ai, side, rng| {
@@ -327,7 +332,8 @@ impl World {
                 .get_known(order.target)?
                 .ok_or(GenieError::unsupported("a target without a place"))?
                 .position;
-            (order.point[0], order.point[1], order.target) = (at[0], at[1], -1);
+            order.point = order.point.with_x(at.x()).with_y(at.y());
+            order.target = -1;
         }
         let order = &order;
         self.town_bell_order(player, idx, order.target, order.filter)?;
@@ -436,7 +442,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<(), GenieError> {
         self.move_point_order_with(player, idx, point, true)
     }
@@ -450,7 +456,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        point: [f32; 3],
+        point: Position,
         a14: bool,
     ) -> Result<(), GenieError> {
         let villager = self

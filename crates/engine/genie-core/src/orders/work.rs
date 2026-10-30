@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
 use crate::objects::masters::action_type;
@@ -34,7 +35,7 @@ impl World {
         idx: usize,
         target: i32,
         filter: i16,
-        point: [f32; 3],
+        point: Position,
         clears: bool,
     ) -> Result<bool, GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -101,7 +102,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<bool, GenieError> {
         let actor = self.garrison_actor(player, idx)?;
         let master = actor.master;
@@ -234,7 +235,7 @@ impl World {
         &self,
         player: PlayerId,
         idx: usize,
-        (target, point): (i32, [f32; 3]),
+        (target, point): (i32, Position),
         filter: i16,
     ) -> Result<Option<(i16, crate::objects::masters::Task)>, GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -275,7 +276,7 @@ impl World {
 
     /// The terrain the task finder's general search reads at `point` (`FUN_1411a8ba0`,
     /// [`crate::unit_ai::task_finder::world::point_terrain`] on the map's terrain).
-    pub(crate) fn task_terrain(&self, point: [f32; 3]) -> Option<i16> {
+    pub(crate) fn task_terrain(&self, point: Position) -> Option<i16> {
         crate::unit_ai::task_finder::world::point_terrain(self.spatial.terrain.as_ref(), point)
     }
 
@@ -289,7 +290,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point, clears): (i32, [f32; 3], bool),
+        (target, point, clears): (i32, Position, bool),
         task: &crate::objects::masters::Task,
         same_master: bool,
     ) -> Result<bool, GenieError> {
@@ -358,7 +359,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point, clears): (i32, [f32; 3], bool),
+        (target, point, clears): (i32, Position, bool),
     ) -> Result<(), GenieError> {
         let t = self.task_target(target, 0)?;
         if t.master.id == MARKET && t.player == player {
@@ -390,7 +391,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point, clears): (i32, [f32; 3], bool),
+        (target, point, clears): (i32, Position, bool),
     ) -> Result<bool, GenieError> {
         let t = self.task_target(target, 0)?;
         if t.master.id == MARKET && t.player == player {
@@ -428,7 +429,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point): (i32, [f32; 3]),
+        (target, point): (i32, Position),
         task: &crate::objects::masters::Task,
         (clears, notified): (bool, bool),
     ) -> Result<(), GenieError> {
@@ -480,7 +481,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 3],
+        point: Position,
         (clears, notified): (bool, bool),
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -563,7 +564,9 @@ impl World {
         let t = self.task_target(target, 1)?;
         let general = self.task_target(target, 2)?;
         // slot 0x820's point: the target's place
-        let at = self.object(target).map_or([0.0; 3], |(_, u)| u.position());
+        let at = self
+            .object(target)
+            .map_or(Position::ORIGIN, |(_, u)| u.position());
         let terrain = self.task_terrain(at);
         let find = |list: &Master, filter: i16| {
             crate::unit_ai::task_finder::find_task(

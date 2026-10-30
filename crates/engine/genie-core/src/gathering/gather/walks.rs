@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::gathering::gather::{GatherAction, GatherReads};
+use crate::map::Position;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveToAction, MoveToReads, SpriteReads, TargetMoved, WalkTo};
 use crate::objects::sprite::{Graphic, sprite_id};
@@ -94,7 +95,7 @@ impl GatherAction {
     /// A sprite the table lacks.
     pub(super) fn move_to_point(
         &self,
-        point: [f32; 3],
+        point: Position,
         range: f32,
         on_target_moved: TargetMoved,
         mover: &Mover,

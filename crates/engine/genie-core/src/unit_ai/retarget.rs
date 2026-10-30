@@ -1,6 +1,7 @@
 //! The idle part of the update, the retarget check and search, and the types' other checks.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -339,7 +340,7 @@ impl UnitAi {
             });
         let (classes, radius) = self.search_area(at, computer)?;
         let found = side.closest(&Search {
-            at: [from[0], from[1]],
+            at: from.ground(),
             radius,
             classes,
             size: at.size,
@@ -510,9 +511,11 @@ impl UnitAi {
             let ends = match held {
                 None => true,
                 Some(t) => {
-                    if self.target_point[0] == INVALID_POINT {
-                        self.target_point[0] = t.position[0];
-                        self.target_point[1] = t.position[1];
+                    if self.target_point.x() == INVALID_POINT {
+                        self.target_point = self
+                            .target_point
+                            .with_x(t.position.x())
+                            .with_y(t.position.y());
                     }
                     2 < t.state && t.owner != PlayerId::GAIA
                 }
@@ -540,8 +543,7 @@ impl UnitAi {
             self.target_point = t.position;
             t.gap_squared
         } else {
-            let [x, y, _] = self.target_point;
-            point_gap_squared([x, y], at.position, at.size)
+            point_gap_squared(self.target_point.ground(), at.position, at.size)
         };
         let reach = self.desired_distance + DEFEND_SLACK;
         if reach * reach < gap {
@@ -602,12 +604,11 @@ impl UnitAi {
             self.current_action,
             Some(ActionKind::MoveAside | ActionKind::GroupAside)
         ) {
-            self.target_point[0] = -1.0;
-            self.target_point[1] = -1.0;
+            self.target_point = self.target_point.with_x(-1.0).with_y(-1.0);
             return Ok(false);
         }
-        let dx = target.position[0] - self.target_point[0];
-        let dy = target.position[1] - self.target_point[1];
+        let dx = target.position.x() - self.target_point.x();
+        let dy = target.position.y() - self.target_point.y();
         let moved = dx < FOLLOW_SLACK_LOW
             || FOLLOW_SLACK_HIGH < dx
             || dy < FOLLOW_SLACK_LOW
@@ -640,7 +641,7 @@ impl UnitAi {
     pub(super) fn move_to_object(
         &mut self,
         id: i32,
-        (state, class, position): (u8, ClassId, [f32; 3]),
+        (state, class, position): (u8, ClassId, Position),
         range: f32,
         side: &mut dyn UnitSide,
         rng: &mut Well512,

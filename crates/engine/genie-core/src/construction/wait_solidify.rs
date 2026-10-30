@@ -12,6 +12,7 @@
 //! (`+0x20`, `+0x30`) unset and keeps the foundation's id at `+0x68` instead.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::Task;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
@@ -119,7 +120,7 @@ impl UnitView<'_, '_> {
             drop_sites: &self.c.w.drop_sites,
         };
         // slot 0x820's point: the target's place
-        let at = find(target).map_or([0.0; 3], |(_, u)| u.position());
+        let at = find(target).map_or(Position::ORIGIN, |(_, u)| u.position());
         let terrain = point_terrain(self.c.w.spatial.terrain.as_ref(), at);
         let Some((task, switch)) = task_search(masters, &actor, &t, &general, terrain, -1, &dip)?
         else {

@@ -1,11 +1,12 @@
 //! The velocity step, a new object's setup, the position setter and the motion step's loop.
 
+use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::{
     ANNEX_GAP, AfterRequest, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion,
     MoveStats, Mover, Next, Planning, RANGE_FLOOR, Reach, footprint_gap, gate_gap, ground,
-    include_kept, map_position, moved_far, pause_holds, point_or_zero_of, reach, vector,
+    include_kept, moved_far, pause_holds, point_or_zero_of, reach,
 };
 use crate::pathing::Pathing;
 use crate::{GenieError, math::fmath};
@@ -54,9 +55,9 @@ pub(super) struct WalkStep<'a> {
     /// The objects the old pather tests even moving.
     pub(super) include: &'a mut Vec<i32>,
     /// The waypoint once it is not left behind (`local_1860`).
-    pub(super) walked: &'a mut Vec3,
+    pub(super) walked: &'a mut BVector,
     /// The direction the unit turns to (slot 0x610).
-    pub(super) heading: &'a mut Vec3,
+    pub(super) heading: &'a mut BVector,
 }
 
 impl Mover {
@@ -93,18 +94,18 @@ impl Mover {
     /// 182, `0x141158490`) at the world's time `now`. Returns the position after it.
     pub fn step_velocity(
         &mut self,
-        position: [f32; 3],
+        position: Position,
         dt: f32,
         map: [i32; 2],
         terrain: Option<&crate::map::terrain::Terrain>,
         (now, group): (u32, Option<GroupSpeed>),
-    ) -> [f32; 3] {
+    ) -> Position {
         let Some(v) = self.velocity.as_ref() else {
             return position;
         };
-        let speed = self.next_speed(v.acceleration[2] * dt + v.velocity[2], group);
+        let speed = self.next_speed(v.acceleration.y() * dt + v.velocity.y(), group);
         if let Some(v) = self.velocity.as_mut() {
-            v.velocity[2] = speed;
+            v.velocity = v.velocity.with_y(speed);
         }
         // the position setter runs only for a distance it moves
         let Some(at) = self.move_forward(dt * speed, map) else {
@@ -123,15 +124,16 @@ impl Mover {
     #[must_use]
     pub fn grounded(
         &self,
-        [x, y, z]: [f32; 3],
+        at: Position,
         terrain: Option<&crate::map::terrain::Terrain>,
-    ) -> [f32; 3] {
+    ) -> Position {
+        let height = at.z();
         let z = terrain
-            .and_then(|t| t.ground(x, y).ok())
-            .map_or(z, |ground| {
-                crate::combat::missile::grounded(z, ground, false, self.stats.fly_mode)
+            .and_then(|t| t.ground(at.x(), at.y()).ok())
+            .map_or(height, |ground| {
+                crate::combat::missile::grounded(at.z(), ground, false, self.stats.fly_mode)
             });
-        [x, y, z]
+        at.with_z(z)
     }
 
     /// The moving setup (`FUN_1411580a0`) of a new object of `stats` at `at`: it faces x (its
@@ -142,7 +144,7 @@ impl Mover {
     /// `FUN_14106d2d0`).
     pub(crate) const fn new_object(
         stats: MoveStats,
-        at: [f32; 3],
+        at: Position,
         now: u32,
         angle: f32,
         sprite_facets: Option<crate::objects::facing::SpriteFacets>,
@@ -150,8 +152,8 @@ impl Mover {
         Self {
             // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             animated: crate::objects::layers::Animated::at(0.0, at),
-            forward: [1.0, 0.0, 0.0],
-            right: [0.0, 0.0, crate::production::spawn::START_RIGHT_Z],
+            forward: BVector::new(1.0, 0.0, 0.0),
+            right: BVector::new(0.0, 0.0, crate::production::spawn::START_RIGHT_Z),
             velocity: None,
             paths: Vec::new(),
             factor: 1.0,
@@ -174,7 +176,7 @@ impl Mover {
 
     /// The position setter's end (`FUN_141161950`): a place `at` more than 1e-7 off where it
     /// last moved to on any axis is a move at `now` (`+0x870`), and where it last moved to.
-    pub(crate) fn mark_move(&mut self, at: [f32; 3], now: u32) {
+    pub(crate) fn mark_move(&mut self, at: Position, now: u32) {
         if moved_far(self.moved_at, at) {
             self.last_move = now;
             self.moved_at = at;
@@ -184,33 +186,33 @@ impl Mover {
     /// `moveForward` (slot 182, `FUN_141158490`): `distance × factor` along the forward vector
     /// from where the unit last moved to (`+0x824`, [`Mover::moved_at`]), through the position
     /// setter; a distance below 1e-7 moves nothing.
-    pub(super) fn move_forward(&self, distance: f32, map: [i32; 2]) -> Option<[f32; 3]> {
+    pub(super) fn move_forward(&self, distance: f32, map: [i32; 2]) -> Option<Position> {
         let d = distance * self.factor;
         if d.abs() < EPSILON {
             return None;
         }
-        let to = fmath::add(vector(self.moved_at), fmath::scale(d, self.forward));
-        Some(self.set_position(map_position(to), map))
+        let to = fmath::add(self.moved_at.vector(), fmath::scale(d, self.forward));
+        Some(self.set_position(to.position(), map))
     }
 
     /// x, y, z on the map: the place of the static layer below it
     /// ([`crate::objects::layers::Static`]).
     #[must_use]
-    pub const fn position(&self) -> [f32; 3] {
+    pub const fn position(&self) -> Position {
         self.animated.base().position()
     }
 
     /// A test's fixture puts the unit at `at` without the world's index, which the test sets
     /// itself.
     #[cfg(test)]
-    pub(crate) const fn place_for_test(&mut self, at: [f32; 3]) {
+    pub(crate) const fn place_for_test(&mut self, at: Position) {
         self.animated.base_mut().place_for_test(at);
     }
 
     /// The same mover at `at`, for a test's fixture.
     #[cfg(test)]
     #[must_use]
-    pub(crate) const fn placed(mut self, at: [f32; 3]) -> Self {
+    pub(crate) const fn placed(mut self, at: Position) -> Self {
         self.place_for_test(at);
         self
     }
@@ -220,7 +222,7 @@ impl Mover {
     pub(crate) fn new_position(
         &mut self,
         id: i32,
-        at: [f32; 3],
+        at: Position,
         places: (&mut Spatial, Option<&mut Pathing>),
     ) -> Result<(), GenieError> {
         let moving = self.is_moving();
@@ -232,7 +234,8 @@ impl Mover {
 
     /// The position setter (slot 11 -> `FUN_141161950` -> `0x1411a58b0`): a unit that can move
     /// keeps its footprint 0.01 inside the map, then any position stays 0.001 below the map's size.
-    pub(crate) fn set_position(&self, [x, y, z]: [f32; 3], map: [i32; 2]) -> [f32; 3] {
+    pub(crate) fn set_position(&self, at: Position, map: [i32; 2]) -> Position {
+        let (x, y) = (at.x(), at.y());
         let inside = |v: f32, radius: f32, size: i32| {
             let low = radius + EDGE_GAP;
             if v < low {
@@ -261,7 +264,7 @@ impl Mover {
                 v
             }
         };
-        [on_map(x, map[0]), on_map(y, map[1]), z]
+        Position::new(on_map(x, map[0]), on_map(y, map[1]), at.z())
     }
 
     /// The motion step (object slot 193 -> `0x141150f00`, `doIntelligentMovementUpdate`) along the
@@ -319,12 +322,14 @@ impl Mover {
         let to_end = match (&target, self.paths.len()) {
             (Some(_), _) => gap,
             (None, 1) => FAR,
-            (None, _) => self
-                .top_path()
-                .and_then(|p| p.last())
-                .map_or(FAR, |&[x, _, y]| {
-                    footprint_gap(self.position(), ground_radius, [x, y, 0.0], [0.0, 0.0])
-                }),
+            (None, _) => self.top_path().and_then(|p| p.last()).map_or(FAR, |&end| {
+                footprint_gap(
+                    self.position(),
+                    ground_radius,
+                    end.position().with_z(0.0),
+                    [0.0, 0.0],
+                )
+            }),
         };
         Ok((target, gap, to_end))
     }
@@ -389,10 +394,10 @@ impl Mover {
         // `local_19bc`, 0 at the step's start)
         let mut include = Vec::new();
         // the waypoint the step's walk last went for (`local_1860`), zero before one
-        let mut walked = [0.0; 3];
+        let mut walked = BVector::ZERO;
         // the direction the step's walk last took (slot 0x610 into `[RBP+0x148]`), zero before
         // one: a loop's end turns toward it
-        let mut heading = [0.0; 3];
+        let mut heading = BVector::ZERO;
         loop {
             // a level without a path ends the step (`LAB_14115582c`), as no level does
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
@@ -469,7 +474,7 @@ impl Mover {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
         // (slot 0x638) and its query (FUN_14114cc60) start at +0x824, where the unit last moved to
-        let position = vector(self.moved_at);
+        let position = self.moved_at.vector();
         let level = &self.paths[0];
         let waypoint = point_or_zero_of(level, level.waypoint);
         if ground(position, waypoint) < EPSILON {
@@ -556,9 +561,13 @@ impl Mover {
             }
             // a walk to a point with a range ends where its top level's path ends
             None if level.path_flags & 1 == 0 && RANGE_FLOOR < level.range => {
-                if let Some(&[x, _, y]) = self.top_path().and_then(|p| p.last()) {
-                    let gap =
-                        footprint_gap(self.position(), ground_radius, [x, y, 0.0], [0.0, 0.0]);
+                if let Some(&end) = self.top_path().and_then(|p| p.last()) {
+                    let gap = footprint_gap(
+                        self.position(),
+                        ground_radius,
+                        end.position().with_z(0.0),
+                        [0.0, 0.0],
+                    );
                     if gap - level.range < EPSILON {
                         self.reset_level();
                         self.stop()?;
@@ -583,8 +592,8 @@ impl Mover {
     pub(super) fn loop_end(
         &mut self,
         dt: f32,
-        walked: Vec3,
-        heading: Vec3,
+        walked: BVector,
+        heading: BVector,
     ) -> Result<Motion, GenieError> {
         let clipped = self.steer(heading, dt)?;
         self.control_speed(walked, clipped);

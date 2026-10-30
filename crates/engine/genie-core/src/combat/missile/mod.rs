@@ -9,6 +9,7 @@
 //! (update `0x14113e520`).
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -79,7 +80,7 @@ pub struct MissileStats {
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Origin {
     /// The firing object's place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// The missile master's radii on the ground.
     pub radius: [f32; 2],
     /// The firing object's master, −1 without one.
@@ -91,7 +92,7 @@ pub struct Origin {
 impl Origin {
     /// `FUN_140aa8720`: no origin.
     pub const NONE: Self = Self {
-        position: [0.0; 3],
+        position: Position::ORIGIN,
         radius: [0.0; 2],
         master: -1,
         owner: -1,
@@ -103,7 +104,7 @@ impl Origin {
         let w = |i: usize| u32::from_le_bytes([b[4 * i], b[4 * i + 1], b[4 * i + 2], b[4 * i + 3]]);
         let f = |i: usize| f32::from_bits(w(i));
         Self {
-            position: [f(0), f(1), f(2)],
+            position: Position::new(f(0), f(1), f(2)),
             radius: [f(3), f(4)],
             master: w(5) as i32,
             owner: w(6) as i32,
@@ -122,7 +123,7 @@ pub struct MissileAction {
     /// The object it was fired from (`+0x28`, its id `+0x34`), −1 for none.
     pub fired_from: i32,
     /// `+0x38`..`+0x40`: the target's place when fired.
-    pub point: [f32; 3],
+    pub point: Position,
     /// `+0x44`: the way flown so far (a straight missile's).
     pub timer: f32,
     /// `+0x68`..`+0x70`: the direction, a unit vector for a straight missile.
@@ -165,12 +166,12 @@ pub struct Missile {
 /// offset (`+0x844`..`+0x84c`) turned by its facing (`+0x7e8`): x by cos·oy − sin·ox, y by
 /// cos·ox + sin·oy, the height by oz.
 #[must_use]
-pub fn spawn_point(at: [f32; 3], angle: f32, offset: [f32; 3]) -> [f32; 3] {
+pub fn spawn_point(at: Position, angle: f32, offset: [f32; 3]) -> Position {
     let (c, s) = (fmath::cos(angle), fmath::sin(angle));
     let [ox, oy, oz] = offset;
-    let y = c * ox + s * oy + at[1];
-    let x = (c * oy - s * ox) + at[0];
-    [x, y, at[2] + oz]
+    let y = c * ox + s * oy + at.y();
+    let x = (c * oy - s * ox) + at.x();
+    Position::new(x, y, at.z() + oz)
 }
 
 /// `FUN_141081020`'s reach: the firing master's radii's length plus its range plus 2.
@@ -201,13 +202,13 @@ pub fn scatter(draw: u32, spread: f32) -> f32 {
 /// offset's length on the ground fires from the target's x and y.
 #[must_use]
 pub fn volley_spawn_point(
-    at: [f32; 3],
+    at: Position,
     angle: f32,
     offset: [f32; 3],
     adjustment: f32,
     scatter: [f32; 2],
     building_at: Option<[f32; 2]>,
-) -> [f32; 3] {
+) -> Position {
     let [ox, oy, oz] = offset;
     let offset = if 0.0 < adjustment {
         [
@@ -220,11 +221,11 @@ pub fn volley_spawn_point(
     };
     let mut p = spawn_point(at, angle, offset);
     if let Some(t) = building_at {
-        let (dx, dy) = (t[0] - at[0], t[1] - at[1]);
+        let (dx, dy) = (t[0] - at.x(), t[1] - at.y());
         let gap = (dx * dx + dy * dy).sqrt();
         if gap < (ox * ox + oy * oy).sqrt() {
-            p[0] = t[0];
-            p[1] = t[1];
+            let [tx, ty] = t;
+            p = p.with_x(tx).with_y(ty);
         }
     }
     p
@@ -257,9 +258,9 @@ pub struct Aimer {
 #[derive(Debug)]
 pub struct AimAt<'a> {
     /// The point it aims for.
-    pub point: [f32; 3],
+    pub point: Position,
     /// Where the missile is.
-    pub from: [f32; 3],
+    pub from: Position,
     /// The target's radii and class, none without a target.
     pub target: Option<([f32; 3], ClassId)>,
     /// The firing object's hit chance, spread and class.
@@ -280,7 +281,7 @@ pub struct AimAt<'a> {
 /// more draws, half each way; a missile of master 528 with an attack count (`+0x900`) strays by
 /// that share of it. The class-54 rule is the firing object's (`+0x28`): the caller's `aimer` is
 /// the missile's own master for a volley's extra missile, which has none.
-pub fn aim(at: AimAt<'_>, draw: &mut dyn FnMut() -> u32) -> Result<[f32; 3], GenieError> {
+pub fn aim(at: AimAt<'_>, draw: &mut dyn FnMut() -> u32) -> Result<Position, GenieError> {
     let AimAt {
         point,
         from,
@@ -290,12 +291,12 @@ pub fn aim(at: AimAt<'_>, draw: &mut dyn FnMut() -> u32) -> Result<[f32; 3], Gen
         attack_count,
         hit_mode,
     } = at;
-    let [mut x, mut y, mut z] = point;
+    let (mut x, mut y, mut z) = (point.x(), point.y(), point.z());
     if let Some((radius, _)) = target {
         z += radius[2] / HEIGHT_SHARE;
     }
-    let dx = x - from[0];
-    let mut gap = fmath::sqrt((y - from[1]) * (y - from[1]) + dx * dx);
+    let dx = x - from.x();
+    let mut gap = fmath::sqrt((y - from.y()) * (y - from.y()) + dx * dx);
     let mut chance = aimer.hit_chance;
     if let Some((radius, class)) = target
         && aimer.class == class::CLASS_54
@@ -321,7 +322,7 @@ pub fn aim(at: AimAt<'_>, draw: &mut dyn FnMut() -> u32) -> Result<[f32; 3], Gen
         x += (draw() as i32 as f32 * gap) / DRAW_SCALE - half;
         y += (draw() as i32 as f32 * gap) / DRAW_SCALE - half;
     }
-    Ok([x, y, z])
+    Ok(Position::new(x, y, z))
 }
 
 impl MissileAction {
@@ -335,13 +336,13 @@ impl MissileAction {
     /// sprite's pitch facet is not held.
     pub fn launch(
         &mut self,
-        from: [f32; 3],
-        aimed: [f32; 3],
+        from: Position,
+        aimed: Position,
         stats: &MissileStats,
     ) -> Result<Option<f32>, GenieError> {
-        let dx = aimed[0] - from[0];
-        let dy = aimed[1] - from[1];
-        let dz = aimed[2] - from[2];
+        let dx = aimed.x() - from.x();
+        let dy = aimed.y() - from.y();
+        let dz = aimed.z() - from.z();
         let dz2 = dz * dz;
         let way = fmath::sqrt(dy * dy + dx * dx + dz2);
         self.distance = way;
@@ -453,13 +454,13 @@ pub fn meets_height(z: f32, height: f32, missile_z: f32, missile_height: f32) ->
 /// two radii together.
 #[must_use]
 pub fn on_target(
-    at: [f32; 3],
+    at: Position,
     radius: [f32; 3],
-    target: [f32; 3],
+    target: Position,
     target_radius: [f32; 2],
 ) -> bool {
-    let dx = (at[0] - target[0]).abs();
-    let dy = (at[1] - target[1]).abs();
+    let dx = (at.x() - target.x()).abs();
+    let dy = (at.y() - target.y()).abs();
     dx < target_radius[0] + radius[0] && dy < target_radius[1] + radius[1]
 }
 
@@ -497,7 +498,7 @@ mod tests {
             state: 3,
             target: 9655,
             fired_from: 9171,
-            point: [0.0; 3],
+            point: Position::ORIGIN,
             timer: 0.0,
             direction: [0.0; 3],
             ballistic_velocity: 0.0,
@@ -510,7 +511,11 @@ mod tests {
         };
         // a way of 2.80657 along x
         let angle = a
-            .launch([0.0, 0.0, 0.0], [2.80657, 0.0, 0.0], &stats)
+            .launch(
+                Position::new(0.0, 0.0, 0.0),
+                Position::new(2.80657, 0.0, 0.0),
+                &stats,
+            )
             .unwrap();
         assert_eq!(angle, Some(0.0));
         assert_eq!(a.state, FLYING);
@@ -536,8 +541,8 @@ mod tests {
             class: class::CLASS_0,
         };
         // the target 3 east and 4 north: a ground distance of 5
-        let point = [13.0, 14.0, 0.0];
-        let from = [10.0, 10.0, 1.0];
+        let point = Position::new(13.0, 14.0, 0.0);
+        let from = Position::new(10.0, 10.0, 1.0);
         let target = Some(([0.2, 0.2, 1.5], class::CLASS_6));
         let aim_with = |draws: [u32; 3], master: i16, count: i32, mode: &mut u8| {
             let mut d = draws.into_iter();
@@ -558,23 +563,23 @@ mod tests {
         let mut mode = 0;
         assert_eq!(
             aim_with([22937, 0, 0], 4, 0, &mut mode),
-            Ok([13.0, 14.0, 0.5])
+            Ok(Position::new(13.0, 14.0, 0.5))
         );
         assert_eq!(mode, 0);
         // a miss: 5 × 0.5 = 2.5; the draws 32767 and 0 stray 1.25 one way and the other
         let missed = aim_with([32767, 32767, 0], 4, 3, &mut mode).unwrap();
         assert_eq!(mode, 1);
-        assert_eq!(missed, [13.0 + 1.25, 14.0 - 1.25, 0.5]);
+        assert_eq!(missed, Position::new(13.0 + 1.25, 14.0 - 1.25, 0.5));
         // master 527 keeps the distance with an attack count; 528 divides it by the count
         let mut mode = 2;
         assert_eq!(aim_with([32767, 32767, 0], 527, 3, &mut mode), Ok(missed));
         assert_eq!(mode, 2);
         let share = 2.5f32 / 3.0 + 0.0;
-        let expected = [
+        let expected = Position::new(
             (32767.0 * share) / 32767.0 - share * 0.5 + 13.0,
             (0.0 * share) / 32767.0 - share * 0.5 + 14.0,
             0.5,
-        ];
+        );
         assert_eq!(aim_with([32767, 32767, 0], 528, 3, &mut mode), Ok(expected));
         // without an attack count master 528 strays by all of it
         assert_eq!(aim_with([32767, 32767, 0], 528, 0, &mut mode), Ok(missed));
@@ -605,8 +610,8 @@ mod tests {
     #[test]
     fn a_shot_turns_its_offset_by_the_facing() {
         // facing along x: the offset's y is ahead, its x to the side
-        let p = spawn_point([10.0, 20.0, 0.0], 0.0, [0.0, 0.5, 1.5]);
-        assert_eq!(p, [10.5, 20.0, 1.5]);
+        let p = spawn_point(Position::new(10.0, 20.0, 0.0), 0.0, [0.0, 0.5, 1.5]);
+        assert_eq!(p, Position::new(10.5, 20.0, 1.5));
         assert_eq!(reach([0.2, 0.2], 3.0), 0.282_842_73 + 3.0 + 2.0);
     }
 
@@ -630,15 +635,15 @@ mod tests {
         assert!(!meets_height(0.2, 0.5, 0.0, 0.0));
         // the box test: nearer than the radii together on both axes
         assert!(on_target(
-            [10.0, 10.0, 0.0],
+            Position::new(10.0, 10.0, 0.0),
             [0.1, 0.1, 0.0],
-            [10.25, 9.8, 0.0],
+            Position::new(10.25, 9.8, 0.0),
             [0.2, 0.2]
         ));
         assert!(!on_target(
-            [10.0, 10.0, 0.0],
+            Position::new(10.0, 10.0, 0.0),
             [0.1, 0.1, 0.0],
-            [10.3, 9.8, 0.0],
+            Position::new(10.3, 9.8, 0.0),
             [0.2, 0.2]
         ));
     }
@@ -659,13 +664,13 @@ mod tests {
     #[test]
     fn a_building_s_volley_missile_starts_at_its_target_when_the_target_is_nearer_than_its_offset()
     {
-        let at = [10.0, 10.0, 0.0];
+        let at = Position::new(10.0, 10.0, 0.0);
         // facing x (angle 0): the offset's x goes along -y, its y along x
         let p = volley_spawn_point(at, 0.0, [0.0, 2.0, 1.0], 0.0, [0.0, 0.0], None);
-        assert_eq!(p, [12.0, 10.0, 1.0]);
+        assert_eq!(p, Position::new(12.0, 10.0, 1.0));
         // the scatter over the adjustment adds to the offset
         let p = volley_spawn_point(at, 0.0, [0.0, 2.0, 1.0], 0.5, [0.0, 0.25], None);
-        assert_eq!(p, [12.5, 10.0, 1.0]);
+        assert_eq!(p, Position::new(12.5, 10.0, 1.0));
         // a building's target a tile off: nearer than the offset's 2
         let p = volley_spawn_point(
             at,
@@ -675,7 +680,7 @@ mod tests {
             [0.0, 0.0],
             Some([11.0, 10.0]),
         );
-        assert_eq!(p, [11.0, 10.0, 1.0]);
+        assert_eq!(p, Position::new(11.0, 10.0, 1.0));
         let p = volley_spawn_point(
             at,
             0.0,
@@ -684,6 +689,6 @@ mod tests {
             [0.0, 0.0],
             Some([13.0, 10.0]),
         );
-        assert_eq!(p, [12.0, 10.0, 1.0]);
+        assert_eq!(p, Position::new(12.0, 10.0, 1.0));
     }
 }

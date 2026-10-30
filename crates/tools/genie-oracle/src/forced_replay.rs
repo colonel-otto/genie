@@ -8,6 +8,7 @@ use crate::{
     save_header, tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit,
 };
 use genie_core::GenieError;
+use genie_core::map::Position;
 use genie_core::objects::ObjectId;
 use genie_core::world::World;
 use genie_save::Header;
@@ -48,16 +49,15 @@ pub fn old_pather_paths(
             continue;
         };
         let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius[0]);
-        let z = turns.spatial.get(id).map_or(0.0, |p| p.position[2]);
-        if let Err(e) = turns.spatial.set_position(id, [from[0], from[1], z]) {
+        let z = turns.spatial.get(id).map_or(0.0, |p| p.position.z());
+        if let Err(e) = turns
+            .spatial
+            .set_position(id, Position::new(from[0], from[1], z))
+        {
             out.push(Err(e));
             continue;
         }
-        let Some(to) = turns
-            .spatial
-            .get(target)
-            .map(|p| [p.position[0], p.position[1]])
-        else {
+        let Some(to) = turns.spatial.get(target).map(|p| p.position.ground()) else {
             out.push(Err(GenieError::unsupported(
                 "a target the save does not hold",
             )));
@@ -365,7 +365,7 @@ pub(super) fn ghost_differences(
             g.original_id,
             g.state,
             g.cant_see,
-            g.position.map(f32::to_bits),
+            g.position.get().map(f32::to_bits),
         )
     };
     let only = |x: &Vec<_>, y: &Vec<_>| -> Vec<_> {

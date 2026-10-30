@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::commands::UnitList;
 use crate::map::Point;
+use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::HOUSE;
@@ -61,7 +62,7 @@ impl BuildCommand {
             return Ok(());
         }
         let [x, y] = self.position.xy();
-        let master = w.farm_on_rice_terrain(self.master.get(), [x, y, 0.0]);
+        let master = w.farm_on_rice_terrain(self.master.get(), Position::new(x, y, 0.0));
         w.debit_listed(player, master)?;
         if !w.build_has_builder(player, master, &builders)? {
             return Ok(());
@@ -69,7 +70,7 @@ impl BuildCommand {
         if !w.build_allowed(player, master, self.position.xy())? {
             return Ok(());
         }
-        let (id, position) = w.found(player, master, [x, y, 0.0])?;
+        let (id, position) = w.found(player, master, Position::new(x, y, 0.0))?;
         let sprite_override = self.sprite_override_of(w.players[player.index()].civ);
         if let Some((_, u)) = w.object_mut(id) {
             if let Some(c) = u.construction.as_mut() {

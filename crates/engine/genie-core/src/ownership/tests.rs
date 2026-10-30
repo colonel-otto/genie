@@ -1,4 +1,5 @@
 use crate::GenieError;
+use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -20,7 +21,7 @@ fn walking_forager() -> World {
     u.actions.set_move_to(Some(MoveToAction {
         sprite: None,
         state: MoveTo::Moving,
-        point: [40.0, 80.0, 0.0],
+        point: Position::new(40.0, 80.0, 0.0),
         target: -1,
         range: 0.0,
         quiet: false,
@@ -59,7 +60,7 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
     assert_eq!(released, []);
     let m = u.body.mover().unwrap();
     assert_eq!(m.animated.speed, 0.0);
-    assert_eq!(m.velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(m.velocity.unwrap().velocity.y(), 0.0);
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
@@ -87,7 +88,7 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
 fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
     let artifact = || Artifact {
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
-        goal: Some([32.5, 89.5, 0.0]),
+        goal: Some(Position::new(32.5, 89.5, 0.0)),
         target: 600,
         ..Artifact::new(false, None)
     };

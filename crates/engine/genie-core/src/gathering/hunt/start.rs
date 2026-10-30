@@ -9,6 +9,7 @@ use crate::gathering::hunt::{
     ATTACK, DROP, HuntAction, HuntTask, IDLE, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH,
     WALK_POINT, WALK_SEARCH, food,
 };
+use crate::map::Position;
 use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
@@ -88,7 +89,7 @@ pub struct HuntMove<'a> {
     /// The move's target (none for a point).
     pub target: Option<&'a Quarry>,
     /// The move's point.
-    pub point: [f32; 3],
+    pub point: Position,
     /// The owner.
     pub player: PlayerId,
     /// What the hunter carries, and what its `MoveTo`s' constructors read of it.
@@ -161,7 +162,7 @@ impl HuntAction {
         // carrying nothing does not get there
         if target.player == player && target.drop_site && 0.0 < held.1 {
             hunt.set_target(-1);
-            hunt.point = [-1.0; 3];
+            hunt.point = Position::from([-1.0; 3]);
             hunt.target_class = None;
             hunt.carry_to = target.id;
             hunt.set_drop(target.position, attack.gap, mover, &walks)?;
@@ -255,7 +256,7 @@ impl HuntAction {
         if target.player == player && drops_here && 0.0 < held {
             self.set_target(-1);
             self.timer = 0.0;
-            self.point = [-1.0; 3];
+            self.point = Position::from([-1.0; 3]);
             self.carry_to = target.id;
             self.target_class = Some(target.class);
             self.set_drop(target.position, attack.gap, mover, &walks)?;
@@ -305,7 +306,7 @@ impl HuntAction {
                 return Ok(true);
             }
             self.set_target(-1);
-            self.point = [-1.0; 3];
+            self.point = Position::from([-1.0; 3]);
             self.target_class = Some(t.class);
             self.carry_to = t.id;
             self.set_drop(t.position, gap, mover, &walks)?;
@@ -417,11 +418,11 @@ impl HuntAction {
     /// stands with (slot 0x68 with `FUN_140ac5210`'s, the caller's), the target and the second
     /// target go (slot 0x68 and `FUN_140a7a190` with none: returned in that order for the caller
     /// to release), the point clears and the timer.
-    pub const fn set_done(&mut self) -> [i32; 2] {
+    pub fn set_done(&mut self) -> [i32; 2] {
         self.state = IDLE;
         let target = std::mem::replace(&mut self.target, -1);
         let second = std::mem::replace(&mut self.carry_to, -1);
-        self.point = [-1.0; 3];
+        self.point = Position::from([-1.0; 3]);
         self.timer = 0.0;
         [target, second]
     }

@@ -162,13 +162,11 @@ impl Unit {
             top_target: self.top_target_seen(c, OthersRef::of(&c.w.players, c.player)?),
             min_range: master.map_or(0.0, |m| m.min_range),
             attack_moving: self.body.mover().is_some_and(|m| m.attack_moving),
-            moved_at: {
-                let [x, y, height] = self
-                    .body
-                    .mover()
-                    .map_or_else(|| self.position(), |m| m.moved_at);
-                [x, height, y]
-            },
+            moved_at: self
+                .body
+                .mover()
+                .map_or_else(|| self.position(), |m| m.moved_at)
+                .vector(),
             dodge_chance: c
                 .w
                 .players

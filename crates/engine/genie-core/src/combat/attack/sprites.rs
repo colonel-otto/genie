@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::combat::attack::{Arms, RELOAD_MS};
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::objects::layers::Body;
@@ -97,14 +98,14 @@ pub(crate) const fn reset_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic) 
 /// its current sprite's ([`Mover::facets`]).
 pub(crate) fn face_target(
     mover: &mut Mover,
-    at: [f32; 3],
-    to: [f32; 3],
+    at: Position,
+    to: Position,
     world_time: u32,
 ) -> Result<bool, GenieError> {
     let facets = mover.facets().ok_or(GenieError::unsupported(
         "a unit facing a target whose sprites differ in their facets",
     ))?;
-    let (at, to) = ([at[0], at[1]], [to[0], to[1]]);
+    let (at, to) = (at.ground(), to.ground());
     if mover.stats.turn_time == 0.0 {
         mover.angle = crate::objects::facing::face(at, mover.angle, to, Some(facets));
         return Ok(true);

@@ -10,6 +10,7 @@
 
 use crate::GenieError;
 use crate::map::Point;
+use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -92,7 +93,7 @@ pub struct MoveOrder {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Work {
     pub target: i32,
-    pub point: [f32; 3],
+    pub point: Position,
     pub carry_test: bool,
     pub filter: i16,
     pub notified: bool,
@@ -154,7 +155,7 @@ struct Splittable {
     grouped: bool,
     flag_1: bool,
     speed: f32,
-    position: [f32; 3],
+    position: Position,
     moved_at: [f32; 2],
     state: u8,
     radius: f32,
@@ -619,7 +620,7 @@ pub(crate) fn nearest_table_site(
         &crate::players::tracker::Tracker,
     ),
     (at, held, class): ([f32; 2], i16, ClassId),
-    look: impl Fn(i32) -> Option<(u8, [f32; 3])>,
+    look: impl Fn(i32) -> Option<(u8, Position)>,
 ) -> Option<i32> {
     let buildings =
         crate::unit_ai::task_finder::table_drop_buildings(table, held, Some(class), civ);
@@ -632,7 +633,7 @@ pub(crate) fn nearest_table_site(
             if state != 2 {
                 continue;
             }
-            let (dx, dy) = (at[0] - position[0], at[1] - position[1]);
+            let (dx, dy) = (at[0] - position.x(), at[1] - position.y());
             let d = dy * dy + dx * dx;
             if d < best.1 {
                 best = (Some(id), d);

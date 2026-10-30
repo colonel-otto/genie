@@ -52,7 +52,7 @@ impl HullPather<'_> {
         match held[..] {
             [] => Ok(None),
             [p] => Ok(Some(Target {
-                at: [p.position[0], p.position[1]],
+                at: p.position.ground(),
                 radius: p.radius,
                 speed: p.speed,
             })),
@@ -73,7 +73,7 @@ impl HullPather<'_> {
         let Some(t) = self.world.get_known(target_id)? else {
             return Ok(false);
         };
-        if t.position[0] != to[0] || t.position[1] != to[1] {
+        if t.position.x() != to[0] || t.position.y() != to[1] {
             return Ok(false);
         }
         let r = self.radius;

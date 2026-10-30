@@ -11,6 +11,7 @@
 //! `FUN_1415e23f0`; the revealed units `FUN_14152bcb0`; the tile list's refill `FUN_141285cb0`.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
@@ -271,7 +272,7 @@ impl World {
         p: PlayerId,
         id: i32,
         q: PlayerId,
-        position: [f32; 3],
+        position: Position,
     ) -> Result<(), GenieError> {
         if self.players.player(p)?.computer
             || i32::from(q.get()) == id
@@ -280,7 +281,7 @@ impl World {
             return Ok(());
         }
         if let Some(v) = self.spatial.sight.as_mut() {
-            let tile = [cvttss2si(position[0]), cvttss2si(position[1])];
+            let tile = [cvttss2si(position.x()), cvttss2si(position.y())];
             if let Some(list) = v.new_tiles.get_mut(q.index()) {
                 list.push(tile);
             }

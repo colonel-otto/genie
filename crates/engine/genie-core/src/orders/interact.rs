@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::groups::CommandArgs;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
@@ -109,14 +110,7 @@ impl World {
         }
         let point = centroid.map_or_else(
             || order.point.xy(),
-            |c| {
-                offset_point(
-                    [unit.position()[0], unit.position()[1]],
-                    c,
-                    order.point.xy(),
-                    map,
-                )
-            },
+            |c| offset_point(unit.position().ground(), c, order.point.xy(), map),
         );
         let takes_it = unit
             .ai
@@ -132,7 +126,7 @@ impl World {
             if ObjectId::field(order.target) == id {
                 return Ok(());
             }
-            let at = [point[0], point[1], 0.0];
+            let at = Position::new(point[0], point[1], 0.0);
             let work = Work {
                 target: ObjectId::field(order.target),
                 point: at,
@@ -154,7 +148,7 @@ impl World {
                 -1
             },
             target_owner,
-            point: [point[0], point[1], 0.0],
+            point: Position::new(point[0], point[1], 0.0),
             range: 0.0,
             shown: order.point.xy(),
             ready: order.direct,
@@ -194,7 +188,7 @@ impl World {
         }
         let work = Work {
             target,
-            point: [point[0], point[1], 0.0],
+            point: Position::new(point[0], point[1], 0.0),
             carry_test: false,
             filter: -1,
             notified: true,
@@ -477,7 +471,6 @@ impl World {
         let (_, first) = units.iter().find_map(|&id| self.object(id))?;
         let ai = first.ai.as_ref()?;
         let t = self.world_object(ai.current_target)?;
-        let [x, y, _] = t.position();
-        Some((t.id(), [x, y], ai.retarget_disabled == 0))
+        Some((t.id(), t.position().ground(), ai.retarget_disabled == 0))
     }
 }

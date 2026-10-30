@@ -6,7 +6,7 @@ use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone, slot_gone};
 use crate::groups::motion::passes_waypoint;
 use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, SLOT_REACH};
-use crate::math::fmath::{Vec3, at_most_or_unordered, below_or_unordered};
+use crate::math::fmath::{BVector, at_most_or_unordered, below_or_unordered};
 use crate::objects::masters::master_type::BUILDING;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -71,7 +71,12 @@ impl World {
     /// # Errors
     ///
     /// What the pathers and the position setter do not model.
-    pub(super) fn try_slot(&mut self, group: i32, id: i32, to: Vec3) -> Result<bool, GenieError> {
+    pub(super) fn try_slot(
+        &mut self,
+        group: i32,
+        id: i32,
+        to: BVector,
+    ) -> Result<bool, GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let mover = u.body.mover().ok_or(NO_MOVER)?;
         let g = self.groups.held(group)?;
@@ -92,7 +97,7 @@ impl World {
             let mut path = crate::pathing::tile_path::Path::default();
             let r = crate::movement::short_path_for(
                 walker,
-                [at[0], at[2]],
+                at.ground(),
                 &mut self.spatial,
                 &mut plan,
                 (to, 0.0, -1),
@@ -113,7 +118,7 @@ impl World {
             };
             crate::movement::long_path_for(
                 &walker,
-                [u.position()[0], u.position()[1]],
+                u.position().ground(),
                 &self.spatial,
                 computer,
                 (to, 0.0),
@@ -228,11 +233,11 @@ impl World {
 
     /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`) of unit `id` takes the slot place
     /// `to`'s x and y (`LAB_141027c88`).
-    pub(super) fn set_state_position(&mut self, id: i32, to: Vec3) {
+    pub(super) fn set_state_position(&mut self, id: i32, to: BVector) {
         if let Some((_, u)) = self.object_mut(id)
             && let Some(ai) = u.ai.as_mut()
         {
-            ai.state_position = [to[0], to[2]];
+            ai.state_position = to.ground();
         }
     }
 
@@ -299,7 +304,7 @@ impl World {
     /// # Errors
     ///
     /// An object of a master the slice does not have.
-    pub(super) fn place_member(&mut self, id: i32, [x, h, y]: Vec3) -> Result<(), GenieError> {
+    pub(super) fn place_member(&mut self, id: i32, to: BVector) -> Result<(), GenieError> {
         let Some(place) = self.place(id) else {
             return Ok(());
         };
@@ -316,7 +321,7 @@ impl World {
             return Ok(());
         };
         let map = self.spatial.map;
-        let at = mover.set_position([x, y, h], map);
+        let at = mover.set_position(to.position(), map);
         let at = mover.grounded(at, self.spatial.terrain.as_ref());
         mover.mark_move(at, self.world_time);
         let (speed, radius) = (mover.stats.speed, mover.stats.radius);
@@ -343,7 +348,7 @@ impl World {
         group: i32,
         id: i32,
         (path, reason): (i32, i32),
-        (goal, timer, distance): (Vec3, f32, f32),
+        (goal, timer, distance): (BVector, f32, f32),
     ) -> Result<bool, GenieError> {
         let Some(index) = self
             .groups

@@ -7,6 +7,7 @@ use crate::combat::attack::{
     AiOrder, Attack, AttackReads, Fight, GOTO_POINT, GOTO_SEEN, KILLED, MOVE, NO_RANGE, NONE,
     READY, Readiness, SEEN_RANGE, SWING, TOUCH, move_reads, set_walker_anim,
 };
+use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap};
@@ -140,7 +141,7 @@ impl Attack {
                 .get_known(self.target)?
                 .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
         if self.state != KILLED
-            && (t.position[0] != self.seen[0] || t.position[1] != self.seen[1])
+            && (t.position.x() != self.seen.x() || t.position.y() != self.seen.y())
             && let Some(code) = self.target_moved(c, unit, f, r, &t)?
         {
             return Ok(code);
@@ -201,7 +202,7 @@ impl Attack {
             ));
         }
         self.target = -1;
-        self.point = [NONE; 3];
+        self.point = Position::from([NONE; 3]);
         self.finish(unit, c.w.streams.get(Stream::Sprite))?;
         Ok(5)
     }
@@ -402,7 +403,7 @@ impl Attack {
         unit: &mut Unit,
         f: &Fight,
         r: &AttackReads,
-        target: [f32; 3],
+        target: Position,
     ) -> Result<u8, GenieError> {
         if sees(&c.w.spatial, f, target)? {
             self.ready(unit, &mut c.w.attack_ground(), f, r)?;
@@ -439,9 +440,9 @@ impl Attack {
 pub(super) fn sees(
     map: &crate::map::spatial::Spatial,
     f: &Fight,
-    at: [f32; 3],
+    at: Position,
 ) -> Result<bool, GenieError> {
-    let (tx, ty) = (at[0] as i32, at[1] as i32);
+    let (tx, ty) = (at.x() as i32, at.y() as i32);
     Ok(map.sees_tile(f.own.player, tx, ty)
         || (f.victim.fog_visibility != 0 && map.explored(f.own.player, tx, ty)?))
 }

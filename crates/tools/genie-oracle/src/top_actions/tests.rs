@@ -5,6 +5,7 @@ use crate::fixtures::{action_list, combat_master, combat_mut, combat_object, wit
 use crate::top_actions::saved_actions;
 use genie_core::GenieError;
 use genie_core::construction::build::BuildTask;
+use genie_core::map::Position;
 use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo};
 use genie_core::objects::masters::TaskId;
 use genie_core::objects::masters::action_type::BUILD;
@@ -157,8 +158,8 @@ fn imported(kind: i16, action: Action) -> Result<Unit, GenieError> {
     )
 }
 
-fn bits3(v: [f32; 3]) -> [u32; 3] {
-    v.map(f32::to_bits)
+fn bits3(v: Position) -> [u32; 3] {
+    v.get().map(f32::to_bits)
 }
 
 #[test]
@@ -221,7 +222,10 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
         .copied()
         .unwrap();
     assert_eq!(m.state, MoveTo::Moving);
-    assert_eq!((m.target, bits3(m.point)), (-1, bits3([1.0, 2.0, 0.0])));
+    assert_eq!(
+        (m.target, bits3(m.point)),
+        (-1, bits3(Position::new(1.0, 2.0, 0.0)))
+    );
     assert_eq!(
         (m.target, m.range.to_bits(), m.sprite),
         (-1, 0.5_f32.to_bits(), None)
@@ -335,8 +339,10 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .unwrap();
     let walk = a.move_to.unwrap();
     assert_eq!((walk.state, walk.quiet), (MoveTo::Moving, true));
-    assert_eq!(a.goal.map(bits3), Some(bits3([4.0, 2.0, 0.0])));
-    assert!(matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3([1.0, 2.0, 0.0])));
+    assert_eq!(a.goal.map(bits3), Some(bits3(Position::new(4.0, 2.0, 0.0))));
+    assert!(
+        matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3(Position::new(1.0, 2.0, 0.0)))
+    );
     assert_eq!(walk.range.to_bits(), 0.5_f32.to_bits());
     let mut to_object = move_to(4, 0.5);
     to_object
@@ -370,7 +376,7 @@ fn an_artifact_waits_or_walks_to_its_target() {
         .artifact()
         .copied()
         .unwrap();
-    assert_eq!(a.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
+    assert_eq!(a.goal.map(bits3), Some(bits3(Position::new(1.0, 2.0, 0.0))));
     near.target_x = -1.0;
     let a = imported(ARTIFACT_TYPE, artifact(near))
         .unwrap()
@@ -389,7 +395,7 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .artifact()
     .copied()
     .unwrap();
-    assert_eq!(a.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
+    assert_eq!(a.goal.map(bits3), Some(bits3(Position::new(1.0, 2.0, 0.0))));
     // a move to the point: its MoveTo is not quiet, its AI hears the end
     assert_eq!(a.move_to.map(|m| m.quiet), Some(false));
     assert_eq!(
@@ -550,7 +556,7 @@ fn a_birds_fly_takes_its_home_and_move_to() {
     assert_eq!((flight.state, flight.quiet), (MoveTo::Moving, false));
     assert_eq!(
         (flight.target, bits3(flight.point)),
-        (-1, bits3([1.0, 2.0, 0.0]))
+        (-1, bits3(Position::new(1.0, 2.0, 0.0)))
     );
     assert_eq!(
         imported(FLY, bird(with_sub(base(3), 4, explore(base(3))))).unwrap_err(),
@@ -595,7 +601,7 @@ fn a_build_takes_its_task_move_to_and_site() {
     assert!(a.added);
     assert_eq!(a.task.work_rate.to_bits(), 2.5_f32.to_bits());
     assert_eq!(walk.range.to_bits(), 0.75_f32.to_bits());
-    assert_eq!(bits3(walk.point), bits3([1.0, 2.0, 0.0]));
+    assert_eq!(bits3(walk.point), bits3(Position::new(1.0, 2.0, 0.0)));
     assert_eq!(walk.wait.state, 2);
     // a MoveTo without a sprite (−1) keeps none
     assert_eq!(walk.sprite, None);
@@ -683,7 +689,9 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
     );
     assert!(r.counted && r.quiet);
     // a MoveTo without a target walks to its point, within its own range
-    assert!(matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3([1.0, 2.0, 0.0])));
+    assert!(
+        matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3(Position::new(1.0, 2.0, 0.0)))
+    );
     assert_eq!(walk.range.to_bits(), 0.5_f32.to_bits());
     let r = imported(REPAIR, repair(b.clone()))
         .unwrap()
@@ -827,7 +835,9 @@ fn a_gather_takes_its_stops_and_move_to() {
     // every MoveTo of the Gather is quiet; one without a target walks to its point
     let walk = g.move_to.unwrap();
     assert_eq!((walk.state, walk.quiet), (MoveTo::Moving, true));
-    assert!(matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3([1.0, 2.0, 0.0])));
+    assert!(
+        matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3(Position::new(1.0, 2.0, 0.0)))
+    );
     assert_eq!(
         (walk.range.to_bits(), walk.wait.state),
         (0.75_f32.to_bits(), 2)

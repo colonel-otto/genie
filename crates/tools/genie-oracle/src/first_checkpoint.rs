@@ -2,6 +2,7 @@
 //! recording's ([`compare_first_checkpoint`]).
 
 use crate::Error;
+use genie_core::map::Position;
 use genie_core::objects::unit::Unit;
 use genie_core::world::checkpoint::{ObjectState, PlayerState, player_block};
 use genie_rec::de;
@@ -52,7 +53,7 @@ pub(super) const fn object_state(s: &RgeStaticObject) -> ObjectState {
         main_id: s.master_obj,
         state: s.object_state,
         amount_held: s.attribute_amount_held,
-        position: [s.t_x, s.t_y, s.t_z],
+        position: Position::new(s.t_x, s.t_y, s.t_z),
         top_action: None,
         retarget_timer: None,
     }

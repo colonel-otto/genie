@@ -5,7 +5,7 @@ use std::ops::ControlFlow;
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::movement::{
     AfterRequest, CLOSE, DETOUR, EPSILON, FAR, Goal, LONG, LONG_PATHER, LongAsk, Me, Mover,
     PathData, Planning, RANGE_FLOOR, SHORT_PATHER, SHORT_REACH, ShortAsk, TARGET_SHORT_REACH,
@@ -48,8 +48,8 @@ impl NewPath {
 pub(super) struct Way<'a> {
     pub(super) goal: Goal<'a>,
     pub(super) include: &'a [i32],
-    pub(super) position: Vec3,
-    pub(super) waypoint: Vec3,
+    pub(super) position: BVector,
+    pub(super) waypoint: BVector,
     pub(super) distance: f32,
     pub(super) radius: f32,
     pub(super) level: u8,

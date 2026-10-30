@@ -3,6 +3,7 @@
 //! standing for a side without a unit, and [`With`] around another test side.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::{
@@ -95,7 +96,7 @@ impl UnitSide for Vec<Effect> {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(NO_WORLD)
     }
 
@@ -201,7 +202,7 @@ impl UnitSide for With<'_> {
         &mut self,
         target: i32,
         seeker: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         self.side.may_attack(target, seeker)
     }
 

@@ -98,8 +98,8 @@ impl World {
             .mover()
             .map_or_else(|| unit.position(), |m| m.moved_at);
         let (x, y) = (
-            crate::math::conversions::cvttss2si(at[0]),
-            crate::math::conversions::cvttss2si(at[1]),
+            crate::math::conversions::cvttss2si(at.x()),
+            crate::math::conversions::cvttss2si(at.y()),
         );
         let flags = self.spatial.terrain.as_ref().map_or(0, |t| {
             t.kind(x, y)

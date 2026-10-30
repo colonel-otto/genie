@@ -3,6 +3,7 @@
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{Error, game_state, header_objects, moving_speed, placement, saved_ghosts};
+use genie_core::map::Position;
 use genie_core::players::PlayerId;
 use genie_core::vision::visibility::{
     BuildingSight, Extent, Seer, Visibility, VisibleMap, VisibleResource, VisibleResources,
@@ -168,7 +169,7 @@ pub(super) fn spatial(
             // foundation made desolid lost them (FUN_1411cf770); so do a combat unit's that does
             // not move and is more than a tile wide (FUN_14108c320). A building keeps its
             // footprint's UMV entry (+0x904)
-            let place = [s.t_x, s.t_y, s.t_z];
+            let place = Position::new(s.t_x, s.t_y, s.t_z);
             let footprint = [m.radius[0], m.radius[1]];
             let speed = moving_speed(o, s, section.objects());
             let links = building.map_or_else(
@@ -226,7 +227,7 @@ pub(super) fn spatial(
             out.insert(
                 s.id,
                 Placed {
-                    position: [s.t_x, s.t_y, s.t_z],
+                    position: Position::new(s.t_x, s.t_y, s.t_z),
                     radius: [m.radius[0], m.radius[1]],
                     class: m.class,
                     player,
@@ -242,12 +243,12 @@ pub(super) fn spatial(
             // an object inside another left its tile's list and the obstruction manager
             // (FUN_1411921d0)
             if s.inside_obj != -1 {
-                out.go_inside(s.id, [s.t_x, s.t_y, s.t_z]);
+                out.go_inside(s.id, Position::new(s.t_x, s.t_y, s.t_z));
             }
         }
         for ghost in section.objects().doppleganger_objects.objects() {
             if let Some(s) = ghost.static_part() {
-                out.insert_ghost(s.id, [s.t_x, s.t_y, s.t_z]);
+                out.insert_ghost(s.id, Position::new(s.t_x, s.t_y, s.t_z));
             }
         }
     }

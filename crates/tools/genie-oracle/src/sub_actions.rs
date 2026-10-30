@@ -5,6 +5,7 @@ use crate::masters::{DefaultAction, MasterTable};
 use crate::top_actions::saved_move_to;
 use crate::{combat_master, core_task};
 use genie_core::GenieError;
+use genie_core::map::Position;
 use genie_core::movement::move_to::TargetMoved;
 use genie_core::objects::masters::ACTION_FACTORY_TYPES;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
@@ -115,12 +116,12 @@ pub(super) fn saved_attack(
         timer: b.timer,
         range: a.range,
         min_range: a.min_range,
-        point: [b.target_x, b.target_y, b.target_z],
-        seen: [
+        point: Position::new(b.target_x, b.target_y, b.target_z),
+        seen: Position::new(
             a.last_target_position_x,
             a.last_target_position_y,
             a.last_target_position_z,
-        ],
+        ),
         move_to,
         pending: a.need_to_attack != 0,
         swing: 0.0,
@@ -351,7 +352,7 @@ pub(super) fn gather_point(
         .filter(|b| b.gather_point_exists != 0)?;
     Some(genie_core::commands::GatherPoint {
         state: b.gather_point_exists,
-        point: [b.gather_point_x, b.gather_point_y, b.gather_point_z],
+        point: Position::new(b.gather_point_x, b.gather_point_y, b.gather_point_z),
         target: b.gather_point_target,
         target_master: b.gather_point_target_master,
     })

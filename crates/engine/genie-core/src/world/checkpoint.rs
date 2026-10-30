@@ -4,6 +4,7 @@
 //! table and its derivation are in the workspace's `docs/AoE2DE_s_exe_SIMULATION.md`. Every sum is a
 //! wrapping 32-bit add, and every float-to-int step is the x86 `CVTTSS2SI` instruction.
 
+use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 
 /// What the block reads from one object of a player's live list.
@@ -18,7 +19,7 @@ pub struct ObjectState {
     /// What it holds.
     pub amount_held: f32,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its top action.
     pub top_action: Option<TopAction>,
     /// Its unit AI's retarget timer, None without a unit AI.
@@ -60,7 +61,7 @@ pub fn player_block(player: &PlayerState) -> [u32; 11] {
         w[2] = w[2].wrapping_add(i32::from(o.main_id) as u32);
         w[3] = w[3].wrapping_add(u32::from(o.state));
         w[4] = w[4].wrapping_add(cvttss2si(o.amount_held) as u32);
-        for axis in o.position {
+        for axis in o.position.get() {
             w[7] = w[7].wrapping_add(cvttss2si(axis * 100.0) as u32);
         }
         w[9] = w[9].wrapping_add(action_checksum(o));
@@ -141,7 +142,7 @@ mod tests {
     fn positions_are_scaled_in_f32_before_truncation() {
         // f32: 0.57 * 100 rounds to 57.0; the same product in f64 is 56.99999928 and truncates to 56
         let p = player(vec![ObjectState {
-            position: [0.57, 0.0, 0.0],
+            position: Position::new(0.57, 0.0, 0.0),
             ..object()
         }]);
         assert_eq!(player_block(&p)[7], 57);

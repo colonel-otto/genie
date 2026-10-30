@@ -15,6 +15,7 @@
 //! walk or a drop-off out of reach (the Action stream's `"update"` draws) are in `work.rs`.
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
+use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
@@ -124,7 +125,7 @@ pub struct GatherAction {
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
     /// `+0x38`..`+0x40`: where the target stood.
-    pub point: [f32; 3],
+    pub point: Position,
     /// `+0x44`: the state's timer.
     pub timer: f32,
     /// `+0x48`: its task.
@@ -161,7 +162,7 @@ pub struct Resource {
     /// The target.
     pub id: i32,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's class.
     pub class: ClassId,
     /// Its master's id.

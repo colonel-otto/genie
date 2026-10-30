@@ -125,7 +125,7 @@ impl PlaceMap for WorldMap<'_> {
                     hp: unit.life.hp,
                     outline: [master.outline[0], master.outline[1], master.outline_height],
                     forest_tile: t.spatial.terrain.as_ref().is_some_and(|ter| {
-                        ter.kind(placed.position[0] as i32, placed.position[1] as i32)
+                        ter.kind(placed.position.x() as i32, placed.position.y() as i32)
                             .and_then(|k| ter.terrains.get(usize::from(k)))
                             .is_some_and(|k| k.forest)
                     }),

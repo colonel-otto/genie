@@ -8,6 +8,7 @@
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
 use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
+use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
@@ -107,7 +108,7 @@ pub struct HuntAction {
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
     /// `+0x38`..`+0x40`: where the target stood when the hunt took it.
-    pub point: [f32; 3],
+    pub point: Position,
     /// `+0x68`: the target's class.
     pub target_class: Option<ClassId>,
     /// `+0x48`: its task.
@@ -258,7 +259,7 @@ pub struct Quarry {
     /// The target.
     pub id: i32,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's class and type, its state (`+0x640`) and owner.
     pub class: ClassId,
     /// Its master's type.

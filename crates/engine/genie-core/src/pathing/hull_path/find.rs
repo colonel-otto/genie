@@ -182,8 +182,8 @@ impl HullPather<'_> {
             None
         } else {
             match self.world.get_known(target_id)? {
-                Some(p) if p.position[0] == to[0] && p.position[1] == to[1] => Some(Target {
-                    at: [p.position[0], p.position[1]],
+                Some(p) if p.position.x() == to[0] && p.position.y() == to[1] => Some(Target {
+                    at: p.position.ground(),
                     radius: p.radius,
                     speed: p.speed,
                 }),

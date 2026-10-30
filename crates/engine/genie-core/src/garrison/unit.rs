@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::gather::unit::give_load;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
@@ -182,7 +183,7 @@ impl Unit {
     /// `MoveTo`'s teardown) and takes its standing sprite.
     pub(crate) fn transport_sail(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         (spatial, zones, pathing): (&Spatial, &mut crate::pathing::zones::Zones, &mut Pathing),
         (masters, graphics, sprite_rng): (
             Option<&Masters>,
@@ -477,7 +478,7 @@ impl Unit {
         &self,
         c: &mut Step<'_>,
         target: i32,
-        at: [f32; 3],
+        at: Position,
         radius: [f32; 2],
         placed: crate::map::spatial::Placed,
         bm: &Master,
@@ -491,7 +492,7 @@ impl Unit {
             r.update_unit(UnitUpdate {
                 id: id.get(),
                 owner: c.player.index() as u8,
-                position: [self.position()[0], self.position()[1]],
+                position: self.position().ground(),
                 radii: placed.radius,
                 class: placed.class,
                 old: mask & 0xffff_ffff,
@@ -515,7 +516,7 @@ impl Unit {
     fn enter_town_bell(
         &mut self,
         target: i32,
-        at: [f32; 3],
+        at: Position,
         state: u8,
         me: &Master,
         bm: &Master,
@@ -536,7 +537,7 @@ impl Unit {
                 target_type: -1,
                 action,
                 target2: -1,
-                point: [at[0], at[1]],
+                point: at.ground(),
             });
         }
         if bm.kind == BUILDING

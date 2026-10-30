@@ -1,6 +1,7 @@
 //! A new building's ground: the units on its foundation sent off, its terrain, the footprint
 //! clearing and its place.
 
+use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
@@ -129,11 +130,11 @@ impl World {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
             };
-            let z = self.players[q.index()].objects[i].position()[2];
+            let z = self.players[q.index()].objects[i].position().z();
             if let Some(ai) = self.players[q.index()].objects[i].ai.as_mut() {
                 ai.set_action(Some(ActionKind::MoveAside));
             }
-            self.move_point_order(q, i, [x, y, z])?;
+            self.move_point_order(q, i, Position::new(x, y, z))?;
         }
         for &id in units {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
@@ -161,7 +162,7 @@ impl World {
         &mut self,
         player: PlayerId,
         master: i16,
-        position: [f32; 3],
+        position: Position,
     ) -> Result<(), GenieError> {
         /// The farms and the terrain their foundations lay (`0x1d`, `0x41`).
         const LAID: [(i16, u8); 2] = [(50, 29), (1187, 65)];
@@ -296,7 +297,7 @@ impl World {
         player: PlayerId,
         id: i32,
         made: &Master,
-        position: [f32; 3],
+        position: Position,
         desolid: bool,
     ) -> Result<(), GenieError> {
         let record = crate::map::spatial::Obstruction {

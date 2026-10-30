@@ -7,7 +7,7 @@
 //! `MoveTo` calls the motion step (object slot 193, `0x141150f00`, [`Mover::motion`]), which turns the
 //! unit toward its waypoint and sets the acceleration for the next tick.
 //!
-//! Vectors are the game's `BVector`s ([`fmath::Vec3`]: x, height, y).
+//! Vectors are the game's `BVector`s ([`fmath::BVector`]: x, height, y).
 
 use self::long_walk::{Reach, include_kept, may_plan, owner_number, reach};
 use self::path_points::{
@@ -15,8 +15,9 @@ use self::path_points::{
     ground, ground_line, moved_far, point_or_zero, point_or_zero_of, short_range, split, too_short,
 };
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
-use crate::math::fmath::{self, Vec3};
+use crate::math::fmath::{self, BVector};
 use crate::objects::layers::Animated;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -68,9 +69,9 @@ use crate::pathing::{Pathing, PlanBudget};
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Velocity {
     /// The velocity.
-    pub velocity: Vec3,
+    pub velocity: BVector,
     /// The acceleration.
-    pub acceleration: Vec3,
+    pub acceleration: BVector,
 }
 
 /// What a `MoveTo`'s update in state 3 (`0x140aa2a70`) reads of its unit's AI for its path
@@ -112,7 +113,7 @@ pub struct PathData {
     /// `+0x10`, `mLinkedPathType`: what a finished level hands its parent.
     pub linked_type: i32,
     /// The path's waypoints (`+0x18`, the path's `+0x438`..`+0x440`).
-    pub points: Vec<Vec3>,
+    pub points: Vec<BVector>,
     /// The level holds a path (`+0x18`, or the one the world's table finds by its id `+0x20`): a
     /// reset level (id −1) holds none, nor does a bird's top level, and the motion step ends at
     /// it.
@@ -217,9 +218,9 @@ pub struct Mover {
     /// The animated layer below it (`+0x7b8`), which its stop clears ([`Mover::stop`]).
     pub animated: Animated,
     /// `+0x830`, a unit vector on the ground.
-    pub forward: Vec3,
+    pub forward: BVector,
     /// `+0x83c`.
-    pub right: Vec3,
+    pub right: BVector,
     /// Its velocity data, when it has any.
     pub velocity: Option<Velocity>,
     /// The path data, the level the unit walks first, each next one its parent.
@@ -238,7 +239,7 @@ pub struct Mover {
     pub last_move: u32,
     /// `+0x824`..`+0x82c`, `positionValue`: where it last moved to (x, y, height), which the
     /// position setter compares the new place with (`FUN_141161950`).
-    pub moved_at: [f32; 3],
+    pub moved_at: Position,
     /// `+0x874`, `mConsecutiveSubstituteCount`: above 2 a walk counts its waypoint reached.
     pub substitute_count: i32,
     /// The unit's ignore list (`+0x670`, count `+0x678`; the save's `numberUnits` and `tempInt`
@@ -249,7 +250,7 @@ pub struct Mover {
     /// in the game's layout (x, height, y): a patrol's points before its last (slot 0x448,
     /// [`Mover::add_user_waypoint`]), which the next path request walks through and empties
     /// ([`Mover::request_path_asked`]).
-    pub user_waypoints: Vec<Vec3>,
+    pub user_waypoints: Vec<BVector>,
     /// `+0x7ec`, `turn_towards_time`: the world time in seconds of its last facet step toward a
     /// target (`FUN_141162db0`).
     pub last_turn: f32,
@@ -299,7 +300,7 @@ pub enum Motion {
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::math::image::movement::EPSILON;
 /// The world's up axis (`DAT_143cc2f30`), the yaw's axis.
-const UP: Vec3 = [0.0, 1.0, 0.0];
+const UP: BVector = BVector::new(0.0, 1.0, 0.0);
 /// How far inside the map's edge a moving unit's footprint stays (`DAT_142eb99cc`), and how far
 /// below the edge a position stays (`DAT_142eb1e9c`).
 const EDGE_GAP: f32 = crate::math::image::movement::EDGE_GAP;
@@ -337,9 +338,9 @@ const PUSHED: f32 = crate::math::image::movement::PUSHED;
 
 /// `FUN_1411615a0`: how deep two boxes (centre, radii on the ground) overlap, the lesser of the
 /// two axes; 0 when they do not.
-fn overlap(a: Vec3, [ar, ad]: [f32; 2], b: Vec3, [br, bd]: [f32; 2]) -> f32 {
-    let (ax1, ax0, ay0, ay1) = (a[0] + ar, a[0] - ar, a[2] - ad, a[2] + ad);
-    let (by0, by1, bx0, bx1) = (b[2] - bd, b[2] + bd, b[0] - br, b[0] + br);
+fn overlap(a: BVector, [ar, ad]: [f32; 2], b: BVector, [br, bd]: [f32; 2]) -> f32 {
+    let (ax1, ax0, ay0, ay1) = (a.x() + ar, a.x() - ar, a.y() - ad, a.y() + ad);
+    let (by0, by1, bx0, bx1) = (b.y() - bd, b.y() + bd, b.x() - br, b.x() + br);
     // COMISS/JNC at 0x1411615fd..0x141161610: only an ordered `>=` leaves, a NaN goes on
     if bx0 >= ax1 || ax0 >= bx1 || by0 >= ay1 || ay0 >= by1 {
         return 0.0;
@@ -360,7 +361,7 @@ const STRAIGHT_GROW: f32 = crate::math::image::movement::STRAIGHT_GROW;
 const SHORTEST: f32 = crate::math::image::movement::SHORTEST;
 /// The point `FUN_140f9bcd0` returns outside a path: `DAT_143f0dc88`, in `.bss` (zero at the
 /// load; probed zero in records/425906646 with no write in the update after).
-pub(crate) const OUTSIDE_PATH: Vec3 = [0.0; 3];
+pub(crate) const OUTSIDE_PATH: BVector = BVector::ZERO;
 
 /// A planned path shorter than this replaces no short path (`DAT_143cc2f28`), and a path is long
 /// when it is longer than this and than 1.25 times the way (`DAT_14330ebb8`, `DAT_142eb56a8`).
@@ -387,15 +388,6 @@ const NEW_PATHER_RADIUS: f32 = crate::math::image::movement::NEW_PATHER_RADIUS;
 /// The motion step's include list (`DAT_143f4a000`, its count `local_19bc`) holds at most 0x100
 /// kept hits (`CMP RCX, 0x100; JGE` at 0x1411547cc).
 const INCLUDED: usize = 0x100;
-
-/// A position on the map as the game's vector (x, height, y), and back.
-const fn vector([x, y, z]: [f32; 3]) -> Vec3 {
-    [x, z, y]
-}
-
-const fn map_position([x, z, y]: Vec3) -> [f32; 3] {
-    [x, y, z]
-}
 
 impl PathData {
     /// A new level (`FUN_140f8f670`) with a new path (`FUN_14152eea0`, flags 6, made `now`).
@@ -448,7 +440,7 @@ impl PathData {
 
     /// The waypoint at `index` (`FUN_140f9bcd0`); outside the path the game returns its static
     /// point `DAT_143f0dc88` ([`OUTSIDE_PATH`]).
-    fn point(&self, index: i32) -> Vec3 {
+    fn point(&self, index: i32) -> BVector {
         usize::try_from(index)
             .ok()
             .and_then(|i| self.points.get(i))
@@ -494,7 +486,7 @@ fn pause_holds(level: &mut PathData, dt: f32) -> bool {
 /// its place and radii) through `annex`; for anything else `own`.
 pub(crate) fn gate_gap(
     world: &Spatial,
-    (at, radius): ([f32; 3], [f32; 2]),
+    (at, radius): (Position, [f32; 2]),
     (id, target): (i32, &Placed),
     own: f32,
     annex: impl Fn(f32) -> f32,
@@ -572,7 +564,7 @@ fn drop_edge_waypoints(level: &mut PathData, radius: [f32; 3], map: [i32; 2]) {
     let [rx, ry, _] = radius;
     let [w, h] = map;
     while level.waypoint < level.points.len() as i32 {
-        let [x, _, y] = level.point(level.waypoint);
+        let [x, _, y] = level.point(level.waypoint).get();
         if rx <= x && ry <= y && x <= w as f32 - rx && y <= h as f32 - ry {
             break;
         }
@@ -585,7 +577,7 @@ fn drop_edge_waypoints(level: &mut PathData, radius: [f32; 3], map: [i32; 2]) {
 
 /// `FUN_140f98d50`: a path's point `i` goes, the later ones move down (true); an index outside
 /// the path (below 0 or past its last point) changes nothing (false).
-fn remove_point(points: &mut Vec<Vec3>, i: i32) -> bool {
+fn remove_point(points: &mut Vec<BVector>, i: i32) -> bool {
     match usize::try_from(i) {
         Ok(k) if k < points.len() => {
             let _ = points.remove(k);

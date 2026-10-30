@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -33,11 +34,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(p, idx)?;
         let master = unit.master(&self.masters, p)?;
-        let (kind, class, at) = (
-            master.kind,
-            master.class,
-            [unit.position()[0], unit.position()[1]],
-        );
+        let (kind, class, at) = (master.kind, master.class, unit.position().ground());
         let held = unit.life.attribute_type;
         let mut site = None;
         if master.drop_sites.iter().any(|&d| 0 <= d) {
@@ -59,7 +56,7 @@ impl World {
         };
         let work = Work {
             target: site,
-            point: [NO_POINT; 3],
+            point: Position::from([NO_POINT; 3]),
             carry_test: false,
             filter,
             notified: false,
@@ -165,7 +162,7 @@ impl World {
         let (amount, held, at) = (
             unit.life.amount,
             unit.life.attribute_type,
-            [unit.position()[0], unit.position()[1]],
+            unit.position().ground(),
         );
         let class = unit.master(&self.masters, p)?.class;
         let search = if 0.0 < amount {
@@ -262,7 +259,7 @@ impl World {
                 target_owner: owner.index() as i32,
                 point: place,
                 range: 0.0,
-                shown: [place[0], place[1]],
+                shown: place.ground(),
                 ready: true,
                 target_type: i32::from(master),
             };
@@ -303,7 +300,7 @@ impl World {
                     f.id,
                     i32::from(master),
                     op.index() as i32,
-                    [o.position()[0], o.position()[1]],
+                    o.position().ground(),
                 )
             }
             None => (record.target, record.target_type, -1, record.point),
@@ -321,7 +318,7 @@ impl World {
                 priority: 100,
                 target: id,
                 target_owner: owner,
-                point: [x, y, 0.0],
+                point: Position::new(x, y, 0.0),
                 range: 0.0,
                 shown: [x, y],
                 ready: true,

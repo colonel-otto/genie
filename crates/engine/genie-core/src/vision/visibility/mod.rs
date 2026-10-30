@@ -23,6 +23,7 @@
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -371,10 +372,10 @@ impl Visibility {
     pub fn forget_resource(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         group: u8,
     ) -> Result<(), GenieError> {
-        let (x, y) = (position[0] as i32, position[1] as i32);
+        let (x, y) = (position.x() as i32, position.y() as i32);
         if x < 0 || y < 0 || self.width <= x || self.height <= y {
             return Ok(());
         }

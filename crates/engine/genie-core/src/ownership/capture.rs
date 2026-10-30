@@ -3,6 +3,7 @@
 //! livestock after a capture.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -107,8 +108,7 @@ impl Unit {
                 .as_ref()
                 .is_some_and(|ai| ai.current_action != Some(ActionKind::HeroPower))
         {
-            let [x, y, _] = self.body.position();
-            let place = ([x, y], Some(class));
+            let place = (self.body.position().ground(), Some(class));
             // slot 0xb0 with 0, its stopAction a call on the unit at once
             self.run_calls(c, |ai, side, rng| {
                 ai.stop_with(false, Some(place), side, rng)?;
@@ -215,11 +215,11 @@ pub(crate) const TRADE_ACTION: i32 = 0x6f;
 /// in turn, with its own scan. Two on one tile would need the tile's object list order.
 pub(crate) fn scan_livestock(
     c: &mut Step<'_>,
-    at: [f32; 3],
+    at: Position,
     new: PlayerId,
     taken: &mut Vec<i32>,
 ) -> Result<(), GenieError> {
-    let (tx, ty) = (at[0] as i32, at[1] as i32);
+    let (tx, ty) = (at.x() as i32, at.y() as i32);
     let [w, h] = c.w.spatial.map;
     for x in (tx - 3).max(0)..=(tx + 3).min(w - 1) {
         for y in (ty - 3).max(0)..=(ty + 3).min(h - 1) {
@@ -251,7 +251,7 @@ fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Result<Vec<i
     Ok(OthersRef::of(&c.w.players, c.player)?
         .own_iter()
         .filter(|u| {
-            let [ux, uy, _] = u.position();
+            let (ux, uy) = (u.position().x(), u.position().y());
             u.life.state == 2
                 && ux as i32 == x
                 && uy as i32 == y
@@ -272,7 +272,7 @@ fn take_livestock(
     c: &mut Step<'_>,
     id: i32,
     new: PlayerId,
-) -> Result<Option<[f32; 3]>, GenieError> {
+) -> Result<Option<Position>, GenieError> {
     let mut unit =
         c.w.take_out_own(c.player, id)?
             .ok_or_else(|| object_gone(id))?;

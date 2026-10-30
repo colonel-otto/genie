@@ -7,7 +7,7 @@ use crate::groups::group_list::{NO_FORMATION, member_gone};
 use crate::groups::update::{
     ATTACK, DIFFERENTIATORS, FRONT_AHEAD, NO_COMMAND, OTHER_COMMANDS, RELAYOUT_SPACING, TURN_LIMIT,
 };
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::world::World;
 
 impl World {
@@ -156,7 +156,7 @@ impl World {
         &mut self,
         group: i32,
         far: bool,
-        forward: Vec3,
+        forward: BVector,
     ) -> Result<bool, GenieError> {
         if self.groups.held(group)?.flags & 0x100 != 0 {
             self.turn_formation(group, forward)?;
@@ -229,7 +229,11 @@ impl World {
     /// update runs again with a budget, the formation transforms at the new place
     /// ([`World::formation_transform`], `param_4` 0) and flags bit 8 clears. The debug drawing
     /// (`DAT_143f15a9c`) holds no state.
-    pub(super) fn turn_formation(&mut self, group: i32, forward: Vec3) -> Result<(), GenieError> {
+    pub(super) fn turn_formation(
+        &mut self,
+        group: i32,
+        forward: BVector,
+    ) -> Result<(), GenieError> {
         if self.turns_formation(group, forward)? {
             let g = self.groups.held(group)?;
             let without_path = g.motion.paths.first().is_some_and(|l| !l.has_path);
@@ -263,7 +267,7 @@ impl World {
     /// Whether the formation's turn lays it out anew: the motion turned more than π/4 from
     /// `forward` (the size of `FUN_14087e650`'s angle; `COMISS` then `JA` at `0x14103e154`, a NaN
     /// does not), or motion flags bit 1 or flags bit 14 is set.
-    pub(super) fn turns_formation(&self, group: i32, forward: Vec3) -> Result<bool, GenieError> {
+    pub(super) fn turns_formation(&self, group: i32, forward: BVector) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
         let turn = crate::math::fmath::angle_between(g.motion.position[1], forward).abs();
         Ok(TURN_LIMIT < turn || g.motion.flags & 2 != 0 || g.flags & 0x4000 != 0)
@@ -280,22 +284,22 @@ impl World {
     /// check at the update's start leaves only held ones.
     pub(super) fn front_by_centroid(&mut self, group: i32) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
-        let mut sum = [0.0f32; 3];
+        let mut sum = BVector::ZERO;
         for m in &g.members {
             let v = self
                 .world_object(m.id)
                 .ok_or_else(|| member_gone(m.id))?
                 .moved_vector()
                 .xhy();
-            sum = [sum[0] + v[0], sum[1] + v[1], sum[2] + v[2]];
+            sum = BVector::new(sum.x() + v.x(), sum.height() + v.height(), sum.y() + v.y());
         }
         let n = g.members.len() as i32 as f32;
         let ahead = crate::math::fmath::scale(0.0, g.motion.position[1]);
-        let point = [
-            sum[0] / n + ahead[0],
-            sum[1] / n + ahead[1],
-            sum[2] / n + ahead[2],
-        ];
+        let point = BVector::new(
+            sum.x() / n + ahead.x(),
+            sum.height() / n + ahead.height(),
+            sum.y() / n + ahead.y(),
+        );
         let g = self.groups.held_mut(group)?;
         g.motion.new_position[0] = point;
         g.motion.position[0] = point;

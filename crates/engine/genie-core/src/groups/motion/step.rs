@@ -5,6 +5,7 @@ use crate::groups::motion::{
     CLOSE, EPSILON, GroupView, Lead, LeadGroup, NEAR, PASSES, looping_next, point, request,
     reset_level, set_flag, steer,
 };
+use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
 use crate::movement::{Planning, footprint_gap, footprint_gap_squared};
 use crate::world::slots::CheckedIndex;
@@ -108,7 +109,12 @@ pub(super) fn pass(
     let at = motion.position[0];
     // `fVar39`: the target's footprint gap to the group's place, squared (FUN_140a847c0)
     let target_gap2 = target.as_ref().map_or(f32::MAX, |t| {
-        footprint_gap_squared(t.position, t.radius, [at[0], at[2], 0.0], [0.0, 0.0])
+        footprint_gap_squared(
+            t.position,
+            t.radius,
+            Position::new(at.x(), at.y(), 0.0),
+            [0.0, 0.0],
+        )
     });
     let flags = level.flags;
     if flags & 1 != 0 {
@@ -186,7 +192,12 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) -> Result<()
     let mut beyond = match target {
         None => (d - level.range) - NEAR,
         Some(t) => {
-            (footprint_gap(t.position, t.radius, [at[0], at[2], 0.0], [0.0, 0.0]) - level.range)
+            (footprint_gap(
+                t.position,
+                t.radius,
+                Position::new(at.x(), at.y(), 0.0),
+                [0.0, 0.0],
+            ) - level.range)
                 - NEAR
         }
     };

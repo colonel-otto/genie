@@ -2,6 +2,7 @@
 //! builders, the placement test and the payment.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::Master;
 use crate::objects::masters::ids::FARM;
 use crate::objects::masters::player_master;
@@ -12,11 +13,11 @@ impl World {
     /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is
     /// mangrove shallows or forest (terrains 54, 55, `FUN_1413fc100`) or a rice farm's (63 to 67,
     /// `FUN_1413fc220`) is a rice farm (1187); a point off the map keeps the farm.
-    pub(crate) fn farm_on_rice_terrain(&self, master: i16, position: [f32; 3]) -> i16 {
+    pub(crate) fn farm_on_rice_terrain(&self, master: i16, position: Position) -> i16 {
         if master != FARM {
             return master;
         }
-        let (x, y) = (position[0] as i32, position[1] as i32);
+        let (x, y) = (position.x() as i32, position.y() as i32);
         let terrain = self.spatial.terrain.as_ref().and_then(|t| t.kind(x, y));
         match terrain {
             Some(54 | 55 | 63..=67) => RICE_FARM,
@@ -162,7 +163,7 @@ impl World {
             own,
         };
         let map = crate::production::spawn::WorldMap { turns: self };
-        let at = [placed.position[0], placed.position[1]];
+        let at = placed.position.ground();
         crate::production::spawn::build_placement(&test, &map, at)
     }
 

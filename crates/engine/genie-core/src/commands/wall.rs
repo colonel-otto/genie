@@ -16,6 +16,7 @@
 use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
+use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::action_type;
@@ -273,10 +274,10 @@ impl World {
         &mut self,
         w: &BuildWallCommand,
         radius: [f32; 2],
-    ) -> Result<Vec<(i32, [f32; 3])>, GenieError> {
+    ) -> Result<Vec<(i32, Position)>, GenieError> {
         let (player, master) = (w.player, w.master.get());
         let ([x1, y1], [x2, y2]) = (w.from.map(i32::from), w.to.map(i32::from));
-        let mut placed: Vec<(i32, [f32; 3])> = Vec::new();
+        let mut placed: Vec<(i32, Position)> = Vec::new();
         for (a, b) in segments([x1, y1], [x2, y2]) {
             for [tx, ty] in tiles(a, b)? {
                 let at = snap(radius, self.spatial.map, [tx as f32, ty as f32]);
@@ -286,7 +287,7 @@ impl World {
                 if !self.affords(player, master)? {
                     break;
                 }
-                placed.push(self.found(player, master, [at[0], at[1], 0.0])?);
+                placed.push(self.found(player, master, Position::new(at[0], at[1], 0.0))?);
             }
         }
         Ok(placed)
@@ -314,8 +315,8 @@ impl World {
                 let g = ((f32::from(end) + HALF) - at).abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
             };
-            let gx = gap(w.to[0], u.position()[0], r[0]);
-            let gy = gap(w.to[1], u.position()[1], r[1]);
+            let gx = gap(w.to[0], u.position().x(), r[0]);
+            let gy = gap(w.to[1], u.position().y(), r[1]);
             sorted.push((id, gy * gy + gx * gx));
         }
         if INSERTION_SORT_MAX < sorted.len() {
@@ -340,8 +341,8 @@ impl World {
         &mut self,
         w: &BuildWallCommand,
         id: i32,
-        placed: &[(i32, [f32; 3])],
-        (foundation, at): (i32, [f32; 3]),
+        placed: &[(i32, Position)],
+        (foundation, at): (i32, Position),
     ) -> Result<(), GenieError> {
         let (player, master) = (w.player, w.master.get());
         let Some(Place::Live(q, idx)) = self.place(id) else {

@@ -98,7 +98,7 @@ impl UnitView<'_, '_> {
         } else {
             master.search_radius
         } as i32;
-        let (ux, uy) = (unit.position()[0] as i32, unit.position()[1] as i32);
+        let (ux, uy) = (unit.position().x() as i32, unit.position().y() as i32);
         let (player, others, every, spatial) = (
             self.player,
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
@@ -144,7 +144,7 @@ impl UnitView<'_, '_> {
                 id,
                 master: i32::from(u.life.master_id),
                 owner: p.index() as i32,
-                vector: [u.position()[0], u.position()[2]],
+                vector: [u.position().x(), u.position().z()],
             })
         };
         let spot = match self.c.w.spatial.get(site) {
@@ -165,7 +165,7 @@ impl UnitView<'_, '_> {
         let target = unit.top_target().filter(|&t| t != -1);
         Ok(crate::unit_ai::OffFootprint {
             spot,
-            z: unit.position()[2],
+            z: unit.position().z(),
             class: master.class,
             computer: self.computer,
             player: player.index() as i32,

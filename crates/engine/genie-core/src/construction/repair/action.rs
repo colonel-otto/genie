@@ -6,6 +6,7 @@ use crate::construction::repair::{
     EXTRA_REPAIRER, FACE, HALTED, IDLE, LEAST_HP, MOVE, MOVING_REACH, ONE, REACH, RepairAction,
     RepairReads, RepairTask, Repairee, SHIP_REPAIR, SHIPS, WAIT, WALK_POINT, WORK,
 };
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, Sprites, TargetMoved, WalkTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
@@ -116,7 +117,7 @@ impl RepairAction {
     /// A sprite the table lacks.
     pub fn to_point(
         &self,
-        point: [f32; 3],
+        point: Position,
         move_reads: &MoveToReads<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
         move_reads.to_point(point, 0.0, self.task.moving)
@@ -359,7 +360,7 @@ impl RepairAction {
         let t = reads.target.ok_or(GenieError::unreachable(
             "a Repair working without its target",
         ))?;
-        let moved = t.position[0] != self.point[0] || t.position[1] != self.point[1];
+        let moved = t.position.x() != self.point.x() || t.position.y() != self.point.y();
         if moved {
             let gap = Self::gap(repairer, reads, t);
             if REACH < gap {
@@ -563,7 +564,7 @@ impl RepairAction {
     /// A sprite the table lacks, and the unit's stop that the motion step does not model.
     pub fn take_point(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         mover: Option<&mut crate::movement::Mover>,
         move_reads: &MoveToReads<'_>,
     ) -> Result<(i32, bool), GenieError> {

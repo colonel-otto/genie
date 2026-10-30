@@ -7,6 +7,7 @@ use crate::{
     production, saved_actions, saved_sprite, task_at, unit_ai,
 };
 use genie_core::GenieError;
+use genie_core::map::Position;
 use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
@@ -147,7 +148,7 @@ pub(super) fn unit(
         charge: object.combat().map_or(0.0, |c| c.charge),
         // the animated layer (types 20 and up); a moving object's mover takes it below
         body: genie_core::objects::layers::Body::new(
-            [s.t_x, s.t_y, s.t_z],
+            Position::new(s.t_x, s.t_y, s.t_z),
             object
                 .animated_part()
                 .map(|a| genie_core::objects::layers::Animated::new(a.current_speed)),

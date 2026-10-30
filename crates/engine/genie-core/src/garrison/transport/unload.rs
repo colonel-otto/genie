@@ -6,6 +6,7 @@ use crate::garrison::transport::{
     Around, Changed, DropDraws, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT,
     TransportAction, in_zone, retry_point,
 };
+use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -32,7 +33,7 @@ impl crate::world::World {
         &mut self,
         p: PlayerId,
         i: usize,
-        to: [f32; 3],
+        to: Position,
     ) -> Result<(), GenieError> {
         let existing = self.players[p.index()].objects[i].top_action_kind() == Some(TRANSPORT);
         if !existing {
@@ -85,7 +86,7 @@ impl crate::world::World {
         &mut self,
         p: PlayerId,
         i: usize,
-        point: [f32; 3],
+        point: Position,
     ) -> Result<(), GenieError> {
         let rng = self.streams.get(crate::math::rng::Stream::Sprite);
         self.players[p.index()].objects[i].transport_sail(
@@ -141,7 +142,7 @@ impl crate::world::World {
             .copied()
             .ok_or(GenieError::unreachable("an unload without its Transport"))?;
         let restriction = unit.master(&self.masters, p)?.terrain_restriction;
-        let [x, y, _] = t.point;
+        let (x, y) = (t.point.x(), t.point.y());
         let zone = if x == NONE {
             u32::MAX
         } else {
@@ -181,8 +182,8 @@ impl crate::world::World {
                 .actions
                 .transport_mut()
                 .ok_or(NO_TRANSPORT)?;
-            t.point[0] = point[0];
-            t.point[1] = point[1];
+            let [x, y] = point;
+            t.point = t.point.with_x(x).with_y(y);
             if sails {
                 changes.push(t.set_state(SAIL_TO_UNLOAD, &ship, &mut shore)?);
                 t.retarget = true;
@@ -231,7 +232,7 @@ impl crate::world::World {
             radius: [0.0; 2],
         }; SPOTS + 1];
         spots[1] = Around {
-            center: [ship.position()[0], ship.position()[1]],
+            center: ship.position().ground(),
             radius,
         };
         let mut k = 1;
@@ -391,7 +392,12 @@ impl crate::world::World {
         unit.body
             .base_mut()
             .inside_at(inner_id.get(), at, &mut self.spatial);
-        self.leave_container((p, i), (up.index(), ui), made, [spot[0], spot[1], at[2]])?;
+        self.leave_container(
+            (p, i),
+            (up.index(), ui),
+            made,
+            Position::new(spot[0], spot[1], at.z()),
+        )?;
         if let Some(ai) = self.players[up.index()].objects[ui].ai.as_mut() {
             ai.state_position = spot;
         }

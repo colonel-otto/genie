@@ -415,6 +415,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
+    use crate::map::Position;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
@@ -427,7 +428,7 @@ mod tests {
         let unit = |id: i32, master: i16, x: f32| {
             let mut u = Unit {
                 id: object_id(id),
-                body: crate::objects::layers::Body::at([x, 0.0, 0.0]),
+                body: crate::objects::layers::Body::at(Position::new(x, 0.0, 0.0)),
                 ..Unit::default()
             };
             u.life.master_id = master;

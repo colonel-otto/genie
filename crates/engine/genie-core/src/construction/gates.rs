@@ -27,7 +27,7 @@ pub(crate) fn gate_units(
     let place = |id| {
         spatial
             .get(id)
-            .map(|p| [p.position[0], p.position[1]])
+            .map(|p| p.position.ground())
             .ok_or(GenieError::unsupported("a gate's annex without a place"))
     };
     let (from, to) = (place(a)?, place(b)?);

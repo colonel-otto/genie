@@ -2,6 +2,7 @@
 //! a target's state and the search of slot 0x820.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::terrain::Terrain;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
@@ -13,8 +14,8 @@ use crate::world::player::Player;
 
 /// The terrain the task finder's general search reads at `point` (`FUN_1411a8ba0`,
 /// [`Terrain::at_task_point`]); none on a world without its map's terrain.
-pub(crate) fn point_terrain(map: Option<&Terrain>, point: [f32; 3]) -> Option<i16> {
-    map.and_then(|t| t.at_task_point(point[0], point[1]))
+pub(crate) fn point_terrain(map: Option<&Terrain>, point: Position) -> Option<i16> {
+    map.and_then(|t| t.at_task_point(point.x(), point.y()))
         .map(i16::from)
 }
 

@@ -1,4 +1,6 @@
 use crate::groups::{Member, UnitGroup, UnitGroups};
+use crate::map::Position;
+use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -15,7 +17,7 @@ use crate::world::{Player, World};
 fn soldier(id: i32, x: f32, y: f32) -> Unit {
     let mut u = Unit {
         id: object_id(id),
-        body: crate::objects::layers::Body::at([x, y, 0.0]),
+        body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
         ai: Some(UnitAi {
             current_order: None,
             current_action: None,
@@ -153,7 +155,7 @@ fn lost_members_leave_the_group_and_stop() {
     let stopped = unit(&t, 11);
     let stopped = stopped.body.mover().unwrap();
     assert_eq!(stopped.animated.speed, 0.0);
-    assert_eq!(stopped.velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(stopped.velocity.unwrap().velocity.y(), 0.0);
     // a NaN's hit points stay (COMISS then JA)
     let mut t = world();
     t.players[1].objects[0].life.hp = f32::NAN;
@@ -361,8 +363,8 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         timer: 0.0,
         range: 0.0,
         min_range: 0.0,
-        point: [0.0; 3],
-        seen: [0.0; 3],
+        point: Position::ORIGIN,
+        seen: Position::ORIGIN,
         move_to: None,
         pending: false,
         swing: 0.0,
@@ -409,9 +411,9 @@ fn a_group_rests_without_command_motion_or_moving_member() {
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
     assert!(!t.at_rest(1));
     t.players[1].objects[1].body.put_mover(None);
-    t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
+    t.groups.get_mut(1).unwrap().motion.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(!t.at_rest(1));
-    t.groups.get_mut(1).unwrap().motion.velocity = [0.0; 3];
+    t.groups.get_mut(1).unwrap().motion.velocity = BVector::ZERO;
     t.groups.get_mut(1).unwrap().current_command = 1;
     assert!(!t.at_rest(1));
     assert!(!t.at_rest(2));
@@ -565,17 +567,26 @@ fn the_formation_turns_past_a_quarter_turn() {
     let g = t.groups.get_mut(1).unwrap();
     g.flags = 0;
     g.motion.flags = 0;
-    g.motion.position[1] = [1.0, 0.0, 0.0];
-    assert!(!t.turns_formation(1, [0.72, 0.0, 0.693_974_1]).unwrap());
-    assert!(t.turns_formation(1, [0.70, 0.0, 0.714_142_8]).unwrap());
-    assert!(t.turns_formation(1, [0.0, 0.0, -1.0]).unwrap());
-    assert!(!t.turns_formation(1, [f32::NAN, 0.0, 0.0]).unwrap());
+    g.motion.position[1] = BVector::new(1.0, 0.0, 0.0);
+    assert!(
+        !t.turns_formation(1, BVector::new(0.72, 0.0, 0.693_974_1))
+            .unwrap()
+    );
+    assert!(
+        t.turns_formation(1, BVector::new(0.70, 0.0, 0.714_142_8))
+            .unwrap()
+    );
+    assert!(t.turns_formation(1, BVector::new(0.0, 0.0, -1.0)).unwrap());
+    assert!(
+        !t.turns_formation(1, BVector::new(f32::NAN, 0.0, 0.0))
+            .unwrap()
+    );
     t.groups.get_mut(1).unwrap().flags = 0x4000;
-    assert!(t.turns_formation(1, [1.0, 0.0, 0.0]).unwrap());
+    assert!(t.turns_formation(1, BVector::new(1.0, 0.0, 0.0)).unwrap());
     let g = t.groups.get_mut(1).unwrap();
     g.flags = 0;
     g.motion.flags = 2;
-    assert!(t.turns_formation(1, [1.0, 0.0, 0.0]).unwrap());
+    assert!(t.turns_formation(1, BVector::new(1.0, 0.0, 0.0)).unwrap());
 }
 
 /// `movePositionToFrontUsingCentroid`: the members' mean place (x, height, y) plus the
@@ -583,17 +594,17 @@ fn the_formation_turns_past_a_quarter_turn() {
 #[test]
 fn the_centroid_front_is_the_members_mean_place() {
     let mut t = world();
-    t.players[1].objects[2].place_for_test([1.0, 4.0, 3.0]);
-    t.groups.get_mut(1).unwrap().motion.position[1] = [1.0, 0.0, 0.0];
+    t.players[1].objects[2].place_for_test(Position::new(1.0, 4.0, 3.0));
+    t.groups.get_mut(1).unwrap().motion.position[1] = BVector::new(1.0, 0.0, 0.0);
     t.front_by_centroid(1).unwrap();
     let g = t.groups.get(1).unwrap();
-    let mean = [4.0 / 3.0, 1.0, 2.0];
+    let mean = BVector::new(4.0 / 3.0, 1.0, 2.0);
     assert_eq!(g.motion.position[0], mean);
     assert_eq!(g.motion.new_position[0], mean);
     // an infinite forward makes the place NaN (inf times 0)
-    t.groups.get_mut(1).unwrap().motion.position[1] = [f32::INFINITY, 0.0, 0.0];
+    t.groups.get_mut(1).unwrap().motion.position[1] = BVector::new(f32::INFINITY, 0.0, 0.0);
     t.front_by_centroid(1).unwrap();
-    assert!(t.groups.get(1).unwrap().motion.position[0][0].is_nan());
+    assert!(t.groups.get(1).unwrap().motion.position[0].x().is_nan());
 }
 
 /// The formation lines' attack ranges: each its slots' units' least weapon range (a combat
@@ -675,7 +686,7 @@ fn the_relayout_follows_the_count_and_the_spacing() {
     set(&mut t, 0x2, 6.5);
     assert_eq!(t.relayout_choice(1, 3).unwrap(), (true, false));
     assert_eq!(t.groups.get(1).unwrap().flags, 0);
-    t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
+    t.groups.get_mut(1).unwrap().motion.velocity = BVector::new(0.0, 0.0, 1.0);
     set(&mut t, 0x2, 6.5);
     assert_eq!(t.relayout_choice(1, 3).unwrap(), (false, false));
     assert_eq!(t.groups.get(1).unwrap().flags, 2);
@@ -700,7 +711,7 @@ fn a_follow_moves_to_its_target_when_it_strays() {
     let g = t.groups.get_mut(1).unwrap();
     g.current_command = 2;
     g.current_target.target = 20;
-    g.current_target.original_position = [3.5, 0.0, 4.5];
+    g.current_target.original_position = BVector::new(3.5, 0.0, 4.5);
     g.flags = 0;
     let mut relayout = false;
     // 1 from the target: within half the lead's line of sight (2)
@@ -714,7 +725,7 @@ fn a_follow_moves_to_its_target_when_it_strays() {
         .get_mut(1)
         .unwrap()
         .current_target
-        .original_position = [3.5, 0.0, 5.5];
+        .original_position = BVector::new(3.5, 0.0, 5.5);
     assert!(t.command_update(1, &mut relayout).unwrap());
     let g = t.groups.get(1).unwrap();
     assert_eq!(
@@ -747,7 +758,7 @@ fn a_moving_group_s_move_waits_or_follows() {
     assert!(relayout);
     let g = t.groups.get_mut(1).unwrap();
     g.motion.flags = 0;
-    g.motion.velocity = [0.0, 0.0, 1.0];
+    g.motion.velocity = BVector::new(0.0, 0.0, 1.0);
     let mut relayout = false;
     assert!(!t.move_update(1, &mut relayout).unwrap());
     assert!(relayout);
@@ -757,7 +768,7 @@ fn a_moving_group_s_move_waits_or_follows() {
     g.current_target.target = 20;
     let mut path = crate::movement::PathData::without_path();
     path.has_path = true;
-    path.points = vec![[0.0; 3], [3.5, 0.0, 3.5]];
+    path.points = vec![BVector::ZERO, BVector::new(3.5, 0.0, 3.5)];
     g.motion.paths = vec![path];
     let mut relayout = false;
     assert!(!t.move_update(1, &mut relayout).unwrap());
@@ -765,7 +776,7 @@ fn a_moving_group_s_move_waits_or_follows() {
         (relayout, t.groups.get(1).unwrap().current_command),
         (true, 1)
     );
-    t.groups.get_mut(1).unwrap().motion.paths[0].points[1] = [3.5, 0.0, 4.5];
+    t.groups.get_mut(1).unwrap().motion.paths[0].points[1] = BVector::new(3.5, 0.0, 4.5);
     let mut relayout = false;
     assert!(!t.move_update(1, &mut relayout).unwrap());
     assert_eq!(
@@ -775,7 +786,7 @@ fn a_moving_group_s_move_waits_or_follows() {
     // standing with bit 12: a follow at once; else wait delays or a level waiting do nothing
     let g = t.groups.get_mut(1).unwrap();
     g.current_command = 1;
-    g.motion.velocity = [0.0; 3];
+    g.motion.velocity = BVector::ZERO;
     assert!(!t.move_update(1, &mut relayout).unwrap());
     assert_eq!(t.groups.get(1).unwrap().current_command, 2);
     let g = t.groups.get_mut(1).unwrap();
@@ -808,7 +819,7 @@ fn a_standing_group_s_move_ends_or_goes_on() {
     let walked = || {
         let mut path = crate::movement::PathData::without_path();
         path.has_path = true;
-        path.points = vec![[0.0; 3], [3.5, 0.0, 3.5]];
+        path.points = vec![BVector::ZERO, BVector::new(3.5, 0.0, 3.5)];
         path
     };
     let g = t.groups.get_mut(1).unwrap();
@@ -950,13 +961,18 @@ fn a_member_s_own_move_walks_its_path() {
     let mut t = world();
     t.dt_seconds = 0.5;
     let mut walker = crate::gathering::hunt::tests::walker();
-    walker.moved_at = [1.0, 1.0, 0.0];
-    walker.take_record_path(vec![[1.0, 0.0, 1.0], [5.0, 0.0, 1.0]], 4.0, 0, false);
+    walker.moved_at = Position::new(1.0, 1.0, 0.0);
+    walker.take_record_path(
+        vec![BVector::new(1.0, 0.0, 1.0), BVector::new(5.0, 0.0, 1.0)],
+        4.0,
+        0,
+        false,
+    );
     t.players[1].objects[0].body.put_mover(Some(walker));
     t.spatial.insert(
         10,
         crate::map::spatial::Placed {
-            position: [1.0, 1.0, 0.0],
+            position: Position::new(1.0, 1.0, 0.0),
             radius: [0.2, 0.2],
             class: class::CLASS_6,
             player: PlayerId::new(1),
@@ -975,7 +991,7 @@ fn a_member_s_own_move_walks_its_path() {
         reason: 0,
         timer: 3.0,
         distance: 3.0,
-        last_position: [1.0, 0.0, 0.0],
+        last_position: BVector::new(1.0, 0.0, 0.0),
         ..crate::groups::SpecificMove::default()
     };
     t.specific_moves_step(1).unwrap();
@@ -983,7 +999,10 @@ fn a_member_s_own_move_walks_its_path() {
     let at = u.moved_vector().xhy();
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!(own.active, 1);
-    assert_eq!((at, own.last_position), ([1.0, 0.0, 1.0], [1.0, 0.0, 1.0]));
+    assert_eq!(
+        (at, own.last_position),
+        (BVector::new(1.0, 0.0, 1.0), BVector::new(1.0, 0.0, 1.0))
+    );
     assert_eq!(own.distance, 2.0);
     // the walks that meet the unit later in the update read its walked level as the step left it
     assert_eq!(t.spatial.gait(10), t.object(10).unwrap().1.gait());
@@ -1038,7 +1057,7 @@ fn the_idle_timer_counts_while_idle() {
     let draw = streams.get(crate::math::rng::Stream::World).rand15();
     t.idle_timer_step(1).unwrap();
     assert_eq!(t.groups.get(1).unwrap().idle_timer, draw % 750);
-    t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
+    t.groups.get_mut(1).unwrap().motion.velocity = BVector::new(0.0, 0.0, 1.0);
     t.groups.get_mut(1).unwrap().idle_timer = 5;
     t.idle_timer_step(1).unwrap();
     assert!(t.groups.get(1).unwrap().idle_timer < 750);
@@ -1099,7 +1118,7 @@ fn a_player_s_groups_update_before_its_objects() {
     let u = t.object(10).unwrap().1;
     assert_eq!(u.group.id, -1);
     assert_eq!(u.position(), before);
-    assert_eq!(u.body.mover().unwrap().velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(u.body.mover().unwrap().velocity.unwrap().velocity.y(), 0.0);
 }
 
 /// Slot 0x5e0 (`FUN_14114f300`) in the members' own update: the group has no formation, so no
@@ -1115,8 +1134,8 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
         let mut m = walker.clone();
         m.moved_at = u.position();
         m.velocity = Some(crate::movement::Velocity {
-            velocity: [0.0, 0.0, 1.0],
-            acceleration: [0.0; 3],
+            velocity: BVector::new(0.0, 0.0, 1.0),
+            acceleration: BVector::ZERO,
         });
         u.body.put_mover(Some(m));
     }
@@ -1145,12 +1164,16 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
             .unwrap()
             .velocity
             .unwrap()
-            .velocity[2]
+            .velocity
+            .y()
     };
     assert_eq!(speed(&t, 10), 0.0);
     assert_eq!(t.object(10).unwrap().1.position(), before[0]);
     assert_eq!(speed(&t, 11), 1.0);
-    assert_eq!(t.object(11).unwrap().1.position(), [1.9, 1.0, 0.0]);
+    assert_eq!(
+        t.object(11).unwrap().1.position(),
+        Position::new(1.9, 1.0, 0.0)
+    );
     assert_eq!(speed(&t, 12), 0.0);
     assert_eq!(t.object(12).unwrap().1.position(), before[2]);
 }
@@ -1188,7 +1211,7 @@ fn the_speed_slot_reads_the_group_that_steers_a_free_member() {
     assert_eq!(of(&groups, 11), Ok(Some(GroupSpeed::Free)));
     assert_eq!(of(&groups, 12), Ok(Some(GroupSpeed::OwnMove(0.9))));
     let mut moving = groups.clone();
-    moving.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
+    moving.get_mut(1).unwrap().motion.velocity = BVector::new(0.0, 0.0, 1.0);
     assert_eq!(of(&moving, 10), Ok(Some(GroupSpeed::Aside)));
     let mut busy = t.object(11).unwrap().1.clone();
     busy.ai.as_mut().unwrap().current_action = Some(ActionKind::Attack);
@@ -1211,14 +1234,14 @@ fn the_speed_slot_reads_the_group_that_steers_a_free_member() {
 #[test]
 fn the_update_end_stores_a_moved_group_s_new_position() {
     let mut g = UnitGroup::new(1);
-    g.motion.new_position[0] = [3.0, 0.0, 4.0];
+    g.motion.new_position[0] = BVector::new(3.0, 0.0, 4.0);
     g.motion.flags = 3;
     g.flags = 0;
     g.update_end().unwrap();
     assert_eq!((g.motion.flags, g.flags & 2), (0, 2));
     assert_eq!(
         g.stored_positions.points.first().map(|p| p.point),
-        Some([3.0, 0.0, 4.0])
+        Some(BVector::new(3.0, 0.0, 4.0))
     );
     let mut still = UnitGroup::new(2);
     still.motion.flags = 0;
@@ -1233,7 +1256,7 @@ fn the_update_end_stores_a_moved_group_s_new_position() {
 fn the_lead_is_the_member_nearest_the_targets_place() {
     let at = |id, x: f32, y: f32| Unit {
         id,
-        body: crate::objects::layers::Body::at([x, y, 0.0]),
+        body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
         ..Unit::default()
     };
     let player = Player {
@@ -1253,7 +1276,7 @@ fn the_lead_is_the_member_nearest_the_targets_place() {
     let mut g = UnitGroup::new(1);
     // 99 is not held; 11 and 12 are as near (1, 1) as each other: 11 comes first
     g.members = vec![member(99), member(10), member(11), member(12)];
-    g.current_target.original_position = [1.0, 0.0, 1.0];
+    g.current_target.original_position = BVector::new(1.0, 0.0, 1.0);
     t.groups = UnitGroups {
         groups: vec![g],
         ..UnitGroups::default()
@@ -1299,7 +1322,7 @@ fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
     // idle: standing; not while moving or waiting for a path; idle again with bit 5, or on a
     // move with bit 11
     assert!(t.is_idle(1));
-    t.groups.groups[0].motion.velocity = [0.0, 0.0, 1.0];
+    t.groups.groups[0].motion.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(!t.is_idle(1));
     t.groups.groups[0].current_command = 1;
     t.groups.groups[0].flags |= 0x800;
@@ -1404,7 +1427,7 @@ fn grounded() -> World {
 /// centroid; flags bit 15 places it too, and clears.
 #[test]
 fn an_awake_group_without_a_command_places_itself_and_turns_its_formation() {
-    let mean = [4.0 / 3.0, 0.0, 4.0 / 3.0];
+    let mean = BVector::new(4.0 / 3.0, 0.0, 4.0 / 3.0);
     let run = |flags, motion_flags| {
         let mut t = grounded();
         let g = t.groups.get_mut(1).unwrap();
@@ -1416,11 +1439,14 @@ fn an_awake_group_without_a_command_places_itself_and_turns_its_formation() {
     };
     let g = run(0x100, 3);
     assert_eq!(g.flags, 0x400);
-    assert_eq!(g.motion.position[1], [-1.0, 0.0, 0.0]);
+    assert_eq!(g.motion.position[1], BVector::new(-1.0, 0.0, 0.0));
     assert_eq!(g.motion.position[0], mean);
     let g = run(0x100, 1);
     assert_eq!(g.flags, 0);
-    assert_eq!(g.motion.position[..2], [[0.0; 3], [1.0, 0.0, 0.0]]);
+    assert_eq!(
+        g.motion.position[..2],
+        [BVector::ZERO, BVector::new(1.0, 0.0, 0.0)]
+    );
     let g = run(0x4100, 1);
     assert_eq!(g.flags, 0);
     assert_eq!(g.motion.position[0], mean);
@@ -1429,7 +1455,7 @@ fn an_awake_group_without_a_command_places_itself_and_turns_its_formation() {
     assert_eq!(g.motion.position[0], mean);
     let g = run(0x8000, 1);
     assert_eq!(g.flags, 0x400);
-    assert_eq!(g.motion.position[1], [-1.0, 0.0, 0.0]);
+    assert_eq!(g.motion.position[1], BVector::new(-1.0, 0.0, 0.0));
 }
 
 /// The awake update of a group in a formation of three slots (`BUnitGroup::update` after
@@ -1443,8 +1469,8 @@ fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
         let mut t = grounded();
         let slot = |x: f32| crate::groups::Slot {
             unit_id: 9 + x as i32,
-            offset: [x - 2.0, 0.0, 0.0],
-            transform_position: [x + 2.0, 0.0, 4.0],
+            offset: BVector::new(x - 2.0, 0.0, 0.0),
+            transform_position: BVector::new(x + 2.0, 0.0, 4.0),
             desired_category: 1,
             desired_sub_category: -1,
             active: 1,
@@ -1455,7 +1481,7 @@ fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
         g.current_formation = Some(crate::groups::Formation {
             kind: 2,
             transform_type: 1,
-            transform_orientation: [0.0, 0.0, 1.0],
+            transform_orientation: BVector::new(0.0, 0.0, 1.0),
             slots: vec![slot(1.0), slot(2.0), slot(3.0)],
             ..crate::groups::Formation::new()
         });
@@ -1480,23 +1506,23 @@ fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
     assert_eq!(
         slots,
         [
-            (10, [3.0, 0.0, 4.0]),
-            (11, [4.0, 0.0, 4.0]),
-            (12, [5.0, 0.0, 4.0])
+            (10, BVector::new(3.0, 0.0, 4.0)),
+            (11, BVector::new(4.0, 0.0, 4.0)),
+            (12, BVector::new(5.0, 0.0, 4.0))
         ]
     );
     assert_eq!(
         walks,
         [
-            vec![[1.0, 0.0, 1.0], [3.0, 0.0, 4.0]],
-            vec![[2.0, 0.0, 1.0], [4.0, 0.0, 4.0]],
-            vec![[1.0, 0.0, 2.0], [5.0, 0.0, 4.0]],
+            vec![BVector::new(1.0, 0.0, 1.0), BVector::new(3.0, 0.0, 4.0)],
+            vec![BVector::new(2.0, 0.0, 1.0), BVector::new(4.0, 0.0, 4.0)],
+            vec![BVector::new(1.0, 0.0, 2.0), BVector::new(5.0, 0.0, 4.0)]
         ]
     );
     let (f, walks) = run(0x100, 3);
     let ids: Vec<_> = f.slots.iter().map(|s| s.unit_id).collect();
     assert_eq!(ids, [11, 10, 12]);
-    let x: Vec<_> = f.slots.iter().map(|s| s.transform_position[0]).collect();
+    let x: Vec<_> = f.slots.iter().map(|s| s.transform_position.x()).collect();
     assert!(
         (x[0] - 7.0 / 3.0).abs() < 1e-6
             && (x[1] - 4.0 / 3.0).abs() < 1e-6
@@ -1505,9 +1531,9 @@ fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
     );
     // 11 walks from (2, 1) to the first slot
     let [from, to] = [walks[1][0], walks[1][1]];
-    assert_eq!(from, [2.0, 0.0, 1.0]);
+    assert_eq!(from, BVector::new(2.0, 0.0, 1.0));
     assert!(
-        (to[0] - 7.0 / 3.0).abs() < 1e-6 && (to[2] - 4.0 / 3.0).abs() < 1e-6,
+        (to.x() - 7.0 / 3.0).abs() < 1e-6 && (to.y() - 4.0 / 3.0).abs() < 1e-6,
         "{to:?}"
     );
 }
@@ -1520,7 +1546,7 @@ fn attacking(t: &mut World) {
     g.current_target = crate::groups::TargetData {
         target: 20,
         kind: 1,
-        original_position: [3.5, 0.0, 3.5],
+        original_position: BVector::new(3.5, 0.0, 3.5),
         ..crate::groups::TargetData::default()
     };
     g.unit_types = vec![crate::groups::UnitTypeStatistic {
@@ -1596,7 +1622,7 @@ fn an_attack_whose_target_is_gone_from_sight_ends_or_goes_back() {
     assert!(!relayout);
     // a far target: back to the first place
     attacking(&mut t);
-    t.players[2].objects[0].body = crate::objects::layers::Body::at([7.5, 7.5, 0.0]);
+    t.players[2].objects[0].body = crate::objects::layers::Body::at(Position::new(7.5, 7.5, 0.0));
     assert!(!t.attack_update(1, &mut relayout).unwrap());
     assert!(relayout);
     assert_eq!(t.groups.get(1).unwrap().current_target.target, -1);
@@ -1663,7 +1689,7 @@ fn an_attack_releases_a_category_in_reach_or_arrived() {
 fn a_unit_in_contact_releases_its_category() {
     let mut t = world();
     attacking(&mut t);
-    t.players[1].objects[0].body = crate::objects::layers::Body::at([3.0, 3.0, 0.0]);
+    t.players[1].objects[0].body = crate::objects::layers::Body::at(Position::new(3.0, 3.0, 0.0));
     register(&mut t);
     light(&mut t, 1, 3, 3, true);
     for m in &mut t.groups.get_mut(1).unwrap().members {
@@ -1693,7 +1719,7 @@ fn an_attack_follows_a_target_that_moved() {
         .get_mut(1)
         .unwrap()
         .current_target
-        .original_position = [3.5, 0.0, 1.5];
+        .original_position = BVector::new(3.5, 0.0, 1.5);
     let mut relayout = false;
     assert!(!t.attack_update(1, &mut relayout).unwrap());
     let g = t.groups.get(1).unwrap();

@@ -8,6 +8,7 @@ use crate::gathering::gather::{
     FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, IDLE, NO_GATHER_POINT,
     Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK, Walks,
 };
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::{Me, Mover};
@@ -76,9 +77,9 @@ impl GatherAction {
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
-        if self.gather_at[0] != NO_GATHER_POINT {
-            self.point[0] = self.gather_at[0];
-            self.point[1] = self.gather_at[1];
+        let [x, y] = self.gather_at;
+        if x != NO_GATHER_POINT {
+            self.point = self.point.with_x(x).with_y(y);
         }
         self.walk_to_point(RESEED_WALK, radius, mover, walks)
     }
@@ -244,7 +245,7 @@ impl GatherAction {
         let released = [self.target, self.carry_to];
         self.target = -1;
         self.carry_to = -1;
-        self.point = [-1.0; 3];
+        self.point = Position::from([-1.0; 3]);
         Ok(released)
     }
 

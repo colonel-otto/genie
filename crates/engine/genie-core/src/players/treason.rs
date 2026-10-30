@@ -104,6 +104,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Position;
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::unit::Unit;
     use crate::test_ids::object_id;
@@ -168,7 +169,7 @@ mod tests {
             .collect();
     }
 
-    fn king(id: i32, position: [f32; 3], inside: Option<i32>) -> Unit {
+    fn king(id: i32, position: Position, inside: Option<i32>) -> Unit {
         Unit {
             id: object_id(id),
             body: crate::objects::layers::Body::at(position),
@@ -191,13 +192,13 @@ mod tests {
         with_flares(&mut t);
         t.next_object_id = object_id(100);
         t.players[2].objects = vec![
-            king(20, [5.0, 6.0, 0.0], None),
-            king(21, [9.0, 9.0, 0.0], None),
+            king(20, Position::new(5.0, 6.0, 0.0), None),
+            king(21, Position::new(9.0, 9.0, 0.0), None),
         ]
         .into();
-        t.players[3].objects = vec![king(30, [1.0, 1.0, 0.0], None)].into();
+        t.players[3].objects = vec![king(30, Position::new(1.0, 1.0, 0.0), None)].into();
         t.treason(PlayerId::new(1)).unwrap();
-        let flares = |t: &World, p: usize| -> Vec<(i32, [f32; 3])> {
+        let flares = |t: &World, p: usize| -> Vec<(i32, Position)> {
             t.players[p]
                 .objects
                 .iter()
@@ -205,18 +206,19 @@ mod tests {
                 .map(|u| (u.id.get(), u.position()))
                 .collect()
         };
-        assert_eq!(flares(&t, 1), [(100, [5.0, 6.0, 0.0])]);
-        assert_eq!(flares(&t, 3), [(101, [5.0, 6.0, 0.0])]);
+        assert_eq!(flares(&t, 1), [(100, Position::new(5.0, 6.0, 0.0))]);
+        assert_eq!(flares(&t, 3), [(101, Position::new(5.0, 6.0, 0.0))]);
         assert_eq!(flares(&t, 2), []);
         // a king inside a building: the flares go to the building's place
         let mut t = world();
         t.settings.game_mode = 1;
         with_flares(&mut t);
-        let mut castle = king(40, [12.0, 13.0, 0.0], None);
+        let mut castle = king(40, Position::new(12.0, 13.0, 0.0), None);
         castle.life.master_id = CASTLE;
-        t.players[2].objects = vec![king(20, [5.0, 6.0, 0.0], Some(40)), castle].into();
+        t.players[2].objects =
+            vec![king(20, Position::new(5.0, 6.0, 0.0), Some(40)), castle].into();
         t.treason(PlayerId::new(1)).unwrap();
-        assert_eq!(flares(&t, 1)[0].1, [12.0, 13.0, 0.0]);
+        assert_eq!(flares(&t, 1)[0].1, Position::new(12.0, 13.0, 0.0));
     }
 
     /// The castle test asks the player's masters and its tracker.

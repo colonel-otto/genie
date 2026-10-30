@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Position;
 use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -114,7 +115,7 @@ fn a_ray_meets_the_nearest_box_side_toward_it() {
 
 fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
     Placed {
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         radius: [r, r],
         class: if kind == 5 {
             class::VILLAGER
@@ -192,7 +193,7 @@ fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
     w.insert(9171, placed(2.0, 5.5, 0.2, 5));
     w.insert(48, placed(5.5, 5.5, 0.5, 2));
     w.insert(9149, placed(10.5, 5.5, 0.5, 2));
-    let mut mover = crate::gathering::hunt::tests::walker().placed([2.0, 5.5, 0.0]);
+    let mut mover = crate::gathering::hunt::tests::walker().placed(Position::new(2.0, 5.5, 0.0));
     mover.stats.radius = [0.2, 0.2, 0.2];
     mover.stats.restriction_mask = 6;
     let me = crate::movement::Me {
@@ -690,7 +691,7 @@ fn a_point_lies_in_the_first_hull_holding_it() {
 /// A tall object of class 10 (39 for a gate) without an obstruction record, owned by player 1.
 fn tall(x: f32, y: f32, r: f32, class: ClassId) -> Placed {
     Placed {
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         radius: [r, r],
         class,
         player: PlayerId::new(1),
@@ -841,7 +842,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
         Vec::new(),
     );
     // a building of 2 × 2 tiles, 9..=10 each way, its anchor (10, 10)
-    let _ = v.link_building([10.0, 10.0, 0.0], [1.0, 1.0]);
+    let _ = v.link_building(Position::new(10.0, 10.0, 0.0), [1.0, 1.0]);
     assert_eq!(v.anchor_of(9, 9), Some([10, 10]));
     w.sight = Some(v);
     w.insert(20, tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile

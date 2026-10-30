@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::object_list::ObjectList;
 use crate::test_ids::object_id;
@@ -73,7 +74,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         area_effect: 0.0,
         blast_level: 0,
         los: 4.0,
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         radius: [0.2, 0.2],
         speed: 0.8,
         scenario: false,
@@ -117,7 +118,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
     };
     let unit = |id, x, master_id, ai: Option<UnitAi>| Unit {
         id,
-        body: crate::objects::layers::Body::at([x, 10.0, 0.0]),
+        body: crate::objects::layers::Body::at(Position::new(x, 10.0, 0.0)),
         ai,
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
@@ -171,7 +172,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         area_effect: 0.0,
         blast_level: 0,
         los: 4.0,
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         radius: [0.3, 0.3],
         speed: 1.0,
         scenario: false,
@@ -259,7 +260,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     };
     let unit = |id, x, master_id| Unit {
         id,
-        body: crate::objects::layers::Body::at([x, 10.0, 0.0]),
+        body: crate::objects::layers::Body::at(Position::new(x, 10.0, 0.0)),
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
             state: 2,
@@ -299,7 +300,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         area_effect: 0.0,
         blast_level: 0,
         los: 4.0,
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         radius: [0.3, 0.3],
         speed: 1.0,
         scenario: false,

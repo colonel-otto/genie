@@ -119,8 +119,8 @@ impl World {
             .1
             .position();
         let (x, y) = (
-            crate::math::conversions::cvttss2si(at[0]),
-            crate::math::conversions::cvttss2si(at[1]),
+            crate::math::conversions::cvttss2si(at.x()),
+            crate::math::conversions::cvttss2si(at.y()),
         );
         let [w, h] = self.spatial.map;
         let (x0, x1) = ((x - 3).max(0), if x + 3 < w { x + 3 } else { w - 1 });
@@ -297,7 +297,7 @@ impl World {
                 unit.life.attribute_type,
                 self.players.player(p)?.attributes.len(),
             ),
-            unaimed: way_back && target == -1 && point[0] == NO_POINT && point[1] == NO_POINT,
+            unaimed: way_back && target == -1 && point.x() == NO_POINT && point.y() == NO_POINT,
         }))
     }
 

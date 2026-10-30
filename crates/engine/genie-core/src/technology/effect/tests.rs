@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
@@ -159,7 +160,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
     let unit = |id, state: u8, inside: Option<i32>| {
         let mut u = Unit {
             id,
-            body: crate::objects::layers::Body::at([5.5, 5.5, 0.0]),
+            body: crate::objects::layers::Body::at(Position::new(5.5, 5.5, 0.0)),
             ..Unit::default()
         };
         u.life.master_id = 70;
@@ -187,7 +188,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         t.spatial.insert(
             id,
             crate::map::spatial::Placed {
-                position: [5.5, 5.5, 0.0],
+                position: Position::new(5.5, 5.5, 0.0),
                 radius: [0.5, 0.5],
                 class: class::CLASS_0,
                 player: PlayerId::new(0),
@@ -623,7 +624,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             kind: 10,
         };
         v.add_seer(1, seer);
-        let position = [10.5, 10.5, 0.0];
+        let position = Position::new(10.5, 10.5, 0.0);
         let radius = [0.5, 0.5];
         let _ = v.sight_on(1, position, radius, false, false);
         t.spatial.sight = Some(v);
@@ -649,9 +650,16 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     let circle = |los| {
         let mut t = world();
         let v = t.spatial.sight.as_mut().unwrap();
-        v.sight_off(1, [10.5, 10.5, 0.0], [0.5, 0.5], false, false)
+        v.sight_off(1, Position::new(10.5, 10.5, 0.0), [0.5, 0.5], false, false)
             .unwrap();
-        let _ = v.sight_on_los(1, [10.5, 10.5, 0.0], [0.5, 0.5], false, los, false);
+        let _ = v.sight_on_los(
+            1,
+            Position::new(10.5, 10.5, 0.0),
+            [0.5, 0.5],
+            false,
+            los,
+            false,
+        );
         sight(&t)
     };
     let (two, four, five, six) = (circle(2), circle(4), circle(5), circle(6));
@@ -705,7 +713,7 @@ fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
     let moving = |id| {
         let mut u = unit_of(id, 4, 30.0);
         u.body = crate::objects::layers::Body::new(
-            [5.5, 5.5, 0.0],
+            Position::new(5.5, 5.5, 0.0),
             None,
             Some(crate::gathering::hunt::tests::walker()),
         );
@@ -755,7 +763,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         t.spatial.insert(
             id,
             crate::map::spatial::Placed {
-                position: [5.5, 5.5, 0.0],
+                position: Position::new(5.5, 5.5, 0.0),
                 radius: [0.5, 0.5],
                 class: class::CLASS_6,
                 player: PlayerId::new(0),
@@ -1593,7 +1601,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
     let mut exploring = shown(3, 0);
     exploring.actions.set_explore(Some(
         crate::movement::explore::ExploreAction::new(
-            [5.0, 5.0, 0.0],
+            Position::new(5.0, 5.0, 0.0),
             &crate::movement::explore::bare_walk(),
         )
         .unwrap()
@@ -1637,7 +1645,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
 #[test]
 fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
     let mut house = unit_of(1, 70, 550.0);
-    house.place_for_test([5.5, 5.5, 0.0]);
+    house.place_for_test(Position::new(5.5, 5.5, 0.0));
     house.construction = Some(built());
     let mut soldier = unit_of(2, 4, 30.0);
     soldier.group.id = 7;
@@ -1663,7 +1671,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
     t.spatial.insert(
         1,
         crate::map::spatial::Placed {
-            position: [5.5, 5.5, 0.0],
+            position: Position::new(5.5, 5.5, 0.0),
             radius: [0.5, 0.5],
             class: class::BUILDING,
             player: PlayerId::new(0),

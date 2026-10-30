@@ -1,6 +1,7 @@
 //! What the villagers, transports, traders, fishing ships and buildings do when damaged.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
@@ -319,7 +320,7 @@ impl UnitAi {
         let mut best = (-1, FISHING_BUILD_FAR);
         for class in FISHING_BUILDS {
             let found = side.closest(&Search {
-                at: [at.position[0], at.position[1]],
+                at: at.position.ground(),
                 radius: civilian_search_radius(at.los, at.search_radius),
                 classes: &FISHING_CARED,
                 size: at.size,
@@ -370,7 +371,7 @@ impl UnitAi {
             target_owner: -1,
             point: self.target_point,
             range: self.desired_distance,
-            shown: [self.target_point[0], self.target_point[1]],
+            shown: self.target_point.ground(),
             ready: true,
             target_type: self.target_type,
         };
@@ -448,7 +449,7 @@ impl UnitAi {
         &mut self,
         target: i32,
         class: i32,
-        point: [f32; 3],
+        point: Position,
         at: &Surroundings,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
@@ -484,11 +485,11 @@ impl UnitAi {
             target_owner: -1,
             point: self.target_point,
             range: self.desired_distance,
-            shown: [self.target_point[0], self.target_point[1]],
+            shown: self.target_point.ground(),
             ready: true,
             target_type: self.target_type,
         };
-        let place = ([at.position[0], at.position[1]], at.class);
+        let place = (at.position.ground(), at.class);
         self.order_now(
             record,
             Some(at.id),

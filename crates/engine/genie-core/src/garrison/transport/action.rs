@@ -7,6 +7,7 @@ use crate::garrison::transport::{
     SAIL_TO_UNLOAD, SHORE_MARGIN, Ship, Shore, TransportAction, TransportReads, UNLOAD,
     UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
 };
+use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
@@ -26,7 +27,7 @@ impl TransportAction {
     /// The unload command's constructor (`FUN_140aa3ab0` with no task, `+0x48`): its point the
     /// unit's place `at`, state 0 and `+0x34` −1 (the base's, `FUN_140a73e90`), `+0x68` clear.
     #[must_use]
-    pub const fn new(at: [f32; 3]) -> Self {
+    pub const fn new(at: Position) -> Self {
         Self::on_task(None, at)
     }
 
@@ -34,7 +35,7 @@ impl TransportAction {
     /// task of type 12 at the work command's point `at` (`+0x38`..`+0x40`): state 0 and `+0x34`
     /// −1 (the base's, `FUN_140a73e90`), `+0x68` clear.
     #[must_use]
-    pub const fn on_task(task: Option<TaskId>, at: [f32; 3]) -> Self {
+    pub const fn on_task(task: Option<TaskId>, at: Position) -> Self {
         Self {
             state: 0,
             mode: -1,
@@ -58,7 +59,7 @@ impl TransportAction {
         ship: &Ship<'_>,
         shore: &mut impl Shore,
     ) -> Result<Changed, GenieError> {
-        let [x, y, _] = self.point;
+        let (x, y) = (self.point.x(), self.point.y());
         let sails = first
             && crate::math::fmath::at_most_or_unordered(0.0, x)
             && crate::math::fmath::at_most_or_unordered(0.0, y);
@@ -92,11 +93,10 @@ impl TransportAction {
         match state {
             IDLE => changed.stands = true,
             SAIL_TO_UNLOAD | SAIL => {
-                let [ux, uy, _] = ship.position;
-                let to = [self.point[0], self.point[1]];
-                if let Some([sx, sy]) = shore.shore_point([ux, uy], to) {
-                    self.point[0] = sx;
-                    self.point[1] = sy;
+                if let Some([sx, sy]) =
+                    shore.shore_point(ship.position.ground(), self.point.ground())
+                {
+                    self.point = self.point.with_x(sx).with_y(sy);
                 }
                 self.move_to = ship.walk.to_point(self.point, MOVE_RANGE, ship.given)?;
             }
@@ -115,7 +115,7 @@ impl TransportAction {
     /// A sprite the table lacks.
     pub fn move_to(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         ship: &Ship<'_>,
         shore: &mut impl Shore,
     ) -> Result<Changed, GenieError> {
@@ -148,15 +148,15 @@ impl TransportAction {
     /// What the map reads give.
     pub fn work(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         by_self: bool,
         ship: &Ship<'_>,
         shore: &mut impl Shore,
     ) -> Result<Changed, GenieError> {
         self.mode = 1;
-        let [x, y, _] = point;
+        let (x, y) = (point.x(), point.y());
         let zone = shore.zone(cvttss2si(x), cvttss2si(y))?;
-        let [ux, uy, _] = ship.position;
+        let (ux, uy) = (ship.position.x(), ship.position.y());
         // MAXSS 0, gap: the gap when it is not below 0, a NaN gap too
         let dx = crate::math::fmath::maxss(0.0, (x - ux).abs() - ship.radius[0]);
         let dy = crate::math::fmath::maxss(0.0, (y - uy).abs() - ship.radius[1]);
@@ -283,7 +283,7 @@ impl TransportAction {
                 return Ok(Updated::Code(3));
             }
             UNLOAD => {
-                let [x, y, _] = self.point;
+                let (x, y) = (self.point.x(), self.point.y());
                 let mut reaches = true;
                 if x == NONE {
                     self.retarget = false;
@@ -374,8 +374,11 @@ impl TransportAction {
         let start = state == MoveTo::Start;
         let walks = start || state == MoveTo::Moving;
         let ask = if start {
-            let [x, y, _] = unit.body.position();
-            UnitAi::path_ask(unit.ai.as_mut(), [x, y], [self.point[0], self.point[1]])
+            UnitAi::path_ask(
+                unit.ai.as_mut(),
+                unit.body.position().ground(),
+                self.point.ground(),
+            )
         } else {
             PathAsk::default()
         };
@@ -404,14 +407,14 @@ impl TransportAction {
         ship: &Ship<'_>,
         shore: &mut impl Shore,
     ) -> Result<bool, GenieError> {
-        let [ux, uy, _] = ship.position;
+        let (ux, uy) = (ship.position.x(), ship.position.y());
         let [rx, ry] = ship.radius;
         let [w, h] = ship.map;
         let x0 = cvttss2si((ux - rx) - SHORE_MARGIN).max(0);
         let y0 = cvttss2si((uy - ry) - SHORE_MARGIN).max(0);
         let x1 = cvttss2si((ux + rx) + SHORE_MARGIN).min(w - 1);
         let y1 = cvttss2si((uy + ry) + SHORE_MARGIN).min(h - 1);
-        let [x, y, _] = self.point;
+        let (x, y) = (self.point.x(), self.point.y());
         let zone = if x == NONE {
             None
         } else {

@@ -2,6 +2,7 @@
 //! the explorers' search.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
@@ -164,7 +165,7 @@ impl UnitAi {
         let from = current.map_or(at.position, |t| t.position);
         let (classes, radius) = self.search_area(at, computer)?;
         let found = side.closest(&Search {
-            at: [from[0], from[1]],
+            at: from.ground(),
             radius,
             classes,
             size: at.size,
@@ -354,7 +355,7 @@ impl UnitAi {
         if let Some([x, y]) = off.spot {
             let _ = self.move_aside(
                 AiMove {
-                    point: [x, y, off.z],
+                    point: Position::new(x, y, off.z),
                     range: 0.0,
                     force: true,
                     // The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
@@ -376,7 +377,7 @@ impl UnitAi {
                 priority: 100,
                 target: o.id,
                 target_owner: o.owner,
-                point: [o.vector[0], o.vector[1], 0.0],
+                point: Position::new(o.vector[0], o.vector[1], 0.0),
                 range: 0.0,
                 shown: o.vector,
                 ready: true,

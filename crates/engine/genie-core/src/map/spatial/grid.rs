@@ -49,7 +49,7 @@ impl Spatial {
     /// both corners' tiles, the cell the one of the low corner's tile.
     pub(super) fn filed(&self, p: &Placed, kind: u8) -> (i32, i32, i32) {
         let [x0, y0, mut x1, mut y1] = p.bounds();
-        let [x, y, _] = p.position;
+        let (x, y) = (p.position.x(), p.position.y());
         if matches!(kind, 2 | 10 | 11 | 13) && x % 0.5 < 0.001 && y % 0.5 < 0.001 {
             x1 -= 0.001;
             y1 -= 0.001;

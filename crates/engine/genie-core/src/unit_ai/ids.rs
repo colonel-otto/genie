@@ -1,6 +1,7 @@
 //! The orders, actions, timers and reaches the unit AI names, its factory types and stances.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -255,7 +256,7 @@ pub const fn factory_type(
 pub struct NewObject {
     /// The object's place (`+0x3c8`, `+0x4c8`, `+0x5a8`): the state position, the hunted
     /// animal's and the boar's origin.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's id (`+0x58`).
     pub master: i16,
     /// Its master's `copy_id` (`+0x158`).
@@ -283,7 +284,7 @@ impl NewObject {
     /// human player's in the Dark Age with posture 0 ([`NewObject::computer`],
     /// [`NewObject::posture`], [`NewObject::age`] are the caller's).
     #[must_use]
-    pub fn of(position: [f32; 3], master: i16, made: &crate::objects::masters::Master) -> Self {
+    pub fn of(position: Position, master: i16, made: &crate::objects::masters::Master) -> Self {
         Self {
             position,
             master,

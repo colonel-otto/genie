@@ -2,6 +2,7 @@
 //! construction's start and completion.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::vision::registry::UnitUpdate;
@@ -54,10 +55,10 @@ impl Visibility {
         &mut self,
         id: i32,
         owner: PlayerId,
-        at: [f32; 3],
+        at: Position,
         radius: [f32; 2],
         class: ClassId,
-        main: Option<([f32; 3], u8)>,
+        main: Option<(Position, u8)>,
     ) -> Result<Option<u64>, GenieError> {
         let Some(s) = self.seers.get(&id).copied() else {
             return Ok(None);
@@ -66,10 +67,11 @@ impl Visibility {
             return Ok(None);
         }
         let annex = main.filter(|_| s.state < 7 && s.building.is_some());
-        let ([x, y, _], umv, edge) = match annex {
+        let (place, umv, edge) = match annex {
             Some((place, umv)) => (place, umv, false),
             None => (at, s.umv, true),
         };
+        let (x, y) = (place.x(), place.y());
         let mut mask = self.word_at(x, y)?;
         if umv != 0 {
             let offsets = self
@@ -107,12 +109,12 @@ impl Visibility {
     }
 
     /// The registry's part of a combat object's new place (`FUN_14108c320`): its records follow.
-    pub fn registry_moved(&mut self, id: i32, class: ClassId, from: [f32; 3], to: [f32; 3]) {
-        if id < 0 || (from[0] == to[0] && from[1] == to[1]) {
+    pub fn registry_moved(&mut self, id: i32, class: ClassId, from: Position, to: Position) {
+        if id < 0 || (from.x() == to.x() && from.y() == to.y()) {
             return;
         }
         if let Some(r) = self.registry.as_mut() {
-            r.moved(id, class, [to[0], to[1]]);
+            r.moved(id, class, to.ground());
         }
     }
 
@@ -122,7 +124,7 @@ impl Visibility {
         &mut self,
         id: i32,
         owner: PlayerId,
-        at: [f32; 3],
+        at: Position,
         old: ([f32; 2], ClassId),
         new: ([f32; 2], ClassId),
     ) -> Result<(), GenieError> {
@@ -130,7 +132,7 @@ impl Visibility {
             return Ok(());
         };
         let mask = r.entry(id).map_or(0, |e| e.mask);
-        let place = [at[0], at[1]];
+        let place = at.ground();
         r.update_unit(UnitUpdate {
             id,
             owner: owner.index() as u8,
@@ -156,7 +158,7 @@ impl Visibility {
         &mut self,
         id: i32,
         owner: PlayerId,
-        at: [f32; 3],
+        at: Position,
         radius: [f32; 2],
         class: ClassId,
     ) -> Result<(), GenieError> {
@@ -167,7 +169,7 @@ impl Visibility {
         r.update_unit(UnitUpdate {
             id,
             owner: owner.index() as u8,
-            position: [at[0], at[1]],
+            position: at.ground(),
             radii: radius,
             class,
             old: mask & 0xffff_ffff,
@@ -195,7 +197,7 @@ impl Visibility {
     pub fn owner_changed(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
         (new, los): (PlayerId, f32),
         sees: bool,
@@ -222,7 +224,7 @@ impl Visibility {
     pub fn construction_completed(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
     ) -> Result<(), GenieError> {
         let Some(b) = self.seers.get_mut(&id).and_then(|s| s.building.as_mut()) else {
@@ -242,7 +244,7 @@ impl Visibility {
     pub fn construction_started(
         &mut self,
         id: i32,
-        position: [f32; 3],
+        position: Position,
         radius: [f32; 2],
     ) -> Result<(), GenieError> {
         if let Some(b) = self.seers.get_mut(&id).and_then(|s| s.building.as_mut()) {

@@ -14,7 +14,7 @@ use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
 fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
     let unit = |id, master, x: f32, y: f32| Unit {
         id,
-        body: crate::objects::layers::Body::at([x, y, 0.0]),
+        body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
         life: Lifecycle {
             master_id: master,
             ..Lifecycle::default()
@@ -59,7 +59,7 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
     ];
     let g = GatherPoint {
         state: 1,
-        point: [21.0, 21.0, 0.0],
+        point: Position::new(21.0, 21.0, 0.0),
         target: 5,
         target_master: 349,
     };
@@ -69,7 +69,7 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
     );
     // 7 tiles from the closest tree's footprint, beyond the villager's sight of 4
     let far = GatherPoint {
-        point: [30.0, 21.0, 0.0],
+        point: Position::new(30.0, 21.0, 0.0),
         ..g
     };
     assert_eq!(
@@ -136,7 +136,7 @@ fn a_hill_mode_takes_flat_ground_side_slopes_or_an_edge_within_one_step() {
 #[test]
 fn the_tc_spawns_its_villager_below_the_sheep_on_its_right() {
     let site = Site {
-        position: [104.0, 47.0, 0.0],
+        position: Position::new(104.0, 47.0, 0.0),
         radius: [2.0, 2.0],
         gather: Some([107.2451, 46.075_863]),
         walls: [false; 4],
@@ -179,7 +179,7 @@ fn a_blocker_that_moves_lets_the_spot_try_its_next_candidate() {
 fn sheep(state: u8) -> Near {
     Near {
         id: 9520,
-        position: [106.68481, 47.14652, 0.0],
+        position: Position::new(106.68481, 47.14652, 0.0),
         radius: [0.35, 0.35],
         tall: true,
         kind: 70,
@@ -246,7 +246,7 @@ impl PlaceMap for Fogged {
         Ok(self
             .0
             .iter()
-            .filter(|o| o.position[0] as i32 == x && o.position[1] as i32 == y)
+            .filter(|o| o.position.x() as i32 == x && o.position.y() as i32 == y)
             .copied()
             .collect())
     }
@@ -258,7 +258,7 @@ impl PlaceMap for Fogged {
 fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
     let house = Near {
         id: 500,
-        position: [20.5, 20.5, 0.0],
+        position: Position::new(20.5, 20.5, 0.0),
         radius: [1.0, 1.0],
         kind: 80,
         class: class::BUILDING,
@@ -340,7 +340,7 @@ impl PlaceMap for Flat {
         Ok(self
             .0
             .iter()
-            .filter(|o| o.position[0] as i32 == x && o.position[1] as i32 == y)
+            .filter(|o| o.position.x() as i32 == x && o.position.y() as i32 == y)
             .copied()
             .collect())
     }
@@ -456,7 +456,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         priority: 5,
         target: -1,
         target_owner: -1,
-        point: [40.0, 80.0, 7.0],
+        point: Position::new(40.0, 80.0, 7.0),
         range: 2.0,
         shown: [40.0, 80.0],
         ready: false,
@@ -480,7 +480,13 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
             .iter()
             .map(|o| (o.order, o.priority, o.point, o.range, o.ready))
             .collect::<Vec<_>>(),
-        [(OrderKind::Move, 100, [40.0, 80.0, 0.0], 0.0, true)]
+        [(
+            OrderKind::Move,
+            100,
+            Position::new(40.0, 80.0, 0.0),
+            0.0,
+            true
+        )]
     );
     let mut t = world();
     t.players[1].computer = true;
@@ -525,7 +531,7 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
         });
         p.objects[2].gather_point = Some(GatherPoint {
             state,
-            point: [40.0, 80.0, 0.0],
+            point: Position::new(40.0, 80.0, 0.0),
             target: -1,
             target_master: -1,
         });
@@ -559,7 +565,7 @@ fn all_blocked(site: &Site) -> (Vec<[f32; 2]>, Result<[f32; 2], GenieError>) {
 #[test]
 fn a_spawn_search_without_a_gather_point_walks_the_eight_segments_once() {
     let site = Site {
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         radius: [1.0, 1.0],
         gather: None,
         walls: [false; 4],
@@ -598,7 +604,7 @@ fn a_spawn_search_without_a_gather_point_walks_the_eight_segments_once() {
 #[test]
 fn a_second_pass_between_walled_corners_tries_the_bottom_right_corner() {
     let site = Site {
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         radius: [1.0, 1.0],
         gather: Some([20.0, 5.0]),
         walls: [false, true, false, true],
@@ -630,7 +636,7 @@ fn queued_move() -> crate::unit_ai::QueuedOrder {
         priority: 5,
         target: -1,
         target_owner: -1,
-        point: [40.0, 80.0, 7.0],
+        point: Position::new(40.0, 80.0, 7.0),
         range: 2.0,
         shown: [40.0, 80.0],
         ready: false,
@@ -649,8 +655,13 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
         let u = &mut t.players[1].objects[0];
         u.town_bell.flag = true;
         u.ai.as_mut().unwrap().orders.push(queued_move());
-        t.gather_move(PlayerId::new(1), 0, [40.0, 80.0, 0.0], notified)
-            .unwrap();
+        t.gather_move(
+            PlayerId::new(1),
+            0,
+            Position::new(40.0, 80.0, 0.0),
+            notified,
+        )
+        .unwrap();
         t.players[1].objects.swap_remove(0).unwrap()
     };
     let u = walked(true);
@@ -661,14 +672,14 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
         (ai.current_order, ai.current_action, ai.current_target),
         (Some(OrderKind::Move), Some(ActionKind::Move), -1)
     );
-    assert_eq!(ai.target_point, [40.0, 80.0, 0.0]);
+    assert_eq!(ai.target_point, Position::new(40.0, 80.0, 0.0));
     assert_eq!(ai.orders, []);
     assert_eq!(
         u.actions.move_to().copied(),
         Some(MoveToAction {
             sprite: None,
             state: MoveTo::Start,
-            point: [40.0, 80.0, 0.0],
+            point: Position::new(40.0, 80.0, 0.0),
             target: -1,
             range: 0.0,
             quiet: false,
@@ -695,7 +706,7 @@ fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
         .unwrap()
         .stats
         .speed = 0.0;
-    t.gather_move(PlayerId::new(1), 0, [40.0, 80.0, 0.0], true)
+    t.gather_move(PlayerId::new(1), 0, Position::new(40.0, 80.0, 0.0), true)
         .unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(u.body.mover().unwrap().waiting, 1);
@@ -703,10 +714,10 @@ fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
     assert_eq!(u.ai.as_ref().unwrap().current_order, None);
     // a second walk finds the first's `MoveTo`
     let mut t = crate::world::tests::forage_world();
-    t.gather_move(PlayerId::new(1), 0, [40.0, 80.0, 0.0], true)
+    t.gather_move(PlayerId::new(1), 0, Position::new(40.0, 80.0, 0.0), true)
         .unwrap();
     let reason = |t: &mut World| {
-        t.gather_move(PlayerId::new(1), 0, [41.0, 80.0, 0.0], true)
+        t.gather_move(PlayerId::new(1), 0, Position::new(41.0, 80.0, 0.0), true)
             .unwrap_err()
             .reason()
     };
@@ -782,7 +793,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
             PlayerId::new(1),
             800,
             &made(&t, 800),
-            [30.5, 85.5, 0.0],
+            Position::new(30.5, 85.5, 0.0),
             Facing::Dead(None),
         )
         .unwrap();
@@ -798,7 +809,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
             PlayerId::new(1),
             801,
             &made(&t, 801),
-            [31.5, 85.5, 0.0],
+            Position::new(31.5, 85.5, 0.0),
             Facing::Dead(Some(2)),
         )
         .unwrap();
@@ -815,9 +826,15 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
         let mut t = remains_world();
         let mut m = made(&t, 801);
         change(&mut m);
-        t.plain_object(PlayerId::new(1), m.id, &m, [31.5, 85.5, 0.0], facing)
-            .unwrap_err()
-            .reason()
+        t.plain_object(
+            PlayerId::new(1),
+            m.id,
+            &m,
+            Position::new(31.5, 85.5, 0.0),
+            facing,
+        )
+        .unwrap_err()
+        .reason()
     };
     let unchanged = |_: &mut crate::objects::masters::Master| {};
     assert_eq!(
@@ -1111,7 +1128,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
     let flat = Flat(Vec::new());
     let house = Near {
         id: 500,
-        position: [20.5, 20.5, 0.0],
+        position: Position::new(20.5, 20.5, 0.0),
         radius: [1.0, 1.0],
         kind: 80,
         class: class::BUILDING,
@@ -1147,7 +1164,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
             ..house
         },
         Near {
-            position: [30.5, 20.5, 0.0],
+            position: Position::new(30.5, 20.5, 0.0),
             ..house
         },
     ] {
@@ -1167,7 +1184,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
     // obstruction types 11 to 13 take the outline's box: one that does not reach the site, or
     // a negative height, passes; a height of 0 counts as 1 for a building
     let outlined = |outline| Near {
-        position: [22.6, 21.0, 0.0],
+        position: Position::new(22.6, 21.0, 0.0),
         obstruction_type: 11,
         outline,
         ..house
@@ -1185,7 +1202,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
 fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
     let house = Near {
         id: 600,
-        position: [21.5, 21.5, 0.0],
+        position: Position::new(21.5, 21.5, 0.0),
         radius: [1.0, 1.0],
         kind: 80,
         class: class::BUILDING,

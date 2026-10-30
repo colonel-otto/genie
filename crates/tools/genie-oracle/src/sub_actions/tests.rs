@@ -207,7 +207,7 @@ fn a_saved_attack_reads_its_target_range_and_move_to() {
     // the MoveTo is quiet and holds its own state, point and range
     let m = a.move_to.unwrap();
     assert_eq!(
-        (m.state, m.point[0], m.point[1], m.quiet),
+        (m.state, m.point.x(), m.point.y(), m.quiet),
         (MoveTo::Moving, 3.0, 4.0, true)
     );
     assert_eq!(a.range.to_bits(), 5.0_f32.to_bits());

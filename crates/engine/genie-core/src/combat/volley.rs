@@ -3,7 +3,9 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::missile::AimAt;
+use crate::map::Position;
 use crate::map::spatial::Placed;
+use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::actions::ActionList;
@@ -270,7 +272,7 @@ impl Unit {
             master.weapon_offset,
             master.volley_spread[2],
             scatter,
-            building.then_some([aimed.position[0], aimed.position[1]]),
+            building.then_some(aimed.position.ground()),
         );
         let volley = master.volley_missile.and_then(|id| masters.get(id));
         let made = match volley {
@@ -379,8 +381,8 @@ impl Unit {
         }
         let mut mover = Mover {
             animated: crate::objects::layers::Animated::default(),
-            forward: [1.0, 0.0, 0.0],
-            right: [0.0, 0.0, crate::production::spawn::START_RIGHT_Z],
+            forward: BVector::new(1.0, 0.0, 0.0),
+            right: BVector::new(0.0, 0.0, crate::production::spawn::START_RIGHT_Z),
             velocity: None,
             paths: Vec::new(),
             factor: 1.0,
@@ -389,7 +391,7 @@ impl Unit {
             wait_delays: 0,
             attack_moving: false,
             last_move: c.w.world_time,
-            moved_at: [0.0; 3],
+            moved_at: Position::ORIGIN,
             substitute_count: 0,
             ignore_units: Vec::new(),
             user_waypoints: Vec::new(),
@@ -408,9 +410,13 @@ impl Unit {
                     .ok_or(GenieError::unsupported(
                         "a missile without the map's terrain",
                     ))?
-                    .ground(position[0], position[1])?;
-            position[2] =
-                crate::combat::missile::grounded(position[2], ground, false, stats.fly_mode);
+                    .ground(position.x(), position.y())?;
+            position = position.with_z(crate::combat::missile::grounded(
+                position.z(),
+                ground,
+                false,
+                stats.fly_mode,
+            ));
         }
         mover.mark_move(position, c.w.world_time);
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
@@ -554,7 +560,7 @@ impl Unit {
 /// and class, and player.
 pub(crate) struct Aimed {
     pub(crate) target: i32,
-    pub(crate) position: [f32; 3],
+    pub(crate) position: Position,
     pub(crate) radius: [f32; 3],
     pub(crate) class: ClassId,
     pub(crate) player: PlayerId,
@@ -604,8 +610,8 @@ pub(crate) struct Fired {
 /// aim reads of the firing object (or the missile) and the attack count the aim sees.
 pub(crate) struct Shot {
     pub(crate) made: i16,
-    pub(crate) at: [f32; 3],
-    pub(crate) point: [f32; 3],
+    pub(crate) at: Position,
+    pub(crate) point: Position,
     pub(crate) reach: f32,
     pub(crate) shooter: bool,
     pub(crate) aimer: crate::combat::missile::Aimer,

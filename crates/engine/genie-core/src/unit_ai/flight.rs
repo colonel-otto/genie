@@ -1,6 +1,7 @@
 //! The flight of the hunted animals, the boar and the villagers, and their calls for help.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -83,15 +84,15 @@ impl UnitAi {
         if !uncon && self.current_action.is_some() {
             return Ok(false);
         }
-        let [x, y, z] = at.position;
+        let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
         let (mut vx, mut vy) = (0.0f32, 0.0f32);
         let mut class_22 = false;
         for &id in &self.attackers {
             let Some(u) = at.unit(id) else {
                 continue;
             };
-            vx += u.position[0] - x;
-            vy += u.position[1] - y;
+            vx += u.position.x() - x;
+            vy += u.position.y() - y;
             // The class whose attackers make a computer's unit warn its group (`FUN_140c5e900`: 22).
             class_22 |= u.class == class::WARSHIP;
         }
@@ -124,7 +125,7 @@ impl UnitAi {
                 ey = self.state_position[1] - (vy / d) * RUN_LEASH;
             }
         }
-        self.evasive_move([ex, ey, z], (true, true), at, ai, side)
+        self.evasive_move(Position::new(ex, ey, z), (true, true), at, ai, side)
     }
 
     /// `evasiveMoveTo` (the unit AI's slot 0x150, `FUN_140c4d140`) to `point` with its flags
@@ -137,7 +138,7 @@ impl UnitAi {
     /// the move action and the point without a target. True when it moves.
     pub(super) fn evasive_move(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         (uncon, tries): (bool, bool),
         at: &Surroundings,
         ai: &mut Well512,
@@ -165,8 +166,8 @@ impl UnitAi {
                 v
             }
         };
-        let mut x = held(near(point[0], at.position[0]), at.map[0]);
-        let mut y = held(near(point[1], at.position[1]), at.map[1]);
+        let mut x = held(near(point.x(), at.position.x()), at.map[0]);
+        let mut y = held(near(point.y(), at.position.y()), at.map[1]);
         if tries {
             for _ in 0..5 {
                 if side.can_stand([x, y])? {
@@ -184,7 +185,7 @@ impl UnitAi {
             }
         }
         let m = self.move_to(AiMove {
-            point: [x, y, point[2]],
+            point: Position::new(x, y, point.z()),
             range: 0.0,
             force: true,
             walk: false,
@@ -264,7 +265,7 @@ impl UnitAi {
         }
         let (classes, radius) = self.search_area(at, computer)?;
         let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius,
             classes,
             size: at.size,

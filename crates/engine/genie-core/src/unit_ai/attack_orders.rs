@@ -1,6 +1,7 @@
 //! The orders a unit AI takes at once and its attack commands.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -121,7 +122,7 @@ impl UnitAi {
         any: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         if matches!(self.ai_type, 13 | 15 | SIEGE_AI) {
             return side.may_attack(target, &self.seeker(at));
         }

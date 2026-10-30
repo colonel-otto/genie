@@ -1,6 +1,7 @@
 //! The unit AI's state, gates, the auto scout and the STOP, EXPLORE and standing commands.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
@@ -62,7 +63,7 @@ impl World {
             }
             let class = master.class;
             let unit = &self.players.live(p, idx)?;
-            let place = ([unit.position()[0], unit.position()[1]], Some(class));
+            let place = (unit.position().ground(), Some(class));
             // slot 0x1c0, its stop a call on the unit at once
             self.run_ai_calls((p, idx), |ai, side, rng| {
                 set_stance(ai, state, place, side, rng)
@@ -165,7 +166,7 @@ impl World {
                 priority: 100,
                 target: -1,
                 target_owner: -1,
-                point: [-1.0, -1.0, position[2]],
+                point: Position::new(-1.0, -1.0, position.z()),
                 range: 1.0,
                 shown: [-1.0, -1.0],
                 ready: true,
@@ -173,13 +174,7 @@ impl World {
             };
             // the order at once, its calls on the unit at once
             self.run_ai_calls((p, idx), |ai, side, rng| {
-                ai.take_order_now(
-                    state,
-                    order,
-                    ([position[0], position[1]], Some(class)),
-                    rng,
-                    side,
-                )
+                ai.take_order_now(state, order, (position.ground(), Some(class)), rng, side)
             })?;
         }
         Ok(())

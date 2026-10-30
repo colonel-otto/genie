@@ -7,7 +7,7 @@ use crate::groups::formation::{
 };
 use crate::groups::group_list::NO_FORMATION;
 use crate::groups::{Formation, UnitGroup};
-use crate::math::fmath::{Vec3, add, sub};
+use crate::math::fmath::{BVector, Rotation, add, sub};
 use crate::movement::PathData;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
@@ -69,10 +69,10 @@ impl World {
             let end = if 1 < path.points.len() {
                 *path.points.checked(path.points.len() - 1)?
             } else {
-                [0.0; 3]
+                BVector::ZERO
             };
             let mut d = sub(end, g.motion.position[0]);
-            d[1] = 0.0;
+            d = d.with_height(0.0);
             let formations = usize::try_from(g.owner)
                 .ok()
                 .and_then(|p| self.players.get(p))
@@ -84,7 +84,8 @@ impl World {
                 column_to_line =
                     column_to_line + g.current_target.target_radius + g.current_target.range;
             }
-            let remaining = crate::math::fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+            let remaining =
+                crate::math::fmath::sqrt(d.x() * d.x() + d.height() * d.height() + d.y() * d.y());
             let patrol = top_path(&g.motion.paths).is_some_and(|p| p.path_flags & 1 != 0);
             if on_last_high_level_waypoint(&g.motion.paths) && !patrol {
                 if (current != COLUMN || column_to_line <= remaining)
@@ -209,19 +210,19 @@ pub(super) const MAP_EDGE: f32 = crate::math::image::group::MAP_EDGE;
 
 /// `FUN_14100b760`: a place kept on the map: below 0 it is 0, from the map's width on it is the
 /// width less [`MAP_EDGE`], on both axes (the y test against the height, its value the width's).
-pub(in crate::groups) fn on_map(mut p: Vec3, map: [i32; 2]) -> Vec3 {
-    if p[0] < 0.0 {
-        p[0] = 0.0;
+pub(in crate::groups) fn on_map(mut p: BVector, map: [i32; 2]) -> BVector {
+    if p.x() < 0.0 {
+        p = p.with_x(0.0);
     }
-    if p[2] < 0.0 {
-        p[2] = 0.0;
+    if p.y() < 0.0 {
+        p = p.with_y(0.0);
     }
     let (w, h) = (map[0] as f32, map[1] as f32);
-    if w <= p[0] {
-        p[0] = w - MAP_EDGE;
+    if w <= p.x() {
+        p = p.with_x(w - MAP_EDGE);
     }
-    if h <= p[2] {
-        p[2] = w - MAP_EDGE;
+    if h <= p.y() {
+        p = p.with_y(w - MAP_EDGE);
     }
     p
 }
@@ -232,8 +233,8 @@ pub(in crate::groups) fn on_map(mut p: Vec3, map: [i32; 2]) -> Vec3 {
 /// a slot outside the slots in use or a point at the origin (shorter than 1e-7).
 pub(super) fn transform_slot(
     formation: &mut Formation,
-    rotation: &[Vec3; 3],
-    point: Vec3,
+    rotation: &Rotation,
+    point: BVector,
     index: i32,
     transform_type: i32,
     (world_time, map): (u32, [i32; 2]),
@@ -267,19 +268,20 @@ pub(super) fn transform_slot(
 /// The forward and right it also gives (the two points' halfway, normalized, `FUN_141027d00`)
 /// only reach the transform's log.
 #[must_use]
-pub fn find_point_from_front(line: &crate::groups::PointLine, distance: f32) -> Option<Vec3> {
+pub fn find_point_from_front(line: &crate::groups::PointLine, distance: f32) -> Option<BVector> {
     if line.points.len() < 2 {
         return None;
     }
     let ground = |i: usize| {
         let mut d = sub(line.points.get(i + 1)?.point, line.points.get(i)?.point);
-        d[1] = 0.0;
+        d = d.with_height(0.0);
         Some(d)
     };
     let mut node = 0;
     let mut diff = ground(0)?;
-    let mut length =
-        crate::math::fmath::sqrt(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]);
+    let mut length = crate::math::fmath::sqrt(
+        diff.x() * diff.x() + diff.height() * diff.height() + diff.y() * diff.y(),
+    );
     let mut covered = 0.0f32;
     while 0.0 <= length.abs() {
         let total = covered + length;
@@ -289,15 +291,19 @@ pub fn find_point_from_front(line: &crate::groups::PointLine, distance: f32) -> 
                 return Some(p);
             }
             let k = (distance - covered) / length;
-            let along = [k * diff[0], k * diff[1], k * diff[2]];
-            return Some([along[0] + p[0], along[1] + p[1], p[2] + along[2]]);
+            let along = [k * diff.x(), k * diff.height(), k * diff.y()];
+            return Some(BVector::new(
+                along[0] + p.x(),
+                along[1] + p.height(),
+                p.y() + along[2],
+            ));
         }
         node += 1;
         if line.points.len() <= node + 1 {
             return None;
         }
         diff = ground(node)?;
-        length = crate::math::fmath::sqrt(diff[0] * diff[0] + 0.0 + diff[2] * diff[2]);
+        length = crate::math::fmath::sqrt(diff.x() * diff.x() + 0.0 + diff.y() * diff.y());
         covered = total;
     }
     None

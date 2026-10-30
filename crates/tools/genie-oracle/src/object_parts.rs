@@ -3,6 +3,7 @@
 use crate::masters::MasterTable;
 use crate::vec3;
 use genie_core::GenieError;
+use genie_core::map::Position;
 use genie_core::math::game_vector::GameVector;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::unit_ai::{ActionKind, OrderKind};
@@ -103,11 +104,11 @@ pub(super) fn unit_ai(
         current_action: ActionKind::of_field(ai.current_action_value)?,
         current_target: ai.current_target_value,
         target_type: ai.current_target_type_value,
-        target_point: [
+        target_point: Position::new(
             ai.current_target_xvalue,
             ai.current_target_yvalue,
             ai.current_target_zvalue,
-        ],
+        ),
         desired_distance: ai.desired_target_distance_value,
         defend_target: ai.defend_target_value,
         last_order: OrderKind::of_field(ai.last_order_value)?,
@@ -179,7 +180,7 @@ fn home(combat: &TribeCombatObject) -> Option<genie_core::unit_ai::Home> {
         .tribe_elephant_unit_ai_module
         .as_deref()
         .map(|e| genie_core::unit_ai::Home {
-            origin: [e.origin_x, e.origin_y, e.origin_z],
+            origin: Position::new(e.origin_x, e.origin_y, e.origin_z),
             furious: e.furious != 0,
             go_home: false,
         })

@@ -43,6 +43,7 @@ use self::taking::kill_bonus;
 pub use self::taking::take;
 #[cfg(test)]
 use self::taking::take_static;
+use crate::map::Position;
 #[cfg(test)]
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
@@ -118,7 +119,7 @@ pub struct Victim {
     /// Its state (`+0x640`).
     pub state: u8,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's type, class, id, radii, first storage amount (`+0x610`, which a gatherer
     /// reads), `attribute_max_amount` and `area_effect_object_level` (`+0x62b`, the blast
     /// levels that reach it).

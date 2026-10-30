@@ -60,7 +60,7 @@ fn hull() -> crate::objects::unit::Unit {
     mover.animated.speed = 1.0;
     let mut unit = crate::objects::unit::Unit {
         id: object_id(9),
-        body: crate::objects::layers::Body::new([12.5, 8.5, 0.0], None, Some(mover)),
+        body: crate::objects::layers::Body::new(Position::new(12.5, 8.5, 0.0), None, Some(mover)),
         sprite: Some(crate::objects::sprite::ActiveSprite::start(
             SHOWN,
             &mut Well512::default(),
@@ -138,7 +138,7 @@ static NO_GRAPHICS: std::collections::BTreeMap<i16, Graphic> = std::collections:
 
 fn ship(loaded: bool) -> Ship<'static> {
     Ship {
-        position: [12.5, 8.5, 0.0],
+        position: Position::new(12.5, 8.5, 0.0),
         radius: [0.5, 0.5],
         loaded,
         map: [40, 30],
@@ -149,7 +149,7 @@ fn ship(loaded: bool) -> Ship<'static> {
             },
             state: 2,
             speed: 1.0,
-            at: [12.5, 8.5, 0.0],
+            at: Position::new(12.5, 8.5, 0.0),
             ground: [0.5, 0.5],
         },
         given: None,
@@ -172,11 +172,11 @@ fn a_new_transport_sails_to_its_own_place_and_a_start_off_the_map_idles() {
     );
     assert_eq!(c.asked, [([12.5, 8.5], [12.5, 8.5])]);
     // a NaN point sails too (COMISS/JA, JBE)
-    let mut nan = TransportAction::new([f32::NAN, 1.0, 0.0]);
+    let mut nan = TransportAction::new(Position::new(f32::NAN, 1.0, 0.0));
     let _ = nan.start(true, &s, &mut c).unwrap();
     assert_eq!(nan.state, SAIL);
     // below 0, or not first: idle with the standing sprite
-    let mut off = TransportAction::new([3.0, -1.0, 0.0]);
+    let mut off = TransportAction::new(Position::new(3.0, -1.0, 0.0));
     assert!(off.start(true, &s, &mut c).unwrap().stands);
     assert_eq!((off.state, off.move_to), (IDLE, None));
     let mut later = TransportAction::new(s.position);
@@ -191,11 +191,11 @@ fn a_sail_takes_the_shore_point_and_drops_its_old_move_to() {
     c.shore = Some([19.5, 8.5]);
     let mut t = TransportAction::new(s.position);
     let _ = t.start(true, &s, &mut c).unwrap();
-    t.point = [25.0, 8.0, 0.0];
+    t.point = Position::new(25.0, 8.0, 0.0);
     // set_state(4) again: the old MoveTo's teardown stops the unit, the new one starts
     let changed = t.set_state(SAIL_TO_UNLOAD, &s, &mut c).unwrap();
     assert!(changed.stopped && !changed.stands);
-    assert_eq!(t.point, [19.5, 8.5, 0.0]);
+    assert_eq!(t.point, Position::new(19.5, 8.5, 0.0));
     assert_eq!(t.move_to.map(|m| m.state), Some(MoveTo::Start));
     assert_eq!(c.asked[1], ([12.5, 8.5], [25.0, 8.0]));
     // a unit without speed: its quiet MoveTo fails at its start
@@ -227,11 +227,13 @@ fn a_move_sails_to_its_point_and_a_stop_idles() {
         mode: 1,
         ..TransportAction::new(s.position)
     };
-    let changed = t.move_to([25.0, 8.0, 2.0], &s, &mut c).unwrap();
+    let changed = t
+        .move_to(Position::new(25.0, 8.0, 2.0), &s, &mut c)
+        .unwrap();
     assert_eq!(changed, Changed::default());
     assert_eq!(
         (t.state, t.mode, t.point, t.move_to.map(|m| m.state)),
-        (SAIL, 0, [19.5, 8.5, 2.0], Some(MoveTo::Start))
+        (SAIL, 0, Position::new(19.5, 8.5, 2.0), Some(MoveTo::Start))
     );
     assert_eq!(c.asked, [([12.5, 8.5], [25.0, 8.0])]);
     let stopped = t.stop(&s, &mut c).unwrap();
@@ -245,22 +247,39 @@ fn a_work_order_near_its_zone_unloads_at_once_else_sails_there() {
     // within reach of the point's zone and 2 from the footprint (squared 4, at most 4)
     let mut c = coast(true);
     let mut t = TransportAction::new(s.position);
-    let _ = t.work([15.0, 8.5, 1.0], true, &s, &mut c).unwrap();
-    assert_eq!((t.state, t.mode, t.point), (UNLOAD, 1, [15.0, 8.5, 1.0]));
+    let _ = t
+        .work(Position::new(15.0, 8.5, 1.0), true, &s, &mut c)
+        .unwrap();
+    assert_eq!(
+        (t.state, t.mode, t.point),
+        (UNLOAD, 1, Position::new(15.0, 8.5, 1.0))
+    );
     // a bit further: sail there to unload, from the unit itself, else just sail
     let mut t = TransportAction::new(s.position);
-    let _ = t.work([15.1, 8.5, 1.0], true, &s, &mut c).unwrap();
-    assert_eq!((t.state, t.point), (SAIL_TO_UNLOAD, [15.1, 8.5, 1.0]));
+    let _ = t
+        .work(Position::new(15.1, 8.5, 1.0), true, &s, &mut c)
+        .unwrap();
+    assert_eq!(
+        (t.state, t.point),
+        (SAIL_TO_UNLOAD, Position::new(15.1, 8.5, 1.0))
+    );
     let mut t = TransportAction::new(s.position);
-    let _ = t.work([15.1, 8.5, 1.0], false, &s, &mut c).unwrap();
+    let _ = t
+        .work(Position::new(15.1, 8.5, 1.0), false, &s, &mut c)
+        .unwrap();
     assert_eq!(t.state, SAIL);
     // not near the zone: sail
     let mut far = coast(false);
     let mut t = TransportAction::new(s.position);
-    let _ = t.work([13.0, 8.5, 0.0], true, &s, &mut far).unwrap();
+    let _ = t
+        .work(Position::new(13.0, 8.5, 0.0), true, &s, &mut far)
+        .unwrap();
     assert_eq!(t.state, SAIL_TO_UNLOAD);
     // a point below 0 or NaN far away changes nothing but +0x34
-    for bad in [[-1.0, 3.0, 0.0], [3.0, f32::NAN, 0.0]] {
+    for bad in [
+        Position::new(-1.0, 3.0, 0.0),
+        Position::new(3.0, f32::NAN, 0.0),
+    ] {
         let mut t = TransportAction::new(s.position);
         assert_eq!(t.work(bad, true, &s, &mut far).unwrap(), Changed::default());
         assert_eq!((t.state, t.mode, t.point), (0, 1, s.position));
@@ -271,7 +290,9 @@ fn a_work_order_near_its_zone_unloads_at_once_else_sails_there() {
         radius: [f32::NAN, 0.5],
         ..s
     };
-    let _ = t.work([12.5, 8.5, 0.0], true, &nan_ship, &mut c).unwrap();
+    let _ = t
+        .work(Position::new(12.5, 8.5, 0.0), true, &nan_ship, &mut c)
+        .unwrap();
     assert_eq!(t.state, SAIL_TO_UNLOAD);
 }
 
@@ -280,16 +301,16 @@ fn the_shore_search_looks_about_the_footprint_for_the_point_s_zone_or_land() {
     let mut c = coast(true);
     // the ship at x 12.5 with radius 0.5: tiles 10..=15; zone 2 is x 10..19
     let mut t = TransportAction::new(ship(true).position);
-    t.point = [17.0, 3.0, 0.0];
+    t.point = Position::new(17.0, 3.0, 0.0);
     assert!(t.next_to_shore(&ship(true), &mut c).unwrap());
     // zone 3 (x 20..29) lies past x 15
-    t.point = [25.0, 3.0, 0.0];
+    t.point = Position::new(25.0, 3.0, 0.0);
     assert!(!t.next_to_shore(&ship(true), &mut c).unwrap());
     // without a point: land (x 20 and up) is past x 15 too, but not from x 17.5
-    t.point = [NONE, 0.0, 0.0];
+    t.point = Position::new(NONE, 0.0, 0.0);
     assert!(!t.next_to_shore(&ship(true), &mut c).unwrap());
     let east = Ship {
-        position: [17.5, 8.5, 0.0],
+        position: Position::new(17.5, 8.5, 0.0),
         ..ship(true)
     };
     assert!(t.next_to_shore(&east, &mut c).unwrap());
@@ -302,7 +323,7 @@ fn the_shore_search_looks_about_the_footprint_for_the_point_s_zone_or_land() {
         ..coast(true)
     };
     let west = Ship {
-        position: [0.5, 0.5, 0.0],
+        position: Position::new(0.5, 0.5, 0.0),
         ..ship(true)
     };
     assert!(!t.next_to_shore(&west, &mut c).unwrap());
@@ -313,7 +334,7 @@ fn an_unload_out_of_reach_or_beside_no_shore_tells_the_owner_unless_over_water()
     let s = ship(true);
     let unloading = || TransportAction {
         state: UNLOAD,
-        point: [25.0, 3.0, 0.0],
+        point: Position::new(25.0, 3.0, 0.0),
         ..TransportAction::new(s.position)
     };
     // not near the point's zone: the owner hears it, +0x68 clears, the action idles
@@ -349,7 +370,7 @@ fn an_unload_beside_the_shore_is_the_caller_s_then_idles_unless_it_sails_on() {
     let mut c = coast(true);
     let mut t = TransportAction {
         state: UNLOAD,
-        point: [17.0, 3.0, 0.0],
+        point: Position::new(17.0, 3.0, 0.0),
         ..TransportAction::new(s.position)
     };
     let (
@@ -456,10 +477,10 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     let sailing = |state: Option<MoveTo>| TransportAction {
         move_to: state.map(|state| MoveToAction {
             state,
-            ..MoveToAction::sub_to_point([35.5, 88.5, 0.0], MOVE_RANGE, Some(graphic))
+            ..MoveToAction::sub_to_point(Position::new(35.5, 88.5, 0.0), MOVE_RANGE, Some(graphic))
         }),
-        point: [35.5, 88.5, 0.0],
-        ..TransportAction::new([28.0, 89.0, 0.0])
+        point: Position::new(35.5, 88.5, 0.0),
+        ..TransportAction::new(Position::new(28.0, 89.0, 0.0))
     };
     let me = crate::movement::Me {
         id: 9177,

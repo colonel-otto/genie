@@ -80,7 +80,7 @@ impl UnitAi {
         }
         let place = world
             .as_ref()
-            .map(|(at, _)| ([at.position[0], at.position[1]], at.class))
+            .map(|(at, _)| (at.position.ground(), at.class))
             .or(place);
         let class = place.and_then(|(_, class)| class);
         let tile = |v: f32| crate::math::conversions::cvttss2si(v);
@@ -107,7 +107,7 @@ impl UnitAi {
             | OrderKind::Unload
             | OrderKind::UnloadOverWall => self.object_move_order(o, world, side, ai)?,
             OrderKind::Explore => {
-                self.explore_at(tile(o.point[0]), tile(o.point[1]), true, side, ai)?
+                self.explore_at(tile(o.point.x()), tile(o.point.y()), true, side, ai)?
             }
             OrderKind::Stop => {
                 self.remove_target();
@@ -122,7 +122,7 @@ impl UnitAi {
                 m.is_some()
             }
             OrderKind::ExploreAndDestroy => {
-                self.explore_and_destroy([tile(o.point[0]), tile(o.point[1])], true, side, ai)?
+                self.explore_and_destroy([tile(o.point.x()), tile(o.point.y())], true, side, ai)?
             }
             OrderKind::Wait => {
                 // case 0x2d8: the wait's action value, leaving a patrol order, then the order
@@ -134,7 +134,7 @@ impl UnitAi {
             }
             OrderKind::Scout => {
                 let explored =
-                    self.explore_at(tile(o.point[0]), tile(o.point[1]), true, side, ai)?;
+                    self.explore_at(tile(o.point.x()), tile(o.point.y()), true, side, ai)?;
                 self.set_action(Some(ActionKind::Scout));
                 explored
             }
@@ -144,7 +144,7 @@ impl UnitAi {
             }
             OrderKind::AutoScout => {
                 let explored =
-                    self.explore_at(tile(o.point[0]), tile(o.point[1]), true, side, ai)?;
+                    self.explore_at(tile(o.point.x()), tile(o.point.y()), true, side, ai)?;
                 self.set_action(Some(ActionKind::AutoScout));
                 explored
             }
@@ -177,14 +177,14 @@ impl UnitAi {
                     return Ok(false);
                 }
                 if o.target == -1 {
-                    self.defend_point([o.point[0], o.point[1]], o.range, true, at)
+                    self.defend_point(o.point.ground(), o.range, true, at)
                 } else {
                     self.defend_object(o.target, o.range, true, at, side)?
                 }
             }
             OrderKind::RunAway => self.run_away(true, at, computer, ai, side)?,
             OrderKind::SeekAndDestroy => {
-                let tiles = [tile(o.point[0]), tile(o.point[1])];
+                let tiles = [tile(o.point.x()), tile(o.point.y())];
                 self.seek_and_destroy(o.target, tiles, true, at, side)?
             }
             OrderKind::AttackRoundup => self.attack_roundup(o.target, at, side)?,
@@ -261,7 +261,7 @@ impl UnitAi {
             OrderKind::Enter => self.enter_object(o.target, true, (at, side))?,
             OrderKind::Unload | OrderKind::UnloadOverWall => {
                 let over_wall = o.order == OrderKind::UnloadOverWall;
-                self.unload_at([o.point[0], o.point[1]], (true, over_wall), (at, side))?
+                self.unload_at(o.point.ground(), (true, over_wall), (at, side))?
             }
             _ => false,
         })

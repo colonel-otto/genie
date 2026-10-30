@@ -3,6 +3,7 @@
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
+use genie_core::map::Position;
 use genie_core::objects::ObjectId;
 use genie_core::players::PlayerId;
 use genie_core::world::{Player, World};
@@ -493,7 +494,7 @@ pub(super) fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::visio
                 original_id: original,
                 original_master: (d.long_val_2 as i32 != -1).then_some(d.long_val_2 as i16),
                 original_owner: usize::try_from(d.doppled_player).unwrap_or(0),
-                position: [s.t_x, s.t_y, s.t_z],
+                position: Position::new(s.t_x, s.t_y, s.t_z),
                 tile: [s.t_x as i32, s.t_y as i32],
                 footprint: d.multi_unified_points,
                 bits: 0,

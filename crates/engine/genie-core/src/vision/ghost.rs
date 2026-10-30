@@ -15,6 +15,7 @@
 //! destroy `FUN_14118f1e0` and its leaving `FUN_141090ad0`.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -88,7 +89,7 @@ pub struct Ghost {
     /// The original's owner (`+0x7d8`, the save's `doppled_player`).
     pub original_owner: usize,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its tile (`+0x7dc`, `+0x7e0`).
     pub tile: [i32; 2],
     /// The original's UMV entry (`+0x7f6`, the save's `Multi_Unified_Points`): the tiles of a
@@ -201,8 +202,8 @@ impl World {
     }
 
     /// The tile (`(int)x`, `(int)y`) of a place, as the game's callers truncate it.
-    fn tile_at(position: [f32; 3]) -> [i32; 2] {
-        [cvttss2si(position[0]), cvttss2si(position[1])]
+    fn tile_at(position: Position) -> [i32; 2] {
+        [cvttss2si(position.x()), cvttss2si(position.y())]
     }
 
     /// `FUN_141091310`: the watched list of player `owner` lets object `id` go (the last entry
@@ -383,7 +384,7 @@ impl World {
     pub(crate) fn make_ghost(
         &mut self,
         viewer: PlayerId,
-        at: [f32; 3],
+        at: Position,
         original: Original,
     ) -> Result<(), GenieError> {
         let recyclable = self.master(viewer, GHOST_MASTER)?.recyclable;
@@ -525,7 +526,7 @@ impl World {
 
     /// The bits of the ghost's tile and, for a building's ghost, of its footprint's tiles.
     fn ghost_bits(&self, g: &Ghost) -> Result<u64, GenieError> {
-        let [px, py, _] = g.position;
+        let (px, py) = (g.position.x(), g.position.y());
         let mut bits = self.tile_bits(g.tile[0], g.tile[1])?;
         if g.footprint != 0 {
             let offsets = self
@@ -716,7 +717,7 @@ mod tests {
         ])
     }
 
-    fn object(id: i32, master: i16, state: u8, position: [f32; 3]) -> Unit {
+    fn object(id: i32, master: i16, state: u8, position: Position) -> Unit {
         let mut u = Unit {
             id: object_id(id),
             body: crate::objects::layers::Body::at(position),
@@ -735,10 +736,10 @@ mod tests {
         t.masters = (0..3).map(|_| masters(recyclable)).collect();
         t.players[0]
             .objects
-            .push(object(5, MINE, 2, [1.5, 2.5, 0.0]));
+            .push(object(5, MINE, 2, Position::new(1.5, 2.5, 0.0)));
         t.players[1]
             .objects
-            .push(object(9, HOUSE, 2, [2.5, 1.5, 0.0]));
+            .push(object(9, HOUSE, 2, Position::new(2.5, 1.5, 0.0)));
         let mut sight = Visibility::new(4, 4, Vec::new(), vec![0; 16], Vec::new(), 0, Vec::new());
         sight.add_seer(
             9,
@@ -847,11 +848,11 @@ mod tests {
         };
         let mut t = world(true);
         t.recycling.ghosts = vec![object_id(-4), object_id(-6)];
-        t.make_ghost(PlayerId::new(2), [2.5, 1.5, 0.0], original)
+        t.make_ghost(PlayerId::new(2), Position::new(2.5, 1.5, 0.0), original)
             .unwrap();
-        t.make_ghost(PlayerId::new(2), [2.5, 1.5, 0.0], original)
+        t.make_ghost(PlayerId::new(2), Position::new(2.5, 1.5, 0.0), original)
             .unwrap();
-        t.make_ghost(PlayerId::new(2), [2.5, 1.5, 0.0], original)
+        t.make_ghost(PlayerId::new(2), Position::new(2.5, 1.5, 0.0), original)
             .unwrap();
         let ids: Vec<i32> = t.players[2].ghosts.iter().map(|g| g.id).collect();
         assert_eq!(ids, [-6, -4, -10]);
@@ -863,7 +864,7 @@ mod tests {
         assert_eq!(t.players[2].ghosts[2].footprint, 1);
         let mut t = world(false);
         t.recycling.ghosts = vec![object_id(-4)];
-        t.make_ghost(PlayerId::new(2), [2.5, 1.5, 0.0], original)
+        t.make_ghost(PlayerId::new(2), Position::new(2.5, 1.5, 0.0), original)
             .unwrap();
         assert_eq!(t.players[2].ghosts[0].id, 100);
         assert_eq!((t.next_object_id.get(), t.recycling.ghosts.len()), (101, 1));
@@ -873,7 +874,7 @@ mod tests {
             state: 7,
             ..original
         };
-        t.make_ghost(PlayerId::new(2), [2.5, 1.5, 0.0], gone)
+        t.make_ghost(PlayerId::new(2), Position::new(2.5, 1.5, 0.0), gone)
             .unwrap();
         let g = t.players[2].ghosts[0];
         assert_eq!(
@@ -886,33 +887,33 @@ mod tests {
     fn the_twin_check_destroys_the_viewers_own_twin_and_marks_another_viewers() {
         // FUN_1410928a0: ghosts on the tile, in state 2, of the same original id
         let mut t = world(true);
-        let twin = |id, original_id, position: [f32; 3], state| Ghost {
+        let twin = |id, original_id, position: Position, state| Ghost {
             id,
             original: None,
             original_id,
             original_master: Some(HOUSE),
             original_owner: 1,
             position,
-            tile: [position[0] as i32, position[1] as i32],
+            tile: [position.x() as i32, position.y() as i32],
             footprint: 0,
             bits: 0,
             cant_see: 0,
             seen: false,
             state,
         };
-        t.players[1].ghosts = vec![twin(-20, 9, [2.1, 1.9, 0.0], 2)];
+        t.players[1].ghosts = vec![twin(-20, 9, Position::new(2.1, 1.9, 0.0), 2)];
         t.players[2].ghosts = vec![
-            twin(-21, 9, [2.9, 1.1, 0.0], 2),
-            twin(-22, 9, [3.0, 1.5, 0.0], 2),
-            twin(-23, 8, [2.5, 1.5, 0.0], 2),
-            twin(-24, 9, [2.5, 1.5, 0.0], 7),
+            twin(-21, 9, Position::new(2.9, 1.1, 0.0), 2),
+            twin(-22, 9, Position::new(3.0, 1.5, 0.0), 2),
+            twin(-23, 8, Position::new(2.5, 1.5, 0.0), 2),
+            twin(-24, 9, Position::new(2.5, 1.5, 0.0), 7),
             // the tile list holds a ghost by its place, whatever its +0x7dc/+0x7e0 say
             Ghost {
                 tile: [0, 3],
-                ..twin(-25, 9, [2.2, 1.2, 0.0], 2)
+                ..twin(-25, 9, Position::new(2.2, 1.2, 0.0), 2)
             },
         ];
-        let mut ghost = twin(-30, 9, [2.5, 1.5, 0.0], 2);
+        let mut ghost = twin(-30, 9, Position::new(2.5, 1.5, 0.0), 2);
         t.check_twins(PlayerId::new(2), &mut ghost).unwrap();
         // the viewer's own twins on the tile are destroyed
         let states: Vec<u8> = t.players[2].ghosts.iter().map(|g| g.state).collect();
@@ -933,7 +934,7 @@ mod tests {
             original_id: 9,
             original_master: Some(HOUSE),
             original_owner: 1,
-            position: [2.5, 1.5, 0.0],
+            position: Position::new(2.5, 1.5, 0.0),
             tile: [2, 1],
             footprint: 0,
             bits: 0,
@@ -971,7 +972,7 @@ mod tests {
             original_id: 9,
             original_master: Some(HOUSE),
             original_owner: 1,
-            position: [2.5, 1.5, 0.0],
+            position: Position::new(2.5, 1.5, 0.0),
             tile: [2, 1],
             footprint,
             bits: 0,
@@ -1152,17 +1153,17 @@ mod tests {
         // Gaia's mine 5 dead (state 3), house 9's annexes 10 (a gate) and 11, a class-51
         // building 12, master 1808's 13, a desolid foundation 14 in the sleeping list
         t.players[0].objects[0].life.state = 3;
-        let mut g = object(10, 88, 2, [2.5, 2.5, 0.0]);
+        let mut g = object(10, 88, 2, Position::new(2.5, 2.5, 0.0));
         g.annex_of = Some(9);
-        let mut a = object(11, 89, 2, [3.5, 2.5, 0.0]);
+        let mut a = object(11, 89, 2, Position::new(3.5, 2.5, 0.0));
         a.annex_of = Some(9);
         t.players[1].objects.extend([
             g,
             a,
-            object(12, 276, 2, [0.5, 0.5, 0.0]),
-            object(13, MASTER_1808, 2, [0.5, 1.5, 0.0]),
+            object(12, 276, 2, Position::new(0.5, 0.5, 0.0)),
+            object(13, MASTER_1808, 2, Position::new(0.5, 1.5, 0.0)),
         ]);
-        let mut foundation = object(14, HOUSE, 2, [0.5, 3.5, 0.0]);
+        let mut foundation = object(14, HOUSE, 2, Position::new(0.5, 3.5, 0.0));
         foundation.construction = Some(crate::construction::build::Construction {
             progress: 0.0,
             desolid: true,

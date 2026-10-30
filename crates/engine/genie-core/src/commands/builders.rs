@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::commands::FOUNDATION_GONE;
 use crate::construction::build::{BuildAction, BuildTask};
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
@@ -42,7 +43,7 @@ impl World {
         player: PlayerId,
         foundation: i32,
         master: i16,
-        position: [f32; 3],
+        position: Position,
         builders: &[i32],
         (queued, commits): (bool, bool),
     ) -> Result<(), GenieError> {
@@ -85,7 +86,7 @@ impl World {
                 // the foundation (a Build on an ally's), the work command's general path
                 let work = crate::orders::Work {
                     target: foundation,
-                    point: [position[0], position[1], 0.0],
+                    point: Position::new(position.x(), position.y(), 0.0),
                     carry_test: false,
                     filter: -1,
                     notified: true,
@@ -122,7 +123,7 @@ impl World {
         q: PlayerId,
         id: i32,
         (fp, foundation, master): (PlayerId, i32, i16),
-        position: [f32; 3],
+        position: Position,
     ) -> Result<(i16, BuildAction), GenieError> {
         let masters = self.masters.get(q.index()).ok_or(GenieError::unsupported(
             "BUILD tasks the builders: no master table",
@@ -171,7 +172,7 @@ impl World {
         let on = crate::unit_ai::task_finder::TaskOn {
             target: Some(&target),
             general: Some(&target),
-            terrain: self.task_terrain([position[0], position[1], 0.0]),
+            terrain: self.task_terrain(Position::new(position.x(), position.y(), 0.0)),
         };
         let (with, task) =
             masters
@@ -213,7 +214,7 @@ impl World {
         q: PlayerId,
         idx: usize,
         (fp, foundation, master): (PlayerId, i32, i16),
-        position: [f32; 3],
+        position: Position,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[q.index()].objects[idx];
         if let Some(m) = unit.body.mover_mut() {
@@ -226,9 +227,9 @@ impl World {
             priority: 100,
             target: foundation,
             target_owner: fp.index() as i32,
-            point: [position[0], position[1], 0.0],
+            point: Position::new(position.x(), position.y(), 0.0),
             range: 0.0,
-            shown: [position[0], position[1]],
+            shown: position.ground(),
             ready: true,
             target_type: i32::from(master),
         };
@@ -250,7 +251,7 @@ impl World {
         idx: usize,
         (with, build): (i16, BuildAction),
         (fp, foundation, master): (PlayerId, i32, i16),
-        position: [f32; 3],
+        position: Position,
     ) -> Result<(), GenieError> {
         let site_class = i32::from(self.master(fp, master)?.class.get());
         if let Some(m) = self.players[player.index()].objects[idx].body.mover_mut() {
@@ -273,7 +274,7 @@ impl World {
                 Some(OrderKind::Build),
                 Some(ActionKind::Build),
                 Some((foundation, site_class)),
-                [position[0], position[1], 0.0],
+                Position::new(position.x(), position.y(), 0.0),
                 true,
                 self.streams.get(Stream::Ai),
             )?;

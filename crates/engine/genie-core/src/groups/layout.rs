@@ -6,7 +6,7 @@
 use crate::GenieError;
 use crate::groups::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
-use crate::math::fmath::{self, Vec3};
+use crate::math::fmath::{self, BVector};
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 
@@ -37,14 +37,14 @@ pub struct MemberPlace {
     /// The unit.
     pub id: i32,
     /// Slot 0x520.
-    pub at: Vec3,
+    pub at: BVector,
     /// `FUN_141011300(unit, 0)`.
     pub category: i32,
 }
 
 /// A slot's 3D length as the layouts take it (`x² + y² + z²` in that order).
-fn length(v: Vec3) -> f32 {
-    fmath::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+fn length(v: BVector) -> f32 {
+    fmath::sqrt(v.x() * v.x() + v.height() * v.height() + v.y() * v.y())
 }
 
 /// The slots of `createHorde` (`FUN_141013eb0`), or of `createUDF` (`FUN_141014f60`) for
@@ -103,18 +103,18 @@ pub(crate) fn slots_by_place(
         let mut ahead = 0.0f32;
         for s in &formation.slots {
             // MAXSS at 0x141015208: a NaN offset keeps the farthest so far
-            ahead = fmath::maxss(s.offset[0], ahead);
+            ahead = fmath::maxss(s.offset.x(), ahead);
         }
         let back = ahead + USER_DEFINED_BACK;
         for s in &mut formation.slots {
-            s.offset[0] -= back;
+            s.offset = s.offset.with_x(s.offset.x() - back);
         }
     }
     for s in &mut formation.slots {
         let l = length(s.offset);
         if HORDE_REACH < l {
             let k = HORDE_REACH / l;
-            s.offset = [k * s.offset[0], k * s.offset[1], k * s.offset[2]];
+            s.offset = BVector::new(k * s.offset.x(), k * s.offset.height(), k * s.offset.y());
         }
     }
     Ok(true)
@@ -211,7 +211,7 @@ pub(crate) fn phalanx_slots(
     formation.maximum_width = lines;
     formation.maximum_depth = lines;
     formation.number_lines = lines;
-    let single = fmath::scale(group.desired_spacing, [0.0, 0.0, -1.0]);
+    let single = fmath::scale(group.desired_spacing, BVector::new(0.0, 0.0, -1.0));
     let mut slot = 0usize;
     let mut statistic = None;
     let mut placed = 0usize;
@@ -223,18 +223,18 @@ pub(crate) fn phalanx_slots(
         let l = formation.lines.checked_mut(line as usize)?;
         clear_line(l);
         let _ = reset_line(l, width, line);
-        let mut at = fmath::add(fmath::scale((width / 2) as f32, single), [0.0; 3]);
+        let mut at = fmath::add(fmath::scale((width / 2) as f32, single), BVector::ZERO);
         if width & 1 == 0 {
-            let half = [single[0] / TWO, single[1] / TWO, single[2] / TWO];
-            at = [at[0] - half[0], at[1] - half[1], at[2] - half[2]];
+            let half = [single.x() / TWO, single.height() / TWO, single.y() / TWO];
+            at = BVector::new(at.x() - half[0], at.height() - half[1], at.y() - half[2]);
         }
         for k in 0..width.max(0) as usize {
             statistic = next_statistic(group, statistic, &mut placed);
             *formation.slot_mut(slot)? = Slot {
                 unit_id: -1,
                 offset: at,
-                desired_transform_position: [0.0; 3],
-                transform_position: [0.0; 3],
+                desired_transform_position: BVector::ZERO,
+                transform_position: BVector::ZERO,
                 time: world_time,
                 state: 0,
                 depth: line,
@@ -268,15 +268,15 @@ pub(crate) fn phalanx_slots(
 /// (its first corner's x is `max.z` less the step's rest, which its third corner reuses).
 pub fn place_box_perimeter(
     count: usize,
-    out: &mut [Vec3; BOX_POSITIONS],
-    min: &mut Vec3,
-    max: &mut Vec3,
+    out: &mut [BVector; BOX_POSITIONS],
+    min: &mut BVector,
+    max: &mut BVector,
     spacing: f32,
 ) -> Result<bool, GenieError> {
     if !(1..=BOX_POSITIONS).contains(&count) {
         return Ok(false);
     }
-    let side = max[0] - min[0];
+    let side = max.x() - min.x();
     let total = side * BOX_SIDES;
     let n = count as f32;
     let units = n * spacing;
@@ -284,119 +284,116 @@ pub fn place_box_perimeter(
     if total < units {
         step = units / n;
         let grow = (units * BOX_SIDE_SHARE - side) * BOX_HALF;
-        min[0] -= grow;
-        min[2] -= grow;
-        max[0] += grow;
-        max[2] += grow;
+        *min = min.with_x(min.x() - grow).with_y(min.y() - grow);
+        *max = max.with_x(max.x() + grow).with_y(max.y() + grow);
     }
-    let mid_z = (min[2] + max[2]) * BOX_HALF;
-    let mid_x = (max[0] + min[0]) * BOX_HALF;
+    let mid_z = (min.y() + max.y()) * BOX_HALF;
+    let mid_x = (max.x() + min.x()) * BOX_HALF;
     let fixed: &[(f32, f32)] = match count {
-        1 => &[(max[0], mid_z)],
-        2 => &[(max[0], mid_z), (min[0], mid_z)],
-        3 => &[(max[0], min[2]), (max[0], max[2]), (min[0], mid_z)],
+        1 => &[(max.x(), mid_z)],
+        2 => &[(max.x(), mid_z), (min.x(), mid_z)],
+        3 => &[(max.x(), min.y()), (max.x(), max.y()), (min.x(), mid_z)],
         4 => &[
-            (max[0], min[2]),
-            (max[0], max[2]),
-            (min[0], min[2]),
-            (min[0], max[2]),
+            (max.x(), min.y()),
+            (max.x(), max.y()),
+            (min.x(), min.y()),
+            (min.x(), max.y()),
         ],
         5 => &[
-            (max[0], min[2]),
-            (max[0], mid_z),
-            (max[0], max[2]),
-            (min[0], min[2]),
-            (min[0], max[2]),
+            (max.x(), min.y()),
+            (max.x(), mid_z),
+            (max.x(), max.y()),
+            (min.x(), min.y()),
+            (min.x(), max.y()),
         ],
         6 => &[
-            (max[0], min[2]),
-            (max[0], mid_z),
-            (max[0], max[2]),
-            (min[0], min[2]),
-            (min[0], mid_z),
-            (min[0], max[2]),
+            (max.x(), min.y()),
+            (max.x(), mid_z),
+            (max.x(), max.y()),
+            (min.x(), min.y()),
+            (min.x(), mid_z),
+            (min.x(), max.y()),
         ],
         7 => &[
-            (max[0], min[2]),
-            (max[0], mid_z),
-            (max[0], max[2]),
-            (mid_x, min[2]),
-            (mid_x, max[2]),
-            (min[0], min[2]),
-            (min[0], max[2]),
+            (max.x(), min.y()),
+            (max.x(), mid_z),
+            (max.x(), max.y()),
+            (mid_x, min.y()),
+            (mid_x, max.y()),
+            (min.x(), min.y()),
+            (min.x(), max.y()),
         ],
         8 => &[
-            (max[0], min[2]),
-            (max[0], mid_z),
-            (max[0], max[2]),
-            (mid_x, min[2]),
-            (mid_x, max[2]),
-            (min[0], min[2]),
-            (min[0], mid_z),
-            (min[0], max[2]),
+            (max.x(), min.y()),
+            (max.x(), mid_z),
+            (max.x(), max.y()),
+            (mid_x, min.y()),
+            (mid_x, max.y()),
+            (min.x(), min.y()),
+            (min.x(), mid_z),
+            (min.x(), max.y()),
         ],
         _ => &[],
     };
     if !fixed.is_empty() {
         for (p, &(x, z)) in out.iter_mut().zip(fixed) {
-            p[0] = x;
-            p[2] = z;
+            *p = p.with_x(x).with_y(z);
         }
         return Ok(true);
     }
-    out[0][0] = max[0];
-    out[0][2] = min[2];
+    let first = out.checked_mut(0)?;
+    *first = first.with_x(max.x()).with_y(min.y());
     let mut corner = 0.0f32;
     let mut state = 0;
     for i in 1..count {
         let prev = *out.checked(i - 1)?;
         let (x, z) = match state {
             0 => {
-                let z = prev[2] + step;
+                let z = prev.y() + step;
                 // COMISS/JC (0x14102b17e): an unordered place stays on this side
-                if fmath::below_or_unordered(z, max[2]) {
-                    (max[0], z)
+                if fmath::below_or_unordered(z, max.y()) {
+                    (max.x(), z)
                 } else {
                     state = 1;
-                    corner = max[2] - (step - (max[2] - prev[2]));
-                    (corner, max[2])
+                    corner = max.y() - (step - (max.y() - prev.y()));
+                    (corner, max.y())
                 }
             }
             1 => {
-                let x = prev[0] - step;
+                let x = prev.x() - step;
                 // COMISS/JC (0x14102b132)
-                if fmath::below_or_unordered(min[0], x) {
-                    (x, max[2])
+                if fmath::below_or_unordered(min.x(), x) {
+                    (x, max.y())
                 } else {
                     state = 2;
-                    (min[0], max[2] - (step - (prev[0] - min[0])))
+                    (min.x(), max.y() - (step - (prev.x() - min.x())))
                 }
             }
             2 => {
-                let z = prev[2] - step;
+                let z = prev.y() - step;
                 // COMISS/JC (0x14102b0f1)
-                if fmath::below_or_unordered(min[2], z) {
-                    (min[0], z)
+                if fmath::below_or_unordered(min.y(), z) {
+                    (min.x(), z)
                 } else {
                     state = 3;
-                    (corner, min[2])
+                    (corner, min.y())
                 }
             }
             3 => {
-                let mut x = prev[0] - step;
-                if x <= min[0] {
-                    x = max[0];
+                let mut x = prev.x() - step;
+                if x <= min.x() {
+                    x = max.x();
                     state = 4;
                 }
-                (x, min[2])
+                (x, min.y())
             }
             _ => {
                 *out.checked_mut(i)? = *out.checked_mut(0)?;
                 continue;
             }
         };
-        out.checked_mut(i)?[0] = x;
-        out.checked_mut(i)?[2] = z;
+        let o = out.checked_mut(i)?;
+        *o = o.with_x(x).with_y(z);
     }
     Ok(true)
 }
@@ -409,7 +406,7 @@ pub fn create_lines(formation: &mut Formation) -> Result<(), GenieError> {
     let mut xs: Vec<f32> = Vec::new();
     let mut members: Vec<Vec<u32>> = Vec::new();
     for (i, s) in formation.slots.iter().enumerate() {
-        let x = s.offset[0];
+        let x = s.offset.x();
         if let Some(j) = xs.iter().position(|&lx| (lx - x).abs() < LINE_EPSILON) {
             members.checked_mut(j)?.push(i as u32);
         } else {
@@ -465,7 +462,7 @@ pub(crate) fn box_slots(
         slot.active = 0;
     }
     formation.use_slots(0);
-    let mut positions = [[0.0f32; 3]; BOX_POSITIONS];
+    let mut positions = [BVector::ZERO; BOX_POSITIONS];
     let mut used = 0usize;
     for c in (0..=5).rev() {
         let Some(stat) = group
@@ -485,27 +482,30 @@ pub(crate) fn box_slots(
         }
         formation.resize_slots(used + count);
         if used == 0 && count == 1 {
-            positions[0] = [0.0; 3];
+            positions[0] = BVector::ZERO;
             (min_x, min_z, max_x, max_z) = (0.0, 0.0, 0.0, 0.0);
         } else {
             let (mut min, mut max) = if used == 0 {
                 let low = (-s) * BOX_HALF;
                 let high = s * BOX_HALF;
-                ([low, 0.0, low], [high, 0.0, high])
+                (BVector::new(low, 0.0, low), BVector::new(high, 0.0, high))
             } else {
-                ([min_x - s, 0.0, min_z - s], [max_x + s, 0.0, max_z + s])
+                (
+                    BVector::new(min_x - s, 0.0, min_z - s),
+                    BVector::new(max_x + s, 0.0, max_z + s),
+                )
             };
             // the game ignores its result: false only for a count refused above
             let _ = place_box_perimeter(count, &mut positions, &mut min, &mut max, s);
-            (min_x, min_z, max_x, max_z) = (min[0], min[2], max[0], max[2]);
+            (min_x, min_z, max_x, max_z) = (min.x(), min.y(), max.x(), max.y());
         }
         for (j, &p) in positions.iter().enumerate().take(count) {
             let at = used + j;
             *formation.slot_mut(at)? = Slot {
                 unit_id: -1,
                 offset: p,
-                desired_transform_position: [0.0; 3],
-                transform_position: [0.0; 3],
+                desired_transform_position: BVector::ZERO,
+                transform_position: BVector::ZERO,
                 time: world_time,
                 state: 0,
                 depth: 0,
@@ -637,7 +637,7 @@ mod tests {
             })
             .collect();
         g.desired_spacing = spacing;
-        g.motion.position[0] = [10.0, 0.0, 10.0];
+        g.motion.position[0] = BVector::new(10.0, 0.0, 10.0);
         g.unit_types = stats
             .iter()
             .map(|&(category, n)| UnitTypeStatistic {
@@ -652,7 +652,7 @@ mod tests {
     const fn place(id: i32, x: f32, z: f32, category: i32) -> MemberPlace {
         MemberPlace {
             id,
-            at: [x, 0.0, z],
+            at: BVector::new(x, 0.0, z),
             category,
         }
     }
@@ -683,9 +683,13 @@ mod tests {
         let s = &f.slots[0];
         assert_eq!(
             (s.unit_id, s.offset, s.desired_transform_position),
-            (7, [2.0, 0.0, 0.0], [12.0, 0.0, 10.0])
+            (
+                7,
+                BVector::new(2.0, 0.0, 0.0),
+                BVector::new(12.0, 0.0, 10.0)
+            )
         );
-        assert_eq!(s.transform_position, [12.0, 0.0, 10.0]);
+        assert_eq!(s.transform_position, BVector::new(12.0, 0.0, 10.0));
         assert_eq!(
             (
                 s.transformed,
@@ -698,7 +702,7 @@ mod tests {
         );
         assert_eq!(s.desired_sub_category, -1);
         assert_eq!((f.slots[1].unit_id, f.slots[1].active), (-1, 0));
-        assert_eq!(f.slots[2].offset, [5.0, 0.0, 0.0]);
+        assert_eq!(f.slots[2].offset, BVector::new(5.0, 0.0, 0.0));
         // no members, no layout
         let mut f = Formation::new();
         assert!(!slots_by_place(&mut f, &group(0, 1.0, &[]), &[], false, 0).unwrap());
@@ -718,10 +722,14 @@ mod tests {
         ];
         assert!(slots_by_place(&mut f, &g, &members, true, 640).unwrap());
         assert_eq!((f.kind, f.transform_type), (USER_DEFINED, 1));
-        let offsets: Vec<Vec3> = f.slots.iter().map(|s| s.offset).collect();
+        let offsets: Vec<BVector> = f.slots.iter().map(|s| s.offset).collect();
         assert_eq!(
             offsets,
-            [[-5.0, 0.0, 0.0], [-5.0, 0.0, 0.0], [-0.5, 0.0, 0.0]]
+            [
+                BVector::new(-5.0, 0.0, 0.0),
+                BVector::new(-5.0, 0.0, 0.0),
+                BVector::new(-0.5, 0.0, 0.0)
+            ]
         );
     }
 
@@ -738,7 +746,7 @@ mod tests {
         ];
         assert!(slots_by_place(&mut f, &g, &members, true, 640).unwrap());
         // the farthest ahead stays finite, so the finite member's offset moves back by it
-        assert!(f.slots[0].offset[0].is_finite(), "{:?}", f.slots[0].offset);
+        assert!(f.slots[0].offset.x().is_finite(), "{:?}", f.slots[0].offset);
     }
 
     /// `FUN_14102ab30`'s walk tests are `COMISS`/`JC` (0x14102b17e, 0x14102b132, 0x14102b0f1):
@@ -746,12 +754,12 @@ mod tests {
     /// infinity, and the first step's `-inf + inf` stays on the first side.
     #[test]
     fn a_box_walk_on_a_nan_place_stays_on_its_side() {
-        let mut out = [[0.0f32; 3]; BOX_POSITIONS];
-        let (mut min, mut max) = ([-1.0, 0.0, -1.0], [1.0, 0.0, 1.0]);
+        let mut out = [BVector::ZERO; BOX_POSITIONS];
+        let (mut min, mut max) = (BVector::new(-1.0, 0.0, -1.0), BVector::new(1.0, 0.0, 1.0));
         assert!(place_box_perimeter(9, &mut out, &mut min, &mut max, f32::INFINITY).unwrap());
         for p in &out[1..9] {
-            assert_eq!(p[0], f32::INFINITY, "{out:?}");
-            assert!(p[2].is_nan(), "{out:?}");
+            assert_eq!(p.x(), f32::INFINITY, "{out:?}");
+            assert!(p.y().is_nan(), "{out:?}");
         }
     }
 
@@ -801,7 +809,7 @@ mod tests {
         );
         let g = &mut t.groups.groups[0];
         g.desired_spacing = 1.0;
-        g.motion.position[0] = [6.0, 0.0, 6.0];
+        g.motion.position[0] = BVector::new(6.0, 0.0, 6.0);
         g.unit_types = vec![
             UnitTypeStatistic {
                 formation_category: 1,
@@ -879,7 +887,7 @@ mod tests {
         let g = t.groups.get(1).unwrap().clone();
         let mut f = Formation::new();
         assert!(t.create_horde(&mut f, &g).unwrap());
-        let slots: Vec<(i32, Vec3, i32, u32)> = f
+        let slots: Vec<(i32, BVector, i32, u32)> = f
             .slots
             .iter()
             .map(|s| {
@@ -894,10 +902,10 @@ mod tests {
         assert_eq!(
             slots,
             [
-                (10, [5.5, 0.0, 5.5], 1, 1),
-                (-1, [0.0; 3], -1, 0),
-                (11, [6.5, 0.0, 5.5], 1, 1),
-                (12, [5.5, 0.0, 6.5], 3, 1),
+                (10, BVector::new(5.5, 0.0, 5.5), 1, 1),
+                (-1, BVector::ZERO, -1, 0),
+                (11, BVector::new(6.5, 0.0, 5.5), 1, 1),
+                (12, BVector::new(5.5, 0.0, 6.5), 3, 1),
             ]
         );
         assert_eq!((f.kind, f.transform_type), (HORDE, 3));
@@ -933,7 +941,7 @@ mod tests {
             ),
             (PHALANX, 0, 3, 3, 3)
         );
-        let slots: Vec<(Vec3, i32, i32)> = f
+        let slots: Vec<(BVector, i32, i32)> = f
             .slots
             .iter()
             .map(|s| (s.offset, s.depth, s.desired_category))
@@ -941,10 +949,10 @@ mod tests {
         assert_eq!(
             slots,
             [
-                ([0.0, 0.0, 0.0], 0, 1),
-                ([0.0, 0.0, -1.0], 1, 1),
-                ([0.0, 0.0, 1.0], 1, 1),
-                ([0.0, 0.0, 0.0], 2, 3),
+                (BVector::new(0.0, 0.0, 0.0), 0, 1),
+                (BVector::new(0.0, 0.0, -1.0), 1, 1),
+                (BVector::new(0.0, 0.0, 1.0), 1, 1),
+                (BVector::new(0.0, 0.0, 0.0), 2, 3),
             ]
         );
         let lines: Vec<(i32, Vec<u32>)> = f
@@ -970,19 +978,29 @@ mod tests {
     /// down min x, then from that corner's x along min z until past min x, then the first place.
     #[test]
     fn the_box_perimeter_places_its_units_as_the_game_walks_it() {
-        let mut out = [[0.0f32; 3]; BOX_POSITIONS];
-        let (mut min, mut max) = ([-1.0, 0.0, -1.0], [1.0, 0.0, 1.0]);
+        let mut out = [BVector::ZERO; BOX_POSITIONS];
+        let (mut min, mut max) = (BVector::new(-1.0, 0.0, -1.0), BVector::new(1.0, 0.0, 1.0));
         assert!(place_box_perimeter(3, &mut out, &mut min, &mut max, 1.0).unwrap());
         assert_eq!(
             out[..3],
-            [[1.0, 0.0, -1.0], [1.0, 0.0, 1.0], [-1.0, 0.0, 0.0]]
+            [
+                BVector::new(1.0, 0.0, -1.0),
+                BVector::new(1.0, 0.0, 1.0),
+                BVector::new(-1.0, 0.0, 0.0)
+            ]
         );
         assert!(place_box_perimeter(2, &mut out, &mut min, &mut max, 10.0).unwrap());
-        assert_eq!((min, max), ([-2.5, 0.0, -2.5], [2.5, 0.0, 2.5]));
-        assert_eq!(out[..2], [[2.5, 0.0, 0.0], [-2.5, 0.0, 0.0]]);
-        let (mut min, mut max) = ([-2.0, 0.0, -1.0], [2.0, 0.0, 1.0]);
+        assert_eq!(
+            (min, max),
+            (BVector::new(-2.5, 0.0, -2.5), BVector::new(2.5, 0.0, 2.5))
+        );
+        assert_eq!(
+            out[..2],
+            [BVector::new(2.5, 0.0, 0.0), BVector::new(-2.5, 0.0, 0.0)]
+        );
+        let (mut min, mut max) = (BVector::new(-2.0, 0.0, -1.0), BVector::new(2.0, 0.0, 1.0));
         assert!(place_box_perimeter(16, &mut out, &mut min, &mut max, 0.5).unwrap());
-        let walked: Vec<(f32, f32)> = out[..16].iter().map(|p| (p[0], p[2])).collect();
+        let walked: Vec<(f32, f32)> = out[..16].iter().map(|p| (p.x(), p.y())).collect();
         assert_eq!(
             walked,
             [
@@ -1034,9 +1052,9 @@ mod tests {
         ];
         for places in fixed {
             let n = places.len();
-            let (mut min, mut max) = ([lo, 0.0, lo], [hi, 0.0, hi]);
+            let (mut min, mut max) = (BVector::new(lo, 0.0, lo), BVector::new(hi, 0.0, hi));
             assert!(place_box_perimeter(n, &mut out, &mut min, &mut max, 0.1).unwrap());
-            let got: Vec<(f32, f32)> = out[..n].iter().map(|p| (p[0], p[2])).collect();
+            let got: Vec<(f32, f32)> = out[..n].iter().map(|p| (p.x(), p.y())).collect();
             assert_eq!(got, places, "{n}");
         }
         // none, or more than the buffer holds, writes nothing
@@ -1052,7 +1070,7 @@ mod tests {
         f.slots = [0.25, -1.0, 0.250_000_06, 3.0]
             .iter()
             .map(|&x| Slot {
-                offset: [x, 0.0, 0.0],
+                offset: BVector::new(x, 0.0, 0.0),
                 ..Slot::default()
             })
             .collect();
@@ -1089,7 +1107,7 @@ mod tests {
             (f.kind, f.transform_type, f.maximum_width, f.maximum_depth),
             (BOX, 1, 4, 4)
         );
-        let slots: Vec<(Vec3, i32)> = f
+        let slots: Vec<(BVector, i32)> = f
             .slots
             .iter()
             .map(|s| (s.offset, s.desired_category))
@@ -1097,10 +1115,10 @@ mod tests {
         assert_eq!(
             slots,
             [
-                ([0.0, 0.0, 0.0], 5),
-                ([2.0, 0.0, -2.0], 1),
-                ([2.0, 0.0, 2.0], 1),
-                ([-2.0, 0.0, 0.0], 1),
+                (BVector::new(0.0, 0.0, 0.0), 5),
+                (BVector::new(2.0, 0.0, -2.0), 1),
+                (BVector::new(2.0, 0.0, 2.0), 1),
+                (BVector::new(-2.0, 0.0, 0.0), 1),
             ]
         );
         let lines: Vec<Vec<u32>> = f.lines.iter().map(|l| l.indices.clone()).collect();

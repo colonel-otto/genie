@@ -7,6 +7,7 @@ use crate::gathering::gather::{
     SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, Walks, food,
 };
 use crate::gathering::hunt::HuntTask;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{TargetMoved, WalkTo};
@@ -86,7 +87,7 @@ pub struct MoveTarget {
     /// `+0xbb8`; `FUN_14109d4f0`).
     pub drop_site: bool,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// The footprint gap from the gatherer to it.
     pub gap: f32,
 }
@@ -111,7 +112,7 @@ pub fn productivity_of(attribute_type2: i16, attributes: &[f32]) -> f32 {
 /// most ten times.
 #[must_use]
 pub fn stop_point(
-    position: [f32; 3],
+    position: Position,
     radius: [f32; 2],
     last: [f32; 2],
     rng: &mut Well512,
@@ -124,8 +125,8 @@ pub fn stop_point(
         (ix, iy) = (1, 1);
     }
     let (left, bottom) = (
-        (position[0] - radius[0]) as i32,
-        (position[1] - radius[1]) as i32,
+        (position.x() - radius[0]) as i32,
+        (position.y() - radius[1]) as i32,
     );
     let [mut x, mut y] = last;
     let mut draws = 0;
@@ -154,7 +155,7 @@ impl GatherAction {
         rate: StopRate,
     ) -> Result<Self, GenieError> {
         let farm = if target.class == class::FARM || SPECIAL_TARGETS.contains(&target.master) {
-            [target.position[0], target.position[1]]
+            target.position.ground()
         } else {
             [0.0; 2]
         };
@@ -239,7 +240,7 @@ impl GatherAction {
         }
         if target.player == player && target.drop_site && 0.0 < held.1 {
             self.target = -1;
-            self.point = [-1.0; 3];
+            self.point = Position::from([-1.0; 3]);
             self.carry_to = target.id;
             return self.set_drop(target.position, target.gap, mover, &walks);
         }
@@ -291,7 +292,7 @@ impl GatherAction {
         if target.player == player && target.drop_site && 0.0 < held {
             self.timer = 0.0;
             self.target = -1;
-            self.point = [-1.0; 3];
+            self.point = Position::from([-1.0; 3]);
             self.carry_to = target.id;
             self.set_drop(target.position, target.gap, mover, &walks)?;
             return Ok(true);
@@ -303,13 +304,13 @@ impl GatherAction {
         self.target_type = i32::from(target.class.get());
         if farm_stops {
             if STOP_FARMS.contains(&target.master) {
-                self.farm = [target.position[0], target.position[1]];
+                self.farm = target.position.ground();
                 self.stops = FARM_STOPS;
                 self.current_stop = 0;
                 self.time_per_stop = rate.time_per_stop(self.task.work_value, FARM_STOPS);
                 self.time_at_stop = 0.0;
             } else if target.master == 199 {
-                self.farm = [target.position[0], target.position[1]];
+                self.farm = target.position.ground();
             }
         }
         if target.class == class::FARM && 1 < workers {
@@ -361,7 +362,7 @@ impl GatherAction {
         let walk = if 1 < self.stops {
             let [x, y] = stop_point(position, radius, self.last_stop, rng);
             self.last_stop = [x, y];
-            let to = [x, y, position[2]];
+            let to = Position::new(x, y, position.z());
             self.move_to_point(to, self.task.range, TargetMoved::AsksAgain, mover, walks)?
         } else {
             self.move_to_object(to, mover, walks)?
@@ -380,7 +381,7 @@ impl GatherAction {
     /// No drop site (the unit AI's part); a sprite the table lacks.
     pub fn set_drop(
         &mut self,
-        site: [f32; 3],
+        site: Position,
         gap: f32,
         mover: &mut Mover,
         walks: &Walks<'_>,
@@ -417,7 +418,7 @@ impl GatherAction {
     pub fn take_move(
         &mut self,
         target: Option<MoveTarget>,
-        point: [f32; 3],
+        point: Position,
         player: PlayerId,
         mover: &mut Mover,
         walks: &Walks<'_>,
@@ -427,7 +428,7 @@ impl GatherAction {
             Some(t) if t.id == self.carry_to && self.state == DROP => Ok(()),
             Some(t) => {
                 self.target = -1;
-                self.point = [-1.0; 3];
+                self.point = Position::from([-1.0; 3]);
                 self.carry_to = t.id;
                 self.set_drop(t.position, t.gap, mover, walks)
             }
@@ -469,7 +470,7 @@ impl GatherAction {
         Self::show(c, unit, self.stand_sprite(unit, r));
         self.target = -1;
         self.carry_to = -1;
-        self.point = [-1.0; 3];
+        self.point = Position::from([-1.0; 3]);
     }
 
     /// Slot 0x38 (`FUN_140a8e1b0`, as `TRIBE_Action_Gather`'s `FUN_140abf3c0`) as the unit's
@@ -498,7 +499,7 @@ impl GatherAction {
         let released = [self.target, self.carry_to];
         self.target = -1;
         self.carry_to = -1;
-        self.point = [-1.0; 3];
+        self.point = Position::from([-1.0; 3]);
         Ok(released)
     }
 }

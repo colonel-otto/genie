@@ -256,7 +256,7 @@ impl Unit {
             (crate::ownership::artifact::ARTIFACT_TYPE, _) => self
                 .actions
                 .artifact()
-                .is_some_and(|a| a.goal.is_none_or(|g| g[0] == -1.0)),
+                .is_some_and(|a| a.goal.is_none_or(|g| g.x() == -1.0)),
             _ => false,
         })
     }

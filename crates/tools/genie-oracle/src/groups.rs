@@ -10,12 +10,13 @@ use genie_core::groups::{
     Formation, FormationLine, GroupCommand, GroupOrder, LinePoint, Member, Motion, PointLine, Slot,
     SpecificMove, TargetData, UnitGroup, UnitGroups, UnitTypeStatistic,
 };
+use genie_core::math::fmath::BVector;
 use genie_save::generated::world as saved;
 
 use crate::{path_level, vec3};
 
 /// Four vectors of a saved 48-byte position (point, forward, up, right).
-fn frame(b: &[u8; 48]) -> [[f32; 3]; 4] {
+fn frame(b: &[u8; 48]) -> [BVector; 4] {
     let v = |i: usize| {
         let mut w = [0; 12];
         w.copy_from_slice(&b[i * 12..i * 12 + 12]);
@@ -386,6 +387,13 @@ impl<T: Flat, const N: usize> Flat for [T; N] {
     }
 }
 
+/// A vector flattens as its three components in the game's order, as the save holds them.
+impl Flat for BVector {
+    fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
+        self.get().flat(path, out);
+    }
+}
+
 impl<T: Flat> Flat for Vec<T> {
     fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
         out.push((join(path, "len"), self.len().to_string()));
@@ -492,7 +500,7 @@ mod tests {
     #[test]
     fn a_field_that_differs_is_named_by_its_path_with_both_values_in_full() {
         let mut theirs = group(3);
-        theirs.motion.velocity[1] = 0.1;
+        theirs.motion.velocity = theirs.motion.velocity.with_height(0.1);
         theirs.members[0].specific_move.timer = -0.0;
         let d = group_differences(&world(vec![group(3)]), &world(vec![theirs]), false);
         assert_eq!(
@@ -507,7 +515,7 @@ mod tests {
     #[test]
     fn a_list_of_another_length_shows_its_length_and_the_entries_one_side_holds() {
         let mut theirs = group(3);
-        theirs.waypoints.push([1.5, 2.5, 0.0]);
+        theirs.waypoints.push(BVector::new(1.5, 2.5, 0.0));
         let d = group_differences(&world(vec![group(3)]), &world(vec![theirs]), false);
         assert_eq!(
             d,

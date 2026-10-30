@@ -117,7 +117,7 @@ impl World {
         if !g.command_queue.is_empty() {
             return Ok(true);
         }
-        let [x, _, y] = g.current_target.original_position;
+        let to = g.current_target.original_position.ground();
         let mut range = g.current_target.range;
         g.motion.stop_walk()?;
         g.current_command = NO_COMMAND;
@@ -140,7 +140,7 @@ impl World {
         let _ = self.command_move_to(
             group,
             -1,
-            [x, y],
+            to,
             MoveTo {
                 range,
                 forget_target: true,
@@ -290,14 +290,14 @@ impl World {
         let at = t.moved_vector().xhy();
         let from = g.current_target.original_position;
         let d = fmath::sub(at, from);
-        if at_most_or_unordered(fmath::sqrt(d[2] * d[2] + d[0] * d[0]), CLOSE) {
+        if at_most_or_unordered(fmath::sqrt(d.y() * d.y() + d.x() * d.x()), CLOSE) {
             return Ok(None);
         }
         if !self.sees_object(t, owner)? {
             let _ = self.command_move_to(
                 group,
                 -1,
-                [from[0], from[2]],
+                from.ground(),
                 MoveTo {
                     range: 0.0,
                     forget_target: true,
@@ -326,7 +326,7 @@ impl World {
         let _ = self.command_move_to(
             group,
             target,
-            [at[0], at[2]],
+            at.ground(),
             MoveTo {
                 range,
                 direct: true,
@@ -362,15 +362,14 @@ impl World {
             .world_object(target)
             .ok_or_else(|| member_gone(target))?;
         let radius = self.master(t.player(), t.master_id())?.radius;
-        let [tx, ty, _] = t.position();
+        let at = t.position().ground();
         let g = self.groups.held_mut(group)?;
         if g.motion.moving() {
             *relayout = true;
         } else if !g.motion.waits_to_move() {
             g.flags |= ARRIVED;
         }
-        let [x, _, y] = g.motion.position[0];
-        if point_gap([tx, ty], radius, [x, y]) <= g.current_target.range {
+        if point_gap(at, radius, g.motion.position[0].ground()) <= g.current_target.range {
             g.motion.stop_walk()?;
             g.flags |= ARRIVED;
         }

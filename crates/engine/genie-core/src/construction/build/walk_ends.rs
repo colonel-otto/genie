@@ -94,7 +94,7 @@ impl BuildAction {
             }
         }
         let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
-        let (restriction, ground, [mx, my, _]) = (
+        let (restriction, ground, moved_at) = (
             mover.stats.restriction,
             mover.stats.radius[0],
             mover.moved_at,
@@ -111,8 +111,8 @@ impl BuildAction {
             let t = known?.ok_or(SITE_GONE)?;
             let radius = master_radius.unwrap_or(t.radius[0]);
             let req = crate::pathing::tile_path::Request {
-                from: [mx, my],
-                to: [t.position[0], t.position[1]],
+                from: moved_at.ground(),
+                to: t.position.ground(),
                 radii: radius + ground,
                 range: 0.0,
                 closed: Vec::new(),

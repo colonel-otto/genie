@@ -1,6 +1,7 @@
 //! What the unit AI asks of the world ([`UnitSide`]) and the commands it gives its unit.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
@@ -107,7 +108,7 @@ pub trait UnitSide {
         &mut self,
         target: i32,
         seeker: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError>;
+    ) -> Result<Option<(ClassId, Position)>, GenieError>;
 
     /// The explorer's point to explore (the base handler's case 0x202 for the auto scout): the
     /// search around its town centre (`FUN_140c65490`), else its unit AI's (`ai`) slot 0x90 with
@@ -376,12 +377,12 @@ pub enum UnitCommand {
     /// The enter into an object (slot 0x3a0), forced.
     Enter(i32),
     /// The transport to a point (slot 0x3b8, `FUN_14108ce60`), forced.
-    Transport([f32; 3]),
+    Transport(Position),
     /// The unload at a point at the unit's height (slot 0x3a8, `FUN_14108d050`), or over a wall
     /// (slot 0x3b0, `FUN_14108d560`), forced.
     Unload {
         /// The point.
-        to: [f32; 3],
+        to: Position,
         /// Over a wall.
         over_wall: bool,
     },
@@ -434,7 +435,7 @@ pub struct Gatherable {
     /// The object.
     pub id: i32,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's class, or the target type the hunter took (a class or a master).
     pub class: i32,
 }
@@ -490,7 +491,7 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, GenieError>> UnitSide for F {
         &mut self,
         _: i32,
         _: &Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("an attack test without the world"))
     }
 

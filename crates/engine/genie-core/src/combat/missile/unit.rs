@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
+use crate::map::Position;
 use crate::map::spatial::WalkQuery;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
@@ -117,9 +118,10 @@ impl Unit {
         missile.step = step;
         missile.flying = flying;
         let old = self.position();
-        let to = [old[0] + step[0], old[1] + step[1], old[2] + step[2]];
+        let [sx, sy, sz] = step;
+        let to = Position::new(old.x() + sx, old.y() + sy, old.z() + sz);
         let [w, h] = c.w.spatial.map;
-        if to[0] < 0.0 || w as f32 <= to[0] || to[1] < 0.0 || h as f32 <= to[1] {
+        if to.x() < 0.0 || w as f32 <= to.x() || to.y() < 0.0 || h as f32 <= to.y() {
             self.life.hp = 0.0;
         }
         let mover = self
@@ -134,8 +136,13 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "a missile without the map's terrain",
                 ))?
-                .ground(at[0], at[1])?;
-        at[2] = crate::combat::missile::grounded(at[2], ground, flying, stats.fly_mode);
+                .ground(at.x(), at.y())?;
+        at = at.with_z(crate::combat::missile::grounded(
+            at.z(),
+            ground,
+            flying,
+            stats.fly_mode,
+        ));
         mover.mark_move(at, c.w.world_time);
         mover.new_position(
             self.id.get(),
@@ -149,7 +156,7 @@ impl Unit {
             };
             self.missile_hits(action, &stats, fired, old, c)?;
         }
-        if ground == at[2] {
+        if ground == at.z() {
             self.missile_lands(missile, slot, &stats, c)?;
         }
         Ok(())
@@ -172,7 +179,7 @@ impl Unit {
         action: &mut crate::combat::missile::MissileAction,
         stats: &crate::combat::missile::MissileStats,
         fired: Fired,
-        old: [f32; 3],
+        old: Position,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         if !(0.0 < stats.radius[0] && 0.0 < stats.radius[1]) {
@@ -238,7 +245,7 @@ impl Unit {
     pub(crate) fn missile_meets(
         &self,
         stats: &crate::combat::missile::MissileStats,
-        old: [f32; 3],
+        old: Position,
         c: &mut Step<'_>,
     ) -> Result<Vec<(i32, PlayerId, u8, u8)>, GenieError> {
         let [w, h] = c.w.spatial.map;
@@ -252,8 +259,8 @@ impl Unit {
             }
         };
         let at = self.position();
-        let from = [hold(old[0], w), hold(old[1], h)];
-        let to = [hold(at[0], w), hold(at[1], h)];
+        let from = [hold(old.x(), w), hold(old.y(), h)];
+        let to = [hold(at.x(), w), hold(at.y(), h)];
         let rect = [
             from[0].min(to[0]),
             from[1].min(to[1]),
@@ -285,8 +292,12 @@ impl Unit {
                 player_master(&c.w.masters, p.player, p.master).ok_or(GenieError::unsupported(
                     "an object a missile meets of a master the slice does not have",
                 ))?;
-            if crate::combat::missile::meets_height(p.position[2], m.height, at[2], stats.radius[2])
-            {
+            if crate::combat::missile::meets_height(
+                p.position.z(),
+                m.height,
+                at.z(),
+                stats.radius[2],
+            ) {
                 met.push((id, p.player, m.kind, m.blast_defense));
             }
         }
@@ -352,7 +363,7 @@ impl Unit {
         ))?;
         let hit = crate::combat::attack::Hit {
             at: self.position(),
-            from_z: Some(action.origin.position[2]),
+            from_z: Some(action.origin.position.z()),
             missile: true,
             chance: master.hit_chance,
         };

@@ -3,6 +3,7 @@
 
 use crate::combat::abilities::{ALWAYS_REACHED, ONE, Own, STRUCK_BUILDING_CLASSES};
 use crate::combat::damage::Victim;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
@@ -33,7 +34,7 @@ pub fn movement_damage_due(timer: &mut f32, dt: f32) -> bool {
 /// is 0, `CMOVS`) to the map's width and height (`CMOVL`; both included). Returns the low and
 /// the high corner.
 #[must_use]
-pub fn reach(position: [f32; 3], range: f32, map: [i32; 2]) -> ([i32; 2], [i32; 2]) {
+pub fn reach(position: Position, range: f32, map: [i32; 2]) -> ([i32; 2], [i32; 2]) {
     let r = crate::math::conversions::cvttss2si(range);
     let low = |v: f32| {
         let d = crate::math::conversions::cvttss2si(v).wrapping_sub(r);
@@ -44,8 +45,8 @@ pub fn reach(position: [f32; 3], range: f32, map: [i32; 2]) -> ([i32; 2], [i32; 
         if size < d { size } else { d }
     };
     (
-        [low(position[0]), low(position[1])],
-        [high(position[0], map[0]), high(position[1], map[1])],
+        [low(position.x()), low(position.y())],
+        [high(position.x(), map[0]), high(position.y(), map[1])],
     )
 }
 
@@ -67,7 +68,7 @@ pub struct Bystander {
     /// Its master's `area_effect_object_level` (`+0x62b`).
     pub blast_defense: u8,
     /// Its place (`+0x3c8`, `+0x4c8`).
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
     pub radius: [f32; 2],
 }
@@ -81,7 +82,7 @@ pub struct Hitter {
     /// Its master's `area_effect_level` (`+0x830`).
     pub blast_level: u8,
     /// Its place.
-    pub position: [f32; 3],
+    pub position: Position,
     /// Its master's radii.
     pub radius: [f32; 2],
 }

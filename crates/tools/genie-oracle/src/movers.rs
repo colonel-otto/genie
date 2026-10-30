@@ -4,13 +4,15 @@
 use crate::masters::MasterTable;
 use crate::{combat_master, master_facets};
 use genie_core::GenieError;
+use genie_core::map::Position;
+use genie_core::math::fmath::BVector;
 use genie_save::generated::world::{
     Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
 };
 
-pub(super) fn vec3(b: &[u8; 12]) -> genie_core::math::fmath::Vec3 {
+pub(super) fn vec3(b: &[u8; 12]) -> BVector {
     let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
-    [f(0), f(4), f(8)]
+    BVector::new(f(0), f(4), f(8))
 }
 
 /// The animated part of a player's master, which holds its speed (`mMaxSpeed`, master `+0x740`).
@@ -226,8 +228,8 @@ pub(super) fn mover(
     ))?;
     let facets = table.graphics.get(&walking).map(|g| g.facets);
     let velocity = (m.have_movement == 1).then(|| Velocity {
-        velocity: m.velocity.as_ref().map_or([0.0; 3], vec3),
-        acceleration: m.acceleration.as_ref().map_or([0.0; 3], vec3),
+        velocity: m.velocity.as_ref().map_or(BVector::ZERO, vec3),
+        acceleration: m.acceleration.as_ref().map_or(BVector::ZERO, vec3),
     });
     let mut levels = m
         .temp_path_data
@@ -282,7 +284,7 @@ pub(super) fn mover(
                 let b = &m.position_value;
                 f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]])
             };
-            [f(0), f(8), f(4)]
+            Position::new(f(0), f(8), f(4))
         },
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),

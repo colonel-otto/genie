@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::gathering::drop_sites::{Seeker, drop_site_search};
 use crate::gathering::gather::{GatherRetarget, Walks};
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::move_to::SpriteReads;
@@ -113,7 +114,7 @@ impl Unit {
         );
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let gather = self.actions.gather_mut().expect("the caller's gather");
-        if gather.point[0] != -1.0 && gather.point[1] != -1.0 {
+        if gather.point.x() != -1.0 && gather.point.y() != -1.0 {
             if farm_waits {
                 return Err(GenieError::unsupported(
                     "a farmer that found nothing after its drop-off (set_state 0xf3)",
@@ -139,7 +140,7 @@ impl Unit {
         gather.timer = 0.0;
         gather.target = -1;
         gather.carry_to = -1;
-        gather.point = [-1.0; 3];
+        gather.point = Position::from([-1.0; 3]);
         if let Some(g) = shows {
             crate::objects::sprite::new_sprite(
                 &mut self.sprite,
@@ -328,7 +329,10 @@ impl Unit {
         let gather = self.actions.gather().expect("the caller's gather");
         let (carry_to, state) = (gather.carry_to, gather.state);
         let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
-        let at = c.spatial.get_known(site)?.map_or([0.0; 3], |s| s.position);
+        let at = c
+            .spatial
+            .get_known(site)?
+            .map_or(Position::ORIGIN, |s| s.position);
         let sprites = SpriteReads::of(
             self.master_in(c.masters)?,
             self.abilities.look.as_ref(),
@@ -366,7 +370,10 @@ impl Unit {
                 "a hunt without a drop site (notify 0x203, set_state 2)",
             ));
         }
-        let at = c.spatial.get_known(site)?.map_or([0.0; 3], |s| s.position);
+        let at = c
+            .spatial
+            .get_known(site)?
+            .map_or(Position::ORIGIN, |s| s.position);
         let sprites = SpriteReads::of(
             self.master_in(c.masters)?,
             self.abilities.look.as_ref(),

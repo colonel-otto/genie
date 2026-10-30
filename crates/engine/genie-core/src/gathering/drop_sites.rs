@@ -1,6 +1,7 @@
 //! The drop-site searches (`FUN_1411671e0`): from a unit, or from a point without one.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -59,7 +60,7 @@ impl Seeker<'_, '_> {
         last: &mut f32,
     ) -> Result<Option<f32>, GenieError> {
         let radii = self.mover.stats.radius[0] + master.radius[0];
-        let to = [o.position()[0], o.position()[1]];
+        let to = o.position().ground();
         let ground = [self.mover.stats.radius[0], self.mover.stats.radius[1]];
         let near = || {
             footprint_gap_squared(self.mover.position(), ground, o.position(), master.radius)
@@ -106,7 +107,7 @@ impl Seeker<'_, '_> {
             .spatial
             .get_known(target)?
             .filter(|p| p.class == class::FARM)
-            .map(|p| [p.position[0], p.position[1]]))
+            .map(|p| p.position.ground()))
     }
 }
 /// The squared footprint gap within which a fishing ship counts a drop site its path does not
@@ -142,11 +143,11 @@ pub(crate) fn drop_site_search<'u>(
     units: impl IntoIterator<Item = &'u Unit>,
     masters: &Masters,
     sites: &[i16],
-    at: [f32; 3],
+    at: Position,
     mut seeker: Option<Seeker<'_, '_>>,
     (outside, at_work): (bool, i16),
 ) -> Result<Option<i32>, GenieError> {
-    let [mut x, mut y, _] = at;
+    let (mut x, mut y) = (at.x(), at.y());
     let pointless = x <= NO_POINT || y <= NO_POINT;
     let fishing = seeker.as_ref().is_some_and(Seeker::fishing);
     let own_zone = seeker
@@ -166,7 +167,9 @@ pub(crate) fn drop_site_search<'u>(
         }
         let master = o.master_in(Some(masters))?;
         if let (Some(s), Some(zone)) = (seeker.as_ref(), own_zone)
-            && s.zones.zone(o.position()[0] as i32, o.position()[1] as i32) != zone
+            && s.zones
+                .zone(o.position().x() as i32, o.position().y() as i32)
+                != zone
         {
             continue;
         }
@@ -189,7 +192,7 @@ pub(crate) fn drop_site_search<'u>(
             [x, y] = farm;
             by_path = false;
         }
-        let (dx, dy) = (x - o.position()[0], y - o.position()[1]);
+        let (dx, dy) = (x - o.position().x(), y - o.position().y());
         let squared = dy * dy + dx * dx;
         let d = match seeker.as_mut() {
             Some(s) => match s.measure(o, master, by_path, squared, &mut last)? {
@@ -220,15 +223,15 @@ pub(crate) const NO_DROP_DISTANCE: f32 = crate::math::image::turn::NO_DROP_DISTA
 pub(crate) fn nearest_drop_site(
     others: OthersRef<'_>,
     sites: &[i16],
-    at: [f32; 3],
+    at: Position,
 ) -> Option<(i32, f32)> {
     let mut best: Option<(i32, f32)> = None;
     for o in others.own_iter() {
         if !sites.contains(&o.life.master_id) || o.life.state != 2 {
             continue;
         }
-        let [x, y, _] = at;
-        let (dx, dy) = (x - o.position()[0], y - o.position()[1]);
+        let (x, y) = (at.x(), at.y());
+        let (dx, dy) = (x - o.position().x(), y - o.position().y());
         let d = dy * dy + dx * dx;
         if best.is_none_or(|(_, b)| d < b) {
             best = Some((o.id.get(), d));
@@ -258,7 +261,7 @@ mod tests {
     fn object(id: i32, master_id: i16, at: [f32; 2]) -> Unit {
         Unit {
             id: object_id(id),
-            body: crate::objects::layers::Body::at([at[0], at[1], 0.0]),
+            body: crate::objects::layers::Body::at(Position::new(at[0], at[1], 0.0)),
             life: Lifecycle {
                 state: 2,
                 master_id,
@@ -303,7 +306,12 @@ mod tests {
         };
         Unit {
             actions: ActionList::default().with_build(target.map(|t| {
-                crate::construction::build::tests::started(t, [20.0, 17.0, 0.0], 0.0, task)
+                crate::construction::build::tests::started(
+                    t,
+                    Position::new(20.0, 17.0, 0.0),
+                    0.0,
+                    task,
+                )
             })),
             ..object(10, 83, [20.0, 20.0])
         }
@@ -312,7 +320,7 @@ mod tests {
     /// The map's objects: a farm 800 (class 49) at `farm` and a house 801 (class 3) at (20, 17).
     fn spatial(farm: [f32; 2]) -> Spatial {
         let placed = |at: [f32; 2], class| Placed {
-            position: [at[0], at[1], 0.0],
+            position: Position::new(at[0], at[1], 0.0),
             radius: [1.5, 1.5],
             class,
             player: PlayerId::new(1),
@@ -336,7 +344,7 @@ mod tests {
         units: &[Unit],
         unit: &Unit,
         class: ClassId,
-        at: [f32; 3],
+        at: Position,
         spatial: &Spatial,
     ) -> Result<Option<i32>, GenieError> {
         let mover = crate::gathering::hunt::tests::walker();
@@ -377,7 +385,7 @@ mod tests {
     /// (20, 19.5) both lie 5.5 away and the first in the list wins (428339149's farmers at 420).
     #[test]
     fn a_villager_working_a_farm_searches_from_the_farm_by_distance() {
-        let at = [20.0, 20.0, 0.0];
+        let at = Position::new(20.0, 20.0, 0.0);
         let near_tc = spatial([20.0, 17.0]);
         // by path without planners: no length, no site
         assert_eq!(
@@ -441,7 +449,7 @@ mod tests {
     #[test]
     fn a_search_from_no_point_takes_the_first_site_and_one_below_it_goes_by_distance() {
         let map = spatial([20.0, 17.0]);
-        let none = [NO_POINT, NO_POINT, 0.0];
+        let none = Position::new(NO_POINT, NO_POINT, 0.0);
         assert_eq!(
             search(&sites(), &villager(None), class::VILLAGER, none, &map),
             Ok(Some(700))
@@ -453,12 +461,12 @@ mod tests {
             Ok(Some(701))
         );
         // (−2, 30): by distance, the mill (22² + 5²) before the town centre (22² + 16²)
-        let below = [-2.0, 30.0, 0.0];
+        let below = Position::new(-2.0, 30.0, 0.0);
         assert_eq!(
             search(&sites(), &villager(None), class::VILLAGER, below, &map),
             Ok(Some(701))
         );
-        let left = [5.0, NO_POINT, 0.0];
+        let left = Position::new(5.0, NO_POINT, 0.0);
         assert_eq!(
             search(&sites(), &villager(None), class::VILLAGER, left, &map),
             Ok(Some(700))

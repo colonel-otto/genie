@@ -143,6 +143,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Position;
     use crate::test_ids::object_id;
     use crate::world::Player;
 
@@ -239,7 +240,7 @@ mod tests {
             .map(|_| crate::objects::masters::Masters::new([flare.clone()]))
             .collect();
         t.next_object_id = object_id(100);
-        let flares = |t: &World| -> Vec<(i32, [f32; 3])> {
+        let flares = |t: &World| -> Vec<(i32, Position)> {
             t.players[2]
                 .objects
                 .iter()
@@ -253,7 +254,7 @@ mod tests {
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
         t.players[1].objects.push(crate::objects::unit::Unit {
             id: object_id(50),
-            body: crate::objects::layers::Body::at([7.0, 8.0, 0.0]),
+            body: crate::objects::layers::Body::at(Position::new(7.0, 8.0, 0.0)),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: TOWN_CENTRE,
                 state: 2,
@@ -262,7 +263,7 @@ mod tests {
             ..crate::objects::unit::Unit::default()
         });
         t.tick_with(50, &[]);
-        assert_eq!(flares(&t), [(100, [7.0, 8.0, 0.0])]);
+        assert_eq!(flares(&t), [(100, Position::new(7.0, 8.0, 0.0))]);
         assert_eq!(t.players[2].tc_flared.get(1), Some(&true));
         t.tick_with(50, &[]);
         assert_eq!(flares(&t).len(), 1);

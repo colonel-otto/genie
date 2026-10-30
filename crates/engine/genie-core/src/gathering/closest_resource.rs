@@ -2,6 +2,7 @@
 //! herded sheep.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
@@ -28,9 +29,9 @@ pub(crate) struct ResourceWorld<'a, 'b> {
 /// site from `point` (at the unit's height), unless both its parts are exactly −1
 /// (`DAT_14330ec20`, `UCOMISS`/`JP`/`JNZ`: a part that is not a number differs); with a site
 /// (`has_site`, which replaces the point) and for (−1, −1) from the unit's place.
-pub(crate) fn search_origin(point: [f32; 2], has_site: bool, unit: [f32; 3]) -> [f32; 3] {
+pub(crate) fn search_origin(point: [f32; 2], has_site: bool, unit: Position) -> Position {
     match point {
-        [x, y] if !has_site && (x != -1.0 || y != -1.0) => [x, y, unit[2]],
+        [x, y] if !has_site && (x != -1.0 || y != -1.0) => Position::new(x, y, unit.z()),
         _ => unit,
     }
 }
@@ -84,7 +85,7 @@ pub(crate) fn closest_resource_of(
                 .get(restriction)
                 .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
             let zones = c.zones.of(w, h, &terrain.kinds, values)?;
-            let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
+            let zone = |p: Position| zones.zone(p.x() as i32, p.y() as i32);
             zone(s.position()) == zone(unit.position())
         };
         Some(gather_search::SearchSite {
@@ -103,7 +104,7 @@ pub(crate) fn closest_resource_of(
     ))?;
     let mask = mover.stats.restriction_mask;
     let (player, me_id, every) = (c.player, unit.id, c.every);
-    let candidate = |id: i32, owner: PlayerId, u: &Unit, position: [f32; 3]| {
+    let candidate = |id: i32, owner: PlayerId, u: &Unit, position: Position| {
         let m = u.master(every, owner)?;
         Ok(Candidate {
             id,
@@ -179,7 +180,7 @@ pub(crate) fn herded(others: OthersRef<'_>, id: i32) -> bool {
         u.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE)
             && u.actions
                 .artifact()
-                .is_some_and(|a| a.goal.is_some_and(|g| g[0] != -1.0))
+                .is_some_and(|a| a.goal.is_some_and(|g| g.x() != -1.0))
     })
 }
 

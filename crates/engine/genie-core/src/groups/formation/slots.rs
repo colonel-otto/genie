@@ -9,7 +9,7 @@ use crate::world::slots::CheckedIndex;
 /// A line order that lacks a place up to the list's length: the game reads past the order.
 const NO_PLACE_IN_ORDER: GenieError =
     GenieError::unreachable("a line order that lacks a place up to the list's length");
-use crate::math::fmath::{Vec3, sub};
+use crate::math::fmath::{BVector, sub};
 use crate::math::image::group::FARTHEST;
 use crate::world::World;
 
@@ -63,7 +63,7 @@ impl World {
     pub fn closest_unit(
         &self,
         g: &UnitGroup,
-        point: Vec3,
+        point: BVector,
         category: i32,
         sub_category: i32,
         used: &[i32],
@@ -86,9 +86,9 @@ impl World {
                 continue;
             }
             let at = object.moved_vector().xhy();
-            let d = (point[1] - at[1]) * (point[1] - at[1])
-                + (point[0] - at[0]) * (point[0] - at[0])
-                + (point[2] - at[2]) * (point[2] - at[2]);
+            let d = (point.height() - at.height()) * (point.height() - at.height())
+                + (point.x() - at.x()) * (point.x() - at.x())
+                + (point.y() - at.y()) * (point.y() - at.y());
             if d < best {
                 closest = m.id;
                 best = d;
@@ -99,11 +99,13 @@ impl World {
 
     /// The ground distance from slot place `at` to unit `id`'s (`FUN_14087e560`, its height
     /// zeroed, `sqrt(x² + 0 + y²)`), None for a unit the world does not hold.
-    pub(super) fn slot_distance(&self, at: Vec3, id: i32) -> Option<f32> {
+    pub(super) fn slot_distance(&self, at: BVector, id: i32) -> Option<f32> {
         let object = self.world_object(id)?;
         let mut d = sub(at, object.moved_vector().xhy());
-        d[1] = 0.0;
-        Some(crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]))
+        d = d.with_height(0.0);
+        Some(crate::math::fmath::sqrt(
+            d.x() * d.x() + 0.0 + d.y() * d.y(),
+        ))
     }
 
     /// `FUN_141009760` of `formation` for group `g` without the settings' flag `DAT_143f01834`
@@ -127,7 +129,7 @@ impl World {
         g: &UnitGroup,
     ) -> Result<(), GenieError> {
         // what the slots ask for (the assignments change only their units)
-        let asks: Vec<(Vec3, i32, i32)> = formation
+        let asks: Vec<(BVector, i32, i32)> = formation
             .slots
             .iter()
             .map(|s| {
@@ -260,7 +262,7 @@ impl World {
                     FARTHEST
                 } else {
                     let d = sub(at, slot.transform_position);
-                    d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+                    d.x() * d.x() + d.height() * d.height() + d.y() * d.y()
                 };
             }
         }

@@ -8,7 +8,7 @@ use crate::groups::group_list::member_gone;
 use crate::groups::stats::weapon_range;
 use crate::groups::{TargetData, UnitGroup, WorldObject};
 use crate::math::fmath;
-use crate::math::fmath::below_or_unordered;
+use crate::math::fmath::{BVector, below_or_unordered};
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -82,7 +82,7 @@ impl UnitGroup {
         let t = &mut self.current_target;
         t.target = -1;
         t.kind = -1;
-        t.original_position = [0.0; 3];
+        t.original_position = BVector::ZERO;
         t.target_radius = 0.0;
         t.disable_retargeting = 0;
     }
@@ -150,7 +150,7 @@ impl World {
         let moved = self.command_move_to(
             group,
             main,
-            [at[0], at[2]],
+            at.ground(),
             MoveTo {
                 range,
                 keep_flag: true,
@@ -183,7 +183,7 @@ impl World {
     }
 
     /// Slot 0x520 (`FUN_14106d530`) of object `id`: where it last moved to ([`moved_place`]).
-    pub(super) fn moved_place_of(&self, id: i32) -> Result<[f32; 3], GenieError> {
+    pub(super) fn moved_place_of(&self, id: i32) -> Result<BVector, GenieError> {
         let (_, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         Ok(moved_place(u))
     }
@@ -442,7 +442,9 @@ fn take_into(list: &mut Vec<i32>, ids: &[i32], limit: usize) {
 
 /// Slot 0x520 (`FUN_14106d530`): the place the unit last moved to as the game holds it (x,
 /// height, y); an object that does not move holds its own.
-pub(crate) fn moved_place(u: &Unit) -> [f32; 3] {
-    let at = u.body.mover().map_or_else(|| u.position(), |m| m.moved_at);
-    [at[0], at[2], at[1]]
+pub(crate) fn moved_place(u: &Unit) -> BVector {
+    u.body
+        .mover()
+        .map_or_else(|| u.position(), |m| m.moved_at)
+        .vector()
 }

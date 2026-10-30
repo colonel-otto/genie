@@ -1,7 +1,7 @@
 //! A terrain restriction's planner ([`Planner`]) and its four-level grid: built, read and
 //! rebuilt over a changed rectangle.
 
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::pathing::tile_path::{E, LONE, MIXED, N, NO_COST, NODE, Node, OpenList, S, W};
 
 /// A terrain restriction's planner (`0x4a8` bytes, built by `FUN_140f74f90`).
@@ -32,7 +32,7 @@ pub struct Planner {
     pub(super) best: Option<usize>,
     pub(super) best_cost: f32,
     /// `+0x448`: the path's points from the goal back.
-    pub(super) points: Vec<Vec3>,
+    pub(super) points: Vec<BVector>,
 }
 
 /// What the grid reads of the map: whether the obstruction manager marks a tile blocked

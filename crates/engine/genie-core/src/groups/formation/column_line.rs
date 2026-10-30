@@ -7,7 +7,7 @@ use crate::groups::formation::{
 use crate::groups::layout::{clear_line, reset_line};
 use crate::groups::{Formation, Slot, UnitGroup};
 use crate::math::conversions::cvttss2si;
-use crate::math::fmath::{Vec3, add, scale, sub};
+use crate::math::fmath::{BVector, add, scale, sub};
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 
@@ -296,9 +296,9 @@ fn lay_category(
         next: if cat.types == 1 { -1 } else { 0 },
         used: [0u32; 50],
     };
-    let mut single: Vec3 = scale(cat.spacing, [0.0, 0.0, -1.0]);
+    let mut single: BVector = scale(cat.spacing, BVector::new(0.0, 0.0, -1.0));
     if style.staggered {
-        single = [single[0] * TWO, single[1] * TWO, single[2] * TWO];
+        single = BVector::new(single.x() * TWO, single.height() * TWO, single.y() * TWO);
     }
     if EPSILON < at.distance_back && EPSILON < at.last_spacing && at.last_spacing < cat.spacing {
         at.distance_back += cat.spacing - at.last_spacing;
@@ -337,26 +337,26 @@ fn lay_category(
 /// Where a line of `actual` slots starts: half its slots (truncated) of `single` ahead; a
 /// staggered line moves by a quarter of `single` (back on even lines, forward on odd ones), an
 /// even line of a plain one by half of it back.
-fn line_start(single: Vec3, actual: i32, line_index: i32, staggered: bool) -> Vec3 {
+fn line_start(single: BVector, actual: i32, line_index: i32, staggered: bool) -> BVector {
     let half = scale((actual / 2) as f32, single);
-    let total = add(half, [0.0; 3]);
+    let total = add(half, BVector::ZERO);
     if staggered {
-        let quarter = [
-            single[0] / STAGGER_SHARE,
-            single[1] / STAGGER_SHARE,
-            single[2] / STAGGER_SHARE,
-        ];
+        let quarter = BVector::new(
+            single.x() / STAGGER_SHARE,
+            single.height() / STAGGER_SHARE,
+            single.y() / STAGGER_SHARE,
+        );
         if line_index & 1 == 0 {
             sub(total, quarter)
         } else {
-            [
-                total[0] + quarter[0],
-                total[1] + quarter[1],
-                total[2] + quarter[2],
-            ]
+            BVector::new(
+                total.x() + quarter.x(),
+                total.height() + quarter.height(),
+                total.y() + quarter.y(),
+            )
         }
     } else if actual & 1 == 0 {
-        let half_step = [single[0] / TWO, single[1] / TWO, single[2] / TWO];
+        let half_step = BVector::new(single.x() / TWO, single.height() / TWO, single.y() / TWO);
         sub(total, half_step)
     } else {
         total
@@ -371,7 +371,7 @@ fn lay_line(
     formation: &mut Formation,
     cat: &Category,
     c: i32,
-    (actual, mut total, single): (i32, Vec3, Vec3),
+    (actual, mut total, single): (i32, BVector, BVector),
     style: Style,
     at: &mut Cursor,
     subs: &mut SubTypes,
@@ -385,12 +385,12 @@ fn lay_line(
         };
         *formation.slot_mut(i)? = Slot {
             unit_id: -1,
-            offset: flank_offset(total, at.line_index, style),
-            desired_transform_position: [0.0; 3],
+            offset: (flank_offset(total, at.line_index, style)),
+            desired_transform_position: BVector::ZERO,
             time: style.world_time,
             state: 0,
             depth: at.line_index,
-            transform_position: [0.0; 3],
+            transform_position: BVector::ZERO,
             position_filled: 0,
             desired_category: c,
             active: 1,
@@ -412,14 +412,14 @@ fn lay_line(
 
 /// A flanked line's slot moves apart (away from the middle on y) by [`FLANK_SPACING`] less the
 /// line's share of the depth; any other keeps `total`.
-fn flank_offset(total: Vec3, line_index: i32, style: Style) -> Vec3 {
+fn flank_offset(total: BVector, line_index: i32, style: Style) -> BVector {
     let mut offset = total;
     if style.flanked {
         let flank = FLANK_SPACING - line_index as f32 / style.depth as f32;
-        if 0.0 <= offset[2] {
-            offset[2] += flank;
+        if 0.0 <= offset.y() {
+            offset = offset.with_y(offset.y() + flank);
         } else {
-            offset[2] -= flank;
+            offset = offset.with_y(offset.y() - flank);
         }
     }
     offset

@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Position;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
@@ -168,7 +169,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     };
     let bush = crate::gathering::gather::Resource {
         id: -1,
-        position: [3.5, 3.5, 0.0],
+        position: Position::new(3.5, 3.5, 0.0),
         class: class::CLASS_7,
         master: 59,
         player: PlayerId::new(0),
@@ -201,7 +202,12 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let build = add(Unit {
         id: object_id(31),
         actions: ActionList::default().with_build(Some(
-            crate::construction::build::tests::started(-1, [3.5, 3.5, 0.0], 1.0, build_task),
+            crate::construction::build::tests::started(
+                -1,
+                Position::new(3.5, 3.5, 0.0),
+                1.0,
+                build_task,
+            ),
         )),
         ..Unit::default()
     });
@@ -217,7 +223,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
             crate::construction::repair::RepairAction::start(
                 crate::movement::move_to::WalkTo {
                     id: -1,
-                    at: [3.5, 3.5, 0.0],
+                    at: Position::new(3.5, 3.5, 0.0),
                     gap: crate::movement::move_to::NO_TARGET_GAP,
                     state: None,
                 },
@@ -230,7 +236,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
                     },
                     state: 2,
                     speed: 1.0,
-                    at: [3.5, 3.5, 0.0],
+                    at: Position::new(3.5, 3.5, 0.0),
                     ground: [0.2, 0.2],
                 },
             )
@@ -311,7 +317,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
         actions: ActionList::default().with_hunt(Some(HuntAction {
             target: -1,
             state: 4,
-            point: [-1.0; 3],
+            point: Position::from([-1.0; 3]),
             target_class: None,
             task: HuntTask {
                 id: TaskId::test(0),

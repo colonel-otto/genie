@@ -7,6 +7,7 @@ use crate::gathering::hunt::update::write_target_back;
 use crate::gathering::hunt::{
     DECAY_TASK, Herd, HuntAction, HuntNext, HuntReads, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH,
 };
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap_squared;
 use crate::objects::lifecycle::seconds;
@@ -31,7 +32,7 @@ impl HuntAction {
         self.state = LEAD;
         self.lead.still_time = 0;
         let at = f.victim.position;
-        self.lead.start = [at[0], at[1]];
+        self.lead.start = at.ground();
         self.face_animal(unit, at, r.attack.world_time)?;
         if let Some(g) = herd.special_graphic {
             new_sprite(
@@ -50,7 +51,7 @@ impl HuntAction {
     pub(super) fn face_animal(
         &self,
         unit: &mut Unit,
-        to: [f32; 3],
+        to: Position,
         now: u32,
     ) -> Result<(), GenieError> {
         let at = unit.body.position();
@@ -92,7 +93,7 @@ impl HuntAction {
             return Ok(HuntNext::Stay);
         }
         let v = f.victim.position;
-        if v[0] == self.lead.start[0] && v[1] == self.lead.start[1] {
+        if v.x() == self.lead.start[0] && v.y() == self.lead.start[1] {
             self.start_attack(c, unit, &herd)?;
             return Ok(HuntNext::Stay);
         }
@@ -102,7 +103,7 @@ impl HuntAction {
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
             .ok_or(crate::world::HUNTER_UNMOVING)?;
         if footprint_gap_squared(unit.body.position(), ground, v, f.victim.radius) <= LEAD_REACH {
-            self.lead.start = [v[0], v[1]];
+            self.lead.start = v.ground();
             self.face_animal(unit, v, r.attack.world_time)?;
             self.timer = LEAD_WAIT;
             return Ok(HuntNext::Stay);

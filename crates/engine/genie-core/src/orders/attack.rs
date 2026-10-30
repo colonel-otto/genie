@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::attack::{Attack, AttackReads, Fight};
 use crate::gathering::hunt::HuntRetarget;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
@@ -23,7 +24,7 @@ pub(super) struct Aim {
     /// The object aimed at (the target, or a building annex's main building), its place and its
     /// master's class.
     pub(super) aimed: i32,
-    pub(super) at: [f32; 3],
+    pub(super) at: Position,
     pub(super) aimed_class: ClassId,
 }
 
@@ -47,7 +48,7 @@ impl World {
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
-        point: [f32; 3],
+        point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
         if task.work_range != 0.0 {
@@ -75,7 +76,7 @@ impl World {
             .spatial
             .get_known(target)?
             .ok_or(crate::world::TARGET_UNPLACED)?;
-        let (tx, ty) = (t_at.position[0] as i32, t_at.position[1] as i32);
+        let (tx, ty) = (t_at.position.x() as i32, t_at.position.y() as i32);
         let visible = self.spatial.sees_tile(player, tx, ty)
             || (aim.fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
         let u = &self.players.live(player, idx)?;
@@ -190,7 +191,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         (target, aim): (i32, &Aim),
-        point: [f32; 3],
+        point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
         let world_time = self.world_time;

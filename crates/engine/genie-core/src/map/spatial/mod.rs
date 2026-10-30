@@ -12,6 +12,7 @@
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::vision::registry::Record;
@@ -182,7 +183,7 @@ pub struct Gait {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Placed {
     /// x, y, z on the map.
-    pub position: [f32; 3],
+    pub position: Position,
     /// The master's radii on the ground (master `+0x5d8`, `+0x5dc`).
     pub radius: [f32; 2],
     /// The master's class (`+0x410`, decoded): the motion step treats gates (39) apart.
@@ -238,7 +239,7 @@ impl Placed {
     /// The record's box `x0, y0, x1, y1` (`+0x20`..`+0x2c`): the position plus and minus the radii.
     #[must_use]
     pub fn bounds(&self) -> [f32; 4] {
-        let [x, y, _] = self.position;
+        let (x, y) = (self.position.x(), self.position.y());
         let [rx, ry] = self.radius;
         [x - rx, y - ry, x + rx, y + ry]
     }
@@ -368,8 +369,8 @@ impl Tiles {
     }
 
     /// The tile of a centre, if it is on the map.
-    fn tile_of(&self, position: [f32; 3]) -> Option<usize> {
-        self.index(position[0] as i32, position[1] as i32)
+    fn tile_of(&self, position: Position) -> Option<usize> {
+        self.index(position.x() as i32, position.y() as i32)
     }
 
     /// The object goes last on tile `i` (`FUN_140f5f0a0`). An empty tile's list takes it and
@@ -438,7 +439,7 @@ impl Tiles {
         &self,
         p: &Placed,
     ) -> (std::ops::RangeInclusive<i32>, std::ops::RangeInclusive<i32>) {
-        let [x, y, _] = p.position;
+        let (x, y) = (p.position.x(), p.position.y());
         let [rx, ry] = p.radius;
         let hold = |v: i32, size: i32| v.clamp(0, size - 1);
         let xs = hold((x - rx) as i32, self.width)..=hold(((x + rx) - 0.001) as i32, self.width);

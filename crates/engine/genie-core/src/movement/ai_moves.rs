@@ -3,6 +3,7 @@
 //! `MoveTo` that ends at its start.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::action_type;
 use crate::players::PlayerId;
@@ -149,7 +150,7 @@ impl Unit {
     /// [`HuntAction::take_move`]: crate::gathering::hunt::HuntAction::take_move
     pub(crate) fn head_takes_point(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         player: PlayerId,
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
@@ -218,7 +219,7 @@ impl Unit {
     /// [`Artifact::take_point`]: crate::ownership::artifact::Artifact::take_point
     fn artifact_takes_point(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         sprites: &SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
         let reads = MoveToReads::with_sprites(*sprites, self);
@@ -241,7 +242,7 @@ impl Unit {
     /// [`HuntAction::take_move`]: crate::gathering::hunt::HuntAction::take_move
     fn hunt_takes_point(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         player: PlayerId,
         sprites: SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
@@ -274,7 +275,7 @@ impl Unit {
     /// `MoveTo` it makes takes `sprites`' default for a sprite the task lacks.
     fn gather_takes_point(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         player: PlayerId,
         sprites: SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
@@ -296,7 +297,7 @@ impl Unit {
     /// [`RepairAction::take_point`]: crate::construction::repair::RepairAction::take_point
     fn repair_takes_point(
         &mut self,
-        point: [f32; 3],
+        point: Position,
         move_reads: &MoveToReads<'_>,
     ) -> Result<PointMove, GenieError> {
         let repair = self

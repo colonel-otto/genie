@@ -42,7 +42,7 @@ fn sheep() -> Victim {
         class: class::LIVESTOCK,
         master_id: 705,
         player: PlayerId::new(1),
-        position: [10.5, 10.5, 0.0],
+        position: Position::new(10.5, 10.5, 0.0),
         master_hp: 14,
         armored: Some(Armored {
             armors: vec![(4, 0), (3, 0), (31, 0)],
@@ -62,7 +62,7 @@ fn hunter() -> Victim {
         class: class::VILLAGER,
         master_id: 592,
         player: PlayerId::new(1),
-        position: [10.5, 11.0, 0.0],
+        position: Position::new(10.5, 11.0, 0.0),
         source: Attacker {
             id: 10029,
             kind: 70,
@@ -469,24 +469,27 @@ fn a_shield_spends_a_charge_per_blocked_hit() {
 
 #[test]
 fn a_facing_offset_counts_facets_from_the_angle() {
-    let at = [10.0, 10.0, 0.0];
+    let at = Position::new(10.0, 10.0, 0.0);
     let facing = Facing {
         angle: 0.0,
         facets: 16,
     };
-    assert_eq!(facing_offset(at, facing, [11.0, 10.0, 0.0]), 0.0);
+    assert_eq!(
+        facing_offset(at, facing, Position::new(11.0, 10.0, 0.0)),
+        0.0
+    );
     // a quarter turn is four of 16 facets; fewer than 8 facets count as 8
-    let q = facing_offset(at, facing, [10.0, 11.0, 0.0]);
+    let q = facing_offset(at, facing, Position::new(10.0, 11.0, 0.0));
     assert!((q - 4.0).abs() < 1e-5);
     let few = Facing {
         facets: 4,
         ..facing
     };
-    assert!((facing_offset(at, few, [10.0, 11.0, 0.0]) - 2.0).abs() < 1e-5);
+    assert!((facing_offset(at, few, Position::new(10.0, 11.0, 0.0)) - 2.0).abs() < 1e-5);
     // a NaN difference goes on to atan2f (COMISS/JC, JNC: unordered is not "within 1e-7")
-    assert!(facing_offset(at, facing, [f32::NAN, 10.0, 0.0]).is_nan());
+    assert!(facing_offset(at, facing, Position::new(f32::NAN, 10.0, 0.0)).is_nan());
     // behind wraps into −π..π, and no sprite or the same point gives 0
-    let back = facing_offset(at, facing, [9.0, 9.999, 0.0]);
+    let back = facing_offset(at, facing, Position::new(9.0, 9.999, 0.0));
     assert!(7.9 < back.abs() && back.abs() <= 8.0);
     assert_eq!(
         facing_offset(
@@ -495,7 +498,7 @@ fn a_facing_offset_counts_facets_from_the_angle() {
                 facets: 0,
                 ..facing
             },
-            [11.0, 12.0, 0.0]
+            Position::new(11.0, 12.0, 0.0)
         ),
         0.0
     );
@@ -576,7 +579,7 @@ fn a_blast_s_nan_paths_are_the_game_s() {
     let enemy = |x: f32, y: f32| Victim {
         id: 2,
         player: PlayerId::new(2),
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         blast_defense: 2,
         ..sheep()
     };
@@ -635,8 +638,14 @@ fn a_blast_s_nan_paths_are_the_game_s() {
         Ok(true)
     );
     // CVTTSS2SI gives 0x80000000 past the i32 range: 0 in the low short
-    assert_eq!(blast_tiles([3e9, 3e9, 0.0], 1.0), ([0, 0], [6, 6]));
-    assert_eq!(blast_tiles([10.5, 4.5, 0.0], 1.0), ([3, 0], [17, 11]));
+    assert_eq!(
+        blast_tiles(Position::new(3e9, 3e9, 0.0), 1.0),
+        ([0, 0], [6, 6])
+    );
+    assert_eq!(
+        blast_tiles(Position::new(10.5, 4.5, 0.0), 1.0),
+        ([3, 0], [17, 11])
+    );
 }
 
 /// A melee blast (radius 0.5, level 2, half the damage) reaches the objects about the
@@ -652,7 +661,7 @@ fn a_blast_reaches_the_objects_about_its_attacker() {
     let enemy = |id: i32, x: f32| Victim {
         id,
         player: PlayerId::new(2),
-        position: [x, 11.0, 0.0],
+        position: Position::new(x, 11.0, 0.0),
         blast_defense: 2,
         ..sheep()
     };
@@ -696,7 +705,7 @@ fn house() -> Victim {
         class: class::BUILDING,
         master_id: 70,
         player: PlayerId::new(2),
-        position: [20.5, 20.5, 0.0],
+        position: Position::new(20.5, 20.5, 0.0),
         master_hp: 550,
         armored: Some(Armored {
             armors: vec![(4, 0), (3, 7)],
@@ -969,12 +978,12 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
     mangonel.source.blast_level = 2;
     mangonel.source.area_damage = 0.5;
     mangonel.weapons = vec![(4, 10)];
-    mangonel.position = [10.5, 10.5, 0.0];
+    mangonel.position = Position::new(10.5, 10.5, 0.0);
     let center = mangonel.position;
     let mut main = Victim {
         id: 20,
         hp: 100.0,
-        position: [11.5, 10.5, 0.0],
+        position: Position::new(11.5, 10.5, 0.0),
         radius: [1.0, 1.0],
         blast_defense: 2,
         building: Some(Building {
@@ -988,7 +997,7 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
     let mut annex = Victim {
         id: 21,
         hp: 100.0,
-        position: [10.5, 10.5, 0.0],
+        position: Position::new(10.5, 10.5, 0.0),
         radius: [0.5, 0.5],
         blast_defense: 0,
         building: Some(Building {
@@ -1026,7 +1035,7 @@ fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
         id,
         tile_place,
         player: PlayerId::new(2),
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         blast_defense: 2,
         ..sheep()
     };
@@ -1136,11 +1145,11 @@ fn a_blast_keeps_a_building_s_damage_on_it_or_its_main_building() {
 fn a_blast_measures_to_an_object_s_box_within_its_radius() {
     use crate::combat::damage::blasts::blast_distance2;
     let at = |x: f32, y: f32, radius| Victim {
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         radius,
         ..sheep()
     };
-    let center = [10.0, 10.0, 0.0];
+    let center = Position::new(10.0, 10.0, 0.0);
     assert_eq!(
         blast_distance2(&at(10.2, 10.0, [0.5, 0.5]), center, 1.0),
         Some(0.0)
@@ -1227,9 +1236,9 @@ fn a_blast_s_factor_takes_the_friendly_fire_and_the_falloff() {
 fn a_cone_blast_leaves_out_what_lies_beside_its_facing() {
     use crate::combat::damage::blasts::outside_cone;
     let mut attacker = hunter();
-    attacker.position = [10.0, 10.0, 0.0];
+    attacker.position = Position::new(10.0, 10.0, 0.0);
     let at = |x: f32, y: f32| Victim {
-        position: [x, y, 0.0],
+        position: Position::new(x, y, 0.0),
         ..sheep()
     };
     let (front, side, behind) = (at(11.0, 10.0), at(10.7, 10.7), at(9.0, 10.0));
@@ -1373,7 +1382,7 @@ fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
     let enemy = Victim {
         id: 2,
         player: PlayerId::new(2),
-        position: [10.8, 11.0, 0.0],
+        position: Position::new(10.8, 11.0, 0.0),
         blast_defense: 2,
         ..sheep()
     };
@@ -1386,7 +1395,7 @@ fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
     assert_eq!(hit(&b, enemy.clone()), Ok(9.0));
     for passed in [
         Victim {
-            position: [30.0, 30.0, 0.0],
+            position: Position::new(30.0, 30.0, 0.0),
             ..enemy.clone()
         },
         Victim {

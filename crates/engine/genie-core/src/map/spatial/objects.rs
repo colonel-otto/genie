@@ -2,6 +2,7 @@
 //! moves inside and out, and the segment tests.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, SearchCache, Spatial, Tiles, WalkTest, tile_record_id,
 };
@@ -76,7 +77,7 @@ impl Spatial {
     pub fn object_on_tile(&self, x: i32, y: i32, pred: impl Fn(&Placed) -> bool) -> bool {
         self.objects
             .values()
-            .any(|o| o.position[0] as i32 == x && o.position[1] as i32 == y && pred(o))
+            .any(|o| o.position.x() as i32 == x && o.position.y() as i32 == y && pred(o))
     }
 
     /// Object `id`'s place in its tile's object list ([`Spatial::objects_on`]'s order, ghosts
@@ -84,7 +85,9 @@ impl Spatial {
     #[must_use]
     pub fn tile_place(&self, id: i32) -> usize {
         self.objects.get(&id).map_or(0, |o| {
-            let list = self.tiles.list(o.position[0] as i32, o.position[1] as i32);
+            let list = self
+                .tiles
+                .list(o.position.x() as i32, o.position.y() as i32);
             list.iter().position(|&t| t == id).unwrap_or(0)
         })
     }
@@ -176,7 +179,7 @@ impl Spatial {
         self.objects
             .iter()
             .filter(move |(_, o)| {
-                let [x, y, _] = o.position;
+                let (x, y) = (o.position.x(), o.position.y());
                 x0 <= x && x <= x1 && y0 <= y && y <= y1
             })
             .map(|(&id, o)| (id, o))
@@ -406,12 +409,12 @@ impl Spatial {
     /// The object goes inside another at `at` (`FUN_1411921d0`): it leaves its tile's list
     /// (`FUN_140f5f560`) and the obstruction manager (`FUN_141055b40`), and takes its container's
     /// x and y (`FUN_14118c890`).
-    pub fn go_inside(&mut self, id: i32, at: [f32; 3]) {
+    pub fn go_inside(&mut self, id: i32, at: Position) {
         let Some(mut p) = self.objects.get(&id).copied() else {
             return;
         };
         self.remove(id);
-        p.position = [at[0], at[1], p.position[2]];
+        p.position = Position::new(at.x(), at.y(), p.position.z());
         p.obstruction = None;
         let _ = self.inside.insert(id, p);
     }
@@ -426,7 +429,7 @@ impl Spatial {
 
     /// The record of object `id` inside another takes the place `at` (its object's copy of the
     /// container's place); nothing for an object not inside.
-    pub fn set_inside_position(&mut self, id: i32, at: [f32; 3]) {
+    pub fn set_inside_position(&mut self, id: i32, at: Position) {
         if let Some(p) = self.inside.get_mut(&id) {
             p.position = at;
         }

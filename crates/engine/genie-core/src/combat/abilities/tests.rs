@@ -1,5 +1,7 @@
 use super::*;
 use crate::combat::damage::Victim;
+use crate::map::Position;
+use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::test_ids::object_id;
@@ -174,18 +176,18 @@ fn the_movement_damage_timer_runs_down_to_0_and_then_hits() {
 #[test]
 fn the_reach_is_the_truncated_range_about_the_truncated_place_within_the_map() {
     assert_eq!(
-        reach([10.7, 20.2, 0.0], 2.9, [120, 120]),
+        reach(Position::new(10.7, 20.2, 0.0), 2.9, [120, 120]),
         ([8, 18], [12, 22])
     );
     // from 0, and up to the map's size itself
     assert_eq!(
-        reach([1.5, 118.9, 0.0], 3.0, [120, 120]),
+        reach(Position::new(1.5, 118.9, 0.0), 3.0, [120, 120]),
         ([0, 115], [4, 120])
     );
     // a NaN range is the integer indefinite
     // (5 less it wraps to a negative value, 0; 5 plus it stays below the map's size): no
     // tile
-    let (low, high) = reach([5.0, 5.0, 0.0], f32::NAN, [120, 120]);
+    let (low, high) = reach(Position::new(5.0, 5.0, 0.0), f32::NAN, [120, 120]);
     assert_eq!(low, [0, 0]);
     assert_eq!(high, [i32::MIN + 5; 2]);
 }
@@ -194,7 +196,7 @@ fn hitter() -> Hitter {
     Hitter {
         id: 1,
         blast_level: 1,
-        position: [10.0, 10.0, 0.0],
+        position: Position::new(10.0, 10.0, 0.0),
         radius: [0.4, 0.4],
     }
 }
@@ -208,7 +210,7 @@ fn bystander() -> Bystander {
         class: class::CLASS_6,
         state: 2,
         blast_defense: 1,
-        position: [11.5, 10.0, 0.0],
+        position: Position::new(11.5, 10.0, 0.0),
         radius: [0.2, 0.2],
     }
 }
@@ -473,7 +475,7 @@ fn give_master(t: &mut World, id: i16, kind: u8, class: ClassId, tasks: Vec<Task
 fn put(t: &mut World, p: PlayerId, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
     let mut u = Unit {
         id: object_id(id),
-        body: crate::objects::layers::Body::at([x, y, 0.0]),
+        body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
         ..Unit::default()
     };
     u.life.master_id = m;
@@ -484,7 +486,7 @@ fn put(t: &mut World, p: PlayerId, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
     t.spatial.insert(
         id,
         Placed {
-            position: [x, y, 0.0],
+            position: Position::new(x, y, 0.0),
             radius,
             class: class::CLASS_0,
             player: p,
@@ -594,8 +596,8 @@ fn keshik(t: &mut World) {
         timer: 0.0,
         range: 0.0,
         min_range: 0.0,
-        point: [-1.0; 3],
-        seen: [-1.0; 3],
+        point: Position::new(-1.0, -1.0, -1.0),
+        seen: Position::new(-1.0, -1.0, -1.0),
         move_to: None,
         pending: false,
         swing: 0.0,
@@ -650,8 +652,8 @@ fn trampler(t: &mut World) {
     put(t, PlayerId::new(1), 10, 9, 100.0, [5.5, 5.5]);
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.velocity = Some(crate::movement::Velocity {
-        velocity: [1.0, 0.0, 0.0],
-        acceleration: [0.0; 3],
+        velocity: BVector::new(1.0, 0.0, 0.0),
+        acceleration: BVector::ZERO,
     });
     t.players[1].objects[0].body.put_mover(Some(mover));
 }
@@ -739,7 +741,7 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
     give_master(&mut t, 250, 70, class::WARSHIP, vec![longboat_look()]);
     put(&mut t, PlayerId::new(1), 70, 250, 100.0, [5.5, 6.5]);
     let mut mover = crate::gathering::hunt::tests::walker();
-    mover.moved_at = [5.5, 6.5, 0.0];
+    mover.moved_at = Position::new(5.5, 6.5, 0.0);
     t.players[1].objects[0].body.put_mover(Some(mover));
     run(&mut t, PlayerId::new(1), 70);
     let u = &t.players[1].objects[0];
@@ -757,7 +759,7 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
         })
     );
     // where it last moved to decides, not its place
-    t.players[1].objects[0].body.mover_mut().unwrap().moved_at = [5.5, 7.5, 0.0];
+    t.players[1].objects[0].body.mover_mut().unwrap().moved_at = Position::new(5.5, 7.5, 0.0);
     run(&mut t, PlayerId::new(1), 70);
     let u = &t.players[1].objects[0];
     assert_eq!(u.body.mover().unwrap().factor, 1.0);

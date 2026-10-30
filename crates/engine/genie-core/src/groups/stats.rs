@@ -3,8 +3,10 @@
 //! change of members (`FUN_14100b940`).
 
 use crate::GenieError;
+use crate::groups::attack::moved_place;
 use crate::groups::create::FormationUnit;
 use crate::groups::group_list::member_gone;
+use crate::math::fmath::BVector;
 use crate::objects::masters::master_type::ACTION;
 use crate::unit_ai::ActionKind;
 use crate::world::World;
@@ -32,7 +34,7 @@ struct MemberView {
     id: i32,
     unit: FormationUnit,
     /// Slot 0x520's vector (x, height, y): where the unit last moved to.
-    at: [f32; 3],
+    at: BVector,
     /// Slot 0x208: its top speed.
     speed: f32,
     /// Slot 0x230: its weapon range.
@@ -102,7 +104,11 @@ impl World {
         }
         let g = self.groups.held_mut(group)?;
         let n = held as f32;
-        g.centroid = [g.centroid[0] / n, g.centroid[1] / n, g.centroid[2] / n];
+        g.centroid = BVector::new(
+            g.centroid.x() / n,
+            g.centroid.height() / n,
+            g.centroid.y() / n,
+        );
         g.desired_height /= n;
         let largest = g.largest_unit_radius;
         g.desired_spacing = largest + largest;
@@ -175,13 +181,7 @@ impl World {
                 id,
                 unit,
                 // the game's vector (x, height, y) of where it last moved to (x, y, height)
-                at: u.body.mover().map_or_else(
-                    || {
-                        let [x, y, h] = u.position();
-                        [x, h, y]
-                    },
-                    |m| [m.moved_at[0], m.moved_at[2], m.moved_at[1]],
-                ),
+                at: moved_place(u),
                 speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
                 range: weapon_range(master),
                 under_attack: u.under_attack,
@@ -421,7 +421,7 @@ impl World {
             false,
         )?;
         let search = crate::unit_ai::Search {
-            at: [u.position()[0], u.position()[1]],
+            at: u.position().ground(),
             radius,
             classes,
             size: master.radius,
@@ -552,14 +552,14 @@ impl World {
             return Ok(false);
         };
         let mut d = crate::math::fmath::sub(view.at, slot.transform_position);
-        d[1] = 0.0;
+        d = d.with_height(0.0);
         let limit = if f.kind == 7 || !crate::math::fmath::below_or_unordered(largest, WIDE_RADIUS)
         {
             FAR_WIDE
         } else {
             FAR
         };
-        let gap = crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+        let gap = crate::math::fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y());
         Ok(!crate::math::fmath::at_most_or_unordered(gap, limit))
     }
 
@@ -599,7 +599,7 @@ fn member_totals(
     objects: Vec<i32>,
     dt: f32,
 ) -> Result<(i32, f32, bool), GenieError> {
-    g.centroid = [0.0; 3];
+    g.centroid = BVector::ZERO;
     g.desired_height = 0.0;
     g.largest_unit_radius = 0.0;
     g.smallest_unit_radius = f32::MAX;
@@ -615,9 +615,11 @@ fn member_totals(
     let mut under_attack = false;
     for &(i, ref v) in views {
         held += 1;
-        g.centroid[0] += v.at[0];
-        g.centroid[1] += v.at[1];
-        g.centroid[2] += v.at[2];
+        g.centroid = BVector::new(
+            g.centroid.x() + v.at.x(),
+            g.centroid.height() + v.at.height(),
+            g.centroid.y() + v.at.y(),
+        );
         let r = v.unit.radius;
         g.total_spacing += r;
         if g.largest_unit_radius < r {
@@ -666,6 +668,7 @@ pub(crate) fn weapon_range(master: &crate::objects::masters::Master) -> f32 {
 mod tests {
     use super::*;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
+    use crate::map::Position;
     use crate::objects::masters::{ClassId, class};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
@@ -708,7 +711,7 @@ mod tests {
         let unit = |id: i32, master: i16, x: f32, y: f32| {
             let mut u = Unit {
                 id: object_id(id),
-                body: crate::objects::layers::Body::at([x, y, 0.0]),
+                body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
                 ..Unit::default()
             };
             u.life.master_id = master;
@@ -847,7 +850,7 @@ mod tests {
             let mut t = searched_world();
             let mut far = t.players[2].objects[0].clone();
             far.id = object_id(22);
-            far.place_for_test([13.0, 5.0, 0.0]);
+            far.place_for_test(Position::new(13.0, 5.0, 0.0));
             t.players[2].objects.push(far);
             let sight = t.spatial.sight.as_mut().unwrap();
             sight
@@ -942,11 +945,11 @@ mod tests {
             }
             let mut stray = t.players[1].objects[0].clone();
             stray.id = object_id(11);
-            stray.place_for_test([6.0, 6.0, 0.0]);
+            stray.place_for_test(Position::new(6.0, 6.0, 0.0));
             stray
                 .body
                 .put_mover(Some(crate::gathering::hunt::tests::walker()));
-            stray.body.mover_mut().unwrap().moved_at = [6.0, 6.0, 0.0];
+            stray.body.mover_mut().unwrap().moved_at = Position::new(6.0, 6.0, 0.0);
             stray.group.id = 1;
             t.players[1].objects[0].group.id = 1;
             t.players[1].objects.push(stray);
@@ -963,12 +966,12 @@ mod tests {
                 slots: vec![
                     crate::groups::Slot {
                         unit_id: 10,
-                        transform_position: [5.0, 0.0, 5.0],
+                        transform_position: BVector::new(5.0, 0.0, 5.0),
                         ..crate::groups::Slot::default()
                     },
                     crate::groups::Slot {
                         unit_id: 11,
-                        transform_position: [30.0, 0.0, 6.0],
+                        transform_position: BVector::new(30.0, 0.0, 6.0),
                         ..crate::groups::Slot::default()
                     },
                 ],
@@ -992,7 +995,7 @@ mod tests {
         assert_eq!(u.group.id, -1);
         assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
         let g = t.groups.get(1).unwrap();
-        assert_eq!(g.centroid, [5.0, 0.0, 5.0]);
+        assert_eq!(g.centroid, BVector::new(5.0, 0.0, 5.0));
         assert_eq!(g.largest_unit_radius, 0.2);
         // a formation of type 7, a wide member before it: 40
         let mut t = world(1.0, [11, 10]);

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HuntRetarget;
+use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
@@ -27,8 +28,8 @@ impl Unit {
         near: Option<f32>,
     ) -> Result<bool, GenieError> {
         // NaN compares false as the game's `comiss` does
-        let beyond = |a: [f32; 3], b: [f32; 3], limit: f32| {
-            let (dx, dz, dy) = (a[0] - b[0], a[2] - b[2], a[1] - b[1]);
+        let beyond = |a: Position, b: Position, limit: f32| {
+            let (dx, dz, dy) = (a.x() - b.x(), a.z() - b.z(), a.y() - b.y());
             let d = crate::math::fmath::sqrt(dx * dx + dz * dz + dy * dy);
             d.partial_cmp(&limit) != Some(std::cmp::Ordering::Less)
         };
@@ -51,9 +52,9 @@ impl Unit {
                 ))?;
         if let Some(near) = near {
             let (dx, dz, dy) = (
-                self.position()[0] - t.position()[0],
-                self.position()[2] - t.position()[2],
-                self.position()[1] - t.position()[1],
+                self.position().x() - t.position().x(),
+                self.position().z() - t.position().z(),
+                self.position().y() - t.position().y(),
             );
             if near < crate::math::fmath::sqrt(dx * dx + dz * dz + dy * dy) {
                 return Ok(false);

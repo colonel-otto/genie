@@ -6,6 +6,7 @@ use crate::groups::GroupCommand;
 use crate::groups::attack::AttackOrder;
 use crate::groups::command::{ATTACK_COMMANDS, MOVE_COMMAND, MoveTo};
 use crate::groups::task::TargetTask;
+use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
 use crate::world::World;
 
@@ -133,7 +134,7 @@ impl World {
             command,
             target_id: target.get(),
             range,
-            point: [point[0], 0.0, point[1]],
+            point: BVector::new(point[0], 0.0, point[1]),
             approved,
             disable_retargeting: 0,
             approved_2: u16::MAX,
@@ -209,7 +210,7 @@ impl World {
             command: i32::from(task.command),
             target_id: target.get(),
             range: task.range.unwrap_or(0.0),
-            point: [point[0], 0.0, point[1]],
+            point: BVector::new(point[0], 0.0, point[1]),
             approved,
             disable_retargeting: u8::from(order.disable_retargeting),
             approved_2: order.filter as u16,

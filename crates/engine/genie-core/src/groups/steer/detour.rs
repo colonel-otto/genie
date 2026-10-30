@@ -6,7 +6,8 @@ use crate::groups::steer::{
     BLOCKED, EPSILON, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
     ROUND_STILL, ROUND_TIMER,
 };
-use crate::math::fmath::{Vec3, at_most_or_unordered};
+use crate::map::Position;
+use crate::math::fmath::{BVector, at_most_or_unordered};
 use crate::pathing::tile_path::Path;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
@@ -117,7 +118,7 @@ impl World {
     fn find_way(
         &mut self,
         r: &Rounder<'_>,
-        (to, forward, place): (Vec3, Vec3, Vec3),
+        (to, forward, place): (BVector, BVector, BVector),
     ) -> Result<(Way, bool), GenieError> {
         let mut way = Way {
             record: Path::default(),
@@ -172,9 +173,9 @@ impl World {
     /// records grown by the short pather's radius, the differentiators ignored).
     ///
     /// [`Spatial::point_clear_among`]: crate::map::spatial::Spatial::point_clear_among
-    fn round_clear(&mut self, r: &Rounder<'_>, p: Vec3) -> Result<bool, GenieError> {
+    fn round_clear(&mut self, r: &Rounder<'_>, p: BVector) -> Result<bool, GenieError> {
         self.spatial
-            .point_clear_among(r.id, [p[0], p[2]], r.grow, r.mask, r.differentiators)
+            .point_clear_among(r.id, p.ground(), r.grow, r.mask, r.differentiators)
     }
 
     /// The way round's first try ([`World::way_round`]'s 1): to the slot `to` when the member
@@ -184,15 +185,15 @@ impl World {
     fn round_to_slot(
         &mut self,
         r: &Rounder<'_>,
-        to: Vec3,
+        to: BVector,
         way: &mut Way,
     ) -> Result<(), GenieError> {
         if !self.round_clear(r, to)? {
             return Ok(());
         }
         let mut served = false;
-        if r.solid && r.near(to[0], to[2]) {
-            let from = [r.at[0], r.at[2]];
+        if r.solid && r.near(to.x(), to.y()) {
+            let from = r.at.ground();
             let res = self.round_short(
                 r.walker,
                 r.computer,
@@ -209,8 +210,7 @@ impl World {
             }
         }
         if !served
-            && let Some(res) =
-                self.round_plan(r.restriction, [r.at[0], r.at[2]], to, &mut way.record)?
+            && let Some(res) = self.round_plan(r.restriction, r.at.ground(), to, &mut way.record)?
         {
             way.result = res;
             way.planned = true;
@@ -226,8 +226,8 @@ impl World {
     fn round_one_step(
         &mut self,
         r: &Rounder<'_>,
-        to: Vec3,
-        forward: Vec3,
+        to: BVector,
+        forward: BVector,
         way: &mut Way,
     ) -> Result<(), GenieError> {
         let step = one_step_toward(r, to, forward, self.spatial.map);
@@ -238,7 +238,7 @@ impl World {
         way.record.points.clear();
         let mut reached = false;
         if r.solid {
-            let from = [r.at[0], r.at[2]];
+            let from = r.at.ground();
             way.result = self.round_short(
                 r.walker,
                 r.computer,
@@ -248,7 +248,7 @@ impl World {
                 &mut way.record,
             )?;
         } else {
-            let (found, path) = self.round_long(r.id, [r.here[0], r.here[1]], step)?;
+            let (found, path) = self.round_long(r.id, r.here.ground(), step)?;
             way.record.points = path.points;
             // a long path found is measured once and taken as it is
             way.record.measure();
@@ -277,7 +277,7 @@ impl World {
     fn round_to_place(
         &mut self,
         r: &Rounder<'_>,
-        place: Vec3,
+        place: BVector,
         way: &mut Way,
     ) -> Result<(), GenieError> {
         way.goal = place;
@@ -285,8 +285,8 @@ impl World {
             return Ok(());
         }
         way.record.points.clear();
-        if r.solid && r.near(place[0], place[2]) {
-            let from = [r.at[0], r.at[2]];
+        if r.solid && r.near(place.x(), place.y()) {
+            let from = r.at.ground();
             way.result = self.round_short(
                 r.walker,
                 r.computer,
@@ -300,7 +300,7 @@ impl World {
                 way.record.points.clear();
             }
         } else if let Some(res) =
-            self.round_plan(r.restriction, [r.at[0], r.at[2]], place, &mut way.record)?
+            self.round_plan(r.restriction, r.at.ground(), place, &mut way.record)?
         {
             way.result = res;
             way.planned = true;
@@ -311,9 +311,14 @@ impl World {
     /// The way round's last try ([`World::way_round`]'s 4, blocked or off the map): the long
     /// pather from where the member last moved to toward the slot's tile; a path of more than 2
     /// points serves, its last point the goal. Whether it serves.
-    fn round_long_way(&self, r: &Rounder<'_>, to: Vec3, way: &mut Way) -> Result<bool, GenieError> {
+    fn round_long_way(
+        &self,
+        r: &Rounder<'_>,
+        to: BVector,
+        way: &mut Way,
+    ) -> Result<bool, GenieError> {
         way.record.points.clear();
-        let (_, path) = self.round_long(r.id, [r.at[0], r.at[2]], to)?;
+        let (_, path) = self.round_long(r.id, r.at.ground(), to)?;
         way.record.points = path.points;
         if 2 < way.record.points.len()
             && let Some(&last) = way.record.points.last()
@@ -332,7 +337,7 @@ impl World {
         walker: crate::movement::Walker,
         computer: bool,
         from: [f32; 2],
-        to: Vec3,
+        to: BVector,
         ignore: &[i32],
         record: &mut Path,
     ) -> Result<u8, GenieError> {
@@ -364,7 +369,7 @@ impl World {
         &self,
         id: i32,
         from: [f32; 2],
-        to: Vec3,
+        to: BVector,
     ) -> Result<(bool, Path), GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let mover = u.body.mover().ok_or(NO_MOVER)?;
@@ -388,7 +393,7 @@ impl World {
         &mut self,
         restriction: usize,
         from: [f32; 2],
-        to: Vec3,
+        to: BVector,
         record: &mut Path,
     ) -> Result<Option<u8>, GenieError> {
         let tiles = self.spatial.tiles();
@@ -398,7 +403,7 @@ impl World {
         record.points.clear();
         let req = crate::pathing::tile_path::Request {
             from,
-            to: [to[0], to[2]],
+            to: to.ground(),
             radii: 0.0,
             range: 0.0,
             closed: Vec::new(),
@@ -418,8 +423,8 @@ pub(super) struct Rounder<'d> {
     pub(super) id: i32,
     pub(super) walker: crate::movement::Walker,
     pub(super) computer: bool,
-    pub(super) at: Vec3,
-    pub(super) here: Vec3,
+    pub(super) at: BVector,
+    pub(super) here: Position,
     pub(super) mask: u8,
     pub(super) restriction: usize,
     pub(super) grow: f32,
@@ -433,8 +438,8 @@ impl Rounder<'_> {
     /// `FUN_140a847c0`: the squared gap from the member's footprint (its place) to (`x`, `y`)
     /// is below [`ROUND_REACH`].
     pub(super) fn near(&self, x: f32, y: f32) -> bool {
-        let gx = ((x - self.here[0]).abs() - self.radius[0]).max(0.0);
-        let gy = ((y - self.here[1]).abs() - self.radius[1]).max(0.0);
+        let gx = ((x - self.here.x()).abs() - self.radius[0]).max(0.0);
+        let gy = ((y - self.here.y()).abs() - self.radius[1]).max(0.0);
         gy * gy + gx * gx < ROUND_REACH
     }
 }
@@ -445,47 +450,52 @@ struct Way {
     record: Path,
     result: u8,
     planned: bool,
-    goal: Vec3,
+    goal: BVector,
 }
 
 /// One tile from where the member last moved to toward `to` (the direction on the ground; the
 /// group's `forward` when both its axes are within [`ROUND_STILL`]), held inside the map (`map`)
 /// by the member's radius on x and, on y, its height radius.
-pub(super) fn one_step_toward(r: &Rounder<'_>, to: Vec3, forward: Vec3, map: [i32; 2]) -> Vec3 {
+pub(super) fn one_step_toward(
+    r: &Rounder<'_>,
+    to: BVector,
+    forward: BVector,
+    map: [i32; 2],
+) -> BVector {
     let d = fmath::sub(to, r.at);
-    let mut dir = if d[0].abs() <= ROUND_STILL && d[2].abs() <= ROUND_STILL {
+    let mut dir = if d.x().abs() <= ROUND_STILL && d.y().abs() <= ROUND_STILL {
         forward
     } else {
         d
     };
-    dir[1] = 0.0;
-    let len = fmath::sqrt(dir[0] * dir[0] + 0.0 + dir[2] * dir[2]);
-    let dir = [dir[0] / len, dir[1] / len, dir[2] / len];
+    dir = dir.with_height(0.0);
+    let len = fmath::sqrt(dir.x() * dir.x() + 0.0 + dir.y() * dir.y());
+    let dir = BVector::new(dir.x() / len, dir.height() / len, dir.y() / len);
     let mut step = fmath::add(r.at, fmath::scale(1.0, dir));
     let [w, h] = map;
     let (top_x, top_y) = (w as f32 - r.radius[0], h as f32 - r.height);
-    if r.radius[0] > step[0] {
-        step[0] = r.radius[0];
-    } else if step[0] > top_x {
-        step[0] = top_x;
+    if r.radius[0] > step.x() {
+        step = step.with_x(r.radius[0]);
+    } else if step.x() > top_x {
+        step = step.with_x(top_x);
     }
-    if r.height > step[2] {
-        step[2] = r.height;
-    } else if step[2] > top_y {
-        step[2] = top_y;
+    if r.height > step.y() {
+        step = step.with_y(r.height);
+    } else if step.y() > top_y {
+        step = step.with_y(top_y);
     }
     step
 }
 
 /// `FUN_140f9bcd0` outside the path (its static point): the way's end lies farther than `gap`
 /// from the slot `to` on the ground.
-pub(super) fn ends_farther(record: &Path, to: Vec3, gap: f32) -> bool {
+pub(super) fn ends_farther(record: &Path, to: BVector, gap: f32) -> bool {
     let end = record
         .points
         .last()
         .copied()
         .unwrap_or(crate::movement::OUTSIDE_PATH);
     let mut d = fmath::sub(to, end);
-    d[1] = 0.0;
-    gap < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2])
+    d = d.with_height(0.0);
+    gap < fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y())
 }

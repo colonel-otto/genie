@@ -13,6 +13,7 @@
 //! from build 158041, whose addresses each port cites.
 
 use crate::GenieError;
+use crate::math::fmath::BVector;
 use crate::movement::PathData;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
@@ -46,17 +47,17 @@ mod update;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Motion {
     /// `mPosition`: the point, then the forward, up and right vectors.
-    pub position: [[f32; 3]; 4],
+    pub position: [BVector; 4],
     /// `mNewPosition`, the same four vectors.
-    pub new_position: [[f32; 3]; 4],
+    pub new_position: [BVector; 4],
     /// `mVelocity`.
-    pub velocity: [f32; 3],
+    pub velocity: BVector,
     /// `mAcceleration`.
-    pub acceleration: [f32; 3],
+    pub acceleration: BVector,
     /// `mAngularVelocity`.
-    pub angular_velocity: [f32; 3],
+    pub angular_velocity: BVector,
     /// `mAngularAcceleration`.
-    pub angular_acceleration: [f32; 3],
+    pub angular_acceleration: BVector,
     /// `mTurnRadius`.
     pub turn_radius: f32,
     /// `mTurnRadiusSpeed`.
@@ -92,7 +93,7 @@ pub struct SpecificMove {
     /// `mReason`.
     pub reason: i32,
     /// `mGoal`.
-    pub goal: [f32; 3],
+    pub goal: BVector,
     /// `mTimer`.
     pub timer: f32,
     /// `mConsecutiveMoveFailures`.
@@ -100,7 +101,7 @@ pub struct SpecificMove {
     /// `mDistance`.
     pub distance: f32,
     /// `mLastPosition`.
-    pub last_position: [f32; 3],
+    pub last_position: BVector,
 }
 
 /// A member (`mUnits[i]`, with its move and `mSecondsSinceAttacking[i]`).
@@ -120,9 +121,9 @@ pub struct Slot {
     /// `mUnitID`.
     pub unit_id: i32,
     /// `mOffset`.
-    pub offset: [f32; 3],
+    pub offset: BVector,
     /// `mTransformPosition`.
-    pub transform_position: [f32; 3],
+    pub transform_position: BVector,
     /// `mTime`.
     pub time: u32,
     /// `mState`.
@@ -130,7 +131,7 @@ pub struct Slot {
     /// `mDepth`.
     pub depth: i32,
     /// `mDesiredTransformPosition`.
-    pub desired_transform_position: [f32; 3],
+    pub desired_transform_position: BVector,
     /// `mPositionFilled`.
     pub position_filled: u32,
     /// `mDesiredCategory`.
@@ -178,7 +179,7 @@ pub struct Formation {
     /// `mNumberLines`.
     pub number_lines: i32,
     /// `mTransformOrientation`.
-    pub transform_orientation: [f32; 3],
+    pub transform_orientation: BVector,
     /// The slots' array past `mNumberSlots` (not saved): its capacity (`+0x8`) beyond the slots
     /// in use, which a pass over the whole array reads too.
     pub spare_slots: Vec<Slot>,
@@ -188,13 +189,13 @@ pub struct Formation {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LinePoint {
     /// `mPoint`.
-    pub point: [f32; 3],
+    pub point: BVector,
     /// `mForward`.
-    pub forward: [f32; 3],
+    pub forward: BVector,
     /// `mUp`.
-    pub up: [f32; 3],
+    pub up: BVector,
     /// `mRight`.
-    pub right: [f32; 3],
+    pub right: BVector,
 }
 
 /// The group's stored positions (`mStoredPositions`, a point line, `FUN_14101bb60`).
@@ -219,7 +220,7 @@ impl PointLine {
     /// of two points or more longer than its desired length then drops its oldest points while
     /// it stays longer without the last stretch.
     pub fn add_at_front(&mut self, mut p: LinePoint) -> Result<(), GenieError> {
-        p.point[1] = 0.0;
+        p.point = p.point.with_height(0.0);
         self.points.insert(0, p);
         if self.points.len() == 1 {
             self.length = 0.0;
@@ -250,7 +251,7 @@ impl PointLine {
 /// The 3D distance between two stored points (`FUN_14087e560`, `FUN_14099ef70`).
 fn stretch(a: &LinePoint, b: &LinePoint) -> f32 {
     let d = crate::math::fmath::sub(a.point, b.point);
-    crate::math::fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
+    crate::math::fmath::sqrt(d.x() * d.x() + d.height() * d.height() + d.y() * d.y())
 }
 
 /// The members of one formation category (`FUN_141023570`).
@@ -282,7 +283,7 @@ pub struct TargetData {
     /// `mType`.
     pub kind: i32,
     /// `mOriginalPosition`.
-    pub original_position: [f32; 3],
+    pub original_position: BVector,
     /// `mRange`.
     pub range: f32,
     /// `mTargetRadius`.
@@ -303,7 +304,7 @@ pub struct GroupOrder {
     /// `mParm`.
     pub parm: f32,
     /// `mPoint`.
-    pub point: [f32; 3],
+    pub point: BVector,
     /// `mExecuteTime`.
     pub execute_time: u32,
 }
@@ -318,7 +319,7 @@ pub struct GroupCommand {
     /// `mRange`.
     pub range: f32,
     /// `mPoint`.
-    pub point: [f32; 3],
+    pub point: BVector,
     /// `mApproved`.
     pub approved: u8,
     /// `mDisableRetargeting`.
@@ -351,7 +352,7 @@ pub struct UnitGroup {
     /// `mGroupFlags`.
     pub flags: u32,
     /// `mCentroid`.
-    pub centroid: [f32; 3],
+    pub centroid: BVector,
     /// `mDesiredHeight`.
     pub desired_height: f32,
     /// `mLargestUnitRadius`.
@@ -373,7 +374,7 @@ pub struct UnitGroup {
     /// `mUnitTypes`: the members by formation category.
     pub unit_types: Vec<UnitTypeStatistic>,
     /// `mWaypoints`.
-    pub waypoints: Vec<[f32; 3]>,
+    pub waypoints: Vec<BVector>,
     /// `mCurrentCommand`.
     pub current_command: i32,
     /// `mCurrentTarget`.
@@ -425,7 +426,12 @@ impl Motion {
     /// flags 3.
     #[must_use]
     pub fn new() -> Self {
-        let frame = [[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]];
+        let frame = [
+            BVector::ZERO,
+            BVector::new(1.0, 0.0, 0.0),
+            BVector::new(0.0, 1.0, 0.0),
+            BVector::new(0.0, 0.0, -1.0),
+        ];
         Self {
             position: frame,
             new_position: frame,

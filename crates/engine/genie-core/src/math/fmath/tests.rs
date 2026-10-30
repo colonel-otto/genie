@@ -982,26 +982,37 @@ fn minss_and_maxss_take_the_second_operand_when_either_is_nan() {
 fn the_angle_between_unit_vectors_follows_the_games_compares() {
     // FUN_14087e650: |d| below 1e-7 gives π/2, 1 and up 0, -1 and down π, else acosf; a NaN
     // dot falls through all three unordered compares (JBE, JC, JC) to acosf(NaN)
-    let x = [1.0, 0.0, 0.0];
+    let x = BVector::new(1.0, 0.0, 0.0);
     assert_eq!(
-        angle_between(x, [0.0, 0.0, 1.0]),
+        angle_between(x, BVector::new(0.0, 0.0, 1.0)),
         std::f32::consts::FRAC_PI_2
     );
     assert_eq!(angle_between(x, x), 0.0);
-    assert_eq!(angle_between(x, [-1.0, 0.0, 0.0]), std::f32::consts::PI);
-    assert_eq!(angle_between(x, [0.5, 0.0, 0.0]), acos(0.5));
-    assert!(angle_between(x, [f32::NAN, 0.0, 0.0]).is_nan());
+    assert_eq!(
+        angle_between(x, BVector::new(-1.0, 0.0, 0.0)),
+        std::f32::consts::PI
+    );
+    assert_eq!(angle_between(x, BVector::new(0.5, 0.0, 0.0)), acos(0.5));
+    assert!(angle_between(x, BVector::new(f32::NAN, 0.0, 0.0)).is_nan());
 }
 
 /// `FUN_14087e710`: (3, 4, 0) lies 4 from the x axis, whatever the direction's length.
 #[test]
 fn a_points_distance_from_a_line() {
     assert_eq!(
-        line_distance([3.0, 4.0, 0.0], [0.0; 3], [2.0, 0.0, 0.0]),
+        line_distance(
+            BVector::new(3.0, 4.0, 0.0),
+            BVector::ZERO,
+            BVector::new(2.0, 0.0, 0.0)
+        ),
         4.0
     );
     assert_eq!(
-        line_distance([3.0, 0.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0]),
+        line_distance(
+            BVector::new(3.0, 0.0, 0.0),
+            BVector::ZERO,
+            BVector::new(1.0, 0.0, 0.0)
+        ),
         0.0
     );
 }

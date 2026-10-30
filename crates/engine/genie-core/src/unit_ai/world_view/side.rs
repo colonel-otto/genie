@@ -7,6 +7,7 @@
 
 use crate::GenieError;
 use crate::gathering::closest_resource::herded;
+use crate::map::Position;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
@@ -29,7 +30,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             .ok()
             .map(|m| m.class)
             .ok_or(crate::world::OBJECT_MASTER)?;
-        let at = [self.unit.position()[0], self.unit.position()[1]];
+        let at = self.unit.position().ground();
         let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
         let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
         Ok(crate::orders::nearest_table_site(
@@ -302,7 +303,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         &mut self,
         target: i32,
         seeker: &crate::unit_ai::Seeker,
-    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, Position)>, GenieError> {
         if !self.view_holds(target)? {
             return Ok(None);
         }
@@ -386,7 +387,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             at,
             line_of_sight,
             order: ai.current_order,
-            target_point: [ai.target_point[0], ai.target_point[1]],
+            target_point: ai.target_point.ground(),
             computer,
         };
         crate::movement::explore::closest_undiscovered(&mut area, seeker, map, rng)
@@ -466,7 +467,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let Some(m) = self.unit.body.mover_mut() else {
             return Ok(());
         };
-        let speeding = m.velocity.as_ref().is_some_and(|v| 0.0 < v.acceleration[2]);
+        let speeding = m
+            .velocity
+            .as_ref()
+            .is_some_and(|v| 0.0 < v.acceleration.y());
         if m.is_moving() || speeding {
             m.stop()?;
         }

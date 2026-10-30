@@ -6,6 +6,7 @@ use crate::garrison::transport::{
     DEEP_WATER, DRAW_SCALE, DROP_GAP, DROP_TRIES, RETRIES, RETRY_SPREAD, RETRY_STEP, STACK_PLACE,
     Shore, WATER,
 };
+use crate::map::Position;
 use crate::map::terrain::Terrain;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Well512;
@@ -195,7 +196,7 @@ impl<'a> MapShore<'a> {
         zones: &'a mut crate::pathing::zones::Zones,
         pathing: &'a mut crate::pathing::Pathing,
         restriction: i16,
-        position: [f32; 3],
+        position: Position,
     ) -> Result<Self, GenieError> {
         let terrain = spatial
             .terrain
@@ -208,7 +209,7 @@ impl<'a> MapShore<'a> {
             tiles: spatial.tiles(),
             map: spatial.map,
             restriction: usize::try_from(restriction).ok(),
-            tile: [cvttss2si(position[0]), cvttss2si(position[1])],
+            tile: [cvttss2si(position.x()), cvttss2si(position.y())],
         })
     }
 

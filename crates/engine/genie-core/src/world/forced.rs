@@ -297,6 +297,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Position;
     use crate::test_ids::object_id;
     use crate::world::tests::forage_world;
 
@@ -371,7 +372,7 @@ mod tests {
         forager.stopped = true;
         forager.ai.as_mut().unwrap().hunted = hunted;
         let mut theirs = t.players[1].objects.clone();
-        theirs[0].place_for_test([29.5, 88.5, 0.0]);
+        theirs[0].place_for_test(Position::new(29.5, 88.5, 0.0));
         theirs[0].stopped = false;
         theirs[0].ai.as_mut().unwrap().hunted = None;
         let mut game = GameState {
@@ -383,12 +384,12 @@ mod tests {
         let forager = &t.players[1].objects[0];
         assert_eq!(
             (forager.position(), forager.stopped),
-            ([29.5, 88.5, 0.0], false)
+            (Position::new(29.5, 88.5, 0.0), false)
         );
         assert_eq!(forager.ai.as_ref().unwrap().hunted, hunted);
         assert_eq!(
             t.spatial.get(9175).map(|p| p.position),
-            Some([29.5, 88.5, 0.0])
+            Some(Position::new(29.5, 88.5, 0.0))
         );
         // the game made 800, then the forager changed hands, then masters, then left
         game.players[1].push(Unit {

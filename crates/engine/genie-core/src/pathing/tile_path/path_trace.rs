@@ -1,7 +1,7 @@
 //! The path's points: the tiles a node's path crosses into and aims at, traced back from the
 //! goal.
 
-use crate::math::fmath::Vec3;
+use crate::math::fmath::BVector;
 use crate::pathing::tile_path::{E, HALF, N, Planner, S, W};
 
 impl Planner {
@@ -252,8 +252,8 @@ impl Planner {
     }
 
     /// A tile's centre as a path point.
-    pub(super) fn centre(x: i16, y: i16) -> Vec3 {
-        [f32::from(x) + HALF, 0.0, f32::from(y) + HALF]
+    pub(super) fn centre(x: i16, y: i16) -> BVector {
+        BVector::new(f32::from(x) + HALF, 0.0, f32::from(y) + HALF)
     }
 
     /// The path's points from the goal's node back to the start (the loops of `FUN_140f77f20` and

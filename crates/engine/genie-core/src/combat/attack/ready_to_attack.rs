@@ -6,6 +6,7 @@ use crate::combat::attack::{
     Attack, AttackReads, Fight, Ground, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE,
     READY, Readiness, SHORT_RANGE_GAP, face_target, move_reads,
 };
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
 use crate::objects::masters::master_type::MOVING;
@@ -29,7 +30,7 @@ impl Attack {
         r: &AttackReads,
     ) -> Result<(), GenieError> {
         self.enter(READY, unit)?;
-        if self.target == -1 && self.point[0] == NONE {
+        if self.target == -1 && self.point.x() == NONE {
             if !self.sub_action {
                 g.post(unit, crate::unit_ai::ACTION_COMPLETED, [600, 0, 0])?;
             }
@@ -153,10 +154,12 @@ impl Attack {
     /// (`FUN_140a7bbf0`), or within half a tile of it on each axis (`FUN_140a7bd10`: a NaN
     /// difference is not within) and either `moves_or_volleys` (a unit that moves, or a volley
     /// under way, `FUN_1412161a0`) or the target's gap `near` is in range ([`in_range`]).
-    pub(super) fn ready_at_once(&self, to: [f32; 3], near: f32, moves_or_volleys: bool) -> bool {
+    pub(super) fn ready_at_once(&self, to: Position, near: f32, moves_or_volleys: bool) -> bool {
         let moved = to != self.point;
-        let far = (0..3)
-            .any(|i| crate::math::fmath::below_or_unordered(HALF, (to[i] - self.point[i]).abs()));
+        let p = self.point;
+        let far = [to.x() - p.x(), to.y() - p.y(), to.z() - p.z()]
+            .iter()
+            .any(|d| crate::math::fmath::below_or_unordered(HALF, d.abs()));
         !moved || (!far && (moves_or_volleys || in_range(near, self.range, self.min_range)))
     }
 
@@ -177,7 +180,7 @@ impl Attack {
     pub(super) fn face(
         &self,
         unit: &mut Unit,
-        to: [f32; 3],
+        to: Position,
         f: &Fight,
         r: &AttackReads,
     ) -> Result<Readiness, GenieError> {
@@ -222,7 +225,7 @@ pub(super) fn target_unseen(
     f: &Fight,
     t: &crate::map::spatial::Placed,
 ) -> Result<bool, GenieError> {
-    let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
+    let (tx, ty) = (t.position.x() as i32, t.position.y() as i32);
     Ok(t.player != PlayerId::GAIA
         && !world.sees_tile(f.own.player, tx, ty)
         && !(f.victim.fog_visibility != 0 && world.explored(f.own.player, tx, ty)?))

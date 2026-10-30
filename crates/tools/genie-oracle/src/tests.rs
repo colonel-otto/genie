@@ -94,7 +94,7 @@ fn differences_name_the_object_its_master_and_the_field() {
     assert_eq!(d[0].to_string(), "2: life.hp slice 25.0 game 24.0");
     assert_eq!(
         d[2].to_string(),
-        "3: only in the game (master 59 state 2 hp 1.0 at [0.0, 0.0, 0.0] action None)"
+        "3: only in the game (master 59 state 2 hp 1.0 at Position([0.0, 0.0, 0.0]) action None)"
     );
     assert_eq!(
         object_differences(&slice, &game),

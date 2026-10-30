@@ -9,6 +9,7 @@
 //! ([`crate::production::refund_master`]).
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FARM;
 use crate::objects::masters::ids::FISH_TRAP;
@@ -289,7 +290,7 @@ impl World {
         }
         let made = self.master(p, master)?;
         let ai = Ok(made.unit_ai_type(master));
-        let at = [farm[0], farm[1], 0.0];
+        let at = Position::new(farm[0], farm[1], 0.0);
         let (foundation, _) = self.make_building(p, master, ai, at)?;
         if from_queue {
             let player = &mut self.players[p.index()];

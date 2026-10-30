@@ -1,6 +1,7 @@
 //! The idle checks of the boar, the hunted animals and the lions.
 
 use crate::GenieError;
+use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
 use crate::unit_ai::{
@@ -44,13 +45,13 @@ impl UnitAi {
         if home.furious || at.mode_1 {
             return (false, None);
         }
-        let [x, y, z] = at.position;
-        let dx = x - home.origin[0];
-        let dy = y - home.origin[1];
+        let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
+        let dx = x - home.origin.x();
+        let dy = y - home.origin.y();
         let d2 = dy * dy + dx * dx;
         let leash = ai.below(BOAR_LEASH_DRAW) as i32 as f32 + BOAR_LEASH;
         let go_home = AiMove {
-            point: [home.origin[0], home.origin[1], z],
+            point: Position::new(home.origin.x(), home.origin.y(), z),
             range: AI_MOVE_RANGE,
             force: true,
             walk: true,
@@ -76,12 +77,12 @@ impl UnitAi {
             return (
                 true,
                 self.move_to(AiMove {
-                    point: [nx, ny, z],
+                    point: Position::new(nx, ny, z),
                     ..go_home
                 }),
             );
         }
-        if self.target_point[0] == home.origin[0] || self.target_point[1] == home.origin[1] {
+        if self.target_point.x() == home.origin.x() || self.target_point.y() == home.origin.y() {
             return (true, None);
         }
         (true, self.move_to(go_home))
@@ -120,15 +121,15 @@ impl UnitAi {
     pub(super) fn evade(
         &mut self,
         at: &Surroundings,
-        other: [f32; 3],
+        other: Position,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
-        let [x, y, z] = at.position;
+        let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
         let reach = at.speed * EVADE_REACH;
-        let (dx, dy) = (other[0] - x, other[1] - y);
+        let (dx, dy) = (other.x() - x, other.y() - y);
         let d = crate::math::fmath::sqrt(dy * dy + dx * dx);
-        let point = [x - (dx / d) * reach, y - (dy / d) * reach, z];
+        let point = Position::new(x - (dx / d) * reach, y - (dy / d) * reach, z);
         let _ = self.evasive_move(point, (true, false), at, ai, side)?;
         Ok(true)
     }
@@ -166,16 +167,16 @@ impl UnitAi {
         let h = self.hunted.ok_or(GenieError::unsupported(
             "a hunted animal without its origin",
         ))?;
-        let [x, y, z] = at.position;
+        let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
         let go_home = AiMove {
-            point: [h.origin[0], h.origin[1], z],
+            point: Position::new(h.origin.x(), h.origin.y(), z),
             range: AI_MOVE_RANGE,
             force: true,
             walk: true,
         };
         let leash = h.leash * h.leash;
         if 0.0 < leash {
-            let gap = point_gap_squared([h.origin[0], h.origin[1]], at.position, at.size);
+            let gap = point_gap_squared(h.origin.ground(), at.position, at.size);
             if leash < gap {
                 if let Some(m) = self.move_to(go_home) {
                     side.effect_now(Effect::Move(m), self, ai)?;
@@ -219,8 +220,8 @@ impl UnitAi {
         }
         let r = ai.rand15();
         if r.is_multiple_of(BOAR_WANDER) {
-            let dx = x - h.origin[0];
-            let dy = y - h.origin[1];
+            let dx = x - h.origin.x();
+            let dy = y - h.origin.y();
             if HUNTED_HOME < dy * dy + dx * dx {
                 if let Some(m) = self.move_to(go_home) {
                     side.effect_now(Effect::Move(m), self, ai)?;
@@ -238,7 +239,7 @@ impl UnitAi {
             let sx = step(ai) as f32;
             let sy = step(ai) as f32;
             let wander = self.move_to(AiMove {
-                point: [x + sx, sy + y, z],
+                point: Position::new(x + sx, sy + y, z),
                 ..go_home
             });
             if let Some(m) = wander {
@@ -274,7 +275,7 @@ impl UnitAi {
             sight
         };
         let search = |group| Search {
-            at: [at.position[0], at.position[1]],
+            at: at.position.ground(),
             radius,
             classes: &LION_CARED,
             size: at.size,
