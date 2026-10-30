@@ -2088,7 +2088,7 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
         a.arms.move_sprite = Some(STANDING);
         a.on_target_moved = mode;
         a.timer = 5.0;
-        let arrived = a.walk_to_target(at, gap, Walker { state, speed }).unwrap();
+        let arrived = a.walk_to_target(at, gap, state, speed).unwrap();
         (arrived, a.timer, a.move_to)
     };
     let (arrived, timer, m) = made(1.0, 1.0, 2, TargetMoved::AsksAgain);
@@ -2109,17 +2109,7 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
     let (arrived, _, m) = made(0.0, 1.0, 3, TargetMoved::Follows);
     assert_eq!((arrived, m), (false, None));
     let mut none = own_attack(-1, MOVE, 2.0);
-    assert!(
-        none.walk_to_target(
-            at,
-            1.0,
-            Walker {
-                state: 2,
-                speed: 1.0
-            }
-        )
-        .is_err()
-    );
+    assert!(none.walk_to_target(at, 1.0, 2, 1.0).is_err());
 }
 
 /// `set_state(5)` and `(11)`'s `MoveTo` to where the target was seen ([`Attack::walk_to_seen`]):
@@ -2132,10 +2122,7 @@ fn an_attack_s_move_to_where_it_saw_the_target_walks_within_its_range_or_onto_it
         let mut a = own_attack(7, state, 3.0);
         a.seen = seen;
         a.timer = 5.0;
-        a.walk_to_seen(Walker {
-            state: unit_state,
-            speed,
-        });
+        a.walk_to_seen(unit_state, speed);
         (
             a.timer,
             a.move_to.map(|m| (m.state, m.point, m.range, m.target)),

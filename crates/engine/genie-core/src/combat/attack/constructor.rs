@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::{
     Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, Fight, GOTO_SEEN, Ground,
-    LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, Walker, face_target,
+    LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::TargetMoved;
@@ -230,10 +230,7 @@ impl Attack {
             if e.stance == 0 && 0.0 < e.speed && e.can_move {
                 self.state = GOTO_SEEN;
                 self.range = e.range;
-                self.walk_to_seen(Walker {
-                    state: e.unit_state,
-                    speed: e.speed,
-                });
+                self.walk_to_seen(e.unit_state, e.speed);
             } else {
                 failed_first = true;
             }
@@ -371,7 +368,8 @@ pub fn arms_looking(
 /// its target (placed at `them`).
 pub fn engagement(
     ai: Option<&crate::unit_ai::UnitAi>,
-    walker: Walker,
+    speed: f32,
+    unit_state: u8,
     master: &crate::objects::masters::Master,
     me: &crate::map::spatial::Placed,
     them: &crate::map::spatial::Placed,
@@ -383,9 +381,8 @@ pub fn engagement(
         ));
     }
     let (gap_squared, gap) = gaps(me.position, me.radius, them.position, them.radius);
-    let Walker { state, speed } = walker;
     Ok(Engagement {
-        unit_state: state,
+        unit_state,
         gap_squared,
         gap,
         position: me.position,

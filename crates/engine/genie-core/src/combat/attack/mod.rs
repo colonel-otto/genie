@@ -45,7 +45,7 @@ use self::sprites::{NO_OBJECT_STREAM, set_attack_timer};
 pub use self::sprites::{SwingSprites, swing_sprites};
 pub(crate) use self::sprites::{face_target, reset_sprite, show_arrived, volleys};
 use self::update::squared_reach;
-pub use self::walks::Walker;
+pub(crate) use self::walks::speed_of;
 pub use self::work_slots::{Mark, Wielder, Worked};
 #[cfg(test)]
 use crate::combat::damage;

@@ -14,36 +14,25 @@ use crate::world::step::Step;
 pub(super) const QUIET_CODE: GenieError =
     GenieError::unreachable("an Attack's quiet MoveTo's code that only a loud one gives");
 
-/// What the `MoveTo` constructors and the action list's add read of the unit as `set_state`
-/// makes a `MoveTo`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Walker {
-    /// The unit's object state (`+0x640`): its action list adds a sub-action only while it is
-    /// below 3 (`FUN_140a977e0`).
-    pub state: u8,
-    /// The unit's top speed (slot 0x208), which a start reads.
-    pub speed: f32,
-}
-
-impl Walker {
-    /// What `unit` gives the constructors.
-    ///
-    /// # Errors
-    ///
-    /// A unit that does not move.
-    pub(crate) fn of(unit: &Unit) -> Result<Self, GenieError> {
-        let mover = unit.body.mover().ok_or(crate::world::ATTACKER_UNMOVING)?;
-        Ok(Self {
-            state: unit.life.state,
-            speed: mover.stats.speed,
-        })
-    }
+/// The unit's top speed (slot 0x208), which a `MoveTo`'s start reads.
+///
+/// # Errors
+///
+/// A unit that does not move.
+pub(crate) fn speed_of(unit: &Unit) -> Result<f32, GenieError> {
+    Ok(unit
+        .body
+        .mover()
+        .ok_or(crate::world::ATTACKER_UNMOVING)?
+        .stats
+        .speed)
 }
 
 impl Attack {
     /// `set_state(4)`'s `MoveTo` to the target object (`FUN_140aa0df0` with the Attack's range and
     /// walking sprite, quiet through `FUN_140a7a170` with 1, its `+0x61` the Attack's), as the
-    /// action list adds and starts it ([`MoveToAction::added`]): `at` is the target's place and
+    /// action list adds and starts it ([`MoveToAction::added`], which reads the unit's object
+    /// state `unit_state` and its top speed): `at` is the target's place and
     /// `gap` the unit's from the target's footprint (`FUN_14118f680`). A unit within 0.01 of it
     /// is there already, state 1; else state 3, or 13 for a unit without speed. None for a unit
     /// whose state is 3 or more: the list deletes it. The timer is 0. True when it started
@@ -56,7 +45,8 @@ impl Attack {
         &mut self,
         at: [f32; 3],
         gap: f32,
-        walker: Walker,
+        unit_state: u8,
+        speed: f32,
     ) -> Result<bool, GenieError> {
         if self.target == -1 {
             return Err(ATTACK_WITHOUT_TARGET.with("state", self.state));
@@ -66,7 +56,7 @@ impl Attack {
             on_target_moved: self.on_target_moved,
             ..MoveToAction::sub_to_point(at, self.range, self.arms.move_sprite)
         };
-        self.move_to = action.added(walker.state, gap, walker.speed);
+        self.move_to = action.added(unit_state, gap, speed);
         self.timer = 0.0;
         Ok(self.move_to.is_some_and(|m| m.arrived()))
     }
@@ -76,7 +66,7 @@ impl Attack {
     /// the action list adds and starts it: state 5 walks within the range, state 11 onto the
     /// point. The point's gap is [`NO_TARGET_GAP`], so state 3, or 13 for a unit without speed.
     /// None for a unit whose state is 3 or more. The timer is 0.
-    pub(super) const fn walk_to_seen(&mut self, walker: Walker) {
+    pub(super) const fn walk_to_seen(&mut self, unit_state: u8, speed: f32) {
         let range = if self.state == GOTO_POINT {
             0.0
         } else {
@@ -86,7 +76,7 @@ impl Attack {
             on_target_moved: self.on_target_moved,
             ..MoveToAction::sub_to_point(self.seen, range, self.arms.move_sprite)
         };
-        self.move_to = action.added(walker.state, NO_TARGET_GAP, walker.speed);
+        self.move_to = action.added(unit_state, NO_TARGET_GAP, speed);
         self.timer = 0.0;
     }
 

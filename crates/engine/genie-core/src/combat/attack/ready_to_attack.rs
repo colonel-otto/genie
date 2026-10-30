@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::{
     Attack, AttackReads, Fight, Ground, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SHORT_RANGE_GAP, Walker, face_target,
+    READY, Readiness, SHORT_RANGE_GAP, face_target, speed_of,
 };
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
@@ -52,8 +52,14 @@ impl Attack {
         gap: f32,
     ) -> Result<(), GenieError> {
         self.enter(MOVE, unit)?;
-        let walker = Walker::of(unit)?;
-        if self.moving(f.own.source.weapon_range, f.victim.position, gap, walker)? {
+        let (state, speed) = (unit.life.state, speed_of(unit)?);
+        if self.moving(
+            f.own.source.weapon_range,
+            f.victim.position,
+            gap,
+            state,
+            speed,
+        )? {
             self.arrived_sprite(unit, sprite_rng)?;
         }
         Ok(())

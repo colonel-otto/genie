@@ -4,8 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::update::let_go;
 use crate::combat::attack::{
-    AiOrder, Attack, AttackReads, Engagement, Fight, HALF, MOVE, NO_RANGE, NONE, Walker,
-    set_walker_anim,
+    AiOrder, Attack, AttackReads, Engagement, Fight, HALF, MOVE, NO_RANGE, NONE, set_walker_anim,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
@@ -58,11 +57,7 @@ impl Attack {
             mover.stop()?;
         }
         self.state = MOVE;
-        let walker = Walker {
-            state: e.unit_state,
-            speed: e.speed,
-        };
-        self.moving(e.range, e.target_position, e.gap, walker)
+        self.moving(e.range, e.target_position, e.gap, e.unit_state, e.speed)
     }
 
     /// `set_state(4)`'s own part: the range (slot 0x238's), the timer, the `MoveTo` to the target
@@ -77,10 +72,11 @@ impl Attack {
         range: f32,
         at: [f32; 3],
         gap: f32,
-        walker: Walker,
+        unit_state: u8,
+        speed: f32,
     ) -> Result<bool, GenieError> {
         self.range = range;
-        self.walk_to_target(at, gap, walker)
+        self.walk_to_target(at, gap, unit_state, speed)
     }
 
     /// The teardown of the sub-actions (`FUN_140a73fc0` on the action list): a `MoveTo` stops the

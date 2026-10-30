@@ -435,13 +435,11 @@ impl World {
             .spatial
             .get_known(target)?
             .ok_or(crate::world::TARGET_UNPLACED)?;
-        let walker = crate::combat::attack::Walker {
-            state: unit.life.state,
-            speed: unit.body.mover().map_or(0.0, |m| m.stats.speed),
-        };
+        let speed = unit.body.mover().map_or(0.0, |m| m.stats.speed);
         crate::combat::attack::engagement(
             unit.ai.as_ref(),
-            walker,
+            speed,
+            unit.life.state,
             master,
             me,
             them,

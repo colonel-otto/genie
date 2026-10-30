@@ -87,10 +87,11 @@ impl UnitView<'_, '_> {
         }
         let by = self.attack_clears_actions(master.class)?;
         let unit = &mut *self.unit;
-        let walker = crate::combat::attack::Walker::of(unit)?;
+        let speed = crate::combat::attack::speed_of(unit)?;
         let e = crate::combat::attack::engagement(
             Some(ai),
-            walker,
+            speed,
+            unit.life.state,
             master,
             &me_at,
             &t,

@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::combat::attack::walks::QUIET_CODE;
 use crate::combat::attack::{
     AiOrder, Attack, AttackReads, Fight, GOTO_POINT, GOTO_SEEN, KILLED, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SEEN_RANGE, SWING, TOUCH, Walker, set_walker_anim,
+    READY, Readiness, SEEN_RANGE, SWING, TOUCH, set_walker_anim, speed_of,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
@@ -372,7 +372,7 @@ impl Attack {
     ///
     /// A unit that does not move.
     pub(super) fn goto_point(&mut self, unit: &Unit) -> Result<(), GenieError> {
-        self.walk_to_seen(Walker::of(unit)?);
+        self.walk_to_seen(unit.life.state, speed_of(unit)?);
         Ok(())
     }
 
