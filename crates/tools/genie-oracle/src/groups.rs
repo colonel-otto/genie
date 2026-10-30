@@ -222,6 +222,8 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
         non_retarget_units: g.non_retarget_units.clone(),
         // a load's arrays hold the members alone
         spare_seconds: Vec::new(),
+        // the constructor's empty list (+0x488 is 0), which no save writes
+        special_units: Vec::new(),
         // the constructor's, which the load keeps
         replaces_queue: 1,
     })

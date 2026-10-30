@@ -2,10 +2,13 @@
 //! (`FUN_141010a80`) and `stopAllUnits` (`FUN_14103a0d0`), the HD PDB's names.
 
 use crate::GenieError;
+use crate::groups::attack::AttackOrder;
+use crate::groups::order::TARGET_COMMAND_GAP;
 use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
+use crate::objects::ObjectId;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
@@ -25,7 +28,7 @@ const PATROL_LEG_REACH: f32 = crate::math::image::group::PATROL_LEG_REACH;
 const TARGET_COMMANDS: [i32; 11] = [3, 5, 0xc, 0x65, 0x69, 0x6a, 0x6e, 0x6f, 0x84, 0x88, 0x2713];
 /// The queued attacks `checkQueuedOrders` hands to `FUN_14100f7f0` when the world holds the
 /// target.
-const ATTACK_COMMANDS: [i32; 4] = [7, 9, 0x68, 0x7d];
+pub(super) const ATTACK_COMMANDS: [i32; 4] = [7, 9, 0x68, 0x7d];
 
 /// What `commandMoveTo` is told besides the target and the point: the range (`param_5`), and its
 /// flags `param_6` (a patrol's leg), `param_7` (the group's target goes), `param_8`, `param_9`
@@ -117,63 +120,6 @@ impl World {
             }
         }
         Ok(true)
-    }
-
-    /// `BUnitGroup::command` (`FUN_14100efd0`) of group `group` on `target` (-1 for none) at
-    /// `point`, `queued` (`param_5`, MOVE's `+0x13`) and `direct` (`param_6`, `+0x14`): its rams
-    /// are not re-added (`readdRams`, `FUN_14102b730`: `DAT_143f01837`, which nothing writes, is
-    /// 0), flags bit 5 clears, and the first member the world holds with at least 1 hit point
-    /// names the task on the target (slot 0x130, `FUN_14106b8b0`: none without one). A group of
-    /// horde units moves as a horde (`commandHorde`, `FUN_141010180`, not modelled); any other
-    /// notes whether the command was queued (`+0x13d`, [`crate::groups::UnitGroup::replaces_queue`]) and,
-    /// without a task, moves ([`World::command_move_to`] with its target forgotten); a move begun
-    /// stops the members (`stopAllUnits` with 0, [`World::stop_all_units`]), and flags bit 17
-    /// clears. True when the move began. A task on a target is not modelled.
-    ///
-    /// # Errors
-    ///
-    /// A target, a horde, or what the move does not model.
-    ///
-    /// When the world does not hold `group`: the game's routine gets the group itself, from a
-    /// caller that holds it.
-    pub fn group_command(
-        &mut self,
-        group: i32,
-        target: i32,
-        point: [f32; 2],
-        (queued, direct): (bool, bool),
-    ) -> Result<bool, GenieError> {
-        let g = self.groups.held_mut(group)?;
-        g.flags &= !0x20;
-        if target != -1 {
-            return Err(GenieError::unsupported(
-                "a group's command on a target (its task, slot 0x130)",
-            ));
-        }
-        if self.all_horde_units(group)? {
-            return Err(GenieError::unsupported(
-                "a horde's command (commandHorde, FUN_141010180)",
-            ));
-        }
-        let g = self.groups.held_mut(group)?;
-        g.replaces_queue = u8::from(!queued);
-        let moved = self.command_move_to(
-            group,
-            target,
-            point,
-            MoveTo {
-                forget_target: true,
-                queued,
-                direct,
-                ..MoveTo::default()
-            },
-        )?;
-        if moved {
-            self.stop_all_units(group, false)?;
-        }
-        let g = self.groups.held_mut(group)?;
-        g.flags &= !0x2_0000;
-        Ok(moved)
     }
 
     /// [`World::command_move_to`]'s queue: a queued move joins the group's command queue (direct
@@ -424,8 +370,8 @@ impl World {
     ///
     /// # Errors
     ///
-    /// A command on a target the world holds (`FUN_14100fc50`, `FUN_14100f7f0`, not modelled),
-    /// a run whose last command the game frees before its move (it reads a null command: the
+    /// A general command on a target the world holds (`FUN_14100fc50`, not modelled), a run
+    /// whose last command the game frees before its move (it reads a null command: the
     /// run's commands equal an unapproved one behind them), and what the move does not model.
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
@@ -434,72 +380,7 @@ impl World {
         let g = self.groups.held_mut(group)?;
         if !g.command_queue.is_empty() {
             g.replaces_queue = 0;
-            // a command on a held target would end the run without the move (`bVar2`); those
-            // are not modelled (below), so every run that ran an approved command moves
-            let (mut first, mut kept, mut ran) = (-1, None, false);
-            let mut i = 0;
-            loop {
-                let g = self.groups.held(group)?;
-                let Some(&node) = g.command_queue.get(i) else {
-                    break;
-                };
-                if node.approved == 0 {
-                    i += 1;
-                    continue;
-                }
-                ran = true;
-                let held = self.world_object(node.target_id).is_some();
-                if first == -1 {
-                    first = node.command;
-                }
-                let count = g.command_queue.len();
-                let g = self.groups.held_mut(group)?;
-                match node.command {
-                    c if TARGET_COMMANDS.contains(&c) && held => {
-                        return Err(GenieError::unsupported(
-                            "a queued command on a target (FUN_14100fc50)",
-                        ));
-                    }
-                    c if ATTACK_COMMANDS.contains(&c) && held => {
-                        return Err(GenieError::unsupported(
-                            "a queued attack on a target (FUN_14100f7f0)",
-                        ));
-                    }
-                    c if (c == MOVE_COMMAND
-                        || TARGET_COMMANDS.contains(&c)
-                        || ATTACK_COMMANDS.contains(&c))
-                        && 1 < count =>
-                    {
-                        g.add_waypoint(node.point[0], node.point[2], false);
-                    }
-                    _ => {}
-                }
-                let next = g.command_queue.get(i + 1).map_or(-1, |n| n.command);
-                let _ = g.command_queue.remove(i);
-                let ends = first != -1 && next != first;
-                if ends || g.command_queue.is_empty() {
-                    kept = Some(node);
-                }
-                if ends {
-                    break;
-                }
-            }
-            if ran {
-                let last = kept.ok_or(GenieError::unsupported(
-                    "checkQueuedOrders' move to a command it freed (a null command in the game)",
-                ))?;
-                let _ = self.command_move_to(
-                    group,
-                    -1,
-                    [last.point[0], last.point[2]],
-                    MoveTo {
-                        range: last.range,
-                        forget_target: true,
-                        direct: true,
-                        ..MoveTo::default()
-                    },
-                )?;
-            }
+            self.run_queued_commands(group)?;
         }
         let g = self.groups.held_mut(group)?;
         if g.hibernating != 0 {
@@ -509,6 +390,99 @@ impl World {
             g.hibernating = 0;
         }
         Ok(())
+    }
+
+    /// [`World::check_queued_orders`]' run over the queue and its move to the run's last command
+    /// (`bVar2`: a command on a held target ends the run without the move).
+    fn run_queued_commands(&mut self, group: i32) -> Result<(), GenieError> {
+        let (mut first, mut kept, mut ran, mut running) = (-1, None, false, true);
+        let mut i = 0;
+        while running {
+            let g = self.groups.held(group)?;
+            let Some(&node) = g.command_queue.get(i) else {
+                break;
+            };
+            if node.approved == 0 {
+                i += 1;
+                continue;
+            }
+            ran = true;
+            if first == -1 {
+                first = node.command;
+            }
+            let count = g.command_queue.len();
+            running = !self.run_queued_node(group, node, count)?;
+            let g = self.groups.held_mut(group)?;
+            let next = g.command_queue.get(i + 1).map_or(-1, |n| n.command);
+            let _ = g.command_queue.remove(i);
+            let ends = first != -1 && next != first;
+            if ends || g.command_queue.is_empty() {
+                kept = Some(node);
+            }
+            if ends {
+                break;
+            }
+        }
+        if ran && running {
+            let last = kept.ok_or(GenieError::unsupported(
+                "checkQueuedOrders' move to a command it freed (a null command in the game)",
+            ))?;
+            let _ = self.command_move_to(
+                group,
+                -1,
+                [last.point[0], last.point[2]],
+                MoveTo {
+                    range: last.range,
+                    forget_target: true,
+                    direct: true,
+                    ..MoveTo::default()
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    /// One approved command of [`World::check_queued_orders`]' run, `count` commands being
+    /// queued: a command on a held target is the group's command (the attack, `FUN_14100f7f0`)
+    /// and ends the run (true); a move, or a command on a target the world does not hold, adds
+    /// its point as a waypoint while more than one is queued; any other is dropped.
+    ///
+    /// # Errors
+    ///
+    /// A general command on a held target (`FUN_14100fc50`, not modelled) and what the attack
+    /// does not model.
+    fn run_queued_node(
+        &mut self,
+        group: i32,
+        node: GroupCommand,
+        count: usize,
+    ) -> Result<bool, GenieError> {
+        let held = self.world_object(node.target_id).is_some();
+        match node.command {
+            c if TARGET_COMMANDS.contains(&c) && held => Err(GenieError::unsupported(
+                "a queued command on a target (FUN_14100fc50)",
+            )),
+            c if ATTACK_COMMANDS.contains(&c) && held => {
+                let target = ObjectId::of_field(node.target_id).ok_or(TARGET_COMMAND_GAP)?;
+                let order = AttackOrder {
+                    disable_retargeting: node.disable_retargeting != 0,
+                    filter: node.approved_2 as i16,
+                };
+                let _ = self.command_attack(group, target, order)?;
+                Ok(true)
+            }
+            c if (c == MOVE_COMMAND
+                || TARGET_COMMANDS.contains(&c)
+                || ATTACK_COMMANDS.contains(&c))
+                && 1 < count =>
+            {
+                self.groups
+                    .held_mut(group)?
+                    .add_waypoint(node.point[0], node.point[2], false);
+                Ok(false)
+            }
+            _ => Ok(false),
+        }
     }
 
     /// `stopAllUnits` (`FUN_14103a0d0`) of group `group`: each member the world holds with an

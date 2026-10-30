@@ -351,7 +351,7 @@ impl World {
 
     /// What the task finder reads of object `id`; an annex stands for its main building (`+0xbb8`),
     /// `steps` times.
-    fn task_target(&self, id: i32, steps: usize) -> Result<TaskTarget<'_>, GenieError> {
+    pub(crate) fn task_target(&self, id: i32, steps: usize) -> Result<TaskTarget<'_>, GenieError> {
         let mut id = id;
         for _ in 0..steps {
             match self.object(id).and_then(|(_, u)| u.annex_of) {

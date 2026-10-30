@@ -56,3 +56,20 @@ pub const CLASS_55: i16 = 55;
 pub const LIVESTOCK: i16 = 58;
 /// The king's class (`-0xe71` raw).
 pub const KING: i16 = 59;
+/// Class 12 (`-0xea0` raw): a group's command on an attack task of a target of it lists the
+/// group's special units (`FUN_14100c6c0`).
+pub const CLASS_12: i16 = 12;
+/// Class 24 (`-0xe94` raw), listed as [`CLASS_12`] is.
+pub const CLASS_24: i16 = 24;
+/// Class 35 (`-0xe89` raw): a target the group's command lists the units by formation category
+/// for (`FUN_14100c6c0`).
+pub const CLASS_35: i16 = 35;
+/// Class 46 (`-0xe7e` raw): the units the group's special units list takes first
+/// (`FUN_14100c6c0`).
+pub const CLASS_46: i16 = 46;
+/// Class 47 (`-0xe7d` raw), listed as [`CLASS_12`] is.
+pub const CLASS_47: i16 = 47;
+/// Class 57 (`-0xe73` raw), listed as [`CLASS_12`] is.
+pub const CLASS_57: i16 = 57;
+/// Class 61 (`-0xe6f` raw), listed as [`CLASS_35`] is.
+pub const CLASS_61: i16 = 61;

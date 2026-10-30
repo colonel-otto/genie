@@ -480,7 +480,7 @@ impl World {
     /// # Errors
     ///
     /// An object of a master the slice does not have.
-    fn range_against(
+    pub(super) fn range_against(
         &self,
         object: crate::groups::WorldObject<'_>,
         target: Option<crate::groups::WorldObject<'_>>,
@@ -501,18 +501,8 @@ impl World {
         let Some(t) = target else {
             return Ok(range);
         };
-        if !matches!(master.charge_type, 6 | 7) {
-            return Ok(range);
-        }
-        let tm = self.master(t.player(), t.master_id())?;
-        let works = crate::combat::damage::charge_works(
-            master.charge_target,
-            master.charge_type,
-            tm.class,
-            tm.kind,
-        );
         // slot 0x300 of a charge type other than 1 and 3: at least 1 (`COMISS`, a NaN is not)
-        Ok(if works && 1.0 <= u.charge {
+        Ok(if self.charge_hits(u, master, &t)? {
             range + f32::from(master.charge_event)
         } else {
             range

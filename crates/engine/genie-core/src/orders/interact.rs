@@ -1,6 +1,7 @@
 //! An interact order's unit, an order on a target, MOVE and its groups.
 
 use crate::GenieError;
+use crate::groups::CommandArgs;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
@@ -342,16 +343,24 @@ impl World {
             // direct (0x140e67b5d..0x140e67cb1)
             if new
                 && order.queued
-                && let Some((target, at)) = self.first_unit_target(units)
+                && let Some((target, at, retargets)) = self.first_unit_target(units)
             {
-                let _ = self.group_command(id, target, at, (false, true))?;
+                let args = CommandArgs {
+                    queued: false,
+                    direct: true,
+                    disable_retargeting: retargets,
+                    filter: -1,
+                };
+                let _ = self.group_command(id, target, at, args)?;
             }
-            let _ = self.group_command(
-                id,
-                ObjectId::field(order.target),
-                order.point.xy(),
-                (order.queued, order.direct),
-            )?;
+            let args = CommandArgs {
+                queued: order.queued,
+                direct: order.direct,
+                disable_retargeting: order.control,
+                filter: -1,
+            };
+            let _ =
+                self.group_command(id, ObjectId::field(order.target), order.point.xy(), args)?;
         }
         let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {
@@ -366,13 +375,12 @@ impl World {
     /// `0x140e67b5d`..`0x140e67cb1`): the first of `units` the world holds, when it has a unit
     /// AI, names its target (`+0x48`, `FUN_140c4cc40`); the object the world holds for it
     /// (`FUN_1415417a0`) gives its id and its place (x, y). The unit AI's retarget flag
-    /// (`FUN_140c4ee90`, `+0x1d6` 0), the command's seventh argument, is read only by a command
-    /// on a target ([`World::group_command`] does not take one).
-    pub(super) fn first_unit_target(&self, units: &[i32]) -> Option<(i32, [f32; 2])> {
+    /// (`FUN_140c4ee90`: `+0x1d6` is 0) is the command's seventh argument, as the game passes it.
+    pub(super) fn first_unit_target(&self, units: &[i32]) -> Option<(i32, [f32; 2], bool)> {
         let (_, first) = units.iter().find_map(|&id| self.object(id))?;
         let ai = first.ai.as_ref()?;
         let t = self.world_object(ai.current_target)?;
         let [x, y, _] = t.position();
-        Some((t.id(), [x, y]))
+        Some((t.id(), [x, y], ai.retarget_disabled == 0))
     }
 }

@@ -21,17 +21,21 @@ pub use self::group_list::{GroupLink, UnitGroups, common_group};
 pub(crate) use self::objects::WorldObject;
 pub use self::objects::sub_formation;
 
+mod attack;
 mod command;
 mod create;
 
-/// What `commandMoveTo` is told besides the target and the point ([`crate::world::World::command_move_to`]).
 pub use command::MoveTo as CommandMoveTo;
+/// What `commandMoveTo` is told besides the target and the point ([`crate::world::World::command_move_to`]).
+pub use order::CommandArgs;
 pub mod formation;
 mod layout;
 mod motion;
+mod order;
 mod place;
 mod stats;
 mod steer;
+mod task;
 mod update;
 
 /// A group's motion (`BMotion`, read by `FUN_141046660`): where the group stands and faces, its
@@ -401,6 +405,9 @@ pub struct UnitGroup {
     /// capacity beyond its count, which the next members take in order (`AddUnit`'s
     /// `FUN_14102d710`).
     pub spare_seconds: Vec<f32>,
+    /// The special units (`+0x488` its count, `+0x48c` the ids; not saved): the members a group's
+    /// command on an attack task lists for the target (`FUN_14100c6c0`, its one writer).
+    pub special_units: Vec<i32>,
     /// `+0x13d` (not saved; the constructor's 1): the group's last command was not queued
     /// (`BUnitGroup::command` sets it), so its next move empties the command queue first;
     /// `checkQueuedOrders` (`FUN_14100d460`) clears it.

@@ -975,8 +975,14 @@ fn a_queued_move_s_new_group_takes_its_first_unit_s_target() {
     let mut t = soldiers(&units, &[]);
     t.players[1].objects[0].ai = Some(ai(13));
     t.players[1].objects[1].ai = Some(ai(11));
-    assert_eq!(t.first_unit_target(&[99, 11, 13]), Some((13, [21.0, 20.0])));
-    assert_eq!(t.first_unit_target(&[13, 11]), Some((11, [20.0, 20.0])));
+    assert_eq!(
+        t.first_unit_target(&[99, 11, 13]),
+        Some((13, [21.0, 20.0], true))
+    );
+    assert_eq!(
+        t.first_unit_target(&[13, 11]),
+        Some((11, [20.0, 20.0], true))
+    );
     t.players[1].objects[0].ai = Some(ai(98));
     assert_eq!(t.first_unit_target(&[11, 13]), None);
     t.players[1].objects[0].ai = None;

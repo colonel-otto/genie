@@ -59,3 +59,16 @@ pub const PASTURE: i16 = 1897;
 /// The pasture master (`0x761`) whose foundation keeps its snow and whose stack unit depends on
 /// the rice terrain under it.
 pub const PASTURE_1889: i16 = 1889;
+/// Master 6 (raw `0x60a2`): a target of it takes the group's class list only
+/// (`FUN_14100c6c0`).
+pub const ID_6: i16 = 6;
+/// Master 7 (raw `0x60a3`), as [`ID_6`].
+pub const ID_7: i16 = 7;
+/// Master 282 (raw `0x61b6`), one of the group's special units' masters (`FUN_14100c6c0`).
+pub const ID_282: i16 = 282;
+/// Master 329 (raw `0x61e5`), as [`ID_282`].
+pub const ID_329: i16 = 329;
+/// Master 330 (raw `0x61e6`), as [`ID_282`].
+pub const ID_330: i16 = 330;
+/// Master 556 (raw `0x62c8`), as [`ID_282`].
+pub const ID_556: i16 = 556;

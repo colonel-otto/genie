@@ -324,6 +324,8 @@ pub mod group {
     pub const LINKED_RADIUS: f32 = f32::from_bits(0x3f00_0000);
     /// 0.10000000149011612
     pub const MAP_EDGE: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 1.0
+    pub const MEMBER_MIN_HP: f32 = f32::from_bits(0x3f80_0000);
     /// 0.10000000149011612
     pub const NEAR: f32 = f32::from_bits(0x3dcc_cccd);
     /// 10000.0
