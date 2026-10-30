@@ -9,10 +9,9 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::move_to::{
-    GiveUp, MoveDefaults, MoveTo, MoveToAction, MoveToReads, Shown, SpriteReads,
-};
-use crate::movement::{Me, PathAsk};
+use crate::movement::Me;
+use crate::movement::move_to::{GiveUp, MoveDefaults, MoveToAction, MoveToReads, SpriteReads};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, sprite_id};
@@ -20,7 +19,6 @@ use crate::objects::unit::{Unit, object_master};
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::Inbox;
 use crate::unit_ai::OrderKind;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -227,24 +225,11 @@ impl ExploreAction {
             waits: villager && !c.w.players[c.player].computer,
             stance: explorer.ai.as_ref().map_or(0, |ai| ai.stance),
         };
-        let held = self
-            .move_to
-            .as_ref()
-            .and_then(|m| c.w.object_state(m.target));
-        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut explorer.body, me);
-        let code = match &mut self.move_to {
-            Some(move_to) => {
-                let shown = (move_to.state == MoveTo::Start).then_some(Shown {
-                    sprite: &mut explorer.sprite,
-                    rng: beside.sprite_rng,
-                    graphic: move_to.sprite,
-                });
-                let mut inbox = Inbox::of(&mut explorer.ai, explorer.id, explorer.life.state);
-                let ask = PathAsk::default();
-                move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?
-            }
-            None => 1,
+        let how = ListUpdate {
+            gives_up,
+            ..ListUpdate::default()
         };
+        let code = update_sub_actions(&mut self.move_to, c, explorer, me, how)?;
         let walked = self.move_to.is_some();
         let owner = self.after_walk(code)?;
         if walked && self.move_to.is_none() {
@@ -743,7 +728,7 @@ mod tests {
         let walking = WALKING;
         assert_eq!(a.take_point([19.0, 84.0, 0.0], &walk), Ok(Owner::Nothing));
         let made = MoveToAction {
-            state: MoveTo::Start,
+            state: crate::movement::move_to::MoveTo::Start,
             point: [19.0, 84.0, 0.0],
             target: -1,
             range: 0.0,
@@ -761,7 +746,10 @@ mod tests {
         let mut stuck = walk;
         stuck.reads.speed = 0.0;
         let (b, _) = ExploreAction::new([5.0, 5.0, 0.0], &stuck).unwrap();
-        assert_eq!(b.move_to.map(|m| m.state), Some(MoveTo::Failed));
+        assert_eq!(
+            b.move_to.map(|m| m.state),
+            Some(crate::movement::move_to::MoveTo::Failed)
+        );
         stuck.reads.state = 3;
         let (b, _) = ExploreAction::new([5.0, 5.0, 0.0], &stuck).unwrap();
         assert_eq!(b.move_to, None);

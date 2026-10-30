@@ -11,13 +11,13 @@ use crate::gathering::gather::{
 use crate::gathering::hunt::walk_sprite;
 use crate::math::rng::Stream;
 use crate::movement::move_to::WalkTo;
-use crate::movement::move_to::{GiveUp, MoveTo, Shown};
-use crate::movement::{Me, Mover, PathAsk};
+use crate::movement::move_to::{GiveUp, MoveTo};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
-use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 
 /// A gatherer without movement state, which the Gather's walks and turns need.
@@ -342,27 +342,18 @@ impl GatherAction {
         mut me: Me,
         r: &GatherReads,
     ) -> Result<u8, GenieError> {
-        let Some(move_to) = &mut self.move_to else {
-            return Ok(1);
-        };
         me.action_state = self.state;
-        let state = move_to.state;
-        let held = c.w.object_state(move_to.target);
-        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-        let shown = (state == MoveTo::Start).then_some(Shown {
-            sprite: &mut unit.sprite,
-            rng: beside.sprite_rng,
-            graphic: move_to.sprite,
-        });
+        let state = self.move_to.as_ref().map(|m| m.state);
         // the computer player's test is not held: its villagers would fail at once
-        let gives_up = GiveUp {
-            waits: r.class == class::VILLAGER,
-            stance: r.stance,
+        let how = ListUpdate {
+            gives_up: GiveUp {
+                waits: r.class == class::VILLAGER,
+                stance: r.stance,
+            },
+            ..ListUpdate::default()
         };
-        let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-        let ask = PathAsk::default();
-        let code = move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?;
-        if matches!(state, MoveTo::Start | MoveTo::Moving) {
+        let code = update_sub_actions(&mut self.move_to, c, unit, me, how)?;
+        if matches!(state, Some(MoveTo::Start | MoveTo::Moving)) {
             unit.post_in_the_way()?;
         }
         Ok(code)

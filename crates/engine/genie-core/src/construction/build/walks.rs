@@ -3,10 +3,10 @@
 
 use crate::GenieError;
 use crate::construction::build::{BuildAction, BuildReads, BuildTask, SITE_GONE};
-use crate::movement::move_to::{MoveTo, MoveToAction, MoveToReads, Shown, TargetMoved, WalkTo};
-use crate::movement::{Me, PathAsk};
+use crate::movement::Me;
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::movement::move_to::{MoveToAction, MoveToReads, TargetMoved, WalkTo};
 use crate::objects::unit::Unit;
-use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 
 impl BuildTask {
@@ -68,19 +68,10 @@ impl BuildAction {
         me: Me,
         reads: &BuildReads,
     ) -> Result<u8, GenieError> {
-        let gives_up = Self::gives_up(c, builder, reads);
-        let Some(move_to) = &mut self.move_to else {
-            return Ok(1);
+        let how = ListUpdate {
+            gives_up: Self::gives_up(c, builder, reads),
+            ..ListUpdate::default()
         };
-        let held = c.w.object_state(move_to.target);
-        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut builder.body, me);
-        let shown = (move_to.state == MoveTo::Start).then_some(Shown {
-            sprite: &mut builder.sprite,
-            rng: beside.sprite_rng,
-            graphic: move_to.sprite,
-        });
-        let mut inbox = Inbox::of(&mut builder.ai, builder.id, builder.life.state);
-        let ask = PathAsk::default();
-        move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)
+        update_sub_actions(&mut self.move_to, c, builder, me, how)
     }
 }

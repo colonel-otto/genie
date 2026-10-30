@@ -5,11 +5,12 @@ use crate::GenieError;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{ENTER_NEAR, HALF_TILE};
 use crate::math::rng::Stream;
+use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{
-    GiveUp, MoveDefaults, MoveTo, MoveToAction, MoveToReads, Shown, SpriteReads, WalkTo,
+    GiveUp, MoveDefaults, MoveToAction, MoveToReads, SpriteReads, WalkTo,
 };
-use crate::movement::{Me, PathAsk};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
@@ -17,7 +18,6 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
-use crate::unit_ai::Inbox;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -219,7 +219,7 @@ impl EnterAction {
     /// The Enter with a `MoveTo` in `state` to its target within the task's range, as
     /// [`EnterAction::walk_again`] makes it toward a building (without a sprite), for a test.
     #[cfg(test)]
-    pub(crate) const fn walking(mut self, state: MoveTo) -> Self {
+    pub(crate) const fn walking(mut self, state: crate::movement::move_to::MoveTo) -> Self {
         self.move_to = Some(MoveToAction {
             state,
             point: [0.0; 3],
@@ -370,23 +370,14 @@ impl EnterAction {
         me: Me,
         reads: &EnterReads,
     ) -> Result<u8, GenieError> {
-        let Some(move_to) = &mut self.move_to else {
-            return Ok(1);
+        let how = ListUpdate {
+            gives_up: GiveUp {
+                waits: reads.waits,
+                stance: reads.stance,
+            },
+            ..ListUpdate::default()
         };
-        let gives_up = GiveUp {
-            waits: reads.waits,
-            stance: reads.stance,
-        };
-        let held = c.w.object_state(move_to.target);
-        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-        let shown = (move_to.state == MoveTo::Start).then_some(Shown {
-            sprite: &mut unit.sprite,
-            rng: beside.sprite_rng,
-            graphic: move_to.sprite,
-        });
-        let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-        let ask = PathAsk::default();
-        move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)
+        update_sub_actions(&mut self.move_to, c, unit, me, how)
     }
 
     /// The update's test of its target first (`FUN_140a87a80`): one gone, dead (state 3 or

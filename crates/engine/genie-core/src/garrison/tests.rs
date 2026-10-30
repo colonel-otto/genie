@@ -3302,3 +3302,38 @@ fn a_market_tells_a_computer_ally_of_its_tile() {
     assert_eq!(market(false, false), Vec::<[i32; 2]>::new());
     assert_eq!(market(true, true), Vec::<[i32; 2]>::new());
 }
+
+#[test]
+fn the_sub_action_list_update_of_an_empty_list_is_1_and_of_an_arrived_move_to_too() {
+    // FUN_140a992b0: "There is no list." answers 1; an arrived MoveTo's update ends with 1
+    let mut t = entering(
+        [5.5, 5.5],
+        [5.5, 30.5],
+        ship_enter([5.5, 30.5, 0.0], MoveTo::Arrived),
+    );
+    let v = villager(&t);
+    let mut update = |list: &mut Option<MoveToAction>| {
+        crate::world::tests::in_update(&mut t, (1, v), 0, |u, c| {
+            let me = crate::movement::Me {
+                id: u.id,
+                group: u.group.id,
+                action_state: 0,
+            };
+            crate::movement::move_to::update_sub_actions(
+                list,
+                c,
+                u,
+                me,
+                crate::movement::move_to::ListUpdate::default(),
+            )
+        })
+    };
+    assert_eq!(update(&mut None), Ok(1));
+    let mut arrived = enter_of_move(MoveTo::Arrived);
+    assert_eq!(update(&mut arrived), Ok(1));
+}
+
+/// A quiet `MoveTo` to ship 200 in `state`.
+fn enter_of_move(state: MoveTo) -> Option<MoveToAction> {
+    ship_enter([5.5, 30.5, 0.0], state).move_to
+}

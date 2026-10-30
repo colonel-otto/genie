@@ -4,13 +4,11 @@
 use crate::GenieError;
 use crate::gathering::gather::Walks;
 use crate::gathering::hunt::{HuntAction, HuntReads};
-use crate::movement::move_to::{
-    GiveUp, MoveTo, MoveToAction, Shown, SpriteReads, TargetMoved, WalkTo,
-};
-use crate::movement::{Me, Mover, PathAsk};
+use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, SpriteReads, TargetMoved, WalkTo};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::movement::{Me, Mover};
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
-use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 
 /// A sub-action list's code that a quiet `MoveTo` does not give: 4 is its target let go when it
@@ -96,22 +94,14 @@ impl HuntAction {
         mut me: Me,
         gives_up: GiveUp,
     ) -> Result<u8, GenieError> {
-        let Some(move_to) = &mut self.move_to else {
-            return Ok(1);
-        };
         me.action_state = self.state;
-        let state = move_to.state;
-        let held = c.w.object_state(move_to.target);
-        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-        let shown = (state == MoveTo::Start).then_some(Shown {
-            sprite: &mut unit.sprite,
-            rng: beside.sprite_rng,
-            graphic: move_to.sprite,
-        });
-        let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-        let ask = PathAsk::default();
-        let code = move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?;
-        if matches!(state, MoveTo::Start | MoveTo::Moving) {
+        let state = self.move_to.as_ref().map(|m| m.state);
+        let how = ListUpdate {
+            gives_up,
+            ..ListUpdate::default()
+        };
+        let code = update_sub_actions(&mut self.move_to, c, unit, me, how)?;
+        if matches!(state, Some(MoveTo::Start | MoveTo::Moving)) {
             unit.post_in_the_way()?;
         }
         Ok(code)

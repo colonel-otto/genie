@@ -6,14 +6,14 @@
 use crate::GenieError;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, Shown, graphic_of};
-use crate::movement::{Me, Mover, PathAsk};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::movement::move_to::{MoveToAction, graphic_of};
+use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -148,29 +148,9 @@ impl Fly {
                 // the sub-action list's update (FUN_140a992b0): none left (1), the MoveTo's end
                 // (1) or its failure (3) end the flight. A bird is no villager: a motion step
                 // that gives up fails its MoveTo (set_state 13, LAB_140aa320c)
-                let code = match &mut self.move_to {
-                    None => 1,
-                    Some(move_to) => {
-                        // its set_state(4) shows its sprite (+0x58) before the motion step
-                        let held = c.w.object_state(move_to.target);
-                        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut bird.body, me);
-                        let shown = (move_to.state == MoveTo::Start).then_some(Shown {
-                            sprite: &mut bird.sprite,
-                            rng: beside.sprite_rng,
-                            graphic: move_to.sprite,
-                        });
-                        let gives_up = GiveUp::default();
-                        let mut inbox = Inbox::of(&mut bird.ai, bird.id, bird.life.state);
-                        move_to.sub_update(
-                            &mut walk,
-                            PathAsk::default(),
-                            gives_up,
-                            held,
-                            shown,
-                            &mut inbox,
-                        )?
-                    }
-                };
+                // (its set_state(4) shows its sprite, +0x58, before the motion step)
+                let code =
+                    update_sub_actions(&mut self.move_to, c, bird, me, ListUpdate::default())?;
                 if code == 0 {
                     return Ok(());
                 }

@@ -9,16 +9,15 @@
 
 use crate::GenieError;
 use crate::movement::Me;
-use crate::movement::PathAsk;
 use crate::movement::move_to::TargetMoved;
-use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, Shown, WalkTo};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::movement::move_to::{MoveTo, MoveToAction, MoveToReads, WalkTo};
 use crate::objects::actions::Action;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -333,17 +332,8 @@ impl Artifact {
             state => {
                 // a motion step that gives up in the start's update fails the MoveTo, as in
                 // its moving state
-                let held = c.w.object_state(move_to.target);
-                let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-                let shown = (state == MoveTo::Start).then_some(Shown {
-                    sprite: &mut unit.sprite,
-                    rng: beside.sprite_rng,
-                    graphic: move_to.sprite,
-                });
-                let ask = PathAsk::default();
-                let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-                let gives_up = GiveUp::default();
-                let code = move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?;
+                let code =
+                    update_sub_actions(&mut self.move_to, c, unit, me, ListUpdate::default())?;
                 if state != MoveTo::Waiting {
                     unit.post_in_the_way()?;
                 }

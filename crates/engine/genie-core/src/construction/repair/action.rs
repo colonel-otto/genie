@@ -7,10 +7,9 @@ use crate::construction::repair::{
     RepairReads, RepairTask, Repairee, SHIP_REPAIR, SHIPS, WAIT, WALK_POINT, WORK,
 };
 use crate::math::rng::Stream;
-use crate::movement::move_to::{
-    GiveUp, MoveTo, MoveToAction, MoveToReads, Shown, Sprites, TargetMoved, WalkTo,
-};
-use crate::movement::{Me, PathAsk, footprint_gap};
+use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, Sprites, TargetMoved, WalkTo};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::movement::{Me, footprint_gap};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
@@ -18,7 +17,6 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 
 /// The work of one update (`0x140adaa20` case 6): the work `rate` times the task's
@@ -311,23 +309,14 @@ impl RepairAction {
         me: Me,
         reads: &RepairReads,
     ) -> Result<u8, GenieError> {
-        let Some(move_to) = &mut self.move_to else {
-            return Ok(1);
+        let how = ListUpdate {
+            gives_up: GiveUp {
+                waits: reads.waits,
+                stance: reads.stance,
+            },
+            ..ListUpdate::default()
         };
-        let held = c.w.object_state(move_to.target);
-        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut repairer.body, me);
-        let shown = (move_to.state == MoveTo::Start).then_some(Shown {
-            sprite: &mut repairer.sprite,
-            rng: beside.sprite_rng,
-            graphic: move_to.sprite,
-        });
-        let gives_up = GiveUp {
-            waits: reads.waits,
-            stance: reads.stance,
-        };
-        let mut inbox = Inbox::of(&mut repairer.ai, repairer.id, repairer.life.state);
-        let ask = PathAsk::default();
-        move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)
+        update_sub_actions(&mut self.move_to, c, repairer, me, how)
     }
 
     /// The reach test of states 4 and 10: the footprints' gap (`FUN_14118f680`) less

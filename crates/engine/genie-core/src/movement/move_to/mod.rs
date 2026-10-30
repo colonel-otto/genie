@@ -16,6 +16,7 @@ use genie_diff::Diff;
 
 mod action;
 mod constructors;
+mod list;
 mod sub_action;
 
 pub(crate) use crate::movement::move_to::action::TARGET_LACKING;
@@ -24,6 +25,8 @@ pub use crate::movement::move_to::action::{
     object_sprite, point_sprite,
 };
 pub use crate::movement::move_to::constructors::{MoveToReads, WalkTo};
+pub use crate::movement::move_to::list::ListUpdate;
+pub(crate) use crate::movement::move_to::list::update_sub_actions;
 pub use crate::movement::move_to::sub_action::{GiveUp, NO_TARGET_GAP};
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.

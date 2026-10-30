@@ -3,13 +3,11 @@
 
 use crate::GenieError;
 use crate::combat::attack::{ATTACK_WITHOUT_TARGET, Attack, AttackReads, GOTO_POINT};
-use crate::movement::move_to::{
-    GiveUp, MoveTo, MoveToAction, MoveToReads, Shown, SpriteReads, WalkTo,
-};
-use crate::movement::{Me, PathAsk};
+use crate::movement::Me;
+use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, SpriteReads, WalkTo};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
-use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 use std::collections::BTreeMap;
 
@@ -135,21 +133,14 @@ impl Attack {
         r: &AttackReads,
         gives_up: GiveUp,
     ) -> Result<u8, GenieError> {
-        let Some(move_to) = &mut self.move_to else {
-            return Ok(1);
+        let state = self.move_to.as_ref().map(|m| m.state);
+        let how = ListUpdate {
+            gives_up,
+            otherwise: r.standing,
+            ..ListUpdate::default()
         };
-        let state = move_to.state;
-        let held = c.w.object_state(move_to.target);
-        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-        let shown = (state == MoveTo::Start).then_some(Shown {
-            sprite: &mut unit.sprite,
-            rng: beside.sprite_rng,
-            graphic: move_to.sprite.or(r.standing),
-        });
-        let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-        let ask = PathAsk::default();
-        let code = move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?;
-        if matches!(state, MoveTo::Start | MoveTo::Moving) {
+        let code = update_sub_actions(&mut self.move_to, c, unit, me, how)?;
+        if matches!(state, Some(MoveTo::Start | MoveTo::Moving)) {
             unit.post_in_the_way()?;
         }
         Ok(code)

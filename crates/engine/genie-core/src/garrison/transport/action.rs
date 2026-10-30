@@ -11,13 +11,13 @@ use crate::math::conversions::cvttss2si;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::PathAsk;
-use crate::movement::move_to::{GiveUp, MoveTo, MoveToReads, Shown, SpriteReads};
+use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::movement::move_to::{MoveTo, MoveToReads, SpriteReads};
 use crate::objects::masters::{Master, TaskId};
 use crate::objects::sprite::{Graphic, new_sprite, sprite_id};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
-use crate::unit_ai::Inbox;
 use crate::unit_ai::{ActionKind, UnitAi};
 use crate::world::World;
 use crate::world::step::Step;
@@ -367,27 +367,22 @@ impl TransportAction {
         unit: &mut Unit,
         me: Me,
     ) -> Result<u8, GenieError> {
-        let Some(move_to) = &mut self.move_to else {
+        let Some(state) = self.move_to.as_ref().map(|m| m.state) else {
             return Ok(1);
         };
-        let start = move_to.state == MoveTo::Start;
-        let walks = start || move_to.state == MoveTo::Moving;
+        let start = state == MoveTo::Start;
+        let walks = start || state == MoveTo::Moving;
         let ask = if start {
             let [x, y, _] = unit.body.position();
             UnitAi::path_ask(unit.ai.as_mut(), [x, y], [self.point[0], self.point[1]])
         } else {
             PathAsk::default()
         };
-        let held = c.w.object_state(move_to.target);
-        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-        let shown = start.then_some(Shown {
-            sprite: &mut unit.sprite,
-            rng: beside.sprite_rng,
-            graphic: move_to.sprite,
-        });
-        let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-        let gives_up = GiveUp::default();
-        let code = move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?;
+        let how = ListUpdate {
+            ask,
+            ..ListUpdate::default()
+        };
+        let code = update_sub_actions(&mut self.move_to, c, unit, me, how)?;
         if walks {
             unit.post_in_the_way()?;
         }
