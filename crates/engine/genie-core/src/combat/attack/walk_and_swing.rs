@@ -14,6 +14,7 @@ use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap_squared};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -198,7 +199,7 @@ impl Attack {
         // slot 0x858 (FUN_14120c0a0): the volley, but for a unit without a missile, volley
         // missile or charge projectile, whose hit is FUN_141081020's melee one
         if ranged || r.volleys {
-            unit.volley(c, Aimed::at(self.target, &f.victim))?;
+            unit.volley(c, Aimed::at(ObjectId::field(self.target), &f.victim))?;
         } else {
             if matches!(
                 f.own.master_id,
@@ -253,7 +254,7 @@ impl Attack {
         match after_hit(
             ranged,
             unit.attack_timer,
-            self.target != -1,
+            self.target.is_some(),
             self.arms.interrupt_frame,
             self.arms.fire_frame,
             sprite.frame,

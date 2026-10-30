@@ -8,6 +8,7 @@ use crate::combat::victims::{KillLeft, file_kill, victim, victim_of};
 use crate::combat::volley::armed;
 use crate::math::rng::Stream;
 use crate::movement::Me;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::teardown::HeadCode;
@@ -35,7 +36,7 @@ impl Unit {
     ) -> Result<HeadCode, GenieError> {
         match self.actions.attack().map(|a| a.target) {
             None => Ok(HeadCode::Keeps),
-            Some(-1) => self.attack_lost_part(c, me),
+            Some(None) => self.attack_lost_part(c, me),
             Some(_) => self.attack_strike_part(c, me, own),
         }
     }
@@ -124,7 +125,7 @@ impl Unit {
             self.ai.as_ref(),
             (computer, c.w.world_time),
         );
-        let victim = victim(c, attack.target)?.ok_or(GenieError::unsupported(
+        let victim = victim(c, ObjectId::field(attack.target))?.ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         ))?;
         let own = own.ok_or(crate::world::ATTACKER_MASTER)?;

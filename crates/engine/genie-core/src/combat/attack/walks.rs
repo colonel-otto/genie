@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, SpriteReads, WalkTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::objects::ObjectId;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -77,11 +78,11 @@ impl Attack {
         gap: f32,
         reads: &MoveToReads<'_>,
     ) -> Result<bool, GenieError> {
-        if self.target == -1 {
+        if self.target.is_none() {
             return Err(ATTACK_WITHOUT_TARGET.with("state", self.state));
         }
         let to = WalkTo {
-            id: self.target,
+            id: ObjectId::field(self.target),
             at,
             gap,
             state: None,

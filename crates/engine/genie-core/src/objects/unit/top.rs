@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::game_vector::GameVector;
+use crate::objects::ObjectId;
 use crate::objects::actions::Action;
 use crate::objects::masters::Master;
 use crate::objects::masters::master_type::BUILDING;
@@ -67,7 +68,7 @@ impl Unit {
             .hunt()
             .map(|h| h.target)
             .or_else(|| self.actions.gather().map(|g| g.target).filter(|&t| t != -1))
-            .or_else(|| self.actions.attack().map(|a| a.target))
+            .or_else(|| self.actions.attack().map(|a| ObjectId::field(a.target)))
             .or_else(|| {
                 self.actions
                     .missile()

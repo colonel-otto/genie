@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::Footprint;
 use crate::math::fmath::BVector;
+use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
@@ -433,12 +434,45 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
         (
             crate::combat::attack::MOVE,
             Some(crate::movement::move_to::MoveTo::Arrived),
-            50
+            Some(object_id(50))
         )
     );
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
     assert_eq!(unit.body.anim_speed(), Some(0.0));
     assert_eq!(unit.body.mover().map(|m| m.stats.speed), Some(0.8));
+}
+
+/// The work command's check of the top Attack (`FUN_14106ff70`, [`World::keep_attack`]): an
+/// Attack in state 4 on this target is kept when the filter is none or 9, and its unit AI hears
+/// of it as of a new one (the retarget time takes the world's time); another target or filter
+/// does not keep it.
+#[test]
+fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
+    let (mut t, task) = work_attack(0);
+    let at = Position::new(10.4, 10.0, 0.0);
+    t.start_attack(PlayerId::new(1), 0, 50, &task, at, true)
+        .unwrap();
+    t.world_time = 3500;
+    assert_eq!(
+        t.keep_attack(PlayerId::new(1), 0, 50, 3, at, true),
+        Ok(false)
+    );
+    assert_eq!(
+        t.keep_attack(PlayerId::new(1), 0, 51, -1, at, true),
+        Ok(false)
+    );
+    let ai = |t: &World| {
+        t.players[1].objects[0]
+            .ai
+            .as_ref()
+            .map(|a| a.last_retarget_time)
+    };
+    assert_ne!(ai(&t), Some(3500));
+    assert_eq!(
+        t.keep_attack(PlayerId::new(1), 0, 50, 9, at, true),
+        Ok(true)
+    );
+    assert_eq!(ai(&t), Some(3500));
 }
 
 /// The attack task's aim (`FUN_141189b20`): Gaia's wolf aims at itself; a building annex at
@@ -558,7 +592,7 @@ fn an_attack_task_of_a_unit_that_cannot_move_goes_ready_in_reach() {
             .expect("the soldier's Attack");
         assert_eq!(
             (attack.state, attack.pending, attack.target2),
-            (state, pending, 50),
+            (state, pending, Some(object_id(50))),
             "reload timer {timer}"
         );
         assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(sprite));

@@ -8,6 +8,7 @@ use crate::combat::attack::{
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::footprint_gap;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type::BUILDING;
@@ -142,7 +143,9 @@ impl Attack {
     /// effect's building target, the range test, the new target) is [`Attack::work`]'s, which
     /// needs the unit's and the target's values.
     pub const fn keeps(&self, target: i32) -> Result<bool, GenieError> {
-        if target == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
+        if target == ObjectId::field(self.target)
+            && (matches!(self.state, 4..=7) || self.state == 11)
+        {
             return Ok(true);
         }
         Err(GenieError::unsupported(
@@ -176,7 +179,9 @@ impl Attack {
         {
             target = m;
         }
-        if target.id == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
+        if target.id == ObjectId::field(self.target)
+            && (matches!(self.state, 4..=7) || self.state == 11)
+        {
             return Worked {
                 kept: true,
                 ..Worked::default()
@@ -207,21 +212,21 @@ impl Attack {
             return worked;
         }
         let new = target.map_or(-1, |t| t.id);
-        if new != self.target {
+        if new != ObjectId::field(self.target) {
             worked.clears_count = true;
         }
-        if self.target != -1 && self.target != new && !self.sub_action {
-            worked.lets_go = Some(self.target);
+        if self.target.is_some() && self.target != ObjectId::of_field(new) && !self.sub_action {
+            worked.lets_go = Some(ObjectId::field(self.target));
         }
-        if self.target != new {
+        if self.target != ObjectId::of_field(new) {
             self.target = match target {
                 Some(t) if t.state < 7 => {
                     if !self.sub_action {
                         worked.takes = Some(t.id);
                     }
-                    t.id
+                    ObjectId::of_field(t.id)
                 }
-                _ => -1,
+                _ => None,
             };
         }
         worked

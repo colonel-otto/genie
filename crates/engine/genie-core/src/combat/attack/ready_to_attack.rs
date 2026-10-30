@@ -9,6 +9,7 @@ use crate::combat::attack::{
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
+use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
@@ -30,7 +31,7 @@ impl Attack {
         r: &AttackReads,
     ) -> Result<(), GenieError> {
         self.enter(READY, unit)?;
-        if self.target == -1 && self.point.x() == NONE {
+        if self.target.is_none() && self.point.x() == NONE {
             if !self.sub_action {
                 g.post(unit, crate::unit_ai::ACTION_COMPLETED, [600, 0, 0])?;
             }
@@ -133,7 +134,13 @@ impl Attack {
             return self.fail(unit, g.sprite_rng);
         }
         // a gate's reach is to the nearest of it and its first two parts (slot 0x680, MINSS)
-        let gap = crate::movement::gate_gap(g.map, (at, ground), (self.target, &t), gap, |g| g);
+        let gap = crate::movement::gate_gap(
+            g.map,
+            (at, ground),
+            (ObjectId::field(self.target), &t),
+            gap,
+            |g| g,
+        );
         if self.reach() < gap {
             if !self.sub_action {
                 g.post(unit, 0x1fd, [0; 3])?;

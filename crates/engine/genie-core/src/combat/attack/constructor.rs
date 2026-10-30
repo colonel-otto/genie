@@ -12,6 +12,7 @@ use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveToReads, TargetMoved};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
+use crate::objects::ObjectId;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
@@ -28,8 +29,8 @@ impl Attack {
     /// (slot 0x7d0's sprite).
     pub(crate) fn own(target: i32, e: &Engagement, arms: Arms) -> Self {
         Self {
-            target,
-            target2: -1,
+            target: ObjectId::of_field(target),
+            target2: None,
             state: 0,
             timer: 0.0,
             range: e.range,

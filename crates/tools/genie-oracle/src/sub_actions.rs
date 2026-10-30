@@ -7,6 +7,7 @@ use crate::{combat_master, core_task};
 use genie_core::GenieError;
 use genie_core::map::Position;
 use genie_core::movement::move_to::TargetMoved;
+use genie_core::objects::ObjectId;
 use genie_core::objects::masters::ACTION_FACTORY_TYPES;
 use genie_core::objects::masters::MasterId;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
@@ -111,8 +112,8 @@ pub(super) fn saved_attack(
         }
     };
     Ok(genie_core::combat::attack::Attack {
-        target: b.target_id,
-        target2: b.target2_id,
+        target: ObjectId::of_field(b.target_id),
+        target2: ObjectId::of_field(b.target2_id),
         state: b.state,
         timer: b.timer,
         range: a.range,

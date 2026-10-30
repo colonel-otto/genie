@@ -5,6 +5,7 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::action_type;
@@ -22,6 +23,11 @@ use crate::unit_ai::task_finder::{Actor, enabled};
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 use crate::world::slots::PlayerSlots;
+
+/// Whether the unit's top action (`top`) is the Attack `a` on `target`.
+fn attack_on(top: Option<i16>, a: &crate::combat::attack::Attack, target: i32) -> bool {
+    top == Some(crate::combat::attack::ATTACK) && a.target == ObjectId::of_field(target)
+}
 
 impl World {
     /// The work command's check of the unit's top Attack (`FUN_14106ff70`): one on this very
@@ -41,16 +47,29 @@ impl World {
     ) -> Result<bool, GenieError> {
         let unit = &self.players.live(player, idx)?;
         let top = unit.top_action_kind();
-        let attacking = unit
-            .actions
-            .attack()
-            .filter(|a| top == Some(crate::combat::attack::ATTACK) && a.target == target);
+        let attacking = unit.actions.attack().filter(|a| attack_on(top, a, target));
         let Some(a) = attacking.filter(|_| matches!(filter, -1 | 9)) else {
             return Ok(false);
         };
         if !a.keeps(target)? {
             return Ok(false);
         }
+        self.tell_of_attack(player, idx, (target, point), clears)?;
+        Ok(true)
+    }
+
+    /// The unit AI hears of the kept Attack as of a new one ([`World::keep_attack`]'s last part).
+    ///
+    /// # Errors
+    ///
+    /// A target or master the slice does not hold, or the notify's.
+    fn tell_of_attack(
+        &mut self,
+        player: PlayerId,
+        idx: usize,
+        (target, point): (i32, Position),
+        clears: bool,
+    ) -> Result<(), GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold",
         ))?;
@@ -73,7 +92,7 @@ impl World {
                 (Some(OrderKind::Attack), Some(ActionKind::Attack)),
             )?;
         }
-        Ok(true)
+        Ok(())
     }
 
     /// The unit at `idx` of player `player` as the task finder's actor.

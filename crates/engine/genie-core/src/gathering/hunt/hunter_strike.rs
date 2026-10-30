@@ -10,6 +10,7 @@ use crate::gathering::hunt::NO_HUNT;
 use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites};
 use crate::movement::move_to::{MoveDefaults, MoveTo};
 use crate::movement::{Me, footprint_gap_squared};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -241,7 +242,7 @@ impl Unit {
 /// Attack reads none (state 7's end without a target): a stand-in no object holds.
 fn hunt_victim(c: &Step<'_>, action: &HuntAction) -> Result<Victim, GenieError> {
     let target = match action.target {
-        -1 => action.attack.map_or(-1, |a| a.target),
+        -1 => action.attack.map_or(-1, |a| ObjectId::field(a.target)),
         t => t,
     };
     match target {

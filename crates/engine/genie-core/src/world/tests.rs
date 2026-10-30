@@ -3901,7 +3901,7 @@ fn a_work_command_on_another_deer_moves_the_hunt_there() {
     );
     assert_eq!(
         (h.state, h.attack.map(|a| a.target)),
-        (crate::gathering::hunt::ATTACK, Some(501))
+        (crate::gathering::hunt::ATTACK, Some(Some(object_id(501))))
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -4449,7 +4449,10 @@ fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
         .unwrap();
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
-    assert_eq!((h.state, h.attack.map(|a| a.target)), (ATTACK, Some(510)));
+    assert_eq!(
+        (h.state, h.attack.map(|a| a.target)),
+        (ATTACK, Some(Some(object_id(510))))
+    );
 }
 
 /// The lead is the Hunt's own call (`0x140ac60e0` case 6, `FUN_140ac4c60` before
@@ -4886,7 +4889,10 @@ fn a_hunt_that_lost_its_tree_takes_the_next_one() {
     let mut t = lumber_world(31.5);
     assert_eq!(search(&mut t, Some(8.0), None), Ok(true));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
-    assert_eq!((h.target, h.attack.map(|a| a.target)), (520, Some(520)));
+    assert_eq!(
+        (h.target, h.attack.map(|a| a.target)),
+        (520, Some(Some(object_id(520))))
+    );
     assert_eq!(t.players[0].objects[2].workers, 1);
     let mut t = lumber_world(31.5);
     t.players[1].objects[0].actions.hunt_mut().unwrap().point = Position::new(40.0, 89.5, 0.0);
@@ -4909,7 +4915,10 @@ fn a_hunt_whose_attack_failed_takes_a_near_tree_or_searches() {
     let mut t = lumber_world(31.5);
     assert_eq!(failed(&mut t), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
-    assert_eq!((h.target, h.attack.map(|a| a.target)), (520, Some(520)));
+    assert_eq!(
+        (h.target, h.attack.map(|a| a.target)),
+        (520, Some(Some(object_id(520))))
+    );
     for (near, target_type) in [(39.0, 15), (31.5, 99)] {
         let mut t = lumber_world(near);
         t.players[1].objects[0].ai.as_mut().unwrap().target_type = target_type;
@@ -11748,8 +11757,8 @@ fn mover_unit(id: i32) -> Unit {
 /// A unit's own Attack on `target` (second target `target2`) in `state`, without a `MoveTo`.
 fn own_attack(target: i32, target2: i32, state: u8) -> crate::combat::attack::Attack {
     crate::combat::attack::Attack {
-        target,
-        target2,
+        target: ObjectId::of_field(target),
+        target2: ObjectId::of_field(target2),
         state,
         timer: 0.0,
         range: 0.0,
@@ -12192,7 +12201,7 @@ fn on_side<R>(
 fn scout_attack_on(
     timer: f32,
     inside: Option<i32>,
-    own: Option<crate::combat::attack::Attack>,
+    own: Option<&crate::combat::attack::Attack>,
     force: bool,
 ) -> (Unit, crate::unit_ai::Attacked, Vec<i32>) {
     use crate::unit_ai::UnitSide;
@@ -12276,7 +12285,7 @@ fn scout_attack_on(
             standing, &mut rng,
         )),
         attack_timer: timer,
-        actions: ActionList::default().with_attack(own),
+        actions: ActionList::default().with_attack(own.copied()),
         life: Lifecycle {
             master_id: ids::ID_448,
             inside,
@@ -12463,7 +12472,11 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
     );
     assert_eq!(unit.life.master_id, VILLAGER_MALE);
     assert!(attacked.attacks);
-    assert!(unit.actions.attack().is_some_and(|a| a.target == 50));
+    assert!(
+        unit.actions
+            .attack()
+            .is_some_and(|a| a.target == Some(object_id(50)))
+    );
     // the owner's attribute 4 (10 before) as the attack command returns
     assert_eq!(housed, 10.0 - 1.0 + 3.0);
     assert_eq!((tracker.list(118), tracker.list(83)), (&[][..], &[123][..]));
@@ -12471,11 +12484,11 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
 
 /// The scout 124 (player 1, master 448, at (10.3, 10), its unit AI `helper`, its own Attack
 /// `own`), a helper against Gaia's wolf 50 asked by the scout 123.
-fn helper_scout(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> Unit {
+fn helper_scout(helper: UnitAi, own: Option<&crate::combat::attack::Attack>) -> Unit {
     Unit {
         id: object_id(124),
         body: crate::objects::layers::Body::at(Position::new(10.3, 10.0, 0.0)),
-        actions: ActionList::default().with_attack(own),
+        actions: ActionList::default().with_attack(own.copied()),
         ai: Some(helper),
         life: Lifecycle {
             master_id: ids::ID_448,
@@ -12578,7 +12591,7 @@ fn help_view<R>(
 /// `AskForHelp`'s helper test ([`UnitView::helper_free`]) of [`helper_scout`] against the wolf.
 ///
 /// [`UnitView::helper_free`]: crate::unit_ai::world_view::UnitView::helper_free
-fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bool {
+fn helper_free(helper: UnitAi, own: Option<&crate::combat::attack::Attack>) -> bool {
     helper_free_of(
         PlayerId::new(1),
         helper_scout(helper, own),
@@ -12634,7 +12647,7 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
         assert!(!helper_free(ai, None));
     }
     // an action of its own makes it busy
-    assert!(!helper_free(idle, Some(own_attack(50, -1, 4))));
+    assert!(!helper_free(idle, Some(&own_attack(50, -1, 4))));
 }
 
 /// `AskForHelp`'s helper in a group answers whatever it does while its group patrols, and not
@@ -12679,7 +12692,7 @@ fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
     ));
     assert!(!helper_free_of(
         PlayerId::new(1),
-        in_group(7, Some(own_attack(50, -1, 4))),
+        in_group(7, Some(&own_attack(50, -1, 4))),
         &groups
     ));
     let mut thoughtless = helper_scout(idle.clone(), None);
@@ -12704,20 +12717,20 @@ fn an_attack_command_on_its_own_attack_s_target_asks_that_attack_again() {
         seen: Position::new(-1.0, -1.0, -1.0),
         ..own_attack(50, -1, state)
     };
-    let (unit, attacked, takes) = scout_attack_on(0.0, None, Some(own(1)), true);
+    let (unit, attacked, takes) = scout_attack_on(0.0, None, Some(&own(1)), true);
     assert_eq!((attacked.attacks, takes), (true, vec![]));
     let a = unit.actions.attack().copied().expect("the scout's Attack");
     assert_eq!(
         (a.state, a.target, a.seen),
-        (1, 50, Position::new(10.5, 10.0, 0.0))
+        (1, Some(object_id(50)), Position::new(10.5, 10.0, 0.0))
     );
-    let (unit, attacked, _) = scout_attack_on(0.0, None, Some(own(4)), true);
+    let (unit, attacked, _) = scout_attack_on(0.0, None, Some(&own(4)), true);
     assert!(attacked.attacks);
     assert_eq!(
         unit.actions.attack().map(|a| a.seen),
         Some(Position::from([-1.0; 3]))
     );
-    let (unit, _, _) = scout_attack_on(0.0, None, Some(own(1)), false);
+    let (unit, _, _) = scout_attack_on(0.0, None, Some(&own(1)), false);
     assert_eq!(
         unit.actions.attack().map(|a| a.seen),
         Some(Position::from([-1.0; 3]))

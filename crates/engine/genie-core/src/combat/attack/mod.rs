@@ -18,6 +18,7 @@ use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveDefaults, MoveToAction, TargetMoved};
+use crate::objects::ObjectId;
 use crate::objects::layers::Body;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -127,10 +128,10 @@ pub struct Arms {
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Attack {
     /// The target object (`+0x20`, its id at `+0x30`).
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// The second target (`+0x28`, its id at `+0x34`): the work command's Attack takes its
     /// target as this too (`FUN_140a7a190`, slot 0x178), −1 for none.
-    pub target2: i32,
+    pub target2: Option<ObjectId>,
     /// The action state (`+0x18`).
     pub state: u8,
     /// `+0x44`: seconds in the state, the update adds dt.

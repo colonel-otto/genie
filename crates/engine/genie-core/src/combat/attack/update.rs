@@ -11,6 +11,7 @@ use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap};
+use crate::objects::ObjectId;
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
@@ -106,7 +107,7 @@ impl Attack {
             "an Attack's unit without a standing sprite",
         ))?;
         new_sprite(sprite, body.move_stats_mut(), idle, rng);
-        Ok((!self.sub_action).then_some((0x1fb, [600, self.target, 0])))
+        Ok((!self.sub_action).then_some((0x1fb, [600, ObjectId::field(self.target), 0])))
     }
 
     /// One update (slot 6, `0x140a82ae0`) of `unit`'s Attack on the step: the timer runs, the
@@ -201,7 +202,7 @@ impl Attack {
                 "a villager's Attack whose player-owned target died (its unit AI forgets it)",
             ));
         }
-        self.target = -1;
+        self.target = None;
         self.point = Position::from([NONE; 3]);
         self.finish(unit, c.w.streams.get(Stream::Sprite))?;
         Ok(5)
@@ -274,7 +275,7 @@ impl Attack {
         if alive && f.own.player != PlayerId::new(0) && !spared && f.victim.allied[0] {
             self.finish(unit, rng)?;
             if !self.sub_action {
-                unit.post_own(0x1fb, [600, self.target, 0])?;
+                unit.post_own(0x1fb, [600, ObjectId::field(self.target), 0])?;
             }
             return Ok(Some(1));
         }
@@ -284,7 +285,7 @@ impl Attack {
         if f.victim.inside {
             self.finish(unit, rng)?;
             if !self.sub_action && r.queue_empty {
-                unit.post_own(0x1fb, [600, self.target, 0])?;
+                unit.post_own(0x1fb, [600, ObjectId::field(self.target), 0])?;
             }
             return Ok(Some(4));
         }
@@ -293,7 +294,7 @@ impl Attack {
         if !r.armed {
             self.finish(unit, rng)?;
             if !self.sub_action {
-                unit.post_own(0x1fb, [600, self.target, 0])?;
+                unit.post_own(0x1fb, [600, ObjectId::field(self.target), 0])?;
             }
             return Ok(Some(1));
         }
@@ -344,7 +345,7 @@ impl Attack {
         // attack count clears, the caller's) and the attack ends (set_state 1); the Hunt's
         // Attack, a sub-action, then posts 0x1fb with 600 and 0x202 too and returns 5
         if self.sub_action {
-            self.target = -1;
+            self.target = None;
             self.finish(unit, c.w.streams.get(Stream::Sprite))?;
             unit.post_own(0x1fb, [600, 0, 0x202])?;
             return Ok(5);
@@ -352,8 +353,8 @@ impl Attack {
         // a unit's own Attack (not quiet, `+0x60` 0): the target goes (slot 0x68 with
         // none), it posts 0x1fb with 600 and 0x202, ends (set_state 1) and returns 2,
         // which keeps it in the list
-        let target = std::mem::replace(&mut self.target, -1);
-        let_go(c, unit, target)?;
+        let target = self.target.take();
+        let_go(c, unit, ObjectId::field(target))?;
         unit.post_own(0x1fb, [600, 0, 0x202])?;
         self.finish(unit, c.w.streams.get(Stream::Sprite))?;
         Ok(2)
@@ -419,9 +420,9 @@ impl Attack {
             self.goto_point(unit, r, &c.w.graphics)?;
             return Ok(0);
         }
-        let target = std::mem::replace(&mut self.target, -1);
+        let target = self.target.take();
         if !self.sub_action {
-            let_go(c, unit, target)?;
+            let_go(c, unit, ObjectId::field(target))?;
         }
         self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
         if !self.sub_action {

@@ -176,7 +176,7 @@ impl Action {
             Self::MoveTo(a) => ObjectId::field(a.target),
             Self::Hunt(a) => a.target,
             Self::Gather(a) => a.target,
-            Self::Attack(a) => a.target,
+            Self::Attack(a) => ObjectId::field(a.target),
             Self::Enter(a) => a.target,
             Self::Missile(a) => a.target,
             Self::Fly(_)
@@ -197,7 +197,7 @@ impl Action {
             Self::Gather(g) => g.carry_to,
             Self::Build(b) => b.site,
             Self::Missile(m) => m.fired_from,
-            Self::Attack(a) => a.target2,
+            Self::Attack(a) => ObjectId::field(a.target2),
             _ => -1,
         }
     }

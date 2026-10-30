@@ -10,6 +10,7 @@ use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
 use crate::movement::move_to::MoveToReads;
+use crate::objects::ObjectId;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
@@ -129,8 +130,8 @@ impl Attack {
         {
             forget_target(unit);
         }
-        let target = std::mem::replace(&mut self.target, -1);
-        let_go(c, unit, target)?;
+        let target = self.target.take();
+        let_go(c, unit, ObjectId::field(target))?;
         self.point = Position::from([NONE; 3]);
         let human = f.own.player != PlayerId::new(0) && !r.computer;
         let waits = match r.ai_order {
@@ -171,7 +172,7 @@ impl Attack {
         f: &Fight,
         r: &AttackReads,
     ) -> Result<u8, GenieError> {
-        let target = std::mem::replace(&mut self.target, -1);
+        let target = self.target.take();
         self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
         // The predators' class (10), whose unit AI's slot 0x1f0 a failed Attack calls.
         // The boar's unit-AI type, whose slot 0x1f0 (`FUN_140c16d50`) sends it home.
@@ -184,7 +185,7 @@ impl Attack {
         if self.sub_action {
             return Ok(3);
         }
-        let_go(c, unit, target)?;
+        let_go(c, unit, ObjectId::field(target))?;
         if r.ai_order.has_ai() {
             forget_target(unit);
         }

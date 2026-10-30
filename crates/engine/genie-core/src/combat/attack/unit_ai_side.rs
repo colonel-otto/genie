@@ -8,6 +8,7 @@ use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
@@ -56,7 +57,11 @@ impl UnitView<'_, '_> {
         let Some(t) = self.c.w.spatial.get_known(target)?.copied() else {
             return Ok(no());
         };
-        if unit.actions.attack().is_some_and(|a| a.target == target) {
+        if unit
+            .actions
+            .attack()
+            .is_some_and(|a| a.target == ObjectId::of_field(target))
+        {
             if force {
                 self.attack_again(target, &t, master, ai)?;
             }
@@ -158,7 +163,7 @@ impl UnitView<'_, '_> {
         )?;
         let target = attack.target;
         unit.actions.set_attack(Some(attack));
-        self.take(target, by)?;
+        self.take(ObjectId::field(target), by)?;
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted: Vec::new(),

@@ -115,8 +115,8 @@ impl Action {
             }
             Self::Attack(mut a) => {
                 a.tear_down(body.mover_mut())?;
-                torn.release(a.target);
-                torn.release(a.target2);
+                torn.release(ObjectId::field(a.target));
+                torn.release(ObjectId::field(a.target2));
             }
             Self::MoveTo(m) => {
                 stop_if_moving(body, true)?;

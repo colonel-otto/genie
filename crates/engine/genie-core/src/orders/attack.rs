@@ -5,6 +5,7 @@ use crate::combat::attack::{Attack, AttackReads, Fight};
 use crate::gathering::hunt::HuntRetarget;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
@@ -161,7 +162,7 @@ impl World {
                 ai.post(crate::unit_ai::Notify::own(id.get(), kind, p), state)?;
             }
         }
-        attack.target2 = target;
+        attack.target2 = ObjectId::of_field(target);
         unit.actions.set_attack(Some(attack));
         self.take(target, self.releaser(player, idx)?)?;
         Ok(())

@@ -363,8 +363,8 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     assert!(t.member_idle(10).unwrap());
     // an Attack in state 2 is not free, in states 3 and 13 it is; a state 4 is not
     let attack = |state| crate::combat::attack::Attack {
-        target: -1,
-        target2: -1,
+        target: None,
+        target2: None,
         state,
         timer: 0.0,
         range: 0.0,

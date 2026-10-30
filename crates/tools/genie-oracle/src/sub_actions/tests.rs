@@ -1,6 +1,7 @@
 use crate::fixtures::{action_list, building_mut, building_object, combat_object, static_mut};
 use crate::masters::{DefaultAction, MasterTable};
 use crate::sub_actions::{DefaultStart, default_task, production, saved_attack};
+use crate::test_ids::object_id;
 use genie_core::movement::move_to::MoveTo;
 use genie_core::production::Making;
 use genie_save::generated::world::{
@@ -215,7 +216,7 @@ fn move_to() -> Action {
 fn a_saved_attack_reads_its_target_range_and_move_to() {
     let graphics = std::collections::BTreeMap::new();
     let a = saved_attack(&attack(5, vec![(1, move_to())]), Some(&graphics)).unwrap();
-    assert_eq!((a.target, a.state), (700, 5));
+    assert_eq!((a.target, a.state), (Some(object_id(700)), 5));
     // the MoveTo is quiet and holds its own state, point and range
     let m = a.move_to.unwrap();
     assert_eq!(
