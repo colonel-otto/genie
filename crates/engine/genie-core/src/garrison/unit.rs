@@ -10,7 +10,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
-use crate::objects::masters::{Master, Masters, TaskId};
+use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -166,11 +166,12 @@ impl Unit {
             (self.id, self.life.master_id),
             c.w.masters.get(c.player),
         )?;
-        let move_sprite = self.transport_move_sprite(master, t.task, &c.w.graphics)?;
+        let given = crate::garrison::transport::TransportAction::given_sprite(t.task, master)?;
         let reads = crate::garrison::transport::TransportReads {
             radius: master.radius,
             restriction: master.terrain_restriction,
-            move_sprite,
+            defaults: MoveDefaults::of(master, self.abilities.look.as_ref()),
+            given,
             standing: c.w.graphics.get(&master.standing_sprite).copied(),
         };
         // written back before an error too: the stop's context reads the list
@@ -179,24 +180,6 @@ impl Unit {
             *own = t;
         }
         Ok(HeadCode::of(code?))
-    }
-
-    /// The sprite a `MoveTo` of its Transport on `task` takes
-    /// ([`crate::garrison::transport::TransportAction::move_shown`] with the unit's master
-    /// `master` and terrain look), from the sprites' table `graphics`.
-    ///
-    /// # Errors
-    ///
-    /// A task the master lacks, and a sprite the table lacks.
-    pub(crate) fn transport_move_sprite(
-        &self,
-        master: &Master,
-        task: Option<TaskId>,
-        graphics: &std::collections::BTreeMap<i16, Graphic>,
-    ) -> Result<Option<Graphic>, GenieError> {
-        let defaults = MoveDefaults::of(master, self.abilities.look.as_ref());
-        let id = crate::garrison::transport::TransportAction::move_shown(task, master, defaults)?;
-        crate::movement::move_to::graphic_of(graphics, id)
     }
 
     /// The Transport's slot 8 on a move to `point` ([`crate::garrison::transport::TransportAction::move_to`])
@@ -221,9 +204,8 @@ impl Unit {
             .transport()
             .ok_or(GenieError::unreachable("a sail without its Transport"))?
             .task;
-        let move_sprite = self.transport_move_sprite(master, task, graphics)?;
         let ship =
-            crate::garrison::transport::Ship::of(self, master.radius, spatial.map, move_sprite);
+            crate::garrison::transport::Ship::of_unit(self, master, spatial.map, graphics, task)?;
         let restriction = master.terrain_restriction;
         let mut shore = crate::garrison::transport::MapShore::new(
             spatial,
@@ -236,7 +218,7 @@ impl Unit {
             .actions
             .transport_mut()
             .ok_or(GenieError::unreachable("a sail without its Transport"))?;
-        let changed = t.move_to(point, &ship, &mut shore);
+        let changed = t.move_to(point, &ship, &mut shore)?;
         if changed.stopped
             && let Some(m) = self.body.mover_mut()
         {

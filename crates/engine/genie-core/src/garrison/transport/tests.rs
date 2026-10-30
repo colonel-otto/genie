@@ -1,5 +1,5 @@
 use super::*;
-use crate::movement::move_to::{MoveTo, MoveToAction};
+use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToAction, MoveToReads, SpriteReads};
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 
@@ -98,7 +98,7 @@ fn left(unit: &crate::objects::unit::Unit) -> Left {
 /// the owner's alert (not modelled: an error).
 fn run_on(
     t: &mut TransportAction,
-    s: &Ship,
+    s: &Ship<'_>,
     c: &mut Coast,
     unit: &mut crate::objects::unit::Unit,
     computer: bool,
@@ -113,14 +113,18 @@ fn run_on(
 }
 
 /// [`run_on`] on a fresh [`hull`] of a human player: the update's answer and what it left.
-fn run(t: &mut TransportAction, s: &Ship, c: &mut Coast) -> (Result<Updated, GenieError>, Left) {
+fn run(
+    t: &mut TransportAction,
+    s: &Ship<'_>,
+    c: &mut Coast,
+) -> (Result<Updated, GenieError>, Left) {
     let mut unit = hull();
     let r = run_on(t, s, c, &mut unit, false);
     (r, left(&unit))
 }
 
 /// The owner's alert, which a computer player's AI would hear ([`run_on`]).
-fn alerts(t: &TransportAction, s: &Ship, c: &mut Coast) -> bool {
+fn alerts(t: &TransportAction, s: &Ship<'_>, c: &mut Coast) -> bool {
     let mut t = *t;
     run_on(&mut t, s, c, &mut hull(), true).is_err_and(|e| {
         e.reason()
@@ -128,14 +132,26 @@ fn alerts(t: &TransportAction, s: &Ship, c: &mut Coast) -> bool {
     })
 }
 
-fn ship(loaded: bool) -> Ship {
+/// The sprites' table of a world without sprites.
+static NO_GRAPHICS: std::collections::BTreeMap<i16, Graphic> = std::collections::BTreeMap::new();
+
+fn ship(loaded: bool) -> Ship<'static> {
     Ship {
         position: [12.5, 8.5, 0.0],
         radius: [0.5, 0.5],
         loaded,
         map: [40, 30],
-        moves: true,
-        move_sprite: None,
+        walk: MoveToReads {
+            sprites: SpriteReads {
+                defaults: MoveDefaults::default(),
+                graphics: &NO_GRAPHICS,
+            },
+            state: 2,
+            speed: 1.0,
+            at: [12.5, 8.5, 0.0],
+            ground: [0.5, 0.5],
+        },
+        given: None,
     }
 }
 
@@ -147,7 +163,7 @@ fn a_new_transport_sails_to_its_own_place_and_a_start_off_the_map_idles() {
     assert_eq!((t.state, t.mode, t.retarget), (0, -1, false));
     // the list's add (first_in_stack with 1): set_state(11), its MoveTo to the shore point
     // on the way, none here, so the place itself
-    let changed = t.start(true, &s, &mut c);
+    let changed = t.start(true, &s, &mut c).unwrap();
     assert_eq!(changed, Changed::default());
     assert_eq!(
         (t.state, t.move_to.map(|m| m.state)),
@@ -156,14 +172,14 @@ fn a_new_transport_sails_to_its_own_place_and_a_start_off_the_map_idles() {
     assert_eq!(c.asked, [([12.5, 8.5], [12.5, 8.5])]);
     // a NaN point sails too (COMISS/JA, JBE)
     let mut nan = TransportAction::new([f32::NAN, 1.0, 0.0]);
-    let _ = nan.start(true, &s, &mut c);
+    let _ = nan.start(true, &s, &mut c).unwrap();
     assert_eq!(nan.state, SAIL);
     // below 0, or not first: idle with the standing sprite
     let mut off = TransportAction::new([3.0, -1.0, 0.0]);
-    assert!(off.start(true, &s, &mut c).stands);
+    assert!(off.start(true, &s, &mut c).unwrap().stands);
     assert_eq!((off.state, off.move_to), (IDLE, None));
     let mut later = TransportAction::new(s.position);
-    let _ = later.start(false, &s, &mut c);
+    let _ = later.start(false, &s, &mut c).unwrap();
     assert_eq!(later.state, IDLE);
 }
 
@@ -173,18 +189,31 @@ fn a_sail_takes_the_shore_point_and_drops_its_old_move_to() {
     let mut c = coast(true);
     c.shore = Some([19.5, 8.5]);
     let mut t = TransportAction::new(s.position);
-    let _ = t.start(true, &s, &mut c);
+    let _ = t.start(true, &s, &mut c).unwrap();
     t.point = [25.0, 8.0, 0.0];
     // set_state(4) again: the old MoveTo's teardown stops the unit, the new one starts
-    let changed = t.set_state(SAIL_TO_UNLOAD, &s, &mut c);
+    let changed = t.set_state(SAIL_TO_UNLOAD, &s, &mut c).unwrap();
     assert!(changed.stopped && !changed.stands);
     assert_eq!(t.point, [19.5, 8.5, 0.0]);
     assert_eq!(t.move_to.map(|m| m.state), Some(MoveTo::Start));
     assert_eq!(c.asked[1], ([12.5, 8.5], [25.0, 8.0]));
     // a unit without speed: its quiet MoveTo fails at its start
-    let still = Ship { moves: false, ..s };
-    let _ = t.set_state(SAIL, &still, &mut c);
+    let still = Ship {
+        walk: MoveToReads {
+            speed: 0.0,
+            ..s.walk
+        },
+        ..s
+    };
+    let _ = t.set_state(SAIL, &still, &mut c).unwrap();
     assert_eq!(t.move_to.map(|m| m.state), Some(MoveTo::Failed));
+    // a unit in state 3 or later adds no MoveTo (`FUN_140a977e0`)
+    let dying = Ship {
+        walk: MoveToReads { state: 3, ..s.walk },
+        ..s
+    };
+    let _ = t.set_state(SAIL, &dying, &mut c).unwrap();
+    assert_eq!(t.move_to, None);
 }
 
 #[test]
@@ -197,14 +226,14 @@ fn a_move_sails_to_its_point_and_a_stop_idles() {
         mode: 1,
         ..TransportAction::new(s.position)
     };
-    let changed = t.move_to([25.0, 8.0, 2.0], &s, &mut c);
+    let changed = t.move_to([25.0, 8.0, 2.0], &s, &mut c).unwrap();
     assert_eq!(changed, Changed::default());
     assert_eq!(
         (t.state, t.mode, t.point, t.move_to.map(|m| m.state)),
         (SAIL, 0, [19.5, 8.5, 2.0], Some(MoveTo::Start))
     );
     assert_eq!(c.asked, [([12.5, 8.5], [25.0, 8.0])]);
-    let stopped = t.stop(&s, &mut c);
+    let stopped = t.stop(&s, &mut c).unwrap();
     assert!(stopped.stopped && stopped.stands);
     assert_eq!((t.state, t.move_to), (IDLE, None));
 }
@@ -330,12 +359,12 @@ fn an_unload_beside_the_shore_is_the_caller_s_then_idles_unless_it_sails_on() {
     ) = run(&mut t, &s, &mut c);
     assert_eq!((r, stopped, stands), (Ok(Updated::Unload), false, false));
     assert_eq!(t.state, UNLOAD);
-    assert!(t.unloaded(&s, &mut c).stands);
+    assert!(t.unloaded(&s, &mut c).unwrap().stands);
     assert_eq!(t.state, IDLE);
     // a retarget's set_state(4) stays
     t.state = SAIL_TO_UNLOAD;
     t.retarget = true;
-    assert_eq!(t.unloaded(&s, &mut c), Changed::default());
+    assert_eq!(t.unloaded(&s, &mut c), Ok(Changed::default()));
     assert_eq!(t.state, SAIL_TO_UNLOAD);
 }
 
@@ -502,19 +531,15 @@ fn a_transport_s_move_to_shows_its_task_s_or_its_master_s_sprite() {
         ],
         ..Master::default()
     };
-    let defaults = crate::movement::move_to::MoveDefaults {
-        point: Some(20),
-        object: Some(21),
-    };
-    let on = |task, master: &Master| TransportAction::move_shown(task, master, defaults);
+    let on = |task, master: &Master| TransportAction::given_sprite(task, master);
     assert_eq!(on(Some(TaskId(4)), &master), Ok(Some(3)));
-    assert_eq!(on(Some(TaskId(5)), &master), Ok(Some(20)));
+    assert_eq!(on(Some(TaskId(5)), &master), Ok(None));
     assert_eq!(on(None, &master), Ok(Some(7)));
     let walkless = Master {
         move_sprite: -1,
         ..master.clone()
     };
-    assert_eq!(on(None, &walkless), Ok(Some(20)));
+    assert_eq!(on(None, &walkless), Ok(None));
     assert!(on(Some(TaskId(6)), &master).is_err());
 }
 

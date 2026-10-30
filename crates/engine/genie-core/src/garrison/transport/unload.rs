@@ -15,25 +15,6 @@ const NO_TRANSPORT: GenieError = GenieError::unreachable("an unloading ship with
 /// The transports' parts that reach the world: the unload command's install, the unload and the
 /// units put ashore.
 impl crate::world::World {
-    /// What the Transport on `task` of player `p`'s object at `i` reads of it ([`Ship`]): its
-    /// place, its master's radii, whether an object is inside it, the map's size, whether it has
-    /// speed and the sprite a `MoveTo` it makes takes.
-    ///
-    /// # Errors
-    ///
-    /// A unit of a master the slice does not have, and the sprite's.
-    pub(super) fn ship(
-        &self,
-        p: usize,
-        i: usize,
-        task: Option<crate::objects::masters::TaskId>,
-    ) -> Result<Ship, GenieError> {
-        let unit = &self.players[p].objects[i];
-        let master = unit.master(&self.masters, p)?;
-        let move_sprite = unit.transport_move_sprite(master, task, &self.graphics)?;
-        Ok(Ship::of(unit, master.radius, self.spatial.map, move_sprite))
-    }
-
     /// The unit's unload command (slot 0x3a8, `FUN_14108d050`) at `to` for player `p`'s object at
     /// `i`, after the unit AI that gave it: a Transport on top (type 12, `FUN_140a7be70`) is told
     /// to work at the unit's own place ("Telling existing action to work": slot 9 with the unit
@@ -62,7 +43,11 @@ impl crate::world::World {
             .transport()
             .filter(|_| existing)
             .and_then(|t| t.task);
-        let ship = self.ship(p, i, task)?;
+        let ship = {
+            let unit = &self.players[p].objects[i];
+            let master = unit.master(&self.masters, p)?;
+            Ship::of_unit(unit, master, self.spatial.map, &self.graphics, task)?
+        };
         let restriction = self.players[p].objects[i]
             .master(&self.masters, p)?
             .terrain_restriction;
@@ -78,7 +63,7 @@ impl crate::world::World {
             vec![t.work(ship.position, true, &ship, &mut shore)?]
         } else {
             let mut t = TransportAction::new(ship.position);
-            let started = t.start(true, &ship, &mut shore);
+            let started = t.start(true, &ship, &mut shore)?;
             let worked = t.work(to, true, &ship, &mut shore)?;
             unit.actions.set_transport(Some(t));
             vec![started, worked]
@@ -170,7 +155,11 @@ impl crate::world::World {
         };
         let count = self.unload_all(p, i, zone)?;
         let computer = self.players[p].computer;
-        let ship = self.ship(p, i, t.task)?;
+        let ship = {
+            let unit = &self.players[p].objects[i];
+            let master = unit.master(&self.masters, p)?;
+            Ship::of_unit(unit, master, self.spatial.map, &self.graphics, t.task)?
+        };
         let mut changes = Vec::new();
         if count == 0 {
             let terrain = self
@@ -194,7 +183,7 @@ impl crate::world::World {
             t.point[0] = point[0];
             t.point[1] = point[1];
             if sails {
-                changes.push(t.set_state(SAIL_TO_UNLOAD, &ship, &mut shore));
+                changes.push(t.set_state(SAIL_TO_UNLOAD, &ship, &mut shore)?);
                 t.retarget = true;
             } else {
                 crate::unit_ai::alert_owner(computer)?;
@@ -213,7 +202,7 @@ impl crate::world::World {
             .actions
             .transport_mut()
             .ok_or(NO_TRANSPORT)?;
-        changes.push(t.unloaded(&ship, &mut shore));
+        changes.push(t.unloaded(&ship, &mut shore)?);
         for c in changes {
             self.transport_changed(p, i, c)?;
         }

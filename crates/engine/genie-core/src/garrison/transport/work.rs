@@ -32,8 +32,7 @@ impl crate::world::World {
         self.notify_transport((p, i), (target, point), clears)?;
         self.clear_actions(p, i)?;
         let mut t = TransportAction::on_task(Some(TaskId(task.id)), point);
-        let changed =
-            self.with_shore(p, i, t.task, |ship, shore| Ok(t.start(true, ship, shore)))?;
+        let changed = self.with_shore(p, i, t.task, |ship, shore| t.start(true, ship, shore))?;
         self.players[p].objects[i].actions.set_transport(Some(t));
         self.transport_changed(p, i, changed)
     }
@@ -132,9 +131,13 @@ impl crate::world::World {
         p: usize,
         i: usize,
         task: Option<TaskId>,
-        f: impl FnOnce(&Ship, &mut MapShore<'_>) -> Result<Changed, GenieError>,
+        f: impl FnOnce(&Ship<'_>, &mut MapShore<'_>) -> Result<Changed, GenieError>,
     ) -> Result<Changed, GenieError> {
-        let ship = self.ship(p, i, task)?;
+        let ship = {
+            let unit = &self.players[p].objects[i];
+            let master = unit.master(&self.masters, p)?;
+            Ship::of_unit(unit, master, self.spatial.map, &self.graphics, task)?
+        };
         let restriction = self.players[p].objects[i]
             .master(&self.masters, p)?
             .terrain_restriction;

@@ -14,7 +14,7 @@
 //! (HD's `next_to_drop_off_terrain`).
 
 use crate::GenieError;
-use crate::movement::move_to::MoveToAction;
+use crate::movement::move_to::{MoveDefaults, MoveToAction, MoveToReads};
 use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
 
@@ -96,7 +96,7 @@ pub struct TransportAction {
     /// `+0x38`..`+0x40`: where it sails or unloads; x [`NONE`] for nowhere.
     pub point: [f32; 3],
     /// Its `MoveTo` sub-action to the point within [`MOVE_RANGE`]: quiet, with the sprite
-    /// [`Ship::move_sprite`] (`set_state` 4 and 11).
+    /// [`Ship::given`] (`set_state` 4 and 11).
     pub move_to: Option<MoveToAction>,
     /// `+0x68`: the unload found no drop location and the action sails to a new point.
     pub retarget: bool,
@@ -106,8 +106,8 @@ pub struct TransportAction {
 }
 
 /// What the Transport reads of its unit.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Ship {
+#[derive(Clone, Copy, Debug)]
+pub struct Ship<'a> {
     /// The unit's place.
     pub position: [f32; 3],
     /// Its master's radii (x, y).
@@ -116,11 +116,12 @@ pub struct Ship {
     pub loaded: bool,
     /// The map's size in tiles (the owner's world's map, `+0x18`, `+0x1c`).
     pub map: [i32; 2],
-    /// It has speed (slot 0x208, `UCOMISS` with 0: a NaN has), which its `MoveTo` needs.
-    pub moves: bool,
-    /// The sprite a `MoveTo` that `set_state` makes takes (`+0x58`): the one
-    /// [`TransportAction::move_shown`] gives for the Transport's task, from the sprites' table.
-    pub move_sprite: Option<Graphic>,
+    /// What a `MoveTo` that `set_state` makes reads of the unit ([`MoveToReads`]): its speed
+    /// (slot 0x208: without one the `MoveTo` starts failed) and the sprites' defaults.
+    pub walk: MoveToReads<'a>,
+    /// The sprite its maker gives a `MoveTo` (`+0x58`): the task's moving one, without a task
+    /// the master's walking sprite ([`TransportAction::given_sprite`]).
+    pub given: Option<i16>,
 }
 
 /// What the Transport reads of the map about its unit (the caller's).
@@ -163,8 +164,10 @@ pub(crate) struct TransportReads {
     pub(crate) radius: [f32; 2],
     /// The master's terrain restriction (`+0x606`).
     pub(crate) restriction: i16,
-    /// The sprite a `MoveTo` the update's `set_state` makes takes ([`Ship::move_sprite`]).
-    pub(crate) move_sprite: Option<Graphic>,
+    /// The sprites a `MoveTo` the update's `set_state` makes takes when its maker gives none.
+    pub(crate) defaults: MoveDefaults,
+    /// The sprite its maker gives it ([`Ship::given`]).
+    pub(crate) given: Option<i16>,
     /// The master's standing sprite (`+0x470`), which state 2 shows.
     pub(crate) standing: Option<Graphic>,
 }

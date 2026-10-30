@@ -11,7 +11,7 @@ use crate::math::conversions::cvttss2si;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::PathAsk;
-use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToAction, Shown};
+use crate::movement::move_to::{GiveUp, MoveTo, MoveToReads, Shown, SpriteReads};
 use crate::objects::masters::{Master, TaskId};
 use crate::objects::sprite::{Graphic, new_sprite, sprite_id};
 use crate::objects::unit::Unit;
@@ -48,7 +48,16 @@ impl TransportAction {
     /// Slot 5 (`FUN_140aa3e10`), the start: `first` (the action list's add passes 1) with a
     /// point not below 0 on either axis (`COMISS`/`JA`, `JBE`: a NaN is not) sails there
     /// (`set_state(11)`); else it idles (`set_state(2)`).
-    pub fn start(&mut self, first: bool, ship: &Ship, shore: &mut impl Shore) -> Changed {
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn start(
+        &mut self,
+        first: bool,
+        ship: &Ship<'_>,
+        shore: &mut impl Shore,
+    ) -> Result<Changed, GenieError> {
         let [x, y, _] = self.point;
         let sails = first
             && crate::math::fmath::at_most_or_unordered(0.0, x)
@@ -65,7 +74,16 @@ impl TransportAction {
     /// (`FUN_140a977e0`, for a unit in a state below 3) and starts (`0x140aa2100`: a point is
     /// never within its start's gap, so state 3, or 13 for a unit without speed, which a quiet
     /// `MoveTo` shows no sprite for).
-    pub fn set_state(&mut self, state: u8, ship: &Ship, shore: &mut impl Shore) -> Changed {
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn set_state(
+        &mut self,
+        state: u8,
+        ship: &Ship<'_>,
+        shore: &mut impl Shore,
+    ) -> Result<Changed, GenieError> {
         let mut changed = Changed {
             stopped: self.move_to.take().is_some(),
             stands: false,
@@ -80,34 +98,38 @@ impl TransportAction {
                     self.point[0] = sx;
                     self.point[1] = sy;
                 }
-                // the list's start (`0x140aa2100`): a point is never within its start's gap
-                let state = if ship.moves {
-                    MoveTo::Start
-                } else {
-                    MoveTo::Failed
-                };
-                self.move_to = Some(MoveToAction {
-                    state,
-                    ..MoveToAction::sub_to_point(self.point, MOVE_RANGE, ship.move_sprite)
-                });
+                self.move_to = ship.walk.to_point(self.point, MOVE_RANGE, ship.given)?;
             }
             _ => {}
         }
-        changed
+        Ok(changed)
     }
 
     /// Slot 8 (`FUN_140aa3e40`), a move to `point` (x, y and the height; the object it names
     /// is not read): the point it sails to, `+0x34` 0, then `set_state(11)`; it takes the move
     /// (1). Its sprite field (`+0x58`, the master's `+0x748` or standing sprite) is the
     /// interface's.
-    pub fn move_to(&mut self, point: [f32; 3], ship: &Ship, shore: &mut impl Shore) -> Changed {
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn move_to(
+        &mut self,
+        point: [f32; 3],
+        ship: &Ship<'_>,
+        shore: &mut impl Shore,
+    ) -> Result<Changed, GenieError> {
         self.point = point;
         self.mode = 0;
         self.set_state(SAIL, ship, shore)
     }
 
     /// Slot 7 (`FUN_140aa4620`), the stop: `set_state(2)`.
-    pub fn stop(&mut self, ship: &Ship, shore: &mut impl Shore) -> Changed {
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn stop(&mut self, ship: &Ship<'_>, shore: &mut impl Shore) -> Result<Changed, GenieError> {
         self.set_state(IDLE, ship, shore)
     }
 
@@ -128,7 +150,7 @@ impl TransportAction {
         &mut self,
         point: [f32; 3],
         by_self: bool,
-        ship: &Ship,
+        ship: &Ship<'_>,
         shore: &mut impl Shore,
     ) -> Result<Changed, GenieError> {
         self.mode = 1;
@@ -153,7 +175,7 @@ impl TransportAction {
             SAIL
         };
         self.point = point;
-        Ok(self.set_state(state, ship, shore))
+        self.set_state(state, ship, shore)
     }
 
     /// One update (slot 6, `FUN_140aa4640`) of `unit`'s Transport on the step, the action copied
@@ -173,15 +195,21 @@ impl TransportAction {
         r: &TransportReads,
     ) -> Result<u8, GenieError> {
         let walked = self.walk(c, unit, me)?;
-        let ship = Ship::of(unit, r.radius, c.w.spatial.map, r.move_sprite);
         let computer = c.w.players[c.player].computer;
         let World {
             spatial,
             zones,
             pathing,
             streams,
+            graphics,
             ..
         } = &mut *c.w;
+        let sprites = SpriteReads {
+            defaults: r.defaults,
+            graphics,
+        };
+        let walk = MoveToReads::with_sprites(sprites, unit);
+        let ship = Ship::of(unit, r.radius, spatial.map, walk, r.given);
         let mut shore = MapShore::new(spatial, zones, pathing, r.restriction, ship.position)?;
         let look = (r.standing, streams.get(Stream::Sprite));
         match self.state_update(walked, (&ship, &mut shore), unit, look, computer)? {
@@ -233,7 +261,7 @@ impl TransportAction {
     pub(crate) fn state_update(
         &mut self,
         walked: u8,
-        (ship, shore): (&Ship, &mut impl Shore),
+        (ship, shore): (&Ship<'_>, &mut impl Shore),
         unit: &mut Unit,
         look: (Option<Graphic>, &mut Well512),
         computer: bool,
@@ -242,11 +270,11 @@ impl TransportAction {
             DONE => return Ok(Updated::Code(1)),
             SAIL_TO_UNLOAD | SAIL if (1..=5).contains(&walked) => {
                 let next = if self.state == SAIL { IDLE } else { UNLOAD };
-                (self.set_state(next, ship, shore), 0)
+                (self.set_state(next, ship, shore)?, 0)
             }
             // Failed: the update returns 3.
             FAILED => {
-                let changed = self.set_state(IDLE, ship, shore);
+                let changed = self.set_state(IDLE, ship, shore)?;
                 stand(unit, changed, look)?;
                 unit.post_own(
                     crate::unit_ai::ACTION_FAILED,
@@ -273,7 +301,7 @@ impl TransportAction {
                         && shore.flags(cvttss2si(x) as i16, cvttss2si(y) as i16) & WATER_FLAGS != 0;
                     cannot_unload = !over_water;
                 }
-                let changed = self.unloaded(ship, shore);
+                let changed = self.unloaded(ship, shore)?;
                 stand(unit, changed, look)?;
                 if cannot_unload {
                     crate::unit_ai::alert_owner(computer)?;
@@ -288,26 +316,31 @@ impl TransportAction {
 
     /// The end of state 6's update after the unload ([`Updated::Unload`]): unless the
     /// unload sails on (`+0x68`), `set_state(2)`.
-    pub fn unloaded(&mut self, ship: &Ship, shore: &mut impl Shore) -> Changed {
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn unloaded(
+        &mut self,
+        ship: &Ship<'_>,
+        shore: &mut impl Shore,
+    ) -> Result<Changed, GenieError> {
         if self.retarget {
-            return Changed::default();
+            return Ok(Changed::default());
         }
         self.set_state(IDLE, ship, shore)
     }
 
     /// The sprite the `set_state` (`0x140aa42a0`, states 4 and 11) of a Transport on `task` gives
     /// its `MoveTo` (`FUN_140aa0d30`): the task's moving sprite (`+0x40`), without a task the
-    /// master's walking sprite (`+0x748`); for none the constructor's default from `defaults`.
+    /// master's walking sprite (`+0x748`); for none the constructor's default
+    /// ([`MoveToReads::to_point`]).
     ///
     /// # Errors
     ///
     /// A task the unit's master (`master`) lacks.
-    pub fn move_shown(
-        task: Option<TaskId>,
-        master: &Master,
-        defaults: MoveDefaults,
-    ) -> Result<Option<i16>, GenieError> {
-        let given = match task {
+    pub fn given_sprite(task: Option<TaskId>, master: &Master) -> Result<Option<i16>, GenieError> {
+        Ok(match task {
             Some(TaskId(id)) => {
                 let task = master.tasks.iter().find(|t| t.id == id).ok_or_else(|| {
                     GenieError::missing_data("a Transport's task its master lacks").with("task", id)
@@ -315,8 +348,7 @@ impl TransportAction {
                 sprite_id(task.sprites[0])
             }
             None => sprite_id(master.move_sprite),
-        };
-        Ok(defaults.to_point(given))
+        })
     }
 
     /// The update of its `MoveTo` sub-action (`FUN_140a992b0`) on the step
@@ -371,7 +403,11 @@ impl TransportAction {
     /// # Errors
     ///
     /// What the map reads give.
-    pub fn next_to_shore(&self, ship: &Ship, shore: &mut impl Shore) -> Result<bool, GenieError> {
+    pub fn next_to_shore(
+        &self,
+        ship: &Ship<'_>,
+        shore: &mut impl Shore,
+    ) -> Result<bool, GenieError> {
         let [ux, uy, _] = ship.position;
         let [rx, ry] = ship.radius;
         let [w, h] = ship.map;
@@ -433,23 +469,42 @@ pub(crate) fn stand(
     Ok(())
 }
 
-impl Ship {
+impl<'a> Ship<'a> {
+    /// What the Transport on `task` reads of `unit` of `master` on a map of `map` tiles, with the
+    /// sprites' table `graphics` ([`Ship::of`]).
+    ///
+    /// # Errors
+    ///
+    /// A task the master lacks.
+    pub(crate) fn of_unit(
+        unit: &Unit,
+        master: &Master,
+        map: [i32; 2],
+        graphics: &'a std::collections::BTreeMap<i16, Graphic>,
+        task: Option<TaskId>,
+    ) -> Result<Self, GenieError> {
+        let walk = MoveToReads::of(unit, master, graphics);
+        let given = TransportAction::given_sprite(task, master)?;
+        Ok(Self::of(unit, master.radius, map, walk, given))
+    }
+
     /// What the Transport reads of `unit` of master radii `radius` on a map of `map` tiles: its
-    /// place, whether an object is inside it and whether it has speed; a `MoveTo` it makes
-    /// takes `move_sprite`.
-    pub(crate) fn of(
+    /// place and whether an object is inside it; a `MoveTo` it makes reads `walk` and takes the
+    /// sprite `given`.
+    pub(crate) const fn of(
         unit: &Unit,
         radius: [f32; 2],
         map: [i32; 2],
-        move_sprite: Option<Graphic>,
+        walk: MoveToReads<'a>,
+        given: Option<i16>,
     ) -> Self {
         Self {
             position: unit.position(),
             radius,
             loaded: !unit.garrison.is_empty(),
             map,
-            moves: unit.body.mover().is_some_and(|m| m.stats.speed != 0.0),
-            move_sprite,
+            walk,
+            given,
         }
     }
 }
