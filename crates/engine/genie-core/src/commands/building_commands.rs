@@ -47,8 +47,7 @@ impl World {
         let (player, [x, y]) = (player, point.xy());
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone
-            let Some(i) =
-                id.and_then(|id| self.players[player.index()].objects.position_of(id.get()))
+            let Some(i) = id.and_then(|id| self.players[player.index()].objects.position_of(id))
             else {
                 continue;
             };
@@ -107,8 +106,7 @@ impl World {
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         for &id in ids {
-            let Some(i) =
-                id.and_then(|id| self.players[player.index()].objects.position_of(id.get()))
+            let Some(i) = id.and_then(|id| self.players[player.index()].objects.position_of(id))
             else {
                 continue;
             };

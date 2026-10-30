@@ -295,7 +295,7 @@ impl World {
     pub(crate) fn building_place(
         &mut self,
         player: PlayerId,
-        id: i32,
+        id: crate::objects::ObjectId,
         made: &Master,
         position: Position,
         desolid: bool,
@@ -322,7 +322,7 @@ impl World {
         };
         self.spatial.insert(id, placed);
         if placed.obstruction.is_some() {
-            self.pathing.moved(id, &placed, false);
+            self.pathing.moved(id.get(), &placed, false);
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
         if let Some(v) = self.spatial.sight.as_mut() {
@@ -331,7 +331,7 @@ impl World {
                 v.unlink_building(position, made.radius)?;
             }
             v.add_seer(
-                id,
+                id.get(),
                 Seer {
                     player,
                     master: made.id,

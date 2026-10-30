@@ -83,7 +83,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
     ));
     for u in &objects {
         t.spatial.insert(
-            u.id.get(),
+            u.id,
             Placed {
                 position: u.position(),
                 radius: [0.2, 0.2],

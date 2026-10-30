@@ -551,7 +551,7 @@ mod stack_tests {
             vec![vec![0.0; 40]; 5],
         ));
         t.spatial.insert(
-            8759,
+            object_id(8759),
             Placed {
                 position: Position::new(54.0, 147.0, 0.0),
                 radius: [2.0, 2.0],

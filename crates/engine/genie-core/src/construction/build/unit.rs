@@ -138,7 +138,7 @@ impl Unit {
         };
         let me_at =
             c.w.spatial
-                .get_known(self.id.get())?
+                .get_known(self.id)?
                 .ok_or(GenieError::unsupported("a builder without a place"))?;
         let master = self.master(&c.w.masters, c.player)?;
         let actor = Actor {

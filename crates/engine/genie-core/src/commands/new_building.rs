@@ -6,6 +6,7 @@ use crate::construction::build::Construction;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::lifecycle::{Class, Lifecycle};
@@ -340,7 +341,7 @@ impl World {
             stack_made: None,
             attacking_units: Vec::new(),
         });
-        self.settle_building(player, id.get(), &made, (position, desolid), foundation)?;
+        self.settle_building(player, id, &made, (position, desolid), foundation)?;
         for (slot, &annex) in building.annexes.iter().enumerate() {
             if annex == -1 {
                 continue;
@@ -367,13 +368,13 @@ impl World {
     fn settle_building(
         &mut self,
         player: PlayerId,
-        id: i32,
+        id: ObjectId,
         made: &Master,
         (position, desolid): (Position, bool),
         foundation: bool,
     ) -> Result<(), GenieError> {
         let master = made.id;
-        self.track_add(player, id, master)?;
+        self.track_add(player, id.get(), master)?;
         self.building_place(player, id, made, position, desolid)?;
         if foundation && 0 < made.build_time {
             self.construction_terrain(player, master, position)?;

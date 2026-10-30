@@ -77,6 +77,32 @@ impl std::fmt::Display for ObjectId {
     }
 }
 
+/// What a lookup by id takes: an id, a field that may hold none, or (until every field is
+/// typed) a raw field of −1 for none. A key that names none finds no object.
+pub trait ObjectKey: Copy {
+    /// The id it names.
+    fn key(self) -> Option<ObjectId>;
+}
+
+impl ObjectKey for ObjectId {
+    fn key(self) -> Option<ObjectId> {
+        Some(self)
+    }
+}
+
+impl ObjectKey for Option<ObjectId> {
+    fn key(self) -> Option<ObjectId> {
+        self
+    }
+}
+
+/// A raw field, −1 for none: the fields not yet typed ([`ObjectId::of_field`]).
+impl ObjectKey for i32 {
+    fn key(self) -> Option<ObjectId> {
+        ObjectId::of_field(self)
+    }
+}
+
 impl TryFrom<i32> for ObjectId {
     type Error = GenieError;
 
@@ -122,6 +148,18 @@ mod tests {
         );
         assert_eq!(id(-2).get(), -2);
         assert_eq!(id(7).get(), 7);
+    }
+
+    /// A lookup key names an id, none or (a raw field) −1 for none.
+    #[test]
+    fn a_lookup_key_names_its_id_or_none() {
+        use crate::objects::ObjectKey;
+        assert_eq!(id(7).key(), Some(id(7)));
+        assert_eq!(Some(id(7)).key(), Some(id(7)));
+        assert_eq!(None::<ObjectId>.key(), None);
+        assert_eq!(7.key(), Some(id(7)));
+        assert_eq!((-1).key(), None);
+        assert_eq!((-2).key(), Some(id(-2)));
     }
 
     /// A list's values are its ids', none's −1, in its order.

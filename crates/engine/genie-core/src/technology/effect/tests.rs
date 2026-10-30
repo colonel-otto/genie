@@ -186,7 +186,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
     t.spatial = crate::map::spatial::Spatial::new([10, 10]);
     for id in 1..=3 {
         t.spatial.insert(
-            id,
+            object_id(id),
             crate::map::spatial::Placed {
                 position: Position::new(5.5, 5.5, 0.0),
                 radius: [0.5, 0.5],
@@ -629,7 +629,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         let _ = v.sight_on(1, position, radius, false, false);
         t.spatial.sight = Some(v);
         t.spatial.insert(
-            1,
+            object_id(1),
             crate::map::spatial::Placed {
                 position,
                 radius,
@@ -761,7 +761,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     t.masters = vec![Masters::new([m, combat(5, class::CLASS_6, 60)])];
     for id in [1, 3] {
         t.spatial.insert(
-            id,
+            object_id(id),
             crate::map::spatial::Placed {
                 position: Position::new(5.5, 5.5, 0.0),
                 radius: [0.5, 0.5],
@@ -1669,7 +1669,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
     ])];
     t.spatial = crate::map::spatial::Spatial::new([10, 10]);
     t.spatial.insert(
-        1,
+        object_id(1),
         crate::map::spatial::Placed {
             position: Position::new(5.5, 5.5, 0.0),
             radius: [0.5, 0.5],

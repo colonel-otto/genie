@@ -71,7 +71,7 @@ impl Static {
     /// mesh takes its shape (`FUN_14118c540`, standing). Returns the record as filed.
     pub(crate) fn put_down(
         &mut self,
-        id: i32,
+        id: crate::objects::ObjectId,
         at: Position,
         mut placed: crate::map::spatial::Placed,
         (world, pathing): (&mut Spatial, &mut Pathing),
@@ -79,7 +79,7 @@ impl Static {
         self.position = at;
         placed.position = at;
         world.insert(id, placed);
-        pathing.moved(id, &placed, false);
+        pathing.moved(id.get(), &placed, false);
         placed
     }
 
@@ -313,6 +313,7 @@ mod tests {
     use crate::map::spatial::Placed;
     use crate::objects::masters::class;
     use crate::players::PlayerId;
+    use crate::test_ids::object_id;
 
     fn mover() -> Mover {
         crate::movement::tests::builder_9177()
@@ -322,7 +323,7 @@ mod tests {
     fn indexed(at: Position) -> Spatial {
         let mut world = Spatial::new([10, 10]);
         world.insert(
-            7,
+            object_id(7),
             Placed {
                 position: at,
                 radius: [0.2, 0.2],
@@ -453,7 +454,7 @@ mod tests {
         let record = world.come_out(7).expect("its record inside");
         let mut pathing = Pathing::default();
         let filed = base.put_down(
-            7,
+            object_id(7),
             Position::new(2.5, 2.5, 0.0),
             record,
             (&mut world, &mut pathing),

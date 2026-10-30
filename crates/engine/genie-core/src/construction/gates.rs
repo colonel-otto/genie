@@ -198,7 +198,7 @@ impl World {
                         .is_some_and(|g| g.obstruction.is_none())
                 {
                     self.spatial.add_record(id.get(), record);
-                    if let Some(placed) = self.spatial.get(id.get()).copied() {
+                    if let Some(placed) = self.spatial.get(id).copied() {
                         self.pathing.place_shape(id.get(), &placed);
                     }
                 }

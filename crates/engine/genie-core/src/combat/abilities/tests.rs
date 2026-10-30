@@ -484,7 +484,7 @@ fn put(t: &mut World, p: PlayerId, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
     t.players[p.index()].objects.push(u);
     let radius = t.masters[p.index()].get(m).map_or([0.5; 2], |m| m.radius);
     t.spatial.insert(
-        id,
+        object_id(id),
         Placed {
             position: Position::new(x, y, 0.0),
             radius,
@@ -513,7 +513,7 @@ fn rewards(t: &mut World, p: PlayerId, id: i32, leaves: bool) -> Vec<Reward> {
         .iter()
         .position(|u| u.id == object_id(id))
         .unwrap();
-    t.abilities((id, p, i), p, leaves).unwrap()
+    t.abilities((object_id(id), p, i), p, leaves).unwrap()
 }
 
 /// The players' sight with `id` a building of player `p` that is `built`.

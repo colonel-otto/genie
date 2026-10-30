@@ -852,7 +852,7 @@ fn a_trample_reads_a_building_s_blast_so_far_or_its_main_building_s() {
 fn world_with(id: i32, player: PlayerId, class: ClassId, at: Position) -> Spatial {
     let mut world = Spatial::default();
     world.insert(
-        id,
+        object_id(id),
         crate::map::spatial::Placed {
             position: at,
             radius: [0.2, 0.2],
@@ -1729,7 +1729,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
         let mut world = world_with(7, PlayerId::new(0), class::GATE, gate_at);
         for (id, x) in [(8, 10.9), (9, 20.0), (10, 10.5)] {
             world.insert(
-                id,
+                object_id(id),
                 crate::map::spatial::Placed {
                     position: Position::new(x, 10.0, 0.0),
                     ..*world.get(7).unwrap()

@@ -396,7 +396,7 @@ fn a_due_slot_takes_its_member() {
         .stats
         .radius[2] = 0.0;
     t.spatial.insert(
-        10,
+        object_id(10),
         Placed {
             obstruction: None,
             player: PlayerId::new(1),
@@ -451,7 +451,7 @@ fn a_due_slot_takes_its_member() {
 fn a_blocked_way_to_the_slot_goes_round() {
     let mut t = world();
     widen(&mut t, 1.2);
-    t.spatial.insert(50, post(7.5, 5.0));
+    t.spatial.insert(object_id(50), post(7.5, 5.0));
     t.steer_to_slot(1, 0, 0, &[11]).unwrap();
     let m = mover(&t, 10);
     let walked = &m.paths[0];
@@ -480,7 +480,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
     assert_eq!(state(&t, 0), 0);
     // the update's list ignored: clear
     let mut t = world();
-    t.spatial.insert(50, post(7.5, 5.0));
+    t.spatial.insert(object_id(50), post(7.5, 5.0));
     assert_eq!(t.steer_to_slot(1, 0, 0, &[50]), Ok(()));
 }
 
@@ -491,7 +491,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
 fn a_slot_a_record_holds_takes_a_step_toward_it() {
     let mut t = world();
     widen(&mut t, 1.2);
-    t.spatial.insert(50, post(10.0, 5.0));
+    t.spatial.insert(object_id(50), post(10.0, 5.0));
     t.steer_to_slot(1, 0, 0, &[11]).unwrap();
     let m = mover(&t, 10);
     assert_eq!(
@@ -509,7 +509,7 @@ fn a_slot_a_record_holds_takes_a_step_toward_it() {
 #[test]
 fn the_members_moves_end_wait_or_stop() {
     let mut t = world();
-    t.spatial.insert(50, post(6.0, 7.0));
+    t.spatial.insert(object_id(50), post(6.0, 7.0));
     // the members walk: a stop clears their animation speed
     for u in &mut t.players[1].objects {
         u.body.set_anim_speed(1.0);
@@ -557,7 +557,7 @@ fn the_members_moves_end_wait_or_stop() {
     assert_ne!(mover(&t, 11).animated.speed, 0.0);
     // the timer run out (or the distance at 0) ends the move, and the member steers on
     let mut t2 = world();
-    t2.spatial.insert(50, post(6.0, 7.0));
+    t2.spatial.insert(object_id(50), post(6.0, 7.0));
     let g = t2.groups.get_mut(1).unwrap();
     g.members[1].specific_move = SpecificMove {
         active: 1,
@@ -668,8 +668,8 @@ fn a_member_with_its_slot_and_step_held_goes_round_to_the_group() {
     let run = |moving: bool| {
         let mut t = world();
         widen(&mut t, 1.2);
-        t.spatial.insert(50, post(10.0, 5.0));
-        t.spatial.insert(51, post(6.0, 5.0));
+        t.spatial.insert(object_id(50), post(10.0, 5.0));
+        t.spatial.insert(object_id(51), post(6.0, 5.0));
         let g = t.groups.get_mut(1).unwrap();
         g.motion.position[0] = BVector::new(5.0, 0.0, 8.0);
         if moving {

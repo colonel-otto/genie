@@ -528,7 +528,7 @@ fn register(t: &mut World) {
         })
         .collect();
     for (id, placed) in placed {
-        t.spatial.insert(id, placed);
+        t.spatial.insert(object_id(id), placed);
     }
 }
 

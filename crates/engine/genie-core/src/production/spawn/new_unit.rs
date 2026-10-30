@@ -319,7 +319,7 @@ impl World {
                 class: made.obstruction_class,
             }),
         };
-        self.spatial.insert(id.get(), placed);
+        self.spatial.insert(id, placed);
         self.pathing.moved(id.get(), &placed, false);
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {

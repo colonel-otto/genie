@@ -823,7 +823,7 @@ fn an_arrived_level_hands_over_by_its_link() {
     let mut m = requesting(0, 6.0);
     m.paths[0].flags = 1;
     m.paths[0].target = 7;
-    fx.spatial.insert(7, target_at(6.0));
+    fx.spatial.insert(object_id(7), target_at(6.0));
     assert!(matches!(fx.pass(&mut m, &lead), Pass::Reached));
     assert_eq!((m.paths[0].waypoint, m.paths[0].state), (1, 2));
 }
@@ -852,7 +852,7 @@ fn what_stands_in_the_way_stops_the_walk() {
         m.paths[0].created = 50;
         m
     };
-    fx.spatial.insert(9, placed_at(5.0, 5.3));
+    fx.spatial.insert(object_id(9), placed_at(5.0, 5.3));
     let mut m = walking(9);
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Next));
     assert_eq!(m.paths[0].flags & 5, 5);
@@ -865,7 +865,7 @@ fn what_stands_in_the_way_stops_the_walk() {
         }),
     );
     fx.spatial.remove(9);
-    fx.spatial.insert(8, placed_at(5.0, 5.3));
+    fx.spatial.insert(object_id(8), placed_at(5.0, 5.3));
     let mut m = walking(-1);
     m.paths.push(level(2, &[[5.0, 5.0], [9.0, 9.0]], 1, 0));
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Next));
@@ -901,7 +901,7 @@ fn a_walk_in_range_of_its_end_stops() {
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
     assert_eq!(m.paths, vec![PathData::without_path()]);
     fx.spatial.insert(
-        7,
+        object_id(7),
         Placed {
             radius: [0.5, 0.5],
             ..placed_at(5.0, 3.0)

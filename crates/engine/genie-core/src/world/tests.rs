@@ -1097,7 +1097,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
     placeable(&mut t);
     for u in &t.players[0].sleeping {
         t.spatial.insert(
-            u.id.get(),
+            u.id,
             Placed {
                 position: u.position(),
                 radius: [0.5, 0.5],
@@ -1925,7 +1925,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
     );
     for (id, x) in [(10028, 30.0), (10031, 32.0)] {
         t.spatial.insert(
-            id,
+            object_id(id),
             Placed {
                 position: Position::new(x, 88.0, 0.0),
                 radius: [1.0, 1.0],
@@ -2145,9 +2145,9 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
     };
     let at = Position::new(26.5, 89.5, 0.0);
     t.spatial
-        .insert(9175, placed(at, class::VILLAGER, 83, [0.2, 0.2]));
+        .insert(object_id(9175), placed(at, class::VILLAGER, 83, [0.2, 0.2]));
     t.spatial.insert(
-        10028,
+        object_id(10028),
         placed(
             Position::new(30.0, 88.0, 0.0),
             class::BUILDING,
@@ -2476,19 +2476,19 @@ pub(crate) fn forage_world() -> World {
         obstruction: None,
     };
     t.spatial.insert(
-        9175,
+        object_id(9175),
         placed(29.5, class::VILLAGER, PlayerId::new(1), 83, [0.2, 0.2]),
     );
     t.spatial.insert(
-        600,
+        object_id(600),
         placed(32.5, class::CLASS_7, PlayerId::new(0), 59, [0.5, 0.5]),
     );
     t.spatial.insert(
-        601,
+        object_id(601),
         placed(36.5, class::CLASS_7, PlayerId::new(0), 59, [0.5, 0.5]),
     );
     t.spatial.insert(
-        700,
+        object_id(700),
         placed(20.0, class::BUILDING, PlayerId::new(1), 109, [2.0, 2.0]),
     );
     // the drop-site table: villagers drop berries at the town centre
@@ -2861,7 +2861,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
         ..Unit::default()
     });
     t.spatial.insert(
-        800,
+        object_id(800),
         Placed {
             position: Position::new(29.5, 89.5, 0.0),
             radius: [1.5, 1.5],
@@ -3110,7 +3110,7 @@ fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
             master: 70,
             ..p
         };
-        t.spatial.insert(10028, site);
+        t.spatial.insert(object_id(10028), site);
         t.players[1].objects[0].ai.as_mut().unwrap().orders = orders;
         // the villager, the forager and the builder it becomes regenerate 20 a minute
         for masters in &mut t.masters {
@@ -3174,7 +3174,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
         Some((600, 59, 0))
     );
     t.spatial.insert(
-        10028,
+        object_id(10028),
         Placed {
             position: Position::new(30.0, 88.0, 0.0),
             radius: [1.0, 1.0],
@@ -3327,7 +3327,7 @@ fn cart_world() -> World {
         ..Unit::default()
     });
     t.spatial.insert(
-        750,
+        object_id(750),
         Placed {
             position: Position::new(24.5, 89.5, 0.0),
             radius: [0.5, 0.5],
@@ -3372,7 +3372,7 @@ fn a_mule_cart_finds_the_nearest_resource_of_its_task_s_class() {
 fn footprint_world() -> World {
     let mut t = forage_world();
     t.spatial.insert(
-        10028,
+        object_id(10028),
         Placed {
             position: Position::new(30.0, 88.0, 0.0),
             radius: [1.0, 1.0],
@@ -3595,7 +3595,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
     t.spatial = Spatial::new([40, 40]);
     for id in [1, 2, 3, 4, 6] {
         t.spatial.insert(
-            id,
+            object_id(id),
             Placed {
                 position: Position::new(10.5, 10.5, 0.0),
                 radius: [1.0, 1.0],
@@ -3693,19 +3693,19 @@ pub(crate) fn hunt_world() -> World {
         obstruction: None,
     };
     t.spatial.insert(
-        9175,
+        object_id(9175),
         placed(29.5, class::VILLAGER, PlayerId::new(1), 122, [0.2, 0.2]),
     );
     t.spatial.insert(
-        500,
+        object_id(500),
         placed(32.5, class::PREY, PlayerId::new(0), 65, [0.4, 0.4]),
     );
     t.spatial.insert(
-        501,
+        object_id(501),
         placed(36.5, class::PREY, PlayerId::new(0), 65, [0.4, 0.4]),
     );
     t.spatial.insert(
-        700,
+        object_id(700),
         placed(20.0, class::BUILDING, PlayerId::new(1), 109, [2.0, 2.0]),
     );
     let v = &mut t.players[1].objects[0];
@@ -4234,7 +4234,7 @@ fn shepherd_world(x: f32) -> World {
         ..Unit::default()
     });
     t.spatial.insert(
-        510,
+        object_id(510),
         Placed {
             position: Position::new(x, 89.5, 0.0),
             radius: [0.2, 0.2],
@@ -4354,7 +4354,7 @@ fn lumber_world(near: f32) -> World {
         .extend([tree(object_id(520), near), tree(object_id(521), 40.0)]);
     for (id, x) in [(520, near), (521, 40.0)] {
         t.spatial.insert(
-            id,
+            object_id(id),
             Placed {
                 position: Position::new(x, 89.5, 0.0),
                 radius: [0.5, 0.5],
@@ -4541,12 +4541,12 @@ fn an_own_object_taken_out_leaves_the_world_until_it_goes_back() {
         .unwrap()
         .expect("the owner's");
     assert_eq!(u.id, id);
-    assert!(t.object(id.get()).is_none() && t.locate(id.get()).is_none());
+    assert!(t.object(id).is_none() && t.locate(id).is_none());
     assert_eq!(t.players[1].objects[0].id, crate::objects::unit::TAKEN_OUT);
     u.life.hp = 8.0;
     assert_eq!(t.put_back_own(PlayerId::new(1), u).ok(), Some(0));
     assert_eq!(
-        t.locate(id.get()).map(|(q, u, s)| (q, u.life.hp, s)),
+        t.locate(id).map(|(q, u, s)| (q, u.life.hp, s)),
         Some((PlayerId::new(1), 8.0, false))
     );
     assert_eq!(
@@ -4848,7 +4848,7 @@ fn the_unit_ai_s_repair_command_is_the_unit_s_within_its_run() {
         unknown: None,
         obstruction: None,
     };
-    t.spatial.insert(10028, house);
+    t.spatial.insert(object_id(10028), house);
     let seen = villager_side(&mut t, |side| {
         let repairs = side.command(UnitCommand::Repair(10028))?;
         let r = side.unit.actions.repair().map(|r| r.target);
@@ -4917,7 +4917,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
         crate::map::spatial::Tiles::new(120, 120, vec![4; 14400]),
     );
     t.spatial.insert(
-        10028,
+        object_id(10028),
         Placed {
             position: Position::new(30.0, 88.0, 0.0),
             radius: [1.0, 1.0],
@@ -4933,7 +4933,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
         },
     );
     t.spatial.insert(
-        9175,
+        object_id(9175),
         Placed {
             position: Position::new(29.5, 89.5, 0.0),
             radius: [0.2, 0.2],
@@ -5222,7 +5222,7 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
             t.masters.push(t.masters[1].clone());
             let mut placed = *t.spatial.get(10028).unwrap();
             placed.player = PlayerId::new(2);
-            t.spatial.insert(10028, placed);
+            t.spatial.insert(object_id(10028), placed);
             t.players[1].relations = vec![3, 0, 0];
             t.players[2].relations = vec![3, 0, 0];
             t.spatial.relations = vec![vec![0, 3, 3], vec![3, 0, 0], vec![3, 0, 0]];
@@ -5756,12 +5756,14 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
         unknown: None,
         obstruction: None,
     };
-    later
-        .spatial
-        .insert(9175, placed(29.5, class::VILLAGER, PlayerId::new(1), 83));
-    later
-        .spatial
-        .insert(500, placed(32.5, class::PREY, PlayerId::new(0), 65));
+    later.spatial.insert(
+        object_id(9175),
+        placed(29.5, class::VILLAGER, PlayerId::new(1), 83),
+    );
+    later.spatial.insert(
+        object_id(500),
+        placed(32.5, class::PREY, PlayerId::new(0), 65),
+    );
     later.players[1].objects[0]
         .body
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
@@ -6201,7 +6203,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
         unknown: None,
         obstruction: None,
     };
-    t.spatial.insert(40, placed);
+    t.spatial.insert(object_id(40), placed);
     t.tick(50);
     assert_eq!(t.players[1].objects.len(), 1);
     t.tick(50);
@@ -6550,7 +6552,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
     let record = crate::map::spatial::Obstruction { kind: 2, class: 5 };
     t.spatial.insert(
-        27687,
+        object_id(27687),
         Placed {
             position: Position::new(10.0, 10.5, 0.0),
             radius: [1.0, 0.5],
@@ -6623,15 +6625,36 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
         unknown: None,
         obstruction: Some(crate::map::spatial::Obstruction { kind, class: 2 }),
     };
-    s.insert(27745, placed(20.0, class::GATE, PlayerId::new(1), 0.0, 2));
-    s.insert(27746, placed(18.5, class::GATE, PlayerId::new(1), 0.0, 2));
-    s.insert(27747, placed(21.5, class::GATE, PlayerId::new(1), 0.0, 2));
-    s.insert(1, placed(19.6, class::VILLAGER, PlayerId::new(1), 0.8, 5));
+    s.insert(
+        object_id(27745),
+        placed(20.0, class::GATE, PlayerId::new(1), 0.0, 2),
+    );
+    s.insert(
+        object_id(27746),
+        placed(18.5, class::GATE, PlayerId::new(1), 0.0, 2),
+    );
+    s.insert(
+        object_id(27747),
+        placed(21.5, class::GATE, PlayerId::new(1), 0.0, 2),
+    );
+    s.insert(
+        object_id(1),
+        placed(19.6, class::VILLAGER, PlayerId::new(1), 0.8, 5),
+    );
     let (units, allied) = gate_units(&mut s, 27745, &[27746, 27747]).unwrap();
     assert_eq!((units, allied), (vec![1], 1));
-    s.insert(2, placed(20.4, class::PREDATOR, PlayerId::new(0), 0.0, 5));
-    s.insert(3, placed(20.8, class::CLASS_6, PlayerId::new(2), 0.9, 5));
-    s.insert(4, placed(21.0, class::WALL, PlayerId::new(1), 0.0, 2));
+    s.insert(
+        object_id(2),
+        placed(20.4, class::PREDATOR, PlayerId::new(0), 0.0, 5),
+    );
+    s.insert(
+        object_id(3),
+        placed(20.8, class::CLASS_6, PlayerId::new(2), 0.9, 5),
+    );
+    s.insert(
+        object_id(4),
+        placed(21.0, class::WALL, PlayerId::new(1), 0.0, 2),
+    );
     let (units, allied) = gate_units(&mut s, 27745, &[27746, 27747]).unwrap();
     assert_eq!((units, allied), (vec![1, 3], 1));
     assert!(gate_units(&mut s, 27745, &[27746]).is_err());
@@ -6731,10 +6754,14 @@ fn gate_world() -> World {
         unknown: None,
         obstruction: Some(crate::map::spatial::Obstruction { kind, class: 2 }),
     };
-    t.spatial.insert(27745, placed(20.0, class::GATE, 0.0, 2));
-    t.spatial.insert(27746, placed(18.5, class::GATE, 0.0, 2));
-    t.spatial.insert(27747, placed(21.5, class::GATE, 0.0, 2));
-    t.spatial.insert(1, placed(19.6, class::CLASS_6, 0.8, 5));
+    t.spatial
+        .insert(object_id(27745), placed(20.0, class::GATE, 0.0, 2));
+    t.spatial
+        .insert(object_id(27746), placed(18.5, class::GATE, 0.0, 2));
+    t.spatial
+        .insert(object_id(27747), placed(21.5, class::GATE, 0.0, 2));
+    t.spatial
+        .insert(object_id(1), placed(19.6, class::CLASS_6, 0.8, 5));
     t
 }
 
@@ -6823,7 +6850,7 @@ fn a_gate_opens_for_an_ally_inside_and_shuts_after_its_close_timer() {
     let aside = |t: &mut World| {
         let p = *t.spatial.get(1).unwrap();
         t.spatial.insert(
-            1,
+            object_id(1),
             Placed {
                 position: Position::new(20.0, 30.0, 0.0),
                 ..p
@@ -7770,7 +7797,7 @@ fn hands_world(id: i32, p: PlayerId, class: ClassId, master: i16, los: f32) -> S
     let _ = v.sight_on(id, at, [0.2, 0.2], false, false);
     s.sight = Some(v);
     s.insert(
-        id,
+        object_id(id),
         Placed {
             position: at,
             radius: [0.2, 0.2],
@@ -7907,7 +7934,7 @@ fn owner_search_unit(s: &mut Spatial, id: i32, p: PlayerId, x: f32) {
         },
     );
     s.insert(
-        id,
+        object_id(id),
         Placed {
             position: Position::new(x, 10.5, 0.0),
             radius: [0.2, 0.2],
@@ -8006,7 +8033,7 @@ fn an_owner_search_keeps_the_owner_s_animal_unless_attribute_97_takes_it() {
         class: class::BUILDING,
         ..*s.get(3).unwrap()
     };
-    s.insert(3, building);
+    s.insert(object_id(3), building);
     assert_eq!(
         s.artifact_owner(27530, &artifact_players(&none, &[0, 0, 0])),
         Ok(None)
@@ -8047,7 +8074,7 @@ fn an_owner_search_s_unmodelled_parts_fail() {
         unknown: Some(10.0),
         ..*s.get(1).unwrap()
     };
-    s.insert(1, stopped);
+    s.insert(object_id(1), stopped);
     assert_eq!(
         reason(&s, 27530, &[0, 0, 0]),
         "an owner search near a stopped unit that counts"
@@ -8062,7 +8089,7 @@ fn an_owner_search_counts_only_the_units_on_the_tiles_lists() {
     let mut s = hands_world(27530, PlayerId::new(0), class::LIVESTOCK, 594, 2.0);
     for id in 1000..1250 {
         s.insert(
-            id,
+            object_id(id),
             Placed {
                 position: Position::new(11.5, 10.5, 0.0),
                 radius: [0.2, 0.2],
@@ -8729,8 +8756,10 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
         unknown: None,
         obstruction: None,
     };
-    t.spatial.insert(50, placed(12.5, class::TREE, 349));
-    t.spatial.insert(9149, placed(20.0, class::TOWER, 109));
+    t.spatial
+        .insert(object_id(50), placed(12.5, class::TREE, 349));
+    t.spatial
+        .insert(object_id(9149), placed(20.0, class::TOWER, 109));
     t.move_to_object(PlayerId::new(1), 2, 50, Position::new(12.5, 10.5, 0.0))
         .unwrap();
     assert_eq!(t.players[0].sleeping.len(), 0);
@@ -8793,7 +8822,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
     };
     t.players[1].objects = vec![walker(object_id(44)), dead].into();
     t.spatial.insert(
-        50,
+        object_id(50),
         Placed {
             position: Position::new(12.5, 10.5, 0.0),
             radius: [0.5, 0.5],
@@ -8946,8 +8975,10 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         unknown: None,
         obstruction: None,
     };
-    t.spatial.insert(40, placed(10.5, 0.2, class::VILLAGER, 83));
-    t.spatial.insert(9149, placed(20.0, 2.0, class::TOWER, 109));
+    t.spatial
+        .insert(object_id(40), placed(10.5, 0.2, class::VILLAGER, 83));
+    t.spatial
+        .insert(object_id(9149), placed(20.0, 2.0, class::TOWER, 109));
     let others = ObjectList::from(vec![tc]);
     let drop_off = |hunter: &mut Unit, t: &mut World| {
         let world = DropWorld {
@@ -9019,7 +9050,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     let mut t = deaths_world();
     t.players[1].objects.push(site(7));
     t.spatial.insert(
-        9149,
+        object_id(9149),
         Placed {
             position: Position::new(20.0, 20.0, 0.0),
             radius: [2.0, 2.0],
@@ -9259,7 +9290,7 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
     let mut t = teardown_world();
     for (id, at) in [(9149, [20.0, 20.0]), (9150, [25.0, 20.0])] {
         t.spatial.insert(
-            id,
+            object_id(id),
             Placed {
                 position: Position::new(at[0], at[1], 0.0),
                 radius: [2.0, 2.0],
@@ -9401,7 +9432,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
     });
     t.spatial.unit_diplomacy = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
     t.spatial.insert(
-        500,
+        object_id(500),
         Placed {
             position: Position::new(11.5, 10.5, 0.0),
             radius: [0.2, 0.2],
@@ -9526,7 +9557,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
     t.spatial = hands_world(7, PlayerId::new(0), class::ARTIFACT, 854, 4.0);
     t.spatial.unit_diplomacy = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
     t.spatial.insert(
-        500,
+        object_id(500),
         Placed {
             position: Position::new(11.5, 10.5, 0.0),
             radius: [0.2, 0.2],
@@ -9637,7 +9668,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
     t.spatial = hands_world(9520, PlayerId::new(0), class::LIVESTOCK, 705, 2.0);
     t.spatial.relations = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
     t.spatial.insert(
-        500,
+        object_id(500),
         Placed {
             position: Position::new(11.5, 10.5, 0.0),
             radius: [0.2, 0.2],
@@ -9869,7 +9900,7 @@ fn killed_sheep(killer_last: bool) -> (World, crate::combat::damage::Victim) {
     };
     t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
     t.spatial.insert(
-        9520,
+        object_id(9520),
         Placed {
             position: Position::new(107.0, 48.0, 0.0),
             radius: [0.35, 0.35],
@@ -9928,19 +9959,19 @@ fn a_lent_object_is_the_world_s_for_the_call() {
     let seen = in_update(&mut t, (PlayerId::new(1), last), 0, |unit, c| {
         unit.life.hp = 7.0;
         let during = c.lend(unit, |w| {
-            let hp = w.object(id.get()).map(|(_, u)| u.life.hp);
-            w.object_mut(id.get()).expect("lent").1.life.amount = 3.0;
+            let hp = w.object(id).map(|(_, u)| u.life.hp);
+            w.object_mut(id).expect("lent").1.life.amount = 3.0;
             let _ = w.players[1].objects.swap_remove(0).unwrap();
             Ok(hp)
         })?;
-        let out = c.w.object(id.get()).is_none();
+        let out = c.w.object(id).is_none();
         Ok((during, unit.life.amount, out, unit.id))
     });
     assert_eq!(
         seen.map_err(|e| e.reason().to_owned()),
         Ok((Some(7.0), 3.0, true, id))
     );
-    assert_eq!(t.players[1].objects.position_of(id.get()), Some(0));
+    assert_eq!(t.players[1].objects.position_of(id), Some(0));
     let mut t = house_builder();
     let failed = in_update(&mut t, (PlayerId::new(1), last), 0, |unit, c| {
         c.lend(unit, |w| {
@@ -10819,12 +10850,18 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         obstruction: None,
     };
     t.spatial = crate::map::spatial::Spatial::new([200, 200]);
-    t.spatial
-        .insert(7948, placed(101.5, class::CLASS_35, PlayerId::new(0), 706));
-    t.spatial
-        .insert(7231, placed(102.5, class::WALL, PlayerId::new(1), 117));
-    t.spatial
-        .insert(8858, placed(100.5, class::TREE, PlayerId::new(0), 1250));
+    t.spatial.insert(
+        object_id(7948),
+        placed(101.5, class::CLASS_35, PlayerId::new(0), 706),
+    );
+    t.spatial.insert(
+        object_id(7231),
+        placed(102.5, class::WALL, PlayerId::new(1), 117),
+    );
+    t.spatial.insert(
+        object_id(8858),
+        placed(100.5, class::TREE, PlayerId::new(0), 1250),
+    );
     // a sleeping tree of id 0 out of the blast's reach but among the objects about it
     // (428491175's oak 0 at (107.5, 0.5), 9 tiles from the petard 5342): the updating petard's
     // place in its list holds no object of that id, so the tree is read as itself and sleeps on
@@ -10836,8 +10873,10 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         },
         ..far
     });
-    t.spatial
-        .insert(0, placed(95.5, class::TREE, PlayerId::new(0), 1250));
+    t.spatial.insert(
+        object_id(0),
+        placed(95.5, class::TREE, PlayerId::new(0), 1250),
+    );
     t.tick(100);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(t.players[1].objects[0].life.hp, 980.0);
@@ -11860,8 +11899,14 @@ fn scout_attack_on(
         obstruction: None,
     };
     let mut spatial = Spatial::new([120, 120]);
-    spatial.insert(123, placed(10.0, class::CLASS_47, PlayerId::new(1), 448));
-    spatial.insert(50, placed(10.5, class::PREDATOR, PlayerId::new(0), 126));
+    spatial.insert(
+        object_id(123),
+        placed(10.0, class::CLASS_47, PlayerId::new(1), 448),
+    );
+    spatial.insert(
+        object_id(50),
+        placed(10.5, class::PREDATOR, PlayerId::new(0), 126),
+    );
     let gaia = Player {
         objects: vec![Unit {
             id: object_id(50),
@@ -11980,8 +12025,14 @@ fn attack_by(
         obstruction: None,
     };
     let mut spatial = Spatial::new([120, 120]);
-    spatial.insert(123, placed(10.0, class::CLASS_47, PlayerId::new(1), 448));
-    spatial.insert(50, placed(10.5, class::PREDATOR, PlayerId::new(0), 126));
+    spatial.insert(
+        object_id(123),
+        placed(10.0, class::CLASS_47, PlayerId::new(1), 448),
+    );
+    spatial.insert(
+        object_id(50),
+        placed(10.5, class::PREDATOR, PlayerId::new(0), 126),
+    );
     let gaia = Player {
         objects: vec![Unit {
             id: object_id(50),
@@ -12128,9 +12179,18 @@ fn help_view<R>(
         obstruction: None,
     };
     let mut spatial = Spatial::new([120, 120]);
-    spatial.insert(123, placed(10.0, class::CLASS_47, PlayerId::new(1), 448));
-    spatial.insert(124, placed(10.3, class::CLASS_47, PlayerId::new(1), 448));
-    spatial.insert(50, placed(10.5, class::PREDATOR, PlayerId::new(0), 126));
+    spatial.insert(
+        object_id(123),
+        placed(10.0, class::CLASS_47, PlayerId::new(1), 448),
+    );
+    spatial.insert(
+        object_id(124),
+        placed(10.3, class::CLASS_47, PlayerId::new(1), 448),
+    );
+    spatial.insert(
+        object_id(50),
+        placed(10.5, class::PREDATOR, PlayerId::new(0), 126),
+    );
     let gaia = Player {
         objects: vec![Unit {
             id: object_id(50),
@@ -12821,7 +12881,7 @@ fn a_reseed_s_placement_passes_over_the_old_farm() {
                 unknown: None,
                 obstruction: None,
             };
-            t.spatial.insert(12557, at);
+            t.spatial.insert(object_id(12557), at);
             t.players[1].objects[0].actions.gather_mut().unwrap().target = target;
         }
     };
@@ -13250,7 +13310,7 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
     deer.place_for_test(Position::new(13.0, 10.0, 0.0));
     t.players[0].objects.push(deer);
     t.spatial.insert(
-        50,
+        object_id(50),
         Placed {
             position: Position::new(13.0, 10.0, 0.0),
             radius: [0.2, 0.2],
@@ -13786,7 +13846,7 @@ fn a_forager_without_its_bush_after_the_drop_takes_the_next_one() {
             t.players[0].objects[1].place_for_test(Position::new(25.5, 89.5, 0.0));
             let p = *t.spatial.get(601).unwrap();
             t.spatial.insert(
-                601,
+                object_id(601),
                 Placed {
                     position: Position::new(25.5, 89.5, 0.0),
                     ..p
@@ -14013,7 +14073,7 @@ fn house_builder() -> World {
         master: 70,
         ..p
     };
-    t.spatial.insert(10028, site);
+    t.spatial.insert(object_id(10028), site);
     let _ = t.build_command(PlayerId::new(1), 0, 10028).unwrap();
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 109);
     t.players[1].tracker.add(700, k);
@@ -14087,7 +14147,7 @@ fn drop_site_sought(
     t.players[1].objects.push(far);
     let p = *t.spatial.get(700).unwrap();
     t.spatial.insert(
-        701,
+        object_id(701),
         Placed {
             position: Position::new(45.0, 89.5, 0.0),
             ..p
@@ -14564,7 +14624,7 @@ fn annexed_house() -> World {
     annex.annex_of = Some(10028);
     t.players[1].objects.push(annex);
     let placed = *t.spatial.get(10028).unwrap();
-    t.spatial.insert(10030, placed);
+    t.spatial.insert(object_id(10030), placed);
     t.spatial.set_annex(10030, Some(10028));
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
     t.players[1].tracker.add(10030, k);
@@ -15035,10 +15095,12 @@ pub(crate) fn repairing(at: Position) -> World {
         unknown: None,
         obstruction: None,
     };
-    t.spatial
-        .insert(9175, placed(at, class::VILLAGER, 118, [0.2, 0.2]));
     t.spatial.insert(
-        10028,
+        object_id(9175),
+        placed(at, class::VILLAGER, 118, [0.2, 0.2]),
+    );
+    t.spatial.insert(
+        object_id(10028),
         placed(
             Position::new(30.0, 88.0, 0.0),
             class::BUILDING,
@@ -15113,7 +15175,8 @@ fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
     );
     let at = Position::new(30.0, 89.2, 0.0);
     let p = *t.spatial.get(9175).unwrap();
-    t.spatial.insert(9175, Placed { position: at, ..p });
+    t.spatial
+        .insert(object_id(9175), Placed { position: at, ..p });
     let v = &mut t.players[1].objects[0];
     v.place_for_test(at);
     v.body.mover_mut().unwrap().moved_at = at;
@@ -15181,7 +15244,8 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     let castle = &mut t.players[1].objects[1];
     (castle.life.master_id, castle.life.hp) = (82, 3000.0);
     let p = *t.spatial.get(10028).unwrap();
-    t.spatial.insert(10028, Placed { master: 82, ..p });
+    t.spatial
+        .insert(object_id(10028), Placed { master: 82, ..p });
     t.players[1].attributes.resize(300, 0.0);
     t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
     assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
@@ -15220,7 +15284,7 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
         }
         let p = *t.spatial.get(10028).unwrap();
         t.spatial.insert(
-            10028,
+            object_id(10028),
             Placed {
                 player: PlayerId::new(0),
                 ..p
@@ -15261,7 +15325,7 @@ fn a_repair_of_an_annex_repairs_its_main_building_and_counts_there() {
     t.spatial.set_annex(10028, Some(10029));
     let p = *t.spatial.get(10028).unwrap();
     t.spatial.insert(
-        10029,
+        object_id(10029),
         Placed {
             position: Position::new(34.0, 88.0, 0.0),
             ..p
@@ -15301,7 +15365,7 @@ fn repaired_by(n: usize) -> [(f32, f32); 2] {
         v.place_for_test(at);
         v.body.mover_mut().unwrap().moved_at = at;
         let p = *t.spatial.get(9175).unwrap();
-        t.spatial.insert(v.id.get(), Placed { position: at, ..p });
+        t.spatial.insert(v.id, Placed { position: at, ..p });
         t.players[1].objects.push(v);
     }
     let repairers: Vec<usize> = std::iter::once(0).chain(2..=n).collect();
@@ -15620,7 +15684,7 @@ fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
     ship.actions = ActionList::default();
     t.players[1].objects.push(ship);
     let placed = *t.spatial.get(9175).unwrap();
-    t.spatial.insert(9176, placed);
+    t.spatial.insert(object_id(9176), placed);
     let meet = Position::new(25.0, 89.5, 0.0);
     let moved = |t: &mut World, ship: i32| {
         in_update(t, (PlayerId::new(1), 0), 50, |unit, c| {

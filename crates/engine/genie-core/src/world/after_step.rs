@@ -2,6 +2,7 @@
 //! applied to the world in the order the game's update makes them.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
 use crate::players::PlayerId;
@@ -38,7 +39,7 @@ impl World {
     ) -> Result<Stepped, GenieError> {
         let id = self.players.live(p, i)?.id;
         let outcome = self.run_object((p, i), (dt, turn), f)?;
-        let at = (p, self.slot_of(p, id.get())?, id.get());
+        let at = (p, self.slot_of(p, id.get())?, id);
         self.finish_own_update(at, (dt, full), &outcome)?;
         self.hand_changed_tiles();
         Ok(Stepped {
@@ -68,7 +69,7 @@ impl World {
     /// check, and a building's production.
     fn finish_own_update(
         &mut self,
-        (p, i, id): (PlayerId, usize, i32),
+        (p, i, id): (PlayerId, usize, ObjectId),
         (dt, own_update): (u32, bool),
         outcome: &Outcome,
     ) -> Result<(), GenieError> {

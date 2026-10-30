@@ -4,6 +4,7 @@
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{Error, game_state, header_objects, moving_speed, placement, saved_ghosts};
 use genie_core::map::Position;
+use genie_core::objects::ObjectId;
 use genie_core::players::PlayerId;
 use genie_core::vision::visibility::{
     BuildingSight, Extent, Seer, Visibility, VisibleMap, VisibleResource, VisibleResources,
@@ -225,7 +226,7 @@ pub(super) fn spatial(
                 class: m.obstruction_class,
             });
             out.insert(
-                s.id,
+                ObjectId::try_from(s.id)?,
                 Placed {
                     position: Position::new(s.t_x, s.t_y, s.t_z),
                     radius: [m.radius[0], m.radius[1]],

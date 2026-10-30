@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, SearchCache, Spatial, Tiles, WalkTest, tile_record_id,
 };
+use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use std::collections::BTreeMap;
 
@@ -211,18 +212,19 @@ impl Spatial {
 
     /// The object `id`'s place, if the world holds it.
     #[must_use]
-    pub fn get(&self, id: i32) -> Option<&Placed> {
+    pub fn get(&self, id: impl ObjectKey) -> Option<&Placed> {
+        let id = id.key()?.get();
         self.objects.get(&id).or_else(|| self.inside.get(&id))
     }
 
     /// An object whose place the slice knows: an object of a player the slice stopped is known
     /// while it cannot have moved.
-    pub fn get_known(&self, id: i32) -> Result<Option<&Placed>, GenieError> {
+    pub fn get_known(&self, id: impl ObjectKey) -> Result<Option<&Placed>, GenieError> {
         match self.get(id) {
             Some(p) if p.unknown.is_some_and(|u| 0.0 < u) => Err(GenieError::unsupported(
                 "an object of a stopped player (its place is unknown)",
             )
-            .with("object", id)
+            .with("object", id.key().map_or(-1, ObjectId::get))
             .with("player", p.player)),
             found => Ok(found),
         }
@@ -350,7 +352,8 @@ impl Spatial {
 
     /// A new object, in the order the game adds them: a static record marks only the tiles no
     /// earlier record marked.
-    pub fn insert(&mut self, id: i32, placed: Placed) {
+    pub fn insert(&mut self, id: ObjectId, placed: Placed) {
+        let id = id.get();
         self.remove(id);
         if placed.unknown.is_some() {
             let _ = self.frozen_for.entry(id).or_insert(0.0);
@@ -377,12 +380,13 @@ impl Spatial {
     /// The object's master changed (`FUN_1411a6a70`): it takes the new master's radii, class,
     /// obstruction and speed (`placed`, at its place), its static record's marks follow, and it
     /// keeps its slot in its tile's list and the tile's tall count, which the game does not redo.
-    pub fn change_master(&mut self, id: i32, placed: Placed) {
+    pub fn change_master(&mut self, key: ObjectId, placed: Placed) {
+        let id = key.get();
         let Some(old) = self.objects.get(&id).copied() else {
-            return self.insert(id, placed);
+            return self.insert(key, placed);
         };
         if self.tiles.tile_of(old.position) != self.tiles.tile_of(placed.position) {
-            return self.insert(id, placed);
+            return self.insert(key, placed);
         }
         if old.obstruction.is_some_and(Obstruction::marks_tiles) {
             self.unmark(&old, id);

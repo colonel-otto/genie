@@ -194,12 +194,10 @@ impl World {
             });
         let world_time = self.world_time;
         let unit = &mut self.players[up].objects[ui];
-        let _ = unit.body.base_mut().put_down(
-            id.get(),
-            at,
-            placed,
-            (&mut self.spatial, &mut self.pathing),
-        );
+        let _ =
+            unit.body
+                .base_mut()
+                .put_down(id, at, placed, (&mut self.spatial, &mut self.pathing));
         self.pathing.tiles_changed(self.spatial.take_changes());
         unit.life.inside = None;
         // a unit out of its container no longer counts down to its raid (`+0x9a0` 0)
@@ -319,12 +317,10 @@ impl World {
             });
         let world_time = self.world_time;
         let unit = &mut self.players[up.index()].objects[ui];
-        let placed = unit.body.base_mut().put_down(
-            id.get(),
-            at,
-            placed,
-            (&mut self.spatial, &mut self.pathing),
-        );
+        let placed =
+            unit.body
+                .base_mut()
+                .put_down(id, at, placed, (&mut self.spatial, &mut self.pathing));
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {
             v.moved(id.get(), from, at, placed.radius)?;

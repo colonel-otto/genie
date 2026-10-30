@@ -34,6 +34,7 @@
 
 use crate::GenieError;
 use crate::math::fmath;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -179,12 +180,12 @@ impl World {
     /// [`World::movement_damage`]).
     pub(crate) fn abilities(
         &mut self,
-        (id, p, i): (i32, PlayerId, usize),
+        (id, p, i): (ObjectId, PlayerId, usize),
         owner: PlayerId,
         leaves: bool,
     ) -> Result<Vec<Reward>, GenieError> {
         let i = match self.players[p.index()].objects.get(i) {
-            Some(u) if u.id.get() == id => i,
+            Some(u) if u.id == id => i,
             _ => match self.place(id) {
                 Some(crate::orders::Place::Live(q, j)) if q == p => j,
                 _ => return Ok(Vec::new()),

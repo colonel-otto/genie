@@ -458,7 +458,7 @@ mod tests {
         ));
         for u in &units {
             t.spatial.insert(
-                u.id.get(),
+                u.id,
                 Placed {
                     position: u.position(),
                     radius: [0.4, 0.4],

@@ -173,7 +173,7 @@ impl World {
     /// the object itself.
     fn main_object(&self, target: ObjectId) -> Result<i32, GenieError> {
         let (player, unit) = self
-            .object(target.get())
+            .object(target)
             .ok_or_else(|| member_gone(target.get()))?;
         let building = unit.master(&self.masters, player)?.kind == BUILDING;
         Ok(unit

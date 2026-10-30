@@ -100,7 +100,7 @@ impl Unit {
         c.lend(self, |w| {
             let i = w.players[p.index()]
                 .objects
-                .position_of(id.get())
+                .position_of(id)
                 .ok_or_else(|| {
                     GenieError::unreachable("a lent gate left its list").with("object", id)
                 })?;

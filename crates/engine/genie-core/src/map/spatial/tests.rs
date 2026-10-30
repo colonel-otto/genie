@@ -1,6 +1,7 @@
 use super::*;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
+use crate::test_ids::object_id;
 use crate::vision::registry::UnitUpdate;
 
 /// The record cells (FD-030-D03) give every query the objects whose record is filed in a
@@ -44,13 +45,13 @@ fn the_record_cells_answer_as_the_full_scan_does() {
         let r = (next() % 48) as f32 * 0.25;
         let kind = (next() % 8 != 0).then(|| kinds[(next() % 7) as usize]);
         match next() % 7 {
-            0 | 1 => s.insert(id, placed(position, r, kind)),
+            0 | 1 => s.insert(object_id(id), placed(position, r, kind)),
             2 | 3 => s
                 .set_position(id, Position::new(position[0], position[1], 0.0))
                 .unwrap(),
             4 => {
                 let here = s.objects.get(&id).map_or(position, |p| p.position.ground());
-                s.change_master(id, placed(here, r, kind));
+                s.change_master(object_id(id), placed(here, r, kind));
             }
             5 => match kind {
                 Some(kind) => s.add_record(id, Obstruction { kind, class: 0 }),
@@ -237,7 +238,7 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
     let mut classes = vec![1u8; 100];
     classes[2 * 10 + 7] = 2;
     let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
-    s.insert(7, villager(4.0, 5.0));
+    s.insert(object_id(7), villager(4.0, 5.0));
     let line = |s: &Spatial, ignore: &[i32]| {
         s.still_line_hit([1.0, 5.0], [8.0, 5.0], 0.0, ignore)
             .unwrap()
@@ -264,7 +265,7 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
     assert!(s.still_line_hit([1.0, 5.0], [10.5, 5.0], 0.0, &[]).unwrap());
     // a line 0.3 beside the standing villager (radius 0.2): met only with a buffer of 0.2
     let mut t = Spatial::with_tiles([10, 10], Tiles::new(10, 10, vec![1; 100]));
-    t.insert(8, villager(4.0, 5.0));
+    t.insert(object_id(8), villager(4.0, 5.0));
     assert!(!t.still_line_hit([1.0, 5.3], [8.0, 5.3], 0.0, &[]).unwrap());
     assert!(t.still_line_hit([1.0, 5.3], [8.0, 5.3], 0.2, &[]).unwrap());
 }
@@ -277,7 +278,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
     let mut classes = vec![1u8; 100];
     classes[5 * 10 + 4] = 2;
     let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
-    s.insert(7, villager(4.0, 6.5));
+    s.insert(object_id(7), villager(4.0, 6.5));
     assert!(!s.point_clear_among(1, [4.0, 6.5], 0.1, 1, &[]).unwrap());
     assert!(s.point_clear_among(1, [4.0, 6.5], 0.1, 1, &[3, 7]).unwrap());
     assert!(s.point_clear_among(7, [4.0, 6.5], 0.1, 1, &[]).unwrap());
@@ -303,7 +304,7 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
     let mut classes = vec![1u8; 100];
     classes[5 * 10 + 5] = 2;
     let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
-    s.insert(7, villager(4.0, 5.5));
+    s.insert(object_id(7), villager(4.0, 5.5));
     s.set_manager_buffer(Some(0.2));
     let hits = s
         .line_query([2.0, 5.5], [8.0, 5.5], 0.2, Some(1), &[])
@@ -401,7 +402,7 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
 #[test]
 fn a_walk_past_the_maps_edge_meets_its_record_first() {
     let mut s = Spatial::new([10, 10]);
-    s.insert(7, villager(1.0, 5.5));
+    s.insert(object_id(7), villager(1.0, 5.5));
     let (from, to) = ([0.1, 5.5], [2.0, 5.5]);
     let rect = [0.1, 5.5, 2.0, 5.5];
     let hits = s
@@ -429,13 +430,13 @@ fn a_units_box_is_its_position_plus_and_minus_its_radii() {
 #[test]
 fn a_query_finds_the_boxes_its_rectangle_meets_but_not_the_ignored_or_unobstructing() {
     let mut s = Spatial::new([120, 120]);
-    s.insert(9177, villager(28.0, 89.0));
-    s.insert(9175, villager(30.0, 89.0));
+    s.insert(object_id(9177), villager(28.0, 89.0));
+    s.insert(object_id(9175), villager(30.0, 89.0));
     let mut foundation = villager(30.0, 88.0);
     foundation.radius = [1.0, 1.0];
     foundation.obstruction = None;
     foundation.class = class::BUILDING;
-    s.insert(10028, foundation);
+    s.insert(object_id(10028), foundation);
     // 9177's first step: from (28, 89) toward (28.0143, 88.9928), grown by its radius
     let step = [28.0, 88.99284, 28.01431, 89.0];
     assert_eq!(
@@ -466,7 +467,7 @@ fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
     bush.radius = [0.5, 0.5];
     bush.player = PlayerId::new(0);
     bush.obstruction = Some(Obstruction { kind: 2, class: 1 });
-    s.insert(13594, bush);
+    s.insert(object_id(13594), bush);
     assert_eq!(s.filed(&bush, 2), (5, 3, 19));
     let (from, to) = ([32.25, 154.59375], [32.5, 151.5]);
     assert!(!s.segment_blocked(from, to, 0.25, 0xff, &[]));
@@ -488,8 +489,8 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
     bush.radius = [0.5, 0.5];
     bush.player = PlayerId::new(0);
     bush.obstruction = Some(Obstruction { kind: 2, class: 1 });
-    s.insert(808, bush);
-    s.insert(0, bush);
+    s.insert(object_id(808), bush);
+    s.insert(object_id(0), bush);
     let _ = s.take_changes();
     s.remove(0);
     assert!(s.tiles().word(140, 3).is_some_and(|w| w & BLOCKED != 0));
@@ -510,7 +511,7 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     rock.radius = [0.5, 0.5];
     rock.obstruction_type = 1;
     rock.obstruction = Some(Obstruction { kind: 1, class: 1 });
-    s.insert(1, rock);
+    s.insert(object_id(1), rock);
     assert!(s.tiles().word(5, 5).is_some_and(|w| w & BLOCKED != 0));
     assert!(s.dropped_record(1));
     assert_eq!(s.tiles().word(5, 5), Some(1));
@@ -518,7 +519,7 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     let mut other = rock;
     other.obstruction_type = 12;
     other.position = Position::new(8.5, 8.5, 0.0);
-    s.insert(2, other);
+    s.insert(object_id(2), other);
     assert!(!s.dropped_record(2));
     assert!(s.tiles().word(8, 8).is_some_and(|w| w & BLOCKED != 0));
     // a foundation of player 2 without its record on a tile player 2 marked
@@ -526,17 +527,17 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     wall.obstruction_type = 2;
     wall.obstruction = Some(Obstruction { kind: 2, class: 1 });
     wall.position = Position::new(12.5, 12.5, 0.0);
-    s.insert(3, wall);
+    s.insert(object_id(3), wall);
     let mut site = wall;
     site.obstruction = None;
-    s.insert(4, site);
+    s.insert(object_id(4), site);
     s.objects.get_mut(&3).unwrap().obstruction = None;
     assert!(!s.dropped_record(4));
     assert_eq!(s.tiles().word(12, 12), Some(1));
     let unit = villager(15.5, 15.5);
     let mut unit5 = unit;
     unit5.obstruction_type = 5;
-    s.insert(5, unit5);
+    s.insert(object_id(5), unit5);
     assert!(s.dropped_record(5));
     assert_eq!(s.get(5).and_then(|p| p.obstruction), None);
     assert!(!s.dropped_record(5));
@@ -546,7 +547,7 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
 fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     let mut s = Spatial::new([120, 120]);
     s.relations = vec![vec![1, 4, 4], vec![1, 0, 4], vec![1, 4, 0]];
-    s.insert(9175, villager(30.0, 89.0));
+    s.insert(object_id(9175), villager(30.0, 89.0));
     let (from, to) = ([29.5, 88.0], [29.5, 88.3]);
     let rect = [29.5, 88.0, 29.5, 88.3];
     // the box (29.8..30.2, 88.8..89.2) grown by 0.25 reaches 88.55, past the step's end
@@ -643,7 +644,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
         unknown: None,
         obstruction: Some(Obstruction { kind: 2, class: 3 }),
     };
-    s.insert(9157, centre);
+    s.insert(object_id(9157), centre);
     let tree = Placed {
         position: Position::new(0.5, 0.5, 0.0),
         radius: [0.5, 0.5],
@@ -657,7 +658,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
         unknown: None,
         obstruction: Some(Obstruction { kind: 2, class: 1 }),
     };
-    s.insert(48, tree);
+    s.insert(object_id(48), tree);
     let t = s.tiles();
     assert_eq!(t.word(1, 1), Some(0x202_4304));
     assert_eq!(t.word(2, 2), Some(0x202_4304));
@@ -672,7 +673,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
 #[test]
 fn a_unit_counts_on_the_tile_its_centre_is_on_and_marks_nothing() {
     let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
-    s.insert(9177, villager(1.9, 1.0));
+    s.insert(object_id(9177), villager(1.9, 1.0));
     assert_eq!(s.tiles().objects(1, 1), Some(1));
     assert_eq!(s.tiles().word(1, 1), Some(4));
     s.set_position(9177, Position::new(2.05, 1.0, 0.0)).unwrap();
@@ -687,7 +688,7 @@ fn a_unit_counts_on_the_tile_its_centre_is_on_and_marks_nothing() {
 fn a_tile_s_list_keeps_the_game_s_order() {
     let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
     for (id, x) in [(9171, 1.1), (10029, 1.5), (9173, 1.9)] {
-        s.insert(id, villager(x, 1.0));
+        s.insert(object_id(id), villager(x, 1.0));
     }
     assert_eq!(s.tiles().list(1, 1), [9171, 10029, 9173]);
     assert_eq!(s.tile_place(9173), 2);
@@ -697,7 +698,7 @@ fn a_tile_s_list_keeps_the_game_s_order() {
     assert_eq!((s.tile_place(9173), s.tile_place(9171)), (0, 0));
     // a move within the tile and a master change keep the slot
     s.set_position(9173, Position::new(1.2, 1.0, 0.0)).unwrap();
-    s.change_master(9173, villager(1.2, 1.0));
+    s.change_master(object_id(9173), villager(1.2, 1.0));
     assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
     s.set_position(9171, Position::new(1.0, 1.0, 0.0)).unwrap();
     assert_eq!(s.tiles().list(1, 1), [9173, 10029, 9171]);
@@ -718,13 +719,13 @@ fn a_tile_s_list_keeps_the_game_s_order() {
 fn a_full_tile_takes_no_object_and_one_not_on_it_leaves_its_count() {
     let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
     for id in 0..250 {
-        s.insert(id, villager(1.5, 1.5));
+        s.insert(object_id(id), villager(1.5, 1.5));
     }
     assert_eq!(s.tiles().objects(1, 1), Some(250));
     assert_eq!(s.tiles().tall(1, 1), Some(250));
     // object 0 is no longer tall; the game does not redo the count
     s.set_tall(0, false);
-    s.insert(250, villager(1.5, 1.5));
+    s.insert(object_id(250), villager(1.5, 1.5));
     assert_eq!(s.tiles().objects(1, 1), Some(250));
     assert!(!s.tiles().list(1, 1).contains(&250));
     assert_eq!(s.tiles().tall(1, 1), Some(250));
@@ -741,8 +742,8 @@ fn a_full_tile_takes_no_object_and_one_not_on_it_leaves_its_count() {
 #[test]
 fn a_ghost_entering_or_leaving_a_tile_redoes_its_tall_count() {
     let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
-    s.insert(1, villager(1.5, 1.5));
-    s.insert(2, villager(1.5, 1.5));
+    s.insert(object_id(1), villager(1.5, 1.5));
+    s.insert(object_id(2), villager(1.5, 1.5));
     s.set_tall(1, false);
     assert_eq!(s.tiles().tall(1, 1), Some(2));
     s.insert_ghost(-5, Position::new(1.5, 1.5, 0.0));
@@ -757,14 +758,14 @@ fn a_ghost_entering_or_leaving_a_tile_redoes_its_tall_count() {
 /// footprint at (30, 89), on open land (class 4) and a villager's mask (restriction 7: 6).
 fn site() -> (Spatial, Placed) {
     let mut s = Spatial::with_tiles([40, 120], Tiles::new(40, 120, vec![4; 40 * 120]));
-    s.insert(9175, villager(30.0, 89.0));
+    s.insert(object_id(9175), villager(30.0, 89.0));
     let mut house = villager(30.0, 88.0);
     house.radius = [1.0, 1.0];
     house.class = class::BUILDING;
     house.master = 70;
     house.obstruction_type = 2;
     house.obstruction = None;
-    s.insert(10028, house);
+    s.insert(object_id(10028), house);
     (s, house)
 }
 
@@ -777,7 +778,7 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
     let mut tree = villager(29.5, 90.5);
     tree.radius = [0.5, 0.5];
     tree.obstruction = Some(Obstruction { kind: 2, class: 1 });
-    s.insert(48, tree);
+    s.insert(object_id(48), tree);
     assert_eq!(s.passable(29, 90, 6, 1, 0.2), Ok(false));
 }
 
@@ -927,7 +928,7 @@ fn the_footprint_s_occupants_are_the_objects_whose_centre_is_on_it() {
         s.footprint_occupants(10028, &house, true, &BTreeMap::new()),
         Ok(vec![9175])
     );
-    s.insert(9177, villager(28.0, 89.0));
+    s.insert(object_id(9177), villager(28.0, 89.0));
     assert_eq!(
         s.footprint_occupants(10028, &house, true, &BTreeMap::new()),
         Ok(vec![9175])
@@ -935,7 +936,7 @@ fn the_footprint_s_occupants_are_the_objects_whose_centre_is_on_it() {
     assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![]));
     let mut flower = villager(30.5, 87.5);
     flower.buildable_on = 1;
-    s.insert(77, flower);
+    s.insert(object_id(77), flower);
     assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![77]));
     assert!(!s.foreign_marks(&house));
 }
@@ -955,7 +956,7 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     let mut wall = villager(30.5, 88.5);
     wall.player = PlayerId::new(3);
     wall.radius = [0.5, 0.5];
-    s.insert(33990, wall);
+    s.insert(object_id(33990), wall);
     let look = |state: u8, kind: u8, desolid: bool| ClearLook {
         hp: 1.0,
         height: 1.0,
@@ -1007,14 +1008,14 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
     let mut house = villager(8.0, 8.0);
     house.radius = [1.0, 1.0];
     house.obstruction = Some(Obstruction { kind: 2, class: 3 });
-    s.insert(7, house);
+    s.insert(object_id(7), house);
     assert!(s.segment_blocked([4.0, 8.0], [12.0, 8.0], 0.2, 1, &[]));
     assert!(!s.segment_blocked([4.0, 11.0], [12.0, 11.0], 0.2, 1, &[]));
     // within its radius of the box, and the box ignored
     assert!(s.segment_blocked([4.0, 9.1], [12.0, 9.1], 0.2, 1, &[]));
     assert!(!s.segment_blocked([4.0, 8.0], [12.0, 8.0], 0.2, 1, &[7]));
     // a moving unit's record never blocks the walk
-    s.insert(8, villager(6.0, 3.0));
+    s.insert(object_id(8), villager(6.0, 3.0));
     assert!(!s.segment_blocked([4.0, 3.0], [12.0, 3.0], 0.2, 1, &[]));
 }
 
@@ -1072,10 +1073,10 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
     let mut house = villager(4.0, 8.0);
     house.radius = [1.0, 1.0];
     house.obstruction = Some(Obstruction { kind: 2, class: 3 });
-    s.insert(7, house);
+    s.insert(object_id(7), house);
     let mut beside = villager(12.0, 2.0);
     beside.obstruction = Some(Obstruction { kind: 2, class: 3 });
-    s.insert(8, beside);
+    s.insert(object_id(8), beside);
     let (a, b) = ([0.2, 8.0], [6.0, 8.0]);
     let edge = s.edge_records([-0.3, 7.5, 6.5, 8.5], QUERY_HITS);
     assert_ne!(edge.len(), 0);
@@ -1094,7 +1095,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
     s.clear_tile_records();
     let mut own = villager(4.0, 8.0);
     own.obstruction = Some(Obstruction { kind: 11, class: 3 });
-    s.insert(7, own);
+    s.insert(object_id(7), own);
     assert!(
         s.pather_hits([1.0, 8.0], [6.0, 8.0], Some(0.5), 1, &[])
             .is_err()
@@ -1102,7 +1103,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
     let mut gate = villager(4.0, 8.0);
     gate.class = class::GATE;
     gate.obstruction = Some(Obstruction { kind: 2, class: 3 });
-    s.insert(7, gate);
+    s.insert(object_id(7), gate);
     assert!(
         s.pather_hits([1.0, 8.0], [6.0, 8.0], Some(0.5), 1, &[])
             .is_err()
@@ -1146,7 +1147,7 @@ fn a_frozen_object_may_be_anywhere_its_speed_could_take_it() {
     let (mut s, house) = site();
     let mut deer = villager(34.0, 88.0);
     deer.speed = 1.0;
-    s.insert(9656, deer);
+    s.insert(object_id(9656), deer);
     s.freeze(9656);
     // frozen at once, the deer is where the save has it
     assert!(
@@ -1179,7 +1180,7 @@ fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_i
         speed: 0.0,
         ..villager(24.5, 97.5 - 60.0)
     };
-    s.insert(9365, tree);
+    s.insert(object_id(9365), tree);
     s.freeze(9365);
     s.reach = 1.0;
     let near = [24.0, 37.0, 24.6, 38.0];
@@ -1188,7 +1189,7 @@ fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_i
     let mut walker = villager(34.5, 37.5);
     walker.player = PlayerId::new(1);
     walker.speed = 0.8;
-    s.insert(9200, walker);
+    s.insert(object_id(9200), walker);
     s.freeze(9200);
     s.grow_unknown(10.0);
     assert!(s.check_known(near).is_ok());

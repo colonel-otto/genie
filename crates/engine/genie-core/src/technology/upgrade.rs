@@ -419,7 +419,7 @@ impl World {
         let u = self.object_at(place)?;
         if u.life.state == 2
             && u.life.inside.is_none()
-            && let Some(placed) = self.spatial.get(id.get()).copied()
+            && let Some(placed) = self.spatial.get(id).copied()
             && let Some(sight) = self.spatial.sight.as_mut()
         {
             let now = sight.seer(id.get()).map_or(old.line_of_sight, |s| s.los);
@@ -1301,7 +1301,7 @@ mod tests {
             let mut t = one_player(vec![u], vec![old.clone()], &[]);
             t.spatial = crate::map::spatial::Spatial::new([20, 20]);
             t.spatial.insert(
-                10,
+                object_id(10),
                 crate::map::spatial::Placed {
                     position: Position::new(5.5, 5.5, 0.0),
                     radius: [0.2, 0.2],

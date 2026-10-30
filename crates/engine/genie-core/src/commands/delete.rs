@@ -873,7 +873,7 @@ mod clearing_tests {
                 if m.obstruction_type == 2 {
                     at.obstruction = Some(crate::map::spatial::Obstruction { kind: 2, class: 0 });
                 }
-                t.spatial.insert(u.id.get(), at);
+                t.spatial.insert(u.id, at);
             }
         }
         t.masters = vec![ms.clone(), ms];

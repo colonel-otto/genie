@@ -181,7 +181,7 @@ impl Unit {
         use crate::gathering::hunt::Dropped;
         let (position, radius) =
             c.w.spatial
-                .get_known(self.id.get())?
+                .get_known(self.id)?
                 .map(|p| (p.position, p.radius))
                 .ok_or(GenieError::unsupported("a gatherer without a place"))?;
         let site = self.gather_site(c, gather.carry_to, (position, radius))?;

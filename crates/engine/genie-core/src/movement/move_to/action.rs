@@ -497,6 +497,7 @@ mod tests {
     use super::*;
     use crate::map::spatial::Placed;
     use crate::movement::move_to::tests::sheep;
+    use crate::test_ids::object_id;
 
     /// A sprite `id` whose speed factor is `factor`, looped.
     const fn graphic(id: i16, factor: f32) -> Graphic {
@@ -778,8 +779,8 @@ mod tests {
     #[test]
     fn a_move_to_an_object_at_hand_starts_arrived_and_shows_the_standing_sprite() {
         let mut world = Spatial::new([120, 120]);
-        world.insert(9185, sheep(30.4, 40.0));
-        world.insert(9186, sheep(35.0, 40.0));
+        world.insert(object_id(9185), sheep(30.4, 40.0));
+        world.insert(object_id(9186), sheep(35.0, 40.0));
         let mut walker = crate::gathering::hunt::tests::walker();
         // footprints 0 apart: within ARRIVED, state 1 (its owner shows the standing sprite)
         let me = Position::new(30.0, 40.0, 0.0);
@@ -799,9 +800,9 @@ mod tests {
     #[test]
     fn a_move_to_an_object_holds_it_unless_it_is_gone_or_a_town_centre_for_livestock() {
         let mut world = Spatial::new([120, 120]);
-        world.insert(9186, sheep(35.0, 40.0));
+        world.insert(object_id(9186), sheep(35.0, 40.0));
         world.insert(
-            9149,
+            object_id(9149),
             Placed {
                 master: 109,
                 radius: [2.0, 2.0],
@@ -876,7 +877,7 @@ mod tests {
     #[test]
     fn a_move_to_an_object_holds_its_place_and_a_unit_without_speed_fails_standing() {
         let mut world = Spatial::new([120, 120]);
-        world.insert(9186, sheep(35.0, 40.0));
+        world.insert(object_id(9186), sheep(35.0, 40.0));
         let me = Position::new(30.0, 40.0, 0.0);
         let mut walker = crate::gathering::hunt::tests::walker();
         let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();

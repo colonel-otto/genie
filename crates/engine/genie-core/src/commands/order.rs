@@ -62,7 +62,7 @@ impl OrderCommand {
             return Err(ORDER_UNMODELLED);
         }
         if let Order::Follow(target) | Order::Guard(target) = order
-            && w.object(target.get()).is_none()
+            && w.object(target).is_none()
         {
             return Ok(());
         }

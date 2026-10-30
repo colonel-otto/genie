@@ -119,7 +119,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
         ),
     ];
     for (id, p, _) in &objects {
-        world.insert(*id, *p);
+        world.insert(object_id(*id), *p);
     }
     let look: BTreeMap<i32, ClearLook> = objects.iter().map(|o| (o.0, o.2)).collect();
     let site = |class: ClassId, trees: bool| ClearingSite {
@@ -142,7 +142,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     assert_eq!(ids(&world, site(class::GATE, false)), [4, 5, 3, 7]);
     // a wall of another player stays under a gate
     world.insert(
-        4,
+        object_id(4),
         crate::map::spatial::Placed {
             player: PlayerId::new(2),
             ..objects[5].1
@@ -172,7 +172,7 @@ fn the_clearing_reads_the_objects_on_its_tiles() {
         (5, 10.5, 5.9),
         (6, 10.5, 14.5),
     ] {
-        world.insert(id, on_map(x, y, 1358, class::CLASS_5, 0.5, 1));
+        world.insert(object_id(id), on_map(x, y, 1358, class::CLASS_5, 0.5, 1));
     }
     assert_eq!(clearing_objects(&world, [10.5, 10.5]), [2, 3, 1, 6]);
     // at the map's corner the tiles start at 0 and end at its last
@@ -232,7 +232,10 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
     ];
     for (k, (id, _)) in looks.iter().enumerate() {
         let x = 9.5 + 0.1 * k as f32;
-        world.insert(*id, on_map(x, 10.5, 1358, class::CLASS_5, 0.5, 1));
+        world.insert(
+            object_id(*id),
+            on_map(x, 10.5, 1358, class::CLASS_5, 0.5, 1),
+        );
     }
     let look: BTreeMap<i32, ClearLook> = looks.iter().copied().collect();
     let goes = |trees: bool| -> Vec<i32> {
@@ -631,7 +634,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
     use crate::map::terrain::{Terrain, TerrainKind};
     let mut world = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
     world.insert(
-        10026,
+        object_id(10026),
         crate::map::spatial::Placed {
             position: Position::new(2.0, 2.0, 0.0),
             ..house()
@@ -704,7 +707,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
     fn complete(id: i16, cost: Vec<(i16, i16, bool)>, main: bool) -> (Vec<(usize, f32)>, Vec<u8>) {
         let mut world = small_map();
         world.insert(
-            10026,
+            object_id(10026),
             crate::map::spatial::Placed {
                 position: Position::new(2.0, 2.0, 0.0),
                 master: id,
@@ -779,7 +782,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
 fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
-    world.insert(10028, house());
+    world.insert(object_id(10028), house());
     let life = Lifecycle {
         state: 0,
         hp: 1.0,
@@ -821,9 +824,9 @@ fn the_work_starts_the_desolid_annexes_first() {
         master: id,
         ..house()
     };
-    world.insert(10028, at(30.0, 665));
-    world.insert(10029, at(28.5, 1192));
-    world.insert(10030, at(31.5, 1192));
+    world.insert(object_id(10028), at(30.0, 665));
+    world.insert(object_id(10029), at(28.5, 1192));
+    world.insert(object_id(10030), at(31.5, 1192));
     world.set_annex(10029, Some(10028));
     world.set_annex(10030, Some(10028));
     let foundation = |desolid| Construction {
@@ -886,7 +889,7 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
     world.insert(
-        33439,
+        object_id(33439),
         crate::map::spatial::Placed {
             position: Position::new(194.0, 64.0, 0.0),
             ..house()
@@ -942,7 +945,7 @@ fn an_annex_s_work_goes_to_its_main_building() {
     let run = |main: Construction, amount: f32| {
         let mut world = small_map();
         world.insert(
-            10028,
+            object_id(10028),
             crate::map::spatial::Placed {
                 position: Position::new(2.0, 2.0, 0.0),
                 master: 665,

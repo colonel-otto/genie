@@ -970,7 +970,7 @@ fn a_member_s_own_move_walks_its_path() {
     );
     t.players[1].objects[0].body.put_mover(Some(walker));
     t.spatial.insert(
-        10,
+        object_id(10),
         crate::map::spatial::Placed {
             position: Position::new(1.0, 1.0, 0.0),
             radius: [0.2, 0.2],
@@ -1399,7 +1399,7 @@ fn grounded() -> World {
         }
         for u in t.players[p.index()].objects.clone() {
             t.spatial.insert(
-                u.id.get(),
+                u.id,
                 crate::map::spatial::Placed {
                     position: u.position(),
                     radius: [0.2, 0.2],
@@ -1585,7 +1585,7 @@ fn register(t: &mut World) {
         })
         .collect();
     for (id, placed) in placed {
-        t.spatial.insert(id, placed);
+        t.spatial.insert(object_id(id), placed);
     }
 }
 

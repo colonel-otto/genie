@@ -202,7 +202,7 @@ impl Unit {
         };
         let (me_at, them) = (
             c.w.spatial
-                .get_known(self.id.get())?
+                .get_known(self.id)?
                 .ok_or(GenieError::unsupported("a hunter without a place"))?,
             c.w.spatial
                 .get_known(v.id)?
@@ -450,7 +450,7 @@ impl Unit {
         };
         let (me_at, them) = (
             c.w.spatial
-                .get_known(self.id.get())?
+                .get_known(self.id)?
                 .ok_or(GenieError::unsupported("a hunter without a place"))?,
             c.w.spatial
                 .get_known(found)?

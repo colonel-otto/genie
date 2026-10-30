@@ -333,8 +333,8 @@ mod tests {
             obstruction: None,
         };
         let mut s = Spatial::default();
-        s.insert(800, placed(farm, class::FARM));
-        s.insert(801, placed([20.0, 17.0], class::BUILDING));
+        s.insert(object_id(800), placed(farm, class::FARM));
+        s.insert(object_id(801), placed([20.0, 17.0], class::BUILDING));
         s
     }
 

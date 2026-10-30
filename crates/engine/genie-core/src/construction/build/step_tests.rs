@@ -179,12 +179,12 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
     ]);
     t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     t.spatial
-        .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, 70));
+        .insert(object_id(HOUSE), placed(AT_HOUSE, 1.0, class::BUILDING, 70));
     let me = Placed {
         obstruction_type: 0,
         ..placed(at, 0.2, class, 83)
     };
-    t.spatial.insert(BUILDER, me);
+    t.spatial.insert(object_id(BUILDER), me);
     t
 }
 
@@ -271,7 +271,8 @@ fn house(t: &World) -> (u8, i32, u8) {
 fn put(t: &mut World, id: i32, at: Position) {
     own(t, id).place_for_test(at);
     let p = *t.spatial.get(id).unwrap();
-    t.spatial.insert(id, Placed { position: at, ..p });
+    t.spatial
+        .insert(object_id(id), Placed { position: at, ..p });
 }
 
 /// The foundation leaves the world: its list and the map.
@@ -307,7 +308,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
     annex.construction = Some(construction(1.0, 0, false));
     t.players[1].objects.push(annex);
     t.spatial.insert(
-        ANNEX,
+        object_id(ANNEX),
         placed(Position::new(12.5, 10.5, 0.0), 1.0, class::BUILDING, 70),
     );
     let _ = code(&mut t, 30);
@@ -512,14 +513,14 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
     let mut t = site_world(class::VILLAGER, Position::new(30.0, 89.0, 0.0), b);
     t.spatial = Spatial::with_tiles([40, 120], Tiles::new(40, 120, vec![4; 40 * 120]));
     t.spatial.insert(
-        HOUSE,
+        object_id(HOUSE),
         placed(Position::new(30.0, 88.0, 0.0), 1.0, class::VILLAGER, 70),
     );
     let me = Placed {
         obstruction_type: 5,
         ..placed(Position::new(30.0, 89.0, 0.0), 0.2, class::VILLAGER, 118)
     };
-    t.spatial.insert(BUILDER, me);
+    t.spatial.insert(object_id(BUILDER), me);
     own(&mut t, HOUSE).place_for_test(Position::new(30.0, 88.0, 0.0));
     sighted(&mut t);
     let _ = code(&mut t, 20);
@@ -764,7 +765,7 @@ fn stump(t: &mut World) {
         ..Unit::default()
     });
     t.spatial.insert(
-        77,
+        object_id(77),
         Placed {
             player: PlayerId::new(0),
             obstruction: Some(Obstruction { kind: 2, class: 0 }),
@@ -857,7 +858,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
         t.players[1].objects.push(other);
         let me = *t.spatial.get(BUILDER).unwrap();
         t.spatial.insert(
-            6,
+            object_id(6),
             Placed {
                 position: Position::new(10.6, 10.6, 0.0),
                 speed: 0.8,
@@ -1076,7 +1077,7 @@ fn with_mill(t: &mut World) {
     mill.place_for_test(Position::new(15.5, 10.5, 0.0));
     t.players[1].objects.push(mill);
     t.spatial.insert(
-        300,
+        object_id(300),
         placed(Position::new(15.5, 10.5, 0.0), 1.0, class::BUILDING, 68),
     );
     // a done building of its owner's tracker, which the table's search reads
@@ -1367,7 +1368,8 @@ fn camp(t: &mut World, at: Position) {
     camp.construction = Some(construction(25.0, 0, false));
     camp.place_for_test(at);
     t.players[1].objects.push(camp);
-    t.spatial.insert(30, placed(at, 1.0, class::BUILDING, 562));
+    t.spatial
+        .insert(object_id(30), placed(at, 1.0, class::BUILDING, 562));
 }
 
 /// Player 1's villager 6, a copy of the builder without actions, standing at `at`.
@@ -1379,7 +1381,7 @@ fn villager(t: &mut World, at: Position) {
     t.players[1].objects.push(other);
     let me = *t.spatial.get(BUILDER).unwrap();
     t.spatial.insert(
-        6,
+        object_id(6),
         Placed {
             position: at,
             speed: 0.8,
@@ -1397,7 +1399,7 @@ fn annex(t: &mut World, at: Position) -> i32 {
     annex.place_for_test(at);
     t.players[1].objects.push(annex);
     t.spatial
-        .insert(ANNEX, placed(at, 1.0, class::BUILDING, 70));
+        .insert(object_id(ANNEX), placed(at, 1.0, class::BUILDING, 70));
     t.spatial.set_annex(ANNEX, Some(HOUSE));
     ANNEX
 }
@@ -1463,12 +1465,12 @@ fn a_builder_on_an_annex_walks_off_it() {
     let mut t = site_world(class::VILLAGER, Position::new(12.4, 10.5, 0.0), placing());
     t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
     t.spatial
-        .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, 70));
+        .insert(object_id(HOUSE), placed(AT_HOUSE, 1.0, class::BUILDING, 70));
     let me = Placed {
         obstruction_type: 5,
         ..placed(Position::new(12.4, 10.5, 0.0), 0.2, class::VILLAGER, 83)
     };
-    t.spatial.insert(BUILDER, me);
+    t.spatial.insert(object_id(BUILDER), me);
     sighted(&mut t);
     let a = annex(&mut t, Position::new(12.5, 10.5, 0.0));
     villager(&mut t, Position::new(10.6, 10.6, 0.0));

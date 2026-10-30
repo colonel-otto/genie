@@ -5,6 +5,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::pathing::hull_path::rounds::Rounds;
 use crate::players::PlayerId;
+use crate::test_ids::object_id;
 
 /// The unit square as `addShapeToHulls` makes a hull of it: high right, low right, low left,
 /// high left.
@@ -137,9 +138,9 @@ fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
 fn the_quick_path_goes_around_one_square_obstruction() {
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
     // a villager, a tree in its way and its target past the tree
-    w.insert(9171, placed(2.0, 5.5, 0.2, 5));
-    w.insert(48, placed(5.5, 5.5, 0.5, 2));
-    w.insert(9149, placed(10.5, 5.5, 0.5, 2));
+    w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
+    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
+    w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
     let mut pather = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     let (result, path) = pather.find([2.0, 5.5], [10.5, 5.5], 9149, 0.1).unwrap();
     assert_eq!(result, 1);
@@ -190,9 +191,9 @@ fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
 #[test]
 fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
-    w.insert(9171, placed(2.0, 5.5, 0.2, 5));
-    w.insert(48, placed(5.5, 5.5, 0.5, 2));
-    w.insert(9149, placed(10.5, 5.5, 0.5, 2));
+    w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
+    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
+    w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
     let mut mover = crate::gathering::hunt::tests::walker().placed(Position::new(2.0, 5.5, 0.0));
     mover.stats.radius = [0.2, 0.2, 0.2];
     mover.stats.restriction_mask = 6;
@@ -721,17 +722,17 @@ fn hull_ids(p: &HullPather<'_>) -> Vec<Vec<i32>> {
 #[test]
 fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     let mut w = open_world();
-    w.insert(10, tall(5.3, 5.3, 0.2, class::PREDATOR)); // the unit: ignored
-    w.insert(1, tall(5.5, 5.5, 0.5, class::PREDATOR));
+    w.insert(object_id(10), tall(5.3, 5.3, 0.2, class::PREDATOR)); // the unit: ignored
+    w.insert(object_id(1), tall(5.5, 5.5, 0.5, class::PREDATOR));
     w.insert(
-        2,
+        object_id(2),
         Placed {
             tall: false,
             ..tall(5.2, 5.2, 0.5, class::PREDATOR)
         },
     );
-    w.insert(3, tall(5.5, 5.4, 0.5, class::GATE)); // a gate
-    w.insert(5, tall(5.7, 5.7, 0.2, class::PREDATOR)); // moving
+    w.insert(object_id(3), tall(5.5, 5.4, 0.5, class::GATE)); // a gate
+    w.insert(object_id(5), tall(5.7, 5.7, 0.2, class::PREDATOR)); // moving
     w.set_gait(
         5,
         Some(crate::map::spatial::Gait {
@@ -739,8 +740,8 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
             ..Default::default()
         }),
     );
-    w.insert(6, tall(5.5, 5.5, 1.0, class::PREDATOR)); // wider than a tile
-    w.insert(7, tall(8.5, 8.5, f32::NAN, class::PREDATOR));
+    w.insert(object_id(6), tall(5.5, 5.5, 1.0, class::PREDATOR)); // wider than a tile
+    w.insert(object_id(7), tall(8.5, 8.5, f32::NAN, class::PREDATOR));
     let far = Hull {
         points: vec![[1.0, 1.0], [1.0, 0.0], [0.0, 0.0], [0.0, 1.0]],
         entrances: vec![-1; 4],
@@ -807,7 +808,10 @@ fn the_cliffs_in_the_frame_about_the_area_go_into_the_hulls() {
         } else {
             class::PREDATOR
         };
-        w.insert(id, tall(x as f32 + 0.5, y as f32 + 0.5, 0.1, class));
+        w.insert(
+            object_id(id),
+            tall(x as f32 + 0.5, y as f32 + 0.5, 0.1, class),
+        );
     }
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
     p.area = [5, 5, 7, 7];
@@ -845,8 +849,8 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     let _ = v.link_building(Position::new(10.0, 10.0, 0.0), [1.0, 1.0]);
     assert_eq!(v.anchor_of(9, 9), Some([10, 10]));
     w.sight = Some(v);
-    w.insert(20, tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile
-    w.insert(21, tall(9.5, 9.5, 0.1, class::PREDATOR));
+    w.insert(object_id(20), tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile
+    w.insert(object_id(21), tall(9.5, 9.5, 0.1, class::PREDATOR));
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
     p.process_tile(-1, 9, [5, 5, 9, 9], None).unwrap();
     p.process_tile(20, 9, [5, 5, 9, 9], None).unwrap();
@@ -896,11 +900,11 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
         0,
         Vec::new(),
     ));
-    w.insert(30, tall(1.5, 5.5, 0.3, class::PREDATOR));
-    w.insert(31, tall(4.5, 5.5, 0.2, class::PREDATOR));
-    w.insert(32, tall(7.5, 5.5, 0.2, class::PREDATOR));
+    w.insert(object_id(30), tall(1.5, 5.5, 0.3, class::PREDATOR));
+    w.insert(object_id(31), tall(4.5, 5.5, 0.2, class::PREDATOR));
+    w.insert(object_id(32), tall(7.5, 5.5, 0.2, class::PREDATOR));
     // moving: out unless included (`FindShortPath`'s arguments 13 and 14, passed on)
-    w.insert(33, tall(0.5, 5.5, 0.2, class::PREDATOR));
+    w.insert(object_id(33), tall(0.5, 5.5, 0.2, class::PREDATOR));
     w.set_gait(
         33,
         Some(crate::map::spatial::Gait {
@@ -1003,9 +1007,9 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
 #[test]
 fn a_unit_s_quick_reach_is_its_quick_path_alone() {
     let mut w = open_world();
-    w.insert(9171, placed(2.0, 5.5, 0.2, 5));
-    w.insert(48, placed(5.5, 5.5, 0.5, 2));
-    w.insert(9149, placed(10.5, 5.5, 0.5, 2));
+    w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
+    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
+    w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
     let by = 5.5 - 0.7 * SQRT_2;
     let length = quick_reach_from(&mut w, 9171, [2.0, 5.5], 9149, 6, 0.2, 0.1)
         .unwrap()
@@ -1022,7 +1026,7 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
     // a target the world does not hold
     assert!(!quick_reach(&mut w, 9171, 777, 6, 0.2, 0.1).unwrap());
     // a second obstruction in the way: the quick path is blocked (3)
-    w.insert(49, placed(7.5, 5.5, 0.5, 2));
+    w.insert(object_id(49), placed(7.5, 5.5, 0.5, 2));
     assert_eq!(
         quick_reach_from(&mut w, 9171, [2.0, 5.5], 9149, 6, 0.2, 0.1).unwrap(),
         None
@@ -1035,7 +1039,7 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
 #[test]
 fn a_new_pather_holds_the_constructor_s_state() {
     let mut w = open_world();
-    w.insert(9171, placed(2.0, 5.5, 0.2, 5));
+    w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
     let p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     assert_eq!(ITERATION_CAP, 0x40);
     assert_eq!((p.player, p.ignore.clone()), (1, vec![9171, 9149]));
@@ -1153,8 +1157,8 @@ fn walled(wall_x: usize, unit: [f32; 2]) -> Spatial {
         0,
         Vec::new(),
     ));
-    w.insert(9171, placed(unit[0], unit[1], 0.2, 5));
-    w.insert(9149, placed(12.5, 5.5, 0.5, 2));
+    w.insert(object_id(9171), placed(unit[0], unit[1], 0.2, 5));
+    w.insert(object_id(9149), placed(12.5, 5.5, 0.5, 2));
     w
 }
 
@@ -1193,7 +1197,7 @@ fn the_hull_search_goes_around_a_wall_to_the_target() {
 #[test]
 fn a_start_inside_a_hull_leaves_it_by_its_exit_paths() {
     let mut w = walled(8, [4.9, 5.5]);
-    w.insert(48, placed(5.5, 5.5, 0.5, 2));
+    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     let (result, path) = p.find([4.9, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
     let ends: Vec<Point> = p.exits.iter().map(|e| e.points[2]).collect();
@@ -1409,9 +1413,9 @@ fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
 #[test]
 fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
     let mut w = open_world();
-    w.insert(9171, placed(15.0, 5.5, 0.2, 5));
-    w.insert(9149, placed(19.9, 5.5, 0.5, 2));
-    w.insert(9150, placed(20.5, 7.5, 0.5, 2));
+    w.insert(object_id(9171), placed(15.0, 5.5, 0.2, 5));
+    w.insert(object_id(9149), placed(19.9, 5.5, 0.5, 2));
+    w.insert(object_id(9150), placed(20.5, 7.5, 0.5, 2));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     let (result, path) = p.find([15.0, 5.5], [19.9, 5.5], 9149, 0.0).unwrap();
     assert_eq!((result, path.points), (1, vec![[15.0, 5.5], [19.9, 5.5]]));
@@ -1468,8 +1472,8 @@ fn a_node_beyond_the_area_grows_it_once() {
         0,
         Vec::new(),
     ));
-    w.insert(9171, placed(5.0, 5.5, 0.2, 5));
-    w.insert(9149, placed(8.5, 5.5, 0.5, 2));
+    w.insert(object_id(9171), placed(5.0, 5.5, 0.2, 5));
+    w.insert(object_id(9149), placed(8.5, 5.5, 0.5, 2));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     let (result, path) = p.find([5.0, 5.5], [8.5, 5.5], 9149, 0.1).unwrap();
     // the first area (3..=10, 3..=7) held the wall's rows 3..=7; the corner (5.8, 2.8) lies
@@ -1492,10 +1496,10 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
     classes[3 * 20 + 3] = 1;
     classes[7 * 20 + 7] = 1;
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
-    w.insert(1, placed(3.5, 3.5, 0.5, 2));
-    w.insert(2, placed(5.5, 5.5, 0.5, 2));
-    w.insert(3, placed(3.5, 3.6, 0.5, 2));
-    w.insert(4, placed(7.5, 7.5, 0.4, 2));
+    w.insert(object_id(1), placed(3.5, 3.5, 0.5, 2));
+    w.insert(object_id(2), placed(5.5, 5.5, 0.5, 2));
+    w.insert(object_id(3), placed(3.5, 3.6, 0.5, 2));
+    w.insert(object_id(4), placed(7.5, 7.5, 0.4, 2));
     let p = HullPather::for_list(&mut w, &[1, 2, 3, 777, 4], 6, 0.6, 2);
     assert_eq!(p.ignore, [1, 2, 3, 777, 4, tile_record_id(3, 3)]);
     assert_eq!((p.player, p.mask, p.radius), (2, 6, 0.6));
@@ -1535,7 +1539,7 @@ fn a_walk_to_a_point_goes_around_a_wall_without_a_target() {
 #[test]
 fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
     let mut w = walled(6, [2.0, 5.5]);
-    w.insert(48, placed(10.5, 5.5, 0.5, 2));
+    w.insert(object_id(48), placed(10.5, 5.5, 0.5, 2));
     let mut p = HullPather::for_list(&mut w, &[9171], 6, 0.2, 1);
     let (result, path) = p.find([2.0, 5.5], [10.6, 5.5], -1, 0.0).unwrap();
     assert_eq!(result, 2);
@@ -1551,7 +1555,7 @@ fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
     let (result, path) = q.find([2.0, 5.5], [10.6, 5.5], -1, 0.0).unwrap();
     assert_eq!((result, path.points.last()), (1, Some(&[10.6, 5.5])));
     // a second object holding the goal
-    w.insert(49, placed(11.5, 5.5, 0.5, 2));
+    w.insert(object_id(49), placed(11.5, 5.5, 0.5, 2));
     let mut r = HullPather::for_list(&mut w, &[9171], 6, 0.2, 1);
     assert!(r.find([2.0, 5.5], [11.0, 5.5], -1, 0.0).is_err());
 }
@@ -1563,8 +1567,8 @@ fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
 #[test]
 fn an_included_moving_unit_blocks_the_line_tests() {
     let mut w = open_world();
-    w.insert(9171, placed(2.0, 5.5, 0.6, 5));
-    w.insert(50, placed(6.0, 5.5, 0.3, 5));
+    w.insert(object_id(9171), placed(2.0, 5.5, 0.6, 5));
+    w.insert(object_id(50), placed(6.0, 5.5, 0.3, 5));
     w.set_gait(
         50,
         Some(crate::map::spatial::Gait {
@@ -1630,8 +1634,8 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
 #[test]
 fn a_unit_within_range_needs_no_path() {
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
-    w.insert(9171, placed(9.75, 5.5, 0.2, 5));
-    w.insert(9149, placed(10.5, 5.5, 0.5, 2));
+    w.insert(object_id(9171), placed(9.75, 5.5, 0.2, 5));
+    w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
     let mut pather = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     let (result, path) = pather.find([9.75, 5.5], [10.5, 5.5], 9149, 0.1).unwrap();
     assert_eq!((result, path.length()), (0, 0.0));
@@ -1838,7 +1842,7 @@ fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
 #[test]
 fn a_goal_in_the_start_s_hull_is_walked_to_within_it() {
     let mut w = walled(8, [4.9, 5.5]);
-    w.insert(48, placed(5.5, 5.5, 0.5, 2));
+    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
     let mut p = HullPather::new(&mut w, 9171, -1, 6, 0.2);
     let side = [4.799_9, 5.499_899];
     let (result, path) = p.find([4.9, 5.5], [4.85, 6.15], -1, 0.0).unwrap();

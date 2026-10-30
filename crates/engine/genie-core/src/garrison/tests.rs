@@ -765,7 +765,7 @@ fn walled_map(
         .map(|&t| at(t, TC))
         .chain(others.iter().map(|&t| at(t, VILLAGER)));
     for (id, p) in (10..).zip(placed) {
-        spatial.insert(id, p);
+        spatial.insert(object_id(id), p);
     }
     let stats = crate::movement::MoveStats {
         fly_mode: 0,
@@ -1361,7 +1361,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
     tc.place_for_test(Position::new(10.0, 10.0, 0.0));
     tc.firepower = 1.0;
     t.spatial.insert(
-        100,
+        object_id(100),
         crate::map::spatial::Placed {
             position: Position::new(10.0, 10.0, 0.0),
             radius: [2.0, 2.0],
@@ -1426,7 +1426,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     v.town_bell.flag = true;
     t.players[1].objects.push(v);
     t.spatial.insert(
-        400,
+        object_id(400),
         crate::map::spatial::Placed {
             position: Position::new(12.5, 10.0, 0.0),
             radius: [0.2, 0.2],
@@ -1504,7 +1504,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
         unknown: None,
         obstruction: None,
     };
-    t.spatial.insert(400, placed);
+    t.spatial.insert(object_id(400), placed);
     setup(&mut t);
     let idx = t.players[1].objects.len() - 1;
     let garrison = Task {
@@ -1597,7 +1597,7 @@ pub(crate) fn inside_tc(t: &mut World, p: PlayerId, id: i32, m: i16) {
     u.life.inside = Some(100);
     t.players[p.index()].objects.push(u);
     t.spatial.insert(
-        id,
+        object_id(id),
         crate::map::spatial::Placed {
             position: Position::new(10.0, 10.0, 0.0),
             radius: [0.2, 0.2],
@@ -1769,7 +1769,7 @@ pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: i16, at: [f32; 2]) 
     }));
     t.players[p.index()].objects.push(v);
     t.spatial.insert(
-        id,
+        object_id(id),
         crate::map::spatial::Placed {
             position: Position::new(at[0], at[1], 0.0),
             radius: [0.2, 0.2],
@@ -1793,7 +1793,7 @@ pub(crate) fn building_at(t: &mut World, id: i32, m: i16, at: [f32; 2], annex_of
     b.annex_of = annex_of;
     t.players[1].objects.push(b);
     t.spatial.insert(
-        id,
+        object_id(id),
         crate::map::spatial::Placed {
             position: Position::new(at[0], at[1], 0.0),
             radius: [2.0, 2.0],
@@ -1841,7 +1841,8 @@ fn the_shelters_near_a_target_follow_its_owners_tracker_and_count_annexes_and_ga
     );
     // the gates' list: no gate is a building, each pushes its count
     building_at(&mut t, 301, GATE, [10.0, 6.0], None);
-    t.spatial.insert(300, *t.spatial.get(301).unwrap());
+    t.spatial
+        .insert(object_id(300), *t.spatial.get(301).unwrap());
     tracked(&mut t, GATE, &[300, 301]);
     assert_eq!(
         t.shelters_near(1, 301, GATE).unwrap(),
@@ -1928,7 +1929,7 @@ fn ship_at(t: &mut World, at: [f32; 2]) {
     let ship = t.object_mut(200).expect("the ship").1;
     ship.place_for_test(Position::new(at[0], at[1], 0.0));
     t.spatial.insert(
-        200,
+        object_id(200),
         crate::map::spatial::Placed {
             position: Position::new(at[0], at[1], 0.0),
             radius: [0.5, 0.5],
@@ -2833,7 +2834,7 @@ fn a_villager_enters_an_allys_ship_with_its_owners_masters() {
     t.players[2].objects.push(ship);
     let mut placed = *t.spatial.get(200).unwrap();
     placed.player = PlayerId::new(2);
-    t.spatial.insert(200, placed);
+    t.spatial.insert(object_id(200), placed);
     t.garrison_order(
         player_id(1),
         &object_ids([1000]),
@@ -3264,7 +3265,7 @@ fn let_out_beside_a_second_centre(
     t.players[1].objects.push(second);
     let placed = *t.spatial.get(100).unwrap();
     t.spatial.insert(
-        101,
+        object_id(101),
         crate::map::spatial::Placed {
             position: Position::new(16.0, 4.0, 0.0),
             ..placed

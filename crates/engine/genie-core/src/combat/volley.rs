@@ -438,7 +438,7 @@ impl Unit {
                 },
             ),
         };
-        c.w.spatial.insert(id.get(), placed);
+        c.w.spatial.insert(id, placed);
         c.w.pathing.moved(id.get(), &placed, false);
         if let Some(v) = c.w.spatial.sight.as_mut() {
             v.add_seer(

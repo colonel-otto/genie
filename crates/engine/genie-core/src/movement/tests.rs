@@ -210,18 +210,18 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, PlayerId)]) -
         obstruction: Some(Obstruction { kind: 5, class: 2 }),
     };
     w.insert(
-        9177,
+        object_id(9177),
         placed([5.5, 5.5], 0.2, class::VILLAGER, PlayerId::new(2)),
     );
     w.insert(
-        10028,
+        object_id(10028),
         Placed {
             obstruction: None,
             ..placed([12.5, 5.5], 1.0, class::BUILDING, PlayerId::new(2))
         },
     );
     for &(id, at, r, class, player) in near {
-        w.insert(id, placed(at, r, class, player));
+        w.insert(object_id(id), placed(at, r, class, player));
     }
     w.relations = vec![vec![]; 5];
     // player 4 is player 2's ally; player 3 is not
@@ -346,7 +346,7 @@ fn walled(radius: f32) -> Spatial {
         Vec::new(),
     ));
     w.insert(
-        9171,
+        object_id(9171),
         Placed {
             position: Position::new(4.5, 5.5, 0.0),
             radius: [radius, radius],
@@ -461,7 +461,7 @@ fn a_kept_hit_on_the_target_alone_is_kept_and_reaches_the_waypoint() {
     let mut w = world();
     let mut close = *w.get(9175).unwrap();
     close.position = Position::new(28.3, 88.9, 0.0);
-    w.insert(9175, close);
+    w.insert(object_id(9175), close);
     w.set_gait(
         9175,
         Some(Gait {
@@ -633,8 +633,8 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
         unknown: None,
         obstruction: Some(Obstruction { kind: 5, class: 2 }),
     };
-    w.insert(9171, unit(4.5, 0.6));
-    w.insert(50, unit(6.5, 0.3));
+    w.insert(object_id(9171), unit(4.5, 0.6));
+    w.insert(object_id(50), unit(6.5, 0.3));
     w.set_gait(
         50,
         Some(Gait {
@@ -711,7 +711,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
         crate::map::spatial::Tiles::new(40, 40, vec![4; 40 * 40]),
     );
     world.insert(
-        9177,
+        object_id(9177),
         Placed {
             position: Position::new(5.5, 5.5, 0.0),
             radius: [0.2, 0.2],
@@ -1029,9 +1029,9 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
         unknown: None,
         obstruction: Some(Obstruction { kind: 2, class: 1 }),
     };
-    world.insert(100, wall(10.0, class::GATE));
-    world.insert(101, wall(12.0, class::WALL));
-    world.insert(102, wall(8.0, class::WALL));
+    world.insert(object_id(100), wall(10.0, class::GATE));
+    world.insert(object_id(101), wall(12.0, class::WALL));
+    world.insert(object_id(102), wall(8.0, class::WALL));
     world.set_annex(101, Some(100));
     world.set_annex(102, Some(100));
     let near = (Position::new(13.5, 10.0, 0.0), [0.2, 0.2]);
@@ -1228,7 +1228,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
     ];
     m.paths[1].waypoint = 1;
     w.insert(
-        9357,
+        object_id(9357),
         Placed {
             position: Position::new(25.0, 93.0, 0.0),
             radius: [0.5, 0.5],
@@ -1315,10 +1315,10 @@ pub(crate) fn world() -> Spatial {
         unknown: None,
         obstruction: Some(Obstruction { kind: 5, class: 2 }),
     };
-    s.insert(9175, unit(30.0, 89.0));
-    s.insert(9177, unit(28.0, 89.0));
+    s.insert(object_id(9175), unit(30.0, 89.0));
+    s.insert(object_id(9177), unit(28.0, 89.0));
     s.insert(
-        10028,
+        object_id(10028),
         Placed {
             position: Position::new(30.0, 88.0, 0.0),
             radius: [1.0, 1.0],
@@ -1343,7 +1343,7 @@ pub(crate) fn tiled_world(classes: Vec<u8>) -> Spatial {
     let tiles = crate::map::spatial::Tiles::new(120, 120, classes);
     let mut s = Spatial::with_tiles([120, 120], tiles);
     for id in [9175, 9177, 10028] {
-        s.insert(id, *objects.get(id).expect("in the world"));
+        s.insert(object_id(id), *objects.get(id).expect("in the world"));
     }
     s
 }
@@ -1430,10 +1430,10 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
         if soldier {
             let mut me = *world.get(9177).unwrap();
             me.class = class::CLASS_6;
-            world.insert(9177, me);
+            world.insert(object_id(9177), me);
         }
         if let Some(b) = block {
-            world.insert(500, b);
+            world.insert(object_id(500), b);
         }
         let mut p = path();
         let r = m.walled_off(&me, &mut world, -1, &mut p);
@@ -1924,7 +1924,7 @@ fn a_top_level_short_of_its_moved_target_arrives() {
             unknown: None,
             obstruction: None,
         };
-        world.insert(target_id, placed);
+        world.insert(object_id(target_id), placed);
         world.set_gait(
             target_id,
             Some(Gait {
@@ -1998,7 +1998,7 @@ fn a_next_waypoint_an_object_stands_on_goes() {
     };
     let mut world = Spatial::new([120, 120]);
     world.insert(
-        500,
+        object_id(500),
         Placed {
             position: Position::new(31.0, 88.5, 0.0),
             radius: [0.5, 0.5],
@@ -2178,7 +2178,7 @@ fn a_human_walker_pauses_a_met_unit_of_an_older_human_order() {
     let mut w = world();
     let mut close = *w.get(9175).unwrap();
     close.position = Position::new(28.3, 88.9, 0.0);
-    w.insert(9175, close);
+    w.insert(object_id(9175), close);
     let me = Me {
         id: 9177,
         group: -1,
@@ -2221,7 +2221,7 @@ fn two_members_of_one_group_rank_by_their_places_in_it() {
     let mut w = world();
     let mut close = *w.get(9175).unwrap();
     close.position = Position::new(28.3, 88.9, 0.0);
-    w.insert(9175, close);
+    w.insert(object_id(9175), close);
     let walker = |group| Gait {
         human_order: 17000,
         pause: Some(0.0),
@@ -2279,7 +2279,7 @@ fn a_group_member_on_an_own_move_of_reason_0_keeps_only_buildings_walls_and_gate
     let mut w = world();
     let mut close = *w.get(9175).unwrap();
     close.position = Position::new(28.3, 88.9, 0.0);
-    w.insert(9175, close);
+    w.insert(object_id(9175), close);
     w.set_gait(
         9175,
         Some(Gait {
@@ -2321,7 +2321,7 @@ fn a_group_member_on_an_own_move_of_reason_0_keeps_only_buildings_walls_and_gate
     assert_eq!(kept(&w, &groups(9176, 0)), [9175]);
     assert_eq!(kept(&w, &crate::groups::UnitGroups::default()), [9175]);
     for class in [class::BUILDING, class::WALL, class::GATE, class::TOWER] {
-        w.insert(9175, Placed { class, ..close });
+        w.insert(object_id(9175), Placed { class, ..close });
         assert_eq!(kept(&w, &groups(9177, 0)), [9175], "class {class}");
     }
 }

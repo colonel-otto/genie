@@ -14,6 +14,7 @@ use std::hash::{BuildHasherDefault, DefaultHasher};
 
 use crate::GenieError;
 use crate::objects::unit::{TAKEN_OUT, Unit};
+use crate::objects::{ObjectId, ObjectKey};
 
 /// The index's hasher: `SipHash` with fixed keys, so a run hashes the same everywhere.
 type Fixed = BuildHasherDefault<DefaultHasher>;
@@ -22,12 +23,12 @@ type Fixed = BuildHasherDefault<DefaultHasher>;
 #[derive(Clone, Debug, Default)]
 pub struct ObjectList {
     units: Vec<Unit>,
-    slots: HashMap<i32, usize, Fixed>,
+    slots: HashMap<ObjectId, usize, Fixed>,
     /// The list held one id in two slots: the index does not answer, a scan does.
     twice: bool,
     /// The objects out of the list ([`ObjectList::take_out`]): each one's id and the slot its
     /// stand-in holds now.
-    outs: Vec<(i32, usize)>,
+    outs: Vec<(ObjectId, usize)>,
 }
 
 /// A slot the list does not hold.
@@ -38,28 +39,26 @@ fn no_slot(i: usize) -> GenieError {
 impl ObjectList {
     /// The slot of object `id`, if the list holds it (not while it is out for its update).
     #[must_use]
-    pub fn position_of(&self, id: i32) -> Option<usize> {
-        if id == TAKEN_OUT.get() {
+    pub fn position_of(&self, id: impl ObjectKey) -> Option<usize> {
+        let id = id.key()?;
+        if id == TAKEN_OUT {
             return None;
         }
         if self.twice {
-            return self.units.iter().position(|u| u.id.get() == id);
+            return self.units.iter().position(|u| u.id == id);
         }
         let &i = self.slots.get(&id)?;
-        self.units
-            .get(i)
-            .is_some_and(|u| u.id.get() == id)
-            .then_some(i)
+        self.units.get(i).is_some_and(|u| u.id == id).then_some(i)
     }
 
     /// Object `id`, if the list holds it.
     #[must_use]
-    pub fn by_id(&self, id: i32) -> Option<&Unit> {
+    pub fn by_id(&self, id: impl ObjectKey) -> Option<&Unit> {
         self.position_of(id).and_then(|i| self.units.get(i))
     }
 
     /// Object `id` to change, if the list holds it.
-    pub fn by_id_mut(&mut self, id: i32) -> Option<&mut Unit> {
+    pub fn by_id_mut(&mut self, id: impl ObjectKey) -> Option<&mut Unit> {
         self.position_of(id).and_then(|i| self.units.get_mut(i))
     }
 
@@ -72,7 +71,7 @@ impl ObjectList {
     pub fn take_out(&mut self, i: usize) -> Result<Unit, GenieError> {
         let slot = self.units.get_mut(i).ok_or_else(|| no_slot(i))?;
         let unit = std::mem::replace(slot, Unit::taken_out());
-        self.outs.push((unit.id.get(), i));
+        self.outs.push((unit.id, i));
         Ok(unit)
     }
 
@@ -83,7 +82,7 @@ impl ObjectList {
     ///
     /// The unit, when its stand-in left the list (or it was never taken out).
     pub fn put_back(&mut self, unit: Unit) -> Result<usize, Box<Unit>> {
-        let Some(n) = self.outs.iter().rposition(|&(id, _)| id == unit.id.get()) else {
+        let Some(n) = self.outs.iter().rposition(|&(id, _)| id == unit.id) else {
             return Err(Box::new(unit));
         };
         let (id, slot) = self.outs.swap_remove(n);
@@ -97,7 +96,7 @@ impl ObjectList {
 
     /// `unit` goes to the end of the list.
     pub fn push(&mut self, unit: Unit) {
-        self.file(unit.id.get(), self.units.len());
+        self.file(unit.id, self.units.len());
         self.units.push(unit);
     }
 
@@ -119,11 +118,11 @@ impl ObjectList {
         }
         let last = self.units.len().wrapping_sub(1);
         let gone = self.units.swap_remove(i);
-        self.forget(gone.id.get(), i);
+        self.forget(gone.id, i);
         match self.units.get(i).map(|u| u.id) {
             Some(TAKEN_OUT) => self.moved_out(last, i),
             Some(moved) => {
-                let _ = self.slots.insert(moved.get(), i);
+                let _ = self.slots.insert(moved, i);
             }
             None => {}
         }
@@ -147,9 +146,9 @@ impl ObjectList {
             return Err(no_slot(i));
         }
         let gone = self.units.remove(i);
-        self.forget(gone.id.get(), i);
+        self.forget(gone.id, i);
         for (k, u) in self.units.iter().enumerate().skip(i) {
-            let _ = self.slots.insert(u.id.get(), k);
+            let _ = self.slots.insert(u.id, k);
         }
         for o in self.outs.iter_mut().filter(|o| o.1 > i) {
             o.1 -= 1;
@@ -160,7 +159,7 @@ impl ObjectList {
     /// The last object leaves the list, if it holds one.
     pub fn pop(&mut self) -> Option<Unit> {
         let gone = self.units.pop()?;
-        self.forget(gone.id.get(), self.units.len());
+        self.forget(gone.id, self.units.len());
         Some(gone)
     }
 
@@ -213,15 +212,15 @@ impl ObjectList {
         self.twice = false;
         for i in 0..self.units.len() {
             if let Some(id) = self.units.get(i).map(|u| u.id) {
-                self.file(id.get(), i);
+                self.file(id, i);
             }
         }
     }
 
     /// The index files object `id` in slot `i`, unless it holds the id already (a stand-in is
     /// no object).
-    fn file(&mut self, id: i32, i: usize) {
-        if id == TAKEN_OUT.get() {
+    fn file(&mut self, id: ObjectId, i: usize) {
+        if id == TAKEN_OUT {
             return;
         }
         match self.slots.entry(id) {
@@ -233,8 +232,8 @@ impl ObjectList {
     }
 
     /// The index forgets object `id`'s slot `i`; a stand-in's object stays out for good.
-    fn forget(&mut self, id: i32, i: usize) {
-        if id == TAKEN_OUT.get() {
+    fn forget(&mut self, id: ObjectId, i: usize) {
+        if id == TAKEN_OUT {
             self.outs.retain(|o| o.1 != i);
         } else if self.slots.get(&id) == Some(&i) {
             let _ = self.slots.remove(&id);
@@ -346,7 +345,7 @@ mod tests {
     /// Every id's slot as a scan of the list finds it.
     fn indexed_as_scanned(l: &ObjectList) -> bool {
         l.iter()
-            .all(|u| l.position_of(u.id.get()) == l.iter().position(|v| v.id == u.id))
+            .all(|u| l.position_of(u.id) == l.iter().position(|v| v.id == u.id))
     }
 
     #[test]

@@ -12,6 +12,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectKey;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, player_master};
@@ -299,7 +300,8 @@ pub(crate) fn tech_outside(tech: i16) -> GenieError {
 }
 
 impl World {
-    pub(crate) fn place(&self, id: i32) -> Option<Place> {
+    pub(crate) fn place(&self, id: impl ObjectKey) -> Option<Place> {
+        let id = id.key()?;
         PlayerId::each(self.players.len())
             .zip(&self.players)
             .find_map(|(p, player)| {
@@ -316,13 +318,13 @@ impl World {
     /// the live slot [`World::place`] finds.
     pub(crate) fn live_slot(
         &self,
-        (p, i, id): (PlayerId, usize, i32),
+        (p, i, id): (PlayerId, usize, ObjectId),
     ) -> Option<(PlayerId, usize)> {
         let held = self
             .players
             .get(p.index())
             .and_then(|player| player.objects.get(i));
-        if held.is_some_and(|u| u.id.get() == id) {
+        if held.is_some_and(|u| u.id == id) {
             return Some((p, i));
         }
         match self.place(id)? {
@@ -331,7 +333,8 @@ impl World {
         }
     }
 
-    pub(crate) fn object(&self, id: i32) -> Option<(PlayerId, &Unit)> {
+    pub(crate) fn object(&self, id: impl ObjectKey) -> Option<(PlayerId, &Unit)> {
+        let id = id.key()?;
         PlayerId::each(self.players.len())
             .zip(&self.players)
             .find_map(|(p, player)| {
@@ -346,15 +349,13 @@ impl World {
     /// The object state (`+0x640`) of the object `id`, live or sleeping, None for −1 or an id the
     /// world no longer holds: what a `MoveTo`'s first check reads of its target
     /// ([`crate::movement::move_to::MoveToAction::check_held`]).
-    pub(crate) fn object_state(&self, id: i32) -> Option<u8> {
-        if id == -1 {
-            return None;
-        }
+    pub(crate) fn object_state(&self, id: impl ObjectKey) -> Option<u8> {
         self.object(id).map(|(_, u)| u.life.state)
     }
 
     /// The object `id`, live or sleeping, to change (`FUN_1415417a0`'s object).
-    pub(crate) fn object_mut(&mut self, id: i32) -> Option<(PlayerId, &mut Unit)> {
+    pub(crate) fn object_mut(&mut self, id: impl ObjectKey) -> Option<(PlayerId, &mut Unit)> {
+        let id = id.key()?;
         PlayerId::each(self.players.len())
             .zip(&mut self.players)
             .find_map(|(p, player)| {

@@ -531,7 +531,7 @@ pub(crate) fn victim_in(
 ) -> Victim {
     let mut v = victim_of(u, master, attributes, p, spatial.terrain.as_ref(), mode_680);
     v.allied = [dip.allied(attacker, p, true), dip.allied(p, attacker, true)];
-    v.uncertain = spatial.get(u.id.get()).is_none_or(|o| o.unknown.is_some());
+    v.uncertain = spatial.get(u.id).is_none_or(|o| o.unknown.is_some());
     v.tile_place = spatial.tile_place(u.id.get());
     if let Some(b) = v.building.as_mut() {
         b.annexes = spatial.annexes_of(u.id.get());

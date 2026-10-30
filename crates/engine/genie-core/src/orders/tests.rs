@@ -41,19 +41,19 @@ fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
         ],
     );
     assert_eq!(
-        t.live_slot((PlayerId::new(1), 0, 3)),
+        t.live_slot((PlayerId::new(1), 0, object_id(3))),
         Some((PlayerId::new(1), 0))
     );
     assert_eq!(
-        t.live_slot((PlayerId::new(0), 0, 2)),
+        t.live_slot((PlayerId::new(0), 0, object_id(2))),
         Some((PlayerId::new(0), 1))
     );
     assert_eq!(
-        t.live_slot((PlayerId::new(5), 9, 3)),
+        t.live_slot((PlayerId::new(5), 9, object_id(3))),
         Some((PlayerId::new(1), 0))
     );
-    assert_eq!(t.live_slot((PlayerId::new(1), 0, 4)), None);
-    assert_eq!(t.live_slot((PlayerId::new(0), 0, 7)), None);
+    assert_eq!(t.live_slot((PlayerId::new(1), 0, object_id(4))), None);
+    assert_eq!(t.live_slot((PlayerId::new(0), 0, object_id(7))), None);
 }
 
 /// records/425906646's gate 27745 (masters 88 and 91, 1650 hit points each, three damage
@@ -284,12 +284,18 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
                 ..Master::default()
             },
         ])];
-        t.spatial
-            .insert(10, placed(Position::new(10.0, 10.0, 0.0), 83, [0.2, 0.2]));
-        t.spatial
-            .insert(600, placed(Position::new(5.0, 10.0, 0.0), 70, [1.0, 1.0]));
-        t.spatial
-            .insert(503, placed(Position::new(15.0, 10.0, 0.0), 68, [1.0, 1.0]));
+        t.spatial.insert(
+            object_id(10),
+            placed(Position::new(10.0, 10.0, 0.0), 83, [0.2, 0.2]),
+        );
+        t.spatial.insert(
+            object_id(600),
+            placed(Position::new(5.0, 10.0, 0.0), 70, [1.0, 1.0]),
+        );
+        t.spatial.insert(
+            object_id(503),
+            placed(Position::new(15.0, 10.0, 0.0), 68, [1.0, 1.0]),
+        );
         t.track_add(PlayerId::new(0), 503, 68).unwrap();
         let key = t.tracker_key(PlayerId::new(0), 68);
         t.players[0].tracker.complete(503, key);
@@ -646,10 +652,14 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
         obstruction: None,
     };
     t.spatial = crate::map::spatial::Spatial::new([120, 120]);
-    t.spatial
-        .insert(11, placed(10.0, class::CLASS_0, PlayerId::new(1), 4));
-    t.spatial
-        .insert(50, placed(10.4, class::PREDATOR, PlayerId::new(0), 126));
+    t.spatial.insert(
+        object_id(11),
+        placed(10.0, class::CLASS_0, PlayerId::new(1), 4),
+    );
+    t.spatial.insert(
+        object_id(50),
+        placed(10.4, class::PREDATOR, PlayerId::new(0), 126),
+    );
     let mut rng = Well512::default();
     let unit = &mut t.players[1].objects[0];
     unit.body.put_mover(Some(walker));
@@ -1630,7 +1640,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     };
     let mut spatial = crate::map::spatial::Spatial::new([10, 10]);
     spatial.insert(
-        7,
+        object_id(7),
         crate::map::spatial::Placed {
             position: Position::new(3.5, 3.5, 0.0),
             radius: [0.2, 0.2],
@@ -1685,7 +1695,7 @@ fn switched_in_the_open(
 ) -> Result<(actions::Switched, Unit, crate::map::spatial::Placed), GenieError> {
     let mut spatial = crate::map::spatial::Spatial::new([10, 10]);
     spatial.insert(
-        unit.id.get(),
+        unit.id,
         crate::map::spatial::Placed {
             position: Position::new(3.5, 3.5, 0.0),
             radius: old.radius,
@@ -1724,7 +1734,7 @@ fn switched_in_the_open(
         sprite: &mut rng,
     };
     let switched = switch_master(&mut unit, old, next, world)?;
-    let record = spatial.get(unit.id.get()).copied().unwrap();
+    let record = spatial.get(unit.id).copied().unwrap();
     Ok((switched, unit, record))
 }
 
@@ -2009,7 +2019,7 @@ fn followers() -> World {
         ..Unit::default()
     });
     t.spatial.insert(
-        30,
+        object_id(30),
         crate::map::spatial::Placed {
             position: Position::new(40.0, 20.0, 0.0),
             radius: [0.5, 0.5],
@@ -2500,8 +2510,10 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         unknown: None,
         obstruction: None,
     };
-    t.spatial
-        .insert(11, placed(PlayerId::new(1), 4, [30.0, 30.0], 1.5));
+    t.spatial.insert(
+        object_id(11),
+        placed(PlayerId::new(1), 4, [30.0, 30.0], 1.5),
+    );
     for (id, p, at) in [
         (20, 1, [10.5, 10.5]),
         (21, 1, [12.5, 11.5]),
@@ -2509,7 +2521,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         (23, 2, [11.5, 10.5]),
     ] {
         t.spatial
-            .insert(id, placed(PlayerId::from(p), 594, at, 0.2));
+            .insert(object_id(id), placed(PlayerId::from(p), 594, at, 0.2));
     }
     t.lead_herd(PlayerId::new(1), 20, 11).unwrap();
     let goes = |p: usize, id: i32| {
@@ -2608,7 +2620,7 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
     ];
     for (id, player, x) in [(10, 1, 10.0), (20, 2, x)] {
         t.spatial.insert(
-            id,
+            object_id(id),
             crate::map::spatial::Placed {
                 position: Position::new(x, 10.0, 0.0),
                 radius: [0.2, 0.2],
@@ -3708,7 +3720,7 @@ fn an_attack_task_s_start_ends_where_the_start_does() {
         unit.body.set_anim_speed(0.5);
         let mut wolf = *t.spatial.get(50).unwrap();
         wolf.position = Position::new(at, 10.0, 0.0);
-        t.spatial.insert(50, wolf);
+        t.spatial.insert(object_id(50), wolf);
         t.players[0].objects[0].body =
             crate::objects::layers::Body::at(Position::new(at, 10.0, 0.0));
         t.start_attack(

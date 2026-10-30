@@ -163,7 +163,7 @@ impl Unit {
         )?;
         let me_at =
             c.w.spatial
-                .get_known(self.id.get())?
+                .get_known(self.id)?
                 .ok_or(GenieError::unsupported("a hunter without a place"))?;
         let (me_position, me_radius) = (me_at.position, me_at.radius);
         let site = match c.w.spatial.get_known(hunt.carry_to)? {

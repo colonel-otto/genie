@@ -8,6 +8,7 @@
 //! ([`OthersRef::foreign`]) or anyone's ([`OthersRef::find`]), never for a list position.
 
 use crate::GenieError;
+use crate::objects::ObjectKey;
 use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
 use crate::objects::object_list::ObjectList;
@@ -242,7 +243,7 @@ impl<'a> Others<'a> {
 
     /// Object `id` of any list with its owner and whether it sleeps: what the world's table by
     /// id (`FUN_1415417a0`) gives, the owner's lists first.
-    pub(crate) fn locate(&self, id: i32) -> Option<(PlayerId, &Unit, bool)> {
+    pub(crate) fn locate(&self, id: impl ObjectKey) -> Option<(PlayerId, &Unit, bool)> {
         let p = self.player;
         if let Some(u) = self.own.by_id(id) {
             return Some((p, u, false));
@@ -303,7 +304,7 @@ impl<'a> Others<'a> {
 impl World {
     /// Object `id` of any list with its owner and whether it sleeps: what the world's table by
     /// id (`FUN_1415417a0`) gives.
-    pub(crate) fn locate(&self, id: i32) -> Option<(PlayerId, &Unit, bool)> {
+    pub(crate) fn locate(&self, id: impl ObjectKey) -> Option<(PlayerId, &Unit, bool)> {
         PlayerId::each(self.players.len())
             .zip(&self.players)
             .find_map(|(p, player)| {

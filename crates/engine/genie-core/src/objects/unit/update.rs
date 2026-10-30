@@ -266,7 +266,7 @@ impl Unit {
             .master(&c.w.masters, c.player)
             .ok()
             .filter(|m| ACTION <= m.kind)
-            && let Some(p) = c.w.spatial.get(self.id.get()).copied()
+            && let Some(p) = c.w.spatial.get(self.id).copied()
         {
             let moving = self.body.mover().is_some_and(Mover::is_moving);
             c.w.pathing.refresh(self.id.get(), &p, moving, m.outline);

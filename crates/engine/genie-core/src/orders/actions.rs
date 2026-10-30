@@ -393,7 +393,7 @@ pub(crate) fn switch_master(
             }
         }
         let id = unit.id;
-        if let Some(mut placed) = world.spatial.get(id.get()).copied() {
+        if let Some(mut placed) = world.spatial.get(id).copied() {
             placed.radius = next.radius;
             placed.class = next.class;
             placed.master = new;
@@ -422,7 +422,7 @@ pub(crate) fn switch_master(
                     new,
                     next.line_of_sight,
                 )?;
-                world.spatial.change_master(id.get(), placed);
+                world.spatial.change_master(id, placed);
                 world.pathing.moved(id.get(), &placed, moving);
             }
         }
