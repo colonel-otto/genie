@@ -90,7 +90,7 @@ impl SoundItem {
     ///
     /// Returns an error if writing to `output` fails.
     ///
-    ///     /// Also fails if `civilization` or `icon_set` is `None`: the format always stores both.
+    /// Also fails if `civilization` or `icon_set` is `None`: the format always stores both.
     pub fn write_to<W: Write>(&self, output: &mut W, _version: FileVersion) -> Result<()> {
         output.write_all(&[0; 13])?;
         output.write_i32::<LE>(self.resource_id)?;

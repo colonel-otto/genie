@@ -55,7 +55,7 @@ impl UnitType {
     ///
     /// Returns an error if reading from `input` fails, or if an ID is out of range.
     ///
-    ///     /// Also fails if the base class is not a known [`UnitBaseClass`], if the name is not valid
+    /// Also fails if the base class is not a known [`UnitBaseClass`], if the name is not valid
     /// UTF-8, or if the garrison sprite ID does not fit a [`SpriteID`].
     ///
     /// [`SpriteID`]: crate::sprite::SpriteID
