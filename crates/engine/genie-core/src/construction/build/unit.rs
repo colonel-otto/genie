@@ -9,7 +9,6 @@ use crate::GenieError;
 use crate::construction::build::{BuildAction, BuildReads, ClearLook, DROP, DROPPED_ORDERS};
 use crate::gathering::hunt::DropOff;
 use crate::map::spatial::Spatial;
-use crate::movement::move_to::MoveDefaults;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::death_parts::clear_look_of;
 use crate::objects::teardown::HeadCode;
@@ -89,7 +88,6 @@ impl Unit {
             .map(|u| u.id);
         let built = foundation.map(|u| u.life.master_id);
         let stack_made = foundation.and_then(|u| u.stack_made);
-        let walk_target_state = others.get(action.walk_target).map(|u| u.life.state);
         let build_targets: Vec<(i32, Option<u8>)> = self.ai.as_ref().map_or_else(Vec::new, |ai| {
             ai.orders
                 .iter()
@@ -116,18 +114,10 @@ impl Unit {
             site,
             built,
             stack_made,
-            walk_target_state,
             build_targets,
             deposit,
             gone_orders,
             looks: self.clearing_looks(c, others, action),
-            // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-            defaults: master
-                .as_ref()
-                .ok()
-                .map_or_else(MoveDefaults::default, |m| {
-                    MoveDefaults::of(m, self.abilities.look.as_ref())
-                }),
             class: master.map_or(-1, |m| m.class),
             drop_site: drop_site_master(c, built) && has_kind,
             by: self.releaser(c),

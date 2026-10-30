@@ -58,8 +58,6 @@ pub(crate) struct Pace {
 /// The world's parts beside a walk ([`World::walk_beside`]), which an update reads and changes
 /// while its unit walks.
 pub(crate) struct Beside<'b> {
-    /// The sprites' table.
-    pub(crate) graphics: &'b std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     /// The Sprite stream, which a sprite the walk shows draws from.
     pub(crate) sprite_rng: &'b mut Well512,
 }
@@ -78,7 +76,6 @@ impl World {
             pathing,
             groups,
             streams,
-            graphics,
             ..
         } = self;
         let (object, sprite_rng) = streams.two(Stream::Object, Stream::Sprite);
@@ -96,10 +93,7 @@ impl World {
                 groups,
             }),
         };
-        let beside = Beside {
-            graphics,
-            sprite_rng,
-        };
+        let beside = Beside { sprite_rng };
         (walk, beside)
     }
 }

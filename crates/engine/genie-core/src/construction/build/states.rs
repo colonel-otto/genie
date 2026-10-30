@@ -4,12 +4,10 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildReads, FINISHED, FISHING_SHIPS, HALTED, IDLE, LAST_TAKEN,
-    MOVE, NO_TARGET_POINT, SITE_GONE, WORK, drop_done_orders,
+    BuildAction, BuildReads, FINISHED, FISHING_SHIPS, HALTED, IDLE, MOVE, WORK, drop_done_orders,
 };
 use crate::math::rng::Stream;
-use crate::movement::footprint_gap;
-use crate::movement::move_to::MoveTo;
+use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::teardown::HeadCode;
@@ -86,8 +84,6 @@ impl BuildAction {
         {
             m.stop()?;
         }
-        self.goal = None;
-        self.walk_target = -1;
         Ok(())
     }
 
@@ -267,51 +263,25 @@ impl BuildAction {
 
     /// `set_state(4)` (`0x140aae200` case 4) toward its foundation `self.target`: the prelude
     /// (it leaves the foundation's builders, its `MoveTo` goes: the unit stops), then a new
-    /// `MoveTo` to the foundation (`FUN_140aa0df0`), arrived when the footprints touch; its point
-    /// (`+0x38`..`+0x40`, the foundation's place) is not held. Without a foundation the point
-    /// stays and the `MoveTo` has no target: it walks to its zeroed point ([`NO_TARGET_POINT`]),
-    /// far from it (`FUN_14118f680` without a target: `FLT_MAX`), in state 13 for a unit without
-    /// speed (`FUN_140aa2100`). A foundation whose `state` is above 6 the `MoveTo` refuses
-    /// ([`BuildAction::refuse_walk_target`]); None when the update does not read its state.
+    /// `MoveTo` to the foundation (`FUN_140aa0df0`, [`BuildAction::walk_to_foundation`]), arrived
+    /// when the footprints touch; the foundation's place becomes the point. A foundation in a
+    /// state above 6 the `MoveTo` refuses (`FUN_140a7a230`) and walks to its place,
+    /// far from it. Without a foundation the point stays and the `MoveTo` has no target: it
+    /// walks to its zeroed point, far from it (`FUN_14118f680` without a target: `FLT_MAX`), in
+    /// state 13 for a unit without speed (`FUN_140aa2100`).
     ///
     /// # Errors
     ///
-    /// A builder without movement state, a foundation without a place.
+    /// The prelude's, a builder without movement state, a foundation without a place.
     pub(super) fn restart(
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
-        state: Option<u8>,
     ) -> Result<(), GenieError> {
         self.leave(c, builder)?;
-        let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
-        let moves = mover.stats.speed != 0.0;
-        if self.target == -1 {
-            let mut new = self.restarted(-1, self.point, f32::MAX);
-            new.goal = Some(NO_TARGET_POINT);
-            new.walk_target = -1;
-            new.move_to = Some(if moves { MoveTo::Start } else { MoveTo::Failed });
-            *self = new;
-            return Ok(());
-        }
-        let at = c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
-        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-        let gap = footprint_gap(builder.position(), ground, at.position, at.radius);
-        *self = self.restarted(self.target, at.position, gap);
-        if state.is_some_and(|s| LAST_TAKEN < s) {
-            self.refuse_walk_target(moves);
-        }
+        let (to, walk) = self.walk_to_foundation(c, builder)?;
+        *self = self.restarted(self.target, to.map_or(self.point, |t| t.at), walk);
         Ok(())
-    }
-
-    /// `FUN_140a7a230` on the new `MoveTo`'s target: a foundation in a state above
-    /// [`LAST_TAKEN`] is refused (no pointer, the id −1). The `MoveTo` keeps the point its
-    /// constructor took from the foundation (`FUN_140aa0df0`) and, without a target, starts far
-    /// from it (`FUN_140aa2100`: state 3, 13 for a unit without speed).
-    pub(super) const fn refuse_walk_target(&mut self, moves: bool) {
-        self.walk_target = -1;
-        self.goal = Some(self.point);
-        self.move_to = Some(if moves { MoveTo::Start } else { MoveTo::Failed });
     }
 }
 
@@ -356,15 +326,18 @@ impl BuildAction {
     /// own foundation again (slot 0x68 with the same target does nothing): working (state 6) it
     /// stays, as does a computer player's builder walking to it (state 4); else `set_state(4)`:
     /// it leaves the builders of `FUN_140aaddb0`'s building (`builders`, an annex's main
-    /// building's) and its `MoveTo` (the unit stops, slot 0x5d0), and a new `MoveTo` to the
-    /// foundation starts, arrived when the footprints touch (`gap`).
+    /// building's) and its `MoveTo` (the unit stops, slot 0x5d0), and the new `MoveTo` to the
+    /// foundation at `at` starts (`walk`, [`BuildWalks::to_foundation`]).
+    ///
+    /// [`BuildWalks::to_foundation`]: crate::construction::build::BuildWalks::to_foundation
     ///
     /// # Errors
     ///
     /// A builder counted among the builders of a foundation the caller does not hold.
     pub fn retake(
         &mut self,
-        (at, gap): ([f32; 3], f32),
+        at: [f32; 3],
+        walk: Option<MoveToAction>,
         mover: Option<&mut crate::movement::Mover>,
         builders: Option<&mut u8>,
         computer: bool,
@@ -383,23 +356,26 @@ impl BuildAction {
         {
             m.stop()?;
         }
-        *self = self.restarted(self.target, at, gap);
+        *self = self.restarted(self.target, at, walk);
         Ok(())
     }
 
     /// Slot 0x48 (`FUN_140ab1b30`) on another foundation of the builder's player: slot 0x68
     /// (`FUN_140ab0300`) takes it (the caller's builder count, release and take; the Build is no
     /// longer among the builders) and `set_state(4)` starts over: its `MoveTo` goes (the unit
-    /// stops, slot 0x5d0) and a new one to the foundation starts, arrived when the footprints
-    /// touch (`gap`).
+    /// stops, slot 0x5d0) and the new one to the foundation `target` at `at` starts (`walk`,
+    /// [`BuildWalks::to_foundation`]).
+    ///
+    /// [`BuildWalks::to_foundation`]: crate::construction::build::BuildWalks::to_foundation
     ///
     /// # Errors
     ///
     /// The unit's stop that the motion step does not model.
     pub fn retarget(
         &mut self,
-        (target, at): (i32, [f32; 3]),
-        gap: f32,
+        target: i32,
+        at: [f32; 3],
+        walk: Option<MoveToAction>,
         mover: Option<&mut crate::movement::Mover>,
     ) -> Result<(), GenieError> {
         if self.move_to.is_some()
@@ -407,7 +383,7 @@ impl BuildAction {
         {
             m.stop()?;
         }
-        *self = self.restarted(target, at, gap);
+        *self = self.restarted(target, at, walk);
         Ok(())
     }
 
@@ -433,8 +409,6 @@ impl BuildAction {
         {
             m.stop()?;
         }
-        self.goal = None;
-        self.walk_target = -1;
         self.point = [-1.0; 3];
         self.state = HALTED;
         let target = std::mem::replace(&mut self.target, -1);

@@ -236,7 +236,7 @@ mod tests {
             id: -1,
             moving: None,
         };
-        BuildAction::start(10028, [30.0, 88.0, 0.0], 0.0, task)
+        crate::construction::build::tests::started(10028, [30.0, 88.0, 0.0], 0.0, task)
     }
 
     /// `RGE_Action_Object::update` deletes the head on codes 1 and 3 alone.
@@ -263,7 +263,12 @@ mod tests {
     fn a_build_s_destructor_leaves_its_building_and_stops_its_walk() {
         let mut body = moving();
         let mut b = build();
-        (b.added, b.move_to) = (true, Some(crate::movement::move_to::MoveTo::Moving));
+        (b.added, b.move_to) = (
+            true,
+            Some(MoveToAction::sub_in(
+                crate::movement::move_to::MoveTo::Moving,
+            )),
+        );
         let torn = Action::Build(b).tear_down(&mut body).unwrap();
         assert_eq!(
             torn,

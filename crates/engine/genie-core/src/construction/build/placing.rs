@@ -6,8 +6,6 @@ use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
     HALTED, MAX_WAITS, PLACE, SITE_GONE, WAIT, WONDER_RATE, footprint_clearing,
 };
-use crate::movement::footprint_gap;
-use crate::movement::move_to::MoveTo;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
@@ -43,8 +41,6 @@ impl BuildAction {
         // every set_state first takes the builder out of FUN_140aaddb0's building's builders
         self.uncount(c)?;
         self.move_to = None;
-        self.goal = None;
-        self.walk_target = -1;
         self.state = PLACE;
         if !desolid {
             return self.join(c, builder);
@@ -215,38 +211,17 @@ impl BuildAction {
         Ok(())
     }
 
-    /// `set_state(4)` after the walk off the footprint (`0x140aae200` case 4): the goal is the
-    /// foundation again and a new `MoveTo` to it (`FUN_140aa0df0`) starts arrived if the footprints
-    /// touch, as [`BuildAction::start`]'s. Only a villager returns at once (`0x140ab0370` case
-    /// 0xde; any other builder in range would work, state 6).
-    ///
-    /// # Errors
-    ///
-    /// A builder without movement state, one other than a villager, and a foundation gone from
-    /// the map.
-    pub(super) fn back(&mut self, c: &Step<'_>, builder: &Unit) -> Result<(), GenieError> {
-        let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
-        // The villager's class (4, `-0xea8` encoded): Build's walk off the footprint returns at once.
-        if c.w.spatial.get(builder.id).map(|p| p.class) != Some(class::VILLAGER) {
-            return Err(GenieError::unsupported(
-                "a builder other than a villager returns",
-            ));
-        }
-        let site = c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
-        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-        let gap = footprint_gap(builder.position(), ground, site.position, site.radius);
-        *self = self.restarted(self.target, site.position, gap);
-        Ok(())
-    }
-
     /// `set_state(223)`: a quiet `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`,
-    /// `FUN_140aa0d30` with the task's moving sprite); it starts in state 3, as a `MoveTo` to a
-    /// point is far from it (`FUN_140aa2100`).
+    /// `FUN_140aa0d30` with the task's moving sprite, [`BuildWalks::to_point`]); it starts in
+    /// state 3, as a `MoveTo` to a point is far from it (`FUN_140aa2100`), in 13 for a unit
+    /// without speed.
     ///
     /// # Errors
     ///
-    /// A builder without movement state, a foundation gone from the map, no free tile beside
-    /// it, and a builder that cannot move.
+    /// A builder without movement state or its master, a foundation gone from the map, no free
+    /// tile beside it, and a sprite the table lacks.
+    ///
+    /// [`BuildWalks::to_point`]: crate::construction::build::BuildWalks::to_point
     pub(super) fn clear(&mut self, c: &mut Step<'_>, builder: &Unit) -> Result<(), GenieError> {
         let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
         let site = c.w.spatial.get(self.target).ok_or(SITE_GONE)?;
@@ -263,24 +238,10 @@ impl BuildAction {
                 .ok_or(GenieError::unsupported(
                     "no free tile beside the footprint (set_state 2)",
                 ))?;
-        if mover.stats.speed == 0.0 {
-            return Err(GenieError::unsupported(
-                "a builder that cannot move (MoveTo state 13)",
-            ));
-        }
         self.state = CLEAR;
-        self.move_to = Some(MoveTo::Start);
-        self.move_sprite = self.task.moving;
-        self.walk_target = -1;
-        self.goal = Some([spot[0], spot[1], at[2]]);
+        let walks = builder.build_walks(&c.w.masters, c.player, &c.w.graphics)?;
+        self.move_to = walks.to_point([spot[0], spot[1], at[2]], self.task.moving)?;
         Ok(())
-    }
-
-    /// The waiting `MoveTo`'s `set_state(3)` asks again: a wait (`+0x6c` 1) becomes asked (2).
-    pub(super) const fn asked_again(&mut self) {
-        if self.move_wait.state == 1 {
-            self.move_wait.state = 2;
-        }
     }
 }
 

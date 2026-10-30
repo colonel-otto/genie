@@ -75,7 +75,7 @@ impl MoveToAction {
     /// ends the update with 5 (a sub-action `MoveTo` is quiet). Then a start asks for its path toward
     /// its target or point within its range by what the unit's AI asks (`ask`; a `MoveTo` that
     /// waited once, `+0x6c` 1, counts as having asked again, 2), shows its sprite (`shown`,
-    /// [`start_walk_shown`]) and walks; a
+    /// [`ask_walk`]) and walks; a
     /// move checks its target ([`MoveToAction::check_target`]: a `MoveTo` that asks again ends
     /// its update there, one whose path's end could not follow tells the unit at once through
     /// `inbox`, notify 0x1fc, whether quiet or not) and runs the motion step

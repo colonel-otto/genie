@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 
 use crate::GenieError;
 use crate::map::spatial::Obstruction;
-use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait};
+use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::{Master, Task};
 use crate::unit_ai::OrderKind;
 use genie_diff::Diff;
@@ -34,6 +34,7 @@ pub(crate) mod unit;
 mod unit_ai_side;
 mod update;
 mod walk_ends;
+mod walks;
 pub(crate) mod world_side;
 
 pub(crate) use self::clearing::{CLEARING_REACH, clearing_objects, footprint_clearing};
@@ -42,14 +43,13 @@ pub use self::clearing::{ClearLook, Cleared, ClearingSite};
 pub use self::drop_off::DropSearch;
 #[cfg(test)]
 use self::placing::beside_diagonal;
+pub use self::walks::{BuildWalks, WalkTo};
 pub(crate) use crate::construction::build::world_side::{NO_CONSTRUCTION, NOT_HELD, held};
 #[cfg(test)]
 use crate::map::spatial::Spatial;
 #[cfg(test)]
 use crate::pathing::Pathing;
 
-/// The gap below which a `MoveTo` has arrived (`DAT_142eb99cc`).
-const ARRIVED: f32 = crate::math::image::build::ARRIVED;
 /// A builder within this of its foundation's footprint has reached it (`DAT_142eb5690`).
 const REACH: f32 = crate::math::image::build::REACH;
 /// A player's sight of an object it sees (slot 0x1e0).
@@ -59,7 +59,8 @@ const FOREIGN_SITE: GenieError = GenieError::unsupported("a foundation of anothe
 /// The Build's foundation the world no longer holds where its place is read.
 const SITE_GONE: GenieError = GenieError::unsupported("a foundation that is gone");
 /// A builder without movement state.
-const BUILDER_UNMOVING: GenieError = GenieError::unsupported("a builder without movement state");
+pub(crate) const BUILDER_UNMOVING: GenieError =
+    GenieError::unsupported("a builder without movement state");
 /// A foundation its owner sees only through a ghost of it on its tile (`FUN_1411d3280`'s last
 /// test), which the Build's world does not hold.
 const UNSEEN_SITE: GenieError =
@@ -72,13 +73,9 @@ pub struct BuildAction {
     pub target: i32,
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
-    /// Its `MoveTo` sub-action's state.
-    pub move_to: Option<MoveTo>,
-    /// The point the `MoveTo` walks to (its `+0x38`..`+0x40`), when not to the foundation.
-    pub goal: Option<[f32; 3]>,
-    /// The `MoveTo`'s target (its `+0x30`), −1 for a `MoveTo` to a point: the foundation its
-    /// `set_state(4)` walks to, which the `MoveTo` keeps when the Build lets the foundation go.
-    pub walk_target: i32,
+    /// Its sub-action list's `MoveTo` (`+0x50`), None for an empty list: to the foundation
+    /// (`set_state(4)`), to the drop site (8), to its point (11) or off the footprint (223).
+    pub move_to: Option<MoveToAction>,
     /// `+0x38`..`+0x40`, the action's own point: the foundation's place from the constructor
     /// (`FUN_140aad4e0`) and each `set_state(4)` with a target, −1 each from `set_state(2)`;
     /// `set_state(11)` walks there.
@@ -89,24 +86,9 @@ pub struct BuildAction {
     pub added: bool,
     /// `+0x44`, the action's timer: state 222's wait (a second from its `set_state`).
     pub timer: f32,
-    /// Its `MoveTo`'s wait after the motion step gave up (`+0x6c`..`+0x74`).
-    pub move_wait: MoveWait,
-    /// The sprite its `MoveTo` was made with (`+0x58` as the constructor takes it): the task's
-    /// moving sprite, on a drop-off the drop task's carrying one first; None for none, for which
-    /// the constructor takes its default ([`BuildAction::move_shown`]).
-    #[diff(
-        gap = "the game's MoveTo keeps the resolved sprite (+0x58, FUN_140aa0df0), genie the argument"
-    )]
-    pub move_sprite: Option<i16>,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site of its drop-off (state 8,
     /// `set_state(8)`'s search), −1 for none.
     pub site: i32,
-    /// The range of its drop-off's `MoveTo` (that `MoveTo`'s `+0x68`): the drop site's task's
-    /// for the builder (`+0x30`), else the Build task's.
-    #[diff(
-        gap = "the MoveTo's range (+0x68) is held per owning action; the save's sub-action holds one"
-    )]
-    pub drop_range: f32,
 }
 
 /// What a builder's Build task gives its work: the task's work range (`+0x30`; its `MoveTo` to the
@@ -347,9 +329,6 @@ pub(crate) struct BuildReads {
     /// The foundation's `+0xcb0`: the object its completion's stack unit made
     /// ([`crate::objects::unit::Unit::stack_made`]).
     pub(crate) stack_made: Option<i32>,
-    /// The state of its `MoveTo`'s target ([`BuildAction::walk_target`]), None when the world
-    /// does not hold it.
-    pub(crate) walk_target_state: Option<u8>,
     /// The state of each foundation its unit AI's queued build orders name (None for one that
     /// is gone).
     pub(crate) build_targets: Vec<(i32, Option<u8>)>,
@@ -362,8 +341,6 @@ pub(crate) struct BuildReads {
     /// What the footprint clearing of its `set_state(7)` reads of the objects on the tiles
     /// ([`ClearLook`]) by id; none for one the world does not hold.
     pub(crate) looks: BTreeMap<i32, ClearLook>,
-    /// The sprites its `MoveTo`s take when the task gives none.
-    pub(crate) defaults: MoveDefaults,
     /// The builder's class (`+0x0a`, decoded).
     pub(crate) class: i16,
     /// Its foundation's master is a drop site for its civ (`FUN_140fde180`) and it carries a
@@ -797,4 +774,4 @@ mod stack_tests {
 #[cfg(test)]
 mod step_tests;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -564,10 +564,10 @@ fn build(b: RgeAction) -> Action {
     }
 }
 
-/// A Build takes its task with the unit's work-rate powerup, its `MoveTo` with its sprite and
-/// its site; the drop-off's `MoveTo` keeps its range.
+/// A Build takes its task with the unit's work-rate powerup, its quiet `MoveTo` (its range,
+/// point, wait and sprite) and its site.
 #[test]
-fn a_build_takes_its_task_move_to_and_drop_range() {
+fn a_build_takes_its_task_move_to_and_site() {
     let mut b = base(4);
     b.target_id = 30;
     b.target2_id = 31;
@@ -583,17 +583,18 @@ fn a_build_takes_its_task_move_to_and_drop_range() {
         .build()
         .copied()
         .unwrap();
+    let walk = a.move_to.unwrap();
     assert_eq!(
-        (a.target, a.site, a.walk_target, a.move_to),
-        (30, 31, -1, Some(MoveTo::Moving))
+        (a.target, a.site, walk.target, walk.state, walk.quiet),
+        (30, 31, -1, MoveTo::Moving, true)
     );
     assert!(a.added);
     assert_eq!(a.task.work_rate.to_bits(), 2.5_f32.to_bits());
-    assert_eq!(a.drop_range.to_bits(), 1.0_f32.to_bits());
-    assert_eq!(a.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
-    assert_eq!(a.move_wait.state, 2);
+    assert_eq!(walk.range.to_bits(), 0.75_f32.to_bits());
+    assert_eq!(bits3(walk.point), bits3([1.0, 2.0, 0.0]));
+    assert_eq!(walk.wait.state, 2);
     // a MoveTo without a sprite (−1) keeps none
-    assert_eq!(a.move_sprite, None);
+    assert_eq!(walk.sprite, None);
     let mut dropping = b.clone();
     dropping.state = genie_core::construction::build::DROP;
     // the drop-off's MoveTo with the carrying sprite 12 (its `+0x58`)
@@ -606,23 +607,39 @@ fn a_build_takes_its_task_move_to_and_drop_range() {
         .rge_action
         .short_val_2 = 12;
     let dropping = with_sub(dropping, MOVE_TO, carrying);
-    let a = import(&acting(BUILD, build(dropping)), &objects, unit)
-        .unwrap()
-        .actions
-        .build()
-        .copied()
-        .unwrap();
-    assert_eq!(a.drop_range.to_bits(), 0.75_f32.to_bits());
-    assert_eq!(a.move_sprite, Some(12));
+    let carried = Graphic {
+        id: 12,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let graphics = std::collections::BTreeMap::from([(12, carried)]);
+    let a = import_drawn(
+        &acting(BUILD, build(dropping)),
+        &objects,
+        unit,
+        Some(&graphics),
+    )
+    .unwrap()
+    .actions
+    .build()
+    .copied()
+    .unwrap();
+    let walk = a.move_to.unwrap();
+    assert_eq!(walk.range.to_bits(), 0.75_f32.to_bits());
+    assert_eq!(walk.sprite, Some(carried));
     let a = imported(BUILD, build(b.clone()))
         .unwrap()
         .actions
         .build()
         .copied()
         .unwrap();
-    assert_eq!((a.move_to, a.walk_target, a.goal), (None, -1, None));
+    assert_eq!(a.move_to, None);
     // without a MoveTo, the task's moving sprite for the next
-    assert_eq!(a.move_sprite, Some(9));
+    assert_eq!(a.task.moving, Some(9));
     assert_eq!(
         imported(BUILD, build(with_sub(b, 4, explore(base(3))))).unwrap_err(),
         OTHER_SUB_ACTION

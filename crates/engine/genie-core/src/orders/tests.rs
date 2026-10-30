@@ -184,7 +184,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         actions: ActionList::default().with_build(Some(crate::construction::build::BuildAction {
             state: 6,
             added: true,
-            ..crate::construction::build::BuildAction::start(
+            ..crate::construction::build::tests::started(
                 600,
                 [5.0, 10.0, 0.0],
                 0.0,
@@ -246,6 +246,10 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
                 kind: 70,
                 class: 4,
                 radius: [0.2, 0.2],
+                // no sprites (the world's sprites' table is empty)
+                standing_sprite: -1,
+                move_sprite: -1,
+                run_sprite: -1,
                 ..Master::default()
             },
             Master {
@@ -283,13 +287,18 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     }];
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
     let build = t.players[0].objects[0].actions.build().copied().unwrap();
+    let walk = build.move_to.unwrap();
     assert_eq!(
-        (build.state, build.site, build.walk_target, build.drop_range),
+        (build.state, build.site, walk.target, walk.range),
         (crate::construction::build::DROP, 503, 503, 0.1)
     );
     assert_eq!(
-        (build.move_to, build.added),
-        (Some(crate::movement::move_to::MoveTo::Start), false)
+        (walk.state, walk.on_target_moved, build.added),
+        (
+            crate::movement::move_to::MoveTo::Start,
+            crate::movement::move_to::TargetMoved::AsksAgain,
+            false
+        )
     );
     assert_eq!(
         t.players[0].objects[1].construction.map(|k| k.builders),
@@ -300,7 +309,10 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let mut t = world();
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
     let build = t.players[0].objects[0].actions.build().copied().unwrap();
-    assert_eq!((build.state, build.site, build.walk_target), (4, -1, 600));
+    assert_eq!(
+        (build.state, build.site, build.move_to.map(|m| m.target)),
+        (4, -1, Some(600))
+    );
     // carrying nothing: not ordered
     let mut t = world();
     t.players[0].objects[0].life.amount = 0.0;
@@ -2145,8 +2157,6 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
             target: 60,
             state: 6,
             move_to: None,
-            goal: None,
-            walk_target: -1,
             point: [-1.0; 3],
             task: crate::construction::build::BuildTask {
                 range: 0.1,
@@ -2158,10 +2168,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
             },
             added: true,
             timer: 0.0,
-            move_wait: crate::movement::move_to::MoveWait::default(),
-            move_sprite: None,
             site: -1,
-            drop_range: 0.0,
         }));
     assert_eq!(t.build_set_target(1, 0, (60, true), 60), Ok(60));
     assert!(
@@ -3423,7 +3430,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
     };
     let v = &mut t.players[1].objects[0];
     v.actions
-        .set_build(Some(crate::construction::build::BuildAction::start(
+        .set_build(Some(crate::construction::build::tests::started(
             10028,
             [10.5, 10.5, 0.0],
             5.0,
@@ -3702,9 +3709,14 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         id: 3,
         moving: None,
     };
-    t.players[1].objects[0].actions.set_build(Some(
-        crate::construction::build::BuildAction::start(10028, [30.0, 88.0, 0.0], 1.0, build),
-    ));
+    t.players[1].objects[0]
+        .actions
+        .set_build(Some(crate::construction::build::tests::started(
+            10028,
+            [30.0, 88.0, 0.0],
+            1.0,
+            build,
+        )));
     let building = Task {
         action_type: action_type::BUILD,
         ..task

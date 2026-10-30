@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::commands::FOUNDATION_GONE;
-use crate::construction::build::{BuildAction, BuildTask};
+use crate::construction::build::{BuildAction, BuildTask, BuildWalks, WalkTo};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::objects::masters::action_type;
@@ -188,9 +188,16 @@ impl World {
             ));
         }
         let builder = masters.get(with).ok_or(NO_WORK_MASTER)?;
-        let gap = footprint_gap(unit.position(), builder.radius, position, site.radius);
+        let to = WalkTo {
+            id: foundation,
+            at: position,
+            gap: footprint_gap(unit.position(), builder.radius, position, site.radius),
+            state: self.object_state(foundation),
+        };
         let task = BuildTask::of(task, builder.work_rate + unit.work_rate_powerup);
-        Ok((with, BuildAction::start(foundation, position, gap, task)))
+        // the sprites its MoveTo's constructor takes for none (FUN_140aa0df0)
+        let walks = BuildWalks::of(unit, builder, &self.graphics);
+        Ok((with, BuildAction::start(to, task, &walks)?))
     }
 
     /// The queue path of a builder at `idx` of player `q` (slot 0x30 into slot 0x28): its
@@ -365,13 +372,18 @@ impl World {
             return Ok(false);
         };
         let builder = switch.unwrap_or(actor.master);
-        let gap = footprint_gap(unit.position(), builder.radius, f_at, site.radius);
+        let to = WalkTo {
+            id: foundation,
+            at: f_at,
+            gap: footprint_gap(unit.position(), builder.radius, f_at, site.radius),
+            state: Some(f.life.state),
+        };
+        let walks = BuildWalks::of(unit, builder, &self.graphics);
         let build = BuildAction::start(
-            foundation,
-            f_at,
-            gap,
+            to,
             BuildTask::of(&task, builder.work_rate + unit.work_rate_powerup),
-        );
+            &walks,
+        )?;
         if let Some(m) = switch.map(|m| m.id) {
             self.change_master(player, idx, m)?;
         }

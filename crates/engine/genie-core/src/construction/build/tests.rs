@@ -1,4 +1,5 @@
 use super::*;
+use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait, SpriteReads, TargetMoved};
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -328,35 +329,129 @@ pub(super) const MOVING_TASK: BuildTask = BuildTask {
     ..TASK
 };
 
-/// The sprite a Build's `MoveTo` shows: the one it was made with, else its constructor's
-/// default, `FUN_140aa0df0`'s toward the foundation or a drop site (states 4 and 8),
-/// `FUN_140aa0d30`'s toward a point (states 11 and 223).
+/// The sprites' table of the Build's tests: 3 (the moving sprite of [`MOVING_TASK`]), 7, 20 and
+/// 21, each looped, 10 frames of 16 facets.
+pub(crate) fn graphics() -> BTreeMap<i16, crate::objects::sprite::Graphic> {
+    [3, 7, 20, 21]
+        .map(|id| {
+            let g = crate::objects::sprite::Graphic {
+                id,
+                frames: 10,
+                facets: 16,
+                speed_multiplier: 1.0,
+                frame_duration: 0.1,
+                replay_delay: 0.0,
+                flags: 1,
+            };
+            (id, g)
+        })
+        .into()
+}
+
+/// A Build started on the foundation `id` (state 0) at `at`, `gap` from its builder (state 2,
+/// speed 1, no default sprites), with `task` ([`BuildAction::start`]).
+pub(crate) fn started(id: i32, at: [f32; 3], gap: f32, task: BuildTask) -> BuildAction {
+    let graphics = graphics();
+    let walks = BuildWalks {
+        sprites: SpriteReads {
+            defaults: MoveDefaults::default(),
+            graphics: &graphics,
+        },
+        state: 2,
+        speed: 1.0,
+    };
+    let to = WalkTo {
+        id,
+        at,
+        gap,
+        state: Some(0),
+    };
+    BuildAction::start(to, task, &walks).unwrap()
+}
+
+/// The Build's `MoveTo`s (`FUN_140aa0df0`, `FUN_140aa0d30`, then `FUN_140a977e0`): one to an
+/// object takes its maker's sprite, else the object default; one to a point the point default;
+/// each is quiet and new. Within 0.01 of its target it arrived, else it starts (13 without
+/// speed); a target above state 6 is refused (far, the point stays its place); one without a
+/// target walks to (0, 0, 0); a builder in state 3 or later adds none; a sprite the table lacks
+/// is an error.
 #[test]
-fn a_build_s_move_to_shows_its_sprite_else_its_constructor_s() {
-    let defaults = MoveDefaults {
-        point: Some(20),
-        object: Some(21),
+fn a_build_s_move_tos_take_their_sprite_target_and_start() {
+    let graphics = graphics();
+    let walks = BuildWalks {
+        sprites: SpriteReads {
+            defaults: MoveDefaults {
+                point: Some(20),
+                object: Some(21),
+            },
+            graphics: &graphics,
+        },
+        state: 2,
+        speed: 1.0,
     };
-    let b = BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK);
-    let shown = |state, move_sprite| {
-        BuildAction {
-            state,
-            move_sprite,
-            ..b
-        }
-        .move_shown(defaults)
+    let house = WalkTo {
+        id: 10028,
+        at: [10.5, 10.5, 0.0],
+        gap: 5.0,
+        state: Some(0),
     };
-    let states = [MOVE, DROP, WALK_POINT, CLEAR];
+    let to = |w: &BuildWalks<'_>, to, given| {
+        w.to_object(to, 0.1, given, TargetMoved::Follows)
+            .unwrap()
+            .unwrap()
+    };
+    let m = to(&walks, house, None);
     assert_eq!(
-        states.map(|s| shown(s, None)),
-        [Some(21), Some(21), Some(20), Some(20)]
+        (m.state, m.target, m.point, m.range),
+        (MoveTo::Start, 10028, [10.5, 10.5, 0.0], 0.1)
     );
-    assert_eq!(states.map(|s| shown(s, Some(3))), [Some(3); 4]);
-    // the task's moving sprite is the one start gives it
     assert_eq!(
-        BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, MOVING_TASK).move_sprite,
-        Some(3)
+        (m.sprite.map(|g| g.id), m.quiet, m.wait),
+        (Some(21), true, MoveWait::NEW)
     );
+    assert_eq!(to(&walks, house, Some(3)).sprite.map(|g| g.id), Some(3));
+    let near = WalkTo { gap: 0.01, ..house };
+    assert_eq!(to(&walks, near, None).state, MoveTo::Arrived);
+    let gone = WalkTo {
+        gap: 0.0,
+        state: Some(7),
+        ..house
+    };
+    let refused = to(&walks, gone, None);
+    assert_eq!(
+        (refused.state, refused.target, refused.point),
+        (MoveTo::Start, -1, house.at)
+    );
+    let stuck = BuildWalks {
+        speed: 0.0,
+        ..walks
+    };
+    assert_eq!(to(&stuck, house, None).state, MoveTo::Failed);
+    let nothing = walks.to_nothing(0.1, None).unwrap().unwrap();
+    assert_eq!(
+        (nothing.state, nothing.target, nothing.point),
+        (MoveTo::Start, -1, [0.0; 3])
+    );
+    let point = walks.to_point([4.0, 5.0, 0.0], None).unwrap().unwrap();
+    assert_eq!(
+        (
+            point.state,
+            point.target,
+            point.range,
+            point.sprite.map(|g| g.id)
+        ),
+        (MoveTo::Start, -1, 0.0, Some(20))
+    );
+    let dying = BuildWalks { state: 3, ..walks };
+    assert_eq!(
+        dying.to_object(house, 0.1, None, TargetMoved::Follows),
+        Ok(None)
+    );
+    assert_eq!(dying.to_point([4.0, 5.0, 0.0], None), Ok(None));
+    assert!(walks.to_point([4.0, 5.0, 0.0], Some(99)).is_err());
+    // start's MoveTo takes the task's moving sprite
+    let moving = started(10028, [10.5, 10.5, 0.0], 5.0, MOVING_TASK);
+    assert_eq!(moving.move_to.and_then(|m| m.sprite).map(|g| g.id), Some(3));
 }
 
 /// MarvinBlue/426048731's house 10028 as BUILD placed it: a foundation of master 70.
@@ -387,23 +482,22 @@ fn a_stop_halts_the_build_and_lets_its_foundation_go() {
     let mut mover = crate::gathering::hunt::tests::walker();
     let mut b = BuildAction {
         state: MOVE,
-        move_to: Some(MoveTo::Moving),
-        goal: Some([3.0, 4.0, 0.0]),
+        move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         added: true,
-        ..BuildAction::start(31148, [0.0; 3], 0.0, TASK)
+        ..started(31148, [0.0; 3], 0.0, TASK)
     };
     assert_eq!(b.halt(Some(&mut mover)), Ok((true, [31148, -1])));
     assert_eq!(
-        (b.state, b.added, b.move_to, b.goal, b.target),
-        (HALTED, false, None, None, -1)
+        (b.state, b.added, b.move_to, b.target),
+        (HALTED, false, None, -1)
     );
-    assert_eq!((b.point, b.walk_target), ([-1.0; 3], -1));
+    assert_eq!(b.point, [-1.0; 3]);
     assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
     // one not counted among the builders, standing: nothing to stop
     let mut idle = BuildAction {
         state: WORK,
         move_to: None,
-        ..BuildAction::start(31150, [0.0; 3], 0.0, TASK)
+        ..started(31150, [0.0; 3], 0.0, TASK)
     };
     assert_eq!(idle.halt(None), Ok((false, [31150, -1])));
 }
@@ -412,10 +506,11 @@ fn a_stop_halts_the_build_and_lets_its_foundation_go() {
 /// as the action's point (`+0x38`..`+0x40`) and its `MoveTo` the foundation as its target.
 #[test]
 fn a_build_s_point_is_its_foundation_s_place() {
-    let b = BuildAction::start(10913, [61.5, 92.5, 1.0], 0.8, TASK);
+    let b = started(10913, [61.5, 92.5, 1.0], 0.8, TASK);
+    let walk = b.move_to.unwrap();
     assert_eq!(
-        (b.point, b.walk_target, b.move_to),
-        ([61.5, 92.5, 1.0], 10913, Some(MoveTo::Start))
+        (b.point, walk.target, walk.point, walk.state),
+        ([61.5, 92.5, 1.0], 10913, [61.5, 92.5, 1.0], MoveTo::Start)
     );
 }
 
@@ -426,12 +521,20 @@ fn a_builder_sent_to_another_foundation_starts_over() {
         move_to: None,
         added: true,
         timer: 0.5,
-        ..BuildAction::start(31148, [0.0; 3], 0.0, TASK)
+        ..started(31148, [0.0; 3], 0.0, TASK)
     };
-    b.retarget((31150, [0.0; 3]), 0.0, None).unwrap();
-    assert_eq!(b, BuildAction::start(31150, [0.0; 3], 0.0, TASK));
+    let walk = started(31150, [0.0; 3], 0.0, TASK).move_to;
+    b.retarget(31150, [0.0; 3], walk, None).unwrap();
+    // set_state(4) keeps the timer
     assert_eq!(
-        (b.state, b.added, b.move_to),
+        b,
+        BuildAction {
+            timer: 0.5,
+            ..started(31150, [0.0; 3], 0.0, TASK)
+        }
+    );
+    assert_eq!(
+        (b.state, b.added, b.move_to.map(|m| m.state)),
         (MOVE, false, Some(MoveTo::Arrived))
     );
 }
@@ -455,21 +558,22 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
         state: PLACE,
         move_to: None,
         added: true,
-        ..BuildAction::start(31011, [0.0; 3], 0.0, TASK)
+        ..started(31011, [0.0; 3], 0.0, TASK)
     };
-    b.retake(([0.0; 3], 0.0), None, Some(&mut c.builders), false)
+    let walk = started(31011, [0.0; 3], 0.0, TASK).move_to;
+    b.retake([0.0; 3], walk, None, Some(&mut c.builders), false)
         .unwrap();
     assert_eq!(c.builders, 1);
-    assert_eq!(b, BuildAction::start(31011, [0.0; 3], 0.0, TASK));
-    assert_eq!(b.move_to, Some(MoveTo::Arrived));
+    assert_eq!(b, started(31011, [0.0; 3], 0.0, TASK));
+    assert_eq!(b.move_to.map(|m| m.state), Some(MoveTo::Arrived));
     let mut working = BuildAction {
         state: WORK,
         move_to: None,
-        ..BuildAction::start(31011, [0.0; 3], 0.0, TASK)
+        ..started(31011, [0.0; 3], 0.0, TASK)
     };
     let before = working;
     working
-        .retake(([0.0; 3], 0.0), None, Some(&mut c.builders), false)
+        .retake([0.0; 3], walk, None, Some(&mut c.builders), false)
         .unwrap();
     assert_eq!(working, before);
     assert_eq!(c.builders, 1);

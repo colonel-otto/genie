@@ -263,7 +263,7 @@ fn an_object_inside_another_runs_its_inside_update() {
 /// action without one (a wait for a foundation) or without an action, and an error for an action the slice does not hold.
 #[test]
 fn the_top_action_s_object_is_its_target_unless_it_has_none() {
-    use crate::construction::build::{BuildAction, BuildTask};
+    use crate::construction::build::BuildTask;
     let task = BuildTask {
         range: 0.1,
         work_value: 1.0,
@@ -273,12 +273,9 @@ fn the_top_action_s_object_is_its_target_unless_it_has_none() {
         moving: None,
     };
     let building = Unit {
-        actions: ActionList::default().with_build(Some(BuildAction::start(
-            800,
-            [1.0, 2.0, 0.0],
-            0.0,
-            task,
-        ))),
+        actions: ActionList::default().with_build(Some(
+            crate::construction::build::tests::started(800, [1.0, 2.0, 0.0], 0.0, task),
+        )),
         ..Unit::default()
     };
     assert_eq!(building.top_action_object(), Ok(Some(800)));
@@ -325,7 +322,7 @@ fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
         ..Unit::default()
     };
     assert_eq!(resting.top_sub_action(), None);
-    let mut build = crate::construction::build::BuildAction::start(
+    let mut build = crate::construction::build::tests::started(
         800,
         [1.0, 2.0, 0.0],
         0.0,
@@ -338,7 +335,7 @@ fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
             moving: None,
         },
     );
-    build.move_to = Some(MoveTo::Moving);
+    build.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     let builder = Unit {
         actions: ActionList::default().with_build(Some(build)),
         ..Unit::default()

@@ -3,13 +3,11 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLEAR, DROP, FINISHED, HALTED,
-    IDLE, MOVE, PLACE, WAIT, WALK_POINT, WORK,
+    BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, BuildWalks, CLEAR, DROP, FINISHED,
+    HALTED, IDLE, MOVE, PLACE, WAIT, WALK_POINT, WORK, WalkTo,
 };
-use crate::movement::move_to::{
-    Goal, MoveDefaults, MoveTo, MoveWait, Sprites, start_walk_shown, walk_or_give_up,
-};
-use crate::movement::{Me, PathAsk};
+use crate::movement::Me;
+use crate::movement::move_to::{GiveUp, MoveToAction};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
@@ -23,62 +21,54 @@ use crate::unit_ai::UnitAi;
 use crate::world::step::Step;
 
 impl BuildAction {
-    /// The action's start (slot 5, `0x140aadd80`) on the foundation `target` at `at`: state 4
-    /// for a target, whose `set_state` (`0x140aae200`) takes the foundation's place as the point
-    /// and creates the `MoveTo` to it (`FUN_140aa0df0` with the task's moving sprite); the
-    /// `MoveTo` starts arrived if the footprints touch (`gap`).
-    #[must_use]
-    pub fn start(target: i32, at: [f32; 3], gap: f32, task: BuildTask) -> Self {
-        Self {
-            target,
+    /// The action's start (slot 5, `0x140aadd80`) on the foundation `to`: state 4, whose
+    /// `set_state` (`0x140aae200`) takes the foundation's place as the point and makes the
+    /// `MoveTo` to it ([`BuildWalks::to_foundation`] with what it reads of the builder, `walks`).
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn start(to: WalkTo, task: BuildTask, walks: &BuildWalks<'_>) -> Result<Self, GenieError> {
+        Ok(Self {
+            target: to.id,
             state: MOVE,
-            move_to: Some(if gap > ARRIVED {
-                MoveTo::Start
-            } else {
-                MoveTo::Arrived
-            }),
-            goal: None,
-            walk_target: target,
-            point: at,
+            move_to: walks.to_foundation(&task, Some(to))?,
+            point: to.at,
             task,
             added: false,
             timer: 0.0,
-            move_wait: MoveWait::default(),
-            move_sprite: task.moving,
             site: -1,
-            drop_range: 0.0,
-        }
+        })
     }
 
-    /// The sprite its `MoveTo`'s `set_state(4)` shows: the one it was made with
-    /// ([`BuildAction::move_sprite`]), else its constructor's default from `defaults`
-    /// (`FUN_140aa0df0`'s toward the foundation or a drop site, states 4 and 8;
-    /// `FUN_140aa0d30`'s toward a point, states 11 and 223).
+    /// `set_state(4)` (and slot 0x48 or 0x68 before it) on `target` at `at`, with the `MoveTo`
+    /// its case 4 makes ([`BuildWalks::to_foundation`]); the second target and the timer stay.
     #[must_use]
-    pub const fn move_shown(&self, defaults: MoveDefaults) -> Option<i16> {
-        match self.state {
-            MOVE | DROP => defaults.to_object(self.move_sprite),
-            _ => defaults.to_point(self.move_sprite),
+    pub(super) const fn restarted(
+        &self,
+        target: i32,
+        at: [f32; 3],
+        move_to: Option<MoveToAction>,
+    ) -> Self {
+        Self {
+            target,
+            state: MOVE,
+            move_to,
+            point: at,
+            task: self.task,
+            added: false,
+            timer: self.timer,
+            site: self.site,
         }
-    }
-
-    /// `set_state(4)` (and slot 0x48 or 0x68 before it) on `target` at `at`: a new `MoveTo` as
-    /// [`BuildAction::start`]'s; the second target and the drop-off range stay.
-    #[must_use]
-    pub(super) fn restarted(&self, target: i32, at: [f32; 3], gap: f32) -> Self {
-        let mut new = Self::start(target, at, gap, self.task);
-        new.site = self.site;
-        new.drop_range = self.drop_range;
-        new
     }
 
     /// One update (slot 6, `0x140ab0370`) of `builder` (`me`) through its step, with what it
-    /// reads as it starts (`reads`), which first updates the `MoveTo` (`0x140aa2a70`); a moving
-    /// `MoveTo` calls the motion step (object slot 193). Before its state's case it checks its
-    /// foundation: one the world lost ([`BuildAction::lost_foundation`]), a human player's
-    /// pasture already built ([`BuildAction::pasture_built`]), and one no longer under
-    /// construction ([`BuildAction::foundation_done`]); then the end of the work (224), the
-    /// `MoveTo`'s target, the drop-off (8) and the state's case ([`BuildAction::update_state`]).
+    /// reads as it starts (`reads`). Before its state's case it checks its foundation: one the
+    /// world lost ([`BuildAction::lost_foundation`]), a human player's pasture already built
+    /// ([`BuildAction::pasture_built`]), and one no longer under construction
+    /// ([`BuildAction::foundation_done`]); then the end of the work (224), the drop-off (8) and
+    /// the state's case ([`BuildAction::update_state`]); the walking states update their
+    /// sub-action list ([`BuildAction::step_walk`]).
     /// Each effect on the builder and the world happens where the game makes it; the code is
     /// the update's (its 1 and 3: the action list deletes the Build).
     ///
@@ -105,36 +95,19 @@ impl BuildAction {
         if self.site != -1 && c.w.spatial.get(self.site).is_none() {
             self.site = -1;
         }
-        let mut walked_from = None;
         if reads.site.is_some() {
             if self.pasture_built(c, builder, reads)? {
                 return Ok(HeadCode::Deletes);
             }
-            walked_from = self.foundation_done(c, builder, reads)?;
+            self.foundation_done(c, builder, reads)?;
         }
         if self.state == FINISHED {
             return self.after_work(c, builder, reads);
         }
-        // the MoveTo's update first (`0x140aa2a70` through `FUN_140a992b0`, states 4 and 223):
-        // its target in a state above 6 lets it go (slot 0x68 with none) and the quiet MoveTo
-        // returns 5. A target the world removed is no longer the MoveTo's: its removal let the
-        // MoveTo go (slot 0x180's release clears the pointer and the id), which walks on.
-        if self.walk_target != -1 && reads.walk_target_state.is_none() {
-            self.walk_target = -1;
-        }
         if self.state == DROP {
             return self.update_drop(c, builder, me, reads);
         }
-        if matches!(self.state, MOVE | CLEAR)
-            && self.move_to.is_some()
-            && self.walk_target != -1
-            && reads.walk_target_state.is_some_and(|s| 6 < s)
-        {
-            self.walk_target = -1;
-            self.lose_foundation(c, builder, reads)?;
-            return Ok(HeadCode::Keeps);
-        }
-        self.update_state(c, builder, me, reads, walked_from)
+        self.update_state(c, builder, me, reads)
     }
 
     /// The target's id names no object of the world (`FUN_1415417a0`; the builder's player
@@ -202,20 +175,19 @@ impl BuildAction {
     /// A foundation no longer under construction (a state above 0) unless the Build already
     /// ended (224, 4, 8): master 621 and the gates (class 39) end the work once built
     /// (`set_state(224)`), as any other below state 3 does; else `set_state(4)` toward it, then
-    /// slot 0x68 with none lets it go. The foundation the `MoveTo` walks to unless it refused
-    /// it.
+    /// slot 0x68 with none lets it go (its `MoveTo` keeps walking to it unless it refused it).
     fn foundation_done(
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
         reads: &BuildReads,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<(), GenieError> {
         let Some(site) = Self::site_unit(c, reads) else {
-            return Ok(None);
+            return Ok(());
         };
         let state = site.life.state;
         if state == 0 || matches!(self.state, FINISHED | MOVE | 8) {
-            return Ok(None);
+            return Ok(());
         }
         let master = site.master(&c.w.masters, c.player).ok();
         let special = master.is_some_and(|m| m.id == TOWN_CENTRE_621 || m.class == class::GATE);
@@ -223,94 +195,85 @@ impl BuildAction {
             .construction
             .is_some_and(|k| k.progress < f32::from(k.build_time));
         if (special || state < 3) && !(special && 2 < state && unbuilt) {
-            self.finish(c, builder, reads)?;
-            return Ok(None);
+            return self.finish(c, builder, reads);
         }
-        self.restart(c, builder, Some(state))?;
-        let walked_from = (self.walk_target != -1).then_some(self.target);
+        self.restart(c, builder)?;
         let target = std::mem::replace(&mut self.target, -1);
         crate::world::lets::release(c, builder, target, reads.by)?;
-        Ok(walked_from)
+        Ok(())
     }
 
-    /// The update's case by the state and its `MoveTo` (`walked_from`: the foundation a
-    /// `set_state(4)` of this update walks to), and the update's code.
+    /// The update's case by the state, and the update's code.
     fn update_state(
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
         me: Me,
         reads: &BuildReads,
-        walked_from: Option<i32>,
     ) -> Result<HeadCode, GenieError> {
-        match (self.state, self.move_to) {
-            // the MoveTo at its end (1), or no sub-action (the list's update returns 1)
-            (4, Some(MoveTo::Arrived) | None) => self.walk_ended(c, builder, reads)?,
-            (4, Some(MoveTo::Start)) => {
-                self.walk_to_foundation(c, builder, me, reads, walked_from)?;
-            }
-            (4 | CLEAR | WALK_POINT, Some(MoveTo::Moving)) => {
-                self.walk_on(c, builder, me, reads)?;
-            }
-            (4 | CLEAR | WALK_POINT, Some(MoveTo::Waiting)) => self.walk_wait(c.dt),
-            // its update returned 3
-            (4 | CLEAR, Some(MoveTo::Failed)) => self.walk_failed(c, builder, reads)?,
+        match self.state {
             // case 0: the update returns 1, the action list removes it
-            (DONE, _) => return Ok(HeadCode::Deletes),
+            DONE => return Ok(HeadCode::Deletes),
             // case 1: set_state(13); the update returns 0
-            // 13 (`0xd`): the Build failed; its next update tells its unit AI and halts it.
-            (HALTED, _) => self.end(c, builder, FAILED)?,
-            (FAILED, _) => return self.failed(c, builder, reads),
-            (WORK, _) => self.face_and_place(c, builder, reads)?,
-            (WAIT, _) => self.wait_out(c, builder, reads)?,
-            (PLACE, _) => self.work(c, builder, reads)?,
-            (CLEAR | WALK_POINT, Some(MoveTo::Start)) => {
-                self.walk_to_goal(c, builder, me, reads)?;
-            }
-            // case 0xde: the MoveTo ended (its update in state 1 returns 1): a villager goes
-            // back to the foundation (set_state 4)
-            // (its update returned 1, or the list's without a sub-action: in reach or not)
-            (CLEAR, Some(MoveTo::Arrived) | None) => self.back(c, builder)?,
-            // case 10, the walk to the point: the MoveTo at it (1), failed (3) or gone (the list
-            // empty, 1) makes the Build wait (set_state(3)); its target gone (4) cannot be, as
-            // it has none
-            (WALK_POINT, Some(MoveTo::Arrived | MoveTo::Failed) | None) => {
-                self.idle(c, builder, reads)?;
-            }
+            HALTED => self.end(c, builder, FAILED)?,
+            MOVE | CLEAR => self.walking(c, builder, me, reads)?,
+            WORK => self.face_and_place(c, builder, reads)?,
+            PLACE => self.work(c, builder, reads)?,
+            WALK_POINT => self.walking_to_point(c, builder, me, reads)?,
+            // 13 (`0xd`): the Build failed; its next update tells its unit AI and halts it
+            FAILED => return self.failed(c, builder, reads),
+            WAIT => self.wait_out(c, builder, reads)?,
             // the default case (states 0, 3, 5, 8 to 10, 12 and 14 to 221): the update returns 0
             _ => {}
         }
         Ok(HeadCode::Keeps)
     }
 
-    /// The walking `MoveTo` (its state 4) of states 4, 7 and 10: the motion step; its giving up
-    /// makes the `MoveTo` wait or fail ([`MoveWait::give_up`]).
+    /// Cases 3 and 0xde, the walks to the foundation (4) and off its footprint (223), by the
+    /// sub-action list's code ([`BuildAction::step_walk`]): 1 and 2 end the walk
+    /// ([`BuildAction::walk_ended`]), 3 failed it ([`BuildAction::walk_failed`]), 4 and 5 (its
+    /// target let go) let the foundation go and walk to the point (slot 0x68 with none, then
+    /// `set_state(11)`: [`BuildAction::lose_foundation`]); 0 (it walks or waits) and any code
+    /// above 5 (none) leave the update's 0.
     ///
     /// # Errors
     ///
-    /// The motion step's.
-    fn walk_on(
+    /// The walk's and the next states'.
+    fn walking(
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
         me: Me,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let (waits, stance) = Self::gives_up(c, builder, reads);
-        self.move_to = Some(match walk_or_give_up(c.walk(&mut builder.body, me))? {
-            Some(state) => state,
-            None => self.move_wait.give_up(waits, stance),
-        });
-        Ok(())
+        match self.step_walk(c, builder, me, reads)? {
+            1 | 2 => self.walk_ended(c, builder, reads),
+            3 => self.walk_failed(c, builder, reads),
+            4 | 5 => self.lose_foundation(c, builder, reads),
+            _ => Ok(()),
+        }
     }
 
-    /// The waiting `MoveTo` (its state 2): the world's `dt` ms onto its timer; at its end it asks
-    /// again (`set_state(3)`; COMISS, JC: a NaN timer waits on); its update returns 0.
-    fn walk_wait(&mut self, dt: u32) {
-        self.move_wait.timer += seconds(dt);
-        if self.move_wait.delay <= self.move_wait.timer {
-            self.move_wait.timer = 0.0;
-            self.move_to = Some(MoveTo::Start);
+    /// Case 10, the walk to the point (11), by the sub-action list's code: at its end (1, 2),
+    /// failed (3) or its target let go (5) the Build waits (`set_state(3)`,
+    /// [`BuildAction::idle`]); its target let go with 4 lets the foundation go and walks to the
+    /// point again (slot 0x68 with none, then `set_state(11)`); 0 (it walks or waits) and any
+    /// code above 5 (none) leave the update's 0.
+    ///
+    /// # Errors
+    ///
+    /// The walk's and the next states'.
+    fn walking_to_point(
+        &mut self,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        me: Me,
+        reads: &BuildReads,
+    ) -> Result<(), GenieError> {
+        match self.step_walk(c, builder, me, reads)? {
+            1..=3 | 5 => self.idle(c, builder, reads),
+            4 => self.lose_foundation(c, builder, reads),
+            _ => Ok(()),
         }
     }
 
@@ -356,90 +319,14 @@ impl BuildAction {
         self.place(c, builder, reads)
     }
 
-    /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]): a human
+    /// What the `MoveTo`'s answer to the motion step giving up reads ([`GiveUp`]): a human
     /// player's villager waits (by its unit AI's stance).
-    pub(super) fn gives_up(c: &Step<'_>, builder: &Unit, reads: &BuildReads) -> (bool, u8) {
+    pub(super) fn gives_up(c: &Step<'_>, builder: &Unit, reads: &BuildReads) -> GiveUp {
         let computer = c.w.players[c.player].computer;
-        let waits = reads.class == class::VILLAGER && !computer;
-        (waits, builder.ai.as_ref().map_or(0, |ai| ai.stance))
-    }
-
-    /// The quiet `MoveTo` `set_state(4)` made (`FUN_140a7a170` with 1) walks to the foundation
-    /// (`walked_from`, the one this update let go, else its target), within the task's range; one
-    /// without a target (a `set_state(4)` without a foundation, or one that refused it) to its
-    /// point. Its `set_state(4)` shows its sprite ([`BuildAction::move_shown`]) before the
-    /// motion step. The motion step giving up makes it wait or fail ([`MoveWait::give_up`]).
-    fn walk_to_foundation(
-        &mut self,
-        c: &mut Step<'_>,
-        builder: &mut Unit,
-        me: Me,
-        reads: &BuildReads,
-        walked_from: Option<i32>,
-    ) -> Result<(), GenieError> {
-        let (waits, stance) = Self::gives_up(c, builder, reads);
-        let shown = self.move_shown(reads.defaults);
-        let (walk, beside) = c.w.walk_beside(c.pace(), &mut builder.body, me);
-        let mut sprites = Sprites {
-            sprite: &mut builder.sprite,
-            rng: beside.sprite_rng,
-            graphics: beside.graphics,
-        };
-        let shown = sprites.shown(shown)?;
-        self.asked_again();
-        self.move_to = Some(MoveTo::Moving);
-        let range = self.task.range;
-        let to = match (walked_from, self.goal) {
-            (None, Some(p)) if self.target == -1 || self.walk_target == -1 => Goal::Point(p),
-            _ => Goal::Target(walked_from.unwrap_or(self.target)),
-        };
-        let ask = PathAsk::default();
-        self.move_to = Some(
-            match start_walk_shown(walk, (to, range, true), ask, Some(shown))? {
-                Some(state) => state,
-                None => self.move_wait.give_up(waits, stance),
-            },
-        );
-        Ok(())
-    }
-
-    /// The quiet `MoveTo` to the point of `set_state(223)` and `set_state(11)`, which shows its
-    /// sprite ([`BuildAction::move_shown`]) as it turns to state 4; the motion step giving up
-    /// makes it wait or fail ([`MoveWait::give_up`]).
-    ///
-    /// # Errors
-    ///
-    /// A walk to the point without one (`set_state(223)` and `set_state(11)` set it), and what
-    /// the walk does not model.
-    fn walk_to_goal(
-        &mut self,
-        c: &mut Step<'_>,
-        builder: &mut Unit,
-        me: Me,
-        reads: &BuildReads,
-    ) -> Result<(), GenieError> {
-        let (waits, stance) = Self::gives_up(c, builder, reads);
-        let shown = self.move_shown(reads.defaults);
-        let (walk, beside) = c.w.walk_beside(c.pace(), &mut builder.body, me);
-        let mut sprites = Sprites {
-            sprite: &mut builder.sprite,
-            rng: beside.sprite_rng,
-            graphics: beside.graphics,
-        };
-        let shown = sprites.shown(shown)?;
-        self.asked_again();
-        self.move_to = Some(MoveTo::Moving);
-        let goal = self.goal.ok_or(GenieError::unreachable(
-            "a Build's walk to its point without one (set_state 223, 11)",
-        ))?;
-        let ask = PathAsk::default();
-        self.move_to = Some(
-            match start_walk_shown(walk, (Goal::Point(goal), 0.0, true), ask, Some(shown))? {
-                Some(state) => state,
-                None => self.move_wait.give_up(waits, stance),
-            },
-        );
-        Ok(())
+        GiveUp {
+            waits: reads.class == class::VILLAGER && !computer,
+            stance: builder.ai.as_ref().map_or(0, |ai| ai.stance),
+        }
     }
 
     /// Case 5: `FUN_141162db0` turns the builder to face its foundation (a builder that turns over

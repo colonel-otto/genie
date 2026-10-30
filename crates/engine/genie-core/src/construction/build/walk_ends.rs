@@ -3,20 +3,21 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildReads, FOREIGN_SITE, REACH, SEEN, SITE_GONE, UNSEEN_SITE,
-    WALK_POINT, WORK,
+    BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, FOREIGN_SITE, REACH, SEEN, SITE_GONE,
+    UNSEEN_SITE, WALK_POINT, WORK,
 };
-use crate::movement::move_to::MoveTo;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 
 impl BuildAction {
-    /// The update's case 3 with its `MoveTo` at its end (1), or without one (the list's update
-    /// returns 1): without a foundation, a villager, or within the task's range (the footprints'
-    /// squared gap, `FUN_14118f8c0`, at most the range squared) or [`REACH`] of it, it works
-    /// (`set_state(6)`; one without a foundation waits instead, `set_state(3)`); else it walks to
-    /// the foundation again (`set_state(4)`, [`BuildAction::restart`]).
+    /// The update's cases 3 and 0xde with the sub-action list's 1 or 2 (its `MoveTo` at its
+    /// end, or no sub-action): off the footprint (223) it walks back to the foundation
+    /// (`set_state(4)`, [`BuildAction::restart`]: in reach or not). In state 4, without a
+    /// foundation, a villager, or within the task's range (the footprints' squared gap,
+    /// `FUN_14118f8c0`, at most the range squared) or [`REACH`] of it, it works (`set_state(6)`;
+    /// one without a foundation waits instead, `set_state(3)`); else it walks to the foundation
+    /// again (`set_state(4)`).
     ///
     /// # Errors
     ///
@@ -27,6 +28,9 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
+        if self.state == CLEAR {
+            return self.restart(c, builder);
+        }
         if self.target == -1 {
             return self.idle(c, builder, reads);
         }
@@ -41,8 +45,7 @@ impl BuildAction {
             let gap = crate::movement::footprint_gap_squared(at, ground, t.position, t.radius);
             let range = self.task.range;
             if !(gap <= range * range || gap <= REACH) {
-                let state = Self::site_unit(c, reads).map(|s| s.life.state);
-                return self.restart(c, builder, state);
+                return self.restart(c, builder);
             }
         }
         self.leave(c, builder)?;
@@ -121,8 +124,7 @@ impl BuildAction {
                 .code();
         }
         if code < 2 {
-            let state = Self::site_unit(c, reads).map(|s| s.life.state);
-            self.restart(c, builder, state)
+            self.restart(c, builder)
         } else {
             self.idle(c, builder, reads)
         }
@@ -143,13 +145,10 @@ impl BuildAction {
         Ok(())
     }
 
-    /// Its `MoveTo` returned 4 or 5 in state 4 or 223 (`0x140ab0370` cases 3 and 0xde): slot
-    /// 0x68 with none (`FUN_140ab0300`: a counted builder leaves the builders of
-    /// `FUN_140aaddb0`'s building, the foundation is let go at once) and `set_state(11)`: the
-    /// prelude ([`BuildAction::leave`]: the `MoveTo`'s teardown stops the unit), then a quiet
-    /// `MoveTo` to the action's point (`FUN_140aa0d30`: range 0, the task's moving sprite;
-    /// `FUN_140a7a170` with 1), which starts in state 3 (`FUN_140aa2100`: a `MoveTo` without a
-    /// target is far from it), in 13 for a unit without speed.
+    /// Its `MoveTo` returned 4 or 5 in state 4 or 223, or 4 in state 11 (`0x140ab0370` cases 3,
+    /// 0xde and 10): slot 0x68 with none (`FUN_140ab0300`: a counted builder leaves the builders
+    /// of `FUN_140aaddb0`'s building, the foundation is let go at once) and `set_state(11)`
+    /// ([`BuildAction::walk_to_point`]).
     ///
     /// # Errors
     ///
@@ -170,12 +169,14 @@ impl BuildAction {
 
     /// `set_state(11)` (`0x140aae200` case 0xb): the prelude ([`BuildAction::leave`]), then a
     /// quiet `MoveTo` to the action's point (`FUN_140aa0d30`: range 0, the task's moving sprite;
-    /// `FUN_140a7a170` with 1), which starts in state 3 (`FUN_140aa2100`: a `MoveTo` without a
-    /// target is far from it), in 13 for a unit without speed.
+    /// `FUN_140a7a170` with 1, [`BuildWalks::to_point`]), which starts in state 3 (a `MoveTo`
+    /// without a target is far from it), in 13 for a unit without speed.
     ///
     /// # Errors
     ///
-    /// The prelude's.
+    /// The prelude's, a builder without movement state or its master, a sprite the table lacks.
+    ///
+    /// [`BuildWalks::to_point`]: crate::construction::build::BuildWalks::to_point
     pub(super) fn walk_to_point(
         &mut self,
         c: &mut Step<'_>,
@@ -183,10 +184,8 @@ impl BuildAction {
     ) -> Result<(), GenieError> {
         self.leave(c, builder)?;
         self.state = WALK_POINT;
-        self.goal = Some(self.point);
-        self.move_sprite = self.task.moving;
-        let moves = builder.body.mover().is_some_and(|m| m.stats.speed != 0.0);
-        self.move_to = Some(if moves { MoveTo::Start } else { MoveTo::Failed });
+        let walks = builder.build_walks(&c.w.masters, c.player, &c.w.graphics)?;
+        self.move_to = walks.to_point(self.point, self.task.moving)?;
         Ok(())
     }
 }

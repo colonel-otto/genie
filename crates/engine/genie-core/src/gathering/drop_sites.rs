@@ -239,7 +239,7 @@ pub(crate) fn nearest_drop_site(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::construction::build::{BuildAction, BuildTask};
+    use crate::construction::build::BuildTask;
     use crate::map::spatial::Placed;
     use crate::math::rng::Well512;
     use crate::objects::actions::ActionList;
@@ -298,8 +298,9 @@ mod tests {
             moving: None,
         };
         Unit {
-            actions: ActionList::default()
-                .with_build(target.map(|t| BuildAction::start(t, [20.0, 17.0, 0.0], 0.0, task))),
+            actions: ActionList::default().with_build(target.map(|t| {
+                crate::construction::build::tests::started(t, [20.0, 17.0, 0.0], 0.0, task)
+            })),
             ..object(10, 83, [20.0, 20.0])
         }
     }

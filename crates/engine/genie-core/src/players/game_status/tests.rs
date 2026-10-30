@@ -196,7 +196,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let build = add(Unit {
         id: 31,
         actions: ActionList::default().with_build(Some(
-            crate::construction::build::BuildAction::start(-1, [3.5, 3.5, 0.0], 1.0, build_task),
+            crate::construction::build::tests::started(-1, [3.5, 3.5, 0.0], 1.0, build_task),
         )),
         ..Unit::default()
     });

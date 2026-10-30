@@ -1463,8 +1463,9 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
             p.objects[i].actions.build().map(|b| b.state),
         )
     };
-    // the builder at the foundation works in its first update; the other asks for a path, for
-    // which these villagers lack their movement state
+    // the builder at the foundation works in its first update; the other's MoveTo fails at once
+    // (FUN_140aa2100: these villagers lack their movement state, so their speed), and its
+    // failed walk's path test needs that state
     assert_eq!((builder(0), builder(1)), ((118, Some(6)), (212, Some(4))));
     // each idle villager's town-bell record: no work, at its own place
     assert_eq!(
@@ -1474,7 +1475,10 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
             ..crate::orders::town_bell::BackToWork::NONE
         }
     );
-    assert_eq!(p.unsupported, Some((1, 1, WALKER_UNMOVING)));
+    assert_eq!(
+        p.unsupported,
+        Some((1, 1, crate::construction::build::BUILDER_UNMOVING))
+    );
 }
 
 /// BUILD's direct path is the builder's slot 0x128 with 1 (`FUN_141211b80`, a combat object's
@@ -1998,6 +2002,10 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
 #[test]
 fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
     let mut t = sent_off_world(vec![]);
+    // a villager moves: its MoveTo starts with speed (FUN_140aa2100)
+    t.players[1].objects[0]
+        .body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
     let work = crate::orders::Work {
         target: 10028,
         point: [30.0, 88.0, 0.0],
@@ -2014,15 +2022,15 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
         (
             b.target,
             b.state,
-            b.walk_target,
+            b.move_to.map(|m| m.target),
             b.point,
-            b.move_to,
+            b.move_to.map(|m| m.state),
             b.added
         ),
         (
             10028,
             4,
-            10028,
+            Some(10028),
             [30.0, 88.0, 0.0],
             Some(MoveTo::Start),
             false
@@ -2096,7 +2104,6 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
         filter: -1,
         notified: true,
     };
-    t.order_work(1, 0, &work).unwrap();
     let walking = Graphic {
         id: 7,
         frames: 10,
@@ -2121,12 +2128,15 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
     };
     // the player's master 118 has no sprites: the MoveTo shows none
     let mut table = t.clone();
+    table.order_work(1, 0, &work).unwrap();
     assert_eq!(shown_after_update(&mut table), None);
+    // the MoveTo's constructor (FUN_140aa0df0) reads the builder's own master for its sprite
     let own = Master {
         move_sprite: 7,
         ..t.masters[1].get(118).unwrap().clone()
     };
     t.players[1].objects[0].own_master = Some(Box::new(own));
+    t.order_work(1, 0, &work).unwrap();
     assert_eq!(shown_after_update(&mut t), Some(7));
 }
 
@@ -2163,7 +2173,7 @@ fn a_work_command_on_the_build_s_own_foundation_keeps_the_work_or_walks_again() 
     t.order_work(1, 0, &work).unwrap();
     let b = t.players[1].objects[0].actions.build().copied().unwrap();
     assert_eq!(
-        (b.state, b.added, b.move_to, b.target),
+        (b.state, b.added, b.move_to.map(|m| m.state), b.target),
         (4, false, Some(MoveTo::Arrived), 10028)
     );
     assert_eq!(
@@ -2216,8 +2226,14 @@ fn a_work_command_on_another_foundation_moves_the_build_there() {
     t.order_work(1, 0, &work(10031)).unwrap();
     let b = t.players[1].objects[0].actions.build().copied().unwrap();
     assert_eq!(
-        (b.target, b.state, b.added, b.point, b.walk_target),
-        (10031, 4, false, [34.0, 88.0, 0.0], 10031)
+        (
+            b.target,
+            b.state,
+            b.added,
+            b.point,
+            b.move_to.map(|m| m.target)
+        ),
+        (10031, 4, false, [34.0, 88.0, 0.0], Some(10031))
     );
     let site = |i: usize| {
         let o = &t.players[1].objects[i];
@@ -8103,8 +8119,6 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         target: 10028,
         state: 3,
         move_to: None,
-        goal: None,
-        walk_target: -1,
         point: [-1.0; 3],
         task: BuildTask {
             range: 0.0,
@@ -8116,10 +8130,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         },
         added: true,
         timer: 0.0,
-        move_wait: crate::movement::move_to::MoveWait::default(),
-        move_sprite: None,
         site: -1,
-        drop_range: 0.0,
     }));
     t.clear_actions(1, 2).unwrap();
     let foundation = &t.players[2].objects[0];
@@ -8214,8 +8225,6 @@ fn deaths_world() -> World {
         target: 10028,
         state: 7,
         move_to: None,
-        goal: None,
-        walk_target: -1,
         point: [-1.0; 3],
         task: BuildTask {
             range: 0.0,
@@ -8227,10 +8236,7 @@ fn deaths_world() -> World {
         },
         added: true,
         timer: 0.0,
-        move_wait: crate::movement::move_to::MoveWait::default(),
-        move_sprite: None,
         site: -1,
-        drop_range: 0.0,
     }));
     let gaia = vec![
         Unit {
@@ -13456,7 +13462,7 @@ fn drop_again_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
     (
         b.state,
         b.site,
-        b.drop_range,
+        b.move_to.map_or(0.0, |m| m.range),
         t.players[1].objects[2].workers,
         heard,
     )
@@ -14768,7 +14774,7 @@ fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
         let _ = in_update(&mut t, (1, 0), 50, Unit::update).unwrap();
         let b = t.players[1].objects[0].actions.build().copied().unwrap();
         let house = t.players[1].objects[1].life.state;
-        let now = (b.state, b.move_to, house);
+        let now = (b.state, b.move_to.map(|m| m.state), house);
         if seen.last().is_none_or(|&(_, last)| last != now) {
             seen.push((n, now));
         }
@@ -14829,7 +14835,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
         let _ = in_update(&mut t, (1, 0), 50, Unit::update).unwrap();
         let v = &t.players[1].objects[0];
         let b = v.actions.build().copied().unwrap();
-        let now = (b.state, b.move_to, b.site, v.life.amount);
+        let now = (b.state, b.move_to.map(|m| m.state), b.site, v.life.amount);
         if seen.last().is_none_or(|&(_, last)| last != now) {
             seen.push((n, now));
         }
@@ -15233,7 +15239,7 @@ fn a_builder_s_house_completes_in_the_world_s_update_and_its_unit_ai_resumes() {
         t.tick(50);
         let b = t.players[1].objects[0].actions.build().copied().unwrap();
         let house = t.players[1].objects[1].life.state;
-        let now = (b.state, b.move_to, house);
+        let now = (b.state, b.move_to.map(|m| m.state), house);
         if seen.last().is_none_or(|&(_, last)| last != now) {
             seen.push((n, now));
         }

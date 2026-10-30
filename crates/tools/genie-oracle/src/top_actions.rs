@@ -152,11 +152,6 @@ const fn move_to_state(state: u8) -> Result<MoveTo, GenieError> {
     }
 }
 
-/// A sub-action `MoveTo`'s state (0 without its base).
-fn sub_state(sub: &Action) -> Result<MoveTo, GenieError> {
-    move_to_state(sub.base().map_or(0, |b| b.state))
-}
-
 /// A `MoveTo`'s range (`+0x68`).
 fn sub_range(sub: &Action) -> Result<f32, GenieError> {
     sub.move_to_range()
@@ -166,11 +161,6 @@ fn sub_range(sub: &Action) -> Result<f32, GenieError> {
 /// The point of an action without a target.
 fn target_point(b: &RgeAction) -> Option<[f32; 3]> {
     (b.target_id == -1).then_some([b.target_x, b.target_y, b.target_z])
-}
-
-/// The point of a sub-action `MoveTo` to a point (none for one to an object).
-fn walk_point(sub: &Action) -> Option<[f32; 3]> {
-    sub.base().and_then(target_point)
 }
 
 /// The Artifact action (107): its state and timer, its `MoveTo` to its target and its task's
@@ -352,23 +342,17 @@ fn import_build(
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
     let base = saved.base;
-    let sub = saved.move_to_sub(OTHER_SUB_ACTION)?;
-    let move_to = sub.map(sub_state).transpose()?;
+    // its quiet MoveTo (FUN_140a7a170 with 1)
+    let move_to = saved
+        .move_to_sub(OTHER_SUB_ACTION)?
+        .map(|s| saved_move_to(s, saved.graphics, true))
+        .transpose()?;
     let mut task = work(saved.s.master_obj)?;
     task.work_rate += unit.work_rate_powerup;
-    // the drop-off's MoveTo keeps its range (+0x68)
-    let drop_range = match sub {
-        Some(sub) if base.state == genie_core::construction::build::DROP => sub_range(sub)?,
-        _ => task.range,
-    };
     unit.actions.set_build(Some(BuildAction {
         target: base.target_id,
         state: base.state,
         move_to,
-        // a MoveTo to a point has no target; its point is the action's target point
-        goal: sub.and_then(walk_point),
-        // the MoveTo's target, −1 for one to a point or none
-        walk_target: sub.and_then(Action::base).map_or(-1, |b| b.target_id),
         point: saved.point(),
         task,
         added: saved
@@ -377,17 +361,7 @@ fn import_build(
             .as_deref()
             .is_some_and(|b| b.added_to_num_builders != 0),
         timer: base.timer,
-        move_wait: sub.map_or_else(
-            genie_core::movement::move_to::MoveWait::default,
-            saved_move_wait,
-        ),
-        // its MoveTo's sprite (`+0x58`, the save's second `short_val`; −1 for none), else the
-        // task's moving one, which the next MoveTo takes
-        move_sprite: sub.and_then(Action::base).map_or(task.moving, |b| {
-            (0 <= b.short_val_2).then_some(b.short_val_2)
-        }),
         site: base.target2_id,
-        drop_range,
     }));
     Ok(())
 }

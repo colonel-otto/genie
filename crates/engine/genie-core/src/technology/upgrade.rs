@@ -919,7 +919,7 @@ mod tests {
     /// action without a match keeps its task.
     #[test]
     fn an_upgrade_s_actions_take_the_new_master_s_last_matching_task() {
-        use crate::construction::build::{BuildAction, BuildTask};
+        use crate::construction::build::BuildTask;
         use crate::gathering::gather::GATHER;
         use crate::gathering::hunt::HuntTask;
         use crate::objects::masters::Task;
@@ -960,12 +960,13 @@ mod tests {
             id: 3,
             moving: None,
         };
-        u.actions.set_build(Some(BuildAction::start(
-            10028,
-            [30.0, 88.0, 0.0],
-            1.0,
-            build,
-        )));
+        u.actions
+            .set_build(Some(crate::construction::build::tests::started(
+                10028,
+                [30.0, 88.0, 0.0],
+                1.0,
+                build,
+            )));
         u.actions.set_make(Some(crate::gathering::make::MakeAction {
             state: 0,
             remaining: 0.0,
