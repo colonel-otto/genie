@@ -7,8 +7,8 @@ use genie_core::commands::{
     BuildingQueueCommand, Command, DeleteCommand, FlareCommand, FormFormationCommand, GameCommand,
     GateCommand, GatherPointCommand, GoBackToWork2Command, GoBackToWorkCommand, Order,
     OrderCommand, PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand,
-    StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand,
-    UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
+    SetGatherStateCommand, StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand,
+    TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
     UnmodelledCommand, Waypoints,
 };
 use genie_core::map::Point;
@@ -360,6 +360,23 @@ fn the_unit_lists_keep_their_counted_ids() {
             player: player_id(3),
             units: unit_list(object_ids([37, 38])),
             formation: 7,
+        })
+    );
+    let gather = packets::SetGatherState {
+        commp_id: 4,
+        num: 2,
+        gap_0x06: [0; 2],
+        field_0x08: 0xff,
+        ids: vec![39, 40],
+    }
+    .encode()
+    .unwrap();
+    assert_eq!(
+        round_trip(&gather),
+        Command::SetGatherState(SetGatherStateCommand {
+            player: player_id(4),
+            units: unit_list(object_ids([39, 40])),
+            state: 0xff,
         })
     );
     let stop = packets::Stop {

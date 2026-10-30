@@ -104,7 +104,8 @@ impl World {
             // FUN_140ace9c0 with a command queue: the building unit AI's slot 0x200 hands it to
             // the new unit (FUN_140c15e50), its gather point's work skipped
             self.hand_queue(p, new, &queue, position[2])?;
-        } else if let Some(gather) = gather {
+        } else if let Some(gather) = gather.filter(|g| g.state == 1) {
+            // only a state of 1 sends it (`FUN_140ace9c0`'s `+0xc30 != 1` return)
             self.gather(p, new, gather, building_id, true, true)?;
         }
         // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)

@@ -34,6 +34,7 @@ pub mod research;
 pub mod resign;
 mod run;
 pub mod seek_shelter;
+pub mod set_gather_state;
 pub mod stop;
 pub mod town_bell;
 pub mod trade;
@@ -64,6 +65,7 @@ pub use self::queue::QueueCommand;
 pub use self::research::ResearchCommand;
 pub use self::resign::ResignCommand;
 pub use self::seek_shelter::SeekShelterCommand;
+pub use self::set_gather_state::SetGatherStateCommand;
 pub use self::stop::StopCommand;
 pub use self::town_bell::TownBellCommand;
 pub use self::trade::TradeCommand;
@@ -81,16 +83,25 @@ pub(crate) use self::production::least_loaded;
 #[cfg(test)]
 mod tests;
 
-/// A building's gather point (`+0xc30`..`+0xc44`: it exists, x, y, z, the target and the target's
-/// master; the save's `gather_point_*`).
+/// A building's gather point (`+0xc30`..`+0xc44`: its state, x, y, z, the target and the target's
+/// master; the save's `gather_point_*`). A state of 0 is no gather point ([`Option`] is `None`).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct GatherPoint {
+    /// `+0xc30`: 1 for a gather point, [`GatherPoint::KEPT`] (0xff) for the one SET GATHER STATE
+    /// makes, which SET GATHER POINT does not move to another target.
+    pub state: i32,
     /// The point its trained units walk to.
     pub point: [f32; 3],
     /// The object it is on, −1 for none.
     pub target: i32,
     /// The target's master, −1 without a target.
     pub target_master: i16,
+}
+
+impl GatherPoint {
+    /// The state SET GATHER STATE gives with a byte of 0xff: the target and its master stay
+    /// whatever SET GATHER POINT asks, and a unit let out of the building walks to the point.
+    pub const KEPT: i32 = 0xff;
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's `SeedAll`,
@@ -105,6 +116,8 @@ pub enum Command {
     BuildWall(BuildWallCommand),
     /// SET GATHER POINT (0x78).
     GatherPoint(GatherPointCommand),
+    /// SET GATHER STATE (0x82).
+    SetGatherState(SetGatherStateCommand),
     /// QUEUE (0x81).
     Queue(QueueCommand),
     /// RESEARCH (0x65).
@@ -178,6 +191,7 @@ macro_rules! by_kind {
             Command::Build($c) => $any,
             Command::BuildWall($c) => $any,
             Command::GatherPoint($c) => $any,
+            Command::SetGatherState($c) => $any,
             Command::Queue($c) => $any,
             Command::Research($c) => $any,
             Command::CommandQueue($c) => $any,

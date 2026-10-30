@@ -8,8 +8,8 @@ use genie_core::commands::{
     BuildingQueueCommand, Command, DeleteCommand, FlareCommand, FormFormationCommand, GameCommand,
     GateCommand, GatherPointCommand, GoBackToWork2Command, GoBackToWorkCommand, Order,
     OrderCommand, PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand,
-    StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand,
-    UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
+    SetGatherStateCommand, StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand,
+    TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
     UnmodelledCommand, Waypoints,
 };
 use genie_core::map::Point;
@@ -176,6 +176,11 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
             player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
             formation: c.formation,
+        }),
+        Packet::SetGatherState(c) => Command::SetGatherState(SetGatherStateCommand {
+            player: PlayerId::from(c.commp_id),
+            units: listed(c.num, &c.ids),
+            state: c.field_0x08,
         }),
         Packet::SeekShelter(c) => Command::SeekShelter(SeekShelterCommand {
             player: PlayerId::from(c.commp_id),

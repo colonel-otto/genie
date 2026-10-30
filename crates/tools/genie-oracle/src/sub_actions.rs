@@ -350,6 +350,7 @@ pub(super) fn gather_point(
         .as_deref()
         .filter(|b| b.gather_point_exists != 0)?;
     Some(genie_core::commands::GatherPoint {
+        state: b.gather_point_exists,
         point: [b.gather_point_x, b.gather_point_y, b.gather_point_z],
         target: b.gather_point_target,
         target_master: b.gather_point_target_master,

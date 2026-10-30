@@ -5,9 +5,9 @@ use crate::commands::{
     AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
     BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GateCommand, GatherPoint,
     GatherPointCommand, GoBackToWork2Command, Order, OrderCommand, PatrolCommand, QueueCommand,
-    ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand,
-    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction,
-    UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
+    ResearchCommand, ResignCommand, SeekShelterCommand, SetGatherStateCommand, StopCommand,
+    TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand, UnitAiStateCommand,
+    UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
 use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::construction::gates::gate_units;
@@ -9040,6 +9040,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             sprite_override: false,
         }),
         gather_point: Some(GatherPoint {
+            state: 1,
             point: [12.0, 12.0, 0.0],
             target: -1,
             target_master: -1,
@@ -9976,6 +9977,7 @@ fn set_gather_point_takes_the_point_and_target_or_clears_it() {
     assert_eq!(
         t.players[0].objects[0].gather_point,
         Some(GatherPoint {
+            state: 1,
             point: [107.2451, 46.075_863, 0.0],
             target: 9520,
             target_master: 705,
@@ -9987,6 +9989,138 @@ fn set_gather_point_takes_the_point_and_target_or_clears_it() {
     assert_eq!(
         t.players[0].objects[0].gather_point.map(|g| g.target),
         Some(9149)
+    );
+}
+
+/// A town centre of master 109 with the given position and a gather state, for SET GATHER STATE.
+fn gathering_centre(id: i32, at: [f32; 3]) -> Unit {
+    let mut tc = centre(id);
+    tc.body = crate::objects::layers::Body::at(at);
+    tc
+}
+
+/// SET GATHER STATE (`FUN_140e727e0`; 428052362's computer players send 0, 1 and 0xff): a building
+/// takes itself for its gather point at its own position with the packet's state, 0 clears it.
+#[test]
+fn set_gather_state_makes_the_building_its_own_gather_point_or_clears_it() {
+    let mut t = one_player(vec![gathering_centre(9149, [104.0, 47.0, 0.5])], [200.0; 4]);
+    t.masters = vec![Masters::new([Master {
+        id: 109,
+        garrison: 15,
+        ..Master::default()
+    }])];
+    let set = |state| {
+        Command::SetGatherState(SetGatherStateCommand {
+            player: player_id(0),
+            units: unit_list(object_ids([9149])),
+            state,
+        })
+    };
+    let own = |state| {
+        Some(GatherPoint {
+            state,
+            point: [104.0, 47.0, 0.5],
+            target: 9149,
+            target_master: 109,
+        })
+    };
+    t.tick_with(25, &[set(1)]);
+    assert_eq!(t.players[0].unsupported, None);
+    assert_eq!(t.players[0].objects[0].gather_point, own(1));
+    // the state byte is the state, 0xff included
+    t.tick_with(25, &[set(255)]);
+    assert_eq!(t.players[0].objects[0].gather_point, own(0xff));
+    t.tick_with(25, &[set(0)]);
+    assert_eq!(t.players[0].objects[0].gather_point, None);
+}
+
+/// SET GATHER STATE's test is SET GATHER POINT's: a building that neither garrisons nor trains
+/// keeps what it had (a state of 0 clears whatever the building is), and an object the player
+/// does not hold is left out.
+#[test]
+fn set_gather_state_leaves_a_building_that_takes_no_gather_point_and_a_gone_object() {
+    let mut house = gathering_centre(10909, [20.0, 30.0, 0.0]);
+    house.life.master_id = 70;
+    house.gather_point = Some(GatherPoint {
+        state: 1,
+        point: [5.0, 6.0, 0.0],
+        target: -1,
+        target_master: -1,
+    });
+    let mut t = one_player(vec![house], [200.0; 4]);
+    t.masters = vec![Masters::new([Master {
+        id: 70,
+        kind: 80,
+        ..Master::default()
+    }])];
+    let set = |state| {
+        Command::SetGatherState(SetGatherStateCommand {
+            player: player_id(0),
+            units: unit_list(object_ids([4242, 10909])),
+            state,
+        })
+    };
+    let held = t.players[0].objects[0].gather_point;
+    t.tick_with(25, &[set(255)]);
+    assert_eq!(t.players[0].unsupported, None);
+    assert_eq!(t.players[0].objects[0].gather_point, held);
+    t.tick_with(25, &[set(0)]);
+    assert_eq!(t.players[0].objects[0].gather_point, None);
+}
+
+/// SET GATHER POINT on a gather point of state 0xff (`FUN_140e7e9a0`, `FUN_1411c7ff0`): its x
+/// and y move, its target and master stay and its state stays 0xff; on itself the state becomes 1
+/// with the target kept.
+#[test]
+fn set_gather_point_keeps_the_target_of_a_kept_gather_point() {
+    let mut tc = gathering_centre(9149, [104.0, 47.0, 0.5]);
+    tc.gather_point = Some(GatherPoint {
+        state: GatherPoint::KEPT,
+        point: [104.0, 47.0, 0.5],
+        target: 9149,
+        target_master: 109,
+    });
+    let mut t = one_player(vec![tc], [200.0; 4]);
+    t.masters = vec![Masters::new([Master {
+        id: 109,
+        garrison: 15,
+        ..Master::default()
+    }])];
+    let set = |target: Option<i32>, own| {
+        Command::GatherPoint(GatherPointCommand {
+            player: player_id(0),
+            units: unit_list(object_ids([9149])),
+            point: Point::new(107.25, 46.5),
+            target: target.map(object_id),
+            target_master: Some(master_id(705)),
+            own,
+        })
+    };
+    t.tick_with(25, &[set(Some(9520), false)]);
+    assert_eq!(t.players[0].unsupported, None);
+    assert_eq!(
+        t.players[0].objects[0].gather_point,
+        Some(GatherPoint {
+            state: GatherPoint::KEPT,
+            point: [107.25, 46.5, 0.5],
+            target: 9149,
+            target_master: 109,
+        })
+    );
+    t.players[0].objects[0]
+        .gather_point
+        .as_mut()
+        .unwrap()
+        .target = 9520;
+    t.tick_with(25, &[set(None, true)]);
+    assert_eq!(
+        t.players[0].objects[0].gather_point,
+        Some(GatherPoint {
+            state: 1,
+            point: [104.0, 47.0, 0.5],
+            target: 9520,
+            target_master: 109,
+        })
     );
 }
 
@@ -10032,6 +10166,7 @@ fn set_gather_point_takes_a_building_that_trains_without_garrisoning() {
     assert_eq!(
         t.players[0].objects[0].gather_point,
         Some(GatherPoint {
+            state: 1,
             point: [20.5, 30.5, 0.0],
             target: -1,
             target_master: -1,
@@ -10056,6 +10191,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
         ..UnitAi::default()
     });
     tc.gather_point = Some(GatherPoint {
+        state: 1,
         point: [30.5, 40.5, 0.0],
         target: -1,
         target_master: -1,

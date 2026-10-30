@@ -53,6 +53,7 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         crate::objects::masters::Masters::new([villager, tree]),
     ];
     let g = GatherPoint {
+        state: 1,
         point: [21.0, 21.0, 0.0],
         target: 5,
         target_master: 349,
@@ -475,6 +476,53 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     assert!(t.spawn(1, 2, 83, 1.0).is_err());
     let mut t = world();
     assert!(t.spawn(1, 2, 59, 1.0).is_err());
+}
+
+/// `FUN_140ace9c0` sends the new unit to its building's gather point only for a state of 1
+/// (`+0xc30`); a state of 0xff (SET GATHER STATE's) leaves it standing, which the unit's wait
+/// to move (`+0x7f9`) shows.
+#[test]
+fn only_a_gather_point_of_state_1_sends_the_new_unit() {
+    let waits = |state| {
+        let mut t = crate::world::tests::forage_world();
+        for masters in &mut t.masters {
+            masters.get_mut(83).unwrap().standing_sprite = 300;
+        }
+        let _ = t.graphics.insert(
+            300,
+            crate::objects::sprite::Graphic {
+                id: 300,
+                frames: 10,
+                facets: 8,
+                speed_multiplier: 1.0,
+                frame_duration: 0.1,
+                replay_delay: 0.0,
+                flags: 1,
+            },
+        );
+        let p = &mut t.players[1];
+        p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()] = 3.0;
+        p.objects[2].ai = Some(UnitAi {
+            ai_type: 3,
+            current_order: None,
+            current_action: None,
+            current_target: -1,
+            ..UnitAi::default()
+        });
+        p.objects[2].gather_point = Some(GatherPoint {
+            state,
+            point: [40.0, 80.0, 0.0],
+            target: -1,
+            target_master: -1,
+        });
+        t.spawn(1, 2, 83, 1.0).unwrap();
+        t.players[1]
+            .objects
+            .last()
+            .and_then(|u| u.body.mover().map(|m| m.waiting))
+    };
+    assert_eq!(waits(1), Some(1));
+    assert_eq!(waits(GatherPoint::KEPT), Some(0));
 }
 
 /// Every candidate of `site`'s search for a unit of radius 0.5 (a step of 0.5, no gap), all

@@ -15,7 +15,21 @@ use crate::unit_ai::OrderKind;
 use crate::world::{BLOCKS_RESEARCH, World};
 
 impl World {
-    /// SET GATHER POINT's handler ([`GatherPointCommand`]).
+    /// Whether the player's object `i` takes a gather point: its master garrisons (`+0xb53`) or
+    /// the player trains a unit there (`FUN_141625a20`'s count with no object,
+    /// [`World::trainable_count`]). The test SET GATHER POINT and SET GATHER STATE make.
+    fn takes_gather_point(&self, player: usize, i: usize) -> Result<bool, GenieError> {
+        let master = self.players[player].objects[i].master(&self.masters, player)?;
+        Ok(master.garrison != 0 || self.trainable_count(player, master.id) > 0)
+    }
+
+    /// SET GATHER POINT's handler ([`GatherPointCommand`], `FUN_140e7e9a0`).
+    ///
+    /// The point's x and y always take the packet's; its target and master do too unless the
+    /// state is [`GatherPoint::KEPT`] (a target of −1 at (−1, −1) clears the point, state 0; any
+    /// other point makes the state 1 unless it is kept). With `own` the object itself is the
+    /// target (`FUN_1411c7ff0`: its position, its id and master unless kept, state 1 even when it
+    /// was kept). The z stays what the point held, 0 for none.
     pub(crate) fn gather_point(
         &mut self,
         g: &GatherPointCommand,
@@ -36,26 +50,36 @@ impl World {
             else {
                 continue;
             };
-            let unit = &self.players[player].objects[i];
-            let master = unit.master(&self.masters, player)?;
-            // FUN_141625a20's count with no object, for the object's own player
-            if master.garrison == 0 && self.trainable_count(player, master.id) <= 0 {
+            if !self.takes_gather_point(player, i)? {
                 continue;
             }
-            let z = unit.gather_point.map_or(0.0, |g| g.point[2]);
+            let unit = &self.players[player].objects[i];
+            let old = unit.gather_point;
+            let kept = old.is_some_and(|g| g.state == GatherPoint::KEPT);
+            let z = old.map_or(0.0, |g| g.point[2]);
             let gather = if own {
+                let (target, target_master) = match old {
+                    Some(g) if kept => (g.target, g.target_master),
+                    _ => (unit.id, unit.life.master_id),
+                };
                 Some(GatherPoint {
+                    state: 1,
                     point: [unit.position()[0], unit.position()[1], z],
-                    target: unit.id,
-                    target_master: unit.life.master_id,
+                    target,
+                    target_master,
                 })
             } else if target.is_none() && x == -1.0 && y == -1.0 {
                 None
             } else {
+                let (target, target_master) = match old {
+                    Some(g) if kept => (g.target, g.target_master),
+                    _ => (ObjectId::field(target), MasterId::field(target_master)),
+                };
                 Some(GatherPoint {
+                    state: if kept { GatherPoint::KEPT } else { 1 },
                     point: [x, y, z],
-                    target: ObjectId::field(target),
-                    target_master: MasterId::field(target_master),
+                    target,
+                    target_master,
                 })
             };
             let unit = &mut self.players[player].objects[i];
@@ -64,6 +88,42 @@ impl World {
             if let Some(ai) = unit.ai.as_mut() {
                 ai.building_orders.clear();
             }
+        }
+        Ok(())
+    }
+
+    /// SET GATHER STATE's handler ([`SetGatherStateCommand`], `FUN_140e727e0`): each object of
+    /// `ids` the player holds clears its gather point with a state of 0, else, when it takes one
+    /// ([`World::takes_gather_point`]), has itself for the point with the packet's state (its
+    /// position, id and master). The unit AI's command queue stays.
+    ///
+    /// [`SetGatherStateCommand`]: crate::commands::SetGatherStateCommand
+    pub(crate) fn set_gather_state(
+        &mut self,
+        player: PlayerId,
+        state: u8,
+        ids: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
+        let player = player.index();
+        for &id in ids {
+            let Some(i) = id.and_then(|id| self.players[player].objects.position_of(id.get()))
+            else {
+                continue;
+            };
+            let gather = if state == 0 {
+                None
+            } else if self.takes_gather_point(player, i)? {
+                let unit = &self.players[player].objects[i];
+                Some(GatherPoint {
+                    state: i32::from(state),
+                    point: unit.position(),
+                    target: unit.id,
+                    target_master: unit.life.master_id,
+                })
+            } else {
+                continue;
+            };
+            self.players[player].objects[i].gather_point = gather;
         }
         Ok(())
     }

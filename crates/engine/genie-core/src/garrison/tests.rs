@@ -1349,6 +1349,7 @@ fn a_gather_point_on_its_own_building_takes_the_new_unit_in() {
     let idx = t.players[1].objects.len() - 1;
     let state = t.players[1].objects[idx].life.state;
     let g = GatherPoint {
+        state: 1,
         point: [10.0, 10.0, 0.0],
         target: 100,
         target_master: TC,
@@ -3180,6 +3181,7 @@ fn a_unit_let_out_works_its_record_or_the_gather_point_s_target() {
     assert_eq!(v.top_action(), None);
     let gather = |t: &mut World| {
         t.players[1].objects[0].gather_point = Some(GatherPoint {
+            state: 1,
             target: 101,
             point: [16.0, 4.0, 0.0],
             target_master: TC,
@@ -3191,6 +3193,33 @@ fn a_unit_let_out_works_its_record_or_the_gather_point_s_target() {
     assert_eq!(v.life.inside, None);
     assert_eq!(v.ai.as_ref().map(|a| a.current_target), Some(-1));
     assert_eq!(v.top_action(), None);
+}
+
+/// A gather point of state 0xff (SET GATHER STATE's) replaces the point a unit is let out toward
+/// (`FUN_1411e7220`'s `+0xc30 == 0xff`) and sends it no target; one of state 1 sends a unit
+/// without a point to its target, one of state 0 or none leaves the point.
+#[test]
+fn a_gather_point_of_state_0xff_replaces_the_point_of_a_let_out() {
+    use super::let_out::{LetOutAim, let_out_aim};
+    let at = |state, target| {
+        Some(GatherPoint {
+            state,
+            target,
+            point: [16.0, 4.0, 0.0],
+            target_master: TC,
+        })
+    };
+    let given = [4.5, 4.5];
+    let none = [NO_POINT, NO_POINT];
+    let kept = at(GatherPoint::KEPT, 101);
+    assert_eq!(let_out_aim(kept, given, 100), LetOutAim::Point([16.0, 4.0]));
+    assert_eq!(let_out_aim(kept, none, 100), LetOutAim::Point([16.0, 4.0]));
+    let one = at(1, 101);
+    assert_eq!(let_out_aim(one, none, 100), LetOutAim::Target(one.unwrap()));
+    assert_eq!(let_out_aim(one, given, 100), LetOutAim::Point(given));
+    // on the building itself, or without a gather point, the point stays
+    assert_eq!(let_out_aim(at(1, 100), none, 100), LetOutAim::Point(none));
+    assert_eq!(let_out_aim(None, given, 100), LetOutAim::Point(given));
 }
 
 /// Slot 0x120 of a building told its player's new relation ([`World::notify_of_relation`]):

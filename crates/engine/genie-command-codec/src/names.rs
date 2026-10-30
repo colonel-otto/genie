@@ -72,7 +72,6 @@ pub(crate) const fn unmodelled_command(p: &Packet) -> &'static str {
         DropRelic,
         TownBell,
         GoBackToWork,
-        SetGatherState,
         DeleteObjects,
         ResetBuildings,
         MultiGate,

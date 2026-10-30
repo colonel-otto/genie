@@ -2,6 +2,7 @@
 //! place on the map.
 
 use crate::GenieError;
+use crate::commands::GatherPoint;
 use crate::garrison::{NO_POINT, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
@@ -38,8 +39,7 @@ impl World {
     /// when no spot is free. With neither a point nor a gather point its unit AI stops, forgets
     /// its target and takes its stance again (slots 0xb0 and 0x1c0). With an object to work on
     /// (`work_on`, `GO_BACK_TO_WORK`'s) its work command (slot 0x128) goes to it at the point first.
-    /// Not modelled: a gather point of kind 0xff,
-    /// class 42's and livestock's counts in a building of a player with `+0x88`, a siege
+    /// Not modelled: class 42's and livestock's counts in a building of a player with `+0x88`, a siege
     /// building's (class 13) slot 0x1b0; not held: the building's villager count (`+0xba8`) and
     /// raider count (`+0xc2c`, which the building's slot 0x1c8 `FUN_1411d6ad0` lowers for a unit
     /// of type 70 whose `+0x9a0` runs: such a unit inside is refused, [`World::garrisoned`]), its
@@ -217,12 +217,7 @@ impl World {
         up: usize,
         ui: usize,
         class: i16,
-        (point, gather, bid, work_on): (
-            [f32; 2],
-            Option<crate::commands::GatherPoint>,
-            i32,
-            Option<i32>,
-        ),
+        (point, gather, bid, work_on): ([f32; 2], Option<GatherPoint>, i32, Option<i32>),
     ) -> Result<bool, GenieError> {
         // an object to work on (GO_BACK_TO_WORK's): slot 0x128 on it at the point, the unit's
         // `+0xa14` 0 (its unit AI keeps its notifies)
@@ -239,8 +234,8 @@ impl World {
         }
         // the gather point (`+0xc30` 1, not on the building) gives a unit without a point its
         // target, when the world holds it, else its point
-        let to = match gather {
-            Some(g) if point[0] == NO_POINT && g.target != bid => {
+        let to = match let_out_aim(gather, point, bid) {
+            LetOutAim::Target(g) => {
                 if g.target != -1 && self.object(g.target).is_some() {
                     if let Some(ai) = self.players[up].objects[ui].ai.as_mut() {
                         ai.remove_target();
@@ -251,7 +246,7 @@ impl World {
                 }
                 [g.point[0], g.point[1]]
             }
-            _ => point,
+            LetOutAim::Point(p) => p,
         };
         if to[0] == NO_POINT || to[1] == NO_POINT {
             // neither a point nor a gather point: the unit AI stops its action (slot 0xb0 with
@@ -292,12 +287,7 @@ impl World {
         up: usize,
         ui: usize,
         (made, at): (&Master, [f32; 3]),
-        rest: (
-            [f32; 2],
-            Option<crate::commands::GatherPoint>,
-            i32,
-            Option<i32>,
-        ),
+        rest: ([f32; 2], Option<GatherPoint>, i32, Option<i32>),
     ) -> Result<bool, GenieError> {
         let id = self.players[up].objects[ui].id;
         let mut placed = *self
@@ -329,5 +319,31 @@ impl World {
             m.mark_move(at, world_time);
         }
         self.came_out(up, ui, made.class, rest)
+    }
+}
+
+/// Where a unit let out of a building goes (`FUN_1411e7220`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum LetOutAim {
+    /// To work on the gather point's target (state 1, no point given, not on the building).
+    Target(GatherPoint),
+    /// To a point.
+    Point([f32; 2]),
+}
+
+/// The aim of a let-out toward `point` ([`NO_POINT`] for none) from the building `building`
+/// with `gather`: a gather point of state 1 gives a unit without a point its target, one of
+/// state 0xff ([`GatherPoint::KEPT`]) its x and y whatever point was given, else the point.
+pub(super) fn let_out_aim(
+    gather: Option<GatherPoint>,
+    point: [f32; 2],
+    building: i32,
+) -> LetOutAim {
+    match gather {
+        Some(g) if point[0] == NO_POINT && g.state == 1 && g.target != building => {
+            LetOutAim::Target(g)
+        }
+        Some(g) if g.state == GatherPoint::KEPT => LetOutAim::Point([g.point[0], g.point[1]]),
+        _ => LetOutAim::Point(point),
     }
 }
