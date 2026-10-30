@@ -8,6 +8,7 @@ use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
 
 /// records/425906646's update 1883: a TC's gather point on a tree that is gone; its new
@@ -424,7 +425,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         let p = &mut t.players[1];
         p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()] = 3.0;
         p.objects[2].ai = Some(UnitAi {
-            ai_type: 3,
+            ai_type: UnitAiType::PREDATOR,
             current_order: None,
             current_action: None,
             current_target: -1,
@@ -534,7 +535,7 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
         let p = &mut t.players[1];
         p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()] = 3.0;
         p.objects[2].ai = Some(UnitAi {
-            ai_type: 3,
+            ai_type: UnitAiType::PREDATOR,
             current_order: None,
             current_action: None,
             current_target: -1,

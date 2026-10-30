@@ -7,6 +7,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     ARTIFACT_AI, CIVILIAN, Notify, QueuedOrder, SIEGE_AI, SIEGE_TOWER_AI, Surroundings, UnitAi,
     UnitSide, civilian_may_attack, lion_may_attack,
@@ -123,7 +124,10 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
-        if matches!(self.ai_type, 13 | 15 | SIEGE_AI) {
+        if matches!(
+            self.ai_type,
+            UnitAiType::SOLDIER | UnitAiType::TOWER | SIEGE_AI
+        ) {
             return side.may_attack(target, &self.seeker(at));
         }
         let Some(t) = Self::world_object(target, at, side)? else {
@@ -133,11 +137,19 @@ impl UnitAi {
             // FUN_140c48400, the base's: the boar's, the ranged units' (6, 7), the trade
             // ship's, the transport ship's, the fishing ship's, the artifact's, the siege
             // tower's and the livestock's
-            4 | 6 | 7 | 10 | 11 | 12 | ARTIFACT_AI | SIEGE_TOWER_AI | 19 => true,
-            5 => any || lion_may_attack(at.attack_priority, t.class),
+            UnitAiType::BOAR
+            | UnitAiType::RANGED_6
+            | UnitAiType::RANGED_7
+            | UnitAiType::TRADE
+            | UnitAiType::TRANSPORT
+            | UnitAiType::FISHING
+            | ARTIFACT_AI
+            | SIEGE_TOWER_AI
+            | UnitAiType::LIVESTOCK => true,
+            UnitAiType::LION => any || lion_may_attack(at.attack_priority, t.class),
             CIVILIAN => civilian_may_attack(at.attack_priority, t.class),
             // FUN_140c18b60
-            17 => false,
+            UnitAiType::BUILDING => false,
             _ => {
                 return Err(GenieError::unsupported(
                     "AttackObject's slot 0xa0 of a unit AI type not modelled",

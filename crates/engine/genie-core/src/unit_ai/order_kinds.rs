@@ -8,6 +8,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     AiMove, CIVILIAN, EXPLORE_Z, Effect, FISHING_AI, Gatherable, QueuedOrder, ResourceSearch, Seen,
     Surroundings, UnitAi, UnitCommand, UnitSide, civilian_kind,
@@ -414,7 +415,7 @@ impl UnitAi {
     /// 63; the base's (`FUN_140c4cc00`) none. −1 for none (the byte 0xff).
     pub(super) fn resource_kind(&self, target_type: i32) -> i8 {
         match self.ai_type {
-            CIVILIAN | 17 => civilian_kind(target_type),
+            CIVILIAN | UnitAiType::BUILDING => civilian_kind(target_type),
             FISHING_AI => match ClassId::of_target_type(target_type) {
                 Some(class::CLASS_5 | class::CLASS_31 | class::CLASS_33) => 2,
                 Some(class::CLASS_63) => 4,

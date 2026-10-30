@@ -24,6 +24,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{OrderKind, UnitAi};
 use crate::world::World;
 use genie_diff::Diff;
@@ -290,7 +291,7 @@ pub(crate) struct AttackReads {
     /// The unit AI's order (`+0x3c`, `FUN_140c4cc20`).
     pub(crate) ai_order: AiOrder,
     /// The unit AI's factory type, None without a unit AI.
-    pub(crate) ai_type: Option<u32>,
+    pub(crate) ai_type: Option<UnitAiType>,
     /// `FUN_1412161a0`: a volley is under way (`next_volley`, `+0xa04`, not 0).
     pub(crate) volley_under_way: bool,
     /// The sprites a `MoveTo` of the Attack takes when the Attack gives none: the defaults of the

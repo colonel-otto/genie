@@ -11,6 +11,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     Attacker, BUILDING_AI, CIVILIAN, DEFEND_GROWTH, LION_AI, PREDATOR_AI, PRIEST_AI,
     PRIORITY_3_CLASSES, SIEGE_AI, SOLDIER_AI, Seeker, TOWER_AI, Target,
@@ -167,7 +168,7 @@ pub fn attacks_neutral(me: &Attacker, class: ClassId) -> bool {
 /// the others' the base's (`FUN_140c48410`): always. The predator's and the lion's also take
 /// attack priority 3 to [`PRIORITY_3_CLASSES`].
 #[must_use]
-pub fn type_attacks_neutral(ai_type: u32, attack_priority: u8, class: ClassId) -> bool {
+pub fn type_attacks_neutral(ai_type: UnitAiType, attack_priority: u8, class: ClassId) -> bool {
     match ai_type {
         CIVILIAN | BUILDING_AI => false,
         PREDATOR_AI | LION_AI => {

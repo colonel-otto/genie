@@ -18,6 +18,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::unit_ai::AiMove;
+use crate::unit_ai::UnitAiType;
 use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::scenario_mode;
@@ -88,7 +89,7 @@ impl Unit {
     /// mode (a scenario's) and its `+0x924`.
     pub(crate) fn attacker_of(
         &self,
-        ai_type: u32,
+        ai_type: UnitAiType,
         master: Option<&Master>,
         (player, computer): (PlayerId, bool),
         scenario: bool,

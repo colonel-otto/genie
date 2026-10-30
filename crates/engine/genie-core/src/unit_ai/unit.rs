@@ -11,6 +11,7 @@ use crate::objects::unit::object_master;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
 use crate::players::PlayerId;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::world_view::{OwnerView, UnitView, changed_view};
 use crate::unit_ai::{AfterOrder, Surroundings, UnitAi};
 use crate::world::others::OthersRef;
@@ -403,7 +404,10 @@ impl Unit {
         let at = self.surroundings(c, &view, (master, class), (player, busy, interruptible))?;
         // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
         let world_time = c.w.world_time;
-        let ai_type = self.ai.as_ref().map_or(0, |ai| ai.ai_type);
+        let ai_type = self
+            .ai
+            .as_ref()
+            .map_or(UnitAiType::of_value(0), |ai| ai.ai_type);
         let attacker = self.attacker_of(
             ai_type,
             master,

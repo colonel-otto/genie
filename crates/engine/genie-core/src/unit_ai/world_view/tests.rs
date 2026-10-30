@@ -6,6 +6,7 @@ use crate::objects::masters::master_type;
 use crate::objects::object_list::ObjectList;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::unit_ai::UnitAiType;
 use crate::world::others::OthersRef;
 
 /// Slot 0x228 (`FUN_141084070`): the attacks above 0 add up in their order from +0; none
@@ -60,7 +61,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
     ];
     let spatial = Spatial::new([120, 120]);
     let attacker = crate::unit_ai::Attacker {
-        ai_type: 8,
+        ai_type: UnitAiType::CIVILIAN,
         player: PlayerId::new(1),
         computer: false,
         state: 2,
@@ -166,7 +167,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         ]),
     ];
     let attacker = crate::unit_ai::Attacker {
-        ai_type: 13,
+        ai_type: UnitAiType::SOLDIER,
         player: PlayerId::new(1),
         computer: false,
         state: 2,
@@ -294,7 +295,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     ];
     let spatial = Spatial::new([120, 120]);
     let attacker = crate::unit_ai::Attacker {
-        ai_type: 13,
+        ai_type: UnitAiType::SOLDIER,
         player: PlayerId::new(1),
         computer: false,
         state: 2,

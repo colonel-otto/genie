@@ -12,6 +12,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     ARTIFACT_AI, BOAR_AI, BUILDING_AI, CIVILIAN, FISHING_AI, OrderRecord, SIEGE_AI, SIEGE_TOWER_AI,
     TRADE_AI, TRANSPORT_AI, civilian_may_attack, defend_patrol_range, lion_may_attack,
@@ -144,7 +145,7 @@ pub enum Pick {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Attacker {
     /// The unit AI's type.
-    pub ai_type: u32,
+    pub ai_type: UnitAiType,
     /// The unit's player.
     pub player: PlayerId,
     /// The owner is a computer player (`FUN_141659cf0`).
@@ -285,15 +286,22 @@ pub(super) const TOWER_SPARED: [MasterId; 2] = [MasterId::named(50), MasterId::n
 /// priest's (`FUN_140c19020`: its conversion test, slot 0x1b8) is not modelled here.
 pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, GenieError> {
     match me.ai_type {
-        2 => Ok(matches!(me.top_action, Some(9 | 7))),
-        3 => Ok(predator_may_attack(me.attack_priority, t.class)),
-        BOAR_AI | 6 | 7 | TRADE_AI | TRANSPORT_AI | FISHING_AI | ARTIFACT_AI | SIEGE_TOWER_AI
-        | 0x13 => Ok(true),
-        5 => Ok(lion_may_attack(me.attack_priority, t.class)),
+        UnitAiType::HUNTED => Ok(matches!(me.top_action, Some(9 | 7))),
+        UnitAiType::PREDATOR => Ok(predator_may_attack(me.attack_priority, t.class)),
+        BOAR_AI
+        | UnitAiType::RANGED_6
+        | UnitAiType::RANGED_7
+        | TRADE_AI
+        | TRANSPORT_AI
+        | FISHING_AI
+        | ARTIFACT_AI
+        | SIEGE_TOWER_AI
+        | UnitAiType::LIVESTOCK => Ok(true),
+        UnitAiType::LION => Ok(lion_may_attack(me.attack_priority, t.class)),
         CIVILIAN => Ok(civilian_may_attack(me.attack_priority, t.class)),
         BUILDING_AI => Ok(false),
-        15 => tower_can_attack(me, t),
-        13 => soldier_can_attack(me, seeker, t),
+        UnitAiType::TOWER => tower_can_attack(me, t),
+        UnitAiType::SOLDIER => soldier_can_attack(me, seeker, t),
         SIEGE_AI => siege_can_attack(me, seeker, t, false),
         _ => Err(GenieError::unsupported(
             "an attack check (slot 0xa0) of a unit-AI type not modelled",

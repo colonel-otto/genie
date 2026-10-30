@@ -8,6 +8,7 @@
 use crate::GenieError;
 use crate::map::Offset;
 use crate::movement::MoveStats;
+use crate::unit_ai::UnitAiType;
 use genie_diff::Diff;
 
 mod combat_setters;
@@ -153,7 +154,7 @@ impl Master {
     /// The unit AI type the factory (`FUN_141215a90`) gives a new object of this master, by
     /// the master's id `id` ([`crate::unit_ai::factory_type`]).
     #[must_use]
-    pub const fn unit_ai_type(&self, id: MasterId) -> Option<u32> {
+    pub const fn unit_ai_type(&self, id: MasterId) -> Option<UnitAiType> {
         crate::unit_ai::factory_type(self.class, id, self.volley_missile, self.combat_level)
     }
 }

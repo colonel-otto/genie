@@ -15,6 +15,7 @@ use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 
 /// The object's own update knows its slot: it is taken while it still holds the object, and
 /// the object is found by its id once the list moved or the slot is out of the lists; an
@@ -681,7 +682,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     ));
     unit.body.set_anim_speed(1.0);
     unit.ai = Some(crate::unit_ai::UnitAi {
-        ai_type: 6,
+        ai_type: UnitAiType::RANGED_6,
         current_order: None,
         current_action: None,
         current_target: -1,
@@ -2886,7 +2887,7 @@ fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
         u.body
             .put_mover(Some(crate::gathering::hunt::tests::walker()));
         u.ai = Some(crate::unit_ai::UnitAi {
-            ai_type: 13,
+            ai_type: UnitAiType::SOLDIER,
             current_order: None,
             current_action: None,
             current_target: -1,

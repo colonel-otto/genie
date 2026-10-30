@@ -6,6 +6,7 @@ use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     BOAR_AI, FISHING_AI, HUNTED_SIGHT_GROWTH, LION_AI, LIVESTOCK_AI, PREDATOR_AI, PRIEST_AI,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
@@ -53,7 +54,7 @@ pub const PRIEST_CARED: [i32; 30] = [
 ];
 
 /// The civilian's factory type (`TribeCivilianUnitAIModule`, the villagers').
-pub const CIVILIAN: u32 = 8;
+pub const CIVILIAN: UnitAiType = UnitAiType::CIVILIAN;
 
 /// The classes a civilian cares about (`+0x190`, `TribeCivilianUnitAIModule`'s constructor
 /// `FUN_140c115d0`).
@@ -116,7 +117,7 @@ pub const BUILDING_CARED: [i32; 39] = [
 /// The artifact's factory type (`TribeArtifactUnitAIModule`, class 1's: relic carts, the
 /// monument, the torches, the rock church, the emperor in a litter, the treasure chest); its
 /// slot 0x1e0 (`FUN_140c16de0`) answers it.
-pub const ARTIFACT_AI: u32 = 14;
+pub const ARTIFACT_AI: UnitAiType = UnitAiType::ARTIFACT;
 
 /// The classes an artifact cares about (`+0x190`, `TribeArtifactUnitAIModule`'s constructor
 /// `FUN_140c11340`: the 0x84 bytes it copies from `DAT_142ef90f0` on, then 61).
@@ -161,17 +162,17 @@ pub const FISHING_CARED: [i32; 13] = [3, 22, 20, 2, 21, 5, 31, 33, 53, 52, 27, 3
 ///
 /// Another type, whose list is not held here.
 pub(crate) fn cared_classes(
-    ai_type: u32,
+    ai_type: UnitAiType,
     class: Option<ClassId>,
     computer: bool,
 ) -> Result<&'static [i32], GenieError> {
     match ai_type {
-        2 => Ok(&HUNTED_CARED),
+        UnitAiType::HUNTED => Ok(&HUNTED_CARED),
         PREDATOR_AI => Ok(&PREDATOR_CARED),
         // the boar's (`FUN_140c11720`), the ranged units' (`FUN_140c11f80`, `FUN_140c11f50`) and
         // the livestock's (`FUN_140c11d70`) constructors give none: the base's (`FUN_140c2e080`
         // with 0) alone
-        BOAR_AI | 6 | 7 | LIVESTOCK_AI => Ok(&[]),
+        BOAR_AI | UnitAiType::RANGED_6 | UnitAiType::RANGED_7 | LIVESTOCK_AI => Ok(&[]),
         LION_AI => Ok(&LION_CARED),
         PRIEST_AI => Ok(&PRIEST_CARED),
         CIVILIAN => Ok(&CIVILIAN_CARED),
@@ -203,7 +204,7 @@ pub(crate) fn cared_classes(
 ///
 /// A unit AI type whose classes are not held.
 pub(crate) fn search_area(
-    ai_type: u32,
+    ai_type: UnitAiType,
     class: Option<ClassId>,
     los: f32,
     radius: f32,
@@ -261,7 +262,7 @@ pub const TRANSPORT_CARED: [i32; 10] = [3, 22, 20, 2, 21, 53, 52, 27, 39, 49];
 pub const SIEGE_TOWER_CARED: [i32; 2] = [27, 39];
 
 /// The building unit AI's factory type (`TribeBuildingUnitAIModule`).
-pub(super) const BUILDING_AI: u32 = 17;
+pub(super) const BUILDING_AI: UnitAiType = UnitAiType::BUILDING;
 
 /// The transport ship's factory type (`TribeTransportShipUnitAIModule`).
-pub(super) const TRANSPORT_AI: u32 = 11;
+pub(super) const TRANSPORT_AI: UnitAiType = UnitAiType::TRANSPORT;

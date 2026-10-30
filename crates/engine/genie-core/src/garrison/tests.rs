@@ -21,6 +21,7 @@ use crate::test_ids::player_id;
 use crate::test_ids::unit_list;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::world::Player;
 
 /// An Enter task of work range `range` and class `class` without sprites.
@@ -1505,7 +1506,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
     walker.stats = standing();
     v.body.put_mover(Some(walker));
     v.ai = Some(crate::unit_ai::UnitAi {
-        ai_type: 8,
+        ai_type: UnitAiType::CIVILIAN,
         current_order: None,
         current_action: None,
         current_target: -1,
@@ -1757,7 +1758,7 @@ pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: MasterId, at: [f32;
     let mut v = unit(id, m, 25.0);
     v.place_for_test(Position::new(at[0], at[1], 0.0));
     v.ai = Some(crate::unit_ai::UnitAi {
-        ai_type: 8,
+        ai_type: UnitAiType::CIVILIAN,
         current_order: None,
         current_action: None,
         current_target: -1,
@@ -2291,7 +2292,7 @@ fn coast_world(ship: [f32; 2]) -> World {
     let s = t.object_mut(200).unwrap().1;
     s.body.put_mover(Some(mover));
     s.ai = Some(crate::unit_ai::UnitAi {
-        ai_type: 11,
+        ai_type: UnitAiType::TRANSPORT,
         current_order: None,
         current_action: None,
         current_target: -1,

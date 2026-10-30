@@ -416,6 +416,7 @@ mod stack_tests {
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::opt_master;
+    use crate::unit_ai::UnitAiType;
     use crate::world::{Player, World};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
@@ -655,8 +656,14 @@ mod stack_tests {
             [Some(8768), Some(8768), Some(8770), Some(8768), Some(8768)]
         );
         // the tower's unit AI for the town centre, the building's for the annexes
-        assert_eq!(unit(8768).ai.as_ref().map(|ai| ai.ai_type), Some(15));
-        assert_eq!(unit(8769).ai.as_ref().map(|ai| ai.ai_type), Some(17));
+        assert_eq!(
+            unit(8768).ai.as_ref().map(|ai| ai.ai_type),
+            Some(UnitAiType::TOWER)
+        );
+        assert_eq!(
+            unit(8769).ai.as_ref().map(|ai| ai.ai_type),
+            Some(UnitAiType::BUILDING)
+        );
         // the foundation lacked 0.84 of its 2400 hit points after its last work: the town
         // centre lacks them too
         let lacked = 2400.0 - (2399.0 + (0.01_f32 * 2400.0) / 150.0);

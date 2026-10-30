@@ -20,6 +20,7 @@ use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::unit_ai::UnitAi;
+use crate::unit_ai::UnitAiType;
 use crate::world::{BUILDING_COST, Gate, World};
 
 impl World {
@@ -135,7 +136,7 @@ impl World {
         &mut self,
         player: PlayerId,
         master: MasterId,
-        unit_ai: Result<Option<u32>, GenieError>,
+        unit_ai: Result<Option<UnitAiType>, GenieError>,
         position: Position,
     ) -> Result<(i32, Position), GenieError> {
         let made = self.master(player, master)?.clone();

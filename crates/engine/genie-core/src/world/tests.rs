@@ -50,6 +50,7 @@ use crate::test_ids::unit_list;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::task_finder::world::{
     SideWorld, TaskWorld, task_search, task_target_with, wait_progress,
 };
@@ -78,7 +79,7 @@ fn player(objects: Vec<Option<UnitAi>>) -> Player {
 
 fn building() -> UnitAi {
     UnitAi {
-        ai_type: 17,
+        ai_type: UnitAiType::BUILDING,
         current_order: None,
         current_action: None,
         current_target: -1,
@@ -181,7 +182,7 @@ fn artifacts_of_every_player_start_updating_in_the_second_tick() {
 fn an_unsupported_unit_stops_and_is_recorded() {
     let mut odd = building();
     // a unit-AI type the slice does not model
-    odd.ai_type = 99;
+    odd.ai_type = UnitAiType::of_value(99);
     let mut t = World::new(
         0,
         1,
@@ -1462,7 +1463,7 @@ fn build_world() -> World {
         },
         // a villager's unit AI (type 8) without an order or action
         ai: Some(UnitAi {
-            ai_type: 8,
+            ai_type: UnitAiType::CIVILIAN,
             current_order: None,
             current_action: None,
             current_target: -1,
@@ -1648,7 +1649,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
             ..Lifecycle::default()
         },
         ai: Some(UnitAi {
-            ai_type: 8,
+            ai_type: UnitAiType::CIVILIAN,
             current_order: None,
             current_action: None,
             current_target: -1,
@@ -4694,7 +4695,13 @@ fn a_side_s_own_release_tells_the_unit_ai_as_the_side_returns() {
         (unit.workers, unit.combat) = (1, true);
         let by = unit.releaser(c);
         let view = OwnerView::of(c, None).unwrap();
-        let attacker = unit.attacker_of(13, None, (PlayerId::new(1), false), false, 0);
+        let attacker = unit.attacker_of(
+            UnitAiType::SOLDIER,
+            None,
+            (PlayerId::new(1), false),
+            false,
+            0,
+        );
         let inside = unit.with_side(
             c,
             &view,
@@ -4729,7 +4736,13 @@ fn a_step_s_own_notify_waits_for_the_unit_ai_s_side_to_return() {
         c.notify_own(unit, n)?;
         let at_once = unit.ai.as_ref().map(|ai| ai.notifies.len());
         let view = OwnerView::of(c, None).unwrap();
-        let attacker = unit.attacker_of(13, None, (PlayerId::new(1), false), false, 0);
+        let attacker = unit.attacker_of(
+            UnitAiType::SOLDIER,
+            None,
+            (PlayerId::new(1), false),
+            false,
+            0,
+        );
         let inside = unit.with_side(
             c,
             &view,
@@ -4762,7 +4775,13 @@ fn the_ai_stream_is_the_unit_ai_s_while_its_side_runs() {
     let run = |t: &mut World, world_draws: bool| {
         in_update(t, (PlayerId::new(1), 0), 50, |unit, c| {
             let view = OwnerView::of(c, None).unwrap();
-            let attacker = unit.attacker_of(13, None, (PlayerId::new(1), false), false, 0);
+            let attacker = unit.attacker_of(
+                UnitAiType::SOLDIER,
+                None,
+                (PlayerId::new(1), false),
+                false,
+                0,
+            );
             unit.with_side(
                 c,
                 &view,
@@ -4937,7 +4956,8 @@ fn villager_side<R>(
     use crate::unit_ai::world_view::OwnerView;
     in_update(t, (PlayerId::new(1), 0), 0, |unit, c| {
         let view = OwnerView::of(c, None).unwrap();
-        let attacker = unit.attacker_of(4, None, (PlayerId::new(1), false), false, 0);
+        let attacker =
+            unit.attacker_of(UnitAiType::BOAR, None, (PlayerId::new(1), false), false, 0);
         let answer = unit.with_side(
             c,
             &view,
@@ -5984,7 +6004,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
         position: Position::new(10.0, 10.0, 0.0),
         ..crate::unit_ai::NewObject::default()
     };
-    let first = UnitAi::constructed(17, &new, ai).unwrap();
+    let first = UnitAi::constructed(UnitAiType::BUILDING, &new, ai).unwrap();
     assert_eq!(foundation.ai, Some(first));
     let next = 750 + ai.rand15() % 500;
     by_hand.tick(40);
@@ -10795,7 +10815,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
     let mut tc = town_centre(9149);
     tc.life.master_id = ids::TOWN_CENTRE;
     tc.ai = Some(UnitAi {
-        ai_type: 17,
+        ai_type: UnitAiType::BUILDING,
         current_order: None,
         current_action: None,
         current_target: -1,
@@ -12047,7 +12067,7 @@ fn on_side<R>(
             c,
             unit,
             attacker: crate::unit_ai::Attacker {
-                ai_type: 13,
+                ai_type: UnitAiType::SOLDIER,
                 player: PlayerId::new(1),
                 computer: false,
                 state: 2,
@@ -12182,7 +12202,7 @@ fn scout_attack_on(
     let ai = UnitAi {
         stance: 2,
         current_order: None,
-        ai_type: 13,
+        ai_type: UnitAiType::SOLDIER,
         ..UnitAi::default()
     };
     let every = vec![Masters::new([wolf]), Masters::new([scout])];
@@ -12308,7 +12328,7 @@ fn attack_by(
     let ai = UnitAi {
         stance: 2,
         current_order: None,
-        ai_type: 13,
+        ai_type: UnitAiType::SOLDIER,
         ..UnitAi::default()
     };
     let _ = scout;
@@ -12503,7 +12523,7 @@ fn helper_free_of(owner: PlayerId, helper: Unit, groups: &crate::groups::UnitGro
 #[test]
 fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
     let idle = UnitAi {
-        ai_type: 13,
+        ai_type: UnitAiType::SOLDIER,
         current_order: None,
         current_action: None,
         current_target: -1,
@@ -12539,7 +12559,7 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
 #[test]
 fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
     let idle = UnitAi {
-        ai_type: 13,
+        ai_type: UnitAiType::SOLDIER,
         current_order: None,
         current_action: None,
         current_target: -1,
@@ -12702,7 +12722,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
                         ..Lifecycle::default()
                     },
                     ai: Some(UnitAi {
-                        ai_type: 8,
+                        ai_type: UnitAiType::CIVILIAN,
                         current_order: None,
                         current_action: None,
                         current_target: -1,
@@ -12792,7 +12812,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
                             ..Lifecycle::default()
                         },
                         ai: Some(UnitAi {
-                            ai_type: 8,
+                            ai_type: UnitAiType::CIVILIAN,
                             current_order: None,
                             current_action: None,
                             current_target: -1,
@@ -12930,7 +12950,7 @@ fn reseed_world() -> World {
         },
         actions: ActionList::default().with_gather(Some(gather)),
         ai: Some(UnitAi {
-            ai_type: 8,
+            ai_type: UnitAiType::CIVILIAN,
             current_order: None,
             current_action: None,
             current_target: -1,
@@ -13161,7 +13181,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
                         ..Lifecycle::default()
                     },
                     ai: Some(UnitAi {
-                        ai_type: 8,
+                        ai_type: UnitAiType::CIVILIAN,
                         current_order: Some(OrderKind::Move),
                         current_action: None,
                         current_target: -1,
@@ -16809,7 +16829,7 @@ fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
     use crate::unit_ai::UnitSide;
     use crate::vision::registry::Record;
     let idle = UnitAi {
-        ai_type: 13,
+        ai_type: UnitAiType::SOLDIER,
         current_order: None,
         current_action: None,
         current_target: -1,

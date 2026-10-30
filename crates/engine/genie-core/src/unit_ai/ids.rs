@@ -7,6 +7,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     ARTIFACT_AI, ActionKind, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
@@ -34,11 +35,11 @@ pub(super) enum Retarget {
     Priest,
 }
 
-pub(super) const fn retarget_kind(ai_type: u32) -> Result<Retarget, GenieError> {
+pub(super) const fn retarget_kind(ai_type: UnitAiType) -> Result<Retarget, GenieError> {
     match ai_type {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
-        8 => Ok(Retarget::Civilian),
-        19 => Ok(Retarget::Never),
+        UnitAiType::CIVILIAN => Ok(Retarget::Civilian),
+        UnitAiType::LIVESTOCK => Ok(Retarget::Never),
         ARTIFACT_AI => Ok(Retarget::Artifact),
         PRIEST_AI => Ok(Retarget::Priest),
         // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), lion (5,
@@ -47,9 +48,17 @@ pub(super) const fn retarget_kind(ai_type: u32) -> Result<Retarget, GenieError> 
         // FUN_140c20db0), tower (15, the base's slot 72 FUN_140c564c0), building (17, slot 72
         // 0x140c1e600, which does nothing), siege unit (0x10, slot 72 FUN_140c206b0), siege tower
         // (0x12, slot 72 FUN_140c20690)
-        2 | 4 | 5 | TRADE_AI | 11 | FISHING_AI | 13 | 15 | SIEGE_AI | 17 | SIEGE_TOWER_AI => {
-            Ok(Retarget::Base)
-        }
+        UnitAiType::HUNTED
+        | UnitAiType::BOAR
+        | UnitAiType::LION
+        | TRADE_AI
+        | UnitAiType::TRANSPORT
+        | FISHING_AI
+        | UnitAiType::SOLDIER
+        | UnitAiType::TOWER
+        | SIEGE_AI
+        | UnitAiType::BUILDING
+        | SIEGE_TOWER_AI => Ok(Retarget::Base),
         _ => Err(GenieError::unsupported("unit-AI type not modelled")),
     }
 }
@@ -201,10 +210,10 @@ pub const fn factory_type(
     master: MasterId,
     missile: Option<MasterId>,
     combat_level: u8,
-) -> Option<u32> {
+) -> Option<UnitAiType> {
     match master {
-        ids::ID_1105 => return Some(0x12),
-        ids::ID_1744 | ids::ID_1746 => return Some(0x10),
+        ids::ID_1105 => return Some(UnitAiType::SIEGE_TOWER),
+        ids::ID_1744 | ids::ID_1746 => return Some(UnitAiType::SIEGE),
         _ => {}
     }
     Some(match class {
@@ -224,12 +233,12 @@ pub const fn factory_type(
         | class::RELIC
         | class::CLASS_48
         | class::CLASS_63 => return None,
-        class::ARTIFACT => 0xe,
-        class::TRADE_BOAT | class::TRADE_CART => 0xa,
+        class::ARTIFACT => UnitAiType::ARTIFACT,
+        class::TRADE_BOAT | class::TRADE_CART => UnitAiType::TRADE,
         class::BUILDING | class::WALL | class::GATE | class::FARM | class::CLASS_60
             if missile.is_none() =>
         {
-            17
+            UnitAiType::BUILDING
         }
         class::BUILDING
         | class::WALL
@@ -238,15 +247,15 @@ pub const fn factory_type(
         | class::TOWER
         | class::CLASS_60 => TOWER_AI,
         class::VILLAGER => CIVILIAN,
-        class::PREY | class::KING => 2,
+        class::PREY | class::KING => UnitAiType::HUNTED,
         // FUN_140fde4f0: the master's class (`+0x410`, 10 in this case) and its combat level 1
         class::PREDATOR if combat_level == 1 => BOAR_AI,
-        class::PREDATOR => 5,
-        class::SIEGE | class::CLASS_51 | class::CLASS_54 | class::CLASS_55 => 0x10,
-        class::MONK | class::CLASS_43 | class::CLASS_53 => 9,
-        class::TRANSPORT => 0xb,
-        class::FISHING_SHIP => 0xc,
-        class::CLASS_29 | class::LIVESTOCK => 0x13,
+        class::PREDATOR => UnitAiType::LION,
+        class::SIEGE | class::CLASS_51 | class::CLASS_54 | class::CLASS_55 => UnitAiType::SIEGE,
+        class::MONK | class::CLASS_43 | class::CLASS_53 => UnitAiType::PRIEST,
+        class::TRANSPORT => UnitAiType::TRANSPORT,
+        class::FISHING_SHIP => UnitAiType::FISHING,
+        class::CLASS_29 | class::LIVESTOCK => UnitAiType::LIVESTOCK,
         _ => SOLDIER_AI,
     })
 }

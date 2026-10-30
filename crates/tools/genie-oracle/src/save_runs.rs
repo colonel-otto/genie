@@ -366,7 +366,11 @@ pub(super) fn hunted_origins(turns: &mut World, start: &Header) {
     for (p, player) in turns.players.iter_mut().enumerate() {
         let masters = turns.masters.get(p);
         for unit in player.objects.iter_mut().chain(player.sleeping.iter_mut()) {
-            let Some(ai) = unit.ai.as_mut().filter(|ai| ai.ai_type == 2) else {
+            let Some(ai) = unit
+                .ai
+                .as_mut()
+                .filter(|ai| ai.ai_type == genie_core::unit_ai::UnitAiType::HUNTED)
+            else {
                 continue;
             };
             let Some(&origin) = places.get(&unit.id.get()) else {

@@ -5,6 +5,7 @@ use crate::math::rng::Well512;
 use crate::objects::masters::master_type::MOVING;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, ARTIFACT_AI,
     ARTIFACT_CARED, DAMAGED, Effect, FISHING_AI, GO_ON, IN_THE_WAY, MISSILE_WARNING, Memory,
@@ -25,18 +26,20 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {
         match self.ai_type {
-            2 => self.hunted_notify(n, time, at, computer, ai_rng, side),
-            4 => self.boar_notify(n, time, at, computer, ai_rng, side),
-            5 => self.lion_notify(n, time, at, computer, ai_rng, side),
-            8 => self.villager_notify(n, time, at, computer, ai_rng, side),
-            11 | SIEGE_TOWER_AI => self.transport_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::HUNTED => self.hunted_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::BOAR => self.boar_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::LION => self.lion_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::CIVILIAN => self.villager_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::TRANSPORT | SIEGE_TOWER_AI => {
+                self.transport_notify(n, time, at, computer, ai_rng, side)
+            }
             TRADE_AI => self.trader_notify(n, time, at, computer, ai_rng, side),
             FISHING_AI => self.fishing_notify(n, time, at, computer, ai_rng, side),
             SIEGE_AI => self.siege_notify(n, time, at, computer, ai_rng, side),
-            13 => self.soldier_notify(n, time, at, computer, ai_rng, side),
-            15 => self.tower_notify(n, time, at, computer, ai_rng, side),
-            17 => self.building_notify(n, time, at, computer, ai_rng, side),
-            19 => self.livestock_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::SOLDIER => self.soldier_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::TOWER => self.tower_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::BUILDING => self.building_notify(n, time, at, computer, ai_rng, side),
+            UnitAiType::LIVESTOCK => self.livestock_notify(n, time, at, computer, ai_rng, side),
             ARTIFACT_AI => self.artifact_notify(n, time, at, computer, ai_rng, side),
             _ => Err(GenieError::unsupported(
                 "the notify handler of a unit-AI type not modelled",

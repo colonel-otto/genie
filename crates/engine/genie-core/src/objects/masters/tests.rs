@@ -1196,24 +1196,24 @@ fn a_master_s_unit_ai_type_reads_its_class_volley_missile_and_combat_level() {
     // a building without a volley missile, with one (the tower's), and a boar's combat level
     assert_eq!(
         master(class::BUILDING, None, 0).unit_ai_type(ids::HOUSE),
-        Some(17)
+        Some(UnitAiType::BUILDING)
     );
     assert_eq!(
         master(class::BUILDING, Some(master_id(5)), 0).unit_ai_type(master_id(79)),
-        Some(0xf)
+        Some(UnitAiType::TOWER)
     );
     assert_eq!(
         master(class::PREDATOR, None, 1).unit_ai_type(master_id(48)),
-        Some(4)
+        Some(UnitAiType::BOAR)
     );
     assert_eq!(
         master(class::PREDATOR, None, 0).unit_ai_type(master_id(126)),
-        Some(5)
+        Some(UnitAiType::LION)
     );
     // the factory's own ids first
     assert_eq!(
         master(class::BUILDING, None, 0).unit_ai_type(ids::ID_1105),
-        Some(0x12)
+        Some(UnitAiType::SIEGE_TOWER)
     );
 }
 

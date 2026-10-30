@@ -99,7 +99,7 @@ pub(super) fn unit_ai(
         return Ok(None);
     };
     Ok(Some(genie_core::unit_ai::UnitAi {
-        ai_type: combat.need_unit_ai as u32,
+        ai_type: genie_core::unit_ai::UnitAiType::of_value(combat.need_unit_ai as u32),
         current_order: OrderKind::of_field(ai.current_order_value)?,
         order_priority: ai.current_order_priority_value,
         current_action: ActionKind::of_field(ai.current_action_value)?,
@@ -153,7 +153,7 @@ pub(super) fn unit_ai(
             .collect::<Result<_, _>>()?,
         // the load's factory capacity, doubled for what it reads
         notify_capacity: genie_core::unit_ai::notify_capacity(
-            combat.need_unit_ai as u32,
+            genie_core::unit_ai::UnitAiType::of_value(combat.need_unit_ai as u32),
             ai.temp_notify.len(),
         ),
         processing: false,

@@ -683,6 +683,7 @@ mod tests {
     use crate::players::PlayerId;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::unit_ai::UnitAiType;
     use crate::vision::registry::UnitUpdate;
     use crate::world::Player;
 
@@ -865,7 +866,7 @@ mod tests {
     /// but no neutral (its slot 0xa8 never attacks one); a soldier the near ones only.
     #[test]
     fn a_member_s_search_takes_its_type_s_classes_radius_and_neutral_test() {
-        let world = |ai_type: u32| {
+        let world = |ai_type: UnitAiType| {
             let mut t = searched_world();
             let mut far = t.players[2].objects[0].clone();
             far.id = object_id(22);
@@ -889,7 +890,7 @@ mod tests {
             t.players[1].objects[0].ai.as_mut().unwrap().ai_type = ai_type;
             t
         };
-        let found = |ai_type: u32| {
+        let found = |ai_type: UnitAiType| {
             let mut t = world(ai_type);
             let mut objects = Vec::new();
             t.member_objects(10, &mut objects).unwrap();
@@ -898,7 +899,7 @@ mod tests {
                 t.players[1].objects[0].ai.as_ref().unwrap().alert_mode,
             )
         };
-        assert_eq!(found(11), (vec![], false));
+        assert_eq!(found(UnitAiType::TRANSPORT), (vec![], false));
         assert_eq!(found(crate::unit_ai::CIVILIAN), (vec![20, 22], true));
         assert_eq!(found(crate::unit_ai::SOLDIER_AI), (vec![20, 30], true));
     }

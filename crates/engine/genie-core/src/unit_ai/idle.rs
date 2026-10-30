@@ -8,6 +8,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     ARTIFACT_AI, AttackAsk, BOAR_AI, CIVILIAN, ENEMY_SIGHTING_GAP, FISHING_AI, FISHING_CARED,
     Found, Memory, Pick, SHIP_EVADE_REACH, SIEGE_AI, SIEGE_CARED, SIEGE_TOWER_AI, SOLDIER_AI,
@@ -34,12 +35,12 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
         match self.ai_type {
-            2 => self.hunted_idle(at, computer, ai, side),
+            UnitAiType::HUNTED => self.hunted_idle(at, computer, ai, side),
             BOAR_AI => Ok(self.boar_idle(at, ai, side)?),
-            5 => self.lion_idle(at, ai, side),
+            UnitAiType::LION => self.lion_idle(at, ai, side),
             // the civilian's (FUN_140c1e610), the transport ship's (0x140c21d20) and the siege
             // tower's (FUN_140c20690): the cap, then 5
-            CIVILIAN | 11 | SIEGE_TOWER_AI => {
+            CIVILIAN | UnitAiType::TRANSPORT | SIEGE_TOWER_AI => {
                 self.cap_human_order(side, ai)?;
                 Ok(false)
             }
@@ -48,7 +49,7 @@ impl UnitAi {
             SIEGE_AI => self.siege_idle(at, computer, ai, side),
             TOWER_AI => self.tower_idle(at, computer, side, ai),
             ARTIFACT_AI => self.artifact_idle(at, side, ai),
-            17 | 19 => Ok(false),
+            UnitAiType::BUILDING | UnitAiType::LIVESTOCK => Ok(false),
             _ => Err(GenieError::unsupported(
                 "processIdle (slot 0x240) of a unit-AI type not modelled",
             )),

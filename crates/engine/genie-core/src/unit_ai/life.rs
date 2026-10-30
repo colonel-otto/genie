@@ -7,6 +7,7 @@ use crate::movement::PathAsk;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, AiMove, BOAR_AI, COMPUTER_SOLDIER_IDLE_TIMEOUT,
     DESIRED_DISTANCE, Effect, Found, HUMAN_ORDER_CAP, HUNTED_IDLE_TIMEOUT, Home, Hunted,
@@ -60,13 +61,13 @@ impl UnitAi {
     /// [`SOLDIER_CARED`]: crate::unit_ai::SOLDIER_CARED
     /// [`TOWER_CARED`]: crate::unit_ai::TOWER_CARED
     #[must_use]
-    pub fn constructed(ai_type: u32, new: &NewObject, ai: &mut Well512) -> Option<Self> {
-        if !matches!(ai_type, 2..=0x13) {
+    pub fn constructed(ai_type: UnitAiType, new: &NewObject, ai: &mut Well512) -> Option<Self> {
+        if !matches!(ai_type.get(), 2..=0x13) {
             return None;
         }
         let mut made = Self::base_constructed(ai_type, new.position, ai);
         match ai_type {
-            2 => {
+            UnitAiType::HUNTED => {
                 made.set_idle_timeout(HUNTED_IDLE_TIMEOUT, ai);
                 made.hunted = Some(Hunted {
                     origin: new.position,
@@ -84,13 +85,13 @@ impl UnitAi {
                     go_home: false,
                 });
             }
-            5 => {
+            UnitAiType::LION => {
                 made.stance = 0;
                 made.set_idle_timeout(LION_IDLE_TIMEOUT, ai);
             }
             // the base's stance 3
-            6 | 7 => {}
-            9 => {
+            UnitAiType::RANGED_6 | UnitAiType::RANGED_7 => {}
+            UnitAiType::PRIEST => {
                 made.stance = 1;
                 made.set_idle_timeout(PRIEST_IDLE_TIMEOUT, ai);
             }
@@ -111,11 +112,11 @@ impl UnitAi {
                 made.stance = 0;
                 made.set_idle_timeout(TOWER_IDLE_TIMEOUT, ai);
             }
-            0x10 => {
+            UnitAiType::SIEGE => {
                 made.stance = siege_stance(new);
                 made.set_idle_timeout(SIEGE_IDLE_TIMEOUT, ai);
             }
-            0x13 => made.stance = 1,
+            UnitAiType::LIVESTOCK => made.stance = 1,
             // 3, 8, 0xa, 0xb, 0xc, 0x11 and 0x12
             _ => made.stance = 0,
         }
@@ -125,7 +126,11 @@ impl UnitAi {
     /// `UnitAIModule`'s constructor (`0x140c2e080`): its three draws, the base's fields, the
     /// stance (`+0x1a9`) 3 of the two bytes at `+0x1a8` (0x300) and the state position the
     /// object's place.
-    pub(super) fn base_constructed(ai_type: u32, position: Position, ai: &mut Well512) -> Self {
+    pub(super) fn base_constructed(
+        ai_type: UnitAiType,
+        position: Position,
+        ai: &mut Well512,
+    ) -> Self {
         let last_retarget_time = ai.rand15() % 500;
         let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
         let retarget_timer = 750 + ai.rand15() % 500;
@@ -341,7 +346,7 @@ impl UnitAi {
     /// `UpdateAdjustedIdleTimeout` (slot 0x1a8): the base draws around the idle timeout
     /// (`0x140c41e00`); a deer's or fox's (factory type 2, `FUN_140c17170`) is 5/4 of it.
     pub(super) fn update_adjusted_idle_timeout(&mut self, ai: &mut Well512) {
-        self.adjusted_idle_timeout = if self.ai_type == 2 {
+        self.adjusted_idle_timeout = if self.ai_type == UnitAiType::HUNTED {
             self.idle_timeout.wrapping_mul(5) >> 2
         } else {
             adjusted_idle_timeout(self.idle_timeout, ai)

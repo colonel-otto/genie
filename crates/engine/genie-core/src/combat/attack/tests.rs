@@ -976,7 +976,7 @@ fn an_attack_on_a_target_out_of_sight_fails() {
         a
     };
     let mut a = own_attack(77, MOVE, 1.0);
-    let got = run(&mut a, class::CLASS_6, Some(13), true);
+    let got = run(&mut a, class::CLASS_6, Some(UnitAiType::SOLDIER), true);
     assert_eq!(got, (Ok(3), true, true, false, failed));
     assert_eq!((a.target, a.state), (-1, FAILED));
     let mut a = own_attack(77, MOVE, 1.0);
@@ -992,11 +992,15 @@ fn an_attack_on_a_target_out_of_sight_fails() {
         ..own_attack(77, MOVE, 1.0)
     };
     assert_eq!(
-        run(&mut a, class::CLASS_6, Some(13), true),
+        run(&mut a, class::CLASS_6, Some(UnitAiType::SOLDIER), true),
         (Ok(3), false, false, false, vec![])
     );
     let mut a = own_attack(77, MOVE, 1.0);
-    assert!(run(&mut a, class::PREDATOR, Some(13), true).0.is_err());
+    assert!(
+        run(&mut a, class::PREDATOR, Some(UnitAiType::SOLDIER), true)
+            .0
+            .is_err()
+    );
 }
 
 /// readyToAttack on a player's target out of sight: a unit of stance 0 with speed that may

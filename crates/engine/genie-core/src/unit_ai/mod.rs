@@ -18,6 +18,7 @@
 mod action_kind;
 mod actions;
 pub mod ai_kinds;
+mod ai_type;
 mod attack_orders;
 mod attack_pick;
 mod attack_rules;
@@ -45,6 +46,7 @@ mod update;
 pub(crate) mod world_view;
 
 pub use self::action_kind::ActionKind;
+pub use self::ai_type::UnitAiType;
 pub(crate) use self::attack_pick::spares_friends;
 pub use self::attack_pick::{
     AttackAsk, AttackPicker, Attacker, Memory, NoAttack, Pick, Search, Seeker, Target, can_attack,
@@ -216,31 +218,31 @@ const DEAD: u32 = 4;
 /// "`ProcessIdle` produced an action."
 const PRODUCED: u32 = 0xd;
 /// The boar's unit-AI type (`TribePreditorUnitAIModule`).
-pub(crate) const BOAR_AI: u32 = 4;
+pub(crate) const BOAR_AI: UnitAiType = UnitAiType::BOAR;
 /// The soldier's factory type (`TribeSoldierUnitAIModule`).
-pub(crate) const SOLDIER_AI: u32 = 13;
+pub(crate) const SOLDIER_AI: UnitAiType = UnitAiType::SOLDIER;
 /// The tower's factory type (`TribeTowerUnitAIModule`, the town centre's too).
-const TOWER_AI: u32 = 15;
+const TOWER_AI: UnitAiType = UnitAiType::TOWER;
 /// The siege tower's factory type (`TribeSiegeTowerUnitAIModule`, master 1105's).
-const SIEGE_TOWER_AI: u32 = 0x12;
+const SIEGE_TOWER_AI: UnitAiType = UnitAiType::SIEGE_TOWER;
 /// The priest's factory type (`TribePriestUnitAIModule`: classes 18, 43 and 53), whose slot 72,
 /// notify handler and attack checks (its conversions and heals, `FUN_140c1feb0`,
 /// `FUN_140c26f60`, `FUN_140c19020`, `FUN_140c1af00`) are not modelled.
-pub(crate) const PRIEST_AI: u32 = 9;
+pub(crate) const PRIEST_AI: UnitAiType = UnitAiType::PRIEST;
 /// The siege unit's factory type (`TribeSiegeUnitAIModule`: classes 13, 51, 54, 55, masters 1744
 /// and 1746).
-const SIEGE_AI: u32 = 0x10;
+const SIEGE_AI: UnitAiType = UnitAiType::SIEGE;
 /// The predator's factory type (`TribePreditorUnitAIModule`, `FUN_140c11da0`).
-const PREDATOR_AI: u32 = 3;
+const PREDATOR_AI: UnitAiType = UnitAiType::PREDATOR;
 /// The lion's factory type (`TribeLionUnitAIModule`, `FUN_140c11bd0`).
-pub(crate) const LION_AI: u32 = 5;
+pub(crate) const LION_AI: UnitAiType = UnitAiType::LION;
 /// The livestock's factory type (`TribeLivestockUnitAIModule`, `FUN_140c11d70`).
-const LIVESTOCK_AI: u32 = 0x13;
+const LIVESTOCK_AI: UnitAiType = UnitAiType::LIVESTOCK;
 /// The trade ship's and the trade cart's factory type (`TribeTradeShipUnitAIModule`, classes 2
 /// and 19).
-const TRADE_AI: u32 = 0xa;
+const TRADE_AI: UnitAiType = UnitAiType::TRADE;
 /// The fishing ship's factory type (`TribeFishingShipUnitAIModule`, class 21).
-const FISHING_AI: u32 = 0xc;
+const FISHING_AI: UnitAiType = UnitAiType::FISHING;
 /// A computer player's ship evades the object its idle check found by its speed times this
 /// (`FUN_140c21930`, `FUN_140c1eab0`: `DAT_142ec9eb8`).
 const SHIP_EVADE_REACH: f32 = crate::math::image::unit_ai::SHIP_EVADE_REACH;
@@ -258,8 +260,12 @@ const ENEMY_SIGHTING_GAP: f32 = crate::math::image::unit_ai::ENEMY_SIGHTING_GAP;
 /// factory's (`FUN_141215560`: 5 for the artifact's and the livestock's, types 14 and 19; 10
 /// for the others), doubled until they fit.
 #[must_use]
-pub const fn notify_capacity(ai_type: u32, count: usize) -> usize {
-    let mut c = if matches!(ai_type, 14 | 19) { 5 } else { 10 };
+pub const fn notify_capacity(ai_type: UnitAiType, count: usize) -> usize {
+    let mut c = if matches!(ai_type, UnitAiType::ARTIFACT | UnitAiType::LIVESTOCK) {
+        5
+    } else {
+        10
+    };
     while c < count {
         c *= 2;
     }
@@ -443,7 +449,7 @@ pub struct PatrolPath {
 #[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct UnitAi {
     /// The factory's type (`has_ai` in the save), which picks the class.
-    pub ai_type: u32,
+    pub ai_type: UnitAiType,
     /// `+0x3c`, −1 for none.
     pub current_order: Option<OrderKind>,
     /// `+0x40`, the current order's priority (−1 for none): a queued order sets it.
