@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
@@ -150,7 +151,7 @@ impl Unit {
     pub(crate) fn run_effect(
         &mut self,
         e: Effect,
-        class: Option<i16>,
+        class: Option<ClassId>,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         match e {

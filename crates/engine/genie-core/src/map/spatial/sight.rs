@@ -3,7 +3,9 @@
 
 use crate::GenieError;
 use crate::map::spatial::{BLOCKED, Spatial};
-use crate::objects::masters::{class, master_type::COMBAT};
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
+use crate::objects::masters::master_type::COMBAT;
 use crate::vision::visibility::Visibility;
 impl Spatial {
     /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects on
@@ -22,7 +24,24 @@ impl Spatial {
         me: i32,
         players: &[crate::world::player::Player],
     ) -> Result<Option<usize>, GenieError> {
-        const KEPT: [i16; 16] = [1, 60, 42, 11, 14, 30, 58, 3, 52, 27, 39, 49, 37, 9, 10, 38];
+        const KEPT: [ClassId; 16] = [
+            class::ARTIFACT,
+            class::CLASS_60,
+            class::RELIC,
+            class::CLASS_11,
+            class::CLASS_14,
+            class::CLASS_30,
+            class::LIVESTOCK,
+            class::BUILDING,
+            class::TOWER,
+            class::WALL,
+            class::GATE,
+            class::FARM,
+            class::CLASS_37,
+            class::PREY,
+            class::PREDATOR,
+            class::CLASS_38,
+        ];
         // a world without the players' sight (the unit tests') holds nobody near
         let Some(v) = self.sight.as_ref() else {
             return Ok(None);
@@ -379,7 +398,7 @@ impl Spatial {
         &mut self,
         id: i32,
         radius: [f32; 2],
-        class: i16,
+        class: ClassId,
         master: i16,
         los: f32,
     ) -> Result<(), GenieError> {

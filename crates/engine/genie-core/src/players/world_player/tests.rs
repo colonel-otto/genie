@@ -1,4 +1,6 @@
 use super::*;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::{BuildingMaster, Master, Masters};
 use crate::objects::unit::Unit;
@@ -48,7 +50,7 @@ fn world() -> World {
 }
 
 /// A master of `kind` and `class`, `id`.
-fn master(id: i16, kind: u8, class: i16) -> Master {
+fn master(id: i16, kind: u8, class: ClassId) -> Master {
     Master {
         id,
         kind,
@@ -169,7 +171,10 @@ fn the_trickles_give_a_sixtieth_of_their_rate_each_second() {
 #[test]
 fn a_mill_s_livestock_makes_food() {
     let mut t = world();
-    let masters = Masters::new([master(68, 80, 3), master(5, 70, 58)]);
+    let masters = Masters::new([
+        master(68, 80, class::BUILDING),
+        master(5, 70, class::LIVESTOCK),
+    ]);
     t.masters = vec![masters.clone(), masters.clone(), masters.clone(), masters];
     let mut mill = object(10, 68, 2);
     mill.livestock_summation = 100.0;
@@ -179,7 +184,7 @@ fn a_mill_s_livestock_makes_food() {
     sheep.livestock_summation = 1000.0;
     let key = Key {
         master: 68,
-        class: 3,
+        class: Some(class::BUILDING),
         pending: false,
         military: false,
     };
@@ -234,20 +239,20 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
 #[test]
 fn a_player_without_an_object_that_keeps_it_loses() {
     let masters = Masters::new([
-        master(83, 70, 4),
-        master(117, 80, 27),
-        master(50, 80, 49),
-        master(109, 80, 3),
-        master(12, 80, 3),
-        master(331, 70, 51),
-        master(276, 80, 3),
+        master(83, 70, class::VILLAGER),
+        master(117, 80, class::WALL),
+        master(50, 80, class::FARM),
+        master(109, 80, class::BUILDING),
+        master(12, 80, class::BUILDING),
+        master(331, 70, class::CLASS_51),
+        master(276, 80, class::BUILDING),
         Master {
             storage: vec![(11, 1.0, 0x20), (-1, 0.0, 0), (-1, 0.0, 0)],
-            ..master(900, 70, 11)
+            ..master(900, 70, class::CLASS_11)
         },
         Master {
             trained_at: vec![109],
-            ..master(84, 70, 4)
+            ..master(84, 70, class::VILLAGER)
         },
     ]);
     let keeps = |objects: Vec<Unit>, game_mode: i32| {
@@ -339,7 +344,7 @@ fn a_running_victory_timer_keeps_the_player() {
 fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
     let key = |master| Key {
         master,
-        class: 3,
+        class: Some(class::BUILDING),
         pending: false,
         military: false,
     };
@@ -358,10 +363,13 @@ fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
 /// without one loses. Regicide: a player without a king loses though its units keep it.
 #[test]
 fn sudden_death_and_regicide_end_a_player_their_ways() {
-    let masters = Masters::new([master(83, 70, 4), master(109, 80, 3)]);
+    let masters = Masters::new([
+        master(83, 70, class::VILLAGER),
+        master(109, 80, class::BUILDING),
+    ]);
     let tc_key = Key {
         master: 109,
-        class: 3,
+        class: Some(class::BUILDING),
         pending: false,
         military: false,
     };
@@ -393,7 +401,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
         7,
         Key {
             master: KING,
-            class: 59,
+            class: Some(class::KING),
             pending: false,
             military: true,
         },
@@ -416,30 +424,30 @@ fn the_trainable_count_takes_the_had_masters_trained_at_the_building() {
     let masters = Masters::new([
         Master {
             trained_at: vec![109],
-            ..master(83, 70, 4)
+            ..master(83, 70, class::VILLAGER)
         },
         Master {
             trained_at: vec![109],
             available: false,
-            ..master(84, 70, 4)
+            ..master(84, 70, class::VILLAGER)
         },
         Master {
             trained_at: vec![109],
             disabled: true,
-            ..master(85, 70, 4)
+            ..master(85, 70, class::VILLAGER)
         },
         Master {
             trained_at: vec![109],
-            ..master(86, 60, 4)
+            ..master(86, 60, class::VILLAGER)
         },
         Master {
             trained_at: vec![12],
-            ..master(74, 70, 6)
+            ..master(74, 70, class::CLASS_6)
         },
-        master(109, 80, 3),
+        master(109, 80, class::BUILDING),
         Master {
             building: Some(site),
-            ..master(621, 80, 3)
+            ..master(621, 80, class::BUILDING)
         },
     ]);
     t.masters = vec![masters.clone(); 4];
@@ -541,14 +549,14 @@ fn the_upgradable_count_follows_the_tech_tree() {
         Master {
             trained_at: vec![12],
             available: false,
-            ..master(74, 70, 6)
+            ..master(74, 70, class::CLASS_6)
         },
         Master {
             trained_at: vec![12],
             available: false,
-            ..master(75, 70, 6)
+            ..master(75, 70, class::CLASS_6)
         },
-        master(12, 80, 3),
+        master(12, 80, class::BUILDING),
     ]);
     t.masters = vec![masters; 4];
     t.players[1].civ = 0;

@@ -119,7 +119,7 @@ impl World {
             .masters
             .first()
             .and_then(|m| m.get(g.target_master))
-            .map_or(-1, |m| m.class);
+            .map(|m| m.class);
         let los = self.players[p].objects[new]
             .master(&self.masters, p)?
             .line_of_sight;
@@ -131,7 +131,7 @@ impl World {
         let closest = |list: &[Unit]| -> Result<Option<i32>, GenieError> {
             let mut best: Option<(&Unit, f32)> = None;
             for u in list {
-                if u.master(&self.masters, 0)?.class != class {
+                if Some(u.master(&self.masters, 0)?.class) != class {
                     continue;
                 }
                 let (dx, dy) = (x - u.position()[0], y - u.position()[1]);
@@ -154,7 +154,10 @@ impl World {
         if let Some(id) = closest(&gaia.objects)? {
             return Ok(Some(id));
         }
-        if matches!(class, 5 | 29 | 33) {
+        if matches!(
+            class,
+            Some(class::CLASS_5 | class::CLASS_29 | class::CLASS_33)
+        ) {
             return Err(GenieError::unsupported(
                 "a gather point's lost target of class 5, 29 or 33 (the unit AI's slot 0x80)",
             ));

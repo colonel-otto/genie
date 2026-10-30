@@ -385,6 +385,7 @@ impl Pathing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::class;
 
     /// `FUN_14165d6f0`: no budget once the plans reached a set attempt cap, unless the walker
     /// waited more often than a set delay cap allows; caps of -1 never stop a plan. A plan counts
@@ -483,7 +484,7 @@ mod tests {
         Placed {
             position: [x, y, 0.0],
             radius: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             player: 2,
             master: 118,
             obstruction_type: 5,

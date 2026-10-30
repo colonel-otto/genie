@@ -150,7 +150,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
         kind: unit.unit_type,
         copy_id: unit.copy_id,
         base_id: base_id(unit.base_id),
-        class: unit.class,
+        class: genie_core::objects::masters::ClassId::of_master(unit.class),
         terrain_restriction: unit.terrain_restriction,
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
         radius: [unit.collision_size[0], unit.collision_size[1]],
@@ -467,7 +467,7 @@ pub enum ReadError {
     /// The data file could not be opened or read.
     Dat(genie_dat::de::Error),
     /// The drop-site table beside it is out of shape.
-    DropSites(serde_json::Error),
+    DropSites(crate::DropSitesError),
     /// The linked technologies beside it are out of shape.
     LinkedTechs(serde_json::Error),
     /// The unit lines beside it are out of shape.

@@ -115,7 +115,7 @@ impl World {
             "a Build's foundation the slice does not hold",
         ))?;
         let tm = t.master(&self.masters, tp)?;
-        let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class));
+        let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class.get()));
         let t_state = Some(t.life.state);
         let unit = &self.players.live(player, idx)?;
         let builder = unit.master(&self.masters, player)?;
@@ -175,7 +175,7 @@ impl World {
         if crate::construction::repair::SHIPS.contains(&tm.class) {
             return Err(crate::construction::repair::SHIP_REPAIR);
         }
-        let class = i32::from(tm.class);
+        let class = i32::from(tm.class.get());
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         let move_reads = crate::movement::move_to::MoveToReads::of(unit, master, &self.graphics);
@@ -319,7 +319,7 @@ impl World {
         let (tp, t) = self.object(target).ok_or(REPAIR_TARGET_GONE)?;
         let tm = t.master(&self.masters, tp)?;
         let (class, ship) = (
-            i32::from(tm.class),
+            i32::from(tm.class.get()),
             crate::construction::repair::SHIPS.contains(&tm.class),
         );
         let computer = self.players.player(player)?.computer;
@@ -418,7 +418,7 @@ impl World {
             ));
         }
         let tm = t.master(&self.masters, tp)?;
-        let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class));
+        let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class.get()));
         let t_state = Some(t.life.state);
         let unit = &self.players.live(player, idx)?;
         let old = unit

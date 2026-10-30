@@ -105,7 +105,7 @@ impl Masters {
                     return Ok(Some((candidate.id, task)));
                 };
                 if by_class.is_none()
-                    && task.object_group == target.master.class
+                    && task.object_group == target.master.class.get()
                     && 0.0 < task.work_val1
                 {
                     by_class = Some((candidate.id, task));

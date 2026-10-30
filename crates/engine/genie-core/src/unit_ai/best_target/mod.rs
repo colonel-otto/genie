@@ -10,40 +10,55 @@ use self::statistics::EPSILON;
 pub use self::statistics::{Candidate, Entry, STATISTICS, Statistics, order_weights};
 use self::world_view::ORDER_WINDOW;
 pub use self::world_view::{Ask, Battlefield, Searcher, Thing};
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 
 /// `FUN_140c4c8e0`: the attack category of an object of master `master` and class `class`, by
 /// which `bestUnitToAttack` weighs and narrows its choice; −1 for a class it does not rank.
 #[must_use]
-pub const fn category(master: i16, class: i16) -> i32 {
+pub const fn category(master: i16, class: ClassId) -> i32 {
     match class {
-        0 | 23 | 26 | 36 | 44 => {
+        class::CLASS_0 | class::CLASS_23 | class::CLASS_26 | class::CLASS_36 | class::CLASS_44 => {
             if matches!(master, 6 | 7) {
                 4
             } else {
                 3
             }
         }
-        2 | 21 => 11,
-        3 | 27 | 39 | 49 | 51 | 52 => 0,
-        4 | 19 | 58 | 59 => 7,
-        6 | 12 | 24 | 35 | 45 | 47 | 50 | 56 | 57 => {
+        class::TRADE_BOAT | class::FISHING_SHIP => 11,
+        class::BUILDING
+        | class::WALL
+        | class::GATE
+        | class::FARM
+        | class::CLASS_51
+        | class::TOWER => 0,
+        class::VILLAGER | class::TRADE_CART | class::LIVESTOCK | class::KING => 7,
+        class::CLASS_6
+        | class::CLASS_12
+        | class::CLASS_24
+        | class::CLASS_35
+        | class::CLASS_45
+        | class::CLASS_47
+        | class::CLASS_50
+        | class::CLASS_56
+        | class::CLASS_57 => {
             if matches!(master, 1744 | 1746) {
                 5
             } else {
                 1
             }
         }
-        13 | 54 | 55 => {
+        class::SIEGE | class::CLASS_54 | class::CLASS_55 => {
             if matches!(master, 35 | 422 | 548 | 1258) {
                 5
             } else {
                 6
             }
         }
-        17 | 18 | 43 => 8,
-        20 | 62 => 10,
-        22 | 53 => 9,
-        28 | 46 => 2,
+        class::CLASS_17 | class::MONK | class::CLASS_43 => 8,
+        class::TRANSPORT | class::CLASS_62 => 10,
+        class::WARSHIP | class::CLASS_53 => 9,
+        class::CLASS_28 | class::CLASS_46 => 2,
         _ => -1,
     }
 }

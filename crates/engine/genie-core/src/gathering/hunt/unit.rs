@@ -8,6 +8,8 @@ use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
@@ -27,7 +29,7 @@ impl Unit {
     /// (`set_state` 2), not modelled.
     pub(crate) fn hunt_set_search(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
-        if hunt.target_class != 10 {
+        if hunt.target_class != Some(class::PREDATOR) {
             let target = std::mem::replace(&mut hunt.target, -1);
             self.hunt_release(c, [target])?;
         }
@@ -41,7 +43,7 @@ impl Unit {
     pub(crate) fn hunt_search_state(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let task = hunt.task;
-        if hunt.target_class == 10 {
+        if hunt.target_class == Some(class::PREDATOR) {
             // a human player's hunt is done (set_state 2), a computer player's ends (1)
             if c.w.players[c.player].computer {
                 return Err(GenieError::unsupported(
@@ -110,7 +112,7 @@ impl Unit {
     pub(crate) fn hunt_search_notify(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player)?;
         let hunt = self.actions.hunt().expect("the caller's hunt");
-        let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
+        let (carry_to, class) = (hunt.carry_to, i32::from(ClassId::field(hunt.target_class)));
         let master = self.master(&c.w.masters, c.player)?;
         let site = if carry_to != -1 {
             carry_to
@@ -133,7 +135,7 @@ impl Unit {
                 self.actions
                     .hunt_mut()
                     .expect("the caller's hunt")
-                    .target_class = -1;
+                    .target_class = None;
                 0
             } else {
                 site
@@ -287,7 +289,7 @@ impl Unit {
             "a hunt without a unit AI after its drop-off",
         ))?;
         let class = if ai.target_type == -1 {
-            i32::from(hunt.target_class)
+            i32::from(ClassId::field(hunt.target_class))
         } else {
             ai.target_type
         };
@@ -297,7 +299,7 @@ impl Unit {
             ));
         }
         let kind = crate::unit_ai::civilian_kind(class);
-        let found = if kind == -1 && hunt.target_class == 10 {
+        let found = if kind == -1 && hunt.target_class == Some(class::PREDATOR) {
             -1
         } else if kind == -1 {
             self.hunt_closest_object(c, class)?
@@ -334,7 +336,11 @@ impl Unit {
                 relation: -1,
                 state: -1,
                 master: -1,
-                workers: if class == 49 { 1 } else { -1 },
+                workers: if ClassId::of_target_type(class) == Some(class::FARM) {
+                    1
+                } else {
+                    -1
+                },
                 spared: -1,
                 reach: true,
             },

@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::class;
 use crate::vision::registry::UnitUpdate;
 
 fn world(players: usize) -> Visibility {
@@ -90,11 +91,17 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
     v.unified[i] = 0b011;
     let at = [10.5, 10.5, 0.0];
     assert_eq!(
-        v.combat_sight(7, 0, at, [0.2, 0.2], 6, None),
+        v.combat_sight(7, 0, at, [0.2, 0.2], class::CLASS_6, None),
         Ok(Some(0b011))
     );
-    assert_eq!(v.combat_sight(7, 0, at, [0.2, 0.2], 6, None), Ok(None));
-    assert_eq!(v.combat_sight(8, 0, at, [0.2, 0.2], 6, None), Ok(None));
+    assert_eq!(
+        v.combat_sight(7, 0, at, [0.2, 0.2], class::CLASS_6, None),
+        Ok(None)
+    );
+    assert_eq!(
+        v.combat_sight(8, 0, at, [0.2, 0.2], class::CLASS_6, None),
+        Ok(None)
+    );
     let r = v.registry.as_ref().unwrap();
     assert_eq!(r.entry(8).map(|e| e.mask), Some(0b011));
     assert_eq!(r.lists[1][6].len(), 2);
@@ -112,7 +119,7 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
         owner: 0,
         position: [10.5, 10.5],
         radii: [0.2, 0.2],
-        class: 6,
+        class: class::CLASS_6,
         old: 0,
         new: 0b11,
     })

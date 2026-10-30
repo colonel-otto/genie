@@ -118,7 +118,7 @@ impl Unit {
             deposit,
             gone_orders,
             looks: self.clearing_looks(c, others, action),
-            class: master.map_or(-1, |m| m.class),
+            class: master.as_ref().ok().map(|m| m.class),
             drop_site: drop_site_master(c, built) && has_kind,
             by: self.releaser(c),
         })

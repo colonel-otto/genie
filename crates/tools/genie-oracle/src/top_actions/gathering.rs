@@ -5,7 +5,7 @@ use crate::top_actions::{Saved, TaskAt, saved_move_to};
 use crate::{saved_attack, saved_reload, saved_sprite};
 use genie_core::GenieError;
 use genie_core::movement::move_to::MOVE_TO;
-use genie_core::objects::masters::Task;
+use genie_core::objects::masters::{ClassId, Task};
 use genie_core::objects::unit::Unit;
 use genie_save::generated::world::Action;
 
@@ -77,7 +77,7 @@ pub(super) fn import_hunt(
         target: base.target_id,
         state: base.state,
         point: saved.point(),
-        target_class: part.target_type as i16,
+        target_class: ClassId::of_target_type(part.target_type),
         task,
         attack: None,
         move_to: None,

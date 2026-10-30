@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::fmath::Vec3;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -19,7 +20,7 @@ use crate::world::slots::CheckedIndex;
 #[derive(Clone, Copy, Debug)]
 pub struct Converter<'a> {
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's id.
     pub master: i16,
     /// Its faith (`+0x310`, what it holds).
@@ -37,7 +38,7 @@ pub struct Convertee {
     /// Its owner's id.
     pub owner: usize,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's id.
     pub master: i16,
     /// Its master's hero flag (`hero_flag`, `+0x8d9`).
@@ -90,7 +91,9 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
                 | class::CLASS_53
         );
     }
-    if NEVER_CONVERTED.contains(&t.master) || matches!(t.class, class::WALL | class::GATE | 30) {
+    if NEVER_CONVERTED.contains(&t.master)
+        || matches!(t.class, class::WALL | class::GATE | class::CLASS_30)
+    {
         return false;
     }
     let hero = t.hero;
@@ -103,7 +106,7 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
         if k.object_group == -1 && k.object_id == -1 {
             task = Some(k);
         }
-        if k.object_id == t.master || k.object_group == t.class {
+        if k.object_id == t.master || k.object_group == t.class.get() {
             task = Some(k);
             break;
         }
@@ -137,7 +140,7 @@ pub const fn attack_sight(me: &Attacker) -> Result<f32, GenieError> {
 /// The unit AI's slot 0xa8 (`me`'s type, [`type_attacks_neutral`]) on a neutral object of
 /// `class`.
 #[must_use]
-pub fn attacks_neutral(me: &Attacker, class: i16) -> bool {
+pub fn attacks_neutral(me: &Attacker, class: ClassId) -> bool {
     type_attacks_neutral(me.ai_type, me.attack_priority, class)
 }
 
@@ -151,7 +154,7 @@ pub fn attacks_neutral(me: &Attacker, class: i16) -> bool {
 /// the others' the base's (`FUN_140c48410`): always. The predator's and the lion's also take
 /// attack priority 3 to [`PRIORITY_3_CLASSES`].
 #[must_use]
-pub fn type_attacks_neutral(ai_type: u32, attack_priority: u8, class: i16) -> bool {
+pub fn type_attacks_neutral(ai_type: u32, attack_priority: u8, class: ClassId) -> bool {
     match ai_type {
         CIVILIAN | BUILDING_AI => false,
         PREDATOR_AI | LION_AI => {
@@ -175,8 +178,8 @@ pub(super) const PRIEST_NEUTRAL_SPARED: u64 = 0x2_0080_0838_001c;
 /// [`PRIEST_NEUTRAL_SPARED`] (`class` taken as unsigned), and with attack priority 3 only
 /// [`PRIORITY_3_CLASSES`].
 #[must_use]
-pub fn priest_attacks_neutral(attack_priority: u8, class: i16) -> bool {
-    let class_bits = i32::from(class) as u32;
+pub fn priest_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
+    let class_bits = i32::from(class.get()) as u32;
     if class_bits < 0x32 && PRIEST_NEUTRAL_SPARED >> class_bits & 1 != 0 {
         return false;
     }
@@ -192,8 +195,8 @@ pub(super) const NEUTRAL_SPARED: u64 = 0x2002_0080_0838_001c;
 /// [`NEUTRAL_SPARED`]'s classes, and with the unit's master's `attack_priority` 3
 /// (`FUN_141202220`) only [`PRIORITY_3_CLASSES`] (`FUN_140fddf10`).
 #[must_use]
-pub fn soldier_attacks_neutral(attack_priority: u8, class: i16) -> bool {
-    let class_bits = i32::from(class) as u32;
+pub fn soldier_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
+    let class_bits = i32::from(class.get()) as u32;
     if class_bits < 0x3e && NEUTRAL_SPARED >> class_bits & 1 != 0 {
         return false;
     }
@@ -232,8 +235,8 @@ pub(super) const SIEGE_NEUTRAL_SPARED: u64 = 0x2002_0080_0830_001c;
 /// [`SIEGE_NEUTRAL_SPARED`] (`class` taken as unsigned), and with attack priority 3 only
 /// [`PRIORITY_3_CLASSES`].
 #[must_use]
-pub fn siege_attacks_neutral(attack_priority: u8, class: i16) -> bool {
-    let class_bits = i32::from(class) as u32;
+pub fn siege_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
+    let class_bits = i32::from(class.get()) as u32;
     if class_bits < 0x3e && SIEGE_NEUTRAL_SPARED >> class_bits & 1 != 0 {
         return false;
     }
@@ -245,10 +248,28 @@ pub fn siege_attacks_neutral(attack_priority: u8, class: i16) -> bool {
 pub(super) const RAM_MASTERS: [i16; 4] = [35, 422, 548, 1258];
 /// What a ram attacks by its own choice: buildings, siege, walls, gates, farms, the packed
 /// units, towers, the unpacked siege and the scorpions.
-pub(super) const RAM_TARGETS: [i16; 9] = [3, 13, 27, 39, 49, 51, 52, 54, 55];
+pub(super) const RAM_TARGETS: [ClassId; 9] = [
+    class::BUILDING,
+    class::SIEGE,
+    class::WALL,
+    class::GATE,
+    class::FARM,
+    class::CLASS_51,
+    class::TOWER,
+    class::CLASS_54,
+    class::CLASS_55,
+];
 /// What a trebuchet (class 51 or 54) attacks by its own choice: the rams' but siege and
 /// scorpions.
-pub(super) const TREBUCHET_TARGETS: [i16; 7] = [3, 27, 39, 49, 51, 52, 54];
+pub(super) const TREBUCHET_TARGETS: [ClassId; 7] = [
+    class::BUILDING,
+    class::WALL,
+    class::GATE,
+    class::FARM,
+    class::CLASS_51,
+    class::TOWER,
+    class::CLASS_54,
+];
 /// The siege masters whose current building target decides by attack priority alone (1744,
 /// 1746, raw `0x676c`, `0x676e`).
 pub(super) const SIEGE_BUILDING_MASTERS: [i16; 2] = [1744, 1746];
@@ -256,7 +277,7 @@ pub(super) const SIEGE_BUILDING_MASTERS: [i16; 2] = [1744, 1746];
 pub(super) const GAIA_TARGET_REACH: f32 = crate::math::image::unit_ai::GAIA_TARGET_REACH;
 /// The packed unit's class (51), which a human player's siege attack check passes over unless
 /// asked for any target.
-pub(super) const PACKED_UNIT_CLASS: i16 = 51;
+pub(super) const PACKED_UNIT_CLASS: ClassId = class::CLASS_51;
 
 /// The defend stance's leash from a saved patrol's path (`DAT_14330ebb8`, 5).
 pub(super) const DEFEND_PATROL_LEASH: f32 = crate::math::image::unit_ai::DEFEND_PATROL_LEASH;
@@ -332,7 +353,10 @@ pub fn siege_can_attack(
     t: &Target,
     any: bool,
 ) -> Result<bool, GenieError> {
-    if matches!(t.class, 1 | 42) || s.stance == 3 || !siege_in_reach(me, s, t)? {
+    if matches!(t.class, class::ARTIFACT | class::RELIC)
+        || s.stance == 3
+        || !siege_in_reach(me, s, t)?
+    {
         return Ok(false);
     }
     let takes_by_sight = !me.scenario && COMBAT <= me.kind && me.capture == 0;
@@ -342,7 +366,7 @@ pub fn siege_can_attack(
     if (t.kind == BUILDING && t.desolid) || me.state < 2 {
         return Ok(false);
     }
-    if !me.computer && !any && me.class == PACKED_UNIT_CLASS {
+    if !me.computer && !any && me.class == Some(PACKED_UNIT_CLASS) {
         return Ok(false);
     }
     if matches!(me.top_action, Some(124 | 125)) {
@@ -398,7 +422,7 @@ pub(super) fn siege_chooses(me: &Attacker, s: &Seeker, t: &Target) -> bool {
         if RAM_MASTERS.contains(&me.master) {
             return RAM_TARGETS.contains(&t.class);
         }
-        if matches!(me.class, class::CLASS_51 | class::CLASS_54) {
+        if matches!(me.class, Some(class::CLASS_51 | class::CLASS_54)) {
             return TREBUCHET_TARGETS.contains(&t.class);
         }
     }
@@ -410,14 +434,32 @@ pub(super) fn siege_chooses(me: &Attacker, s: &Seeker, t: &Target) -> bool {
 
 /// The classes a lion attacks by its own choice (its slot 0xa0's list, `FUN_140c18d50`; the
 /// game's `+0x6b4` of 1, not met, adds 13, 18 and 55).
-pub(super) const LION_ATTACKS: [i16; 19] = [
-    0, 4, 6, 9, 12, 23, 24, 25, 26, 28, 35, 36, 44, 45, 46, 47, 50, 56, 57,
+pub(super) const LION_ATTACKS: [ClassId; 19] = [
+    class::CLASS_0,
+    class::VILLAGER,
+    class::CLASS_6,
+    class::PREY,
+    class::CLASS_12,
+    class::CLASS_23,
+    class::CLASS_24,
+    class::CLASS_25,
+    class::CLASS_26,
+    class::CLASS_28,
+    class::CLASS_35,
+    class::CLASS_36,
+    class::CLASS_44,
+    class::CLASS_45,
+    class::CLASS_46,
+    class::CLASS_47,
+    class::CLASS_50,
+    class::CLASS_56,
+    class::CLASS_57,
 ];
 
 /// The lion's slot 0xa0 (`FUN_140c18d50`) without its `any` flag: by the master's attack
 /// priority 1 and 2 anything, 3 the classes of [`PRIORITY_3_CLASSES`], any other the classes
 /// of [`LION_ATTACKS`].
-pub(super) fn lion_may_attack(attack_priority: u8, class: i16) -> bool {
+pub(super) fn lion_may_attack(attack_priority: u8, class: ClassId) -> bool {
     match attack_priority {
         1 | 2 => true,
         3 => PRIORITY_3_CLASSES.contains(&class),
@@ -428,8 +470,9 @@ pub(super) fn lion_may_attack(attack_priority: u8, class: i16) -> bool {
 /// The civilian's slot 0xa0 (`FUN_140c18b70`) without its `any` flag: never classes 1 and 42;
 /// with the unit's master's `attack_priority` 3 (`FUN_141202220`) only [`PRIORITY_3_CLASSES`]
 /// (`FUN_140fddf10`).
-pub(super) fn civilian_may_attack(attack_priority: u8, class: i16) -> bool {
-    !matches!(class, 1 | 42) && (attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class))
+pub(super) fn civilian_may_attack(attack_priority: u8, class: ClassId) -> bool {
+    !matches!(class, class::ARTIFACT | class::RELIC)
+        && (attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class))
 }
 
 /// What [`UnitSide::attack`] answers: the unit attacks the target, and the notifies the command

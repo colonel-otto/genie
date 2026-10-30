@@ -1,6 +1,7 @@
 //! What `bestUnitToAttack` reads of the unit whose AI searches, of its arguments and of the
 //! world ([`Battlefield`]).
 
+use crate::objects::masters::ClassId;
 use crate::unit_ai::best_target::Candidate;
 
 /// The order history's window (`DAT_142efe420`, 60000 ms as a float).
@@ -22,7 +23,7 @@ pub struct Searcher {
     /// The unit's master's id, class and type (`+0x5d7`, `+0x98f`, the master's `+0x8`).
     pub master: i16,
     /// Its master's class.
-    pub class: i16,
+    pub class: Option<ClassId>,
     /// Its master's type (`'F'`, 70: the combat type).
     pub kind: u8,
     /// Its master's `attack_priority` (`+0x92c`, `FUN_141202220`).
@@ -90,7 +91,7 @@ pub struct Thing {
     /// Its master's id, class and type.
     pub master: i16,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's type.
     pub kind: u8,
     /// Its `+0x924` (`FUN_14107cc90`): others take it over by seeing it.
@@ -128,7 +129,7 @@ pub trait Battlefield {
     /// # Errors
     ///
     /// What the test does not model.
-    fn attacks_neutral(&mut self, class: i16) -> Result<bool, crate::GenieError>;
+    fn attacks_neutral(&mut self, class: ClassId) -> Result<bool, crate::GenieError>;
 
     /// `FUN_14120e4e0` of a unit of the combat type on object `id`: it spares its friends.
     ///

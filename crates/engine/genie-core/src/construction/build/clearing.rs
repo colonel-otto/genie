@@ -1,5 +1,6 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -20,7 +21,7 @@ pub struct ClearingSite {
     /// Its master's id.
     pub master: i16,
     /// Its master's class (`+0x410`).
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
     pub radius: [f32; 2],
     /// Its place.

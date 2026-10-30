@@ -6,6 +6,7 @@
 
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Task, master_type, player_master};
 use crate::objects::sprite::Graphic;
@@ -24,10 +25,33 @@ const NO_SPRITE: GenieError = GenieError::unsupported("a sprite the data file do
 const FOODS: [i16; 3] = [15, 16, 17];
 /// The resource classes whose damage share is the share of their storage left from state 3 on
 /// (`FUN_141193590`), and those whose share is it once dead (state above 2).
-const RESOURCE_CLASSES: [i16; 11] = [5, 9, 10, 29, 31, 33, 38, 40, 41, 58, 61];
-const RESOURCE_CLASSES_DEAD: [i16; 6] = [7, 8, 15, 32, 48, 63];
+const RESOURCE_CLASSES: [ClassId; 11] = [
+    class::CLASS_5,
+    class::PREY,
+    class::PREDATOR,
+    class::CLASS_29,
+    class::CLASS_31,
+    class::CLASS_33,
+    class::CLASS_38,
+    class::CLASS_40,
+    class::CLASS_41,
+    class::LIVESTOCK,
+    class::CLASS_61,
+];
+const RESOURCE_CLASSES_DEAD: [ClassId; 6] = [
+    class::CLASS_7,
+    class::CLASS_8,
+    class::TREE,
+    class::CLASS_32,
+    class::CLASS_48,
+    class::CLASS_63,
+];
 /// The class pairs whose change makes no new unit AI (`FUN_1415c6aa0`: the new class first).
-const SAME_AI_CLASSES: [(i16, i16); 3] = [(12, 47), (18, 43), (43, 18)];
+const SAME_AI_CLASSES: [(ClassId, ClassId); 3] = [
+    (class::CLASS_12, class::CLASS_47),
+    (class::MONK, class::CLASS_43),
+    (class::CLASS_43, class::MONK),
+];
 
 /// What a damage sprite apply mode does to the simulation (`FUN_1411859a0`'s switch on the
 /// entry's `+0x9`).
@@ -669,7 +693,7 @@ mod tests {
         Master {
             id,
             kind: master_type::BUILDING,
-            class: 3,
+            class: class::BUILDING,
             hit_points: hp,
             standing_sprite: id + 1000,
             death_spawns: [dead, -1],
@@ -797,7 +821,7 @@ mod tests {
     #[test]
     fn a_resource_object_s_damage_share_is_its_storage_s() {
         let tree = Master {
-            class: 15,
+            class: class::TREE,
             hit_points: 20,
             storage: vec![(1, 100.0, 0)],
             damage_graphics: vec![DamageGraphic {
@@ -830,13 +854,31 @@ mod tests {
             class,
             ..Master::default()
         };
-        assert!(!class_changes(Some(&m(3)), Some(&m(3))));
-        assert!(class_changes(Some(&m(6)), Some(&m(12))));
-        assert!(!class_changes(Some(&m(12)), Some(&m(47))));
-        assert!(class_changes(Some(&m(47)), Some(&m(12))));
-        assert!(!class_changes(Some(&m(18)), Some(&m(43))));
-        assert!(!class_changes(Some(&m(43)), Some(&m(18))));
-        assert!(!class_changes(None, Some(&m(3))));
+        assert!(!class_changes(
+            Some(&m(class::BUILDING)),
+            Some(&m(class::BUILDING))
+        ));
+        assert!(class_changes(
+            Some(&m(class::CLASS_6)),
+            Some(&m(class::CLASS_12))
+        ));
+        assert!(!class_changes(
+            Some(&m(class::CLASS_12)),
+            Some(&m(class::CLASS_47))
+        ));
+        assert!(class_changes(
+            Some(&m(class::CLASS_47)),
+            Some(&m(class::CLASS_12))
+        ));
+        assert!(!class_changes(
+            Some(&m(class::MONK)),
+            Some(&m(class::CLASS_43))
+        ));
+        assert!(!class_changes(
+            Some(&m(class::CLASS_43)),
+            Some(&m(class::MONK))
+        ));
+        assert!(!class_changes(None, Some(&m(class::BUILDING))));
     }
 
     /// The Feudal Age's upgrade of the house (70 to 464, mode −1, `FUN_141657d10`): a house in
@@ -851,7 +893,7 @@ mod tests {
             ..building(70, 550, SPRITE_PLACED, 1403)
         };
         let new = Master {
-            class: 3,
+            class: class::BUILDING,
             ..building(464, 900, SPRITE_PLACED, 1435)
         };
         let rubble = |id, copy| Master {
@@ -914,7 +956,7 @@ mod tests {
         let new = Master {
             id: 6,
             kind: master_type::COMBAT,
-            class: 6,
+            class: class::CLASS_6,
             hit_points: 50,
             volley_fire: 3.0,
             ..Master::default()
@@ -1049,7 +1091,7 @@ mod tests {
         let soldier = |id, hit_points| Master {
             id,
             kind: master_type::COMBAT,
-            class: 6,
+            class: class::CLASS_6,
             hit_points,
             ..Master::default()
         };
@@ -1205,7 +1247,7 @@ mod tests {
         };
         let soldier = Master {
             id: 4,
-            class: 6,
+            class: class::CLASS_6,
             ..villager.clone()
         };
         let load = |master: &Master, kind, amount| {
@@ -1254,7 +1296,7 @@ mod tests {
                 crate::map::spatial::Placed {
                     position: [5.5, 5.5, 0.0],
                     radius: [0.2, 0.2],
-                    class: 6,
+                    class: class::CLASS_6,
                     player: 0,
                     master: 4,
                     obstruction_type: 0,

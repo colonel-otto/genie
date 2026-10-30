@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::{Armored, Attacker, Victim, charge_damage, charge_works};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
@@ -29,9 +30,9 @@ pub(super) fn master_melee_armor(a: &Armored) -> i16 {
 /// Slot 0x868 of a combat unit or building (`FUN_141213810`): [`master_melee_armor`] plus its
 /// melee armor powerup (`+0xa48`, slot 0x708) and stinger (`+0xb4c`, slot 0x770, 0 as
 /// [`Victim::most_hp`] says), each as 16 bits; a wall foundation (class 27 in state 0) has none.
-pub(super) fn melee_armor(a: &Armored, own_class: i16, state: u8) -> i16 {
+pub(super) fn melee_armor(a: &Armored, own_class: ClassId, state: u8) -> i16 {
     let armor = master_melee_armor(a).wrapping_add(a.armor_powerups[0]);
-    if own_class == 27 && state == 0 {
+    if own_class == class::WALL && state == 0 {
         return 0;
     }
     armor
@@ -41,7 +42,7 @@ pub(super) fn melee_armor(a: &Armored, own_class: i16, state: u8) -> i16 {
 /// [`melee_armor`]) or pierce (class 3; slot 0x870, `FUN_1410857f0`: its best armor of the
 /// class, else its base armor and best of any, plus its powerup; the stinger `+0xb50` is 0, as
 /// [`Victim::most_hp`] says), less the armor removed.
-pub(super) fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> i16 {
+pub(super) fn class_armor(a: &Armored, class: i16, own_class: ClassId, state: u8) -> i16 {
     let best = |c: i16, from: i16| {
         a.armors
             .iter()
@@ -77,7 +78,7 @@ pub(super) fn weapon_armor(
     class: i16,
     attacker: &Attacker,
     kind: u8,
-    own_class: i16,
+    own_class: ClassId,
     state: u8,
 ) -> i16 {
     let mut armor = a.base_armor;
@@ -104,7 +105,7 @@ pub(super) fn weapon_armor(
 /// [`armor_damage`]'s charge test of the attacker's weapon against the victim (its class
 /// `own_class`, type `kind`): the charge works on it ([`charge_works`]), its type is 1 or 3 and
 /// it is full.
-pub(super) fn charges(attacker: &Attacker, own_class: i16, kind: u8) -> bool {
+pub(super) fn charges(attacker: &Attacker, own_class: ClassId, kind: u8) -> bool {
     charge_works(
         attacker.charge_target,
         attacker.charge_type,
@@ -155,7 +156,7 @@ pub fn armor_damage(
     for &(class, amount) in weapons {
         let armor_f = f32::from(weapon_armor(a, class, attacker, kind, own_class, state));
         let mut attack = f32::from(amount);
-        let pierce_or_melee = matches!(class, class::BUILDING | class::VILLAGER | 31);
+        let pierce_or_melee = matches!(class, 3 | 4 | 31);
         let mut resist = 1.0f32;
         if COMBAT <= attacker.kind {
             let charge =

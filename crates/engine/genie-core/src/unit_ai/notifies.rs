@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, GO_ON, NO_LONGER_ON_ME, Notify, PRODUCED,
@@ -127,7 +128,7 @@ impl UnitAi {
     pub fn clear_notifies_at(
         &mut self,
         time: u32,
-        place: ([f32; 2], i16),
+        place: ([f32; 2], Option<ClassId>),
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {

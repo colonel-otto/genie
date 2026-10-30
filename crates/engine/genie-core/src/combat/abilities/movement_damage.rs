@@ -3,6 +3,7 @@
 
 use crate::combat::abilities::{ALWAYS_REACHED, ONE, Own, STRUCK_BUILDING_CLASSES};
 use crate::combat::damage::Victim;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -59,7 +60,7 @@ pub struct Bystander {
     /// Its type (`+0xf`).
     pub kind: u8,
     /// Its master's class (`+0x410`).
-    pub class: i16,
+    pub class: ClassId,
     /// Its state (`+0x640`).
     pub state: u8,
     /// Its master's `area_effect_object_level` (`+0x62b`).

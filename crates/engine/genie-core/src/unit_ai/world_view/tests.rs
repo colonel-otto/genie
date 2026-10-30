@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::class;
 use crate::objects::object_list::ObjectList;
 use crate::test_ids::object_id;
 use crate::world::others::OthersRef;
@@ -63,7 +64,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         top_action: None,
         master: 83,
         kind: 70,
-        class: 4,
+        class: Some(class::VILLAGER),
         attack_priority: 0,
         missile: -1,
         range: 0.0,
@@ -161,7 +162,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         top_action: None,
         master: 4,
         kind: 70,
-        class: 6,
+        class: Some(class::CLASS_6),
         attack_priority: 0,
         missile: -1,
         range: 0.0,
@@ -210,7 +211,7 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
         id: 83,
         copy_id: 83,
         kind: 70,
-        class: 4,
+        class: class::VILLAGER,
         object_flags: 0x10,
         hit_points: 25,
         weapons: vec![(4, 3), (21, 6)],
@@ -276,8 +277,8 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     let before = [gaia];
     let every = [
         Masters::default(),
-        Masters::new([master(4, 6, vec![(4, 6)])]),
-        Masters::new([master(5, 6, vec![(4, 3)])]),
+        Masters::new([master(4, class::CLASS_6, vec![(4, 6)])]),
+        Masters::new([master(5, class::CLASS_6, vec![(4, 3)])]),
     ];
     let spatial = Spatial::new([120, 120]);
     let attacker = crate::unit_ai::Attacker {
@@ -289,7 +290,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         top_action: None,
         master: 4,
         kind: 70,
-        class: 6,
+        class: Some(class::CLASS_6),
         attack_priority: 0,
         missile: -1,
         range: 0.5,
@@ -330,7 +331,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     let c = picker.candidate(&spatial, 50, 1.4, 2).unwrap();
     assert_eq!(
         (c.id, c.distance, c.category, c.class, c.speed),
-        (50, 1.4, 2, 6, 0.0)
+        (50, 1.4, 2, class::CLASS_6, 0.0)
     );
     assert_eq!(
         (c.armed, c.reach, c.damage, c.hp, c.reload),

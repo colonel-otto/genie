@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::{
     ARTIFACT_AI, ActionKind, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder,
@@ -111,8 +112,8 @@ pub(super) const fn order_move(o: &QueuedOrder) -> AiMove {
 }
 /// The trebuchet's classes (`-0xe79`, `-0xe76` raw: packed and unpacked), whose attack move on
 /// a target attacks it.
-pub(super) const TREBUCHET_CLASS: i16 = 51;
-pub(super) const TREBUCHET_PACKED_CLASS: i16 = 54;
+pub(super) const TREBUCHET_CLASS: ClassId = class::CLASS_51;
+pub(super) const TREBUCHET_PACKED_CLASS: ClassId = class::CLASS_54;
 /// The follow order's target counts as moved when it is more than a tile off the AI's target
 /// point on either axis (`0x140c567c0`: `DAT_14330ec20`, `DAT_14330eb8c`).
 pub(super) const FOLLOW_SLACK_LOW: f32 = crate::math::image::unit_ai::FOLLOW_SLACK_LOW;
@@ -192,28 +193,57 @@ pub(super) struct RetargetSearch {
 /// boar's (4, `FUN_140c11720`) when its master is of class 10 and combat level 1
 /// (`FUN_140fde4f0`), else the lion's (5, `FUN_140c11bd0`).
 #[must_use]
-pub const fn factory_type(class: i16, master: i16, missile: i16, combat_level: u8) -> Option<u32> {
+pub const fn factory_type(
+    class: ClassId,
+    master: i16,
+    missile: i16,
+    combat_level: u8,
+) -> Option<u32> {
     match master {
         1105 => return Some(0x12),
         1744 | 1746 => return Some(0x10),
         _ => {}
     }
     Some(match class {
-        5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => return None,
-        1 => 0xe,
-        2 | 19 => 0xa,
-        3 | 27 | 39 | 49 | 60 if missile < 0 => 17,
-        3 | 27 | 39 | 49 | 52 | 60 => TOWER_AI,
-        4 => CIVILIAN,
-        9 | 59 => 2,
+        class::CLASS_5
+        | class::CLASS_7
+        | class::CLASS_8
+        | class::CLASS_11
+        | class::CLASS_14
+        | class::TREE
+        | class::CLASS_16
+        | class::CLASS_30
+        | class::CLASS_31
+        | class::CLASS_32
+        | class::CLASS_33
+        | class::CLASS_34
+        | class::CLASS_38
+        | class::RELIC
+        | class::CLASS_48
+        | class::CLASS_63 => return None,
+        class::ARTIFACT => 0xe,
+        class::TRADE_BOAT | class::TRADE_CART => 0xa,
+        class::BUILDING | class::WALL | class::GATE | class::FARM | class::CLASS_60
+            if missile < 0 =>
+        {
+            17
+        }
+        class::BUILDING
+        | class::WALL
+        | class::GATE
+        | class::FARM
+        | class::TOWER
+        | class::CLASS_60 => TOWER_AI,
+        class::VILLAGER => CIVILIAN,
+        class::PREY | class::KING => 2,
         // FUN_140fde4f0: the master's class (`+0x410`, 10 in this case) and its combat level 1
-        10 if combat_level == 1 => BOAR_AI,
-        10 => 5,
-        13 | 51 | 54 | 55 => 0x10,
-        18 | 43 | 53 => 9,
-        20 => 0xb,
-        21 => 0xc,
-        29 | 58 => 0x13,
+        class::PREDATOR if combat_level == 1 => BOAR_AI,
+        class::PREDATOR => 5,
+        class::SIEGE | class::CLASS_51 | class::CLASS_54 | class::CLASS_55 => 0x10,
+        class::MONK | class::CLASS_43 | class::CLASS_53 => 9,
+        class::TRANSPORT => 0xb,
+        class::FISHING_SHIP => 0xc,
+        class::CLASS_29 | class::LIVESTOCK => 0x13,
         _ => SOLDIER_AI,
     })
 }
@@ -231,7 +261,7 @@ pub struct NewObject {
     /// Its master's `copy_id` (`+0x158`).
     pub copy_id: i16,
     /// Its master's class (`+0x410`).
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's `object_flags` (`+0x654`).
     pub object_flags: u32,
     /// Its master's `hero_flag` (`+0x8d9`).
@@ -292,9 +322,9 @@ pub(super) const SIEGE_IDLE_TIMEOUT: u32 = 1000;
 pub(super) const DEFENSIVE_MASTERS: [i16; 3] = [527, 528, 1104];
 /// The classes of a human player's soldier in `NoAttack` (`FUN_140c12300`: `-0xe89`, `-0xe6c`
 /// raw).
-pub(super) const NO_ATTACK_CLASSES: [i16; 2] = [35, 64];
+pub(super) const NO_ATTACK_CLASSES: [ClassId; 2] = [class::CLASS_35, class::CLASS_64];
 /// The class whose soldier is in `NoAttack` unless a hero (`FUN_140c12300`: `-0xe6f` raw).
-pub(super) const NO_ATTACK_CLASS: i16 = 61;
+pub(super) const NO_ATTACK_CLASS: ClassId = class::CLASS_61;
 /// The master object flag of the soldier that stands its ground in the Dark Age
 /// (`FUN_140c12300`: `+0x654` bit 4).
 pub(super) const STAND_GROUND_FLAG: u32 = 0x10;
@@ -334,7 +364,7 @@ pub(super) fn soldier_stance(new: &NewObject) -> u8 {
 /// The siege unit's stance (`+0x1a9`) its constructor (`FUN_140c12040`) gives a new object: 0
 /// for a computer player's and for classes 51 and 54 (`-0xe79`, `-0xe76` raw); the owner's
 /// posture (slot 0x90, its low byte) for class 55 (`-0xe75`); 1 for any other.
-pub(super) const fn siege_stance(new: &NewObject) -> u8 {
+pub(super) fn siege_stance(new: &NewObject) -> u8 {
     if new.computer || matches!(new.class, class::CLASS_51 | class::CLASS_54) {
         return 0;
     }
@@ -392,4 +422,19 @@ pub(super) const fn held_action_state(state: Option<u8>) -> Result<u8, GenieErro
             "an action the slice does not hold (its state, slot 0x2b0)",
         )),
     }
+}
+
+/// The classes of a target for which the retarget check of a unit on the attack order searches
+/// again (3, 27, 39, 49, 52, 51 and 54).
+pub(crate) const fn searches_on_class(class: ClassId) -> bool {
+    matches!(
+        class,
+        class::BUILDING
+            | class::WALL
+            | class::GATE
+            | class::FARM
+            | class::TOWER
+            | class::CLASS_51
+            | class::CLASS_54
+    )
 }

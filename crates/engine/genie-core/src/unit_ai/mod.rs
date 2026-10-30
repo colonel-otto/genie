@@ -92,7 +92,7 @@ use self::ids::{
     held_action_state, order_move, retarget_kind, siege_stance, soldier_stance,
 };
 pub use self::ids::{HUMAN_ORDER_CAP, NewObject, factory_type};
-pub(crate) use self::ids::{alert_owner, helper_answers};
+pub(crate) use self::ids::{alert_owner, helper_answers, searches_on_class};
 pub use self::notifies::Inbox;
 pub use self::order_kind::OrderKind;
 pub(crate) use self::side::UNMODELLED_COMMAND;

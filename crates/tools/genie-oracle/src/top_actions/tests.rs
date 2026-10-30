@@ -6,8 +6,8 @@ use crate::top_actions::saved_actions;
 use genie_core::GenieError;
 use genie_core::construction::build::BuildTask;
 use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo};
-use genie_core::objects::masters::Task;
 use genie_core::objects::masters::action_type::BUILD;
+use genie_core::objects::masters::{Task, class};
 use genie_core::objects::sprite::Graphic;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
@@ -724,7 +724,10 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         .hunt()
         .copied()
         .unwrap();
-    assert_eq!((h.target_class, h.drop_site, h.task.id), (4, 40, 0));
+    assert_eq!(
+        (h.target_class, h.drop_site, h.task.id),
+        (Some(class::VILLAGER), 40, 0)
+    );
     assert!(h.lead.moved && h.attack.is_none() && h.move_to.is_none());
     assert_eq!(
         h.lead.start.map(f32::to_bits),

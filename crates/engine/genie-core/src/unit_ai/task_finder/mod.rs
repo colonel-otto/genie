@@ -13,6 +13,7 @@
 //! its id + 0x609c), the port compares the decoded values and names the encoded ones.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
@@ -120,7 +121,7 @@ pub struct DropSite {
     /// The building's master.
     pub building: i16,
     /// The class of the units that drop there (−1 any).
-    pub worker_class: i16,
+    pub worker_class: Option<ClassId>,
     /// The unit masters that drop there (empty: all).
     pub workers: Vec<i16>,
     /// The civs it is for (empty: all).
@@ -142,7 +143,7 @@ pub struct DropSite {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DropTarget {
     /// `object_group`: the class of the objects.
-    pub class: i16,
+    pub class: ClassId,
     /// `worker_num`: the most workers such an object may have.
     pub workers: i32,
     /// `object_state`: the state such an object must be in.
@@ -156,7 +157,7 @@ impl DropSite {
     /// state `state` with `workers` workers: its first target of that class decides, unless it
     /// caps the workers below the object's or wants another state (None).
     #[must_use]
-    pub fn resource_of(&self, class: i16, state: u8, workers: i32) -> Option<i16> {
+    pub fn resource_of(&self, class: ClassId, state: u8, workers: i32) -> Option<i16> {
         let t = self.targets.iter().find(|t| t.class == class)?;
         if (0 <= t.workers && t.workers < workers) || (0 <= t.state && t.state != i32::from(state))
         {
@@ -169,11 +170,11 @@ impl DropSite {
 /// `FUN_140fdd8a0`: the table's first entry for building `building`, the worker class `class`
 /// and civ `civ` (an entry with civs is for those alone).
 #[must_use]
-pub fn drop_site(table: &[DropSite], building: i16, class: i16, civ: u8) -> Option<&DropSite> {
+pub fn drop_site(table: &[DropSite], building: i16, class: ClassId, civ: u8) -> Option<&DropSite> {
     table.iter().find(|e| {
         (e.civs.is_empty() || e.civs.contains(&civ))
             && e.building == building
-            && e.worker_class == class
+            && e.worker_class == Some(class)
     })
 }
 
@@ -186,7 +187,7 @@ pub fn drops_at(table: &[DropSite], building: i16, actor: &Actor<'_>) -> bool {
             continue;
         }
         let worker = if e.workers.is_empty() {
-            e.worker_class < 0 || e.worker_class == actor.master.class
+            e.worker_class.is_none_or(|w| w == actor.master.class)
         } else {
             e.workers.contains(&actor.master.id)
         };
@@ -203,11 +204,16 @@ pub fn drops_at(table: &[DropSite], building: i16, actor: &Actor<'_>) -> bool {
 /// resource (below 4, compared unsigned, so −1 is not one) among their resource types, any other
 /// among their targets' attribute types; in table order.
 #[must_use]
-pub fn table_drop_buildings(table: &[DropSite], kind: i16, class: i16, civ: u8) -> Vec<i16> {
+pub fn table_drop_buildings(
+    table: &[DropSite],
+    kind: i16,
+    class: Option<ClassId>,
+    civ: u8,
+) -> Vec<i16> {
     let kind = i32::from(kind);
     table
         .iter()
-        .filter(|e| class == -1 || e.worker_class == class)
+        .filter(|e| class.is_none_or(|c| e.worker_class == Some(c)))
         .filter(|e| !e.resource_types.is_empty())
         .filter(|e| e.civs.is_empty() || e.civs.contains(&civ))
         .filter(|e| {
@@ -320,7 +326,7 @@ fn general<'m>(
             return Some(task);
         }
         if let Some(task) = first(list, |task| {
-            task.object_group == t.master.class && usable(task)
+            task.object_group == t.master.class.get() && usable(task)
         }) {
             return Some(task);
         }
@@ -536,7 +542,7 @@ fn finder_tail<'m>(
     {
         return Ok(first(list, |task| {
             task.action_type == 0x6e
-                && (task.object_group == class::LIVESTOCK || inside)
+                && (task.object_group == class::LIVESTOCK.get() || inside)
                 && wanted(filter, task)
         }));
     }
@@ -573,7 +579,7 @@ mod tests {
         }
     }
 
-    fn master(id: i16, kind: u8, class: i16, tasks: Vec<Task>) -> Master {
+    fn master(id: i16, kind: u8, class: ClassId, tasks: Vec<Task>) -> Master {
         Master {
             id,
             kind,
@@ -741,7 +747,7 @@ mod tests {
             civs,
             resource_types: types,
             targets: vec![DropTarget {
-                class: 15,
+                class: class::TREE,
                 workers: -1,
                 state: -1,
                 attribute,
@@ -749,27 +755,39 @@ mod tests {
             ..DropSite::default()
         };
         let table = [
-            entry(109, 4, vec![0, 1, 2, 3], vec![], 15),
+            entry(109, Some(class::VILLAGER), vec![0, 1, 2, 3], vec![], 15),
             // no resource types: never listed
-            entry(68, 4, vec![], vec![], 1),
-            entry(562, 4, vec![1], vec![], 1),
+            entry(68, Some(class::VILLAGER), vec![], vec![], 1),
+            entry(562, Some(class::VILLAGER), vec![1], vec![], 1),
             // another civ's
-            entry(1754, 4, vec![1], vec![17], 1),
-            entry(45, 13, vec![0], vec![], 17),
+            entry(1754, Some(class::VILLAGER), vec![1], vec![17], 1),
+            entry(45, Some(class::SIEGE), vec![0], vec![], 17),
         ];
-        assert_eq!(table_drop_buildings(&table, 1, 4, 1), [109, 562]);
-        assert_eq!(table_drop_buildings(&table, 1, 4, 17), [109, 562, 1754]);
+        assert_eq!(
+            table_drop_buildings(&table, 1, Some(class::VILLAGER), 1),
+            [109, 562]
+        );
+        assert_eq!(
+            table_drop_buildings(&table, 1, Some(class::VILLAGER), 17),
+            [109, 562, 1754]
+        );
         // a kind of 4 or more by the targets' attribute types; −1 is not a basic resource
-        assert_eq!(table_drop_buildings(&table, 15, 4, 1), [109]);
-        assert_eq!(table_drop_buildings(&table, 17, -1, 1), [45]);
-        assert_eq!(table_drop_buildings(&table, -1, 4, 1), [0i16; 0]);
+        assert_eq!(
+            table_drop_buildings(&table, 15, Some(class::VILLAGER), 1),
+            [109]
+        );
+        assert_eq!(table_drop_buildings(&table, 17, None, 1), [45]);
+        assert_eq!(
+            table_drop_buildings(&table, -1, Some(class::VILLAGER), 1),
+            [0i16; 0]
+        );
     }
 
     /// `FUN_1412784d0` for a master with object flag 0x10: no task on prey (class 9) whose master
     /// stores something (`+0x610` above 0); prey without storage takes its task as any target.
     #[test]
     fn a_flag_0x10_master_has_no_task_on_prey_that_stores_food() {
-        let hunt = task(110, class::PREY, -1, 1.0);
+        let hunt = task(110, class::PREY.get(), -1, 1.0);
         let hunter = Master {
             object_flags: 0x10,
             ..master(122, 70, class::VILLAGER, vec![hunt])
@@ -912,7 +930,7 @@ mod tests {
             garrison: 5,
             ..master(545, 70, class::TRANSPORT, vec![])
         };
-        let enter = task(3, class::TRANSPORT, -1, 0.0);
+        let enter = task(3, class::TRANSPORT.get(), -1, 0.0);
         let villager = master(293, 70, class::VILLAGER, vec![task(3, 3, -1, 0.0), enter]);
         assert_eq!(
             find_with(&villager, &transport(&ship, 2), 3),
@@ -927,9 +945,9 @@ mod tests {
         // finder ends before the general search, which would give the militia's attack)
         let attack = Task {
             owner_type: 0,
-            ..task(7, class::TRANSPORT, -1, 0.0)
+            ..task(7, class::TRANSPORT.get(), -1, 0.0)
         };
-        let militia = master(74, 70, 6, vec![attack]);
+        let militia = master(74, 70, class::CLASS_6, vec![attack]);
         assert_eq!(find_with(&militia, &transport(&ship, 2), 3), Ok(None));
         assert_eq!(find_with(&militia, &transport(&ship, 2), -1), Ok(None));
         // an enemy's transport is no garrison: the general search with any filter
@@ -954,14 +972,14 @@ mod tests {
             garrison: 4,
             ..master(35, 70, class::SIEGE, vec![])
         };
-        let enter = task(3, class::SIEGE, -1, 0.0);
+        let enter = task(3, class::SIEGE.get(), -1, 0.0);
         let villager = master(293, 70, class::VILLAGER, vec![enter]);
         assert_eq!(
             find_with(&villager, &transport(&ram, 2), 3),
             Ok(Some(&enter))
         );
         assert_eq!(find_with(&villager, &transport(&ram, 2), -1), Ok(None));
-        let infantry = master(74, 70, 6, vec![enter]);
+        let infantry = master(74, 70, class::CLASS_6, vec![enter]);
         assert_eq!(
             find_with(&infantry, &transport(&ram, 2), -1),
             Ok(Some(&enter))
@@ -979,9 +997,9 @@ mod tests {
         let house = master(70, BUILDING, class::BUILDING, vec![]);
         let attack = Task {
             owner_type: 2,
-            ..task(7, class::BUILDING, -1, 0.0)
+            ..task(7, class::BUILDING.get(), -1, 0.0)
         };
-        let militia = master(74, 70, 6, vec![attack]);
+        let militia = master(74, 70, class::CLASS_6, vec![attack]);
         assert_eq!(
             find(&militia, (-1, 0.0), &building(&house, 1, 2)),
             Ok(Some(&attack))
@@ -1025,7 +1043,7 @@ mod tests {
         };
         let wolf = Master {
             object_flags: 0x10,
-            ..master(126, 70, 10, vec![])
+            ..master(126, 70, class::PREDATOR, vec![])
         };
         let prey = building(&deer, 0, 2);
         assert_eq!(
@@ -1101,7 +1119,7 @@ mod tests {
         );
         let m199 = master(ids::FISH_TRAP, BUILDING, class::BUILDING, vec![]);
         assert!(on_target(&builder, &a, &building(&m199, 2, 2), -1, &Alone).is_err());
-        let m45 = master(ids::ID_45, 70, 6, vec![]);
+        let m45 = master(ids::ID_45, 70, class::CLASS_6, vec![]);
         assert_eq!(
             on_target(&builder, &a, &building(&m45, 2, 2), -1, &Alone),
             Ok(Finding::Next)
@@ -1109,7 +1127,7 @@ mod tests {
         let trader = master(
             128,
             70,
-            19,
+            class::TRADE_CART,
             vec![
                 task(0x6f, 7, -1, 1.0),
                 task(0x6f, -1, ids::MARKET, 1.0),
@@ -1130,7 +1148,7 @@ mod tests {
             on_target(&trader, &cart, &dock, 5, &Alone),
             Ok(Finding::Next)
         );
-        let market = master(ids::MARKET, BUILDING, 7, vec![]);
+        let market = master(ids::MARKET, BUILDING, class::CLASS_7, vec![]);
         assert_eq!(
             on_target(&trader, &cart, &building(&market, 2, 2), -1, &Alone),
             Ok(Finding::Answer(Some(&trader.tasks[0])))
@@ -1140,7 +1158,7 @@ mod tests {
             on_target(&trader, &cart, &building(&m45, 2, 3), -1, &Alone),
             Ok(Finding::Next)
         );
-        let soldier = master(4, 70, 6, vec![]);
+        let soldier = master(4, 70, class::CLASS_6, vec![]);
         let ship = Master {
             object_flags: 1,
             ..master(545, 70, class::TRANSPORT, vec![])
@@ -1193,9 +1211,9 @@ mod tests {
             object_flags: 1,
             ..master(545, 70, class::TRANSPORT, vec![])
         };
-        let boarding = task(crate::orders::GARRISON, class::TRANSPORT, -1, 0.0);
-        let soldier = master(4, 70, 6, vec![boarding]);
-        let bare = master(4, 70, 6, vec![]);
+        let boarding = task(crate::orders::GARRISON, class::TRANSPORT.get(), -1, 0.0);
+        let soldier = master(4, 70, class::CLASS_6, vec![boarding]);
+        let bare = master(4, 70, class::CLASS_6, vec![]);
         let t = transport(&ship, 2);
         assert_eq!(
             into(&soldier, &t, -1),
@@ -1205,7 +1223,7 @@ mod tests {
         assert_eq!(into(&bare, &t, -1), (Finding::Next, true));
         let barge = Master {
             object_flags: 1,
-            ..master(546, 70, 6, vec![])
+            ..master(546, 70, class::CLASS_6, vec![])
         };
         let villager = master(83, 70, class::VILLAGER, vec![]);
         assert_eq!(
@@ -1236,7 +1254,7 @@ mod tests {
             118,
             70,
             class::VILLAGER,
-            vec![task(106, class::BUILDING, -1, 0.0)],
+            vec![task(106, class::BUILDING.get(), -1, 0.0)],
         );
         assert_eq!(repair(&weak, &damaged, 106), Finding::Answer(None));
         assert_eq!(repair(&weak, &damaged, -1), Finding::Next);
@@ -1263,7 +1281,7 @@ mod tests {
         }
         let house = master(70, BUILDING, class::BUILDING, vec![]);
         let own = building(&house, 2, 2);
-        let thirteen = master(9, 70, 6, vec![task(0xd, -1, -1, 0.0)]);
+        let thirteen = master(9, 70, class::CLASS_6, vec![task(0xd, -1, -1, 0.0)]);
         assert_eq!(tail(&thirteen, &own, 0xd), Ok(Some(&thirteen.tasks[0])));
         assert_eq!(tail(&thirteen, &own, -1), Ok(None));
         let sheep = master(594, 70, class::LIVESTOCK, vec![]);
@@ -1271,7 +1289,7 @@ mod tests {
             83,
             70,
             class::VILLAGER,
-            vec![task(0x6e, class::LIVESTOCK, -1, 0.0)],
+            vec![task(0x6e, class::LIVESTOCK.get(), -1, 0.0)],
         );
         assert_eq!(
             tail(&shepherd, &building(&sheep, 0, 2), -1),
@@ -1279,14 +1297,14 @@ mod tests {
         );
         for list in [
             master(125, 70, class::MONK, vec![]),
-            master(9, 70, 6, vec![task(0x69, -1, -1, 0.0)]),
+            master(9, 70, class::CLASS_6, vec![task(0x69, -1, -1, 0.0)]),
             master(9, 70, class::CLASS_43, vec![]),
             master(9, 70, class::CLASS_53, vec![]),
             master(ids::ID_1105, 70, class::SIEGE, vec![]),
         ] {
             assert!(tail(&list, &own, -1).is_err(), "{}", list.id);
         }
-        let relic_cart = master(9, 70, 6, vec![task(0x84, -1, -1, 0.0)]);
+        let relic_cart = master(9, 70, class::CLASS_6, vec![task(0x84, -1, -1, 0.0)]);
         let c42 = master(1, 70, class::RELIC, vec![]);
         assert!(tail(&relic_cart, &building(&c42, 2, 2), -1).is_err());
     }

@@ -8,6 +8,7 @@ use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
@@ -167,10 +168,10 @@ impl UnitView<'_, '_> {
     /// Attack on another target tears down (its `MoveTo`'s stops the unit) and lets its targets
     /// go (slot 0x180) through the view, as do the others. The releaser, the unit as master
     /// class `class`.
-    fn attack_clears_actions(&mut self, class: i16) -> Result<Releaser, GenieError> {
+    fn attack_clears_actions(&mut self, class: ClassId) -> Result<Releaser, GenieError> {
         let by = Releaser {
             id: self.unit.id.get(),
-            class,
+            class: Some(class),
             player: self.player,
         };
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
@@ -230,7 +231,7 @@ impl UnitView<'_, '_> {
         let w = attack.work(Some(target_mark), main, &wielder, |_| can_move);
         let by = Releaser {
             id: unit.id.get(),
-            class: master.class,
+            class: Some(master.class),
             player: self.player,
         };
         if w.clears_count {

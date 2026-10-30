@@ -360,6 +360,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ClassId;
     use crate::objects::masters::{Master, Masters, master_type};
     use crate::world::Player;
 
@@ -443,7 +444,7 @@ mod tests {
 
     /// A building master `id` of class `class` and base id `base`, available or not, heading
     /// `head` (−1 for none).
-    fn building(id: i16, class: i16, base: i16, available: bool, head: i16) -> Master {
+    fn building(id: i16, class: ClassId, base: i16, available: bool, head: i16) -> Master {
         Master {
             id,
             kind: master_type::BUILDING,
@@ -468,10 +469,10 @@ mod tests {
         t.masters[1] = Masters::new([
             building(FARM, class::FARM, FARM, true, -1),
             building(PASTURE, class::FARM, 300, false, -1),
-            building(300, 3, 300, true, 301),
-            building(301, 3, 302, false, -1),
-            building(302, 3, 302, true, -1),
-            building(303, 3, 999, true, -1),
+            building(300, class::BUILDING, 300, true, 301),
+            building(301, class::BUILDING, 302, false, -1),
+            building(302, class::BUILDING, 302, true, -1),
+            building(303, class::BUILDING, 999, true, -1),
         ]);
         assert!(t.can_make(1, FARM));
         // the pasture's base 300 heads 301, whose base 302 is available
@@ -487,7 +488,13 @@ mod tests {
     #[test]
     fn a_town_centre_can_be_made_below_the_town_centre_limit() {
         let mut t = world(0.0);
-        t.masters[1] = Masters::new([building(TOWN_CENTRE_621, 3, TOWN_CENTRE_621, false, -1)]);
+        t.masters[1] = Masters::new([building(
+            TOWN_CENTRE_621,
+            class::BUILDING,
+            TOWN_CENTRE_621,
+            false,
+            -1,
+        )]);
         assert!(!t.can_make(1, TOWN_CENTRE_621));
         t.players[1].attributes[attribute::TOWN_CENTRE_LIMIT] = 1.0;
         assert!(t.can_make(1, TOWN_CENTRE_621));
@@ -498,7 +505,7 @@ mod tests {
     #[test]
     fn a_reseed_makes_the_farm_else_the_pasture() {
         let mut t = world(0.0);
-        let masters = |farm: bool, pasture: bool, class: i16| {
+        let masters = |farm: bool, pasture: bool, class: ClassId| {
             Masters::new([
                 building(FARM, class, FARM, farm, -1),
                 building(PASTURE, class::FARM, PASTURE, pasture, -1),
@@ -508,7 +515,7 @@ mod tests {
         assert_eq!(t.reseed_master(1), Some(FARM));
         t.masters[1] = masters(false, true, class::FARM);
         assert_eq!(t.reseed_master(1), Some(PASTURE));
-        t.masters[1] = masters(true, true, 3);
+        t.masters[1] = masters(true, true, class::BUILDING);
         assert_eq!(t.reseed_master(1), Some(PASTURE));
         t.masters[1] = masters(false, false, class::FARM);
         assert_eq!(t.reseed_master(1), None);

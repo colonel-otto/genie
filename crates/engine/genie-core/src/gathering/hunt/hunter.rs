@@ -9,6 +9,7 @@ use crate::gathering::hunt::NO_HUNT;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
@@ -80,7 +81,7 @@ impl Unit {
             let class = if ai.target_type == -1 {
                 self.actions
                     .hunt()
-                    .map_or(-1, |h| i32::from(h.target_class))
+                    .map_or(-1, |h| i32::from(ClassId::field(h.target_class)))
             } else {
                 ai.target_type
             };
@@ -293,7 +294,11 @@ impl Unit {
     /// State 2 (case 1): a done hunt waits; one of a tree's target class would search again
     /// (`set_state` 3), which is not modelled.
     pub(crate) fn hunt_idle(&self) -> Result<(), GenieError> {
-        if self.actions.hunt().is_some_and(|h| h.target_class == 15) {
+        if self
+            .actions
+            .hunt()
+            .is_some_and(|h| h.target_class == Some(class::TREE))
+        {
             return Err(GenieError::unsupported(
                 "a done hunt of a tree's class (set_state 3)",
             ));

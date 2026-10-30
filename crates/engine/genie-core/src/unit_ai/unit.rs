@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Mover, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Outcome, Unit};
@@ -91,7 +92,7 @@ impl Unit {
         &self,
         c: &Step<'_>,
         view: &OwnerView,
-        (master, class): (Option<&Master>, Option<i16>),
+        (master, class): (Option<&Master>, Option<ClassId>),
         (player, busy, interruptible): (usize, bool, bool),
     ) -> Result<Surroundings, GenieError> {
         Ok(Surroundings {
@@ -104,13 +105,13 @@ impl Unit {
             busy,
             player,
             class: match class {
-                Some(class) => class,
+                Some(class) => Some(class),
                 None if busy => {
                     return Err(GenieError::unsupported(
                         "a busy unit of a master the slice does not have",
                     ));
                 }
-                None => -1,
+                None => None,
             },
             combat_level: master.map_or(0, |m| m.combat_level),
             attack_priority: master.map_or(0, |m| m.attack_priority),

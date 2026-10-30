@@ -513,7 +513,7 @@ pub(super) fn closest_kept(
     (player, searcher): (usize, Searcher),
     (moving, shuns, farm): ClosestChecks<'_>,
 ) -> Result<bool, GenieError> {
-    if filter.group != -1 && i32::from(p.class) != filter.group {
+    if filter.group != -1 && i32::from(p.class.get()) != filter.group {
         return Ok(false);
     }
     if filter.master != -1 && i32::from(p.master) != filter.master {

@@ -8,6 +8,8 @@ use crate::movement::{
     footprint_gap_squared, lowered_units, overlap, pause_rank, point_or_zero, point_or_zero_of,
     vector,
 };
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
 use crate::pathing::tile_path::{Path, Request};
 use crate::{GenieError, math::fmath};
@@ -15,7 +17,7 @@ use crate::{GenieError, math::fmath};
 /// The classes whose hits a group member on an own move of reason 0 still keeps in
 /// [`Mover::avoid`]'s first loop (its tests against −0xea9, −0xe91, −0xe85 and −0xe78 at
 /// 0x141154411..0x1411544bc, decoded by + 0xeac): buildings (3), walls (27), gates (39) and 52.
-const KEPT_BY_MEMBERS: [i16; 4] = [3, 27, 39, 52];
+const KEPT_BY_MEMBERS: [ClassId; 4] = [class::BUILDING, class::WALL, class::GATE, class::TOWER];
 
 /// What a reach test asks of the unit ([`Mover::reach_test`]'s arguments after the world).
 #[derive(Clone, Copy, Debug)]

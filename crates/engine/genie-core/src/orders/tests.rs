@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -48,11 +49,11 @@ fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
 /// sprites): unhurt, its share is 0 under either master; a resource's share is not modelled.
 #[test]
 fn a_damage_share_is_the_whole_less_the_hit_points_share() {
-    assert_eq!(damage_share(1650.0, 1650, 39), Ok(0));
-    assert_eq!(damage_share(825.0, 1650, 39), Ok(50));
-    assert_eq!(damage_share(1.0, 1650, 39), Ok(99));
-    assert_eq!(damage_share(2000.0, 1650, 39), Ok(0));
-    assert!(damage_share(10.0, 100, 58).is_err());
+    assert_eq!(damage_share(1650.0, 1650, class::GATE), Ok(0));
+    assert_eq!(damage_share(825.0, 1650, class::GATE), Ok(50));
+    assert_eq!(damage_share(1.0, 1650, class::GATE), Ok(99));
+    assert_eq!(damage_share(2000.0, 1650, class::GATE), Ok(0));
+    assert!(damage_share(10.0, 100, class::LIVESTOCK).is_err());
 }
 
 /// records/425906646's update 1641: player 6's drop-off order reaches its goose 28766 (class
@@ -82,12 +83,12 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
     );
     t.masters = vec![crate::objects::masters::Masters::new([Master {
         id: 1243,
-        class: 58,
+        class: class::LIVESTOCK,
         ..Master::default()
     }])];
     let tc = crate::unit_ai::task_finder::DropSite {
         building: 109,
-        worker_class: 4,
+        worker_class: Some(class::VILLAGER),
         ..crate::unit_ai::task_finder::DropSite::default()
     };
     t.drop_sites = vec![tc.clone()];
@@ -96,7 +97,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         tc,
         crate::unit_ai::task_finder::DropSite {
             building: 1897,
-            worker_class: 58,
+            worker_class: Some(class::LIVESTOCK),
             resource_types: vec![0],
             ..crate::unit_ai::task_finder::DropSite::default()
         },
@@ -116,7 +117,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         Master {
             id: 1897,
             kind: 80,
-            class: 3,
+            class: class::BUILDING,
             ..Master::default()
         },
     ]);
@@ -137,10 +138,15 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         t.players[0].tracker.complete(id, key);
     }
     assert_eq!(
-        t.table_drop_site(0, [10.0, 10.0], 0, 58).unwrap(),
+        t.table_drop_site(0, [10.0, 10.0], 0, class::LIVESTOCK)
+            .unwrap(),
         Some(503)
     );
-    assert_eq!(t.table_drop_site(0, [10.0, 10.0], 1, 58).unwrap(), None);
+    assert_eq!(
+        t.table_drop_site(0, [10.0, 10.0], 1, class::LIVESTOCK)
+            .unwrap(),
+        None
+    );
     let before = t.players[0].objects[0].clone();
     assert!(t.drop_off_unasked(0, 0, true).is_ok());
     assert_eq!(t.players[0].objects[0], before);
@@ -157,7 +163,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let placed = |position, master, radius| Placed {
         position,
         radius,
-        class: 3,
+        class: class::BUILDING,
         player: 0,
         master,
         obstruction_type: 2,
@@ -244,7 +250,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             Master {
                 id: 83,
                 kind: 70,
-                class: 4,
+                class: class::VILLAGER,
                 radius: [0.2, 0.2],
                 // no sprites (the world's sprites' table is empty)
                 standing_sprite: -1,
@@ -255,14 +261,14 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             Master {
                 id: 70,
                 kind: 80,
-                class: 3,
+                class: class::BUILDING,
                 radius: [1.0, 1.0],
                 ..Master::default()
             },
             Master {
                 id: 68,
                 kind: 80,
-                class: 3,
+                class: class::BUILDING,
                 radius: [1.0, 1.0],
                 ..Master::default()
             },
@@ -281,7 +287,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let mut t = world();
     t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
         building: 68,
-        worker_class: 4,
+        worker_class: Some(class::VILLAGER),
         resource_types: vec![1],
         ..crate::unit_ai::task_finder::DropSite::default()
     }];
@@ -326,7 +332,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let mut t = world();
     t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
         building: 68,
-        worker_class: 4,
+        worker_class: Some(class::VILLAGER),
         resource_types: vec![1],
         ..crate::unit_ai::task_finder::DropSite::default()
     }];
@@ -383,17 +389,23 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
 fn an_attack_task_aims_at_its_target_or_an_annex_s_main_building() {
     let (mut t, _) = work_attack(0);
     let aim = t.attack_aim(50).unwrap();
-    assert_eq!((aim.owner, aim.class, aim.fog_visibility), (0, 10, 0));
+    assert_eq!(
+        (aim.owner, aim.class, aim.fog_visibility),
+        (0, class::PREDATOR, 0)
+    );
     assert_eq!(
         (aim.aimed, aim.at, aim.aimed_class),
-        (50, [10.4, 10.0, 0.0], 10)
+        (50, [10.4, 10.0, 0.0], class::PREDATOR)
     );
     annexed(&mut t);
     let aim = t.attack_aim(61).unwrap();
-    assert_eq!((aim.owner, aim.class, aim.fog_visibility), (0, 52, 1));
+    assert_eq!(
+        (aim.owner, aim.class, aim.fog_visibility),
+        (0, class::TOWER, 1)
+    );
     assert_eq!(
         (aim.aimed, aim.at, aim.aimed_class),
-        (60, [20.5, 20.5, 0.0], 3)
+        (60, [20.5, 20.5, 0.0], class::BUILDING)
     );
     let r = t.attack_aim(98);
     assert_eq!(
@@ -481,14 +493,14 @@ fn annexed(t: &mut World) {
         Master {
             id: 200,
             kind: BUILDING,
-            class: 3,
+            class: class::BUILDING,
             fog_visibility: 1,
             ..Master::default()
         },
         Master {
             id: 201,
             kind: BUILDING,
-            class: 52,
+            class: class::TOWER,
             fog_visibility: 1,
             ..Master::default()
         },
@@ -560,7 +572,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     t.masters[0] = crate::objects::masters::Masters::new([Master {
         id: 126,
         kind: 70,
-        class: 10,
+        class: class::PREDATOR,
         ..Master::default()
     }]);
     t.players[0].objects.push(Unit {
@@ -588,8 +600,8 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
         obstruction: None,
     };
     t.spatial = crate::map::spatial::Spatial::new([120, 120]);
-    t.spatial.insert(11, placed(10.0, 0, 1, 4));
-    t.spatial.insert(50, placed(10.4, 10, 0, 126));
+    t.spatial.insert(11, placed(10.0, class::CLASS_0, 1, 4));
+    t.spatial.insert(50, placed(10.4, class::PREDATOR, 0, 126));
     let mut rng = Well512::default();
     let unit = &mut t.players[1].objects[0];
     unit.body.put_mover(Some(walker));
@@ -1319,7 +1331,7 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
     };
     let run = |master: i16, held: (i16, f32), task: crate::objects::masters::Task| {
         let mut t = soldiers(&[(11, master, [20.0, 20.0])], &[]);
-        for (id, class) in [(83, 4), (4, 6)] {
+        for (id, class) in [(83, class::VILLAGER), (4, class::CLASS_6)] {
             if let Some(m) = t.masters[1].get_mut(id) {
                 m.class = class;
             }
@@ -1397,7 +1409,7 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
     let scout = Master {
         id: 448,
         kind: 70,
-        class: 12,
+        class: class::CLASS_12,
         object_flags: 0x10,
         // no sprites: the Explore's MoveTo takes none (the world's sprites' table holds none)
         move_sprite: -1,
@@ -1462,7 +1474,7 @@ fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
     set_stance(
         &mut ai,
         1,
-        ([3.0, 4.0], 6),
+        ([3.0, 4.0], Some(class::CLASS_6)),
         &mut fx,
         &mut crate::math::rng::Well512::default(),
     )
@@ -1476,7 +1488,7 @@ fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
     set_stance(
         &mut ai,
         3,
-        ([3.0, 5.0], 6),
+        ([3.0, 5.0], Some(class::CLASS_6)),
         &mut fx,
         &mut crate::math::rng::Well512::default(),
     )
@@ -1499,7 +1511,7 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
         .push(crate::objects::masters::Masters::new([Master {
             id: 4,
             kind: 70,
-            class: 54,
+            class: class::CLASS_54,
             ..Master::default()
         }]));
     t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi::default());
@@ -1532,7 +1544,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     let old = Master {
         id: 4,
         kind: 70,
-        class: 6,
+        class: class::CLASS_6,
         hit_points: 40,
         radius: [0.2, 0.2],
         standing_sprite: -1,
@@ -1541,7 +1553,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     let next = Master {
         id: 5,
         kind: 70,
-        class: 6,
+        class: class::CLASS_6,
         hit_points: 60,
         radius: [0.3, 0.3],
         standing_sprite: -1,
@@ -1553,7 +1565,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
         crate::map::spatial::Placed {
             position: [3.5, 3.5, 0.0],
             radius: [0.2, 0.2],
-            class: 6,
+            class: class::CLASS_6,
             player: 1,
             master: 4,
             obstruction_type: 0,
@@ -1653,7 +1665,7 @@ fn switch_masters() -> (Master, Master) {
     let old = Master {
         id: 4,
         kind: 70,
-        class: 6,
+        class: class::CLASS_6,
         hit_points: 40,
         radius: [0.2, 0.2],
         standing_sprite: 10,
@@ -1669,7 +1681,7 @@ fn switch_masters() -> (Master, Master) {
     let next = Master {
         id: 5,
         kind: 70,
-        class: 6,
+        class: class::CLASS_6,
         hit_points: 60,
         radius: [0.3, 0.3],
         standing_sprite: 11,
@@ -1904,7 +1916,7 @@ fn followers() -> World {
         .push(crate::objects::masters::Masters::new([Master {
             id: 5,
             kind: 70,
-            class: 6,
+            class: class::CLASS_6,
             radius: [0.5, 0.5],
             ..Master::default()
         }]));
@@ -1923,7 +1935,7 @@ fn followers() -> World {
         crate::map::spatial::Placed {
             position: [40.0, 20.0, 0.0],
             radius: [0.5, 0.5],
-            class: 6,
+            class: class::CLASS_6,
             player: 2,
             master: 5,
             obstruction_type: 0,
@@ -2214,10 +2226,10 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
         ..Master::default()
     };
     t.masters[1] = crate::objects::masters::Masters::new([
-        master(4, 70, 6),
-        master(42, 70, 42),
+        master(4, 70, class::CLASS_6),
+        master(42, 70, class::RELIC),
         master(58, 70, class::LIVESTOCK),
-        master(10, 10, 5),
+        master(10, 10, class::CLASS_5),
     ]);
     let unit = |id, master, amount| Unit {
         id,
@@ -2270,7 +2282,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
     let villager = |id, tasks| Master {
         id,
         kind: 70,
-        class: 4,
+        class: class::VILLAGER,
         task_by_group: 1,
         hit_points: 25,
         tasks,
@@ -2282,7 +2294,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
         Master {
             id: 70,
             kind: BUILDING,
-            class: 3,
+            class: class::BUILDING,
             hit_points: 550,
             ..Master::default()
         },
@@ -2439,7 +2451,7 @@ fn a_target_is_in_reach_within_the_weapon_range_and_not_below_the_least() {
 
 /// Player 1's soldier 10 (master 4, ranges 2 to 5) at (10, 10) and player 2's unit 20 at
 /// (`x`, 10), the two enemies, each with a unit AI in state 2.
-fn soldier_and_enemy(x: f32, class: i16) -> World {
+fn soldier_and_enemy(x: f32, class: ClassId) -> World {
     let unit = |id, master, x: f32| Unit {
         id,
         body: crate::objects::layers::Body::at([x, 10.0, 0.0]),
@@ -2479,7 +2491,7 @@ fn soldier_and_enemy(x: f32, class: i16) -> World {
     t.masters = vec![
         crate::objects::masters::Masters::new([]),
         crate::objects::masters::Masters::new([master(4, class)]),
-        crate::objects::masters::Masters::new([master(5, 6)]),
+        crate::objects::masters::Masters::new([master(5, class::CLASS_6)]),
     ];
     for (id, player, x) in [(10, 1, 10.0), (20, 2, x)] {
         t.spatial.insert(
@@ -2506,7 +2518,7 @@ fn soldier_and_enemy(x: f32, class: i16) -> World {
 /// with the target to its own unit AI (slot 0x328) and takes no work.
 #[test]
 fn an_order_on_an_enemy_below_the_least_range_notifies_the_unit_ai() {
-    let mut t = soldier_and_enemy(11.0, 6);
+    let mut t = soldier_and_enemy(11.0, class::CLASS_6);
     let work = Work {
         target: 20,
         point: [11.0, 10.0, 0.0],
@@ -3641,7 +3653,7 @@ fn a_work_command_s_retarget_to_its_player_s_master_84_fails() {
             let m84 = Master {
                 id: 84,
                 kind: 70,
-                class: 9,
+                class: class::PREY,
                 ..Master::default()
             };
             *masters = crate::objects::masters::Masters::new(masters.iter().cloned().chain([m84]));
@@ -3809,7 +3821,7 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
         tasks: vec![crate::objects::masters::Task {
             action_type: 7,
             owner_type: 2,
-            object_group: class::BUILDING,
+            object_group: class::BUILDING.get(),
             ..crate::objects::masters::Task::default()
         }],
         ..t.masters[1].get(4).unwrap().clone()

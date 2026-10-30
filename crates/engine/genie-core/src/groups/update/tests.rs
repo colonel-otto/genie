@@ -1,5 +1,6 @@
 use crate::groups::{Member, UnitGroup, UnitGroups};
 use crate::movement::GroupSpeed;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
@@ -56,7 +57,7 @@ fn world() -> World {
     let master = Master {
         id: 4,
         kind: 70,
-        class: 6,
+        class: class::CLASS_6,
         hit_points: 60,
         line_of_sight: 4.0,
         search_radius: 3.0,
@@ -268,13 +269,13 @@ fn relic_carriers_keep_their_command_pending() {
     let relic = Master {
         id: 285,
         kind: 70,
-        class: 0x2a,
+        class: class::RELIC,
         ..Master::default()
     };
     let monastery = Master {
         id: 104,
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         ..Master::default()
     };
     let task = |action| Task {
@@ -284,7 +285,7 @@ fn relic_carriers_keep_their_command_pending() {
     let monk = |tasks: Vec<Task>| Master {
         id: 4,
         kind: 70,
-        class: 18,
+        class: class::MONK,
         tasks,
         ..Master::default()
     };
@@ -389,7 +390,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     t.players[1].objects[0].actions.set_attack(Some(attack(2)));
     for m in &mut t.masters {
         let mut master = m.get(4).unwrap().clone();
-        master.class = 19;
+        master.class = class::TRADE_CART;
         *m = Masters::new([master]);
     }
     assert!(t.member_idle(10).unwrap());
@@ -484,7 +485,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
     let walker = crate::gathering::hunt::tests::walker();
     t.players[1].objects[0].body.put_mover(Some(walker));
     let speed = |t: &World| t.object(10).unwrap().1.body.mover().unwrap().stats.speed;
-    let master = |t: &mut World, class: i16, sprites: [i16; 3]| {
+    let master = |t: &mut World, class: ClassId, sprites: [i16; 3]| {
         let m = Master {
             id: 4,
             kind: 70,
@@ -499,12 +500,12 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
         };
         t.masters = vec![Masters::new([m]); 4];
     };
-    master(&mut t, 6, [-1; 3]);
+    master(&mut t, class::CLASS_6, [-1; 3]);
     assert_eq!(t.show_walking(10), Ok(false));
     assert_eq!(t.show_running(10), Ok(false));
     t.show_standing(10).unwrap();
     assert_eq!(speed(&t), 0.8);
-    master(&mut t, 6, [6, 7, 8]);
+    master(&mut t, class::CLASS_6, [6, 7, 8]);
     // the sprites' factors on the walker's top speed 0.8
     for (id, factor) in [(6, 0.125), (7, 1.125), (8, 1.875)] {
         let graphic = crate::objects::sprite::Graphic {
@@ -956,7 +957,7 @@ fn a_member_s_own_move_walks_its_path() {
         crate::map::spatial::Placed {
             position: [1.0, 1.0, 0.0],
             radius: [0.2, 0.2],
-            class: 6,
+            class: class::CLASS_6,
             player: 1,
             master: 4,
             obstruction_type: 0,
@@ -1378,7 +1379,7 @@ fn grounded() -> World {
                 crate::map::spatial::Placed {
                     position: u.position(),
                     radius: [0.2, 0.2],
-                    class: 6,
+                    class: class::CLASS_6,
                     player: p,
                     master: 4,
                     obstruction_type: 0,
@@ -1709,7 +1710,7 @@ fn gate_world() -> World {
     let gate = Master {
         id: 5,
         kind: 80,
-        class: 39,
+        class: class::GATE,
         radius: [0.5, 0.5],
         standing_sprite: -1,
         ..Master::default()

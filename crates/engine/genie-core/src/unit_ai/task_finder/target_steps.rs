@@ -65,7 +65,7 @@ fn trade_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&
             first(list, |task| {
                 // The trade task's action type (`0x6f`).
                 task.action_type == action_type::TRADE
-                    && (task.object_id == t.master.id || task.object_group == t.master.class)
+                    && (task.object_id == t.master.id || task.object_group == t.master.class.get())
                     && wanted(filter, task)
             })
         })
@@ -136,7 +136,7 @@ pub(super) fn garrison_into<'m>(
     {
         if let Some(task) = first(list, |task| {
             task.action_type == crate::orders::GARRISON
-                && task.object_group == t.master.class
+                && task.object_group == t.master.class.get()
                 && wanted(filter, task)
         }) {
             return (Finding::Answer(Some(task)), false);
@@ -188,7 +188,7 @@ pub(super) fn repair_finding<'m>(
             if task.object_group == -1 && task.object_id == -1 {
                 any = Some(task);
             }
-            if task.object_group == t.master.class {
+            if task.object_group == t.master.class.get() {
                 by_class = Some(task);
             }
             if task.object_id == t.master.id {
@@ -221,7 +221,7 @@ fn build_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&
         if task.object_id == t.master.id {
             return (0.0 < task.work_val1).then_some(task);
         }
-        if task.object_group == t.master.class {
+        if task.object_group == t.master.class.get() {
             by_class = Some(task);
         }
         if task.object_group == -1 && task.object_id == -1 {

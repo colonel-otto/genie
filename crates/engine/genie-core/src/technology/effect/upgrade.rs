@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::ids::{RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
-use crate::objects::masters::{Master, master_type, player_master};
+use crate::objects::masters::{ClassId, Master, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::technology::EffectCommand;
 use crate::technology::effect::kind;
@@ -324,7 +324,10 @@ impl World {
         let Some(masters) = self.masters.get_mut(p) else {
             return;
         };
-        let class = (900..1000).contains(&unit).then(|| unit - 900);
+        let class = (900..1000)
+            .contains(&unit)
+            .then(|| ClassId::try_from(unit - 900).ok())
+            .flatten();
         for m in masters.iter_mut() {
             let named = class.map_or(m.id == unit, |c| m.class == c);
             if !named || m.kind < master_type::COMBAT {

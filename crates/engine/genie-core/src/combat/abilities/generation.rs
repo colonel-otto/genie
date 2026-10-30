@@ -1,6 +1,7 @@
 //! The generation tasks (action type 151): their test, what they make and the player's store.
 
 use crate::combat::abilities::{ONE, Own, WORKING, WORKING_ACTIONS};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -28,7 +29,7 @@ pub struct WorkTarget {
     /// Its master's first storage amount (`+0x610`).
     pub storage: f32,
     /// Its master's class (`+0x410`).
-    pub class: i16,
+    pub class: ClassId,
 }
 
 /// Whether a generation task generates this update (`0x141207d4d`..`0x141207fbe`): an object
@@ -57,7 +58,7 @@ pub fn generates(
         && top.state == WORKING
         && let Some(t) = top.target
         && (0.0 < t.hp || 0.0 < t.storage)
-        && t.class == task.object_group
+        && t.class.get() == task.object_group
     {
         return true;
     }

@@ -320,7 +320,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            DAMAGED if at.class == PACKED_UNIT_CLASS && computer => {
+            DAMAGED if at.class == Some(PACKED_UNIT_CLASS) && computer => {
                 self.packed_damaged(n, time, at, computer, ai_rng, side)
             }
             0x1fe => back_up(),

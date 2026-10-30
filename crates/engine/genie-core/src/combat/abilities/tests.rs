@@ -1,5 +1,7 @@
 use super::*;
 use crate::combat::damage::Victim;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::test_ids::object_id;
 
 fn task(action_type: i16) -> Task {
@@ -69,7 +71,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
     let target = WorkTarget {
         hp: 45.0,
         storage: 0.0,
-        class: 0,
+        class: class::CLASS_0,
     };
     let top = |kind, state, target| {
         Some(TopWork {
@@ -87,7 +89,10 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
     assert!(!generates(&t, 70, 70, top(9, 7, None), false));
     assert!(!generates(&t, 70, 70, None, false));
     // another class
-    let other = WorkTarget { class: 6, ..target };
+    let other = WorkTarget {
+        class: class::CLASS_6,
+        ..target
+    };
     assert!(!generates(&t, 70, 70, top(9, 7, Some(other)), false));
     // a dead target counts while its master stores some, never with a NaN
     let dead = WorkTarget {
@@ -200,7 +205,7 @@ fn bystander() -> Bystander {
         player: 2,
         allied: false,
         kind: 70,
-        class: 6,
+        class: class::CLASS_6,
         state: 2,
         blast_defense: 1,
         position: [11.5, 10.0, 0.0],
@@ -223,7 +228,7 @@ fn a_movement_damage_strikes_enemies_in_reach() {
     // buildings only of classes 51 and 54
     let building = Bystander {
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         ..b
     };
     assert!(!struck(&h, 1.0, &building));
@@ -231,7 +236,7 @@ fn a_movement_damage_strikes_enemies_in_reach() {
         &h,
         1.0,
         &Bystander {
-            class: 51,
+            class: class::CLASS_51,
             ..building
         }
     ));
@@ -239,7 +244,7 @@ fn a_movement_damage_strikes_enemies_in_reach() {
         &h,
         1.0,
         &Bystander {
-            class: 54,
+            class: class::CLASS_54,
             ..building
         }
     ));
@@ -433,7 +438,7 @@ fn world() -> World {
 }
 
 /// Master `id` of `kind` and `class` with `tasks`, given to every player.
-fn give_master(t: &mut World, id: i16, kind: u8, class: i16, tasks: Vec<Task>) {
+fn give_master(t: &mut World, id: i16, kind: u8, class: ClassId, tasks: Vec<Task>) {
     let m = Master {
         id,
         kind,
@@ -468,7 +473,7 @@ fn put(t: &mut World, p: usize, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
         Placed {
             position: [x, y, 0.0],
             radius,
-            class: 0,
+            class: class::CLASS_0,
             player: p,
             master: m,
             obstruction_type: 0,
@@ -535,7 +540,13 @@ fn building_sight(t: &mut World, p: usize, id: i32, built: bool) {
 fn a_built_feitoria_trickles_food_through_its_player_s_store() {
     let mut t = world();
     // its explore task (6) does nothing here
-    give_master(&mut t, 1021, 80, 3, vec![task(6), feitoria_food()]);
+    give_master(
+        &mut t,
+        1021,
+        80,
+        class::BUILDING,
+        vec![task(6), feitoria_food()],
+    );
     put(&mut t, 1, 50, 1021, 2000.0, [5.5, 5.5]);
     building_sight(&mut t, 1, 50, true);
     t.players[1].attributes[205] = 1.0;
@@ -561,7 +572,7 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
 
 /// A Keshik of player 1 attacking object 77 in state 7.
 fn keshik(t: &mut World) {
-    give_master(t, 1228, 70, 12, vec![keshik_gold()]);
+    give_master(t, 1228, 70, class::CLASS_12, vec![keshik_gold()]);
     put(t, 1, 60, 1228, 100.0, [5.5, 5.5]);
     let attack = crate::combat::attack::Attack {
         target: 77,
@@ -599,7 +610,7 @@ fn keshik(t: &mut World) {
 fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
     let mut t = world();
     keshik(&mut t);
-    give_master(&mut t, 4, 70, 0, Vec::new());
+    give_master(&mut t, 4, 70, class::CLASS_0, Vec::new());
     put(&mut t, 2, 77, 4, 30.0, [6.5, 5.5]);
     run(&mut t, 1, 60);
     let given = 0.5_f32 * 0.01 * 0.5 + 0.999;
@@ -622,7 +633,7 @@ fn trampler(t: &mut World) {
         work_val2: 3.0,
         ..task(MOVEMENT_DAMAGE)
     };
-    give_master(t, 9, 70, 12, vec![trample]);
+    give_master(t, 9, 70, class::CLASS_12, vec![trample]);
     put(t, 1, 10, 9, 100.0, [5.5, 5.5]);
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.velocity = Some(crate::movement::Velocity {
@@ -636,7 +647,7 @@ fn trampler(t: &mut World) {
 fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
     let mut t = world();
     trampler(&mut t);
-    give_master(&mut t, 4, 70, 6, Vec::new());
+    give_master(&mut t, 4, 70, class::CLASS_6, Vec::new());
     // an enemy in reach, one out of it, one of its own player, one of Gaia
     put(&mut t, 2, 20, 4, 30.0, [6.5, 5.5]);
     put(&mut t, 2, 21, 4, 30.0, [9.5, 5.5]);
@@ -664,7 +675,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
 fn a_movement_damage_kill_leaves_0_hit_points_and_counts_the_kill() {
     let mut t = world();
     trampler(&mut t);
-    give_master(&mut t, 4, 70, 6, Vec::new());
+    give_master(&mut t, 4, 70, class::CLASS_6, Vec::new());
     put(&mut t, 2, 20, 4, 3.0, [6.5, 5.5]);
     t.players[2].objects[0].life.amount = 10.0;
     run(&mut t, 1, 10);
@@ -712,7 +723,7 @@ fn waters(t: &mut World) {
 fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() {
     let mut t = world();
     waters(&mut t);
-    give_master(&mut t, 250, 70, 22, vec![longboat_look()]);
+    give_master(&mut t, 250, 70, class::WARSHIP, vec![longboat_look()]);
     put(&mut t, 1, 70, 250, 100.0, [5.5, 6.5]);
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = [5.5, 6.5, 0.0];
@@ -747,7 +758,7 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
         work_range: 1.0,
         ..bounty()
     };
-    give_master(&mut t, 5, 70, 6, vec![bounty(), far, bounty()]);
+    give_master(&mut t, 5, 70, class::CLASS_6, vec![bounty(), far, bounty()]);
     put(&mut t, 1, 80, 5, 0.0, [5.5, 5.5]);
     t.players[1].attributes[7] = 2.0;
     assert_eq!(rewards(&mut t, 1, 80, false), Vec::new());
@@ -765,7 +776,7 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
 #[test]
 fn an_object_of_another_type_has_no_abilities() {
     let mut t = world();
-    give_master(&mut t, 7, 30, 6, vec![bounty()]);
+    give_master(&mut t, 7, 30, class::CLASS_6, vec![bounty()]);
     put(&mut t, 1, 90, 7, 0.0, [5.5, 5.5]);
     assert_eq!(rewards(&mut t, 1, 90, true), Vec::new());
 }

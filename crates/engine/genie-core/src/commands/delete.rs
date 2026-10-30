@@ -9,6 +9,7 @@
 use crate::GenieError;
 use crate::construction::build::held;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
@@ -23,7 +24,12 @@ use crate::world::World;
 
 /// The classes no delete takes (`DAT_142f925c0`, and `FUN_14120f620`'s own test): livestock,
 /// class 42, artifacts and class 60.
-const UNDELETABLE: [i16; 4] = [58, 42, 1, 60];
+const UNDELETABLE: [ClassId; 4] = [
+    class::LIVESTOCK,
+    class::RELIC,
+    class::ARTIFACT,
+    class::CLASS_60,
+];
 
 /// The first master type a delete takes (`FUN_1416257c0`: above `0x45`).
 const DELETABLE_TYPE: u8 = 70;
@@ -622,20 +628,20 @@ mod tests {
         let masters = Masters::new([
             Master {
                 id: 83,
-                class: 4,
+                class: class::VILLAGER,
                 kind: 70,
                 ..Master::default()
             },
             Master {
                 id: 70,
-                class: 3,
+                class: class::BUILDING,
                 kind: 80,
                 cost: vec![(1, 25, true), (4, 1, false)],
                 ..Master::default()
             },
             Master {
                 id: 594,
-                class: 58,
+                class: class::LIVESTOCK,
                 kind: 70,
                 ..Master::default()
             },
@@ -769,7 +775,7 @@ mod clearing_tests {
         let deco = |id| Master {
             id,
             kind: 10,
-            class: 5,
+            class: class::CLASS_5,
             radius: [0.5, 0.5],
             buildable_on: 1,
             ..Master::default()
@@ -778,7 +784,7 @@ mod clearing_tests {
             Master {
                 id: 70,
                 kind: 80,
-                class: 3,
+                class: class::BUILDING,
                 radius: [1.0, 1.0],
                 ..Master::default()
             },
@@ -787,7 +793,7 @@ mod clearing_tests {
             Master {
                 id: 43,
                 kind: 30,
-                class: 11,
+                class: class::CLASS_11,
                 radius: [0.2, 0.2],
                 buildable_on: 1,
                 storage: vec![(7, 1.0, 32)],
@@ -796,7 +802,7 @@ mod clearing_tests {
             Master {
                 id: 254,
                 kind: 70,
-                class: 40,
+                class: class::CLASS_40,
                 radius: [0.5, 0.5],
                 height: 1.0,
                 tall: true,
@@ -807,7 +813,7 @@ mod clearing_tests {
             Master {
                 id: 357,
                 kind: 80,
-                class: 11,
+                class: class::CLASS_11,
                 radius: [1.5, 1.5],
                 buildable_on: 1,
                 building: Some(crate::objects::masters::BuildingMaster {

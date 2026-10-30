@@ -16,6 +16,7 @@
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
+use crate::objects::masters::ClassId;
 use genie_diff::Diff;
 
 mod point_walks;
@@ -161,7 +162,7 @@ pub struct Resource {
     /// Its place.
     pub position: [f32; 3],
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's id.
     pub master: i16,
     /// Its owner.
@@ -205,7 +206,7 @@ pub(crate) struct GatherReads {
     /// The sprites the gather shows.
     pub(crate) sprites: HuntSprites,
     /// The unit's master's class: a villager's `MoveTo` waits once when the motion step gives up.
-    pub(crate) class: i16,
+    pub(crate) class: ClassId,
     /// What the `MoveTo`'s constructors take for a sprite when the task gives none
     /// (`FUN_140aa0d30`, `FUN_140aa0df0`).
     pub(crate) defaults: MoveDefaults,

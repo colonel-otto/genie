@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::math::msvc;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::task_finder::DropSite;
 
@@ -16,7 +17,7 @@ pub struct Candidate {
     /// The owner.
     pub player: usize,
     /// Its master's class (`+0x410`, decoded).
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's id.
     pub master: i16,
     /// `+0x640`.
@@ -642,7 +643,7 @@ mod tests {
         Candidate {
             id,
             player: 0,
-            class: 15,
+            class: class::TREE,
             master: 349,
             state: 2,
             workers: 0,
@@ -659,12 +660,12 @@ mod tests {
     fn lumber_camp() -> DropSite {
         DropSite {
             building: 562,
-            worker_class: 4,
+            worker_class: Some(class::VILLAGER),
             workers: Vec::new(),
             civs: Vec::new(),
             auto_work: true,
             targets: vec![DropTarget {
-                class: 15,
+                class: class::TREE,
                 workers: -1,
                 state: -1,
                 attribute: 1,
@@ -724,7 +725,7 @@ mod tests {
     fn gold_wins_over_nearer_wood_unless_the_wood_is_nearer_than_the_gold() {
         let mut entry = lumber_camp();
         entry.targets.push(DropTarget {
-            class: 32,
+            class: class::CLASS_32,
             workers: -1,
             state: -1,
             attribute: 3,
@@ -736,7 +737,7 @@ mod tests {
             range: 6,
         };
         let mut gold = tree(7, 14.5, 10.5);
-        gold.class = 32;
+        gold.class = class::CLASS_32;
         let wood = tree(8, 12.5, 10.5);
         let all = [gold, wood];
         let objects = |x: i32, y: i32| {

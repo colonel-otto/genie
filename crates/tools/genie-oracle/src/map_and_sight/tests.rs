@@ -108,6 +108,7 @@ mod spatial {
     use crate::map_and_sight::spatial;
     use crate::masters::TerrainTable;
     use genie_core::map::spatial::Spatial;
+    use genie_core::objects::masters::class;
     use genie_save::generated::world::{Object, RgeMapRow, RgeTile};
 
     /// A master of id `id`, its radius `radius` and an obstruction of kind `kind`.
@@ -183,7 +184,10 @@ mod spatial {
     fn a_unit_takes_its_masters_footprint_and_obstruction() {
         let out = placed();
         let unit = out.get(10).unwrap();
-        assert_eq!((unit.player, unit.master, unit.class), (1, 83, 6));
+        assert_eq!(
+            (unit.player, unit.master, unit.class),
+            (1, 83, class::CLASS_6)
+        );
         assert!(unit.tall);
         let obstruction = unit.obstruction.unwrap();
         assert_eq!((obstruction.kind, obstruction.class), (2, 3));

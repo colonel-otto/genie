@@ -360,7 +360,7 @@ pub fn trade_sprite(master: &Master) -> Option<i16> {
 /// `FUN_14106a940`: a trade cart (its master's class 19) that carries goods (`goods`,
 /// `FUN_141188160`: an amount above 0 in its resource store, `+0x7a0`).
 #[must_use]
-pub const fn loaded_cart(master: &Master, goods: bool) -> bool {
+pub fn loaded_cart(master: &Master, goods: bool) -> bool {
     master.class == class::TRADE_CART && goods
 }
 
@@ -630,7 +630,7 @@ mod tests {
         Master {
             id: 12,
             kind: 80,
-            class: 3,
+            class: class::BUILDING,
             standing_sprite: 2575,
             death_sprite: 2573,
             undead_sprite: -1,
@@ -708,7 +708,10 @@ mod tests {
         };
         assert_eq!(standing(&bare, None, true), None);
         // another class's goods do not count
-        let villager = Master { class: 4, ..bare };
+        let villager = Master {
+            class: class::VILLAGER,
+            ..bare
+        };
         assert_eq!(standing(&villager, None, true), Some(20));
     }
 

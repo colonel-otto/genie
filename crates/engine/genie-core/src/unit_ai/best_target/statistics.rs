@@ -1,6 +1,7 @@
 //! `bestUnitToAttack`'s statistics ([`Statistics`]): the entries, an object's add, the scores,
 //! the ranks and the sort, and the order history's weights.
 
+use crate::objects::masters::ClassId;
 use crate::unit_ai::best_target::ORDER_WINDOW;
 use crate::world::slots::CheckedIndex;
 
@@ -68,7 +69,7 @@ pub struct Candidate {
     /// when not −1).
     pub category: i32,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its top speed (slot 0x208).
     pub speed: f32,
     /// It is armed: the sum of its attacks above 0 (slot 0x228, `FUN_141084070`), or its unit AI
@@ -190,7 +191,7 @@ impl Statistics {
             }
             self.moving += 1;
         }
-        let class = i32::from(c.class) as u32;
+        let class = i32::from(c.class.get()) as u32;
         e.fixed = class <= 0x34 && FIXED_CLASSES >> class & 1 != 0;
         if c.armed {
             self.armed += 1;

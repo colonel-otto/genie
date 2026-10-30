@@ -2,6 +2,7 @@ use super::*;
 use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
 use crate::test_ids::object_id;
@@ -181,7 +182,7 @@ fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
 /// A 16 × 16 map of terrain `class` with player 2's drop-off walker 9177 standing at (5.5, 5.5),
 /// its target the house 10028 at (12.5, 5.5), and the records `near` about it (id, place,
 /// radius, class, player), each of the master numbered as its class.
-fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, i16, usize)]) -> Spatial {
+fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, usize)]) -> Spatial {
     let mut w = Spatial::with_tiles(
         [16, 16],
         crate::map::spatial::Tiles::new(16, 16, vec![class; 256]),
@@ -191,7 +192,7 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, i16, usize)]) -> Spati
         radius: [r, r],
         class,
         player,
-        master: class,
+        master: class.get(),
         obstruction_type: 5,
         buildable_on: 0,
         tall: true,
@@ -199,12 +200,12 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, i16, usize)]) -> Spati
         unknown: None,
         obstruction: Some(Obstruction { kind: 5, class: 2 }),
     };
-    w.insert(9177, placed([5.5, 5.5], 0.2, 4, 2));
+    w.insert(9177, placed([5.5, 5.5], 0.2, class::VILLAGER, 2));
     w.insert(
         10028,
         Placed {
             obstruction: None,
-            ..placed([12.5, 5.5], 1.0, 3, 2)
+            ..placed([12.5, 5.5], 1.0, class::BUILDING, 2)
         },
     );
     for &(id, at, r, class, player) in near {
@@ -224,15 +225,15 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, i16, usize)]) -> Spati
 #[test]
 fn a_drop_off_walker_ignores_the_allied_workers_standing_beside_it() {
     let near = [
-        (1, [5.6, 5.5], 0.2, 4, 2),
-        (2, [5.6, 5.6], 0.2, 7, 2),
-        (3, [5.4, 5.5], 0.2, 4, 2),
-        (4, [5.5, 5.6], 0.2, 4, 2),
-        (5, [5.5, 5.4], 0.2, 4, 3),
-        (6, [5.4, 5.4], 0.2, 21, 4),
-        (7, [5.6, 5.4], 0.5, 27, 2),
-        (8, [5.4, 5.6], 0.5, 39, 2),
-        (9, [5.5, 5.5], 7.0, 4, 2),
+        (1, [5.6, 5.5], 0.2, class::VILLAGER, 2),
+        (2, [5.6, 5.6], 0.2, class::CLASS_7, 2),
+        (3, [5.4, 5.5], 0.2, class::VILLAGER, 2),
+        (4, [5.5, 5.6], 0.2, class::VILLAGER, 2),
+        (5, [5.5, 5.4], 0.2, class::VILLAGER, 3),
+        (6, [5.4, 5.4], 0.2, class::FISHING_SHIP, 4),
+        (7, [5.6, 5.4], 0.5, class::WALL, 2),
+        (8, [5.4, 5.6], 0.5, class::GATE, 2),
+        (9, [5.5, 5.5], 7.0, class::VILLAGER, 2),
     ];
     let mut world = drop_off_world(1, &near);
     let gait = |moving, path_made| {
@@ -337,7 +338,7 @@ fn walled(radius: f32) -> Spatial {
         Placed {
             position: [4.5, 5.5, 0.0],
             radius: [radius, radius],
-            class: 4,
+            class: class::VILLAGER,
             player: 2,
             master: 0,
             obstruction_type: 5,
@@ -605,7 +606,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
     let unit = |x: f32, r: f32| Placed {
         position: [x, 5.5, 0.0],
         radius: [r, r],
-        class: 4,
+        class: class::VILLAGER,
         player: 2,
         master: 0,
         obstruction_type: 5,
@@ -685,7 +686,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
         Placed {
             position: [5.5, 5.5, 0.0],
             radius: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             player: 2,
             master: 83,
             obstruction_type: 0,
@@ -983,7 +984,7 @@ fn a_walk_whose_target_is_gone_walks_as_to_a_point() {
 #[test]
 fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
     let mut world = Spatial::new([40, 40]);
-    let wall = |x: f32, class: i16| Placed {
+    let wall = |x: f32, class: ClassId| Placed {
         position: [x, 10.0, 0.0],
         radius: [0.5, 0.5],
         class,
@@ -997,8 +998,8 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
         obstruction: Some(Obstruction { kind: 2, class: 1 }),
     };
     world.insert(100, wall(10.0, class::GATE));
-    world.insert(101, wall(12.0, 27));
-    world.insert(102, wall(8.0, 27));
+    world.insert(101, wall(12.0, class::WALL));
+    world.insert(102, wall(8.0, class::WALL));
     world.set_annex(101, Some(100));
     world.set_annex(102, Some(100));
     let near = ([13.5, 10.0, 0.0], [0.2, 0.2]);
@@ -1012,7 +1013,7 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
     assert_eq!(gap, annex - ANNEX_GAP);
     // not a gate: its own
     let mut post = gate;
-    post.class = 27;
+    post.class = class::WALL;
     assert_eq!(gate_gap(&world, near, (100, &post), own, |g| g - 1.0), own);
 }
 
@@ -1172,7 +1173,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
         Placed {
             position: [25.0, 93.0, 0.0],
             radius: [0.5, 0.5],
-            class: 15,
+            class: class::TREE,
             player: 0,
             master: 0,
             obstruction_type: 2,
@@ -1245,7 +1246,7 @@ pub(crate) fn world() -> Spatial {
     let unit = |x, y| Placed {
         position: [x, y, 0.0],
         radius: [0.2, 0.2],
-        class: 4,
+        class: class::VILLAGER,
         player: 2,
         master: 0,
         obstruction_type: 0,
@@ -1262,7 +1263,7 @@ pub(crate) fn world() -> Spatial {
         Placed {
             position: [30.0, 88.0, 0.0],
             radius: [1.0, 1.0],
-            class: 3,
+            class: class::BUILDING,
             player: 2,
             master: 0,
             obstruction_type: 0,
@@ -1356,7 +1357,7 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
         let mut world = tiled_world(vec![4; 120 * 120]);
         if soldier {
             let mut me = *world.get(9177).unwrap();
-            me.class = 6;
+            me.class = class::CLASS_6;
             world.insert(9177, me);
         }
         if let Some(b) = block {
@@ -1816,7 +1817,7 @@ fn a_top_level_short_of_its_moved_target_arrives() {
         let placed = Placed {
             position: [40.0, 88.0, 0.0],
             radius: [0.5, 0.5],
-            class: 6,
+            class: class::CLASS_6,
             player: target_player,
             master: 74,
             obstruction_type: 0,
@@ -1904,7 +1905,7 @@ fn a_next_waypoint_an_object_stands_on_goes() {
         Placed {
             position: [31.0, 88.5, 0.0],
             radius: [0.5, 0.5],
-            class: 3,
+            class: class::BUILDING,
             player: 2,
             master: 70,
             obstruction_type: 2,
@@ -2206,7 +2207,7 @@ fn a_group_member_on_an_own_move_of_reason_0_keeps_only_buildings_walls_and_gate
     assert_eq!(kept(&w, &groups(9177, 1)), [9175]);
     assert_eq!(kept(&w, &groups(9176, 0)), [9175]);
     assert_eq!(kept(&w, &crate::groups::UnitGroups::default()), [9175]);
-    for class in [3, 27, 39, 52] {
+    for class in [class::BUILDING, class::WALL, class::GATE, class::TOWER] {
         w.insert(9175, Placed { class, ..close });
         assert_eq!(kept(&w, &groups(9177, 0)), [9175], "class {class}");
     }

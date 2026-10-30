@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::class;
 
 fn task(action_type: i16, object_group: i16, object_id: i16, work_val1: f32) -> Task {
     Task {
@@ -14,7 +15,7 @@ fn master(id: i16, task_by_group: u8, tasks: Vec<Task>) -> Master {
     Master {
         id,
         kind: 70,
-        class: 4,
+        class: class::VILLAGER,
         task_by_group,
         radius: [0.2, 0.2],
         tall: true,
@@ -36,7 +37,7 @@ fn house() -> Master {
     Master {
         id: 70,
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         task_by_group: 0,
         radius: [1.0, 1.0],
         tall: true,
@@ -1050,15 +1051,18 @@ fn the_missile_building_and_animated_setters() {
 #[test]
 fn a_master_copy_keeps_its_id_class_and_flags() {
     let mut militia = master(74, 1, vec![task(7, -1, -1, 0.0)]);
-    militia.class = 6;
+    militia.class = class::CLASS_6;
     militia.available = true;
     militia.base_id = 74;
     let mut man = master(75, 2, vec![task(7, -1, -1, 0.0), task(3, 3, -1, 0.0)]);
-    man.class = 7;
+    man.class = class::CLASS_7;
     man.hit_points = 45;
     man.disabled = true;
     militia.copy_from(&man);
-    assert_eq!((militia.id, militia.class, militia.base_id), (74, 6, 74));
+    assert_eq!(
+        (militia.id, militia.class, militia.base_id),
+        (74, class::CLASS_6, 74)
+    );
     assert!(militia.available && !militia.disabled);
     assert_eq!((militia.hit_points, militia.tasks.len()), (45, 2));
     assert_eq!(militia.task_by_group, 2);
@@ -1074,7 +1078,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
     let farm = Master {
         id: 50,
         kind: 80,
-        class: 49,
+        class: class::FARM,
         ..Master::default()
     };
     let gather = |group, id, work| task(0x6a, group, id, work);
@@ -1178,12 +1182,18 @@ fn a_master_s_unit_ai_type_reads_its_class_volley_missile_and_combat_level() {
         ..Master::default()
     };
     // a building without a volley missile, with one (the tower's), and a boar's combat level
-    assert_eq!(master(3, None, 0).unit_ai_type(70), Some(17));
-    assert_eq!(master(3, Some(5), 0).unit_ai_type(79), Some(0xf));
-    assert_eq!(master(10, None, 1).unit_ai_type(48), Some(4));
-    assert_eq!(master(10, None, 0).unit_ai_type(126), Some(5));
+    assert_eq!(master(class::BUILDING, None, 0).unit_ai_type(70), Some(17));
+    assert_eq!(
+        master(class::BUILDING, Some(5), 0).unit_ai_type(79),
+        Some(0xf)
+    );
+    assert_eq!(master(class::PREDATOR, None, 1).unit_ai_type(48), Some(4));
+    assert_eq!(master(class::PREDATOR, None, 0).unit_ai_type(126), Some(5));
     // the factory's own ids first
-    assert_eq!(master(3, None, 0).unit_ai_type(1105), Some(0x12));
+    assert_eq!(
+        master(class::BUILDING, None, 0).unit_ai_type(1105),
+        Some(0x12)
+    );
 }
 
 /// The lookup by player and id: the player's table's master, none without the table or the

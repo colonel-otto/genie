@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::garrison::{CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -16,8 +17,8 @@ use crate::world::World;
 /// `flags` in the class-flags table: a class below 0 or not below the table's count
 /// (`CMP`/`JGE`, signed) has none.
 #[must_use]
-pub fn class_has_flags(class: i16, flags: u32) -> bool {
-    usize::try_from(class)
+pub fn class_has_flags(class: ClassId, flags: u32) -> bool {
+    usize::try_from(class.get())
         .ok()
         .and_then(|c| CLASS_FLAGS.get(c))
         .is_some_and(|&f| f & flags != 0)
@@ -39,18 +40,33 @@ pub(super) const MASTER_1822: i16 = 1822;
 /// 1263, 775, 1715 and 1822 and bit 3 for masters 1811 and 1808, whatever their class. The task
 /// finder's copy of the switch (`FUN_1412784d0`) leaves class 42 out (`with_42` false).
 #[must_use]
-pub fn garrison_type_takes(garrison_type: u8, class: i16, id: i16, with_42: bool) -> bool {
+pub fn garrison_type_takes(garrison_type: u8, class: ClassId, id: i16, with_42: bool) -> bool {
     let bit = |b: u8| garrison_type & (1 << b) != 0;
     let by_class = match class {
-        0 | 44 => bit(1),
-        2 | 20 | 21 | 22 | 53 => bit(6),
-        4 | 19 | 59 => bit(0),
-        6 | 35 | 45 | 46 | 50 | 56 => id != MASTER_1263 && id != MASTER_1811 && bit(1),
-        12 | 23 | 36 | 47 | 57 => bit(2),
-        13 | 51 | 54 | 55 => bit(5),
-        18 | 43 => id != MASTER_775 && id != MASTER_1715 && id != MASTER_1822 && bit(3),
-        42 if with_42 => id != MASTER_775 && id != MASTER_1715 && id != MASTER_1822 && bit(3),
-        58 => bit(4),
+        class::CLASS_0 | class::CLASS_44 => bit(1),
+        class::TRADE_BOAT
+        | class::TRANSPORT
+        | class::FISHING_SHIP
+        | class::WARSHIP
+        | class::CLASS_53 => bit(6),
+        class::VILLAGER | class::TRADE_CART | class::KING => bit(0),
+        class::CLASS_6
+        | class::CLASS_35
+        | class::CLASS_45
+        | class::CLASS_46
+        | class::CLASS_50
+        | class::CLASS_56 => id != MASTER_1263 && id != MASTER_1811 && bit(1),
+        class::CLASS_12 | class::CLASS_23 | class::CLASS_36 | class::CLASS_47 | class::CLASS_57 => {
+            bit(2)
+        }
+        class::SIEGE | class::CLASS_51 | class::CLASS_54 | class::CLASS_55 => bit(5),
+        class::MONK | class::CLASS_43 => {
+            id != MASTER_775 && id != MASTER_1715 && id != MASTER_1822 && bit(3)
+        }
+        class::RELIC if with_42 => {
+            id != MASTER_775 && id != MASTER_1715 && id != MASTER_1822 && bit(3)
+        }
+        class::LIVESTOCK => bit(4),
         _ => false,
     };
     let as_cavalry = matches!(id, MASTER_1263 | MASTER_775 | MASTER_1715 | MASTER_1822) && bit(2);
@@ -61,18 +77,18 @@ pub fn garrison_type_takes(garrison_type: u8, class: i16, id: i16, with_42: bool
 /// `FUN_1415c9240`: the master's task list holds a task of action type `action` on objects of
 /// class `class`, both bytes the game widens to compare with the task's ushorts (`+0xe`,
 /// `+0x10`). A building's test asks for 3 on its own class (a transport) or on buildings (3).
-pub(super) fn has_garrison_task(tasks: &[Task], action: i16, class: i16) -> bool {
+pub(super) fn has_garrison_task(tasks: &[Task], action: i16, class: ClassId) -> bool {
     let byte = |v: i16| u16::from(v.to_le_bytes()[0]);
     tasks.iter().any(|t| {
         t.action_type.cast_unsigned() == byte(action)
-            && t.object_group.cast_unsigned() == byte(class)
+            && t.object_group.cast_unsigned() == byte(class.get())
     })
 }
 
 /// A garrison task (action type 3) on buildings (class 3).
 #[must_use]
 pub const fn is_garrison_task(task: &Task) -> bool {
-    task.action_type == GARRISON && task.object_group == class::BUILDING
+    task.action_type == GARRISON && task.object_group == class::BUILDING.get()
 }
 
 impl World {

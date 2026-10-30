@@ -3,6 +3,8 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::{
@@ -30,7 +32,7 @@ impl UnitAi {
             return Ok(false);
         };
         self.set_action(Some(ActionKind::Defend));
-        self.target_at(target, Some(i32::from(t.class)), t.position);
+        self.target_at(target, Some(i32::from(t.class.get())), t.position);
         self.desired_distance = range;
         self.defend_target = target;
         Ok(true)
@@ -83,7 +85,7 @@ impl UnitAi {
         side.effect_now(Effect::Command(AiCommand::BuildObject(target)), self, rng)?;
         self.set_action(Some(ActionKind::Build));
         match Self::world_object(target, at, side)? {
-            Some(t) => self.set_target(target, i32::from(t.class), t.position),
+            Some(t) => self.set_target(target, i32::from(t.class.get()), t.position),
             None => self.set_target(target, -1, [0.0; 3]),
         }
         Ok(true)
@@ -110,7 +112,7 @@ impl UnitAi {
         }
         self.set_action(Some(action));
         match Self::world_object(target, at, side)? {
-            Some(t) => self.set_target(target, i32::from(t.class), t.position),
+            Some(t) => self.set_target(target, i32::from(t.class.get()), t.position),
             None => self.set_target(target, -1, [0.0; 3]),
         }
         Ok(true)
@@ -134,7 +136,7 @@ impl UnitAi {
             Gatherable {
                 id: target,
                 position: t.position,
-                class: t.class,
+                class: i32::from(t.class.get()),
             },
             side,
             rng,
@@ -157,7 +159,7 @@ impl UnitAi {
             self.stop_current(true, at, side, rng)?;
             return Ok(false);
         };
-        self.hunt_object(target, i32::from(t.class), t.position, at, side, rng)?;
+        self.hunt_object(target, i32::from(t.class.get()), t.position, at, side, rng)?;
         Ok(true)
     }
 
@@ -183,7 +185,7 @@ impl UnitAi {
             return Ok(false);
         };
         self.set_action(Some(ActionKind::Follow));
-        self.target_at(target, Some(i32::from(t.class)), t.position);
+        self.target_at(target, Some(i32::from(t.class.get())), t.position);
         self.desired_distance = range;
         if range * range < t.gap_squared {
             let seen = Seen {
@@ -225,7 +227,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Enter));
-        self.target_at(target, held.map(|t| i32::from(t.class)), [-1.0; 3]);
+        self.target_at(target, held.map(|t| i32::from(t.class.get())), [-1.0; 3]);
         Ok(true)
     }
 
@@ -273,7 +275,7 @@ impl UnitAi {
         } else {
             ActionKind::Unload
         }));
-        self.set_target(at.id, i32::from(at.class), at.position);
+        self.set_target(at.id, i32::from(ClassId::field(at.class)), at.position);
         Ok(true)
     }
 
@@ -296,7 +298,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::SeekAndDestroy));
-        let class = Self::world_object(target, at, side)?.map(|t| i32::from(t.class));
+        let class = Self::world_object(target, at, side)?.map(|t| i32::from(t.class.get()));
         self.target_at(target, class, [tile[0] as f32, tile[1] as f32, EXPLORE_Z]);
         Ok(true)
     }
@@ -337,7 +339,7 @@ impl UnitAi {
     pub(super) fn order_on_target(
         &mut self,
         o: &QueuedOrder,
-        class: i16,
+        class: Option<ClassId>,
         at: &Surroundings,
         side: &mut dyn UnitSide,
         ai: &mut Well512,
@@ -353,7 +355,7 @@ impl UnitAi {
                 o.target_type
             } else {
                 match side.master_class(o.target_owner, o.target_type)? {
-                    Some(class) => i32::from(class),
+                    Some(class) => i32::from(class.get()),
                     None => return Ok(0),
                 }
             };
@@ -401,12 +403,12 @@ impl UnitAi {
     /// (`FUN_140c1c4f0`) and the building's (`FUN_140c1c460`, the same switch,
     /// [`civilian_kind`]); the fishing ship's (`FUN_140c1c580`): 2 for classes 5, 31 and 33, 4 for
     /// 63; the base's (`FUN_140c4cc00`) none. −1 for none (the byte 0xff).
-    pub(super) const fn resource_kind(&self, class: i32) -> i8 {
+    pub(super) fn resource_kind(&self, target_type: i32) -> i8 {
         match self.ai_type {
-            CIVILIAN | 17 => civilian_kind(class),
-            FISHING_AI => match class {
-                5 | 0x1f | 0x21 => 2,
-                0x3f => 4,
+            CIVILIAN | 17 => civilian_kind(target_type),
+            FISHING_AI => match ClassId::of_target_type(target_type) {
+                Some(class::CLASS_5 | class::CLASS_31 | class::CLASS_33) => 2,
+                Some(class::CLASS_63) => 4,
                 _ => -1,
             },
             _ => -1,
@@ -467,7 +469,7 @@ impl UnitAi {
         &mut self,
         unit_state: u8,
         order: QueuedOrder,
-        place: ([f32; 2], i16),
+        place: ([f32; 2], Option<ClassId>),
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {

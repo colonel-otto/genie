@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -58,7 +59,7 @@ impl World {
         let u = &self.players[player].objects[idx];
         Releaser {
             id: u.id.get(),
-            class: u.master(&self.masters, player).map_or(-1, |m| m.class),
+            class: u.master(&self.masters, player).ok().map(|m| m.class),
             player,
         }
     }
@@ -229,7 +230,7 @@ impl World {
         /// The first master type whose slot 0xd8 is `FUN_141211340` (`TRIBE_Combat_Object`).
         const TRIBE_COMBAT: u8 = 70;
         /// The class `FUN_141211340` always spares.
-        const SPARED: i16 = 42;
+        const SPARED: ClassId = class::RELIC;
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };

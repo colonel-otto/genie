@@ -11,6 +11,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
@@ -100,7 +101,7 @@ pub(crate) struct Work {
 /// the unit's `reach` ([`work_reach`]) class 54 packs (`FUN_140ad4ff0`), within it class 51
 /// unpacks (`FUN_140ae58a0`); without a reach, a computer's class 54 packs when the order has
 /// no target the world holds (`targetless`).
-const fn packs(class: i16, reach: Option<(bool, bool)>, targetless: bool, computer: bool) -> bool {
+fn packs(class: ClassId, reach: Option<(bool, bool)>, targetless: bool, computer: bool) -> bool {
     match reach {
         // Masters and classes the order handler and slot 0x7e8 treat apart (decoded; the game stores a
         // class as its value − 0xeac, a master id as its id + 0x609c).
@@ -493,7 +494,7 @@ fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
 pub(crate) fn set_stance(
     ai: &mut crate::unit_ai::UnitAi,
     state: u8,
-    place: ([f32; 2], i16),
+    place: ([f32; 2], Option<ClassId>),
     side: &mut dyn crate::unit_ai::UnitSide,
     rng: &mut crate::math::rng::Well512,
 ) -> Result<(), GenieError> {
@@ -562,10 +563,26 @@ const DAMAGE_WHOLE: f32 = crate::math::image::order::DAMAGE_WHOLE;
 /// The damage share `FUN_1411859a0` picks damage sprites by: `100 − hp × 100 / hit points`,
 /// whole, of hit points at most the master's. An object whose share is its resource's (the
 /// classes `FUN_141193590` names; its master's `+0x681` would add any) is not modelled.
-fn damage_share(hp: f32, hit_points: i16, class: i16) -> Result<u8, GenieError> {
+fn damage_share(hp: f32, hit_points: i16, class: ClassId) -> Result<u8, GenieError> {
     if matches!(
         class,
-        5 | 7 | 8 | 9 | 10 | 15 | 29 | 31 | 32 | 33 | 38 | 40 | 41 | 48 | 58 | 61 | 63
+        class::CLASS_5
+            | class::CLASS_7
+            | class::CLASS_8
+            | class::PREY
+            | class::PREDATOR
+            | class::TREE
+            | class::CLASS_29
+            | class::CLASS_31
+            | class::CLASS_32
+            | class::CLASS_33
+            | class::CLASS_38
+            | class::CLASS_40
+            | class::CLASS_41
+            | class::CLASS_48
+            | class::LIVESTOCK
+            | class::CLASS_61
+            | class::CLASS_63
     ) {
         return Err(GenieError::unsupported(
             "the damage share of a resource object (FUN_141193590)",
@@ -588,10 +605,11 @@ pub(crate) fn nearest_table_site(
         u8,
         &crate::players::tracker::Tracker,
     ),
-    (at, held, class): ([f32; 2], i16, i16),
+    (at, held, class): ([f32; 2], i16, ClassId),
     look: impl Fn(i32) -> Option<(u8, [f32; 3])>,
 ) -> Option<i32> {
-    let buildings = crate::unit_ai::task_finder::table_drop_buildings(table, held, class, civ);
+    let buildings =
+        crate::unit_ai::task_finder::table_drop_buildings(table, held, Some(class), civ);
     let mut best = (None, TABLE_DROP_FAR);
     for m in buildings {
         for &id in tracker.list(i32::from(m)) {

@@ -59,14 +59,14 @@ fn hunter() -> Victim {
         id: 10029,
         hp: 25.0,
         kind: 70,
-        class: 4,
+        class: class::VILLAGER,
         master_id: 592,
         player: 1,
         position: [10.5, 11.0, 0.0],
         source: Attacker {
             id: 10029,
             kind: 70,
-            class: 4,
+            class: class::VILLAGER,
             master_id: 592,
             missile: -1,
             player: 1,
@@ -96,16 +96,16 @@ fn a_wall_foundation_s_pierce_armor_is_computed_as_any_other() {
         base_armor: 1,
         ..Armored::default()
     };
-    assert_eq!(class_armor(&a, 3, 27, 0), 5);
-    assert_eq!(class_armor(&a, 3, 27, 2), 5);
+    assert_eq!(class_armor(&a, 3, class::WALL, 0), 5);
+    assert_eq!(class_armor(&a, 3, class::WALL, 2), 5);
     let none = Armored {
         armors: vec![(4, 2)],
         base_armor: 1,
         ..Armored::default()
     };
-    assert_eq!(class_armor(&none, 3, 27, 0), 2);
+    assert_eq!(class_armor(&none, 3, class::WALL, 0), 2);
     // its melee armor (FUN_141213810's wall foundation) is 0
-    assert_eq!(class_armor(&a, 4, 27, 0), 0);
+    assert_eq!(class_armor(&a, 4, class::WALL, 0), 0);
 }
 
 /// Slot 0xf0 (`FUN_14118cab0`): a TRIBE attacker whose charge hits the target (slot 0x2f0)
@@ -114,7 +114,7 @@ fn a_wall_foundation_s_pierce_armor_is_computed_as_any_other() {
 fn a_static_object_takes_a_ready_charge_first() {
     let tree = || Victim {
         hp: 100.0,
-        class: 15,
+        class: class::TREE,
         kind: 10,
         ..Victim::default()
     };
@@ -147,7 +147,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
         hp,
         amount: 50.0,
         kind: 40,
-        class: 38,
+        class: class::CLASS_38,
         goto_sleep: true,
         ..Victim::default()
     };
@@ -159,7 +159,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
     // a villager's hit leaves what it holds
     assert_eq!((t.hp, t.amount, t.goto_sleep), (0.0, 50.0, false));
     let mut archer = hunter.clone();
-    archer.source.class = 0;
+    archer.source.class = class::CLASS_0;
     let mut t = bird(4.0);
     take(&mut t, &mut archer, &mut [], &[(3, 4)], 1.0, 0.0).unwrap();
     assert_eq!((t.hp, t.amount), (0.0, 0.0));
@@ -187,7 +187,7 @@ fn a_hunter_strikes_its_sheep_for_twelve() {
         Some(Kill {
             attacker: 10029,
             attacker_player: 1,
-            attacker_class: 4,
+            attacker_class: class::VILLAGER,
             to_gaia: true
         })
     );
@@ -265,7 +265,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     assert_eq!(bonus_damage(&hunter, &sheep), 4.0 * 2.0);
     // by class or master; another class, master or action type adds nothing
     hunter.bonus_tasks = vec![
-        task(class::LIVESTOCK, 0, 0.0, 0),
+        task(class::LIVESTOCK.get(), 0, 0.0, 0),
         task(-1, 705, 0.0, 0),
         task(3, 0, 0.0, 0),
         task(-1, 9, 0.0, 0),
@@ -277,10 +277,10 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     assert_eq!(bonus_damage(&hunter, &sheep), 16.0);
     // a building of another class than 51 and 54 needs its class or master
     let mut tc = sheep.clone();
-    (tc.kind, tc.class) = (BUILDING, 3);
+    (tc.kind, tc.class) = (BUILDING, class::BUILDING);
     hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
     assert_eq!(bonus_damage(&hunter, &tc), 0.0);
-    tc.class = 51;
+    tc.class = class::CLASS_51;
     assert_eq!(bonus_damage(&hunter, &tc), 8.0);
     // no step, no target hit points, or a negative sum: 0
     hunter.bonus_tasks = vec![crate::objects::masters::Task {
@@ -371,7 +371,7 @@ fn a_combat_object_shows_its_attack_armor_and_range() {
     let mut a = hunter();
     a.armored.as_mut().unwrap().armor_powerups = [2, 0];
     assert_eq!(shown_melee_armor(&a), Ok(2));
-    (a.class, a.state) = (27, 0);
+    (a.class, a.state) = (class::WALL, 0);
     assert_eq!(shown_melee_armor(&a), Ok(0));
     a.kind = 50;
     a.armored.as_mut().unwrap().armors = vec![(3, 5), (11, 7)];
@@ -440,15 +440,15 @@ fn a_ready_charge_adds_to_the_first_melee_weapon_and_empties() {
 #[test]
 fn a_charge_target_picks_the_class_groups() {
     // 0: everything but buildings outside classes 51 and 54
-    assert!(charge_works(0, 1, 6, 70));
-    assert!(!charge_works(0, 1, 3, 80));
-    assert!(charge_works(0, 1, 51, 70));
+    assert!(charge_works(0, 1, class::CLASS_6, 70));
+    assert!(!charge_works(0, 1, class::BUILDING, 80));
+    assert!(charge_works(0, 1, class::CLASS_51, 70));
     // bit 0 infantry (6), bit 8 buildings (3)
-    assert!(charge_works(1, 1, 6, 70));
-    assert!(!charge_works(1, 1, 12, 70));
-    assert!(charge_works(0x100, 1, 3, 80));
-    assert!(!charge_works(0x100, 1, 99, 70));
-    assert!(charge_works(0x10, -4, 99, 70));
+    assert!(charge_works(1, 1, class::CLASS_6, 70));
+    assert!(!charge_works(1, 1, class::CLASS_12, 70));
+    assert!(charge_works(0x100, 1, class::BUILDING, 80));
+    assert!(!charge_works(0x100, 1, ClassId::of_master(99), 70));
+    assert!(charge_works(0x10, -4, ClassId::of_master(99), 70));
 }
 
 /// A shield of type 5 spends a charge of 1 on a melee hit; type 4 only on a missile.
@@ -693,7 +693,7 @@ fn house() -> Victim {
         id: 500,
         hp: 550.0,
         kind: BUILDING,
-        class: 3,
+        class: class::BUILDING,
         master_id: 70,
         player: 2,
         position: [20.5, 20.5, 0.0],
@@ -738,7 +738,7 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
     assert_eq!(h.hp, 548.5);
     // an archer's least is a tenth
     let mut archer = villager.clone();
-    archer.source.class = 0;
+    archer.source.class = class::CLASS_0;
     let mut h = house();
     h.armored.as_mut().unwrap().armors = vec![(4, 10)];
     take(&mut h, &mut archer, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
@@ -884,7 +884,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
 fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
     let trebuchet = |hp| Victim {
         hp,
-        class: 54,
+        class: class::CLASS_54,
         master_id: 42,
         building: Some(Building {
             trebuchet: true,

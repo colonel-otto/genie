@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::test_ids::object_id;
 
@@ -84,7 +85,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
             Placed {
                 position: u.position(),
                 radius: [0.2, 0.2],
-                class: 6,
+                class: class::CLASS_6,
                 player: 1,
                 master: u.life.master_id,
                 obstruction_type: 0,
@@ -177,7 +178,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
             crate::objects::masters::Master {
                 id: 35,
                 kind: 70,
-                class: 13,
+                class: class::SIEGE,
                 formation_category: 2,
                 ..crate::objects::masters::Master::default()
             },

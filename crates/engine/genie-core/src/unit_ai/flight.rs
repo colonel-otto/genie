@@ -42,7 +42,7 @@ impl UnitAi {
         // the game also tests the action values 0x25f and 0x268 here, which no unit AI holds
         // ([`ActionKind`])
         // The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
-        let uncon = at.class != class::KING;
+        let uncon = at.class != Some(class::KING);
         let _ = self.run_away(uncon, at, computer, ai_rng, side)?;
         Ok(BREAK)
     }
@@ -67,7 +67,7 @@ impl UnitAi {
         // it does not run; a computer player's first lets the units inside it go
         // (FUN_141225c40 with −1, −1)
         if self.ai_type == SIEGE_AI {
-            if at.class == class::CLASS_54 || Self::top_target_live(at, side)?.is_some() {
+            if at.class == Some(class::CLASS_54) || Self::top_target_live(at, side)?.is_some() {
                 return Ok(false);
             }
             if computer {
@@ -99,7 +99,7 @@ impl UnitAi {
                 "a computer's unit running from class 22 (its group's runs)",
             ));
         }
-        if computer && at.class == class::TRANSPORT {
+        if computer && at.class == Some(class::TRANSPORT) {
             return Err(GenieError::unsupported(
                 "a computer's transport ship running away",
             ));

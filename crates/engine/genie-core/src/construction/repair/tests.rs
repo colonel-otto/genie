@@ -3,6 +3,7 @@ use crate::movement::Me;
 use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, WalkTo,
 };
+use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
@@ -110,7 +111,7 @@ fn masters() -> crate::objects::masters::Masters {
         crate::objects::masters::Master {
             id: 70,
             kind: 80,
-            class: 3,
+            class: class::BUILDING,
             hit_points: 550,
             cost: vec![(1, 25, true)],
             ..crate::objects::masters::Master::default()
@@ -118,7 +119,7 @@ fn masters() -> crate::objects::masters::Masters {
         crate::objects::masters::Master {
             id: 35,
             kind: 70,
-            class: 13,
+            class: class::SIEGE,
             hit_points: 175,
             cost: vec![(1, 160, true), (3, 75, true)],
             ..crate::objects::masters::Master::default()
@@ -130,7 +131,7 @@ fn house(id: i32, hp: f32) -> Repaired {
     Repaired {
         id,
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         master: 70,
         master_hp: 550,
         hp,
@@ -207,7 +208,7 @@ fn a_siege_unit_s_repair_pays_its_unit_share() {
     let mut held = Held(vec![0.0, 1000.0, 0.0, 1000.0]);
     let mut set = vec![Repaired {
         kind: 70,
-        class: 13,
+        class: class::SIEGE,
         master: 35,
         master_hp: 175,
         ..house(5, 100.0)

@@ -1,5 +1,7 @@
 use super::*;
 use crate::map::spatial::{Obstruction, Tiles};
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::pathing::hull_path::rounds::Rounds;
 
 /// The unit square as `addShapeToHulls` makes a hull of it: high right, low right, low left,
@@ -113,7 +115,11 @@ fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
     Placed {
         position: [x, y, 0.0],
         radius: [r, r],
-        class: if kind == 5 { 4 } else { 10 },
+        class: if kind == 5 {
+            class::VILLAGER
+        } else {
+            class::PREDATOR
+        },
         player: 1,
         master: 0,
         obstruction_type: kind,
@@ -681,7 +687,7 @@ fn a_point_lies_in_the_first_hull_holding_it() {
 }
 
 /// A tall object of class 10 (39 for a gate) without an obstruction record, owned by player 1.
-fn tall(x: f32, y: f32, r: f32, class: i16) -> Placed {
+fn tall(x: f32, y: f32, r: f32, class: ClassId) -> Placed {
     Placed {
         position: [x, y, 0.0],
         radius: [r, r],
@@ -713,17 +719,17 @@ fn hull_ids(p: &HullPather<'_>) -> Vec<Vec<i32>> {
 #[test]
 fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     let mut w = open_world();
-    w.insert(10, tall(5.3, 5.3, 0.2, 10)); // the unit: ignored
-    w.insert(1, tall(5.5, 5.5, 0.5, 10));
+    w.insert(10, tall(5.3, 5.3, 0.2, class::PREDATOR)); // the unit: ignored
+    w.insert(1, tall(5.5, 5.5, 0.5, class::PREDATOR));
     w.insert(
         2,
         Placed {
             tall: false,
-            ..tall(5.2, 5.2, 0.5, 10)
+            ..tall(5.2, 5.2, 0.5, class::PREDATOR)
         },
     );
-    w.insert(3, tall(5.5, 5.4, 0.5, 39)); // a gate
-    w.insert(5, tall(5.7, 5.7, 0.2, 10)); // moving
+    w.insert(3, tall(5.5, 5.4, 0.5, class::GATE)); // a gate
+    w.insert(5, tall(5.7, 5.7, 0.2, class::PREDATOR)); // moving
     w.set_gait(
         5,
         Some(crate::map::spatial::Gait {
@@ -731,8 +737,8 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
             ..Default::default()
         }),
     );
-    w.insert(6, tall(5.5, 5.5, 1.0, 10)); // wider than a tile
-    w.insert(7, tall(8.5, 8.5, f32::NAN, 10));
+    w.insert(6, tall(5.5, 5.5, 1.0, class::PREDATOR)); // wider than a tile
+    w.insert(7, tall(8.5, 8.5, f32::NAN, class::PREDATOR));
     let far = Hull {
         points: vec![[1.0, 1.0], [1.0, 0.0], [0.0, 0.0], [0.0, 1.0]],
         entrances: vec![-1; 4],
@@ -794,7 +800,11 @@ fn the_cliffs_in_the_frame_about_the_area_go_into_the_hulls() {
     tiles.mark_for_test(4, 6, 0x700);
     let mut w = Spatial::with_tiles([20, 20], tiles);
     for (id, (x, y)) in (1..).zip(cliffs.into_iter().chain([(4, 6)])) {
-        let class = if (x, y) == (9, 6) { 39 } else { 10 };
+        let class = if (x, y) == (9, 6) {
+            class::GATE
+        } else {
+            class::PREDATOR
+        };
         w.insert(id, tall(x as f32 + 0.5, y as f32 + 0.5, 0.1, class));
     }
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
@@ -833,8 +843,8 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     let _ = v.link_building([10.0, 10.0, 0.0], [1.0, 1.0]);
     assert_eq!(v.anchor_of(9, 9), Some([10, 10]));
     w.sight = Some(v);
-    w.insert(20, tall(10.0, 10.0, 1.0, 10)); // the building, on its anchor tile
-    w.insert(21, tall(9.5, 9.5, 0.1, 10));
+    w.insert(20, tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile
+    w.insert(21, tall(9.5, 9.5, 0.1, class::PREDATOR));
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
     p.process_tile(-1, 9, [5, 5, 9, 9], None).unwrap();
     p.process_tile(20, 9, [5, 5, 9, 9], None).unwrap();
@@ -884,11 +894,11 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
         0,
         Vec::new(),
     ));
-    w.insert(30, tall(1.5, 5.5, 0.3, 10));
-    w.insert(31, tall(4.5, 5.5, 0.2, 10));
-    w.insert(32, tall(7.5, 5.5, 0.2, 10));
+    w.insert(30, tall(1.5, 5.5, 0.3, class::PREDATOR));
+    w.insert(31, tall(4.5, 5.5, 0.2, class::PREDATOR));
+    w.insert(32, tall(7.5, 5.5, 0.2, class::PREDATOR));
     // moving: out unless included (`FindShortPath`'s arguments 13 and 14, passed on)
-    w.insert(33, tall(0.5, 5.5, 0.2, 10));
+    w.insert(33, tall(0.5, 5.5, 0.2, class::PREDATOR));
     w.set_gait(
         33,
         Some(crate::map::spatial::Gait {

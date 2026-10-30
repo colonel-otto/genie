@@ -141,7 +141,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
         self.cap_human_order(side, ai)?;
-        if at.class == class::KING {
+        if at.class == Some(class::KING) {
             let led = at.master != KING_UNLED
                 && !at.garrisoned
                 && self.current_order.is_none()

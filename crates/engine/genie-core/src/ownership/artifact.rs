@@ -563,6 +563,7 @@ mod tests {
     use super::*;
     use crate::combat::attack::tests::Rig;
     use crate::movement::move_to::{MoveDefaults, MoveToReads, MoveWait, SpriteReads, WalkTo};
+    use crate::objects::masters::class;
     use crate::objects::sprite::Graphic;
     use std::collections::BTreeMap;
 
@@ -630,7 +631,7 @@ mod tests {
             crate::garrison::EnterAction::new(
                 11970,
                 [34.125, 123.333, 0.0],
-                &crate::garrison::tests::enter_task(0.0, 20),
+                &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
             )
             .walking(MoveTo::Moving)
         };
@@ -675,7 +676,7 @@ mod tests {
         c.enter = Some(crate::garrison::EnterAction::new(
             11970,
             [1.0, 2.0, 0.0],
-            &crate::garrison::tests::enter_task(0.0, 20),
+            &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
         ));
         assert_eq!(
             c.take_point([3.0, 4.0, 0.0], &move_reads(&sprites())),
@@ -694,7 +695,7 @@ mod tests {
         let mut e = crate::garrison::EnterAction::new(
             11970,
             [1.0, 2.0, 0.0],
-            &crate::garrison::tests::enter_task(0.0, 20),
+            &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
         );
         e = e.walking(MoveTo::Moving);
         let by_enter = SubActionsGone {
@@ -737,7 +738,7 @@ mod tests {
             crate::garrison::EnterAction::new(
                 target,
                 [1.0, 2.0, 0.0],
-                &crate::garrison::tests::enter_task(0.0, 20),
+                &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
             )
         };
         let gone = |stops, released| SubActionsGone { stops, released };
@@ -989,7 +990,7 @@ mod tests {
     const fn by() -> Releaser {
         Releaser {
             id: 9177,
-            class: 4,
+            class: Some(class::VILLAGER),
             player: 1,
         }
     }
@@ -1285,7 +1286,7 @@ mod tests {
         let mut e = crate::garrison::EnterAction::new(
             11970,
             [1.0, 2.0, 0.0],
-            &crate::garrison::tests::enter_task(0.0, 20),
+            &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
         );
         e = e.walking(MoveTo::Moving);
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default()).holding(11970, 1);

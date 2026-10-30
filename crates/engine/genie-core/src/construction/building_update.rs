@@ -9,6 +9,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::HOUSE;
@@ -26,7 +27,7 @@ use crate::world::{
 /// `TRIBE_Building_Object::update`'s walls' branch (`0x1411c9000`): a master of class 27 (a
 /// wall) or the house runs only its damage frames by its hit points and its combat update; no
 /// whole seconds, and an annex of it completes as well ([`Unit::complete_on_update`]).
-pub(crate) const fn walls_branch(master: &Master) -> bool {
+pub(crate) fn walls_branch(master: &Master) -> bool {
     // The house's master id (`0x46`), whose update takes the walls' branch ([`walls_branch`]).
     master.class == class::WALL || master.id == HOUSE
 }
@@ -443,7 +444,7 @@ pub(crate) fn farm_stage_terrain(
 /// demolition raft 1104 and the incendiary raft and ships 2133 to 2135.
 pub(crate) const DEATH_BLAST_MASTERS: [i16; 6] = [527, 528, 1104, 2133, 2134, 2135];
 /// The classes whose units blast so: 35 (petards) and 64.
-pub(crate) const DEATH_BLAST_CLASSES: [i16; 2] = [35, 64];
+pub(crate) const DEATH_BLAST_CLASSES: [ClassId; 2] = [class::CLASS_35, class::CLASS_64];
 /// The hit points below which they blast (`DAT_14330eb8c`; `COMISS`, a NaN does not).
 pub(crate) const DEATH_BLAST_HP: f32 = crate::math::image::turn::DEATH_BLAST_HP;
 /// The blast's damage factor (`XMM11`, the same constant).

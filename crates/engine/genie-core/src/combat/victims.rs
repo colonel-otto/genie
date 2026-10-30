@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::combat::damage::{Kill, Razed, Victim};
 use crate::map::spatial::Spatial;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -429,7 +430,7 @@ impl World {
         let ap = kill.attacker_player;
         if master.class == class::VILLAGER {
             // the attacker's class as the hit saw it: the attacker may be out for its update
-            if matches!(kill.attacker_class, 9 | 10) {
+            if matches!(kill.attacker_class, class::PREY | class::PREDATOR) {
                 self.players[q].add_attribute(227, 1.0)?;
             }
             let by_kind = match self.players[ap].kind {
@@ -471,9 +472,33 @@ impl World {
         master: &Master,
         ap: usize,
     ) -> Result<(), GenieError> {
-        const PEACEFUL: [i16; 26] = [
-            1, 3, 5, 7, 8, 9, 10, 11, 14, 15, 16, 27, 29, 30, 31, 32, 33, 34, 38, 39, 40, 48, 52,
-            58, 60, 63,
+        const PEACEFUL: [ClassId; 26] = [
+            class::ARTIFACT,
+            class::BUILDING,
+            class::CLASS_5,
+            class::CLASS_7,
+            class::CLASS_8,
+            class::PREY,
+            class::PREDATOR,
+            class::CLASS_11,
+            class::CLASS_14,
+            class::TREE,
+            class::CLASS_16,
+            class::WALL,
+            class::CLASS_29,
+            class::CLASS_30,
+            class::CLASS_31,
+            class::CLASS_32,
+            class::CLASS_33,
+            class::CLASS_34,
+            class::CLASS_38,
+            class::GATE,
+            class::CLASS_40,
+            class::CLASS_48,
+            class::TOWER,
+            class::LIVESTOCK,
+            class::CLASS_60,
+            class::CLASS_63,
         ];
         if !PEACEFUL.contains(&master.class) {
             self.players[ap].add_attribute(20, 1.0)?;

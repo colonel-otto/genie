@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -259,7 +260,7 @@ impl UnitAi {
     pub(crate) fn stop_with(
         &mut self,
         keep_order: bool,
-        place: Option<([f32; 2], i16)>,
+        place: Option<([f32; 2], Option<ClassId>)>,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
@@ -283,7 +284,7 @@ impl UnitAi {
             // The class whose busy units skip the idle check (`-0xe98` raw).
             // The class of the attackers and targets a villager's damage notify looks at (`-0xea2` raw).
             // The class whose stop leaves the state position (`-0xe9a` raw, slot 0xb0).
-            if class != class::MONK {
+            if class != Some(class::MONK) {
                 self.state_position = position;
             }
         }

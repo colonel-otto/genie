@@ -10,6 +10,7 @@
 
 use crate::GenieError;
 use crate::math::fmath;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::orders::action_state::DONE;
 use genie_diff::Diff;
@@ -249,7 +250,7 @@ pub struct Aimer {
     /// Its `missed_missile_spread` (`+0x860`).
     pub spread: f32,
     /// Its class.
-    pub class: i16,
+    pub class: ClassId,
 }
 
 /// What a missile's aim takes besides the Action stream's draw ([`aim`]'s arguments).
@@ -260,7 +261,7 @@ pub struct AimAt<'a> {
     /// Where the missile is.
     pub from: [f32; 3],
     /// The target's radii and class, none without a target.
-    pub target: Option<([f32; 3], i16)>,
+    pub target: Option<([f32; 3], ClassId)>,
     /// The firing object's hit chance, spread and class.
     pub aimer: Aimer,
     /// The missile's master's id.
@@ -532,12 +533,12 @@ mod tests {
         let aimer = Aimer {
             hit_chance: 70,
             spread: 0.5,
-            class: 0,
+            class: class::CLASS_0,
         };
         // the target 3 east and 4 north: a ground distance of 5
         let point = [13.0, 14.0, 0.0];
         let from = [10.0, 10.0, 1.0];
-        let target = Some(([0.2, 0.2, 1.5], 6));
+        let target = Some(([0.2, 0.2, 1.5], class::CLASS_6));
         let aim_with = |draws: [u32; 3], master: i16, count: i32, mode: &mut u8| {
             let mut d = draws.into_iter();
             aim(
@@ -578,9 +579,12 @@ mod tests {
         // without an attack count master 528 strays by all of it
         assert_eq!(aim_with([32767, 32767, 0], 528, 0, &mut mode), Ok(missed));
         // a class-54 shooter at a narrow building hits at 80
-        let siege = Aimer { class: 54, ..aimer };
+        let siege = Aimer {
+            class: class::CLASS_54,
+            ..aimer
+        };
         let mut d = std::iter::once(26213u32);
-        let narrow = Some(([0.5, 0.5, 0.0], 3));
+        let narrow = Some(([0.5, 0.5, 0.0], class::BUILDING));
         assert_eq!(
             aim(
                 AimAt {

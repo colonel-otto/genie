@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::{AttributeWorld, Master, master_type, player_master};
 use crate::technology::effect::{
     CAPPED, Change, OBJECT_GONE, has_actions, shows_sprite, within_table,
@@ -21,7 +22,7 @@ impl World {
         p: usize,
         change: Change,
         unit: i16,
-        class: i16,
+        class: Option<ClassId>,
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
@@ -48,7 +49,7 @@ impl World {
         p: usize,
         after: bool,
         unit: i16,
-        class: i16,
+        class: Option<ClassId>,
         attribute: u8,
     ) -> Result<(), GenieError> {
         let ids: Vec<i32> = self
@@ -67,7 +68,10 @@ impl World {
             if matches!(kind, master_type::COMBAT | master_type::BUILDING) {
                 self.garrison_volleys(p, id, after)?;
             }
-            if after && shows_sprite(attribute) && (master_class == class || master_id == unit) {
+            if after
+                && shows_sprite(attribute)
+                && (Some(master_class) == class || master_id == unit)
+            {
                 self.show_changed_sprite(p, id, attribute)?;
             }
         }
@@ -207,7 +211,7 @@ impl World {
         p: usize,
         change: Change,
         unit: i16,
-        class: i16,
+        class: Option<ClassId>,
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
@@ -220,9 +224,9 @@ impl World {
                 None => Ok(()),
             };
         }
-        if class < 0 {
+        let Some(class) = class else {
             return Ok(());
-        }
+        };
         let (done, pending) = self.tracked_class(p, class)?;
         for id in done {
             if !self.change_object(id, change, v, attribute)? {
@@ -250,7 +254,7 @@ impl World {
         for id in pending {
             let _ = self.change_object(id, change, v, attribute)?;
         }
-        for id in self.reached_masters(p, unit, class) {
+        for id in self.reached_masters(p, unit, Some(class)) {
             self.change_one_master(p, id, change, v, attribute)?;
         }
         Ok(())
@@ -258,16 +262,16 @@ impl World {
 
     /// The masters of player `p` slot 0x148 changes ([`World::change_attribute`]): master `unit`
     /// within the table (none for a null slot), else those of class `class`, by id.
-    pub(super) fn reached_masters(&self, p: usize, unit: i16, class: i16) -> Vec<i16> {
+    pub(super) fn reached_masters(&self, p: usize, unit: i16, class: Option<ClassId>) -> Vec<i16> {
         let Some(masters) = self.masters.get(p) else {
             return Vec::new();
         };
         if within_table(masters, unit) {
             return masters.get(unit).map(|m| m.id).into_iter().collect();
         }
-        if class < 0 {
+        let Some(class) = class else {
             return Vec::new();
-        }
+        };
         masters
             .iter()
             .filter(|m| m.class == class)

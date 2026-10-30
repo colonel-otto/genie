@@ -219,7 +219,7 @@ pub struct Master {
     /// (`FUN_141663f80`, [`crate::world::World::can_make`]); an upgrade's copy keeps it.
     pub base_id: i16,
     /// `+0x410`.
-    pub class: i16,
+    pub class: ClassId,
     /// `+0x7b8`, the `.dat`'s `TaskSwapGroup` (the save does not carry it); 0 for none.
     pub task_by_group: u8,
     /// `radius_x`, `radius_y` (`+0x5d8`, `+0x5dc`).
@@ -575,10 +575,12 @@ pub struct Masters {
 pub mod action_type;
 pub mod attribute;
 pub mod class;
+mod class_id;
 pub mod ids;
 mod master_id;
 pub mod master_type;
 
+pub use self::class_id::ClassId;
 pub use self::master_id::MasterId;
 
 #[cfg(test)]

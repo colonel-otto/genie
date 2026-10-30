@@ -1,6 +1,7 @@
 use super::*;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
 use crate::objects::lifecycle::Lifecycle;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::test_ids::object_id;
@@ -23,7 +24,7 @@ fn on_map(
     x: f32,
     y: f32,
     master: i16,
-    class: i16,
+    class: ClassId,
     r: f32,
     buildable: u8,
 ) -> crate::map::spatial::Placed {
@@ -65,8 +66,16 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     let objects = [
-        (5, on_map(10.5, 10.5, 1358, 5, 0.5, 1), seen(1.0, 0.0)),
-        (3, on_map(10.2, 10.2, 1351, 5, 0.5, 1), seen(1.0, 0.0)),
+        (
+            5,
+            on_map(10.5, 10.5, 1358, class::CLASS_5, 0.5, 1),
+            seen(1.0, 0.0),
+        ),
+        (
+            3,
+            on_map(10.2, 10.2, 1351, class::CLASS_5, 0.5, 1),
+            seen(1.0, 0.0),
+        ),
         (
             8,
             on_map(11.2, 10.5, 349, class::TREE, 0.5, 0),
@@ -87,16 +96,32 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
             on_map(9.5, 10.5, 72, class::WALL, 0.5, 0),
             seen(100.0, 1.0),
         ),
-        (6, on_map(10.2, 11.5, 0x112, 11, 0.5, 1), seen(1.0, 0.0)),
-        (7, on_map(11.5, 11.5, 0x112, 11, 0.5, 1), seen(1.0, 2.0)),
-        (10, on_map(13.6, 10.5, 1358, 5, 0.5, 1), seen(1.0, 0.0)),
-        (12, on_map(10.6, 10.6, 70, 3, 1.0, 1), seen(1.0, 0.0)),
+        (
+            6,
+            on_map(10.2, 11.5, 0x112, class::CLASS_11, 0.5, 1),
+            seen(1.0, 0.0),
+        ),
+        (
+            7,
+            on_map(11.5, 11.5, 0x112, class::CLASS_11, 0.5, 1),
+            seen(1.0, 2.0),
+        ),
+        (
+            10,
+            on_map(13.6, 10.5, 1358, class::CLASS_5, 0.5, 1),
+            seen(1.0, 0.0),
+        ),
+        (
+            12,
+            on_map(10.6, 10.6, 70, class::BUILDING, 1.0, 1),
+            seen(1.0, 0.0),
+        ),
     ];
     for (id, p, _) in &objects {
         world.insert(*id, *p);
     }
     let look: BTreeMap<i32, ClearLook> = objects.iter().map(|o| (o.0, o.2)).collect();
-    let site = |class: i16, trees: bool| ClearingSite {
+    let site = |class: ClassId, trees: bool| ClearingSite {
         player: 1,
         master: 70,
         class,
@@ -111,8 +136,8 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
             .map(|c| c.id)
             .collect()
     };
-    assert_eq!(ids(&world, site(3, false)), [5, 3, 7]);
-    assert_eq!(ids(&world, site(3, true)), [5, 3, 8, 7]);
+    assert_eq!(ids(&world, site(class::BUILDING, false)), [5, 3, 7]);
+    assert_eq!(ids(&world, site(class::BUILDING, true)), [5, 3, 8, 7]);
     assert_eq!(ids(&world, site(class::GATE, false)), [4, 5, 3, 7]);
     // a wall of another player stays under a gate
     world.insert(
@@ -124,7 +149,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     );
     assert_eq!(ids(&world, site(class::GATE, false)), [5, 3, 7]);
     // a master without radii clears nothing; a NaN radius is not 0 or less
-    let mut none = site(3, true);
+    let mut none = site(class::BUILDING, true);
     none.radius = [0.0, 0.0];
     assert_eq!(ids(&world, none), Vec::<i32>::new());
     none.radius = [f32::NAN, 0.0];
@@ -146,7 +171,7 @@ fn the_clearing_reads_the_objects_on_its_tiles() {
         (5, 10.5, 5.9),
         (6, 10.5, 14.5),
     ] {
-        world.insert(id, on_map(x, y, 1358, 5, 0.5, 1));
+        world.insert(id, on_map(x, y, 1358, class::CLASS_5, 0.5, 1));
     }
     assert_eq!(clearing_objects(&world, [10.5, 10.5]), [2, 3, 1, 6]);
     // at the map's corner the tiles start at 0 and end at its last
@@ -206,14 +231,14 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
     ];
     for (k, (id, _)) in looks.iter().enumerate() {
         let x = 9.5 + 0.1 * k as f32;
-        world.insert(*id, on_map(x, 10.5, 1358, 5, 0.5, 1));
+        world.insert(*id, on_map(x, 10.5, 1358, class::CLASS_5, 0.5, 1));
     }
     let look: BTreeMap<i32, ClearLook> = looks.iter().copied().collect();
     let goes = |trees: bool| -> Vec<i32> {
         let s = ClearingSite {
             player: 1,
             master: 70,
-            class: 3,
+            class: class::BUILDING,
             radius: [1.0, 1.0],
             at: [10.5, 10.5],
             trees,
@@ -385,7 +410,7 @@ fn house() -> crate::map::spatial::Placed {
     crate::map::spatial::Placed {
         position: [30.0, 88.0, 0.0],
         radius: [1.0, 1.0],
-        class: 3,
+        class: class::BUILDING,
         player: 2,
         master: 70,
         obstruction_type: 2,
@@ -547,7 +572,7 @@ fn built_master(id: i16, cost: Vec<(i16, i16, bool)>) -> Master {
     Master {
         id,
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         cost,
         building: Some(crate::objects::masters::BuildingMaster {
             adjacent_mode: 0,

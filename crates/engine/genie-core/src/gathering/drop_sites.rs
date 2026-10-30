@@ -1,6 +1,7 @@
 //! The drop-site searches (`FUN_1411671e0`): from a unit, or from a point without one.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::ACTION;
@@ -21,7 +22,7 @@ pub(crate) struct Seeker<'a, 'b> {
     pub(crate) spatial: &'a mut Spatial,
     pub(crate) zones: &'a crate::pathing::zones::ZoneMap,
     /// Its master's class.
-    pub(crate) class: i16,
+    pub(crate) class: ClassId,
     /// The nearest is by path (`FUN_1411671e0`'s argument 9: a human player's); else by the
     /// squared distance of the centres, of the objects the planner reaches.
     pub(crate) by_path: bool,
@@ -34,7 +35,7 @@ pub(crate) const NO_POINT: f32 = crate::math::image::turn::DROP_NO_POINT;
 impl Seeker<'_, '_> {
     /// A fishing ship ([`class::FISHING_SHIP`]) seeks in every zone and counts a drop site its path
     /// does not reach while near it.
-    const fn fishing(&self) -> bool {
+    fn fishing(&self) -> bool {
         // The fishing ship's class (21), whose drop-site search passes over the zones.
         // The villager's class (4), which searches from the farm it works.
         self.class == class::FISHING_SHIP
@@ -282,8 +283,8 @@ mod tests {
             ..Master::default()
         };
         Masters::new([
-            master(109, 3, 2.0),
-            master(68, 3, 1.0),
+            master(109, class::BUILDING, 2.0),
+            master(68, class::BUILDING, 1.0),
             master(50, class::FARM, 1.5),
         ])
     }
@@ -323,7 +324,7 @@ mod tests {
         };
         let mut s = Spatial::default();
         s.insert(800, placed(farm, class::FARM));
-        s.insert(801, placed([20.0, 17.0], 3));
+        s.insert(801, placed([20.0, 17.0], class::BUILDING));
         s
     }
 
@@ -332,7 +333,7 @@ mod tests {
     fn search(
         units: &[Unit],
         unit: &Unit,
-        class: i16,
+        class: ClassId,
         at: [f32; 3],
         spatial: &Spatial,
     ) -> Result<Option<i32>, GenieError> {
@@ -403,7 +404,7 @@ mod tests {
         );
         // another class, or a target of another class: by path as before
         assert_eq!(
-            search(&sites(), &villager(Some(800)), 13, at, &near_tc),
+            search(&sites(), &villager(Some(800)), class::SIEGE, at, &near_tc),
             Ok(None)
         );
         assert_eq!(

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::damage::{
     Attacker, Facing, HIGHER, LOWER, RELIC_BOOST, SPECIFIC_RELIC_BOOST, Victim,
 };
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 
@@ -73,7 +74,7 @@ pub fn facing_offset(at: [f32; 3], facing: Facing, other: [f32; 3]) -> f32 {
 /// for 0, on every object but buildings (type 80) other than classes 51 and 54; else by the bit
 /// of the class's group, none for a class in no group.
 #[must_use]
-pub const fn charge_works(charge_target: i16, charge_type: i16, class: i16, kind: u8) -> bool {
+pub fn charge_works(charge_target: i16, charge_type: i16, class: ClassId, kind: u8) -> bool {
     let targets = charge_target as u16;
     if targets == 0xffff
         || charge_type == -4
@@ -83,15 +84,29 @@ pub const fn charge_works(charge_target: i16, charge_type: i16, class: i16, kind
         return true;
     }
     let bit = match class {
-        6 | 28 | 45 | 46 | 50 | 56 => 0,
-        12 | 24 | 47 | 57 => 1,
-        0 | 44 => 2,
-        23 | 36 => 3,
-        17 | 18 | 43 => 4,
-        4 | 19 | 59 => 5,
-        2 | 20 | 21 | 22 | 53 => 6,
-        13 | 35 | 51 | 54 | 55 => 7,
-        3 | 27 | 39 | 49 | 52 | 60 => 8,
+        class::CLASS_6
+        | class::CLASS_28
+        | class::CLASS_45
+        | class::CLASS_46
+        | class::CLASS_50
+        | class::CLASS_56 => 0,
+        class::CLASS_12 | class::CLASS_24 | class::CLASS_47 | class::CLASS_57 => 1,
+        class::CLASS_0 | class::CLASS_44 => 2,
+        class::CLASS_23 | class::CLASS_36 => 3,
+        class::CLASS_17 | class::MONK | class::CLASS_43 => 4,
+        class::VILLAGER | class::TRADE_CART | class::KING => 5,
+        class::TRADE_BOAT
+        | class::TRANSPORT
+        | class::FISHING_SHIP
+        | class::WARSHIP
+        | class::CLASS_53 => 6,
+        class::SIEGE | class::CLASS_35 | class::CLASS_51 | class::CLASS_54 | class::CLASS_55 => 7,
+        class::BUILDING
+        | class::WALL
+        | class::GATE
+        | class::FARM
+        | class::TOWER
+        | class::CLASS_60 => 8,
         _ => return false,
     };
     targets >> bit & 1 != 0

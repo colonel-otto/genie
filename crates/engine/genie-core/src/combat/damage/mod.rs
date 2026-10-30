@@ -45,6 +45,8 @@ pub use self::taking::take;
 use self::taking::take_static;
 #[cfg(test)]
 use crate::math::fmath;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 
 /// Elevation: a higher attacker hits at 1.25 (`DAT_142eb56a8`), a lower one at 0.75
 /// (`DAT_142e7f388`), each plus its player's and the target's player's attributes (211/272,
@@ -79,7 +81,7 @@ const WIDE_CONE: f32 = crate::math::image::damage::WIDE_CONE;
 
 /// The class whose damage alerts its target's owner itself (`-0xe6c` raw): its target's unit AI
 /// gets no notify 500.
-const ELEPHANT_ARCHER: i16 = 64;
+const ELEPHANT_ARCHER: ClassId = class::CLASS_64;
 /// The rams (masters 35, 422, 548 and 1258): their blast reaches only buildings and their
 /// target.
 const RAMS: [i16; 4] = [35, 422, 548, 1258];
@@ -91,7 +93,13 @@ const ONE: f32 = crate::math::image::damage::ONE;
 const LEAST_CLASS_HIT: f32 = crate::math::image::damage::LEAST_CLASS_HIT;
 /// The attacker classes whose least hit on a building is [`LEAST_CLASS_HIT`] (decoded `0`, `0x24`,
 /// `0x16`, `0x2c`, `0x34` at `0x1411ced23`..`0x1411cee9e`).
-const LEAST_HIT_CLASSES: [i16; 5] = [0, 36, 22, 44, 52];
+const LEAST_HIT_CLASSES: [ClassId; 5] = [
+    class::CLASS_0,
+    class::CLASS_36,
+    class::WARSHIP,
+    class::CLASS_44,
+    class::TOWER,
+];
 
 /// An object as a hit reads and changes it: the target, and the attacker as the target of a
 /// retaliation or of reflected damage.
@@ -115,7 +123,7 @@ pub struct Victim {
     /// levels that reach it).
     pub kind: u8,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master.
     pub master_id: i16,
     /// Its master's radii.
@@ -230,7 +238,7 @@ pub struct Kill {
     pub attacker_player: usize,
     /// That object's master's class as the hit saw it (`FUN_141082e80` reads it of the
     /// attacker it gets: an animal's 9 or 10 counts a villager's loss).
-    pub attacker_class: i16,
+    pub attacker_class: ClassId,
     /// Gaia takes it: a player's livestock (`FUN_1412108e0`).
     pub to_gaia: bool,
 }
@@ -305,7 +313,7 @@ pub struct Attacker {
     /// Its master's type, class, id, `combat_ability` and `missile_id`.
     pub kind: u8,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master.
     pub master_id: i16,
     /// Its master's `combat_ability`.

@@ -101,60 +101,99 @@ pub fn unit_lines(json: &str) -> Result<Vec<genie_core::objects::lines::UnitLine
         .collect()
 }
 
+/// What makes `dropsites.json` out of shape for [`drop_sites`].
+#[derive(Debug)]
+pub enum DropSitesError {
+    /// The file is not JSON.
+    Json(serde_json::Error),
+    /// A class value that is no master class: the entry's index and the key.
+    Class(usize, &'static str),
+}
+
+impl std::fmt::Display for DropSitesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Json(e) => write!(f, "{e}"),
+            Self::Class(i, key) => write!(f, "drop_site_list[{i}]: {key} is no master class"),
+        }
+    }
+}
+
+impl std::error::Error for DropSitesError {}
+
 /// The game's drop-site table (`resources/_common/dat/dropsites.json`): each entry's
 /// `building_id`, `worker_object_group` (−1 when absent), `worker_object_list`, `target_civs`,
 /// its targets' `attribute_type`s and its `update_ai_resource_types`, in file order.
+///
+/// # Errors
+///
+/// A file that is not JSON, or a target's `object_group` or an entry's `worker_object_group`
+/// that is neither a class nor (the worker group only) -1.
 pub fn drop_sites(
     json: &str,
-) -> Result<Vec<genie_core::unit_ai::task_finder::DropSite>, serde_json::Error> {
-    let v: serde_json::Value = serde_json::from_str(json)?;
+) -> Result<Vec<genie_core::unit_ai::task_finder::DropSite>, DropSitesError> {
+    use genie_core::objects::masters::ClassId;
+    let v: serde_json::Value = serde_json::from_str(json).map_err(DropSitesError::Json)?;
     let num = |v: &serde_json::Value| v.as_i64().unwrap_or(-1);
     let list = |e: &serde_json::Value, key: &str| -> Vec<i64> {
         e.get(key)
             .and_then(|l| l.as_array())
             .map_or_else(Vec::new, |l| l.iter().map(num).collect())
     };
-    Ok(v["drop_site_list"]
-        .as_array()
-        .map_or_else(Vec::new, |entries| {
-            entries
+    let class = |i: usize, key: &'static str, n: i64| {
+        i16::try_from(n)
+            .ok()
+            .and_then(|n| ClassId::try_from(n).ok())
+            .ok_or(DropSitesError::Class(i, key))
+    };
+    let Some(entries) = v["drop_site_list"].as_array() else {
+        return Ok(Vec::new());
+    };
+    entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            let worker_class = match e.get("worker_object_group").map_or(-1, num) {
+                -1 => None,
+                n => Some(class(i, "worker_object_group", n)?),
+            };
+            let targets = e["target_list"]
+                .as_array()
+                .map_or_else(Vec::new, Vec::clone)
                 .iter()
-                .map(|e| genie_core::unit_ai::task_finder::DropSite {
-                    building: num(&e["building_id"]) as i16,
-                    worker_class: e.get("worker_object_group").map_or(-1, num) as i16,
-                    workers: list(e, "worker_object_list")
-                        .into_iter()
-                        .map(|w| w as i16)
-                        .collect(),
-                    civs: list(e, "target_civs")
-                        .into_iter()
-                        .map(|c| c as u8)
-                        .collect(),
-                    auto_work: e.get("auto_work").and_then(serde_json::Value::as_bool)
-                        != Some(false),
-                    targets: e["target_list"].as_array().map_or_else(Vec::new, |ts| {
-                        ts.iter()
-                            .map(|t| {
-                                let field = |key: &str| t.get(key).map_or(-1, num);
-                                genie_core::unit_ai::task_finder::DropTarget {
-                                    class: field("object_group") as i16,
-                                    workers: field("worker_num") as i32,
-                                    state: field("object_state") as i32,
-                                    attribute: field("attribute_type") as i16,
-                                }
-                            })
-                            .collect()
-                    }),
-                    livestock: e.get("accepts_livestock").is_some(),
-                    resource_types: e["update_ai_resource_types"].as_array().map_or_else(
-                        Vec::new,
-                        |ts| {
-                            ts.iter()
-                                .map(|t| t.get("resource_type").map_or(-1, num) as i32)
-                                .collect()
-                        },
-                    ),
+                .map(|t| {
+                    let field = |key: &str| t.get(key).map_or(-1, num);
+                    Ok(genie_core::unit_ai::task_finder::DropTarget {
+                        class: class(i, "object_group", field("object_group"))?,
+                        workers: field("worker_num") as i32,
+                        state: field("object_state") as i32,
+                        attribute: field("attribute_type") as i16,
+                    })
                 })
-                .collect()
-        }))
+                .collect::<Result<Vec<_>, DropSitesError>>()?;
+            Ok(genie_core::unit_ai::task_finder::DropSite {
+                building: num(&e["building_id"]) as i16,
+                worker_class,
+                workers: list(e, "worker_object_list")
+                    .into_iter()
+                    .map(|w| w as i16)
+                    .collect(),
+                civs: list(e, "target_civs")
+                    .into_iter()
+                    .map(|c| c as u8)
+                    .collect(),
+                auto_work: e.get("auto_work").and_then(serde_json::Value::as_bool) != Some(false),
+                targets,
+                livestock: e.get("accepts_livestock").is_some(),
+                resource_types: e["update_ai_resource_types"].as_array().map_or_else(
+                    Vec::new,
+                    |ts| {
+                        ts.iter()
+                            .map(|t| t.get("resource_type").map_or(-1, num) as i32)
+                            .collect()
+                    },
+                ),
+            })
+        })
+        .collect()
 }

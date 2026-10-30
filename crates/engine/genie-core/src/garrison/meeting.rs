@@ -7,6 +7,7 @@ use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
 use crate::movement::MoveStats;
 use crate::movement::footprint_gap_squared;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, class, player_master};
 
@@ -34,7 +35,7 @@ pub struct MeetingTarget {
     /// Its top action's state (slot 0x2b0, `RGE_Action_Object::actionState`; 0 without one).
     pub state: u8,
     /// Its class (`+0x410`).
-    pub class: i16,
+    pub class: ClassId,
     /// Its place, x and y.
     pub position: [f32; 2],
     /// Its top action's point (`FUN_140a7be40`, `FUN_140a7be50`), or why the slice has not got it.

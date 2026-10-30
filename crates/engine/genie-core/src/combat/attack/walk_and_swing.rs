@@ -140,7 +140,9 @@ impl Attack {
         sprite: ActiveSprite,
     ) -> Result<(), GenieError> {
         let ranged = self.arms.missile != -1;
-        if f.own.class == class::CLASS_51 || (!ranged && matches!(f.own.class, 35 | 64)) {
+        if f.own.class == class::CLASS_51
+            || (!ranged && matches!(f.own.class, class::CLASS_35 | class::CLASS_64))
+        {
             return Err(GenieError::unsupported("a swing of class 35, 51 or 64"));
         }
         if ranged && self.arms.fire_frame < 0 {

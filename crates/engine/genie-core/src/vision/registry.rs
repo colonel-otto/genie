@@ -8,6 +8,7 @@
 //! leave by a swap with its last.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
 
@@ -74,7 +75,7 @@ pub struct UnitUpdate {
     /// Its master's radii (x, y).
     pub radii: [f32; 2],
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// The mask of the players that saw it.
     pub old: u64,
     /// The mask of the players that see it.
@@ -149,12 +150,11 @@ impl Registry {
         } = unit;
         let mut changed = (old ^ new) & 0xffff;
         let mut seen = new;
-        if class < 0 {
+        let Some(class) = class.index() else {
             return Err(GenieError::unsupported(
                 "a registry update for a master without a class",
             ));
-        }
-        let class = class as usize;
+        };
         if self.classes <= class {
             return Ok(());
         }
@@ -238,11 +238,11 @@ impl Registry {
     }
 
     /// The combat object's new place (`FUN_14108c320`): its records in every list follow.
-    pub fn moved(&mut self, id: i32, class: i16, [x, y]: [f32; 2]) {
+    pub fn moved(&mut self, id: i32, class: ClassId, [x, y]: [f32; 2]) {
         let Some(e) = self.entries.get(&id).copied() else {
             return;
         };
-        let Ok(class) = usize::try_from(class) else {
+        let Some(class) = class.index() else {
             return;
         };
         for (p, slot) in e.slots.iter().enumerate().take(self.players) {
@@ -343,6 +343,7 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::class;
 
     fn registry() -> Registry {
         Registry::new(3, 65)
@@ -357,7 +358,7 @@ mod tests {
                 owner: 1,
                 position: [id as f32, 5.0],
                 radii: [0.2, 0.2],
-                class: 4,
+                class: class::VILLAGER,
                 old: 0,
                 new: 0b101,
             })
@@ -375,7 +376,7 @@ mod tests {
             owner: 1,
             position: [1.0, 5.0],
             radii: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             old: 0b101,
             new: 0b100,
         })
@@ -387,7 +388,7 @@ mod tests {
         assert_eq!(r.entry(3).unwrap().slots[0], Some(0));
         assert_eq!(r.entry(1).unwrap().slots[0], None);
         assert_eq!(r.entry(1).unwrap().slots[2], Some(0));
-        r.moved(3, 4, [7.0, 7.0]);
+        r.moved(3, class::VILLAGER, [7.0, 7.0]);
         assert_eq!((r.lists[0][4][0].x, r.lists[2][4][2].y), (7.0, 7.0));
     }
 
@@ -399,7 +400,7 @@ mod tests {
             owner: 1,
             position: [12.0, 10.0],
             radii: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             old: 0,
             new: 1,
         })
@@ -409,7 +410,7 @@ mod tests {
             owner: 2,
             position: [10.0, 13.5],
             radii: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             old: 0,
             new: 1,
         })
@@ -419,7 +420,7 @@ mod tests {
             owner: 2,
             position: [13.0, 13.0],
             radii: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             old: 0,
             new: 1,
         })
@@ -429,7 +430,7 @@ mod tests {
             owner: 0,
             position: [10.5, 10.5],
             radii: [0.2, 0.2],
-            class: 9,
+            class: class::PREY,
             old: 0,
             new: 1,
         })
@@ -478,7 +479,7 @@ mod tests {
             owner: 1,
             position: [53.5, 10.0],
             radii: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             old: 0,
             new: 1,
         })
@@ -488,7 +489,7 @@ mod tests {
             owner: 1,
             position: [60.0, 10.0],
             radii: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             old: 0,
             new: 1,
         })
@@ -518,7 +519,7 @@ mod tests {
             owner: 1,
             position: [15.0, 10.0],
             radii: [2.0, 2.0],
-            class: 4,
+            class: class::VILLAGER,
             old: 0,
             new: 1,
         })

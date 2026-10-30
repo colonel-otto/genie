@@ -1,6 +1,7 @@
 use super::*;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::class;
 use crate::test_ids::object_id;
 
 /// Slot 0x280 (`FUN_141082d60`) passes only a target id above -1 the world holds: a
@@ -411,7 +412,7 @@ fn target_at(y: f32) -> Placed {
     Placed {
         position: [5.0, y, 0.0],
         radius: [0.5, 0.5],
-        class: 0,
+        class: class::CLASS_0,
         player: 0,
         master: 0,
         obstruction_type: 0,

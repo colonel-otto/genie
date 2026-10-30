@@ -3,12 +3,24 @@
 
 use crate::GenieError;
 use crate::construction::repair::ONE;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 
 /// The classes whose repair pays its unit share (`FUN_1412143b0`: the ships 20, 21, 22, 2 and
 /// 53, the siege 13 and the classes 51, 54 and 55).
-pub(super) const COSTED: [i16; 9] = [20, 21, 22, 2, 53, 13, 51, 54, 55];
+pub(super) const COSTED: [ClassId; 9] = [
+    class::TRANSPORT,
+    class::FISHING_SHIP,
+    class::WARSHIP,
+    class::TRADE_BOAT,
+    class::CLASS_53,
+    class::SIEGE,
+    class::CLASS_51,
+    class::CLASS_54,
+    class::CLASS_55,
+];
 /// The trebuchets' classes (51, 54), whose building repair is the unit's.
-pub(super) const TREBUCHETS: [i16; 2] = [51, 54];
+pub(super) const TREBUCHETS: [ClassId; 2] = [class::CLASS_51, class::CLASS_54];
 /// The owner's attributes of a unit's and a building's repair cost (270, 271: `player+0x100`
 /// at `+0x870` and `+0x878`).
 pub const UNIT_REPAIR_COST: usize = 270;
@@ -24,7 +36,7 @@ pub struct Repaired {
     /// Its master's type.
     pub kind: u8,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master.
     pub master: i16,
     /// Its master's hit points (`+0x530`).

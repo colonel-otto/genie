@@ -18,6 +18,7 @@ use crate::GenieError;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, Vec3};
 use crate::objects::layers::Animated;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
 use crate::objects::unit::Unit;
@@ -312,7 +313,7 @@ const REACH_SHORT: f32 = crate::math::image::movement::REACH_SHORT;
 const REACH_NEAR: f32 = crate::math::image::movement::REACH_NEAR;
 /// The master the long pather lets move without a speed (`FUN_140f9eb70`, raw id `0x2a`).
 pub(crate) const LONG_PATH_MOVER: i16 = 42;
-const WIDE_CLASS: i16 = 33;
+const WIDE_CLASS: ClassId = class::CLASS_33;
 const WIDE_RANGE: f32 = crate::math::image::movement::WIDE_RANGE;
 /// A long path's stretch is checked for walls with the unit's radius times this
 /// (`DAT_142e85190`).

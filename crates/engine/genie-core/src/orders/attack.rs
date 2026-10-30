@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::attack::{Attack, AttackReads, Fight};
 use crate::gathering::hunt::HuntRetarget;
 use crate::math::rng::Stream;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::world::slots::PlayerSlots;
 
@@ -16,13 +17,13 @@ pub(super) struct Aim {
     /// The target's owner.
     pub(super) owner: usize,
     /// The target's master's class and fog visibility.
-    pub(super) class: i32,
+    pub(super) class: ClassId,
     pub(super) fog_visibility: u8,
     /// The object aimed at (the target, or a building annex's main building), its place and its
     /// master's class.
     pub(super) aimed: i32,
     pub(super) at: [f32; 3],
-    pub(super) aimed_class: i32,
+    pub(super) aimed_class: ClassId,
 }
 
 impl World {
@@ -170,11 +171,11 @@ impl World {
         ))?;
         Ok(Aim {
             owner,
-            class: i32::from(tm.class),
+            class: tm.class,
             fog_visibility: tm.fog_visibility,
             aimed,
             at: a.position(),
-            aimed_class: i32::from(a.master(&self.masters, ap)?.class),
+            aimed_class: a.master(&self.masters, ap)?.class,
         })
     }
 
@@ -195,7 +196,7 @@ impl World {
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.set_action(Some(ActionKind::Attack));
-            ai.set_target(aim.aimed, aim.aimed_class, aim.at);
+            ai.set_target(aim.aimed, i32::from(aim.aimed_class.get()), aim.at);
         }
         self.take(target, self.releaser(player, idx))?;
         let unit = self.players.live_mut(player, idx)?;
@@ -204,7 +205,7 @@ impl World {
             ai.notify_work(
                 Some(OrderKind::Attack),
                 Some(ActionKind::Attack),
-                Some((target, aim.class)),
+                Some((target, i32::from(aim.class.get()))),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),

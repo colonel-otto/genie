@@ -328,7 +328,7 @@ impl BuildAction {
     pub(super) fn gives_up(c: &Step<'_>, builder: &Unit, reads: &BuildReads) -> GiveUp {
         let computer = c.w.players[c.player].computer;
         GiveUp {
-            waits: reads.class == class::VILLAGER && !computer,
+            waits: reads.class == Some(class::VILLAGER) && !computer,
             stance: builder.ai.as_ref().map_or(0, |ai| ai.stance),
         }
     }

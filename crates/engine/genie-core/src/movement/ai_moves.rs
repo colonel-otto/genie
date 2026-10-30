@@ -3,6 +3,7 @@
 //! `MoveTo` that ends at its start.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::action_type;
 
 use crate::gathering::gather::Walks;
@@ -21,7 +22,7 @@ use crate::unit_ai::AiMove;
 use crate::world::step::Step;
 
 /// An unpacked trebuchet's class (`-0xe76` raw), whose slot 0x340 packs instead of moving.
-const UNPACKED_TREBUCHET: i16 = 54;
+const UNPACKED_TREBUCHET: ClassId = class::CLASS_54;
 
 impl Unit {
     /// The unit's slot 0x340 on its unit AI's move ([`Unit::ai_move_with`]), what it lets go and
@@ -29,7 +30,7 @@ impl Unit {
     pub(crate) fn ai_move(
         &mut self,
         m: AiMove,
-        class: i16,
+        class: ClassId,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
@@ -74,7 +75,7 @@ impl Unit {
     pub(crate) fn ai_move_with(
         &mut self,
         m: AiMove,
-        (class, player): (i16, usize),
+        (class, player): (ClassId, usize),
         (releases, builder_leaves, by): (&mut Vec<(i32, Releaser)>, &mut Vec<i32>, Releaser),
         (masters, graphics, sprite_rng): (
             Option<&Masters>,

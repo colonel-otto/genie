@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -28,7 +29,7 @@ impl UnitAi {
         &mut self,
         order: QueuedOrder,
         keep_from: Option<i32>,
-        place: Option<([f32; 2], i16)>,
+        place: Option<([f32; 2], Option<ClassId>)>,
         world: Option<(&Surroundings, bool)>,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
@@ -102,7 +103,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Attack));
-        self.target_at(target, Some(i32::from(class)), position);
+        self.target_at(target, Some(i32::from(class.get())), position);
         Ok(true)
     }
 
@@ -120,7 +121,7 @@ impl UnitAi {
         any: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
         if matches!(self.ai_type, 13 | 15 | SIEGE_AI) {
             return side.may_attack(target, &self.seeker(at));
         }
@@ -183,8 +184,8 @@ impl UnitAi {
                 None => return Ok(false),
             },
         };
-        if matches!(t.class, 9 | class::PREDATOR | class::TREE) {
-            self.hunt_object(target, i32::from(t.class), t.position, at, side, rng)?;
+        if matches!(t.class, class::PREY | class::PREDATOR | class::TREE) {
+            self.hunt_object(target, i32::from(t.class.get()), t.position, at, side, rng)?;
             return Ok(true);
         }
         self.attack_object(target, true, false, at, side)

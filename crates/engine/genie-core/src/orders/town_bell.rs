@@ -8,6 +8,7 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::ids::TOWN_CENTRE;
@@ -109,7 +110,7 @@ pub struct RecordTarget {
     /// Its master is of type 80.
     pub building: bool,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// It has had its master's build time of work (`build_time <= +0xc50`).
     pub built: bool,
 }
@@ -378,7 +379,7 @@ impl World {
     /// from where it is.
     fn workers_back(&mut self, owner: usize) -> Result<(), GenieError> {
         let tracker = &self.players.player(owner)?.tracker;
-        let mut ids = tracker.class_list(i32::from(class::VILLAGER)).to_vec();
+        let mut ids = tracker.class_list(class::VILLAGER).to_vec();
         ids.extend_from_slice(tracker.list(i32::from(MASTER_1808)));
         for id in ids {
             // the tracker's keepers follow every object its player gains and loses: the world
@@ -530,7 +531,9 @@ impl World {
         );
         let actions = &unit.actions;
         let target_type = match unit.top_action_kind() {
-            Some(HUNT) => actions.hunt().map_or(-1, |h| i32::from(h.target_class)),
+            Some(HUNT) => actions
+                .hunt()
+                .map_or(-1, |h| i32::from(ClassId::field(h.target_class))),
             Some(GATHER) => actions.gather().map_or(-1, |g| g.target_type),
             _ => -1,
         };
@@ -598,10 +601,10 @@ mod tests {
     /// that is built, a sheep 10.
     fn object(id: i32) -> Option<RecordTarget> {
         let (building, class, built) = match id {
-            7 => (true, 3, true),
-            8 => (true, 3, false),
+            7 => (true, class::BUILDING, true),
+            8 => (true, class::BUILDING, false),
             9 => (true, class::FARM, true),
-            10 => (false, 58, false),
+            10 => (false, class::LIVESTOCK, false),
             _ => return None,
         };
         Some(RecordTarget {

@@ -4,13 +4,15 @@
 use crate::GenieError;
 use crate::garrison::transport::{Changed, MapShore, Ship, TRANSPORT, TransportAction};
 use crate::math::rng::Stream;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::{Task, TaskId};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 
 /// The trade cart's and the trade boat's classes (`FUN_141195400`, `FUN_141195490`).
-const TRADE_CLASSES: [i16; 2] = [19, 2];
+const TRADE_CLASSES: [ClassId; 2] = [class::TRADE_CART, class::TRADE_BOAT];
 
 impl crate::world::World {
     /// The work command's Transport (its task of action type 12, the factory `FUN_140aca4b0`
@@ -100,7 +102,7 @@ impl crate::world::World {
         clears: bool,
     ) -> Result<(), GenieError> {
         let named = match self.object(target) {
-            Some((tp, t)) => Some((target, i32::from(t.master(&self.masters, tp)?.class))),
+            Some((tp, t)) => Some((target, i32::from(t.master(&self.masters, tp)?.class.get()))),
             None => None,
         };
         let unit = &mut self.players[p].objects[i];

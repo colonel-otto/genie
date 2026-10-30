@@ -34,7 +34,7 @@ impl BuildAction {
         if self.target == -1 {
             return self.idle(c, builder, reads);
         }
-        if reads.class != class::VILLAGER {
+        if reads.class != Some(class::VILLAGER) {
             let at = builder.position();
             let ground = builder
                 .body

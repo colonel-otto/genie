@@ -415,7 +415,7 @@ impl World {
         let attack_priority = master.attack_priority;
         let (classes, radius) = crate::unit_ai::search_area(
             ai_type,
-            master.class,
+            Some(master.class),
             master.line_of_sight,
             master.search_radius,
             false,
@@ -666,6 +666,7 @@ pub(crate) fn weapon_range(master: &crate::objects::masters::Master) -> f32 {
 mod tests {
     use super::*;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
+    use crate::objects::masters::{ClassId, class};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
     use crate::test_ids::object_id;
@@ -736,7 +737,7 @@ mod tests {
             },
         ];
         let mut t = World::new(0, 0, 0, vec![0; 4], players);
-        let master = |id: i16, class: i16| Master {
+        let master = |id: i16, class: ClassId| Master {
             id,
             kind: 70,
             class,
@@ -746,7 +747,7 @@ mod tests {
             radius: [0.2, 0.2],
             ..Master::default()
         };
-        t.masters = vec![Masters::new([master(4, 6), master(6, 4)]); 4];
+        t.masters = vec![Masters::new([master(4, class::CLASS_6), master(6, class::VILLAGER)]); 4];
         let mut s = crate::map::spatial::Spatial::new([20, 20]);
         s.relations = vec![
             vec![0, 3, 3, 3],
@@ -762,10 +763,10 @@ mod tests {
         ];
         let mut r = crate::vision::registry::Registry::new(4, 65);
         for (id, owner, at, class) in [
-            (20, 2, [6.0, 5.0], 6),
-            (21, 2, [5.0, 6.0], 6),
-            (30, 3, [4.0, 5.0], 6),
-            (31, 3, [5.0, 4.0], 4),
+            (20, 2, [6.0, 5.0], class::CLASS_6),
+            (21, 2, [5.0, 6.0], class::CLASS_6),
+            (30, 3, [4.0, 5.0], class::CLASS_6),
+            (31, 3, [5.0, 4.0], class::VILLAGER),
         ] {
             r.update_unit(UnitUpdate {
                 id,
@@ -857,7 +858,7 @@ mod tests {
                     owner: 2,
                     position: [13.0, 5.0],
                     radii: [0.2, 0.2],
-                    class: 6,
+                    class: class::CLASS_6,
                     old: 0,
                     new: 1 << 1,
                 })
@@ -896,7 +897,7 @@ mod tests {
             let archer = Master {
                 id: 7,
                 kind: 70,
-                class: 0,
+                class: class::CLASS_0,
                 weapon_range: 6.0,
                 radius: [0.3, 0.3],
                 ..Master::default()

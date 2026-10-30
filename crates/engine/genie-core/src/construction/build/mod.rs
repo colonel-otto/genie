@@ -13,6 +13,7 @@
 //! the Build end (state 1) and the AI runs its queue.
 
 use self::update::drop_done_orders;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use std::collections::BTreeMap;
 
@@ -341,7 +342,7 @@ pub(crate) struct BuildReads {
     /// ([`ClearLook`]) by id; none for one the world does not hold.
     pub(crate) looks: BTreeMap<i32, ClearLook>,
     /// The builder's class (`+0x0a`, decoded).
-    pub(crate) class: i16,
+    pub(crate) class: Option<ClassId>,
     /// Its foundation's master is a drop site for its civ (`FUN_140fde180`) and it carries a
     /// kind its player has: the end of the work gives its load to its player.
     pub(crate) drop_site: bool,
@@ -421,7 +422,7 @@ mod stack_tests {
         Master {
             id,
             kind: 80,
-            class: 3,
+            class: class::BUILDING,
             radius: [r, r],
             height: z,
             tall: 0.0 < z,
@@ -470,7 +471,7 @@ mod stack_tests {
         tc.storage = vec![(4, 5.0, 4), (506, 1.0, 16), (-1, 0.0, 0)];
         tc.volley_missile = Some(54);
         let mut empty = building(890, (0.0, 4.0, 5), (-10, -1), 109, &[]);
-        empty.class = 27;
+        empty.class = class::WALL;
         Masters::new([
             foundation,
             tc,
@@ -550,7 +551,7 @@ mod stack_tests {
             Placed {
                 position: [54.0, 147.0, 0.0],
                 radius: [2.0, 2.0],
-                class: 3,
+                class: class::BUILDING,
                 player: 1,
                 master: 621,
                 obstruction_type: 2,
@@ -693,7 +694,7 @@ mod stack_tests {
             for ms in &mut t.masters {
                 for id in [621, 109] {
                     let m = ms.get_mut(id).unwrap();
-                    m.class = 39;
+                    m.class = class::GATE;
                     m.storage.clear();
                     m.volley_missile = None;
                     // every building holds its movement state

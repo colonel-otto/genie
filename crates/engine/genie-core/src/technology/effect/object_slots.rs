@@ -2,6 +2,7 @@
 //! the combat unit's and the building's.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::{Master, Masters, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::players::attribute;
@@ -36,10 +37,10 @@ impl World {
     pub(super) fn tracked_class(
         &self,
         p: usize,
-        class: i16,
+        class: ClassId,
     ) -> Result<(Vec<i32>, Vec<i32>), GenieError> {
         let t = &self.players.player(p)?.tracker;
-        let key = i32::from(class) + crate::players::tracker::CLASS_KEY;
+        let key = i32::from(class.get()) + crate::players::tracker::CLASS_KEY;
         Ok((
             t.list(key).to_vec(),
             t.list(key + crate::players::tracker::PENDING).to_vec(),

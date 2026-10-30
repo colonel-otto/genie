@@ -2,6 +2,7 @@
 //! terrains and the tiles beside a box.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::production::spawn::PlaceMap;
 
 /// What BUILD's placement test reads of the building master and the game.
@@ -20,7 +21,7 @@ pub struct BuildSite<'a> {
     /// units (type 70); BUILD's runs neither.
     pub scans: bool,
     /// The master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// The master's `obstruction_type` is neither 0 nor 12 (`FUN_1411205c0`).
     pub obstructs: bool,
     /// The master's terrain restriction's value per terrain.

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::ANIMATED;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -17,7 +18,7 @@ use crate::world::step::Step;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Releaser {
     pub(crate) id: i32,
-    pub(crate) class: i16,
+    pub(crate) class: Option<ClassId>,
     pub(crate) player: usize,
 }
 
@@ -67,7 +68,7 @@ pub(crate) fn released_fields(
         caller: by.id,
         recipient: u.id.get(),
         kind: crate::unit_ai::NO_LONGER_ON_ME,
-        p: [i32::from(by.class), 0, 0],
+        p: [i32::from(ClassId::field(by.class)), 0, 0],
     })
 }
 
@@ -174,7 +175,7 @@ impl Unit {
     pub(crate) fn releaser(&self, c: &Step<'_>) -> Releaser {
         Releaser {
             id: self.id.get(),
-            class: self.master(&c.w.masters, c.player).map_or(-1, |m| m.class),
+            class: self.master(&c.w.masters, c.player).ok().map(|m| m.class),
             player: c.player,
         }
     }

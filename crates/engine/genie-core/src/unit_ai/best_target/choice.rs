@@ -1,5 +1,6 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::best_target::{
@@ -8,10 +9,22 @@ use crate::unit_ai::best_target::{
 use crate::world::slots::CheckedIndex;
 
 /// The boats' classes (2, 20, 21, 22, 53), which a computer player's land unit passes over.
-pub(super) const BOATS: [i16; 5] = [2, 20, 21, 22, 53];
+pub(super) const BOATS: [ClassId; 5] = [
+    class::TRADE_BOAT,
+    class::TRANSPORT,
+    class::FISHING_SHIP,
+    class::WARSHIP,
+    class::CLASS_53,
+];
 /// The classes a search without `any_class` passes over: buildings, walls, towers, gates and
 /// the packed units.
-pub(super) const NOT_ANY: [i16; 5] = [3, 27, 52, 39, 51];
+pub(super) const NOT_ANY: [ClassId; 5] = [
+    class::BUILDING,
+    class::WALL,
+    class::TOWER,
+    class::GATE,
+    class::CLASS_51,
+];
 /// The masters whose units attack by priority 0 without the moving rule: the rams, the siege
 /// masters 1744 and 1746, 420 and 691.
 pub(super) const PRIORITY_0_MASTERS: [i16; 8] = [35, 422, 548, 1258, 1744, 1746, 420, 691];
@@ -100,9 +113,10 @@ pub(super) fn kept_by_owner_and_class(me: &Searcher, ask: &Ask, t: &Thing) -> bo
     if me.computer && t.owner == 0 && !free {
         return false;
     }
-    let boat_free =
-        me.class == class::TOWER || BOAT_HUNTERS.contains(&me.master) || !BOATS.contains(&t.class);
-    let is_boat = BOATS.contains(&me.class);
+    let boat_free = me.class == Some(class::TOWER)
+        || BOAT_HUNTERS.contains(&me.master)
+        || !BOATS.contains(&t.class);
+    let is_boat = me.class.is_some_and(|c| BOATS.contains(&c));
     !(me.computer && !boat_free && !is_boat)
 }
 
@@ -199,10 +213,10 @@ fn current_target(
 
 /// Whether the unit attacks walls: its targets' classes name a wall or a gate, or its owner's
 /// flag allows them outside the defend patrol of a unit that is no siege.
-const fn attacks_walls(me: &Searcher) -> bool {
+fn attacks_walls(me: &Searcher) -> bool {
     let defending =
         // Class 13 (siege), whose units keep the walls' owner flag on the attack move order (`0x2dd`).
-        matches!(me.order, Some(crate::unit_ai::OrderKind::AttackMove)) && me.class != class::SIEGE;
+        matches!(me.order, Some(crate::unit_ai::OrderKind::AttackMove)) && me.class != Some(class::SIEGE);
     matches!(me.target_types[0], 27 | 39)
         || matches!(me.target_types[1], 27 | 39)
         || (me.walls_allowed && !defending)
@@ -421,8 +435,8 @@ fn rank_entries(
         if EPSILON < world.weapon_range(e.id)? {
             return Ok(3);
         }
-        let class = world.thing(e.id)?.map_or(-1, |t| t.class);
-        Ok(if class == class::FARM { 1 } else { 2 })
+        let farm = world.thing(e.id)?.is_some_and(|t| t.class == class::FARM);
+        Ok(if farm { 1 } else { 2 })
     })?;
     st.sort()?;
     Ok(ranked)

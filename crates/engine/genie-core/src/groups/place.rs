@@ -379,6 +379,7 @@ fn ground_squared(p: Vec3, q: Vec3) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::class;
     use crate::test_ids::object_id;
 
     /// `FUN_141049e10` facing x with up y: right is `y × x`, (0, 0, -1), the constructor's.
@@ -448,7 +449,7 @@ mod tests {
                 Placed {
                     position: u.position(),
                     radius: [0.4, 0.4],
-                    class: 6,
+                    class: class::CLASS_6,
                     player: 0,
                     master: 4,
                     obstruction_type: 0,

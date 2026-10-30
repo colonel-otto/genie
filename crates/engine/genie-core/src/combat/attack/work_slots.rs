@@ -6,6 +6,7 @@ use crate::combat::attack::{
     set_walker_anim,
 };
 use crate::movement::footprint_gap;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::new_sprite;
@@ -21,7 +22,7 @@ pub struct Mark {
     /// Its master's type (80 a building).
     pub kind: u8,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its state (`+0x640`).
     pub state: u8,
     /// Its place (decoded `x`, `y`, `z`).

@@ -21,7 +21,7 @@ fn reads() -> GatherReads {
         capacity: 10.0,
         productivity: 1.0,
         sprites: HuntSprites::default(),
-        class: 4,
+        class: class::VILLAGER,
         defaults: MoveDefaults::default(),
         master: 83,
         stance: 0,
@@ -183,7 +183,7 @@ fn bush() -> Resource {
     Resource {
         id: 28222,
         position: [23.5, 93.5, 0.0],
-        class: 7,
+        class: class::CLASS_7,
         master: 59,
         player: 0,
         workers: 0,
@@ -208,7 +208,7 @@ fn target(amount: f32) -> Victim {
         id: 28222,
         amount,
         state: 2,
-        class: 7,
+        class: class::CLASS_7,
         master_id: 59,
         storage: 125.0,
         ..Victim::default()
@@ -877,7 +877,7 @@ fn waiting(worked: bool) -> GatherAction {
         state: FARM_WAIT,
         timer: -1.0,
         target: -1,
-        target_type: i32::from(class::FARM),
+        target_type: i32::from(class::FARM.get()),
         worked,
         gather_at: [112.0, 173.0],
         ..GatherAction::new(task(), &farm(), false, rate()).unwrap()

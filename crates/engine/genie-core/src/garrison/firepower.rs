@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, maxss};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
@@ -22,7 +23,7 @@ pub(super) const CLASS_31: i16 = 31;
 pub(super) const CLASS_38: i16 = 38;
 /// The class whose garrison share is 1 whatever its firepower (`FUN_141213520`, `-0xe82` raw);
 /// UNLOAD's flag 0 leaves it inside (`FUN_14118a610`).
-pub(super) const WHOLE_SHARE_CLASS: i16 = 42;
+pub(super) const WHOLE_SHARE_CLASS: ClassId = class::RELIC;
 
 /// The amounts of `weapons` (class, amount) whose class `counts`.
 pub(super) fn weapons_sum(weapons: &[(i16, i16)], counts: impl Fn(i16) -> bool) -> f32 {
@@ -49,7 +50,7 @@ pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f
     let volley = master
         .volley_missile
         .and_then(|id| masters.get(id))
-        .filter(|_| !matches!(master.class, class::VILLAGER | 6));
+        .filter(|_| !matches!(master.class, class::VILLAGER | class::CLASS_6));
     let sum = volley.map_or_else(
         || {
             weapons_sum(&master.weapons, |c| {

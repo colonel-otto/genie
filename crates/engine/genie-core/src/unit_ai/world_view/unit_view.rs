@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::movement::footprint_gap_squared;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
@@ -40,7 +41,7 @@ impl UnitView<'_, '_> {
         &self,
         target: i32,
         seeker: &crate::unit_ai::Seeker,
-    ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
         let picker = self.picker(Some(*seeker))?;
         let (t, _) = picker.target(&self.c.w.spatial, target)?;
         Ok(
@@ -158,7 +159,7 @@ impl UnitView<'_, '_> {
     ) -> Result<(), GenieError> {
         let by = Releaser {
             id: self.unit.id.get(),
-            class: own.class,
+            class: Some(own.class),
             player: self.player,
         };
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());

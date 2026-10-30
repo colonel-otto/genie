@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::unit_ai::{
     AiCommand, Attacked, Duel, Effect, Found, Gatherable, OffFootprint, PatrolPath, ResourceSearch,
     Search, Seeker, Surroundings, TargetFlags, UnitAi, UnitCommand, UnitSeen, UnitSide,
@@ -90,7 +91,11 @@ impl UnitSide for Vec<Effect> {
         })
     }
 
-    fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+    fn may_attack(
+        &mut self,
+        _: i32,
+        _: &Seeker,
+    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
         Err(NO_WORLD)
     }
 
@@ -196,7 +201,7 @@ impl UnitSide for With<'_> {
         &mut self,
         target: i32,
         seeker: &Seeker,
-    ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
         self.side.may_attack(target, seeker)
     }
 
@@ -263,7 +268,7 @@ impl UnitSide for With<'_> {
         self.side.closest_resource(search)
     }
 
-    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, GenieError> {
+    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<ClassId>, GenieError> {
         self.side.master_class(player, master)
     }
 

@@ -40,7 +40,7 @@ impl World {
         let followed = Followed {
             id: target,
             place: [t.position()[0], t.position()[1]],
-            class: (0.0 < tm.radius[0] || 0.0 < tm.radius[1]).then_some(i32::from(tm.class)),
+            class: (0.0 < tm.radius[0] || 0.0 < tm.radius[1]).then_some(i32::from(tm.class.get())),
         };
         let cap = if self.players.player(player)?.computer {
             500
@@ -324,7 +324,7 @@ impl World {
         if target == unit.id.get() {
             return Ok(false);
         }
-        let place = ([unit.position()[0], unit.position()[1]], class);
+        let place = ([unit.position()[0], unit.position()[1]], Some(class));
         if unit.ai.is_some() {
             // a completion's stop (slot 0xb0 with 1): the unit's stopAction at once
             self.run_ai_calls((player, idx), |ai, side, rng| {

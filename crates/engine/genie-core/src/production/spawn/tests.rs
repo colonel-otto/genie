@@ -43,13 +43,13 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
     );
     let tree = crate::objects::masters::Master {
         id: 349,
-        class: 15,
+        class: class::TREE,
         radius: [0.5, 0.5],
         ..crate::objects::masters::Master::default()
     };
     let villager = crate::objects::masters::Master {
         id: 83,
-        class: 4,
+        class: class::VILLAGER,
         line_of_sight: 4.0,
         ..crate::objects::masters::Master::default()
     };
@@ -177,7 +177,7 @@ fn sheep(state: u8) -> Near {
         radius: [0.35, 0.35],
         tall: true,
         kind: 70,
-        class: 58,
+        class: class::LIVESTOCK,
         master: 705,
         buildable_on: 0,
         obstruction_type: 5,
@@ -255,7 +255,7 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
         position: [20.5, 20.5, 0.0],
         radius: [1.0, 1.0],
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         master: 70,
         obstruction_type: 2,
         moving: false,
@@ -270,7 +270,7 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
         radius: [1.0, 1.0],
         tall: false,
         scans: false,
-        class: 3,
+        class: class::BUILDING,
         obstructs: true,
         restriction: &[1.0],
         hill_mode: 0,
@@ -346,7 +346,7 @@ fn the_sheep_blocks_the_villager_where_their_boxes_overlap() {
         player: 1,
         radius: [0.2, 0.2],
         tall: true,
-        class: 4,
+        class: class::VILLAGER,
         restriction: &[1.0],
         hill_mode: 0,
         placement: [-1; 4],
@@ -366,7 +366,7 @@ fn the_first_object_of_a_tile_s_list_reports_the_block() {
         player: 1,
         radius: [0.2, 0.2],
         tall: true,
-        class: 4,
+        class: class::VILLAGER,
         restriction: &[1.0],
         hill_mode: 0,
         placement: [-1; 4],
@@ -374,7 +374,7 @@ fn the_first_object_of_a_tile_s_list_reports_the_block() {
     // a sheep that stays (state 2) and a soldier that does not, on the same tile
     let soldier = Near {
         id: 9521,
-        class: 6,
+        class: class::CLASS_6,
         master: 4,
         ..sheep(2)
     };
@@ -881,7 +881,7 @@ const fn house_site(restriction: &[f32], human: bool) -> BuildSite<'_> {
         radius: [1.0, 1.0],
         tall: false,
         scans: false,
-        class: 3,
+        class: class::BUILDING,
         obstructs: true,
         restriction,
         hill_mode: 0,
@@ -968,7 +968,7 @@ fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() 
     let flat = Flat(Vec::new());
     let house = Near {
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         moving: false,
         player: 2,
         state: 2,
@@ -1019,7 +1019,7 @@ fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() 
     assert!(!ignores(
         &site,
         Near {
-            class: 51,
+            class: class::CLASS_51,
             ..foundation
         }
     ));
@@ -1034,7 +1034,7 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
     let flat = Flat(Vec::new());
     let walker = Near {
         kind: 70,
-        class: 6,
+        class: class::CLASS_6,
         moving: true,
         player: 1,
         state: 2,
@@ -1091,7 +1091,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         position: [20.5, 20.5, 0.0],
         radius: [1.0, 1.0],
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         master: 70,
         obstruction_type: 2,
         moving: false,
@@ -1165,7 +1165,7 @@ fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
         position: [21.5, 21.5, 0.0],
         radius: [1.0, 1.0],
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         moving: false,
         player: 2,
         state: 4,

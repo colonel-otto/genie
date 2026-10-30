@@ -368,7 +368,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     let mut enter = crate::garrison::EnterAction::new(
         7,
         [1.0, 2.0, 0.0],
-        &crate::garrison::tests::enter_task(0.5, -1),
+        &crate::garrison::tests::enter_task(0.5, crate::objects::masters::class::NO_CLASS),
     );
     artifact.move_to = None;
     artifact.enter = Some(enter);

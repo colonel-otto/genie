@@ -8,6 +8,7 @@ use crate::garrison::{
 };
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -411,7 +412,7 @@ impl World {
 fn assign_shelters(
     pairs: &[(usize, usize, f32)],
     units: &[i32],
-    (all, capacities): (&[i32], &[(bool, i32, i16)]),
+    (all, capacities): (&[i32], &[(bool, i32, ClassId)]),
     mut counts: Vec<i32>,
 ) -> Result<(Vec<Vec<i32>>, Vec<i32>), GenieError> {
     let mut taken = vec![false; units.len()];

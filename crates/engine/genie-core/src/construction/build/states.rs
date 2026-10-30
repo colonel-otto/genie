@@ -163,7 +163,7 @@ impl BuildAction {
         // fishing ship its fish trap (FUN_141194640, FUN_1411945a0): its unit AI drops its build
         // orders (FUN_140c5e020 with 0x2be), then slot 0x7e8 on the building
         let farm = master.class == class::FARM && master.id != FISH_TRAP;
-        let works_it = (farm && reads.class == class::VILLAGER)
+        let works_it = (farm && reads.class == Some(class::VILLAGER))
             || (master.id == FISH_TRAP && FISHING_SHIPS.contains(&builder.life.master_id));
         // a pasture is a farm to the test, so a villager works it as any farm; another builder
         // works it when its livestock's workers (slot 0x780, FUN_1411c5dd0) are its owner's

@@ -128,7 +128,7 @@ impl HuntAction {
             target: target.id,
             state: 0,
             point: target.position,
-            target_class: target.class,
+            target_class: Some(target.class),
             task,
             attack: None,
             move_to: None,
@@ -161,7 +161,7 @@ impl HuntAction {
         if target.player == player && target.drop_site && 0.0 < held.1 {
             hunt.set_target(-1);
             hunt.point = [-1.0; 3];
-            hunt.target_class = -1;
+            hunt.target_class = None;
             hunt.carry_to = target.id;
             hunt.set_drop(target.position, attack.gap, mover, &walks)?;
             return Ok((hunt, false));
@@ -256,7 +256,7 @@ impl HuntAction {
             self.timer = 0.0;
             self.point = [-1.0; 3];
             self.carry_to = target.id;
-            self.target_class = target.class;
+            self.target_class = Some(target.class);
             self.set_drop(target.position, attack.gap, mover, &walks)?;
             return Ok(Some(false));
         }
@@ -264,7 +264,7 @@ impl HuntAction {
             return Ok(None);
         }
         self.set_target(target.id);
-        self.target_class = target.class;
+        self.target_class = Some(target.class);
         self.carry_to = -1;
         self.chase(target, player, attack, arms, mover, &walks)
             .map(Some)
@@ -305,13 +305,13 @@ impl HuntAction {
             }
             self.set_target(-1);
             self.point = [-1.0; 3];
-            self.target_class = t.class;
+            self.target_class = Some(t.class);
             self.carry_to = t.id;
             self.set_drop(t.position, gap, mover, &walks)?;
             return Ok(true);
         }
         self.point = point;
-        self.target_class = -1;
+        self.target_class = None;
         self.set_target(-1);
         self.set_point_walk(WALK_POINT, mover, &walks)?;
         Ok(true)

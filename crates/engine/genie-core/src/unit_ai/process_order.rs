@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -70,7 +71,7 @@ impl UnitAi {
         &mut self,
         o: &QueuedOrder,
         world: Option<(&Surroundings, bool)>,
-        place: Option<([f32; 2], i16)>,
+        place: Option<([f32; 2], Option<ClassId>)>,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {
@@ -81,7 +82,7 @@ impl UnitAi {
             .as_ref()
             .map(|(at, _)| ([at.position[0], at.position[1]], at.class))
             .or(place);
-        let class = place.map_or(-1, |(_, class)| class);
+        let class = place.and_then(|(_, class)| class);
         let tile = |v: f32| crate::math::conversions::cvttss2si(v);
         // `bVar2`: the attack move's attack, whose tail makes the order 700
         let mut attack_move = false;
@@ -188,7 +189,9 @@ impl UnitAi {
             }
             OrderKind::AttackRoundup => self.attack_roundup(o.target, at, side)?,
             OrderKind::AttackMove => {
-                if o.target != -1 && matches!(at.class, TREBUCHET_CLASS | TREBUCHET_PACKED_CLASS) {
+                if o.target != -1
+                    && matches!(at.class, Some(TREBUCHET_CLASS | TREBUCHET_PACKED_CLASS))
+                {
                     *attack_move = true;
                     self.attack_slot(o.target, true, at, side, ai)?
                 } else {
@@ -276,7 +279,7 @@ impl UnitAi {
         &mut self,
         order: Option<OrderKind>,
         priority: i32,
-        class: i16,
+        class: Option<ClassId>,
         attack_move: bool,
         ai: &mut Well512,
     ) -> u32 {
@@ -289,7 +292,7 @@ impl UnitAi {
         let new = if order == Some(OrderKind::AttackRoundup) || attack_move {
             self.leave_patrol_timers(ai);
             Some(OrderKind::Attack)
-        } else if order == Some(OrderKind::Attack) && class == class::MONK {
+        } else if order == Some(OrderKind::Attack) && class == Some(class::MONK) {
             self.leave_patrol_timers(ai);
             self.current_target = -1;
             None
@@ -371,7 +374,7 @@ impl UnitAi {
         if id == at.id {
             return Ok(Some(UnitSeen {
                 id,
-                class: at.class,
+                class: at.class.ok_or(crate::world::UNIT_AI_MASTER)?,
                 owner: at.player,
                 combat_level: at.combat_level,
                 state: at.state,
@@ -451,7 +454,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Attack));
-        self.target_at(target, Some(i32::from(class)), position);
+        self.target_at(target, Some(i32::from(class.get())), position);
         Ok(true)
     }
 }

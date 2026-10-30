@@ -10,6 +10,7 @@ use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait, TargetMoved};
 use crate::objects::actions::ActionList;
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Masters;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
@@ -51,7 +52,7 @@ const fn graphic(id: i16) -> Graphic {
 }
 
 /// The house master 70 of [`crate::world::tests::builder_masters`] as master `id` of `class`.
-fn house_as(masters: &Masters, id: i16, class: i16) -> Master {
+fn house_as(masters: &Masters, id: i16, class: ClassId) -> Master {
     Master {
         id,
         class,
@@ -60,7 +61,7 @@ fn house_as(masters: &Masters, id: i16, class: i16) -> Master {
 }
 
 /// A player's object `id` on the map: radius `r`, `class`, master `master`, tall.
-const fn placed(at: [f32; 3], r: f32, class: i16, master: i16) -> Placed {
+const fn placed(at: [f32; 3], r: f32, class: ClassId, master: i16) -> Placed {
     Placed {
         position: at,
         radius: [r, r],
@@ -97,13 +98,13 @@ const fn construction(progress: f32, builders: u8, desolid: bool) -> Constructio
 /// taken by the builder) at (10.5, 10.5), on 20 × 20 tiles of terrain 0 without planners. The
 /// masters hold the house as 562 (a lumber camp, a drop site), 1889 (a pasture), 1584 (a gate,
 /// class 39), 68 (a mill) and 50 (a farm, class 49).
-fn site_world(class: i16, at: [f32; 3], build: BuildAction) -> World {
+fn site_world(class: ClassId, at: [f32; 3], build: BuildAction) -> World {
     let mut masters = crate::world::tests::builder_masters();
     let others = [
-        house_as(&masters, 562, 3),
-        house_as(&masters, PASTURE_1889, 3),
+        house_as(&masters, 562, class::BUILDING),
+        house_as(&masters, PASTURE_1889, class::BUILDING),
         house_as(&masters, 1584, class::GATE),
-        house_as(&masters, 68, 3),
+        house_as(&masters, 68, class::BUILDING),
         house_as(&masters, 50, class::FARM),
     ];
     masters = Masters::new(masters.iter().cloned().chain(others));
@@ -176,7 +177,8 @@ fn site_world(class: i16, at: [f32; 3], build: BuildAction) -> World {
         (7, graphic(7)),
     ]);
     t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
-    t.spatial.insert(HOUSE, placed(AT_HOUSE, 1.0, 3, 70));
+    t.spatial
+        .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, 70));
     let me = Placed {
         obstruction_type: 0,
         ..placed(at, 0.2, class, 83)
@@ -304,7 +306,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
     annex.construction = Some(construction(1.0, 0, false));
     t.players[1].objects.push(annex);
     t.spatial
-        .insert(ANNEX, placed([12.5, 10.5, 0.0], 1.0, 3, 70));
+        .insert(ANNEX, placed([12.5, 10.5, 0.0], 1.0, class::BUILDING, 70));
     let _ = code(&mut t, 30);
     let annex_of = |t: &World| t.players[1].objects.by_id(ANNEX).unwrap().construction;
     let b = build(&t);
@@ -501,7 +503,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
     let mut t = site_world(class::VILLAGER, [30.0, 89.0, 0.0], b);
     t.spatial = Spatial::with_tiles([40, 120], Tiles::new(40, 120, vec![4; 40 * 120]));
     t.spatial
-        .insert(HOUSE, placed([30.0, 88.0, 0.0], 1.0, 4, 70));
+        .insert(HOUSE, placed([30.0, 88.0, 0.0], 1.0, class::VILLAGER, 70));
     let me = Placed {
         obstruction_type: 5,
         ..placed([30.0, 89.0, 0.0], 0.2, class::VILLAGER, 118)
@@ -583,8 +585,14 @@ fn a_builder_at_its_move_to_s_end_works_or_walks_again() {
     let far = [2.5, 2.5, 0.0];
     let arrived = Some(MoveTo::Arrived);
     assert_eq!(after(class::VILLAGER, far, arrived), (WORK, None));
-    assert_eq!(after(21, far, arrived), (MOVE, Some(MoveTo::Start)));
-    assert_eq!(after(21, [11.6, 10.5, 0.0], arrived), (WORK, None));
+    assert_eq!(
+        after(class::FISHING_SHIP, far, arrived),
+        (MOVE, Some(MoveTo::Start))
+    );
+    assert_eq!(
+        after(class::FISHING_SHIP, [11.6, 10.5, 0.0], arrived),
+        (WORK, None)
+    );
     assert_eq!(after(class::VILLAGER, far, None), (WORK, None));
 }
 
@@ -685,7 +693,7 @@ fn a_build_s_other_cases_end_walk_to_a_point_go_back_or_wait() {
         assert_eq!(walk_state(&t), Some(MoveTo::Moving), "state {state}");
     }
     // a builder of any class off the footprint goes back to the foundation
-    for class in [class::VILLAGER, 21] {
+    for class in [class::VILLAGER, class::FISHING_SHIP] {
         let back = BuildAction {
             state: CLEAR,
             move_to: Some(walk_in(MoveTo::Arrived)),
@@ -1050,16 +1058,17 @@ fn with_mill(t: &mut World) {
     mill.construction = Some(construction(25.0, 0, false));
     mill.place_for_test([15.5, 10.5, 0.0]);
     t.players[1].objects.push(mill);
-    t.spatial.insert(300, placed([15.5, 10.5, 0.0], 1.0, 3, 68));
+    t.spatial
+        .insert(300, placed([15.5, 10.5, 0.0], 1.0, class::BUILDING, 68));
     // a done building of its owner's tracker, which the table's search reads
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 68);
     t.players[1].tracker.add(300, k);
     t.players[1].tracker.complete(300, k);
     t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
         building: 68,
-        worker_class: class::VILLAGER,
+        worker_class: Some(class::VILLAGER),
         targets: vec![crate::unit_ai::task_finder::DropTarget {
-            class: 15,
+            class: class::TREE,
             workers: -1,
             state: -1,
             attribute: 1,
@@ -1328,7 +1337,7 @@ fn camp(t: &mut World, at: [f32; 3]) {
     camp.construction = Some(construction(25.0, 0, false));
     camp.place_for_test(at);
     t.players[1].objects.push(camp);
-    t.spatial.insert(30, placed(at, 1.0, 3, 562));
+    t.spatial.insert(30, placed(at, 1.0, class::BUILDING, 562));
 }
 
 /// Player 1's villager 6, a copy of the builder without actions, standing at `at`.
@@ -1357,7 +1366,8 @@ fn annex(t: &mut World, at: [f32; 3]) -> i32 {
     annex.annex_of = Some(HOUSE);
     annex.place_for_test(at);
     t.players[1].objects.push(annex);
-    t.spatial.insert(ANNEX, placed(at, 1.0, 3, 70));
+    t.spatial
+        .insert(ANNEX, placed(at, 1.0, class::BUILDING, 70));
     t.spatial.set_annex(ANNEX, Some(HOUSE));
     ANNEX
 }
@@ -1419,7 +1429,8 @@ fn an_annex_s_test_sends_its_units_off_or_halts_the_build() {
 fn a_builder_on_an_annex_walks_off_it() {
     let mut t = site_world(class::VILLAGER, [12.4, 10.5, 0.0], placing());
     t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
-    t.spatial.insert(HOUSE, placed(AT_HOUSE, 1.0, 3, 70));
+    t.spatial
+        .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, 70));
     let me = Placed {
         obstruction_type: 5,
         ..placed([12.4, 10.5, 0.0], 0.2, class::VILLAGER, 83)

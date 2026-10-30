@@ -34,6 +34,8 @@
 
 use crate::GenieError;
 use crate::math::fmath;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
@@ -65,7 +67,7 @@ const WORKING: u8 = 7;
 
 /// The building classes a movement damage hits (`0x141207ae8`, decoded 0x33 and 0x36); it hits
 /// any object of another type.
-const STRUCK_BUILDING_CLASSES: [i16; 2] = [0x33, 0x36];
+const STRUCK_BUILDING_CLASSES: [ClassId; 2] = [class::CLASS_51, class::CLASS_54];
 /// The blast level from which an object is reached whatever the hitter's level (`+0x62b`).
 const ALWAYS_REACHED: u8 = 2;
 

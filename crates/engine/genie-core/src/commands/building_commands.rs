@@ -150,7 +150,11 @@ impl World {
          -> Result<crate::unit_ai::QueuedOrder, GenieError> {
             let named = if t == -1 { None } else { turns.object(t) };
             let (target, owner, class) = match named {
-                Some((tp, u)) => (t, tp as i32, i32::from(u.master(&turns.masters, tp)?.class)),
+                Some((tp, u)) => (
+                    t,
+                    tp as i32,
+                    i32::from(u.master(&turns.masters, tp)?.class.get()),
+                ),
                 None => (-1, -1, -1),
             };
             Ok(crate::unit_ai::QueuedOrder {

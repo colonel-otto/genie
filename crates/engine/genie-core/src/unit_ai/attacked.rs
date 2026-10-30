@@ -237,7 +237,10 @@ impl UnitAi {
             || (target.class == class::TOWER && attacker.class == class::TOWER)
             || attacker.kind == MISSILE
             || (attacker.class == class::TOWER
-                && !matches!(at.class, class::SIEGE | class::CLASS_54 | class::WARSHIP)
+                && !matches!(
+                    at.class,
+                    Some(class::SIEGE | class::CLASS_54 | class::WARSHIP)
+                )
                 && at.disable_tower_priority)
         {
             return Ok(GO_ON);
@@ -314,7 +317,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let boar = at.class == class::PREDATOR && at.combat_level == 1;
+        let boar = at.class == Some(class::PREDATOR) && at.combat_level == 1;
         if !boar
             && at.unit(n.p[0]).is_some()
             && self.retarget_disabled == 0

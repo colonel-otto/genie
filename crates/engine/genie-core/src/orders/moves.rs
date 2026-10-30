@@ -162,7 +162,7 @@ impl World {
             .master(&self.masters, player)?
             .class;
         let unit = self.players.live_mut(player, idx)?;
-        let place = ([unit.position()[0], unit.position()[1]], class);
+        let place = ([unit.position()[0], unit.position()[1]], Some(class));
         if unit.ai.is_some() {
             // a completion's stop (slot 0xb0 with 1): the unit's stopAction at once
             self.run_ai_calls((player, idx), |ai, side, rng| {
@@ -422,7 +422,7 @@ impl World {
             let search = crate::unit_ai::Notify::own(
                 id.get(),
                 crate::unit_ai::REQUIRES_SEARCH,
-                [ActionKind::Hunt.value(), i32::from(class::FARM), -1],
+                [ActionKind::Hunt.value(), i32::from(class::FARM.get()), -1],
             );
             let _ = ai.accept(search, state);
         }

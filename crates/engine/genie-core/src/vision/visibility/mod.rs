@@ -23,6 +23,7 @@
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::vision::registry::{MASK, Registry};
 use crate::world::slots::CheckedIndex;
@@ -255,8 +256,20 @@ pub struct Visibility {
 /// and 10, and master 826), and for masters 854 and Gaia's 814, which another player takes over
 /// by seeing them; 3 for classes 58 and 1 (livestock).
 #[must_use]
-pub fn capture_kind(player: usize, class: i16, master: i16) -> u8 {
-    const KEPT: [i16; 11] = [40, 42, 58, 14, 11, 1, 60, 38, 41, 9, 10];
+pub fn capture_kind(player: usize, class: ClassId, master: i16) -> u8 {
+    const KEPT: [ClassId; 11] = [
+        class::CLASS_40,
+        class::RELIC,
+        class::LIVESTOCK,
+        class::CLASS_14,
+        class::CLASS_11,
+        class::ARTIFACT,
+        class::CLASS_60,
+        class::CLASS_38,
+        class::CLASS_41,
+        class::PREY,
+        class::PREDATOR,
+    ];
     let mut kind = 0;
     if (player == 0 && !KEPT.contains(&class) && master != 826) || master == 854 {
         kind = 1;
@@ -264,7 +277,7 @@ pub fn capture_kind(player: usize, class: i16, master: i16) -> u8 {
     if player == 0 && master == 814 {
         kind = 1;
     }
-    if class == class::LIVESTOCK || class == 1 {
+    if class == class::LIVESTOCK || class == class::ARTIFACT {
         kind = 3;
     }
     kind

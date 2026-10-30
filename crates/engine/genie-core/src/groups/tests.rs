@@ -1,6 +1,6 @@
 use super::*;
 use crate::objects::ObjectId;
-use crate::objects::masters::class;
+use crate::objects::masters::{ClassId, class};
 use crate::objects::unit::Unit;
 use crate::test_ids::object_id;
 use crate::world::World;
@@ -267,7 +267,7 @@ fn task_master(
     crate::objects::masters::Master {
         id,
         kind: 70,
-        class: 4,
+        class: class::VILLAGER,
         task_by_group: 1,
         hit_points: 25,
         tasks,
@@ -279,7 +279,7 @@ fn building_master() -> crate::objects::masters::Master {
     crate::objects::masters::Master {
         id: 70,
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         hit_points: 550,
         ..crate::objects::masters::Master::default()
     }
@@ -470,9 +470,9 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         ..building_master()
     };
     let masters = Masters::new([
-        soldier(4, 6),
+        soldier(4, class::CLASS_6),
         soldier(5, class::CLASS_46),
-        soldier(329, 6),
+        soldier(329, class::CLASS_6),
         building,
     ]);
     t.masters = vec![Masters::new([]), masters.clone(), masters];
@@ -777,7 +777,7 @@ fn the_special_units_follow_the_target_s_class() {
         (10, 329, 0.0, 0.0),
         (11, 5, 0.0, 0.0),
     ];
-    let special = |target_class: i16, target_master: i16, take: usize| {
+    let special = |target_class: ClassId, target_master: i16, take: usize| {
         let mut t = attack_world(&units[..take]);
         for b in t.masters.iter_mut().filter_map(|m| m.get_mut(70)) {
             b.class = target_class;
@@ -788,7 +788,7 @@ fn the_special_units_follow_the_target_s_class() {
     };
     assert_eq!(special(class::CLASS_24, 70, 5), [9, 10, 8, 11]);
     assert_eq!(special(class::CLASS_24, 70, 4), [9]);
-    assert_eq!(special(3, 70, 5), Vec::<i32>::new());
+    assert_eq!(special(class::BUILDING, 70, 5), Vec::<i32>::new());
 }
 
 /// `FUN_141007ba0`: each formation category's attack range rises to the largest range its members
@@ -999,7 +999,7 @@ fn the_special_units_of_masters_6_and_7_and_of_the_category_classes() {
         (10, 5, 0.0, 0.0),
         (11, 4, 0.0, 0.0),
     ];
-    let world = |target_class: i16, target_master: i16| {
+    let world = |target_class: ClassId, target_master: i16| {
         let mut t = attack_world(&units);
         t.players[2].objects[0].life.master_id = target_master;
         for masters in &mut t.masters {
@@ -1012,7 +1012,7 @@ fn the_special_units_of_masters_6_and_7_and_of_the_category_classes() {
         }
         t
     };
-    let mut t = world(3, 7);
+    let mut t = world(class::BUILDING, 7);
     t.refill_special_units(1, 60).unwrap();
     assert_eq!(t.groups.get(1).unwrap().special_units, [8, 10]);
     let mut t = world(class::VILLAGER, 70);

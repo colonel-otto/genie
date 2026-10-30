@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::unit_ai::{
     Attacked, Duel, Effect, Found, Notify, PatrolPath, Search, Seeker, UnitAi, UnitSeen,
 };
@@ -105,7 +106,7 @@ pub trait UnitSide {
         &mut self,
         target: i32,
         seeker: &Seeker,
-    ) -> Result<Option<(i16, [f32; 3])>, GenieError>;
+    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError>;
 
     /// The explorer's point to explore (the base handler's case 0x202 for the auto scout): the
     /// search around its town centre (`FUN_140c65490`), else its unit AI's (`ai`) slot 0x90 with
@@ -282,7 +283,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// A side without the players' masters.
-    fn master_class(&mut self, _player: i32, _master: i32) -> Result<Option<i16>, GenieError> {
+    fn master_class(&mut self, _player: i32, _master: i32) -> Result<Option<ClassId>, GenieError> {
         Err(GenieError::unsupported(
             "a master's class without the world",
         ))
@@ -433,8 +434,8 @@ pub struct Gatherable {
     pub id: i32,
     /// Its place.
     pub position: [f32; 3],
-    /// Its master's class.
-    pub class: i16,
+    /// Its master's class, or the target type the hunter took (a class or a master).
+    pub class: i32,
 }
 
 /// An object as an order in the queue names it: its id, master, owner and the first two parts
@@ -460,7 +461,7 @@ pub struct OffFootprint {
     /// The unit's height.
     pub z: f32,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its owner is a computer player (`FUN_141659cf0`).
     pub computer: bool,
     /// Its owner's id.
@@ -484,7 +485,11 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, GenieError>> UnitSide for F {
 
     fn set_under_attack(&mut self, _: bool) {}
 
-    fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+    fn may_attack(
+        &mut self,
+        _: i32,
+        _: &Seeker,
+    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
         Err(GenieError::unsupported("an attack test without the world"))
     }
 

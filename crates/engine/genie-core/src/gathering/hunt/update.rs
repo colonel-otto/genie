@@ -12,6 +12,7 @@ use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::GiveUp;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -229,7 +230,7 @@ impl HuntAction {
     fn no_tree_search(&self, r: &HuntReads) -> Result<(), GenieError> {
         if let Some(class) = r.ai_class {
             let class = if class == -1 {
-                i32::from(self.target_class)
+                i32::from(ClassId::field(self.target_class))
             } else {
                 class
             };

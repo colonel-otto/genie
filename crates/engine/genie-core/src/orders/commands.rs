@@ -63,7 +63,7 @@ impl World {
             }
             let class = master.class;
             let unit = &self.players.live(p, idx)?;
-            let place = ([unit.position()[0], unit.position()[1]], class);
+            let place = ([unit.position()[0], unit.position()[1]], Some(class));
             // slot 0x1c0, its stop a call on the unit at once
             self.run_ai_calls((p, idx), |ai, side, rng| {
                 set_stance(ai, state, place, side, rng)
@@ -176,7 +176,13 @@ impl World {
             };
             // the order at once, its calls on the unit at once
             self.run_ai_calls((p, idx), |ai, side, rng| {
-                ai.take_order_now(state, order, ([position[0], position[1]], class), rng, side)
+                ai.take_order_now(
+                    state,
+                    order,
+                    ([position[0], position[1]], Some(class)),
+                    rng,
+                    side,
+                )
             })?;
         }
         Ok(())

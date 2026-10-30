@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::unit_ai::ActionKind;
@@ -11,7 +12,7 @@ use crate::unit_ai::{
     FOLLOW_SLACK_LOW, GroupState, INVALID_POINT, Pick, RETARGET_RANGE, RETARGET_REACH,
     RetargetSearch, SINGLE_VOLLEY, STAND_GROUND_PATROL_LEASH, STAND_GROUND_SLACK, Search,
     Surroundings, UnitAi, UnitSide, group_lets_idle, held_action_state, patrol_distance,
-    point_gap_squared,
+    point_gap_squared, searches_on_class,
 };
 
 /// The least span [`UnitAi::set_randomized_retarget_timer`] draws around (`999 < span`: the
@@ -34,7 +35,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
-        let class_20 = busy && at.class == class::TRANSPORT;
+        let class_20 = busy && at.class == Some(class::TRANSPORT);
         if !class_20
             && self.adjusted_idle_timeout < self.idle_timer
             && self.current_action.is_none()
@@ -53,7 +54,7 @@ impl UnitAi {
         // `-0xe78` raw).
         // A building's master type (`'P'`, `FUN_1411942c0`).
         // The combat type (`0x46`), from which on the full update's tail reads a target's `+0x924`.
-        if matches!(at.class, class::BUILDING | class::TOWER)
+        if matches!(at.class, Some(class::BUILDING | class::TOWER))
             && matches!(
                 self.current_action,
                 Some(ActionKind::Make | ActionKind::Research)
@@ -134,14 +135,14 @@ impl UnitAi {
     /// of a player above Gaia at 0.
     pub(super) fn idle_part_end(
         &mut self,
-        class: i16,
+        class: Option<ClassId>,
         player: usize,
         group: Option<GroupState>,
     ) -> Result<(), GenieError> {
         if self.patrols(group) {
             return Err(GenieError::unsupported("a patrol order's idle part"));
         }
-        if matches!(class, class::BUILDING | class::TOWER)
+        if matches!(class, Some(class::BUILDING | class::TOWER))
             && matches!(
                 self.current_action,
                 Some(ActionKind::Make | ActionKind::Research)
@@ -409,7 +410,7 @@ impl UnitAi {
     /// better target reads ([`UnitAi::retarget_search`]), or None.
     pub(super) fn retarget_outcome(
         &self,
-        target: Option<(usize, i16)>,
+        target: Option<(usize, ClassId)>,
         weapon_range: f32,
         computer: bool,
         action_state: Option<u8>,
@@ -423,7 +424,7 @@ impl UnitAi {
         if self.current_target != -1 {
             match target {
                 Some((0, _)) => return Ok(None),
-                Some((_, 3 | 27 | 39 | 49 | 52 | 51 | 54)) => {
+                Some((_, class)) if searches_on_class(class) => {
                     if attack_order && !computer {
                         return Ok(None);
                     }
@@ -637,7 +638,7 @@ impl UnitAi {
     pub(super) fn move_to_object(
         &mut self,
         id: i32,
-        (state, class, position): (u8, i16, [f32; 3]),
+        (state, class, position): (u8, ClassId, [f32; 3]),
         range: f32,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
@@ -652,7 +653,7 @@ impl UnitAi {
             rng,
         )?;
         self.set_action(Some(ActionKind::Move));
-        self.target_at(id, Some(i32::from(class)), position);
+        self.target_at(id, Some(i32::from(class.get())), position);
         Ok(())
     }
 

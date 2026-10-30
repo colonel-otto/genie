@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
@@ -81,13 +82,13 @@ pub fn civilian_search_radius(los: f32, search_radius: f32) -> f32 {
 /// The civilian's slot 0x1b0 (`FUN_140c1c4f0`): the kind of a target class (0 for 15, 1 for 7, 2
 /// for 5, 31 and 33, 3 for 8, 4 for 32 and 63), −1 for any other.
 #[must_use]
-pub const fn civilian_kind(class: i32) -> i8 {
-    match class {
-        5 | 0x1f | 0x21 => 2,
-        7 => 1,
-        8 => 3,
-        0xf => 0,
-        0x20 | 0x3f => 4,
+pub fn civilian_kind(target_type: i32) -> i8 {
+    match ClassId::of_target_type(target_type) {
+        Some(class::CLASS_5 | class::CLASS_31 | class::CLASS_33) => 2,
+        Some(class::CLASS_7) => 1,
+        Some(class::CLASS_8) => 3,
+        Some(class::TREE) => 0,
+        Some(class::CLASS_32 | class::CLASS_63) => 4,
         _ => -1,
     }
 }
@@ -159,9 +160,9 @@ pub const FISHING_CARED: [i32; 13] = [3, 22, 20, 2, 21, 5, 31, 33, 53, 52, 27, 3
 /// # Errors
 ///
 /// Another type, whose list is not held here.
-pub(crate) const fn cared_classes(
+pub(crate) fn cared_classes(
     ai_type: u32,
-    class: i16,
+    class: Option<ClassId>,
     computer: bool,
 ) -> Result<&'static [i32], GenieError> {
     match ai_type {
@@ -179,7 +180,7 @@ pub(crate) const fn cared_classes(
         SIEGE_TOWER_AI => Ok(&SIEGE_TOWER_CARED),
         // The trade boat's class (`-0xeaa` raw): its cared classes and its trade partner are not the
         // trade cart's.
-        TRADE_AI if class == class::TRADE_BOAT => Ok(&TRADE_SHIP_CARED),
+        TRADE_AI if class == Some(class::TRADE_BOAT) => Ok(&TRADE_SHIP_CARED),
         TRADE_AI => Ok(&TRADE_CART_CARED),
         FISHING_AI => Ok(&FISHING_CARED),
         ARTIFACT_AI => Ok(&ARTIFACT_CARED),
@@ -203,7 +204,7 @@ pub(crate) const fn cared_classes(
 /// A unit AI type whose classes are not held.
 pub(crate) fn search_area(
     ai_type: u32,
-    class: i16,
+    class: Option<ClassId>,
     los: f32,
     radius: f32,
     computer: bool,

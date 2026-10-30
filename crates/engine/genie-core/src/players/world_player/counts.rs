@@ -6,9 +6,7 @@ use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::player_master;
 use crate::players::attribute;
-use crate::players::world_player::{
-    AGES, BUILDING_CLASS, TOWN_CENTRES, TreeQuery, full_tree_civ, get,
-};
+use crate::players::world_player::{AGES, TOWN_CENTRES, TreeQuery, full_tree_civ, get};
 use crate::technology::RESEARCHED;
 use crate::world::World;
 
@@ -203,7 +201,7 @@ impl World {
         }
         let mut at = building;
         let local = player_master(&self.masters, self.local_player, building);
-        if let Some(b) = local.filter(|b| b.class == BUILDING_CLASS as i16)
+        if let Some(b) = local.filter(|b| b.class == crate::objects::masters::class::BUILDING)
             && let Some(site) = b.building.as_ref()
             && site.disappears_when_built
             && 0 <= site.stack_unit

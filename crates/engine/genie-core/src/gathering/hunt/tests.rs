@@ -121,7 +121,7 @@ pub(crate) fn hunting(target: i32) -> HuntAction {
         target,
         state: GATHER,
         point: [0.0; 3],
-        target_class: -1,
+        target_class: None,
         task: CHOP,
         attack: None,
         move_to: None,
@@ -237,7 +237,7 @@ fn tree() -> Quarry {
     Quarry {
         id: 9365,
         position: [24.5, 97.5, 0.0],
-        class: 15,
+        class: class::TREE,
         kind: 10,
         state: 2,
         player: 0,
@@ -262,7 +262,7 @@ fn engagement() -> Engagement {
         state_position: [0.0; 2],
         world_time: 0,
         master: 83,
-        target_class: 15,
+        target_class: class::TREE,
         same_owner: false,
     }
 }
@@ -487,7 +487,7 @@ fn victim(amount: f32) -> Victim {
         amount,
         state: 3,
         kind: 10,
-        class: 15,
+        class: class::TREE,
         storage: 100.0,
         ..Victim::default()
     }
@@ -499,7 +499,7 @@ fn a_villager_gathers_work_rate_times_work_value_times_dt_until_its_load_is_full
         target: 9357,
         state: GATHER,
         point: [24.5, 94.5, 0.0],
-        target_class: 15,
+        target_class: Some(class::TREE),
         task: HuntTask {
             work_value: 0.39,
             resource: 1,
@@ -540,7 +540,7 @@ fn a_hunt_without_a_target_carries_its_load_off_or_searches() {
         target: -1,
         state: GATHER,
         point: [0.0; 3],
-        target_class: 15,
+        target_class: Some(class::TREE),
         task: CHOP,
         attack: None,
         move_to: None,
@@ -640,7 +640,7 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
         target: 28813,
         state: WALK,
         point: [177.272_75, 62.444_31, 0.0],
-        target_class: class::LIVESTOCK,
+        target_class: Some(class::LIVESTOCK),
         task: CHOP,
         attack: None,
         move_to: Some(to_house(MoveTo::Moving, CHOP.range)),
@@ -699,7 +699,7 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
     let face = |victim: Victim| {
         let mut hunt = HuntAction {
             state: WALK,
-            target_class: class::FARM,
+            target_class: Some(class::FARM),
             timer: -3.0,
             ..hunting(15371)
         };
@@ -732,7 +732,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
         target: -1,
         state,
         point: [177.272_75, 62.444_31, 0.0],
-        target_class: class::LIVESTOCK,
+        target_class: Some(class::LIVESTOCK),
         task: CHOP,
         attack: None,
         move_to: Some(MoveToAction::sub_in(move_to)),
@@ -1379,7 +1379,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
         target: -1,
         state: DROP,
         point: [-1.0; 3],
-        target_class: 3,
+        target_class: Some(class::BUILDING),
         task: CHOP,
         attack: None,
         move_to: Some(MoveToAction::sub_in(MoveTo::Arrived)),

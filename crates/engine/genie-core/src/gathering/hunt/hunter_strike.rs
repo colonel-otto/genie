@@ -10,6 +10,7 @@ use crate::gathering::hunt::NO_HUNT;
 use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites};
 use crate::movement::move_to::{MoveDefaults, MoveTo};
 use crate::movement::{Me, footprint_gap_squared};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
@@ -126,7 +127,7 @@ impl Unit {
             let class = if ai.target_type == -1 {
                 self.actions
                     .hunt()
-                    .map_or(-1, |h| i32::from(h.target_class))
+                    .map_or(-1, |h| i32::from(ClassId::field(h.target_class)))
             } else {
                 ai.target_type
             };

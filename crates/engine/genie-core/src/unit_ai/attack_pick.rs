@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -155,7 +156,7 @@ pub struct Attacker {
     /// Its master's type.
     pub kind: u8,
     /// Its master's class.
-    pub class: i16,
+    pub class: Option<ClassId>,
     /// Its master's `attack_priority`.
     pub attack_priority: u8,
     /// Its master's missile, −1 for none.
@@ -195,7 +196,7 @@ pub struct Target {
     /// The object's player.
     pub owner: usize,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's type.
     pub kind: u8,
     /// Its master.
@@ -258,7 +259,14 @@ impl Seeker {
 }
 
 /// The classes an attacker of `attack_priority` 3 may attack (`FUN_140fddf10`).
-pub(super) const PRIORITY_3_CLASSES: [i16; 6] = [3, 27, 39, 49, 52, 60];
+pub(super) const PRIORITY_3_CLASSES: [ClassId; 6] = [
+    class::BUILDING,
+    class::WALL,
+    class::GATE,
+    class::FARM,
+    class::TOWER,
+    class::CLASS_60,
+];
 
 /// The masters a tower never attacks (`FUN_140c1a760`, raw `0x60ce`, `0x653f`).
 pub(super) const TOWER_SPARED: [i16; 2] = [50, 1187];
@@ -290,14 +298,31 @@ pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, Ge
 }
 
 /// The classes a predator attacks by its own choice (its slot 0xa0's list, `FUN_140c18ed0`).
-pub(super) const PREDATOR_ATTACKS: [i16; 18] = [
-    0, 4, 6, 12, 23, 24, 25, 26, 28, 35, 36, 44, 45, 46, 47, 50, 56, 57,
+pub(super) const PREDATOR_ATTACKS: [ClassId; 18] = [
+    class::CLASS_0,
+    class::VILLAGER,
+    class::CLASS_6,
+    class::CLASS_12,
+    class::CLASS_23,
+    class::CLASS_24,
+    class::CLASS_25,
+    class::CLASS_26,
+    class::CLASS_28,
+    class::CLASS_35,
+    class::CLASS_36,
+    class::CLASS_44,
+    class::CLASS_45,
+    class::CLASS_46,
+    class::CLASS_47,
+    class::CLASS_50,
+    class::CLASS_56,
+    class::CLASS_57,
 ];
 
 /// The predator's slot 0xa0 (`FUN_140c18ed0`) without its `any` flag: by the master's attack
 /// priority 1 and 2 anything, 3 the classes of [`PRIORITY_3_CLASSES`], any other the classes of
 /// [`PREDATOR_ATTACKS`].
-pub(super) fn predator_may_attack(attack_priority: u8, class: i16) -> bool {
+pub(super) fn predator_may_attack(attack_priority: u8, class: ClassId) -> bool {
     match attack_priority {
         1 | 2 => true,
         3 => PRIORITY_3_CLASSES.contains(&class),
@@ -313,11 +338,11 @@ pub(super) fn predator_may_attack(attack_priority: u8, class: i16) -> bool {
 /// (`FUN_14120ea30`: classes 51 and 54, or a missile, or else a firepower, `+0xa00`, above 1)
 /// and its attack priority is not 3 or the class one of [`PRIORITY_3_CLASSES`].
 pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
-    if me.player == 0 || matches!(t.class, 1 | 42) {
+    if me.player == 0 || matches!(t.class, class::ARTIFACT | class::RELIC) {
         return Ok(false);
     }
     let gaia_combat = !me.scenario && COMBAT <= t.kind && t.capture == 0;
-    if !gaia_combat && t.owner == 0 && !matches!(t.class, 9 | class::PREDATOR) {
+    if !gaia_combat && t.owner == 0 && !matches!(t.class, class::PREY | class::PREDATOR) {
         return Ok(false);
     }
     if (t.kind == BUILDING && t.desolid) || TOWER_SPARED.contains(&t.master) || me.state <= 1 {
@@ -326,7 +351,7 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     if t.class == class::PREDATOR && me.attack_priority < 3 {
         return Ok(t.combat_level == 4);
     }
-    if !matches!(me.class, class::CLASS_51 | class::CLASS_54)
+    if !matches!(me.class, Some(class::CLASS_51 | class::CLASS_54))
         && me.missile == -1
         && me.firepower <= ARMED_FIREPOWER
     {
@@ -343,7 +368,7 @@ pub(super) const SOLDIER_NEVER: i16 = 444;
 /// The master and class whose packed state (top action 124 or 125) attacks nothing (raw
 /// `0x6109`; class 54).
 pub(super) const PACKED_MASTER: i16 = 109;
-pub(super) const PACKED_CLASS: i16 = 54;
+pub(super) const PACKED_CLASS: ClassId = class::CLASS_54;
 /// What a unit carrying it never attacks with (`+0x308`).
 pub(super) const HELD_NO_ATTACK: i16 = 57;
 /// The soldier's range against a target grows by this for its stance checks
@@ -390,14 +415,14 @@ impl Attacker {
 /// patrol path's tests not modelled. Then an attack priority of 3 takes only
 /// [`PRIORITY_3_CLASSES`].
 pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool, GenieError> {
-    if t.class == 64 {
+    if t.class == class::CLASS_64 {
         return Ok(false);
     }
     let gaia_combat = !me.scenario && COMBAT <= t.kind && t.capture == 0;
     if me.player == 0 && !gaia_combat {
         return Ok(false);
     }
-    if t.owner == 0 && !matches!(t.class, 9 | class::PREDATOR) && !gaia_combat {
+    if t.owner == 0 && !matches!(t.class, class::PREY | class::PREDATOR) && !gaia_combat {
         return Ok(false);
     }
     if !t.targeting {
@@ -411,7 +436,9 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
     if never_attacks(me) {
         return Ok(false);
     }
-    if me.held == HELD_NO_ATTACK || matches!(t.class, 1 | 42 | 60) {
+    if me.held == HELD_NO_ATTACK
+        || matches!(t.class, class::ARTIFACT | class::RELIC | class::CLASS_60)
+    {
         return Ok(false);
     }
     if t.kind == BUILDING && t.desolid {
@@ -428,11 +455,11 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
 
 /// [`soldier_can_attack`]'s soldiers that never attack: class 51, master 444, and a packed class
 /// 54 or master 109 under its Pack or Unpack (top action 124 or 125).
-pub(super) const fn never_attacks(me: &Attacker) -> bool {
-    if me.class == class::CLASS_51 || me.master == SOLDIER_NEVER {
+pub(super) fn never_attacks(me: &Attacker) -> bool {
+    if me.class == Some(class::CLASS_51) || me.master == SOLDIER_NEVER {
         return true;
     }
-    (me.class == PACKED_CLASS || me.master == PACKED_MASTER)
+    (me.class == Some(PACKED_CLASS) || me.master == PACKED_MASTER)
         && matches!(me.top_action, Some(124 | 125))
 }
 
@@ -517,7 +544,7 @@ pub trait AttackPicker {
     /// # Errors
     ///
     /// A unit-AI type whose test is not modelled.
-    fn attacks_neutral(&mut self, class: i16) -> Result<bool, GenieError>;
+    fn attacks_neutral(&mut self, class: ClassId) -> Result<bool, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::spares_friends`].
     ///
@@ -603,7 +630,7 @@ impl AttackPicker for NoAttack {
         Err(NO_ATTACK)
     }
 
-    fn attacks_neutral(&mut self, _: i16) -> Result<bool, GenieError> {
+    fn attacks_neutral(&mut self, _: ClassId) -> Result<bool, GenieError> {
         Err(NO_ATTACK)
     }
 

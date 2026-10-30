@@ -17,6 +17,7 @@
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -30,7 +31,7 @@ pub const GHOST_MASTER: i16 = 243;
 pub const LEAVES_GHOSTS: u8 = 2;
 /// The classes a building's watch leaves out (`FUN_1411cc980`) and the gates' class, whose annex
 /// stays watched.
-const UNWATCHED_CLASSES: [i16; 2] = [51, 54];
+const UNWATCHED_CLASSES: [ClassId; 2] = [class::CLASS_51, class::CLASS_54];
 /// The originals whose ghost's leaving changes the local player's terrain (`FUN_141090ad0`).
 const TERRAIN_ORIGINALS: [i16; 2] = [357, 1188];
 /// The type from which an object's entry and its ghost follow its footprint's UMV entry
@@ -701,7 +702,7 @@ mod tests {
             Master {
                 id: HOUSE,
                 kind: 80,
-                class: 3,
+                class: class::BUILDING,
                 ghost_on_death: LEAVES_GHOSTS,
                 ..Master::default()
             },
@@ -1116,19 +1117,19 @@ mod tests {
         let annex_master = Master {
             id: 89,
             kind: 80,
-            class: 3,
+            class: class::BUILDING,
             ..Master::default()
         };
         let wonder = Master {
             id: 276,
             kind: 80,
-            class: 51,
+            class: class::CLASS_51,
             ..Master::default()
         };
         let skipped = Master {
             id: MASTER_1808,
             kind: 80,
-            class: 3,
+            class: class::BUILDING,
             ..Master::default()
         };
         t.masters = (0..3)

@@ -2,6 +2,7 @@ use super::*;
 use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::movement::ASIDE;
+use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
@@ -83,7 +84,7 @@ fn world() -> World {
     let master = Master {
         id: 4,
         kind: 70,
-        class: 6,
+        class: class::CLASS_6,
         hit_points: 60,
         radius: [0.2, 0.2],
         standing_sprite: 6,
@@ -140,7 +141,7 @@ fn post(x: f32, y: f32) -> Placed {
     Placed {
         position: [x, y, 0.0],
         radius: [0.2, 0.2],
-        class: 4,
+        class: class::VILLAGER,
         player: 2,
         master: 0,
         obstruction_type: 0,

@@ -167,7 +167,7 @@ impl World {
             .ok_or(GenieError::unsupported("an Enter whose building is gone"))?;
         let (tp, t) = self.object(target).ok_or_else(|| object_gone(target))?;
         let tm = t.master(&self.masters, tp)?;
-        let (class, height) = (i32::from(tm.class), t.position()[2]);
+        let (class, height) = (i32::from(tm.class.get()), t.position()[2]);
         let (at, _) = self.enter_meeting(player, idx, target)?;
         let action = EnterAction::new(target, [at[0], at[1], height], task);
         self.take(target, self.releaser(player, idx))?;

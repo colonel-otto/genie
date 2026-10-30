@@ -2,6 +2,7 @@
 //! test and the spawn's.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::RELIC;
 use crate::objects::masters::master_type::{BUILDING, COMBAT};
@@ -24,7 +25,7 @@ pub struct Near {
     /// (`+0x651`) and `enable_auto_gather` (`+0x681`).
     pub kind: u8,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master.
     pub master: i16,
     /// Its master's `can_be_built_on` (`+0x5e9`).
@@ -65,7 +66,7 @@ impl Near {
     /// `enable_auto_gather` or of a class that stays from state 2 on (5, 9, 10, 29, 31, 33, 38,
     /// 40, 41, 58, 61) or from state 3 on (7, 8, 15, 32, 48, 63).
     #[must_use]
-    pub const fn stays(&self) -> bool {
+    pub fn stays(&self) -> bool {
         if self.kind == BUILDING
             || (self.class == class::TREE && 2 < self.state)
             || self.master == RELIC
@@ -76,8 +77,23 @@ impl Near {
             return true;
         }
         match self.class {
-            5 | 9 | 10 | 29 | 31 | 33 | 38 | 40 | 41 | 58 | 61 => 1 < self.state,
-            7 | 8 | 15 | 32 | 48 | 63 => 2 < self.state,
+            class::CLASS_5
+            | class::PREY
+            | class::PREDATOR
+            | class::CLASS_29
+            | class::CLASS_31
+            | class::CLASS_33
+            | class::CLASS_38
+            | class::CLASS_40
+            | class::CLASS_41
+            | class::LIVESTOCK
+            | class::CLASS_61 => 1 < self.state,
+            class::CLASS_7
+            | class::CLASS_8
+            | class::TREE
+            | class::CLASS_32
+            | class::CLASS_48
+            | class::CLASS_63 => 2 < self.state,
             _ => false,
         }
     }
@@ -100,7 +116,7 @@ pub struct Placing<'a> {
     /// Its master's height radius is above 0.
     pub tall: bool,
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// Its terrain restriction's value per terrain.
     pub restriction: &'a [f32],
     /// `hill_mode` (`+0x604`).
@@ -370,7 +386,7 @@ pub(super) fn build_sees(
         // building (not a farm) whose visibility mask meets both the player's masks
         if fog == 0 {
             let [sees, explored] = map.vision(player);
-            let shown = o.class != 49
+            let shown = o.class != class::FARM
                 && 50 <= o.kind
                 && o.fog_mask
                     .is_some_and(|m| m & explored != 0 && m & sees != 0);

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -129,7 +130,7 @@ impl World {
         p: usize,
         at: [f32; 2],
         held: i16,
-        class: i16,
+        class: ClassId,
     ) -> Result<Option<i32>, GenieError> {
         let player = self.players.player(p)?;
         let look = |id: i32| self.object(id).map(|(_, o)| (o.life.state, o.position()));

@@ -12,6 +12,7 @@ use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap};
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
@@ -64,7 +65,7 @@ impl Attack {
         unit: &mut Unit,
         me: Me,
         r: &AttackReads,
-        master_class: i16,
+        master_class: ClassId,
     ) -> Result<u8, GenieError> {
         self.timer += seconds(c.dt);
         let gives_up = GiveUp {

@@ -251,7 +251,7 @@ impl World {
         (fp, foundation, master): (usize, i32, i16),
         position: [f32; 3],
     ) -> Result<(), GenieError> {
-        let site_class = i32::from(self.master(fp, master)?.class);
+        let site_class = i32::from(self.master(fp, master)?.class.get());
         if let Some(m) = self.players[player].objects[idx].body.mover_mut() {
             m.ignore_units.clear();
         }

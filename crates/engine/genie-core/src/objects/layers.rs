@@ -310,6 +310,7 @@ impl Body {
 mod tests {
     use super::*;
     use crate::map::spatial::Placed;
+    use crate::objects::masters::class;
 
     fn mover() -> Mover {
         crate::movement::tests::builder_9177()
@@ -323,7 +324,7 @@ mod tests {
             Placed {
                 position: at,
                 radius: [0.2, 0.2],
-                class: 4,
+                class: class::VILLAGER,
                 player: 1,
                 master: 83,
                 obstruction_type: 0,

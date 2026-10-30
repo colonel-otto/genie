@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
@@ -98,7 +99,8 @@ impl Unit {
             (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         )?;
-        if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135) || matches!(master.class, 35 | 64))
+        if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135)
+            || matches!(master.class, class::CLASS_35 | class::CLASS_64))
             && self.life.state == 2
         {
             return Err(GenieError::unsupported(
@@ -525,7 +527,7 @@ impl Unit {
         c.w.players[c.player].objects.push(missile);
         let missile = Releaser {
             id: id.get(),
-            class: made.class,
+            class: Some(made.class),
             player: c.player,
         };
         crate::world::lets::take(c, self, aimed.target, missile)?;
@@ -543,7 +545,7 @@ pub(crate) struct Aimed {
     pub(crate) target: i32,
     pub(crate) position: [f32; 3],
     pub(crate) radius: [f32; 3],
-    pub(crate) class: i16,
+    pub(crate) class: ClassId,
     pub(crate) player: usize,
 }
 

@@ -20,6 +20,7 @@ use crate::GenieError;
 use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::orders::Work;
@@ -47,7 +48,7 @@ enum Start {
 /// else a `building` (master type 80) whose master has a task of action type 0x99 (`cart_task`,
 /// `FUN_1415c60b0`) searches. The caller then tests that it is ready (slot 0x2d0 with 1: its
 /// top action may be interrupted and its unit AI holds no order) and has a unit AI.
-const fn start_of(class: i16, building: bool, cart_task: bool) -> Option<Start> {
+const fn start_of(class: ClassId, building: bool, cart_task: bool) -> Option<Start> {
     // The classes the pass puts to work: villagers and fishing ships (decoded 4 and 21).
     // The farm class a unit's tile is searched for, and the fish trap a fishing ship takes.
     if matches!(class, class::VILLAGER | class::FISHING_SHIP) {
@@ -131,7 +132,7 @@ impl World {
     }
 
     /// The first farm in the object list of the unit's tile (a fish trap for a fishing ship).
-    fn farm_under(&self, p: usize, i: usize, class: i16) -> Result<Option<i32>, GenieError> {
+    fn farm_under(&self, p: usize, i: usize, class: ClassId) -> Result<Option<i32>, GenieError> {
         let at = self.players.live(p, i)?.position();
         let (x, y) = (at[0] as i32, at[1] as i32);
         self.spatial.check_known([at[0], at[1], at[0], at[1]])?;
@@ -295,9 +296,12 @@ mod tests {
             start_of(class::FISHING_SHIP, false, false),
             Some(Start::Work)
         );
-        assert_eq!(start_of(99, true, true), Some(Start::CartSearch));
-        assert_eq!(start_of(99, true, false), None);
-        assert_eq!(start_of(99, false, true), None);
-        assert_eq!(start_of(99, false, false), None);
+        assert_eq!(
+            start_of(ClassId::of_master(99), true, true),
+            Some(Start::CartSearch)
+        );
+        assert_eq!(start_of(ClassId::of_master(99), true, false), None);
+        assert_eq!(start_of(ClassId::of_master(99), false, true), None);
+        assert_eq!(start_of(ClassId::of_master(99), false, false), None);
     }
 }

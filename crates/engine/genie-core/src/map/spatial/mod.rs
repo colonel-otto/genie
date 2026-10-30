@@ -12,6 +12,7 @@
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
 use genie_diff::Diff;
@@ -40,8 +41,8 @@ const CLOSEST_RANGE: f32 = crate::math::image::spatial::CLOSEST_RANGE;
 const SEARCH_REUSE_SQUARED: f32 = crate::math::image::spatial::SEARCH_REUSE_SQUARED;
 
 /// The pasture and livestock classes `ClosestObject` treats apart.
-const PASTURE_CLASS: i32 = crate::objects::masters::class::FARM as i32;
-const LIVESTOCK_CLASS: i32 = crate::objects::masters::class::LIVESTOCK as i32;
+const PASTURE_CLASS: i32 = crate::objects::masters::class::FARM.get() as i32;
+const LIVESTOCK_CLASS: i32 = crate::objects::masters::class::LIVESTOCK.get() as i32;
 
 /// The caller's reachability check of a found object (slot 0x3d0 within a range): it paths over
 /// the spatial index the search reads, which the check's queries write, so the search hands it
@@ -66,7 +67,7 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
         self.picker.can_attack(self.world, id)
     }
 
-    fn attacks_neutral(&mut self, class: i16) -> Result<bool, GenieError> {
+    fn attacks_neutral(&mut self, class: ClassId) -> Result<bool, GenieError> {
         self.picker.attacks_neutral(class)
     }
 
@@ -184,7 +185,7 @@ pub struct Placed {
     /// The master's radii on the ground (master `+0x5d8`, `+0x5dc`).
     pub radius: [f32; 2],
     /// The master's class (`+0x410`, decoded): the motion step treats gates (39) apart.
-    pub class: i16,
+    pub class: ClassId,
     /// The owning player.
     pub player: usize,
     /// The master's id.

@@ -10,6 +10,7 @@ use crate::groups::{TargetData, UnitGroup, WorldObject};
 use crate::math::fmath;
 use crate::math::fmath::below_or_unordered;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
@@ -28,7 +29,7 @@ const FIRST_PASS_MOST: usize = 3;
 const LISTED_MASTERS: [i16; 4] = [ids::ID_329, ids::ID_330, ids::ID_282, ids::ID_556];
 /// A target of one of these classes takes both first-pass lists, the masters' first
 /// (`FUN_14100c6c0`).
-const BOTH_LISTS_CLASSES: [i16; 4] = [
+const BOTH_LISTS_CLASSES: [ClassId; 4] = [
     class::CLASS_24,
     class::CLASS_57,
     class::CLASS_12,
@@ -38,7 +39,7 @@ const BOTH_LISTS_CLASSES: [i16; 4] = [
 const CLASS_LIST_MASTERS: [i16; 2] = [ids::ID_6, ids::ID_7];
 /// A target of one of these classes takes the group's units by formation category
 /// (`FUN_14100c6c0`).
-const CATEGORY_LIST_CLASSES: [i16; 12] = [
+const CATEGORY_LIST_CLASSES: [ClassId; 12] = [
     class::VILLAGER,
     class::MONK,
     class::CLASS_43,

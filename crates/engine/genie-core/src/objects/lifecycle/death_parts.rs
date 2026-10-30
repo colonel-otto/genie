@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::MONASTERY;
@@ -70,7 +71,10 @@ pub(crate) fn combat_dies(
             "a dying unit in a pasture (FUN_141189ca0)",
         ));
     }
-    if matches!(master.class, 1 | class::SIEGE | class::CLASS_43) {
+    if matches!(
+        master.class,
+        class::ARTIFACT | class::SIEGE | class::CLASS_43
+    ) {
         return Err(GenieError::unsupported("a dying unit of class 1, 13 or 43"));
     }
     u.life.hp = 0.0;
@@ -233,13 +237,41 @@ pub(crate) fn clear_look_of(
 
 /// The classes a combat object of which counts in its player's attribute 40
 /// (`FUN_141226060`).
-pub(crate) const MILITARY_CLASSES: [i16; 24] = [
-    0, 6, 12, 13, 18, 22, 23, 24, 26, 28, 35, 36, 43, 44, 45, 46, 47, 50, 51, 53, 54, 55, 56, 57,
+pub(crate) const MILITARY_CLASSES: [ClassId; 24] = [
+    class::CLASS_0,
+    class::CLASS_6,
+    class::CLASS_12,
+    class::SIEGE,
+    class::MONK,
+    class::WARSHIP,
+    class::CLASS_23,
+    class::CLASS_24,
+    class::CLASS_26,
+    class::CLASS_28,
+    class::CLASS_35,
+    class::CLASS_36,
+    class::CLASS_43,
+    class::CLASS_44,
+    class::CLASS_45,
+    class::CLASS_46,
+    class::CLASS_47,
+    class::CLASS_50,
+    class::CLASS_51,
+    class::CLASS_53,
+    class::CLASS_54,
+    class::CLASS_55,
+    class::CLASS_56,
+    class::CLASS_57,
 ];
 /// The masters whose objects count in attribute 235 besides 40 (`FUN_141226060`).
 pub(crate) const MILITARY_235: [i16; 2] = [1663, 1697];
 /// The classes that count in attribute 37 (`FUN_141226060`); the villagers' (4) too.
-pub(crate) const CIVILIAN_CLASSES: [i16; 4] = [2, 19, 20, 21];
+pub(crate) const CIVILIAN_CLASSES: [ClassId; 4] = [
+    class::TRADE_BOAT,
+    class::TRADE_CART,
+    class::TRANSPORT,
+    class::FISHING_SHIP,
+];
 
 /// `FUN_141226060`: a combat object (type 70 and up) of `master` counts `by` (1 or -1) in its
 /// player's `attributes` by its class: a military class (0, 6, 12, 13, 18, 22 to 24, 26, 28, 35,

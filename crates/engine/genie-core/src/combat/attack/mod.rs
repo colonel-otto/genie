@@ -17,6 +17,8 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveDefaults, MoveToAction, TargetMoved};
 use crate::objects::layers::Body;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
@@ -244,7 +246,7 @@ pub struct Engagement {
     /// The unit's master, of which 1704 and 1706 do not turn to face their target.
     pub master: i16,
     /// The target's master's class, whose 39 (a gate) readyToAttack measures by its parts.
-    pub target_class: i16,
+    pub target_class: ClassId,
     /// The target is the unit's player's (the constructor's `+0x9f`, [`Attack::same_owner`]).
     pub same_owner: bool,
 }
@@ -451,7 +453,7 @@ const MASTER_1706: i16 = 1706;
 const QUIET_SWINGS: [i16; 2] = [73, 559];
 
 /// The class an Attack does not take as its target (`-0xe70` raw, [`Attack::set_target`]).
-const CLASS_60: i16 = 60;
+const CLASS_60: ClassId = class::CLASS_60;
 
 /// An Attack in a state that walks to its target object, without one.
 const ATTACK_WITHOUT_TARGET: GenieError =

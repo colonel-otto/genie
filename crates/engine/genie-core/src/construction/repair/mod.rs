@@ -12,7 +12,9 @@
 
 use crate::GenieError;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
+use crate::objects::masters::class;
 use crate::objects::sprite::sprite_id;
 use genie_diff::Diff;
 
@@ -50,7 +52,13 @@ const WAIT: u8 = 10;
 const WALK_POINT: u8 = 11;
 
 /// The ship classes whose repair meets them at the shore (`FUN_140ad9120`: 20, 21, 22, 2, 53).
-pub const SHIPS: [i16; 5] = [20, 21, 22, 2, 53];
+pub const SHIPS: [ClassId; 5] = [
+    class::TRANSPORT,
+    class::FISHING_SHIP,
+    class::WARSHIP,
+    class::TRADE_BOAT,
+    class::CLASS_53,
+];
 
 /// A ship's repair: its meeting point (`FUN_140ad9120`: the unit's slot 0x428 toward the
 /// shore, the ship's slot 0x340 there and its command count `+0x888`) is not modelled.
@@ -132,7 +140,7 @@ pub struct Repairee {
     /// Its master's radii.
     pub radius: [f32; 2],
     /// Its master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// It moves (`FUN_140fdd080`: a master of type 30 and up with a speed above 0).
     pub moves: bool,
 }

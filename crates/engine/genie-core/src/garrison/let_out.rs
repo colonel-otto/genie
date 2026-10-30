@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::commands::GatherPoint;
 use crate::garrison::{NO_POINT, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -223,7 +224,7 @@ impl World {
         &mut self,
         up: usize,
         ui: usize,
-        class: i16,
+        class: ClassId,
         (point, gather, bid, work_on): ([f32; 2], Option<GatherPoint>, i32, Option<i32>),
     ) -> Result<bool, GenieError> {
         // an object to work on (GO_BACK_TO_WORK's): slot 0x128 on it at the point, the unit's
@@ -261,7 +262,7 @@ impl World {
             // takes its own stance again at the unit's place (slot 0x1c0 with `+0x1a9`); a unit
             // without a unit AI stays where it came out
             let unit = &mut self.players[up].objects[ui];
-            let place = ([unit.position()[0], unit.position()[1]], class);
+            let place = ([unit.position()[0], unit.position()[1]], Some(class));
             if unit.ai.is_some() {
                 self.run_ai_calls((up, ui), |ai, side, rng| {
                     ai.stop_with(true, Some(place), side, rng)?;

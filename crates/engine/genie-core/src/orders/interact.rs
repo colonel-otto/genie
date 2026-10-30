@@ -274,7 +274,7 @@ impl World {
         let _ = ai.order_tail(
             ai.current_order,
             order.priority,
-            class,
+            Some(class),
             false,
             self.streams.get(Stream::Ai),
         );

@@ -9,6 +9,7 @@
 
 use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
+use crate::objects::masters::ClassId;
 use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
 
@@ -106,7 +107,7 @@ pub struct HuntAction {
     /// `+0x38`..`+0x40`: where the target stood when the hunt took it.
     pub point: [f32; 3],
     /// `+0x68`: the target's class.
-    pub target_class: i16,
+    pub target_class: Option<ClassId>,
     /// `+0x48`: its task.
     pub task: HuntTask,
     /// The sub-action of state 12.
@@ -257,7 +258,7 @@ pub struct Quarry {
     /// Its place.
     pub position: [f32; 3],
     /// Its master's class and type, its state (`+0x640`) and owner.
-    pub class: i16,
+    pub class: ClassId,
     /// Its master's type.
     pub kind: u8,
     /// Its state (`+0x640`).

@@ -76,7 +76,7 @@ impl UnitAi {
                 &FISHING_CARED,
                 civilian_search_radius(at.los, at.search_radius),
             )
-        } else if at.class == class::TRADE_BOAT {
+        } else if at.class == Some(class::TRADE_BOAT) {
             (&TRADE_SHIP_CARED, search_radius(at.los, at.search_radius))
         } else {
             (&TRADE_CART_CARED, search_radius(at.los, at.search_radius))

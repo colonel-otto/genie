@@ -91,7 +91,7 @@ impl World {
             self.clear_actions(p, idx)?;
         }
         let unit = self.players.live_mut(p, idx)?;
-        let place = ([unit.position()[0], unit.position()[1]], class);
+        let place = ([unit.position()[0], unit.position()[1]], Some(class));
         // slot 0x438 is the top action's type: a trade (0x6f) with a load held (COMISS 0, held;
         // JNC at 0x14108c11e: a NaN load counts) keeps the unit AI going
         let trading = unit.top_action_kind() == Some(action_type::TRADE)

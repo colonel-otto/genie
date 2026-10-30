@@ -69,7 +69,7 @@ pub(crate) fn gate_units(
             continue;
         };
         let counts = !matches!(p.class, class::WALL | class::GATE | class::TOWER)
-            && (p.class != 3 || p.speed != 0.0)
+            && (p.class != class::BUILDING || p.speed != 0.0)
             && (GATE_EPSILON <= p.speed || p.player != 0);
         if counts {
             units.push(id);

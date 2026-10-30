@@ -1,4 +1,6 @@
 use super::*;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::unit_ai::best_target::choice::{add_extra, kept_by_owner_and_class, may_attack};
 
 fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
@@ -6,7 +8,7 @@ fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
         id,
         distance,
         category: 1,
-        class: 6,
+        class: class::CLASS_6,
         speed,
         armed: true,
         reach: 1.0,
@@ -27,7 +29,7 @@ fn the_statistics_count_bound_and_time_each_object() {
     st.add(&candidate(1, 3.0, 1.0));
     st.add(&Candidate {
         current: true,
-        class: 3,
+        class: class::BUILDING,
         damage: 0.0,
         workable: true,
         ..candidate(2, 0.5, 0.0)
@@ -149,7 +151,7 @@ impl Battlefield for Field {
     fn can_attack(&mut self, _: i32) -> Result<bool, crate::GenieError> {
         Ok(self.check('a'))
     }
-    fn attacks_neutral(&mut self, _: i16) -> Result<bool, crate::GenieError> {
+    fn attacks_neutral(&mut self, _: ClassId) -> Result<bool, crate::GenieError> {
         Ok(self.check('n'))
     }
     fn spares_friends(&mut self, _: i32) -> Result<bool, crate::GenieError> {
@@ -197,7 +199,7 @@ fn soldier() -> Searcher {
         order: None,
         action: None,
         master: 74,
-        class: 6,
+        class: Some(class::CLASS_6),
         kind: 70,
         attack_priority: 1,
         can_move: true,
@@ -210,7 +212,7 @@ fn soldier() -> Searcher {
     }
 }
 
-fn enemy(id: i32, class: i16, distance: f32, hp: f32) -> (Thing, Candidate) {
+fn enemy(id: i32, class: ClassId, distance: f32, hp: f32) -> (Thing, Candidate) {
     (
         Thing {
             owner: 2,
@@ -239,9 +241,9 @@ fn enemy(id: i32, class: i16, distance: f32, hp: f32) -> (Thing, Candidate) {
 #[test]
 fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
     let mut field = Field::default();
-    let _ = field.things.insert(7, enemy(7, 0, 3.0, 40.0));
-    let _ = field.things.insert(8, enemy(8, 0, 9.0, 40.0));
-    let _ = field.things.insert(9, enemy(9, 0, 5.0, 10.0));
+    let _ = field.things.insert(7, enemy(7, class::CLASS_0, 3.0, 40.0));
+    let _ = field.things.insert(8, enemy(8, class::CLASS_0, 9.0, 40.0));
+    let _ = field.things.insert(9, enemy(9, class::CLASS_0, 5.0, 10.0));
     field.quick = vec![9];
     let lists = [vec![], vec![], vec![], vec![], vec![8, 7, 9]];
     let ask = Ask {
@@ -273,8 +275,8 @@ fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
 #[test]
 fn failed_paths_become_retarget_entries() {
     let mut field = Field::default();
-    let _ = field.things.insert(7, enemy(7, 0, 3.0, 40.0));
-    let mut still = enemy(9, 0, 5.0, 10.0);
+    let _ = field.things.insert(7, enemy(7, class::CLASS_0, 3.0, 40.0));
+    let mut still = enemy(9, class::CLASS_0, 5.0, 10.0);
     still.0.speed = 0.0;
     still.1.speed = 0.0;
     let _ = field.things.insert(9, still);
@@ -315,20 +317,26 @@ fn failed_paths_become_retarget_entries() {
 #[test]
 fn the_lists_pass_over_what_the_unit_may_not_attack() {
     let mut field = Field::default();
-    let mut no_ai = enemy(30, 0, 3.0, 40.0);
+    let mut no_ai = enemy(30, class::CLASS_0, 3.0, 40.0);
     no_ai.0.has_ai = false;
-    let mut inside = enemy(31, 0, 3.0, 40.0);
+    let mut inside = enemy(31, class::CLASS_0, 3.0, 40.0);
     inside.0.inside = true;
-    let mut dead = enemy(32, 0, 3.0, 40.0);
+    let mut dead = enemy(32, class::CLASS_0, 3.0, 40.0);
     dead.0.state = 3;
-    let mut ally = enemy(33, 0, 3.0, 40.0);
+    let mut ally = enemy(33, class::CLASS_0, 3.0, 40.0);
     ally.0.allied = true;
     for (id, t) in [(30, no_ai), (31, inside), (32, dead), (33, ally)] {
         let _ = field.things.insert(id, t);
     }
-    let _ = field.things.insert(34, enemy(34, 0, 12.5, 40.0));
-    let _ = field.things.insert(35, enemy(35, 0, 0.1, 40.0));
-    let _ = field.things.insert(36, enemy(36, 0, 11.9, 40.0));
+    let _ = field
+        .things
+        .insert(34, enemy(34, class::CLASS_0, 12.5, 40.0));
+    let _ = field
+        .things
+        .insert(35, enemy(35, class::CLASS_0, 0.1, 40.0));
+    let _ = field
+        .things
+        .insert(36, enemy(36, class::CLASS_0, 11.9, 40.0));
     field.quick = (30..=36).collect();
     let lists = [vec![], vec![], vec![], vec![], (30..=36).collect()];
     let ask = Ask {
@@ -351,9 +359,9 @@ fn the_lists_pass_over_what_the_unit_may_not_attack() {
 #[test]
 fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
     let mut field = Field::default();
-    let _ = field.things.insert(20, enemy(20, 27, 2.0, 100.0));
-    let _ = field.things.insert(21, enemy(21, 39, 4.0, 100.0));
-    let _ = field.things.insert(22, enemy(22, 39, 3.0, 100.0));
+    let _ = field.things.insert(20, enemy(20, class::WALL, 2.0, 100.0));
+    let _ = field.things.insert(21, enemy(21, class::GATE, 4.0, 100.0));
+    let _ = field.things.insert(22, enemy(22, class::GATE, 3.0, 100.0));
     let lists = [vec![], vec![], vec![], vec![], vec![20, 21, 22]];
     let ask = Ask {
         idle: true,
@@ -376,20 +384,20 @@ fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
 /// table is −1.
 #[test]
 fn the_categories_follow_the_classes_and_their_exceptions() {
-    assert_eq!(category(4, 0), 3);
-    assert_eq!(category(6, 0), 4);
-    assert_eq!(category(7, 23), 4);
-    assert_eq!(category(83, 4), 7);
-    assert_eq!(category(74, 6), 1);
-    assert_eq!(category(1744, 6), 5);
-    assert_eq!(category(280, 13), 6);
-    assert_eq!(category(35, 13), 5);
-    assert_eq!(category(1258, 55), 5);
-    assert_eq!(category(109, 3), 0);
-    assert_eq!(category(448, 47), 1);
-    assert_eq!(category(1, 1), -1);
-    assert_eq!(category(1, 63), -1);
-    assert_eq!(category(1, -1), -1);
+    assert_eq!(category(4, class::CLASS_0), 3);
+    assert_eq!(category(6, class::CLASS_0), 4);
+    assert_eq!(category(7, class::CLASS_23), 4);
+    assert_eq!(category(83, class::VILLAGER), 7);
+    assert_eq!(category(74, class::CLASS_6), 1);
+    assert_eq!(category(1744, class::CLASS_6), 5);
+    assert_eq!(category(280, class::SIEGE), 6);
+    assert_eq!(category(35, class::SIEGE), 5);
+    assert_eq!(category(1258, class::CLASS_55), 5);
+    assert_eq!(category(109, class::BUILDING), 0);
+    assert_eq!(category(448, class::CLASS_47), 1);
+    assert_eq!(category(1, class::ARTIFACT), -1);
+    assert_eq!(category(1, class::CLASS_63), -1);
+    assert_eq!(category(1, class::NO_CLASS), -1);
 }
 
 /// `bestUnitToAttack`'s extra objects ([`add_extra`]): each the world holds but
@@ -400,7 +408,7 @@ fn the_categories_follow_the_classes_and_their_exceptions() {
 fn an_extra_object_under_the_least_range_counts_beyond_the_weapon_range() {
     let mut field = Field::default();
     for (id, d) in [(40, 3.0), (41, 0.1), (42, 4.0)] {
-        let _ = field.things.insert(id, enemy(id, 0, d, 40.0));
+        let _ = field.things.insert(id, enemy(id, class::CLASS_0, d, 40.0));
     }
     let ask = Ask {
         extra: vec![40, 41, 42, 43],
@@ -432,9 +440,9 @@ fn an_extra_object_under_the_least_range_counts_beyond_the_weapon_range() {
 #[test]
 fn a_gate_answers_at_once_only_among_walls() {
     let mut field = Field::default();
-    let _ = field.things.insert(20, enemy(20, 27, 2.0, 100.0));
-    let _ = field.things.insert(22, enemy(22, 39, 3.0, 100.0));
-    let _ = field.things.insert(7, enemy(7, 0, 5.0, 40.0));
+    let _ = field.things.insert(20, enemy(20, class::WALL, 2.0, 100.0));
+    let _ = field.things.insert(22, enemy(22, class::GATE, 3.0, 100.0));
+    let _ = field.things.insert(7, enemy(7, class::CLASS_0, 5.0, 40.0));
     field.quick = vec![7];
     let lists = [vec![], vec![], vec![], vec![], vec![20, 22, 7]];
     let ask = Ask {
@@ -458,8 +466,8 @@ fn a_gate_answers_at_once_only_among_walls() {
 #[test]
 fn the_current_target_answers_by_its_path_outside_an_idle_check() {
     let mut field = Field::default();
-    let _ = field.things.insert(7, enemy(7, 0, 3.0, 40.0));
-    let _ = field.things.insert(9, enemy(9, 0, 5.0, 40.0));
+    let _ = field.things.insert(7, enemy(7, class::CLASS_0, 3.0, 40.0));
+    let _ = field.things.insert(9, enemy(9, class::CLASS_0, 5.0, 40.0));
     field.paths = vec![7];
     let lists = [vec![], vec![], vec![], vec![], vec![7, 9]];
     let ask = Ask {
@@ -499,7 +507,7 @@ fn the_current_target_answers_by_its_path_outside_an_idle_check() {
 /// failing it.
 #[test]
 fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_order() {
-    let (thing, _) = enemy(7, 0, 3.0, 40.0);
+    let (thing, _) = enemy(7, class::CLASS_0, 3.0, 40.0);
     let checked = |me: &Searcher, t: &Thing, kind, refused: &[char]| {
         let mut field = Field {
             refused: refused.to_vec(),
@@ -547,7 +555,7 @@ fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_
 /// castle); a human player's unit keeps them all.
 #[test]
 fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
-    let (thing, _) = enemy(7, 0, 3.0, 40.0);
+    let (thing, _) = enemy(7, class::CLASS_0, 3.0, 40.0);
     let any = Ask {
         any_class: true,
         ..Ask::default()
@@ -557,7 +565,10 @@ fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
         computer: true,
         ..soldier()
     };
-    let house = Thing { class: 3, ..thing };
+    let house = Thing {
+        class: class::BUILDING,
+        ..thing
+    };
     assert!(!kept_by_owner_and_class(&human, &Ask::default(), &house));
     assert!(kept_by_owner_and_class(&human, &any, &house));
     let gaia = Thing { owner: 0, ..thing };
@@ -576,12 +587,15 @@ fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
         assert!(!kept_by_owner_and_class(&computer, &any, &t));
         assert!(kept_by_owner_and_class(&human, &any, &t));
     }
-    let boat = Thing { class: 22, ..thing };
+    let boat = Thing {
+        class: class::WARSHIP,
+        ..thing
+    };
     assert!(!kept_by_owner_and_class(&computer, &any, &boat));
     assert!(kept_by_owner_and_class(&human, &any, &boat));
     for me in [
         Searcher {
-            class: 52,
+            class: Some(class::TOWER),
             ..computer.clone()
         },
         Searcher {
@@ -589,7 +603,7 @@ fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
             ..computer.clone()
         },
         Searcher {
-            class: 2,
+            class: Some(class::TRADE_BOAT),
             ..computer
         },
     ] {

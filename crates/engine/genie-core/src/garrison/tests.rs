@@ -3,6 +3,8 @@ use crate::commands::{GatherPoint, UnloadCommand};
 use crate::map::Point;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::BuildingMaster;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::{DONE, FAILED};
@@ -15,10 +17,10 @@ use crate::unit_ai::OrderKind;
 use crate::world::Player;
 
 /// An Enter task of work range `range` and class `class` without sprites.
-pub(crate) fn enter_task(range: f32, class: i16) -> Task {
+pub(crate) fn enter_task(range: f32, class: ClassId) -> Task {
     Task {
         work_range: range,
-        object_group: class,
+        object_group: class.get(),
         ..Task::default()
     }
 }
@@ -44,7 +46,7 @@ fn garrison_masters() -> Masters {
         Master {
             id: TC,
             kind: 80,
-            class: 52,
+            class: class::TOWER,
             hit_points: 2400,
             garrison: 15,
             building: Some(BuildingMaster {
@@ -56,7 +58,7 @@ fn garrison_masters() -> Masters {
         Master {
             id: VILLAGER,
             kind: 70,
-            class: 4,
+            class: class::VILLAGER,
             copy_id: VILLAGER,
             tasks: vec![task(GARRISON, 3), task(GARRISON, 20)],
             // no walking or standing sprite: a MoveTo the villager makes takes none (the
@@ -68,14 +70,14 @@ fn garrison_masters() -> Masters {
         Master {
             id: ARCHER,
             kind: 70,
-            class: 0,
+            class: class::CLASS_0,
             tasks: vec![task(7, 3)],
             ..Master::default()
         },
         Master {
             id: SHIP,
             kind: 70,
-            class: 20,
+            class: class::TRANSPORT,
             object_flags: 1,
             garrison: 1,
             // no sprites (the world's sprites' table is empty)
@@ -87,7 +89,7 @@ fn garrison_masters() -> Masters {
         Master {
             id: GATE,
             kind: 80,
-            class: 39,
+            class: class::GATE,
             hit_points: 2750,
             garrison: 0,
             ..Master::default()
@@ -131,7 +133,7 @@ fn garrison_world() -> World {
 fn the_unload_groups() {
     let group = |g| {
         (0..64)
-            .filter(|&c| unload_group_takes(g, c))
+            .filter(|&c| unload_group_takes(g, ClassId::of_master(c)))
             .collect::<Vec<_>>()
     };
     assert_eq!(group(1), [4, 19]);
@@ -191,7 +193,7 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
         building: true,
     };
     let start = |gap| WalkStart { gap };
-    let mut far = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
+    let mut far = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, class::BUILDING));
     assert_eq!(
         t.enter_walk_again(1, v, &mut far, &tc, start(3.5)),
         Ok(Walking::Walk(None))
@@ -201,14 +203,14 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
         (WALK, Some(MoveTo::Start))
     );
     // within ARRIVED of its footprint the MoveTo starts arrived (state 1)
-    let mut close = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
+    let mut close = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, class::BUILDING));
     assert_eq!(
         t.enter_walk_again(1, v, &mut close, &tc, start(0.0)),
         Ok(Walking::Walk(None))
     );
     assert_eq!(close.move_to.map(|m| m.state), Some(MoveTo::Arrived));
     // 10049 of update 4409 stands within the task's range: it enters at once
-    let mut near = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
+    let mut near = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, class::BUILDING));
     let in_reach = EnterTarget {
         in_reach: true,
         ..tc
@@ -254,7 +256,7 @@ fn an_enter_of_a_unit_without_speed_starts_failed_beyond_arrived() {
         in_reach: false,
         building: true,
     };
-    let mut e = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
+    let mut e = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, class::BUILDING));
     assert_eq!(
         t.enter_walk_again(1, v, &mut e, &tc, WalkStart { gap: 3.5 }),
         Ok(Walking::Walk(None))
@@ -279,7 +281,7 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
         building: false,
     };
     let start = WalkStart { gap: 6.0 };
-    let mut enter = EnterAction::new(200, [5.5, 30.5, 0.0], &enter_task(1.0, 20));
+    let mut enter = EnterAction::new(200, [5.5, 30.5, 0.0], &enter_task(1.0, class::TRANSPORT));
     assert_eq!(
         t.enter_walk_again(1, v, &mut enter, &ship, start),
         Ok(Walking::Walk(Some([5.5, 17.5, 0.25])))
@@ -343,7 +345,7 @@ fn entering(at: [f32; 2], ship: [f32; 2], enter: EnterAction) -> World {
 
 /// An Enter on ship 200 at `point` whose `MoveTo` is in `state`.
 fn ship_enter(point: [f32; 3], state: MoveTo) -> EnterAction {
-    let mut e = EnterAction::new(200, point, &enter_task(1.0, 20)).walking(state);
+    let mut e = EnterAction::new(200, point, &enter_task(1.0, class::TRANSPORT)).walking(state);
     // a transport's MoveTo walks to it within 0
     if let Some(m) = e.move_to.as_mut() {
         m.range = 0.0;
@@ -507,8 +509,8 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
 fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     // code 3: +0x68 lets one set_state(4); the next waits a second (set_state(2)), whose end
     // walks again; the town centre is a building: no meeting
-    let failed =
-        EnterAction::new(100, [10.0, 10.0, 0.0], &enter_task(1.0, 3)).walking(MoveTo::Failed);
+    let failed = EnterAction::new(100, [10.0, 10.0, 0.0], &enter_task(1.0, class::BUILDING))
+        .walking(MoveTo::Failed);
     let mut t = entering([5.5, 5.5], [5.5, 30.5], failed);
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
@@ -581,7 +583,7 @@ fn an_enter_holds_only_a_live_allied_target_with_room() {
 /// moved; a NaN offset compares as not moved (`COMISS`/`JA`).
 #[test]
 fn an_enter_s_target_moved_only_beyond_half_a_tile() {
-    let enter = EnterAction::new(7420, [82.5, 89.5, 0.0], &enter_task(1.0, 20));
+    let enter = EnterAction::new(7420, [82.5, 89.5, 0.0], &enter_task(1.0, class::TRANSPORT));
     let at = |y: f32| EnterTarget {
         position: [82.5, y, 0.0],
         ..moved_ship(y)
@@ -603,7 +605,7 @@ fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
         room: true,
         speed: 1.1,
         state: 0,
-        class: 20,
+        class: class::TRANSPORT,
         position: [79.5, 92.5],
         action_point: Err(UNPLACED),
     };
@@ -641,7 +643,7 @@ fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
     };
     assert_eq!(meet_at(&moving), MeetAt::ActionPoint);
     let siege = MeetingTarget {
-        class: 13,
+        class: class::SIEGE,
         ..moving.clone()
     };
     assert_eq!(meet_at(&siege), MeetAt::Place);
@@ -716,7 +718,7 @@ fn walled_map(
     let at = |(x, y): (i32, i32), master: i16| Placed {
         position: [x as f32 + 0.5, y as f32 + 0.5, 0.0],
         radius: [0.2, 0.2],
-        class: 0,
+        class: class::CLASS_0,
         player: 1,
         master,
         obstruction_type: 0,
@@ -809,17 +811,17 @@ fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
 #[test]
 fn a_town_center_takes_villagers_infantry_cavalry_and_monks() {
     // a town center's garrison_type 11: bits 0, 1 and 3
-    assert!(garrison_type_takes(11, 4, 83, true));
-    assert!(garrison_type_takes(11, 6, 74, true));
-    assert!(!garrison_type_takes(11, 12, 38, true));
-    assert!(garrison_type_takes(11, 18, 125, true));
+    assert!(garrison_type_takes(11, class::VILLAGER, 83, true));
+    assert!(garrison_type_takes(11, class::CLASS_6, 74, true));
+    assert!(!garrison_type_takes(11, class::CLASS_12, 38, true));
+    assert!(garrison_type_takes(11, class::MONK, 125, true));
     // master 1811 is no infantry, but a monk
-    assert!(garrison_type_takes(11, 6, MASTER_1811, true));
-    assert!(!garrison_type_takes(2, 6, MASTER_1811, true));
+    assert!(garrison_type_takes(11, class::CLASS_6, MASTER_1811, true));
+    assert!(!garrison_type_takes(2, class::CLASS_6, MASTER_1811, true));
     // a tower's 3 takes no monk; the task finder takes no class 42
-    assert!(!garrison_type_takes(3, 18, 125, true));
-    assert!(garrison_type_takes(8, 42, 1, true));
-    assert!(!garrison_type_takes(8, 42, 1, false));
+    assert!(!garrison_type_takes(3, class::MONK, 125, true));
+    assert!(garrison_type_takes(8, class::RELIC, 1, true));
+    assert!(!garrison_type_takes(8, class::RELIC, 1, false));
 }
 
 #[test]
@@ -835,7 +837,7 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
     let tc = Master {
         id: 109,
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         reload: 2.0,
         weapon_range: 6.0,
         weapons: vec![(3, 5)],
@@ -847,7 +849,7 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
     let villager = Master {
         id: 83,
         kind: 70,
-        class: 4,
+        class: class::VILLAGER,
         reload: 2.0,
         weapons: vec![(11, 3), (4, 3), (13, 6), (24, 0), (17, 0)],
         garrison_firepower: -2.5,
@@ -874,7 +876,7 @@ fn town_center() -> Master {
     Master {
         id: 109,
         kind: 80,
-        class: 3,
+        class: class::BUILDING,
         reload: 2.0,
         weapon_range: 6.0,
         weapons: vec![(3, 5)],
@@ -906,7 +908,7 @@ fn an_attack_rate_needs_a_reload_and_a_range_that_compare_above_their_limits() {
     }
     // classes 4 and 6 sum their own melee, pierce, 31 and 38 amounts, not the missile's
     let infantry = Master {
-        class: 6,
+        class: class::CLASS_6,
         weapons: vec![(4, 4), (3, 1), (31, 2), (38, 1), (11, 9)],
         ..town_center()
     };
@@ -997,7 +999,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
     let foot = Master {
         id: 1120,
         kind: 70,
-        class: 0,
+        class: class::CLASS_0,
         reload: 2.0,
         weapons: vec![(3, 2)],
         garrison_firepower: 1.0,
@@ -1007,7 +1009,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
     let mounted = Master {
         id: 1122,
         kind: 70,
-        class: 36,
+        class: class::CLASS_36,
         reload: 2.0,
         weapons: vec![(3, 6)],
         garrison_firepower: 1.0,
@@ -1052,13 +1054,25 @@ fn a_garrison_task_compares_the_bytes_the_game_passes_widened() {
     // FUN_1415c9240: the task's ushorts +0xe and +0x10 against the byte arguments
     let tasks = [task(GARRISON, 20), task(GARRISON, -1)];
     // class 276 passes its low byte 20; a task of 276 never matches a byte
-    assert!(has_garrison_task(&tasks[..1], GARRISON, 276));
-    assert!(has_garrison_task(&tasks[..1], GARRISON, 20));
-    assert!(!has_garrison_task(&[task(GARRISON, 276)], GARRISON, 276));
+    assert!(has_garrison_task(
+        &tasks[..1],
+        GARRISON,
+        ClassId::of_master(276)
+    ));
+    assert!(has_garrison_task(&tasks[..1], GARRISON, class::TRANSPORT));
+    assert!(!has_garrison_task(
+        &[task(GARRISON, 276)],
+        GARRISON,
+        ClassId::of_master(276)
+    ));
     // a class of -1 passes 0xff, which a task of 0xffff does not match
-    assert!(!has_garrison_task(&tasks[1..], GARRISON, -1));
-    assert!(has_garrison_task(&[task(GARRISON, 255)], GARRISON, -1));
-    assert!(!has_garrison_task(&[task(7, 3)], GARRISON, 3));
+    assert!(!has_garrison_task(&tasks[1..], GARRISON, class::NO_CLASS));
+    assert!(has_garrison_task(
+        &[task(GARRISON, 255)],
+        GARRISON,
+        class::NO_CLASS
+    ));
+    assert!(!has_garrison_task(&[task(7, 3)], GARRISON, class::BUILDING));
 }
 
 #[test]
@@ -1124,7 +1138,7 @@ fn a_transport_takes_a_combat_unit_with_a_task_on_its_class_and_room() {
     masters = Masters::new(masters.iter().cloned().chain([Master {
         id: 1500,
         kind: 60,
-        class: 13,
+        class: class::SIEGE,
         tasks: vec![task(GARRISON, 20)],
         ..Master::default()
     }]));
@@ -1139,17 +1153,23 @@ fn the_class_flags_are_the_images_table_by_class() {
     // FUN_1411205e0 with DAT_1439e37b0: villagers (4, 0x10163), infantry (6, 0x10103) and
     // siege (13, 0x3) garrison a transport; ships (20, 21, 22) do not
     for class in [0, 4, 6, 13, 18, 44, 58] {
-        assert!(class_has_flags(class, TRANSPORTED), "class {class}");
+        assert!(
+            class_has_flags(ClassId::of_master(class), TRANSPORTED),
+            "class {class}"
+        );
     }
     for class in [2, 20, 21, 22, 52, 60, 63] {
-        assert!(!class_has_flags(class, TRANSPORTED), "class {class}");
+        assert!(
+            !class_has_flags(ClassId::of_master(class), TRANSPORTED),
+            "class {class}"
+        );
     }
     // other flags of the same words; a class outside the table has none (JS, JGE)
-    assert!(class_has_flags(17, 0x10));
-    assert!(class_has_flags(21, 0x100));
-    assert!(!class_has_flags(-1, u32::MAX));
-    assert!(!class_has_flags(64, u32::MAX));
-    assert!(class_has_flags(61, u32::MAX));
+    assert!(class_has_flags(class::CLASS_17, 0x10));
+    assert!(class_has_flags(class::FISHING_SHIP, 0x100));
+    assert!(!class_has_flags(class::NO_CLASS, u32::MAX));
+    assert!(!class_has_flags(class::CLASS_64, u32::MAX));
+    assert!(class_has_flags(class::CLASS_61, u32::MAX));
 }
 
 #[test]
@@ -1313,7 +1333,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
         crate::map::spatial::Placed {
             position: [10.0, 10.0, 0.0],
             radius: [2.0, 2.0],
-            class: 52,
+            class: class::TOWER,
             player: 1,
             master: TC,
             obstruction_type: 2,
@@ -1378,7 +1398,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
         crate::map::spatial::Placed {
             position: [12.5, 10.0, 0.0],
             radius: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             player: 1,
             master: VILLAGER,
             obstruction_type: 0,
@@ -1435,7 +1455,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
     let placed = crate::map::spatial::Placed {
         position: [12.5, 10.0, 0.0],
         radius: [0.2, 0.2],
-        class: 4,
+        class: class::VILLAGER,
         player: 1,
         master: VILLAGER,
         obstruction_type: 0,
@@ -1470,9 +1490,9 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
     let drop_site = |t: &mut World| {
         t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
             building: TC,
-            worker_class: 4,
+            worker_class: Some(class::VILLAGER),
             targets: vec![crate::unit_ai::task_finder::DropTarget {
-                class: 7,
+                class: class::CLASS_7,
                 workers: -1,
                 state: -1,
                 attribute: 17,
@@ -1535,7 +1555,7 @@ pub(crate) fn inside_tc(t: &mut World, p: usize, id: i32, m: i16) {
         crate::map::spatial::Placed {
             position: [10.0, 10.0, 0.0],
             radius: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             player: p,
             master: m,
             obstruction_type: 0,
@@ -1645,7 +1665,7 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
     masters = Masters::new(masters.iter().cloned().chain([Master {
         id: 59,
         kind: 60,
-        class: 3,
+        class: class::BUILDING,
         garrison: 5,
         ..Master::default()
     }]));
@@ -1707,7 +1727,7 @@ pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
         crate::map::spatial::Placed {
             position: [at[0], at[1], 0.0],
             radius: [0.2, 0.2],
-            class: 4,
+            class: class::VILLAGER,
             player: p,
             master: m,
             obstruction_type: 0,
@@ -1731,7 +1751,7 @@ pub(crate) fn building_at(t: &mut World, id: i32, m: i16, at: [f32; 2], annex_of
         crate::map::spatial::Placed {
             position: [at[0], at[1], 0.0],
             radius: [2.0, 2.0],
-            class: 52,
+            class: class::TOWER,
             player: 1,
             master: m,
             obstruction_type: 2,
@@ -1866,7 +1886,7 @@ fn ship_at(t: &mut World, at: [f32; 2]) {
         crate::map::spatial::Placed {
             position: [at[0], at[1], 0.0],
             radius: [0.5, 0.5],
-            class: 20,
+            class: class::TRANSPORT,
             player: 1,
             master: SHIP,
             obstruction_type: 0,
@@ -2421,7 +2441,7 @@ fn a_trade_boat_s_work_at_its_own_market_makes_a_new_transport() {
     let (mut t, idx) = transport_task_world();
     for m in &mut t.masters {
         if let Some(s) = m.get_mut(SHIP) {
-            s.class = 2;
+            s.class = class::TRADE_BOAT;
         }
     }
     t.order_work(1, idx, &work_at(-1, [17.5, 10.5, 0.0]))
@@ -2936,7 +2956,7 @@ fn a_buildings_count_takes_relics_in_and_leaves_raiders_unmodelled() {
     masters = Masters::new(masters.iter().cloned().chain([Master {
         id: 285,
         kind: 20,
-        class: 1,
+        class: class::ARTIFACT,
         ..Master::default()
     }]));
     t.masters = (0..4).map(|_| masters.clone()).collect();
@@ -3249,7 +3269,7 @@ fn a_siege_tower_s_unload_on_a_new_relation_is_not_modelled() {
     let mut t = let_out_world();
     for m in &mut t.masters {
         if let Some(ship) = m.get_mut(SHIP) {
-            ship.class = 13;
+            ship.class = class::SIEGE;
         }
     }
     inside_tc(&mut t, 2, 2000, VILLAGER);

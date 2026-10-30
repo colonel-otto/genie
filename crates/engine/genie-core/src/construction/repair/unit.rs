@@ -98,7 +98,7 @@ impl Unit {
             top_action: self.top_action_kind().map(i32::from),
             master: self.life.master_id,
             kind: master.map_or(0, |m| m.kind),
-            class: master.map_or(-1, |m| m.class),
+            class: master.map(|m| m.class),
             attack_priority: master.map_or(0, |m| m.attack_priority),
             missile: master.map_or(-1, |m| m.missile),
             range: master.map_or(0.0, |m| m.weapon_range),

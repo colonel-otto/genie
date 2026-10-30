@@ -11,7 +11,9 @@
 
 use crate::GenieError;
 use crate::objects::lifecycle::{Lifecycle, seconds};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
+use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -44,7 +46,7 @@ pub const UNEXHAUSTED: [i16; 2] = [1893, 1897];
 
 /// The class whose slot 0xd8 (`FUN_141211340`, a combat object's or building's) does nothing
 /// (decoded 42); class 58 is spared only while it holds some, which an exhausted farm does not.
-const NEVER_EXHAUSTED_CLASS: i16 = 42;
+const NEVER_EXHAUSTED_CLASS: ClassId = class::RELIC;
 
 /// `RGE_Action_Make`: its state (`+0x18`), the food still to make (`+0x44`, the base's
 /// `mTimer`), the food it makes in all (`+0x68`, the save's `work_timer`) and its task (`+0x48`).
@@ -199,7 +201,7 @@ mod tests {
         Master {
             id,
             kind: 80,
-            class: 49,
+            class: class::FARM,
             work_rate: 0.4,
             capacity: 15,
             ..Master::default()

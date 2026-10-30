@@ -2,6 +2,7 @@
 //! its kind for every party ([`Party`]).
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::technology::EffectCommand;
 use crate::technology::effect::{
     COST_ATTRIBUTES, Change, FARM_FOOD, TECH_COST, TECH_DISABLE, TECH_TIME, kind,
@@ -155,7 +156,7 @@ impl World {
                 let unit = if c.b < 0 { c.a } else { c.b };
                 self.cost_entries(q, unit, c.c, crate::math::conversions::cvttss2si(c.d));
             } else {
-                self.modify_attribute(q, change, c.a, c.b, c.d, attribute)?;
+                self.modify_attribute(q, change, c.a, ClassId::of_field(c.b)?, c.d, attribute)?;
             }
         }
         Ok(())

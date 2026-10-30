@@ -123,6 +123,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::class;
     use crate::objects::masters::{Master, Masters};
     use crate::test_ids::player_id;
     use crate::world::Player;
@@ -174,7 +175,7 @@ mod tests {
         let masters = Masters::new([Master {
             id: 84,
             kind: 80,
-            class: 3,
+            class: class::BUILDING,
             ..Master::default()
         }]);
         t.masters = vec![masters.clone(), masters.clone(), masters];
@@ -183,7 +184,7 @@ mod tests {
                 7,
                 crate::players::tracker::Key {
                     master: 84,
-                    class: 3,
+                    class: Some(class::BUILDING),
                     pending: false,
                     military: false,
                 },

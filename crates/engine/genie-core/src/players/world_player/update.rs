@@ -183,7 +183,7 @@ impl World {
         {
             return Ok(true);
         }
-        let class = i32::from(master.class) as u32;
+        let class = i32::from(master.class.get()) as u32;
         let none = class <= 30 && (UNKEPT_LOW >> class) & 1 != 0;
         let builds = class == TOWER_CLASS || class == BUILDING_CLASS;
         let never = class <= 60 && (UNKEPT_HIGH >> class) & 1 != 0;

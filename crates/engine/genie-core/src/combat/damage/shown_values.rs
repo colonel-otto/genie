@@ -81,7 +81,7 @@ pub fn bonus_damage(attacker: &Victim, target: &Victim) -> f32 {
             && t.object_group == -1
             && (matches!(target.class, class::CLASS_51 | class::CLASS_54)
                 || target.kind < BUILDING);
-        if !(any || t.object_id == target.master_id || t.object_group == target.class) {
+        if !(any || t.object_id == target.master_id || t.object_group == target.class.get()) {
             continue;
         }
         let whose = if fmath::at_most_or_unordered(t.work_range, 0.0) {

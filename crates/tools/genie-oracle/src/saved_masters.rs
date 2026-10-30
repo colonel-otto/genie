@@ -4,6 +4,7 @@
 use crate::masters::MasterTable;
 use crate::{animated_master, combat_master, moving_master};
 use genie_core::GenieError;
+use genie_core::objects::masters::ClassId;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
 /// The facets every sprite a live object of a saved master shows ([`genie_core::objects::facing::SpriteFacets`]):
@@ -148,7 +149,7 @@ pub(super) fn work_masters(
         // the `.dat` values of the master it copies (an upgraded one's), under its own id
         let mut work = table.work(civ, s.copy_id())?.clone();
         work.id = s.id();
-        work.class = s.read_temp_5;
+        work.class = ClassId::of_master(s.read_temp_5);
         work.radius = [s.radius_x, s.radius_y];
         work.tall = 0.0 < s.radius_z;
         work.height = s.radius_z;
@@ -413,7 +414,7 @@ pub(super) fn moving_speed(
 /// What movement and sight read of an object's master (its own or its player's).
 pub(super) struct Placement {
     pub(super) radius: [f32; 3],
-    pub(super) class: i16,
+    pub(super) class: ClassId,
     pub(super) obstruction_type: u8,
     pub(super) obstruction_class: u8,
     pub(super) buildable_on: u8,
@@ -426,7 +427,7 @@ pub(super) fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<
         // points: as the shared masters' of the same id read)
         return Some(Placement {
             radius: [own.radius_x, own.radius_y, own.radius_z],
-            class: own.read_temp_2,
+            class: ClassId::of_master(own.read_temp_2),
             obstruction_type: own.obstruction_type,
             obstruction_class: own.obstruction_class,
             buildable_on: own.can_be_built_on,
@@ -436,7 +437,7 @@ pub(super) fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<
     let m = objects.master(s.master_obj)?.static_part()?;
     Some(Placement {
         radius: [m.radius_x, m.radius_y, m.radius_z],
-        class: m.read_temp_5,
+        class: ClassId::of_master(m.read_temp_5),
         obstruction_type: m.obstruction_type,
         obstruction_class: m.obstruction_class,
         buildable_on: m.can_be_built_on,

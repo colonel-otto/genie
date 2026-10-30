@@ -286,7 +286,7 @@ impl Spatial {
             if records && p.obstruction.is_none() {
                 return false;
             }
-            if classes.is_some_and(|c| !c.contains(&i32::from(p.class))) {
+            if classes.is_some_and(|c| !c.contains(&i32::from(p.class.get()))) {
                 return false;
             }
             p.unknown.is_some_and(|u| {

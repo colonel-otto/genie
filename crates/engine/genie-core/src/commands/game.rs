@@ -305,6 +305,7 @@ const TREASON_COST: f32 = crate::math::image::turn::TREASON_COST;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::class;
     use crate::objects::masters::ids::CASTLE;
     use crate::objects::masters::ids::FISH_TRAP;
     use crate::test_ids::player_id;
@@ -364,7 +365,7 @@ mod tests {
         assert_eq!(t.players[1].pending_debit[attribute::GOLD], 0.0);
         let castle = Master {
             id: CASTLE,
-            class: 52,
+            class: class::TOWER,
             ..Master::default()
         };
         t.masters = vec![Masters::new([]), Masters::new([castle])];

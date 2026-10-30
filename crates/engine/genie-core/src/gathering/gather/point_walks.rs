@@ -27,7 +27,7 @@ pub fn waits_for_a_farm(master: i16, target_type: i32) -> bool {
     FARM_WAITERS.contains(&master)
         // The farm class, whose gather the slice does not model yet.
         // The villagers' class, whose `MoveTo` waits once when the motion step gives up.
-        || (TRAP_WAITERS.contains(&master) && target_type == i32::from(class::FARM))
+        || (TRAP_WAITERS.contains(&master) && target_type == i32::from(class::FARM.get()))
 }
 
 impl GatherAction {
@@ -163,7 +163,9 @@ impl GatherAction {
             }
         });
         if !self.worked {
-            if self.target_type == i32::from(class::FARM) && target.is_some_and(|t| 1 < t.workers) {
+            if self.target_type == i32::from(class::FARM.get())
+                && target.is_some_and(|t| 1 < t.workers)
+            {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 self.set_walk_back(radius, mover, &walks)?;

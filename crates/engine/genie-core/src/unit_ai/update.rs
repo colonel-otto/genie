@@ -399,7 +399,7 @@ impl UnitAi {
                 Some(position) if found.id != -1 => Some(Gatherable {
                     id: found.id,
                     position,
-                    class: class as i16,
+                    class,
                 }),
                 None if found.id != -1 => {
                     return Err(GenieError::unsupported("a found object without its place"));
@@ -428,14 +428,7 @@ impl UnitAi {
         if class == 49 {
             return Err(GenieError::unsupported("a hunter's search finding a farm"));
         }
-        self.hunt_object(
-            found.id,
-            i32::from(found.class),
-            found.position,
-            at,
-            side,
-            rng,
-        )?;
+        self.hunt_object(found.id, found.class, found.position, at, side, rng)?;
         Ok(BREAK)
     }
 
@@ -473,7 +466,7 @@ impl UnitAi {
         let kind = civilian_kind(class);
         let found = if kind == -1 {
             // "Calling closest object for a farm that's alive": the friends' pass over
-            let spared = if n.p[1] == i32::from(class::FARM) {
+            let spared = if n.p[1] == i32::from(class::FARM.get()) {
                 0
             } else {
                 -1
@@ -499,7 +492,7 @@ impl UnitAi {
                 Some(position) if found.id != -1 => Some(Gatherable {
                     id: found.id,
                     position,
-                    class: class as i16,
+                    class,
                 }),
                 None if found.id != -1 => {
                     return Err(GenieError::unsupported("a found object without its place"));
@@ -544,7 +537,7 @@ impl UnitAi {
             rng,
         )?;
         self.set_action(Some(ActionKind::Gather));
-        self.set_target(found.id, i32::from(found.class), found.position);
+        self.set_target(found.id, found.class, found.position);
         Ok(())
     }
 

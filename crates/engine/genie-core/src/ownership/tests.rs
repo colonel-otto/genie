@@ -1,5 +1,6 @@
 use crate::GenieError;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
@@ -33,7 +34,7 @@ fn walking_forager() -> World {
 
 /// Object 0 of player 1's capture stop as master class `class`, then the unit and Gaia's bushes
 /// the stop let go in the update (each held by one worker before it, none after).
-fn stopped(mut t: World, class: i16) -> Result<(Unit, Vec<i32>), GenieError> {
+fn stopped(mut t: World, class: ClassId) -> Result<(Unit, Vec<i32>), GenieError> {
     for b in &mut t.players[0].objects {
         b.workers = 1;
     }
@@ -52,7 +53,7 @@ fn stopped(mut t: World, class: i16) -> Result<(Unit, Vec<i32>), GenieError> {
 /// unit), then the unit AI of any class but livestock ends its order and forgets its target.
 #[test]
 fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
-    let (u, released) = stopped(walking_forager(), 4).unwrap();
+    let (u, released) = stopped(walking_forager(), class::VILLAGER).unwrap();
     assert_eq!(u.actions.move_to().copied(), None);
     assert_eq!(released, []);
     let m = u.body.mover().unwrap();
@@ -74,7 +75,7 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
     assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
     let mut t = walking_forager();
     t.players[1].objects[0].ai.as_mut().unwrap().current_action = Some(ActionKind::HeroPower);
-    let (u, _) = stopped(t, 4).unwrap();
+    let (u, _) = stopped(t, class::VILLAGER).unwrap();
     assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
 }
 

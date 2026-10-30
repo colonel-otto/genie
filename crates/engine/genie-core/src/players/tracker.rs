@@ -35,22 +35,51 @@ use crate::GenieError;
 use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::{ClassId, class};
 use crate::world::slots::PlayerSlots;
 
 /// A pending key is its done key + this (a master's + 90000, a class's + 90900).
 pub const PENDING: i32 = 90_000;
 /// A class's key is the class + this.
 pub const CLASS_KEY: i32 = 900;
+/// The list key of a class's done list: the class + [`CLASS_KEY`].
+fn class_key(class: ClassId) -> i32 {
+    i32::from(class.get()) + CLASS_KEY
+}
+
 /// The keys run below this master id (`FUN_141658430`: 9000 or more is none).
 const TRACKED_MASTERS: i32 = 9000;
 /// The classes a key holds below this (`FUN_141658430`).
 const CLASSES: i16 = 100;
 /// The classes that count as done from the start (packed and unpacked siege, 51 and 54).
-const NEVER_PENDING: [i16; 2] = [51, 54];
+const NEVER_PENDING: [ClassId; 2] = [class::CLASS_51, class::CLASS_54];
 /// The classes whose key carries the military byte (`+9`, `FUN_141658430`'s switch).
-const MILITARY: [i16; 25] = [
-    0, 6, 12, 17, 18, 20, 22, 23, 24, 25, 26, 28, 35, 36, 43, 44, 45, 46, 47, 50, 52, 53, 56, 57,
-    59,
+const MILITARY: [ClassId; 25] = [
+    class::CLASS_0,
+    class::CLASS_6,
+    class::CLASS_12,
+    class::CLASS_17,
+    class::MONK,
+    class::TRANSPORT,
+    class::WARSHIP,
+    class::CLASS_23,
+    class::CLASS_24,
+    class::CLASS_25,
+    class::CLASS_26,
+    class::CLASS_28,
+    class::CLASS_35,
+    class::CLASS_36,
+    class::CLASS_43,
+    class::CLASS_44,
+    class::CLASS_45,
+    class::CLASS_46,
+    class::CLASS_47,
+    class::CLASS_50,
+    class::TOWER,
+    class::CLASS_53,
+    class::CLASS_56,
+    class::CLASS_57,
+    class::KING,
 ];
 
 /// The key `FUN_141658430` gives a master (12 bytes: the key master, its class, two bytes).
@@ -59,7 +88,7 @@ pub struct Key {
     /// `+0`: the key master (−1 for none).
     pub master: i32,
     /// `+4`: the key master's class (−1 for none).
-    pub class: i32,
+    pub class: Option<ClassId>,
     /// `+8`: the object waits in the pending lists until its completion.
     pub pending: bool,
     /// `+9`: the key master's class is a military one.
@@ -70,7 +99,7 @@ impl Key {
     /// The key of a master the player lacks (`FUN_141658430`'s −1, −1, 0).
     pub const NONE: Self = Self {
         master: -1,
-        class: -1,
+        class: None,
         pending: false,
         military: false,
     };
@@ -119,8 +148,8 @@ pub fn key(masters: Option<&Masters>, lines: &UnitLines, master: i16) -> Key {
         return Key::NONE;
     };
     out.master = id;
-    if classed && (0..CLASSES).contains(&k.class) {
-        out.class = i32::from(k.class);
+    if classed && (0..CLASSES).contains(&k.class.get()) {
+        out.class = Some(k.class);
         if NEVER_PENDING.contains(&k.class) {
             out.pending = false;
             out.military = false;
@@ -151,8 +180,8 @@ impl Tracker {
 
     /// `FUN_14104f8f0`: the done objects filed under class `class` (key class + 900).
     #[must_use]
-    pub fn class_list(&self, class: i32) -> &[i32] {
-        self.list(class + CLASS_KEY)
+    pub fn class_list(&self, class: ClassId) -> &[i32] {
+        self.list(class_key(class))
     }
 
     fn push(&mut self, key: i32, id: i32) {
@@ -178,8 +207,8 @@ impl Tracker {
     pub fn add(&mut self, id: i32, key: Key) {
         let wait = if key.pending { PENDING } else { 0 };
         self.push(key.master + wait, id);
-        if key.class != -1 {
-            self.push(key.class + CLASS_KEY + wait, id);
+        if let Some(class) = key.class {
+            self.push(class_key(class) + wait, id);
         }
     }
 
@@ -194,8 +223,7 @@ impl Tracker {
         if !self.holds(key.master, id) {
             self.push(key.master, id);
         }
-        if key.class != -1 {
-            let class = key.class + CLASS_KEY;
+        if let Some(class) = key.class.map(class_key) {
             self.erase(class + PENDING, id);
             if !self.holds(class, id) {
                 self.push(class, id);
@@ -207,8 +235,7 @@ impl Tracker {
     /// and its key master's (the pending one first). (A tracker in teardown, its `+0xb0`, is
     /// not held.)
     pub fn remove(&mut self, id: i32, key: Key) {
-        if key.class != -1 {
-            let class = key.class + CLASS_KEY;
+        if let Some(class) = key.class.map(class_key) {
             self.erase(class, id);
             if key.pending {
                 self.erase(class + PENDING, id);
@@ -228,24 +255,24 @@ impl Tracker {
     /// `FUN_141050230`: a queued unit of master `master` (its [`key`]'s class `class`, −1 for
     /// none) files a −1 at the end of the master's pending list (+ 90000, the master itself, not
     /// its key master) and of the class's (+ 90900).
-    pub fn place(&mut self, master: i16, class: i32) {
+    pub fn place(&mut self, master: i16, class: Option<ClassId>) {
         self.push(i32::from(master) + PENDING, -1);
-        if class != -1 {
-            self.push(class + CLASS_KEY + PENDING, -1);
+        if let Some(class) = class {
+            self.push(class_key(class) + PENDING, -1);
         }
     }
 
     /// `FUN_14104f330`: a queued unit's spawn or cancel drops the last id of the same lists
     /// (`FUN_140a63bd0` at the end; an empty list stays empty).
-    pub fn unplace(&mut self, master: i16, class: i32) {
+    pub fn unplace(&mut self, master: i16, class: Option<ClassId>) {
         let mut drop_last = |key: i32| {
             if let Some(list) = self.lists.get_mut(&key) {
                 let _ = list.pop();
             }
         };
         drop_last(i32::from(master) + PENDING);
-        if class != -1 {
-            drop_last(class + CLASS_KEY + PENDING);
+        if let Some(class) = class {
+            drop_last(class_key(class) + PENDING);
         }
     }
 
@@ -259,11 +286,11 @@ impl Tracker {
         }
         self.erase(old.master, id);
         self.push(new.master, id);
-        if old.class != -1 {
-            self.erase(old.class + CLASS_KEY, id);
+        if let Some(class) = old.class {
+            self.erase(class_key(class), id);
         }
-        if new.class != -1 {
-            self.push(new.class + CLASS_KEY, id);
+        if let Some(class) = new.class {
+            self.push(class_key(class), id);
         }
     }
 
@@ -278,8 +305,8 @@ impl Tracker {
         &mut self,
         old: i32,
         new: i32,
-        old_class: i32,
-        class_of: &dyn Fn(i32) -> Option<i16>,
+        old_class: Option<ClassId>,
+        class_of: &dyn Fn(i32) -> Option<ClassId>,
     ) {
         if let Some(ids) = self.lists.get(&old).cloned() {
             for id in ids {
@@ -287,8 +314,10 @@ impl Tracker {
                     continue;
                 };
                 self.push(new, id);
-                self.erase(old_class + CLASS_KEY, id);
-                self.push(i32::from(class) + CLASS_KEY, id);
+                if let Some(old_class) = old_class {
+                    self.erase(class_key(old_class), id);
+                }
+                self.push(class_key(class), id);
             }
             if let Some(list) = self.lists.get_mut(&old) {
                 list.clear();
@@ -436,7 +465,7 @@ mod tests {
     use crate::objects::masters::{BuildingMaster, Master};
     use crate::test_ids::object_id;
 
-    fn building(id: i16, class: i16, stack: i16, head: i16, annex: i16) -> Master {
+    fn building(id: i16, class: ClassId, stack: i16, head: i16, annex: i16) -> Master {
         Master {
             id,
             kind: BUILDING,
@@ -451,7 +480,7 @@ mod tests {
         }
     }
 
-    fn unit(id: i16, class: i16) -> Master {
+    fn unit(id: i16, class: ClassId) -> Master {
         Master {
             id,
             kind: 70,
@@ -462,19 +491,19 @@ mod tests {
 
     fn masters() -> Masters {
         Masters::new([
-            unit(4, 0),
-            unit(24, 0),
-            unit(83, 4),
-            unit(118, 4),
-            building(79, 52, -1, -1, -1),
-            building(234, 52, -1, -1, -1),
-            building(109, 3, -1, -1, 618),
-            building(618, 3, -1, 109, -1),
-            building(1189, 3, 79, -1, -1),
-            building(1190, 3, 9999, -1, -1),
-            building(42, 54, -1, -1, -1),
-            building(43, 130, -1, -1, -1),
-            unit(331, 54),
+            unit(4, class::CLASS_0),
+            unit(24, class::CLASS_0),
+            unit(83, class::VILLAGER),
+            unit(118, class::VILLAGER),
+            building(79, class::TOWER, -1, -1, -1),
+            building(234, class::TOWER, -1, -1, -1),
+            building(109, class::BUILDING, -1, -1, 618),
+            building(618, class::BUILDING, -1, 109, -1),
+            building(1189, class::BUILDING, 79, -1, -1),
+            building(1190, class::BUILDING, 9999, -1, -1),
+            building(42, class::CLASS_54, -1, -1, -1),
+            building(43, ClassId::of_master(130), -1, -1, -1),
+            unit(331, class::CLASS_54),
         ])
     }
 
@@ -495,18 +524,18 @@ mod tests {
     #[test]
     fn a_queued_unit_places_a_minus_one_and_its_spawn_drops_the_last() {
         let mut t = Tracker::default();
-        t.place(24, 0);
-        t.place(24, 0);
-        t.place(83, -1);
+        t.place(24, Some(class::CLASS_0));
+        t.place(24, Some(class::CLASS_0));
+        t.place(83, None);
         assert_eq!(t.list(24 + PENDING), [-1, -1]);
         assert_eq!(t.list(CLASS_KEY + PENDING), [-1, -1]);
         assert_eq!(t.list(83 + PENDING), [-1]);
         t.lists.get_mut(&(CLASS_KEY + PENDING)).unwrap().push(5);
-        t.unplace(24, 0);
+        t.unplace(24, Some(class::CLASS_0));
         assert_eq!(t.list(24 + PENDING), [-1]);
         assert_eq!(t.list(CLASS_KEY + PENDING), [-1, -1]);
-        t.unplace(83, -1);
-        t.unplace(83, -1);
+        t.unplace(83, None);
+        t.unplace(83, None);
         assert_eq!(t.list(83 + PENDING), []);
     }
 
@@ -519,7 +548,7 @@ mod tests {
             k(24),
             Key {
                 master: 4,
-                class: 0,
+                class: Some(class::CLASS_0),
                 pending: false,
                 military: true
             }
@@ -528,7 +557,7 @@ mod tests {
             k(83),
             Key {
                 master: 83,
-                class: 4,
+                class: Some(class::VILLAGER),
                 pending: false,
                 military: false
             }
@@ -538,7 +567,7 @@ mod tests {
             k(109),
             Key {
                 master: 109,
-                class: 3,
+                class: Some(class::BUILDING),
                 pending: true,
                 military: false
             }
@@ -547,7 +576,7 @@ mod tests {
             k(1189),
             Key {
                 master: 79,
-                class: 52,
+                class: Some(class::TOWER),
                 pending: true,
                 military: true
             }
@@ -557,16 +586,19 @@ mod tests {
             k(618),
             Key {
                 master: 618,
-                class: -1,
+                class: None,
                 pending: true,
                 military: false
             }
         );
         assert_eq!(k(1190), Key::NONE);
         // classes 51 and 54 do not wait; a class of 100 or more is none and the building waits
-        assert_eq!((k(42).pending, k(42).class), (false, 54));
-        assert_eq!((k(43).pending, k(43).class), (true, -1));
-        assert_eq!((k(331).pending, k(331).class), (false, 54));
+        assert_eq!((k(42).pending, k(42).class), (false, Some(class::CLASS_54)));
+        assert_eq!((k(43).pending, k(43).class), (true, None));
+        assert_eq!(
+            (k(331).pending, k(331).class),
+            (false, Some(class::CLASS_54))
+        );
         // a master the player lacks, a line whose first master it lacks, no table
         assert_eq!(k(7), Key::NONE);
         assert_eq!(k(492), Key::NONE);
@@ -591,7 +623,7 @@ mod tests {
             (t.list(109), t.list(109 + PENDING)),
             (&[11, 10][..], &[][..])
         );
-        assert_eq!(t.class_list(3), [11, 10]);
+        assert_eq!(t.class_list(class::BUILDING), [11, 10]);
         // a second completion leaves the order as it is
         t.complete(11, tc);
         assert_eq!(t.list(109), [11, 10]);
@@ -599,7 +631,7 @@ mod tests {
         let villager = key(Some(&m), &l, 83);
         t.add(20, villager);
         t.complete(20, villager);
-        assert_eq!(t.class_list(4), [20]);
+        assert_eq!(t.class_list(class::VILLAGER), [20]);
     }
 
     #[test]
@@ -612,7 +644,7 @@ mod tests {
         }
         t.remove(2, v);
         assert_eq!(
-            (t.list(83), t.class_list(4)),
+            (t.list(83), t.class_list(class::VILLAGER)),
             (&[1, 3, 4][..], &[1, 3, 4][..])
         );
         // a pending building leaves both its lists, done or not
@@ -623,7 +655,11 @@ mod tests {
         t.remove(30, tc);
         t.remove(31, tc);
         assert_eq!(
-            (t.list(109), t.list(109 + PENDING), t.class_list(3)),
+            (
+                t.list(109),
+                t.list(109 + PENDING),
+                t.class_list(class::BUILDING)
+            ),
             (&[][..], &[][..], &[][..])
         );
     }
@@ -639,14 +675,17 @@ mod tests {
         // villager 1 becomes a builder: class 4's list takes it last
         t.promote(1, villager, builder);
         assert_eq!((t.list(83), t.list(118)), (&[2, 3][..], &[1][..]));
-        assert_eq!(t.class_list(4), [2, 3, 1]);
+        assert_eq!(t.class_list(class::VILLAGER), [2, 3, 1]);
         // an archer upgraded in its line stays under the archer, last
         let archer = key(Some(&m), &l, 4);
         let crossbow = key(Some(&m), &l, 24);
         t.add(7, archer);
         t.add(8, archer);
         t.promote(7, archer, crossbow);
-        assert_eq!((t.list(4), t.class_list(0)), (&[8, 7][..], &[8, 7][..]));
+        assert_eq!(
+            (t.list(4), t.class_list(class::CLASS_0)),
+            (&[8, 7][..], &[8, 7][..])
+        );
         // an object the old list does not hold is skipped
         t.promote(99, villager, builder);
         assert_eq!(t.list(118), [1]);
@@ -701,7 +740,7 @@ mod tests {
             (tracker.list(109), tracker.list(109 + PENDING)),
             (&[10][..], &[12, 14][..])
         );
-        assert_eq!(tracker.class_list(4), [11, 13, 15]);
+        assert_eq!(tracker.class_list(class::VILLAGER), [11, 13, 15]);
         assert_eq!(
             (tracker.list(83), tracker.list(118)),
             (&[11, 15][..], &[13][..])
@@ -714,20 +753,26 @@ mod tests {
         let mut t = world();
         t.load_trackers().unwrap();
         t.track_relist(1, 11, 83).unwrap();
-        assert_eq!(t.players[1].tracker.class_list(4), [13, 15, 11]);
+        assert_eq!(
+            t.players[1].tracker.class_list(class::VILLAGER),
+            [13, 15, 11]
+        );
         t.track_complete(1, 12, 109).unwrap();
         assert_eq!(t.players[1].tracker.list(109), [10, 12]);
         t.track_promote(1, 15, 83, 118).unwrap();
         assert_eq!(
             (
                 t.players[1].tracker.list(118),
-                t.players[1].tracker.class_list(4)
+                t.players[1].tracker.class_list(class::VILLAGER)
             ),
             (&[13, 15][..], &[13, 11, 15][..])
         );
         t.track_remove(1, 13, 118).unwrap();
         t.track_add(1, 16, 83).unwrap();
-        assert_eq!(t.players[1].tracker.class_list(4), [11, 15, 16]);
+        assert_eq!(
+            t.players[1].tracker.class_list(class::VILLAGER),
+            [11, 15, 16]
+        );
     }
 
     #[test]
@@ -741,7 +786,7 @@ mod tests {
             (tracker.list(83), tracker.list(118)),
             (&[][..], &[13, 11, 15][..])
         );
-        assert_eq!(tracker.class_list(4), [13, 11, 15]);
+        assert_eq!(tracker.class_list(class::VILLAGER), [13, 11, 15]);
     }
 
     #[test]
@@ -756,8 +801,8 @@ mod tests {
         t.push(500 + PENDING, 4);
         t.push(500 + PENDING, -1);
         // 2 is gone from the world; the objects are of class 6 now
-        let class_of = |id: i32| (id != 2).then_some(6);
-        t.move_all(500, 600, 5, &class_of);
+        let class_of = |id: i32| (id != 2).then_some(class::CLASS_6);
+        t.move_all(500, 600, Some(class::CLASS_5), &class_of);
         assert_eq!((t.list(500), t.list(500 + PENDING)), (&[][..], &[][..]));
         assert_eq!(
             (t.list(600), t.list(600 + PENDING)),
@@ -765,7 +810,7 @@ mod tests {
         );
         // the pending id goes to its class's done list too
         assert_eq!(
-            (t.class_list(5), t.class_list(6)),
+            (t.class_list(class::CLASS_5), t.class_list(class::CLASS_6)),
             (&[][..], &[1, 3, 4][..])
         );
     }

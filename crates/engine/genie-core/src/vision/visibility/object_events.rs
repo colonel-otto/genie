@@ -2,6 +2,7 @@
 //! construction's start and completion.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::vision::registry::UnitUpdate;
 use crate::vision::visibility::Visibility;
 use crate::world::player::Player;
@@ -55,7 +56,7 @@ impl Visibility {
         owner: usize,
         at: [f32; 3],
         radius: [f32; 2],
-        class: i16,
+        class: ClassId,
         main: Option<([f32; 3], u8)>,
     ) -> Result<Option<u64>, GenieError> {
         let Some(s) = self.seers.get(&id).copied() else {
@@ -106,7 +107,7 @@ impl Visibility {
     }
 
     /// The registry's part of a combat object's new place (`FUN_14108c320`): its records follow.
-    pub fn registry_moved(&mut self, id: i32, class: i16, from: [f32; 3], to: [f32; 3]) {
+    pub fn registry_moved(&mut self, id: i32, class: ClassId, from: [f32; 3], to: [f32; 3]) {
         if id < 0 || (from[0] == to[0] && from[1] == to[1]) {
             return;
         }
@@ -122,8 +123,8 @@ impl Visibility {
         id: i32,
         owner: usize,
         at: [f32; 3],
-        old: ([f32; 2], i16),
-        new: ([f32; 2], i16),
+        old: ([f32; 2], ClassId),
+        new: ([f32; 2], ClassId),
     ) -> Result<(), GenieError> {
         let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
             return Ok(());
@@ -157,7 +158,7 @@ impl Visibility {
         owner: usize,
         at: [f32; 3],
         radius: [f32; 2],
-        class: i16,
+        class: ClassId,
     ) -> Result<(), GenieError> {
         let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
             return Ok(());

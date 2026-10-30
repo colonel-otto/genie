@@ -8,6 +8,8 @@
 //! minimap) are not held.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
+use crate::objects::masters::class;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::world::slots::CheckedIndex;
 
@@ -37,7 +39,7 @@ const SNOW_LAYER: i16 = 32;
 const SNOW_SKIPPED: u8 = 36;
 
 /// The class whose foundation terrain always goes into the terrain (`FUN_1411ddd90`).
-const CLASS_14: i16 = 14;
+const CLASS_14: ClassId = class::CLASS_14;
 /// Terrains a foundation never covers (`FUN_1411ddd90`: 47 and 69).
 const UNCOVERED: [u8; 2] = [47, 69];
 
@@ -164,7 +166,7 @@ pub struct Foundation {
     /// The master's id and class, its `defense_terrain_bonus` (`+0x820`).
     pub master: i16,
     /// The master's class.
-    pub class: i16,
+    pub class: ClassId,
     /// The master's `defense_terrain_bonus` (`+0x820`).
     pub terrain_bonus: i16,
     /// The game's setting `FUN_140ec0cd0` reads at `+0x680` ([`crate::world::World::mode_680`]):
@@ -676,7 +678,7 @@ mod tests {
             terrain: FOUNDATION,
             snow: true,
             master: 70,
-            class: 3,
+            class: class::BUILDING,
             terrain_bonus: 4,
             mode_680: 0,
         })
@@ -705,7 +707,7 @@ mod tests {
             terrain: FOUNDATION,
             snow: false,
             master: 109,
-            class: 3,
+            class: class::BUILDING,
             terrain_bonus: 4,
             mode_680: 0,
         })
@@ -731,7 +733,7 @@ mod tests {
             terrain: FOUNDATION,
             snow: false,
             master: 70,
-            class: 3,
+            class: class::BUILDING,
             terrain_bonus: -1,
             mode_680: 0,
         })
@@ -751,7 +753,7 @@ mod tests {
             terrain: 29,
             snow: false,
             master: 50,
-            class: 49,
+            class: class::FARM,
             terrain_bonus: -1,
             mode_680: 1,
         };
@@ -779,7 +781,7 @@ mod tests {
             terrain: 14,
             snow: false,
             master,
-            class: 3,
+            class: class::BUILDING,
             terrain_bonus: -1,
             mode_680: 1,
         };

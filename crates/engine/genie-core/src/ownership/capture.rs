@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::orders::object_gone;
@@ -42,7 +43,7 @@ impl Unit {
     }
 
     /// The master class the world files the captured object under.
-    pub(crate) fn placed_class(&self, c: &Step<'_>) -> Result<i16, GenieError> {
+    pub(crate) fn placed_class(&self, c: &Step<'_>) -> Result<ClassId, GenieError> {
         c.w.spatial
             .get(self.id.get())
             .map(|p| p.class)
@@ -63,7 +64,11 @@ impl Unit {
     /// that is not a number keeps it).
     ///
     /// [`Artifact::stop`]: crate::ownership::artifact::Artifact::stop
-    pub(crate) fn capture_stop(&mut self, c: &mut Step<'_>, class: i16) -> Result<(), GenieError> {
+    pub(crate) fn capture_stop(
+        &mut self,
+        c: &mut Step<'_>,
+        class: ClassId,
+    ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         if let Some(artifact) = self.actions.artifact_mut() {
             let (gone, released) = artifact.stop();
@@ -102,7 +107,7 @@ impl Unit {
                 .is_some_and(|ai| ai.current_action != Some(ActionKind::HeroPower))
         {
             let [x, y, _] = self.body.position();
-            let place = ([x, y], class);
+            let place = ([x, y], Some(class));
             // slot 0xb0 with 0, its stopAction a call on the unit at once
             self.run_calls(c, |ai, side, rng| {
                 ai.stop_with(false, Some(place), side, rng)?;

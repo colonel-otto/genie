@@ -10,6 +10,7 @@ use crate::gathering::closest_resource::herded;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
 use crate::orders::object_gone;
@@ -105,7 +106,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
                 continue;
             }
             let m = u.master(&self.c.w.masters, owner)?;
-            let class = i64::from(m.class);
+            let class = i64::from(m.class.get());
             let no_help = (0..=0x27).contains(&class) && (NO_HELP_CLASSES >> class) & 1 != 0;
             if no_help || m.id == SIEGE_TOWER {
                 continue;
@@ -186,7 +187,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
 
     /// The player's master table (`FUN_14152fe40`, `+0x28`): the masters the slice holds of each
     /// player.
-    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, GenieError> {
+    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<ClassId>, GenieError> {
         let class = usize::try_from(player)
             .ok()
             .and_then(|p| self.c.w.masters.get(p))
@@ -300,7 +301,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         &mut self,
         target: i32,
         seeker: &crate::unit_ai::Seeker,
-    ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+    ) -> Result<Option<(ClassId, [f32; 3])>, GenieError> {
         if !self.view_holds(target)? {
             return Ok(None);
         }

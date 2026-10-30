@@ -4,6 +4,7 @@
 //! that heals around it) calls the healed object's heal here.
 
 use crate::GenieError;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -41,7 +42,7 @@ impl Unit {
     /// heals (`FUN_141193b30`, [`crate::combat::damage::heal_hp`]).
     pub(crate) fn heal(
         &mut self,
-        class: i16,
+        class: ClassId,
         hit_points: i16,
         amount: f32,
     ) -> Result<(), GenieError> {

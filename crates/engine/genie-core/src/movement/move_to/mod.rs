@@ -485,6 +485,7 @@ pub fn target_left(
 mod tests {
     use super::*;
     use crate::map::spatial::Placed;
+    use crate::objects::masters::class;
 
     /// A `MoveTo` sub-action ([`MoveToAction::sub_update`]) on house 10028 within 0.1 (the
     /// walker 0.8 off it) with [`WalkRig`]'s walker: a start asks for its path (a `MoveTo` that
@@ -575,7 +576,7 @@ mod tests {
         Placed {
             position: [x, y, 0.0],
             radius: [0.2, 0.2],
-            class: 10,
+            class: class::PREDATOR,
             player: 1,
             master: 594,
             obstruction_type: 0,

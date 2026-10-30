@@ -9,6 +9,7 @@ use crate::combat::volley::armed;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ClassId;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
@@ -73,7 +74,7 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         me: Me,
-        master_class: i16,
+        master_class: ClassId,
     ) -> Result<HeadCode, GenieError> {
         let mut attack = *self.actions.attack().ok_or(NO_ATTACK)?;
         let master = self.master(&c.w.masters, c.player)?;

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::victims::victim_of;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::objects::masters::{Masters, player_master};
@@ -346,7 +347,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
         crate::unit_ai::can_attack(self.attacker, &seeker, &target)
     }
 
-    fn attacks_neutral(&mut self, class: i16) -> Result<bool, GenieError> {
+    fn attacks_neutral(&mut self, class: ClassId) -> Result<bool, GenieError> {
         Ok(crate::unit_ai::attacks_neutral(self.attacker, class))
     }
 

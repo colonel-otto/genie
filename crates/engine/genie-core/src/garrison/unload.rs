@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::commands::unload::UnloadCommand;
 use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -248,7 +249,7 @@ impl World {
             .inside_at(inner_id.get(), at, &mut self.spatial);
         self.leave_container((hp, hi), (up, ui), &made, [spot[0], spot[1], at[2]])?;
         let unit = &mut self.players[up].objects[ui];
-        let place = ([unit.position()[0], unit.position()[1]], made.class);
+        let place = ([unit.position()[0], unit.position()[1]], Some(made.class));
         if unit.ai.is_some() {
             self.run_ai_calls((up, ui), |ai, side, rng| {
                 let stance = ai.stance;
@@ -478,13 +479,19 @@ impl World {
 /// UNLOAD's flag 2 (`FUN_14118a610`): the classes of group `group` (1 villagers and class 19;
 /// 2 classes 6, 45, 46, 50 and 56; 3 classes 12, 23, 36, 47 and 57; 5 classes 0 and 44; 6
 /// classes 18, 42 and 43; no other group).
-pub(super) const fn unload_group_takes(group: i32, class: i16) -> bool {
+pub(super) const fn unload_group_takes(group: i32, class: ClassId) -> bool {
     match group {
-        1 => matches!(class, class::VILLAGER | 19),
-        2 => matches!(class, 6 | 45 | 46 | 50 | 56),
-        3 => matches!(class, 12 | 23 | 36 | 47 | 57),
-        5 => matches!(class, 0 | 44),
-        6 => matches!(class, 18 | WHOLE_SHARE_CLASS | 43),
+        1 => matches!(class, class::VILLAGER | class::TRADE_CART),
+        2 => matches!(
+            class,
+            class::CLASS_6 | class::CLASS_45 | class::CLASS_46 | class::CLASS_50 | class::CLASS_56
+        ),
+        3 => matches!(
+            class,
+            class::CLASS_12 | class::CLASS_23 | class::CLASS_36 | class::CLASS_47 | class::CLASS_57
+        ),
+        5 => matches!(class, class::CLASS_0 | class::CLASS_44),
+        6 => matches!(class, class::MONK | WHOLE_SHARE_CLASS | class::CLASS_43),
         _ => false,
     }
 }

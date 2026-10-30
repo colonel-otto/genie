@@ -20,7 +20,7 @@ fn the_record_cells_answer_as_the_full_scan_does() {
     let placed = |position: [f32; 2], r: f32, kind: Option<u8>| Placed {
         position: [position[0], position[1], 0.0],
         radius: [r, r * 0.5],
-        class: 0,
+        class: class::CLASS_0,
         player: 1,
         master: 4,
         obstruction_type: 0,
@@ -124,7 +124,7 @@ fn villager(x: f32, y: f32) -> Placed {
     Placed {
         position: [x, y, 0.0],
         radius: [0.2, 0.2],
-        class: 4,
+        class: class::VILLAGER,
         player: 2,
         master: 0,
         obstruction_type: 0,
@@ -151,7 +151,7 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
         owner: 1,
         position: [12.0, 10.0],
         radii: [0.2, 0.2],
-        class: 4,
+        class: class::VILLAGER,
         old: 0,
         new: 1 << 2,
     })
@@ -435,7 +435,7 @@ fn a_query_finds_the_boxes_its_rectangle_meets_but_not_the_ignored_or_unobstruct
     let mut foundation = villager(30.0, 88.0);
     foundation.radius = [1.0, 1.0];
     foundation.obstruction = None;
-    foundation.class = 3;
+    foundation.class = class::BUILDING;
     s.insert(10028, foundation);
     // 9177's first step: from (28, 89) toward (28.0143, 88.9928), grown by its radius
     let step = [28.0, 88.99284, 28.01431, 89.0];
@@ -634,7 +634,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
     let centre = Placed {
         position: [2.0, 2.0, 0.0],
         radius: [1.0, 1.0],
-        class: 3,
+        class: class::BUILDING,
         player: 2,
         master: 0,
         obstruction_type: 0,
@@ -648,7 +648,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
     let tree = Placed {
         position: [0.5, 0.5, 0.0],
         radius: [0.5, 0.5],
-        class: 15,
+        class: class::TREE,
         player: 0,
         master: 0,
         obstruction_type: 0,
@@ -761,7 +761,7 @@ fn site() -> (Spatial, Placed) {
     s.insert(9175, villager(30.0, 89.0));
     let mut house = villager(30.0, 88.0);
     house.radius = [1.0, 1.0];
-    house.class = 3;
+    house.class = class::BUILDING;
     house.master = 70;
     house.obstruction_type = 2;
     house.obstruction = None;
@@ -1322,7 +1322,10 @@ fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
         "ClosestObject's unbuilt farm test"
     );
     let livestock = with(|f| f.group = 58);
-    let mut sheep = Placed { class: 58, ..p };
+    let mut sheep = Placed {
+        class: class::LIVESTOCK,
+        ..p
+    };
     assert!(!kept(livestock, &sheep, 2, plain, checks).unwrap());
     assert!(kept(livestock, &sheep, 1, plain, checks).unwrap());
     sheep.player = 1;
@@ -1349,7 +1352,7 @@ fn closest_object_takes_a_free_farm_its_searcher_gathers_from() {
         ..any_filter()
     };
     let farm_of = |master| Placed {
-        class: 49,
+        class: class::FARM,
         master,
         ..villager(1.0, 1.0)
     };

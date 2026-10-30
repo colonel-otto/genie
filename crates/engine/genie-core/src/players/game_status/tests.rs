@@ -1,6 +1,7 @@
 use super::*;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::action_type;
+use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
@@ -83,13 +84,13 @@ fn game() -> World {
     let masters = Masters::new([
         Master {
             id: 109,
-            class: 3,
+            class: class::BUILDING,
             kind: 80,
             ..Master::default()
         },
         Master {
             id: 83,
-            class: 4,
+            class: class::VILLAGER,
             kind: 70,
             cost: vec![(0, 46, true), (4, 1, false)],
             storage: vec![(4, -1.0, 2), (11, 1.0, 2)],
@@ -166,7 +167,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let bush = crate::gathering::gather::Resource {
         id: -1,
         position: [3.5, 3.5, 0.0],
-        class: 7,
+        class: class::CLASS_7,
         master: 59,
         player: 0,
         workers: 0,
@@ -302,7 +303,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             target: -1,
             state: 4,
             point: [-1.0; 3],
-            target_class: -1,
+            target_class: None,
             task: HuntTask {
                 id: 0,
                 range: 0.0,
@@ -688,7 +689,7 @@ fn a_cancel_in_game_mode_16_clears_the_military_flag() {
         let ms = &mut t.masters[1];
         *ms = Masters::new(ms.iter().cloned().chain([Master {
             id: 4,
-            class: 6,
+            class: class::CLASS_6,
             kind: 70,
             ..Master::default()
         }]));

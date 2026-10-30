@@ -352,7 +352,7 @@ impl World {
             ai.notify_work(
                 Some(OrderKind::Gather),
                 Some(ActionKind::Gather),
-                Some((target, i32::from(resource.class))),
+                Some((target, i32::from(resource.class.get()))),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
@@ -513,7 +513,7 @@ impl World {
             ai.notify_work(
                 Some(OrderKind::Hunt),
                 Some(ActionKind::Hunt),
-                Some((target, i32::from(quarry.class))),
+                Some((target, i32::from(quarry.class.get()))),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),

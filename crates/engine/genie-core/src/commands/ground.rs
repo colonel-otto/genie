@@ -54,7 +54,7 @@ impl World {
                 .mover()
                 .and_then(|m| m.paths.first())
                 .map(|l| l.state);
-            let stands = (owner == 0 && matches!(master.class, 9 | class::PREDATOR))
+            let stands = (owner == 0 && matches!(master.class, class::PREY | class::PREDATOR))
                 || (!walking && level.is_none_or(|s| matches!(s, 0 | 6)));
             let busy = u.ai.as_ref().is_none_or(|ai| {
                 matches!(
