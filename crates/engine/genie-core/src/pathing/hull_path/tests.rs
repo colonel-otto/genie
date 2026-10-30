@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::Rect;
 use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -110,7 +111,10 @@ fn a_ray_leaves_a_hull_by_the_side_it_meets() {
 /// `COMISS`/`JA` skips (0x140f8ec1c, 0x140f8eb6e): an unordered coordinate passes them.
 #[test]
 fn a_ray_meets_the_nearest_box_side_toward_it() {
-    let shape = |bounds: [f32; 4], id: i32| Shape { bounds, id };
+    let shape = |bounds: [f32; 4], id: i32| Shape {
+        bounds: Rect::from(bounds),
+        id,
+    };
     let hull = Hull {
         objects: vec![
             shape([0.0, 0.0, 2.0, 2.0], 1),
@@ -840,8 +844,8 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     p.hulls = vec![far.clone()];
     p.add_tile_objects(5, 5, Some(0), 1).unwrap();
     assert_eq!(hull_ids(&p), [vec![1], vec![6]]);
-    assert_eq!(p.hulls[0].objects[0].bounds, [4.8, 4.8, 6.2, 6.2]);
-    assert_eq!(p.hulls[1].objects[0].bounds, [4.3, 4.3, 6.7, 6.7]);
+    assert_eq!(p.hulls[0].objects[0].bounds, Rect::new(4.8, 4.8, 6.2, 6.2));
+    assert_eq!(p.hulls[1].objects[0].bounds, Rect::new(4.3, 4.3, 6.7, 6.7));
     // once per hull
     p.add_tile_objects(5, 5, Some(0), 1).unwrap();
     assert_eq!(hull_ids(&p), [vec![1], vec![6]]);
@@ -938,7 +942,10 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     // the tile's box, its object, then the anchor's building, the anchor outside the area
     p.process_tile(9, 9, [5, 5, 9, 9], None).unwrap();
     assert_eq!(hull_ids(&p), [vec![tile_record_id(9, 9), 21, 20]]);
-    assert_eq!(p.hulls[0].objects[0].bounds, [8.8, 8.8, 10.2, 10.2]);
+    assert_eq!(
+        p.hulls[0].objects[0].bounds,
+        Rect::new(8.8, 8.8, 10.2, 10.2)
+    );
     // the anchor inside the area: its tile's own turn takes the building
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
     p.process_tile(9, 9, [5, 5, 10, 10], None).unwrap();
@@ -1142,7 +1149,7 @@ fn a_new_pather_holds_the_constructor_s_state() {
         assert_eq!((head.parent, head.next, head.prev), (None, None, None));
     }
     assert_eq!(p.closed, [Vec::<usize>::new(), Vec::new()]);
-    assert_eq!((p.area, p.bounds), ([-1; 4], [0.0; 4]));
+    assert_eq!((p.area, p.bounds), ([-1; 4], Rect::default()));
     assert_eq!(p.exits, vec![Waypoints::default(); PATHS]);
     assert_eq!(p.entrances, vec![Waypoints::default(); PATHS]);
     assert_eq!(
@@ -1175,7 +1182,7 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
     assert_eq!(p.target_gap(&t, Point::new(10.2, 10.3)), 0.0);
     // an unordered start: the box's right and top sides (case 8); an unordered reach leaves
     // no side point out
-    let b = [4.0, 4.0, 6.0, 6.0];
+    let b = Rect::new(4.0, 4.0, 6.0, 6.0);
     p.hulls = vec![Hull::default()];
     let root = p
         .add_unrefused(UnrefusedNode {
@@ -1355,7 +1362,7 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
             .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
             .unwrap();
         p.hulls[h].objects.push(Shape {
-            bounds: [4.8, 4.8, 6.2, 6.2],
+            bounds: Rect::new(4.8, 4.8, 6.2, 6.2),
             id: 48,
         });
         h
@@ -1423,7 +1430,7 @@ fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
             .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
             .unwrap();
         p.hulls[h].objects.push(Shape {
-            bounds: [4.8, 4.8, 6.2, 6.2],
+            bounds: Rect::new(4.8, 4.8, 6.2, 6.2),
             id: 48,
         });
         p.empty(1).unwrap();
@@ -1489,7 +1496,7 @@ fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range(
             .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
             .unwrap();
         p.hulls[h].objects.push(Shape {
-            bounds: [4.8, 4.8, 6.2, 6.2],
+            bounds: Rect::new(4.8, 4.8, 6.2, 6.2),
             id: 48,
         });
         let mut paths = vec![Waypoints::default(); PATHS];
@@ -1529,7 +1536,7 @@ fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
         .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
         .unwrap();
     p.hulls[h].objects.push(Shape {
-        bounds: [4.8, 4.8, 6.2, 6.2],
+        bounds: Rect::new(4.8, 4.8, 6.2, 6.2),
         id: 48,
     });
     let mut paths = vec![Waypoints::default(); PATHS];
@@ -1571,7 +1578,7 @@ fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
         (result, path.points),
         (1, vec![Point::new(15.0, 5.5), Point::new(19.9, 5.5)])
     );
-    assert_eq!(p.bounds, [0.2, 0.2, 19.8, 19.8]);
+    assert_eq!(p.bounds, Rect::new(0.2, 0.2, 19.8, 19.8));
     // no target, a target elsewhere, a goal off the map
     assert_eq!(
         p.find(Point::new(15.0, 5.5), Point::new(19.9, 5.5), -1, 0.0)
@@ -1591,7 +1598,7 @@ fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
             .0,
         4
     );
-    assert_eq!(p.bounds, [0.0, 0.0, 20.0, 20.0]);
+    assert_eq!(p.bounds, Rect::new(0.0, 0.0, 20.0, 20.0));
 }
 
 /// `FindShortPath`'s argument 11: the last search's area and hulls stay, none are built; with

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
@@ -50,7 +51,8 @@ impl World {
         {
             for &(x, y) in &tiles {
                 let (fx, fy) = (x as f32, y as f32);
-                self.spatial.check_known([fx, fy, fx + 1.0, fy + 1.0])?;
+                self.spatial
+                    .check_known(Rect::new(fx, fy, fx + 1.0, fy + 1.0))?;
             }
             *wall = tiles.iter().all(|&(x, y)| {
                 self.spatial
@@ -86,7 +88,7 @@ impl World {
         spawn_point(&site, made.radius, &mut |spot| {
             let (x, y) = (spot.x(), spot.y());
             let (rx, ry) = (made.radius.x(), made.radius.y());
-            spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
+            spatial.check_known(Rect::new(x - rx, y - ry, x + rx, y + ry))?;
             placement(&placing, &map, spot, false)
         })
     }

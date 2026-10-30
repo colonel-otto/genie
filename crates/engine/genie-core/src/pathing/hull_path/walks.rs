@@ -2,6 +2,7 @@
 //! (`pathWithinHull`).
 
 use crate::GenieError;
+use crate::map::Rect;
 use crate::math::fmath::{at_most_or_unordered, maxss, sqrt};
 use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
 use crate::pathing::hull_path::{
@@ -88,7 +89,8 @@ impl HullPather<'_> {
             }
             _ => return Ok(false),
         };
-        let [x0, y0, x1, y1] = obstacle.bounds;
+        let b = obstacle.bounds;
+        let (x0, y0, x1, y1) = (b.x0(), b.y0(), b.x1(), b.y1());
         let half = (x1 - x0) * HALF;
         if half != (y1 - y0) * HALF {
             return Ok(false);
@@ -109,8 +111,7 @@ impl HullPather<'_> {
             } else {
                 Point::new(cx - px, cy - py)
             };
-            let [bx0, by0, bx1, by1] = self.bounds;
-            if !(bx0 <= p.x() && p.x() <= bx1 && by0 <= p.y() && p.y() <= by1) {
+            if !self.bounds.holds(p) {
                 continue;
             }
             let first = self.hits(from, p)?;
@@ -143,12 +144,12 @@ impl HullPather<'_> {
         &mut self,
         hull: usize,
         root: usize,
-        b: [f32; 4],
+        b: Rect,
         p: Point,
         step: f32,
         reach: Option<(Point, f32)>,
     ) -> Result<bool, GenieError> {
-        let [x0, y0, x1, y1] = b;
+        let (x0, y0, x1, y1) = (b.x0(), b.y0(), b.x1(), b.y1());
         // `COMISS`/`JA`, then `SETBE`; `JBE`, then `CMOVA` (0x140f8d1fc..0x140f8d235,
         // 0x140f893a4..0x140f893d0): an unordered coordinate counts past the box's far side
         let col = if p.x() < x0 {

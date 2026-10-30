@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::map::spatial::{BLOCKED, Spatial};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -80,19 +81,15 @@ impl Spatial {
         };
         // a frozen unit that could count (of the combat type and a class that counts) may have
         // moved onto the tiles
-        let area = [x0 as f32, y0 as f32, (x1 + 1) as f32, (y1 + 1) as f32];
+        let area = Rect::new(x0 as f32, y0 as f32, (x1 + 1) as f32, (y1 + 1) as f32);
         let unsure = self.frozen().any(|(id, q)| {
             q.unknown.is_some_and(|u| {
                 let counts = v.seer(id).is_some_and(|s| s.kind == COMBAT)
                     && !out(q.player.index())
                     && !KEPT.contains(&q.class);
-                let [bx0, by0, bx1, by1] = q.bounds();
-                counts
-                    && 0.0 < u
-                    && area[0] <= bx1 + u
-                    && bx0 - u <= area[2]
-                    && area[1] <= by1 + u
-                    && by0 - u <= area[3]
+                // the box grown by the unknown reach (`bx1 + u`: the sum only meets a
+                // comparison, so its operands' order does not show)
+                counts && 0.0 < u && area.overlaps(q.bounds().grown(u))
             })
         });
         if unsure {

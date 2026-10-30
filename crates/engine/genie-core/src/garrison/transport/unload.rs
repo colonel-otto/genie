@@ -9,6 +9,7 @@ use crate::garrison::transport::{
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -343,7 +344,8 @@ impl crate::world::World {
                 continue;
             }
             let (rx, ry) = (made.radius.x(), made.radius.y());
-            self.spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
+            self.spatial
+                .check_known(Rect::new(x - rx, y - ry, x + rx, y + ry))?;
             // the placing reads the terrain, which `point_clear` below borrows with the map
             let free = {
                 let terrain = self

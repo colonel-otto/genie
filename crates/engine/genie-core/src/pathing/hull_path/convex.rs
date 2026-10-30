@@ -233,7 +233,8 @@ impl Hull {
         let within =
             |lo: f32, v: f32, hi: f32| at_most_or_unordered(lo, v) && at_most_or_unordered(v, hi);
         for (k, o) in self.objects.iter().enumerate() {
-            let [x0, y0, x1, y1] = o.bounds;
+            let b = o.bounds;
+            let (x0, y0, x1, y1) = (b.x0(), b.y0(), b.x1(), b.y1());
             let mine = k as i32 == own;
             let hit = match side {
                 0 if within(x0, p.x(), x1) => {

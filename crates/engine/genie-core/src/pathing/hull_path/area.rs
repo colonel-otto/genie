@@ -2,6 +2,7 @@
 //! the area's growth and the entrances' join.
 
 use crate::GenieError;
+use crate::map::Rect;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::pathing::hull_path::{EPSILON, HullPather, MOST_AREA, PATHS, Point, Target, Waypoints};
 use crate::world::slots::CheckedIndex;
@@ -21,17 +22,10 @@ impl HullPather<'_> {
         if !self.world.point_hit(to, grow, &self.ignore, false)? {
             return Ok(None);
         }
-        let (x, y) = (to.x(), to.y());
         let near: Vec<i32> = self
             .world
             .records()
-            .filter(|&(id, _, [x0, y0, x1, y1])| {
-                !self.ignore.contains(&id)
-                    && x <= x1 + grow
-                    && x0 - grow <= x
-                    && y <= grow + y1
-                    && y0 - grow <= y
-            })
+            .filter(|&(id, _, b)| !self.ignore.contains(&id) && b.grown(grow).holds(to))
             .map(|(id, _, _)| id)
             .collect();
         // each one the query lists (the cells it visits): the point test with the others ignored
@@ -78,14 +72,15 @@ impl HullPather<'_> {
         }
         let r = self.radius;
         let [w, h] = self.world.map;
-        self.bounds = [0.0, 0.0, w as f32 - 0.0, h as f32 - 0.0];
-        let [bx0, by0, bx1, by1] = self.bounds;
+        self.bounds = Rect::new(0.0, 0.0, w as f32 - 0.0, h as f32 - 0.0);
+        let b = self.bounds;
+        let (bx0, by0, bx1, by1) = (b.x0(), b.y0(), b.x1(), b.y1());
         let on_map = at_most_or_unordered(bx0, to.x())
             && at_most_or_unordered(to.x(), bx1)
             && at_most_or_unordered(by0, to.y())
             && at_most_or_unordered(to.y(), by1);
         if on_map {
-            self.bounds = [r, r, w as f32 - r, h as f32 - r];
+            self.bounds = Rect::new(r, r, w as f32 - r, h as f32 - r);
         }
         Ok(on_map)
     }

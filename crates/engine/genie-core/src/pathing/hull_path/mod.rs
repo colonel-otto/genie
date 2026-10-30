@@ -25,6 +25,7 @@
 use crate::map::Footprint;
 use crate::map::GroundOffset;
 use crate::map::Point;
+use crate::map::Rect;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::sqrt;
 use std::collections::BTreeSet;
@@ -112,15 +113,15 @@ const SIDES: [GroundOffset; 4] = GroundOffset::table(crate::math::image::hull_pa
 /// [`tile_record_id`]: crate::map::spatial::tile_record_id
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Shape {
-    bounds: [f32; 4],
+    bounds: Rect,
     id: i32,
 }
 
 impl Shape {
     /// Whether `p` lies inside the box, its sides excluded (`FUN_140f89dc0`'s test).
     fn holds(&self, p: Point) -> bool {
-        let [x0, y0, x1, y1] = self.bounds;
-        x0 < p.x() && p.x() < x1 && y0 < p.y() && p.y() < y1
+        let b = self.bounds;
+        b.x0() < p.x() && p.x() < b.x1() && b.y0() < p.y() && p.y() < b.y1()
     }
 }
 
@@ -290,8 +291,8 @@ pub struct HullPather<'w> {
     goal: Point,
     exits: Vec<Waypoints>,
     entrances: Vec<Waypoints>,
-    /// The map less the radius, x0, y0, x1, y1 (`+0x118`).
-    bounds: [f32; 4],
+    /// The map less the radius (`+0x118`).
+    bounds: Rect,
 }
 
 #[cfg(test)]

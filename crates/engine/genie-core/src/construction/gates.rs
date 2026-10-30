@@ -2,6 +2,7 @@
 //! and closed after a player's update.
 
 use crate::GenieError;
+use crate::map::Rect;
 use crate::map::spatial::{Spatial, WalkQuery};
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
@@ -32,22 +33,12 @@ pub(crate) fn gate_units(
             .ok_or(GenieError::unsupported("a gate's annex without a place"))
     };
     let (from, to) = (place(a)?, place(b)?);
-    let rect = [
-        from.x().min(to.x()),
-        from.y().min(to.y()),
-        from.x().max(to.x()),
-        from.y().max(to.y()),
-    ];
+    let rect = Rect::spanning(from, to);
     let owner = spatial
         .get(gate)
         .map(|p| p.player)
         .ok_or(GenieError::unsupported("a gate without a place"))?;
-    spatial.check_known_records([
-        rect[0] - GATE_GROW,
-        rect[1] - GATE_GROW,
-        rect[2] + GATE_GROW,
-        rect[3] + GATE_GROW,
-    ])?;
+    spatial.check_known_records(rect.grown(GATE_GROW))?;
     let hits = spatial.walk_hits(WalkQuery {
         start: from,
         end: to,

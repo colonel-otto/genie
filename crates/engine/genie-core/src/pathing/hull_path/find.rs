@@ -2,6 +2,7 @@
 //! its rounds, and the path at their end.
 
 use crate::GenieError;
+use crate::map::Rect;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{below_or_unordered, maxss, minss, sqrt};
 use crate::pathing::hull_path::rounds::Rounds;
@@ -135,12 +136,12 @@ impl HullPather<'_> {
             q.target = self.goal_record(to)?;
         }
         let [ax0, ay0, ax1, ay1] = self.area;
-        self.world.check_known_records([
+        self.world.check_known_records(Rect::new(
             (ax0 - 5) as f32,
             (ay0 - 5) as f32,
             (ax1 + 6) as f32,
             (ay1 + 6) as f32,
-        ])?;
+        ))?;
         self.empty(0)?;
         let mut rounds = Rounds::new(sqrt(
             (from.y() - to.y()) * (from.y() - to.y()) + (from.x() - to.x()) * (from.x() - to.x()),
@@ -158,8 +159,8 @@ impl HullPather<'_> {
     fn off_map(&mut self, from: Point, to: Point, target_id: i32) -> Result<bool, GenieError> {
         let r = self.radius;
         let [w, h] = self.world.map;
-        self.bounds = [r, r, w as f32 - r, h as f32 - r];
-        let [_, _, bx1, by1] = self.bounds;
+        self.bounds = Rect::new(r, r, w as f32 - r, h as f32 - r);
+        let (bx1, by1) = (self.bounds.x1(), self.bounds.y1());
         // each bound by `COMISS`/`JA` (0x140f8569f..0x140f85701): an unordered coordinate passes
         if from.x() < r || bx1 < from.x() || from.y() < r || by1 < from.y() {
             return Ok(true);

@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::{Rect, Segment};
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -34,7 +35,7 @@ fn the_record_cells_answer_as_the_full_scan_does() {
         unknown: None,
         obstruction: kind.map(|kind| Obstruction { kind, class: 0 }),
     };
-    let scan = |s: &Spatial, rect: [f32; 4]| -> Vec<i32> {
+    let scan = |s: &Spatial, rect: Rect| -> Vec<i32> {
         s.objects
             .iter()
             .filter(|(_, p)| p.obstruction.is_some_and(|o| s.visits(p, o.kind, rect)))
@@ -62,7 +63,7 @@ fn the_record_cells_answer_as_the_full_scan_does() {
         }
         let (x, y) = (at(&mut next), at(&mut next));
         let (w, h) = ((next() % 160) as f32 * 0.5, (next() % 160) as f32 * 0.5);
-        let rect = [x, y, x + w, y + h];
+        let rect = Rect::new(x, y, x + w, y + h);
         assert_eq!(
             s.visited_records(rect),
             scan(&s, rect),
@@ -137,29 +138,42 @@ fn ccw_answers_as_the_game_s_compares() {
     );
 }
 
+/// The walk from (`x0`, `y0`) to (`x1`, `y1`).
+const fn walk(x0: f32, y0: f32, x1: f32, y1: f32) -> Segment {
+    Segment {
+        from: Point::new(x0, y0),
+        to: Point::new(x1, y1),
+    }
+}
+
 /// `FUN_141052e10`: a walk from a NaN point meets the box's first side already (ccw answers
 /// 0 for a NaN, so the segments meet); a walk inside it meets it; one past it does not.
 #[test]
 fn a_walk_meets_a_box_by_its_sides_or_from_inside() {
-    let b = [0.0, 0.0, 1.0, 1.0];
-    assert!(box_meets_segment(b, 0.0, [f32::NAN, 0.5, 5.0, 5.0]));
-    assert!(box_meets_segment(b, 0.0, [0.5, 0.5, 0.6, 0.6]));
-    assert!(!box_meets_segment(b, 0.0, [3.0, 3.0, 5.0, 5.0]));
+    let b = Rect::new(0.0, 0.0, 1.0, 1.0);
+    assert!(box_meets_segment(b, 0.0, walk(f32::NAN, 0.5, 5.0, 5.0)));
+    assert!(box_meets_segment(b, 0.0, walk(0.5, 0.5, 0.6, 0.6)));
+    assert!(!box_meets_segment(b, 0.0, walk(3.0, 3.0, 5.0, 5.0)));
 }
 
 /// `FUN_141051630` (and `FUN_141053130`): a circle record's box is read as it stands, so a
 /// box whose x1 lies below its x0 holds no walk inside it; `FUN_1410512f0` orders it first.
 #[test]
 fn a_circle_record_s_box_is_read_unordered_and_another_s_ordered() {
-    let b = [2.0, 0.0, 1.0, 1.0];
-    let inside = [1.4, 0.4, 1.6, 0.6];
+    let b = Rect::new(2.0, 0.0, 1.0, 1.0);
+    let inside = walk(1.4, 0.4, 1.6, 0.6);
     assert!(record_meets_segment(2, b, 0.0, inside));
     assert!(!record_meets_segment(5, b, 0.0, inside));
-    assert!(record_meets_segment(5, [1.0, 0.0, 2.0, 1.0], 0.0, inside));
+    assert!(record_meets_segment(
+        5,
+        Rect::new(1.0, 0.0, 2.0, 1.0),
+        0.0,
+        inside
+    ));
     // grown, the edges and the inside tests take the grow on the box as it stands: the
     // edges then run at x 1.25 and 1.75, the inside tests hold nothing
     assert!(!record_meets_segment(5, b, 0.25, inside));
-    assert!(record_meets_segment(5, b, 0.25, [1.0, 0.5, 1.5, 0.5]));
+    assert!(record_meets_segment(5, b, 0.25, walk(1.0, 0.5, 1.5, 0.5)));
     assert!(record_meets_segment(2, b, 0.25, inside));
 }
 
@@ -244,28 +258,31 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
 fn a_rectangle_leaving_the_map_meets_the_edge_records_where_its_diagonal_crosses() {
     let mut s = Spatial::new([120, 120]);
     assert_eq!(
-        s.edge_records([0.0, 0.0, 120.0, 120.0], 25),
+        s.edge_records(Rect::new(0.0, 0.0, 120.0, 120.0), 25),
         Vec::<Hit>::new()
     );
     // the diagonal (-0.3, 50) -> (0.3, 50.6) crosses x 0 at y 50.3: the left edge's tile (0, 50)
-    let left = s.edge_records([-0.3, 50.0, 0.3, 50.6], 25);
+    let left = s.edge_records(Rect::new(-0.3, 50.0, 0.3, 50.6), 25);
     assert_eq!(left.len(), 1);
     assert_eq!(left[0].id as u32, 0xff00_0000 | 0x32);
-    assert_eq!(left[0].bounds, [0.0, 50.0, 1.0, 51.0]);
+    assert_eq!(left[0].bounds, Rect::new(0.0, 50.0, 1.0, 51.0));
     // past the bottom right corner: (119.5, 119.7) -> (120.5, 120.7) crosses x 120 at y 120.2
     // and y 120 at x 119.8
-    let corner = s.edge_records([119.5, 119.7, 120.5, 120.7], 25);
+    let corner = s.edge_records(Rect::new(119.5, 119.7, 120.5, 120.7), 25);
     let ids: Vec<u32> = corner.iter().map(|h| h.id as u32).collect();
     assert_eq!(ids, [0xff07_8078, 0xff07_7078]);
     // a list with room for one stops after the first edge
-    assert_eq!(s.edge_records([119.5, 119.7, 120.5, 120.7], 1), corner[..1]);
+    assert_eq!(
+        s.edge_records(Rect::new(119.5, 119.7, 120.5, 120.7), 1),
+        corner[..1]
+    );
     // an infinite end: the crossing's terms give NaN, which CVTTSS2SI makes i32::MIN
-    let far = s.edge_records([-0.5, 10.0, f32::INFINITY, 10.5], 25);
+    let far = s.edge_records(Rect::new(-0.5, 10.0, f32::INFINITY, 10.5), 25);
     assert_eq!(far.len(), 2);
     assert_eq!(far[0].id as u32, 0xff00_000a);
     assert_eq!(
         far[0].bounds,
-        [-2_147_483_648.0, 10.0, -2_147_483_648.0, 11.0]
+        Rect::new(-2_147_483_648.0, 10.0, -2_147_483_648.0, 11.0)
     );
     // a unit of radius 0.3 cannot stand 0.2 from the edge
     assert!(!s.point_clear(1, Point::new(0.2, 50.0), 0.3, 0xff).unwrap());
@@ -456,7 +473,7 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
         .walk_hits(WalkQuery {
             start: Point::new(2.0, 2.0),
             end: Point::new(3.0, 2.0),
-            rect: [2.0, 2.0, 3.0, 2.0],
+            rect: Rect::new(2.0, 2.0, 3.0, 2.0),
             grow: 0.2,
             ally_factor: 1.0,
             player: None,
@@ -492,7 +509,7 @@ fn a_walk_past_the_maps_edge_meets_its_record_first() {
     let mut s = Spatial::new([10, 10]);
     s.insert(object_id(7), villager(1.0, 5.5));
     let (from, to) = (Point::new(0.1, 5.5), Point::new(2.0, 5.5));
-    let rect = [0.1, 5.5, 2.0, 5.5];
+    let rect = Rect::new(0.1, 5.5, 2.0, 5.5);
     let hits = s
         .walk_hits(WalkQuery {
             start: from,
@@ -512,7 +529,10 @@ fn a_walk_past_the_maps_edge_meets_its_record_first() {
 #[test]
 fn a_units_box_is_its_position_plus_and_minus_its_radii() {
     // MarvinBlue/426048731 tick 680: 9177's record box in the game's obstruction manager
-    assert_eq!(villager(28.0, 89.0).bounds(), [27.8, 88.8, 28.2, 89.2]);
+    assert_eq!(
+        villager(28.0, 89.0).bounds(),
+        Rect::new(27.8, 88.8, 28.2, 89.2)
+    );
 }
 
 #[test]
@@ -526,7 +546,7 @@ fn a_query_finds_the_boxes_its_rectangle_meets_but_not_the_ignored_or_unobstruct
     foundation.class = class::BUILDING;
     s.insert(object_id(10028), foundation);
     // 9177's first step: from (28, 89) toward (28.0143, 88.9928), grown by its radius
-    let step = [28.0, 88.99284, 28.01431, 89.0];
+    let step = Rect::new(28.0, 88.99284, 28.01431, 89.0);
     assert_eq!(
         s.obstruction_candidates(step, 0.2, &[9177]),
         Vec::<i32>::new()
@@ -534,11 +554,11 @@ fn a_query_finds_the_boxes_its_rectangle_meets_but_not_the_ignored_or_unobstruct
     assert_eq!(s.obstruction_candidates(step, 0.2, &[]), vec![9177]);
     // 9175's box grown by 0.2 starts at x 29.6
     assert_eq!(
-        s.obstruction_candidates([29.0, 89.0, 29.59, 89.0], 0.2, &[9177]),
+        s.obstruction_candidates(Rect::new(29.0, 89.0, 29.59, 89.0), 0.2, &[9177]),
         Vec::<i32>::new()
     );
     assert_eq!(
-        s.obstruction_candidates([29.0, 89.0, 29.61, 89.0], 0.2, &[9177]),
+        s.obstruction_candidates(Rect::new(29.0, 89.0, 29.61, 89.0), 0.2, &[9177]),
         vec![9175]
     );
 }
@@ -637,7 +657,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     s.relations = vec![vec![1, 4, 4], vec![1, 0, 4], vec![1, 4, 0]];
     s.insert(object_id(9175), villager(30.0, 89.0));
     let (from, to) = (Point::new(29.5, 88.0), Point::new(29.5, 88.3));
-    let rect = [29.5, 88.0, 29.5, 88.3];
+    let rect = Rect::new(29.5, 88.0, 29.5, 88.3);
     // the box (29.8..30.2, 88.8..89.2) grown by 0.25 reaches 88.55, past the step's end
     assert_eq!(
         s.walk_hits(WalkQuery {
@@ -653,7 +673,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     );
     // grown by 0.4 it reaches x 29.4: the step crosses it once it gets to y 88.4
     let longer = (Point::new(29.5, 88.0), Point::new(29.5, 88.5));
-    let rect = [29.5, 88.0, 29.5, 88.5];
+    let rect = Rect::new(29.5, 88.0, 29.5, 88.5);
     assert_eq!(
         s.walk_hits(WalkQuery {
             start: longer.0,
@@ -1165,7 +1185,7 @@ fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
         hits,
         [Hit {
             id: tile_record_id(5, 5),
-            bounds: [5.0, 5.0, 6.0, 6.0]
+            bounds: Rect::new(5.0, 5.0, 6.0, 6.0)
         }]
     );
     // the pather's ignore list holds tiles by their record's id
@@ -1192,7 +1212,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
     beside.obstruction = Some(Obstruction { kind: 2, class: 3 });
     s.insert(object_id(8), beside);
     let (a, b) = (Point::new(0.2, 8.0), Point::new(6.0, 8.0));
-    let edge = s.edge_records([-0.3, 7.5, 6.5, 8.5], QUERY_HITS);
+    let edge = s.edge_records(Rect::new(-0.3, 7.5, 6.5, 8.5), QUERY_HITS);
     assert_ne!(edge.len(), 0);
     assert!(s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
     s.clear_tile_records();
@@ -1318,7 +1338,7 @@ fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_i
     s.insert(object_id(9365), tree);
     s.freeze(9365);
     s.reach = 1.0;
-    let near = [24.0, 37.0, 24.6, 38.0];
+    let near = Rect::new(24.0, 37.0, 24.6, 38.0);
     assert!(s.check_known(near).is_ok());
     // a stopped villager 10 tiles off, 0.8 tiles a second
     let mut walker = villager(34.5, 37.5);
@@ -1339,7 +1359,7 @@ fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_i
 fn the_manager_keeps_the_last_ignore_list_set() {
     let mut s = Spatial::new([10, 10]);
     assert_eq!(s.manager_ignore(), Vec::<i32>::new());
-    let rect = [2.0, 5.0, 3.0, 5.0];
+    let rect = Rect::new(2.0, 5.0, 3.0, 5.0);
     let _ = s
         .walk_hits(WalkQuery {
             start: Point::new(2.0, 5.0),

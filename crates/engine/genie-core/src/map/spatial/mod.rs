@@ -15,6 +15,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
@@ -245,10 +246,10 @@ impl Obstruction {
 impl Placed {
     /// The record's box `x0, y0, x1, y1` (`+0x20`..`+0x2c`): the position plus and minus the radii.
     #[must_use]
-    pub fn bounds(&self) -> [f32; 4] {
+    pub fn bounds(&self) -> Rect {
         let (x, y) = (self.position.x(), self.position.y());
         let (rx, ry) = (self.radius.x(), self.radius.y());
-        [x - rx, y - ry, x + rx, y + ry]
+        Rect::new(x - rx, y - ry, x + rx, y + ry)
     }
 }
 

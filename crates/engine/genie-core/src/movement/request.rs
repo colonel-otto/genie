@@ -2,6 +2,7 @@
 //! goal's reach.
 
 use crate::GenieError;
+use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
 use crate::movement::request_plans::{NewPath, Way};
@@ -290,18 +291,8 @@ impl Mover {
         let grow = self.stats.radius.x() * LONG_PATH_GROW;
         for i in 0..path.points.len().saturating_sub(1) {
             let (from, to) = self.query_ends(path.points[i], path.points[i + 1], world.map);
-            let rect = [
-                from.x().min(to.x()),
-                from.y().min(to.y()),
-                from.x().max(to.x()),
-                from.y().max(to.y()),
-            ];
-            world.check_known_records([
-                rect[0] - grow,
-                rect[1] - grow,
-                rect[2] + grow,
-                rect[3] + grow,
-            ])?;
+            let rect = Rect::spanning(from, to);
+            world.check_known_records(rect.grown(grow))?;
             let hits = world.walk_hits(WalkQuery {
                 start: from,
                 end: to,

@@ -5,6 +5,7 @@ mod offset;
 mod point;
 mod position;
 mod radii;
+mod rect;
 pub mod spatial;
 pub mod terrain;
 
@@ -12,3 +13,4 @@ pub use self::offset::{GroundOffset, Offset};
 pub use self::point::{Axis, Point};
 pub use self::position::Position;
 pub use self::radii::{Footprint, Radii};
+pub use self::rect::{Rect, Segment};

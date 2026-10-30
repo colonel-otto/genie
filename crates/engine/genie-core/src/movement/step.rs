@@ -2,6 +2,7 @@
 
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
 use crate::movement::{
@@ -499,19 +500,9 @@ impl Mover {
             // FUN_14114e8a0 ignores the unit itself (and a building's annexes), then
             // FUN_14114cc60 asks for the step's hits, grown by the unit's radius times 1
             let (from, to) = self.query_ends(position, projected, world.map);
-            let rect = [
-                from.x().min(to.x()),
-                from.y().min(to.y()),
-                from.x().max(to.x()),
-                from.y().max(to.y()),
-            ];
+            let rect = Rect::spanning(from, to);
             let grow = self.stats.radius.x();
-            world.check_known_records([
-                rect[0] - grow,
-                rect[1] - grow,
-                rect[2] + grow,
-                rect[3] + grow,
-            ])?;
+            world.check_known_records(rect.grown(grow))?;
             let player = world.get(me.id).map(|p| p.player);
             let hits = world.walk_hits(WalkQuery {
                 start: from,

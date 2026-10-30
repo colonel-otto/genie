@@ -2,6 +2,7 @@
 //! cannot cross, the cliffs; a point's hull and the area's bounds.
 
 use crate::GenieError;
+use crate::map::Rect;
 use crate::map::spatial::{Placed, tile_record_id};
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::masters::class;
@@ -173,15 +174,11 @@ impl HullPather<'_> {
     ) -> Result<(), GenieError> {
         let (x, y) = (p.position.x(), p.position.y());
         let (rx, ry) = (p.radius.x(), p.radius.y());
-        let bounds = [(x - rx) - r, (y - ry) - r, x + rx + r, y + ry + r];
+        let bounds = Rect::new((x - rx) - r, (y - ry) - r, x + rx + r, y + ry + r);
         // `COMISS`/`JA` (0x140f8b772, 0x140f8b7a4): an unordered radius takes the given hull
         let h = match hull {
             Some(h) if at_most_or_unordered(rx, HALF) && at_most_or_unordered(ry, HALF) => h,
-            _ => Self::add_shape_to(
-                hulls,
-                Point::new(bounds[0], bounds[1]),
-                Point::new(bounds[2], bounds[3]),
-            )?,
+            _ => Self::add_shape_to(hulls, bounds.corner0(), bounds.corner1())?,
         };
         let objects = &mut hulls.checked_mut(h)?.objects;
         if !objects.iter().any(|o| o.id == id) {
@@ -214,18 +211,15 @@ impl HullPather<'_> {
             let id = tile_record_id(x, y);
             if !self.ignore.contains(&id) {
                 let r = self.radius;
-                let bounds = [
+                let bounds = Rect::new(
                     x as f32 - r,
                     y as f32 - r,
                     (x + 1) as f32 + r,
                     (y + 1) as f32 + r,
-                ];
+                );
                 let k = match hull {
                     Some(k) => k,
-                    None => self.add_shape(
-                        Point::new(bounds[0], bounds[1]),
-                        Point::new(bounds[2], bounds[3]),
-                    )?,
+                    None => self.add_shape(bounds.corner0(), bounds.corner1())?,
                 };
                 let objects = &mut self.hulls.checked_mut(k)?.objects;
                 if !objects.iter().any(|o| o.id == id) {

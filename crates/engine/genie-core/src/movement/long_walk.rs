@@ -3,6 +3,7 @@
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::{
@@ -401,12 +402,12 @@ pub(crate) fn short_path_including(
     };
     // the search's box: four tiles around its ends
     let reach = 4.0 + walker.radius;
-    world.check_known_records([
+    world.check_known_records(Rect::new(
         x.min(to.x()) - reach,
         y.min(to.y()) - reach,
         x.max(to.x()) + reach,
         y.max(to.y()) + reach,
-    ])?;
+    ))?;
     let (query, shapes) = match call.entry() {
         Entry::InRange => {
             out.points.clear();

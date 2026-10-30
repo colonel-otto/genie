@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::spatial::{
     Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
 };
+use crate::map::{Rect, Segment};
 use crate::players::PlayerId;
 
 /// A walk's obstruction query ([`Spatial::walk_hits`]'s arguments).
@@ -16,7 +17,7 @@ pub struct WalkQuery<'a> {
     /// The step's end.
     pub end: Point,
     /// The step's rectangle.
-    pub rect: [f32; 4],
+    pub rect: Rect,
     /// The walker's radius, which grows the records' boxes and the rectangle.
     pub grow: f32,
     /// The walker's master's `min_collision_size_multiplier`, for a moving object of `player` or
@@ -30,7 +31,7 @@ pub struct WalkQuery<'a> {
 
 impl Spatial {
     /// Each obstruction record: the object's id, the record's kind and box.
-    pub fn records(&self) -> impl Iterator<Item = (i32, u8, [f32; 4])> + '_ {
+    pub fn records(&self) -> impl Iterator<Item = (i32, u8, Rect)> + '_ {
         self.objects
             .iter()
             .filter_map(|(&id, p)| Some((id, p.obstruction?.kind, p.bounds())))
@@ -49,7 +50,8 @@ impl Spatial {
     /// sits on a half tile ends 0.001 short on both axes. The level is the finest whose cell holds
     /// both corners' tiles, the cell the one of the low corner's tile.
     pub(super) fn filed(&self, p: &Placed, kind: u8) -> (i32, i32, i32) {
-        let [x0, y0, mut x1, mut y1] = p.bounds();
+        let b = p.bounds();
+        let (x0, y0, mut x1, mut y1) = (b.x0(), b.y0(), b.x1(), b.y1());
         let (x, y) = (p.position.x(), p.position.y());
         if matches!(kind, 2 | 10 | 11 | 13) && x % 0.5 < 0.001 && y % 0.5 < 0.001 {
             x1 -= 0.001;
@@ -70,25 +72,25 @@ impl Spatial {
     /// visits the cell an object's record of kind `kind` is filed in ([`Spatial::filed`]): the
     /// query's tiles run from the low corner's (at least 0) to the high corner's (at most the
     /// map's size), and on each level it visits the cells they cover.
-    pub(super) fn visits(&self, p: &Placed, kind: u8, rect: [f32; 4]) -> bool {
+    pub(super) fn visits(&self, p: &Placed, kind: u8, rect: Rect) -> bool {
         let (level, cx, cy) = self.filed(p, kind);
         self.visits_cell(level, cx, cy, rect)
     }
 
     /// Whether a query whose grown rectangle is `rect` visits cell (`cx`, `cy`) of `level`
     /// ([`Spatial::visits`]).
-    pub(super) fn visits_cell(&self, level: i32, cx: i32, cy: i32, rect: [f32; 4]) -> bool {
+    pub(super) fn visits_cell(&self, level: i32, cx: i32, cy: i32, rect: Rect) -> bool {
         let [x0, y0, x1, y1] = self.visited_cells(level, rect);
         x0 <= cx && cx <= x1 && y0 <= cy && cy <= y1
     }
 
     /// The cells of `level` a query whose grown rectangle is `rect` visits
     /// ([`Spatial::visits_cell`]): x and y from, then x and y to, each inclusive.
-    pub(super) fn visited_cells(&self, level: i32, rect: [f32; 4]) -> [i32; 4] {
+    pub(super) fn visited_cells(&self, level: i32, rect: Rect) -> [i32; 4] {
         let shift = self.grid.shift(level);
         let [w, h] = self.map;
-        let (qx0, qy0) = ((rect[0] as i32).max(0), (rect[1] as i32).max(0));
-        let (qx1, qy1) = ((rect[2] as i32).min(w), (rect[3] as i32).min(h));
+        let (qx0, qy0) = ((rect.x0() as i32).max(0), (rect.y0() as i32).max(0));
+        let (qx1, qy1) = ((rect.x1() as i32).min(w), (rect.y1() as i32).min(h));
         [qx0 >> shift, qy0 >> shift, qx1 >> shift, qy1 >> shift]
     }
 
@@ -131,7 +133,7 @@ impl Spatial {
     /// each level ([`RecordCells`]) instead of tested one by one.
     ///
     /// [`RecordCells`]: crate::map::spatial::RecordCells
-    pub(super) fn visited_records(&self, rect: [f32; 4]) -> Vec<i32> {
+    pub(super) fn visited_records(&self, rect: Rect) -> Vec<i32> {
         let mut ids = Vec::new();
         for level in -1..self.grid.levels {
             let [x0, y0, x1, y1] = self.visited_cells(level, rect);
@@ -161,7 +163,7 @@ impl Spatial {
     }
 
     /// [`Spatial::visited_records`] with each object's place.
-    pub(super) fn records_in(&self, rect: [f32; 4]) -> impl Iterator<Item = (i32, &Placed)> + '_ {
+    pub(super) fn records_in(&self, rect: Rect) -> impl Iterator<Item = (i32, &Placed)> + '_ {
         self.visited_records(rect)
             .into_iter()
             .filter_map(|id| self.objects.get(&id).map(|p| (id, p)))
@@ -355,36 +357,23 @@ impl Spatial {
         self.set_manager_ignore(ignore);
         // its callers reset the buffer after the query (FUN_1410562d0 with 0)
         self.set_manager_buffer(None);
-        let [w, h] = self.map;
-        let walk = [from.x(), from.y(), to.x(), to.y()];
-        let query = [
-            rect[0] - grow,
-            rect[1] - grow,
-            grow + rect[2],
-            grow + rect[3],
-        ];
+        let walk = Segment { from, to };
+        let query = rect.grown(grow);
         // a query beyond the map's edge meets the edge's records first (FUN_141057290)
-        let mut hits: Vec<i32> =
-            if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
-                self.edge_records(query, QUERY_HITS)
-                    .iter()
-                    .map(|e| e.id)
-                    .collect()
-            } else {
-                Vec::new()
-            };
+        let mut hits: Vec<i32> = if query.leaves_map(self.map) {
+            self.edge_records(query, QUERY_HITS)
+                .iter()
+                .map(|e| e.id)
+                .collect()
+        } else {
+            Vec::new()
+        };
         // a box that misses the step's rectangle even grown by the larger of the two grows cannot
         // be hit (a smaller grow's box lies inside it): skip it before the grid's filing test,
         // which costs the most. Without a player a moving object's test fails, so then all go
         // through it
         let reach = grow.max(ally_factor * grow);
-        let skip = |p: &Placed| {
-            let [x0, y0, x1, y1] = p.bounds();
-            !(rect[0] <= reach + x1
-                && x0 - reach <= rect[2]
-                && rect[1] <= reach + y1
-                && y0 - reach <= rect[3])
-        };
+        let skip = |p: &Placed| !rect.overlaps(p.bounds().grown(reach));
         for (id, p) in self.records_in(query) {
             let Some(o) = p.obstruction else {
                 continue;
@@ -407,14 +396,8 @@ impl Spatial {
             } else {
                 grow
             };
-            let [x0, y0, x1, y1] = p.bounds();
-            let grown = [x0 - g, y0 - g, g + x1, g + y1];
-            if rect[0] <= grown[2]
-                && grown[0] <= rect[2]
-                && rect[1] <= grown[3]
-                && grown[1] <= rect[3]
-                && record_meets_segment(kind, [x0, y0, x1, y1], g, walk)
-            {
+            let b = p.bounds();
+            if rect.overlaps(b.grown(g)) && record_meets_segment(kind, b, g, walk) {
                 hits.push(id);
             }
         }
@@ -473,21 +456,10 @@ impl Spatial {
         ignore: &[i32],
     ) -> Result<Vec<i32>, GenieError> {
         const MOST_HITS: usize = 25;
-        let rect = [
-            from.x().min(to.x()),
-            from.y().min(to.y()),
-            from.x().max(to.x()),
-            from.y().max(to.y()),
-        ];
-        let query = [
-            rect[0] - grow,
-            rect[1] - grow,
-            grow + rect[2],
-            grow + rect[3],
-        ];
-        let [w, h] = self.map;
+        let rect = Rect::spanning(from, to);
+        let query = rect.grown(grow);
         let mut hits: Vec<i32> = Vec::new();
-        if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
+        if query.leaves_map(self.map) {
             hits.extend(self.edge_records(query, QUERY_HITS).iter().map(|e| e.id));
             if MOST_HITS <= hits.len() {
                 hits.truncate(MOST_HITS);
@@ -495,21 +467,16 @@ impl Spatial {
             }
         }
         self.check_known_records(query)?;
-        let walk = [from.x(), from.y(), to.x(), to.y()];
-        let meets = |kind: u8, bx: [f32; 4]| {
-            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
-            rect[0] <= grown[2]
-                && grown[0] <= rect[2]
-                && rect[1] <= grown[3]
-                && grown[1] <= rect[3]
-                && record_meets_segment(kind, bx, grow, walk)
+        let walk = Segment { from, to };
+        let meets = |kind: u8, bx: Rect| {
+            rect.overlaps(bx.grown(grow)) && record_meets_segment(kind, bx, grow, walk)
         };
         if tiles {
             let level = self.grid.level(0);
             let shift = self.grid.shift(level);
             for &(y, x) in &self.tile_records {
                 let id = tile_record_id(x, y);
-                let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
+                let bx = Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0);
                 if self.visits_cell(level, x >> shift, y >> shift, query)
                     && !ignore.contains(&id)
                     && meets(3, bx)

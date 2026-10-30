@@ -1,6 +1,7 @@
 //! The walk into a hull (`pathWithinHull` into a hull, `FUN_140f88ee0`).
 
 use crate::GenieError;
+use crate::map::Rect;
 use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
 use crate::pathing::hull_path::{
     ENTRANCE_STEP, HULL_ITERATIONS, HullPather, NUDGE, PATHS, Point, SIDES, Target, Waypoints,
@@ -137,12 +138,12 @@ impl HullPather<'_> {
             }
             Some(t) => {
                 let r = self.radius;
-                [
+                Rect::new(
                     (t.at.x() - t.radius.x()) - r,
                     (t.at.y() - t.radius.y()) - r,
                     t.at.x() + t.radius.x() + r,
                     t.at.y() + t.radius.y() + r,
-                ]
+                )
             }
         };
         made |= self.side_points(hull, root, bounds, to, ENTRANCE_STEP, None)?;

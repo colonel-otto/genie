@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
-use crate::map::{GroundOffset, Point};
+use crate::map::{GroundOffset, Point, Rect};
 use crate::world::slots::CheckedIndex;
 
 /// No active slot lies nearer than `f32::MAX`: the game reads the slot before the array then.
@@ -278,7 +278,7 @@ impl World {
             return Ok(());
         };
         // the active slot nearest the group's place, and the box around the tester and them
-        let ([min_x, min_z, max_x, max_z], nearest) =
+        let (bounds, nearest) =
             passability_box(&formation.slots, tester.moved_vector().xhy(), position);
         let k = nearest.ok_or(NO_NEAREST_SLOT)?;
         if !stands(formation.slots.checked(k)?.transform_position) {
@@ -294,12 +294,9 @@ impl World {
         // the box's temporary tile records (FUN_141052b90 at 0x14103b8fa) with the buffer the
         // last FUN_1410562d0 left, which the lines grow by too
         let grow = self.spatial.manager_grow();
-        self.spatial.put_tile_records(
-            Point::new(min_x, min_z),
-            Point::new(max_x, max_z),
-            grow,
-            mask,
-        );
+        let (min_x, min_z, max_x, max_z) = (bounds.x0(), bounds.y0(), bounds.x1(), bounds.y1());
+        self.spatial
+            .put_tile_records(bounds.corner0(), bounds.corner1(), grow, mask);
         let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
         // the members are the manager's ignore list while the passability runs
         // (FUN_1410562e0, 0x14103b916), which every way out of it clears (0x14103ce93,
@@ -515,12 +512,12 @@ pub(super) fn slot_tile(at: BVector) -> (i32, i32) {
 /// take them (the old bound kept for a NaN either side); the nearest is the first active slot
 /// whose squared distance to the group's place `position` (summed x, height, y) lies below the
 /// best so far, from [`FARTHEST`] (`COMISS`/`CMOVBE`: a NaN distance keeps the earlier one, none
-/// when no slot lies below `f32::MAX`). Returns min x, min y, max x, max y and the nearest.
+/// when no slot lies below `f32::MAX`). Returns the box and the nearest.
 pub(super) fn passability_box(
     slots: &[Slot],
     at: BVector,
     position: BVector,
-) -> ([f32; 4], Option<usize>) {
+) -> (Rect, Option<usize>) {
     use crate::math::fmath::{maxss, minss};
     let (mut min_x, mut min_z, mut max_x, mut max_z) = (PASS_FAR, PASS_FAR, 0.0f32, 0.0f32);
     let mut best = FARTHEST;
@@ -546,7 +543,7 @@ pub(super) fn passability_box(
             nearest = Some(j);
         }
     }
-    ([min_x, min_z, max_x, max_z], nearest)
+    (Rect::new(min_x, min_z, max_x, max_z), nearest)
 }
 
 /// A reachable slot's grid cell mark (0x14103bfd4..0x14103c046): the cell's count up

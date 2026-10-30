@@ -2,6 +2,7 @@
 //! and a blocked start.
 
 use crate::map::Point;
+use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial};
 use crate::movement::{
     AfterRequest, CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, ReachAsk,
@@ -172,8 +173,8 @@ impl Mover {
             let grow = self.stats.radius.x() + RANGE_FLOOR;
             // the query's point: slot 0x520, +0x824
             let (x, y) = (self.moved_at.x(), self.moved_at.y());
-            let rect = [x, y, x, y];
-            world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
+            let rect = Rect::new(x, y, x, y);
+            world.check_known_records(rect.grown(grow))?;
             let owner = world.get(me.id).map(|p| p.player);
             let r = self.stats.radius.x();
             let skip = [me.id, target_id];

@@ -8,6 +8,7 @@
 use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::movement::{Me, Motion, Planning, footprint_gap, footprint_gap_squared};
@@ -467,12 +468,12 @@ pub fn target_left(
         let me = walk.position();
         let (a, b) = (me.ground(), at.ground());
         let grow = walk.world.manager_grow();
-        walk.world.check_known_records([
+        walk.world.check_known_records(Rect::new(
             a.x().min(b.x()) - grow,
             a.y().min(b.y()) - grow,
             a.x().max(b.x()) + grow,
             a.y().max(b.y()) + grow,
-        ])?;
+        ))?;
         let ignore = walk.world.manager_ignore();
         if !walk
             .world

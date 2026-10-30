@@ -18,6 +18,7 @@
 
 use crate::GenieError;
 use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
+use crate::map::Rect;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::masters::ClassId;
@@ -136,7 +137,8 @@ impl World {
     fn farm_under(&self, p: PlayerId, i: usize, class: ClassId) -> Result<Option<i32>, GenieError> {
         let at = self.players.live(p, i)?.position();
         let (x, y) = (at.x() as i32, at.y() as i32);
-        self.spatial.check_known([at.x(), at.y(), at.x(), at.y()])?;
+        self.spatial
+            .check_known(Rect::new(at.x(), at.y(), at.x(), at.y()))?;
         for (id, _) in self.spatial.objects_on(x, y) {
             let (owner, o) = self.object(id).ok_or(GenieError::unsupported(
                 "an object on a tile the slice does not hold",

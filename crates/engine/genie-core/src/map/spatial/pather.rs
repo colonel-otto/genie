@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::spatial::{QUERY_HITS, Spatial, TESTED_KINDS};
+use crate::map::{Rect, Segment};
 use crate::objects::masters::class;
 
 /// A record a pather query met (an entry of `FUN_141051900`'s list): an object's (its id) or a
@@ -12,8 +13,8 @@ use crate::objects::masters::class;
 pub struct Hit {
     /// The record's id (`+0x18`).
     pub id: i32,
-    /// Its box x0, y0, x1, y1.
-    pub bounds: [f32; 4],
+    /// Its box.
+    pub bounds: Rect,
 }
 
 /// The id of tile (`x`, `y`)'s temporary record (`FUN_1410510c0`) and of the tile in a pather's
@@ -56,30 +57,25 @@ impl Spatial {
         let hi_y = if a.y() <= b.y() { b.y() } else { a.y() };
         let g = buffer.unwrap_or(0.0);
         self.put_tile_records(a, b, g, mask);
-        let [w, h] = self.map;
-        let grown = [lo_x - g, lo_y - g, g + hi_x, g + hi_y];
+        let walk_box = Rect::new(lo_x, lo_y, hi_x, hi_y);
+        let grown = walk_box.grown(g);
         let mut hits = Vec::new();
-        if grown[0] < 0.0 || grown[1] < 0.0 || (w as f32) < grown[2] || (h as f32) < grown[3] {
+        if grown.leaves_map(self.map) {
             hits = self.edge_records(grown, QUERY_HITS);
             if first {
                 return Ok(hits);
             }
         }
         self.check_known_records(grown)?;
-        let walk = [a.x(), a.y(), b.x(), b.y()];
-        let meets = |kind: u8, bx: [f32; 4]| {
-            let r = [bx[0] - g, bx[1] - g, g + bx[2], g + bx[3]];
-            lo_x <= r[2]
-                && r[0] <= hi_x
-                && lo_y <= r[3]
-                && r[1] <= hi_y
-                && record_meets_segment(kind, bx, g, walk)
+        let walk = Segment { from: a, to: b };
+        let meets = |kind: u8, bx: Rect| {
+            walk_box.overlaps(bx.grown(g)) && record_meets_segment(kind, bx, g, walk)
         };
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
         for &(y, x) in &self.tile_records {
             let id = tile_record_id(x, y);
-            let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
+            let bx = Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0);
             if self.visits_cell(level, x >> shift, y >> shift, grown)
                 && !ignore.contains(&id)
                 && meets(3, bx)
@@ -167,9 +163,9 @@ impl Spatial {
     #[must_use]
     // the game's (w - w) and (h - h) factors: 0, but NaN times an infinite or NaN term
     #[allow(clippy::eq_op)]
-    pub fn edge_records(&self, rect: [f32; 4], cap: usize) -> Vec<Hit> {
+    pub fn edge_records(&self, rect: Rect, cap: usize) -> Vec<Hit> {
         use crate::math::conversions::cvttss2si;
-        let [x0, y0, x1, y1] = rect;
+        let (x0, y0, x1, y1) = (rect.x0(), rect.y0(), rect.x1(), rect.y1());
         // the manager's map size as floats (+0xa8, +0xac)
         let (w, h) = (self.map[0] as f32, self.map[1] as f32);
         let (dx, dy) = (x1 - x0, y1 - y0);
@@ -179,7 +175,7 @@ impl Spatial {
             let y = cvttss2si(dy * t + y0);
             Hit {
                 id: ((x << 12) | y | 0xff00_0000_u32 as i32),
-                bounds: [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0],
+                bounds: Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0),
             }
         };
         let mut hits = Vec::new();
@@ -276,17 +272,17 @@ impl<E> crate::pathing::tile_path::SegmentTest<E> for SmoothingWalls<'_> {
 /// A straight walk's test against records (`FUN_141052350`, `FUN_141052800`): the walk's box
 /// (its ends' lower and upper x and y) and the query's box, grown by the manager's buffer.
 pub(super) struct WalkTest {
-    pub(super) walk: [f32; 4],
+    pub(super) walk: Segment,
     pub(super) lo: Point,
     pub(super) hi: Point,
     pub(super) grow: f32,
-    pub(super) query: [f32; 4],
+    pub(super) query: Rect,
 }
 
 impl WalkTest {
     /// The walk from `a` to `b` of a unit `grow` wide; None when its grown box leaves a map of
     /// `map` tiles (the query then counts as met).
-    pub(super) fn new(a: Point, b: Point, grow: f32, [w, h]: [i32; 2]) -> Option<Self> {
+    pub(super) fn new(a: Point, b: Point, grow: f32, map: [i32; 2]) -> Option<Self> {
         let lo = Point::new(
             if b.x() <= a.x() { b.x() } else { a.x() },
             if b.y() <= a.y() { b.y() } else { a.y() },
@@ -295,12 +291,12 @@ impl WalkTest {
             if a.x() <= b.x() { b.x() } else { a.x() },
             if a.y() <= b.y() { b.y() } else { a.y() },
         );
-        let query = [lo.x() - grow, lo.y() - grow, grow + hi.x(), grow + hi.y()];
-        if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
+        let query = Rect::between(lo, hi).grown(grow);
+        if query.leaves_map(map) {
             return None;
         }
         Some(Self {
-            walk: [a.x(), a.y(), b.x(), b.y()],
+            walk: Segment { from: a, to: b },
             lo,
             hi,
             grow,
@@ -310,14 +306,9 @@ impl WalkTest {
 
     /// Whether a record's box `bx`, grown by the buffer, meets the walk's box (edges included)
     /// and segment (`FUN_141052e10`).
-    pub(super) fn meets(&self, bx: [f32; 4]) -> bool {
+    pub(super) fn meets(&self, bx: Rect) -> bool {
         let g = self.grow;
-        let grown = [bx[0] - g, bx[1] - g, g + bx[2], g + bx[3]];
-        self.lo.x() <= grown[2]
-            && grown[0] <= self.hi.x()
-            && self.lo.y() <= grown[3]
-            && grown[1] <= self.hi.y()
-            && box_meets_segment(bx, g, self.walk)
+        Rect::between(self.lo, self.hi).overlaps(bx.grown(g)) && box_meets_segment(bx, g, self.walk)
     }
 }
 
@@ -328,21 +319,17 @@ pub(super) fn segments_meet(p1: Point, p2: Point, p3: Point, p4: Point) -> bool 
 }
 
 /// `FUN_141052e10` (the segment test's) and `FUN_1410512f0` (the walk test's) with the box grown
-/// by `r` (the manager's `+0x57`/`+0x58`): the walk `[x0, y0, x1, y1]` crosses one of the grown
-/// box's edges or starts or ends inside it, the box ordered (low and high edges) for the inside
-/// tests.
-pub(super) fn box_meets_segment([bx0, by0, bx1, by1]: [f32; 4], r: f32, walk: [f32; 4]) -> bool {
-    let lo_x = if bx1 < bx0 { bx1 } else { bx0 };
-    let hi_x = if bx0 < bx1 { bx1 } else { bx0 };
-    let lo_y = if by1 < by0 { by1 } else { by0 };
-    let hi_y = if by0 < by1 { by1 } else { by0 };
-    segment_meets_box([bx0, by0, bx1, by1], r, walk, [lo_x, lo_y, hi_x, hi_y])
+/// by `r` (the manager's `+0x57`/`+0x58`): the walk crosses one of the grown box's edges or
+/// starts or ends inside it, the box ordered (low and high edges, [`Rect::ordered`]) for the
+/// inside tests.
+pub(super) fn box_meets_segment(b: Rect, r: f32, walk: Segment) -> bool {
+    segment_meets_box(b, r, walk, b.ordered())
 }
 
 /// A record's test against the walk by its kind (`FUN_141051e00`, `FUN_141052800`): a circle's
 /// (kind 5, `FUN_141051630` and `FUN_141053130`) reads its box as it stands for the inside tests;
 /// the others' (kinds 2, 3, 11, 13) order it ([`box_meets_segment`]).
-pub(super) fn record_meets_segment(kind: u8, b: [f32; 4], r: f32, walk: [f32; 4]) -> bool {
+pub(super) fn record_meets_segment(kind: u8, b: Rect, r: f32, walk: Segment) -> bool {
     if kind == 5 {
         segment_meets_box(b, r, walk, b)
     } else {
@@ -350,7 +337,7 @@ pub(super) fn record_meets_segment(kind: u8, b: [f32; 4], r: f32, walk: [f32; 4]
     }
 }
 
-/// The four edges of box `[bx0, by0, bx1, by1]` grown by `r`, each tested against the walk
+/// The four edges of box `b` grown by `r`, each tested against the walk
 /// (`FUN_141052ca0`: `FUN_141054ec0`), then the inside tests of the walk's ends against `inside`
 /// grown by `r`. `FUN_141052ca0` also lists each crossing (record, id, point) at the manager's
 /// `+0x40` while its `+0x54` is set; `FUN_141051900` sets `+0x54` only for a list at `+0x40`
@@ -359,14 +346,10 @@ pub(super) fn record_meets_segment(kind: u8, b: [f32; 4], r: f32, walk: [f32; 4]
 /// and `FUN_1410560b0`'s zeros, and none of the routines that address it through
 /// `DAT_143f0a088` writes them. So the listing never runs, and the edges' order (the
 /// `FUN_1410512f0` tests all four, `FUN_141052e10` stops at the first crossing) does not show.
-pub(super) fn segment_meets_box(
-    [bx0, by0, bx1, by1]: [f32; 4],
-    r: f32,
-    walk: [f32; 4],
-    [lo_x, lo_y, hi_x, hi_y]: [f32; 4],
-) -> bool {
-    let [wx0, wy0, wx1, wy1] = walk;
-    let (start, end) = (Point::new(wx0, wy0), Point::new(wx1, wy1));
+pub(super) fn segment_meets_box(b: Rect, r: f32, walk: Segment, inside: Rect) -> bool {
+    let (bx0, by0, bx1, by1) = (b.x0(), b.y0(), b.x1(), b.y1());
+    let (lo_x, lo_y, hi_x, hi_y) = (inside.x0(), inside.y0(), inside.x1(), inside.y1());
+    let (start, end) = (walk.from, walk.to);
     let edges = [
         (Point::new(bx0 - r, by0 - r), Point::new(r + bx1, by0 - r)),
         (Point::new(r + bx1, by0 - r), Point::new(r + bx1, r + by1)),

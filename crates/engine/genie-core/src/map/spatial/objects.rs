@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, SearchCache, Spatial, Tiles, WalkTest, tile_record_id,
 };
@@ -266,25 +267,25 @@ impl Spatial {
     /// player's unit (Gaia's animals do not work on objects) may have reached it: a frozen unit
     /// within what it may have moved, or a unit a stopped player's building may have made since,
     /// at the fastest speed of the players' units, each plus the farthest reach.
-    pub fn check_known(&self, rect: [f32; 4]) -> Result<(), GenieError> {
+    pub fn check_known(&self, rect: Rect) -> Result<(), GenieError> {
         self.check_known_of(rect, false, None)
     }
 
     /// [`Spatial::check_known`] for a query over obstruction records and the mesh (the motion
     /// step's and the short pather's): a frozen object without a record (a bird) has no say.
-    pub fn check_known_records(&self, rect: [f32; 4]) -> Result<(), GenieError> {
+    pub fn check_known_records(&self, rect: Rect) -> Result<(), GenieError> {
         self.check_known_of(rect, true, None)
     }
 
     /// [`Spatial::check_known`] for a query over the registry's lists of `classes`: a frozen
     /// object of another class has no say.
-    pub fn check_known_classes(&self, rect: [f32; 4], classes: &[i32]) -> Result<(), GenieError> {
+    pub fn check_known_classes(&self, rect: Rect, classes: &[i32]) -> Result<(), GenieError> {
         self.check_known_of(rect, false, Some(classes))
     }
 
     pub(super) fn check_known_of(
         &self,
-        rect: [f32; 4],
+        rect: Rect,
         records: bool,
         classes: Option<&[i32]>,
     ) -> Result<(), GenieError> {
@@ -297,12 +298,8 @@ impl Spatial {
                 return false;
             }
             p.unknown.is_some_and(|u| {
-                let [x0, y0, x1, y1] = p.bounds();
-                let inside = rect[0] <= x1 + u
-                    && x0 - u <= rect[2]
-                    && rect[1] <= y1 + u
-                    && y0 - u <= rect[3];
-                inside && (0.0 < u || self.touchable(id, [x0, y0, x1, y1]))
+                let bounds = p.bounds();
+                rect.overlaps(bounds.grown(u)) && (0.0 < u || self.touchable(id, bounds))
             })
         });
         if let Some((id, p)) = near {
@@ -312,7 +309,13 @@ impl Spatial {
                     .with("player", p.player)
                     .with(
                         "query",
-                        format_args!("({}, {})..({}, {})", rect[0], rect[1], rect[2], rect[3]),
+                        format_args!(
+                            "({}, {})..({}, {})",
+                            rect.x0(),
+                            rect.y0(),
+                            rect.x1(),
+                            rect.y1()
+                        ),
                     ),
             );
         }
@@ -320,7 +323,7 @@ impl Spatial {
     }
 
     /// Whether a stopped player's unit may have reached the frozen object `id` within `rect`.
-    pub(super) fn touchable(&self, id: i32, rect: [f32; 4]) -> bool {
+    pub(super) fn touchable(&self, id: i32, rect: Rect) -> bool {
         self.frozen().any(|(other, q)| {
             let Some(u) = q.unknown.filter(|_| other != id) else {
                 return false;
@@ -335,11 +338,7 @@ impl Spatial {
                 self.fastest * self.frozen_for.get(&other).copied().unwrap_or(0.0)
             };
             let grow = moved + self.reach;
-            let [x0, y0, x1, y1] = q.bounds();
-            rect[0] <= x1 + grow
-                && x0 - grow <= rect[2]
-                && rect[1] <= y1 + grow
-                && y0 - grow <= rect[3]
+            rect.overlaps(q.bounds().grown(grow))
         })
     }
 
@@ -511,7 +510,12 @@ impl Spatial {
         self.tile_records.iter().any(|&(y, x)| {
             self.visits_cell(level, x >> shift, y >> shift, test.query)
                 && !ignore.contains(&tile_record_id(x, y))
-                && test.meets([x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0])
+                && test.meets(Rect::new(
+                    x as f32,
+                    y as f32,
+                    x as f32 + 1.0,
+                    y as f32 + 1.0,
+                ))
         })
     }
 

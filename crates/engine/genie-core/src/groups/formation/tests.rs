@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -626,7 +627,7 @@ fn the_passability_box_keeps_its_bounds_and_nearest_for_a_nan_place() {
         BVector::new(5.0, 0.0, 5.0),
         BVector::new(3.0, 0.0, 3.0),
     );
-    assert_eq!(bounds, [3.0, 2.0, 5.0, 6.0]);
+    assert_eq!(bounds, Rect::new(3.0, 2.0, 5.0, 6.0));
     assert_eq!(nearest, Some(3));
     let (_, nearest) = passability_box(
         &slots[..2],
@@ -636,7 +637,7 @@ fn the_passability_box_keeps_its_bounds_and_nearest_for_a_nan_place() {
     assert_eq!(nearest, Some(0));
     // a NaN tester place keeps the starting bounds for its part too
     let (bounds, _) = passability_box(&slots[..1], nan, BVector::new(3.0, 0.0, 3.0));
-    assert_eq!(bounds, [4.0, 6.0, 4.0, 6.0]);
+    assert_eq!(bounds, Rect::new(4.0, 6.0, 4.0, 6.0));
     assert_eq!(passability_box(&slots[1..2], nan, BVector::ZERO).1, None);
 }
 

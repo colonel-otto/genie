@@ -9,6 +9,7 @@ use crate::map::spatial::{
     PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED, Spatial, TESTED_KINDS, TRAPPERS,
     players_seen, record_meets_segment, tile_record_id,
 };
+use crate::map::{Rect, Segment};
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::players::PlayerId;
@@ -43,40 +44,30 @@ impl Spatial {
         grow: f32,
         ignore: &[i32],
     ) -> Result<bool, GenieError> {
-        let rect = [
+        let rect = Rect::new(
             if to.x() <= from.x() { to.x() } else { from.x() },
             if to.y() <= from.y() { to.y() } else { from.y() },
             if from.x() <= to.x() { to.x() } else { from.x() },
             if from.y() <= to.y() { to.y() } else { from.y() },
-        ];
-        let query = [
-            rect[0] - grow,
-            rect[1] - grow,
-            grow + rect[2],
-            grow + rect[3],
-        ];
-        let [w, h] = self.map;
-        if (query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3])
-            && !self.edge_records(query, QUERY_HITS).is_empty()
-        {
+        );
+        let query = rect.grown(grow);
+        if query.leaves_map(self.map) && !self.edge_records(query, QUERY_HITS).is_empty() {
             return Ok(true);
         }
         self.check_known_records(query)?;
-        let walk = [from.x(), from.y(), to.x(), to.y()];
-        let meets = |kind: u8, bx: [f32; 4]| {
-            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
-            rect[0] <= grown[2]
-                && grown[0] <= rect[2]
-                && rect[1] <= grown[3]
-                && grown[1] <= rect[3]
-                && record_meets_segment(kind, bx, grow, walk)
+        let walk = Segment { from, to };
+        let meets = |kind: u8, bx: Rect| {
+            rect.overlaps(bx.grown(grow)) && record_meets_segment(kind, bx, grow, walk)
         };
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
         let tile = self.tile_records.iter().any(|&(y, x)| {
             self.visits_cell(level, x >> shift, y >> shift, query)
                 && !ignore.contains(&tile_record_id(x, y))
-                && meets(3, [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0])
+                && meets(
+                    3,
+                    Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0),
+                )
         });
         if tile {
             return Ok(true);
@@ -128,7 +119,7 @@ impl Spatial {
     /// Fails when a frozen object of `player` that may have moved sees, or saw, near `rect`: the
     /// player's visible map there, and the registry's records the objects' masks keep, may differ
     /// from the game's (its sight, plus a tile, beyond what it may have moved).
-    pub fn check_sight(&self, player: PlayerId, rect: [f32; 4]) -> Result<(), GenieError> {
+    pub fn check_sight(&self, player: PlayerId, rect: Rect) -> Result<(), GenieError> {
         let Some(v) = self.sight.as_ref() else {
             return Ok(());
         };
@@ -141,11 +132,7 @@ impl Spatial {
                 return false;
             }
             let grow = u + los as f32 + 1.0;
-            let [x0, y0, x1, y1] = p.bounds();
-            rect[0] <= x1 + grow
-                && x0 - grow <= rect[2]
-                && rect[1] <= y1 + grow
-                && y0 - grow <= rect[3]
+            rect.overlaps(p.bounds().grown(grow))
         });
         if near {
             return Err(GenieError::unsupported(
@@ -240,12 +227,12 @@ impl Spatial {
             self.search_cache.hold(search.at);
             let radius = search.radius.min(1000.0);
             let (rx, ry) = (search.size.x(), search.size.y());
-            let rect = [
+            let rect = Rect::new(
                 (x - (radius + rx)) - 0.001,
                 (y - (radius + ry)) - 0.001,
                 x + (radius + rx) + 0.001,
                 y + (radius + ry) + 0.001,
-            ];
+            );
             self.check_known_classes(rect, search.classes)?;
             self.check_sight(player, rect)?;
             if let Some(lists) = r.visible_units(VisibleQuery {

@@ -4,6 +4,7 @@
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::math::fmath::BVector;
 use crate::objects::masters::class;
 use crate::world::slots::CheckedIndex;
@@ -44,7 +45,7 @@ impl Spatial {
         let half = size / 2;
         let (cx, cy) = (tx as i32, ty as i32);
         let (fx, fy) = ((cx - half) as f32, (cy - half) as f32);
-        self.check_known([fx, fy, fx + size as f32, fy + size as f32])?;
+        self.check_known(Rect::new(fx, fy, fx + size as f32, fy + size as f32))?;
         let (ox, oy) = (half - cx, half - cy);
         let (x0, y0) = ((tx - rx) as i32, (ty - ry) as i32);
         let (x1, y1) = (((rx + tx) - EDGE) as i32, ((ry + ty) - EDGE) as i32);
@@ -123,7 +124,7 @@ impl Spatial {
         use crate::objects::masters::master_type::BUILDING;
         let (sx, sy) = (site.position.x(), site.position.y());
         let (rx, ry) = (site.radius.x(), site.radius.y());
-        self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
+        self.check_known(Rect::new(sx - rx, sy - ry, sx + rx, sy + ry))?;
         let counts = |id: i32, o: &Placed| {
             looks.get(&id).is_none_or(|l| {
                 let alive = l.state < 3 || (l.kind != BUILDING && l.state < 7);
@@ -158,7 +159,7 @@ impl Spatial {
     pub fn footprint_clearing(&self, site_id: i32, site: &Placed) -> Result<Vec<i32>, GenieError> {
         let (sx, sy) = (site.position.x(), site.position.y());
         let (rx, ry) = (site.radius.x(), site.radius.y());
-        self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
+        self.check_known(Rect::new(sx - rx, sy - ry, sx + rx, sy + ry))?;
         Ok(self
             .objects
             .iter()
@@ -280,24 +281,17 @@ impl Spatial {
         ignore: &[i32],
         still: bool,
     ) -> Result<bool, GenieError> {
-        let (x, y) = (point.x(), point.y());
-        let [w, h] = self.map;
-        let rect = [x - grow, y - grow, grow + x, grow + y];
-        if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
-            && !self.edge_records(rect, QUERY_HITS).is_empty()
-        {
+        let rect = Rect::between(point, point).grown(grow);
+        if rect.leaves_map(self.map) && !self.edge_records(rect, QUERY_HITS).is_empty() {
             return Ok(true);
         }
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
         let tile = self.tile_records.iter().any(|&(ty, tx)| {
-            let [x0, y0, x1, y1] = [tx as f32, ty as f32, tx as f32 + 1.0, ty as f32 + 1.0];
+            let bx = Rect::new(tx as f32, ty as f32, tx as f32 + 1.0, ty as f32 + 1.0);
             self.visits_cell(level, tx >> shift, ty >> shift, rect)
                 && !ignore.contains(&tile_record_id(tx, ty))
-                && x <= x1 + grow
-                && x0 - grow <= x
-                && y <= grow + y1
-                && y0 - grow <= y
+                && bx.grown(grow).holds(point)
         });
         if tile {
             return Ok(true);
@@ -320,8 +314,7 @@ impl Spatial {
         ignore: &[i32],
         still: bool,
     ) -> Result<bool, GenieError> {
-        let (x, y) = (point.x(), point.y());
-        let rect = [x - grow, y - grow, grow + x, grow + y];
+        let rect = Rect::between(point, point).grown(grow);
         self.check_known_records(rect)?;
         Ok(self.records_in(rect).any(|(id, p)| {
             let Some(o) = p.obstruction.filter(|_| !ignore.contains(&id)) else {
@@ -333,8 +326,7 @@ impl Spatial {
             if !self.visits(p, o.kind, rect) {
                 return false;
             }
-            let [x0, y0, x1, y1] = p.bounds();
-            x <= x1 + grow && x0 - grow <= x && y <= grow + y1 && y0 - grow <= y
+            p.bounds().grown(grow).holds(point)
         }))
     }
 
@@ -356,24 +348,15 @@ impl Spatial {
     /// segment and shrinks moving allies' boxes (master `+0x780`, at most 1); every hit is a
     /// candidate, so no candidate means no hit.
     #[must_use]
-    pub fn obstruction_candidates(&self, rect: [f32; 4], grow: f32, ignore: &[i32]) -> Vec<i32> {
-        let query = [
-            rect[0] - grow,
-            rect[1] - grow,
-            grow + rect[2],
-            grow + rect[3],
-        ];
+    pub fn obstruction_candidates(&self, rect: Rect, grow: f32, ignore: &[i32]) -> Vec<i32> {
+        let query = rect.grown(grow);
         self.records_in(query)
             .filter(|(id, p)| {
                 p.obstruction.is_some_and(|o| {
                     TESTED_KINDS.contains(&o.kind) && self.visits(p, o.kind, query)
                 }) && !ignore.contains(id)
             })
-            .filter(|(_, p)| {
-                let [x0, y0, x1, y1] = p.bounds();
-                let (x0, y0, x1, y1) = (x0 - grow, y0 - grow, grow + x1, grow + y1);
-                rect[0] <= x1 && x0 <= rect[2] && rect[1] <= y1 && y0 <= rect[3]
-            })
+            .filter(|(_, p)| rect.overlaps(p.bounds().grown(grow)))
             .map(|(id, _)| id)
             .collect()
     }

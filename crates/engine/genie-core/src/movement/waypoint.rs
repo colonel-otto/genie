@@ -3,6 +3,7 @@
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::map::spatial::{Spatial, WalkQuery};
 use crate::math::fmath::BVector;
 use crate::movement::{
@@ -249,12 +250,12 @@ impl Mover {
         // the query starts at +0x824, where the unit last moved to
         let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
         let grow = rx * STRAIGHT_GROW;
-        world.check_known_records([
+        world.check_known_records(Rect::new(
             from.x().min(to.x()) - grow,
             from.y().min(to.y()) - grow,
             from.x().max(to.x()) + grow,
             from.y().max(to.y()) + grow,
-        ])?;
+        ))?;
         let blocked = world.segment_blocked(from, to, grow, self.stats.restriction_mask, &ignore);
         // FUN_14114cc60 resets the buffer it set for the query (FUN_1410562d0 with 0)
         world.set_manager_buffer(None);
@@ -287,13 +288,8 @@ impl Mover {
         let ignore = world.query_ignore(&[me.id, target]);
         // the query starts at +0x824, where the unit last moved to
         let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
-        let rect = [
-            from.x().min(to.x()),
-            from.y().min(to.y()),
-            from.x().max(to.x()),
-            from.y().max(to.y()),
-        ];
-        world.check_known_records([rect[0] - rx, rect[1] - rx, rect[2] + rx, rect[3] + rx])?;
+        let rect = Rect::spanning(from, to);
+        world.check_known_records(rect.grown(rx))?;
         if world.tiles_block(from, to, rx, self.stats.restriction_mask) {
             // FUN_14114cc60 resets the buffer it set for the query (FUN_1410562d0 with 0)
             world.set_manager_buffer(None);

@@ -2,6 +2,7 @@
 
 use crate::map::Footprint;
 use crate::map::Point;
+use crate::map::Rect;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -119,12 +120,12 @@ pub(crate) fn footprint_clearing(
     // choice, which reads the trees' hit points, wants the tiles known; the constructor's reads
     // only masters and owners, which they do not change
     if site.trees {
-        world.check_known([
+        world.check_known(Rect::new(
             f32::from(x0),
             f32::from(y0),
             f32::from(x1) + 1.0,
             f32::from(y1) + 1.0,
-        ])?;
+        ))?;
     }
     let mut cleared = Vec::new();
     for y in y0..=y1 {

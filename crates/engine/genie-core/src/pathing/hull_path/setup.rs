@@ -1,6 +1,7 @@
 //! The pather's construction ([`HullPather`]) and `canQuickPath` (object slot 0x3e0).
 
 use crate::map::Footprint;
+use crate::map::Rect;
 use std::collections::BTreeSet;
 
 use crate::GenieError;
@@ -140,7 +141,7 @@ impl<'w> HullPather<'w> {
             goal: Point::new(0.0, 0.0),
             exits: vec![Waypoints::default(); PATHS],
             entrances: vec![Waypoints::default(); PATHS],
-            bounds: [0.0; 4],
+            bounds: Rect::default(),
         }
     }
 

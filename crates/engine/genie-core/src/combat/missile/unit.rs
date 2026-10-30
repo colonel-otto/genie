@@ -5,6 +5,7 @@ use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Rect;
 use crate::map::spatial::WalkQuery;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
@@ -261,19 +262,9 @@ impl Unit {
         let at = self.position();
         let from = Point::new(hold(old.x(), w), hold(old.y(), h));
         let to = Point::new(hold(at.x(), w), hold(at.y(), h));
-        let rect = [
-            from.x().min(to.x()),
-            from.y().min(to.y()),
-            from.x().max(to.x()),
-            from.y().max(to.y()),
-        ];
+        let rect = Rect::spanning(from, to);
         let grow = stats.radius.x();
-        c.w.spatial.check_known_records([
-            rect[0] - grow,
-            rect[1] - grow,
-            rect[2] + grow,
-            rect[3] + grow,
-        ])?;
+        c.w.spatial.check_known_records(rect.grown(grow))?;
         let crossed = c.w.spatial.walk_hits(WalkQuery {
             start: from,
             end: to,
