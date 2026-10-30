@@ -32,7 +32,8 @@ impl World {
             return Ok(());
         }
         let mut found = Vec::new();
-        for &[x, y] in tiles {
+        for &pair in tiles {
+            let (x, y) = (pair.x(), pair.y());
             for (id, _) in self.spatial.objects_on(x, y) {
                 let Some((owner, unit)) = self.object(id) else {
                     continue;

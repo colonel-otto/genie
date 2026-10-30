@@ -23,7 +23,8 @@ impl World {
         let Some(tiles) = self.spatial.sight.as_mut().map(Visibility::take_ai_tiles) else {
             return;
         };
-        for (player, [x, y]) in tiles {
+        for (player, pair) in tiles {
+            let (x, y) = (pair.x(), pair.y());
             if let Some(module) = self.ai.get_mut(player) {
                 module.explored_tile(x, y);
             }

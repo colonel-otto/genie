@@ -49,14 +49,14 @@ impl World {
                 .iter_mut()
                 .zip(corner_tiles(position, site_master.radius, made.radius))
         {
-            for &(x, y) in &tiles {
-                let (fx, fy) = (x as f32, y as f32);
+            for t in &tiles {
+                let (fx, fy) = (t.x() as f32, t.y() as f32);
                 self.spatial
                     .check_known(Rect::new(fx, fy, fx + 1.0, fy + 1.0))?;
             }
-            *wall = tiles.iter().all(|&(x, y)| {
+            *wall = tiles.iter().all(|t| {
                 self.spatial
-                    .object_on_tile(x, y, |o| o.class == class::WALL)
+                    .object_on_tile(t.x(), t.y(), |o| o.class == class::WALL)
             });
         }
         let site = Site {

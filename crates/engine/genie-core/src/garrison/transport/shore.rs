@@ -10,6 +10,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::terrain::Terrain;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Well512;
@@ -189,7 +190,7 @@ pub(crate) struct MapShore<'a> {
     pub(super) tiles: &'a crate::map::spatial::Tiles,
     pub(super) map: GridSize,
     pub(super) restriction: Option<usize>,
-    pub(super) tile: [i32; 2],
+    pub(super) tile: Tile,
 }
 
 impl<'a> MapShore<'a> {
@@ -216,7 +217,7 @@ impl<'a> MapShore<'a> {
             tiles: spatial.tiles(),
             map: spatial.map,
             restriction: usize::try_from(restriction).ok(),
-            tile: [cvttss2si(position.x()), cvttss2si(position.y())],
+            tile: Tile::new(cvttss2si(position.x()), cvttss2si(position.y())),
         })
     }
 

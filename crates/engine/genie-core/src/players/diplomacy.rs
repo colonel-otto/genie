@@ -13,6 +13,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
@@ -282,7 +283,7 @@ impl World {
             return Ok(());
         }
         if let Some(v) = self.spatial.sight.as_mut() {
-            let tile = [cvttss2si(position.x()), cvttss2si(position.y())];
+            let tile = Tile::new(cvttss2si(position.x()), cvttss2si(position.y()));
             if let Some(list) = v.new_tiles.get_mut(q.index()) {
                 list.push(tile);
             }
@@ -335,7 +336,7 @@ impl World {
                     let seen =
                         (visible & word & PLAYER_BITS) != 0 || (explored & word & PLAYER_BITS) != 0;
                     if seen && let Some(list) = sight.new_tiles.get_mut(p.index()) {
-                        list.push([x, y]);
+                        list.push(Tile::new(x, y));
                     }
                 }
             }

@@ -3,6 +3,7 @@ use crate::combat::damage::Victim;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -212,12 +213,12 @@ fn the_movement_damage_timer_runs_down_to_0_and_then_hits() {
 fn the_reach_is_the_truncated_range_about_the_truncated_place_within_the_map() {
     assert_eq!(
         reach(Position::new(10.7, 20.2, 0.0), 2.9, GridSize::new(120, 120)),
-        ([8, 18], [12, 22])
+        (Tile::new(8, 18), Tile::new(12, 22))
     );
     // from 0, and up to the map's size itself
     assert_eq!(
         reach(Position::new(1.5, 118.9, 0.0), 3.0, GridSize::new(120, 120)),
-        ([0, 115], [4, 120])
+        (Tile::new(0, 115), Tile::new(4, 120))
     );
     // a NaN range is the integer indefinite
     // (5 less it wraps to a negative value, 0; 5 plus it stays below the map's size): no
@@ -227,8 +228,8 @@ fn the_reach_is_the_truncated_range_about_the_truncated_place_within_the_map() {
         f32::NAN,
         GridSize::new(120, 120),
     );
-    assert_eq!(low, [0, 0]);
-    assert_eq!(high, [i32::MIN + 5; 2]);
+    assert_eq!(low, Tile::new(0, 0));
+    assert_eq!(high, Tile::new(i32::MIN + 5, i32::MIN + 5));
 }
 
 fn hitter() -> Hitter {

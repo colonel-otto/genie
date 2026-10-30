@@ -2,6 +2,7 @@
 //! times, ghosts, AI settings and history, and the garrisons' firepower.
 
 use genie_core::map::GridSize;
+use genie_core::map::Tile;
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
@@ -226,7 +227,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                 i,
                 genie_core::movement::explore::InfluenceMap {
                     size: GridSize::new(m.x_size_value, m.y_size_value),
-                    origin: [m.x_reference_point_value, m.y_reference_point_value],
+                    origin: Tile::new(m.x_reference_point_value, m.y_reference_point_value),
                     limit: m.unchangeable_limit_value,
                     cells,
                 },
@@ -503,7 +504,7 @@ pub(super) fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::visio
                 original_master: MasterId::of_data(d.long_val_2 as i16),
                 original_owner: usize::try_from(d.doppled_player).unwrap_or(0),
                 position: Position::new(s.t_x, s.t_y, s.t_z),
-                tile: [s.t_x as i32, s.t_y as i32],
+                tile: Tile::new(s.t_x as i32, s.t_y as i32),
                 footprint: d.multi_unified_points,
                 bits: 0,
                 cant_see: d.cant_see_bits,
@@ -593,7 +594,7 @@ pub fn ai_module(
             height: info.map_height,
             path_map: genie_core::movement::explore::InfluenceMap {
                 size: GridSize::new(grid.x_size_value, grid.y_size_value),
-                origin: [grid.x_reference_point_value, grid.y_reference_point_value],
+                origin: Tile::new(grid.x_reference_point_value, grid.y_reference_point_value),
                 limit: grid.unchangeable_limit_value,
                 cells,
             },

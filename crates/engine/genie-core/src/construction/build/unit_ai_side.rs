@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
+use crate::map::Tile;
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
@@ -127,7 +128,7 @@ impl UnitView<'_, '_> {
             }
             Ok(None)
         };
-        Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on)?.unwrap_or(-1))
+        Ok(crate::unit_ai::flood_search(Tile::new(ux, uy), r, foundation_on)?.unwrap_or(-1))
     }
 
     /// The base handler's case 0x216: the unit's closest spot beside the foundation `site`

@@ -1,6 +1,7 @@
 use crate::GenieError;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::movement::explore::Area;
 use crate::movement::explore::InfluenceMap;
@@ -206,7 +207,7 @@ fn a_civilians_flood_picks_the_first_tile_no_search_touched() {
             (GridSize::new(6, 6), &mut rng),
         )
         .unwrap();
-    assert_eq!(picked, Some([3, 0]));
+    assert_eq!(picked, Some(Tile::new(3, 0)));
     assert_eq!(m.path_map.get(3, 0), Some(EXPLORED));
 }
 
@@ -225,7 +226,7 @@ fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
             (GridSize::new(6, 6), &mut rng),
         )
         .unwrap();
-    assert_eq!(picked, Some([2, 0]));
+    assert_eq!(picked, Some(Tile::new(2, 0)));
     let mut civilian = info(6, EXPLORED);
     civilian.path_map.set(2, 0, PUNTED);
     let none = civilian
@@ -259,7 +260,7 @@ fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
         )
         .unwrap()
     };
-    assert_eq!(row(None, None), Some([3, 0]));
+    assert_eq!(row(None, None), Some(Tile::new(3, 0)));
     assert_eq!(row(Some([3, 0]), None), None);
     assert_eq!(row(None, Some([3, 0])), None);
     // a wanted tile in another zone ends the branch; an unwanted one does not
@@ -276,7 +277,7 @@ fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
             (GridSize::new(4, 1), &mut rng),
         )
         .unwrap();
-    assert_eq!(picked, Some([3, 0]));
+    assert_eq!(picked, Some(Tile::new(3, 0)));
 }
 
 /// The start tile is not marked met: a neighbour meets it again.
@@ -320,7 +321,7 @@ fn an_unreachable_tile_is_punted_and_the_search_starts_from_the_unit() {
         )
         .unwrap();
     assert_eq!(m.path_map.get(2, 2), Some(PUNTED));
-    assert_eq!(picked, Some([5, 5]));
+    assert_eq!(picked, Some(Tile::new(5, 5)));
     assert_eq!(m.path_map.get(5, 5), Some(EXPLORED));
 }
 
@@ -352,7 +353,12 @@ fn a_punt_from_the_units_place_picks_a_corner_of_the_lowest_scored_quadrant() {
     }
     let corner = shadow.rand15() & 3;
     // column 1 starts at x 2, row 2 at y 4; each quadrant is 2 wide and high
-    let expected = [[2, 4], [2, 5], [3, 5], [3, 4]][corner as usize];
+    let expected = [
+        Tile::new(2, 4),
+        Tile::new(2, 5),
+        Tile::new(3, 5),
+        Tile::new(3, 4),
+    ][corner as usize];
     assert_eq!(picked, expected);
     assert_eq!(rng.rand15(), shadow.rand15());
 }
@@ -406,20 +412,20 @@ fn tile_uncovered_is_false_off_the_map_and_for_unexplored_and_dead_ends() {
 #[test]
 fn a_ring_pushes_the_points_on_the_map_and_the_stack_gives_minus_one_when_empty() {
     let mut m = info(20, UNEXPLORED);
-    assert_eq!(m.top_point(), [-1, -1]);
-    assert_eq!(m.pop_point(), [-1, -1]);
+    assert_eq!(m.top_point(), Tile::new(-1, -1));
+    assert_eq!(m.pop_point(), Tile::new(-1, -1));
     m.push_ring(5.0, Point::new(10.7, 10.2));
     assert_eq!(m.search.len(), 8);
     // the centre truncates to (10, 10); angle 0 is 5 east, π/2's sine is 1
-    assert_eq!(m.search[0], [15, 10]);
-    assert_eq!(m.search[2], [10, 15]);
+    assert_eq!(m.search[0], Tile::new(15, 10));
+    assert_eq!(m.search[2], Tile::new(10, 15));
     assert_eq!(m.top_point(), m.search[7]);
     let top = m.pop_point();
     assert_eq!(m.search.len(), 7);
-    assert_ne!(top, [-1, -1]);
+    assert_ne!(top, Tile::new(-1, -1));
     // a ring at a corner keeps only the points on the map
     let mut corner = info(20, UNEXPLORED);
     corner.push_ring(5.0, Point::new(1.0, 1.0));
     assert!(corner.search.len() < 8);
-    assert!(corner.search.iter().all(|p| 0 <= p[0] && 0 <= p[1]));
+    assert!(corner.search.iter().all(|p| 0 <= p.x() && 0 <= p.y()));
 }

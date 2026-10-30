@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::GridSize;
+use crate::map::Tile;
 use crate::map::{Rect, Segment};
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -413,7 +414,7 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
     // the routine sets the ignore list, resets the buffer and removes its records
     assert_eq!(s.manager_ignore(), Vec::<i32>::new());
     assert_eq!(s.manager_buffer(), None);
-    assert_eq!(s.tile_records(), Vec::<[i32; 2]>::new());
+    assert_eq!(s.tile_records(), Vec::<Tile>::new());
     let none = s
         .line_query(Point::new(2.0, 5.5), Point::new(8.0, 5.5), 0.2, None, &[7])
         .unwrap();
@@ -1189,7 +1190,7 @@ fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
         )
         .unwrap()
     );
-    assert_eq!(s.tile_records(), vec![[5, 5]]);
+    assert_eq!(s.tile_records(), vec![Tile::new(5, 5)]);
     let hits = s.pather_hits(a, b, Some(0.5), 1, &[]).unwrap();
     assert_eq!(
         hits,
@@ -1286,25 +1287,25 @@ fn a_tile_record_blocks_later_walks_until_the_records_are_cleared() {
     );
     // alone, the second walk's tiles stop at y = 91 and its test removes its records
     assert!(!s.segment_blocked(second.0, second.1, 0.5, 1, &[]));
-    assert_eq!(s.tile_records(), Vec::<[i32; 2]>::new());
+    assert_eq!(s.tile_records(), Vec::<Tile>::new());
     s.put_tile_records(first.0, first.1, 0.5, 1);
-    assert_eq!(s.tile_records(), vec![[78, 90]]);
+    assert_eq!(s.tile_records(), vec![Tile::new(78, 90)]);
     assert!(s.segment_meets(second.0, second.1, 0.5, &[]));
     // the record's id in the ignore list leaves it out
     assert!(!s.segment_meets(second.0, second.1, 0.5, &[tile_record_id(78, 90)]));
     // a tile that holds a record takes no second
     s.put_tile_records(second.0, Point::new(79.0, 89.0), 0.5, 1);
-    assert_eq!(s.tile_records(), vec![[78, 90]]);
+    assert_eq!(s.tile_records(), vec![Tile::new(78, 90)]);
     s.clear_tile_records();
     assert!(!s.segment_meets(second.0, second.1, 0.5, &[]));
     // tile (78, 87)'s grown box touches (77.5, 88.5), but its cell (y 80..87) is not one the
     // walk from y 88.5 visits (y from 88)
     s.put_tile_records(Point::new(78.5, 86.5), Point::new(78.5, 87.5), 0.0, 1);
-    assert_eq!(s.tile_records(), vec![[78, 87]]);
+    assert_eq!(s.tile_records(), vec![Tile::new(78, 87)]);
     assert!(!s.segment_meets(Point::new(77.5, 88.5), Point::new(76.5, 89.5), 0.5, &[]));
     assert!(s.segment_meets(Point::new(77.5, 88.0), Point::new(76.5, 89.5), 0.5, &[]));
     s.clear_tile_records();
-    assert_eq!(s.tile_records(), Vec::<[i32; 2]>::new());
+    assert_eq!(s.tile_records(), Vec::<Tile>::new());
 }
 
 #[test]

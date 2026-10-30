@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::GroundOffset;
 use crate::map::Point;
+use crate::map::Tile;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Lifecycle;
@@ -20,11 +21,26 @@ use std::collections::BTreeMap;
 /// the quarter its step points into: up-left, down-left, and the rest.
 #[test]
 fn the_tiles_beside_a_diagonal_follow_its_quarter() {
-    assert_eq!(beside_diagonal(5, 5, -1, -1), ([6, 5], [5, 6]));
-    assert_eq!(beside_diagonal(5, 5, -1, 1), ([5, 4], [6, 5]));
-    assert_eq!(beside_diagonal(5, 5, 0, 1), ([4, 5], [5, 6]));
-    assert_eq!(beside_diagonal(5, 5, 1, -1), ([4, 5], [5, 6]));
-    assert_eq!(beside_diagonal(5, 5, 1, 1), ([5, 4], [4, 5]));
+    assert_eq!(
+        beside_diagonal(5, 5, -1, -1),
+        (Tile::new(6, 5), Tile::new(5, 6))
+    );
+    assert_eq!(
+        beside_diagonal(5, 5, -1, 1),
+        (Tile::new(5, 4), Tile::new(6, 5))
+    );
+    assert_eq!(
+        beside_diagonal(5, 5, 0, 1),
+        (Tile::new(4, 5), Tile::new(5, 6))
+    );
+    assert_eq!(
+        beside_diagonal(5, 5, 1, -1),
+        (Tile::new(4, 5), Tile::new(5, 6))
+    );
+    assert_eq!(
+        beside_diagonal(5, 5, 1, 1),
+        (Tile::new(5, 4), Tile::new(4, 5))
+    );
 }
 
 /// An object of `master` (class `class`, radius `r`, `buildable` on) of player 1 at `x`, `y`.

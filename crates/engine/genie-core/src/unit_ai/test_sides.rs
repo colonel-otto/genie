@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::{
@@ -102,15 +103,11 @@ impl UnitSide for Vec<Effect> {
         Err(NO_WORLD)
     }
 
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(NO_WORLD)
     }
 
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(NO_WORLD)
     }
 
@@ -212,11 +209,11 @@ impl UnitSide for With<'_> {
         &mut self,
         ai: &UnitAi,
         rng: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    ) -> Result<Option<Tile>, GenieError> {
         self.side.seek_unexplored(ai, rng)
     }
 
-    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<Tile>, GenieError> {
         self.side.seek_beyond_sight(rng)
     }
 

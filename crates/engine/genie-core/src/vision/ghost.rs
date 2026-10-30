@@ -16,6 +16,7 @@
 
 use crate::GenieError;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -94,7 +95,7 @@ pub struct Ghost {
     /// Its place.
     pub position: Position,
     /// Its tile (`+0x7dc`, `+0x7e0`).
-    pub tile: [i32; 2],
+    pub tile: Tile,
     /// The original's UMV entry (`+0x7f6`, the save's `Multi_Unified_Points`): the tiles of a
     /// building's footprint it follows besides its own; 0 for none.
     pub footprint: u8,
@@ -205,8 +206,8 @@ impl World {
     }
 
     /// The tile (`(int)x`, `(int)y`) of a place, as the game's callers truncate it.
-    fn tile_at(position: Position) -> [i32; 2] {
-        [cvttss2si(position.x()), cvttss2si(position.y())]
+    fn tile_at(position: Position) -> Tile {
+        Tile::new(cvttss2si(position.x()), cvttss2si(position.y()))
     }
 
     /// `FUN_141091310`: the watched list of player `owner` lets object `id` go (the last entry
@@ -249,7 +250,8 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        let [x, y] = Self::tile_at(u.position());
+        let pair = Self::tile_at(u.position());
+        let (x, y) = (pair.x(), pair.y());
         let _ = self.watch(p, id, x, y)?;
         Ok(())
     }
@@ -295,7 +297,8 @@ impl World {
                 let m = u.master(&self.masters, p)?;
                 let (state, kind, ghosts, position) =
                     (u.life.state, m.kind, m.ghost_on_death, u.position());
-                let [x, y] = Self::tile_at(position);
+                let pair = Self::tile_at(position);
+                let (x, y) = (pair.x(), pair.y());
                 // the static load's watch of a dead object (FUN_14119df60)
                 if ghosts == LEAVES_GHOSTS && 2 < state {
                     let _ = self.watch(p, id, x, y)?;
@@ -342,7 +345,8 @@ impl World {
         if id < 0 || u.master(&self.masters, p)?.ghost_on_death != LEAVES_GHOSTS {
             return Ok(());
         }
-        let [x, y] = Self::tile_at(position);
+        let pair = Self::tile_at(position);
+        let (x, y) = (pair.x(), pair.y());
         let bits = self.tile_bits(x, y)?;
         let (mut explored, mut visible) = (bits >> 32, bits & 0x1ff_ffff);
         let mut i = 0usize;
@@ -518,7 +522,7 @@ impl World {
     /// The bits of the ghost's tile and, for a building's ghost, of its footprint's tiles.
     fn ghost_bits(&self, g: &Ghost) -> Result<u64, GenieError> {
         let (px, py) = (g.position.x(), g.position.y());
-        let mut bits = self.tile_bits(g.tile[0], g.tile[1])?;
+        let mut bits = self.tile_bits(g.tile.x(), g.tile.y())?;
         if g.footprint != 0 {
             let offsets = self
                 .spatial
@@ -529,7 +533,8 @@ impl World {
                 .ok_or(GenieError::unsupported(
                     "a building's ghost without its UMV entry",
                 ))?;
-            for [ox, oy] in offsets {
+            for pair in offsets {
+                let (ox, oy) = (pair.dx(), pair.dy());
                 bits |= self.tile_bits(px as i32 + ox, py as i32 + oy)?;
             }
         }
@@ -572,7 +577,7 @@ impl World {
             {
                 let original_mask = self.cell_bits(Cell::Mask(o))?;
                 if original_mask & viewer == 0
-                    && self.tile_bits(g.tile[0], g.tile[1])? & viewer == 0
+                    && self.tile_bits(g.tile.x(), g.tile.y())? & viewer == 0
                 {
                     seen = true;
                 }
@@ -666,6 +671,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::TileOffset;
     use crate::objects::masters::ids;
     use crate::objects::masters::ids::HOUSE;
     use crate::objects::masters::master_type::DOPPELGANGER;
@@ -806,7 +812,7 @@ mod tests {
         assert_eq!((g.original_owner, g.original_master), (0, Some(MINE)));
         assert_eq!(
             (g.tile, g.state, g.cant_see, g.footprint),
-            ([1, 2], 2, 0, 0)
+            (Tile::new(1, 2), 2, 0, 0)
         );
         // then the owner watches its tile at the tile's bits
         assert_eq!(
@@ -887,7 +893,7 @@ mod tests {
             original_master: Some(HOUSE),
             original_owner: 1,
             position,
-            tile: [position.x() as i32, position.y() as i32],
+            tile: Tile::new(position.x() as i32, position.y() as i32),
             footprint: 0,
             bits: 0,
             cant_see: 0,
@@ -902,7 +908,7 @@ mod tests {
             twin(-24, 9, Position::new(2.5, 1.5, 0.0), 7),
             // the tile list holds a ghost by its place, whatever its +0x7dc/+0x7e0 say
             Ghost {
-                tile: [0, 3],
+                tile: Tile::new(0, 3),
                 ..twin(-25, 9, Position::new(2.2, 1.2, 0.0), 2)
             },
         ];
@@ -928,7 +934,7 @@ mod tests {
             original_master: Some(HOUSE),
             original_owner: 1,
             position: Position::new(2.5, 1.5, 0.0),
-            tile: [2, 1],
+            tile: Tile::new(2, 1),
             footprint: 0,
             bits: 0,
             cant_see: 0,
@@ -966,7 +972,7 @@ mod tests {
             original_master: Some(HOUSE),
             original_owner: 1,
             position: Position::new(2.5, 1.5, 0.0),
-            tile: [2, 1],
+            tile: Tile::new(2, 1),
             footprint,
             bits: 0,
             cant_see: 0,
@@ -1046,7 +1052,7 @@ mod tests {
         let sight = t.spatial.sight.as_mut().unwrap();
         sight.extents = vec![crate::vision::visibility::Extent {
             guid: 1,
-            offsets: vec![[0, 0], [1, 0]],
+            offsets: vec![TileOffset::new(0, 0), TileOffset::new(1, 0)],
             capacity: 2,
         }];
         let mut registry = crate::vision::registry::Registry::default();

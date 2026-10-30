@@ -19,6 +19,7 @@ use crate::map::Offset;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::Tile;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
 use crate::math::rng::{Stream, Streams, Well512};
@@ -1200,7 +1201,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
         capacities: vec![32; 5],
         lists: vec![Vec::new(); 5],
     };
-    v.new_tiles[1] = vec![[11, 10], [10, 10]];
+    v.new_tiles[1] = vec![Tile::new(11, 10), Tile::new(10, 10)];
     t.process_new_tiles(PlayerId::new(1)).unwrap();
     let rec = |id, x, y| VisibleResource {
         id,

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover, Planning};
@@ -274,8 +275,9 @@ pub(crate) const TOWN_CENTRES: [MasterId; 2] = [MasterId::named(109), MasterId::
 /// master (`player+0x18`, `FUN_14104f560`: those of master 109, then 444), as its tile. The
 /// index's order within a master is not held: two objects of the first master found are not
 /// modelled.
-pub(crate) fn town_centre(units: OthersRef<'_>) -> Result<Option<[i32; 2]>, GenieError> {
-    Ok(town_centre_unit(units)?.map(|u| [u.position().x() as i32, u.position().y() as i32]))
+pub(crate) fn town_centre(units: OthersRef<'_>) -> Result<Option<Tile>, GenieError> {
+    Ok(town_centre_unit(units)?
+        .map(|u| Tile::new(u.position().x() as i32, u.position().y() as i32)))
 }
 
 /// [`town_centre`] as the object.

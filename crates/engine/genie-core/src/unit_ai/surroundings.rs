@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -61,30 +62,30 @@ impl Found {
 ///
 /// The first error `test` returns.
 pub fn flood_search(
-    at: (i32, i32),
+    at: Tile,
     r: i32,
     mut test: impl FnMut(i32, i32) -> Result<Option<i32>, GenieError>,
 ) -> Result<Option<i32>, GenieError> {
-    let (ux, uy) = at;
+    let (ux, uy) = (at.x(), at.y());
     let mut reached = std::collections::HashSet::from([at]);
     if let Some(id) = test(ux, uy)? {
         return Ok(Some(id));
     }
     let mut queue = vec![at];
     let mut next = 0;
-    while let Some(&(qx, qy)) = queue.get(next) {
+    while let Some(&q) = queue.get(next) {
         next += 1;
-        if (ux - qx).abs() >= r - 1 || (uy - qy).abs() >= r - 1 {
+        if (ux - q.x()).abs() >= r - 1 || (uy - q.y()).abs() >= r - 1 {
             continue;
         }
-        for (x, y) in [(qx - 1, qy), (qx + 1, qy), (qx, qy - 1), (qx, qy + 1)] {
-            if !reached.insert((x, y)) {
+        for n in q.beside() {
+            if !reached.insert(n) {
                 continue;
             }
-            if let Some(id) = test(x, y)? {
+            if let Some(id) = test(n.x(), n.y())? {
                 return Ok(Some(id));
             }
-            queue.push((x, y));
+            queue.push(n);
         }
     }
     Ok(None)

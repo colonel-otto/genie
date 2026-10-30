@@ -1,5 +1,7 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
+use crate::map::Tile;
+
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
@@ -156,17 +158,17 @@ impl Mover {
             .into_iter()
             .filter_map(|id| world.get(id))
             .filter(|p| p.tall)
-            .map(|p| [p.position.x() as i32, p.position.y() as i32])
+            .map(|p| Tile::new(p.position.x() as i32, p.position.y() as i32))
             .collect();
         let req = crate::pathing::long_path::LongRequest {
-            from: [
+            from: Tile::new(
                 crate::math::conversions::cvttss2si(x),
                 crate::math::conversions::cvttss2si(y),
-            ],
-            to: [
+            ),
+            to: Tile::new(
                 crate::math::conversions::cvttss2si(to.x()),
                 crate::math::conversions::cvttss2si(to.y()),
-            ],
+            ),
             range,
             target: long_target,
             moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,

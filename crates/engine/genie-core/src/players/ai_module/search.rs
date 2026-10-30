@@ -15,6 +15,7 @@
 use crate::GenieError;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::Well512;
@@ -58,7 +59,7 @@ pub struct SearchUnit {
 /// How a flood from one tile ended.
 enum Flood {
     /// A tile (or a quadrant's corner) the unit goes to.
-    Found([i32; 2]),
+    Found(Tile),
     /// The search starts again from the unit's place.
     Again,
     /// The flood reached every tile it could.
@@ -92,33 +93,34 @@ impl InfoModule {
 
     /// `FUN_140b96860`: the stack's top, (-1, -1) for none.
     #[must_use]
-    pub fn top_point(&self) -> [i32; 2] {
-        self.search.last().copied().unwrap_or([-1, -1])
+    pub fn top_point(&self) -> Tile {
+        self.search.last().copied().unwrap_or(Tile::new(-1, -1))
     }
 
     /// `FUN_140b97220`: the stack's top goes and is given, (-1, -1) for none.
-    pub fn pop_point(&mut self) -> [i32; 2] {
-        self.search.pop().unwrap_or([-1, -1])
+    pub fn pop_point(&mut self) -> Tile {
+        self.search.pop().unwrap_or(Tile::new(-1, -1))
     }
 
-    /// `FUN_140b7d920`: the point is held on the map (the module's size); true when it moved.
-    const fn clamp(&self, p: &mut [i32; 2]) -> bool {
+    /// `FUN_140b7d920`: the point held on the map (the module's size), and whether it moved.
+    const fn clamp(&self, p: Tile) -> (Tile, bool) {
+        let (mut x, mut y) = (p.x(), p.y());
         let mut moved = false;
-        if p[0] < 0 {
-            p[0] = 0;
+        if x < 0 {
+            x = 0;
             moved = true;
-        } else if self.width <= p[0] {
-            p[0] = self.width - 1;
-            moved = true;
-        }
-        if p[1] < 0 {
-            p[1] = 0;
-            moved = true;
-        } else if self.height <= p[1] {
-            p[1] = self.height - 1;
+        } else if self.width <= x {
+            x = self.width - 1;
             moved = true;
         }
-        moved
+        if y < 0 {
+            y = 0;
+            moved = true;
+        } else if self.height <= y {
+            y = self.height - 1;
+            moved = true;
+        }
+        (Tile::new(x, y), moved)
     }
 
     /// `FUN_140b96cf0`: the eight points of a ring of `radius` about `centre`, every eighth of a
@@ -127,11 +129,11 @@ impl InfoModule {
         let (cx, cy) = (cvttss2si(centre.x()) as f32, cvttss2si(centre.y()) as f32);
         for i in 0..8 {
             let angle = i as f32 * crate::math::image::facing::QUARTER_PI;
-            let mut p = [
+            let (p, moved) = self.clamp(Tile::new(
                 cvttss2si(cos(angle) * radius + cx),
                 cvttss2si(sin(angle) * radius + cy),
-            ];
-            if !self.clamp(&mut p) {
+            ));
+            if !moved {
                 self.search.push(p);
             }
         }
@@ -150,7 +152,7 @@ impl InfoModule {
         start: Point,
         area: &mut dyn SearchArea,
         (map, rng): (GridSize, &mut Well512),
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    ) -> Result<Option<Tile>, GenieError> {
         let own = area.own_zone() as u8;
         let mut start = start;
         loop {
@@ -175,12 +177,12 @@ impl InfoModule {
         area: &mut dyn SearchArea,
         (map, rng): (GridSize, &mut Well512),
     ) -> Result<Flood, GenieError> {
-        let mut first = [cvttss2si(start.x()), cvttss2si(start.y())];
-        let _ = self.clamp(&mut first);
+        let (first, _) = self.clamp(Tile::new(cvttss2si(start.x()), cvttss2si(start.y())));
         let mut visited = vec![false; (map.width().max(0) * map.height().max(0)) as usize];
         let mut queue = vec![first];
         let mut i = 0;
-        while let Some(&[x, y]) = queue.get(i) {
+        while let Some(&t) = queue.get(i) {
+            let (x, y) = (t.x(), t.y());
             i += 1;
             let cell = self.cell(x, y)?;
             // a civilian takes a tile no search touched, another unit any that is not explored
@@ -190,7 +192,7 @@ impl InfoModule {
                 cell != EXPLORED
             };
             if area.visible_now(x, y) || !wanted {
-                push_neighbours(&mut queue, &mut visited, [x, y], map);
+                push_neighbours(&mut queue, &mut visited, t, map);
                 continue;
             }
             if area.zone(x, y) as u8 != own || !area.clear(x, y)? {
@@ -198,7 +200,7 @@ impl InfoModule {
             }
             if area.reaches(x, y)? {
                 self.path_map.set(x, y, EXPLORED);
-                return Ok(Flood::Found([x, y]));
+                return Ok(Flood::Found(t));
             }
             self.path_map.set(x, y, PUNTED);
             if differs(start.x(), unit.position.x()) || differs(start.y(), unit.position.y()) {
@@ -212,10 +214,10 @@ impl InfoModule {
     /// The punt search's pick: the quadrant of the map's 4 by 4 whose record scores the least
     /// (`first + draw % 100 + second * 25`, a draw for each record from the first column down),
     /// and one of its corners by a draw.
-    fn punt(&self, rng: &mut Well512) -> [i32; 2] {
+    fn punt(&self, rng: &mut Well512) -> Tile {
         let (w, h) = (self.width, self.height);
         let mut best = -1_i32;
-        let mut corner = [0, 0];
+        let mut corner = Tile::new(0, 0);
         for (index, record) in self.quadrants.iter().enumerate() {
             let (column, row) = ((index / 4) as i32, (index % 4) as i32);
             let draw = (rng.rand15() as i32) % 100;
@@ -223,16 +225,16 @@ impl InfoModule {
                 .wrapping_add(draw)
                 .wrapping_add(record[1].wrapping_mul(0x19));
             if best == -1 || score < best {
-                corner = [w * column / 4, row * h / 4];
+                corner = Tile::new(w * column / 4, row * h / 4);
                 best = score;
             }
         }
-        let far = [w / 4 - 1 + corner[0], h / 4 - 1 + corner[1]];
+        let far = Tile::new(w / 4 - 1 + corner.x(), h / 4 - 1 + corner.y());
         match rng.rand15() & 3 {
             0 => corner,
-            1 => [corner[0], far[1]],
+            1 => Tile::new(corner.x(), far.y()),
             2 => far,
-            _ => [far[0], corner[1]],
+            _ => Tile::new(far.x(), corner.y()),
         }
     }
 
@@ -262,9 +264,9 @@ impl InfoModule {
 
 /// `FUN_140b6c2d0`: the tile's neighbours on the map that the flood has not met join the queue
 /// (left, right, up, down).
-fn push_neighbours(queue: &mut Vec<[i32; 2]>, visited: &mut [bool], at: [i32; 2], map: GridSize) {
-    let [x, y] = at;
-    for [nx, ny] in [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] {
+fn push_neighbours(queue: &mut Vec<Tile>, visited: &mut [bool], at: Tile, map: GridSize) {
+    for n in at.beside() {
+        let (nx, ny) = (n.x(), n.y());
         if nx < 0 || ny < 0 || map.width() <= nx || map.height() <= ny {
             continue;
         }
@@ -273,7 +275,7 @@ fn push_neighbours(queue: &mut Vec<[i32; 2]>, visited: &mut [bool], at: [i32; 2]
             && !*met
         {
             *met = true;
-            queue.push([nx, ny]);
+            queue.push(n);
         }
     }
 }

@@ -16,6 +16,7 @@ mod unit_ai_side;
 
 pub(crate) use self::search::{SearchArea, SearchUnit};
 
+use crate::map::Tile;
 use crate::movement::explore::InfluenceMap;
 use crate::objects::ObjectId;
 use crate::players::PlayerId;
@@ -42,7 +43,7 @@ pub struct InfoModule {
     /// row` of the map's 4 by 4 quadrants gives its first two words ([`InfoModule::punt`]).
     pub quadrants: [[i32; 3]; 16],
     /// The explorer's points still to try (`+0x19828`, a stack of tile pairs, not saved).
-    pub search: Vec<[i32; 2]>,
+    pub search: Vec<Tile>,
 }
 
 /// The tactical module (`TribeTacticalAIModule`, `module+0x25f88`): what the AI's groups do.

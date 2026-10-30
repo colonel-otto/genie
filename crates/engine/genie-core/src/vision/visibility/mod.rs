@@ -24,6 +24,8 @@
 
 use crate::GenieError;
 use crate::map::Position;
+use crate::map::Tile;
+use crate::map::TileOffset;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -113,7 +115,7 @@ pub struct Extent {
     /// The guid of its entry.
     pub guid: u32,
     /// The offsets of the tiles the visible-object updater checks for it.
-    pub offsets: Vec<[i32; 2]>,
+    pub offsets: Vec<TileOffset>,
     /// The offsets' capacity (the entry's second word).
     pub capacity: i32,
 }
@@ -241,7 +243,7 @@ pub struct Visibility {
     pub computer: Vec<bool>,
     /// The tiles a computer player's map explored that its AI module has not heard of yet, in
     /// order ([`Visibility::take_ai_tiles`]).
-    ai_tiles: Vec<(PlayerId, [i32; 2])>,
+    ai_tiles: Vec<(PlayerId, Tile)>,
     seers: BTreeMap<i32, Seer>,
     /// The objects-in-sight registry, when the slice holds it (the save does not).
     pub registry: Option<Registry>,
@@ -249,7 +251,7 @@ pub struct Visibility {
     /// explored (`FUN_14165d500`) since its last update ended, in order, which the update's
     /// `Process_New_Tiles` reads; its count of new tiles (`+8`) only a computer player's AI
     /// reads.
-    pub new_tiles: Vec<Vec<[i32; 2]>>,
+    pub new_tiles: Vec<Vec<Tile>>,
     /// Each player's visible-resource lists.
     pub resources: Vec<VisibleResources>,
     /// The first part of the game the slice met and does not model, for its caller.
@@ -344,7 +346,7 @@ impl Visibility {
     }
 
     /// The tiles a computer player's map explored since the last call, as (player, tile).
-    pub fn take_ai_tiles(&mut self) -> Vec<(PlayerId, [i32; 2])> {
+    pub fn take_ai_tiles(&mut self) -> Vec<(PlayerId, Tile)> {
         std::mem::take(&mut self.ai_tiles)
     }
 
@@ -357,7 +359,7 @@ impl Visibility {
     /// `RGE_Tile_List::add_node` (`FUN_14165d500`) on player `player`'s tile list.
     fn new_tile(&mut self, player: PlayerId, x: i32, y: i32) {
         if let Some(list) = self.new_tiles.get_mut(player.index()) {
-            list.push([x, y]);
+            list.push(Tile::new(x, y));
         }
     }
 

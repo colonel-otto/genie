@@ -6,6 +6,7 @@ use crate::garrison::{EnterAction, EnterTarget, NO_SPEED, WalkStart};
 use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
 use crate::movement::MoveStats;
@@ -91,14 +92,14 @@ pub struct LandingWalk {
     /// The steps left.
     left: i32,
     /// The tile last yielded (-999, -999 before the first).
-    last: [i32; 2],
+    last: Tile,
 }
 
 impl LandingWalk {
     /// The walk from tile `from` toward tile `to`.
     #[must_use]
-    pub fn new(from: [i32; 2], to: [i32; 2]) -> Self {
-        let (dx, dy) = (to[0].wrapping_sub(from[0]), to[1].wrapping_sub(from[1]));
+    pub fn new(from: Tile, to: Tile) -> Self {
+        let (dx, dy) = (to.x().wrapping_sub(from.x()), to.y().wrapping_sub(from.y()));
         let (fx, fy) = (dx as f32, dy as f32);
         let longer = if fy.abs() <= fx.abs() { dx } else { dy };
         let steps = cvttss2si(longer as f32).wrapping_abs().wrapping_mul(2);
@@ -109,21 +110,21 @@ impl LandingWalk {
         };
         Self {
             step: GroundOffset::new(fx / steps as f32, fy / steps as f32),
-            at: Point::new(from[0] as f32, from[1] as f32),
+            at: Point::new(from.x() as f32, from.y() as f32),
             left,
-            last: [-999, -999],
+            last: Tile::new(-999, -999),
         }
     }
 }
 
 impl Iterator for LandingWalk {
-    type Item = ([i32; 2], Point);
+    type Item = (Tile, Point);
 
     fn next(&mut self) -> Option<Self::Item> {
         while 0 < self.left {
             self.left -= 1;
             self.at = self.at.moved(self.step);
-            let tile = [cvttss2si(self.at.x()), cvttss2si(self.at.y())];
+            let tile = Tile::new(cvttss2si(self.at.x()), cvttss2si(self.at.y()));
             if tile != self.last {
                 self.last = tile;
                 return Some((tile, self.at));
@@ -274,8 +275,9 @@ fn shore_or_beach(
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<(Point, u8), GenieError> {
     let (ux, uy) = (unit.1.x(), unit.1.y());
-    if let Some([x, y]) = shore(t, unit, spatial, zones)? {
-        return Ok((Point::new(x as f32 + HALF_TILE, y as f32 + HALF_TILE), 1));
+    if let Some(tile) = shore(t, unit, spatial, zones)? {
+        let (x, y) = (tile.x() as f32, tile.y() as f32);
+        return Ok((Point::new(x + HALF_TILE, y + HALF_TILE), 1));
     }
     let terrain = spatial.terrain.as_ref();
     if terrain.is_some_and(|tr| tr.beach(cvttss2si(ux), cvttss2si(uy))) {
@@ -301,7 +303,7 @@ fn shore(
     (id, at, stats): (i32, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
-) -> Result<Option<[i32; 2]>, GenieError> {
+) -> Result<Option<Tile>, GenieError> {
     let (ux, uy) = (at.x(), at.y());
     let terrain = spatial
         .terrain
@@ -314,8 +316,9 @@ fn shore(
     let (w, h) = (spatial.map.width(), spatial.map.height());
     let map = zones.of(w, h, &terrain.kinds, values)?;
     let own = map.zone(cvttss2si(ux), cvttss2si(uy));
-    let from = [cvttss2si(t.position.x()), cvttss2si(t.position.y())];
-    for (tile @ [x, y], place) in LandingWalk::new(from, [cvttss2si(ux), cvttss2si(uy)]) {
+    let from = Tile::new(cvttss2si(t.position.x()), cvttss2si(t.position.y()));
+    for (tile, place) in LandingWalk::new(from, Tile::new(cvttss2si(ux), cvttss2si(uy))) {
+        let (x, y) = (tile.x(), tile.y());
         let terrain = spatial
             .terrain
             .as_ref()

@@ -6,6 +6,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, SearchCache, Spatial, Tiles, WalkTest, tile_record_id,
 };
@@ -577,7 +578,10 @@ impl Spatial {
 
     /// The temporary tile records ([`Spatial::put_tile_records`]) as (x, y), row by row.
     #[must_use]
-    pub fn tile_records(&self) -> Vec<[i32; 2]> {
-        self.tile_records.iter().map(|&(y, x)| [x, y]).collect()
+    pub fn tile_records(&self) -> Vec<Tile> {
+        self.tile_records
+            .iter()
+            .map(|&(y, x)| Tile::new(x, y))
+            .collect()
     }
 }

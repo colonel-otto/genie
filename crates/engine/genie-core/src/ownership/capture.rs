@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -226,7 +227,7 @@ pub(crate) fn scan_livestock(
             if !c.w.spatial.sees_tile(new, x, y) {
                 continue;
             }
-            match livestock_on(c, (x, y), taken)?[..] {
+            match livestock_on(c, Tile::new(x, y), taken)?[..] {
                 [] => {}
                 [id] => {
                     if let Some(position) = take_livestock(c, id, new)? {
@@ -247,7 +248,8 @@ pub(crate) fn scan_livestock(
 
 /// The scan's finds on tile (`x`, `y`): Gaia's livestock in state 2 of the updating object's
 /// player's list whose centre is on the tile, not yet `taken`.
-fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Result<Vec<i32>, GenieError> {
+fn livestock_on(c: &Step<'_>, tile: Tile, taken: &[i32]) -> Result<Vec<i32>, GenieError> {
+    let (x, y) = (tile.x(), tile.y());
     Ok(OthersRef::of(&c.w.players, c.player)?
         .own_iter()
         .filter(|u| {

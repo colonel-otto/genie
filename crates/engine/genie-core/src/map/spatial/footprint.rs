@@ -5,6 +5,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
+use crate::map::{Tile, TileRect};
 use crate::math::fmath::BVector;
 use crate::objects::masters::class;
 use crate::world::slots::CheckedIndex;
@@ -49,20 +50,22 @@ impl Spatial {
         let (ox, oy) = (half - cx, half - cy);
         let (x0, y0) = ((tx - rx) as i32, (ty - ry) as i32);
         let (x1, y1) = (((rx + tx) - EDGE) as i32, ((ry + ty) - EDGE) as i32);
-        let mut list: Vec<(i32, i32)> = (x0..=x1)
-            .flat_map(|x| (y0..=y1).map(move |y| (x, y)))
+        let footprint = TileRect::new(x0, y0, x1, y1);
+        let mut list: Vec<Tile> = (x0..=x1)
+            .flat_map(|x| (y0..=y1).map(move |y| Tile::new(x, y)))
             .collect();
         let mut visited = vec![false; (size * size) as usize];
         let reach = half - 1;
         let mut i = 0;
         while i < list.len() {
-            let (x, y) = *list.checked(i)?;
-            if (cx - x).abs() < reach && (cy - y).abs() < reach {
-                for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+            let t = *list.checked(i)?;
+            if (cx - t.x()).abs() < reach && (cy - t.y()).abs() < reach {
+                for n in t.beside() {
+                    let (nx, ny) = (n.x(), n.y());
                     let at = ((ox + nx) * size + ny + oy) as usize;
                     if !*visited.checked(at)? && self.passable(nx, ny, mask, me, radius_x)? {
                         *visited.checked_mut(at)? = true;
-                        list.push((nx, ny));
+                        list.push(n);
                     }
                 }
             }
@@ -71,10 +74,11 @@ impl Spatial {
         let mut best = if farthest { 0.0 } else { NO_SPOT };
         let mut spot = None;
         let mut empty = false;
-        for &(x, y) in &list {
-            if x0 <= x && x <= x1 && y0 <= y && y <= y1 {
+        for &t in &list {
+            if footprint.holds(t) {
                 continue;
             }
+            let (x, y) = (t.x(), t.y());
             let was_empty = empty;
             let count = self.tiles.objects(x, y);
             if empty && count.is_some_and(|n| n != 0) {

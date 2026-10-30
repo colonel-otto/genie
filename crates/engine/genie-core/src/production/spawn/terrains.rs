@@ -5,6 +5,8 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::Tile;
+use crate::map::TileRect;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::production::spawn::PlaceMap;
@@ -48,10 +50,12 @@ pub struct BuildSite<'a> {
 pub(super) fn hill_fails(
     mode: u8,
     map: &dyn PlaceMap,
-    (tx, ty): (i32, i32),
-    (x0, y1): (i32, i32),
+    tile: Tile,
+    corner: Tile,
     base: Option<u8>,
 ) -> Result<bool, GenieError> {
+    let (tx, ty) = (tile.x(), tile.y());
+    let (x0, y1) = (corner.x(), corner.y());
     let shape = || {
         map.shape(tx, ty).ok_or(GenieError::unsupported(
             "a hill mode where the tiles' shapes are not known",
@@ -88,7 +92,7 @@ pub fn placement_terrains(
     placement: [i16; 4],
     map: &dyn PlaceMap,
     p: Point,
-    b: [i32; 4],
+    b: TileRect,
 ) -> Result<bool, GenieError> {
     let [side1, side2, t1, t2] = placement;
     let mut b = b;
@@ -97,14 +101,14 @@ pub fn placement_terrains(
         if !point_terrain_allows(map, [t1, t2], x, y)? {
             return Ok(false);
         }
-        b = [x, y, x, y];
+        b = TileRect::of(Tile::new(x, y));
     }
     if side1 < 0 && side2 < 0 {
         return Ok(true);
     }
     let sides = side_terrains(map, [side1, side2])?;
-    for (x, y) in tiles_beside(b, map.size()) {
-        if sides.contains(&i16::from(map.terrain(x, y)?)) {
+    for t in tiles_beside(b, map.size()) {
+        if sides.contains(&i16::from(map.terrain(t.x(), t.y())?)) {
             return Ok(true);
         }
     }
@@ -180,20 +184,21 @@ pub(super) fn side_terrains(
 /// [`placement_terrains`]'s tiles beside the box `b` (x0, y0, x1, y1) on a map of `size`: the
 /// row below, the column right, the row above (right to left) and the column left (top to
 /// bottom), each where the map holds it.
-pub(super) fn tiles_beside([x0, y0, x1, y1]: [i32; 4], map: GridSize) -> Vec<(i32, i32)> {
+pub(super) fn tiles_beside(b: TileRect, map: GridSize) -> Vec<Tile> {
     let (w, h) = (map.width(), map.height());
+    let (x0, y0, x1, y1) = (b.x0(), b.y0(), b.x1(), b.y1());
     let mut beside = Vec::new();
     if 0 < y0 {
-        beside.extend((x0..=x1).map(|x| (x, y0 - 1)));
+        beside.extend((x0..=x1).map(|x| Tile::new(x, y0 - 1)));
     }
     if x1 + 1 < w {
-        beside.extend((y0..=y1).map(|y| (x1 + 1, y)));
+        beside.extend((y0..=y1).map(|y| Tile::new(x1 + 1, y)));
     }
     if y1 + 1 < h {
-        beside.extend((x0..=x1).rev().map(|x| (x, y1 + 1)));
+        beside.extend((x0..=x1).rev().map(|x| Tile::new(x, y1 + 1)));
     }
     if 0 < x0 {
-        beside.extend((y0..=y1).rev().map(|y| (x0 - 1, y)));
+        beside.extend((y0..=y1).rev().map(|y| Tile::new(x0 - 1, y)));
     }
     beside
 }

@@ -8,6 +8,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::msvc;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -109,10 +110,10 @@ pub fn more_work(
         y1 = map.height() as i16 - 1;
     }
     let (w, h) = (i32::from(x1 - x0) + 1, i32::from(y1 - y0) + 1);
-    let start = [
+    let start = Tile::new(
         builder.position.x() as i32 - i32::from(x0),
         builder.position.y() as i32 - i32::from(y0),
-    ];
+    );
     let grid = blocked.and_then(|b| {
         reached(start, GridSize::new(w, h), &|x, y| {
             b(i32::from(x0) + x, i32::from(y0) + y)
@@ -183,33 +184,40 @@ pub fn more_work(
     Ok(best.map(|(o, _)| o))
 }
 
-/// `FUN_1415cc1a0`: the cells of a `size[0]` × `size[1]` box a flood from `start` reaches, by
+/// `FUN_1415cc1a0`: the cells of a box of `size` a flood from `start` reaches, by
 /// columns (`[x * height + y]`): every cell next to (left, right, above, below) a cell it
 /// entered and not `blocked`, `start` entered whatever it holds. None when `start` lies outside
 /// the box.
 #[must_use]
 pub fn reached(
-    start: [i32; 2],
+    start: Tile,
     size: GridSize,
     blocked: &dyn Fn(i32, i32) -> bool,
 ) -> Option<Vec<bool>> {
     let (w, h) = (size.width(), size.height());
-    let [sx, sy] = start;
+    let (sx, sy) = (start.x(), start.y());
     if sx < 0 || sy < 0 || w <= sx || h <= sy {
         return None;
     }
     let mut seen = vec![false; (w * h) as usize];
-    seen[(sx * h + sy) as usize] = true;
-    let mut todo = vec![(sx, sy)];
+    *seen.get_mut((sx * h + sy) as usize)? = true;
+    let mut todo = vec![start];
     let mut first = true;
-    while let Some((x, y)) = todo.pop() {
-        if !std::mem::take(&mut first) && blocked(x, y) {
+    while let Some(t) = todo.pop() {
+        if !std::mem::take(&mut first) && blocked(t.x(), t.y()) {
             continue;
         }
-        for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
-            if 0 <= nx && nx < w && 0 <= ny && ny < h && !seen[(nx * h + ny) as usize] {
-                seen[(nx * h + ny) as usize] = true;
-                todo.push((nx, ny));
+        for n in t.beside() {
+            let (nx, ny) = (n.x(), n.y());
+            if 0 <= nx
+                && nx < w
+                && 0 <= ny
+                && ny < h
+                && let Some(s) = seen.get_mut((nx * h + ny) as usize)
+                && !*s
+            {
+                *s = true;
+                todo.push(n);
             }
         }
     }
@@ -265,7 +273,7 @@ pub struct SearchSite {
 /// The tiles a pass of the search starts from and how far it goes.
 struct Pass {
     /// The tile the steps' distance counts from (the search's point, truncated).
-    origin: (i32, i32),
+    origin: Tile,
     /// The farthest distance a tile may lie from the origin.
     max_steps: i32,
     /// The queue's first cells, sorted.
@@ -385,7 +393,7 @@ pub fn closest_resource_at<W>(
     }
     let (ux, uy) = (seeker.position.x(), seeker.position.y());
     let los = seeker.line_of_sight as i32;
-    let unit_tile = (ux as i32, uy as i32);
+    let unit_tile = Tile::new(ux as i32, uy as i32);
     // the sort's point, and the box's side (fixed for both passes)
     let (sort_at, side) = sort_point_and_side(Point::new(ux, uy), los, site);
     let half = side / 2;
@@ -412,7 +420,7 @@ pub fn closest_resource_at<W>(
     };
     let (mut fallback, mut fallback_steps, mut fallback_d, mut tested) = (-1, NO_STEPS, 0, 0);
     for pass in passes {
-        let (ox, oy) = (half - pass.origin.0, half - pass.origin.1);
+        let (ox, oy) = (half - pass.origin.x(), half - pass.origin.y());
         let mut seen = vec![false; (side * side) as usize];
         let at = |x: i32, y: i32| ((y + oy) * side + x + ox) as usize;
         for c in &pass.seeds {
@@ -471,16 +479,16 @@ fn search_passes(
     site: Option<&SearchSite>,
     map: GridSize,
     passable: &dyn Fn(i32, i32) -> bool,
-    unit_tile: (i32, i32),
+    unit_tile: Tile,
     los: i32,
     nearer: &impl Fn(Cell, Cell) -> bool,
 ) -> Vec<Pass> {
-    let single = |at: (i32, i32)| Pass {
+    let single = |at: Tile| Pass {
         origin: at,
         max_steps: los + 5,
         seeds: vec![Cell {
-            x: at.0,
-            y: at.1,
+            x: at.x(),
+            y: at.y(),
             steps: 0,
         }],
     };
@@ -490,13 +498,16 @@ fn search_passes(
             let mut seeds = footprint_seeds(s, map, passable);
             msvc::sort(&mut seeds, nearer);
             passes.push(Pass {
-                origin: (s.position.x() as i32, s.position.y() as i32),
+                origin: Tile::new(s.position.x() as i32, s.position.y() as i32),
                 max_steps: s.line_of_sight as i32 + 10,
                 seeds,
             });
             passes.push(single(unit_tile));
         }
-        Some(s) => passes.push(single((s.position.x() as i32, s.position.y() as i32))),
+        Some(s) => passes.push(single(Tile::new(
+            s.position.x() as i32,
+            s.position.y() as i32,
+        ))),
         None => passes.push(single(unit_tile)),
     }
     passes
@@ -585,10 +596,10 @@ fn footprint_seeds(
 /// The search's distance of tile (`x`, `y`) from a pass's origin: the longer axis plus the
 /// shorter one times 1.4 rounded down, less the shorter one (`DIAGONAL` plus `ROUNDING`,
 /// truncated).
-fn pass_distance(origin: (i32, i32), x: i32, y: i32) -> i32 {
+fn pass_distance(origin: Tile, x: i32, y: i32) -> i32 {
     const DIAGONAL: f32 = crate::math::image::gather_search::DIAGONAL;
     const ROUNDING: f32 = crate::math::image::gather_search::ROUNDING;
-    let (dx, dy) = ((origin.0 - x).abs(), (origin.1 - y).abs());
+    let (dx, dy) = ((origin.x() - x).abs(), (origin.y() - y).abs());
     if dy < dx {
         ((dy as f32 * DIAGONAL + ROUNDING) as i32 - dy) + dx
     } else {
@@ -686,7 +697,7 @@ mod tests {
     fn a_flood_enters_the_blocked_cells_next_to_what_it_reaches_but_not_past_them() {
         // a wall at x = 2 in a 5 x 3 box: the flood from (0, 1) reaches x 0..=1 and enters the
         // wall's cells, never x 3 or 4
-        let seen = reached([0, 1], GridSize::new(5, 3), &|x, _| x == 2).unwrap();
+        let seen = reached(Tile::new(0, 1), GridSize::new(5, 3), &|x, _| x == 2).unwrap();
         let col = |x: i32| {
             (0..3)
                 .map(|y| seen[(x * 3 + y) as usize])
@@ -695,7 +706,7 @@ mod tests {
         assert_eq!(col(1), [true; 3]);
         assert_eq!(col(2), [true; 3]);
         assert_eq!(col(3), [false; 3]);
-        assert!(reached([5, 0], GridSize::new(5, 3), &|_, _| false).is_none());
+        assert!(reached(Tile::new(5, 0), GridSize::new(5, 3), &|_, _| false).is_none());
     }
 
     #[test]

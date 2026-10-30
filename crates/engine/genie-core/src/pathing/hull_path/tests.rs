@@ -3,6 +3,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Radii;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -311,20 +312,24 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
         .find_quick(Point::new(2.0, 5.5), Point::new(12.5, 5.5), -1, 0.0)
         .unwrap();
     assert_eq!(result, 3);
-    assert!(w.tile_records().contains(&[8, 5]), "{:?}", w.tile_records());
+    assert!(
+        w.tile_records().contains(&Tile::new(8, 5)),
+        "{:?}",
+        w.tile_records()
+    );
     // a search starts without them and leaves none
     let mut full = HullPather::new(&mut w, -1, -1, 6, 0.2);
     let (result, _) = full
         .find(Point::new(2.0, 5.5), Point::new(12.5, 5.5), -1, 0.0)
         .unwrap();
     assert_ne!(result, 1);
-    assert_eq!(w.tile_records(), Vec::<[i32; 2]>::new());
+    assert_eq!(w.tile_records(), Vec::<Tile>::new());
     // slot 0x3e0 removes what its quick path left
     assert_eq!(
         quick_reach_from(&mut w, -1, Point::new(2.0, 5.5), -1, 6, 0.2, 0.0).unwrap(),
         None
     );
-    assert_eq!(w.tile_records(), Vec::<[i32; 2]>::new());
+    assert_eq!(w.tile_records(), Vec::<Tile>::new());
 }
 
 fn open_world() -> Spatial {
@@ -932,7 +937,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     );
     // a building of 2 × 2 tiles, 9..=10 each way, its anchor (10, 10)
     let _ = v.link_building(Position::new(10.0, 10.0, 0.0), Footprint::new(1.0, 1.0));
-    assert_eq!(v.anchor_of(9, 9), Some([10, 10]));
+    assert_eq!(v.anchor_of(9, 9), Some(Tile::new(10, 10)));
     w.sight = Some(v);
     w.insert(object_id(20), tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile
     w.insert(object_id(21), tall(9.5, 9.5, 0.1, class::PREDATOR));

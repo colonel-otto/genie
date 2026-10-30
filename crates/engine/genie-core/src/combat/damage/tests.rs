@@ -32,6 +32,7 @@ fn a_building_s_relics_scale_its_elevation_factor() {
 
 use super::*;
 use crate::combat::damage::armor::class_armor;
+use crate::map::Tile;
 use crate::objects::HpPowerup;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -664,11 +665,11 @@ fn a_blast_s_nan_paths_are_the_game_s() {
     // CVTTSS2SI gives 0x80000000 past the i32 range: 0 in the low short
     assert_eq!(
         blast_tiles(Position::new(3e9, 3e9, 0.0), 1.0),
-        ([0, 0], [6, 6])
+        (Tile::new(0, 0), Tile::new(6, 6))
     );
     assert_eq!(
         blast_tiles(Position::new(10.5, 4.5, 0.0), 1.0),
-        ([3, 0], [17, 11])
+        (Tile::new(3, 0), Tile::new(17, 11))
     );
 }
 

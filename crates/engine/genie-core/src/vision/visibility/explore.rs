@@ -2,6 +2,7 @@
 //! a rectangle.
 
 use crate::GenieError;
+use crate::map::Tile;
 use crate::players::PlayerId;
 use crate::vision::los_tables::{CENTRED, OFFSET};
 use crate::vision::visibility::{ANCHOR, LINKED, MOST, Visibility};
@@ -46,7 +47,7 @@ impl Visibility {
                     self.maps.checked_mut(player.index())?.explored += 1;
                     self.new_tile(player, tx, ty);
                     if self.computer.get(player.index()).copied().unwrap_or(false) {
-                        self.ai_tiles.push((player, [tx, ty]));
+                        self.ai_tiles.push((player, Tile::new(tx, ty)));
                     }
                     if self.links.checked(i)?.0 & (LINKED | ANCHOR) != 0 {
                         self.reveal_building(player, tx, ty)?;
@@ -76,9 +77,10 @@ impl Visibility {
         x: i32,
         y: i32,
     ) -> Result<(), GenieError> {
-        let Some([ax, ay]) = self.anchor_of(x, y) else {
+        let Some(anchor) = self.anchor_of(x, y) else {
             return Ok(());
         };
+        let (ax, ay) = (anchor.x(), anchor.y());
         if *self
             .maps
             .checked(player.index())?

@@ -1,7 +1,7 @@
 //! The map and the players' sight: the terrain and its differences, the objects as movement
 //! sees them, the visible maps and resources against the game's.
 
-use genie_core::map::GridSize;
+use genie_core::map::{GridSize, TileOffset};
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{Error, game_state, header_objects, moving_speed, placement, saved_ghosts};
@@ -290,7 +290,7 @@ pub(super) fn saved_sight(header: &Header) -> Visibility {
             offsets: e
                 .p
                 .iter()
-                .map(|&v| [v as u32 as i32, (v >> 32) as u32 as i32])
+                .map(|&v| TileOffset::new(v as u32 as i32, (v >> 32) as u32 as i32))
                 .collect(),
             capacity: e.n + 1,
         })

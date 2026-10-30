@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::Footprint;
 use crate::map::Point;
+use crate::map::{Tile, TileOffset, TileRect};
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
 use crate::vision::registry::UnitUpdate;
@@ -291,23 +292,26 @@ fn newly_explored_tiles_join_the_player_s_tile_list_until_its_update_ends() {
     assert_eq!(
         v.new_tiles[1],
         [
-            [10, 10],
-            [9, 9],
-            [10, 9],
-            [11, 9],
-            [9, 10],
-            [11, 10],
-            [9, 11],
-            [10, 11],
-            [11, 11]
+            Tile::new(10, 10),
+            Tile::new(9, 9),
+            Tile::new(10, 9),
+            Tile::new(11, 9),
+            Tile::new(9, 10),
+            Tile::new(11, 10),
+            Tile::new(9, 11),
+            Tile::new(10, 11),
+            Tile::new(11, 11)
         ]
     );
     let _ = v.explore_rect(PlayerId::new(1), 11, 9, 12, 9).unwrap();
     let _ = v.reveal_rect(PlayerId::new(1), 11, 8, 12, 8).unwrap();
-    assert_eq!(v.new_tiles[1][9..], [[12, 9], [11, 8], [12, 8]]);
-    assert_eq!(v.new_tiles[0], Vec::<[i32; 2]>::new());
+    assert_eq!(
+        v.new_tiles[1][9..],
+        [Tile::new(12, 9), Tile::new(11, 8), Tile::new(12, 8)]
+    );
+    assert_eq!(v.new_tiles[0], Vec::<Tile>::new());
     v.clear_new_tiles(PlayerId::new(1));
-    assert_eq!(v.new_tiles[1], Vec::<[i32; 2]>::new());
+    assert_eq!(v.new_tiles[1], Vec::<Tile>::new());
 }
 
 /// `FUN_1411980b0`'s lists: each player whose map explored the object's tile (its bit 32 + p
@@ -393,48 +397,97 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
 #[test]
 fn the_extent_list_matches_the_saved_entries_of_a_town_centre_and_a_house() {
     let mut v = world(PlayerId::new(1));
-    assert_eq!(v.extent_entry(29, 94, 27, 92, 30, 95), 1);
+    assert_eq!(
+        v.extent_entry(Tile::new(29, 94), TileRect::new(27, 92, 30, 95)),
+        1
+    );
     assert_eq!(v.extents[0].guid, 0x0101_0202);
     assert_eq!(
         v.extents[0].offsets,
-        vec![[-2, -2], [1, -2], [-2, 1], [1, 1]]
+        vec![
+            TileOffset::new(-2, -2),
+            TileOffset::new(1, -2),
+            TileOffset::new(-2, 1),
+            TileOffset::new(1, 1)
+        ]
     );
-    assert_eq!(v.extent_entry(49, 87, 48, 86, 49, 87), 2);
+    assert_eq!(
+        v.extent_entry(Tile::new(49, 87), TileRect::new(48, 86, 49, 87)),
+        2
+    );
     assert_eq!(v.extents[1].guid, 257);
-    assert_eq!(v.extents[1].offsets, vec![[-1, -1], [0, -1], [-1, 0]]);
-    assert_eq!(v.extent_entry(10, 10, 9, 10, 10, 10), 3);
-    assert_eq!(v.extents[2].offsets, vec![[-1, 0]]);
-    assert_eq!(v.extent_entry(30, 95, 28, 93, 31, 96), 1, "found again");
+    assert_eq!(
+        v.extents[1].offsets,
+        vec![
+            TileOffset::new(-1, -1),
+            TileOffset::new(0, -1),
+            TileOffset::new(-1, 0)
+        ]
+    );
+    assert_eq!(
+        v.extent_entry(Tile::new(10, 10), TileRect::new(9, 10, 10, 10)),
+        3
+    );
+    assert_eq!(v.extents[2].offsets, vec![TileOffset::new(-1, 0)]);
+    assert_eq!(
+        v.extent_entry(Tile::new(30, 95), TileRect::new(28, 93, 31, 96)),
+        1,
+        "found again"
+    );
     assert_eq!(v.extents_capacity, 8);
     // 5 × 5 about its centre: the corners, then a step of 2 along the rows and the columns
-    assert_eq!(v.extent_entry(10, 10, 8, 8, 12, 12), 4);
+    assert_eq!(
+        v.extent_entry(Tile::new(10, 10), TileRect::new(8, 8, 12, 12)),
+        4
+    );
     assert_eq!(v.extents[3].guid, 0x0202_0202);
     assert_eq!(
         v.extents[3].offsets,
         vec![
-            [-2, -2],
-            [2, -2],
-            [-2, 2],
-            [2, 2],
-            [0, -2],
-            [0, 2],
-            [-2, 0],
-            [2, 0]
+            TileOffset::new(-2, -2),
+            TileOffset::new(2, -2),
+            TileOffset::new(-2, 2),
+            TileOffset::new(2, 2),
+            TileOffset::new(0, -2),
+            TileOffset::new(0, 2),
+            TileOffset::new(-2, 0),
+            TileOffset::new(2, 0)
         ]
     );
     assert_eq!(v.extents[3].capacity, 9);
     // one tile wide and three high
-    assert_eq!(v.extent_entry(10, 10, 10, 9, 10, 11), 5);
-    assert_eq!(v.extents[4].offsets, vec![[0, -1], [0, 1]]);
+    assert_eq!(
+        v.extent_entry(Tile::new(10, 10), TileRect::new(10, 9, 10, 11)),
+        5
+    );
+    assert_eq!(
+        v.extents[4].offsets,
+        vec![TileOffset::new(0, -1), TileOffset::new(0, 1)]
+    );
     // off the map, or one tile: none
-    assert_eq!(v.extent_entry(200, 10, 200, 10, 201, 11), 0);
-    assert_eq!(v.extent_entry(10, 200, 10, 200, 11, 201), 0);
-    assert_eq!(v.extent_entry(-5, 10, -5, 10, -4, 11), 0);
-    assert_eq!(v.extent_entry(10, -5, 10, -5, 11, -4), 0);
-    assert_eq!(v.extent_entry(10, 10, 10, 10, 10, 10), 0);
+    assert_eq!(
+        v.extent_entry(Tile::new(200, 10), TileRect::new(200, 10, 201, 11)),
+        0
+    );
+    assert_eq!(
+        v.extent_entry(Tile::new(10, 200), TileRect::new(10, 200, 11, 201)),
+        0
+    );
+    assert_eq!(
+        v.extent_entry(Tile::new(-5, 10), TileRect::new(-5, 10, -4, 11)),
+        0
+    );
+    assert_eq!(
+        v.extent_entry(Tile::new(10, -5), TileRect::new(10, -5, 11, -4)),
+        0
+    );
+    assert_eq!(
+        v.extent_entry(Tile::new(10, 10), TileRect::new(10, 10, 10, 10)),
+        0
+    );
     // the list grows by 8 once full
     for w in 1..5 {
-        let _ = v.extent_entry(60, 60, 60, 60, 60 + w, 61);
+        let _ = v.extent_entry(Tile::new(60, 60), TileRect::new(60, 60, 60 + w, 61));
     }
     assert_eq!((v.extents.len(), v.extents_capacity), (9, 16));
 }
@@ -450,7 +503,7 @@ fn a_first_sight_of_a_building_s_tile_explores_the_building() {
     assert_eq!(v.link(29, 94).unwrap(), (ANCHOR, 1));
     assert_eq!(v.link(28, 93).unwrap(), (LINKED, 0xff));
     assert_eq!(v.link(30, 95).unwrap(), (LINKED, 0x11));
-    assert_eq!(v.anchor_of(27, 92), Some([29, 94]));
+    assert_eq!(v.anchor_of(27, 92), Some(Tile::new(29, 94)));
     assert_eq!(v.extent_of(30, 92), Some([27, 92, 30, 95]));
     // a sight of LOS 0 on the building's corner tile
     assert_eq!(v.explore(PlayerId::new(1), 27, 92, 0, false).unwrap(), 1);
@@ -502,6 +555,9 @@ fn a_computer_players_newly_explored_tiles_are_queued_for_its_ai_module() {
     assert_eq!(v.explore(PlayerId::new(1), 10, 10, 0, false), Ok(1));
     assert_eq!(v.explore(PlayerId::new(1), 10, 10, 0, false), Ok(0));
     assert_eq!(v.explore(PlayerId::new(2), 20, 20, 0, false), Ok(1));
-    assert_eq!(v.take_ai_tiles(), vec![(PlayerId::new(1), [10, 10])]);
+    assert_eq!(
+        v.take_ai_tiles(),
+        vec![(PlayerId::new(1), Tile::new(10, 10))]
+    );
     assert_eq!(v.take_ai_tiles(), vec![]);
 }

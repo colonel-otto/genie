@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -293,7 +294,7 @@ impl UnitAi {
     pub(super) fn seek_and_destroy(
         &mut self,
         target: i32,
-        tile: [i32; 2],
+        tile: Tile,
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
@@ -309,7 +310,7 @@ impl UnitAi {
         self.target_at(
             target,
             class,
-            Position::new(tile[0] as f32, tile[1] as f32, EXPLORE_Z),
+            Position::new(tile.x() as f32, tile.y() as f32, EXPLORE_Z),
         );
         Ok(true)
     }
@@ -320,7 +321,7 @@ impl UnitAi {
     /// (as floats) at height 1.
     pub(super) fn explore_and_destroy(
         &mut self,
-        tile: [i32; 2],
+        tile: Tile,
         force: bool,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
@@ -328,7 +329,7 @@ impl UnitAi {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
-        let point = Point::new(tile[0] as f32, tile[1] as f32);
+        let point = Point::new(tile.x() as f32, tile.y() as f32);
         side.effect_now(Effect::Explore(point), self, rng)?;
         self.set_action(Some(ActionKind::ExploreAndDestroy));
         self.target_at(-1, None, point.with_height(EXPLORE_Z));

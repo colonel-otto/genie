@@ -232,10 +232,13 @@ impl HullPather<'_> {
             "the old short pather without the map's building links",
         ))?;
         if sight.link(x, y)?.0 & 0x60 != 0
-            && let Some([ax, ay]) = sight.anchor_of(x, y)
-            && (ax < area[0] || area[2] < ax || ay < area[1] || area[3] < ay)
+            && let Some(anchor) = sight.anchor_of(x, y)
+            && (anchor.x() < area[0]
+                || area[2] < anchor.x()
+                || anchor.y() < area[1]
+                || area[3] < anchor.y())
         {
-            self.add_tile_objects(ax, ay, hull, self.player)?;
+            self.add_tile_objects(anchor.x(), anchor.y(), hull, self.player)?;
         }
         Ok(())
     }

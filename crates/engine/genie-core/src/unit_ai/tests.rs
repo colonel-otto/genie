@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::Footprint;
 use crate::map::GridSize;
+use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -166,7 +167,7 @@ struct Recorder {
 /// (`r − 1` tiles) is tested but its tile is not spread from, one beyond is never reached.
 #[test]
 fn the_builder_s_flood_tests_left_right_below_above() {
-    let at = (50, 50);
+    let at = Tile::new(50, 50);
     let found = flood_search(at, 8, |x, y| {
         Ok(match (x, y) {
             (48, 50) => Some(1),
@@ -236,15 +237,11 @@ impl UnitSide for Recorder {
         Err(GenieError::unsupported("no world here"))
     }
 
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
 
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
 
@@ -288,14 +285,10 @@ impl UnitSide for HelpSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -535,14 +528,10 @@ impl UnitSide for OffSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -722,14 +711,10 @@ impl UnitSide for WaitSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -985,14 +970,10 @@ impl UnitSide for ResourceSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -1685,14 +1666,10 @@ impl UnitSide for LionSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -1793,14 +1770,10 @@ impl UnitSide for SoldierSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Ok((!self.refuses).then_some((class::LIVESTOCK, Position::new(10.0, 11.0, 0.0))))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -1865,14 +1838,10 @@ impl UnitSide for DamageSide {
             .find(|u| u.id == target)
             .map(|u| (u.class, u.position)))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -3982,14 +3951,10 @@ impl UnitSide for ArtifactSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Ok(None)
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Ok(None)
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Ok(None)
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -4007,8 +3972,8 @@ impl UnitSide for ArtifactSide {
 /// A scout's world: the points its two searches find, and whether it made the scout map.
 #[derive(Default)]
 struct ScoutSide {
-    unexplored: Option<[i32; 2]>,
-    beyond: Option<[i32; 2]>,
+    unexplored: Option<Tile>,
+    beyond: Option<Tile>,
     mapped: bool,
 }
 
@@ -4030,14 +3995,10 @@ impl UnitSide for ScoutSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Ok(self.unexplored)
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Ok(self.beyond)
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -4073,7 +4034,7 @@ fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
     };
     let mut u = scout(Some(OrderKind::AutoScout));
     let mut side = ScoutSide {
-        unexplored: Some([5, 6]),
+        unexplored: Some(Tile::new(5, 6)),
         ..ScoutSide::default()
     };
     let (r, fx) = seek(&mut u, &mut side, false);
@@ -4087,7 +4048,7 @@ fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
     );
     let mut u = scout(Some(OrderKind::AutoScout));
     let mut side = ScoutSide {
-        beyond: Some([7, 8]),
+        beyond: Some(Tile::new(7, 8)),
         ..ScoutSide::default()
     };
     let (r, fx) = seek(&mut u, &mut side, false);
@@ -7533,14 +7494,10 @@ impl UnitSide for StandSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -9100,14 +9057,10 @@ impl UnitSide for ShipSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -9663,14 +9616,10 @@ impl UnitSide for SiegeSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Ok(self.allowed)
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -9982,14 +9931,10 @@ impl UnitSide for TailSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -10606,14 +10551,10 @@ impl UnitSide for OrderSide {
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Ok(self.seen_unit(target)?.map(|t| (t.class, t.position)))
     }
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
@@ -12058,10 +11999,10 @@ impl UnitSide for RetargetSide {
         &mut self,
         ai: &UnitAi,
         rng: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    ) -> Result<Option<Tile>, GenieError> {
         self.soldier.seek_unexplored(ai, rng)
     }
-    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<Tile>, GenieError> {
         self.soldier.seek_beyond_sight(rng)
     }
     fn make_scout_map(&mut self) -> Result<(), GenieError> {

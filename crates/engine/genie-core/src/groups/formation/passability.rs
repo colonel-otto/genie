@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
-use crate::map::{GroundOffset, Point, Rect};
+use crate::map::{GroundOffset, Point, Rect, Tile};
 use crate::world::slots::CheckedIndex;
 
 /// No active slot lies nearer than `f32::MAX`: the game reads the slot before the array then.
@@ -183,21 +183,21 @@ impl World {
             let unit_at = unit.position();
             let gx = cvttss2si(unit_at.x() - ox as f32);
             let gy = cvttss2si(unit_at.y() - oz as f32);
-            let Some((fx, fy, nudge)) = self.search_cell(grid, &mut visited, (gx, gy), unit_mask)
+            let Some((found, nudge)) = self.search_cell(grid, &mut visited, (gx, gy), unit_mask)
             else {
                 continue;
             };
             // CVTTSS2SI at 0x14103cb6a and 0x14103cb70
-            let (x, y) = if slot_tile(formation.slots.checked(k)?.transform_position) == (fx, fy) {
-                (fx, fy)
+            let tile = if slot_tile(formation.slots.checked(k)?.transform_position) == found {
+                found
             } else {
-                let Some(at) =
-                    self.step_once_more(grid, (fx, fy), unit_at.ground(), grow, members)?
+                let Some(at) = self.step_once_more(grid, found, unit_at.ground(), grow, members)?
                 else {
                     continue;
                 };
                 at
             };
+            let (x, y) = (tile.x(), tile.y());
             let s = formation.slots.checked_mut(u)?;
             // COMISS/JC at 0x14103cde3: a NaN spacing nudges too
             if crate::math::fmath::below_or_unordered(un.spacing, PASS_ONE) {
@@ -266,8 +266,8 @@ impl World {
         };
         let mask = self.master_mask(tester.player(), tester.master_id())?;
         let stands = |at: BVector| {
-            let (x, z) = slot_tile(at);
-            self.spatial.standable(x, z, mask)
+            let t = slot_tile(at);
+            self.spatial.standable(t.x(), t.y(), mask)
         };
         let position = g.motion.position[0];
         let Some(_) = formation
@@ -388,7 +388,7 @@ impl World {
         visited: &mut [u8],
         (gx, gy): (i32, i32),
         unit_mask: u8,
-    ) -> Option<(i32, i32, usize)> {
+    ) -> Option<(Tile, usize)> {
         let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
         if !(0 <= gx && 0 <= gy && gx < w && gy < h) {
             return None;
@@ -426,10 +426,10 @@ impl World {
                 if b & 1 != 0 {
                     if b & 0x3e < 10 {
                         *grid.cells.get_mut(cell)? = count_up(b);
-                        return Some((ox + nx, oz + ny, usize::from(b >> 1 & 0x1f)));
+                        return Some((Tile::new(ox + nx, oz + ny), usize::from(b >> 1 & 0x1f)));
                     }
                     *grid.cells.get_mut((w * cy + cx) as usize)? = mark;
-                    return Some((ox + cx, oz + cy, 0));
+                    return Some((Tile::new(ox + cx, oz + cy), 0));
                 }
                 queue.push((nx, ny));
             }
@@ -449,11 +449,12 @@ impl World {
     pub(super) fn step_once_more(
         &self,
         grid: &mut PassGrid,
-        (fx, fy): (i32, i32),
+        found: Tile,
         unit_at: Point,
         grow: f32,
         members: &[i32],
-    ) -> Result<Option<(i32, i32)>, GenieError> {
+    ) -> Result<Option<Tile>, GenieError> {
+        let (fx, fy) = (found.x(), found.y());
         let (w, h) = (grid.w, grid.h);
         let (rx, ry) = (fx - grid.ox, fy - grid.oz);
         let (ddx, ddy) = match *grid.cells.checked((w * ry + rx) as usize)? >> 6 {
@@ -477,9 +478,9 @@ impl World {
             )?
         {
             *grid.cells.checked_mut(cell)? = count_up(b);
-            return Ok(Some((ddx + fx, fy + ddy)));
+            return Ok(Some(Tile::new(ddx + fx, fy + ddy)));
         }
-        Ok(Some((fx, fy)))
+        Ok(Some(found))
     }
 }
 
@@ -502,8 +503,8 @@ pub(super) const fn count_up(b: u8) -> u8 {
 
 /// The tile of a slot's place the passability tests (`FUN_141185690`'s arguments): x and y
 /// by `CVTTSS2SI` (0x14103b5df, 0x14103b777), a NaN or out of range one `i32::MIN`.
-pub(super) fn slot_tile(at: BVector) -> (i32, i32) {
-    (cvttss2si(at.x()), cvttss2si(at.y()))
+pub(super) fn slot_tile(at: BVector) -> Tile {
+    Tile::new(cvttss2si(at.x()), cvttss2si(at.y()))
 }
 
 /// The passability's box and nearest slot (0x14103b650..0x14103b758): from the box

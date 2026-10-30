@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::GridSize;
+use crate::map::Tile;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -639,7 +640,7 @@ fn the_scout_map_takes_the_new_tiles() {
         0,
         vec![false; 4],
     );
-    sight.new_tiles[1] = vec![[0, 0], [1, 0]];
+    sight.new_tiles[1] = vec![Tile::new(0, 0), Tile::new(1, 0)];
     t.spatial.sight = Some(sight);
     t.world_player_tail(PlayerId::new(1)).unwrap();
     t.spatial.set_scout_map(

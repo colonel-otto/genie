@@ -6,14 +6,24 @@ use crate::map::Footprint;
 use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::{Tile, TileOffset};
 use crate::production::spawn::{GAP, NONE, SIDE_SHARE, SMALL, Site, Tested};
+
+/// The ways a spot tries its next point: up, down, left and right.
+const UP: TileOffset = TileOffset::new(0, 1);
+/// See [`UP`].
+const DOWN: TileOffset = TileOffset::new(0, -1);
+/// See [`UP`].
+const LEFT: TileOffset = TileOffset::new(-1, 0);
+/// See [`UP`].
+const RIGHT: TileOffset = TileOffset::new(1, 0);
 
 /// One spot (`FUN_1411c5b60`'s argument): its candidates `i` in `0..=count` lie at
 /// `(x + dir.x * step.x * i, y + dir.y * step.y * i)`.
 pub(super) struct Spot {
     pub(super) at: Point,
     pub(super) step: GroundOffset,
-    pub(super) dir: [i32; 2],
+    pub(super) dir: TileOffset,
     pub(super) count: i32,
 }
 
@@ -24,8 +34,8 @@ pub(super) fn try_spot(
     test: &mut dyn FnMut(Point) -> Result<Tested, GenieError>,
 ) -> Result<Option<Point>, GenieError> {
     for i in 0..=spot.count {
-        let x = spot.dir[0] as f32 * spot.step.x() * i as f32 + spot.at.x();
-        let y = spot.dir[1] as f32 * spot.step.y() * i as f32 + spot.at.y();
+        let x = spot.dir.dx() as f32 * spot.step.x() * i as f32 + spot.at.x();
+        let y = spot.dir.dy() as f32 * spot.step.y() * i as f32 + spot.at.y();
         match test(Point::new(x, y))? {
             Tested::Free => return Ok(Some(Point::new(x, y))),
             Tested::Blocked { stays: true } => return Ok(None),
@@ -249,10 +259,10 @@ impl Frame {
         let mut c = r.start;
         while if r.rising { c < r.end } else { r.end < c } {
             let (at, step, dir) = match r.side {
-                Side::Up => (Point::new(c, r.fixed), GroundOffset::new(0.0, sy), [0, 1]),
-                Side::Down => (Point::new(c, r.fixed), GroundOffset::new(0.0, sy), [0, -1]),
-                Side::Left => (Point::new(r.fixed, c), GroundOffset::new(sx, 0.0), [-1, 0]),
-                Side::Right => (Point::new(r.fixed, c), GroundOffset::new(sx, 0.0), [1, 0]),
+                Side::Up => (Point::new(c, r.fixed), GroundOffset::new(0.0, sy), UP),
+                Side::Down => (Point::new(c, r.fixed), GroundOffset::new(0.0, sy), DOWN),
+                Side::Left => (Point::new(r.fixed, c), GroundOffset::new(sx, 0.0), LEFT),
+                Side::Right => (Point::new(r.fixed, c), GroundOffset::new(sx, 0.0), RIGHT),
             };
             spots.push(Spot {
                 at,
@@ -284,7 +294,7 @@ pub(super) fn corner_tiles(
     position: Position,
     radius: Footprint,
     unit: Footprint,
-) -> [[(i32, i32); 2]; 4] {
+) -> [[Tile; 2]; 4] {
     let (mut sx, mut sy) = (unit.x(), unit.y());
     if sx < SMALL && sy < SMALL {
         sx = sx + sx + GAP;
@@ -297,9 +307,9 @@ pub(super) fn corner_tiles(
     let top = (y + by + sy) as i32;
     let bottom = (y - (by + sy)) as i32;
     [
-        [(left, top - 1), (left + 1, top)],
-        [(right - 1, top), (right, top - 1)],
-        [(right, bottom + 1), (right - 1, bottom)],
-        [(left + 1, bottom), (left, bottom + 1)],
+        [Tile::new(left, top - 1), Tile::new(left + 1, top)],
+        [Tile::new(right - 1, top), Tile::new(right, top - 1)],
+        [Tile::new(right, bottom + 1), Tile::new(right - 1, bottom)],
+        [Tile::new(left + 1, bottom), Tile::new(left, bottom + 1)],
     ]
 }

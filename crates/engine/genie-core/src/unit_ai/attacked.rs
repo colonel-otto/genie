@@ -459,8 +459,8 @@ impl UnitAi {
         } else {
             side.seek_unexplored(self, ai_rng)?
         };
-        if let Some([x, y]) = found {
-            let _ = self.explore_at(x, y, true, side, ai_rng)?;
+        if let Some(t) = found {
+            let _ = self.explore_at(t.x(), t.y(), true, side, ai_rng)?;
             self.last_action = self.current_action;
             self.current_action = action;
             return Ok(BREAK);
@@ -470,7 +470,7 @@ impl UnitAi {
                 "a scout that finds no undiscovered tile (the player's slot 0x2e8 with 0x211)",
             )),
             Some(OrderKind::AutoScout) => {
-                let Some([x, y]) = side.seek_beyond_sight(ai_rng)? else {
+                let Some(t) = side.seek_beyond_sight(ai_rng)? else {
                     // the player's scout map, from the tiles it sees; on the auto scout's action
                     // the AI's slot 0x40 hands the notify to the owner (slot 0x2e8 with 0x202,
                     // FUN_14162dab0: no case for it but the old short pather's hulled area, a
@@ -484,7 +484,7 @@ impl UnitAi {
                     return Ok(BREAK);
                 };
                 if self.current_action == Some(ActionKind::AutoScout) {
-                    let _ = self.explore_at(x, y, true, side, ai_rng)?;
+                    let _ = self.explore_at(t.x(), t.y(), true, side, ai_rng)?;
                 }
                 self.current_action = action;
                 Ok(BREAK)

@@ -32,6 +32,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Tiles};
+use crate::map::{Tile, TileOffset, TileRect};
 use crate::math::fmath::BVector;
 use crate::pathing::tile_path::Path;
 use crate::world::slots::CheckedIndex;
@@ -72,7 +73,7 @@ const TILE_CENTRE: f32 = crate::math::image::long_path::TILE_CENTRE;
 const GATE_CLASS_BITS: u64 = 0x500;
 
 /// The tiles one step away in the order the search tries them (the switch of `FUN_140f9eb70`).
-const STEPS: [[i32; 2]; 8] = [
+const STEPS: [TileOffset; 8] = TileOffset::table([
     [-1, -1],
     [0, -1],
     [1, -1],
@@ -81,7 +82,7 @@ const STEPS: [[i32; 2]; 8] = [
     [0, 1],
     [-1, 1],
     [-1, 0],
-];
+]);
 
 /// The directions a tile entered by a step in direction `came` does not try (the table at
 /// `DAT_142f43a28`: the three that turn back, bits `came + 3` to `came + 5`; none for the start,
@@ -96,11 +97,11 @@ fn behind(came: u8) -> u8 {
 /// The target object of a search (`FUN_140f9eb70`'s argument 8).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LongTarget {
-    /// Its tile, and the tiles of its footprint (x0, y0, x1, y1: the centre less the radius, the
-    /// centre plus the radius less `EDGE_GAP`, whole).
-    pub tile: [i32; 2],
-    /// The tiles of its footprint (x0, y0, x1, y1).
-    pub rect: [i32; 4],
+    /// Its tile.
+    pub tile: Tile,
+    /// The tiles of its footprint (the centre less the radius, the centre plus the radius less
+    /// `EDGE_GAP`, whole).
+    pub rect: TileRect,
     /// The unit's footprint gap to it, squared (`FUN_14118f8c0`) and not (`FUN_14118f680`).
     pub gap_squared: f32,
     /// The gap, not squared (`FUN_14118f680`).
@@ -113,13 +114,13 @@ impl LongTarget {
     pub fn new(position: Position, radius: Footprint, gap: f32, gap_squared: f32) -> Self {
         let (x, y) = (position.x(), position.y());
         Self {
-            tile: [x as i32, y as i32],
-            rect: [
+            tile: Tile::new(x as i32, y as i32),
+            rect: TileRect::new(
                 (x - radius.x()) as i32,
                 (y - radius.y()) as i32,
                 ((x + radius.x()) - EDGE_GAP) as i32,
                 ((y + radius.y()) - EDGE_GAP) as i32,
-            ],
+            ),
             gap_squared,
             gap,
         }
@@ -130,9 +131,9 @@ impl LongTarget {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LongRequest {
     /// The start tile.
-    pub from: [i32; 2],
+    pub from: Tile,
     /// The goal tile.
-    pub to: [i32; 2],
+    pub to: Tile,
     /// How near counts as there.
     pub range: f32,
     /// The target object, None for a point.
@@ -146,7 +147,7 @@ pub struct LongRequest {
     /// The tiles of the ignored units the search lowers the tall count of, once each
     /// (`FUN_140f60440`: the unit itself and its moving ignored units, not inside another, whose
     /// master has a height).
-    pub lowered: Vec<[i32; 2]>,
+    pub lowered: Vec<Tile>,
     /// Argument 13: the goal counts as reached within the range (else within a tile).
     pub within_range: bool,
     /// Argument 11 is not −1: a blocked tile with no object of the player around counts as open.
@@ -159,7 +160,7 @@ pub struct LongRequest {
 /// The open tiles: a binary heap from slot 1, slot 0 the sentinel (`+0x119420`, count
 /// `+0x2db428`).
 struct Heap {
-    slots: Vec<([i32; 2], i32)>,
+    slots: Vec<(Tile, i32)>,
 }
 
 impl Heap {
@@ -168,7 +169,7 @@ impl Heap {
     }
 
     /// `FUN_140fa0bd0` on a slot just filled: it rises while its cost is at most its parent's.
-    fn push(&mut self, at: [i32; 2], cost: i32) -> Result<(), GenieError> {
+    fn push(&mut self, at: Tile, cost: i32) -> Result<(), GenieError> {
         self.slots.push((at, cost));
         let mut i = self.slots.len() - 1;
         let mut parent = i >> 1;
@@ -235,7 +236,7 @@ enum Searched {
     /// it came nearest the goal on; `entered` holds the direction each tile was entered by.
     Ran {
         reached: bool,
-        end: [i32; 2],
+        end: Tile,
         entered: Vec<Option<u8>>,
     },
 }
@@ -280,22 +281,16 @@ pub fn path(
 /// (the end's always) puts its centre (x + 0.5, `z`, y + 0.5, the paths' layout) in front
 /// (`FUN_140f95a50`), the start tile's last. None when a point equals the one beside it
 /// (`FUN_140f95060` refuses it).
-fn trace(
-    from: [i32; 2],
-    end: [i32; 2],
-    entered: &[Option<u8>],
-    width: i32,
-    z: f32,
-) -> Option<Path> {
-    let direction = |[x, y]: [i32; 2]| {
+fn trace(from: Tile, end: Tile, entered: &[Option<u8>], width: i32, z: f32) -> Option<Path> {
+    let direction = |t: Tile| {
         entered
-            .get((y * width + x) as usize)
+            .get((t.y() * width + t.x()) as usize)
             .copied()
             .flatten()
             .unwrap_or(0xff)
     };
-    let centre = |[x, y]: [i32; 2]| -> BVector {
-        BVector::new(x as f32 + TILE_CENTRE, z, y as f32 + TILE_CENTRE)
+    let centre = |t: Tile| -> BVector {
+        BVector::new(t.x() as f32 + TILE_CENTRE, z, t.y() as f32 + TILE_CENTRE)
     };
     let mut path = Path::default();
     let mut at = end;
@@ -307,7 +302,7 @@ fn trace(
         }
         // back along the step it was entered by
         let step = STEPS.get(usize::from(came))?;
-        at = [at[0] - step[0], at[1] - step[1]];
+        at = at.stepped_back(*step);
         before = came;
         came = direction(at);
     }
@@ -321,8 +316,8 @@ fn trace(
 fn search_refused(map: GridSize, req: &LongRequest, gap2: i32) -> Option<Searched> {
     let (w, _) = (map.width(), map.height());
     let held = |v: i32| 0 <= v && v <= w;
-    let [x0, y0] = req.from;
-    let [x1, y1] = req.to;
+    let (x0, y0) = (req.from.x(), req.from.y());
+    let (x1, y1) = (req.to.x(), req.to.y());
     if !(held(x0) && held(y0) && held(x1) && held(y1)) {
         return Some(Searched::Refused);
     }
@@ -352,27 +347,28 @@ fn search_reached(req: &LongRequest, d: f32) -> bool {
 /// [`search`]'s cost of the step from `from` (its cost `here`) to `to`: the step's length in
 /// quarter tiles squared over 4, and the estimate to the goal (`goal`, quarter tiles squared
 /// per axis) moved from `from`'s to `to`'s, in the game's wrapping arithmetic.
-const fn step_cost(here: i32, from: [i32; 2], to: [i32; 2], goal: [i32; 2]) -> i32 {
+const fn step_cost(here: i32, from: Tile, to: Tile, goal: Tile) -> i32 {
     const fn quad(a: i32) -> i32 {
         (a * 4).wrapping_mul(a * 4)
     }
-    let walked = quad(to[1] - from[1]).wrapping_add(quad(to[0] - from[0])) >> 2;
+    let walked = quad(to.y() - from.y()).wrapping_add(quad(to.x() - from.x())) >> 2;
     walked
         .wrapping_add(here)
-        .wrapping_sub(quad(goal[1] - from[1]))
-        .wrapping_sub(quad(goal[0] - from[0]))
-        .wrapping_add(quad(goal[1] - to[1]))
-        .wrapping_add(quad(goal[0] - to[0]))
+        .wrapping_sub(quad(goal.y() - from.y()))
+        .wrapping_sub(quad(goal.x() - from.x()))
+        .wrapping_add(quad(goal.y() - to.y()))
+        .wrapping_add(quad(goal.x() - to.x()))
 }
 
 /// The tiles beside a diagonal step (directions 0, 2, 4, 6) onto `n`, which the step needs as
 /// clear as the tile.
-const fn beside_diagonal(dir: u8, [nx, ny]: [i32; 2]) -> Option<[[i32; 2]; 2]> {
+const fn beside_diagonal(dir: u8, n: Tile) -> Option<[Tile; 2]> {
+    let (nx, ny) = (n.x(), n.y());
     match dir {
-        0 => Some([[nx + 1, ny], [nx, ny + 1]]),
-        2 => Some([[nx, ny + 1], [nx - 1, ny]]),
-        4 => Some([[nx - 1, ny], [nx, ny - 1]]),
-        6 => Some([[nx, ny - 1], [nx + 1, ny]]),
+        0 => Some([Tile::new(nx + 1, ny), Tile::new(nx, ny + 1)]),
+        2 => Some([Tile::new(nx, ny + 1), Tile::new(nx - 1, ny)]),
+        4 => Some([Tile::new(nx - 1, ny), Tile::new(nx, ny - 1)]),
+        6 => Some([Tile::new(nx, ny - 1), Tile::new(nx + 1, ny)]),
         _ => None,
     }
 }
@@ -393,7 +389,8 @@ impl<'a> Grid<'a> {
         let (w, h) = (map.width(), map.height());
         let blocked_terrain = u64::from(req.mask ^ 0xff);
         let mut lowered = vec![0u8; (w.max(0) * h.max(0)) as usize];
-        for &[x, y] in &req.lowered {
+        for &t in &req.lowered {
+            let (x, y) = (t.x(), t.y());
             if 0 <= x && x < w && 0 <= y && y < h {
                 let i = (y * w + x) as usize;
                 if let Some(cell) = lowered.get_mut(i) {
@@ -437,13 +434,14 @@ impl<'a> Grid<'a> {
     /// (`FUN_14152f790`).
     fn step_open(
         &self,
-        [nx, ny]: [i32; 2],
-        beside: Option<[[i32; 2]; 2]>,
+        n: Tile,
+        beside: Option<[Tile; 2]>,
         at_goal: bool,
         req: &LongRequest,
     ) -> Result<bool, GenieError> {
+        let (nx, ny) = (n.x(), n.y());
         let corners = |test: &dyn Fn(i32, i32) -> bool| {
-            beside.is_none_or(|b| b.iter().all(|&[x, y]| test(x, y)))
+            beside.is_none_or(|b| b.iter().all(|t| test(t.x(), t.y())))
         };
         let clear = |test: &dyn Fn(i32, i32) -> bool| test(nx, ny) && corners(test);
         if !clear(&|x, y| self.word(x, y) & self.blocked_terrain == 0) {
@@ -491,7 +489,7 @@ struct Front {
 
 /// The tile the search expands from: its place, its cost and the direction it was entered by.
 struct Origin {
-    at: [i32; 2],
+    at: Tile,
     cost: i32,
     came: Option<u8>,
 }
@@ -501,8 +499,8 @@ struct Relax<'a> {
     grid: Grid<'a>,
     req: &'a LongRequest,
     map: GridSize,
-    goal: [i32; 2],
-    rect: [i32; 4],
+    goal: Tile,
+    rect: TileRect,
 }
 
 impl Relax<'_> {
@@ -513,20 +511,16 @@ impl Relax<'_> {
         &self,
         front: &mut Front,
         from: &Origin,
-        (to, dir): ([i32; 2], u8),
-    ) -> Result<Option<[i32; 2]>, GenieError> {
-        let [nx, ny] = to;
-        let [x1, y1] = self.req.to;
-        let i = (ny * self.map.width() + nx) as usize;
-        let new_cost = step_cost(from.cost, from.at, to, [x1, y1]);
+        (to, dir): (Tile, u8),
+    ) -> Result<Option<Tile>, GenieError> {
+        let i = (to.y() * self.map.width() + to.x()) as usize;
+        let new_cost = step_cost(from.cost, from.at, to, self.req.to);
         let seen = *front.entered.checked(i)?;
         let old = *front.cost.checked(i)?;
         if seen.is_some() && new_cost >= old {
             return Ok(None);
         }
-        let rect = self.rect;
-        let in_rect = rect[0] <= nx && nx <= rect[2] && rect[1] <= ny && ny <= rect[3];
-        let at_goal = (nx == self.goal[0] && ny == self.goal[1]) || in_rect;
+        let at_goal = to == self.goal || self.rect.holds(to);
         if !self
             .grid
             .step_open(to, beside_diagonal(dir, to), at_goal, self.req)?
@@ -557,8 +551,8 @@ impl Relax<'_> {
 /// The search of `FUN_140f9eb70` ([`reaches`], [`path`]).
 fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, GenieError> {
     let (w, h) = (map.width(), map.height());
-    let [x0, y0] = req.from;
-    let [x1, y1] = req.to;
+    let (x0, y0) = (req.from.x(), req.from.y());
+    let (x1, y1) = (req.to.x(), req.to.y());
     let (dx, dy) = (x1 - x0, y1 - y0);
     let gap2 = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
     if let Some(early) = search_refused(map, req, gap2) {
@@ -567,8 +561,7 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
     // the goal: the target's tile and footprint, else the goal tile
     let (goal, rect) = req
         .target
-        .map_or(([x1, y1], [x1, y1, x1, y1]), |t| (t.tile, t.rect));
-    let in_rect = |x: i32, y: i32| rect[0] <= x && x <= rect[2] && rect[1] <= y && y <= rect[3];
+        .map_or_else(|| (req.to, TileRect::of(req.to)), |t| (t.tile, t.rect));
     let n = (w.max(0) * h.max(0)) as usize;
     let index = |x: i32, y: i32| (y * w + x) as usize;
     let relax = Relax {
@@ -588,7 +581,7 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
     };
     let start_cost = quad(dy).wrapping_add(quad(dx));
     *front.cost.checked_mut(index(x0, y0))? = start_cost;
-    front.heap.slots = vec![([0, 0], SENTINEL), ([x0, y0], start_cost)];
+    front.heap.slots = vec![(Tile::new(0, 0), SENTINEL), (req.from, start_cost)];
     let straight = crate::math::fmath::sqrt(gap2 as f32) as i32;
     let budget = if req.computer {
         straight.wrapping_mul(COMPUTER_FACTOR)
@@ -597,26 +590,27 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
     };
     // the popped tile nearest the goal (`local_52c`, its distance `local_4f8`: the start's own
     // in quarter tiles squared, a popped tile's a quarter of that)
-    let mut nearest = ([x0, y0], start_cost);
+    let mut nearest = (req.from, start_cost);
     let mut expansions = 0;
     while 0 < front.heap.count() {
         if budget < expansions || MOST_EXPANSIONS < expansions {
             break;
         }
-        let ([cx, cy], _) = *front.heap.slots.checked(1)?;
+        let (c, _) = *front.heap.slots.checked(1)?;
+        let (cx, cy) = (c.x(), c.y());
         let (gx, gy) = (x1 - cx, y1 - cy);
         let d =
             crate::math::fmath::sqrt(gx.wrapping_mul(gx).wrapping_add(gy.wrapping_mul(gy)) as f32);
-        if in_rect(cx, cy) || search_reached(req, d) {
+        if rect.holds(c) || search_reached(req, d) {
             return Ok(Searched::Ran {
                 reached: true,
-                end: [cx, cy],
+                end: c,
                 entered: front.entered,
             });
         }
         let near = quad(y1 - cy).wrapping_add(quad(x1 - cx)) >> 2;
         if near < nearest.1 {
-            nearest = ([cx, cy], near);
+            nearest = (c, near);
         }
         front.heap.pop()?;
         let came = *front.entered.checked(index(cx, cy))?;
@@ -624,22 +618,17 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
         let here = *front.cost.checked(index(cx, cy))?;
         for (dir, step) in STEPS.iter().enumerate() {
             let dir = dir as u8;
-            let (nx, ny) = (cx + step[0], cy + step[1]);
-            if back & (1 << dir) != 0
-                || nx < 0
-                || ny < 0
-                || w <= nx
-                || h <= ny
-                || (nx == x0 && ny == y0)
-            {
+            let n = c.stepped(*step);
+            let (nx, ny) = (n.x(), n.y());
+            if back & (1 << dir) != 0 || nx < 0 || ny < 0 || w <= nx || h <= ny || n == req.from {
                 continue;
             }
             let from = Origin {
-                at: [cx, cy],
+                at: c,
                 cost: here,
                 came,
             };
-            if let Some(end) = relax.step(&mut front, &from, ([nx, ny], dir))? {
+            if let Some(end) = relax.step(&mut front, &from, (n, dir))? {
                 return Ok(Searched::Ran {
                     reached: true,
                     end,
@@ -687,8 +676,8 @@ mod tests {
 
     fn request(from: [i32; 2], to: [i32; 2]) -> LongRequest {
         LongRequest {
-            from,
-            to,
+            from: Tile::from(from),
+            to: Tile::from(to),
             range: 3.0,
             target: None,
             moves: true,
@@ -756,7 +745,7 @@ mod tests {
         entered[1] = Some(3);
         entered[2] = Some(3);
         entered[w + 3] = Some(4);
-        let p = trace([0, 0], [3, 1], &entered, w as i32, 0.0).unwrap();
+        let p = trace(Tile::new(0, 0), Tile::new(3, 1), &entered, w as i32, 0.0).unwrap();
         assert_eq!(
             p.points,
             [
@@ -766,7 +755,7 @@ mod tests {
             ]
         );
         // the end on the start: its centre only
-        let p = trace([0, 0], [0, 0], &entered, w as i32, 0.0).unwrap();
+        let p = trace(Tile::new(0, 0), Tile::new(0, 0), &entered, w as i32, 0.0).unwrap();
         assert_eq!(p.points, [BVector::new(0.5, 0.0, 0.5)]);
     }
 
@@ -843,10 +832,10 @@ mod tests {
     #[test]
     fn the_heap_sinks_the_games_way() {
         let mut h = Heap {
-            slots: vec![([0, 0], SENTINEL)],
+            slots: vec![(Tile::new(0, 0), SENTINEL)],
         };
         for (i, c) in [5, 3, 8, 1, 9, 2].into_iter().enumerate() {
-            h.push([i as i32, 0], c).unwrap();
+            h.push(Tile::new(i as i32, 0), c).unwrap();
         }
         assert_eq!(h.slots[1].1, 1);
         h.pop().unwrap();

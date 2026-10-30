@@ -13,6 +13,7 @@
 //! them as they were made, and a map is not made again when the terrain changes later.
 
 use crate::GenieError;
+use crate::map::Tile;
 use crate::world::slots::CheckedIndex;
 
 /// The number after the last a patch takes; the next patch takes 0 again. A tile not yet
@@ -276,9 +277,9 @@ impl ZoneMap {
     /// `at` (an integer sum as a float, `FUN_14099ef70`) is not above `reach` (`COMISS`/`JA`: a
     /// NaN reach takes every tile of the box).
     #[must_use]
-    pub fn near(&self, zone: u16, at: [i32; 2], reach: f32) -> Option<[i32; 2]> {
+    pub fn near(&self, zone: u16, at: Tile, reach: f32) -> Option<Tile> {
         use crate::math::conversions::cvttss2si;
-        let [x, y] = at;
+        let (x, y) = (at.x(), at.y());
         let r = cvttss2si(reach);
         // CMOVNS and CMOVLE on the wrapped sums
         let (x0, y0) = (x.wrapping_sub(r).max(0), y.wrapping_sub(r).max(0));
@@ -291,7 +292,7 @@ impl ZoneMap {
                 let steps = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
                 let d = crate::math::fmath::sqrt(steps as f32);
                 if crate::math::fmath::at_most_or_unordered(d, reach) && self.zone(tx, ty) == zone {
-                    return Some([tx, ty]);
+                    return Some(Tile::new(tx, ty));
                 }
             }
         }
@@ -444,16 +445,16 @@ mod tests {
         assert_eq!([z.zone(3, 0), z.zone(4, 2), z.zone(2, 2)], [1, 1, 0]);
         // from (2, 2) within 2: column 3 comes before column 4, and (3, 0) is sqrt 5 away;
         // column 4's (4, 2) is 2 away
-        assert_eq!(z.near(1, [2, 2], 2.0), Some([4, 2]));
+        assert_eq!(z.near(1, Tile::new(2, 2), 2.0), Some(Tile::new(4, 2)));
         // within 2.5 (cut to 2 tiles) (3, 0) counts and its column comes first
-        assert_eq!(z.near(1, [2, 2], 2.5), Some([3, 0]));
+        assert_eq!(z.near(1, Tile::new(2, 2), 2.5), Some(Tile::new(3, 0)));
         // the box stays on the map: from (0, 0) within 1 no zone-1 tile
-        assert_eq!(z.near(1, [0, 0], 1.0), None);
+        assert_eq!(z.near(1, Tile::new(0, 0), 1.0), None);
         // the unit's own tile counts, and x before y: (0, 0) itself
-        assert_eq!(z.near(0, [0, 0], 1.0), Some([0, 0]));
+        assert_eq!(z.near(0, Tile::new(0, 0), 1.0), Some(Tile::new(0, 0)));
         // a NaN reach is 0 tiles (CVTTSS2SI's i32::MIN wraps the box away) and takes no distance
         // test
-        assert_eq!(z.near(0, [2, 2], f32::NAN), None);
+        assert_eq!(z.near(0, Tile::new(2, 2), f32::NAN), None);
     }
 
     #[test]

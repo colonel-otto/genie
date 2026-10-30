@@ -11,6 +11,7 @@ use crate::GenieError;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::{Tile, TileOffset};
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveToAction, MoveToReads, SpriteReads};
@@ -253,7 +254,7 @@ pub struct InfluenceMap {
     /// Its width and height.
     pub size: GridSize,
     /// The tile its first byte stands for.
-    pub origin: [i32; 2],
+    pub origin: Tile,
     /// `unchangeableLimitValue` (`+0x18`), which the save keeps.
     pub limit: u8,
     /// The bytes, row by row.
@@ -267,14 +268,14 @@ impl InfluenceMap {
         let n = (size.width().max(0) * size.height().max(0)) as usize;
         Self {
             size,
-            origin: [0, 0],
+            origin: Tile::new(0, 0),
             limit: 0,
             cells: vec![fill; n],
         }
     }
 
     fn index(&self, x: i32, y: i32) -> Option<usize> {
-        let (dx, dy) = (x - self.origin[0], y - self.origin[1]);
+        let (dx, dy) = (x - self.origin.x(), y - self.origin.y());
         (0 <= dx && 0 <= dy && dx < self.size.width() && dy < self.size.height())
             .then(|| (dy * self.size.width() + dx) as usize)
     }
@@ -298,7 +299,7 @@ const RINGS: [i32; 3] = [10, 15, 20];
 
 /// The eight points of a ring in the order the search tries them (`FUN_140c65490`'s switch):
 /// down-left first, then round through down, down-right, right, up-right, up, up-left and left.
-const AROUND: [[i32; 2]; 8] = [
+const AROUND: [TileOffset; 8] = TileOffset::table([
     [-1, -1],
     [0, -1],
     [1, -1],
@@ -307,7 +308,7 @@ const AROUND: [[i32; 2]; 8] = [
     [0, 1],
     [-1, 1],
     [-1, 0],
-];
+]);
 
 /// What the search asks of a point (x, y, whole tiles on the map's grid).
 pub trait Area {
@@ -336,18 +337,19 @@ pub trait Area {
 /// search would read instead of the explored tiles and mark the point found in) is never made
 /// in the slice: the base notify makes it only when no point is found, which it does not model.
 pub fn unexplored_area(
-    tc: Option<[i32; 2]>,
+    tc: Option<Tile>,
     map: GridSize,
     area: &mut dyn Area,
-) -> Result<Option<[i32; 2]>, GenieError> {
-    let Some([cx, cy]) = tc else {
+) -> Result<Option<Tile>, GenieError> {
+    let Some(tc) = tc else {
         return Ok(None);
     };
+    let (cx, cy) = (tc.x(), tc.y());
     let own = area.own_zone();
-    let mut best: Option<([i32; 2], f32)> = None;
+    let mut best: Option<(Tile, f32)> = None;
     for ring in RINGS {
-        for [ax, ay] in AROUND {
-            let (x, y) = (cx + ax * ring, cy + ay * ring);
+        for a in AROUND {
+            let (x, y) = (cx + a.dx() * ring, cy + a.dy() * ring);
             if x < 0 || y < 0 || map.width() <= x || map.height() <= y {
                 continue;
             }
@@ -360,7 +362,7 @@ pub fn unexplored_area(
             }
             let d = area.distance(x, y);
             if best.is_none_or(|(_, b)| d < b) {
-                best = Some(([x, y], d));
+                best = Some((Tile::new(x, y), d));
             }
         }
     }
@@ -401,7 +403,7 @@ pub fn closest_undiscovered(
     seeker: Seeker,
     map: GridSize,
     ai: &mut crate::math::rng::Well512,
-) -> Result<Option<[i32; 2]>, GenieError> {
+) -> Result<Option<Tile>, GenieError> {
     if seeker.computer {
         return Ok(None);
     }
@@ -425,7 +427,7 @@ pub fn closest_undiscovered(
     let slack = (ai.rand15() % 3) as i32;
     let own = area.own_zone();
     let (tx, ty) = (ux as i32, uy as i32);
-    let mut best: Option<([i32; 2], i32)> = None;
+    let mut best: Option<(Tile, i32)> = None;
     for y in y0..=y1 {
         for x in x0..=x1 {
             if area.explored(x, y)? || area.zone(x, y) != own || !area.clear(x, y)? {
@@ -436,12 +438,12 @@ pub fn closest_undiscovered(
                 d += (y - py as i32) * (y - py as i32) + (x - px as i32) * (x - px as i32);
             }
             if best.is_none_or(|(_, b)| d < slack + b) {
-                best = Some(([x, y], d));
+                best = Some((Tile::new(x, y), d));
             }
         }
     }
     match best {
-        Some(([x, y], _)) if area.reaches(x, y)? => Ok(Some([x, y])),
+        Some((t, _)) if area.reaches(t.x(), t.y())? => Ok(Some(t)),
         _ => Ok(None),
     }
 }
@@ -468,7 +470,7 @@ pub fn beyond_sight(
     line_of_sight: f32,
     map: GridSize,
     ai: &mut crate::math::rng::Well512,
-) -> Result<Option<[i32; 2]>, GenieError> {
+) -> Result<Option<Tile>, GenieError> {
     let own = area.own_zone();
     let (w, h) = (map.width(), map.height());
     let r = line_of_sight as i32 + SQUARE_PAST_SIGHT;
@@ -476,48 +478,49 @@ pub fn beyond_sight(
     let (x0, x1, y0, y1) = (ux - r, ux + r, uy - r, uy + r);
     let on_x = |x: i32| 0 <= x && x < w;
     let on_y = |y: i32| 0 <= y && y < h;
-    let mut edge: Vec<[i32; 2]> = Vec::new();
+    let mut edge: Vec<Tile> = Vec::new();
     if 0 <= y0 {
-        edge.extend((x0..x1).filter(|&x| on_x(x)).map(|x| [x, y0]));
+        edge.extend((x0..x1).filter(|&x| on_x(x)).map(|x| Tile::new(x, y0)));
     }
     if x1 < w {
-        edge.extend((y0..y1).filter(|&y| on_y(y)).map(|y| [x1, y]));
+        edge.extend((y0..y1).filter(|&y| on_y(y)).map(|y| Tile::new(x1, y)));
     }
     if y1 < h {
-        edge.extend((x0 + 1..=x1).filter(|&x| on_x(x)).map(|x| [x, y1]));
+        edge.extend((x0 + 1..=x1).filter(|&x| on_x(x)).map(|x| Tile::new(x, y1)));
     }
     if 0 <= x0 {
-        edge.extend((y0 + 1..=y1).filter(|&y| on_y(y)).map(|y| [x0, y]));
+        edge.extend((y0 + 1..=y1).filter(|&y| on_y(y)).map(|y| Tile::new(x0, y)));
     }
     ai.shuffle(&mut edge);
     let counts = |area: &mut dyn Area, x: i32, y: i32| -> Result<bool, GenieError> {
         Ok(area.zone(x, y) == own && area.clear(x, y)? && area.reaches(x, y)?)
     };
-    for &[x, y] in &edge {
-        if !area.explored(x, y)? && counts(area, x, y)? {
-            return Ok(Some([x, y]));
+    for &t in &edge {
+        if !area.explored(t.x(), t.y())? && counts(area, t.x(), t.y())? {
+            return Ok(Some(t));
         }
     }
     let mut seen = vec![false; (w * h).max(0) as usize];
-    let mut queue = vec![[ux, uy]];
+    let mut queue = vec![Tile::new(ux, uy)];
     let mut i = 0;
-    while i < queue.len() {
-        let [x, y] = queue[i];
+    while let Some(&t) = queue.get(i) {
+        let (x, y) = (t.x(), t.y());
         i += 1;
         if !area.explored(x, y)? {
             if counts(area, x, y)? {
-                return Ok(Some([x, y]));
+                return Ok(Some(t));
             }
             continue;
         }
-        for [nx, ny] in [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] {
-            if !on_x(nx) || !on_y(ny) {
+        for n in t.beside() {
+            if !on_x(n.x()) || !on_y(n.y()) {
                 continue;
             }
-            let k = (ny * w + nx) as usize;
-            if !seen[k] {
-                seen[k] = true;
-                queue.push([nx, ny]);
+            if let Some(s) = seen.get_mut((n.y() * w + n.x()) as usize)
+                && !*s
+            {
+                *s = true;
+                queue.push(n);
             }
         }
     }
@@ -707,7 +710,7 @@ mod tests {
         assert_eq!(m.cells.iter().map(|&c| u32::from(c)).sum::<u32>(), 1);
         // a reference point shifts the grid
         let shifted = InfluenceMap {
-            origin: [10, 20],
+            origin: Tile::new(10, 20),
             ..InfluenceMap::new(GridSize::new(4, 4), 7)
         };
         assert_eq!(
@@ -813,7 +816,7 @@ mod tests {
             GridSize::new(120, 120),
             &mut rng(),
         );
-        assert_eq!(found, Ok(Some([24, 90])));
+        assert_eq!(found, Ok(Some(Tile::new(24, 90))));
         // all of the square seen: the flood leaves it left first, at (15, 92)
         let mut area = Open {
             explored: square,
@@ -826,7 +829,7 @@ mod tests {
             GridSize::new(120, 120),
             &mut rng(),
         );
-        assert_eq!(found, Ok(Some([15, 92])));
+        assert_eq!(found, Ok(Some(Tile::new(15, 92))));
     }
 
     #[test]
@@ -837,19 +840,19 @@ mod tests {
             unreachable: vec![],
         };
         assert_eq!(
-            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
-            Ok(Some([19, 94]))
+            unexplored_area(Some(Tile::new(29, 94)), GridSize::new(120, 120), &mut area),
+            Ok(Some(Tile::new(19, 94)))
         );
         area.explored = vec![[19, 94], [19, 104]];
         assert_eq!(
-            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
-            Ok(Some([14, 94]))
+            unexplored_area(Some(Tile::new(29, 94)), GridSize::new(120, 120), &mut area),
+            Ok(Some(Tile::new(14, 94)))
         );
         area.explored.push([14, 94]);
         area.unreachable = vec![[19, 84]];
         assert_eq!(
-            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
-            Ok(Some([9, 94]))
+            unexplored_area(Some(Tile::new(29, 94)), GridSize::new(120, 120), &mut area),
+            Ok(Some(Tile::new(9, 94)))
         );
         assert_eq!(
             unexplored_area(None, GridSize::new(120, 120), &mut area),
@@ -896,15 +899,15 @@ mod tests {
             zone: 0x101,
         };
         assert_eq!(
-            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
-            Ok(Some([19, 94]))
+            unexplored_area(Some(Tile::new(29, 94)), GridSize::new(120, 120), &mut area),
+            Ok(Some(Tile::new(19, 94)))
         );
         let mut area = Zoned {
             open: open(),
             zone: 0x102,
         };
         assert_eq!(
-            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
+            unexplored_area(Some(Tile::new(29, 94)), GridSize::new(120, 120), &mut area),
             Ok(None)
         );
     }
@@ -957,7 +960,7 @@ mod tests {
         };
         let mut ai = seeded();
         let found = closest_undiscovered(&mut area, seeker, GridSize::new(120, 120), &mut ai);
-        assert_eq!(found, Ok(Some([16, 92])));
+        assert_eq!(found, Ok(Some(Tile::new(16, 92))));
         // one draw of the AI stream
         let mut once = seeded();
         let _ = once.rand15();

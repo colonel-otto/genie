@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -226,7 +227,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
         original_master: None,
         original_owner: 1,
         position: Position::new(3.0, 4.0, 0.0),
-        tile: [3, 4],
+        tile: Tile::new(3, 4),
         footprint: 0,
         bits: 0,
         cant_see: 0,
@@ -512,7 +513,7 @@ pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::vision::ghost::Ghost {
         original_master: None,
         original_owner: 1,
         position: Position::new(x, y, 0.0),
-        tile: [x as i32, y as i32],
+        tile: Tile::new(x as i32, y as i32),
         footprint: 0,
         bits: 0,
         cant_see: 0,
@@ -656,7 +657,10 @@ fn a_cell_mark_points_toward_the_nearest_slot_and_a_nan_along_y() {
     assert_eq!(cell_mark(0, 3.0, f32::NAN), 0x83);
     assert_eq!(cell_mark(0, f32::NAN, f32::NAN), 0x83);
     // a slot's tile by CVTTSS2SI: a NaN place is off any map
-    assert_eq!(slot_tile(BVector::new(f32::NAN, 0.0, 2.5)), (i32::MIN, 2));
+    assert_eq!(
+        slot_tile(BVector::new(f32::NAN, 0.0, 2.5)),
+        Tile::new(i32::MIN, 2)
+    );
 }
 
 /// The line transform's distance back (0x14103a850, `COMISS`/`JA`): a line's own when it is

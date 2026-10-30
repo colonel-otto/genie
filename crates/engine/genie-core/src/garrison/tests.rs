@@ -5,6 +5,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::BuildingMaster;
@@ -718,24 +719,28 @@ fn the_landing_walk_steps_twice_per_tile_of_the_longer_axis() {
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        tiles([79, 92], [83, 86]),
+        tiles(Tile::new(79, 92), Tile::new(83, 86)),
         [
-            [79, 91],
-            [80, 90],
-            [80, 89],
-            [81, 89],
-            [81, 88],
-            [82, 87],
-            [82, 86],
-            [83, 86],
+            Tile::new(79, 91),
+            Tile::new(80, 90),
+            Tile::new(80, 89),
+            Tile::new(81, 89),
+            Tile::new(81, 88),
+            Tile::new(82, 87),
+            Tile::new(82, 86),
+            Tile::new(83, 86),
         ]
     );
     // each with the float place reached there
-    let at = LandingWalk::new([79, 92], [83, 86]).find(|&(t, _)| t == [81, 89]);
-    assert_eq!(at, Some(([81, 89], Point::new(81.000_015, 89.0))));
+    let at = LandingWalk::new(Tile::new(79, 92), Tile::new(83, 86))
+        .find(|&(t, _)| t == Tile::new(81, 89));
+    assert_eq!(at, Some((Tile::new(81, 89), Point::new(81.000_015, 89.0))));
     // equal axes: x is the longer (`<=`); one tile: none
-    assert_eq!(tiles([0, 0], [-2, 2]), [[0, 0], [-1, 1], [-2, 2]]);
-    assert_eq!(tiles([5, 5], [5, 5]), Vec::<[i32; 2]>::new());
+    assert_eq!(
+        tiles(Tile::new(0, 0), Tile::new(-2, 2)),
+        [Tile::new(0, 0), Tile::new(-1, 1), Tile::new(-2, 2)]
+    );
+    assert_eq!(tiles(Tile::new(5, 5), Tile::new(5, 5)), Vec::<Tile>::new());
 }
 
 /// A map of `size` tiles whose `blocked` tiles hold a terrain class outside the walker's mask
@@ -3540,9 +3545,9 @@ fn a_market_tells_a_computer_ally_of_its_tile() {
             .unwrap();
         t.spatial.sight.unwrap().new_tiles[2].clone()
     };
-    assert_eq!(market(true, false), [[10, 12]]);
-    assert_eq!(market(false, false), Vec::<[i32; 2]>::new());
-    assert_eq!(market(true, true), Vec::<[i32; 2]>::new());
+    assert_eq!(market(true, false), [Tile::new(10, 12)]);
+    assert_eq!(market(false, false), Vec::<Tile>::new());
+    assert_eq!(market(true, true), Vec::<Tile>::new());
 }
 
 #[test]

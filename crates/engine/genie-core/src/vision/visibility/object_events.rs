@@ -83,7 +83,8 @@ impl Visibility {
                 .ok_or(GenieError::unsupported(
                     "an object's UMV entry beyond the list",
                 ))?;
-            for [dx, dy] in offsets {
+            for pair in offsets {
+                let (dx, dy) = (pair.dx(), pair.dy());
                 let (fx, fy) = (dx as f32 + x, dy as f32 + y);
                 let on_map =
                     0.0 <= fx && 0.0 <= fy && fx < self.width as f32 && fy < self.height as f32;

@@ -3,6 +3,8 @@ use crate::commands::GatherPoint;
 use crate::map::GridSize;
 use crate::map::GroundOffset;
 use crate::map::Radii;
+use crate::map::Tile;
+use crate::map::TileOffset;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -126,18 +128,25 @@ impl PlaceMap for Hill {
 #[test]
 fn a_hill_mode_takes_flat_ground_side_slopes_or_an_edge_within_one_step() {
     let fails = |mode, shape, elevation, at| {
-        hill_fails(mode, &Hill(shape, elevation), at, (2, 5), Some(3)).unwrap()
+        hill_fails(
+            mode,
+            &Hill(shape, elevation),
+            Tile::from(at),
+            Tile::new(2, 5),
+            Some(3),
+        )
+        .unwrap()
     };
     // mode 1: flat and the four side slopes (5 to 8) pass, corners and saddles fail
-    assert!(!fails(1, 0, 3, (3, 3)) && !fails(1, 5, 3, (3, 3)) && !fails(1, 8, 3, (3, 3)));
-    assert!(fails(1, 2, 3, (3, 3)) && fails(1, 9, 3, (3, 3)));
+    assert!(!fails(1, 0, 3, [3, 3]) && !fails(1, 5, 3, [3, 3]) && !fails(1, 8, 3, [3, 3]));
+    assert!(fails(1, 2, 3, [3, 3]) && fails(1, 9, 3, [3, 3]));
     // mode 2: flat alone
-    assert!(!fails(2, 0, 3, (3, 3)) && fails(2, 6, 3, (3, 3)));
+    assert!(!fails(2, 0, 3, [3, 3]) && fails(2, 6, 3, [3, 3]));
     // mode 3: the first column and the last row within one step of the corner's elevation
-    assert!(!fails(3, 9, 4, (2, 3)) && fails(3, 0, 5, (2, 3)) && fails(3, 0, 1, (4, 5)));
-    assert!(!fails(3, 0, 7, (4, 4)));
+    assert!(!fails(3, 9, 4, [2, 3]) && fails(3, 0, 5, [2, 3]) && fails(3, 0, 1, [4, 5]));
+    assert!(!fails(3, 0, 7, [4, 4]));
     // the other modes take any tile
-    assert!(!fails(0, 12, 9, (3, 3)));
+    assert!(!fails(0, 12, 9, [3, 3]));
 }
 
 #[test]
@@ -174,7 +183,7 @@ fn a_blocker_that_moves_lets_the_spot_try_its_next_candidate() {
     let spot = Spot {
         at: Point::new(1.0, 1.0),
         step: GroundOffset::new(0.5, 0.0),
-        dir: [1, 0],
+        dir: TileOffset::new(1, 0),
         count: 1,
     };
     let mut n = 0;

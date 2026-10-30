@@ -1,5 +1,7 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
+use crate::map::Tile;
+
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -133,11 +135,11 @@ pub(crate) fn long_path_for(
         .into_iter()
         .filter_map(|id| world.get(id))
         .filter(|p| p.tall)
-        .map(|p| [p.position.x() as i32, p.position.y() as i32])
+        .map(|p| Tile::new(p.position.x() as i32, p.position.y() as i32))
         .collect();
     let req = crate::pathing::long_path::LongRequest {
-        from: [from.x() as i32, from.y() as i32],
-        to: [to.x() as i32, to.y() as i32],
+        from: Tile::new(from.x() as i32, from.y() as i32),
+        to: Tile::new(to.x() as i32, to.y() as i32),
         range,
         target: long_target,
         moves: walker.moves,

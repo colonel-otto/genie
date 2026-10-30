@@ -7,6 +7,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::{Tile, TileRect};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -170,17 +171,17 @@ pub trait PlaceMap {
 
 /// The tiles within `REACH` of a point, clamped to the map (`(int)` of each bound, then the map's
 /// edges), row by row.
-pub(super) fn reach(map: GridSize, at: Point) -> impl Iterator<Item = (i32, i32)> {
+pub(super) fn reach(map: GridSize, at: Point) -> impl Iterator<Item = Tile> {
     let (x, y) = (at.x(), at.y());
     let x0 = ((x - REACH) as i32 as i16).max(0);
     let x1 = ((x + REACH) as i32 as i16).min((map.width() - 1) as i16);
     let y0 = ((y - REACH) as i32 as i16).max(0);
     let y1 = ((y + REACH) as i32 as i16).min((map.height() - 1) as i16);
-    (y0..=y1).flat_map(move |ty| (x0..=x1).map(move |tx| (i32::from(tx), i32::from(ty))))
+    (y0..=y1).flat_map(move |ty| (x0..=x1).map(move |tx| Tile::new(i32::from(tx), i32::from(ty))))
 }
 
 /// An object a placement test's scan found, with its tile.
-pub(super) type Found = ((i32, i32), Near);
+pub(super) type Found = (Tile, Near);
 
 /// The objects whose box overlaps a box of radii `r` at `p` among those `counts` lets through,
 /// with their tile, in the scan's order.
@@ -191,8 +192,8 @@ pub(super) fn overlapping(
     counts: &dyn Fn(&Near) -> Option<bool>,
 ) -> Result<Vec<Found>, GenieError> {
     let mut out = Vec::new();
-    for (tx, ty) in reach(map.size(), p) {
-        for o in map.objects(tx, ty)? {
+    for t in reach(map.size(), p) {
+        for o in map.objects(t.x(), t.y())? {
             let Some(tall) = counts(&o) else { continue };
             if !(0.0 < o.radius.x() && 0.0 < o.radius.y() && tall) {
                 continue;
@@ -200,7 +201,7 @@ pub(super) fn overlapping(
             let dx = (o.position.x() - p.x()).abs();
             let dy = (o.position.y() - p.y()).abs();
             if dx < o.radius.x() + r.x() && dy < o.radius.y() + r.y() {
-                out.push(((tx, ty), o));
+                out.push((t, o));
             }
         }
     }
@@ -320,7 +321,7 @@ pub(super) fn build_static_test(
     }
     let mut explored = false;
     let (x0, x1, y0, y1) = ((x - rx) as i32, far_x as i32, (y - ry) as i32, far_y as i32);
-    if !placement_terrains(site.placement, map, p, [x0, y0, x1, y1])? {
+    if !placement_terrains(site.placement, map, p, TileRect::new(x0, y0, x1, y1))? {
         return Ok(Some(1));
     }
     // hill mode 3 measures the box's edge against the elevation of its first column's last row
@@ -344,7 +345,13 @@ pub(super) fn build_static_test(
                 return Ok(Some(2));
             }
             explored = explored || (site.human && map.explored(site.player, tx, ty));
-            if hill_fails(site.hill_mode, map, (tx, ty), (x0, y1), base)? {
+            if hill_fails(
+                site.hill_mode,
+                map,
+                Tile::new(tx, ty),
+                Tile::new(x0, y1),
+                base,
+            )? {
                 return Ok(Some(3));
             }
         }
@@ -506,7 +513,7 @@ pub fn placement(
             me.placement,
             map,
             p,
-            [(x - rx) as i32, (y - ry) as i32, far_x as i32, far_y as i32],
+            TileRect::new((x - rx) as i32, (y - ry) as i32, far_x as i32, far_y as i32),
         )? {
         false
     } else {

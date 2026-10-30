@@ -20,6 +20,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
@@ -90,8 +91,8 @@ impl BuildWallCommand {
 /// tile, straight or diagonal; else its straight part and its diagonal one, the straight one
 /// first when it is longer than the diagonal. The second starts on the first's last tile.
 #[must_use]
-pub fn segments(from: [i32; 2], to: [i32; 2]) -> Vec<([i32; 2], [i32; 2])> {
-    let ([x1, y1], [x2, y2]) = (from, to);
+pub fn segments(from: Tile, to: Tile) -> Vec<(Tile, Tile)> {
+    let (x1, y1, x2, y2) = (from.x(), from.y(), to.x(), to.y());
     let dx = (x2 - x1).abs() + 1;
     let dy = (y2 - y1).abs() + 1;
     if dx == 1 || dy == 1 || dx == dy {
@@ -101,20 +102,20 @@ pub fn segments(from: [i32; 2], to: [i32; 2]) -> Vec<([i32; 2], [i32; 2])> {
         let d = (y1 - y2).abs();
         let s = if x2 <= x1 { d } else { -d };
         if d < (x1 - x2).abs() - d {
-            let corner = [x2 + s, y1];
+            let corner = Tile::new(x2 + s, y1);
             vec![(from, corner), (corner, to)]
         } else {
-            let corner = [x1 - s, y2];
+            let corner = Tile::new(x1 - s, y2);
             vec![(from, corner), (corner, to)]
         }
     } else {
         let d = (x1 - x2).abs();
         let s = if y2 <= y1 { d } else { -d };
         if d < (y1 - y2).abs() - d {
-            let corner = [x1, y2 + s];
+            let corner = Tile::new(x1, y2 + s);
             vec![(from, corner), (corner, to)]
         } else {
-            let corner = [x2, y1 - s];
+            let corner = Tile::new(x2, y1 - s);
             vec![(from, corner), (corner, to)]
         }
     }
@@ -126,8 +127,8 @@ pub fn segments(from: [i32; 2], to: [i32; 2]) -> Vec<([i32; 2], [i32; 2])> {
 /// # Errors
 ///
 /// For a segment neither straight nor diagonal.
-pub fn tiles(from: [i32; 2], to: [i32; 2]) -> Result<Vec<[i32; 2]>, GenieError> {
-    let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+pub fn tiles(from: Tile, to: Tile) -> Result<Vec<Tile>, GenieError> {
+    let (dx, dy) = (to.x() - from.x(), to.y() - from.y());
     if dx != 0 && dy != 0 && dx.abs() != dy.abs() {
         return Err(GenieError::unsupported(
             "a wall segment neither straight nor diagonal",
@@ -136,7 +137,7 @@ pub fn tiles(from: [i32; 2], to: [i32; 2]) -> Result<Vec<[i32; 2]>, GenieError> 
     let (sx, sy) = (dx.signum(), dy.signum());
     let n = dx.abs().max(dy.abs());
     Ok((0..=n)
-        .map(|k| [from[0] + k * sx, from[1] + k * sy])
+        .map(|k| Tile::new(from.x() + k * sx, from.y() + k * sy))
         .collect())
 }
 
@@ -281,11 +282,15 @@ impl World {
         radius: Footprint,
     ) -> Result<Vec<(i32, Position)>, GenieError> {
         let (player, master) = (w.player, w.master);
-        let ([x1, y1], [x2, y2]) = (w.from.map(i32::from), w.to.map(i32::from));
+        let tile = |[x, y]: [u16; 2]| Tile::new(i32::from(x), i32::from(y));
         let mut placed: Vec<(i32, Position)> = Vec::new();
-        for (a, b) in segments([x1, y1], [x2, y2]) {
-            for [tx, ty] in tiles(a, b)? {
-                let at = snap(radius, self.spatial.map, Point::new(tx as f32, ty as f32));
+        for (a, b) in segments(tile(w.from), tile(w.to)) {
+            for t in tiles(a, b)? {
+                let at = snap(
+                    radius,
+                    self.spatial.map,
+                    Point::new(t.x() as f32, t.y() as f32),
+                );
                 if self.placement_code(player, master, at, true)? != 0 {
                     continue;
                 }
@@ -416,40 +421,45 @@ impl World {
 mod tests {
     use super::*;
 
+    /// The tile at `x`, `y`.
+    const fn t(x: i32, y: i32) -> Tile {
+        Tile::new(x, y)
+    }
+
     #[test]
     fn a_line_is_one_segment_when_straight_or_diagonal() {
-        assert_eq!(segments([3, 4], [3, 4]), [([3, 4], [3, 4])]);
-        assert_eq!(segments([3, 4], [9, 4]), [([3, 4], [9, 4])]);
-        assert_eq!(segments([3, 4], [3, 1]), [([3, 4], [3, 1])]);
-        assert_eq!(segments([3, 4], [6, 7]), [([3, 4], [6, 7])]);
+        assert_eq!(segments(t(3, 4), t(3, 4)), [(t(3, 4), t(3, 4))]);
+        assert_eq!(segments(t(3, 4), t(9, 4)), [(t(3, 4), t(9, 4))]);
+        assert_eq!(segments(t(3, 4), t(3, 1)), [(t(3, 4), t(3, 1))]);
+        assert_eq!(segments(t(3, 4), t(6, 7)), [(t(3, 4), t(6, 7))]);
     }
 
     #[test]
     fn a_bent_line_puts_its_longer_part_first() {
         // 8 across, 2 down: the straight part (6) is longer than the diagonal (2)
         assert_eq!(
-            segments([0, 0], [8, 2]),
-            [([0, 0], [6, 0]), ([6, 0], [8, 2])]
+            segments(t(0, 0), t(8, 2)),
+            [(t(0, 0), t(6, 0)), (t(6, 0), t(8, 2))]
         );
         // 4 across, 3 down: the diagonal (3) first, then the straight part (1)
         assert_eq!(
-            segments([0, 0], [4, 3]),
-            [([0, 0], [3, 3]), ([3, 3], [4, 3])]
+            segments(t(0, 0), t(4, 3)),
+            [(t(0, 0), t(3, 3)), (t(3, 3), t(4, 3))]
         );
         // leftwards and upwards, taller than wide
         assert_eq!(
-            segments([10, 10], [8, 2]),
-            [([10, 10], [10, 4]), ([10, 4], [8, 2])]
+            segments(t(10, 10), t(8, 2)),
+            [(t(10, 10), t(10, 4)), (t(10, 4), t(8, 2))]
         );
         assert_eq!(
-            segments([10, 10], [7, 6]),
-            [([10, 10], [7, 7]), ([7, 7], [7, 6])]
+            segments(t(10, 10), t(7, 6)),
+            [(t(10, 10), t(7, 7)), (t(7, 7), t(7, 6))]
         );
         for (a, b) in [
-            ([0, 0], [8, 2]),
-            ([0, 0], [4, 3]),
-            ([10, 10], [8, 2]),
-            ([10, 10], [7, 6]),
+            (t(0, 0), t(8, 2)),
+            (t(0, 0), t(4, 3)),
+            (t(10, 10), t(8, 2)),
+            (t(10, 10), t(7, 6)),
         ] {
             let s = segments(a, b);
             assert!(s.iter().all(|&(f, t)| tiles(f, t).is_ok()));
@@ -459,9 +469,12 @@ mod tests {
 
     #[test]
     fn a_segment_walks_both_coordinates() {
-        assert_eq!(tiles([5, 5], [7, 3]).unwrap(), [[5, 5], [6, 4], [7, 3]]);
-        assert_eq!(tiles([5, 5], [5, 5]).unwrap(), [[5, 5]]);
-        assert!(tiles([0, 0], [2, 1]).is_err());
+        assert_eq!(
+            tiles(t(5, 5), t(7, 3)).unwrap(),
+            [t(5, 5), t(6, 4), t(7, 3)]
+        );
+        assert_eq!(tiles(t(5, 5), t(5, 5)).unwrap(), [t(5, 5)]);
+        assert!(tiles(t(0, 0), t(2, 1)).is_err());
     }
 
     #[test]

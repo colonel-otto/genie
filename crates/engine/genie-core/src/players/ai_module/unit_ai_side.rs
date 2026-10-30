@@ -8,6 +8,7 @@
 
 use crate::GenieError;
 use crate::map::Point;
+use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::movement::explore::WANTS_POINT;
 use crate::objects::masters::class;
@@ -28,7 +29,7 @@ pub enum Heard {
     /// Nothing: the action is not an explore, or the unit is not the explorer's to task.
     Nothing,
     /// The AI tasks the explorer to the tile (`FUN_140c0c900`).
-    Task([i32; 2]),
+    Task(Tile),
     /// The AI finds no tile and detasks the unit (`FUN_140bf5480`).
     Detask,
 }
@@ -55,9 +56,9 @@ impl UnitView<'_, '_> {
         self.c.w.ai.put_back(player, module);
         match heard? {
             Heard::Nothing => Ok(()),
-            Heard::Task([x, y]) => alert_owner(true).map_err(|e| {
+            Heard::Task(t) => alert_owner(true).map_err(|e| {
                 e.with("tasks explorer", n.caller)
-                    .with("to", format_args!("({x}, {y})"))
+                    .with("to", format_args!("({}, {})", t.x(), t.y()))
             }),
             Heard::Detask => alert_owner(true).map_err(|e| e.with("detasks explorer", n.caller)),
         }
@@ -133,7 +134,7 @@ impl UnitView<'_, '_> {
             return alert_owner(true).map(|()| Heard::Nothing);
         };
         let mut tile = info.top_point();
-        if tile == [-1, -1] {
+        if tile == Tile::new(-1, -1) {
             let spacing = sight + RING_SLACK;
             for ring in (1..=5).rev() {
                 info.push_ring(ring as f32 * spacing + centre_sight, at);
@@ -142,8 +143,8 @@ impl UnitView<'_, '_> {
         }
         // one more turn than the stack holds points: a point already on top is met twice
         for _ in 0..=info.search.len() {
-            if !info.tile_uncovered(tile[0], tile[1])?
-                && let Some(p) = search(info, Point::new(tile[0] as f32, tile[1] as f32))?
+            if !info.tile_uncovered(tile.x(), tile.y())?
+                && let Some(p) = search(info, Point::new(tile.x() as f32, tile.y() as f32))?
             {
                 return Ok(Heard::Task(p));
             }

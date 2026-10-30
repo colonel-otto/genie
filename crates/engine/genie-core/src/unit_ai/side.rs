@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
@@ -124,7 +125,7 @@ pub trait UnitSide {
         &mut self,
         ai: &UnitAi,
         rng: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError>;
+    ) -> Result<Option<Tile>, GenieError>;
 
     /// The auto scout's last search (`FUN_140c4b130`, [`crate::movement::explore::beyond_sight`]), drawing
     /// from the AI stream (`rng`); None when it finds no point.
@@ -132,7 +133,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the search does not model.
-    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError>;
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<Tile>, GenieError>;
 
     /// The unit AI hands the notify it handled to its owner (slot 0x48, then the owner's slot
     /// 0x2e8, whose hear logic a computer player's AI runs). A human player's owner does nothing
@@ -503,17 +504,13 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, GenieError>> UnitSide for F {
         Err(GenieError::unsupported("an attack test without the world"))
     }
 
-    fn seek_unexplored(
-        &mut self,
-        _: &UnitAi,
-        _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported(
             "an explorer's search without its unit",
         ))
     }
 
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<Tile>, GenieError> {
         Err(GenieError::unsupported(
             "an explorer's search without its unit",
         ))

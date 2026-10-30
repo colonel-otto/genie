@@ -195,7 +195,8 @@ impl World {
         else {
             return Ok(());
         };
-        for [x, y] in tiles {
+        for pair in tiles {
+            let (x, y) = (pair.x(), pair.y());
             let seen = self.spatial.scout_sight(p, x, y) == Some(0xf);
             if (self.world_time < EARLY_SCOUTING_MS && seen) || EARLY_SCOUTING_MS <= self.world_time
             {

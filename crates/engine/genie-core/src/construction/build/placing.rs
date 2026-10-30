@@ -8,6 +8,7 @@ use crate::construction::build::{
 };
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::spatial::Placed;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
@@ -276,9 +277,10 @@ impl BuildAction {
         if dx.abs() == dy.abs() {
             let (a, b) = beside_diagonal(bx, by, dx, dy);
             let player = placed.player;
-            let walled = |[x, y]: [i32; 2]| {
-                c.w.spatial
-                    .object_on_tile(x, y, |o| o.class == class::WALL && o.player != player)
+            let walled = |t: Tile| {
+                c.w.spatial.object_on_tile(t.x(), t.y(), |o| {
+                    o.class == class::WALL && o.player != player
+                })
             };
             if walled(a) && walled(b) {
                 return Err(GenieError::unsupported(
@@ -412,18 +414,18 @@ fn site_occupants(
 }
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments).
-pub(super) const fn beside_diagonal(bx: i32, by: i32, dx: i32, dy: i32) -> ([i32; 2], [i32; 2]) {
+pub(super) const fn beside_diagonal(bx: i32, by: i32, dx: i32, dy: i32) -> (Tile, Tile) {
     if dx < 1 {
         if dx < 0 && dy < 0 {
-            ([bx + 1, by], [bx, by + 1])
+            (Tile::new(bx + 1, by), Tile::new(bx, by + 1))
         } else if dx < 0 && 0 < dy {
-            ([bx, by - 1], [bx + 1, by])
+            (Tile::new(bx, by - 1), Tile::new(bx + 1, by))
         } else {
-            ([bx - 1, by], [bx, by + 1])
+            (Tile::new(bx - 1, by), Tile::new(bx, by + 1))
         }
     } else if dy < 1 {
-        ([bx - 1, by], [bx, by + 1])
+        (Tile::new(bx - 1, by), Tile::new(bx, by + 1))
     } else {
-        ([bx, by - 1], [bx - 1, by])
+        (Tile::new(bx, by - 1), Tile::new(bx - 1, by))
     }
 }

@@ -6,6 +6,7 @@ use crate::combat::damage::{
     bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus, lose, shield, take,
 };
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -82,15 +83,15 @@ pub(super) fn damage(
 /// The blast's rectangle of tiles about `center` for radius `r` (`FUN_14107f690`): the tiles
 /// from `(int)(c - r) - 6` (at least 0) to before `(int)(c + r) + 6` (at most the map's edge,
 /// which no object passes), each `CVTTSS2SI` into 32 bits kept as a short.
-pub(super) fn blast_tiles(center: Position, r: f32) -> ([i32; 2], [i32; 2]) {
+pub(super) fn blast_tiles(center: Position, r: f32) -> (Tile, Tile) {
     let low = |c: f32| {
         let t = (cvttss2si(c - r) as i16).wrapping_sub(6);
         i32::from(t.max(0))
     };
     let high = |c: f32| i32::from((cvttss2si(c + r) as i16).wrapping_add(6));
     (
-        [low(center.x()), low(center.y())],
-        [high(center.x()), high(center.y())],
+        Tile::new(low(center.x()), low(center.y())),
+        Tile::new(high(center.x()), high(center.y())),
     )
 }
 
@@ -174,7 +175,7 @@ pub(super) struct Blast {
     pub(super) center: Position,
     pub(super) r: f32,
     pub(super) wide: f32,
-    pub(super) tiles: ([i32; 2], [i32; 2]),
+    pub(super) tiles: (Tile, Tile),
     pub(super) spares_friends: bool,
     pub(super) exclude: Option<i32>,
     pub(super) main: Option<i32>,
@@ -185,8 +186,8 @@ impl Blast {
     /// Whether the object stands on the blast's tiles (its place truncated).
     pub(super) const fn on_tiles(&self, t: &Victim) -> bool {
         let (from, to) = self.tiles;
-        let tile = [t.position.x() as i32, t.position.y() as i32];
-        from[0] <= tile[0] && tile[0] < to[0] && from[1] <= tile[1] && tile[1] < to[1]
+        let (x, y) = (t.position.x() as i32, t.position.y() as i32);
+        from.x() <= x && x < to.x() && from.y() <= y && y < to.y()
     }
 }
 

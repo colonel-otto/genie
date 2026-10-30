@@ -6,6 +6,7 @@ use crate::combat::damage::Victim;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::Task;
@@ -38,7 +39,7 @@ pub fn movement_damage_due(timer: &mut f32, dt: f32) -> bool {
 /// is 0, `CMOVS`) to the map's width and height (`CMOVL`; both included). Returns the low and
 /// the high corner.
 #[must_use]
-pub fn reach(position: Position, range: f32, map: GridSize) -> ([i32; 2], [i32; 2]) {
+pub fn reach(position: Position, range: f32, map: GridSize) -> (Tile, Tile) {
     let r = crate::math::conversions::cvttss2si(range);
     let low = |v: f32| {
         let d = crate::math::conversions::cvttss2si(v).wrapping_sub(r);
@@ -49,11 +50,11 @@ pub fn reach(position: Position, range: f32, map: GridSize) -> ([i32; 2], [i32; 
         if size < d { size } else { d }
     };
     (
-        [low(position.x()), low(position.y())],
-        [
+        Tile::new(low(position.x()), low(position.y())),
+        Tile::new(
             high(position.x(), map.width()),
             high(position.y(), map.height()),
-        ],
+        ),
     )
 }
 
@@ -185,8 +186,8 @@ impl World {
         };
         let range = task.work_range;
         let (low, high) = reach(unit.position(), range, self.spatial.map);
-        for y in low[1]..=high[1] {
-            for x in low[0]..=high[0] {
+        for y in low.y()..=high.y() {
+            for x in low.x()..=high.x() {
                 if x < 0 || y < 0 || self.spatial.map.width() <= x || self.spatial.map.height() <= y
                 {
                     return Ok(());

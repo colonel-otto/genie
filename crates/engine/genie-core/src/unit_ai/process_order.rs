@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::Point;
+use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -122,9 +123,12 @@ impl UnitAi {
                 }
                 m.is_some()
             }
-            OrderKind::ExploreAndDestroy => {
-                self.explore_and_destroy([tile(o.point.x()), tile(o.point.y())], true, side, ai)?
-            }
+            OrderKind::ExploreAndDestroy => self.explore_and_destroy(
+                Tile::new(tile(o.point.x()), tile(o.point.y())),
+                true,
+                side,
+                ai,
+            )?,
             OrderKind::Wait => {
                 // case 0x2d8: the wait's action value, leaving a patrol order, then the order
                 // itself; the tail finds it the AI's already
@@ -185,7 +189,7 @@ impl UnitAi {
             }
             OrderKind::RunAway => self.run_away(true, at, computer, ai, side)?,
             OrderKind::SeekAndDestroy => {
-                let tiles = [tile(o.point.x()), tile(o.point.y())];
+                let tiles = Tile::new(tile(o.point.x()), tile(o.point.y()));
                 self.seek_and_destroy(o.target, tiles, true, at, side)?
             }
             OrderKind::AttackRoundup => self.attack_roundup(o.target, at, side)?,

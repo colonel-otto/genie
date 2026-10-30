@@ -11,6 +11,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
@@ -361,7 +362,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         &mut self,
         ai: &UnitAi,
         rng: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, GenieError> {
+    ) -> Result<Option<Tile>, GenieError> {
         let tc = town_centre(owner_view(
             &self.c.w.players,
             self.c.player,
@@ -391,15 +392,15 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         self.hears(n)
     }
 
-    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<Tile>, GenieError> {
         let (at, player) = (self.unit.position(), self.player);
         let scouted = self.c.w.spatial.scout_map(player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
         area.scouted = scouted;
         let found = crate::movement::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)?;
         // the point found is marked in the scout map (FUN_140f4d5e0 with 1)
-        if let Some([x, y]) = found {
-            self.c.w.spatial.scout(player, x, y);
+        if let Some(t) = found {
+            self.c.w.spatial.scout(player, t.x(), t.y());
         }
         Ok(found)
     }
