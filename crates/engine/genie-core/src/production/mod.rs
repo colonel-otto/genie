@@ -33,7 +33,7 @@ pub use self::costs::{
 
 /// One slot of a building's queue (`+0xbe8`, 0x30 bytes; the save's `mProductionQueue[i]`). A
 /// slot the buffer's growth adds is zeroed (`calloc`), as [`Entry::default`] is.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Entry {
     /// `+0x0`, `mMasterUnitId`: the master it makes; −1 for a research.
     pub master: Option<MasterId>,
@@ -56,6 +56,22 @@ pub struct Entry {
     /// `+0x2c`, `mTrainTime`: the unit's train time at the building and button
     /// ([`train_time`]); a research entry does not write it.
     pub train_time: i16,
+}
+
+impl Default for Entry {
+    /// A zeroed slot: master 0 (a master, as the game reads the field), no count, technology 0,
+    /// no costs, serial 0, button 0, train time 0.
+    fn default() -> Self {
+        Self {
+            master: Some(MasterId::default()),
+            count: 0,
+            tech: 0,
+            costs: [(0, 0.0); 3],
+            serial: 0,
+            button: 0,
+            train_time: 0,
+        }
+    }
 }
 
 /// A queue entry's costs before `FUN_1411c3190` fills them: no attribute, nothing (`0xffffffff`
@@ -452,6 +468,15 @@ mod tests {
             button: -1,
             train_time: 25,
         }
+    }
+
+    /// A zeroed slot (the buffer's growth, `calloc`) holds master 0 and technology 0, as the
+    /// game's save writes a slot past the entries: not the −1 of a research's master.
+    #[test]
+    fn a_zeroed_slot_holds_master_0() {
+        let e = Entry::default();
+        assert_eq!((MasterId::field(e.master), e.count, e.tech), (0, 0, 0));
+        assert_eq!((e.costs, e.button, e.train_time), ([(0, 0.0); 3], 0, 0));
     }
 
     fn queue(entries: &[Entry]) -> Queue {
