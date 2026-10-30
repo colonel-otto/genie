@@ -11,7 +11,7 @@
 //! reaches ([`repair_target`]).
 
 use crate::GenieError;
-use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait};
+use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
 use genie_diff::Diff;
@@ -97,12 +97,8 @@ pub struct RepairAction {
     pub target: i32,
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
-    /// Its `MoveTo` sub-action's state.
-    pub move_to: Option<MoveTo>,
-    /// Its `MoveTo`'s wait after the motion step gave up ([`MoveWait`]).
-    pub move_wait: MoveWait,
-    /// The point a `MoveTo` to a point walks to (`set_state(11)`).
-    pub goal: Option<[f32; 3]>,
+    /// Its quiet `MoveTo` sub-action: to the target (state 4) or to the point (state 11).
+    pub move_to: Option<MoveToAction>,
     /// `+0x38`..`+0x40`: the target's place as the action last took it (the constructor, states
     /// 4, 6 and 7), or the point the unit was sent to.
     pub point: [f32; 3],
@@ -164,7 +160,8 @@ pub(crate) struct RepairReads {
     pub(crate) rate: f32,
     /// The motion step giving up makes the `MoveTo` wait once (a human player's villager).
     pub(crate) waits: bool,
-    /// The unit AI's stance (`+0x1a9`), which sets the wait ([`MoveWait::give_up`]).
+    /// The unit AI's stance (`+0x1a9`), which sets the wait
+    /// ([`crate::movement::move_to::MoveWait::give_up`]).
     pub(crate) stance: u8,
     /// The sprites its `MoveTo`s take when the task gives none.
     pub(crate) defaults: MoveDefaults,

@@ -209,7 +209,16 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let repair = add(Unit {
         id: 32,
         actions: ActionList::default().with_repair(Some(
-            crate::construction::repair::RepairAction::start(-1, [3.5, 3.5, 0.0], repair_task, 0.0),
+            crate::construction::repair::RepairAction::start(
+                (-1, [3.5, 3.5, 0.0]),
+                repair_task,
+                0.0,
+                &crate::movement::move_to::SpriteReads {
+                    defaults: crate::movement::move_to::MoveDefaults::default(),
+                    graphics: &std::collections::BTreeMap::new(),
+                },
+            )
+            .unwrap(),
         )),
         ..Unit::default()
     });

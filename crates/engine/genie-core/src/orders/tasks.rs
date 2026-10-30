@@ -164,13 +164,22 @@ impl World {
         }
         let (t_at, class) = (t.position(), i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
-        let range = unit.master(&self.masters, player)?.weapon_range;
-        self.take(target, self.releaser(player, idx));
+        let master = unit.master(&self.masters, player)?;
+        // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
+        let sprites = crate::movement::move_to::SpriteReads::of(
+            master,
+            unit.abilities.look.as_ref(),
+            &self.graphics,
+        );
         let repair_task = crate::construction::repair::RepairTask::of(task);
-        Ok((
-            crate::construction::repair::RepairAction::start(target, t_at, repair_task, range),
-            class,
-        ))
+        let repair = crate::construction::repair::RepairAction::start(
+            (target, t_at),
+            repair_task,
+            master.weapon_range,
+            &sprites,
+        )?;
+        self.take(target, self.releaser(player, idx));
+        Ok((repair, class))
     }
 
     /// The work command's Repair (its task of action type 106, the factory `FUN_140aca4b0` case
@@ -319,6 +328,13 @@ impl World {
             if ship {
                 return Err(crate::construction::repair::SHIP_REPAIR);
             }
+            let unit = &self.players[player].objects[idx];
+            // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
+            let sprites = crate::movement::move_to::SpriteReads::of(
+                unit.master(&self.masters, player)?,
+                unit.abilities.look.as_ref(),
+                &self.graphics,
+            );
             let unit = &mut self.players[player].objects[idx];
             let r = unit.actions.repair_mut().ok_or(NO_REPAIR)?;
             // slot 0x68 dropped the count on another target; set_state(4)'s prelude makes a
@@ -327,7 +343,7 @@ impl World {
             r.counted = false;
             r.target = taken;
             r.point = t_at;
-            r.walk_again(unit.body.mover_mut())?;
+            r.walk_again(unit.body.mover_mut(), &sprites)?;
             if counted {
                 self.leave_builders(target)?;
             }

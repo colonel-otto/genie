@@ -401,20 +401,17 @@ fn import_repair(
         .tribe_action_repair
         .as_deref()
         .ok_or(GenieError::missing_data("a saved Repair's own part"))?;
-    let sub = saved.move_to_sub(OTHER_SUB_ACTION)?;
-    let move_to = sub.map(sub_state).transpose()?;
+    // every MoveTo of the Repair is quiet: to the target, or to a point without one
+    let move_to = saved
+        .move_to_sub(OTHER_SUB_ACTION)?
+        .map(|s| saved_move_to(s, saved.graphics, true))
+        .transpose()?;
     let t = saved.task(task_at)?;
     unit.actions
         .set_repair(Some(genie_core::construction::repair::RepairAction {
             target: base.target_id,
             state: base.state,
             move_to,
-            move_wait: sub.map_or_else(
-                genie_core::movement::move_to::MoveWait::default,
-                saved_move_wait,
-            ),
-            // a MoveTo to a point has no target; its point is the action's target point
-            goal: sub.and_then(walk_point),
             point: saved.point(),
             timer: base.timer,
             task: genie_core::construction::repair::RepairTask::of(&t),

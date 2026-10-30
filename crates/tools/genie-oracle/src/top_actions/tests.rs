@@ -651,19 +651,22 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
     .repair()
     .copied()
     .unwrap();
+    let walk = r.move_to.unwrap();
     assert_eq!(
-        (r.task.id, r.move_to, r.range.to_bits()),
-        (2, Some(MoveTo::Moving), 0)
+        (r.task.id, walk.state, walk.quiet, r.range.to_bits()),
+        (2, MoveTo::Moving, true, 0)
     );
     assert!(r.counted && r.quiet);
-    assert_eq!(r.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
+    // a MoveTo without a target walks to its point, within its own range
+    assert!(matches!(walk.walks_to(), Ok(Goal::Point(p)) if bits3(p) == bits3([1.0, 2.0, 0.0])));
+    assert_eq!(walk.range.to_bits(), 0.5_f32.to_bits());
     let r = imported(REPAIR, repair(b.clone()))
         .unwrap()
         .actions
         .repair()
         .copied()
         .unwrap();
-    assert_eq!((r.move_to, r.goal), (None, None));
+    assert_eq!(r.move_to, None);
     assert_eq!(
         imported(REPAIR, repair(with_sub(b, 4, explore(base(3))))).unwrap_err(),
         OTHER_SUB_ACTION

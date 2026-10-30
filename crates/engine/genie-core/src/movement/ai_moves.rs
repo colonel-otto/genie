@@ -175,78 +175,130 @@ impl Unit {
                 | crate::construction::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(PointMove::Declined),
             Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
-                // the sprite its MoveTo's constructor takes for none (FUN_140aa0d30)
-                let sprites = SpriteReads::of(
-                    self.master_in(masters)?,
-                    self.abilities.look.as_ref(),
-                    graphics,
-                );
-                let gone = match self.actions.artifact_mut() {
-                    Some(a) => a.take_point(point, &sprites)?,
-                    None => crate::ownership::artifact::SubActionsGone::default(),
-                };
-                if gone.stops {
-                    self.body
-                        .mover_mut()
-                        .ok_or(crate::world::WALKER_UNMOVING)?
-                        .stop()?;
-                }
-                // the Enter it held lets its building or transport go
-                Ok(PointMove::Taken(gone.released))
+                let sprites = self.point_sprites(masters, graphics)?;
+                self.artifact_takes_point(point, &sprites)
             }
-            Some(crate::gathering::hunt::HUNT) => {
-                let (held, my_pasture) = (self.life.amount, self.my_pasture);
-                let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut())
-                else {
-                    return Err(GenieError::unsupported(
-                        "a hunter without its hunt or movement state",
-                    ));
-                };
-                let old = hunt.target;
-                if !hunt.take_move(
-                    HuntMove {
-                        target: None,
-                        point,
-                        player,
-                        held,
-                        drops_here: false,
-                        my_pasture,
-                        gap: 0.0,
-                    },
-                    mover,
-                )? {
-                    return Ok(PointMove::Declined);
-                }
-                Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
-            }
-            Some(crate::gathering::gather::GATHER) => {
-                let held = self.life.amount;
-                let (Some(gather), Some(mover)) =
-                    (self.actions.gather_mut(), self.body.mover_mut())
-                else {
-                    return Err(GenieError::unsupported(
-                        "a gatherer without its gather or movement state",
-                    ));
-                };
-                let old = gather.target;
-                gather.take_move(None, point, player, held, mover)?;
-                Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
-            }
+            Some(crate::gathering::hunt::HUNT) => self.hunt_takes_point(point, player),
+            Some(crate::gathering::gather::GATHER) => self.gather_takes_point(point, player),
             // the Transport's (0x140aa3e40): the caller sails it there
             Some(crate::garrison::transport::TRANSPORT) => Ok(PointMove::Sails),
-            // the Repair's (FUN_140ad9700): its point, slot 0x68 with none, set_state(11)
             Some(crate::construction::repair::REPAIR) => {
-                let repair = self.actions.repair_mut().expect("the unit's top action");
-                let (old, counted) = repair.take_point(point, self.body.mover_mut())?;
-                Ok(PointMove::Repairs(
-                    Some(old).filter(|&t| t != -1),
-                    counted.then_some(old),
-                ))
+                let sprites = self.point_sprites(masters, graphics)?;
+                self.repair_takes_point(point, &sprites)
             }
-            Some(other) => {
-                unreachable!("a top action of type {other}, which top_action never holds")
-            }
+            Some(other) => Err(GenieError::unreachable(
+                "a top action of a type top_action never holds",
+            )
+            .with("type", other)),
         }
+    }
+
+    /// The sprites a `MoveTo` to a point that the unit's head action makes takes for none
+    /// (`FUN_140aa0d30`'s default from the unit's master and terrain look).
+    fn point_sprites<'g>(
+        &self,
+        masters: Option<&Masters>,
+        graphics: &'g std::collections::BTreeMap<i16, Graphic>,
+    ) -> Result<SpriteReads<'g>, GenieError> {
+        Ok(SpriteReads::of(
+            self.master_in(masters)?,
+            self.abilities.look.as_ref(),
+            graphics,
+        ))
+    }
+
+    /// The Artifact's slot 0x40 (its slot 8 with the point, [`Artifact::take_point`]): its
+    /// sub-actions go, a walking one stopping the unit, and the Enter it held lets its building
+    /// or transport go.
+    ///
+    /// [`Artifact::take_point`]: crate::ownership::artifact::Artifact::take_point
+    fn artifact_takes_point(
+        &mut self,
+        point: [f32; 3],
+        sprites: &SpriteReads<'_>,
+    ) -> Result<PointMove, GenieError> {
+        let gone = match self.actions.artifact_mut() {
+            Some(a) => a.take_point(point, sprites)?,
+            None => crate::ownership::artifact::SubActionsGone::default(),
+        };
+        if gone.stops {
+            self.body
+                .mover_mut()
+                .ok_or(crate::world::WALKER_UNMOVING)?
+                .stop()?;
+        }
+        Ok(PointMove::Taken(gone.released))
+    }
+
+    /// The Hunt's slot 0x40 ([`HuntAction::take_move`] with the point): the target it had is
+    /// let go, unless the hunt declines the move.
+    ///
+    /// [`HuntAction::take_move`]: crate::gathering::hunt::HuntAction::take_move
+    fn hunt_takes_point(
+        &mut self,
+        point: [f32; 3],
+        player: usize,
+    ) -> Result<PointMove, GenieError> {
+        let (held, my_pasture) = (self.life.amount, self.my_pasture);
+        let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
+            return Err(GenieError::unsupported(
+                "a hunter without its hunt or movement state",
+            ));
+        };
+        let old = hunt.target;
+        if !hunt.take_move(
+            HuntMove {
+                target: None,
+                point,
+                player,
+                held,
+                drops_here: false,
+                my_pasture,
+                gap: 0.0,
+            },
+            mover,
+        )? {
+            return Ok(PointMove::Declined);
+        }
+        Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
+    }
+
+    /// The Gather's slot 0x40 (its move to the point): the target it had is let go.
+    fn gather_takes_point(
+        &mut self,
+        point: [f32; 3],
+        player: usize,
+    ) -> Result<PointMove, GenieError> {
+        let held = self.life.amount;
+        let (Some(gather), Some(mover)) = (self.actions.gather_mut(), self.body.mover_mut()) else {
+            return Err(GenieError::unsupported(
+                "a gatherer without its gather or movement state",
+            ));
+        };
+        let old = gather.target;
+        gather.take_move(None, point, player, held, mover)?;
+        Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
+    }
+
+    /// The Repair's slot 0x40 (`FUN_140ad9700`, [`RepairAction::take_point`]): its point, slot
+    /// 0x68 with none, `set_state(11)`, whose `MoveTo` takes `sprites`' default for none. Returns
+    /// the target let go and the one whose repairers it leaves.
+    ///
+    /// [`RepairAction::take_point`]: crate::construction::repair::RepairAction::take_point
+    fn repair_takes_point(
+        &mut self,
+        point: [f32; 3],
+        sprites: &SpriteReads<'_>,
+    ) -> Result<PointMove, GenieError> {
+        let repair = self
+            .actions
+            .repair_mut()
+            .ok_or(GenieError::unreachable("a Repair head without its Repair"))?;
+        let (old, counted) = repair.take_point(point, self.body.mover_mut(), sprites)?;
+        Ok(PointMove::Repairs(
+            Some(old).filter(|&t| t != -1),
+            counted.then_some(old),
+        ))
     }
 
     /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object (in

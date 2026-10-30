@@ -377,56 +377,6 @@ pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, GenieError> {
     })
 }
 
-/// A `MoveTo` sub-action's update (`0x140aa2a70`, which an action's sub-action list runs,
-/// `FUN_140a992b0`) and the code the action reads: a start asks for its path toward `goal`
-/// within `range` (`quiet` its `+0x60`; a `MoveTo` that waited once, `+0x6c` 1, counts as having
-/// asked again, 2), shows its sprite (`shown`, [`start_walk_shown`]) and walks; a move runs the
-/// motion step
-/// ([`walk_or_give_up`]). The motion step giving up makes it wait or fail
-/// ([`MoveWait::give_up`] with `waits` and `stance`). A wait adds the walk's dt onto its timer
-/// and at its delay asks again (`set_state(3)`; `COMISS`, `JC`: a NaN timer waits on). The code:
-/// 0 while it walks or waits, 1 once it ended or without one, 3 once it failed.
-///
-/// # Errors
-///
-/// What the path request and the motion step do not model.
-pub fn sub_move_to_update(
-    (move_to, move_wait): (&mut Option<MoveTo>, &mut MoveWait),
-    walk: &mut Walk<'_>,
-    goal: Goal,
-    (range, quiet): (f32, bool),
-    (waits, stance): (bool, u8),
-    shown: Option<Shown<'_>>,
-) -> Result<u8, GenieError> {
-    Ok(match *move_to {
-        Some(MoveTo::Start) => {
-            if move_wait.state == 1 {
-                move_wait.state = 2;
-            }
-            *move_to = Some(MoveTo::Moving);
-            let ask = PathAsk::default();
-            let started = start_walk_shown(walk.reborrow(), (goal, range, quiet), ask, shown)?;
-            *move_to = Some(started.unwrap_or_else(|| move_wait.give_up(waits, stance)));
-            0
-        }
-        Some(MoveTo::Moving) => {
-            let walked = walk_or_give_up(walk.reborrow())?;
-            *move_to = Some(walked.unwrap_or_else(|| move_wait.give_up(waits, stance)));
-            0
-        }
-        Some(MoveTo::Waiting) => {
-            move_wait.timer += walk.dt;
-            if move_wait.delay <= move_wait.timer {
-                move_wait.timer = 0.0;
-                *move_to = Some(MoveTo::Start);
-            }
-            0
-        }
-        Some(MoveTo::Failed) => 3,
-        Some(MoveTo::Arrived) | None => 1,
-    })
-}
-
 /// A target leaves the `MoveTo`'s point when it is more than this off it on either axis
 /// (`DAT_142eb6e58`, `DAT_142e7f384`).
 const OFF_LOW: f32 = crate::math::image::move_to::OFF_LOW;
@@ -524,54 +474,64 @@ mod tests {
     use super::*;
     use crate::map::spatial::Placed;
 
-    /// A `MoveTo` sub-action ([`sub_move_to_update`]) on house 10028 within 0.1 (the walker 0.8
-    /// off it) with [`WalkRig`]'s walker: a start asks for its path (a `MoveTo` that waited
-    /// once, `+0x6c` 1, counts as having asked again, 2) and moves; a move runs the motion step
-    /// and keeps moving; both give code 0. A wait runs by the walk's dt and asks again at its
-    /// delay. A `MoveTo` that ended, or none, gives 1, a failed one 3.
+    /// A `MoveTo` sub-action ([`MoveToAction::sub_update`]) on house 10028 within 0.1 (the
+    /// walker 0.8 off it) with [`WalkRig`]'s walker: a start asks for its path (a `MoveTo` that
+    /// waited once, `+0x6c` 1, counts as having asked again, 2) and moves; a move runs the motion
+    /// step and keeps moving; both give code 0. A wait runs by the walk's dt and asks again at
+    /// its delay (a NaN timer waits on). A `MoveTo` that ended gives 1, a failed one 3; one
+    /// without a goal is not modelled.
     ///
     /// [`WalkRig`]: crate::movement::tests::WalkRig
     #[test]
     fn a_sub_move_to_starts_moves_waits_and_reports_its_code() {
         use crate::movement::tests::WalkRig;
         let mut rig = WalkRig::on_the_path();
-        let mut move_to = Some(MoveTo::Start);
-        let mut wait = MoveWait {
-            state: 1,
-            timer: 0.0,
-            delay: 1.0,
+        let mut m = MoveToAction {
+            goal: None,
+            target: 10028,
+            range: 0.1,
+            wait: MoveWait {
+                state: 1,
+                timer: 0.0,
+                delay: 1.0,
+            },
+            ..MoveToAction::sub_in(MoveTo::Start)
         };
-        let goal = Goal::Target(10028);
-        let mut update = |m: &mut Option<MoveTo>, w: &mut MoveWait| {
-            sub_move_to_update((m, w), &mut rig.walk(4), goal, (0.1, true), (true, 0), None)
+        let gives_up = GiveUp {
+            waits: true,
+            stance: 0,
         };
-        assert_eq!(update(&mut move_to, &mut wait), Ok(0));
-        assert_eq!((move_to, wait.state), (Some(MoveTo::Moving), 2));
-        assert_eq!(update(&mut move_to, &mut wait), Ok(0));
-        assert_eq!(move_to, Some(MoveTo::Moving));
+        let mut update = |m: &mut MoveToAction| {
+            m.sub_update(&mut rig.walk(4), PathAsk::default(), gives_up, None)
+        };
+        assert_eq!(update(&mut m), Ok(0));
+        assert_eq!((m.state, m.wait.state), (MoveTo::Moving, 2));
+        assert_eq!(update(&mut m), Ok(0));
+        assert_eq!(m.state, MoveTo::Moving);
         // the walk is a tenth of a second: the wait of 0.15 asks again on its second update
-        move_to = Some(MoveTo::Waiting);
-        wait = MoveWait {
+        m.state = MoveTo::Waiting;
+        m.wait = MoveWait {
             state: 1,
             timer: 0.0,
             delay: 0.15,
         };
-        assert_eq!(update(&mut move_to, &mut wait), Ok(0));
-        assert_eq!((move_to, wait.timer), (Some(MoveTo::Waiting), 0.1));
-        assert_eq!(update(&mut move_to, &mut wait), Ok(0));
-        assert_eq!((move_to, wait.timer), (Some(MoveTo::Start), 0.0));
-        wait.timer = f32::NAN;
-        move_to = Some(MoveTo::Waiting);
-        assert_eq!(update(&mut move_to, &mut wait), Ok(0));
-        assert_eq!(move_to, Some(MoveTo::Waiting));
-        for (m, code) in [
-            (None, 1),
-            (Some(MoveTo::Arrived), 1),
-            (Some(MoveTo::Failed), 3),
-        ] {
-            move_to = m;
-            assert_eq!(update(&mut move_to, &mut wait), Ok(code));
+        assert_eq!(update(&mut m), Ok(0));
+        assert_eq!((m.state, m.wait.timer), (MoveTo::Waiting, 0.1));
+        assert_eq!(update(&mut m), Ok(0));
+        assert_eq!((m.state, m.wait.timer), (MoveTo::Start, 0.0));
+        m.wait.timer = f32::NAN;
+        m.state = MoveTo::Waiting;
+        assert_eq!(update(&mut m), Ok(0));
+        assert_eq!(m.state, MoveTo::Waiting);
+        for (state, code) in [(MoveTo::Arrived, 1), (MoveTo::Failed, 3)] {
+            m.state = state;
+            assert_eq!(update(&mut m), Ok(code));
         }
+        let mut lost = MoveToAction {
+            goal: None,
+            ..MoveToAction::sub_in(MoveTo::Start)
+        };
+        assert!(update(&mut lost).is_err());
     }
 
     /// The 4v4's woodcutter 31101 (a human player's villager, stance 0) whose Attack's `MoveTo`
