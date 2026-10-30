@@ -3,16 +3,39 @@
 
 use crate::GenieError;
 use crate::combat::attack::{ATTACK_WITHOUT_TARGET, Attack, AttackReads, GOTO_POINT};
-use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, NO_TARGET_GAP, Shown};
+use crate::movement::move_to::{
+    GiveUp, MoveTo, MoveToAction, MoveToReads, Shown, SpriteReads, WalkTo,
+};
 use crate::movement::{Me, PathAsk};
+use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Inbox;
 use crate::world::step::Step;
+use std::collections::BTreeMap;
 
 /// A sub-action list's code that a quiet `MoveTo` does not give: 4 is its target let go when it
 /// is not quiet.
 pub(super) const QUIET_CODE: GenieError =
     GenieError::unreachable("an Attack's quiet MoveTo's code that only a loud one gives");
+
+/// What a new `MoveTo` of `unit` reads as `set_state` makes it: the sprites' defaults of its
+/// master (`r`), the sprites' table `graphics`, and the unit's state and top speed now.
+///
+/// # Errors
+///
+/// A unit that does not move.
+pub(super) fn move_reads<'g>(
+    unit: &Unit,
+    r: &AttackReads,
+    graphics: &'g BTreeMap<i16, Graphic>,
+) -> Result<MoveToReads<'g>, GenieError> {
+    let _ = speed_of(unit)?;
+    let sprites = SpriteReads {
+        defaults: r.move_defaults,
+        graphics,
+    };
+    Ok(MoveToReads::with_sprites(sprites, unit))
+}
 
 /// The unit's top speed (slot 0x208), which a `MoveTo`'s start reads.
 ///
@@ -29,55 +52,69 @@ pub(crate) fn speed_of(unit: &Unit) -> Result<f32, GenieError> {
 }
 
 impl Attack {
+    /// The sprite the Attack gives its `MoveTo`s (`+0x68`): its constructor's argument, the
+    /// master's running or walking one; none leaves the `MoveTo` constructor's default.
+    const fn given_sprite(&self) -> Option<i16> {
+        match self.arms.move_sprite {
+            Some(g) => Some(g.id),
+            None => None,
+        }
+    }
+
     /// `set_state(4)`'s `MoveTo` to the target object (`FUN_140aa0df0` with the Attack's range and
     /// walking sprite, quiet through `FUN_140a7a170` with 1, its `+0x61` the Attack's), as the
-    /// action list adds and starts it ([`MoveToAction::added`], which reads the unit's object
-    /// state `unit_state` and its top speed): `at` is the target's place and
-    /// `gap` the unit's from the target's footprint (`FUN_14118f680`). A unit within 0.01 of it
-    /// is there already, state 1; else state 3, or 13 for a unit without speed. None for a unit
-    /// whose state is 3 or more: the list deletes it. The timer is 0. True when it started
+    /// action list adds and starts it ([`MoveToReads::to_object`]): `at` is the target's place
+    /// and `gap` the unit's from the target's footprint (`FUN_14118f680`). A unit within 0.01 of
+    /// it is there already, state 1; else state 3, or 13 for a unit without speed. None for a
+    /// unit whose state is 3 or more: the list deletes it. The timer is 0. True when it started
     /// arrived.
     ///
     /// # Errors
     ///
-    /// An Attack without a target.
+    /// An Attack without a target, and a sprite the table lacks.
     pub(super) fn walk_to_target(
         &mut self,
         at: [f32; 3],
         gap: f32,
-        unit_state: u8,
-        speed: f32,
+        reads: &MoveToReads<'_>,
     ) -> Result<bool, GenieError> {
         if self.target == -1 {
             return Err(ATTACK_WITHOUT_TARGET.with("state", self.state));
         }
-        let action = MoveToAction {
-            target: self.target,
-            on_target_moved: self.on_target_moved,
-            ..MoveToAction::sub_to_point(at, self.range, self.arms.move_sprite)
+        let to = WalkTo {
+            id: self.target,
+            at,
+            gap,
+            state: None,
         };
-        self.move_to = action.added(unit_state, gap, speed);
+        self.move_to =
+            reads.to_object(to, self.range, self.given_sprite(), self.on_target_moved)?;
         self.timer = 0.0;
         Ok(self.move_to.is_some_and(|m| m.arrived()))
     }
 
     /// The `MoveTo` to a point of states 5 and 11 (`FUN_140aa0d30` to where the target was seen,
     /// `+0xa4`..`+0xac`, with the Attack's walking sprite, quiet, its `+0x61` the Attack's), as
-    /// the action list adds and starts it: state 5 walks within the range, state 11 onto the
-    /// point. The point's gap is [`NO_TARGET_GAP`], so state 3, or 13 for a unit without speed.
-    /// None for a unit whose state is 3 or more. The timer is 0.
-    pub(super) const fn walk_to_seen(&mut self, unit_state: u8, speed: f32) {
+    /// the action list adds and starts it ([`MoveToReads::to_point`]): state 5 walks within the
+    /// range, state 11 onto the point. The point's gap is far, so state 3, or 13 for a unit
+    /// without speed. None for a unit whose state is 3 or more. The timer is 0.
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub(super) fn walk_to_seen(&mut self, reads: &MoveToReads<'_>) -> Result<(), GenieError> {
         let range = if self.state == GOTO_POINT {
             0.0
         } else {
             self.range
         };
-        let action = MoveToAction {
+        let walk = reads.to_point(self.seen, range, self.given_sprite())?;
+        self.move_to = walk.map(|m| MoveToAction {
             on_target_moved: self.on_target_moved,
-            ..MoveToAction::sub_to_point(self.seen, range, self.arms.move_sprite)
-        };
-        self.move_to = action.added(unit_state, NO_TARGET_GAP, speed);
+            ..m
+        });
         self.timer = 0.0;
+        Ok(())
     }
 
     /// The Attack's sub-action list's update (`FUN_140a992b0`: its first action's, the quiet

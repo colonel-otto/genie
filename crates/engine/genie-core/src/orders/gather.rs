@@ -439,7 +439,6 @@ impl World {
         crate::combat::attack::engagement(
             unit.ai.as_ref(),
             speed,
-            unit.life.state,
             master,
             me,
             them,

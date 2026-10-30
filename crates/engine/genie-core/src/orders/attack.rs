@@ -98,17 +98,15 @@ impl World {
                 reads,
                 fight: Fight { victim, own },
             });
-        let (speed, state) = {
-            let unit = self.players.live(player, idx)?;
-            (
-                unit.body.mover().map_or(0.0, |m| m.stats.speed),
-                unit.life.state,
-            )
-        };
+        let speed = self
+            .players
+            .live(player, idx)?
+            .body
+            .mover()
+            .map_or(0.0, |m| m.stats.speed);
         let e = crate::combat::attack::engagement(
             self.players.live(player, idx)?.ai.as_ref(),
             speed,
-            state,
             master,
             &me_at,
             &t_at,

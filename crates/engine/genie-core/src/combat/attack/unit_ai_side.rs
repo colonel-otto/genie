@@ -91,7 +91,6 @@ impl UnitView<'_, '_> {
         let e = crate::combat::attack::engagement(
             Some(ai),
             speed,
-            unit.life.state,
             master,
             &me_at,
             &t,

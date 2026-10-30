@@ -15,7 +15,7 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{MoveToAction, TargetMoved};
+use crate::movement::move_to::{MoveDefaults, MoveToAction, TargetMoved};
 use crate::objects::layers::Body;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
@@ -45,6 +45,7 @@ use self::sprites::{NO_OBJECT_STREAM, set_attack_timer};
 pub use self::sprites::{SwingSprites, swing_sprites};
 pub(crate) use self::sprites::{face_target, reset_sprite, show_arrived, volleys};
 use self::update::squared_reach;
+use self::walks::move_reads;
 pub(crate) use self::walks::speed_of;
 pub use self::work_slots::{Mark, Wielder, Worked};
 #[cfg(test)]
@@ -216,9 +217,6 @@ struct Begun {
 /// What the Attack reads of its unit and its target when it starts.
 #[derive(Clone, Copy, Debug)]
 pub struct Engagement {
-    /// The unit's object state (`+0x640`), which its action list adds a `MoveTo` below 3 of
-    /// (`FUN_140a977e0`).
-    pub unit_state: u8,
     /// The gap between the two footprints squared (`FUN_14118f8c0`) and its root (`FUN_14118f680`).
     pub gap_squared: f32,
     /// The gap's root (`FUN_14118f680`).
@@ -291,6 +289,9 @@ pub(crate) struct AttackReads {
     pub(crate) ai_type: Option<u32>,
     /// `FUN_1412161a0`: a volley is under way (`next_volley`, `+0xa04`, not 0).
     pub(crate) volley_under_way: bool,
+    /// The sprites a `MoveTo` of the Attack takes when the Attack gives none: the defaults of the
+    /// unit's master and terrain look.
+    pub(crate) move_defaults: MoveDefaults,
 }
 
 impl AttackReads {
@@ -320,6 +321,7 @@ impl AttackReads {
             ai_order: AiOrder::of(ai),
             ai_type: ai.map(|ai| ai.ai_type),
             volley_under_way: unit.next_volley != 0,
+            move_defaults: MoveDefaults::of(master, unit.abilities.look.as_ref()),
         }
     }
 }
@@ -378,6 +380,8 @@ pub(crate) struct Ground<'a> {
     pub(crate) object_rng: Option<&'a mut Well512>,
     /// The notifies' list while the unit AI is out of the unit.
     pub(crate) buffer: Option<&'a mut Vec<(i32, [i32; 3])>>,
+    /// The sprites' table, which a `MoveTo` the Attack makes takes its sprite from.
+    pub(crate) graphics: &'a std::collections::BTreeMap<i16, Graphic>,
 }
 
 impl Ground<'_> {
@@ -408,7 +412,10 @@ impl World {
     /// notifies go to the unit AI at once.
     pub(crate) fn attack_ground(&mut self) -> Ground<'_> {
         let Self {
-            spatial, streams, ..
+            spatial,
+            streams,
+            graphics,
+            ..
         } = self;
         let (object, sprite) = streams.two(Stream::Object, Stream::Sprite);
         Ground {
@@ -416,6 +423,7 @@ impl World {
             sprite_rng: sprite,
             object_rng: Some(object),
             buffer: None,
+            graphics,
         }
     }
 }

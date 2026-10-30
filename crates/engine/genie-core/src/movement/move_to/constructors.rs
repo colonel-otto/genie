@@ -68,6 +68,20 @@ impl<'g> MoveToReads<'g> {
         }
     }
 
+    /// What a new `MoveTo` reads of `unit` with the sprites `sprites`: its state and speed, its place
+    /// and the radii of its movement state (none for a unit that does not move).
+    #[must_use]
+    pub fn with_sprites(sprites: SpriteReads<'g>, unit: &Unit) -> Self {
+        let mover = unit.body.mover();
+        Self {
+            sprites,
+            state: unit.life.state,
+            speed: mover.map_or(0.0, |m| m.stats.speed),
+            at: unit.position(),
+            ground: mover.map_or([0.0; 2], |m| [m.stats.radius[0], m.stats.radius[1]]),
+        }
+    }
+
     /// The object `id`, live or sleeping, as a `MoveTo` of this unit walks to it ([`WalkTo`]: its
     /// place, its state and the gap between their footprints by their masters' radii,
     /// `FUN_14118f680`), None where the world does not hold it.

@@ -208,7 +208,8 @@ impl HuntAction {
             return Ok(false);
         }
         self.state = ATTACK;
-        let (a, arrived) = Attack::start(target.id, attack, arms, mover)?;
+        let reads = walks.live(mover);
+        let (a, arrived) = Attack::start(target.id, attack, arms, mover, &reads)?;
         self.attack = Some(a);
         Ok(arrived)
     }

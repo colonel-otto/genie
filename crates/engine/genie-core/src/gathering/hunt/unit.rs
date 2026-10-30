@@ -210,7 +210,6 @@ impl Unit {
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,
-            self.life.state,
             master,
             me_at,
             them,
@@ -455,7 +454,6 @@ impl Unit {
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,
-            self.life.state,
             master,
             me_at,
             them,

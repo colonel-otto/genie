@@ -8,6 +8,7 @@ use crate::combat::attack::{
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
+use crate::movement::move_to::MoveToReads;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
@@ -52,12 +53,13 @@ impl Attack {
         &mut self,
         e: &Engagement,
         mover: &mut Mover,
+        reads: &MoveToReads<'_>,
     ) -> Result<bool, GenieError> {
         if self.move_to.take().is_some() {
             mover.stop()?;
         }
         self.state = MOVE;
-        self.moving(e.range, e.target_position, e.gap, e.unit_state, e.speed)
+        self.moving(e.range, e.target_position, e.gap, reads)
     }
 
     /// `set_state(4)`'s own part: the range (slot 0x238's), the timer, the `MoveTo` to the target
@@ -72,11 +74,10 @@ impl Attack {
         range: f32,
         at: [f32; 3],
         gap: f32,
-        unit_state: u8,
-        speed: f32,
+        reads: &MoveToReads<'_>,
     ) -> Result<bool, GenieError> {
         self.range = range;
-        self.walk_to_target(at, gap, unit_state, speed)
+        self.walk_to_target(at, gap, reads)
     }
 
     /// The teardown of the sub-actions (`FUN_140a73fc0` on the action list): a `MoveTo` stops the
@@ -141,7 +142,7 @@ impl Attack {
                 if !self.sub_action {
                     unit.post_own(0x1fb, [600, 0, 0x202])?;
                 }
-                self.wait_at_seen(unit, f)?;
+                self.wait_at_seen(unit, f, r, &c.w.graphics)?;
                 return Ok(5);
             }
             unit.post_own(0x1fa, [600, 0, 0])?;

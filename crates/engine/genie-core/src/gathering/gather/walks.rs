@@ -23,7 +23,7 @@ impl<'a> Walks<'a> {
     /// The reads of `unit` with the sprites `sprites`, and what it carries.
     pub(crate) fn of(sprites: SpriteReads<'a>, unit: &Unit) -> Self {
         Self {
-            reads: reads_of(sprites, unit),
+            reads: MoveToReads::with_sprites(sprites, unit),
             held: (unit.life.attribute_type, unit.life.amount),
         }
     }
@@ -35,19 +35,6 @@ impl<'a> Walks<'a> {
             speed: mover.stats.speed,
             ..self.reads
         }
-    }
-}
-
-/// What a new `MoveTo` reads of `unit` with the sprites `sprites`: its state, speed, place and
-/// the radii of its movement state (none for a unit that does not move).
-pub(crate) fn reads_of<'a>(sprites: SpriteReads<'a>, unit: &Unit) -> MoveToReads<'a> {
-    let mover = unit.body.mover();
-    MoveToReads {
-        sprites,
-        state: unit.life.state,
-        speed: mover.map_or(0.0, |m| m.stats.speed),
-        at: unit.position(),
-        ground: mover.map_or([0.0; 2], |m| [m.stats.radius[0], m.stats.radius[1]]),
     }
 }
 

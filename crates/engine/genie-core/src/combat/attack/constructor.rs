@@ -7,7 +7,7 @@ use crate::combat::attack::{
     LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::TargetMoved;
+use crate::movement::move_to::{MoveToReads, TargetMoved};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
@@ -63,6 +63,7 @@ impl Attack {
         e: &Engagement,
         arms: Arms,
         mover: &mut Mover,
+        reads: &MoveToReads<'_>,
     ) -> Result<(Self, bool), GenieError> {
         let mut a = Self {
             sub_action: true,
@@ -78,7 +79,7 @@ impl Attack {
             ));
         }
         let mut posted = Vec::new();
-        let begun = a.begin((e, e.gap), (true, 0), mover, &mut posted)?;
+        let begun = a.begin((e, e.gap), (true, 0), mover, &mut posted, reads)?;
         if begun.ready {
             return Err(GenieError::unsupported(
                 "an attack that starts in reach and cannot move (set_state 6)",
@@ -111,6 +112,7 @@ impl Attack {
         cmd: &AttackCommand<'_>,
         world: &crate::map::spatial::Spatial,
         mover: &mut Mover,
+        reads: &MoveToReads<'_>,
     ) -> Result<(Self, Begun, Vec<Posted>), GenieError> {
         let e = cmd.engagement;
         let t = *world
@@ -126,6 +128,7 @@ impl Attack {
             (cmd.visible, cmd.target_owner),
             mover,
             &mut posted,
+            reads,
         )?;
         Ok((attack, begun, posted))
     }
@@ -150,11 +153,12 @@ impl Attack {
         unit: &mut Unit,
         cmd: &AttackCommand<'_>,
     ) -> Result<(Self, Vec<Posted>), GenieError> {
+        let reads = unit.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
         let mover = unit
             .body
             .mover_mut()
             .ok_or(crate::world::ATTACKER_UNMOVING)?;
-        let (mut attack, begun, mut posted) = Self::own_start(cmd, &c.w.spatial, mover)?;
+        let (mut attack, begun, mut posted) = Self::own_start(cmd, &c.w.spatial, mover, &reads)?;
         if begun.failed_first {
             unit.body.set_anim_speed(1.0);
         }
@@ -174,6 +178,7 @@ impl Attack {
                 sprite_rng: c.w.streams.get(Stream::Sprite),
                 object_rng: None,
                 buffer: Some(&mut posted),
+                graphics: &c.w.graphics,
             };
             attack.enter_ready(unit, &mut g, &ready.fight, &ready.reads)?;
         }
@@ -222,6 +227,7 @@ impl Attack {
         (visible, target_owner): (bool, usize),
         mover: &mut Mover,
         posted: &mut Vec<(i32, [i32; 3])>,
+        reads: &MoveToReads<'_>,
     ) -> Result<Begun, GenieError> {
         let movable = e.speed != 0.0 && e.can_move;
         let mut failed_first = false;
@@ -230,7 +236,7 @@ impl Attack {
             if e.stance == 0 && 0.0 < e.speed && e.can_move {
                 self.state = GOTO_SEEN;
                 self.range = e.range;
-                self.walk_to_seen(e.unit_state, e.speed);
+                self.walk_to_seen(reads)?;
             } else {
                 failed_first = true;
             }
@@ -246,7 +252,7 @@ impl Attack {
             if (e.stance == 1 && self.off_leash(e.target_position, e.state_position)) || !movable {
                 failed_first = true;
             } else {
-                let _ = self.set_move(e, mover)?;
+                let _ = self.set_move(e, mover, reads)?;
             }
         } else {
             self.point = e.target_position;
@@ -256,7 +262,7 @@ impl Attack {
             ready_end = true;
         }
         if movable {
-            let arrived = self.set_move(e, mover)?;
+            let arrived = self.set_move(e, mover, reads)?;
             return Ok(Begun {
                 arrived,
                 ready: false,
@@ -369,7 +375,6 @@ pub fn arms_looking(
 pub fn engagement(
     ai: Option<&crate::unit_ai::UnitAi>,
     speed: f32,
-    unit_state: u8,
     master: &crate::objects::masters::Master,
     me: &crate::map::spatial::Placed,
     them: &crate::map::spatial::Placed,
@@ -382,7 +387,6 @@ pub fn engagement(
     }
     let (gap_squared, gap) = gaps(me.position, me.radius, them.position, them.radius);
     Ok(Engagement {
-        unit_state,
         gap_squared,
         gap,
         position: me.position,

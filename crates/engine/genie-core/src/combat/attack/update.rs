@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::combat::attack::walks::QUIET_CODE;
 use crate::combat::attack::{
     AiOrder, Attack, AttackReads, Fight, GOTO_POINT, GOTO_SEEN, KILLED, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SEEN_RANGE, SWING, TOUCH, set_walker_anim, speed_of,
+    READY, Readiness, SEEN_RANGE, SWING, TOUCH, move_reads, set_walker_anim,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
@@ -13,12 +13,13 @@ use crate::movement::{Me, footprint_gap};
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
-use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
+use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::world::step::Step;
+use std::collections::BTreeMap;
 
 impl Attack {
     /// The update of an Attack whose target is gone (its target −1 after [`Attack::lost`]): the
@@ -230,7 +231,7 @@ impl Attack {
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
                 .ok_or(crate::world::ATTACKER_UNMOVING)?;
             let gap = footprint_gap(unit.body.position(), ground, t.position, t.radius);
-            self.follow(unit, c.w.streams.get(Stream::Sprite), f, gap)?;
+            self.follow(unit, &mut c.w.attack_ground(), r, f, gap)?;
             return Ok(Some(0));
         }
         if !seen && matches!(self.state, MOVE | GOTO_SEEN) {
@@ -243,7 +244,7 @@ impl Attack {
                 return self.out_of_sight(c, unit, f, r).map(Some);
             }
             if self.state != GOTO_SEEN {
-                self.wait_at_seen(unit, f)?;
+                self.wait_at_seen(unit, f, r, &c.w.graphics)?;
                 return Ok(Some(0));
             }
         }
@@ -316,7 +317,7 @@ impl Attack {
             }
             Readiness::Ready => self.set_swing(unit, &mut g, f, r)?,
             Readiness::Waiting => {}
-            Readiness::Away(gap) => self.follow(unit, g.sprite_rng, f, gap)?,
+            Readiness::Away(gap) => self.follow(unit, &mut g, r, f, gap)?,
         }
         Ok(0)
     }
@@ -358,10 +359,16 @@ impl Attack {
     /// `set_state(5)` (`0x140a820c0` case 5): the sub-actions go, the range is slot 0x238's
     /// again, and a `MoveTo` to where the target was seen within it starts
     /// ([`Attack::goto_point`]).
-    pub(super) fn wait_at_seen(&mut self, unit: &mut Unit, f: &Fight) -> Result<(), GenieError> {
+    pub(super) fn wait_at_seen(
+        &mut self,
+        unit: &mut Unit,
+        f: &Fight,
+        r: &AttackReads,
+        graphics: &BTreeMap<i16, Graphic>,
+    ) -> Result<(), GenieError> {
         self.enter(GOTO_SEEN, unit)?;
         self.range = f.own.source.weapon_range;
-        self.goto_point(unit)
+        self.goto_point(unit, r, graphics)
     }
 
     /// The `MoveTo` to a point of states 5 and 11 ([`Attack::walk_to_seen`]) of `unit`: its start
@@ -371,9 +378,13 @@ impl Attack {
     /// # Errors
     ///
     /// A unit that does not move.
-    pub(super) fn goto_point(&mut self, unit: &Unit) -> Result<(), GenieError> {
-        self.walk_to_seen(unit.life.state, speed_of(unit)?);
-        Ok(())
+    pub(super) fn goto_point(
+        &mut self,
+        unit: &Unit,
+        r: &AttackReads,
+        graphics: &BTreeMap<i16, Graphic>,
+    ) -> Result<(), GenieError> {
+        self.walk_to_seen(&move_reads(unit, r, graphics)?)
     }
 
     /// States 5 and 11 once their `MoveTo` arrived (cases 4 and 10, its update 1 or 2): a target
@@ -398,7 +409,7 @@ impl Attack {
         if self.state == GOTO_SEEN && f.own.player != 0 && SEEN_RANGE <= self.range && !r.computer {
             self.enter(GOTO_POINT, unit)?;
             self.range = f.own.source.weapon_range;
-            self.goto_point(unit)?;
+            self.goto_point(unit, r, &c.w.graphics)?;
             return Ok(0);
         }
         let target = std::mem::replace(&mut self.target, -1);

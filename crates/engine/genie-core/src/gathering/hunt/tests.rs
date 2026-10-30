@@ -232,7 +232,6 @@ fn tree() -> Quarry {
 
 fn engagement() -> Engagement {
     Engagement {
-        unit_state: 0,
         gap_squared: 3.726 * 3.726,
         gap: 3.726,
         position: [20.774, 97.5, 0.0],

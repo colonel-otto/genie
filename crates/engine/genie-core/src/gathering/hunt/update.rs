@@ -251,10 +251,11 @@ impl HuntAction {
         unit: &mut Unit,
         herd: &Herd,
     ) -> Result<(), GenieError> {
+        let reads = unit.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         self.move_to = None;
         self.state = ATTACK;
-        let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;
+        let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover, &reads)?;
         if arrived {
             a.arrived_sprite(unit, c.w.streams.get(Stream::Sprite))?;
         }

@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::{
     Attack, AttackReads, Fight, Ground, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SHORT_RANGE_GAP, face_target, speed_of,
+    READY, Readiness, SHORT_RANGE_GAP, face_target, move_reads,
 };
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
@@ -37,7 +37,7 @@ impl Attack {
         match self.ready_to_attack(unit, g, f, r, false)? {
             Readiness::Ready => self.set_swing(unit, g, f, r),
             Readiness::Waiting => Ok(()),
-            Readiness::Away(gap) => self.follow(unit, g.sprite_rng, f, gap),
+            Readiness::Away(gap) => self.follow(unit, g, r, f, gap),
         }
     }
 
@@ -47,20 +47,15 @@ impl Attack {
     pub(super) fn follow(
         &mut self,
         unit: &mut Unit,
-        sprite_rng: &mut Well512,
+        g: &mut Ground<'_>,
+        r: &AttackReads,
         f: &Fight,
         gap: f32,
     ) -> Result<(), GenieError> {
         self.enter(MOVE, unit)?;
-        let (state, speed) = (unit.life.state, speed_of(unit)?);
-        if self.moving(
-            f.own.source.weapon_range,
-            f.victim.position,
-            gap,
-            state,
-            speed,
-        )? {
-            self.arrived_sprite(unit, sprite_rng)?;
+        let reads = move_reads(unit, r, g.graphics)?;
+        if self.moving(f.own.source.weapon_range, f.victim.position, gap, &reads)? {
+            self.arrived_sprite(unit, g.sprite_rng)?;
         }
         Ok(())
     }
@@ -105,7 +100,7 @@ impl Attack {
             .speed;
         if target_unseen(g.map, f, &t)? {
             if r.stance == 0 && 0.0 < speed && r.can_move {
-                self.wait_at_seen(unit, f)?;
+                self.wait_at_seen(unit, f, r, g.graphics)?;
                 return Ok(Readiness::Waiting);
             }
             return self.fail(unit, g.sprite_rng);

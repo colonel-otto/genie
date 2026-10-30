@@ -1,7 +1,7 @@
 use super::*;
 use crate::math::rng::Stream;
 use crate::movement::Me;
-use crate::movement::move_to::{GiveUp, MoveTo, MoveWait};
+use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWait, SpriteReads};
 use crate::objects::layers::Animated;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -13,6 +13,7 @@ use crate::unit_ai::BOAR_AI;
 use crate::unit_ai::LION_AI;
 use crate::world::Player;
 use crate::world::step::Step;
+use std::collections::BTreeMap;
 
 /// `FUN_140a82ae0` case 6 after the hit: a ranged unit whose attack timer ran out is done
 /// without a target and ready again past its interrupt frame (its firing frame without one);
@@ -50,6 +51,26 @@ fn a_swing_after_its_hit_follows_its_interrupt_and_firing_frames() {
         after_hit(false, 0.0, true, -1, 3, 9),
         Continue { check: false }
     );
+}
+
+/// The sprites' table of a world without sprites.
+pub(crate) static NO_GRAPHICS: BTreeMap<i16, Graphic> = BTreeMap::new();
+
+/// What a new `MoveTo` reads of a unit in object state `state` with top speed `speed`: the
+/// sprites' table `graphics` with the defaults `defaults`.
+fn walking_reads(
+    graphics: &BTreeMap<i16, Graphic>,
+    defaults: MoveDefaults,
+    state: u8,
+    speed: f32,
+) -> MoveToReads<'_> {
+    MoveToReads {
+        sprites: SpriteReads { defaults, graphics },
+        state,
+        speed,
+        at: [0.0; 3],
+        ground: [0.0; 2],
+    }
 }
 
 /// A quiet `MoveTo` sub-action in `state`.
@@ -419,6 +440,7 @@ const STANDING: Graphic = Graphic {
 /// empty queue, a human player at the world's time 0.
 pub(crate) fn reads() -> AttackReads {
     AttackReads {
+        move_defaults: MoveDefaults::default(),
         standing: Some(STANDING),
         volleys: false,
         reload: 2.0,
@@ -489,6 +511,8 @@ impl Rig {
             id: 4,
             kind: 70,
             class: 6,
+            move_sprite: -1,
+            standing_sprite: -1,
             ..Master::default()
         };
         t.masters = vec![Masters::new([master]); t.players.len()];
@@ -554,6 +578,7 @@ impl Rig {
             sprite_rng: sprite,
             object_rng: Some(object),
             buffer: None,
+            graphics: &NO_GRAPHICS,
         };
         f(&mut players[1].objects[0], &mut g, &self.f, &self.r)
     }
@@ -1382,7 +1407,7 @@ fn an_attack_walks_with_the_unit_s_running_or_walking_slot() {
         replay_delay: 0.0,
         flags: 1,
     };
-    let graphics: std::collections::BTreeMap<i16, Graphic> = [10, 11, 12, 20, 21]
+    let graphics: BTreeMap<i16, Graphic> = [10, 11, 12, 20, 21]
         .into_iter()
         .map(|id| (id, g(id)))
         .collect();
@@ -1415,7 +1440,6 @@ fn an_attack_walks_with_the_unit_s_running_or_walking_slot() {
 /// east of it; range 1, no least range.
 fn engaged(gap: f32, speed: f32, can_move: bool, stance: u8) -> Engagement {
     Engagement {
-        unit_state: 0,
         gap_squared: gap * gap,
         gap,
         position: [10.0, 10.0, 0.0],
@@ -1468,7 +1492,8 @@ fn own_start(
         target_owner: owner,
         ready: None,
     };
-    let (attack, begun, posted) = Attack::own_start(&cmd, world, mover)?;
+    let reads = walking_reads(&NO_GRAPHICS, MoveDefaults::default(), 2, e.speed);
+    let (attack, begun, posted) = Attack::own_start(&cmd, world, mover, &reads)?;
     Ok(Started {
         attack,
         arrived: begun.arrived,
@@ -2083,12 +2108,14 @@ fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
 #[test]
 fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode() {
     let at = [12.0, 10.0, 0.0];
+    let table = BTreeMap::from([(STANDING.id, STANDING)]);
     let made = |gap, speed, state, mode| {
         let mut a = own_attack(7, MOVE, 2.0);
         a.arms.move_sprite = Some(STANDING);
         a.on_target_moved = mode;
         a.timer = 5.0;
-        let arrived = a.walk_to_target(at, gap, state, speed).unwrap();
+        let reads = walking_reads(&table, MoveDefaults::default(), state, speed);
+        let arrived = a.walk_to_target(at, gap, &reads).unwrap();
         (arrived, a.timer, a.move_to)
     };
     let (arrived, timer, m) = made(1.0, 1.0, 2, TargetMoved::AsksAgain);
@@ -2109,7 +2136,20 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
     let (arrived, _, m) = made(0.0, 1.0, 3, TargetMoved::Follows);
     assert_eq!((arrived, m), (false, None));
     let mut none = own_attack(-1, MOVE, 2.0);
-    assert!(none.walk_to_target(at, 1.0, 2, 1.0).is_err());
+    let reads = walking_reads(&table, MoveDefaults::default(), 2, 1.0);
+    assert!(none.walk_to_target(at, 1.0, &reads).is_err());
+    // without a sprite of its own the constructor's default is taken
+    let defaults = MoveDefaults {
+        point: Some(STANDING.id),
+        object: Some(STANDING.id),
+    };
+    let reads = walking_reads(&table, defaults, 2, 1.0);
+    let mut bare = own_attack(7, MOVE, 2.0);
+    let _ = bare.walk_to_target(at, 1.0, &reads).unwrap();
+    assert_eq!(bare.move_to.and_then(|m| m.sprite), Some(STANDING));
+    let mut seen = own_attack(7, GOTO_SEEN, 2.0);
+    seen.walk_to_seen(&reads).unwrap();
+    assert_eq!(seen.move_to.and_then(|m| m.sprite), Some(STANDING));
 }
 
 /// `set_state(5)` and `(11)`'s `MoveTo` to where the target was seen ([`Attack::walk_to_seen`]):
@@ -2122,7 +2162,8 @@ fn an_attack_s_move_to_where_it_saw_the_target_walks_within_its_range_or_onto_it
         let mut a = own_attack(7, state, 3.0);
         a.seen = seen;
         a.timer = 5.0;
-        a.walk_to_seen(unit_state, speed);
+        let reads = walking_reads(&NO_GRAPHICS, MoveDefaults::default(), unit_state, speed);
+        a.walk_to_seen(&reads).unwrap();
         (
             a.timer,
             a.move_to.map(|m| (m.state, m.point, m.range, m.target)),
