@@ -8,6 +8,7 @@ use crate::{
     save_header, tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit,
 };
 use genie_core::GenieError;
+use genie_core::objects::ObjectId;
 use genie_core::world::World;
 use genie_save::Header;
 
@@ -35,7 +36,7 @@ pub fn old_pather_paths(
             .players
             .iter()
             .flat_map(|p| &p.objects)
-            .find(|u| u.id == id)
+            .find(|u| u.id.get() == id)
         else {
             out.push(Err(GenieError::unsupported(
                 "a caller the save does not hold",
@@ -317,7 +318,11 @@ pub fn forced_run(
                 game.resync = report
                     .differences
                     .iter()
-                    .filter_map(|(_, d)| d.split(':').next().and_then(|o| o.parse::<i32>().ok()))
+                    .filter_map(|(_, d)| {
+                        d.split(':')
+                            .next()
+                            .and_then(|o| o.parse::<i32>().ok().and_then(ObjectId::of_field))
+                    })
                     .collect();
                 if report
                     .differences
@@ -490,11 +495,11 @@ pub struct Times {
 pub(super) fn game_state(
     header: &Header,
     masters: Option<&MasterTable>,
-) -> genie_core::world::GameState {
+) -> Result<genie_core::world::GameState, GenieError> {
     let world = &header.world.base_world;
     let mut game = genie_core::world::GameState {
         frame_seed: world.current_frame_random_seed,
-        next_reusable_id: world.next_reusable_object_id,
+        next_reusable_id: ObjectId::try_from(world.next_reusable_object_id)?,
         game_state: u32::from(world.temp_game_state),
         groups: groups::unit_groups(world).ok(),
         ..Default::default()
@@ -519,7 +524,7 @@ pub(super) fn game_state(
         let techs = &p.world_player().tech_tree.tech_player_tree;
         game.techs.push(techs.iter().map(tech_state).collect());
     }
-    game
+    Ok(game)
 }
 
 #[cfg(test)]

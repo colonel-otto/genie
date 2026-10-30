@@ -1,3 +1,4 @@
+use crate::test_ids::object_id;
 use std::num::NonZeroUsize;
 
 use genie_core::objects::unit::Unit;
@@ -76,7 +77,7 @@ fn a_stopped_player_is_listed_and_compared_no_more() {
 #[test]
 fn the_scope_widens_the_compared_fields() {
     let unit = |attack_count, idle_variant| Unit {
-        id: 1,
+        id: object_id(1),
         attack_count,
         idle_variant,
         ..Unit::default()

@@ -44,7 +44,7 @@ impl Unit {
     /// The master class the world files the captured object under.
     pub(crate) fn placed_class(&self, c: &Step<'_>) -> Result<i16, GenieError> {
         c.w.spatial
-            .get(self.id)
+            .get(self.id.get())
             .map(|p| p.class)
             .ok_or(GenieError::unsupported(
                 "a captured object the world does not hold",
@@ -147,7 +147,12 @@ impl Unit {
         }
         let _ = self.change_owner(c, new)?;
         self.capture_flag = 0;
-        if let Some(s) = c.w.spatial.sight.as_mut().and_then(|v| v.seer_mut(self.id)) {
+        if let Some(s) =
+            c.w.spatial
+                .sight
+                .as_mut()
+                .and_then(|v| v.seer_mut(self.id.get()))
+        {
             s.capture = 0;
         }
         Ok(())
@@ -240,13 +245,13 @@ fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Result<Vec<i
             u.life.state == 2
                 && ux as i32 == x
                 && uy as i32 == y
-                && !taken.contains(&u.id)
+                && !taken.contains(&u.id.get())
                 && c.w
                     .spatial
-                    .get(u.id)
+                    .get(u.id.get())
                     .is_some_and(|p| p.class == class::LIVESTOCK && p.player == 0)
         })
-        .map(|u| u.id)
+        .map(|u| u.id.get())
         .collect())
 }
 

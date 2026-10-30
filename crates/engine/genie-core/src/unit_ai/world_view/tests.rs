@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::object_list::ObjectList;
+use crate::test_ids::object_id;
 use crate::world::others::OthersRef;
 
 /// Slot 0x228 (`FUN_141084070`): the attacks above 0 add up in their order from +0; none
@@ -25,7 +26,7 @@ fn the_attacks_sum_is_the_positive_ones() {
 /// hit points), no melee armor and a range of at most 0.5.
 fn harmless(master: crate::objects::masters::Master) -> bool {
     let me = Unit {
-        id: 123,
+        id: object_id(123),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 83,
             ..crate::objects::lifecycle::Lifecycle::default()
@@ -34,7 +35,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
     };
     let enemy = Player {
         objects: vec![Unit {
-            id: 50,
+            id: object_id(50),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: master.id,
                 state: 2,
@@ -128,18 +129,18 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         attackers,
         ..UnitAi::default()
     };
-    let me = unit(123, 10.0, 4, None);
+    let me = unit(object_id(123), 10.0, 4, None);
     let others = ObjectList::from(vec![
-        unit(20, 12.0, 4, Some(attacked(vec![50, 51, 52, 53]))),
-        unit(21, 12.0, 4, None),
-        unit(22, 12.0, 4, Some(attacked(vec![99]))),
+        unit(object_id(20), 12.0, 4, Some(attacked(vec![50, 51, 52, 53]))),
+        unit(object_id(21), 12.0, 4, None),
+        unit(object_id(22), 12.0, 4, Some(attacked(vec![99]))),
     ]);
     let enemy = Player {
         // 50 at a gap of 4.4, 51 of 2.4 (its radius 1), 53 of 2.4 too
         objects: vec![
-            unit(50, 17.0, 5, None),
-            unit(51, 16.0, 6, None),
-            unit(53, 16.0, 6, None),
+            unit(object_id(50), 17.0, 5, None),
+            unit(object_id(51), 16.0, 6, None),
+            unit(object_id(53), 16.0, 6, None),
         ]
         .into(),
         ..Player::default()
@@ -266,9 +267,9 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         },
         ..Unit::default()
     };
-    let me = unit(123, 10.0, 4);
+    let me = unit(object_id(123), 10.0, 4);
     let enemy = Player {
-        objects: vec![unit(50, 12.0, 5)].into(),
+        objects: vec![unit(object_id(50), 12.0, 5)].into(),
         ..Player::default()
     };
     let (gaia, after) = (Player::default(), [enemy]);

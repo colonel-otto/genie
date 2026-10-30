@@ -471,7 +471,7 @@ impl Unit {
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let zones = c.zones.of(w, h, &terrain.kinds, values)?;
         let me = Me {
-            id: self.id,
+            id: self.id.get(),
             group: self.group.id,
             action_state: state,
         };

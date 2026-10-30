@@ -9,7 +9,6 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::movement::explore::WANTS_POINT;
-use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::players::ai_module::search::RING_SLACK;
 use crate::players::ai_module::{AiModule, SearchUnit};
@@ -83,7 +82,7 @@ impl UnitView<'_, '_> {
         let own = self.unit.master(&self.c.w.masters, self.player)?;
         let (class_id, sight, flags) = (own.class, own.line_of_sight, own.object_flags);
         let [x, y, _] = self.unit.position();
-        let id = ObjectId::try_from(self.unit.id)?;
+        let id = self.unit.id;
         let unit = SearchUnit {
             id,
             position: [x, y],

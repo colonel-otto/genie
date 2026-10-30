@@ -9,6 +9,7 @@ use crate::objects::masters::class;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
+use crate::test_ids::object_id;
 use crate::world::step::Step;
 use crate::world::{Player, World};
 
@@ -80,7 +81,7 @@ impl Rig {
     /// of.
     fn with_house(mut self, state: u8) -> Self {
         let mut house = Unit {
-            id: 10028,
+            id: object_id(10028),
             ..Unit::default()
         };
         house.life.state = state;
@@ -114,7 +115,7 @@ impl Rig {
     ) -> Result<R, GenieError> {
         crate::world::tests::in_update(&mut self.t, (1, 0), dt, |u, c| {
             let me = Me {
-                id: u.id,
+                id: u.id.get(),
                 group: -1,
                 action_state: state,
             };

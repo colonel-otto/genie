@@ -393,21 +393,21 @@ impl World {
         let u = self.object_at(place)?;
         if u.life.state == 2
             && u.life.inside.is_none()
-            && let Some(placed) = self.spatial.get(id).copied()
+            && let Some(placed) = self.spatial.get(id.get()).copied()
             && let Some(sight) = self.spatial.sight.as_mut()
         {
-            let now = sight.seer(id).map_or(old.line_of_sight, |s| s.los);
+            let now = sight.seer(id.get()).map_or(old.line_of_sight, |s| s.los);
             let los = (now - old.line_of_sight) + new.line_of_sight;
-            sight.sight_off(id, placed.position, placed.radius, false, false)?;
+            sight.sight_off(id.get(), placed.position, placed.radius, false, false)?;
             let _ = sight.sight_on_los(
-                id,
+                id.get(),
                 placed.position,
                 placed.radius,
                 false,
                 crate::math::conversions::cvttss2si(los),
                 false,
             )?;
-            if let Some(s) = sight.seer_mut(id) {
+            if let Some(s) = sight.seer_mut(id.get()) {
                 s.los = los;
                 if !keep {
                     s.master = new.id;
@@ -648,6 +648,7 @@ mod tests {
     use super::*;
     use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
+    use crate::test_ids::object_id;
 
     /// An animated graphic of `frames` frames with a random first frame (flags 5).
     const fn graphic(id: i16) -> Graphic {
@@ -691,7 +692,7 @@ mod tests {
     /// A unit of master `master` in `state` with `hp`.
     fn object(id: i32, master: i16, state: u8, hp: f32) -> Unit {
         Unit {
-            id,
+            id: object_id(id),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: master,
                 state,

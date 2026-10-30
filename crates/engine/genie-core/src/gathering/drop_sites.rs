@@ -74,7 +74,7 @@ impl Seeker<'_, '_> {
                 if length <= SHORT_DROP_REACH
                     && let Some(short) =
                         self.mover
-                            .short_reach(&self.me, self.spatial, o.id, DROP_REACH)?
+                            .short_reach(&self.me, self.spatial, o.id.get(), DROP_REACH)?
                     && short < length
                 {
                     *last = short;
@@ -161,7 +161,7 @@ pub(crate) fn drop_site_search<'u>(
             continue;
         }
         if x == NO_POINT && y == NO_POINT {
-            return Ok(Some(o.id));
+            return Ok(Some(o.id.get()));
         }
         let master = o.master_in(Some(masters))?;
         if let (Some(s), Some(zone)) = (seeker.as_ref(), own_zone)
@@ -198,7 +198,7 @@ pub(crate) fn drop_site_search<'u>(
             None => squared,
         };
         if d < best_d {
-            best = Some(o.id);
+            best = Some(o.id.get());
             best_d = d;
         }
     }
@@ -230,7 +230,7 @@ pub(crate) fn nearest_drop_site(
         let (dx, dy) = (x - o.position()[0], y - o.position()[1]);
         let d = dy * dy + dx * dx;
         if best.is_none_or(|(_, b)| d < b) {
-            best = Some((o.id, d));
+            best = Some((o.id.get(), d));
         }
     }
     best
@@ -247,13 +247,14 @@ mod tests {
     use crate::objects::masters::Master;
     use crate::pathing::Pathing;
     use crate::pathing::zones::ZoneMap;
+    use crate::test_ids::object_id;
 
     /// The town centre (master 109) and the mill (master 68), the villager's drop sites.
     const SITES: [i16; 2] = [109, 68];
 
     fn object(id: i32, master_id: i16, at: [f32; 2]) -> Unit {
         Unit {
-            id,
+            id: object_id(id),
             body: crate::objects::layers::Body::at([at[0], at[1], 0.0]),
             life: Lifecycle {
                 state: 2,
@@ -353,7 +354,7 @@ mod tests {
         let seeker = Seeker {
             unit,
             me: Me {
-                id: unit.id,
+                id: unit.id.get(),
                 action_state: 0,
                 group: -1,
             },

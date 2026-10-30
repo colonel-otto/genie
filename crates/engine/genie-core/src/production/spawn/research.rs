@@ -175,7 +175,11 @@ impl World {
         }
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
-                Notify::own(id, ACTION_COMPLETED, [ActionKind::Research.value(), 0, 0]),
+                Notify::own(
+                    id.get(),
+                    ACTION_COMPLETED,
+                    [ActionKind::Research.value(), 0, 0],
+                ),
                 state,
             )?;
         }
@@ -189,7 +193,7 @@ impl World {
                 .and_then(|e| self.effects.get(e))
                 .cloned()
         {
-            self.do_effect(p, &effect, Some(id))?;
+            self.do_effect(p, &effect, Some(id.get()))?;
         }
         Ok(())
     }
@@ -228,7 +232,7 @@ impl World {
             if let Some(ai) = building.ai.as_mut() {
                 ai.post(
                     Notify::own(
-                        id,
+                        id.get(),
                         crate::unit_ai::ACTION_FAILED,
                         [ActionKind::Research.value(), 0, 0],
                     ),

@@ -60,7 +60,7 @@ impl World {
             let gather = if own {
                 let (target, target_master) = match old {
                     Some(g) if kept => (g.target, g.target_master),
-                    _ => (unit.id, unit.life.master_id),
+                    _ => (unit.id.get(), unit.life.master_id),
                 };
                 Some(GatherPoint {
                     state: 1,
@@ -117,7 +117,7 @@ impl World {
                 Some(GatherPoint {
                     state: i32::from(state),
                     point: unit.position(),
-                    target: unit.id,
+                    target: unit.id.get(),
                     target_master: unit.life.master_id,
                 })
             } else {
@@ -188,7 +188,7 @@ impl World {
             if building
                 && let Some(g) = unit.gather_point
                 && ai.building_orders.is_empty()
-                && g.target != unit.id
+                && g.target != unit.id.get()
             {
                 // the gather point's own target id stays even when the world lost it
                 let mut first = step(self, g.target, [g.point[0], g.point[1]])?;
@@ -317,7 +317,7 @@ impl World {
                 q.objects
                     .iter()
                     .chain(&q.sleeping)
-                    .any(|u| u.id == building_id)
+                    .any(|u| u.id.get() == building_id)
             });
             return if elsewhere {
                 Err(GenieError::unsupported(

@@ -55,7 +55,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             "a stand test of a unit without movement state",
         ))?;
         self.c.w.spatial.point_clear(
-            unit.id,
+            unit.id.get(),
             point,
             mover.stats.radius[0],
             mover.stats.restriction_mask,
@@ -95,7 +95,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             .map(|m| m.radius)
             .ok_or(crate::world::UNIT_AI_MASTER)?;
         for r in lists[1].iter().chain(&lists[2]) {
-            if r.id == me {
+            if r.id == me.get() {
                 continue;
             }
             let Some((owner, u)) = find(r.id) else {
@@ -207,7 +207,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         };
         let unit = &*self.unit;
         let walker = Me {
-            id: unit.id,
+            id: unit.id.get(),
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -232,7 +232,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let mut picker = WorldPicker {
             attacker: &self.attacker,
             seeker,
-            me: self.unit.id,
+            me: self.unit.id.get(),
             player: self.player,
             others: owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
@@ -263,7 +263,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         };
         let unit = &*self.unit;
         let walker = Me {
-            id: unit.id,
+            id: unit.id.get(),
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -285,7 +285,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         // a farm's workers (`+0x644`) and its pasture (`+0x790`)
         let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
         self.c.w.spatial.search(SearchQuery {
-            searcher: unit.id,
+            searcher: unit.id.get(),
             player: self.player,
             search,
             attack: &mut picker,

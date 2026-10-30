@@ -214,9 +214,9 @@ impl World {
     ) -> Result<(), GenieError> {
         let own = self.players[player].objects[idx].id;
         let (inner, holder) = match transport {
-            Some(t) => (own, t),
+            Some(t) => (own.get(), t),
             None => match self.object(named) {
-                Some((_, o)) if o.life.inside == Some(own) => (named, own),
+                Some((_, o)) if o.life.inside == Some(own.get()) => (named, own.get()),
                 _ => return Ok(()),
             },
         };
@@ -245,7 +245,7 @@ impl World {
         let inner_id = unit.id;
         unit.body
             .base_mut()
-            .inside_at(inner_id, at, &mut self.spatial);
+            .inside_at(inner_id.get(), at, &mut self.spatial);
         self.leave_container((hp, hi), (up, ui), &made, [spot[0], spot[1], at[2]])?;
         let unit = &mut self.players[up].objects[ui];
         let place = ([unit.position()[0], unit.position()[1]], made.class);
@@ -278,7 +278,7 @@ impl World {
         point: [f32; 2],
     ) -> Result<(), GenieError> {
         let id = self.players[player].objects[idx].id;
-        self.leave_group_of(id, -1)?;
+        self.leave_group_of(id.get(), -1)?;
         let unit = &mut self.players[player].objects[idx];
         if let Some(m) = unit.body.mover_mut() {
             m.ignore_units.clear();
@@ -295,7 +295,7 @@ impl World {
             issuer: player as i32,
             order: OrderKind::Unload,
             priority: 100,
-            target: id,
+            target: id.get(),
             target_owner: player as i32,
             point: [to[0], to[1], 0.0],
             range: UNLOAD_RANGE,
@@ -453,13 +453,13 @@ impl World {
             0 => class != WHOLE_SHARE_CLASS,
             1 => player as i32 == param,
             2 => unload_group_takes(param, class),
-            3 => id == param,
+            3 => id.get() == param,
             4 => match named.filter(|_| same_player) {
                 Some(m) if m.id == master.id => true,
                 Some(m) => class == class::VILLAGER && m.class == class::VILLAGER,
                 None => false,
             },
-            5 => same_player && id != param && class != WHOLE_SHARE_CLASS,
+            5 => same_player && id.get() != param && class != WHOLE_SHARE_CLASS,
             6 => match named.filter(|_| same_player) {
                 Some(m) if m.id != master.id => {
                     if class == class::VILLAGER {

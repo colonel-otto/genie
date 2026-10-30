@@ -92,7 +92,7 @@ impl BuildAction {
         };
         let (player, foreign) = (c.player, view.players());
         let find = |t: i32| {
-            if t == builder.id {
+            if t == builder.id.get() {
                 return Some((player, builder));
             }
             view.find(t)
@@ -106,7 +106,7 @@ impl BuildAction {
                 use crate::unit_ai::task_finder::world::SideWorld;
                 use crate::unit_ai::task_finder::world::task_search;
                 let actor = Actor {
-                    id: builder.id,
+                    id: builder.id.get(),
                     master: own,
                     player,
                     held: (builder.life.attribute_type, builder.life.amount),

@@ -34,7 +34,7 @@ const NO_DYING_SPRITE: GenieError =
 #[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct Unit {
     /// The object's id (`+0x8`), which names it across ticks.
-    pub id: i32,
+    pub id: crate::objects::ObjectId,
     /// `+0x889`: its waits as a builder for an occupied footprint (not saved; 0 at a load).
     #[diff(unsaved)]
     pub footprint_waits: u8,
@@ -283,7 +283,7 @@ impl Unit {
     ) -> Result<&'a Master, GenieError> {
         object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             table,
         )
     }
@@ -306,7 +306,7 @@ impl Unit {
             Option<&mut crate::pathing::Pathing>,
         ),
     ) -> Result<(), GenieError> {
-        self.body.new_position(self.id, at, places)?;
+        self.body.new_position(self.id.get(), at, places)?;
         Ok(())
     }
 
@@ -324,7 +324,7 @@ pub(crate) fn annexes_of<'a>(id: i32, objects: impl IntoIterator<Item = &'a Unit
     let mut annexes: Vec<i32> = objects
         .into_iter()
         .filter(|u| u.annex_of == Some(id))
-        .map(|u| u.id)
+        .map(|u| u.id.get())
         .collect();
     annexes.sort_unstable();
     annexes
@@ -380,7 +380,7 @@ pub(crate) const fn loses_actions(life: &Lifecycle) -> bool {
 /// order ([`Unit::taken_out`]): no object has it, so a lookup by id during that time finds the
 /// object itself, never the stand-in (the default unit's id 0 is a real object's, 428491175's
 /// oak 0, which a petard's blast then read as an empty victim and felled).
-pub(crate) const TAKEN_OUT: i32 = i32::MIN;
+pub(crate) const TAKEN_OUT: crate::objects::ObjectId = crate::objects::ObjectId::TAKEN_OUT;
 
 /// [`Unit::missile_hits`]'s hit mode 1 (a missed missile): true when it passes the object it
 /// meets (its id, `player`, master type `kind` and blast defence `level`): one of the missile's

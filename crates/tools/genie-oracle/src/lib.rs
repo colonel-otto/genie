@@ -78,6 +78,8 @@ mod setup;
 mod step_runs;
 mod sub_actions;
 mod task_finder;
+#[cfg(test)]
+mod test_ids;
 mod top_actions;
 
 #[cfg(test)]

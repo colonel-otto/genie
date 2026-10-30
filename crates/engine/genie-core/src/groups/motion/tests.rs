@@ -1,6 +1,7 @@
 use super::*;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::objects::actions::ActionList;
+use crate::test_ids::object_id;
 
 /// Slot 0x280 (`FUN_141082d60`) passes only a target id above -1 the world holds: a
 /// recycled object's negative id gives -1 like none.
@@ -9,13 +10,13 @@ fn a_top_target_below_minus_one_is_none() {
     use crate::objects::unit::Unit;
     use crate::world::Player;
     let hunter = |target: i32| Unit {
-        id: 5,
+        id: object_id(5),
         actions: ActionList::default()
             .with_hunt(Some(crate::gathering::hunt::tests::hunting(target))),
         ..Unit::default()
     };
     let held = |id: i32| Unit {
-        id,
+        id: object_id(id),
         ..Unit::default()
     };
     let player = Player {

@@ -108,7 +108,7 @@ impl World {
                 None => self.closest_of_groups(p, i)?,
             };
             let own = self.players.live(p, i)?.id;
-            if let Some(target) = target.filter(|&t| t != own) {
+            if let Some(target) = target.filter(|&t| t != own.get()) {
                 let point = self
                     .spatial
                     .get_known(target)?
@@ -185,7 +185,7 @@ impl World {
             min_state: 2,
         };
         let me_walk = Me {
-            id: unit.id,
+            id: unit.id.get(),
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };

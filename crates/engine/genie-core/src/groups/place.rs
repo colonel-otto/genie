@@ -379,6 +379,7 @@ fn ground_squared(p: Vec3, q: Vec3) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::object_id;
 
     /// `FUN_141049e10` facing x with up y: right is `y × x`, (0, 0, -1), the constructor's.
     #[test]
@@ -397,7 +398,7 @@ mod tests {
     /// A unit at `[x, y]` (the unit's order: x, y, height) of master 4.
     fn unit(id: i32, x: f32, y: f32) -> crate::objects::unit::Unit {
         let mut u = crate::objects::unit::Unit {
-            id,
+            id: object_id(id),
             body: crate::objects::layers::Body::at([x, y, 0.0]),
             ..crate::objects::unit::Unit::default()
         };
@@ -443,7 +444,7 @@ mod tests {
         ));
         for u in &units {
             t.spatial.insert(
-                u.id,
+                u.id.get(),
                 Placed {
                     position: u.position(),
                     radius: [0.4, 0.4],
@@ -463,7 +464,7 @@ mod tests {
         g.members = units
             .iter()
             .map(|u| crate::groups::Member {
-                id: u.id,
+                id: u.id.get(),
                 ..crate::groups::Member::default()
             })
             .collect();
@@ -576,7 +577,7 @@ mod tests {
         t.move_position_to_front(1, 100.0).unwrap();
         assert_eq!(placed(&t), ([10.0, 0.0, 10.0], [10.0, 0.0, 10.0], 2));
         let mut other = units[1].clone();
-        other.id = 50;
+        other.id = object_id(50);
         let mut t = front_world(vec![units[0].clone(), units[1].clone(), other]);
         flanked(&mut t);
         t.groups.groups[0].members.truncate(2);
@@ -584,17 +585,18 @@ mod tests {
         assert_eq!(placed(&t), ([15.0, 0.0, 10.5], [15.0, 0.0, 10.5], 0));
     }
 
-    /// The constructor's lead -1 finds the world's object -1 (`FUN_1410465d0`): a moving one (a
-    /// missile, say) could stand on the group's place among the members, so a flanked group
-    /// stays; a ghost's slot 0x270 (`FUN_141071e30`) is 0, so the group goes to the front.
+    /// The lead finds the world's object of its id (`FUN_1410465d0`): a moving one (a missile,
+    /// say) could stand on the group's place among the members, so a flanked group stays; a
+    /// ghost's slot 0x270 (`FUN_141071e30`) is 0, so the group goes to the front.
     #[test]
     fn a_flanked_group_tests_the_world_s_object_of_its_lead_id() {
         let units = vec![unit(10, 15.0, 10.5), unit(11, 10.2, 10.1)];
         let flanked = |t: &mut World| {
             t.groups.groups[0].formation_locked_type = crate::groups::formation::FLANKED;
             t.groups.groups[0].members.truncate(2);
+            t.groups.groups[0].motion.lead = -2;
         };
-        let mut missile = unit(-1, 3.0, 3.0);
+        let mut missile = unit(-2, 3.0, 3.0);
         missile
             .body
             .put_mover(Some(crate::gathering::hunt::tests::walker()));
@@ -604,7 +606,7 @@ mod tests {
         assert_eq!(placed(&t), ([10.0, 0.0, 10.0], [10.0, 0.0, 10.0], 2));
         let mut t = front_world(units);
         flanked(&mut t);
-        t.players[0].ghosts = vec![crate::groups::formation::tests::ghost_at(-1, 3.0, 3.0)];
+        t.players[0].ghosts = vec![crate::groups::formation::tests::ghost_at(-2, 3.0, 3.0)];
         t.move_position_to_front(1, 100.0).unwrap();
         assert_eq!(placed(&t), ([15.0, 0.0, 10.5], [15.0, 0.0, 10.5], 0));
     }

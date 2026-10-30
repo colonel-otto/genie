@@ -4,6 +4,7 @@
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::movement::Mover;
+use crate::objects::ObjectId;
 use crate::pathing::Pathing;
 use crate::world::player::Player;
 use crate::world::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, World};
@@ -12,10 +13,10 @@ impl World {
     /// The world's next object id (`FUN_14152fd70`) for a new object of `master` for `player`: it
     /// counts on, and the id goes to the trace ([`crate::trace::new_object`]).
     #[track_caller]
-    pub(crate) fn take_object_id(&mut self, player: usize, master: i16) -> i32 {
+    pub(crate) fn take_object_id(&mut self, player: usize, master: i16) -> ObjectId {
         let id = self.next_object_id;
-        self.next_object_id += 1;
-        crate::trace::new_object(self.ticks, player, id, master);
+        self.next_object_id = id.successor();
+        crate::trace::new_object(self.ticks, player, id.get(), master);
         id
     }
 
@@ -35,7 +36,7 @@ impl World {
             player_time,
             players,
             ticks: 0,
-            next_object_id: 0,
+            next_object_id: ObjectId::default(),
             masters: Vec::new(),
             spatial: Spatial::default(),
             pathing: Pathing::default(),
@@ -106,9 +107,10 @@ impl World {
                 if u.life.inside.is_some() || 7 <= u.life.state {
                     continue;
                 }
-                let (Some(placed), Some(m)) =
-                    (self.spatial.get(u.id), u.master(&self.masters, q).ok())
-                else {
+                let (Some(placed), Some(m)) = (
+                    self.spatial.get(u.id.get()),
+                    u.master(&self.masters, q).ok(),
+                ) else {
                     continue;
                 };
                 let moving = u.body.mover().is_some_and(Mover::is_moving);
@@ -121,9 +123,9 @@ impl World {
                     && !moving
                     && !desolid
                 {
-                    self.pathing.place_shape(u.id, placed);
+                    self.pathing.place_shape(u.id.get(), placed);
                 }
-                self.pathing.refresh(u.id, placed, moving, m.outline);
+                self.pathing.refresh(u.id.get(), placed, moving, m.outline);
             }
         }
     }

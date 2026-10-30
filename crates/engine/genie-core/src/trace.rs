@@ -182,7 +182,7 @@ impl Watch {
         let Some(now) = Self::of(u) else {
             return;
         };
-        let object = u.id;
+        let object = u.id.get();
         if now.object_state != self.object_state {
             tracing::debug!(
                 target: STATE,
@@ -233,6 +233,7 @@ mod tests {
     use super::*;
     use crate::commands::{Command, UnmodelledCommand};
     use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
+    use crate::test_ids::object_id;
     use crate::test_ids::player_id;
     use crate::world::{Player, World};
     use std::fmt::Write;
@@ -367,7 +368,7 @@ mod tests {
     #[test]
     fn an_update_tells_its_span_its_players_and_its_objects() {
         let mut t = one(vec![Unit {
-            id: 7,
+            id: object_id(7),
             ..Unit::default()
         }]);
         let lines = heard(|| t.tick(10));
@@ -395,7 +396,7 @@ mod tests {
             GenieError::unsupported("a default task the slice does not model").with("site", 1);
         let at = why.location();
         let mut t = one(vec![Unit {
-            id: 5,
+            id: object_id(5),
             unmodelled_action: Some(why),
             ..Unit::default()
         }]);
@@ -437,7 +438,7 @@ mod tests {
     #[test]
     fn a_dying_object_tells_its_state_change() {
         let mut t = one(vec![Unit {
-            id: 5,
+            id: object_id(5),
             life: Lifecycle {
                 class: Class::Animated,
                 hp: 0.0,

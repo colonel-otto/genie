@@ -384,7 +384,7 @@ impl crate::world::World {
         let inner_id = unit.id;
         unit.body
             .base_mut()
-            .inside_at(inner_id, at, &mut self.spatial);
+            .inside_at(inner_id.get(), at, &mut self.spatial);
         self.leave_container((p, i), (up, ui), made, [spot[0], spot[1], at[2]])?;
         if let Some(ai) = self.players[up].objects[ui].ai.as_mut() {
             ai.state_position = spot;

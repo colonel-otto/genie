@@ -36,7 +36,7 @@ impl WorldObject<'_> {
     /// Its id (`+0x8`).
     pub(crate) const fn id(&self) -> i32 {
         match *self {
-            Self::Unit(_, u) => u.id,
+            Self::Unit(_, u) => u.id.get(),
             Self::Ghost(_, g) => g.id,
         }
     }

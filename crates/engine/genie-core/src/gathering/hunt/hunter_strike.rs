@@ -36,7 +36,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         )?;
         let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
@@ -59,7 +59,7 @@ impl Unit {
         let next = next?;
         // the retaliation's kill of the unit itself, which follows its step
         if let Some(k) = self.hit_back(f.own)? {
-            file_kill(c, self, KillLeft::own(self.id, k))?;
+            file_kill(c, self, KillLeft::own(self.id.get(), k))?;
         }
         match next {
             HuntNext::Stay => Ok(()),
@@ -165,7 +165,7 @@ impl Unit {
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
-        let (me_at, them) = (at(self.id)?, at(action.target)?);
+        let (me_at, them) = (at(self.id.get())?, at(action.target)?);
         let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),

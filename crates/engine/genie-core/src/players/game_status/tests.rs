@@ -5,6 +5,7 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
 use crate::unit_ai::ActionKind;
@@ -44,7 +45,7 @@ fn game() -> World {
     let mut attributes = vec![0.0; 250];
     (attributes[80], attributes[81]) = (1.0, 1.0);
     let tc = Unit {
-        id: 9,
+        id: object_id(9),
         ai: Some(UnitAi {
             current_order: None,
             current_action: Some(ActionKind::Make),
@@ -180,7 +181,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         productivity: 1.0,
     };
     let gather = add(Unit {
-        id: 30,
+        id: object_id(30),
         actions: ActionList::default().with_gather(Some(
             crate::gathering::gather::GatherAction::new(task, &bush, false, rate).unwrap(),
         )),
@@ -195,7 +196,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         moving: None,
     };
     let build = add(Unit {
-        id: 31,
+        id: object_id(31),
         actions: ActionList::default().with_build(Some(
             crate::construction::build::tests::started(-1, [3.5, 3.5, 0.0], 1.0, build_task),
         )),
@@ -208,7 +209,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         proceeding: None,
     };
     let repair = add(Unit {
-        id: 32,
+        id: object_id(32),
         actions: ActionList::default().with_repair(Some(
             crate::construction::repair::RepairAction::start(
                 crate::movement::move_to::WalkTo {
@@ -245,13 +246,13 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         flags: 0,
     });
     let attack = add(Unit {
-        id: 33,
+        id: object_id(33),
         actions: ActionList::default().with_attack(Some(attack)),
         body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         ..Unit::default()
     });
     let artifact = add(Unit {
-        id: 34,
+        id: object_id(34),
         actions: ActionList::default()
             .with_artifact(Some(crate::ownership::artifact::Artifact::new(false, None))),
         ..Unit::default()
@@ -290,7 +291,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
 fn a_stopped_hunter_keeps_its_halted_hunt() {
     use crate::gathering::hunt::{HuntAction, HuntTask, Lead};
     let hunter = Unit {
-        id: 20,
+        id: object_id(20),
         ai: Some(UnitAi {
             current_order: Some(OrderKind::Hunt),
             current_action: Some(ActionKind::Hunt),

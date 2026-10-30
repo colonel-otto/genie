@@ -537,7 +537,7 @@ impl World {
                 let (id, master) = (woken.id, woken.life.master_id);
                 self.players[p].objects.push(woken);
                 // the remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
-                self.track_relist(p, id, master)?;
+                self.track_relist(p, id.get(), master)?;
                 self.players[p].objects.len() - 1
             }
         })
@@ -559,7 +559,7 @@ mod tests {
     /// wood paid) and sheep 12, and player 2's villager 20.
     fn game(progress: f32, desolid: bool) -> World {
         let house = Unit {
-            id: 11,
+            id: object_id(11),
             construction: Some(Construction {
                 progress,
                 desolid,
@@ -582,12 +582,12 @@ mod tests {
                 Player {
                     objects: vec![
                         Unit {
-                            id: 10,
+                            id: object_id(10),
                             ..Unit::default()
                         },
                         house,
                         Unit {
-                            id: 12,
+                            id: object_id(12),
                             ..Unit::default()
                         },
                     ]
@@ -597,7 +597,7 @@ mod tests {
                 },
                 Player {
                     objects: vec![Unit {
-                        id: 20,
+                        id: object_id(20),
                         ..Unit::default()
                     }]
                     .into(),
@@ -726,12 +726,13 @@ mod clearing_tests {
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::object_id;
     use crate::world::Player;
 
     /// A live object `id` of `master` at `x`, `y`, outside any pasture.
     fn object(id: i32, master: i16, x: f32, y: f32) -> Unit {
         Unit {
-            id,
+            id: object_id(id),
             body: crate::objects::layers::Body::at([x, y, 0.0]),
             life: Lifecycle {
                 master_id: master,
@@ -859,7 +860,7 @@ mod clearing_tests {
                 if m.obstruction_type == 2 {
                     at.obstruction = Some(crate::map::spatial::Obstruction { kind: 2, class: 0 });
                 }
-                t.spatial.insert(u.id, at);
+                t.spatial.insert(u.id.get(), at);
             }
         }
         t.masters = vec![ms.clone(), ms];
@@ -882,7 +883,7 @@ mod clearing_tests {
         );
         assert_eq!(t.spatial.tiles().list(10, 10), [6084, 6083]);
         t.clear_footprint(1, 70, [10.5, 10.5], false).unwrap();
-        let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id).collect();
+        let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id.get()).collect();
         assert_eq!(ids, [1, 6084, 6083]);
         assert_eq!(t.players[0].sleeping.len(), 0);
         for u in &t.players[0].objects[1..] {
@@ -971,7 +972,7 @@ mod clearing_tests {
         t.set_state(0, 2, 6).unwrap();
         assert_eq!(t.players[0].sleeping.len(), 2);
         t.set_state(0, 3, 7).unwrap();
-        let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id).collect();
+        let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id.get()).collect();
         assert_eq!((ids, t.players[0].sleeping.len()), (vec![1, 3], 1));
         assert!(t.set_state(0, 99, 7).is_err());
     }

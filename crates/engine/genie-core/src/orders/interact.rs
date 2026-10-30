@@ -188,7 +188,7 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
-        if target == unit.id {
+        if target == unit.id.get() {
             return Ok(());
         }
         let work = Work {
@@ -247,7 +247,7 @@ impl World {
             "a queued order on a target that is gone",
         ))?;
         let point = t.position();
-        if order.target != self.players.live(player, idx)?.id {
+        if order.target != self.players.live(player, idx)?.id.get() {
             let work = Work {
                 target: order.target,
                 point,

@@ -8,6 +8,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::BOAR_AI;
 use crate::unit_ai::LION_AI;
@@ -485,7 +486,7 @@ impl Rig {
         let mut t = World::new(0, 0, 0, vec![0; 3], players);
         t.spatial = map;
         t.players[1].objects.push(Unit {
-            id: 1,
+            id: object_id(1),
             body: Body::new([10.0, 10.0, 0.0], None, Some(soldier_mover(speed))),
             ..Unit::default()
         });
@@ -531,7 +532,7 @@ impl Rig {
     /// release counts the worker off ([`Rig::workers`]).
     pub(crate) fn holding(mut self, id: i32, player: usize) -> Self {
         let mut u = Unit {
-            id,
+            id: object_id(id),
             workers: 1,
             ..Unit::default()
         };
@@ -544,7 +545,9 @@ impl Rig {
     /// The workers at object `id` of `player` ([`Rig::holding`]).
     pub(crate) fn workers(&self, id: i32, player: usize) -> Option<i32> {
         let own = &self.t.players[player].objects;
-        own.iter().find(|u| u.id == id).map(|u| u.workers)
+        own.iter()
+            .find(|u| u.id == object_id(id))
+            .map(|u| u.workers)
     }
 
     /// `f` on the attacker's step of `dt` ms with the fight and the reads.

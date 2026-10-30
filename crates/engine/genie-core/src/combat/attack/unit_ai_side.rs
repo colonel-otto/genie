@@ -68,7 +68,7 @@ impl UnitView<'_, '_> {
             .c
             .w
             .spatial
-            .get(self.unit.id)
+            .get(self.unit.id.get())
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let t_master = player_master(&self.c.w.masters, t.player, t.master).ok_or(
             GenieError::unsupported("an attack's target of a master the slice does not have"),
@@ -169,7 +169,7 @@ impl UnitView<'_, '_> {
     /// class `class`.
     fn attack_clears_actions(&mut self, class: i16) -> Result<Releaser, GenieError> {
         let by = Releaser {
-            id: self.unit.id,
+            id: self.unit.id.get(),
             class,
             player: self.player,
         };
@@ -229,7 +229,7 @@ impl UnitView<'_, '_> {
         let attack = unit.actions.attack_mut().expect("the caller's own Attack");
         let w = attack.work(Some(target_mark), main, &wielder, |_| can_move);
         let by = Releaser {
-            id: unit.id,
+            id: unit.id.get(),
             class: master.class,
             player: self.player,
         };

@@ -4,6 +4,7 @@ use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
+use crate::test_ids::object_id;
 
 const DT: f32 = 0.02;
 
@@ -1566,7 +1567,7 @@ pub(crate) fn path_world(owner: crate::world::Player) -> crate::world::World {
     t.pathing.start_mesh(120);
     let mover = builder_9177().placed([28.0, 89.0, 0.0]);
     let mut unit = Unit {
-        id: 9177,
+        id: object_id(9177),
         pasture: -1,
         my_pasture: -1,
         body: crate::objects::layers::Body::new(mover.position(), None, Some(mover)),

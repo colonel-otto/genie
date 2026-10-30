@@ -56,7 +56,7 @@ pub(crate) fn closest_resource_of(
         None
     } else {
         // the unit itself (a mule cart searches from its own place) or another object
-        let (sp, s) = if site == unit.id {
+        let (sp, s) = if site == unit.id.get() {
             Some((c.player, unit))
         } else {
             others.find(site)
@@ -120,12 +120,12 @@ pub(crate) fn closest_resource_of(
             gather_group: m.gather_group,
         })
     };
-    let me = candidate(me_id, player, unit, unit.position())?;
+    let me = candidate(me_id.get(), player, unit, unit.position())?;
     let objects = |spatial: &Spatial, x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
         spatial
             .objects_on(x, y)
             .map(|(id, p)| {
-                if id == me_id {
+                if id == me_id.get() {
                     return Ok(me);
                 }
                 let (owner, u) = others.find(id).ok_or(GenieError::unsupported(
@@ -146,7 +146,7 @@ pub(crate) fn closest_resource_of(
         min_state,
     };
     let me_walk = Me {
-        id: unit.id,
+        id: unit.id.get(),
         group: unit.group.id,
         action_state: unit.top_action().map_or(0, |a| a.state),
     };

@@ -181,7 +181,7 @@ impl World {
         leaves: bool,
     ) -> Result<Vec<Reward>, GenieError> {
         let i = match self.players[p].objects.get(i) {
-            Some(u) if u.id == id => i,
+            Some(u) if u.id.get() == id => i,
             _ => match self.place(id) {
                 Some(crate::orders::Place::Live(q, j)) if q == p => j,
                 _ => return Ok(Vec::new()),

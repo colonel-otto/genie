@@ -145,7 +145,7 @@ pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Playe
         .iter()
         .filter(|unit| listed(unit))
         .map(|unit| ObjectState {
-            id: unit.id,
+            id: unit.id.get(),
             main_id: unit.life.master_id,
             state: unit.life.state,
             amount_held: unit.life.amount,
@@ -217,7 +217,7 @@ pub fn word9_terms(
         .objects
         .iter()
         .map(|unit| Word9Terms {
-            id: unit.id as u32,
+            id: unit.id.get().cast_unsigned(),
             action: unit
                 .actions
                 .artifact()

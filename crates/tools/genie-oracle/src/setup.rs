@@ -3,6 +3,7 @@
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
+use genie_core::objects::ObjectId;
 use genie_core::world::{Player, World};
 use genie_save::{Header, PlayerSection};
 
@@ -176,9 +177,17 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         world.player_time_delta.clone(),
         players,
     );
-    turns.next_object_id = world.next_object_id;
+    // an id of −1 names none: the save is not one a world takes
+    let next_ids = ObjectId::try_from(world.next_object_id)
+        .and_then(|next| Ok((next, ObjectId::try_from(world.next_reusable_object_id)?)));
+    match next_ids {
+        Ok((next, reusable)) => {
+            turns.next_object_id = next;
+            turns.recycling.next_id = reusable;
+        }
+        Err(e) => stop_all(&mut turns, &e),
+    }
     turns.market = market(&header.world);
-    turns.recycling.next_id = world.next_reusable_object_id;
     turns.local_player = usize::try_from(world.local_player_index).unwrap_or(0);
     turns.alliance_locked = world.alliance_locked;
     // the world's teams (+0x984, `playerTeams[i]`, saved as bytes)
@@ -509,14 +518,21 @@ pub(super) fn garrison_firepower(turns: &mut World) {
             .objects
             .iter()
             .chain(&player.sleeping)
-            .filter_map(|u| Some((u.id, u.life.inside?, u.life.master_id, u.reload_powerup)))
+            .filter_map(|u| {
+                Some((
+                    u.id.get(),
+                    u.life.inside?,
+                    u.life.master_id,
+                    u.reload_powerup,
+                ))
+            })
             .collect();
         for (id, building, master, reload_powerup) in units {
             let Some(b) = player
                 .objects
                 .iter_mut()
                 .chain(&mut player.sleeping)
-                .find(|u| u.id == building)
+                .find(|u| u.id.get() == building)
             else {
                 continue;
             };

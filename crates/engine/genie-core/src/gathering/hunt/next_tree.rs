@@ -81,7 +81,7 @@ impl Unit {
         };
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         )?;
         let drops_here = master.drop_sites.contains(&t.life.master_id);
@@ -90,7 +90,7 @@ impl Unit {
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
-        let (me_at, them) = (at(self.id)?, at(found)?);
+        let (me_at, them) = (at(self.id.get())?, at(found)?);
         let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),

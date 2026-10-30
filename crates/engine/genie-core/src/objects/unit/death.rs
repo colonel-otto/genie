@@ -32,7 +32,7 @@ impl Unit {
         c.w.players
             .player_mut(c.player)?
             .add_attributes(death.adds)?;
-        c.w.unwatch(c.player, self.id)?;
+        c.w.unwatch(c.player, self.id.get())?;
         if let (Some(v), Some(at)) = (c.w.spatial.sight.as_mut(), death.unlink) {
             v.unlink_building(at, master.radius)?;
         }
@@ -72,7 +72,7 @@ impl Unit {
             // each slot (`+0xbc0`..) clears and its annex's `+0xbb8` with it, and each annex takes
             // the building's hit points (`+0x278`), so it dies in its own update; the set_state
             // (FUN_1411dbb70) then finds no annex to take along
-            for annex in c.w.spatial.annexes_of(self.id) {
+            for annex in c.w.spatial.annexes_of(self.id.get()) {
                 c.w.spatial.set_annex(annex, None);
                 if let Some((_, a)) = c.w.object_mut(annex) {
                     a.annex_of = None;
@@ -178,7 +178,7 @@ impl Unit {
         c.w.players
             .player_mut(c.player)?
             .tracker
-            .complete(self.id, k);
+            .complete(self.id.get(), k);
         c.w.players
             .player_mut(c.player)?
             .add_attributes(part.attributes)?;
@@ -188,10 +188,10 @@ impl Unit {
             let (p, id) = (c.player, self.id);
             c.lend(self, |w| {
                 if part.pasture {
-                    w.setup_pasture(p, id)?;
+                    w.setup_pasture(p, id.get())?;
                 }
                 if part.cart {
-                    w.cart_search(p, id, 0)?;
+                    w.cart_search(p, id.get(), 0)?;
                 }
                 Ok(())
             })?;
@@ -201,7 +201,7 @@ impl Unit {
             .as_mut()
             .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
         let started = Construction::begin(
-            self.id,
+            self.id.get(),
             construction,
             self.body.mover_mut(),
             &mut c.w.spatial,
@@ -211,7 +211,7 @@ impl Unit {
         if started {
             self.firepower = master.volley_fire;
             let (p, id) = (c.player, self.id);
-            c.lend(self, |w| w.watch_started(p, id))?;
+            c.lend(self, |w| w.watch_started(p, id.get()))?;
         }
         Ok(())
     }

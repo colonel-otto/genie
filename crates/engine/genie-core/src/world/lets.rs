@@ -190,7 +190,7 @@ impl Lets<'_> {
         id: i32,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        if let Some(u) = me.filter(|u| u.id == id) {
+        if let Some(u) = me.filter(|u| u.id.get() == id) {
             let allied = self.allied(others.view(), by.player, self.player);
             self.taken_live(u, (self.player, allied), by);
             return Ok(());
@@ -241,7 +241,7 @@ impl Lets<'_> {
         id: i32,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        if let Some(u) = me.filter(|u| u.id == id) {
+        if let Some(u) = me.filter(|u| u.id.get() == id) {
             return self.release_own(others, u, by);
         }
         let Some((p, _, sleeps)) = others.locate(id) else {
@@ -308,7 +308,7 @@ impl Lets<'_> {
         me: Option<&mut Unit>,
         id: i32,
     ) -> Result<(), GenieError> {
-        let site = if let Some(u) = me.as_deref().filter(|u| u.id == id) {
+        let site = if let Some(u) = me.as_deref().filter(|u| u.id.get() == id) {
             self.site_of(u, self.player, id)?
         } else {
             let Some((p, f, _)) = others.locate(id) else {
@@ -316,7 +316,7 @@ impl Lets<'_> {
             };
             self.site_of(f, p, id)?
         };
-        if let Some(u) = me.filter(|u| u.id == site) {
+        if let Some(u) = me.filter(|u| u.id.get() == site) {
             leave_site(u);
         } else if let Some((_, b)) = others.get_mut(site) {
             leave_site(b);

@@ -56,7 +56,7 @@ impl World {
             .player(p)?
             .objects
             .iter()
-            .map(|u| u.id)
+            .map(|u| u.id.get())
             .collect();
         for id in ids {
             let Some((_, u)) = self.object(id) else {
@@ -484,11 +484,16 @@ impl World {
         for id in ids {
             match attribute {
                 a::LINE_OF_SIGHT => {
-                    if let Some(s) = self.spatial.sight.as_mut().and_then(|v| v.seer_mut(id)) {
+                    if let Some(s) = self
+                        .spatial
+                        .sight
+                        .as_mut()
+                        .and_then(|v| v.seer_mut(id.get()))
+                    {
                         s.los = master.line_of_sight;
                     }
                 }
-                a::SIZE_Z => self.spatial.set_tall(id, master.tall),
+                a::SIZE_Z => self.spatial.set_tall(id.get(), master.tall),
                 _ => {}
             }
         }

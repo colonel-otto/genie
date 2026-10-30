@@ -5,6 +5,7 @@ use crate::objects::unit::Unit;
 use crate::players::game_status::{LOST, PLAYING};
 use crate::players::tracker::Key;
 use crate::technology::RESEARCHED;
+use crate::test_ids::object_id;
 use crate::vision::visibility::{Visibility, VisibleMap};
 use crate::world::Player;
 
@@ -60,7 +61,7 @@ fn master(id: i16, kind: u8, class: i16) -> Master {
 /// An object `id` of master `m` in `state`.
 fn object(id: i32, m: i16, state: u8) -> Unit {
     let mut u = Unit {
-        id,
+        id: object_id(id),
         ..Unit::default()
     };
     u.life.master_id = m;

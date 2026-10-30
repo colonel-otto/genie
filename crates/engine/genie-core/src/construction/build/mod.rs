@@ -400,6 +400,7 @@ mod stack_tests {
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{BuildingMaster, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::object_id;
     use crate::world::{Player, World};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
@@ -492,7 +493,7 @@ mod stack_tests {
     fn world() -> World {
         let ms = masters();
         let foundation = Unit {
-            id: 8759,
+            id: object_id(8759),
             body: crate::objects::layers::Body::at([54.0, 147.0, 0.0]),
             life: Lifecycle {
                 class: Class::Animated,
@@ -560,7 +561,7 @@ mod stack_tests {
                 obstruction: Some(Obstruction { kind: 2, class: 2 }),
             },
         );
-        t.next_object_id = 8768;
+        t.next_object_id = object_id(8768);
         t.masters = vec![ms.clone(), ms];
         t
     }
@@ -609,7 +610,7 @@ mod stack_tests {
         let ids: Vec<(i32, i16, u8)> = t.players[1]
             .objects
             .iter()
-            .map(|u| (u.id, u.life.master_id, u.life.state))
+            .map(|u| (u.id.get(), u.life.master_id, u.life.state))
             .collect();
         assert_eq!(
             ids,
@@ -753,7 +754,7 @@ mod stack_tests {
         assert_eq!(gone.work_building(8759, 1.0), Ok(false));
         let mut held = world();
         let first = held.players[1].objects[0].id;
-        held.players[1].objects[0].attacking_units = vec![first];
+        held.players[1].objects[0].attacking_units = vec![first.get()];
         assert_eq!(
             held.work_building(8759, 1.0),
             Err(GenieError::unsupported(

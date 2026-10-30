@@ -138,6 +138,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::object_id;
     use crate::world::Player;
 
     /// Gaia and two teams of two (players 1 and 3 against 2 and 4), every player's allied
@@ -226,13 +227,13 @@ mod tests {
         t.masters = (0..t.players.len())
             .map(|_| crate::objects::masters::Masters::new([flare.clone()]))
             .collect();
-        t.next_object_id = 100;
+        t.next_object_id = object_id(100);
         let flares = |t: &World| -> Vec<(i32, [f32; 3])> {
             t.players[2]
                 .objects
                 .iter()
                 .filter(|u| u.life.master_id == FLARE4)
-                .map(|u| (u.id, u.position()))
+                .map(|u| (u.id.get(), u.position()))
                 .collect()
         };
         t.tick_with(50, &[]);
@@ -240,7 +241,7 @@ mod tests {
         // the masks are the rebuilt ones even where they were not
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
         t.players[1].objects.push(crate::objects::unit::Unit {
-            id: 50,
+            id: object_id(50),
             body: crate::objects::layers::Body::at([7.0, 8.0, 0.0]),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: TOWN_CENTRE,

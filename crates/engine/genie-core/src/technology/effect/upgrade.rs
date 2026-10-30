@@ -234,7 +234,7 @@ impl World {
             .objects
             .iter()
             .filter(|u| u.life.master_id == at && u.life.state == 2)
-            .map(|u| u.id)
+            .map(|u| u.id.get())
             .collect();
         for (k, &b) in buildings.iter().enumerate() {
             if 0 < limit && limit <= k as i32 {

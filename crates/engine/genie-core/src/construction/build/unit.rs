@@ -59,7 +59,7 @@ impl Unit {
                 c.w.spatial
                     .objects_within(fx - reach, fy - reach, fx + reach, fy + reach)
             {
-                let (owner, u) = if id == self.id {
+                let (owner, u) = if id == self.id.get() {
                     (c.player, self)
                 } else if let Some(found) = others.find(id) {
                     found
@@ -85,7 +85,7 @@ impl Unit {
         let foundation = others.own(target);
         let site = foundation
             .filter(|u| u.construction.is_some())
-            .map(|u| u.id);
+            .map(|u| u.id.get());
         let built = foundation.map(|u| u.life.master_id);
         let stack_made = foundation.and_then(|u| u.stack_made);
         let build_targets: Vec<(i32, Option<u8>)> = self.ai.as_ref().map_or_else(Vec::new, |ai| {
@@ -137,11 +137,11 @@ impl Unit {
         };
         let me_at =
             c.w.spatial
-                .get_known(self.id)?
+                .get_known(self.id.get())?
                 .ok_or(GenieError::unsupported("a builder without a place"))?;
         let master = self.master(&c.w.masters, c.player)?;
         let actor = Actor {
-            id: self.id,
+            id: self.id.get(),
             master,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),

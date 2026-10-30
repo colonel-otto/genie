@@ -82,7 +82,7 @@ impl World {
         let owner = self.players.player(player)?;
         let unit = owner.live(idx)?;
         Ok(Actor {
-            id: unit.id,
+            id: unit.id.get(),
             master: unit.master(&self.masters, player)?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -177,7 +177,7 @@ impl World {
             notified,
         } = *order;
         let unit = &self.players.live(player, idx)?;
-        if unit.id == target {
+        if unit.id.get() == target {
             return Ok(());
         }
         // FUN_140c64e50: a unit of a type below 70 always clears its AI's notifies
@@ -243,7 +243,7 @@ impl World {
             .ok_or(GenieError::unsupported("a work command: no master table"))?;
         let owner = &self.players.player(player)?;
         let actor = Actor {
-            id: unit.id,
+            id: unit.id.get(),
             master: unit.master(&self.masters, player)?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -548,7 +548,7 @@ impl World {
         let own = unit.master(&self.masters, player)?;
         let owner = &self.players.player(player)?;
         let actor = Actor {
-            id: unit.id,
+            id: unit.id.get(),
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),

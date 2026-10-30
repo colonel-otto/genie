@@ -244,7 +244,7 @@ impl World {
             let (kind, class, master) = (m.kind, m.class, m.id);
             let takes_villagers = m.building.is_some_and(|b| b.garrison_type & 1 != 0);
             let near = |t: &Self| -> Result<bool, GenieError> {
-                let (o_at, o_radius) = t.ground(id)?;
+                let (o_at, o_radius) = t.ground(id.get())?;
                 let gap = footprint_gap_squared(o_at, o_radius, at, radius);
                 // COMISS REACH, gap; JC: a gap above it, or a NaN, is out
                 Ok(!crate::math::fmath::below_or_unordered(REACH, gap))
@@ -252,10 +252,10 @@ impl World {
             if (class == class::VILLAGER && kind == COMBAT && near(self)?)
                 || (master == MASTER_1808 && near(self)?)
             {
-                units.push(id);
+                units.push(id.get());
             } else if kind == BUILDING && takes_villagers && near(self)? {
-                shelters.buildings.push(id);
-                shelters.counts.push(self.garrisoned(id)?);
+                shelters.buildings.push(id.get());
+                shelters.counts.push(self.garrisoned(id.get())?);
                 self.players.live_mut(owner, k - 1)?.town_bell.flag = true;
             }
         }
@@ -291,7 +291,7 @@ impl World {
             }
             let id = b.id;
             self.players.live_mut(owner, idx)?.town_bell.flag = false;
-            let (b_at, b_radius) = self.ground(id)?;
+            let (b_at, b_radius) = self.ground(id.get())?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
             if crate::math::fmath::below_or_unordered(REACH, gap) {
@@ -340,7 +340,7 @@ impl World {
             {
                 continue;
             }
-            let (b_at, b_radius) = self.ground(b.id)?;
+            let (b_at, b_radius) = self.ground(b.id.get())?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
             if crate::math::fmath::below_or_unordered(REACH, gap) {
@@ -515,7 +515,7 @@ impl World {
             let own = unit
                 .ai
                 .as_ref()
-                .map_or(-1, |ai| own_order_target(ai, unit.id));
+                .map_or(-1, |ai| own_order_target(ai, unit.id.get()));
             found = held(own).map(|(_, t)| t);
         }
         let (target, point) = found.map_or_else(
@@ -525,7 +525,7 @@ impl World {
             },
             |t| {
                 let [x, y, _] = t.position();
-                (t.id, [x, y])
+                (t.id.get(), [x, y])
             },
         );
         let actions = &unit.actions;
@@ -540,7 +540,7 @@ impl World {
         let target2 = unit
             .top_second_target()
             .and_then(held)
-            .map_or(-1, |(_, t)| t.id);
+            .map_or(-1, |(_, t)| t.id.get());
         let now = BackToWork {
             target,
             target_type,

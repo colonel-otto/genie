@@ -81,7 +81,7 @@ impl World {
         if let Some(v) = self.spatial.sight.as_mut() {
             for (q, _) in explored.iter().enumerate().filter(|&(_, &e)| e) {
                 if let Some(r) = v.resources.get_mut(q) {
-                    r.add(id, group, x, y);
+                    r.add(id.get(), group, x, y);
                 }
             }
         }

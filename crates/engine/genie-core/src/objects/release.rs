@@ -65,7 +65,7 @@ pub(crate) fn released_fields(
     }
     (u.combat && 0 <= by.id).then(|| Notify {
         caller: by.id,
-        recipient: u.id,
+        recipient: u.id.get(),
         kind: crate::unit_ai::NO_LONGER_ON_ME,
         p: [i32::from(by.class), 0, 0],
     })
@@ -80,19 +80,19 @@ impl World {
     /// type 60 (the world's `+0x1d8`), and it leaves the mesh. Every step runs; returns the
     /// world's leave of the place that the slice does not model.
     pub(crate) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
-        self.track_remove(p, gone.id, gone.life.master_id)?;
+        self.track_remove(p, gone.id.get(), gone.life.master_id)?;
         let master = gone.master(&self.masters, p).ok();
-        forget_resource(&mut self.spatial, master, gone.id, gone.position())?;
+        forget_resource(&mut self.spatial, master, gone.id.get(), gone.position())?;
         if let Some(m) = master.filter(|m| COMBAT <= m.kind) {
             count_class(&mut self.players.player_mut(p)?.attributes, m, -1.0);
         }
         let recyclable = master.is_some_and(|m| m.recyclable);
-        let left = self.spatial.leave(gone.id);
-        self.unwatch(p, gone.id)?;
+        let left = self.spatial.leave(gone.id.get());
+        self.unwatch(p, gone.id.get())?;
         if let Some(m) = gone.missile.as_ref().filter(|_| recyclable) {
             self.recycling.missiles.push((gone.id, m.flying));
         }
-        self.pathing.removed(gone.id);
+        self.pathing.removed(gone.id.get());
         self.pathing.tiles_changed(self.spatial.take_changes());
         left
     }
@@ -157,7 +157,7 @@ impl World {
             .players
             .iter_mut()
             .flat_map(|p| p.objects.iter_mut())
-            .find(|u| u.id == id)
+            .find(|u| u.id.get() == id)
         else {
             return;
         };
@@ -173,7 +173,7 @@ impl Unit {
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
     pub(crate) fn releaser(&self, c: &Step<'_>) -> Releaser {
         Releaser {
-            id: self.id,
+            id: self.id.get(),
             class: self.master(&c.w.masters, c.player).map_or(-1, |m| m.class),
             player: c.player,
         }

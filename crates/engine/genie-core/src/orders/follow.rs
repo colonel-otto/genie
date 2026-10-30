@@ -321,7 +321,7 @@ impl World {
         if a14 && let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
-        if target == unit.id {
+        if target == unit.id.get() {
             return Ok(false);
         }
         let place = ([unit.position()[0], unit.position()[1]], class);

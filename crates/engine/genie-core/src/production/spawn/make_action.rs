@@ -329,7 +329,7 @@ impl World {
         let (id, state) = (building.id, building.life.state);
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
-                Notify::own(id, ACTION_COMPLETED, [ActionKind::Make.value(), 0, 0]),
+                Notify::own(id.get(), ACTION_COMPLETED, [ActionKind::Make.value(), 0, 0]),
                 state,
             )?;
         }

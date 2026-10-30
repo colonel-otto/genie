@@ -290,7 +290,7 @@ impl RepairAction {
         let mask = terrain.restriction_mask(r);
         crate::pathing::hull_path::quick_reach(
             spatial,
-            repairer.id,
+            repairer.id.get(),
             self.target,
             mask,
             reads.radius[0],

@@ -79,11 +79,11 @@ pub(crate) fn combat_dies(
     }
     let desolid = u.construction.is_some_and(|c| c.desolid);
     if master.kind < BUILDING || (!desolid && 0.0 < master.height) {
-        pathing.removed(u.id);
-        spatial.drop_record(u.id);
+        pathing.removed(u.id.get());
+        spatial.drop_record(u.id.get());
     }
     if COMBAT <= master.kind {
-        spatial.set_tall(u.id, false);
+        spatial.set_tall(u.id.get(), false);
     }
     if master.kind == BUILDING
         && u.annex_of.is_none()

@@ -225,7 +225,7 @@ pub struct World {
     /// The updates run so far.
     pub ticks: u32,
     /// `mNextObjectId`, the id the next new object gets.
-    pub next_object_id: i32,
+    pub next_object_id: crate::objects::ObjectId,
     /// Each player's masters, which BUILD reads; a player without them stops at its own BUILD.
     pub masters: Vec<Masters>,
     /// Every object's place on the map.
@@ -322,12 +322,12 @@ pub struct World {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Recycling {
     /// `next_reusable_object_id`.
-    pub next_id: i32,
+    pub next_id: crate::objects::ObjectId,
     /// The pool of type 60 (`world+0x1d8`): each missile's id and its flying flag (`+0x994`,
     /// which the object keeps), the last in last.
-    pub missiles: Vec<(i32, bool)>,
+    pub missiles: Vec<(crate::objects::ObjectId, bool)>,
     /// The pool of type 25 (`world+0x1e0`): the ghosts' ids, the last in last.
-    pub ghosts: Vec<i32>,
+    pub ghosts: Vec<crate::objects::ObjectId>,
 }
 
 #[cfg(test)]

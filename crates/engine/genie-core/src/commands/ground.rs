@@ -114,7 +114,7 @@ impl World {
         ))?;
         let spot = self.spatial.spot_off(
             first.position(),
-            (first.id, mover.stats.radius[0]),
+            (first.id.get(), mover.stats.radius[0]),
             mover.stats.restriction_mask,
             (site_at, radius),
             true,

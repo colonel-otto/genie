@@ -292,7 +292,7 @@ impl Artifact {
     ) -> Result<Option<Handover>, GenieError> {
         self.walk(c, unit, me, r)?;
         let owner = if self.state == CHECK && r.searches {
-            c.w.spatial.artifact_owner(unit.id, &c.w.players)?
+            c.w.spatial.artifact_owner(unit.id.get(), &c.w.players)?
         } else {
             None
         };
@@ -508,7 +508,7 @@ impl Unit {
             c.w.spatial
                 .sight
                 .as_ref()
-                .and_then(|v| v.seer(self.id))
+                .and_then(|v| v.seer(self.id.get()))
                 .map(|s| s.capture);
         let r = ArtifactReads {
             searches: !(self.combat && capture == Some(0)),

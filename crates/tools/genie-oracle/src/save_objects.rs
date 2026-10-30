@@ -4,6 +4,7 @@
 use crate::masters::MasterTable;
 use crate::{Error, listed, run_from_save};
 use genie_core::GenieError;
+use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
 use genie_core::vision::visibility::Visibility;
 use genie_core::world::World;
@@ -88,7 +89,7 @@ pub fn inside_lists_from_dump(text: &str) -> Result<Vec<(i32, Vec<i32>)>, Error>
 /// object from the list's first, the next to come back), in the slice's order
 /// ([`genie_core::world::Recycling::missiles`]: the next to come back last). The slice recycles no
 /// object of another type; their pools are not read.
-pub fn recycle_pools_from_dump(text: &str) -> Result<Vec<(i32, bool)>, Error> {
+pub fn recycle_pools_from_dump(text: &str) -> Result<Vec<(ObjectId, bool)>, Error> {
     let mut missiles = Vec::new();
     let mut kind = None;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -96,7 +97,7 @@ pub fn recycle_pools_from_dump(text: &str) -> Result<Vec<(i32, bool)>, Error> {
         match words[..] {
             ["pool", k, _] => kind = Some(k.parse::<i32>().map_err(|_| Error::BadPoolDump)?),
             [id, flying] if kind == Some(60) => missiles.push((
-                id.parse::<i32>().map_err(|_| Error::BadPoolDump)?,
+                pooled_id(id)?,
                 flying.parse::<u8>().map_err(|_| Error::BadPoolDump)? != 0,
             )),
             [_, _] if kind.is_some() => {}
@@ -107,10 +108,16 @@ pub fn recycle_pools_from_dump(text: &str) -> Result<Vec<(i32, bool)>, Error> {
     Ok(missiles)
 }
 
+/// The id a pool dump line names.
+fn pooled_id(text: &str) -> Result<ObjectId, Error> {
+    let value = text.parse::<i32>().map_err(|_| Error::BadPoolDump)?;
+    ObjectId::try_from(value).map_err(|_| Error::BadPoolDump)
+}
+
 /// The world's pool of recycled ghosts (type 25) as the tick oracle dumps it
 /// (`state_dumps.recycle_pools_text`): their ids, the last to come back first in the slice's
 /// order ([`genie_core::world::Recycling::ghosts`]).
-pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<i32>, Error> {
+pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<ObjectId>, Error> {
     let mut ghosts = Vec::new();
     let mut kind = None;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -123,7 +130,7 @@ pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<i32>, Error> {
                         genie_core::objects::masters::master_type::DOPPELGANGER,
                     )) =>
             {
-                ghosts.push(id.parse::<i32>().map_err(|_| Error::BadPoolDump)?);
+                ghosts.push(pooled_id(id)?);
             }
             [_, _] if kind.is_some() => {}
             _ => return Err(Error::BadPoolDump),
@@ -267,7 +274,7 @@ pub fn objects_from_save(
         unsupported_id: player
             .unsupported
             .as_ref()
-            .and_then(|&(_, i, _)| player.objects.get(i).map(|u| u.id)),
+            .and_then(|&(_, i, _)| player.objects.get(i).map(|u| u.id.get())),
         stopped: turns
             .players
             .iter()
@@ -279,7 +286,7 @@ pub fn objects_from_save(
             .players
             .iter()
             .flat_map(|p| p.objects.iter().filter(|u| p.stopped || u.stopped))
-            .map(|u| u.id)
+            .map(|u| u.id.get())
             .collect(),
         freezes: turns.players.iter().map(|p| p.freezes.clone()).collect(),
     })

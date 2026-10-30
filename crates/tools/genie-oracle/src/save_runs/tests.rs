@@ -6,6 +6,7 @@ use crate::save_runs::{
     stock_differences, stops, world_differences,
 };
 use crate::setup::slice;
+use crate::test_ids::object_id;
 use crate::{Decoder, Dumps, Error, TickReport, listed};
 use genie_core::GenieError;
 use genie_core::world::{GameState, World};
@@ -230,8 +231,11 @@ fn the_dumps_go_into_the_slice() {
     load_dumps(&mut turns, dumps).unwrap();
     assert!(turns.pathing.mesh().is_some());
     assert!(turns.spatial.sight.as_ref().unwrap().registry.is_some());
-    assert_eq!(turns.recycling.missiles, [(102, false), (101, true)]);
-    assert_eq!(turns.recycling.ghosts, [201]);
+    assert_eq!(
+        turns.recycling.missiles,
+        [(object_id(102), false), (object_id(101), true)]
+    );
+    assert_eq!(turns.recycling.ghosts, [object_id(201)]);
     assert_eq!(turns.groups.commands, 12);
 }
 

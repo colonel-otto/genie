@@ -2,6 +2,7 @@ use super::*;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToAction, MoveToReads, SpriteReads};
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::test_ids::object_id;
 
 /// A map of zones by column (the tile's x over 10) and terrain flags by a closure; the shore
 /// point the planner gives, recorded.
@@ -58,7 +59,7 @@ fn hull() -> crate::objects::unit::Unit {
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.animated.speed = 1.0;
     let mut unit = crate::objects::unit::Unit {
-        id: 9,
+        id: object_id(9),
         body: crate::objects::layers::Body::new([12.5, 8.5, 0.0], None, Some(mover)),
         sprite: Some(crate::objects::sprite::ActiveSprite::start(
             SHOWN,

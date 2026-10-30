@@ -39,14 +39,17 @@ impl ObjectList {
     /// The slot of object `id`, if the list holds it (not while it is out for its update).
     #[must_use]
     pub fn position_of(&self, id: i32) -> Option<usize> {
-        if id == TAKEN_OUT {
+        if id == TAKEN_OUT.get() {
             return None;
         }
         if self.twice {
-            return self.units.iter().position(|u| u.id == id);
+            return self.units.iter().position(|u| u.id.get() == id);
         }
         let &i = self.slots.get(&id)?;
-        self.units.get(i).is_some_and(|u| u.id == id).then_some(i)
+        self.units
+            .get(i)
+            .is_some_and(|u| u.id.get() == id)
+            .then_some(i)
     }
 
     /// Object `id`, if the list holds it.
@@ -69,7 +72,7 @@ impl ObjectList {
     pub fn take_out(&mut self, i: usize) -> Result<Unit, GenieError> {
         let slot = self.units.get_mut(i).ok_or_else(|| no_slot(i))?;
         let unit = std::mem::replace(slot, Unit::taken_out());
-        self.outs.push((unit.id, i));
+        self.outs.push((unit.id.get(), i));
         Ok(unit)
     }
 
@@ -80,7 +83,7 @@ impl ObjectList {
     ///
     /// The unit, when its stand-in left the list (or it was never taken out).
     pub fn put_back(&mut self, unit: Unit) -> Result<usize, Box<Unit>> {
-        let Some(n) = self.outs.iter().rposition(|&(id, _)| id == unit.id) else {
+        let Some(n) = self.outs.iter().rposition(|&(id, _)| id == unit.id.get()) else {
             return Err(Box::new(unit));
         };
         let (id, slot) = self.outs.swap_remove(n);
@@ -94,7 +97,7 @@ impl ObjectList {
 
     /// `unit` goes to the end of the list.
     pub fn push(&mut self, unit: Unit) {
-        self.file(unit.id, self.units.len());
+        self.file(unit.id.get(), self.units.len());
         self.units.push(unit);
     }
 
@@ -116,11 +119,11 @@ impl ObjectList {
         }
         let last = self.units.len().wrapping_sub(1);
         let gone = self.units.swap_remove(i);
-        self.forget(gone.id, i);
+        self.forget(gone.id.get(), i);
         match self.units.get(i).map(|u| u.id) {
             Some(TAKEN_OUT) => self.moved_out(last, i),
             Some(moved) => {
-                let _ = self.slots.insert(moved, i);
+                let _ = self.slots.insert(moved.get(), i);
             }
             None => {}
         }
@@ -144,9 +147,9 @@ impl ObjectList {
             return Err(no_slot(i));
         }
         let gone = self.units.remove(i);
-        self.forget(gone.id, i);
+        self.forget(gone.id.get(), i);
         for (k, u) in self.units.iter().enumerate().skip(i) {
-            let _ = self.slots.insert(u.id, k);
+            let _ = self.slots.insert(u.id.get(), k);
         }
         for o in self.outs.iter_mut().filter(|o| o.1 > i) {
             o.1 -= 1;
@@ -157,7 +160,7 @@ impl ObjectList {
     /// The last object leaves the list, if it holds one.
     pub fn pop(&mut self) -> Option<Unit> {
         let gone = self.units.pop()?;
-        self.forget(gone.id, self.units.len());
+        self.forget(gone.id.get(), self.units.len());
         Some(gone)
     }
 
@@ -210,7 +213,7 @@ impl ObjectList {
         self.twice = false;
         for i in 0..self.units.len() {
             if let Some(id) = self.units.get(i).map(|u| u.id) {
-                self.file(id, i);
+                self.file(id.get(), i);
             }
         }
     }
@@ -218,7 +221,7 @@ impl ObjectList {
     /// The index files object `id` in slot `i`, unless it holds the id already (a stand-in is
     /// no object).
     fn file(&mut self, id: i32, i: usize) {
-        if id == TAKEN_OUT {
+        if id == TAKEN_OUT.get() {
             return;
         }
         match self.slots.entry(id) {
@@ -231,7 +234,7 @@ impl ObjectList {
 
     /// The index forgets object `id`'s slot `i`; a stand-in's object stays out for good.
     fn forget(&mut self, id: i32, i: usize) {
-        if id == TAKEN_OUT {
+        if id == TAKEN_OUT.get() {
             self.outs.retain(|o| o.1 != i);
         } else if self.slots.get(&id) == Some(&i) {
             let _ = self.slots.remove(&id);
@@ -327,10 +330,11 @@ impl<const N: usize> PartialEq<[Unit; N]> for ObjectList {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::object_id;
 
     fn unit(id: i32) -> Unit {
         Unit {
-            id,
+            id: object_id(id),
             ..Unit::default()
         }
     }
@@ -342,14 +346,14 @@ mod tests {
     /// Every id's slot as a scan of the list finds it.
     fn indexed_as_scanned(l: &ObjectList) -> bool {
         l.iter()
-            .all(|u| l.position_of(u.id) == l.iter().position(|v| v.id == u.id))
+            .all(|u| l.position_of(u.id.get()) == l.iter().position(|v| v.id == u.id))
     }
 
     #[test]
     fn a_lookup_by_id_finds_the_object_s_slot() {
         let mut l = list(&[5, 7, 9]);
         assert_eq!(l.position_of(7), Some(1));
-        assert_eq!(l.by_id(9).map(|u| u.id), Some(9));
+        assert_eq!(l.by_id(9).map(|u| u.id.get()), Some(9));
         assert!(l.by_id(8).is_none());
         if let Some(u) = l.by_id_mut(5) {
             u.life.hp = 3.0;
@@ -365,19 +369,27 @@ mod tests {
     #[test]
     fn the_list_s_removals_keep_every_slot() {
         let mut l = list(&[1, 2, 3, 4, 5, 6]);
-        assert_eq!(l.swap_remove(1).unwrap().id, 2, "the last takes its slot");
+        assert_eq!(
+            l.swap_remove(1).unwrap().id,
+            object_id(2),
+            "the last takes its slot"
+        );
         assert_eq!((l.position_of(6), l.position_of(2)), (Some(1), None));
-        assert_eq!(l.remove(0).unwrap().id, 1, "the ones after it move up");
+        assert_eq!(
+            l.remove(0).unwrap().id,
+            object_id(1),
+            "the ones after it move up"
+        );
         assert_eq!(l.position_of(6), Some(0));
-        assert_eq!(l.pop().map(|u| u.id), Some(5));
+        assert_eq!(l.pop().map(|u| u.id.get()), Some(5));
         assert!(l.by_id(5).is_none());
         l.truncate(2);
-        assert_eq!(l.iter().map(|u| u.id).collect::<Vec<_>>(), [6, 3]);
+        assert_eq!(l.iter().map(|u| u.id.get()).collect::<Vec<_>>(), [6, 3]);
         assert!(l.by_id(4).is_none());
-        l.retain(|u| u.id != 6);
+        l.retain(|u| u.id != object_id(6));
         assert_eq!(l.position_of(3), Some(0));
         let last = l.swap_remove(0).unwrap();
-        assert_eq!((last.id, l.is_empty()), (3, true));
+        assert_eq!((last.id.get(), l.is_empty()), (3, true));
         l.clear();
         assert!(l.by_id(3).is_none());
         assert!(indexed_as_scanned(&list(&[8, 9])));
@@ -388,24 +400,27 @@ mod tests {
         let mut l = list(&[1, 2]);
         let out = l.take_out(0).unwrap();
         assert!(l.by_id(1).is_none(), "its slot holds the stand-in");
-        assert!(l.by_id(TAKEN_OUT).is_none(), "the stand-in is no object");
+        assert!(
+            l.by_id(TAKEN_OUT.get()).is_none(),
+            "the stand-in is no object"
+        );
         assert_eq!(l.put_back(out).ok(), Some(0));
         assert_eq!(l.position_of(1), Some(0), "put back, it is found again");
     }
 
     fn ids(l: &ObjectList) -> Vec<i32> {
-        l.iter().map(|u| u.id).collect()
+        l.iter().map(|u| u.id.get()).collect()
     }
 
     #[test]
     fn an_object_taken_out_goes_back_where_its_stand_in_is() {
         let mut l = list(&[1, 2, 3]);
         let out = l.take_out(2).unwrap();
-        assert_eq!(out.id, 3);
+        assert_eq!(out.id, object_id(3));
         assert!(l.by_id(3).is_none(), "its slot holds the stand-in");
         assert_eq!(
             l.swap_remove(0).unwrap().id,
-            1,
+            object_id(1),
             "the stand-in, last, takes slot 0"
         );
         assert_eq!(l.put_back(out).ok(), Some(0));
@@ -419,9 +434,13 @@ mod tests {
         let mut l = list(&[1, 2, 3, 4, 5]);
         let a = l.take_out(1).unwrap();
         let b = l.take_out(3).unwrap();
-        assert_eq!(l.remove(0).unwrap().id, 1, "both stand-ins move up");
+        assert_eq!(
+            l.remove(0).unwrap().id,
+            object_id(1),
+            "both stand-ins move up"
+        );
         assert_eq!(l.put_back(b).ok(), Some(2));
-        l.retain(|u| u.id != 3);
+        l.retain(|u| u.id != object_id(3));
         assert_eq!(l.put_back(a).ok(), Some(0), "the stand-in kept its place");
         assert_eq!(ids(&l), [2, 4, 5]);
         assert!(indexed_as_scanned(&l));
@@ -472,7 +491,7 @@ mod tests {
         let _ = l.remove(0).unwrap();
         assert_eq!(l.position_of(0), None);
         assert_eq!(l.position_of(4), Some(0));
-        l[0].id = 6;
+        l[0].id = object_id(6);
         l.reindex();
         assert_eq!(
             l.position_of(6),
@@ -490,7 +509,7 @@ mod tests {
         assert_eq!(a, [unit(1), unit(2)]);
         let _ = a.swap_remove(0).unwrap();
         assert_ne!(a, b);
-        let ids: Vec<i32> = b.into_iter().map(|u| u.id).collect();
+        let ids: Vec<i32> = b.into_iter().map(|u| u.id.get()).collect();
         assert_eq!(ids, [1, 2]);
         let mut c = list(&[3]);
         for u in &mut c {

@@ -266,10 +266,10 @@ impl World {
                 class: made.obstruction_class,
             }),
         };
-        self.spatial.insert(id, placed);
-        self.pathing.moved(id, &placed, false);
+        self.spatial.insert(id.get(), placed);
+        self.pathing.moved(id.get(), &placed, false);
         self.pathing.tiles_changed(self.spatial.take_changes());
-        self.seer_comes(id, (p, master), made, at)?;
+        self.seer_comes(id.get(), (p, master), made, at)?;
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
         }
@@ -333,7 +333,7 @@ impl World {
         });
         let idx = owner.objects.len() - 1;
         // the static init's add to its player (slot 0x2d0) files it in the tracker
-        self.track_add(p, id, master).map(|()| idx)
+        self.track_add(p, id.get(), master).map(|()| idx)
     }
 
     /// FLARE's objects (`0x140e7bfd0`): with `players` at most the world's players, each player

@@ -235,9 +235,9 @@ impl World {
         };
         if building && let Some((_, b)) = self.object_mut(named) {
             if pasture == -1 {
-                b.pasture_workers.retain(|&w| w != id);
-            } else if !b.pasture_workers.contains(&id) {
-                b.pasture_workers.push(id);
+                b.pasture_workers.retain(|&w| w != id.get());
+            } else if !b.pasture_workers.contains(&id.get()) {
+                b.pasture_workers.push(id.get());
             }
         }
         self.players[p].objects[idx].my_pasture = pasture;

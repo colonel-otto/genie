@@ -72,7 +72,7 @@ impl World {
                 .objects
                 .iter()
                 .chain(&player.sleeping)
-                .any(|u| u.id == *id && u.life.master_id == master.id)
+                .any(|u| u.id.get() == *id && u.life.master_id == master.id)
         };
         let done: Vec<i32> = player
             .tracker

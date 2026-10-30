@@ -3,6 +3,7 @@ use crate::movement::GroupSpeed;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
+use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
@@ -11,7 +12,7 @@ use crate::world::{Player, World};
 /// A unit of master 4 at (`x`, `y`) in state 2 with 50 hit points and a unit AI.
 fn soldier(id: i32, x: f32, y: f32) -> Unit {
     let mut u = Unit {
-        id,
+        id: object_id(id),
         body: crate::objects::layers::Body::at([x, y, 0.0]),
         ai: Some(UnitAi {
             current_order: None,
@@ -997,7 +998,7 @@ fn a_group_update_leaves_its_members_gaits_current() {
         u.body.put_mover(Some(walker.clone()));
         u.body.mover_mut().unwrap().moved_at = u.position();
         u.ai = None;
-        t.spatial.set_gait(u.id, u.gait());
+        t.spatial.set_gait(u.id.get(), u.gait());
     }
     assert!(t.spatial.gait(10).unwrap().moving);
     t.update_groups(1).unwrap();
@@ -1234,7 +1235,12 @@ fn the_lead_is_the_member_nearest_the_targets_place() {
         ..Unit::default()
     };
     let player = Player {
-        objects: vec![at(10, 5.0, 5.0), at(11, 2.0, 1.0), at(12, 1.0, 2.0)].into(),
+        objects: vec![
+            at(object_id(10), 5.0, 5.0),
+            at(object_id(11), 2.0, 1.0),
+            at(object_id(12), 1.0, 2.0),
+        ]
+        .into(),
         ..Player::default()
     };
     let mut t = World::new(0, 1, 0, vec![0], vec![player]);
@@ -1260,7 +1266,7 @@ fn the_lead_is_the_member_nearest_the_targets_place() {
 #[test]
 fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
     let held = Unit {
-        id: 10,
+        id: object_id(10),
         ..Unit::default()
     };
     let player = Player {
@@ -1368,7 +1374,7 @@ fn grounded() -> World {
         }
         for u in t.players[p].objects.clone() {
             t.spatial.insert(
-                u.id,
+                u.id.get(),
                 crate::map::spatial::Placed {
                     position: u.position(),
                     radius: [0.2, 0.2],
@@ -1535,7 +1541,7 @@ fn register(t: &mut World) {
         .filter_map(|(p, u)| {
             let m = t.masters.get(p)?.get(u.life.master_id)?;
             Some((
-                u.id,
+                u.id.get(),
                 crate::map::spatial::Placed {
                     position: u.position(),
                     radius: m.radius,

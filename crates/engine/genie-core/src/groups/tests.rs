@@ -2,6 +2,7 @@ use super::*;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::test_ids::object_id;
 use crate::world::World;
 
 /// `BMotion`'s constructor (`FUN_141041850`): the 0x7f7fffff turn limits at `+0x9c`,
@@ -242,7 +243,11 @@ fn tasked_world(masters: Vec<crate::objects::masters::Master>, owner_range: f32)
         vec![
             crate::world::Player::default(),
             crate::world::Player {
-                objects: vec![unit(11, 83, 2, 25.0), unit(60, 70, 0, 550.0)].into(),
+                objects: vec![
+                    unit(object_id(11), 83, 2, 25.0),
+                    unit(object_id(60), 70, 0, 550.0),
+                ]
+                .into(),
                 attributes,
                 ..crate::world::Player::default()
             },
@@ -410,7 +415,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
     let objects: Vec<Unit> = members
         .iter()
         .map(|&(id, master, x, y)| Unit {
-            id,
+            id: object_id(id),
             body: crate::objects::layers::Body::at([x, y, 0.0]),
             group: GroupLink { id: 1, flag: -2 },
             life: Lifecycle {
@@ -423,7 +428,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         })
         .collect();
     let target = Unit {
-        id: 60,
+        id: object_id(60),
         body: crate::objects::layers::Body::at([40.0, 45.0, 0.0]),
         attackable: true,
         life: Lifecycle {
@@ -501,7 +506,7 @@ fn register(t: &mut World) {
         .filter_map(|(p, u)| {
             let m = t.masters.get(p)?.get(u.life.master_id)?;
             Some((
-                u.id,
+                u.id.get(),
                 crate::map::spatial::Placed {
                     position: u.position(),
                     radius: m.radius,

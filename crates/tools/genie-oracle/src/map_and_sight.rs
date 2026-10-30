@@ -128,7 +128,7 @@ impl SavedStep {
             seen: saved_sight(&header),
             width,
             terrain,
-            game: game_state(&header, masters),
+            game: game_state(&header, masters)?,
         })
     }
 }

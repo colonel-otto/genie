@@ -431,7 +431,7 @@ impl World {
         let master = unit.master(&self.masters, player)?;
         let me = self
             .spatial
-            .get(unit.id)
+            .get(unit.id.get())
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let them = self
             .spatial

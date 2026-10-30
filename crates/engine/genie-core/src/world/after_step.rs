@@ -37,12 +37,12 @@ impl World {
     ) -> Result<Stepped, GenieError> {
         let id = self.players.live(p, i)?.id;
         let outcome = self.run_object((p, i), (dt, turn), f)?;
-        let at = (p, self.slot_of(p, id)?, id);
+        let at = (p, self.slot_of(p, id.get())?, id.get());
         self.finish_own_update(at, (dt, full), &outcome)?;
         self.hand_changed_tiles();
         Ok(Stepped {
             outcome,
-            slot: self.slot_of(p, id)?,
+            slot: self.slot_of(p, id.get())?,
         })
     }
 

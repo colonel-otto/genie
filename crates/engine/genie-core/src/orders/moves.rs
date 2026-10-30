@@ -281,7 +281,7 @@ impl World {
         }
         let class = master.class;
         let target = self.object(order.target).map(|(tp, _)| tp);
-        let reach = self.order_reach(player, unit.id, order, target, master)?;
+        let reach = self.order_reach(player, unit.id.get(), order, target, master)?;
         let packs = packs(
             class,
             reach,
@@ -420,7 +420,7 @@ impl World {
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
             let search = crate::unit_ai::Notify::own(
-                id,
+                id.get(),
                 crate::unit_ai::REQUIRES_SEARCH,
                 [ActionKind::Hunt.value(), i32::from(class::FARM), -1],
             );

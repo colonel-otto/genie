@@ -62,7 +62,7 @@ impl Unit {
             for &(attacker, p) in &own.damaged {
                 let n = Notify {
                     caller: attacker,
-                    recipient: self.id,
+                    recipient: self.id.get(),
                     kind: crate::unit_ai::DAMAGED,
                     p,
                 };
@@ -95,7 +95,7 @@ impl Unit {
     pub(crate) fn volley(&mut self, c: &mut Step<'_>, aimed: Aimed) -> Result<(), GenieError> {
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         )?;
         if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135) || matches!(master.class, 35 | 64))
@@ -342,7 +342,7 @@ impl Unit {
             pooled
         } else {
             let id = c.w.recycling.next_id;
-            c.w.recycling.next_id -= 1;
+            c.w.recycling.next_id = id.predecessor();
             (id, true)
         };
         // the setups' draws: static (its sprite, its facet), then moving (its angle)
@@ -419,11 +419,11 @@ impl Unit {
                 },
             ),
         };
-        c.w.spatial.insert(id, placed);
-        c.w.pathing.moved(id, &placed, false);
+        c.w.spatial.insert(id.get(), placed);
+        c.w.pathing.moved(id.get(), &placed, false);
         if let Some(v) = c.w.spatial.sight.as_mut() {
             v.add_seer(
-                id,
+                id.get(),
                 Seer {
                     player: c.player,
                     master: made.id,
@@ -436,14 +436,14 @@ impl Unit {
                     kind: made.kind,
                 },
             );
-            let _ = v.sight_on(id, position, made.radius, false, false)?;
+            let _ = v.sight_on(id.get(), position, made.radius, false, false)?;
         }
         let held = missile_storage(&mut c.w.players[c.player], &made.storage)?;
         // its action: the target and the shooter taken (slot 0x178), then the start
         let mut action = crate::combat::missile::MissileAction {
             state: 0,
             target: aimed.target,
-            fired_from: if shot.shooter { self.id } else { -1 },
+            fired_from: if shot.shooter { self.id.get() } else { -1 },
             point: shot.point,
             timer: 0.0,
             direction: [0.0; 3],
@@ -503,7 +503,7 @@ impl Unit {
             body: crate::objects::layers::Body::new(position, None, Some(mover)),
             missile: Some(crate::combat::missile::Missile {
                 max_range: shot.reach,
-                fired_from: self.id,
+                fired_from: self.id.get(),
                 charge: false,
                 flying,
                 step: [0.0; 3],
@@ -519,19 +519,19 @@ impl Unit {
         // it joins the end of its owner's list (slot 0x2d0, which files it in the tracker);
         // then its action takes the target and the shooter
         c.w.players[c.player].tracker.add(
-            id,
+            id.get(),
             crate::players::tracker::key(c.w.masters.get(c.player), &c.w.lines, made.id),
         );
         c.w.players[c.player].objects.push(missile);
         let missile = Releaser {
-            id,
+            id: id.get(),
             class: made.class,
             player: c.player,
         };
         crate::world::lets::take(c, self, aimed.target, missile)?;
         if shot.shooter {
             // the shooter, of the missile's own player: never listed
-            self.taken(false, id);
+            self.taken(false, id.get());
         }
         Ok(())
     }

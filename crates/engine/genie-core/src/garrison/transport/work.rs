@@ -61,7 +61,7 @@ impl crate::world::World {
         if !on_task || self.trade_at_own_market((p, i), target)? {
             return Ok(false);
         }
-        let by_self = target == unit.id;
+        let by_self = target == unit.id.get();
         let mut t = unit
             .actions
             .transport()

@@ -117,7 +117,7 @@ impl World {
             let [x, y, _] = unit.position();
             self.spatial
                 .objects_within(x - reach, y - reach, x + reach, y + reach)
-                .filter(|&(id, _)| id != unit.id && id != target)
+                .filter(|&(id, _)| id != unit.id.get() && id != target)
                 .map(|(id, o)| {
                     self.victim(id, p).unwrap_or_else(|| Victim {
                         id,
@@ -134,7 +134,7 @@ impl World {
             .filter_map(|id| self.spatial.annex_of(id))
             .collect();
         for m in mains {
-            if m != unit.id
+            if m != unit.id.get()
                 && m != target
                 && !near.iter().any(|v| v.id == m)
                 && let Some(v) = self.victim(m, p)
@@ -503,10 +503,10 @@ pub(crate) fn victim_in(
 ) -> Victim {
     let mut v = victim_of(u, master, attributes, p, spatial.terrain.as_ref(), mode_680);
     v.allied = [dip.allied(attacker, p, true), dip.allied(p, attacker, true)];
-    v.uncertain = spatial.get(u.id).is_none_or(|o| o.unknown.is_some());
-    v.tile_place = spatial.tile_place(u.id);
+    v.uncertain = spatial.get(u.id.get()).is_none_or(|o| o.unknown.is_some());
+    v.tile_place = spatial.tile_place(u.id.get());
     if let Some(b) = v.building.as_mut() {
-        b.annexes = spatial.annexes_of(u.id);
+        b.annexes = spatial.annexes_of(u.id.get());
     }
     v
 }
@@ -544,7 +544,7 @@ pub(crate) fn victim_of(
     };
     let tasks = |kind: i16| master.tasks.iter().any(|t| t.action_type == kind);
     Victim {
-        id: u.id,
+        id: u.id.get(),
         // the caller's, which holds the tile lists
         tile_place: 0,
         hp: u.life.hp,
@@ -570,7 +570,7 @@ pub(crate) fn victim_of(
         uncertain: false,
         inside: u.life.inside.is_some(),
         source: crate::combat::damage::Attacker {
-            id: u.id,
+            id: u.id.get(),
             kind,
             class: master.class,
             master_id: master.id,

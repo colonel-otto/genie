@@ -124,7 +124,7 @@ impl MakeAction {
     ) -> Result<HeadCode, GenieError> {
         let master = object_master(
             farm.own_master.as_deref(),
-            (farm.id, farm.life.master_id),
+            (farm.id.get(), farm.life.master_id),
             c.w.masters.get(c.player),
         )?;
         match self.state {
@@ -180,6 +180,7 @@ impl Unit {
 mod tests {
     use super::*;
     use crate::objects::masters::{Master, Masters};
+    use crate::test_ids::object_id;
     use crate::world::{Player, World};
 
     /// The farm's default task in build 158041's `.dat` (master 50, task 0).
@@ -215,7 +216,7 @@ mod tests {
     /// farms 50 and 1897 and the class-42 master 7.
     fn farm_world(make: MakeAction, master: i16, amount: f32) -> World {
         let mut farm = Unit {
-            id: 600,
+            id: object_id(600),
             life: Lifecycle {
                 state: 2,
                 hp: 480.0,

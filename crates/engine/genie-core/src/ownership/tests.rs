@@ -43,7 +43,7 @@ fn stopped(mut t: World, class: i16) -> Result<(Unit, Vec<i32>), GenieError> {
             .unwrap()
             .foreign_iter()
             .filter(|(_, b)| b.workers == 0);
-        Ok(gone.map(|(_, b)| b.id).collect())
+        Ok(gone.map(|(_, b)| b.id.get()).collect())
     })?;
     Ok((t.players[1].objects.swap_remove(0).unwrap(), released))
 }

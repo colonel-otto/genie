@@ -205,7 +205,7 @@ impl World {
         let unit = self.players.live_mut(p, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
-            let n = crate::unit_ai::Notify::own(id, crate::unit_ai::OTHER_LOAD, [0; 3]);
+            let n = crate::unit_ai::Notify::own(id.get(), crate::unit_ai::OTHER_LOAD, [0; 3]);
             let _ = ai.accept(n, state);
         }
         Ok(())
@@ -253,7 +253,7 @@ impl World {
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
             let order = crate::unit_ai::QueuedOrder {
-                issuer: id,
+                issuer: id.get(),
                 order: OrderKind::OnTarget,
                 priority: 100,
                 target,

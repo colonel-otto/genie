@@ -57,7 +57,7 @@ impl World {
     pub(crate) fn releaser(&self, player: usize, idx: usize) -> Releaser {
         let u = &self.players[player].objects[idx];
         Releaser {
-            id: u.id,
+            id: u.id.get(),
             class: u.master(&self.masters, player).map_or(-1, |m| m.class),
             player,
         }
@@ -200,9 +200,9 @@ impl World {
         if 0.0 < height {
             let id = self.players.live(player, idx)?.id;
             let annexes =
-                crate::objects::unit::annexes_of(id, &self.players.player(player)?.objects);
+                crate::objects::unit::annexes_of(id.get(), &self.players.player(player)?.objects);
             let (units, _) =
-                crate::construction::gates::gate_units(&mut self.spatial, id, &annexes)?;
+                crate::construction::gates::gate_units(&mut self.spatial, id.get(), &annexes)?;
             for u in units {
                 self.shut_in_gate(u)?;
             }
@@ -214,7 +214,7 @@ impl World {
                     "a shut gate without its moving part",
                 ))?
                 .last_move = now.wrapping_add(1);
-            self.spatial.set_last_move(id, now.wrapping_add(1));
+            self.spatial.set_last_move(id.get(), now.wrapping_add(1));
         }
         Ok(())
     }
@@ -251,7 +251,7 @@ impl World {
                 let (id, master) = (woken.id, woken.life.master_id);
                 self.players.player_mut(p)?.objects.push(woken);
                 // the wake's remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
-                self.track_relist(p, id, master)?;
+                self.track_relist(p, id.get(), master)?;
                 self.players
                     .player_mut(p)?
                     .objects
@@ -299,7 +299,7 @@ impl World {
             // the tracker's promotion (FUN_14104fb20): last in its new key master's list and
             // class's
             let id = self.players.live(player, idx)?.id;
-            self.track_promote(player, id, old.id, new)?;
+            self.track_promote(player, id.get(), old.id, new)?;
         }
         let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.coming {
@@ -393,7 +393,7 @@ pub(crate) fn switch_master(
             }
         }
         let id = unit.id;
-        if let Some(mut placed) = world.spatial.get(id).copied() {
+        if let Some(mut placed) = world.spatial.get(id.get()).copied() {
             placed.radius = next.radius;
             placed.class = next.class;
             placed.master = new;
@@ -405,21 +405,25 @@ pub(crate) fn switch_master(
                 // inside another (`+0x2f0`) the unit has no tile (`+0x2e8` 0: no sight slots) and
                 // is in no list nor the obstruction manager: its record takes the new master's
                 // values for its way out
-                world.spatial.set_inside_record(id, placed);
+                world.spatial.set_inside_record(id.get(), placed);
                 if let Some(v) = world.spatial.sight.as_mut() {
-                    v.seer_master(id, new, next.line_of_sight);
+                    v.seer_master(id.get(), new, next.line_of_sight);
                 }
             } else {
                 if let Some(o) = placed.obstruction.as_mut() {
                     o.kind = next.obstruction_type;
                     o.class = next.obstruction_class;
                 }
-                world.pathing.removed(id);
-                world
-                    .spatial
-                    .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
-                world.spatial.change_master(id, placed);
-                world.pathing.moved(id, &placed, moving);
+                world.pathing.removed(id.get());
+                world.spatial.sight_master(
+                    id.get(),
+                    next.radius,
+                    next.class,
+                    new,
+                    next.line_of_sight,
+                )?;
+                world.spatial.change_master(id.get(), placed);
+                world.pathing.moved(id.get(), &placed, moving);
             }
         }
         // slot 0x68 with the new master's standing sprite (`+0x470`, FUN_141217000): a new

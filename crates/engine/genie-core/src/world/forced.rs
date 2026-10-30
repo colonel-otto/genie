@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::combat::volley::same_members;
 use crate::movement::Mover;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::Unit;
 use crate::world::World;
@@ -32,11 +33,11 @@ pub struct GameState {
     /// The world's game state (`+0x88`).
     pub game_state: u32,
     /// Objects the slice modelled but got wrong this tick: they take the game's state too.
-    pub resync: Vec<i32>,
+    pub resync: Vec<ObjectId>,
     /// The players' visible maps and the unified map, when the slice's differ.
     pub sight: Option<(Vec<crate::vision::visibility::VisibleMap>, Vec<u64>)>,
     /// `next_reusable_object_id`: the fog ghosts that take reusable ids are not modelled.
-    pub next_reusable_id: i32,
+    pub next_reusable_id: ObjectId,
     /// The map tiles' object lists in the game's order (`x`, `y`, ids; each tile of two objects
     /// or more), when the oracle dumped them: the order is the game's history, no save holds it.
     pub tile_lists: Option<Vec<(i32, i32, Vec<i32>)>>,
@@ -44,9 +45,9 @@ pub struct GameState {
     /// save holds it.
     ///
     /// [`Recycling::missiles`]: crate::world::Recycling::missiles
-    pub missile_pool: Option<Vec<(i32, bool)>>,
+    pub missile_pool: Option<Vec<(ObjectId, bool)>>,
     /// The world's pool of recycled ghosts, when the oracle dumped it.
-    pub ghost_pool: Option<Vec<i32>>,
+    pub ghost_pool: Option<Vec<ObjectId>>,
     /// The world's unit groups, when the slice's differ.
     pub groups: Option<crate::groups::UnitGroups>,
 }
@@ -61,7 +62,7 @@ impl World {
                 .players
                 .iter_mut()
                 .flat_map(|p| p.objects.iter_mut().chain(p.sleeping.iter_mut()))
-                .find(|u| u.id == *id)
+                .find(|u| u.id.get() == *id)
             else {
                 continue;
             };
@@ -94,7 +95,7 @@ impl World {
         let mut known: Vec<i32> = self
             .players
             .iter()
-            .flat_map(|q| q.objects.iter().chain(&q.sleeping).map(|u| u.id))
+            .flat_map(|q| q.objects.iter().chain(&q.sleeping).map(|u| u.id.get()))
             .collect();
         known.sort_unstable();
         for p in 0..self.players.len() {
@@ -113,10 +114,10 @@ impl World {
                 notes.push((p, -1, e));
             }
             for g in theirs {
-                if known.binary_search(&g.id).is_err() {
+                if known.binary_search(&g.id.get()).is_err() {
                     notes.push((
                         p,
-                        g.id,
+                        g.id.get(),
                         GenieError::unsupported("an object the game made and the slice did not"),
                     ));
                 }
@@ -214,7 +215,7 @@ impl World {
                 if elsewhere {
                     notes.push((
                         p,
-                        id,
+                        id.get(),
                         GenieError::unsupported("a forced object changed hands"),
                     ));
                     i += 1;
@@ -222,14 +223,14 @@ impl World {
                 }
                 let gone = self.players.player_mut(p)?.objects.swap_remove(i)?;
                 if let Err(e) = self.leave_world(p, &gone) {
-                    notes.push((p, id, e));
+                    notes.push((p, id.get(), e));
                 }
                 continue;
             };
             if g.life.master_id != unit.life.master_id {
                 notes.push((
                     p,
-                    id,
+                    id.get(),
                     GenieError::unsupported("a forced object changed masters"),
                 ));
                 i += 1;
@@ -266,25 +267,25 @@ impl World {
         }
         let (before, state) = (unit.life.state, forced.life.state);
         if forced.position() != unit.position() {
-            self.spatial.set_position(id, forced.position())?;
+            self.spatial.set_position(id.get(), forced.position())?;
         }
         if state != before {
             if before <= 2 && 3 <= state {
-                self.spatial.sight_state(id, 3)?;
+                self.spatial.sight_state(id.get(), 3)?;
             }
             if state != 3 {
-                self.spatial.sight_state(id, state)?;
+                self.spatial.sight_state(id.get(), state)?;
             }
             if before < 4 && 6 < state {
                 let master = forced.master(&self.masters, p).ok();
-                forget_resource(&mut self.spatial, master, id, forced.position())?;
+                forget_resource(&mut self.spatial, master, id.get(), forced.position())?;
             }
         }
-        self.spatial.unfreeze(id);
-        self.spatial.set_gait(id, forced.gait());
-        if let Some(placed) = self.spatial.get(id).copied() {
+        self.spatial.unfreeze(id.get());
+        self.spatial.set_gait(id.get(), forced.gait());
+        if let Some(placed) = self.spatial.get(id.get()).copied() {
             let moving = forced.body.mover().is_some_and(Mover::is_moving);
-            self.pathing.moved(id, &placed, moving);
+            self.pathing.moved(id.get(), &placed, moving);
         }
         forced.stopped = false;
         *self.players.live_mut(p, i)? = forced;
@@ -295,6 +296,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::object_id;
     use crate::world::tests::forage_world;
 
     /// The world's own forced values: the frame seed, the game state, the next reusable id and
@@ -302,7 +304,7 @@ mod tests {
     #[test]
     fn a_forced_world_takes_the_game_s_seed_ids_and_dumped_pools() {
         let mut t = forage_world();
-        t.recycling.missiles = vec![(5, false)];
+        t.recycling.missiles = vec![(object_id(5), false)];
         let groups = crate::groups::UnitGroups {
             counter: 4,
             ..crate::groups::UnitGroups::default()
@@ -310,18 +312,18 @@ mod tests {
         let game = GameState {
             frame_seed: 7,
             game_state: 3,
-            next_reusable_id: -5,
-            ghost_pool: Some(vec![-3]),
+            next_reusable_id: object_id(-5),
+            ghost_pool: Some(vec![object_id(-3)]),
             groups: Some(groups.clone()),
             ..GameState::default()
         };
         t.force_world_values(&game);
         assert_eq!(
-            (t.frame_seed, t.game_state, t.recycling.next_id),
+            (t.frame_seed, t.game_state, t.recycling.next_id.get()),
             (7, 3, -5)
         );
-        assert_eq!(t.recycling.ghosts, [-3]);
-        assert_eq!(t.recycling.missiles, [(5, false)]);
+        assert_eq!(t.recycling.ghosts, [object_id(-3)]);
+        assert_eq!(t.recycling.missiles, [(object_id(5), false)]);
         assert_eq!(t.groups, groups);
     }
 
@@ -389,7 +391,7 @@ mod tests {
         );
         // the game made 800, then the forager changed hands, then masters, then left
         game.players[1].push(Unit {
-            id: 800,
+            id: object_id(800),
             ..Unit::default()
         });
         let reasons = |t: &mut World, game: &GameState| -> Vec<(i32, &'static str)> {
@@ -432,6 +434,6 @@ mod tests {
         let before = t.players[1].objects.len();
         assert_eq!(reasons(&mut t, &gone), []);
         assert_eq!(t.players[1].objects.len(), before - 1);
-        assert!(t.players[1].objects.iter().all(|u| u.id != 9175));
+        assert!(t.players[1].objects.iter().all(|u| u.id != object_id(9175)));
     }
 }

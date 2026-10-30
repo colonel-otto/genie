@@ -338,7 +338,7 @@ impl World {
             stack_made: None,
             attacking_units: Vec::new(),
         });
-        self.settle_building(player, id, &made, (position, desolid), foundation)?;
+        self.settle_building(player, id.get(), &made, (position, desolid), foundation)?;
         for (slot, &annex) in building.annexes.iter().enumerate() {
             if annex == -1 {
                 continue;
@@ -353,11 +353,11 @@ impl World {
             let ai = Ok(am.unit_ai_type(annex));
             let at = [position[0] + ox, position[1] + oy, given_z];
             let (aid, at) = self.make_building(player, annex, ai, at)?;
-            self.link_annex(player, id, aid, &made, &am)?;
+            self.link_annex(player, id.get(), aid, &made, &am)?;
             self.clear_footprint(player, annex, [at[0], at[1]], false)?;
         }
-        self.watch_started(player, id)?;
-        Ok((id, position))
+        self.watch_started(player, id.get())?;
+        Ok((id.get(), position))
     }
 
     /// The static init's add of the new building `id` to its player (slot 0x2d0: it waits in the

@@ -42,7 +42,7 @@ impl World {
         let (tick, me) = (self.ticks, unit.id);
         let mut c = Step {
             w: self,
-            me,
+            me: me.get(),
             dt,
             tick,
             turn,
@@ -61,7 +61,7 @@ impl World {
         {
             result = Err(e);
         }
-        self.spatial.set_gait(me, unit.gait());
+        self.spatial.set_gait(me.get(), unit.gait());
         // back to its stand-in's slot, which a removal in the step may have moved
         if let Err(e) = self.put_back_own(p, unit) {
             result = Err(e);

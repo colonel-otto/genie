@@ -1,6 +1,8 @@
 use crate::fixtures::{action_list, combat_mut, combat_object};
 use crate::masters::{DefaultAction, MasterTable};
 use crate::saved_unit::unit;
+use crate::test_ids::object_id;
+use genie_core::objects::ObjectId;
 use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionByType, RgeMissileObject, RgeObject,
 };
@@ -15,7 +17,7 @@ fn an_object_without_its_static_part_is_unmodelled() {
         0,
         None,
     );
-    assert_eq!(u.id, -1);
+    assert_eq!(u.id, ObjectId::UNSAVED);
     assert!(u.unmodelled_action.is_some());
 }
 
@@ -30,7 +32,7 @@ fn livestock_starts_with_its_artifact() {
     );
     let sheep = combat_object(5, 83);
     let u = unit(&sheep, &PlayerObjects::default(), &[], 0, Some(&table));
-    assert_eq!(u.id, 5);
+    assert_eq!(u.id, object_id(5));
     assert!(u.actions.artifact().is_some() && u.default_artifact);
     assert!(u.default_task.is_none());
     // a combat object's mover needs its master, which this save does not hold

@@ -2,6 +2,7 @@ use super::*;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::attribute;
+use crate::test_ids::object_id;
 use crate::world::Player;
 
 /// A combat unit's charge after its master's maximum charge changes (`FUN_1412163c0`'s
@@ -168,7 +169,12 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         0,
         vec![0],
         vec![Player {
-            objects: vec![unit(1, 2, None), unit(2, 7, None), unit(3, 2, Some(9))].into(),
+            objects: vec![
+                unit(object_id(1), 2, None),
+                unit(object_id(2), 7, None),
+                unit(object_id(3), 2, Some(9)),
+            ]
+            .into(),
             ..Player::default()
         }],
     );
@@ -280,7 +286,11 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
         u
     };
     let player = Player {
-        objects: vec![villager(9175, 25.0), villager(9177, 10.0)].into(),
+        objects: vec![
+            villager(object_id(9175), 25.0),
+            villager(object_id(9177), 10.0),
+        ]
+        .into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -343,7 +353,7 @@ fn built() -> crate::construction::build::Construction {
 
 fn unit_of(id: i32, master: i16, hp: f32) -> Unit {
     let mut u = Unit {
-        id,
+        id: object_id(id),
         ..Unit::default()
     };
     u.life.master_id = master;
@@ -1515,7 +1525,7 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
         u
     };
     let player = Player {
-        objects: vec![building(1, 3), building(2, 2)].into(),
+        objects: vec![building(object_id(1), 3), building(object_id(2), 2)].into(),
         techs: vec![TechState {
             state: 3,
             ..TechState::default()

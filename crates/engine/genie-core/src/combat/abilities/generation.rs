@@ -145,7 +145,7 @@ impl World {
                 .spatial
                 .sight
                 .as_ref()
-                .and_then(|v| v.seer(unit.id))
+                .and_then(|v| v.seer(unit.id.get()))
                 .and_then(|s| s.building)
                 .is_some_and(|b| b.built);
         if !generates(task, master.kind, master.kind, top, built) {

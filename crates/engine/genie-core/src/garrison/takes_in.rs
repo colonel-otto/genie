@@ -90,7 +90,7 @@ impl World {
             Some(u) => self.garrisoned(u)? + 1,
             None => 1,
         };
-        Ok(self.garrisoned(b.id)? + with <= capacity)
+        Ok(self.garrisoned(b.id.get())? + with <= capacity)
     }
 }
 
@@ -211,7 +211,7 @@ impl World {
                         "a unit inside a building with its raider_build_countdown (+0xc2c)",
                     ));
                 }
-                if holds(u.id) {
+                if holds(u.id.get()) {
                     return Err(GenieError::unsupported(
                         "an object inside a building that holds others (+0x9a8)",
                     ));

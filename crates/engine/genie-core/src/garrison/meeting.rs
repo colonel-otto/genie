@@ -413,8 +413,8 @@ pub(crate) fn enter_view(
     let in_reach = enter_reach(
         spatial,
         masters,
-        (unit.id, &stats, moved_at),
-        (t.id, target_mover),
+        (unit.id.get(), &stats, moved_at),
+        (t.id.get(), target_mover),
         range,
     )?;
     let placed = |id| {
@@ -423,7 +423,7 @@ pub(crate) fn enter_view(
                 .with("object", id)
         })
     };
-    let (me, them) = (placed(unit.id)?, placed(t.id)?);
+    let (me, them) = (placed(unit.id.get())?, placed(t.id.get())?);
     let gap = crate::movement::footprint_gap(me.position, me.radius, them.position, them.radius);
     Ok((
         EnterTarget {
@@ -472,7 +472,7 @@ impl Meeting<'_> {
         let t = meeting_target(self.target, self.master, self.room)?;
         meeting_point(
             &t,
-            (self.unit.id, self.unit.position(), &stats),
+            (self.unit.id.get(), self.unit.position(), &stats),
             self.spatial,
             self.zones,
         )
@@ -492,7 +492,7 @@ pub(crate) fn ship_reaches(
         return Ok(false);
     };
     let me = crate::movement::Me {
-        id: ship.id,
+        id: ship.id.get(),
         action_state: ship.top_action().map_or(0, |a| a.state),
         group: ship.group.id,
     };

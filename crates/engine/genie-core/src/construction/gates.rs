@@ -138,15 +138,15 @@ impl World {
                 let id = self.players[q].objects[i].id;
                 if self
                     .spatial
-                    .get(id)
+                    .get(id.get())
                     .is_some_and(|g| g.obstruction.is_some_and(|o| o.kind == 10))
                 {
                     return Err(GenieError::unsupported(
                         "a gate of obstruction kind 10 opens (FUN_140f65580)",
                     ));
                 }
-                self.spatial.drop_record(id);
-                self.pathing.removed(id);
+                self.spatial.drop_record(id.get());
+                self.pathing.removed(id.get());
             }
             *is_open = true;
         }
@@ -191,12 +191,12 @@ impl World {
                 if record.recorded()
                     && self
                         .spatial
-                        .get(id)
+                        .get(id.get())
                         .is_some_and(|g| g.obstruction.is_none())
                 {
-                    self.spatial.add_record(id, record);
-                    if let Some(placed) = self.spatial.get(id).copied() {
-                        self.pathing.place_shape(id, &placed);
+                    self.spatial.add_record(id.get(), record);
+                    if let Some(placed) = self.spatial.get(id.get()).copied() {
+                        self.pathing.place_shape(id.get(), &placed);
                     }
                 }
             }

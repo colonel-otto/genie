@@ -668,6 +668,7 @@ mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::object_id;
     use crate::vision::registry::UnitUpdate;
     use crate::world::Player;
 
@@ -704,7 +705,7 @@ mod tests {
     fn searched_world() -> World {
         let unit = |id: i32, master: i16, x: f32, y: f32| {
             let mut u = Unit {
-                id,
+                id: object_id(id),
                 body: crate::objects::layers::Body::at([x, y, 0.0]),
                 ..Unit::default()
             };
@@ -843,7 +844,7 @@ mod tests {
         let world = |ai_type: u32| {
             let mut t = searched_world();
             let mut far = t.players[2].objects[0].clone();
-            far.id = 22;
+            far.id = object_id(22);
             far.place_for_test([13.0, 5.0, 0.0]);
             t.players[2].objects.push(far);
             let sight = t.spatial.sight.as_mut().unwrap();
@@ -886,7 +887,7 @@ mod tests {
     fn a_sub_formation_s_range_takes_its_held_units_against_the_group_s_target() {
         let mut t = searched_world();
         let mut far = Unit {
-            id: 50,
+            id: object_id(50),
             ..Unit::default()
         };
         far.life.master_id = 7;
@@ -938,7 +939,7 @@ mod tests {
                 }));
             }
             let mut stray = t.players[1].objects[0].clone();
-            stray.id = 11;
+            stray.id = object_id(11);
             stray.place_for_test([6.0, 6.0, 0.0]);
             stray
                 .body

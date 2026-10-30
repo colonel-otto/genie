@@ -255,7 +255,7 @@ impl World {
             .players
             .iter()
             .flat_map(|q| q.objects.iter().chain(&q.sleeping))
-            .map(|u| (u.id, u.life.master_id))
+            .map(|u| (u.id.get(), u.life.master_id))
             .collect();
         let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
         let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
@@ -383,7 +383,7 @@ impl World {
             .players
             .iter()
             .flat_map(|q| q.objects.iter().chain(&q.sleeping))
-            .map(|u| (u.id, u.life.master_id))
+            .map(|u| (u.id.get(), u.life.master_id))
             .collect();
         let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
         let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
@@ -417,6 +417,7 @@ mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::object_id;
     use crate::world::{Player, World};
 
     /// Group 1 of player 1's units 10, 11 (master 4, category 1) and 12 (master 6, category 3),
@@ -424,7 +425,7 @@ mod tests {
     fn three() -> World {
         let unit = |id: i32, master: i16, x: f32| {
             let mut u = Unit {
-                id,
+                id: object_id(id),
                 body: crate::objects::layers::Body::at([x, 0.0, 0.0]),
                 ..Unit::default()
             };
@@ -521,7 +522,7 @@ mod tests {
     fn a_sleeping_unit_joins_a_group_as_a_live_one() {
         let mut t = three();
         let mut asleep = Unit {
-            id: 13,
+            id: object_id(13),
             ..Unit::default()
         };
         asleep.life.master_id = 4;
@@ -542,7 +543,7 @@ mod tests {
         let mut t = three();
         let unit = |id: i32, master: i16| {
             let mut u = Unit {
-                id,
+                id: object_id(id),
                 ..Unit::default()
             };
             u.life.master_id = master;

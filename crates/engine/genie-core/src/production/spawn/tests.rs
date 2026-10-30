@@ -2,6 +2,7 @@ use super::*;
 use crate::commands::GatherPoint;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
@@ -27,11 +28,15 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         vec![0, 0],
         vec![
             crate::world::Player {
-                sleeping: vec![unit(10, 349, 20.5, 20.5), unit(11, 349, 22.5, 20.5)].into(),
+                sleeping: vec![
+                    unit(object_id(10), 349, 20.5, 20.5),
+                    unit(object_id(11), 349, 22.5, 20.5),
+                ]
+                .into(),
                 ..crate::world::Player::default()
             },
             crate::world::Player {
-                objects: vec![unit(99, 83, 18.0, 18.0)].into(),
+                objects: vec![unit(object_id(99), 83, 18.0, 18.0)].into(),
                 ..crate::world::Player::default()
             },
         ],

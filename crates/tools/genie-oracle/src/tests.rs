@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_ids::object_id;
 use genie_core::objects::actions::ActionList;
 
 /// Word 9 reads a building's production action's state over its top action's (records
@@ -66,8 +67,16 @@ fn differences_name_the_object_its_master_and_the_field() {
         u.life.hp = hp;
         u
     };
-    let slice = [unit(1, 83, 25.0), unit(2, 83, 25.0), unit(4, 4, 1.0)];
-    let game = [unit(1, 83, 25.0), unit(2, 293, 24.0), unit(3, 59, 1.0)];
+    let slice = [
+        unit(object_id(1), 83, 25.0),
+        unit(object_id(2), 83, 25.0),
+        unit(object_id(4), 4, 1.0),
+    ];
+    let game = [
+        unit(object_id(1), 83, 25.0),
+        unit(object_id(2), 293, 24.0),
+        unit(object_id(3), 59, 1.0),
+    ];
     let d = object_field_differences(&slice, &game);
     let fields: Vec<(i32, i16, &str)> = d
         .iter()

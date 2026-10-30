@@ -160,7 +160,7 @@ impl World {
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
             if b.life.state == 2 && b.life.inside.is_none() && m.kind == BUILDING && takes_villagers
             {
-                buildings.push(b.id);
+                buildings.push(b.id.get());
             }
         }
         let counts = buildings
@@ -327,7 +327,7 @@ impl World {
         if b.master(&self.masters, bp)?.kind < COMBAT {
             return Ok(false);
         }
-        self.takes_in(b.id, player, master)
+        self.takes_in(b.id.get(), player, master)
     }
 
     /// One shelter's part of [`World::shelter`]: the order splitter (`FUN_140fd9dc0` with

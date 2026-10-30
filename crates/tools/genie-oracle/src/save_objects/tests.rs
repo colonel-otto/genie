@@ -1,5 +1,6 @@
 use crate::Error;
 use crate::save_objects::{ghost_pool_from_dump, recycle_pools_from_dump, registry_from_dump};
+use crate::test_ids::object_id;
 use genie_core::vision::registry::SLOTS;
 
 /// Two pools: the missiles (type 60), the next to come back first, and the ghosts (type 25).
@@ -9,9 +10,12 @@ const POOLS: &str = "pool 60 2\n101 1\n102 0\n\npool 25 2\n201 0\n202 0\n";
 fn the_missile_pool_comes_back_in_the_slice_s_order() {
     assert_eq!(
         recycle_pools_from_dump(POOLS).unwrap(),
-        [(102, false), (101, true)]
+        [(object_id(102), false), (object_id(101), true)]
     );
-    assert_eq!(ghost_pool_from_dump(POOLS).unwrap(), [202, 201]);
+    assert_eq!(
+        ghost_pool_from_dump(POOLS).unwrap(),
+        [object_id(202), object_id(201)]
+    );
 }
 
 /// An object line before a pool line, a word that is not a number or a line of another shape

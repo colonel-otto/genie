@@ -162,7 +162,7 @@ impl World {
         let mut i = 0;
         while i < self.players.player(p)?.objects.len() {
             let id = self.players.live(p, i)?.id;
-            self.notify_of_relation(p, id, q, relation)?;
+            self.notify_of_relation(p, id.get(), q, relation)?;
             i += 1;
         }
         Ok(())

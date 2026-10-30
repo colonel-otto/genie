@@ -68,7 +68,7 @@ impl World {
             match (gather, queue_first) {
                 (None, Some(q)) => Some(q),
                 _ => gather
-                    .filter(|g| g.target != bid)
+                    .filter(|g| g.target != bid.get())
                     .map(|g| [g.point[0], g.point[1]]),
             }
         } else {
@@ -104,10 +104,15 @@ impl World {
         // a new unit an effect could not take in (`FUN_1416136f0`) comes out from where it stands
         let inside = self.players[up].objects[ui].life.inside.is_some();
         if !inside {
-            return self.let_out_from_the_map(up, ui, (&made, at), (point, gather, bid, work_on));
+            return self.let_out_from_the_map(
+                up,
+                ui,
+                (&made, at),
+                (point, gather, bid.get(), work_on),
+            );
         }
         self.leave_container((player, building), (up, ui), &made, at)?;
-        self.came_out(up, ui, made.class, (point, gather, bid, work_on))
+        self.came_out(up, ui, made.class, (point, gather, bid.get(), work_on))
     }
 
     /// Slot 0x1a8 (`FUN_141213120`) of the unit at (`up`, `ui`), of master `made`, inside the
@@ -154,7 +159,7 @@ impl World {
             b.firepower -= share;
         }
         // the unit out of its list (`FUN_141197e10`)
-        if let Some(k) = b.garrison.iter().position(|&g| g == id) {
+        if let Some(k) = b.garrison.iter().position(|&g| g == id.get()) {
             let _ = b.garrison.swap_remove(k);
         }
         // COMISS volley, firepower; JBE keeps it: a NaN firepower stays
@@ -166,10 +171,10 @@ impl World {
         if bm.kind == BUILDING
             && let Some(v) = self.spatial.sight.as_mut()
         {
-            v.sight_off_los(bid, b_at, b_radius, false, 5, false)?;
+            v.sight_off_los(bid.get(), b_at, b_radius, false, 5, false)?;
         }
         // slot 0x58: on the map at the spot (new_position: its tile's list, its sight)
-        let mut placed = self.spatial.come_out(id).ok_or_else(|| {
+        let mut placed = self.spatial.come_out(id.get()).ok_or_else(|| {
             GenieError::unsupported("a unit inside a building without its record")
                 .with("unit", id)
                 .with("building", bid)
@@ -182,10 +187,12 @@ impl World {
             });
         let world_time = self.world_time;
         let unit = &mut self.players[up].objects[ui];
-        let _ =
-            unit.body
-                .base_mut()
-                .put_down(id, at, placed, (&mut self.spatial, &mut self.pathing));
+        let _ = unit.body.base_mut().put_down(
+            id.get(),
+            at,
+            placed,
+            (&mut self.spatial, &mut self.pathing),
+        );
         self.pathing.tiles_changed(self.spatial.take_changes());
         unit.life.inside = None;
         // a unit out of its container no longer counts down to its raid (`+0x9a0` 0)
@@ -198,7 +205,7 @@ impl World {
         if let Some(v) = self.spatial.sight.as_mut()
             && state == 2
         {
-            let _ = v.sight_on(id, at, made.radius, false, false)?;
+            let _ = v.sight_on(id.get(), at, made.radius, false, false)?;
         }
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
@@ -292,11 +299,11 @@ impl World {
         let id = self.players[up].objects[ui].id;
         let mut placed = *self
             .spatial
-            .get(id)
+            .get(id.get())
             .ok_or(GenieError::unsupported("a unit let out without a place"))?;
         let from = placed.position;
-        self.pathing.removed(id);
-        self.spatial.remove(id);
+        self.pathing.removed(id.get());
+        self.spatial.remove(id.get());
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         placed.obstruction =
             (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
@@ -305,14 +312,16 @@ impl World {
             });
         let world_time = self.world_time;
         let unit = &mut self.players[up].objects[ui];
-        let placed =
-            unit.body
-                .base_mut()
-                .put_down(id, at, placed, (&mut self.spatial, &mut self.pathing));
+        let placed = unit.body.base_mut().put_down(
+            id.get(),
+            at,
+            placed,
+            (&mut self.spatial, &mut self.pathing),
+        );
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {
-            v.moved(id, from, at, placed.radius)?;
-            v.registry_moved(id, placed.class, from, at);
+            v.moved(id.get(), from, at, placed.radius)?;
+            v.registry_moved(id.get(), placed.class, from, at);
         }
         let unit = &mut self.players[up].objects[ui];
         if let Some(m) = unit.body.mover_mut() {

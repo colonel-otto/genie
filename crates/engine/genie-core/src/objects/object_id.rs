@@ -2,20 +2,42 @@
 //! their unit lists and their targets hold it.
 
 use crate::GenieError;
-use getset::CopyGetters;
 
 /// An object's id (`+0x8`), which names the object across ticks: a live or sleeping object's
 /// is 0 or more, a recyclable master's object (a missile, a ghost) has a negative one. Every
 /// field that names an object takes −1 for none, so no id is −1: such a field holds
 /// `Option<ObjectId>` ([`ObjectId::of_field`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, CopyGetters)]
-pub struct ObjectId(
-    /// Its value, as the object and the fields that name it hold it.
-    #[getset(get_copy = "pub")]
-    i32,
-);
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ObjectId(i32);
 
 impl ObjectId {
+    /// Its value, as the object and the fields that name it hold it.
+    #[must_use]
+    pub const fn get(self) -> i32 {
+        self.0
+    }
+
+    /// The id the world gives the next new object (`mNextObjectId` counts up).
+    #[must_use]
+    pub const fn successor(self) -> Self {
+        Self(self.0 + 1)
+    }
+
+    /// The id a new recyclable object takes after this one (`next_reusable_object_id` counts
+    /// down).
+    #[must_use]
+    pub const fn predecessor(self) -> Self {
+        Self(self.0 - 1)
+    }
+
+    /// The stand-in for a saved object without a static part, which the slice does not model:
+    /// no object's id, and not [`ObjectId::TAKEN_OUT`] (it stays in its list).
+    pub const UNSAVED: Self = Self(i32::MIN + 1);
+
+    /// The stand-in a list leaves in the slot of a unit taken out of it
+    /// ([`crate::objects::unit::TAKEN_OUT`]): no object's id.
+    pub(crate) const TAKEN_OUT: Self = Self(i32::MIN);
+
     /// The value every field takes for none.
     const NONE: i32 = -1;
 
@@ -40,6 +62,18 @@ impl ObjectId {
     #[must_use]
     pub fn fields(ids: &[Option<Self>]) -> Vec<i32> {
         ids.iter().map(|&id| Self::field(id)).collect()
+    }
+}
+
+impl genie_diff::Diff for ObjectId {
+    fn diff(&self, other: &Self, d: &mut genie_diff::Differ) {
+        d.equal(self, other);
+    }
+}
+
+impl std::fmt::Display for ObjectId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -73,7 +107,7 @@ mod tests {
     fn a_field_s_minus_one_is_none_and_any_other_value_an_id() {
         assert_eq!(ObjectId::of_field(-1), None);
         for value in [0, 5, -2, i32::MIN, i32::MAX] {
-            assert_eq!(ObjectId::of_field(value).map(|id| id.get()), Some(value));
+            assert_eq!(ObjectId::of_field(value).map(ObjectId::get), Some(value));
             assert_eq!(ObjectId::field(ObjectId::of_field(value)), value);
         }
         assert_eq!(ObjectId::field(None), -1);

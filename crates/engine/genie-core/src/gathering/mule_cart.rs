@@ -133,7 +133,7 @@ impl World {
                     &cart,
                     &mut w,
                     others,
-                    (kind, -1, id),
+                    (kind, -1, id.get()),
                     (current, 0, crate::unit_ai::NO_POINT),
                 )?;
                 if f != -1 {

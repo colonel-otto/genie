@@ -636,6 +636,7 @@ mod tests {
     use crate::groups::{GroupCommand, Member, UnitGroups};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::object_id;
     use crate::world::Player;
 
     /// Player 1's unit 7 (master 4: type 70, category 1, no action, no unit AI) in group 1 at
@@ -643,7 +644,7 @@ mod tests {
     /// time 50.
     fn moving_world() -> World {
         let mut u = Unit {
-            id: 7,
+            id: object_id(7),
             ..Unit::default()
         };
         u.life.master_id = 4;

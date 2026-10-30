@@ -84,7 +84,7 @@ pub fn object_field_differences_in<'a>(
         let master = g.life.master_id;
         let Some(&s) = by_id.get(&g.id) else {
             out.push(Difference {
-                id: g.id,
+                id: g.id.get(),
                 master,
                 field: ONLY_IN_THE_GAME.to_owned(),
                 slice: String::new(),
@@ -96,7 +96,7 @@ pub fn object_field_differences_in<'a>(
             genie_diff::differences(s, g, scope)
                 .into_iter()
                 .map(|d| Difference {
-                    id: g.id,
+                    id: g.id.get(),
                     master,
                     field: d.path,
                     slice: d.left,
@@ -106,7 +106,7 @@ pub fn object_field_differences_in<'a>(
     }
     for s in slice.iter().filter(|s| !game.iter().any(|g| g.id == s.id)) {
         out.push(Difference {
-            id: s.id,
+            id: s.id.get(),
             master: s.life.master_id,
             field: ONLY_IN_THE_SLICE.to_owned(),
             slice: summary(s),

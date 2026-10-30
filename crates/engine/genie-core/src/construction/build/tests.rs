@@ -3,6 +3,7 @@ use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, W
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::test_ids::object_id;
 use crate::world::{Player, World};
 use std::collections::BTreeMap;
 
@@ -530,7 +531,7 @@ fn site_world(spatial: Spatial, masters: Vec<Master>, units: Vec<Unit>) -> World
 /// The foundation `id` at `at` with its life cycle and construction.
 fn foundation_at(id: i32, at: [f32; 3], life: Lifecycle, construction: Construction) -> Unit {
     Unit {
-        id,
+        id: object_id(id),
         body: crate::objects::layers::Body::at(at),
         life,
         construction: Some(construction),

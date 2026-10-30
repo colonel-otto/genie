@@ -327,7 +327,7 @@ impl crate::world::World {
             if made.auto_gather {
                 self.made_new_object(p)?;
             }
-            return Ok(Some(id));
+            return Ok(Some(id.get()));
         }
         // a plain object (types 10 and 20 to 39: a pasture's livestock): the master's slot 0x40
         // there, facing its drawn angle
@@ -346,7 +346,7 @@ impl crate::world::World {
             if made.auto_gather {
                 self.made_new_object(p)?;
             }
-            return Ok(Some(id));
+            return Ok(Some(id.get()));
         }
         let ai = Ok(made.unit_ai_type(master));
         let (id, _) = self.make_building(p, master, ai, at)?;
@@ -355,7 +355,7 @@ impl crate::world::World {
             let _ = self.work_building(id, STACK_WORK)?;
         }
         if made.auto_gather {
-            if self.players[p].objects.last().map(|u| u.id) != Some(id) {
+            if self.players[p].objects.last().map(|u| u.id.get()) != Some(id) {
                 return Err(GenieError::unsupported(
                     "an auto-gathered new building with annexes (its visible resources)",
                 ));

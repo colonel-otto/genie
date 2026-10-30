@@ -84,7 +84,7 @@ impl BuildAction {
         let others: Vec<i32> = occupants
             .iter()
             .copied()
-            .filter(|&id| id != builder.id)
+            .filter(|&id| id != builder.id.get())
             .collect();
         if stays && !others.is_empty() {
             c.w.evacuate(self.target, &others)?;
@@ -167,7 +167,7 @@ impl BuildAction {
             } else if tests.stay {
                 let others: Vec<i32> = site_occupants(c, part, &placed, cleared, reads)?
                     .into_iter()
-                    .filter(|&id| id != builder.id)
+                    .filter(|&id| id != builder.id.get())
                     .collect();
                 if !others.is_empty() {
                     c.w.evacuate(part, &others)?;
@@ -350,7 +350,7 @@ impl BuildAction {
             c.w.spatial
                 .spot_beside(
                     at,
-                    (builder.id, mover.stats.radius[0]),
+                    (builder.id.get(), mover.stats.radius[0]),
                     mover.stats.restriction_mask,
                     site,
                 )?

@@ -105,7 +105,7 @@ impl Unit {
         let mut attack = *self.actions.attack().ok_or(NO_ATTACK)?;
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         )?;
         let computer = c.w.players.get(c.player).is_some_and(|q| q.computer);
@@ -129,7 +129,7 @@ impl Unit {
         let code = code?;
         // the retaliation's kill of the unit itself, which follows its step
         if let Some(k) = self.hit_back(f.own)? {
-            file_kill(c, self, KillLeft::own(self.id, k))?;
+            file_kill(c, self, KillLeft::own(self.id.get(), k))?;
         }
         Ok(HeadCode::of(code))
     }

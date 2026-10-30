@@ -72,7 +72,7 @@ impl World {
             .player(p)?
             .objects
             .iter()
-            .map(|u| u.id)
+            .map(|u| u.id.get())
             .collect();
         for id in ids {
             let kind = self

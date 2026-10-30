@@ -82,7 +82,7 @@ impl UnitView<'_, '_> {
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
         );
         let find = |id: i32| {
-            if id == unit.id {
+            if id == unit.id.get() {
                 return Some((player, unit));
             }
             others.find(id)
@@ -101,7 +101,7 @@ impl UnitView<'_, '_> {
             .ok_or(crate::world::UNIT_AI_MASTER)?;
         let own = unit.master(&self.c.w.masters, self.player)?;
         let actor = Actor {
-            id: unit.id,
+            id: unit.id.get(),
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),

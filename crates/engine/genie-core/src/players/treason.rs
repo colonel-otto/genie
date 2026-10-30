@@ -105,6 +105,7 @@ mod tests {
     use super::*;
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::unit::Unit;
+    use crate::test_ids::object_id;
     use crate::world::Player;
 
     /// Gaia and three players; player 1 holds 500 gold and is allied with 3.
@@ -162,7 +163,7 @@ mod tests {
 
     fn king(id: i32, position: [f32; 3], inside: Option<i32>) -> Unit {
         Unit {
-            id,
+            id: object_id(id),
             body: crate::objects::layers::Body::at(position),
             life: Lifecycle {
                 master_id: KING,
@@ -181,7 +182,7 @@ mod tests {
         let mut t = world();
         t.settings.game_mode = 1;
         with_flares(&mut t);
-        t.next_object_id = 100;
+        t.next_object_id = object_id(100);
         t.players[2].objects = vec![
             king(20, [5.0, 6.0, 0.0], None),
             king(21, [9.0, 9.0, 0.0], None),
@@ -194,7 +195,7 @@ mod tests {
                 .objects
                 .iter()
                 .filter(|u| u.life.master_id == FLARE4)
-                .map(|u| (u.id, u.position()))
+                .map(|u| (u.id.get(), u.position()))
                 .collect()
         };
         assert_eq!(flares(&t, 1), [(100, [5.0, 6.0, 0.0])]);

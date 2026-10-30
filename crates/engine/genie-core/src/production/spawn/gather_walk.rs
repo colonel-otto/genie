@@ -149,7 +149,7 @@ impl World {
                 if 0.0 <= g { g } else { 0.0 }
             };
             let (gx, gy) = (gap(x - u.position()[0], rx), gap(y - u.position()[1], ry));
-            Ok((gy * gy + gx * gx <= los * los).then_some(u.id))
+            Ok((gy * gy + gx * gx <= los * los).then_some(u.id.get()))
         };
         if let Some(id) = closest(&gaia.objects)? {
             return Ok(Some(id));

@@ -6,6 +6,7 @@ use crate::movement::move_to::{
 use crate::objects::teardown::HeadCode;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::test_ids::object_id;
 
 const TASK: RepairTask = RepairTask {
     id: 7,
@@ -268,7 +269,7 @@ fn passable(t: &mut crate::world::World) {
 fn repaired(t: &mut crate::world::World) -> Result<HeadCode, GenieError> {
     crate::world::tests::in_update(t, (1, 0), 50, |unit, c| {
         let me = Me {
-            id: unit.id,
+            id: unit.id.get(),
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -487,7 +488,7 @@ fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
         });
     });
     let mut dying = crate::objects::unit::Unit {
-        id: 777,
+        id: object_id(777),
         ..crate::objects::unit::Unit::default()
     };
     dying.life.state = 7;

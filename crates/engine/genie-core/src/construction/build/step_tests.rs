@@ -18,6 +18,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::test_ids::object_id;
 use crate::unit_ai::{ActionKind, OrderKind, QueuedOrder, UnitAi};
 use crate::world::step::Step;
 use crate::world::tests::in_update;
@@ -111,7 +112,7 @@ fn site_world(class: i16, at: [f32; 3], build: BuildAction) -> World {
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = at;
     let builder = Unit {
-        id: BUILDER,
+        id: object_id(BUILDER),
         body: Body::new(at, None, Some(mover)),
         life: Lifecycle {
             class: Class::Animated,
@@ -137,7 +138,7 @@ fn site_world(class: i16, at: [f32; 3], build: BuildAction) -> World {
         ..Unit::default()
     };
     let house = Unit {
-        id: HOUSE,
+        id: object_id(HOUSE),
         body: Body::at(AT_HOUSE),
         life: Lifecycle {
             class: Class::Animated,
@@ -199,7 +200,7 @@ type Top = (Option<i16>, Option<i32>);
 fn update(t: &mut World, dt: u32) -> Result<(HeadCode, Top), GenieError> {
     in_update(t, (1, 0), dt, |u, c| {
         let me = Me {
-            id: u.id,
+            id: u.id.get(),
             group: u.group.id,
             action_state: u.top_action().map_or(0, |a| a.state),
         };
@@ -297,7 +298,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
     main.construction = Some(construction(1.0, 1, false));
     main.life.hp = 0.5;
     let mut annex = own(&mut t, HOUSE).clone();
-    annex.id = ANNEX;
+    annex.id = object_id(ANNEX);
     annex.annex_of = Some(HOUSE);
     annex.life.hp = 1.0;
     annex.construction = Some(construction(1.0, 0, false));
@@ -731,7 +732,7 @@ fn stump(t: &mut World) {
         *masters = Masters::new(masters.iter().cloned().chain([m.clone()]));
     }
     t.players[0].objects.push(Unit {
-        id: 77,
+        id: object_id(77),
         body: Body::at([10.2, 10.2, 0.0]),
         life: Lifecycle {
             state: 2,
@@ -828,7 +829,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
         sighted(&mut t);
         own(&mut t, BUILDER).footprint_waits = waits;
         let mut other = own(&mut t, BUILDER).clone();
-        other.id = 6;
+        other.id = object_id(6);
         other.actions = ActionList::default();
         other.place_for_test([10.6, 10.6, 0.0]);
         t.players[1].objects.push(other);
@@ -1042,7 +1043,7 @@ fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it()
 /// drop site of the table for the villagers' wood (resource 1).
 fn with_mill(t: &mut World) {
     let mut mill = own(t, HOUSE).clone();
-    mill.id = 300;
+    mill.id = object_id(300);
     mill.life.master_id = 68;
     mill.life.state = 2;
     mill.workers = 0;
@@ -1321,7 +1322,7 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
 /// Player 1's standing lumber camp 30 (master 562, built) at `at`.
 fn camp(t: &mut World, at: [f32; 3]) {
     let mut camp = own(t, HOUSE).clone();
-    camp.id = 30;
+    camp.id = object_id(30);
     camp.life.master_id = 562;
     camp.life.state = 2;
     camp.construction = Some(construction(25.0, 0, false));
@@ -1333,7 +1334,7 @@ fn camp(t: &mut World, at: [f32; 3]) {
 /// Player 1's villager 6, a copy of the builder without actions, standing at `at`.
 fn villager(t: &mut World, at: [f32; 3]) {
     let mut other = own(t, BUILDER).clone();
-    other.id = 6;
+    other.id = object_id(6);
     other.actions = ActionList::default();
     other.place_for_test(at);
     t.players[1].objects.push(other);
@@ -1352,7 +1353,7 @@ fn villager(t: &mut World, at: [f32; 3]) {
 fn annex(t: &mut World, at: [f32; 3]) -> i32 {
     const ANNEX: i32 = 10029;
     let mut annex = own(t, HOUSE).clone();
-    annex.id = ANNEX;
+    annex.id = object_id(ANNEX);
     annex.annex_of = Some(HOUSE);
     annex.place_for_test(at);
     t.players[1].objects.push(annex);

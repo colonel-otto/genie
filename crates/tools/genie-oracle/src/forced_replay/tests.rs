@@ -301,9 +301,13 @@ fn a_saves_game_state_is_its_seed_next_id_state_and_groups() {
     world.current_frame_random_seed = 5;
     world.next_reusable_object_id = 9;
     world.temp_game_state = 2;
-    let game = game_state(&save, None);
+    let game = game_state(&save, None).unwrap();
     assert_eq!(
-        (game.frame_seed, game.next_reusable_id, game.game_state),
+        (
+            game.frame_seed,
+            game.next_reusable_id.get(),
+            game.game_state
+        ),
         (5, 9, 2)
     );
     assert!(game.groups.is_some());

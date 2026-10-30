@@ -173,7 +173,7 @@ impl BuildAction {
                 "the end of a Build on a pasture (its animals, slot 0x780)",
             ));
         }
-        let built = site.map(|s| (s.id, s.life.state));
+        let built = site.map(|s| (s.id.get(), s.life.state));
         let ai = builder.ai.as_mut().ok_or(GenieError::unsupported(
             "a builder without a unit AI after its work",
         ))?;
@@ -303,7 +303,7 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let built = Self::site_unit(c, reads).map(|s| (s.id, s.life.state));
+        let built = Self::site_unit(c, reads).map(|s| (s.id.get(), s.life.state));
         self.leave(c, builder)?;
         self.state = IDLE;
         let mut left = 0;

@@ -168,7 +168,7 @@ impl World {
             return Ok(());
         }
         let hitter = Hitter {
-            id: unit.id,
+            id: unit.id.get(),
             blast_level: master.blast_level,
             position: unit.position(),
             radius: master.radius,

@@ -357,7 +357,7 @@ impl World {
         let owner = &world.players[player];
         let unit = &owner.objects[idx];
         let actor = Actor {
-            id: unit.id,
+            id: unit.id.get(),
             master: unit.master_in(Some(masters))?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),

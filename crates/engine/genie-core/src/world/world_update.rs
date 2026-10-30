@@ -76,8 +76,8 @@ impl World {
     pub(super) fn sync_moving(&mut self) {
         for p in &self.players {
             for u in p.objects.iter().chain(&p.sleeping) {
-                self.spatial.set_gait(u.id, u.gait());
-                self.spatial.set_annex(u.id, u.annex_of);
+                self.spatial.set_gait(u.id.get(), u.gait());
+                self.spatial.set_annex(u.id.get(), u.annex_of);
             }
         }
         if self.spatial.relations.is_empty() {
@@ -127,11 +127,11 @@ impl World {
             let unit = player.live(i)?;
             let stopped = player.stopped || unit.stopped;
             if stopped && unit.life.is_alive() {
-                self.spatial.freeze(unit.id);
+                self.spatial.freeze(unit.id.get());
                 i += 1;
                 continue;
             }
-            let (id, master) = (unit.id, unit.life.master_id);
+            let (id, master) = (unit.id.get(), unit.life.master_id);
             let _object =
                 tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master).entered();
             match self.step_object((p, i), (dt, turn, true), Unit::update) {
@@ -187,8 +187,8 @@ impl World {
                     &self.lines,
                     asleep.life.master_id,
                 );
-                player.tracker.remove(asleep.id, k);
-                player.tracker.add(asleep.id, k);
+                player.tracker.remove(asleep.id.get(), k);
+                player.tracker.add(asleep.id.get(), k);
                 player.sleeping.push(asleep);
                 Ok(true)
             }
@@ -196,8 +196,8 @@ impl World {
                 // a building's slot 0x70 (FUN_1411cd860), whole: its annexes, its lists' moves
                 // and its new owner's parts
                 let id = player.live(i)?.id;
-                let watched = player.watched.iter().any(|w| w.id == id);
-                if let Err(e) = self.building_changes_hands(p, id, new, watched) {
+                let watched = player.watched.iter().any(|w| w.id == id.get());
+                if let Err(e) = self.building_changes_hands(p, id.get(), new, watched) {
                     crate::trace::player_unsupported(self.ticks, p, &e);
                     let _ = self
                         .players
@@ -258,9 +258,9 @@ impl World {
         for u in &moved {
             let m = u.life.master_id;
             let old = crate::players::tracker::key(self.masters.get(p), &self.lines, m);
-            self.players.player_mut(p)?.tracker.remove(u.id, old);
+            self.players.player_mut(p)?.tracker.remove(u.id.get(), old);
             let k = crate::players::tracker::key(self.masters.get(new), &self.lines, m);
-            self.players.player_mut(new)?.tracker.add(u.id, k);
+            self.players.player_mut(new)?.tracker.add(u.id.get(), k);
         }
         self.players.player_mut(new)?.objects.extend(moved);
         Ok(())

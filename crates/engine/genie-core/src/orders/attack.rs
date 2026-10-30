@@ -67,7 +67,7 @@ impl World {
         let standing = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
         let me_at = *self
             .spatial
-            .get(self.players.live(player, idx)?.id)
+            .get(self.players.live(player, idx)?.id.get())
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let t_at = *self
             .spatial
@@ -142,7 +142,7 @@ impl World {
         let (id, state) = (unit.id, unit.life.state);
         for (kind, p) in posted {
             if let Some(ai) = unit.ai.as_mut() {
-                ai.post(crate::unit_ai::Notify::own(id, kind, p), state)?;
+                ai.post(crate::unit_ai::Notify::own(id.get(), kind, p), state)?;
             }
         }
         attack.target2 = target;

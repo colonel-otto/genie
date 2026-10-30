@@ -108,7 +108,7 @@ fn stops(player: &Player, id: u32, tick: Option<u32>, report: &mut TickReport) -
         .objects
         .iter()
         .filter(|u| u.stopped)
-        .map(|u| u.id)
+        .map(|u| u.id.get())
         .chain(player.freezes.iter().map(|&(_, o, _)| o))
         .collect()
 }
@@ -366,7 +366,7 @@ pub(super) fn hunted_origins(turns: &mut World, start: &Header) {
             let Some(ai) = unit.ai.as_mut().filter(|ai| ai.ai_type == 2) else {
                 continue;
             };
-            let Some(&origin) = places.get(&unit.id) else {
+            let Some(&origin) = places.get(&unit.id.get()) else {
                 continue;
             };
             let leash = masters

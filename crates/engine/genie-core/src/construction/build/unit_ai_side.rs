@@ -33,7 +33,7 @@ impl UnitView<'_, '_> {
     /// another player's ([`crate::unit_ai::world_view::Foreign::find`]). The owner's sleeping
     /// list holds only objects of a type below 30, never a building.
     fn find_in<'v>(&'v self, view: OthersRef<'v>, id: i32) -> Option<(usize, &'v Unit)> {
-        if id == self.unit.id {
+        if id == self.unit.id.get() {
             return Some((self.player, &*self.unit));
         }
         view.find(id)
@@ -63,7 +63,7 @@ impl UnitView<'_, '_> {
         let unit = &*self.unit;
         let own = unit.master(&self.c.w.masters, self.player)?;
         let actor = Actor {
-            id: unit.id,
+            id: unit.id.get(),
             master: own,
             player: self.player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -134,7 +134,7 @@ impl UnitView<'_, '_> {
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
         );
         let named = |id: i32| {
-            let found = if id == unit.id {
+            let found = if id == unit.id.get() {
                 Some((player, unit))
             } else {
                 others.find(id)
@@ -153,7 +153,7 @@ impl UnitView<'_, '_> {
                 ))?;
                 self.c.w.spatial.spot_off(
                     unit.position(),
-                    (unit.id, mover.stats.radius[0]),
+                    (unit.id.get(), mover.stats.radius[0]),
                     mover.stats.restriction_mask,
                     (placed.position, radius),
                     false,

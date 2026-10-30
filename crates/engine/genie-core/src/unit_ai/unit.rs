@@ -38,7 +38,7 @@ impl Unit {
         // sees it ([`crate::vision::visibility::sight_taker`]) when that one has its master
         let mut captured = captured;
         if self.combat
-            && let Some(mask) = c.w.spatial.combat_sight(self.id)?
+            && let Some(mask) = c.w.spatial.combat_sight(self.id.get())?
             && let Some(q) = crate::vision::visibility::sight_taker(
                 mask,
                 c.player,
@@ -132,7 +132,7 @@ impl Unit {
             // a new owner sees the target with its own map
             target: self.ai_target(c, view.player)?,
             under_attack: self.under_attack,
-            id: self.id,
+            id: self.id.get(),
             anim_speed: self.body.anim_speed(),
             action_state: if self.unmodelled_action.is_some() {
                 None
@@ -321,7 +321,7 @@ impl Unit {
         c.w.spatial
             .sight
             .as_ref()
-            .and_then(|v| v.seer(self.id))
+            .and_then(|v| v.seer(self.id.get()))
             .map_or(0, |s| s.capture)
     }
 
@@ -344,7 +344,7 @@ impl Unit {
         // the unit's master: its own (a captured unit's copy), else its owner's
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         )
         .ok();
@@ -431,7 +431,7 @@ impl Unit {
     ) -> Result<Option<crate::unit_ai::Seen>, GenieError> {
         match self.ai.as_ref().map(|ai| ai.current_target) {
             None | Some(-1) => Ok(None),
-            Some(t) if t == self.id => c.w.seen_of(self, c.player, viewer).map(Some),
+            Some(t) if t == self.id.get() => c.w.seen_of(self, c.player, viewer).map(Some),
             Some(t) => c.w.seen(t, viewer),
         }
     }
@@ -514,7 +514,7 @@ impl Unit {
     /// The unit's notifies to itself ([`crate::unit_ai::Inbox`]); an action that walks borrows
     /// its fields beside the unit's body instead.
     pub(crate) const fn inbox(&mut self) -> crate::unit_ai::Inbox<'_> {
-        crate::unit_ai::Inbox::of(&mut self.ai, self.id, self.life.state)
+        crate::unit_ai::Inbox::of(&mut self.ai, self.id.get(), self.life.state)
     }
 
     /// The units in the way the motion step told the unit AI of ([`crate::unit_ai::IN_THE_WAY`],

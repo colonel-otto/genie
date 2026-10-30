@@ -1,5 +1,6 @@
 use super::*;
 use crate::combat::damage::Victim;
+use crate::test_ids::object_id;
 
 fn task(action_type: i16) -> Task {
     Task {
@@ -453,7 +454,7 @@ fn give_master(t: &mut World, id: i16, kind: u8, class: i16, tasks: Vec<Task>) {
 /// on its tile.
 fn put(t: &mut World, p: usize, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
     let mut u = Unit {
-        id,
+        id: object_id(id),
         body: crate::objects::layers::Body::at([x, y, 0.0]),
         ..Unit::default()
     };
@@ -490,7 +491,7 @@ fn rewards(t: &mut World, p: usize, id: i32, leaves: bool) -> Vec<Reward> {
     let i = t.players[p]
         .objects
         .iter()
-        .position(|u| u.id == id)
+        .position(|u| u.id == object_id(id))
         .unwrap();
     t.abilities((id, p, i), p, leaves).unwrap()
 }

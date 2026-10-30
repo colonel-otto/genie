@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::masters::master_type::DOPPELGANGER;
+use crate::test_ids::object_id;
 
 /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
 #[test]
@@ -24,7 +25,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         .iter()
         .map(|&(id, master, x, y)| {
             let mut u = crate::objects::unit::Unit {
-                id,
+                id: object_id(id),
                 body: crate::objects::layers::Body::at([x, y, 0.0]),
                 ..crate::objects::unit::Unit::default()
             };
@@ -79,7 +80,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
     ));
     for u in &objects {
         t.spatial.insert(
-            u.id,
+            u.id.get(),
             Placed {
                 position: u.position(),
                 radius: [0.2, 0.2],
@@ -727,7 +728,7 @@ fn level(points: &[Vec3], waypoint: i32, flags: u32) -> PathData {
 /// (type 70, category 1) in group 1 at the origin along `paths` (walked first).
 fn type_world(paths: Vec<PathData>) -> World {
     let mut u = crate::objects::unit::Unit {
-        id: 7,
+        id: object_id(7),
         ..crate::objects::unit::Unit::default()
     };
     u.life.master_id = 4;

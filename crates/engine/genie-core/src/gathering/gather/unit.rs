@@ -179,7 +179,7 @@ impl Unit {
         use crate::gathering::hunt::Dropped;
         let (position, radius) =
             c.w.spatial
-                .get_known(self.id)?
+                .get_known(self.id.get())?
                 .map(|p| (p.position, p.radius))
                 .ok_or(GenieError::unsupported("a gatherer without a place"))?;
         let site = self.gather_site(c, gather.carry_to, (position, radius))?;
@@ -215,7 +215,7 @@ impl Unit {
         };
         let master = self.master(&c.w.masters, c.player)?;
         let actor = Actor {
-            id: self.id,
+            id: self.id.get(),
             master,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),

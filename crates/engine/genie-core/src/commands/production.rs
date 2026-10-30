@@ -205,7 +205,7 @@ impl World {
                 60
             };
             let n = usize::from(r.count as u16).min(limit);
-            for id in buildings.iter().take(n).flatten().map(ObjectId::get) {
+            for id in buildings.iter().take(n).flatten().map(|id| id.get()) {
                 if self.object(id).is_none() {
                     continue;
                 }

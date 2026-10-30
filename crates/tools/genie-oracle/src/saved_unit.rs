@@ -7,6 +7,7 @@ use crate::{
     production, saved_actions, saved_sprite, task_at, unit_ai,
 };
 use genie_core::GenieError;
+use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
 use genie_core::unit_ai::{ActionKind, UnitAi};
@@ -23,9 +24,11 @@ pub(super) fn unit(
     civ: u8,
     masters: Option<&MasterTable>,
 ) -> Unit {
-    let Some(s) = object.static_part() else {
+    let saved = object.static_part();
+    let named = saved.and_then(|s| ObjectId::try_from(s.id).ok());
+    let (Some(s), Some(id)) = (saved, named) else {
         return Unit {
-            id: -1,
+            id: ObjectId::UNSAVED,
             unmodelled_action: Some(GenieError::unsupported("an object without a static part")),
             ..Unit::default()
         };
@@ -39,7 +42,7 @@ pub(super) fn unit(
         Err(e) => ((None, TownBell::default()), Err(e)),
     };
     let mut unit = Unit {
-        id: s.id,
+        id,
         life: lifecycle(object, s, objects, civ, masters),
         ai,
         construction: construction(object, s, objects),

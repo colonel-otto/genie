@@ -19,7 +19,7 @@ impl UnitView<'_, '_> {
         Ok(WorldPicker {
             attacker: &self.attacker,
             seeker,
-            me: self.unit.id,
+            me: self.unit.id.get(),
             player: self.player,
             others: owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
@@ -120,7 +120,7 @@ impl UnitView<'_, '_> {
             .spatial
             .sight
             .as_ref()
-            .and_then(|v| v.seer(u.id))
+            .and_then(|v| v.seer(u.id.get()))
             .map_or(0, |s| s.capture);
         let me = u.attacker_of(
             ai.ai_type,
@@ -157,7 +157,7 @@ impl UnitView<'_, '_> {
         next: i16,
     ) -> Result<(), GenieError> {
         let by = Releaser {
-            id: self.unit.id,
+            id: self.unit.id.get(),
             class: own.class,
             player: self.player,
         };

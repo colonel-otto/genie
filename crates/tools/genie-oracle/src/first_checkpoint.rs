@@ -35,7 +35,7 @@ pub(super) fn live<'a>(
 /// An object of a player's live list: not the stand-in for a saved object without a static part
 /// ([`unit`]). A missile's id is below 0 (the world's reusable ids, `next_reusable_object_id`).
 pub(super) const fn listed(u: &Unit) -> bool {
-    u.id >= 0 || u.life.master_id >= 0
+    u.id.get() >= 0 || u.life.master_id >= 0
 }
 
 /// An object saved alive without hit points: its first update kills it, and it leaves the live

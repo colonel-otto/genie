@@ -311,7 +311,7 @@ impl World {
     /// the live slot [`World::place`] finds.
     pub(crate) fn live_slot(&self, (p, i, id): (usize, usize, i32)) -> Option<(usize, usize)> {
         let held = self.players.get(p).and_then(|player| player.objects.get(i));
-        if held.is_some_and(|u| u.id == id) {
+        if held.is_some_and(|u| u.id.get() == id) {
             return Some((p, i));
         }
         match self.place(id)? {

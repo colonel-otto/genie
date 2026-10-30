@@ -97,7 +97,7 @@ impl Unit {
         }
         let (p, id) = (c.player, self.id);
         c.lend(self, |w| {
-            let i = w.players[p].objects.position_of(id).ok_or_else(|| {
+            let i = w.players[p].objects.position_of(id.get()).ok_or_else(|| {
                 GenieError::unreachable("a lent gate left its list").with("object", id)
             })?;
             w.toggle_gate(p, i)
@@ -111,8 +111,11 @@ impl Unit {
         spatial: &mut Spatial,
         others: OthersRef<'_>,
     ) -> Result<(usize, usize), GenieError> {
-        let (units, allied) =
-            gate_units(spatial, self.id, &annexes_of(self.id, others.own_iter()))?;
+        let (units, allied) = gate_units(
+            spatial,
+            self.id.get(),
+            &annexes_of(self.id.get(), others.own_iter()),
+        )?;
         Ok((units.len(), allied))
     }
 
@@ -194,7 +197,7 @@ impl Unit {
             return Ok(());
         }
         let (p, id) = (c.player, self.id);
-        c.lend(self, |w| w.set_state(p, id, 2))
+        c.lend(self, |w| w.set_state(p, id.get(), 2))
     }
 
     /// `TRIBE_Building_Object::update`'s whole seconds of a building in state 2 (`0x1411c9000`,
@@ -214,7 +217,7 @@ impl Unit {
         }
         let Ok(master) = object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         ) else {
             return Ok(());
@@ -271,7 +274,7 @@ impl Unit {
             };
             let m = object_master(
                 u.own_master.as_deref(),
-                (u.id, u.life.master_id),
+                (u.id.get(), u.life.master_id),
                 c.w.masters.get(c.player),
             )?;
             // The villager's class (4), which a building's repair by its garrison counts.
@@ -381,7 +384,7 @@ impl Unit {
         let _ = crate::combat::damage::blast(
             &mut own,
             self.position(),
-            Some(self.id),
+            Some(self.id.get()),
             None,
             &mut targets,
             DEATH_BLAST_FACTOR,
@@ -404,7 +407,7 @@ impl Unit {
     pub(crate) fn count_down_human_order(&mut self, dt: u32, spatial: &mut Spatial) {
         if self.last_human_order <= crate::unit_ai::HUMAN_ORDER_CAP {
             self.last_human_order = self.last_human_order.saturating_sub(dt);
-            spatial.set_human_order(self.id, self.last_human_order);
+            spatial.set_human_order(self.id.get(), self.last_human_order);
         }
     }
 }

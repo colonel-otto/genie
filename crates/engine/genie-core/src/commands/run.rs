@@ -24,11 +24,11 @@ impl World {
                 .players
                 .iter_mut()
                 .flat_map(|p| p.objects.iter_mut())
-                .find(|o| o.id == id)
+                .find(|o| o.id.get() == id)
                 .filter(|o| o.ai.is_some());
             if let Some(u) = unit {
                 u.last_human_order = self.world_time;
-                self.spatial.set_gait(u.id, u.gait());
+                self.spatial.set_gait(u.id.get(), u.gait());
             }
         }
     }

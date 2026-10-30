@@ -244,13 +244,13 @@ impl World {
                 self.streams.get(crate::math::rng::Stream::Sprite),
             )?;
             return Ok(Some(crate::unit_ai::Notify::own(
-                id,
+                id.get(),
                 crate::unit_ai::ACTION_FAILED,
                 [ActionKind::Enter.value(), 0, 0],
             )));
         }
         let (tp, t) = self.object(target).ok_or_else(|| object_gone(target))?;
-        if !self.has_room(tp, t, Some(id))? {
+        if !self.has_room(tp, t, Some(id.get()))? {
             return Err(GenieError::unsupported(
                 "an Enter into a building without room (state 11)",
             ));
@@ -297,7 +297,7 @@ impl World {
         let id = self.players[player].objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
         let tm = t.master(&self.masters, tp)?.clone();
-        let room = self.has_room(tp, t, Some(id))?;
+        let room = self.has_room(tp, t, Some(id.get()))?;
         let t = placed_object(&self.players, self.place(target))?;
         enter_view(
             &mut self.spatial,
@@ -357,7 +357,7 @@ impl World {
         let id = self.players[player].objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
         let master = t.master(&self.masters, tp)?.clone();
-        let room = self.has_room(tp, t, Some(id))?;
+        let room = self.has_room(tp, t, Some(id.get()))?;
         let target = placed_object(&self.players, self.place(target))?;
         Meeting {
             spatial: &mut self.spatial,

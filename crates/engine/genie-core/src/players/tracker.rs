@@ -322,7 +322,7 @@ impl crate::world::World {
             let player = self.players.player(p)?;
             for u in player.objects.iter().chain(&player.sleeping) {
                 let k = self.tracker_key(p, u.life.master_id);
-                tracker.add(u.id, k);
+                tracker.add(u.id.get(), k);
                 for e in u.production.iter().flat_map(|q| q.queue.entries()) {
                     if 0 < e.master && 0 < e.count {
                         let class = self.tracker_key(p, e.master).class;
@@ -337,7 +337,7 @@ impl crate::world::World {
                     && u.construction
                         .is_some_and(|c| f32::from(c.build_time) <= c.progress)
                 {
-                    tracker.complete(u.id, k);
+                    tracker.complete(u.id.get(), k);
                 }
             }
             self.players.player_mut(p)?.tracker = tracker;
@@ -434,6 +434,7 @@ mod tests {
     use super::*;
     use crate::objects::lines::UnitLine;
     use crate::objects::masters::{BuildingMaster, Master};
+    use crate::test_ids::object_id;
 
     fn building(id: i16, class: i16, stack: i16, head: i16, annex: i16) -> Master {
         Master {
@@ -656,7 +657,7 @@ mod tests {
         use crate::world::{Player, World};
         let unit = |id: i32, master: i16, progress: Option<f32>| {
             let mut u = Unit {
-                id,
+                id: object_id(id),
                 construction: progress.map(|progress| crate::construction::build::Construction {
                     progress,
                     desolid: false,

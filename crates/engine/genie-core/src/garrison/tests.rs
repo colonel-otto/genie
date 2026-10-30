@@ -97,7 +97,7 @@ fn garrison_masters() -> Masters {
 
 pub(crate) fn unit(id: i32, master: i16, hp: f32) -> Unit {
     let mut u = Unit {
-        id,
+        id: object_id(id),
         pasture: -1,
         my_pasture: -1,
         ..Unit::default()
@@ -316,7 +316,7 @@ fn villager(t: &World) -> usize {
     t.players[1]
         .objects
         .iter()
-        .position(|u| u.id == 1000)
+        .position(|u| u.id == object_id(1000))
         .expect("the villager")
 }
 
@@ -357,7 +357,7 @@ fn enter_update(t: &mut World, dt: u32) -> Result<HeadCode, GenieError> {
     let v = villager(t);
     crate::world::tests::in_update(t, (1, v), dt, |u, c| {
         let me = crate::movement::Me {
-            id: u.id,
+            id: u.id.get(),
             group: u.group.id,
             action_state: u.top_action().map_or(0, |a| a.state),
         };
@@ -2296,7 +2296,7 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     let idx = t.players[1]
         .objects
         .iter()
-        .position(|u| u.id == 200)
+        .position(|u| u.id == object_id(200))
         .unwrap();
     t.transport_order(1, idx, [17.5, 10.5, 0.0]).unwrap();
     let tr = t
@@ -2341,7 +2341,7 @@ fn transport_task_world() -> (World, usize) {
     let idx = t.players[1]
         .objects
         .iter()
-        .position(|u| u.id == 200)
+        .position(|u| u.id == object_id(200))
         .unwrap();
     (t, idx)
 }
@@ -2483,7 +2483,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
     let idx = t.players[1]
         .objects
         .iter()
-        .position(|u| u.id == 200)
+        .position(|u| u.id == object_id(200))
         .unwrap();
     t.transport_unload(1, idx).unwrap();
     let v = t.object(1000).unwrap().1;
@@ -2547,7 +2547,7 @@ fn a_transport_without_a_drop_location_sails_on_to_a_new_point() {
     let idx = t.players[1]
         .objects
         .iter()
-        .position(|u| u.id == 200)
+        .position(|u| u.id == object_id(200))
         .unwrap();
     let mut action = t.streams.get(crate::math::rng::Stream::Action).clone();
     t.transport_unload(1, idx).unwrap();
@@ -2641,7 +2641,7 @@ fn a_unit_inside_an_ally_s_transport_unloaded_goes_ashore() {
         let i = t.players[1]
             .objects
             .iter()
-            .position(|u| u.id == 200)
+            .position(|u| u.id == object_id(200))
             .unwrap();
         let ship = t.players[1].objects.remove(i).unwrap();
         t.players[2].objects.push(ship);
@@ -2722,7 +2722,7 @@ fn a_villager_enters_an_allys_ship_with_its_owners_masters() {
     let k = t.players[1]
         .objects
         .iter()
-        .position(|u| u.id == 200)
+        .position(|u| u.id == object_id(200))
         .unwrap();
     let ship = t.players[1].objects.remove(k).unwrap();
     t.players[2].objects.push(ship);
@@ -2744,7 +2744,7 @@ fn a_villager_enters_an_allys_ship_with_its_owners_masters() {
     let k = t.players[1]
         .objects
         .iter()
-        .position(|u| u.id == 200)
+        .position(|u| u.id == object_id(200))
         .unwrap();
     let ship = t.players[1].objects.remove(k).unwrap();
     t.players[3].objects.push(ship);
@@ -3007,7 +3007,7 @@ fn a_transport_unloads_inside_its_own_update() {
     let i = t.players[1].objects.position_of(200).unwrap();
     let seen = crate::world::tests::in_update(&mut t, (1, i), 100, |unit, c| {
         let me = crate::movement::Me {
-            id: unit.id,
+            id: unit.id.get(),
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -3308,7 +3308,7 @@ fn the_sub_action_list_update_of_an_empty_list_is_1_and_of_an_arrived_move_to_to
     let mut update = |list: &mut Option<MoveToAction>| {
         crate::world::tests::in_update(&mut t, (1, v), 0, |u, c| {
             let me = crate::movement::Me {
-                id: u.id,
+                id: u.id.get(),
                 group: u.group.id,
                 action_state: 0,
             };

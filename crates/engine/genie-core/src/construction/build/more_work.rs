@@ -80,13 +80,13 @@ impl Unit {
                 gather_group: m.gather_group,
             })
         };
-        let me = candidate(me_id, player, self, self.position())?;
+        let me = candidate(me_id.get(), player, self, self.position())?;
         let spatial: &Spatial = &c.w.spatial;
         let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
             spatial
                 .objects_on(x, y)
                 .map(|(id, p)| {
-                    if id == me_id {
+                    if id == me_id.get() {
                         return Ok(me);
                     }
                     let (owner, u) = others.find(id).ok_or(GenieError::unsupported(

@@ -3,6 +3,7 @@ use crate::fixtures::{
 };
 use crate::masters::MasterTable;
 use crate::setup::{slice, wonder_time};
+use crate::test_ids::object_id;
 use genie_save::generated::world::{Action, Object, RgeAction, TribeActionWonder};
 
 /// A wonder whose action is in state `state` with the timer `timer`.
@@ -78,10 +79,14 @@ fn the_slice_takes_the_worlds_and_the_players_fields() {
     save.world.player_teams = vec![0, 2];
     let turns = slice(&save, None);
     assert_eq!(
-        (turns.world_time, turns.next_object_id, turns.local_player),
+        (
+            turns.world_time,
+            turns.next_object_id.get(),
+            turns.local_player
+        ),
         (1500, 300, 1)
     );
-    assert_eq!(turns.recycling.next_id, -5);
+    assert_eq!(turns.recycling.next_id, object_id(-5));
     assert_eq!(turns.teams[..2], [0, 2]);
     let p = &turns.players[1];
     assert_eq!((p.civ, p.kind), (3, 1));
@@ -92,12 +97,15 @@ fn the_slice_takes_the_worlds_and_the_players_fields() {
     assert!(p.dropped && !p.resigned);
     assert_eq!(p.victory_times.ruins.to_bits(), 12.5_f32.to_bits());
     assert_eq!(p.victory_times.wonder.to_bits(), (-1.0_f32).to_bits());
-    assert_eq!(p.objects.iter().map(|u| u.id).collect::<Vec<_>>(), [7]);
+    assert_eq!(
+        p.objects.iter().map(|u| u.id.get()).collect::<Vec<_>>(),
+        [7]
+    );
     assert_eq!(
         turns.players[0]
             .objects
             .iter()
-            .map(|u| u.id)
+            .map(|u| u.id.get())
             .collect::<Vec<_>>(),
         [1]
     );

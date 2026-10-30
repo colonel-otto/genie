@@ -5,6 +5,7 @@ use crate::movement::ASIDE;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
+use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
 use crate::world::Player;
@@ -36,7 +37,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = [x, y, 0.0];
     let mut u = Unit {
-        id,
+        id: object_id(id),
         ai: Some(UnitAi {
             current_order: None,
             current_action: None,

@@ -5,6 +5,7 @@ use crate::objects::layers::{Animated, Body};
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
+use crate::test_ids::object_id;
 use crate::world::others::OthersRef;
 use crate::world::tests::{forage_world, in_update};
 
@@ -422,7 +423,7 @@ fn a_unit_reads_its_own_master_before_its_player_s() {
     };
     let every = vec![Masters::default(), Masters::new([shared])];
     let mut u = Unit {
-        id: 7,
+        id: object_id(7),
         life: Lifecycle {
             master_id: 4,
             ..Lifecycle::default()

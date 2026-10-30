@@ -362,6 +362,7 @@ mod tests {
     use crate::movement::move_to::MoveTo;
     use crate::objects::layers::Body;
     use crate::objects::lifecycle::Lifecycle;
+    use crate::test_ids::object_id;
     use crate::unit_ai::UnitAi;
     use crate::world::{Player, World};
 
@@ -408,7 +409,7 @@ mod tests {
     /// and movement state of top speed `speed`; the Action stream seeded with `seed`.
     fn sky_world(fly: Fly, speed: f32, seed: u32) -> World {
         let mut bird = Unit {
-            id: 9925,
+            id: object_id(9925),
             body: Body::new(AT, None, Some(wings(speed))),
             life: Lifecycle {
                 state: 2,

@@ -358,10 +358,11 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::object_id;
 
     fn unit(id: i32) -> Unit {
         Unit {
-            id,
+            id: object_id(id),
             ..Unit::default()
         }
     }
@@ -393,27 +394,27 @@ mod tests {
             left: None,
         };
         let v = OthersRef::new(1, &own, foreign);
-        assert_eq!(v.own(10).map(|u| u.id), Some(10));
+        assert_eq!(v.own(10).map(|u| u.id.get()), Some(10));
         assert!(v.own(1).is_none(), "another player's is not the owner's");
         assert_eq!(v.find(12).map(|(q, u)| (q, u.life.hp)), Some((1, 5.0)));
         assert_eq!(v.foreign(12).map(|(q, u)| (q, u.life.hp)), Some((2, 7.0)));
-        assert_eq!(v.find(2).map(|(q, u)| (q, u.id)), Some((0, 2)));
+        assert_eq!(v.find(2).map(|(q, u)| (q, u.id.get())), Some((0, 2)));
         assert_eq!(v.find(20).map(|(q, _)| q), Some(2));
-        assert_eq!(v.get(1).map(|u| u.id), Some(1));
+        assert_eq!(v.get(1).map(|u| u.id.get()), Some(1));
         assert_eq!(v.players().player(2).map(|p| p.objects.len()), Some(2));
         assert!(
             v.players().player(1).is_none(),
             "the owner's data is the update's own"
         );
-        let foreign: Vec<(usize, i32)> = v.foreign_iter().map(|(q, u)| (q, u.id)).collect();
+        let foreign: Vec<(usize, i32)> = v.foreign_iter().map(|(q, u)| (q, u.id.get())).collect();
         assert_eq!(foreign, [(0, 1), (0, 2), (2, 20), (2, 12)]);
-        let every: Vec<i32> = v.every().map(|u| u.id).collect();
+        let every: Vec<i32> = v.every().map(|u| u.id.get()).collect();
         assert_eq!(every, [10, 12, 1, 2, 20, 12]);
         assert!(
             v.get(11).is_none(),
             "the updating object is out of its list"
         );
-        assert!(v.find(TAKEN_OUT).is_none(), "nor is its stand-in");
+        assert!(v.find(TAKEN_OUT.get()).is_none(), "nor is its stand-in");
     }
 
     #[test]
@@ -421,7 +422,7 @@ mod tests {
         let (mut own, mut before, mut after) = world();
         let mut asleep = ObjectList::from(vec![unit(13)]);
         let mut others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
-        let ids: Vec<i32> = others.view().own_iter().map(|u| u.id).collect();
+        let ids: Vec<i32> = others.view().own_iter().map(|u| u.id.get()).collect();
         assert_eq!(ids, [10, 12]);
         for (id, owner) in [(10, 1), (12, 1), (13, 1), (2, 0), (20, 2)] {
             let (q, u) = others.get_mut(id).expect("any list's object");
@@ -446,13 +447,17 @@ mod tests {
         let (mut own, mut before, mut after) = world();
         let mut asleep = ObjectList::from(vec![unit(13)]);
         let others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
-        let at = |id| others.locate(id).map(|(q, u, sleeps)| (q, u.id, sleeps));
+        let at = |id| {
+            others
+                .locate(id)
+                .map(|(q, u, sleeps)| (q, u.id.get(), sleeps))
+        };
         assert_eq!(at(12), Some((1, 12, false)), "the owner's before another's");
         assert_eq!(at(13), Some((1, 13, true)));
         assert_eq!(at(2), Some((0, 2, true)));
         assert_eq!(at(20), Some((2, 20, false)));
         assert_eq!(at(11), None, "the updating object is out");
-        assert_eq!(at(TAKEN_OUT), None);
+        assert_eq!(at(TAKEN_OUT.get()), None);
     }
 
     /// A woken object (`FUN_14119deb0` with 0) leaves its sleeping list for the end of its
@@ -481,10 +486,10 @@ mod tests {
             others.view().own(13).map(|u| u.life.goto_sleep),
             Some(false)
         );
-        let ids = |l: &ObjectList| l.iter().map(|u| u.id).collect::<Vec<_>>();
+        let ids = |l: &ObjectList| l.iter().map(|u| u.id.get()).collect::<Vec<_>>();
         assert_eq!(
             (ids(&own), ids(&asleep)),
-            (vec![10, TAKEN_OUT, 12, 13], vec![])
+            (vec![10, TAKEN_OUT.get(), 12, 13], vec![])
         );
         assert_eq!(
             (ids(&before[0].objects), ids(&before[0].sleeping)),
@@ -505,7 +510,7 @@ mod tests {
             left: None,
         };
         let v = OthersRef::new(1, &own, foreign).changed_hands(2, &after[0].objects);
-        assert_eq!(v.own(20).map(|u| u.id), Some(20));
+        assert_eq!(v.own(20).map(|u| u.id.get()), Some(20));
         assert_eq!(v.find(12).map(|(q, u)| (q, u.life.hp)), Some((2, 7.0)));
         assert_eq!(
             v.find(10).map(|(q, _)| q),
@@ -514,7 +519,7 @@ mod tests {
         );
         assert_eq!(v.own_iter().count(), 2);
         assert!(
-            v.find(TAKEN_OUT).is_none(),
+            v.find(TAKEN_OUT.get()).is_none(),
             "the left list's stand-in is no object"
         );
     }

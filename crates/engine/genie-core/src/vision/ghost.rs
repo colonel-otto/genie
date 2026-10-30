@@ -16,6 +16,7 @@
 
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -264,7 +265,7 @@ impl World {
         for (q, player) in self.players.iter().enumerate() {
             for (sleeping, list) in [(false, &player.objects), (true, &player.sleeping)] {
                 for (k, u) in list.iter().enumerate() {
-                    let _ = first.entry(u.id).or_insert((q, sleeping, k));
+                    let _ = first.entry(u.id.get()).or_insert((q, sleeping, k));
                 }
             }
         }
@@ -276,7 +277,7 @@ impl World {
                 .objects
                 .iter()
                 .chain(&self.players.player(p)?.sleeping)
-                .map(|u| u.id)
+                .map(|u| u.id.get())
                 .collect();
             for id in ids {
                 let Some(&(q, sleeping, k)) = first.get(&id) else {
@@ -315,7 +316,7 @@ impl World {
                     u.master(&self.masters, p)
                         .is_ok_and(|m| m.class != class::GATE)
                 })
-                .map(|u| u.id)
+                .map(|u| u.id.get())
                 .collect();
                 for id in annexes {
                     self.unwatch(p, id)?;
@@ -400,14 +401,14 @@ impl World {
             Some(id) => id,
             None if recyclable => {
                 let id = self.recycling.next_id;
-                self.recycling.next_id -= 1;
+                self.recycling.next_id = id.predecessor();
                 id
             }
             None => self.take_object_id(viewer, GHOST_MASTER),
         };
         let gone = 6 < original.state;
         let mut ghost = Ghost {
-            id,
+            id: id.get(),
             original: (!gone).then_some(original.id),
             original_id: if gone { -1 } else { original.id },
             original_master: Some(original.master),
@@ -420,7 +421,7 @@ impl World {
             seen: false,
             state: 2,
         };
-        self.spatial.insert_ghost(id, at);
+        self.spatial.insert_ghost(id.get(), at);
         self.check_twins(viewer, &mut ghost)?;
         self.players.player_mut(viewer)?.ghosts.push(ghost);
         Ok(())
@@ -491,7 +492,7 @@ impl World {
                 }
                 self.spatial.remove_ghost(g.id, g.position);
                 if self.master(p, GHOST_MASTER)?.recyclable {
-                    self.recycling.ghosts.push(g.id);
+                    self.recycling.ghosts.push(ObjectId::try_from(g.id)?);
                 }
                 continue;
             }
@@ -674,6 +675,7 @@ mod tests {
     use crate::objects::masters::master_type::DOPPELGANGER;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::object_id;
     use crate::vision::visibility::{Seer, Visibility};
     use crate::world::Player;
 
@@ -713,7 +715,7 @@ mod tests {
 
     fn object(id: i32, master: i16, state: u8, position: [f32; 3]) -> Unit {
         let mut u = Unit {
-            id,
+            id: object_id(id),
             body: crate::objects::layers::Body::at(position),
             ..Unit::default()
         };
@@ -750,8 +752,8 @@ mod tests {
             },
         );
         t.spatial.sight = Some(sight);
-        t.recycling.next_id = -10;
-        t.next_object_id = 100;
+        t.recycling.next_id = object_id(-10);
+        t.next_object_id = object_id(100);
         t
     }
 
@@ -797,7 +799,7 @@ mod tests {
         let mut t = world(true);
         t.players[2].computer = true;
         set_tile(&mut t, 1, 2, 0x0000_000f_0000_0002);
-        t.recycling.ghosts = vec![-3];
+        t.recycling.ghosts = vec![object_id(-3)];
         t.players[0].objects[0].life.state = 3;
         assert_eq!(t.ghosts_at_death(0, 5), Ok(()));
         assert!(t.players[0].ghosts.is_empty() && t.players[1].ghosts.is_empty());
@@ -826,7 +828,7 @@ mod tests {
         assert!(t.players[2].ghosts.is_empty() && t.players[0].watched.is_empty());
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0004_0000_0000);
-        t.players[0].objects[0].id = -5;
+        t.players[0].objects[0].id = object_id(-5);
         assert_eq!(t.ghosts_at_death(0, -5), Ok(()));
         assert!(t.players[2].ghosts.is_empty() && t.players[0].watched.is_empty());
     }
@@ -841,23 +843,23 @@ mod tests {
             master: HOUSE,
         };
         let mut t = world(true);
-        t.recycling.ghosts = vec![-4, -6];
+        t.recycling.ghosts = vec![object_id(-4), object_id(-6)];
         t.make_ghost(2, [2.5, 1.5, 0.0], original).unwrap();
         t.make_ghost(2, [2.5, 1.5, 0.0], original).unwrap();
         t.make_ghost(2, [2.5, 1.5, 0.0], original).unwrap();
         let ids: Vec<i32> = t.players[2].ghosts.iter().map(|g| g.id).collect();
         assert_eq!(ids, [-6, -4, -10]);
-        assert_eq!(t.recycling.next_id, -11);
+        assert_eq!(t.recycling.next_id, object_id(-11));
         // each new one destroyed the viewer's twin before it
         let states: Vec<u8> = t.players[2].ghosts.iter().map(|g| g.state).collect();
         assert_eq!(states, [7, 7, 2]);
         // a building's ghost follows its original's UMV entry
         assert_eq!(t.players[2].ghosts[2].footprint, 1);
         let mut t = world(false);
-        t.recycling.ghosts = vec![-4];
+        t.recycling.ghosts = vec![object_id(-4)];
         t.make_ghost(2, [2.5, 1.5, 0.0], original).unwrap();
         assert_eq!(t.players[2].ghosts[0].id, 100);
-        assert_eq!((t.next_object_id, t.recycling.ghosts.len()), (101, 1));
+        assert_eq!((t.next_object_id.get(), t.recycling.ghosts.len()), (101, 1));
         // an original past state 6 is forgotten, its master kept
         let mut t = world(true);
         let gone = Original {
@@ -949,7 +951,7 @@ mod tests {
         let mut t = world(true);
         t.players[2].ghosts = vec![Ghost { state: 8, ..ghost }];
         t.update_ghosts(2).unwrap();
-        assert_eq!(t.recycling.ghosts, [100]);
+        assert_eq!(t.recycling.ghosts, [object_id(100)]);
     }
 
     /// Player 2's ghost of player 1's house 9 on tile (2, 1), in state 2, of footprint entry

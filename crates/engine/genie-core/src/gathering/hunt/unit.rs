@@ -200,7 +200,7 @@ impl Unit {
         };
         let (me_at, them) = (
             c.w.spatial
-                .get_known(self.id)?
+                .get_known(self.id.get())?
                 .ok_or(GenieError::unsupported("a hunter without a place"))?,
             c.w.spatial
                 .get_known(v.id)?
@@ -341,7 +341,7 @@ impl Unit {
             memory: crate::unit_ai::Memory::default(),
         };
         let me = Me {
-            id: self.id,
+            id: self.id.get(),
             group: self.group.id,
             action_state: self.actions.hunt().expect("the caller's hunt").state,
         };
@@ -366,7 +366,7 @@ impl Unit {
         };
         let farm = |id: i32| others.get(id).map(|u| (u.workers, u.pasture));
         let result = c.w.spatial.search(SearchQuery {
-            searcher: self.id,
+            searcher: self.id.get(),
             player: c.player,
             search: &search,
             attack: &mut no_attack,
@@ -444,7 +444,7 @@ impl Unit {
         };
         let (me_at, them) = (
             c.w.spatial
-                .get_known(self.id)?
+                .get_known(self.id.get())?
                 .ok_or(GenieError::unsupported("a hunter without a place"))?,
             c.w.spatial
                 .get_known(found)?

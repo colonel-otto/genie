@@ -157,18 +157,18 @@ impl Unit {
         let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         )?;
         let me_at =
             c.w.spatial
-                .get_known(self.id)?
+                .get_known(self.id.get())?
                 .ok_or(GenieError::unsupported("a hunter without a place"))?;
         let (me_position, me_radius) = (me_at.position, me_at.radius);
         let site = match c.w.spatial.get_known(hunt.carry_to)? {
             Some(s) => {
                 let actor = Actor {
-                    id: self.id,
+                    id: self.id.get(),
                     master,
                     player: c.player,
                     held: (self.life.attribute_type, self.life.amount),
@@ -251,7 +251,7 @@ impl Unit {
         let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id, self.life.master_id),
+            (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player),
         )?;
         let who = crate::gathering::hunt::PointWalker {

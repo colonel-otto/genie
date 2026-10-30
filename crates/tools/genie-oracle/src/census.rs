@@ -362,8 +362,8 @@ pub fn next_id_divergence(
             .world
             .base_world
             .next_object_id;
-        if turns.next_object_id != game {
-            return Ok(Some((update, turns.next_object_id, game)));
+        if turns.next_object_id.get() != game {
+            return Ok(Some((update, turns.next_object_id.get(), game)));
         }
     }
     Ok(None)

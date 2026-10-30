@@ -51,10 +51,10 @@ impl World {
                 .construction
                 .is_some_and(|c| f32::from(c.build_time) <= c.progress);
         self.players[0].objects.push(unit);
-        self.track_remove(q, id, master_id)?;
-        self.track_add(0, id, master_id)?;
+        self.track_remove(q, id.get(), master_id)?;
+        self.track_add(0, id.get(), master_id)?;
         if built {
-            self.track_complete(0, id, master_id)?;
+            self.track_complete(0, id.get(), master_id)?;
         }
         handed
     }
@@ -402,7 +402,7 @@ pub(crate) fn change_hands(
     spatial: &mut Spatial,
     world_time: u32,
 ) -> Result<bool, GenieError> {
-    spatial.records_owner(u.id, new)?;
+    spatial.records_owner(u.id.get(), new)?;
     let Some(to) = player_master(masters, new, u.life.master_id) else {
         return Ok(false);
     };
@@ -432,7 +432,7 @@ pub(crate) fn change_hands(
     let los = own.line_of_sight;
     u.own_master = Some(own);
     let sees = u.life.state == 2 && u.life.inside.is_none();
-    spatial.change_owner(u.id, new, los, sees)?;
+    spatial.change_owner(u.id.get(), new, los, sees)?;
     if let Some(a) = u.actions.artifact_mut() {
         a.gaia = new == 0;
     }

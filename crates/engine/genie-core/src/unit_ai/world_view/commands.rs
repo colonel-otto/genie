@@ -30,7 +30,7 @@ impl UnitView<'_, '_> {
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
         );
         let find = |id: i32| {
-            if id == unit.id {
+            if id == unit.id.get() {
                 return Some((player, unit));
             }
             others.find(id)
@@ -66,7 +66,7 @@ impl UnitView<'_, '_> {
             ));
         };
         let actor = Actor {
-            id: unit.id,
+            id: unit.id.get(),
             master: switch.unwrap_or(own),
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -128,7 +128,7 @@ impl UnitView<'_, '_> {
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
         );
         let find = |id: i32| {
-            if id == unit.id {
+            if id == unit.id.get() {
                 return Some((player, unit));
             }
             others.find(id)
@@ -154,7 +154,7 @@ impl UnitView<'_, '_> {
             ));
         };
         let actor = Actor {
-            id: unit.id,
+            id: unit.id.get(),
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -227,7 +227,7 @@ impl UnitView<'_, '_> {
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let zones = self.c.w.zones.of(w, h, &terrain.kinds, values)?;
         let me = Me {
-            id: unit.id,
+            id: unit.id.get(),
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
