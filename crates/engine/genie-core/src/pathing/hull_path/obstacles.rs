@@ -6,6 +6,7 @@ use crate::map::spatial::{Placed, tile_record_id};
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::masters::class;
 use crate::pathing::hull_path::{HALF, Hull, HullPather, Point, Shape};
+use crate::world::slots::CheckedIndex;
 
 impl HullPather<'_> {
     // The hulls.
@@ -14,11 +15,15 @@ impl HullPather<'_> {
     /// into the first it overlaps (its corners outside it, or all four when it only touches),
     /// which then takes in each hull it overlaps in turn; a box inside a hull changes nothing;
     /// else a new hull. Returns the hull's index.
-    pub(super) fn add_shape_to(hulls: &mut Vec<Hull>, min: Point, max: Point) -> usize {
+    pub(super) fn add_shape_to(
+        hulls: &mut Vec<Hull>,
+        min: Point,
+        max: Point,
+    ) -> Result<usize, GenieError> {
         let mut index = 0;
         let mut hull: Option<usize> = None;
         while index < hulls.len() {
-            let (overlap, outside) = hulls[index].shape_overlap(min, max);
+            let (overlap, outside) = hulls.checked(index)?.shape_overlap(min, max);
             let corners = [
                 [min[0], min[1]],
                 [max[0], min[1]],
@@ -27,16 +32,20 @@ impl HullPather<'_> {
             ];
             match overlap {
                 1 => {
-                    hulls[index].merge(&corners);
+                    hulls.checked_mut(index)?.merge(&corners)?;
                     hull = Some(index);
                 }
                 2 => {
-                    let some: Vec<Point> =
-                        (0..4).filter(|&k| outside[k]).map(|k| corners[k]).collect();
-                    hulls[index].merge(&some);
+                    let some: Vec<Point> = corners
+                        .iter()
+                        .zip(outside)
+                        .filter(|&(_, outside)| outside)
+                        .map(|(corner, _)| *corner)
+                        .collect();
+                    hulls.checked_mut(index)?.merge(&some)?;
                     hull = Some(index);
                 }
-                3 => return index,
+                3 => return Ok(index),
                 _ => {
                     index += 1;
                     continue;
@@ -57,14 +66,14 @@ impl HullPather<'_> {
                 max,
                 objects: Vec::new(),
             });
-            return hulls.len() - 1;
+            return Ok(hulls.len() - 1);
         };
         'merging: loop {
             for j in 0..hulls.len() {
                 if j == mine {
                     continue;
                 }
-                let (h, o) = (&hulls[mine], &hulls[j]);
+                let (h, o) = (hulls.checked(mine)?, hulls.checked(j)?);
                 if !(h.min[0] <= o.max[0]
                     && h.min[1] <= o.max[1]
                     && o.min[0] <= h.max[0]
@@ -78,28 +87,36 @@ impl HullPather<'_> {
                     // the other's sides k = 0..n-1 (`cmp edi, esi; jl` at 0x140f8b2c4, esi = n - 1)
                     || (0..n.saturating_sub(1)).any(|k| {
                         let prev = if k == 0 { n - 1 } else { k - 1 };
-                        h.intersection(true, o.points[k], o.points[prev]).is_some()
+                        o.points
+                            .get(k)
+                            .zip(o.points.get(prev))
+                            .is_some_and(|(a, b)| h.intersection(true, *a, *b).is_some())
                     });
                 if !overlaps {
                     continue;
                 }
-                let other = hulls[j].clone();
-                for s in &other.objects {
-                    if !hulls[mine].objects.iter().any(|m| m.id == s.id) {
-                        hulls[mine].objects.push(*s);
-                    }
-                }
-                hulls[mine].merge(&other.points);
-                let last = hulls.len() - 1;
-                hulls.swap(j, last);
-                let _ = hulls.pop();
-                if mine == last {
-                    mine = j;
-                }
+                mine = Self::absorb(hulls, mine, j)?;
                 continue 'merging;
             }
-            return mine;
+            return Ok(mine);
         }
+    }
+
+    /// Hull `j` merges into hull `mine`: its boxes the other lacks and its points join, and its
+    /// slot goes to the last hull. Returns where `mine` now is.
+    fn absorb(hulls: &mut Vec<Hull>, mine: usize, j: usize) -> Result<usize, GenieError> {
+        let other = hulls.checked(j)?.clone();
+        for s in &other.objects {
+            let mine_objects = &mut hulls.checked_mut(mine)?.objects;
+            if !mine_objects.iter().any(|m| m.id == s.id) {
+                mine_objects.push(*s);
+            }
+        }
+        hulls.checked_mut(mine)?.merge(&other.points)?;
+        let last = hulls.len() - 1;
+        hulls.swap(j, last);
+        let _ = hulls.pop();
+        Ok(if mine == last { j } else { mine })
     }
 
     /// `MShortPather::addTileObjects` (`FUN_140f8b460`): the tall objects of tile (`x`, `y`)'s
@@ -127,7 +144,7 @@ impl HullPather<'_> {
             if left_out && !self.include.contains(&id) {
                 continue;
             }
-            Self::add_box(&mut self.hulls, self.radius, id, p, hull);
+            Self::add_box(&mut self.hulls, self.radius, id, p, hull)?;
         }
         Ok(())
     }
@@ -147,23 +164,30 @@ impl HullPather<'_> {
     }
 
     /// One object's box into the hulls ([`HullPather::add_tile_objects`]).
-    pub(super) fn add_box(hulls: &mut Vec<Hull>, r: f32, id: i32, p: &Placed, hull: Option<usize>) {
+    pub(super) fn add_box(
+        hulls: &mut Vec<Hull>,
+        r: f32,
+        id: i32,
+        p: &Placed,
+        hull: Option<usize>,
+    ) -> Result<(), GenieError> {
         let [x, y, _] = p.position;
         let [rx, ry] = p.radius;
         let bounds = [(x - rx) - r, (y - ry) - r, x + rx + r, y + ry + r];
         // `COMISS`/`JA` (0x140f8b772, 0x140f8b7a4): an unordered radius takes the given hull
         let h = match hull {
             Some(h) if at_most_or_unordered(rx, HALF) && at_most_or_unordered(ry, HALF) => h,
-            _ => Self::add_shape_to(hulls, [bounds[0], bounds[1]], [bounds[2], bounds[3]]),
+            _ => Self::add_shape_to(hulls, [bounds[0], bounds[1]], [bounds[2], bounds[3]])?,
         };
-        let objects = &mut hulls[h].objects;
+        let objects = &mut hulls.checked_mut(h)?.objects;
         if !objects.iter().any(|o| o.id == id) {
             objects.push(Shape { bounds, id });
         }
+        Ok(())
     }
 
     /// [`HullPather::add_shape_to`] on the pather's hulls.
-    pub(super) fn add_shape(&mut self, min: Point, max: Point) -> usize {
+    pub(super) fn add_shape(&mut self, min: Point, max: Point) -> Result<usize, GenieError> {
         Self::add_shape_to(&mut self.hulls, min, max)
     }
 
@@ -192,10 +216,11 @@ impl HullPather<'_> {
                     (x + 1) as f32 + r,
                     (y + 1) as f32 + r,
                 ];
-                let k = hull.unwrap_or_else(|| {
-                    self.add_shape([bounds[0], bounds[1]], [bounds[2], bounds[3]])
-                });
-                let objects = &mut self.hulls[k].objects;
+                let k = match hull {
+                    Some(k) => k,
+                    None => self.add_shape([bounds[0], bounds[1]], [bounds[2], bounds[3]])?,
+                };
+                let objects = &mut self.hulls.checked_mut(k)?.objects;
                 if !objects.iter().any(|o| o.id == id) {
                     objects.push(Shape { bounds, id });
                 }
@@ -255,7 +280,7 @@ impl HullPather<'_> {
     pub(super) fn add_run(&mut self, x0: i32, x1: i32, y: i32, r: f32) -> Result<(), GenieError> {
         let min = [x0 as f32 - r, y as f32 - r];
         let max = [x1 as f32 + r, (y + 1) as f32 + r];
-        let hull = self.add_shape(min, max);
+        let hull = self.add_shape(min, max)?;
         for t in x0..x1 {
             self.process_tile(t, y, self.area, Some(hull))?;
         }

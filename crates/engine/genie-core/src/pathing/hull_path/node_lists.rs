@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::spatial::Hit;
 use crate::math::fmath::sqrt;
 use crate::pathing::hull_path::{EPSILON, HullPather, LINE_HITS, Node, Point, Waypoints};
+use crate::world::slots::CheckedIndex;
 
 /// A node `MShortPather::addNode` may refuse ([`HullPather::add_node`]'s arguments).
 #[derive(Clone, Copy, Debug)]
@@ -53,36 +54,39 @@ impl HullPather<'_> {
     // The node lists.
 
     /// `MShortPather::emptyLists` (`FUN_140f8c300`): list `l`'s nodes go.
-    pub(super) fn empty(&mut self, l: usize) {
-        self.nodes[l].next = None;
-        self.closed[l].clear();
+    pub(super) fn empty(&mut self, l: usize) -> Result<(), GenieError> {
+        self.nodes.checked_mut(l)?.next = None;
+        self.closed.checked_mut(l)?.clear();
+        Ok(())
     }
 
     /// `MShortPather::closeAllOpenNodes` (`FUN_140f8c130`): list `l`'s open nodes close, and every
     /// closed node forgets its hull point.
-    pub(super) fn close_all(&mut self, l: usize) {
-        let mut n = self.nodes[l].next;
+    pub(super) fn close_all(&mut self, l: usize) -> Result<(), GenieError> {
+        let mut n = self.nodes.checked(l)?.next;
         while let Some(i) = n {
-            self.closed[l].push(i);
-            n = self.nodes[i].next;
+            self.closed.checked_mut(l)?.push(i);
+            n = self.nodes.checked(i)?.next;
         }
-        self.nodes[l].next = None;
-        for &i in &self.closed[l] {
-            self.nodes[i].hull = -1;
-            self.nodes[i].vertex = -1;
+        self.nodes.checked_mut(l)?.next = None;
+        for &i in self.closed.checked(l)? {
+            self.nodes.checked_mut(i)?.hull = -1;
+            self.nodes.checked_mut(i)?.vertex = -1;
         }
+        Ok(())
     }
 
     /// `MShortPather::moveToClosedList` (`FUN_140f8ce00`).
-    pub(super) fn close(&mut self, l: usize, i: usize) {
-        let (prev, next) = (self.nodes[i].prev, self.nodes[i].next);
+    pub(super) fn close(&mut self, l: usize, i: usize) -> Result<(), GenieError> {
+        let (prev, next) = (self.nodes.checked(i)?.prev, self.nodes.checked(i)?.next);
         if let Some(p) = prev {
-            self.nodes[p].next = next;
+            self.nodes.checked_mut(p)?.next = next;
         }
         if let Some(n) = next {
-            self.nodes[n].prev = prev;
+            self.nodes.checked_mut(n)?.prev = prev;
         }
-        self.closed[l].push(i);
+        self.closed.checked_mut(l)?.push(i);
+        Ok(())
     }
 
     /// `MShortPather::addNode` (`FUN_140f8aa10`): a node at `at` from `parent` (its cost the
@@ -91,7 +95,7 @@ impl HullPather<'_> {
     /// open one of the same hull point (`by_place`: within [`EPSILON`] of the same place) that
     /// costs more, which closes; it is not made when such a node costs no more, nor when a closed
     /// node does (`by_place`: of the closed list but its last).
-    pub(super) fn add_node(&mut self, new: NewNode) -> Option<usize> {
+    pub(super) fn add_node(&mut self, new: NewNode) -> Result<Option<usize>, GenieError> {
         let NewNode {
             list: l,
             open,
@@ -103,7 +107,7 @@ impl HullPather<'_> {
             direction,
             by_place,
         } = new;
-        let (cost, to_goal) = self.node_costs(parent, at, goal);
+        let (cost, to_goal) = self.node_costs(parent, at, goal)?;
         let mut after: Option<usize> = None;
         if open && (by_place || (0 <= hull && 0 <= vertex)) {
             let same = |n: &Node| {
@@ -113,16 +117,16 @@ impl HullPather<'_> {
                     n.hull == hull && n.vertex == vertex
                 }
             };
-            let mut n = self.nodes[l].next;
+            let mut n = self.nodes.checked(l)?.next;
             let mut replaced = false;
             while let Some(i) = n {
-                let node = self.nodes[i];
+                let node = *self.nodes.checked(i)?;
                 if same(&node) {
                     if node.cost <= cost {
-                        return None;
+                        return Ok(None);
                     }
                     // the worse node closes, and the closed list is not searched
-                    self.close(l, i);
+                    self.close(l, i)?;
                     replaced = true;
                     break;
                 }
@@ -132,21 +136,23 @@ impl HullPather<'_> {
                 n = node.next;
             }
             // the place test leaves the closed list's last node out
+            let all = self.closed.checked(l)?;
             let closed = if by_place {
-                &self.closed[l][..self.closed[l].len().saturating_sub(1)]
+                all.head(all.len().saturating_sub(1))?
             } else {
-                &self.closed[l][..]
+                all.as_slice()
             };
             if !replaced
                 && closed.iter().any(|&i| {
-                    let node = &self.nodes[i];
-                    same(node) && node.cost <= cost
+                    self.nodes
+                        .get(i)
+                        .is_some_and(|node| same(node) && node.cost <= cost)
                 })
             {
-                return None;
+                return Ok(None);
             }
         }
-        Some(self.link_node(
+        Ok(Some(self.link_node(
             l,
             open,
             after,
@@ -161,14 +167,14 @@ impl HullPather<'_> {
                 vertex,
                 direction,
             },
-        ))
+        )?))
     }
 
     /// `addNode` for a node nothing can refuse: one straight into the closed list, or an open one
     /// without a hull point and not by place, for which `addNode` searches no list. The game's
     /// callers test its answer for null, which then catches only a failed allocation (the roots
     /// of `FindShortPath` and `pathWithinHull`, `FindShortPath`'s crossing node).
-    pub(super) fn add_unrefused(&mut self, new: UnrefusedNode) -> usize {
+    pub(super) fn add_unrefused(&mut self, new: UnrefusedNode) -> Result<usize, GenieError> {
         let UnrefusedNode {
             list: l,
             open,
@@ -178,7 +184,7 @@ impl HullPather<'_> {
             hull,
             direction,
         } = new;
-        let (cost, to_goal) = self.node_costs(parent, at, goal);
+        let (cost, to_goal) = self.node_costs(parent, at, goal)?;
         self.link_node(
             l,
             open,
@@ -204,16 +210,19 @@ impl HullPather<'_> {
         parent: Option<usize>,
         at: Point,
         goal: Option<Point>,
-    ) -> (f32, f32) {
-        let cost = parent.map_or(0.0, |p| {
-            let q = self.nodes[p];
-            sqrt((q.at[1] - at[1]) * (q.at[1] - at[1]) + (q.at[0] - at[0]) * (q.at[0] - at[0]))
-                + q.cost
-        });
+    ) -> Result<(f32, f32), GenieError> {
+        let cost = match parent {
+            Some(p) => {
+                let q = *self.nodes.checked(p)?;
+                sqrt((q.at[1] - at[1]) * (q.at[1] - at[1]) + (q.at[0] - at[0]) * (q.at[0] - at[0]))
+                    + q.cost
+            }
+            None => 0.0,
+        };
         let to_goal = goal.map_or(0.0, |g| {
             sqrt((at[1] - g[1]) * (at[1] - g[1]) + (at[0] - g[0]) * (at[0] - g[0]))
         });
-        (cost, to_goal)
+        Ok((cost, to_goal))
     }
 
     /// `addNode`'s end: the node into the closed list, or into the open list after `after` or,
@@ -224,32 +233,32 @@ impl HullPather<'_> {
         open: bool,
         after: Option<usize>,
         node: Node,
-    ) -> usize {
+    ) -> Result<usize, GenieError> {
         let (cost, to_goal) = (node.cost, node.to_goal);
         let i = self.nodes.len();
         self.nodes.push(node);
         if !open {
-            self.closed[l].push(i);
-            return i;
+            self.closed.checked_mut(l)?.push(i);
+            return Ok(i);
         }
         let mut s = after.unwrap_or(l);
         if after.is_none() {
-            while let Some(n) = self.nodes[s].next {
-                if self.nodes[n].cost + self.nodes[n].to_goal < to_goal + cost {
+            while let Some(n) = self.nodes.checked(s)?.next {
+                if self.nodes.checked(n)?.cost + self.nodes.checked(n)?.to_goal < to_goal + cost {
                     s = n;
                 } else {
                     break;
                 }
             }
         }
-        let next = self.nodes[s].next;
-        self.nodes[i].next = next;
-        self.nodes[s].next = Some(i);
-        self.nodes[i].prev = Some(s);
+        let next = self.nodes.checked(s)?.next;
+        self.nodes.checked_mut(i)?.next = next;
+        self.nodes.checked_mut(s)?.next = Some(i);
+        self.nodes.checked_mut(i)?.prev = Some(s);
         if let Some(n) = next {
-            self.nodes[n].prev = Some(i);
+            self.nodes.checked_mut(n)?.prev = Some(i);
         }
-        i
+        Ok(i)
     }
 
     // The world's tests.
@@ -335,22 +344,22 @@ impl HullPather<'_> {
     ) -> Result<(), GenieError> {
         let mut cur = Some(end);
         while let Some(c) = cur {
-            let Some(p) = self.nodes[c].parent else {
+            let Some(p) = self.nodes.checked(c)?.parent else {
                 break;
             };
-            let Some(gp) = self.nodes[p].parent else {
+            let Some(gp) = self.nodes.checked(p)?.parent else {
                 break;
             };
-            if self.blocked(self.nodes[c].at, self.nodes[gp].at)? {
+            if self.blocked(self.nodes.checked(c)?.at, self.nodes.checked(gp)?.at)? {
                 cur = Some(p);
             } else {
-                self.nodes[c].parent = Some(gp);
+                self.nodes.checked_mut(c)?.parent = Some(gp);
             }
         }
         let mut n = Some(end);
         while let Some(i) = n {
-            path.insert(0, self.nodes[i].at);
-            n = self.nodes[i].parent;
+            path.insert(0, self.nodes.checked(i)?.at);
+            n = self.nodes.checked(i)?.parent;
         }
         Ok(())
     }

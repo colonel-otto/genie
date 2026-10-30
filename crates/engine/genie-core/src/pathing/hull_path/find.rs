@@ -8,6 +8,7 @@ use crate::pathing::hull_path::rounds::Rounds;
 use crate::pathing::hull_path::{
     HALF, HullPather, HullQuery, NEAR_TARGET, Point, Target, Waypoints,
 };
+use crate::world::slots::CheckedIndex;
 
 impl HullPather<'_> {
     /// `MShortPather::FindShortPath` (`FUN_140f85580`) as slot 0x3e8 and `FUN_140f9e540` call it
@@ -140,7 +141,7 @@ impl HullPather<'_> {
             (ax1 + 6) as f32,
             (ay1 + 6) as f32,
         ])?;
-        self.empty(0);
+        self.empty(0)?;
         let mut rounds = Rounds::new(sqrt(
             (from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]),
         ));
@@ -287,7 +288,7 @@ impl HullPather<'_> {
             }
             return Ok(self.partway(path, from, to, range));
         };
-        if !rounds.found && rounds.within && !self.node_nearer(end, path, to) {
+        if !rounds.found && rounds.within && !self.node_nearer(end, path, to)? {
             return Ok(self.partway(path, from, to, range));
         }
         path.points.clear();
@@ -301,12 +302,12 @@ impl HullPather<'_> {
     /// Whether the node `end` lies nearer the goal than the walk's end, the path's last point (a
     /// path without one is NaN). `COMISS`/`JNC` to the partway end at 0x140f86cb6: an unordered
     /// distance takes the node.
-    fn node_nearer(&self, end: usize, path: &Waypoints, to: Point) -> bool {
+    fn node_nearer(&self, end: usize, path: &Waypoints, to: Point) -> Result<bool, GenieError> {
         let last = *path.points.last().unwrap_or(&[f32::NAN, f32::NAN]);
-        let e = self.nodes[end].at;
+        let e = self.nodes.checked(end)?.at;
         let d_path = (last[1] - to[1]) * (last[1] - to[1]) + (last[0] - to[0]) * (last[0] - to[0]);
         let d_node = (e[1] - to[1]) * (e[1] - to[1]) + (e[0] - to[0]) * (e[0] - to[0]);
-        below_or_unordered(d_node, d_path)
+        Ok(below_or_unordered(d_node, d_path))
     }
 
     /// The found node's path on into the goal's hull: along its entrance, if any, backwards. A
@@ -322,16 +323,16 @@ impl HullPather<'_> {
         if rounds.entrance < 0 {
             return Ok(true);
         }
-        let e = &self.entrances[rounds.entrance as usize].points;
+        let e = &self.entrances.checked(rounds.entrance as usize)?.points;
         for j in (0..e.len().saturating_sub(1)).rev() {
-            path.push(e[j]);
+            path.push(*e.checked(j)?);
         }
         if !rounds.entered_box {
             return Ok(true);
         }
         let k = path.points.len() - 1;
-        let hits = self.hits(path.points[k], path.points[k - 1])?;
-        if hits.len() < 2 && (hits.len() != 1 || hits[0].id == q.target_id) {
+        let hits = self.hits(*path.points.checked(k)?, *path.points.checked(k - 1)?)?;
+        if hits.len() < 2 && (hits.len() != 1 || hits.checked(0)?.id == q.target_id) {
             return Ok(true);
         }
         let _ = path.points.remove(k);

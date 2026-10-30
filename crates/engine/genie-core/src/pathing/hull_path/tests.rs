@@ -41,7 +41,7 @@ fn a_walk_meets_the_nearest_side_it_crosses() {
 #[test]
 fn the_gift_wrap_turns_clockwise_from_the_highest_point() {
     let mut h = square();
-    h.merge(&[[2.0, 0.5]]);
+    h.merge(&[[2.0, 0.5]]).unwrap();
     assert_eq!(
         h.points,
         [[1.0, 1.0], [2.0, 0.5], [1.0, 0.0], [0.0, 0.0], [0.0, 1.0]]
@@ -49,7 +49,7 @@ fn the_gift_wrap_turns_clockwise_from_the_highest_point() {
     assert_eq!((h.min, h.max), ([0.0, 0.0], [2.0, 1.0]));
     // a point inside changes nothing
     let mut inside = square();
-    inside.merge(&[[0.5, 0.5]]);
+    inside.merge(&[[0.5, 0.5]]).unwrap();
     assert_eq!(inside.points, square().points);
 }
 
@@ -171,7 +171,7 @@ fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
     };
     pather.hulls = vec![strip, square];
     // a box at the strip's far end goes into the strip, which then meets the square
-    let hull = pather.add_shape([-1.2, 1.9], [-0.8, 2.3]);
+    let hull = pather.add_shape([-1.2, 1.9], [-0.8, 2.3]).unwrap();
     assert_eq!((hull, pather.hulls.len()), (0, 1));
     assert!(pather.hulls[0].points.contains(&[10.0, 10.0]));
 }
@@ -284,6 +284,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     assert_eq!((p.nodes[root].cost, p.nodes[root].to_goal), (0.0, 10.0));
     // cost 5, distance √65: 13.06
@@ -299,6 +300,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             direction: 7,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     assert_eq!((p.nodes[a].cost, p.nodes[a].parent), (5.0, Some(root)));
     assert_eq!(
@@ -318,6 +320,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     assert_eq!(open_nodes(&p, 0), [root, b, a]);
     // no hull point: no scan, the walk stops at the first node of no smaller sum
@@ -333,6 +336,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     assert_eq!(open_nodes(&p, 0), [c, root, b, a]);
     // `a`'s hull point at no smaller cost: refused
@@ -347,7 +351,8 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             vertex: 1,
             direction: -1,
             by_place: false
-        }),
+        })
+        .unwrap(),
         None
     );
     // cheaper (3): `a` closes, the new node goes in by its sum (3 + 7)
@@ -363,12 +368,13 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     assert_eq!(open_nodes(&p, 0), [d, c, root, b]);
     assert_eq!(p.closed[0], [a]);
     // a closed node of the hull point that costs no more refuses one (`b`, 6, a cost-7
     // node); a cheaper one is made
-    p.close(0, b);
+    p.close(0, b).unwrap();
     assert_eq!(
         p.add_node(NewNode {
             list: 0,
@@ -380,7 +386,8 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             vertex: 2,
             direction: -1,
             by_place: false
-        }),
+        })
+        .unwrap(),
         None
     );
     let e = p
@@ -395,6 +402,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     assert_eq!(p.nodes[e].cost, 5.0);
     // a node not open goes to the closed list without a test
@@ -410,6 +418,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     assert_eq!((p.nodes[f].cost, p.nodes[f].to_goal), (5.0, 0.0));
     assert_eq!(p.closed[0], [a, b, f]);
@@ -435,6 +444,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: true,
         })
+        .unwrap()
         .unwrap();
     let a = p
         .add_node(NewNode {
@@ -448,6 +458,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: true,
         })
+        .unwrap()
         .unwrap();
     // within EPSILON of `a`, dearer: refused; cheaper (from a nearer parent): replaces it
     let near = [2.0 + EPSILON * 0.5, 0.0];
@@ -462,7 +473,8 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             vertex: -1,
             direction: -1,
             by_place: true
-        }),
+        })
+        .unwrap(),
         None
     );
     let q = p
@@ -477,6 +489,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     let b = p
         .add_node(NewNode {
@@ -490,6 +503,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: true,
         })
+        .unwrap()
         .unwrap();
     assert_eq!(p.closed[1], [q, a]);
     assert_eq!(open_nodes(&p, 1), [root, b]);
@@ -506,10 +520,11 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: true
         })
+        .unwrap()
         .is_some()
     );
     // the closed list's last node does not count, the ones before it do
-    p.empty(1);
+    p.empty(1).unwrap();
     let r = p
         .add_node(NewNode {
             list: 1,
@@ -522,8 +537,9 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: true,
         })
+        .unwrap()
         .unwrap();
-    p.close(1, r);
+    p.close(1, r).unwrap();
     let s = p
         .add_node(NewNode {
             list: 1,
@@ -536,6 +552,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
     assert_eq!(p.closed[1], [r, s]);
     assert!(
@@ -550,6 +567,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: true
         })
+        .unwrap()
         .is_some()
     );
     assert!(
@@ -564,6 +582,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             direction: -1,
             by_place: true
         })
+        .unwrap()
         .is_none()
     );
 }
@@ -591,22 +610,23 @@ fn nodes_close_one_by_one_or_all_and_the_lists_empty() {
                 by_place: false,
             })
             .unwrap()
+            .unwrap()
         })
         .collect();
     // the nearest to the goal first
     assert_eq!(open_nodes(&p, 0), [n[3], n[2], n[1], n[0]]);
-    p.close(0, n[2]);
+    p.close(0, n[2]).unwrap();
     assert_eq!(open_nodes(&p, 0), [n[3], n[1], n[0]]);
     assert_eq!(
         (p.nodes[n[2]].prev, p.nodes[n[2]].next),
         (Some(n[3]), Some(n[1]))
     );
     // the last open node: no next to relink
-    p.close(0, n[0]);
+    p.close(0, n[0]).unwrap();
     assert_eq!(open_nodes(&p, 0), [n[3], n[1]]);
     assert_eq!(p.closed[0], [n[2], n[0]]);
     assert_eq!((p.nodes[n[2]].hull, p.nodes[n[2]].vertex), (0, 2));
-    p.close_all(0);
+    p.close_all(0).unwrap();
     assert_eq!(open_nodes(&p, 0), []);
     assert_eq!(p.closed[0], [n[2], n[0], n[3], n[1]]);
     for &i in &n {
@@ -626,11 +646,12 @@ fn nodes_close_one_by_one_or_all_and_the_lists_empty() {
             direction: -1,
             by_place: false,
         })
+        .unwrap()
         .unwrap();
-    p.empty(0);
+    p.empty(0).unwrap();
     assert_eq!((open_nodes(&p, 0), p.closed[0].len()), (vec![], 0));
     assert_eq!(open_nodes(&p, 1), [other]);
-    p.empty(1);
+    p.empty(1).unwrap();
     assert_eq!(open_nodes(&p, 1), []);
 }
 
@@ -908,42 +929,50 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
     classes[3 * 20 + 4] = 1;
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
-    let n0 = p.add_unrefused(UnrefusedNode {
-        list: 0,
-        open: false,
-        parent: None,
-        position: [2.0, 2.0],
-        goal: None,
-        hull: -1,
-        direction: -1,
-    });
-    let n1 = p.add_unrefused(UnrefusedNode {
-        list: 0,
-        open: false,
-        parent: Some(n0),
-        position: [5.0, 2.0],
-        goal: None,
-        hull: -1,
-        direction: -1,
-    });
-    let n2 = p.add_unrefused(UnrefusedNode {
-        list: 0,
-        open: false,
-        parent: Some(n1),
-        position: [5.0, 5.0],
-        goal: None,
-        hull: -1,
-        direction: -1,
-    });
-    let n3 = p.add_unrefused(UnrefusedNode {
-        list: 0,
-        open: false,
-        parent: Some(n2),
-        position: [8.0, 5.0],
-        goal: None,
-        hull: -1,
-        direction: -1,
-    });
+    let n0 = p
+        .add_unrefused(UnrefusedNode {
+            list: 0,
+            open: false,
+            parent: None,
+            position: [2.0, 2.0],
+            goal: None,
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
+    let n1 = p
+        .add_unrefused(UnrefusedNode {
+            list: 0,
+            open: false,
+            parent: Some(n0),
+            position: [5.0, 2.0],
+            goal: None,
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
+    let n2 = p
+        .add_unrefused(UnrefusedNode {
+            list: 0,
+            open: false,
+            parent: Some(n1),
+            position: [5.0, 5.0],
+            goal: None,
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
+    let n3 = p
+        .add_unrefused(UnrefusedNode {
+            list: 0,
+            open: false,
+            parent: Some(n2),
+            position: [8.0, 5.0],
+            goal: None,
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
     let mut path = Waypoints::default();
     p.build_path(&mut path, n3).unwrap();
     // n3 sees n1 (n2 skipped), not n0; n1 has no grandparent
@@ -1039,16 +1068,21 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
     // no side point out
     let b = [4.0, 4.0, 6.0, 6.0];
     p.hulls = vec![Hull::default()];
-    let root = p.add_unrefused(UnrefusedNode {
-        list: 1,
-        open: true,
-        parent: None,
-        position: [5.0, 5.0],
-        goal: None,
-        hull: -1,
-        direction: -1,
-    });
-    assert!(p.side_points(0, root, b, [f32::NAN, f32::NAN], 0.5, None));
+    let root = p
+        .add_unrefused(UnrefusedNode {
+            list: 1,
+            open: true,
+            parent: None,
+            position: [5.0, 5.0],
+            goal: None,
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
+    assert!(
+        p.side_points(0, root, b, [f32::NAN, f32::NAN], 0.5, None)
+            .unwrap()
+    );
     let mut at: Vec<Point> = open_nodes(&p, 1)
         .iter()
         .filter(|&&i| i != root)
@@ -1064,18 +1098,20 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
     ];
     expected.sort_by(|a, b| a.partial_cmp(b).unwrap());
     assert_eq!(at, expected);
-    p.empty(1);
-    let root = p.add_unrefused(UnrefusedNode {
-        list: 1,
-        open: true,
-        parent: None,
-        position: [5.0, 3.0],
-        goal: None,
-        hull: -1,
-        direction: -1,
-    });
+    p.empty(1).unwrap();
+    let root = p
+        .add_unrefused(UnrefusedNode {
+            list: 1,
+            open: true,
+            parent: None,
+            position: [5.0, 3.0],
+            goal: None,
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
     let reach = Some(([5.0, 3.0], f32::NAN));
-    assert!(p.side_points(0, root, b, [5.0, 3.0], 0.5, reach));
+    assert!(p.side_points(0, root, b, [5.0, 3.0], 0.5, reach).unwrap());
     assert_eq!(open_nodes(&p, 1).len(), 3);
     // partway: an unordered end is nearer the goal than the start, and not within range
     let mut path = Waypoints {
@@ -1173,7 +1209,7 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
     let mut w = walled(8, [4.9, 5.5]);
     let box_hull = |p: &mut HullPather<'_>| {
         p.area = [0, 0, 19, 19];
-        let h = p.add_shape([4.8, 4.8], [6.2, 6.2]);
+        let h = p.add_shape([4.8, 4.8], [6.2, 6.2]).unwrap();
         p.hulls[h].objects.push(Shape {
             bounds: [4.8, 4.8, 6.2, 6.2],
             id: 48,
@@ -1236,22 +1272,24 @@ fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
     let mut rays = |goal: Option<Point>, most| {
         let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
         p.area = [0, 0, 19, 19];
-        let h = p.add_shape([4.0, 4.0], [7.0, 7.0]);
+        let h = p.add_shape([4.0, 4.0], [7.0, 7.0]).unwrap();
         p.hulls[h].objects.push(Shape {
             bounds: [4.8, 4.8, 6.2, 6.2],
             id: 48,
         });
-        p.empty(1);
-        let root = p.add_unrefused(UnrefusedNode {
-            list: 1,
-            open: true,
-            parent: None,
-            position: [4.2, 5.5],
-            goal,
-            hull: -1,
-            direction: -1,
-        });
-        p.close(1, root);
+        p.empty(1).unwrap();
+        let root = p
+            .add_unrefused(UnrefusedNode {
+                list: 1,
+                open: true,
+                parent: None,
+                position: [4.2, 5.5],
+                goal,
+                hull: -1,
+                direction: -1,
+            })
+            .unwrap();
+        p.close(1, root).unwrap();
         let mut paths = vec![Waypoints::default(); PATHS];
         let mut count = 0;
         let left = p
@@ -1288,7 +1326,7 @@ fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range(
     let mut walk = |goal: Option<Point>, range, most| {
         let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
         p.area = [0, 0, 19, 19];
-        let h = p.add_shape([4.0, 4.0], [7.0, 7.0]);
+        let h = p.add_shape([4.0, 4.0], [7.0, 7.0]).unwrap();
         p.hulls[h].objects.push(Shape {
             bounds: [4.8, 4.8, 6.2, 6.2],
             id: 48,
@@ -1326,7 +1364,7 @@ fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
     let mut w = walled(8, [4.9, 5.5]);
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     p.area = [0, 0, 19, 19];
-    let h = p.add_shape([4.8, 4.8], [6.2, 6.2]);
+    let h = p.add_shape([4.8, 4.8], [6.2, 6.2]).unwrap();
     p.hulls[h].objects.push(Shape {
         bounds: [4.8, 4.8, 6.2, 6.2],
         id: 48,
@@ -1602,39 +1640,45 @@ fn around_triangle(at: Point, taken: &[i32]) -> (Vec<(Point, Option<usize>, i32)
         objects: Vec::new(),
     });
     let to = [9.0, 5.0];
-    let root = p.add_unrefused(UnrefusedNode {
-        list: 0,
-        open: true,
-        parent: None,
-        position: [2.0, 5.0],
-        goal: Some(to),
-        hull: -1,
-        direction: -1,
-    });
-    for &v in taken {
-        let point = p.hulls[0].points[v as usize];
-        let _ = p.add_node(NewNode {
+    let root = p
+        .add_unrefused(UnrefusedNode {
             list: 0,
             open: true,
             parent: None,
-            position: point,
+            position: [2.0, 5.0],
+            goal: Some(to),
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
+    for &v in taken {
+        let point = p.hulls[0].points[v as usize];
+        let _ = p
+            .add_node(NewNode {
+                list: 0,
+                open: true,
+                parent: None,
+                position: point,
+                goal: Some(to),
+                hull: 0,
+                vertex: v,
+                direction: -1,
+                by_place: false,
+            })
+            .unwrap();
+    }
+    let node = p
+        .add_unrefused(UnrefusedNode {
+            list: 0,
+            open: false,
+            parent: Some(root),
+            position: at,
             goal: Some(to),
             hull: 0,
-            vertex: v,
             direction: -1,
-            by_place: false,
-        });
-    }
-    let node = p.add_unrefused(UnrefusedNode {
-        list: 0,
-        open: false,
-        parent: Some(root),
-        position: at,
-        goal: Some(to),
-        hull: 0,
-        direction: -1,
-    });
-    p.around_hull(node, 0, 1, to);
+        })
+        .unwrap();
+    p.around_hull(node, 0, 1, to).unwrap();
     let made = p.nodes[node + 1..]
         .iter()
         .map(|n| (n.at, n.parent, n.vertex))
@@ -1729,24 +1773,28 @@ fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
         target_id: -1,
         range: 0.1,
     };
-    let root = p.add_unrefused(UnrefusedNode {
-        list: 0,
-        open: false,
-        parent: None,
-        position: [2.0, 5.0],
-        goal: Some(q.to),
-        hull: -1,
-        direction: -1,
-    });
-    let node = p.add_unrefused(UnrefusedNode {
-        list: 0,
-        open: false,
-        parent: Some(root),
-        position: [6.0, 5.0],
-        goal: Some(q.to),
-        hull: -1,
-        direction: -1,
-    });
+    let root = p
+        .add_unrefused(UnrefusedNode {
+            list: 0,
+            open: false,
+            parent: None,
+            position: [2.0, 5.0],
+            goal: Some(q.to),
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
+    let node = p
+        .add_unrefused(UnrefusedNode {
+            list: 0,
+            open: false,
+            parent: Some(root),
+            position: [6.0, 5.0],
+            goal: Some(q.to),
+            hull: -1,
+            direction: -1,
+        })
+        .unwrap();
     let mut rounds = Rounds::new(7.0);
     rounds.within = true;
     rounds.best_node = Some(node);

@@ -5,9 +5,10 @@ use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, maxss, sqrt};
 use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
 use crate::pathing::hull_path::{
-    DIRECTIONS, ENTRANCE_STEP, EXIT_STEP, HALF, HULL_ITERATIONS, HullPather, NUDGE, Node, ONE,
-    PATHS, Point, SAME_END, SIDES, SQRT_2, Target, Waypoints, Within,
+    DIRECTIONS, EXIT_STEP, HALF, HULL_ITERATIONS, HullPather, NUDGE, Node, ONE, Point, SAME_END,
+    SIDES, SQRT_2, Target, Waypoints, Within,
 };
+use crate::world::slots::CheckedIndex;
 
 /// A walk out of a hull ([`HullPather::walk_out`]'s arguments, `FUN_140f8cf00`'s order).
 #[derive(Debug)]
@@ -32,25 +33,11 @@ pub(super) struct WalkOut<'a> {
     pub(super) count: &'a mut usize,
 }
 
-/// A walk into a hull ([`HullPather::walk_in`]'s arguments, `FUN_140f88ee0`'s order).
-#[derive(Debug)]
-pub(super) struct WalkIn<'a> {
-    /// The hull the goal is inside.
-    pub(super) hull: usize,
-    /// The goal, where the walk starts.
-    pub(super) goal: Point,
-    /// The start it walks toward.
-    pub(super) start: Point,
-    /// The target.
-    pub(super) target: Option<Target>,
-    /// The entrance paths it leaves.
-    pub(super) paths: &'a mut [Waypoints],
-    /// The hull side each way out leaves by.
-    pub(super) sides_out: &'a mut [usize; PATHS],
-    /// How many ways out it keeps at most.
-    pub(super) most: usize,
-    /// How many it kept.
-    pub(super) count: &'a mut usize,
+/// How a walk out stands at a node: on, at its goal or at its target.
+enum WalkEnd {
+    Going,
+    Goal,
+    Target,
 }
 
 impl HullPather<'_> {
@@ -160,7 +147,7 @@ impl HullPather<'_> {
         p: Point,
         step: f32,
         reach: Option<(Point, f32)>,
-    ) -> bool {
+    ) -> Result<bool, GenieError> {
         let [x0, y0, x1, y1] = b;
         // `COMISS`/`JA`, then `SETBE`; `JBE`, then `CMOVA` (0x140f8d1fc..0x140f8d235,
         // 0x140f893a4..0x140f893d0): an unordered coordinate counts past the box's far side
@@ -199,7 +186,7 @@ impl HullPather<'_> {
                 if p[0] - x0 < m {
                     side = 3;
                 }
-                sides[side] = true;
+                sides.get_mut(side).into_iter().for_each(|s| *s = true);
                 sides
             }
             5 => [false, true, false, false],
@@ -217,8 +204,8 @@ impl HullPather<'_> {
             })
         };
         let mut made = false;
-        let mut add = |me: &mut Self, q: Point| {
-            if near(q) && me.hulls[hull].box_holding(q).is_none() {
+        let mut add = |me: &mut Self, q: Point| -> Result<(), GenieError> {
+            if near(q) && me.hulls.checked(hull)?.box_holding(q).is_none() {
                 let _ = me.add_node(NewNode {
                     list: 1,
                     open: true,
@@ -229,16 +216,17 @@ impl HullPather<'_> {
                     vertex: -1,
                     direction: -1,
                     by_place: false,
-                });
+                })?;
                 made = true;
             }
+            Ok(())
         };
         if sides[0] {
             let y = y0 - NUDGE;
             let mut x = x0 + NUDGE;
             let d = (x1 - x0) * step;
             while x < x1 {
-                add(self, [x, y]);
+                add(self, [x, y])?;
                 x += d;
             }
         }
@@ -246,7 +234,7 @@ impl HullPather<'_> {
             let x = x1 + NUDGE;
             let mut y = y0 + NUDGE;
             while y < y1 {
-                add(self, [x, y]);
+                add(self, [x, y])?;
                 y += (y1 - y0) * step;
             }
         }
@@ -254,7 +242,7 @@ impl HullPather<'_> {
             let y = y1 + NUDGE;
             let mut x = x1 - NUDGE;
             while x0 <= x {
-                add(self, [x, y]);
+                add(self, [x, y])?;
                 x -= (x1 - x0) * step;
             }
         }
@@ -262,11 +250,11 @@ impl HullPather<'_> {
             let x = x0 - NUDGE;
             let mut y = y1 - NUDGE;
             while y0 <= y {
-                add(self, [x, y]);
+                add(self, [x, y])?;
                 y -= (y1 - y0) * step;
             }
         }
-        made
+        Ok(made)
     }
 
     /// The 16 first steps out of the box holding the start of a walk within a hull: each a
@@ -277,15 +265,15 @@ impl HullPather<'_> {
         root: usize,
         p: Point,
         goal: Option<Point>,
-    ) -> bool {
+    ) -> Result<bool, GenieError> {
         let d = self.radius + self.radius;
         let mut made = false;
         for dir in DIRECTIONS {
             let mut q = [d * dir[0] + p[0], d * dir[1] + p[1]];
-            if let Some((at, _)) = self.hulls[hull].intersection(false, p, q) {
+            if let Some((at, _)) = self.hulls.checked(hull)?.intersection(false, p, q) {
                 q = at;
             }
-            if self.hulls[hull].box_holding(q).is_none() {
+            if self.hulls.checked(hull)?.box_holding(q).is_none() {
                 let _ = self.add_node(NewNode {
                     list: 1,
                     open: true,
@@ -296,11 +284,11 @@ impl HullPather<'_> {
                     vertex: -1,
                     direction: -1,
                     by_place: false,
-                });
+                })?;
                 made = true;
             }
         }
-        made
+        Ok(made)
     }
 
     /// Whether a node of a walk within a hull may cast a ray toward `side`: not back along the
@@ -323,13 +311,17 @@ impl HullPather<'_> {
         count: &mut usize,
         end: usize,
     ) -> Result<Option<usize>, GenieError> {
-        let at = self.nodes[end].at;
-        let cost = self.nodes[end].cost;
+        let at = self.nodes.checked(end)?.at;
+        let cost = self.nodes.checked(end)?.cost;
         let mut k = 0;
         while k < *count {
-            let last = *paths[k].points.last().unwrap_or(&[f32::NAN, f32::NAN]);
+            let last = *paths
+                .checked(k)?
+                .points
+                .last()
+                .unwrap_or(&[f32::NAN, f32::NAN]);
             if (at[0] - last[0]).abs() < SAME_END && (at[1] - last[1]).abs() < SAME_END {
-                if paths[k].cost < cost {
+                if paths.checked(k)?.cost < cost {
                     return Ok(None);
                 }
                 break;
@@ -339,10 +331,10 @@ impl HullPather<'_> {
         if k == *count {
             *count += 1;
         } else {
-            paths[k].points.clear();
+            paths.checked_mut(k)?.points.clear();
         }
-        self.build_path(&mut paths[k], end)?;
-        paths[k].cost = cost;
+        self.build_path(paths.checked_mut(k)?, end)?;
+        paths.checked_mut(k)?.cost = cost;
         Ok(Some(k))
     }
 
@@ -370,33 +362,17 @@ impl HullPather<'_> {
         } = walk;
         *count = 0;
         let mut left_boxes = false;
-        self.empty(1);
+        self.empty(1)?;
         let mut nearest: Option<usize> = None;
         let mut best = goal.map_or(0.0, |g| {
             sqrt((from[1] - g[1]) * (from[1] - g[1]) + (from[0] - g[0]) * (from[0] - g[0]))
         });
-        let root = self.add_unrefused(UnrefusedNode {
-            list: 1,
-            open: true,
-            parent: None,
-            position: from,
-            goal,
-            hull: -1,
-            direction: -1,
-        });
-        let inside = self.hulls[hull].box_holding(from);
-        if let Some(b) = inside {
-            self.close(1, root);
-            let mut made = self.first_steps(hull, root, from, goal);
-            let bounds = self.hulls[hull].objects[b].bounds;
-            let d = self.radius + self.radius;
-            made |= self.side_points(hull, root, bounds, from, EXIT_STEP, Some((from, d)));
-            if !made {
-                return Ok(Within {
-                    result: 3,
-                    left_boxes,
-                });
-            }
+        let (inside, stuck) = self.begin_walk_out(hull, from, goal)?;
+        if stuck {
+            return Ok(Within {
+                result: 3,
+                left_boxes,
+            });
         }
         let mut iterations = 0;
         let mut found: Option<usize> = None;
@@ -406,38 +382,33 @@ impl HullPather<'_> {
                 if HULL_ITERATIONS <= iterations || most <= *count {
                     break 'search;
                 }
-                let Some(n) = self.nodes[1].next else {
+                let Some(n) = self.nodes.checked(1)?.next else {
                     break 'search;
                 };
                 iterations += 1;
-                self.close(1, n);
-                if self.on_map(self.nodes[n].at) {
+                self.close(1, n)?;
+                if self.on_map(self.nodes.checked(n)?.at) {
                     break n;
                 }
             };
-            let at = self.nodes[node].at;
+            let at = self.nodes.checked(node)?.at;
             if !self.in_area(at) {
                 break;
             }
-            match (target.as_ref(), goal) {
-                (None, None) => {}
-                (None, Some(g)) => {
-                    let d = (at[1] - g[1]) * (at[1] - g[1]) + (at[0] - g[0]) * (at[0] - g[0]);
-                    if d <= (self.radius + range) * (self.radius + range) + NUDGE {
-                        ended_at = Some(node);
-                        break 'search;
-                    }
+            match self.walk_ends(target.as_ref(), goal, at, range) {
+                WalkEnd::Goal => {
+                    ended_at = Some(node);
+                    break 'search;
                 }
-                (Some(t), _) => {
-                    if self.target_gap(t, at) <= range + NUDGE {
-                        found = Some(node);
-                        break 'search;
-                    }
+                WalkEnd::Target => {
+                    found = Some(node);
+                    break 'search;
                 }
+                WalkEnd::Going => {}
             }
             if let Some(g) = goal {
-                if self.nodes[node].to_goal < best {
-                    best = self.nodes[node].to_goal;
+                if self.nodes.checked(node)?.to_goal < best {
+                    best = self.nodes.checked(node)?.to_goal;
                     nearest = Some(node);
                 }
                 if !self.blocked(at, g)? {
@@ -451,7 +422,7 @@ impl HullPather<'_> {
                         vertex: -1,
                         direction: 1,
                         by_place: false,
-                    });
+                    })?;
                     ended_at = end;
                     if end.is_some() {
                         break 'search;
@@ -472,14 +443,84 @@ impl HullPather<'_> {
             };
             return Ok(Within { result, left_boxes });
         };
-        let end = found.or(ended_at);
+        self.finish_walk_out(paths, found.or(ended_at), nearest, left_boxes)
+    }
+
+    /// Whether the walk out ends at `at`: within the radius and range of the goal (without a
+    /// target), or within the range of the target.
+    fn walk_ends(
+        &self,
+        target: Option<&Target>,
+        goal: Option<Point>,
+        at: Point,
+        range: f32,
+    ) -> WalkEnd {
+        match (target, goal) {
+            (None, None) => WalkEnd::Going,
+            (None, Some(g)) => {
+                let d = (at[1] - g[1]) * (at[1] - g[1]) + (at[0] - g[0]) * (at[0] - g[0]);
+                if d <= (self.radius + range) * (self.radius + range) + NUDGE {
+                    WalkEnd::Goal
+                } else {
+                    WalkEnd::Going
+                }
+            }
+            (Some(t), _) => {
+                if self.target_gap(t, at) <= range + NUDGE {
+                    WalkEnd::Target
+                } else {
+                    WalkEnd::Going
+                }
+            }
+        }
+    }
+
+    /// The walk out's root node at `from`, and, when the start lies in a box of hull `hull`, its
+    /// first steps and the points about that box. Returns the box (if any) and whether the walk
+    /// is stuck (no step made).
+    fn begin_walk_out(
+        &mut self,
+        hull: usize,
+        from: Point,
+        goal: Option<Point>,
+    ) -> Result<(Option<usize>, bool), GenieError> {
+        let root = self.add_unrefused(UnrefusedNode {
+            list: 1,
+            open: true,
+            parent: None,
+            position: from,
+            goal,
+            hull: -1,
+            direction: -1,
+        })?;
+        let inside = self.hulls.checked(hull)?.box_holding(from);
+        let Some(b) = inside else {
+            return Ok((inside, false));
+        };
+        self.close(1, root)?;
+        let mut made = self.first_steps(hull, root, from, goal)?;
+        let bounds = self.hulls.checked(hull)?.objects.checked(b)?.bounds;
+        let d = self.radius + self.radius;
+        made |= self.side_points(hull, root, bounds, from, EXIT_STEP, Some((from, d)))?;
+        Ok((inside, !made))
+    }
+
+    /// The walk out's result toward a goal: the path to the node it ended at (`end`, result 0),
+    /// else to the nearest one (result 1), or none (result 2).
+    fn finish_walk_out(
+        &mut self,
+        paths: &mut [Waypoints],
+        end: Option<usize>,
+        nearest: Option<usize>,
+        left_boxes: bool,
+    ) -> Result<Within, GenieError> {
         let Some(n) = end.or(nearest) else {
             return Ok(Within {
                 result: 2,
                 left_boxes,
             });
         };
-        self.build_path(&mut paths[0], n)?;
+        self.build_path(paths.checked_mut(0)?, n)?;
         Ok(Within {
             result: u8::from(end.is_none()),
             left_boxes,
@@ -500,14 +541,14 @@ impl HullPather<'_> {
         paths: &mut [Waypoints],
         (count, most): (&mut usize, usize),
     ) -> Result<bool, GenieError> {
-        let at = self.nodes[node].at;
+        let at = self.nodes.checked(node)?.at;
         let mut left_boxes = false;
         for side in 0..4 {
-            let n = self.nodes[node];
+            let n = *self.nodes.checked(node)?;
             if !Self::may_cast(&n, side) {
                 continue;
             }
-            if let Some((q, b, box_side)) = self.hulls[hull].ray_to_box(at, side, n.hull) {
+            if let Some((q, b, box_side)) = self.hulls.checked(hull)?.ray_to_box(at, side, n.hull) {
                 let _ = self.add_node(NewNode {
                     list: 1,
                     open: true,
@@ -518,11 +559,11 @@ impl HullPather<'_> {
                     vertex: box_side,
                     direction: side,
                     by_place: true,
-                });
+                })?;
                 continue;
             }
             left_boxes = true;
-            let Some((mut q, edge)) = self.hulls[hull].ray_to_hull(at, side) else {
+            let Some((mut q, edge)) = self.hulls.checked(hull)?.ray_to_hull(at, side) else {
                 continue;
             };
             if goal.is_some() {
@@ -536,12 +577,12 @@ impl HullPather<'_> {
                     vertex: edge as i32,
                     direction: side,
                     by_place: true,
-                });
+                })?;
                 continue;
             }
             if *count < most {
                 if nudge {
-                    let s = SIDES[side as usize];
+                    let s = *SIDES.checked(side as usize)?;
                     q = [q[0] + s[0] * NUDGE, q[1] + s[1] * NUDGE];
                 }
                 if let Some(end) = self.add_node(NewNode {
@@ -554,137 +595,11 @@ impl HullPather<'_> {
                     vertex: -1,
                     direction: -1,
                     by_place: false,
-                }) {
+                })? {
                     let _ = self.keep_path(paths, count, end)?;
                 }
             }
         }
         Ok(left_boxes)
-    }
-
-    /// `MShortPather::pathWithinHull` into a hull (`FUN_140f88ee0`): the walk out of hull `hull`
-    /// from the goal `from` toward the start `to`, whose ways out (at most `most`) are the
-    /// entrance paths, each with the hull side it leaves by. Result 4 (5 when the goal was inside
-    /// a box) with paths, 2 without, 3 without a first step. `FindShortPath`, its only caller,
-    /// gives it a hull, a start, paths and the sides' array (its result 6 is for none) and its
-    /// argument 10 set: each way out is nudged back into the hull.
-    pub(super) fn walk_in(&mut self, walk: WalkIn<'_>) -> Result<Within, GenieError> {
-        let WalkIn {
-            hull,
-            goal: from,
-            start: to,
-            target,
-            paths,
-            sides_out,
-            most,
-            count,
-        } = walk;
-        *count = 0;
-        let mut left_boxes = false;
-        self.empty(1);
-        let root = self.add_unrefused(UnrefusedNode {
-            list: 1,
-            open: true,
-            parent: None,
-            position: from,
-            goal: Some(to),
-            hull: -1,
-            direction: -1,
-        });
-        let inside = self.hulls[hull].box_holding(from);
-        if inside.is_some() || target.is_some() {
-            self.close(1, root);
-            let mut made = self.first_steps(hull, root, from, Some(to));
-            let bounds = match target {
-                None => self.hulls[hull].objects[inside.unwrap_or(0)].bounds,
-                Some(t) => {
-                    let r = self.radius;
-                    [
-                        (t.at[0] - t.radius[0]) - r,
-                        (t.at[1] - t.radius[1]) - r,
-                        t.at[0] + t.radius[0] + r,
-                        t.at[1] + t.radius[1] + r,
-                    ]
-                }
-            };
-            made |= self.side_points(hull, root, bounds, to, ENTRANCE_STEP, None);
-            if !made {
-                return Ok(Within {
-                    result: 3,
-                    left_boxes,
-                });
-            }
-        }
-        let mut iterations = 0;
-        'search: loop {
-            let node = loop {
-                if HULL_ITERATIONS <= iterations || most <= *count {
-                    break 'search;
-                }
-                let Some(n) = self.nodes[1].next else {
-                    break 'search;
-                };
-                iterations += 1;
-                self.close(1, n);
-                if self.on_map(self.nodes[n].at) {
-                    break n;
-                }
-            };
-            let at = self.nodes[node].at;
-            if !self.in_area(at) {
-                break;
-            }
-            for side in 0..4 {
-                let n = self.nodes[node];
-                if !Self::may_cast(&n, side) {
-                    continue;
-                }
-                if let Some((q, b, box_side)) = self.hulls[hull].ray_to_box(at, side, n.hull) {
-                    let _ = self.add_node(NewNode {
-                        list: 1,
-                        open: true,
-                        parent: Some(node),
-                        position: q,
-                        goal: Some(to),
-                        hull: b as i32,
-                        vertex: box_side,
-                        direction: side,
-                        by_place: true,
-                    });
-                    continue;
-                }
-                left_boxes = true;
-                let Some((mut q, edge)) = self.hulls[hull].ray_to_hull(at, side) else {
-                    continue;
-                };
-                if most <= *count {
-                    continue;
-                }
-                let s = SIDES[side as usize];
-                q = [q[0] - s[0] * NUDGE, q[1] - s[1] * NUDGE];
-                if let Some(end) = self.add_node(NewNode {
-                    list: 1,
-                    open: false,
-                    parent: Some(node),
-                    position: q,
-                    goal: Some(to),
-                    hull: -1,
-                    vertex: -1,
-                    direction: -1,
-                    by_place: false,
-                }) && let Some(k) = self.keep_path(paths, count, end)?
-                {
-                    sides_out[k] = edge;
-                }
-            }
-        }
-        let result = if *count < 1 {
-            2
-        } else if inside.is_some() {
-            5
-        } else {
-            4
-        };
-        Ok(Within { result, left_boxes })
     }
 }

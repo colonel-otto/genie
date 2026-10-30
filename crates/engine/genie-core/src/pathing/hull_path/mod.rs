@@ -33,6 +33,7 @@ mod node_lists;
 mod obstacles;
 mod rounds;
 mod setup;
+mod walk_in;
 mod walks;
 
 #[cfg(test)]
@@ -40,7 +41,9 @@ use self::node_lists::{NewNode, UnrefusedNode};
 pub(crate) use self::setup::{NO_RESTRICTION, NO_TERRAIN};
 pub use self::setup::{quick_reach, quick_reach_from};
 #[cfg(test)]
-use self::walks::{WalkIn, WalkOut};
+use self::walk_in::WalkIn;
+#[cfg(test)]
+use self::walks::WalkOut;
 #[cfg(test)]
 use crate::map::spatial::{Placed, tile_record_id};
 
@@ -199,7 +202,10 @@ impl Waypoints {
     pub fn length(&self) -> f32 {
         let mut total = 0.0;
         for w in self.points.windows(2) {
-            let (dx, dy) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
+            let [a, b] = w else {
+                continue;
+            };
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
             total += sqrt(dx * dx + 0.0 * 0.0 + dy * dy);
         }
         total

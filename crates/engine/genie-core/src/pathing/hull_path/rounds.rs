@@ -3,10 +3,12 @@
 
 use crate::GenieError;
 use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
-use crate::pathing::hull_path::walks::{WalkIn, WalkOut};
+use crate::pathing::hull_path::walk_in::WalkIn;
+use crate::pathing::hull_path::walks::WalkOut;
 use crate::pathing::hull_path::{
     GROWTHS, HullPather, HullQuery, ITERATION_CAP, MOST, NUDGE, PATHS, Point, Waypoints,
 };
+use crate::world::slots::CheckedIndex;
 
 /// What `FindShortPath`'s rounds carry from one to the next and to the end.
 pub(super) struct Rounds {
@@ -104,7 +106,7 @@ impl HullPather<'_> {
         rounds: &mut Rounds,
         path: &mut Waypoints,
     ) -> Result<Option<u8>, GenieError> {
-        self.close_all(0);
+        self.close_all(0)?;
         if !keep && rounds.growths == 0 {
             self.build_hulls()?;
         }
@@ -116,7 +118,7 @@ impl HullPather<'_> {
             goal: Some(q.to),
             hull: -1,
             direction: -1,
-        });
+        })?;
         rounds.start_hull = self.hull_of(q.from);
         rounds.goal_hull = self.hull_of(q.to);
         rounds.within = false;
@@ -172,8 +174,8 @@ impl HullPather<'_> {
         if count < 1 {
             return Ok(Some(3));
         }
-        self.close(0, root);
-        self.add_exits(root, count, q.to, rounds.start_hull);
+        self.close(0, root)?;
+        self.add_exits(root, count, q.to, rounds.start_hull)?;
         Ok(None)
     }
 
@@ -204,15 +206,21 @@ impl HullPather<'_> {
     /// The first `count` ways out as nodes on the start's node `root`: each way's points in turn,
     /// its last open (none refused: closed, or without a hull point); a way of one point adds
     /// none.
-    fn add_exits(&mut self, root: usize, count: usize, to: Point, start_hull: i32) {
+    fn add_exits(
+        &mut self,
+        root: usize,
+        count: usize,
+        to: Point,
+        start_hull: i32,
+    ) -> Result<(), GenieError> {
         for k in 0..count {
-            let points = self.exits[k].points.clone();
+            let points = self.exits.checked(k)?.points.clone();
             let n = points.len();
             if n <= 1 {
                 continue;
             }
             let mut node = root;
-            for &p in &points[1..n - 1] {
+            for &p in points.iter().take(n - 1).skip(1) {
                 node = self.add_unrefused(UnrefusedNode {
                     list: 0,
                     open: false,
@@ -221,9 +229,9 @@ impl HullPather<'_> {
                     goal: Some(to),
                     hull: start_hull,
                     direction: -1,
-                });
+                })?;
             }
-            let last = points[n - 1];
+            let last = *points.checked(n - 1)?;
             let _ = self.add_unrefused(UnrefusedNode {
                 list: 0,
                 open: true,
@@ -232,8 +240,9 @@ impl HullPather<'_> {
                 goal: Some(to),
                 hull: start_hull,
                 direction: -1,
-            });
+            })?;
         }
+        Ok(())
     }
 
     /// A goal inside the hull `hull`: the ways in (`walk_in` backwards from the goal into
@@ -244,8 +253,8 @@ impl HullPather<'_> {
         for e in &mut entrances {
             e.points.clear();
         }
-        let n = self.hulls[hull].points.len();
-        self.hulls[hull].entrances = vec![-1; n];
+        let n = self.hulls.checked(hull)?.points.len();
+        self.hulls.checked_mut(hull)?.entrances = vec![-1; n];
         let mut count = 0;
         let mut sides = [0usize; PATHS];
         let walk = self.walk_in(WalkIn {
@@ -260,7 +269,7 @@ impl HullPather<'_> {
         });
         self.entrances = entrances;
         let entered_box = walk?.result == 5;
-        self.join_entrances(hull, count, &sides);
+        self.join_entrances(hull, count, &sides)?;
         Ok(entered_box)
     }
 
@@ -274,36 +283,36 @@ impl HullPather<'_> {
             return Ok(Expanded::NextRound);
         }
         rounds.iterations += 1;
-        let Some(best) = self.nodes[0].next else {
+        let Some(best) = self.nodes.checked(0)?.next else {
             return Ok(Expanded::End);
         };
-        if self.open_off_map(best) {
-            self.close(0, best);
+        if self.open_off_map(best)? {
+            self.close(0, best)?;
             return Ok(Expanded::Next);
         }
-        if !self.in_area(self.nodes[best].at) {
+        if !self.in_area(self.nodes.checked(best)?.at) {
             if !self.grow_area()? {
                 return Ok(Expanded::End);
             }
             rounds.growths += 1;
             return Ok(Expanded::NextRound);
         }
-        self.close(0, best);
-        let at = self.nodes[best].at;
+        self.close(0, best)?;
+        let at = self.nodes.checked(best)?.at;
         if self.reached(q, at) {
             rounds.found = q.target.is_none() || q.target_id >= 0;
             rounds.best_node = Some(best);
             return Ok(Expanded::End);
         }
-        rounds.nearer(best, self.nodes[best].to_goal);
-        let vertex = self.nodes[best].vertex;
+        rounds.nearer(best, self.nodes.checked(best)?.to_goal);
+        let vertex = self.nodes.checked(best)?.vertex;
         let Some((hit, p, edge)) = self.nearest_crossing(vertex, at, q.to) else {
             return self.no_crossing(q, best, rounds);
         };
         if rounds.start_hull == -1 && rounds.goal_hull == -1 && self.blocked(at, p)? {
             return Ok(Expanded::Next);
         }
-        if hit as i32 == self.nodes[best].hull && 0 <= vertex {
+        if hit as i32 == self.nodes.checked(best)?.hull && 0 <= vertex {
             return Ok(Expanded::Next);
         }
         let node = self.add_unrefused(UnrefusedNode {
@@ -314,22 +323,23 @@ impl HullPather<'_> {
             goal: Some(q.to),
             hull: hit as i32,
             direction: -1,
-        });
-        rounds.nearer(node, self.nodes[node].to_goal);
-        self.around_hull(node, hit, edge, q.to);
+        })?;
+        rounds.nearer(node, self.nodes.checked(node)?.to_goal);
+        self.around_hull(node, hit, edge, q.to)?;
         Ok(Expanded::Next)
     }
 
     /// Whether a node of the open list from `best` on lies off the map.
-    fn open_off_map(&self, best: usize) -> bool {
+    fn open_off_map(&self, best: usize) -> Result<bool, GenieError> {
         let mut n = Some(best);
         while let Some(i) = n {
-            if !self.on_map(self.nodes[i].at) {
-                return true;
+            let node = self.nodes.checked(i)?;
+            if !self.on_map(node.at) {
+                return Ok(true);
             }
-            n = self.nodes[i].next;
+            n = node.next;
         }
-        false
+        Ok(false)
     }
 
     /// Whether `at` is within range of the target's box, or without one of the goal: the radius
@@ -370,7 +380,10 @@ impl HullPather<'_> {
         best: usize,
         rounds: &mut Rounds,
     ) -> Result<Expanded, GenieError> {
-        let (at, vertex) = (self.nodes[best].at, self.nodes[best].vertex);
+        let (at, vertex) = (
+            self.nodes.checked(best)?.at,
+            self.nodes.checked(best)?.vertex,
+        );
         if !self.blocked(at, q.to)? {
             rounds.best_node = self.add_node(NewNode {
                 list: 0,
@@ -382,12 +395,15 @@ impl HullPather<'_> {
                 vertex: -1,
                 direction: -1,
                 by_place: false,
-            });
+            })?;
             rounds.found = true;
             return Ok(Expanded::End);
         }
-        if 0 <= rounds.goal_hull && rounds.goal_hull == self.nodes[best].hull && 0 <= vertex {
-            let hull = &self.hulls[rounds.goal_hull as usize];
+        if 0 <= rounds.goal_hull
+            && rounds.goal_hull == self.nodes.checked(best)?.hull
+            && 0 <= vertex
+        {
+            let hull = self.hulls.checked(rounds.goal_hull as usize)?;
             if let Some(&e) = hull.entrances.get(vertex as usize)
                 && (vertex as usize) < hull.points.len()
                 && 0 <= e
@@ -404,14 +420,20 @@ impl HullPather<'_> {
     /// The crossed hull `hit`'s points as nodes from the crossing's node, both ways around from
     /// the crossed `edge` (back from its start, on from its end), half of them each; a hull of
     /// an odd count adds its last point on the cheaper way (the forward way on a tie).
-    pub(super) fn around_hull(&mut self, node: usize, hit: usize, edge: usize, to: Point) {
-        let np = self.hulls[hit].points.len();
+    pub(super) fn around_hull(
+        &mut self,
+        node: usize,
+        hit: usize,
+        edge: usize,
+        to: Point,
+    ) -> Result<(), GenieError> {
+        let np = self.hulls.checked(hit)?.points.len();
         let mut back = if edge >= 1 { edge } else { np } as i32 - 1;
         let mut fwd = edge;
         let (mut a, mut b) = (Some(node), Some(node));
         for _ in 0..np / 2 {
             if let Some(x) = a {
-                let p = self.hulls[hit].points[back as usize];
+                let p = *self.hulls.checked(hit)?.points.checked(back as usize)?;
                 a = self.add_node(NewNode {
                     list: 0,
                     open: true,
@@ -422,10 +444,10 @@ impl HullPather<'_> {
                     vertex: back,
                     direction: -1,
                     by_place: false,
-                });
+                })?;
             }
             if let Some(x) = b {
-                let p = self.hulls[hit].points[fwd];
+                let p = *self.hulls.checked(hit)?.points.checked(fwd)?;
                 b = self.add_node(NewNode {
                     list: 0,
                     open: true,
@@ -436,7 +458,7 @@ impl HullPather<'_> {
                     vertex: fwd as i32,
                     direction: -1,
                     by_place: false,
-                });
+                })?;
             }
             back -= 1;
             if back < 0 {
@@ -445,8 +467,9 @@ impl HullPather<'_> {
             fwd = if fwd + 1 < np { fwd + 1 } else { 0 };
         }
         if np % 2 == 1 {
-            self.odd_point(hit, (a, back), (b, fwd), to);
+            self.odd_point(hit, (a, back), (b, fwd), to)?;
         }
+        Ok(())
     }
 
     /// A hull of an odd count's last point, `back` on the back way's node `a` or `fwd` on the
@@ -458,13 +481,15 @@ impl HullPather<'_> {
         (a, back): (Option<usize>, i32),
         (b, fwd): (Option<usize>, usize),
         to: Point,
-    ) {
+    ) -> Result<(), GenieError> {
         let (qa, qb) = (
-            self.hulls[hit].points[back as usize],
-            self.hulls[hit].points[fwd],
+            *self.hulls.checked(hit)?.points.checked(back as usize)?,
+            *self.hulls.checked(hit)?.points.checked(fwd)?,
         );
         let on_a = match (a, b) {
-            (Some(x), Some(y)) => (self.nodes[x].cost < self.nodes[y].cost).then_some(x),
+            (Some(x), Some(y)) => {
+                (self.nodes.checked(x)?.cost < self.nodes.checked(y)?.cost).then_some(x)
+            }
             (Some(x), None) => Some(x),
             (None, _) => None,
         };
@@ -479,7 +504,7 @@ impl HullPather<'_> {
                 vertex: back,
                 direction: -1,
                 by_place: false,
-            });
+            })?;
         } else if let Some(y) = b {
             let _ = self.add_node(NewNode {
                 list: 0,
@@ -491,7 +516,8 @@ impl HullPather<'_> {
                 vertex: fwd as i32,
                 direction: -1,
                 by_place: false,
-            });
+            })?;
         }
+        Ok(())
     }
 }

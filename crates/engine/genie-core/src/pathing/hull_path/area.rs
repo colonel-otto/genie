@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::pathing::hull_path::{EPSILON, HullPather, MOST_AREA, PATHS, Point, Target, Waypoints};
+use crate::world::slots::CheckedIndex;
 
 impl HullPather<'_> {
     /// `FindShortPath`'s goal query when no target stands on the goal (`FUN_141051900` with
@@ -137,24 +138,40 @@ impl HullPather<'_> {
     /// The entrance paths' ends join the goal's hull (`FindShortPath`): each on the hull side it
     /// left by, by side and then by its distance from the side's first point, the later ones
     /// after the earlier; an end on the last side goes last. Each joined point keeps its path.
-    pub(super) fn join_entrances(&mut self, hull: usize, count: usize, sides: &[usize; PATHS]) {
+    pub(super) fn join_entrances(
+        &mut self,
+        hull: usize,
+        count: usize,
+        sides: &[usize; PATHS],
+    ) -> Result<(), GenieError> {
         if count == 0 {
-            return;
+            return Ok(());
         }
         let mut order: Vec<usize> = (0..count).collect();
-        let mut by: Vec<usize> = sides[..count].to_vec();
+        let mut by: Vec<usize> = sides.head(count)?.to_vec();
+        let points = &self.hulls.checked(hull)?.points;
         let mut d: Vec<f32> = (0..count)
             .map(|k| {
-                let last = *self.entrances[k].points.last().unwrap_or(&[0.0, 0.0]);
-                let points = &self.hulls[hull].points;
-                let i = if by[k] == 0 { points.len() } else { by[k] };
-                let p = points[i - 1];
-                (last[1] - p[1]) * (last[1] - p[1]) + (last[0] - p[0]) * (last[0] - p[0])
+                let last = *self
+                    .entrances
+                    .checked(k)?
+                    .points
+                    .last()
+                    .unwrap_or(&[0.0, 0.0]);
+                let i = if *by.checked(k)? == 0 {
+                    points.len()
+                } else {
+                    *by.checked(k)?
+                };
+                let p = *points.checked(i - 1)?;
+                Ok((last[1] - p[1]) * (last[1] - p[1]) + (last[0] - p[0]) * (last[0] - p[0]))
             })
-            .collect();
+            .collect::<Result<_, GenieError>>()?;
         for a in 0..count {
             for b in a + 1..count {
-                if by[b] < by[a] || (by[a] == by[b] && d[b] < d[a]) {
+                if *by.checked(b)? < *by.checked(a)?
+                    || (*by.checked(a)? == *by.checked(b)? && *d.checked(b)? < *d.checked(a)?)
+                {
                     by.swap(a, b);
                     d.swap(a, b);
                     order.swap(a, b);
@@ -163,19 +180,25 @@ impl HullPather<'_> {
         }
         let mut joined = 0;
         for k in 0..count {
-            let e = order[k];
-            let last = *self.entrances[e].points.last().unwrap_or(&[0.0, 0.0]);
-            let hull = &mut self.hulls[hull];
-            let at = if joined + by[k] != 0 {
-                joined + by[k]
+            let e = *order.checked(k)?;
+            let last = *self
+                .entrances
+                .checked(e)?
+                .points
+                .last()
+                .unwrap_or(&[0.0, 0.0]);
+            let hull = self.hulls.checked_mut(hull)?;
+            let at = if joined + *by.checked(k)? != 0 {
+                joined + *by.checked(k)?
             } else {
                 hull.points.len()
             };
             hull.points.insert(at, last);
             hull.entrances.insert(at, e as i32);
-            if by[k] != 0 {
+            if *by.checked(k)? != 0 {
                 joined += 1;
             }
         }
+        Ok(())
     }
 }

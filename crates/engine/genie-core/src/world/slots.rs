@@ -94,6 +94,13 @@ pub(crate) trait CheckedIndex<T> {
     ///
     /// A position the slice does not hold.
     fn checked_mut(&mut self, i: usize) -> Result<&mut T, GenieError>;
+
+    /// The first `n` elements.
+    ///
+    /// # Errors
+    ///
+    /// A slice shorter than `n`.
+    fn head(&self, n: usize) -> Result<&[T], GenieError>;
 }
 
 impl<T> CheckedIndex<T> for [T] {
@@ -103,6 +110,10 @@ impl<T> CheckedIndex<T> for [T] {
 
     fn checked_mut(&mut self, i: usize) -> Result<&mut T, GenieError> {
         self.get_mut(i).ok_or_else(|| NO_ELEMENT.with("index", i))
+    }
+
+    fn head(&self, n: usize) -> Result<&[T], GenieError> {
+        self.get(..n).ok_or_else(|| NO_ELEMENT.with("end", n))
     }
 }
 
@@ -172,6 +183,8 @@ mod tests {
         let e = v.checked(3).unwrap_err();
         assert_eq!(e.context().collect::<Vec<_>>(), [("index", "3")]);
         assert!(v.checked_mut(4).is_err());
+        assert_eq!(v.head(2).unwrap(), &[9, 2]);
+        assert!(v.head(4).is_err());
     }
 
     /// A player or a position the table does not hold is an error that names it.

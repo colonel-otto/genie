@@ -31,11 +31,12 @@ lists them.
 | [`rounds.rs`](rounds.rs) | `FindShortPath`'s rounds (`FUN_140f85580`'s loop): the walks out of the start's hull and into the goal's, then the A* over the hulls' points, again after the area grew. |
 | [`setup.rs`](setup.rs) | The pather's construction (`HullPather`) and `canQuickPath` (object slot 0x3e0). |
 | [`tests.rs`](tests.rs) | Tests. |
+| [`walk_in.rs`](walk_in.rs) | The walk into a hull (`pathWithinHull` into a hull, `FUN_140f88ee0`). |
 | [`walks.rs`](walks.rs) | The quick path (`findQuickPath`) and the walks out of a hull and into one (`pathWithinHull`). |
 <!-- /files -->
 
 ## How it connects
 
 <!-- uses -->
-- Uses: [`map`](../../map/), [`math`](../../math/), [`objects`](../../objects/).
+- Uses: [`map`](../../map/), [`math`](../../math/), [`objects`](../../objects/), [`world`](../../world/).
 <!-- /uses -->
