@@ -10,6 +10,7 @@ use crate::groups::{Formation, UnitGroup};
 use crate::math::fmath::{Vec3, add, sub};
 use crate::movement::PathData;
 use crate::world::World;
+use crate::world::slots::CheckedIndex;
 
 /// `FUN_140f96030`: the walked level's top ancestor (the paths are walked first), none for a
 /// level without a parent.
@@ -66,7 +67,7 @@ impl World {
         let mut kind = LINE;
         if let Some(path) = measured_path(&g.motion.paths) {
             let end = if 1 < path.points.len() {
-                path.points[path.points.len() - 1]
+                *path.points.checked(path.points.len() - 1)?
             } else {
                 [0.0; 3]
             };
@@ -236,14 +237,14 @@ pub(super) fn transform_slot(
     index: i32,
     transform_type: i32,
     (world_time, map): (u32, [i32; 2]),
-) -> bool {
+) -> Result<bool, GenieError> {
     if index < 0 || formation.slots.len() as i32 <= index {
-        return false;
+        return Ok(false);
     }
     if crate::math::fmath::sqrt(crate::math::fmath::dot(point, point)).abs() < EPSILON {
-        return false;
+        return Ok(false);
     }
-    let slot = &mut formation.slots[index as usize];
+    let slot = formation.slots.checked_mut(index as usize)?;
     if slot.transformed != 1 {
         let offset = if matches!(transform_type, 2 | 3) {
             slot.offset
@@ -256,7 +257,7 @@ pub(super) fn transform_slot(
         slot.transformed = 1;
         slot.time = world_time;
     }
-    true
+    Ok(true)
 }
 
 /// `FindPointFromFront` (`FUN_141016990`): the point `distance` back along the stored
@@ -271,19 +272,19 @@ pub fn find_point_from_front(line: &crate::groups::PointLine, distance: f32) -> 
         return None;
     }
     let ground = |i: usize| {
-        let mut d = sub(line.points[i + 1].point, line.points[i].point);
+        let mut d = sub(line.points.get(i + 1)?.point, line.points.get(i)?.point);
         d[1] = 0.0;
-        d
+        Some(d)
     };
     let mut node = 0;
-    let mut diff = ground(0);
+    let mut diff = ground(0)?;
     let mut length =
         crate::math::fmath::sqrt(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]);
     let mut covered = 0.0f32;
     while 0.0 <= length.abs() {
         let total = covered + length;
         if distance <= total {
-            let p = line.points[node].point;
+            let p = line.points.get(node)?.point;
             if distance <= 0.0 {
                 return Some(p);
             }
@@ -295,7 +296,7 @@ pub fn find_point_from_front(line: &crate::groups::PointLine, distance: f32) -> 
         if line.points.len() <= node + 1 {
             return None;
         }
-        diff = ground(node);
+        diff = ground(node)?;
         length = crate::math::fmath::sqrt(diff[0] * diff[0] + 0.0 + diff[2] * diff[2]);
         covered = total;
     }

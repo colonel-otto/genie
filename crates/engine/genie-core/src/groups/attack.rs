@@ -15,6 +15,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The formation categories a group keeps its units by (`FUN_141007ba0`, `FUN_14100c6c0`).
 const CATEGORIES: std::ops::RangeInclusive<i32> = 0..=5;
@@ -290,7 +291,9 @@ impl World {
         };
         for task in &master.tasks {
             if filter == CONVERSION_TASK && task.action_type == CONVERSION_TASK {
-                let bonus = self.players[player]
+                let bonus = self
+                    .players
+                    .player(player)?
                     .attributes
                     .get(CONVERSION_RANGE_ATTRIBUTE)
                     .copied()

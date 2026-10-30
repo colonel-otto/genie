@@ -9,6 +9,7 @@ use crate::math::fmath::{Vec3, below_or_unordered};
 use crate::movement::ASIDE;
 use crate::objects::masters::master_type::ACTION;
 use crate::world::World;
+use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
 impl World {
@@ -68,14 +69,19 @@ impl World {
                 continue;
             };
             if m.specific_move.active == 1 {
-                let to = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot]
+                let to = g
+                    .current_formation
+                    .as_ref()
+                    .ok_or(NO_FORMATION)?
+                    .slots
+                    .checked(slot)?
                     .transform_position;
                 let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
                 let from = u.moved_vector().xhy();
                 let clear = self.line_clear(m.id, from, to, CLEARANCE, &members)?;
                 let dt = self.dt_seconds;
                 let g = self.groups.held_mut(group)?;
-                let own = &mut g.members[index].specific_move;
+                let own = &mut g.members.checked_mut(index)?.specific_move;
                 let ends = if clear {
                     true
                 } else {
@@ -90,7 +96,11 @@ impl World {
                 {
                     mover.stand()?;
                 }
-                self.groups.held_mut(group)?.members[index].specific_move = SpecificMove {
+                self.groups
+                    .held_mut(group)?
+                    .members
+                    .checked_mut(index)?
+                    .specific_move = SpecificMove {
                     path_id: -1,
                     reason: -1,
                     ..SpecificMove::default()
@@ -250,14 +260,19 @@ impl World {
         differentiators: &[i32],
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
-        let id = g.members[index].id;
+        let id = g.members.checked(index)?.id;
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
         if u.ai.is_none() {
             return Ok(());
         }
-        let s = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot];
+        let s = g
+            .current_formation
+            .as_ref()
+            .ok_or(NO_FORMATION)?
+            .slots
+            .checked(slot)?;
         let to = s.transform_position;
         let late = s.time < self.world_time;
         let at = u.moved_vector().xhy();
@@ -265,13 +280,21 @@ impl World {
         d[1] = 0.0;
         let gap = fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
         if !below_or_unordered(EPSILON, gap) && s.state == 3 {
-            self.groups.held_mut(group)?.members[index]
+            self.groups
+                .held_mut(group)?
+                .members
+                .checked_mut(index)?
                 .specific_move
                 .consecutive_move_failures = 0;
             self.set_state_position(id, to);
             return Ok(());
         }
-        if MOST_FAILURES < g.members[index].specific_move.consecutive_move_failures {
+        if MOST_FAILURES
+            < g.members
+                .checked(index)?
+                .specific_move
+                .consecutive_move_failures
+        {
             // A member's own move for being moved aside (`mReason`).
             let _ = self.set_specific_move(group, id, (-1, ASIDE), (at, ASIDE_TIMER, 0.0))?;
             self.stop_member(id)?;
@@ -284,7 +307,13 @@ impl World {
         let g = self.groups.held_mut(group)?;
         let moving = g.motion.moving();
         let waits = g.motion.waits_to_move();
-        let state = &mut g.current_formation.as_mut().ok_or(NO_FORMATION)?.slots[slot].state;
+        let state = &mut g
+            .current_formation
+            .as_mut()
+            .ok_or(NO_FORMATION)?
+            .slots
+            .checked_mut(slot)?
+            .state;
         if *state == 3 && (moving || waits) {
             *state = 0;
         }
@@ -321,8 +350,17 @@ impl World {
             self.stop_member(id)?;
         }
         let g = self.groups.held_mut(group)?;
-        g.members[index].specific_move.consecutive_move_failures = 0;
-        let state = &mut g.current_formation.as_mut().ok_or(NO_FORMATION)?.slots[slot].state;
+        g.members
+            .checked_mut(index)?
+            .specific_move
+            .consecutive_move_failures = 0;
+        let state = &mut g
+            .current_formation
+            .as_mut()
+            .ok_or(NO_FORMATION)?
+            .slots
+            .checked_mut(slot)?
+            .state;
         if matches!(*state, 1 | 2) {
             *state = 3;
         }

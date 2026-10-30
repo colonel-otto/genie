@@ -9,6 +9,7 @@ use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, SLOT_REACH};
 use crate::math::fmath::{Vec3, at_most_or_unordered, below_or_unordered};
 use crate::objects::masters::master_type::BUILDING;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 impl World {
     /// `FUN_141025fb0` for a slot whose time is past (`0x1410263e4`..`0x1410267c5`): true when
@@ -20,14 +21,25 @@ impl World {
         slot: usize,
     ) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
-        let id = g.members[index].id;
-        let s = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot];
+        let id = g.members.checked(index)?.id;
+        let s = *g
+            .current_formation
+            .as_ref()
+            .ok_or(NO_FORMATION)?
+            .slots
+            .checked(slot)?;
         if s.state == 1 {
             self.set_slot_state(group, slot, 2)?;
             self.stop_member(id)?;
         }
         let g = self.groups.held(group)?;
-        let state = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot].state;
+        let state = g
+            .current_formation
+            .as_ref()
+            .ok_or(NO_FORMATION)?
+            .slots
+            .checked(slot)?
+            .state;
         let mut placed = false;
         match state {
             2 => {
@@ -43,7 +55,10 @@ impl World {
         if placed {
             self.face_group(group, id)?;
         }
-        self.groups.held_mut(group)?.members[index]
+        self.groups
+            .held_mut(group)?
+            .members
+            .checked_mut(index)?
             .specific_move
             .consecutive_move_failures = 0;
         Ok(true)
@@ -123,7 +138,13 @@ impl World {
         gap: f32,
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
-        let to = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot].transform_position;
+        let to = g
+            .current_formation
+            .as_ref()
+            .ok_or(NO_FORMATION)?
+            .slots
+            .checked(slot)?
+            .transform_position;
         let dt = self.dt_seconds;
         let (_, u) = self.object_mut(id).ok_or_else(|| member_gone(id))?;
         let facets = u.sprite.map(|s| crate::objects::facing::SpriteFacets {
@@ -144,20 +165,7 @@ impl World {
         let within = !below_or_unordered(radius, gap);
         let near = !within && !below_or_unordered(radius * SLOT_REACH, gap);
         if state == 2 {
-            self.stop_member(id)?;
-            let (_, u) = self.object(id).ok_or_else(|| member_gone(id))?;
-            let paused = u.body.mover().is_some_and(crate::movement::Mover::paused);
-            let g = self.groups.held(group)?;
-            let patrol = crate::groups::formation::top_path(&g.motion.paths)
-                .is_some_and(|p| p.path_flags & 1 != 0);
-            let walks = g
-                .motion
-                .paths
-                .first()
-                .is_some_and(|l| l.has_path && !l.points.is_empty());
-            if paused || (!patrol && !walks) {
-                self.show_standing(id)?;
-            }
+            self.stop_at_slot(group, id)?;
         } else if near {
             self.set_member_speed(id, speed);
             let _ = self.show_walking(id)?;
@@ -166,21 +174,53 @@ impl World {
             self.set_member_speed(id, top);
             let _ = self.show_walking(id)?;
         } else {
+            self.catch_up_to_slot(group, id, (gap, speed))?;
+        }
+        Ok(())
+    }
+
+    /// A member that passed its slot's waypoint (state 2) stops, and stands when it is paused
+    /// or the group's walk has no path to go on.
+    fn stop_at_slot(&mut self, group: i32, id: i32) -> Result<(), GenieError> {
+        self.stop_member(id)?;
+        let (_, u) = self.object(id).ok_or_else(|| member_gone(id))?;
+        let paused = u.body.mover().is_some_and(crate::movement::Mover::paused);
+        let g = self.groups.held(group)?;
+        let patrol = crate::groups::formation::top_path(&g.motion.paths)
+            .is_some_and(|p| p.path_flags & 1 != 0);
+        let walks = g
+            .motion
+            .paths
+            .first()
+            .is_some_and(|l| l.has_path && !l.points.is_empty());
+        if paused || (!patrol && !walks) {
+            self.show_standing(id)?;
+        }
+        Ok(())
+    }
+
+    /// A member far from its slot: the group's flag 0x200, and the member walks at its speed
+    /// within [`SLOT_REACH`], else runs, faster the farther it is (up to [`CATCH_UP`]).
+    fn catch_up_to_slot(
+        &mut self,
+        group: i32,
+        id: i32,
+        (gap, speed): (f32, f32),
+    ) -> Result<(), GenieError> {
+        self.groups.held_mut(group)?.flags |= 0x200;
+        if at_most_or_unordered(SLOT_REACH, gap) {
+            self.set_member_speed(id, speed);
+            let _ = self.show_walking(id)?;
             self.groups.held_mut(group)?.flags |= 0x200;
-            if at_most_or_unordered(SLOT_REACH, gap) {
-                self.set_member_speed(id, speed);
-                let _ = self.show_walking(id)?;
-                self.groups.held_mut(group)?.flags |= 0x200;
+        } else {
+            let v = if at_most_or_unordered(CATCH_UP_SPAN, gap) {
+                speed * CATCH_UP
             } else {
-                let v = if at_most_or_unordered(CATCH_UP_SPAN, gap) {
-                    speed * CATCH_UP
-                } else {
-                    speed + ((speed * CATCH_UP - speed) * gap) / CATCH_UP_SPAN
-                };
-                self.set_member_speed(id, v);
-                if !self.show_running(id)? {
-                    let _ = self.show_walking(id)?;
-                }
+                speed + ((speed * CATCH_UP - speed) * gap) / CATCH_UP_SPAN
+            };
+            self.set_member_speed(id, v);
+            if !self.show_running(id)? {
+                let _ = self.show_walking(id)?;
             }
         }
         Ok(())
@@ -269,8 +309,8 @@ impl World {
         };
         let kind = self.master(p, master_id)?.kind;
         let u = match place {
-            crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
-            crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
+            crate::orders::Place::Live(p, i) => self.players.live_mut(p, i)?,
+            crate::orders::Place::Sleeping(p, i) => self.players.asleep_mut(p, i)?,
         };
         let Some(mover) = u.body.mover_mut() else {
             return Ok(());
@@ -316,7 +356,12 @@ impl World {
             return Ok(false);
         };
         let last = u.moved_vector().xhy();
-        let own = &mut self.groups.held_mut(group)?.members[index].specific_move;
+        let own = &mut self
+            .groups
+            .held_mut(group)?
+            .members
+            .checked_mut(index)?
+            .specific_move;
         *own = if reason == -1 {
             SpecificMove {
                 path_id: -1,

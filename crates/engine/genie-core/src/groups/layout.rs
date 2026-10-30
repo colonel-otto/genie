@@ -8,6 +8,7 @@ use crate::groups::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
 use crate::math::fmath::{self, Vec3};
 use crate::world::World;
+use crate::world::slots::CheckedIndex;
 
 /// A horde's and a user defined formation's slots lie at most this far from the group's place
 /// (`DAT_14330ebb8`).
@@ -64,10 +65,10 @@ pub(crate) fn slots_by_place(
     members: &[Option<MemberPlace>],
     user_defined: bool,
     world_time: u32,
-) -> bool {
+) -> Result<bool, GenieError> {
     let n = group.members.len();
     if n == 0 {
-        return false;
+        return Ok(false);
     }
     formation.resize_slots(n);
     for s in formation.every_slot_mut() {
@@ -83,7 +84,7 @@ pub(crate) fn slots_by_place(
         let Some(m) = m else {
             continue;
         };
-        let s = formation.slot_mut(i);
+        let s = formation.slot_mut(i)?;
         s.unit_id = m.id;
         s.offset = fmath::sub(m.at, position);
         s.desired_transform_position = m.at;
@@ -116,7 +117,7 @@ pub(crate) fn slots_by_place(
             s.offset = [k * s.offset[0], k * s.offset[1], k * s.offset[2]];
         }
     }
-    true
+    Ok(true)
 }
 
 /// The clear createColumnLine, createPhalanx and `CreateLines` each make of a line before they
@@ -149,18 +150,21 @@ pub(crate) fn reset_line(line: &mut FormationLine, width: i32, depth: i32) -> bo
 /// none, else from the current's category plus 1, up to 5); `placed` counts its slots.
 fn next_statistic(group: &UnitGroup, current: Option<usize>, placed: &mut usize) -> Option<usize> {
     if let Some(i) = current
-        && *placed < group.unit_types[i].units.len()
+        && *placed < group.unit_types.get(i)?.units.len()
     {
         return current;
     }
     *placed = 0;
-    let mut c = current.map_or(0, |i| group.unit_types[i].formation_category + 1);
+    let mut c = match current {
+        Some(i) => group.unit_types.get(i)?.formation_category + 1,
+        None => 0,
+    };
     while c <= 5 {
         if let Some(i) = group
             .unit_types
             .iter()
             .position(|s| s.formation_category == c)
-            && !group.unit_types[i].units.is_empty()
+            && !group.unit_types.get(i)?.units.is_empty()
         {
             return Some(i);
         }
@@ -179,10 +183,14 @@ fn next_statistic(group: &UnitGroup, current: Option<usize>, placed: &mut usize)
 /// it. Each slot takes no unit, the offset, the world's time, the line as its depth, active, and
 /// the category of the unit type statistic in turn ([`next_statistic`], -1 when none is left);
 /// the slots in use are the members.
-pub(crate) fn phalanx_slots(formation: &mut Formation, group: &UnitGroup, world_time: u32) -> bool {
+pub(crate) fn phalanx_slots(
+    formation: &mut Formation,
+    group: &UnitGroup,
+    world_time: u32,
+) -> Result<bool, GenieError> {
     let n = group.members.len() as i32;
     if n < 1 {
-        return false;
+        return Ok(false);
     }
     let mut lines = 0;
     let mut left = n;
@@ -212,7 +220,7 @@ pub(crate) fn phalanx_slots(formation: &mut Formation, group: &UnitGroup, world_
         if 1 < lines && line == lines - 1 {
             width = n - slot as i32;
         }
-        let l = &mut formation.lines[line as usize];
+        let l = formation.lines.checked_mut(line as usize)?;
         clear_line(l);
         let _ = reset_line(l, width, line);
         let mut at = fmath::add(fmath::scale((width / 2) as f32, single), [0.0; 3]);
@@ -222,7 +230,7 @@ pub(crate) fn phalanx_slots(formation: &mut Formation, group: &UnitGroup, world_
         }
         for k in 0..width.max(0) as usize {
             statistic = next_statistic(group, statistic, &mut placed);
-            *formation.slot_mut(slot) = Slot {
+            *formation.slot_mut(slot)? = Slot {
                 unit_id: -1,
                 offset: at,
                 desired_transform_position: [0.0; 3],
@@ -232,13 +240,16 @@ pub(crate) fn phalanx_slots(formation: &mut Formation, group: &UnitGroup, world_
                 depth: line,
                 position_filled: 0,
                 active: 1,
-                desired_category: statistic.map_or(-1, |i| group.unit_types[i].formation_category),
+                desired_category: match statistic {
+                    Some(i) => group.unit_types.checked(i)?.formation_category,
+                    None => -1,
+                },
                 desired_sub_category: -1,
-                transformed: formation.slot_mut(slot).transformed,
+                transformed: formation.slot_mut(slot)?.transformed,
             };
-            let l = &mut formation.lines[line as usize];
+            let l = formation.lines.checked_mut(line as usize)?;
             if k < l.indices.len() {
-                l.indices[k] = slot as u32;
+                *l.indices.checked_mut(k)? = slot as u32;
             }
             placed += 1;
             at = fmath::sub(at, single);
@@ -246,7 +257,7 @@ pub(crate) fn phalanx_slots(formation: &mut Formation, group: &UnitGroup, world_
         }
     }
     formation.use_slots(n as usize);
-    true
+    Ok(true)
 }
 
 /// `placeBoxPerimeter` (`FUN_14102ab30`): `count` places on the box from `min` to `max` (x and z;
@@ -261,9 +272,9 @@ pub fn place_box_perimeter(
     min: &mut Vec3,
     max: &mut Vec3,
     spacing: f32,
-) -> bool {
+) -> Result<bool, GenieError> {
     if !(1..=BOX_POSITIONS).contains(&count) {
-        return false;
+        return Ok(false);
     }
     let side = max[0] - min[0];
     let total = side * BOX_SIDES;
@@ -331,14 +342,14 @@ pub fn place_box_perimeter(
             p[0] = x;
             p[2] = z;
         }
-        return true;
+        return Ok(true);
     }
     out[0][0] = max[0];
     out[0][2] = min[2];
     let mut corner = 0.0f32;
     let mut state = 0;
     for i in 1..count {
-        let prev = out[i - 1];
+        let prev = *out.checked(i - 1)?;
         let (x, z) = match state {
             0 => {
                 let z = prev[2] + step;
@@ -380,27 +391,27 @@ pub fn place_box_perimeter(
                 (x, min[2])
             }
             _ => {
-                out[i] = out[0];
+                *out.checked_mut(i)? = *out.checked_mut(0)?;
                 continue;
             }
         };
-        out[i][0] = x;
-        out[i][2] = z;
+        out.checked_mut(i)?[0] = x;
+        out.checked_mut(i)?[2] = z;
     }
-    true
+    Ok(true)
 }
 
 /// `CreateLines` (`FUN_1410143a0`): the slots in use (in order) form lines by their offsets on x,
 /// a slot joining the first line whose x is within [`LINE_EPSILON`] of its own, else starting a
 /// new one at its x; the lines' array grows to them (`FUN_14102d490`), the lines in use are
 /// them, and each line (reset, [`reset_line`]) holds its slots at its index as depth.
-pub fn create_lines(formation: &mut Formation) {
+pub fn create_lines(formation: &mut Formation) -> Result<(), GenieError> {
     let mut xs: Vec<f32> = Vec::new();
     let mut members: Vec<Vec<u32>> = Vec::new();
     for (i, s) in formation.slots.iter().enumerate() {
         let x = s.offset[0];
         if let Some(j) = xs.iter().position(|&lx| (lx - x).abs() < LINE_EPSILON) {
-            members[j].push(i as u32);
+            members.checked_mut(j)?.push(i as u32);
         } else {
             xs.push(x);
             members.push(vec![i as u32]);
@@ -410,15 +421,16 @@ pub fn create_lines(formation: &mut Formation) {
     formation.resize_lines(lines);
     formation.number_lines = lines as i32;
     for (k, slots) in members.iter().enumerate() {
-        let line = &mut formation.lines[k];
+        let line = formation.lines.checked_mut(k)?;
         clear_line(line);
         let _ = reset_line(line, slots.len() as i32, k as i32);
         for (m, &slot) in slots.iter().enumerate() {
             if m < line.indices.len() {
-                line.indices[m] = slot;
+                *line.indices.checked_mut(m)? = slot;
             }
         }
     }
+    Ok(())
 }
 
 /// The slots of `createBox` (`FUN_141011a00`, [`World::create_box`]), up to its
@@ -489,7 +501,7 @@ pub(crate) fn box_slots(
         }
         for (j, &p) in positions.iter().enumerate().take(count) {
             let at = used + j;
-            *formation.slot_mut(at) = Slot {
+            *formation.slot_mut(at)? = Slot {
                 unit_id: -1,
                 offset: p,
                 desired_transform_position: [0.0; 3],
@@ -501,7 +513,7 @@ pub(crate) fn box_slots(
                 active: 1,
                 desired_category: c,
                 desired_sub_category: -1,
-                transformed: formation.slot_mut(at).transformed,
+                transformed: formation.slot_mut(at)?.transformed,
             };
         }
         used += count;
@@ -514,7 +526,7 @@ pub(crate) fn box_slots(
     let width = crate::math::conversions::cvttss2si(max_x - min_x);
     formation.maximum_width = width;
     formation.maximum_depth = width;
-    create_lines(formation);
+    create_lines(formation)?;
     Ok(true)
 }
 
@@ -534,13 +546,7 @@ impl World {
         g: &UnitGroup,
     ) -> Result<bool, GenieError> {
         let members = self.member_places(g)?;
-        Ok(slots_by_place(
-            formation,
-            g,
-            &members,
-            false,
-            self.world_time,
-        ))
+        slots_by_place(formation, g, &members, false, self.world_time)
     }
 
     /// `createUDF` (`FUN_141014f60`) of `formation` for group `g`, as [`Self::create_horde`]
@@ -555,13 +561,7 @@ impl World {
         g: &UnitGroup,
     ) -> Result<bool, GenieError> {
         let members = self.member_places(g)?;
-        Ok(slots_by_place(
-            formation,
-            g,
-            &members,
-            true,
-            self.world_time,
-        ))
+        slots_by_place(formation, g, &members, true, self.world_time)
     }
 
     /// What `createHorde` and `createUDF` read of each member (`FUN_1415417a0`, slot 0x520,
@@ -596,7 +596,7 @@ impl World {
         formation: &mut Formation,
         group: i32,
     ) -> Result<bool, GenieError> {
-        if !phalanx_slots(formation, self.groups.held(group)?, self.world_time) {
+        if !phalanx_slots(formation, self.groups.held(group)?, self.world_time)? {
             return Ok(false);
         }
         self.lay_units(formation, group, false)?;
@@ -668,7 +668,7 @@ mod tests {
             None,
             Some(place(9, 20.0, 10.0, 3)),
         ];
-        assert!(slots_by_place(&mut f, &g, &members, false, 640));
+        assert!(slots_by_place(&mut f, &g, &members, false, 640).unwrap());
         assert_eq!(
             (
                 f.kind,
@@ -701,7 +701,7 @@ mod tests {
         assert_eq!(f.slots[2].offset, [5.0, 0.0, 0.0]);
         // no members, no layout
         let mut f = Formation::new();
-        assert!(!slots_by_place(&mut f, &group(0, 1.0, &[]), &[], false, 0));
+        assert!(!slots_by_place(&mut f, &group(0, 1.0, &[]), &[], false, 0).unwrap());
         assert_eq!(f, Formation::new());
     }
 
@@ -716,7 +716,7 @@ mod tests {
             None,
             Some(place(9, 20.0, 10.0, 3)),
         ];
-        assert!(slots_by_place(&mut f, &g, &members, true, 640));
+        assert!(slots_by_place(&mut f, &g, &members, true, 640).unwrap());
         assert_eq!((f.kind, f.transform_type), (USER_DEFINED, 1));
         let offsets: Vec<Vec3> = f.slots.iter().map(|s| s.offset).collect();
         assert_eq!(
@@ -736,7 +736,7 @@ mod tests {
             Some(place(9, 20.0, 10.0, 3)),
             Some(place(7, f32::NAN, 10.0, 1)),
         ];
-        assert!(slots_by_place(&mut f, &g, &members, true, 640));
+        assert!(slots_by_place(&mut f, &g, &members, true, 640).unwrap());
         // the farthest ahead stays finite, so the finite member's offset moves back by it
         assert!(f.slots[0].offset[0].is_finite(), "{:?}", f.slots[0].offset);
     }
@@ -748,13 +748,7 @@ mod tests {
     fn a_box_walk_on_a_nan_place_stays_on_its_side() {
         let mut out = [[0.0f32; 3]; BOX_POSITIONS];
         let (mut min, mut max) = ([-1.0, 0.0, -1.0], [1.0, 0.0, 1.0]);
-        assert!(place_box_perimeter(
-            9,
-            &mut out,
-            &mut min,
-            &mut max,
-            f32::INFINITY
-        ));
+        assert!(place_box_perimeter(9, &mut out, &mut min, &mut max, f32::INFINITY).unwrap());
         for p in &out[1..9] {
             assert_eq!(p[0], f32::INFINITY, "{out:?}");
             assert!(p[2].is_nan(), "{out:?}");
@@ -843,7 +837,7 @@ mod tests {
         let mut whole = start.clone();
         assert!(t.create_phalanx(&mut whole, 1).unwrap());
         let mut parts = start.clone();
-        assert!(phalanx_slots(&mut parts, &g, t.world_time));
+        assert!(phalanx_slots(&mut parts, &g, t.world_time).unwrap());
         t.lay_units(&mut parts, 1, false).unwrap();
         assert_eq!(whole, parts);
         let mut ids: Vec<i32> = whole.slots.iter().map(|s| s.unit_id).collect();
@@ -928,7 +922,7 @@ mod tests {
     fn a_phalanx_grows_by_a_slot_a_line() {
         let g = group(4, 2.0, &[(3, 1), (1, 3)]);
         let mut f = Formation::new();
-        assert!(phalanx_slots(&mut f, &g, 99));
+        assert!(phalanx_slots(&mut f, &g, 99).unwrap());
         assert_eq!(
             (
                 f.kind,
@@ -966,7 +960,7 @@ mod tests {
         );
         // without statistics the slots take no category
         let mut f = Formation::new();
-        assert!(phalanx_slots(&mut f, &group(2, 2.0, &[]), 0));
+        assert!(phalanx_slots(&mut f, &group(2, 2.0, &[]), 0).unwrap());
         assert!(f.slots.iter().all(|s| s.desired_category == -1));
     }
 
@@ -978,16 +972,16 @@ mod tests {
     fn the_box_perimeter_places_its_units_as_the_game_walks_it() {
         let mut out = [[0.0f32; 3]; BOX_POSITIONS];
         let (mut min, mut max) = ([-1.0, 0.0, -1.0], [1.0, 0.0, 1.0]);
-        assert!(place_box_perimeter(3, &mut out, &mut min, &mut max, 1.0));
+        assert!(place_box_perimeter(3, &mut out, &mut min, &mut max, 1.0).unwrap());
         assert_eq!(
             out[..3],
             [[1.0, 0.0, -1.0], [1.0, 0.0, 1.0], [-1.0, 0.0, 0.0]]
         );
-        assert!(place_box_perimeter(2, &mut out, &mut min, &mut max, 10.0));
+        assert!(place_box_perimeter(2, &mut out, &mut min, &mut max, 10.0).unwrap());
         assert_eq!((min, max), ([-2.5, 0.0, -2.5], [2.5, 0.0, 2.5]));
         assert_eq!(out[..2], [[2.5, 0.0, 0.0], [-2.5, 0.0, 0.0]]);
         let (mut min, mut max) = ([-2.0, 0.0, -1.0], [2.0, 0.0, 1.0]);
-        assert!(place_box_perimeter(16, &mut out, &mut min, &mut max, 0.5));
+        assert!(place_box_perimeter(16, &mut out, &mut min, &mut max, 0.5).unwrap());
         let walked: Vec<(f32, f32)> = out[..16].iter().map(|p| (p[0], p[2])).collect();
         assert_eq!(
             walked,
@@ -1041,13 +1035,13 @@ mod tests {
         for places in fixed {
             let n = places.len();
             let (mut min, mut max) = ([lo, 0.0, lo], [hi, 0.0, hi]);
-            assert!(place_box_perimeter(n, &mut out, &mut min, &mut max, 0.1));
+            assert!(place_box_perimeter(n, &mut out, &mut min, &mut max, 0.1).unwrap());
             let got: Vec<(f32, f32)> = out[..n].iter().map(|p| (p[0], p[2])).collect();
             assert_eq!(got, places, "{n}");
         }
         // none, or more than the buffer holds, writes nothing
-        assert!(!place_box_perimeter(0, &mut out, &mut min, &mut max, 1.0));
-        assert!(!place_box_perimeter(61, &mut out, &mut min, &mut max, 1.0));
+        assert!(!place_box_perimeter(0, &mut out, &mut min, &mut max, 1.0).unwrap());
+        assert!(!place_box_perimeter(61, &mut out, &mut min, &mut max, 1.0).unwrap());
     }
 
     /// `FUN_1410143a0`: slots within 1e-7 on x share a line; a line of an array large enough
@@ -1070,7 +1064,7 @@ mod tests {
             };
             3
         ];
-        create_lines(&mut f);
+        create_lines(&mut f).unwrap();
         assert_eq!(f.number_lines, 3);
         let lines: Vec<(i32, Vec<u32>)> = f
             .lines

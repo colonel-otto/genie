@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
+use crate::world::slots::CheckedIndex;
 
 /// No active slot lies nearer than `f32::MAX`: the game reads the slot before the array then.
 const NO_NEAREST_SLOT: GenieError =
@@ -161,6 +162,54 @@ impl World {
         Ok(took)
     }
 
+    /// The unreachable slots' places: each one's unit searches the grid for the cell it can
+    /// reach and the slot's place moves there (nudged for a spacing under [`PASS_ONE`]).
+    fn move_unreachable(
+        &self,
+        formation: &mut Formation,
+        grid: &mut PassGrid,
+        (members, un): (&[i32], Unreachable<'_>),
+    ) -> Result<(), GenieError> {
+        let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
+        let (k, grow) = (un.nearest, un.grow);
+        let mut visited = vec![0u8; (w * h).max(0) as usize];
+        for &u in un.slots {
+            visited.fill(0);
+            let Some(unit) = self.world_object(formation.slots.checked(u)?.unit_id) else {
+                continue;
+            };
+            let unit_mask = self.master_mask(unit.player(), unit.master_id())?;
+            let unit_at = unit.position();
+            let gx = cvttss2si(unit_at[0] - ox as f32);
+            let gy = cvttss2si(unit_at[1] - oz as f32);
+            let Some((fx, fy, nudge)) = self.search_cell(grid, &mut visited, (gx, gy), unit_mask)
+            else {
+                continue;
+            };
+            // CVTTSS2SI at 0x14103cb6a and 0x14103cb70
+            let (x, y) = if slot_tile(formation.slots.checked(k)?.transform_position) == (fx, fy) {
+                (fx, fy)
+            } else {
+                let Some(at) =
+                    self.step_once_more(grid, (fx, fy), [unit_at[0], unit_at[1]], grow, members)?
+                else {
+                    continue;
+                };
+                at
+            };
+            let s = formation.slots.checked_mut(u)?;
+            // COMISS/JC at 0x14103cde3: a NaN spacing nudges too
+            if crate::math::fmath::below_or_unordered(un.spacing, PASS_ONE) {
+                s.transform_position[0] = x as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?[0];
+                s.transform_position[2] = y as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?[1];
+            } else {
+                s.transform_position[0] = x as f32 + PASS_HALF;
+                s.transform_position[2] = y as f32 + PASS_HALF;
+            }
+        }
+        Ok(())
+    }
+
     /// `FormationTransform`'s passability (`FUN_14103a1f0` after the transform) of `formation`
     /// for group `g`, tested with the object of the group's lead ([`World::lead_object`], the
     /// lead -1 the world's object -1), else that of the first active slot's unit the world's
@@ -216,22 +265,22 @@ impl World {
             self.spatial.standable(x, z, mask)
         };
         let position = g.motion.position[0];
-        let n = formation.slots.len();
-        let Some(_) = (0..n).find(|&i| {
-            let s = &formation.slots[i];
-            s.active != 0 && !stands(s.transform_position)
-        }) else {
+        let Some(_) = formation
+            .slots
+            .iter()
+            .position(|s| s.active != 0 && !stands(s.transform_position))
+        else {
             return Ok(());
         };
         // the active slot nearest the group's place, and the box around the tester and them
         let ([min_x, min_z, max_x, max_z], nearest) =
             passability_box(&formation.slots, tester.moved_vector().xhy(), position);
         let k = nearest.ok_or(NO_NEAREST_SLOT)?;
-        if !stands(formation.slots[k].transform_position) {
+        if !stands(formation.slots.checked(k)?.transform_position) {
             if !stands(position) {
                 return Ok(());
             }
-            let s = &mut formation.slots[k];
+            let s = formation.slots.checked_mut(k)?;
             s.transform_position[0] = position[0];
             s.transform_position[2] = position[2];
         }
@@ -250,7 +299,7 @@ impl World {
         if (reachable.len() as f32) / (formation.slot_capacity() as f32) < PASS_SHARE {
             unreachable.append(&mut reachable);
             reachable.push(k);
-            let s = &mut formation.slots[k];
+            let s = formation.slots.checked_mut(k)?;
             s.transform_position[0] = position[0];
             s.transform_position[2] = position[2];
         }
@@ -271,58 +320,14 @@ impl World {
             ox,
             oz,
         };
-        let near = formation.slots[k].transform_position;
-        for &r in &reachable {
-            let p = formation.slots[r].transform_position;
-            let gx = cvttss2si(p[0] - ox as f32);
-            let gz = cvttss2si(p[2] - oz as f32);
-            if !(0 <= gx && gx < w && 0 <= gz && gz < h) {
-                continue;
-            }
-            let cell = (gz * w + gx) as usize;
-            grid.cells[cell] = cell_mark(grid.cells[cell], near[0] - p[0], near[2] - p[2]);
-        }
-        let mut visited = vec![0u8; (w * h).max(0) as usize];
-        for &u in &unreachable {
-            visited.fill(0);
-            let Some(unit) = self.world_object(formation.slots[u].unit_id) else {
-                continue;
-            };
-            let unit_mask = self.master_mask(unit.player(), unit.master_id())?;
-            let unit_at = unit.position();
-            let gx = cvttss2si(unit_at[0] - ox as f32);
-            let gy = cvttss2si(unit_at[1] - oz as f32);
-            let Some((fx, fy, nudge)) =
-                self.search_cell(&mut grid, &mut visited, (gx, gy), unit_mask)
-            else {
-                continue;
-            };
-            // CVTTSS2SI at 0x14103cb6a and 0x14103cb70
-            let (x, y) = if slot_tile(formation.slots[k].transform_position) == (fx, fy) {
-                (fx, fy)
-            } else {
-                let Some(at) = self.step_once_more(
-                    &mut grid,
-                    (fx, fy),
-                    [unit_at[0], unit_at[1]],
-                    grow,
-                    &members,
-                )?
-                else {
-                    continue;
-                };
-                at
-            };
-            let s = &mut formation.slots[u];
-            // COMISS/JC at 0x14103cde3: a NaN spacing nudges too
-            if crate::math::fmath::below_or_unordered(g.desired_spacing, PASS_ONE) {
-                s.transform_position[0] = x as f32 + PASS_HALF + SLOT_NUDGE[nudge][0];
-                s.transform_position[2] = y as f32 + PASS_HALF + SLOT_NUDGE[nudge][1];
-            } else {
-                s.transform_position[0] = x as f32 + PASS_HALF;
-                s.transform_position[2] = y as f32 + PASS_HALF;
-            }
-        }
+        mark_reachable(&mut grid, formation, (&reachable, k))?;
+        let moved = Unreachable {
+            slots: &unreachable,
+            nearest: k,
+            spacing: g.desired_spacing,
+            grow,
+        };
+        self.move_unreachable(formation, &mut grid, (&members, moved))?;
         // the records go (FUN_1410561f0 at 0x14103ce9f)
         self.spatial.clear_tile_records();
         Ok(())
@@ -381,10 +386,10 @@ impl World {
             return None;
         }
         let mut queue = vec![(gx, gy)];
-        visited[(gy * w + gx) as usize] = 1;
+        *visited.get_mut((gy * w + gx) as usize)? = 1;
         let mut qi = 0;
         while qi < queue.len() {
-            let (cx, cy) = queue[qi];
+            let (cx, cy) = *queue.get(qi)?;
             qi += 1;
             if !(0 <= cx
                 && cx < w
@@ -405,17 +410,17 @@ impl World {
                     continue;
                 }
                 let cell = (w * ny + nx) as usize;
-                if visited[cell] != 0 {
+                if *visited.get(cell)? != 0 {
                     continue;
                 }
-                visited[cell] = 1;
-                let b = grid.cells[cell];
+                *visited.get_mut(cell)? = 1;
+                let b = *grid.cells.get(cell)?;
                 if b & 1 != 0 {
                     if b & 0x3e < 10 {
-                        grid.cells[cell] = count_up(b);
+                        *grid.cells.get_mut(cell)? = count_up(b);
                         return Some((ox + nx, oz + ny, usize::from(b >> 1 & 0x1f)));
                     }
-                    grid.cells[(w * cy + cx) as usize] = mark;
+                    *grid.cells.get_mut((w * cy + cx) as usize)? = mark;
                     return Some((ox + cx, oz + cy, 0));
                 }
                 queue.push((nx, ny));
@@ -443,7 +448,7 @@ impl World {
     ) -> Result<Option<(i32, i32)>, GenieError> {
         let (w, h) = (grid.w, grid.h);
         let (rx, ry) = (fx - grid.ox, fy - grid.oz);
-        let (ddx, ddy) = match grid.cells[(w * ry + rx) as usize] >> 6 {
+        let (ddx, ddy) = match *grid.cells.checked((w * ry + rx) as usize)? >> 6 {
             0 => (0, 1),
             1 => (1, 0),
             2 => (0, -1),
@@ -454,7 +459,7 @@ impl World {
             return Ok(None);
         }
         let cell = (w * ny + nx) as usize;
-        let b = grid.cells[cell];
+        let b = *grid.cells.checked(cell)?;
         if b & 0x3e < 0xb
             && !self.spatial.still_line_hit(
                 unit_at,
@@ -463,7 +468,7 @@ impl World {
                 members,
             )?
         {
-            grid.cells[cell] = count_up(b);
+            *grid.cells.checked_mut(cell)? = count_up(b);
             return Ok(Some((ddx + fx, fy + ddy)));
         }
         Ok(Some((fx, fy)))
@@ -552,4 +557,37 @@ pub(super) fn cell_mark(b: u8, dx: f32, dz: f32) -> u8 {
     } else {
         b & 0x3f | 0x40
     }
+}
+
+/// What [`World::move_unreachable`] reads of the passability: the slots to move, the nearest
+/// slot, the group's spacing and the manager's growth.
+#[derive(Clone, Copy)]
+struct Unreachable<'a> {
+    slots: &'a [usize],
+    nearest: usize,
+    spacing: f32,
+    grow: f32,
+}
+
+/// The reachable slots' marks on the grid: each of `reachable`'s places marks its cell toward
+/// the place of the nearest slot `k`.
+fn mark_reachable(
+    grid: &mut PassGrid,
+    formation: &Formation,
+    (reachable, k): (&[usize], usize),
+) -> Result<(), GenieError> {
+    let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
+    let near = formation.slots.checked(k)?.transform_position;
+    for &r in reachable {
+        let p = formation.slots.checked(r)?.transform_position;
+        let gx = cvttss2si(p[0] - ox as f32);
+        let gz = cvttss2si(p[2] - oz as f32);
+        if !(0 <= gx && gx < w && 0 <= gz && gz < h) {
+            continue;
+        }
+        let cell = (gz * w + gx) as usize;
+        *grid.cells.checked_mut(cell)? =
+            cell_mark(*grid.cells.checked(cell)?, near[0] - p[0], near[2] - p[2]);
+    }
+    Ok(())
 }

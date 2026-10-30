@@ -249,7 +249,7 @@ impl World {
             }
             self.groups.held_mut(group)?.flags &= !0x4000;
         }
-        self.groups.held_mut(group)?.motion.drop_to_high_level();
+        self.groups.held_mut(group)?.motion.drop_to_high_level()?;
         self.motion_update(group, true)?;
         if let Some(mut f) = self.groups.held_mut(group)?.current_formation.take() {
             let moved = self.formation_transform(&mut f, group, false);

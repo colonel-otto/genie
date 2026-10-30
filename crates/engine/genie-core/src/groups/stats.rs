@@ -8,6 +8,7 @@ use crate::groups::group_list::member_gone;
 use crate::objects::masters::master_type::ACTION;
 use crate::unit_ai::ActionKind;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// A group whose `mGroupFlags` bit 9 is set moves at its slowest member's speed divided by this
 /// (`FUN_14100bcb0`, `DAT_142ed66b4`).
@@ -87,7 +88,7 @@ impl World {
         let dt = self.dt_seconds;
         let (views, objects) = self.member_views(group, far)?;
         let g = self.groups.held_mut(group)?;
-        let (held, mut slowest, under_attack) = member_totals(g, &views, objects, dt);
+        let (held, mut slowest, under_attack) = member_totals(g, &views, objects, dt)?;
         if held == 0 {
             g.smallest_unit_radius = 0.0;
             g.desired_spacing = 0.0;
@@ -239,8 +240,8 @@ impl World {
                 }
             }
             let g = self.groups.held_mut(group)?;
-            g.unit_types[n].attack_range = range;
-            g.unit_types[n].desired_spacing = widest + widest;
+            g.unit_types.checked_mut(n)?.attack_range = range;
+            g.unit_types.checked_mut(n)?.desired_spacing = widest + widest;
         }
         Ok(())
     }
@@ -269,12 +270,12 @@ impl World {
             if let Some(ai) = self.object(id).and_then(|(_, u)| u.ai.as_ref())
                 && ai.formation_type < 9
             {
-                counts[ai.formation_type as usize] += 1;
+                *counts.checked_mut(ai.formation_type as usize)? += 1;
             }
         }
         let mut best = 0;
         for k in 1..9 {
-            if counts[best] < counts[k] {
+            if *counts.checked(best)? < *counts.checked(k)? {
                 best = k;
             }
         }
@@ -285,7 +286,7 @@ impl World {
             g.formation_locked_type = 0;
         }
         self.update_desired_positions(group, -1)?;
-        self.stances_state(group, 0);
+        self.stances_state(group, 0)?;
         // FUN_1415417a0 finds sleeping members too
         for &id in &ids {
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
@@ -332,7 +333,7 @@ impl World {
         let locked = if own_choice { 0 } else { kind };
         self.groups.held_mut(group)?.formation_locked_type = locked;
         self.update_desired_positions(group, if own_choice { -1 } else { kind })?;
-        self.stances_state(group, locked as u8);
+        self.stances_state(group, locked as u8)?;
         Ok(())
     }
 
@@ -340,9 +341,9 @@ impl World {
     /// (`+0x1a9`: 0 aggressive, 1 defensive, 2 stand ground, 3 no attack; on equal counts the
     /// lower), 0 without members whose unit AI the world holds; each such member's formation
     /// type (`+0x1d4`) becomes `formation_type`.
-    pub fn stances_state(&mut self, group: i32, formation_type: u8) {
+    pub fn stances_state(&mut self, group: i32, formation_type: u8) -> Result<(), GenieError> {
         let Some(g) = self.groups.get(group) else {
-            return;
+            return Ok(());
         };
         let ids: Vec<i32> = g.members.iter().map(|m| m.id).collect();
         let mut n = [0i32; 4];
@@ -350,7 +351,7 @@ impl World {
             if let Some(ai) = self.object(id).and_then(|(_, u)| u.ai.as_ref())
                 && ai.stance < 4
             {
-                n[ai.stance as usize] += 1;
+                *n.checked_mut(ai.stance as usize)? += 1;
             }
         }
         let state = if ids.is_empty() || (n[1] <= n[0] && n[2] <= n[0] && n[3] <= n[0]) {
@@ -371,6 +372,7 @@ impl World {
                 ai.formation_type = formation_type;
             }
         }
+        Ok(())
     }
 
     /// `FUN_140c65c60` with -1 and [`MOST_OBJECTS`] for member `id` into the group's
@@ -404,7 +406,7 @@ impl World {
             u.ai.as_ref()
                 .ok_or(GenieError::unsupported("a group member without a unit AI"))?;
         let ai_type = ai.ai_type;
-        if self.players[p].computer {
+        if self.players.player(p)?.computer {
             return Err(GenieError::unsupported(
                 "a computer player's group member's search (its cared classes)",
             ));
@@ -440,7 +442,7 @@ impl World {
             }
         }
         for list in [4usize, 3, 2] {
-            for record in &lists[list] {
+            for record in lists.checked(list)? {
                 let Some(object) = self.world_object(record.id) else {
                     continue;
                 };
@@ -596,7 +598,7 @@ fn member_totals(
     views: &[(usize, MemberView)],
     objects: Vec<i32>,
     dt: f32,
-) -> (i32, f32, bool) {
+) -> Result<(i32, f32, bool), GenieError> {
     g.centroid = [0.0; 3];
     g.desired_height = 0.0;
     g.largest_unit_radius = 0.0;
@@ -640,14 +642,14 @@ fn member_totals(
             g.largest_ranged_unit_range = v.range;
         }
         under_attack |= v.under_attack;
-        let m = &mut g.members[i];
+        let m = g.members.checked_mut(i)?;
         if v.attacking {
             m.seconds_since_attacking = 0.0;
         } else {
             m.seconds_since_attacking += dt;
         }
     }
-    (held, slowest, under_attack)
+    Ok((held, slowest, under_attack))
 }
 
 /// Slot 0x230 of an object of `master`: a combat object's weapon range (`+0x828`,

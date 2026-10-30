@@ -3,10 +3,12 @@
 //! group's lead from the group's place, the walk toward the walked level's waypoint with its turn
 //! (`FUN_141046270`, `FUN_14104c150`), then the velocity along the vectors.
 
+use crate::GenieError;
 use crate::groups::Motion;
 use crate::math::fmath::{self, Vec3};
 use crate::movement::Walker;
 use crate::world::World;
+use crate::world::slots::CheckedIndex;
 
 mod levels;
 mod request;
@@ -130,21 +132,22 @@ impl Motion {
     /// 2 go (`FUN_140f98e80`, each alone); that level walks again from waypoint 1 in state 2 with
     /// 10 tries; the top reached without one is reset ([`reset_level`]). A lone walked level
     /// stays as it is.
-    pub fn drop_to_high_level(&mut self) {
+    pub fn drop_to_high_level(&mut self) -> Result<(), GenieError> {
         if self.paths.len() < 2 {
-            return;
+            return Ok(());
         }
-        while self.paths[0].level != 2 && 1 < self.paths.len() {
+        while self.paths.checked(0)?.level != 2 && 1 < self.paths.len() {
             let _ = self.paths.remove(0);
         }
-        let level = &mut self.paths[0];
+        let level = self.paths.checked_mut(0)?;
         if level.level == 2 {
             level.waypoint = 1;
             level.state = 2;
             level.continue_counter = 10;
         } else {
-            reset_level(&mut self.paths);
+            reset_level(&mut self.paths)?;
         }
+        Ok(())
     }
 
     /// The walk's stop (`LAB_14104bd7e`): the forward speed and its acceleration go to 0.
@@ -155,9 +158,9 @@ impl Motion {
 
     /// `FUN_14104a050`: the motion stops ([`Motion::stand`]) and its walked level resets
     /// (`FUN_140f98e80`, its path and its parents gone, its repath time kept).
-    pub(in crate::groups) fn stop_walk(&mut self) {
+    pub(in crate::groups) fn stop_walk(&mut self) -> Result<(), GenieError> {
         self.stand();
-        reset_level(&mut self.paths);
+        reset_level(&mut self.paths)
     }
 
     /// `BMotion::calculateYawAngle` (`FUN_141046270`): the angle from `forward` (`param_2`) to
@@ -198,7 +201,7 @@ impl Motion {
     /// speed grows by `dt` times its acceleration; the new position moves by `dt` times each
     /// speed along its vector (forward, right, up) when that is above 1e-7 in size (motion flags
     /// bit 0); then the position is the new position, all four vectors.
-    pub fn integrate(&mut self, dt: f32) {
+    pub fn integrate(&mut self, dt: f32) -> Result<(), GenieError> {
         self.velocity[2] += dt * self.acceleration[2];
         for (speed, along) in [
             (self.velocity[2], 1),
@@ -207,13 +210,14 @@ impl Motion {
         ] {
             let d = dt * speed;
             if EPSILON < d.abs() {
-                let v = fmath::scale(d, self.new_position[along]);
+                let v = fmath::scale(d, *self.new_position.checked(along)?);
                 let p = &mut self.new_position[0];
                 *p = [p[0] + v[0], v[1] + p[1], v[2] + p[2]];
                 self.flags |= 1;
             }
         }
         self.position = self.new_position;
+        Ok(())
     }
 }
 

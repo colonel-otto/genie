@@ -7,6 +7,7 @@ use crate::groups::Motion;
 use crate::groups::formation::on_map;
 use crate::math::fmath::{self, Vec3, cross, normalize};
 use crate::world::World;
+use crate::world::slots::CheckedIndex;
 
 /// The spiral's steps (`FUN_141007630`'s table from `DAT_142f49460` and `DAT_142f49480`), x and y:
 /// up y, up x, down y, down x.
@@ -49,8 +50,8 @@ impl From<[f32; 2]> for Spiral {
 impl Spiral {
     /// One step in the direction; it turns when the count divides by the leg's length, and the
     /// leg grows on a turn to y (an even direction).
-    fn step(&mut self) {
-        let [dx, dy] = SPIRAL[self.direction];
+    fn step(&mut self) -> Result<(), GenieError> {
+        let [dx, dy] = *SPIRAL.checked(self.direction)?;
         self.at = [self.at[0] + dx, self.at[1] + dy];
         if self.count % self.leg == 0 {
             self.direction = (self.direction + 1) % SPIRAL.len();
@@ -59,6 +60,7 @@ impl Spiral {
             }
         }
         self.count += 1;
+        Ok(())
     }
 }
 
@@ -161,7 +163,7 @@ impl World {
             {
                 return Ok(at);
             }
-            spiral.step();
+            spiral.step()?;
         }
         Ok(centroid)
     }
@@ -652,7 +654,7 @@ mod tests {
         let mut spiral = Spiral::from([10.0, 10.0]);
         let mut points = vec![spiral.at];
         for _ in 0..12 {
-            spiral.step();
+            spiral.step().unwrap();
             points.push(spiral.at);
         }
         assert_eq!(

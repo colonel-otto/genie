@@ -55,7 +55,7 @@ impl World {
     ///
     /// [`UnitGroup::update_end`]: crate::groups::UnitGroup::update_end
     pub(super) fn group_update_end(&mut self, group: i32) -> Result<(), GenieError> {
-        self.groups.held_mut(group)?.update_end();
+        self.groups.held_mut(group)?.update_end()?;
         Ok(())
     }
 

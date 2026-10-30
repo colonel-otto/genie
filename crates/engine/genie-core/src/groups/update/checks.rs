@@ -18,6 +18,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// `FUN_141007ca0`: the units the group keeps apart (`+0x458`, the save's `objId`, size
@@ -433,14 +434,19 @@ impl World {
         self.show_sprite(id, Shown::Running)
     }
 
-    /// Slots 0x660, 0x658 and 0x650 of object `id` ([`Shown`]): whether it shows the sprite.
-    pub(super) fn show_sprite(&mut self, id: i32, shown: Shown) -> Result<bool, GenieError> {
+    /// The sprite object `id` shows as `shown`, none when it has none or is not a moving
+    /// object.
+    ///
+    /// # Errors
+    ///
+    /// A trade cart, or an action the slice does not model ([`World::show_sprite`]).
+    fn sprite_to_show(&self, id: i32, shown: Shown) -> Result<Option<i16>, GenieError> {
         let Some((p, u)) = self.object(id) else {
-            return Ok(false);
+            return Ok(None);
         };
         let master = u.master(&self.masters, p)?;
         if master.kind < MOVING {
-            return Ok(false);
+            return Ok(None);
         }
         let trade_cart = match shown {
             Shown::Standing => master.kind == COMBAT && master.class == class::TRADE_CART,
@@ -463,7 +469,12 @@ impl World {
             Shown::Walking => crate::objects::sprite::walking(master, look, false),
             Shown::Running => crate::objects::sprite::running(master, look),
         };
-        let Some(sprite) = sprite else {
+        Ok(sprite)
+    }
+
+    /// Slots 0x660, 0x658 and 0x650 of object `id` ([`Shown`]): whether it shows the sprite.
+    pub(super) fn show_sprite(&mut self, id: i32, shown: Shown) -> Result<bool, GenieError> {
+        let Some(sprite) = self.sprite_to_show(id, shown)? else {
             return Ok(false);
         };
         let graphic = self.graphics.get(&sprite).copied();
@@ -480,8 +491,8 @@ impl World {
         let place = self.place(id).ok_or_else(|| member_gone(id))?;
         let rng = self.streams.get(crate::math::rng::Stream::Sprite);
         let u = match place {
-            crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
-            crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
+            crate::orders::Place::Live(p, i) => self.players.live_mut(p, i)?,
+            crate::orders::Place::Sleeping(p, i) => self.players.asleep_mut(p, i)?,
         };
         crate::objects::sprite::new_sprite(&mut u.sprite, u.body.move_stats_mut(), g, rng);
         Ok(true)

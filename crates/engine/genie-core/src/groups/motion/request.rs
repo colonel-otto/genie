@@ -15,6 +15,7 @@ use crate::movement::{
     LongWalker, PathData, TileAsk, long_path_for, short_path_for, tile_plan_for,
 };
 use crate::pathing::tile_path::Path;
+use crate::world::slots::CheckedIndex;
 
 /// What the request plans toward: the walked level's number, range and target, its waypoint,
 /// the group's place (x, height, y; `from` its ground point) and the ground distance between
@@ -58,10 +59,10 @@ pub(super) fn request(
     target: Option<&Placed>,
     target_gap2: f32,
 ) -> Result<Option<Pass>, GenieError> {
-    if let Some(pass) = take_turn(motion, lead, world, budget) {
+    if let Some(pass) = take_turn(motion, lead, world, budget)? {
         return Ok(Some(pass));
     }
-    let level = &motion.paths[0];
+    let level = motion.paths.checked(0)?;
     let (at, waypoint) = (motion.position[0], point(level, level.waypoint));
     let leg = Leg {
         level: level.level,
@@ -76,7 +77,7 @@ pub(super) fn request(
     if leg.level == 2 {
         tile_plan(lead, world, &leg, target, &mut plan)?;
     }
-    let level = &motion.paths[0];
+    let level = motion.paths.checked(0)?;
     let (short_range, beyond) = if leg.level == 2 && level.points.len() as i32 == level.waypoint + 1
     {
         (leg.range, leg.way - leg.range)
@@ -109,13 +110,7 @@ pub(super) fn request(
         long_plan(lead, world.spatial, &leg, target, &mut plan)?;
     }
     let now = world.plan.now;
-    Ok(link(
-        motion,
-        lead,
-        plan.path,
-        (plan.found, plan.planned),
-        now,
-    ))
+    link(motion, lead, plan.path, (plan.found, plan.planned), now)
 }
 
 /// The request's turn (`0x14104a80b`): with `budget` a player over its path budget waits (its
@@ -128,7 +123,7 @@ fn take_turn(
     lead: &Lead,
     world: &mut StepWorld<'_, '_>,
     budget: bool,
-) -> Option<Pass> {
+) -> Result<Option<Pass>, GenieError> {
     if budget
         && !world
             .plan
@@ -138,7 +133,7 @@ fn take_turn(
     {
         motion.number_wait_delays += 1;
         motion.stand();
-        return Some(Pass::Done(false));
+        return Ok(Some(Pass::Done(false)));
     }
     world.plan.pathing.count_plan(lead.player);
     motion.number_wait_delays = 0;
@@ -150,14 +145,14 @@ fn take_turn(
     let lead_group = lead.group.as_ref();
     let spends = top_loops.is_none_or(|loops| !loops && lead_group.is_some_and(|g| !g.patrols()));
     if spends {
-        let level = &mut motion.paths[0];
+        let level = motion.paths.checked_mut(0)?;
         level.continue_counter -= 1;
         if level.continue_counter <= 0 {
-            give_up(motion);
-            return Some(Pass::Done(false));
+            give_up(motion)?;
+            return Ok(Some(Pass::Done(false)));
         }
     }
-    None
+    Ok(None)
 }
 
 /// The tile pathfinder for a top level (`DAT_1439e3cc4`) from the group's place to the
@@ -262,7 +257,7 @@ fn short_plan(
     } else {
         NEAR
     };
-    Ok(Some(in_range(motion, reach, target_gap2, world.plan.now)))
+    Ok(Some(in_range(motion, reach, target_gap2, world.plan.now)?))
 }
 
 /// The short pather found no way, the group at its waypoint: a group farther than `reach` from
@@ -270,19 +265,24 @@ fn short_plan(
 /// and at the last waypoint of a level made in this tick (`now`) the walk ends there (the group
 /// stands, the level resets and takes state 6: `FUN_140f9b4b0`); a group within reach arrived
 /// (state 4).
-fn in_range(motion: &mut Motion, reach: f32, target_gap2: f32, now: u32) -> Pass {
+fn in_range(
+    motion: &mut Motion,
+    reach: f32,
+    target_gap2: f32,
+    now: u32,
+) -> Result<Pass, GenieError> {
     if reach < target_gap2 {
-        let level = &motion.paths[0];
+        let level = motion.paths.checked(0)?;
         if level.waypoint == level.points.len() as i32 - 1 && level.created == now {
             motion.stand();
-            reset_level(&mut motion.paths);
-            motion.paths[0].state = 6;
-            return Pass::Done(true);
+            reset_level(&mut motion.paths)?;
+            motion.paths.checked_mut(0)?.state = 6;
+            return Ok(Pass::Done(true));
         }
-        return Pass::Reached;
+        return Ok(Pass::Reached);
     }
-    motion.paths[0].state = 4;
-    Pass::Next
+    motion.paths.checked_mut(0)?.state = 4;
+    Ok(Pass::Next)
 }
 
 /// The straight way when nothing stands on it (`FUN_1411570c0` with its tiles, from the group's
@@ -374,42 +374,42 @@ pub(super) fn link(
     path: Path,
     (found, planned): (bool, bool),
     now: u32,
-) -> Option<Pass> {
-    let level = &motion.paths[0];
+) -> Result<Option<Pass>, GenieError> {
+    let level = motion.paths.checked(0)?;
     if (level.level == 2 && !found) || path.points.len() < 2 {
         if !found {
             if level.continue_counter < LAST_TRIES {
                 if level.points.len() as i32 - 1 <= level.waypoint {
                     let patrols = lead.group.as_ref().is_some_and(LeadGroup::patrols);
                     if level.path_flags & 1 != 0 || patrols {
-                        motion.paths[0].pause_time = PATROL_PAUSE;
-                        return Some(Pass::Done(false));
+                        motion.paths.checked_mut(0)?.pause_time = PATROL_PAUSE;
+                        return Ok(Some(Pass::Done(false)));
                     }
                     let top_has_more = motion
                         .paths
                         .last()
                         .is_some_and(|t| t.has_path && t.waypoint < t.points.len() as i32 - 1);
                     if level.level < 2 && top_has_more {
-                        motion.paths[0].state = 5;
-                        return Some(Pass::Next);
+                        motion.paths.checked_mut(0)?.state = 5;
+                        return Ok(Some(Pass::Next));
                     }
-                    give_up(motion);
-                    return Some(Pass::Done(false));
+                    give_up(motion)?;
+                    return Ok(Some(Pass::Done(false)));
                 }
-                return Some(Pass::Reached);
+                return Ok(Some(Pass::Reached));
             }
-            motion.paths[0].pause_time = STUCK_PAUSE;
+            motion.paths.checked_mut(0)?.pause_time = STUCK_PAUSE;
             motion.stand();
-            return Some(Pass::Done(false));
+            return Ok(Some(Pass::Done(false)));
         }
         if level.path_flags & 1 == 0 {
             motion.stand();
-            reset_level(&mut motion.paths);
-            return Some(Pass::Done(true));
+            reset_level(&mut motion.paths)?;
+            return Ok(Some(Pass::Done(true)));
         }
-        return Some(Pass::Reached);
+        return Ok(Some(Pass::Reached));
     }
-    let level = &mut motion.paths[0];
+    let level = motion.paths.checked_mut(0)?;
     level.state = 0;
     // A level's plans (`FUN_140f8f670`, `FUN_140f9b800`).
     // A new path's flags (`FUN_14152eea0`).
@@ -431,16 +431,17 @@ pub(super) fn link(
     };
     motion.paths.insert(0, new);
     // a top level's plan waits for its stretches (the next pass); a walked level steers now
-    if top && planned {
+    Ok(if top && planned {
         Some(Pass::Next)
     } else {
         None
-    }
+    })
 }
 
 /// `LAB_14104be63`: the walked level gives up (`FUN_140f9b4b0`, then `FUN_140f98e80`: it resets,
 /// state 0), and the group stands.
-pub(super) fn give_up(motion: &mut Motion) {
-    reset_level(&mut motion.paths);
+pub(super) fn give_up(motion: &mut Motion) -> Result<(), GenieError> {
+    reset_level(&mut motion.paths)?;
     motion.stand();
+    Ok(())
 }

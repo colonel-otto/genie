@@ -691,13 +691,7 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
                 .unwrap()
         );
         let mut parts = Formation::new();
-        assert!(column_line_slots(
-            &mut parts,
-            &g,
-            false,
-            (false, false),
-            t.world_time
-        ));
+        assert!(column_line_slots(&mut parts, &g, false, (false, false), t.world_time).unwrap());
         t.lay_units(&mut parts, 1, previous == COLUMN).unwrap();
         assert_eq!(whole, parts);
         whole.slots.iter().map(|s| s.unit_id).collect::<Vec<_>>()
@@ -902,7 +896,7 @@ fn group_of(category: i32, count: usize, spacing: f32, types: &[(u32, u32)]) -> 
 fn a_line_of_two_unit_types_alternates_its_slots() {
     let g = group_of(3, 10, 1.0, &[(4, 5), (24, 5)]);
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, false, (false, false), 77));
+    assert!(column_line_slots(&mut f, &g, false, (false, false), 77).unwrap());
     assert_eq!((f.kind, f.maximum_width, f.maximum_depth), (LINE, 5, 2));
     assert_eq!(f.slots.len(), 10);
     assert_eq!(f.slots[0].offset, [0.0, 0.0, -2.0]);
@@ -926,26 +920,20 @@ fn a_staggered_line_shifts_its_lines_and_a_flanked_one_parts_them() {
             .collect()
     };
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, false, (true, false), 0));
+    assert!(column_line_slots(&mut f, &g, false, (true, false), 0).unwrap());
     assert_eq!(f.kind, STAGGERED);
     assert_eq!(offsets(&f, 0), [-3.5, -1.5, 0.5, 2.5, 4.5]);
     assert_eq!(offsets(&f, 1), [-4.5, -2.5, -0.5, 1.5, 3.5]);
     assert_eq!(f.lines[1].distance_back, 2.0);
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, false, (false, true), 0));
+    assert!(column_line_slots(&mut f, &g, false, (false, true), 0).unwrap());
     assert_eq!(f.kind, FLANKED);
     assert_eq!(offsets(&f, 0), [-4.5, -3.5, 2.5, 3.5, 4.5]);
     assert_eq!(offsets(&f, 1), [-4.0, -3.0, 2.0, 3.0, 4.0]);
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, true, (false, false), 0));
+    assert!(column_line_slots(&mut f, &g, true, (false, false), 0).unwrap());
     assert_eq!((f.kind, f.maximum_width, f.maximum_depth), (COLUMN, 2, 5));
-    assert!(!column_line_slots(
-        &mut f,
-        &UnitGroup::default(),
-        false,
-        (false, false),
-        0
-    ));
+    assert!(!column_line_slots(&mut f, &UnitGroup::default(), false, (false, false), 0).unwrap());
 }
 
 /// Two sub-formations: the narrower (three of category 0) takes one line of the widest's
@@ -961,7 +949,7 @@ fn a_narrow_sub_formation_takes_one_line_ahead_of_a_wider_one() {
         ..crate::groups::Member::default()
     }));
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, false, (false, false), 0));
+    assert!(column_line_slots(&mut f, &g, false, (false, false), 0).unwrap());
     assert_eq!((f.maximum_width, f.maximum_depth), (5, 3));
     let first: Vec<(f32, i32)> = f.slots[..3]
         .iter()

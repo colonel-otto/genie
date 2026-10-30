@@ -8,6 +8,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// A unit's radius in a formation where its master has no full footprint (`FUN_141025920`,
 /// `DAT_142e7f384`).
@@ -106,7 +107,7 @@ impl UnitGroup {
         unit: FormationUnit,
         masters_of: &dyn Fn(i32) -> Option<i16>,
         scratch: &mut Vec<u32>,
-    ) {
+    ) -> Result<(), GenieError> {
         let at = self
             .unit_types
             .iter()
@@ -118,13 +119,14 @@ impl UnitGroup {
                 });
                 self.unit_types.len() - 1
             });
-        let stat = &mut self.unit_types[at];
+        let stat = self.unit_types.checked_mut(at)?;
         let spacing = unit.radius * SPACING_FACTOR;
         if stat.desired_spacing < spacing {
             stat.desired_spacing = spacing;
         }
         stat.units.push(id);
         count_unit_types(stat, masters_of, scratch);
+        Ok(())
     }
 }
 
@@ -195,8 +197,8 @@ impl World {
         let group_id = g.id;
         if let Some(place) = self.place(id) {
             let u = match place {
-                crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
-                crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
+                crate::orders::Place::Live(p, i) => self.players.live_mut(p, i)?,
+                crate::orders::Place::Sleeping(p, i) => self.players.asleep_mut(p, i)?,
             };
             if u.group.id == group_id {
                 if !keep_moving && let Some(m) = u.body.mover_mut() {
@@ -218,7 +220,8 @@ impl World {
         for (m, &s) in g.members.iter_mut().zip(&seconds) {
             m.seconds_since_attacking = s;
         }
-        g.spare_seconds.insert(0, seconds[seconds.len() - 1]);
+        g.spare_seconds
+            .insert(0, *seconds.checked(seconds.len() - 1)?);
         let _ = self.leave_statistic(group, id)?;
         let g = self.groups.held(group)?;
         if g.motion.lead == id {
@@ -284,13 +287,18 @@ pub(crate) fn count_unit_types(
             continue;
         };
         let master = i32::from(master) as u32;
-        if let Some(k) = scratch[..n].iter().position(|&t| t == master) {
-            counts[k] += 1;
+        if let Some(k) = scratch.iter().take(n).position(|&t| t == master) {
+            // k < n <= 50, the counts' length
+            if let Some(count) = counts.get_mut(k) {
+                *count += 1;
+            }
             continue;
         }
-        if n < 50 {
-            scratch[n] = master;
-            counts[n] = 1;
+        if n < 50
+            && let (Some(unit_type), Some(count)) = (scratch.get_mut(n), counts.get_mut(n))
+        {
+            *unit_type = master;
+            *count = 1;
         }
         n += 1;
         if 50 < n {
@@ -353,8 +361,8 @@ impl World {
         let ai_rng = self.streams.get(crate::math::rng::Stream::Ai);
         // a sleeping unit joins as a live one
         let u = match place {
-            crate::orders::Place::Live(q, i) => &mut self.players[q].objects[i],
-            crate::orders::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
+            crate::orders::Place::Live(q, i) => self.players.live_mut(q, i)?,
+            crate::orders::Place::Sleeping(q, i) => self.players.asleep_mut(q, i)?,
         };
         u.group.id = group;
         if let Some(ai) = u.ai.as_mut() {
@@ -390,7 +398,7 @@ impl World {
             },
             seconds_since_attacking: seconds,
         });
-        g.join_statistic(sub, id, unit, &masters_of, &mut scratch);
+        g.join_statistic(sub, id, unit, &masters_of, &mut scratch)?;
         let spacing = unit.radius * SPACING_FACTOR;
         if g.desired_spacing < spacing {
             g.desired_spacing = spacing;
@@ -642,7 +650,7 @@ mod tests {
         }
         let asleep = t.players[1].objects.remove(2).unwrap();
         t.players[1].sleeping.push(asleep);
-        t.stances_state(1, 5);
+        t.stances_state(1, 5).unwrap();
         assert_eq!(
             t.players[1].sleeping[0].ai.as_ref().unwrap().formation_type,
             5

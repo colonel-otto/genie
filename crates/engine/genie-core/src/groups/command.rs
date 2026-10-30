@@ -14,6 +14,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// A group whose top speed is below this does not move (`commandMoveTo`, `DAT_142eb0c60`); nor is
 /// a path shorter than it one.
@@ -351,7 +352,7 @@ impl World {
         if g.motion.paths.is_empty() {
             g.motion.paths.push(level);
         } else {
-            g.motion.paths[0] = level;
+            *g.motion.paths.checked_mut(0)? = level;
         }
         Ok(Some((patrol, length)))
     }
@@ -522,6 +523,22 @@ impl World {
         Ok(())
     }
 
+    /// Whether [`World::stop_all_units`] stops the member at `place`: one with an action takes
+    /// the stop, one without only under `all` (slot 0x530: the top action's type, -1 without
+    /// one).
+    fn stop_applies(&self, place: Place, all: bool) -> Result<bool, GenieError> {
+        let u = match place {
+            Place::Live(p, i) => self.players.live(p, i)?,
+            Place::Sleeping(p, i) => self.players.asleep(p, i)?,
+        };
+        if u.unmodelled_action.is_some() {
+            return Err(GenieError::unsupported(
+                "stopAllUnits of a member with an action the slice does not model",
+            ));
+        }
+        Ok(all || u.top_action_kind().is_some())
+    }
+
     /// [`World::stop_all_units`]' stop of the member `id` at index `k` of group `group`.
     fn stop_listed_unit(
         &mut self,
@@ -533,17 +550,7 @@ impl World {
         let Some(place) = self.place(id) else {
             return Ok(());
         };
-        let u = match place {
-            Place::Live(p, i) => &self.players[p].objects[i],
-            Place::Sleeping(p, i) => &self.players[p].sleeping[i],
-        };
-        if u.unmodelled_action.is_some() {
-            return Err(GenieError::unsupported(
-                "stopAllUnits of a member with an action the slice does not model",
-            ));
-        }
-        // slot 0x530: the top action's type, -1 without one
-        if !all && u.top_action_kind().is_none() {
+        if !self.stop_applies(place, all)? {
             return Ok(());
         }
         let Place::Live(p, idx) = place else {
@@ -552,11 +559,11 @@ impl World {
             ));
         };
         self.object_stop(p, idx)?;
-        if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
+        if let Some(m) = self.players.live_mut(p, idx)?.body.mover_mut() {
             m.stand()?;
         }
         let g = self.groups.held_mut(group)?;
-        g.members[k].specific_move = SpecificMove {
+        g.members.checked_mut(k)?.specific_move = SpecificMove {
             path_id: -1,
             reason: -1,
             ..SpecificMove::default()

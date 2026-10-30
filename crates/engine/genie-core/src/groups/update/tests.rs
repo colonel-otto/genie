@@ -1211,7 +1211,7 @@ fn the_update_end_stores_a_moved_group_s_new_position() {
     g.motion.new_position[0] = [3.0, 0.0, 4.0];
     g.motion.flags = 3;
     g.flags = 0;
-    g.update_end();
+    g.update_end().unwrap();
     assert_eq!((g.motion.flags, g.flags & 2), (0, 2));
     assert_eq!(
         g.stored_positions.points.first().map(|p| p.point),
@@ -1220,7 +1220,7 @@ fn the_update_end_stores_a_moved_group_s_new_position() {
     let mut still = UnitGroup::new(2);
     still.motion.flags = 0;
     let before = still.stored_positions.points.len();
-    still.update_end();
+    still.update_end().unwrap();
     assert_eq!(still.stored_positions.points.len(), before);
 }
 

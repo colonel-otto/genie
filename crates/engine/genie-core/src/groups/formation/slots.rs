@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::groups::formation::{BOX, COLUMN};
 use crate::groups::{Formation, UnitGroup, sub_formation};
+use crate::world::slots::CheckedIndex;
 
 /// A line order that lacks a place up to the list's length: the game reads past the order.
 const NO_PLACE_IN_ORDER: GenieError =
@@ -137,84 +138,32 @@ impl World {
                 )
             })
             .collect();
-        let wanted: Vec<usize> = (0..formation.slots.len())
-            .filter(|&i| formation.slots[i].transformed != 0 && formation.slots[i].active != 0)
+        let wanted: Vec<usize> = formation
+            .slots
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.transformed != 0 && s.active != 0)
+            .map(|(i, _)| i)
             .collect();
         let ask = |i: usize, used: &[i32]| {
-            let (at, category, sub_category) = asks[i];
+            let (at, category, sub_category) = *asks.checked(i)?;
             self.closest_unit(g, at, category, sub_category, used)
+        };
+        let dist = |i: usize, id: i32| self.slot_distance(asks.get(i)?.0, id);
+        let pick = Picker {
+            ask: &ask,
+            dist: &dist,
         };
         // the slots in order
         let mut used = vec![0i32; USED_UNITS];
-        let mut count = 0usize;
-        let (mut sum_first, mut found_first, mut first) = (0.0f32, 0, -1);
-        for &i in &wanted {
-            let id = ask(i, &used[..count])?;
-            let Some(d) = (id != -1)
-                .then(|| self.slot_distance(asks[i].0, id))
-                .flatten()
-            else {
-                continue;
-            };
-            sum_first += d;
-            used[count] = id;
-            count += 1;
-            if first == -1 {
-                first = id;
-            }
-            found_first += 1;
-        }
+        let (sum_first, found_first, first) = pick.trial(&wanted, &mut used, (0, false))?;
         // the first unit barred from the first slot that finds one
-        let (mut sum_second, mut found_second) = (0.0f32, 0);
-        let mut count = 1usize;
-        let mut leading = true;
-        for &i in &wanted {
-            let id = ask(i, &used[..count])?;
-            let Some(d) = (id != -1)
-                .then(|| self.slot_distance(asks[i].0, id))
-                .flatten()
-            else {
-                continue;
-            };
-            sum_second += d;
-            if leading {
-                leading = false;
-                used[0] = id;
-            } else {
-                used[count] = id;
-                count += 1;
-            }
-            found_second += 1;
-        }
+        let (sum_second, found_second, _) = pick.trial(&wanted, &mut used, (1, true))?;
         if sum_first < sum_second || found_second < found_first {
-            let mut count = 0usize;
-            for &i in &wanted {
-                let id = ask(i, &used[..count])?;
-                formation.slots[i].unit_id = id;
-                if id != -1 {
-                    formation.slots[i].position_filled = 1;
-                    used[count] = id;
-                    count += 1;
-                }
-            }
+            pick.fill(formation, &wanted, &mut used, (0, false))?;
         } else {
-            used[0] = first;
-            let mut count = 1usize;
-            let mut leading = true;
-            for &i in &wanted {
-                let id = ask(i, &used[..count])?;
-                formation.slots[i].unit_id = id;
-                if id != -1 {
-                    formation.slots[i].position_filled = 1;
-                    if leading {
-                        leading = false;
-                        used[0] = id;
-                    } else {
-                        used[count] = id;
-                        count += 1;
-                    }
-                }
-            }
+            *used.checked_mut(0)? = first;
+            pick.fill(formation, &wanted, &mut used, (1, true))?;
         }
         Ok(())
     }
@@ -265,6 +214,31 @@ impl World {
         if costs.len() < ASSIGNMENT_CELLS {
             costs.resize(ASSIGNMENT_CELLS, 0.0);
         }
+        self.member_costs(formation, g, costs)?;
+        let preferences = slot_preferences(costs, n, s)?;
+        let kept = best_assignment(&preferences, costs, (n, s))?;
+        for (&r, &c) in kept.0.head(n)?.iter().zip(kept.1.head(n)?) {
+            if r == -1 {
+                continue;
+            }
+            let slot = formation.slots.checked_mut(c as usize)?;
+            slot.position_filled = 1;
+            slot.unit_id = g.members.checked(r as usize)?.id;
+        }
+        Ok(())
+    }
+
+    /// [`World::assign_slots_by_variance`]'s costs: for each member the world holds (rows of `n`
+    /// cells) the squared distance to each slot, [`FARTHEST`] for a slot not transformed or
+    /// active, of another category or of another master than the member's.
+    fn member_costs(
+        &self,
+        formation: &Formation,
+        g: &UnitGroup,
+        costs: &mut [f32],
+    ) -> Result<(), GenieError> {
+        let n = g.members.len();
+        let s = formation.slots.len();
         for (i, m) in g.members.iter().enumerate() {
             let Some(object) = self.world_object(m.id) else {
                 continue;
@@ -282,64 +256,13 @@ impl World {
                 }
                 let other_master =
                     slot.desired_sub_category != -1 && master != slot.desired_sub_category;
-                costs[i * n + j] = if other_master || skip {
+                *costs.checked_mut(i * n + j)? = if other_master || skip {
                     FARTHEST
                 } else {
                     let d = sub(at, slot.transform_position);
                     d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
                 };
             }
-        }
-        let preferences = slot_preferences(costs, n, s);
-        let mut taken = [false; ASSIGNMENT_MARKS];
-        let mut kept = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
-        let mut best_variance = FARTHEST;
-        for start in 0..n {
-            if s == 0 {
-                continue;
-            }
-            taken[..s].fill(false);
-            let mut pairs = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
-            let (mut placed, mut sum, mut member) = (0usize, 0.0f32, start);
-            while placed < s {
-                let row = member * n;
-                let mut l = 0;
-                let mut slot = preferences[row];
-                while slot != -1 && taken[slot as usize] {
-                    l += 1;
-                    if s <= l {
-                        slot = -1;
-                        break;
-                    }
-                    slot = preferences[row + l];
-                }
-                if slot == -1 {
-                    break;
-                }
-                pairs.0[placed] = member as i32;
-                pairs.1[placed] = slot;
-                taken[slot as usize] = true;
-                sum += costs[row + slot as usize];
-                member = if member + 1 < n { member + 1 } else { 0 };
-                placed += 1;
-            }
-            if placed == 0 {
-                continue;
-            }
-            let variance = pairs_variance(&pairs.0[..s], &pairs.1[..s], costs, n, sum / n as f32);
-            if variance < best_variance {
-                best_variance = variance;
-                kept.0[..s].copy_from_slice(&pairs.0[..s]);
-                kept.1[..s].copy_from_slice(&pairs.1[..s]);
-            }
-        }
-        for (&r, &c) in kept.0[..n].iter().zip(&kept.1[..n]) {
-            if r == -1 {
-                continue;
-            }
-            let slot = &mut formation.slots[c as usize];
-            slot.position_filled = 1;
-            slot.unit_id = g.members[r as usize].id;
         }
         Ok(())
     }
@@ -367,9 +290,12 @@ impl World {
         let n = n.min(g.members.len());
         let mut list: Vec<i32> = Vec::new();
         for i in 0..n {
-            let s = formation.slot_mut(i);
-            if s.transformed != 0 && s.active != 0 && self.world_object(g.members[i].id).is_some() {
-                list.push(g.members[i].id);
+            let s = formation.slot_mut(i)?;
+            if s.transformed != 0
+                && s.active != 0
+                && self.world_object(g.members.checked(i)?.id).is_some()
+            {
+                list.push(g.members.checked(i)?.id);
             }
         }
         for k in 0..list.len() {
@@ -378,7 +304,7 @@ impl World {
                 .position(|&o| o == k as i32)
                 .ok_or(NO_PLACE_IN_ORDER)?;
             let (category, sub_category) = {
-                let s = formation.slot_mut(at);
+                let s = formation.slot_mut(at)?;
                 (s.desired_category, s.desired_sub_category)
             };
             for (u, taken) in list.iter_mut().enumerate() {
@@ -397,7 +323,7 @@ impl World {
                 {
                     continue;
                 }
-                let s = formation.slot_mut(at);
+                let s = formation.slot_mut(at)?;
                 s.unit_id = *taken;
                 s.position_filled = 1;
                 *taken = -1;
@@ -446,11 +372,11 @@ impl World {
                 magnitude = 1;
                 start -= 1;
             }
-            order[base] = start;
+            *order.checked_mut(base)? = start;
             let mut uses = 0;
             for k in 1..width {
-                let v = order[base] + magnitude;
-                order[base + k as usize] = v;
+                let v = *order.checked(base)? + magnitude;
+                *order.checked_mut(base + k as usize)? = v;
                 if (line + 1) * width - 1 < v || v < width * line {
                     break;
                 }
@@ -495,27 +421,175 @@ impl World {
     }
 }
 
+/// What [`World::populate_slots`] reads: the unit nearest a slot not in `used`, and its distance.
+struct Picker<'a> {
+    ask: &'a AskUnit<'a>,
+    dist: &'a dyn Fn(usize, i32) -> Option<f32>,
+}
+
+/// The unit nearest a slot, not among those taken.
+type AskUnit<'a> = dyn Fn(usize, &[i32]) -> Result<i32, GenieError> + 'a;
+
+impl Picker<'_> {
+    /// One trial over the `wanted` slots, `used` holding the units taken (`count` of them, the
+    /// first place kept for the unit of the first slot that finds one while `leading`): the
+    /// sum of the distances, how many slots found a unit, and the first unit found.
+    fn trial(
+        &self,
+        wanted: &[usize],
+        used: &mut [i32],
+        (mut count, mut leading): (usize, bool),
+    ) -> Result<(f32, i32, i32), GenieError> {
+        let (mut sum, mut found, mut first) = (0.0f32, 0, -1);
+        for &i in wanted {
+            let id = (self.ask)(i, used.head(count)?)?;
+            let Some(d) = (id != -1).then(|| (self.dist)(i, id)).flatten() else {
+                continue;
+            };
+            sum += d;
+            if leading {
+                leading = false;
+                *used.checked_mut(0)? = id;
+            } else {
+                *used.checked_mut(count)? = id;
+                count += 1;
+            }
+            if first == -1 {
+                first = id;
+            }
+            found += 1;
+        }
+        Ok((sum, found, first))
+    }
+
+    /// The final pass: each wanted slot takes its unit (the first place of `used` kept for the
+    /// first while `leading`), filled when it found one.
+    fn fill(
+        &self,
+        formation: &mut Formation,
+        wanted: &[usize],
+        used: &mut [i32],
+        (mut count, mut leading): (usize, bool),
+    ) -> Result<(), GenieError> {
+        for &i in wanted {
+            let id = (self.ask)(i, used.head(count)?)?;
+            formation.slots.checked_mut(i)?.unit_id = id;
+            if id != -1 {
+                formation.slots.checked_mut(i)?.position_filled = 1;
+                if leading {
+                    leading = false;
+                    *used.checked_mut(0)? = id;
+                } else {
+                    *used.checked_mut(count)? = id;
+                    count += 1;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// [`World::assign_slots_by_variance`]'s search: from each starting member, the members in turn
+/// take their cheapest slot left (`preferences`), `s` pairs at most; the pairs of the least
+/// variance win.
+fn best_assignment(
+    preferences: &[i32],
+    costs: &[f32],
+    (n, s): (usize, usize),
+) -> Result<Pairs, GenieError> {
+    let mut taken = [false; ASSIGNMENT_MARKS];
+    let mut kept = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
+    let mut best_variance = FARTHEST;
+    for start in 0..n {
+        if s == 0 {
+            continue;
+        }
+        taken.head_mut(s)?.fill(false);
+        let (pairs, sum, placed) = take_turns(start, (preferences, costs), (n, s), &mut taken)?;
+        if placed == 0 {
+            continue;
+        }
+        let variance =
+            pairs_variance(pairs.0.head(s)?, pairs.1.head(s)?, costs, n, sum / n as f32)?;
+        if variance < best_variance {
+            best_variance = variance;
+            kept.0.head_mut(s)?.copy_from_slice(pairs.0.head(s)?);
+            kept.1.head_mut(s)?.copy_from_slice(pairs.1.head(s)?);
+        }
+    }
+    Ok(kept)
+}
+
+/// One start of [`best_assignment`]: from member `start` the members in turn take their cheapest
+/// slot left in `taken`, until `s` pairs are placed or a member finds none: the pairs, their
+/// costs' sum and their count.
+fn take_turns(
+    start: usize,
+    (preferences, costs): (&[i32], &[f32]),
+    (n, s): (usize, usize),
+    taken: &mut [bool; ASSIGNMENT_MARKS],
+) -> Result<(Pairs, f32, usize), GenieError> {
+    let mut pairs = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
+    let (mut placed, mut sum, mut member) = (0usize, 0.0f32, start);
+    while placed < s {
+        let row = member * n;
+        let slot = first_free(preferences, taken, row, s)?;
+        if slot == -1 {
+            break;
+        }
+        *pairs.0.checked_mut(placed)? = member as i32;
+        *pairs.1.checked_mut(placed)? = slot;
+        *taken.checked_mut(slot as usize)? = true;
+        sum += *costs.checked(row + slot as usize)?;
+        member = if member + 1 < n { member + 1 } else { 0 };
+        placed += 1;
+    }
+    Ok((pairs, sum, placed))
+}
+
+/// The first of a member's `s` preferred slots (the cells from `row`) not taken, -1 for none.
+fn first_free(
+    preferences: &[i32],
+    taken: &[bool],
+    row: usize,
+    s: usize,
+) -> Result<i32, GenieError> {
+    let mut l = 0;
+    let mut slot = *preferences.checked(row)?;
+    while slot != -1 && *taken.checked(slot as usize)? {
+        l += 1;
+        if s <= l {
+            return Ok(-1);
+        }
+        slot = *preferences.checked(row + l)?;
+    }
+    Ok(slot)
+}
+
+/// A side of an assignment: the member and the slot of each pair.
+type Pairs = ([i32; ASSIGNMENT_SIDE], [i32; ASSIGNMENT_SIDE]);
+
 /// [`World::assign_slots_by_variance`]'s preferences: for each of the `n` members (rows of `n`
 /// cells in `costs`) its `s` slots from the cheapest on, the first untaken one winning a tie.
-pub(super) fn slot_preferences(costs: &[f32], n: usize, s: usize) -> Vec<i32> {
+pub(super) fn slot_preferences(costs: &[f32], n: usize, s: usize) -> Result<Vec<i32>, GenieError> {
     let mut preferences = vec![-1i32; ASSIGNMENT_CELLS];
     let mut taken = [false; ASSIGNMENT_MARKS];
     for i in 0..n {
         let row = i * n;
-        taken[..s].fill(false);
+        taken.head_mut(s)?.fill(false);
         for k in 0..s {
-            let first = taken[..s].iter().position(|&t| !t).unwrap_or(s);
+            let first = taken.head(s)?.iter().position(|&t| !t).unwrap_or(s);
             let mut best = first;
             for j in first + 1..s {
-                if !taken[j] && costs[row + j] < costs[row + best] {
+                if !*taken.checked(j)? && *costs.checked(row + j)? < *costs.checked(row + best)? {
                     best = j;
                 }
             }
-            preferences[row + k] = best as i32;
-            taken[best] = true;
+            *preferences.checked_mut(row + k)? = best as i32;
+            *taken.checked_mut(best)? = true;
         }
     }
-    preferences
+    Ok(preferences)
 }
 
 /// [`World::assign_slots_by_variance`]'s variance of one pairing: of the pairs (`members`,
@@ -527,14 +601,14 @@ pub(super) fn pairs_variance(
     costs: &[f32],
     n: usize,
     mean: f32,
-) -> f32 {
+) -> Result<f32, GenieError> {
     let (mut variance, mut count) = (0.0f32, 0i32);
     for (&r, &c) in members.iter().zip(slots) {
         if r != -1 && c != -1 {
             count += 1;
-            let d = costs[r as usize * n + c as usize] - mean;
+            let d = *costs.checked(r as usize * n + c as usize)? - mean;
             variance += d * d;
         }
     }
-    variance / count as f32
+    Ok(variance / count as f32)
 }

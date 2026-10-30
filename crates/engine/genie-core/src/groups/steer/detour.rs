@@ -9,6 +9,7 @@ use crate::groups::steer::{
 use crate::math::fmath::{Vec3, at_most_or_unordered};
 use crate::pathing::tile_path::Path;
 use crate::world::World;
+use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
 impl World {
@@ -61,34 +62,22 @@ impl World {
         differentiators: &[i32],
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
-        let id = g.members[index].id;
-        let to = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot].transform_position;
+        let id = g.members.checked(index)?.id;
+        let to = g
+            .current_formation
+            .as_ref()
+            .ok_or(NO_FORMATION)?
+            .slots
+            .checked(slot)?
+            .transform_position;
         let [place, forward, _, _] = g.motion.position;
         let (moving, waits) = (g.motion.moving(), g.motion.waits_to_move());
         let r = self.rounder(id, differentiators)?;
-        let mut way = Way {
-            record: Path::default(),
-            result: BLOCKED,
-            planned: false,
-            goal: to,
-        };
-        self.round_to_slot(&r, to, &mut way)?;
-        if way.result != REACHED {
-            self.round_one_step(&r, to, forward, &mut way)?;
-            if !matches!(way.result, REACHED | PARTIAL) {
-                self.round_to_place(&r, place, &mut way)?;
-            }
-        }
-        let mut serves = matches!(way.result, REACHED | PARTIAL);
-        if matches!(way.result, BLOCKED | OFF_MAP) {
-            serves = self.round_long_way(&r, to, &mut way)?;
-        }
+        let (way, serves) = self.find_way(&r, (to, forward, place))?;
         if serves && !moving && !waits && ends_farther(&way.record, to, gap) {
             self.stop_member(id)?;
             self.show_standing(id)?;
-            self.groups.held_mut(group)?.members[index]
-                .specific_move
-                .consecutive_move_failures = 0;
+            self.move_record(group, index)?.consecutive_move_failures = 0;
             self.set_slot_state(group, slot, 3)?;
             return Ok(());
         }
@@ -104,10 +93,50 @@ impl World {
         }
         self.set_slot_state(group, slot, 0)?;
         self.stop_member(id)?;
-        self.groups.held_mut(group)?.members[index]
-            .specific_move
-            .consecutive_move_failures += 1;
+        self.move_record(group, index)?.consecutive_move_failures += 1;
         Ok(())
+    }
+
+    /// The member `index` of group `group`'s record of its specific move.
+    fn move_record(
+        &mut self,
+        group: i32,
+        index: usize,
+    ) -> Result<&mut crate::groups::SpecificMove, GenieError> {
+        Ok(&mut self
+            .groups
+            .held_mut(group)?
+            .members
+            .checked_mut(index)?
+            .specific_move)
+    }
+
+    /// The way [`World::way_round`] finds for the rounder `r` to the slot's place `to`: round to
+    /// the slot, else one step on toward it from `forward`, else to the group's `place`, and
+    /// the long way round a blocked one; with whether the way serves.
+    fn find_way(
+        &mut self,
+        r: &Rounder<'_>,
+        (to, forward, place): (Vec3, Vec3, Vec3),
+    ) -> Result<(Way, bool), GenieError> {
+        let mut way = Way {
+            record: Path::default(),
+            result: BLOCKED,
+            planned: false,
+            goal: to,
+        };
+        self.round_to_slot(r, to, &mut way)?;
+        if way.result != REACHED {
+            self.round_one_step(r, to, forward, &mut way)?;
+            if !matches!(way.result, REACHED | PARTIAL) {
+                self.round_to_place(r, place, &mut way)?;
+            }
+        }
+        let mut serves = matches!(way.result, REACHED | PARTIAL);
+        if matches!(way.result, BLOCKED | OFF_MAP) {
+            serves = self.round_long_way(r, to, &mut way)?;
+        }
+        Ok((way, serves))
     }
 
     /// What the way round reads of member `id` ([`Rounder`]).

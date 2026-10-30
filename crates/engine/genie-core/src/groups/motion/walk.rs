@@ -10,6 +10,7 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{Planning, footprint_gap};
 use crate::world::World;
+use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
 /// The walk of the walked level (`LAB_14104b6b4`): see [`path_step`]. A group on its waypoint
@@ -26,7 +27,7 @@ pub(super) fn steer(
     target: Option<&Placed>,
 ) -> Result<Pass, GenieError> {
     let dt = world.dt;
-    let level = &motion.paths[0];
+    let level = motion.paths.checked(0)?;
     let waypoint = point(level, level.waypoint);
     let at = motion.position[0];
     if ground(at, waypoint) < EPSILON {
@@ -54,7 +55,7 @@ pub(super) fn steer(
     if let Some(pass) = way_blocked(motion, lead, world.spatial, at, next)? {
         return Ok(pass);
     }
-    if let Some(pass) = walk_ends(motion, at, target) {
+    if let Some(pass) = walk_ends(motion, at, target)? {
         return Ok(pass);
     }
     turn_toward(motion, direction, dt);
@@ -90,14 +91,14 @@ fn way_blocked(
     if hits.is_empty() {
         return Ok(None);
     }
-    let (on_target, newer) = weigh_hits(motion, spatial, &hits);
+    let (on_target, newer) = weigh_hits(motion, spatial, &hits)?;
     if hits.len() == 1 && on_target {
         set_flag(&mut motion.paths, 0, true);
         set_flag(&mut motion.paths, 2, true);
         return Ok(Some(Pass::Next));
     }
     if 0 < newer {
-        return Ok(Some(back_to_parent(motion, lead, spatial)));
+        return Ok(Some(back_to_parent(motion, lead, spatial)?));
     }
     Ok(None)
 }
@@ -105,8 +106,8 @@ fn way_blocked(
 /// The hits the world places, but those the walked level or the top level ignores: whether
 /// one is the walked level's target, and how many moved (their gait's last move) after the
 /// level was made.
-fn weigh_hits(motion: &Motion, spatial: &Spatial, hits: &[i32]) -> (bool, u32) {
-    let level = &motion.paths[0];
+fn weigh_hits(motion: &Motion, spatial: &Spatial, hits: &[i32]) -> Result<(bool, u32), GenieError> {
+    let level = motion.paths.checked(0)?;
     let top_ignore = motion
         .paths
         .last()
@@ -129,22 +130,22 @@ fn weigh_hits(motion: &Motion, spatial: &Spatial, hits: &[i32]) -> (bool, u32) {
             newer += 1;
         }
     }
-    (on_target, newer)
+    Ok((on_target, newer))
 }
 
 /// The walk goes back to the parent level (it asks again, state 2), and past one whose waypoint
 /// the lead cannot stand on to that one's parent; a level without a parent resets and the group
 /// stands (the step ends with 1).
-fn back_to_parent(motion: &mut Motion, lead: &Lead, spatial: &Spatial) -> Pass {
+fn back_to_parent(motion: &mut Motion, lead: &Lead, spatial: &Spatial) -> Result<Pass, GenieError> {
     for _ in 0..2 {
         if motion.paths.len() < 2 {
-            reset_level(&mut motion.paths);
+            reset_level(&mut motion.paths)?;
             motion.stand();
-            return Pass::Done(true);
+            return Ok(Pass::Done(true));
         }
-        motion.paths[1].state = 2;
+        motion.paths.checked_mut(1)?.state = 2;
         let _ = motion.paths.remove(0);
-        let parent = &motion.paths[0];
+        let parent = motion.paths.checked(0)?;
         if !parent.has_path {
             break;
         }
@@ -153,7 +154,7 @@ fn back_to_parent(motion: &mut Motion, lead: &Lead, spatial: &Spatial) -> Pass {
             break;
         }
     }
-    Pass::Next
+    Ok(Pass::Next)
 }
 
 /// `LAB_14104bcb6`: in range of where the walk ends, it ends. Without a target, a walked level
@@ -161,8 +162,12 @@ fn back_to_parent(motion: &mut Motion, lead: &Lead, spatial: &Spatial) -> Pass {
 /// the range (less [`EPSILON`]) of the top's last point (the 3D distance) arrived (the level
 /// resets, the group stands); with a target, a group whose footprint gap to it is the range
 /// (within [`EPSILON`]) counts the waypoint reached. None when the walk goes on.
-fn walk_ends(motion: &mut Motion, at: Vec3, target: Option<&Placed>) -> Option<Pass> {
-    let level = &motion.paths[0];
+fn walk_ends(
+    motion: &mut Motion,
+    at: Vec3,
+    target: Option<&Placed>,
+) -> Result<Option<Pass>, GenieError> {
+    let level = motion.paths.checked(0)?;
     match target {
         None => {
             let top = motion.paths.last().filter(|t| t.has_path);
@@ -174,20 +179,20 @@ fn walk_ends(motion: &mut Motion, at: Vec3, target: Option<&Placed>) -> Option<P
                 let d = fmath::sub(at, end);
                 let gap = fmath::sqrt(d[1] * d[1] + d[0] * d[0] + d[2] * d[2]);
                 if gap - level.range < EPSILON {
-                    reset_level(&mut motion.paths);
+                    reset_level(&mut motion.paths)?;
                     motion.stand();
-                    return Some(Pass::Done(true));
+                    return Ok(Some(Pass::Done(true)));
                 }
             }
         }
         Some(t) => {
             let gap = footprint_gap(t.position, t.radius, [at[0], at[2], 0.0], [0.0, 0.0]);
             if (gap - level.range).abs() < EPSILON {
-                return Some(Pass::Reached);
+                return Ok(Some(Pass::Reached));
             }
         }
     }
-    None
+    Ok(None)
 }
 
 /// The turn toward the waypoint (`direction`, on the ground) from the forward on the ground, by
@@ -285,7 +290,7 @@ impl World {
             path_step(&mut motion, &view, &lead, &mut world, budget)
         };
         if result.is_ok() {
-            motion.integrate(self.dt_seconds);
+            motion.integrate(self.dt_seconds)?;
         }
         self.groups.held_mut(group)?.motion = motion;
         result.map(|_| ())

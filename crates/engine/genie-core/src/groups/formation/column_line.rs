@@ -9,6 +9,7 @@ use crate::groups::{Formation, Slot, UnitGroup};
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{Vec3, add, scale, sub};
 use crate::world::World;
+use crate::world::slots::CheckedIndex;
 
 /// The formation categories' count, as an array's length.
 const CATEGORY_COUNT: usize = CATEGORIES as usize;
@@ -95,11 +96,11 @@ pub(crate) fn column_line_slots(
     column: bool,
     (staggered, flanked): (bool, bool),
     world_time: u32,
-) -> bool {
+) -> Result<bool, GenieError> {
     if group.members.is_empty() {
-        return false;
+        return Ok(false);
     }
-    let (lines_of, columns_of) = category_sizes(group, column);
+    let (lines_of, columns_of) = category_sizes(group, column)?;
     let max_width = columns_of.iter().copied().fold(0, i32::max);
     let depth: i32 = lines_of.iter().sum();
     formation.resize_slots((depth * max_width).max(0) as usize);
@@ -136,13 +137,13 @@ pub(crate) fn column_line_slots(
             formation,
             &cat,
             c,
-            (lines_of[k], columns_of[k]),
+            (*lines_of.checked(k)?, *columns_of.checked(k)?),
             style,
             &mut at,
-        );
+        )?;
     }
     formation.use_slots(at.used_slots);
-    true
+    Ok(true)
 }
 
 /// The statistic of the group's sub-formation of formation category `c`, none without one.
@@ -166,7 +167,7 @@ fn category(group: &UnitGroup, c: i32) -> Option<Category> {
 fn category_sizes(
     group: &UnitGroup,
     column: bool,
-) -> ([i32; CATEGORY_COUNT], [i32; CATEGORY_COUNT]) {
+) -> Result<([i32; CATEGORY_COUNT], [i32; CATEGORY_COUNT]), GenieError> {
     let mut lines_of = [0i32; CATEGORY_COUNT];
     let mut columns_of = [0i32; CATEGORY_COUNT];
     let mut widest = 0.0f32;
@@ -178,8 +179,8 @@ fn category_sizes(
         };
         valid += 1;
         let (lines, columns) = sizes(cat.count, !column);
-        lines_of[c as usize] = lines;
-        columns_of[c as usize] = columns;
+        *lines_of.checked_mut(c as usize)? = lines;
+        *columns_of.checked_mut(c as usize)? = columns;
         let width = columns as f32 * cat.spacing;
         if widest_index == -1 || widest < width {
             widest = width;
@@ -195,10 +196,10 @@ fn category_sizes(
                 continue;
             };
             let k = c as usize;
-            (lines_of[k], columns_of[k]) = fit_to_widest(&cat, widest);
+            (*lines_of.checked_mut(k)?, *columns_of.checked_mut(k)?) = fit_to_widest(&cat, widest);
         }
     }
-    (lines_of, columns_of)
+    Ok((lines_of, columns_of))
 }
 
 /// A category beside the widest, as (lines, columns): one that fits its width (its count times
@@ -256,22 +257,25 @@ impl SubTypes {
     /// The type after a slot of type `next` at column `col` of a line of `actual`: the next type
     /// round robin (with two types the last slot of a line keeps it for the next line); one whose
     /// units the slots used up passes to the next with units left, else to none.
-    fn advance(&mut self, cat: &Category, col: i32, actual: i32) {
-        self.used[self.next as usize] += 1;
+    fn advance(&mut self, cat: &Category, col: i32, actual: i32) -> Result<(), GenieError> {
+        *self.used.checked_mut(self.next as usize)? += 1;
         let mut sub_type = self.next;
         if cat.types != 2 || col < actual - 1 {
             sub_type += 1;
         }
         let next = if sub_type < cat.types { sub_type } else { 0 };
         self.next = next;
-        if cat.unit_type_counts[next as usize] <= self.used[next as usize] {
+        if *cat.unit_type_counts.checked(next as usize)? <= *self.used.checked(next as usize)? {
             // out of units for that sub type: the next with units left, else none
             let mut j = if next + 1 < cat.types { next + 1 } else { 0 };
-            while j != next && cat.unit_type_counts[j as usize] <= self.used[j as usize] {
+            while j != next
+                && *cat.unit_type_counts.checked(j as usize)? <= *self.used.checked(j as usize)?
+            {
                 j = if j + 1 < cat.types { j + 1 } else { 0 };
             }
             self.next = if j == next { -1 } else { j };
         }
+        Ok(())
     }
 }
 
@@ -287,7 +291,7 @@ fn lay_category(
     (lines, columns): (i32, i32),
     style: Style,
     at: &mut Cursor,
-) {
+) -> Result<(), GenieError> {
     let mut subs = SubTypes {
         next: if cat.types == 1 { -1 } else { 0 },
         used: [0u32; 50],
@@ -305,7 +309,7 @@ fn lay_category(
             actual = cat.count - (lines - 1) * columns;
         }
         let total = line_start(single, actual, at.line_index, style.staggered);
-        let line = &mut formation.lines[at.line_index as usize];
+        let line = formation.lines.checked_mut(at.line_index as usize)?;
         clear_line(line);
         let _ = reset_line(line, actual, at.line_index);
         line.distance_back = at.distance_back;
@@ -317,7 +321,7 @@ fn lay_category(
             style,
             at,
             &mut subs,
-        );
+        )?;
         at.used_slots += actual.max(0) as usize;
         at.line_index += 1;
         at.last_spacing = if style.staggered {
@@ -327,6 +331,7 @@ fn lay_category(
         };
         at.distance_back += at.last_spacing;
     }
+    Ok(())
 }
 
 /// Where a line of `actual` slots starts: half its slots (truncated) of `single` ahead; a
@@ -370,15 +375,15 @@ fn lay_line(
     style: Style,
     at: &mut Cursor,
     subs: &mut SubTypes,
-) {
+) -> Result<(), GenieError> {
     for col in 0..actual.max(0) {
         let i = at.used_slots + col as usize;
         let desired_sub_category = if subs.next < 0 {
             -1
         } else {
-            cat.unit_types[subs.next as usize] as i32
+            *cat.unit_types.checked(subs.next as usize)? as i32
         };
-        *formation.slot_mut(i) = Slot {
+        *formation.slot_mut(i)? = Slot {
             unit_id: -1,
             offset: flank_offset(total, at.line_index, style),
             desired_transform_position: [0.0; 3],
@@ -390,18 +395,19 @@ fn lay_line(
             desired_category: c,
             active: 1,
             desired_sub_category,
-            transformed: formation.slot_mut(i).transformed,
+            transformed: formation.slot_mut(i)?.transformed,
         };
-        let line = &mut formation.lines[at.line_index as usize];
+        let line = formation.lines.checked_mut(at.line_index as usize)?;
         if (col as usize) < line.indices.len() {
-            line.indices[col as usize] = at.slot_index as u32;
+            *line.indices.checked_mut(col as usize)? = at.slot_index as u32;
         }
         total = sub(total, single);
         at.slot_index += 1;
         if 0 <= subs.next {
-            subs.advance(cat, col, actual);
+            subs.advance(cat, col, actual)?;
         }
     }
+    Ok(())
 }
 
 /// A flanked line's slot moves apart (away from the middle on y) by [`FLANK_SPACING`] less the
@@ -440,7 +446,7 @@ impl World {
         staggered_flanked: (bool, bool),
     ) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
-        if !column_line_slots(formation, g, column, staggered_flanked, self.world_time) {
+        if !column_line_slots(formation, g, column, staggered_flanked, self.world_time)? {
             return Ok(false);
         }
         let after_column = matches!(formation.kind, LINE | STAGGERED | FLANKED)

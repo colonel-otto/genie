@@ -98,7 +98,7 @@ impl UnitGroup {
     /// group whose motion moved (motion flags bit 0) adds its new position to the front of its
     /// stored positions ([`crate::groups::PointLine::add_at_front`]); the motion's flags lose bit
     /// 0, and bit 1 with it when set, which sets the group's flags bit 1 (`FUN_14104a240`).
-    pub fn update_end(&mut self) {
+    pub fn update_end(&mut self) -> Result<(), GenieError> {
         let g = self;
         if g.motion.flags & 1 != 0 {
             let [point, forward, up, right] = g.motion.new_position;
@@ -107,7 +107,7 @@ impl UnitGroup {
                 forward,
                 up,
                 right,
-            });
+            })?;
         }
         let flags = g.motion.flags;
         g.motion.flags &= !1;
@@ -115,6 +115,7 @@ impl UnitGroup {
             g.motion.flags &= !3;
             g.flags |= 2;
         }
+        Ok(())
     }
 }
 

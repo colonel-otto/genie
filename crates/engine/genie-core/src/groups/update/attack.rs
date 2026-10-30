@@ -118,7 +118,7 @@ impl World {
         }
         let [x, _, y] = g.current_target.original_position;
         let mut range = g.current_target.range;
-        g.motion.stop_walk();
+        g.motion.stop_walk()?;
         g.current_command = NO_COMMAND;
         g.forget_target_data();
         g.current_target.range = 0.0;
@@ -210,7 +210,7 @@ impl World {
             };
             if releases {
                 let g = self.groups.held_mut(group)?;
-                g.motion.stop_walk();
+                g.motion.stop_walk()?;
                 g.flags &= !ATTACKING;
                 self.release_units(group, &units, target)?;
             }
@@ -370,7 +370,7 @@ impl World {
         }
         let [x, _, y] = g.motion.position[0];
         if point_gap([tx, ty], radius, [x, y]) <= g.current_target.range {
-            g.motion.stop_walk();
+            g.motion.stop_walk()?;
             g.flags |= ARRIVED;
         }
         let flags = g.flags;

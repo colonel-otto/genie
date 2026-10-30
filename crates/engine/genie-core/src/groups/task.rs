@@ -10,6 +10,7 @@ use crate::objects::masters::{Master, Masters, Task};
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::unit_ai::task_finder::{Actor, find_task};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The task whose target range is the target's owner's attribute 90 (`+0x2d0` of its attribute
 /// table), `TRIBE_Action_Repair`'s neighbour 0x69 in the command table.
@@ -118,7 +119,7 @@ impl World {
                 .with("member", member.get())
         })?;
         let own = unit.master(&self.masters, player)?;
-        let owner = &self.players[player];
+        let owner = &self.players.player(player)?;
         let actor = Actor {
             id: unit.id,
             master: own,

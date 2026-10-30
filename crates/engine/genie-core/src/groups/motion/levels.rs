@@ -1,10 +1,12 @@
 //! The walked level's flags, its reset, a looping path's next waypoint and the waypoints'
 //! points and ground lengths.
 
+use crate::GenieError;
 use crate::groups::motion::NEAR;
 use crate::math::fmath;
 use crate::math::fmath::Vec3;
 use crate::movement::PathData;
+use crate::world::slots::CheckedIndex;
 
 /// `FUN_140f9b4d0(level, bit, on)` on the walked level: its flag `bit` set or cleared; bit 2 is
 /// then set on every parent too.
@@ -26,7 +28,7 @@ pub(super) fn set_flag(paths: &mut [PathData], bit: u32, on: bool) {
 
 /// `FUN_140f98e80` on the walked level: it and its parents go, the level holds the defaults
 /// (its plans back to 10, flags clear; its repath time stays).
-pub(super) fn reset_level(paths: &mut Vec<PathData>) {
+pub(super) fn reset_level(paths: &mut Vec<PathData>) -> Result<(), GenieError> {
     let repath_time = paths.first().map_or(0.0, |l| l.repath_time);
     paths.truncate(1);
     let level = PathData {
@@ -36,8 +38,9 @@ pub(super) fn reset_level(paths: &mut Vec<PathData>) {
     if paths.is_empty() {
         paths.push(level);
     } else {
-        paths[0] = level;
+        *paths.checked_mut(0)? = level;
     }
+    Ok(())
 }
 
 /// `FUN_140f98bc0` with 1 on a looping path's level: the waypoint after `index`; on a path that

@@ -9,6 +9,7 @@ use crate::groups::update::{
 };
 use crate::groups::{SpecificMove, UnitGroup};
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 impl World {
     /// The current command's update (`0x14103e5f7`..`0x14103e865`): false deletes the group. No
@@ -328,7 +329,11 @@ impl World {
                 // slot 0x608 (FUN_1411581e0): the unit's own motion step (FUN_141150f00), then
                 // its facet from its angle (FUN_14114d8b0, not held)
                 if self.member_step(m.id)? {
-                    self.groups.held_mut(group)?.members[i - 1].specific_move = SpecificMove {
+                    self.groups
+                        .held_mut(group)?
+                        .members
+                        .checked_mut(i - 1)?
+                        .specific_move = SpecificMove {
                         path_id: -1,
                         reason: -1,
                         ..SpecificMove::default()
@@ -340,7 +345,12 @@ impl World {
                     .object(m.id)
                     .map(|(_, u)| u.moved_vector().xhy())
                     .ok_or_else(|| member_gone(m.id))?;
-                let own = &mut self.groups.held_mut(group)?.members[i - 1].specific_move;
+                let own = &mut self
+                    .groups
+                    .held_mut(group)?
+                    .members
+                    .checked_mut(i - 1)?
+                    .specific_move;
                 let mut d = crate::math::fmath::sub(at, own.last_position);
                 d[1] = 0.0;
                 own.distance -= crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
@@ -353,10 +363,10 @@ impl World {
             self.show_standing(m.id)?;
             let dt = self.dt_seconds;
             let g = self.groups.held_mut(group)?;
-            let timer = &mut g.members[i - 1].specific_move.timer;
+            let timer = &mut g.members.checked_mut(i - 1)?.specific_move.timer;
             *timer -= dt;
             if !crate::math::fmath::below_or_unordered(0.0, *timer) {
-                g.members[i - 1].specific_move = SpecificMove {
+                g.members.checked_mut(i - 1)?.specific_move = SpecificMove {
                     path_id: -1,
                     reason: -1,
                     ..SpecificMove::default()
@@ -393,13 +403,13 @@ impl World {
         // the walk meets the group's members as its update left them so far
         let members: Vec<i32> = self
             .groups
-            .get(self.players[p].objects[idx].group.id)
+            .get(self.players.live(p, idx)?.group.id)
             .map(|g| g.members.iter().map(|m| m.id).collect())
             .unwrap_or_default();
         self.refresh_gaits(members);
-        let computer = self.players[p].computer;
-        let construction_rate = self.players[p].construction_rate;
-        let unit = &mut self.players[p].objects[idx];
+        let computer = self.players.player(p)?.computer;
+        let construction_rate = self.players.player(p)?.construction_rate;
+        let unit = self.players.live_mut(p, idx)?;
         let me = Me {
             id,
             group: unit.group.id,

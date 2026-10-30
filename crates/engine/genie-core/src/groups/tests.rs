@@ -145,17 +145,17 @@ fn the_stored_positions_keep_their_desired_length() {
         desired_length: 2.0,
         ..PointLine::default()
     };
-    line.add_at_front(at(0.0, 0.0));
+    line.add_at_front(at(0.0, 0.0)).unwrap();
     assert_eq!((line.points.len(), line.length), (1, 0.0));
-    line.add_at_front(at(1.0, 5.0));
+    line.add_at_front(at(1.0, 5.0)).unwrap();
     assert_eq!(line.points[0].point, [1.0, 0.0, 0.0]);
     assert_eq!(line.length, 1.0);
-    line.add_at_front(at(2.0, 0.0));
+    line.add_at_front(at(2.0, 0.0)).unwrap();
     // 3 is longer than 2, but not without its last stretch (2): all stay
-    line.add_at_front(at(3.0, 0.0));
+    line.add_at_front(at(3.0, 0.0)).unwrap();
     assert_eq!((line.points.len(), line.length), (4, 3.0));
     // 4 less 1 is 3: the oldest goes; 3 less 1 is 2: the rest stay
-    line.add_at_front(at(4.0, 0.0));
+    line.add_at_front(at(4.0, 0.0)).unwrap();
     let xs: Vec<f32> = line.points.iter().map(|p| p.point[0]).collect();
     assert_eq!(xs, [4.0, 3.0, 2.0, 1.0]);
     assert_eq!(line.length, 3.0);

@@ -84,7 +84,7 @@ fn stopping_the_walk_stands_the_motion_and_resets_its_level() {
         level(0, &[[1.0, 1.0], [2.0, 2.0]], 1, 3),
         level(1, &[[2.0, 2.0]], 1, 0),
     ];
-    m.stop_walk();
+    m.stop_walk().unwrap();
     assert_eq!(
         (m.velocity, m.acceleration),
         ([1.0, 2.0, 0.0], [4.0, 5.0, 0.0])
@@ -104,7 +104,7 @@ fn the_walked_levels_below_the_high_level_go() {
         level(1, &[[2.0, 2.0]], 1, 0),
         top,
     ];
-    m.drop_to_high_level();
+    m.drop_to_high_level().unwrap();
     assert_eq!(m.paths.len(), 1);
     let l = &m.paths[0];
     assert_eq!(
@@ -114,11 +114,11 @@ fn the_walked_levels_below_the_high_level_go() {
     assert_eq!(l.points.len(), 3);
     m.paths = vec![level(0, &[[1.0, 1.0]], 1, 3), level(1, &[[2.0, 2.0]], 1, 0)];
     m.paths[0].repath_time = 4.0;
-    m.drop_to_high_level();
+    m.drop_to_high_level().unwrap();
     assert_eq!(m.paths, [PathData::without_path()]);
     let lone = vec![level(0, &[[1.0, 1.0]], 1, 3)];
     m.paths.clone_from(&lone);
-    m.drop_to_high_level();
+    m.drop_to_high_level().unwrap();
     assert_eq!(m.paths, lone);
 }
 
@@ -144,7 +144,7 @@ fn a_levels_flag_and_its_parents_bit_2() {
 fn a_reset_level_drops_its_parents_and_keeps_its_repath_time() {
     let mut paths = vec![level(0, &[[1.0, 1.0]], 1, 3), level(2, &[], 0, 0)];
     paths[0].repath_time = 2.5;
-    reset_level(&mut paths);
+    reset_level(&mut paths).unwrap();
     assert_eq!(paths.len(), 1);
     assert_eq!(
         paths[0],
@@ -251,7 +251,7 @@ fn the_motion_turns_then_moves_along_its_forward() {
     m.flags = 0;
     m.velocity = [0.0, 0.0, 2.0];
     m.acceleration = [0.0, 0.0, 1.0];
-    m.integrate(0.5);
+    m.integrate(0.5).unwrap();
     assert_eq!(m.velocity[2], 2.5);
     let p = m.position[0];
     assert!((p[2] - 1.25).abs() < 1e-6 && p[0].abs() < 1e-6, "{p:?}");
@@ -612,8 +612,9 @@ fn a_request_without_a_path_pauses_waits_gives_up_or_counts_its_waypoint() {
         m
     };
     let last = [[5.0, 5.0], [5.0, 9.0]];
-    let end =
-        |m: &mut Motion, lead: &Lead, found| link(m, lead, Path::default(), (found, false), 100);
+    let end = |m: &mut Motion, lead: &Lead, found| {
+        link(m, lead, Path::default(), (found, false), 100).unwrap()
+    };
     let mut m = at(2, &last, 2);
     assert!(matches!(
         end(&mut m, &grouped(0x800), false),
@@ -668,7 +669,7 @@ fn a_reached_waypoint_moves_the_level_on() {
     let mut m = Motion::new();
     m.paths = vec![level(1, &three, 1, 3)];
     m.paths[0].flags = 3;
-    reached(&mut m, None);
+    reached(&mut m, None).unwrap();
     assert_eq!(
         (m.position[0], m.new_position[0]),
         ([5.0, 0.0, 9.0], [5.0, 0.0, 9.0])
@@ -676,11 +677,11 @@ fn a_reached_waypoint_moves_the_level_on() {
     let l = &m.paths[0];
     assert_eq!((l.flags & 3, l.waypoint, l.state), (0, 2, 2));
     m.paths = vec![level(0, &three, 1, 3)];
-    reached(&mut m, None);
+    reached(&mut m, None).unwrap();
     assert_eq!((m.paths[0].waypoint, m.paths[0].state), (2, 3));
     m.paths = vec![level(1, &three, 2, 3)];
     m.paths[0].path_flags = 1;
-    reached(&mut m, None);
+    reached(&mut m, None).unwrap();
     assert_eq!((m.paths[0].waypoint, m.paths[0].state), (0, 2));
 }
 
@@ -697,7 +698,7 @@ fn past_its_last_waypoint_a_level_steps_back_or_arrived() {
         m.position[0] = [at[0], 0.0, at[1]];
         m.paths = vec![level(n, &two, 1, 3)];
         m.paths[0].flags = flags;
-        reached(&mut m, target);
+        reached(&mut m, target).unwrap();
         (m.paths[0].waypoint, m.paths[0].state, m.paths[0].flags & 4)
     };
     assert_eq!(state(0, [5.0, 5.0], None, 0), (1, 2, 0));

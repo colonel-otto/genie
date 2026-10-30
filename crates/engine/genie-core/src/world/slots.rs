@@ -101,6 +101,13 @@ pub(crate) trait CheckedIndex<T> {
     ///
     /// A slice shorter than `n`.
     fn head(&self, n: usize) -> Result<&[T], GenieError>;
+
+    /// The first `n` elements, to change.
+    ///
+    /// # Errors
+    ///
+    /// A slice shorter than `n`.
+    fn head_mut(&mut self, n: usize) -> Result<&mut [T], GenieError>;
 }
 
 impl<T> CheckedIndex<T> for [T] {
@@ -114,6 +121,10 @@ impl<T> CheckedIndex<T> for [T] {
 
     fn head(&self, n: usize) -> Result<&[T], GenieError> {
         self.get(..n).ok_or_else(|| NO_ELEMENT.with("end", n))
+    }
+
+    fn head_mut(&mut self, n: usize) -> Result<&mut [T], GenieError> {
+        self.get_mut(..n).ok_or_else(|| NO_ELEMENT.with("end", n))
     }
 }
 

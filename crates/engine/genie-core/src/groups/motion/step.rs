@@ -7,6 +7,7 @@ use crate::groups::motion::{
 };
 use crate::map::spatial::{Placed, Spatial};
 use crate::movement::{Planning, footprint_gap, footprint_gap_squared};
+use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
 /// One pass's end (the routine's labels).
@@ -62,7 +63,7 @@ pub(crate) fn path_step(
     }
     let budget = budget && group.computer;
     let dt = world.dt;
-    let level = &mut motion.paths[0];
+    let level = motion.paths.checked_mut(0)?;
     if 0.0 < level.pause_time {
         level.pause_time -= dt;
         if 0.0 < level.pause_time {
@@ -94,7 +95,7 @@ pub(super) fn pass(
     budget: bool,
 ) -> Result<Pass, GenieError> {
     let spatial = &mut *world.spatial;
-    let level = &motion.paths[0];
+    let level = motion.paths.checked(0)?;
     if !level.has_path {
         return Ok(Pass::Done(false));
     }
@@ -111,16 +112,16 @@ pub(super) fn pass(
     });
     let flags = level.flags;
     if flags & 1 != 0 {
-        reached(motion, target.as_ref());
+        reached(motion, target.as_ref())?;
     }
-    let state = motion.paths[0].state;
+    let state = motion.paths.checked(0)?.state;
     if state == 4 || state == 5 {
         if motion.paths.len() < 2 {
-            reset_level(&mut motion.paths);
+            reset_level(&mut motion.paths)?;
             motion.stand();
             return Ok(Pass::Done(true));
         }
-        let linked = motion.paths[0].linked_type;
+        let linked = motion.paths.checked(0)?.linked_type;
         if linked == 1 || flags & 4 != 0 {
             let _ = motion.paths.remove(0);
             return Ok(Pass::Reached);
@@ -128,7 +129,7 @@ pub(super) fn pass(
         if linked == 2 || linked == 3 {
             let _ = motion.paths.remove(0);
             let patrols = lead.group.as_ref().is_some_and(LeadGroup::patrols);
-            let parent = &mut motion.paths[0];
+            let parent = motion.paths.checked_mut(0)?;
             parent.state = 2;
             if linked == 2 && parent.has_path {
                 if parent.path_flags & 1 != 0 {
@@ -146,7 +147,7 @@ pub(super) fn pass(
         }
         // another link: the level walks on in its state
     }
-    if motion.paths[0].state == 2
+    if motion.paths.checked(0)?.state == 2
         && let Some(p) = request(motion, lead, world, budget, target.as_ref(), target_gap2)?
     {
         return Ok(p);
@@ -161,11 +162,11 @@ pub(super) fn pass(
 /// (state 2), else the level arrived (state 4); with waypoints left a level above 0 asks for the
 /// next stretch (state 2). A level that reached its target with bit 2 clears it (and sets it on
 /// its parents). A looping path takes its next waypoint (`FUN_140f98bc0`) and asks again.
-pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) {
-    let level = &motion.paths[0];
+pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) -> Result<(), GenieError> {
+    let level = motion.paths.checked(0)?;
     if level.flags & 2 != 0 {
         if level.waypoint < level.points.len() as i32 {
-            let p = level.points[level.waypoint as usize];
+            let p = *level.points.checked(level.waypoint as usize)?;
             motion.new_position[0] = p;
             motion.position[0] = p;
         }
@@ -173,13 +174,13 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) {
     }
     set_flag(&mut motion.paths, 0, false);
     let at = motion.position[0];
-    let level = &mut motion.paths[0];
+    let level = motion.paths.checked_mut(0)?;
     level.waypoint += 1;
     let left = level.waypoint - 1;
     if level.path_flags & 1 != 0 {
         level.waypoint = looping_next(level, left);
         level.state = 2;
-        return;
+        return Ok(());
     }
     let d = fmath::length(fmath::sub(at, point(level, left)));
     let mut beyond = match target {
@@ -193,7 +194,7 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) {
         beyond = 0.0;
         set_flag(&mut motion.paths, 2, false);
     }
-    let level = &mut motion.paths[0];
+    let level = motion.paths.checked_mut(0)?;
     if level.waypoint < level.points.len() as i32 {
         if level.level != 0 {
             level.state = 2;
@@ -207,4 +208,5 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) {
     } else {
         level.state = 4;
     }
+    Ok(())
 }
