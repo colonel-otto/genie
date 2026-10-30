@@ -384,7 +384,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
         [1.0, 2.0, 0.0],
         &mut crate::math::rng::Well512::default(),
     );
-    fly.move_to = Some(MoveTo::Moving);
+    fly.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Fly(fly)), walking);
     let mut attack = crate::combat::attack::tests::own_attack(7, 4, 0.5);
     attack.move_to = Some(MoveTo::Moving);

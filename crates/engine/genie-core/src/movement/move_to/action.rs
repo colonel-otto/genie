@@ -344,7 +344,7 @@ impl MoveToAction {
     }
 
     /// One update (`0x140aa2240`) of the unit whose sprite `shows` holds, its state 3 with what
-    /// the unit's AI says (`ask`, [`crate::movement::move_to::start_walk_asked`]): a walk goes on ([`MoveToAction::update_moving`]), a start asks for
+    /// the unit's AI says (`ask`, [`crate::movement::move_to::start_walk_shown`]): a walk goes on ([`MoveToAction::update_moving`]), a start asks for
     /// its path ([`MoveToAction::update_start`]), a wait runs by dt and at its end the `MoveTo`
     /// asks again (`set_state` 3). A target that is gone (the update's first check: notify
     /// 0x1fb, code 4) is not modelled.

@@ -154,42 +154,20 @@ pub enum Goal {
     Point([f32; 3]),
 }
 
-/// A starting `MoveTo`'s update (state 3): unless the unit is within `range` of its goal already, it
-/// asks for a path (`FUN_14114e410`) and turns to state 4, whose `set_state` runs the update again at
-/// once ([`walk_or_give_up`]); returns the `MoveTo`'s state after it, None when the motion step
-/// gave up in that update (the `MoveTo` is in state 4, its sprite shown; the owner's answer
-/// decides what follows). In range is the footprints' squared gap (`FUN_14118f8c0`) to a target
-/// object, the gap from the unit's footprint to a point, at most `range` squared. A unit already in
-/// range ends the `MoveTo` (`set_state` 1, code 0) when it has a unit AI not on order 711 or 733
-/// ([`start_walk_asked`]; here it does); a `MoveTo` that is not `quiet` (its `+0x60` clear) then
-/// shows the unit's idle sprite (slot 0x68 with slot 0x798's: the master's standing sprite,
-/// [`Mover::shows_standing`]; the sprite itself and `+0x7b8`, cleared, are the caller's).
-pub fn start_walk_or_give_up(
-    walk: Walk<'_>,
-    goal: Goal,
-    range: f32,
-    quiet: bool,
-) -> Result<Option<MoveTo>, GenieError> {
-    start_walk_asked(walk, goal, range, quiet, PathAsk::default())
-}
-
-/// [`start_walk_or_give_up`] with what the unit's AI says (`0x140aa2a70` in state 3,
-/// [`PathAsk`]): a unit in range ends the `MoveTo` only when [`PathAsk::ends_in_range`], and the
-/// path request takes the rest ([`Mover::request_path_asked`]).
-pub fn start_walk_asked(
-    walk: Walk<'_>,
-    goal: Goal,
-    range: f32,
-    quiet: bool,
-    ask: PathAsk,
-) -> Result<Option<MoveTo>, GenieError> {
-    start_walk_shown(walk, (goal, range, quiet), ask, None)
-}
-
-/// [`start_walk_asked`] whose turn to state 4 shows the `MoveTo`'s sprite (`shown`, `+0x58`):
-/// its `set_state(4)` (`0x140aa29e0`) shows it with slot 0x68 ([`Shown::show`]) before it runs
-/// the update again, so the motion step reads the top speed with that sprite. A unit already in
-/// range turns to state 1 and shows none of it.
+/// A starting `MoveTo`'s update (state 3, `0x140aa2a70`): unless the unit is within `range` of its
+/// goal already, it asks for a path (`FUN_14114e410`,
+/// [`crate::movement::Mover::request_path_asked`] with what the unit's AI says, `ask`) and turns to
+/// state 4, whose `set_state` (`0x140aa29e0`) shows the `MoveTo`'s sprite (`shown`, `+0x58`, with
+/// slot 0x68: [`Shown::show`]) and runs the update again at once ([`walk_or_give_up`]), so the
+/// motion step reads the top speed with that sprite. Returns the `MoveTo`'s state after it, None
+/// when the motion step gave up in that update (the `MoveTo` is in state 4, its sprite shown; the
+/// owner's answer decides what follows). In range is the footprints' squared gap (`FUN_14118f8c0`)
+/// to a target object, the gap from the unit's footprint to a point, at most `range` squared. A
+/// unit already in range ends the `MoveTo` (`set_state` 1, code 0, none of its sprite shown) when
+/// [`PathAsk::ends_in_range`] (a unit AI not on order 711 or 733); a `MoveTo` that is not `quiet`
+/// (its `+0x60` clear) then shows the unit's idle sprite (slot 0x68 with slot 0x798's: the master's
+/// standing sprite, [`crate::movement::Mover::shows_standing`]; the sprite itself and `+0x7b8`,
+/// cleared, are the caller's).
 ///
 /// # Errors
 ///

@@ -8011,8 +8011,11 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     bird.actions.set_fly(Some(Fly {
         state: 3,
         timer: 1.0,
-        move_to: Some(MoveTo::Moving),
-        goal: Some([12.0, 12.0, 0.0]),
+        move_to: Some(MoveToAction {
+            state: MoveTo::Moving,
+            quiet: false,
+            ..MoveToAction::sub_to_point([12.0, 12.0, 0.0], 0.0, None)
+        }),
         home: [10.0, 10.0],
         task: crate::objects::masters::Task::default(),
     }));
@@ -13564,8 +13567,11 @@ fn flown(move_to: MoveTo, setup: impl FnOnce(&mut Unit)) -> Flown {
     v.actions.set_fly(Some(Fly {
         state: 4,
         timer: 2.0,
-        move_to: Some(move_to),
-        goal: Some([40.5, 89.5, 0.0]),
+        move_to: Some(MoveToAction {
+            state: move_to,
+            quiet: false,
+            ..MoveToAction::sub_to_point([40.5, 89.5, 0.0], 0.0, None)
+        }),
         home: [29.5, 89.5],
         task,
     }));

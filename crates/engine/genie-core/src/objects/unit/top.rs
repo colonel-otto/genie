@@ -208,7 +208,7 @@ impl Unit {
                 .or_else(|| walking(h.move_to)),
             Action::Build(b) => walking(b.move_to),
             Action::Repair(r) => walking(r.move_to.map(|m| m.state)),
-            Action::Fly(f) => walking(f.move_to),
+            Action::Fly(f) => walking(f.move_to.map(|m| m.state)),
             Action::Gather(g) => walking(g.move_to),
             Action::Attack(a) => walking(a.move_to),
             Action::Explore(e) => walking(e.move_to.map(|m| m.state)),

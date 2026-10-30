@@ -534,7 +534,7 @@ fn a_birds_fly_takes_its_home_and_move_to() {
         .fly()
         .copied()
         .unwrap();
-    assert_eq!((f.state, f.move_to, f.goal, f.task.id), (3, None, None, 8));
+    assert_eq!((f.state, f.move_to, f.task.id), (3, None, 8));
     assert_eq!(f.home.map(f32::to_bits), [1.0_f32, 2.0].map(f32::to_bits));
     let f = imported(FLY, bird(with_sub(base(3), MOVE_TO, move_to(4, 0.5))))
         .unwrap()
@@ -542,8 +542,9 @@ fn a_birds_fly_takes_its_home_and_move_to() {
         .fly()
         .copied()
         .unwrap();
-    assert_eq!(f.move_to, Some(MoveTo::Moving));
-    assert_eq!(f.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
+    let flight = f.move_to.unwrap();
+    assert_eq!((flight.state, flight.quiet), (MoveTo::Moving, false));
+    assert_eq!(flight.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
     assert_eq!(
         imported(FLY, bird(with_sub(base(3), 4, explore(base(3))))).unwrap_err(),
         GenieError::unsupported("a saved Fly action with another sub-action")

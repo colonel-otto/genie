@@ -325,17 +325,17 @@ fn import_fly(
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
     let base = saved.base;
-    let sub = saved
+    // its MoveTo to the flight's point is not quiet
+    let move_to = saved
         .move_to_sub(GenieError::unsupported(
             "a saved Fly action with another sub-action",
         ))?
-        .and_then(Action::base);
-    let move_to = sub.map(|b| move_to_state(b.state)).transpose()?;
+        .map(|s| saved_move_to(s, saved.graphics, false))
+        .transpose()?;
     unit.actions.set_fly(Some(Fly {
         state: base.state,
         timer: base.timer,
         move_to,
-        goal: sub.and_then(target_point),
         home: [base.target_x, base.target_y],
         task: fly_task(saved.s.master_obj)?,
     }));
