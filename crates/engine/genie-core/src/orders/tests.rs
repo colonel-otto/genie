@@ -550,8 +550,6 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     let mut walker = crate::gathering::hunt::tests::walker();
     // the soldier's speed 0.8: its standing sprite's factor 1, its walking one's 1.5
     walker.stats.speed = 1.2;
-    walker.stats.walk_speed = 1.2;
-    walker.stats.stand_speed = 0.8;
     let soldier = t.masters[1].get_mut(4).unwrap();
     soldier.standing_sprite = 300;
     soldier.attack_sprite = 301;

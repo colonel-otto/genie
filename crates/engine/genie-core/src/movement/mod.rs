@@ -164,15 +164,6 @@ pub struct MoveStats {
     pub speed: f32,
     /// The master's speed (`+0x740`, the master's slot 0xe8): the top speed's base.
     pub base: f32,
-    /// The top speed with the master's walking sprite (`+0x748`) and with its running one
-    /// (`+0x750`, the walking one without it): a `MoveTo` that runs or walks shows one, and the
-    /// unit moves at its speed.
-    pub walk_speed: f32,
-    /// The running speed.
-    pub run_speed: f32,
-    /// The top speed with the master's standing sprite (`+0x470`), which a non-quiet `MoveTo`'s end
-    /// (`set_state` 1 or 13, slot 0x68 with slot 0x798's) and a stop in state 2 show.
-    pub stand_speed: f32,
     /// Master `+0x774`: the most the unit turns per second ([`turn_rate`]).
     pub turn_rate: f32,
     /// Master `+0x76c` and `+0x770`: the turn radius is `turn_radius × speed / turn_radius_speed`

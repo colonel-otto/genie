@@ -71,9 +71,6 @@ impl Master {
                     self.move_sprite
                 };
                 stats.speed = sprite_speed(self.max_speed, run, graphics);
-                stats.run_speed = stats.speed;
-                stats.walk_speed = sprite_speed(self.max_speed, self.move_sprite, graphics);
-                stats.stand_speed = sprite_speed(self.max_speed, self.standing_sprite, graphics);
             }
             a::ROTATION_SPEED => stats.turn_time = self.turn_speed,
             a::TERRAIN_RESTRICTION_ID => {

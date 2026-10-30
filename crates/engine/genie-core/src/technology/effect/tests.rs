@@ -828,10 +828,7 @@ fn a_speed_change_reaches_the_units_movement() {
     let s = t.players[0].objects[0].body.mover().unwrap().stats;
     // no graphics: the sprites' factors are 0, the speeds the master's
     let speed = 0.8_f32 * 1.1;
-    assert_eq!(
-        (s.speed, s.walk_speed, s.stand_speed),
-        (speed, speed, speed)
-    );
+    assert_eq!(s.speed, speed);
     // a speed the loader left at 0 under the moving values stops the change first
     t.masters[0].get_mut(4).unwrap().max_speed = 0.0;
     assert!(

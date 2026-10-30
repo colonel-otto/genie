@@ -352,11 +352,11 @@ impl Mover {
         };
     }
 
-    /// The unit shows its master's standing sprite (slot 0x68 with slot 0x798's): its top speed
-    /// (slot 0x208, the master's speed times the current sprite's factor) is the standing
-    /// sprite's.
-    pub(crate) const fn shows_standing(&mut self) {
-        self.stats.speed = self.stats.stand_speed;
+    /// The unit shows the sprite `shown` (None: none): its top speed (slot 0x208, the master's
+    /// speed times the current sprite's factor, [`crate::objects::sprite::top_speed`]) is the
+    /// sprite's. The one derivation of [`MoveStats::speed`] besides [`crate::objects::sprite::new_sprite`].
+    pub(crate) fn shows(&mut self, shown: Option<&crate::objects::sprite::Graphic>) {
+        self.stats.speed = crate::objects::sprite::top_speed(self.stats.base, shown);
     }
 
     /// `FUN_140f9b4d0(level, 2, 0)`: bit 2 goes off the walked level and on for its parents.

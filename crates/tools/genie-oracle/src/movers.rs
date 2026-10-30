@@ -161,16 +161,15 @@ pub(super) fn mover(
         return Err(GenieError::unsupported("saved future path data"));
     }
     // an object with its own master (a copy, say a captured animal's) moves by its own values
-    let (radius, restriction, base, turn, flags, standing, sprite_facets) =
+    let (radius, restriction, base, turn, flags, sprite_facets) =
         match (s.own_master(), s.own_animated_master()) {
             (Some(own), Some(animated)) => (
                 [own.radius_x, own.radius_y, own.radius_z],
                 own.terrain_restriction_mask_id,
                 animated.max_speed,
                 s.own_moving_master()
-                    .map(|m| (m.turn_speed, m.temp_move_sprite, m.temp_run_sprite)),
+                    .map(|m| (m.turn_speed, m.temp_move_sprite)),
                 own.object_flags,
-                own.sprite_num,
                 // an own master copy (a captured animal's) shows its master's sprites
                 masters.and_then(|t| {
                     let master = objects.master(s.master_obj)?;
@@ -198,10 +197,8 @@ pub(super) fn mover(
                     [placement.radius_x, placement.radius_y, placement.radius_z],
                     placement.terrain_restriction_mask_id,
                     base,
-                    moving_master(master)
-                        .map(|m| (m.turn_speed, m.move_sprite_id, m.run_sprite_id)),
+                    moving_master(master).map(|m| (m.turn_speed, m.move_sprite_id)),
                     placement.object_flags,
-                    placement.idle_sprite_id,
                     masters.and_then(|t| master_facets(master, placement, t)),
                 )
             }
@@ -224,20 +221,9 @@ pub(super) fn mover(
             .ok_or(GenieError::unsupported(
                 "a moving master the data file does not have",
             ))?;
-    let (turn_speed, walking, running) = turn.ok_or(GenieError::unsupported(
+    let (turn_speed, walking) = turn.ok_or(GenieError::unsupported(
         "a moving master without a moving part",
     ))?;
-    // the top speed with a sprite: the master's speed times the sprite's factor above 0
-    let with = |sprite: i16| {
-        let f = table.sprite_speed(sprite).unwrap_or(0.0);
-        if 0.0 < f { base * f } else { base }
-    };
-    let walk_speed = with(walking);
-    let run_speed = if 0 <= running {
-        with(running)
-    } else {
-        walk_speed
-    };
     let facets = table.graphics.get(&walking).map(|g| g.facets);
     let velocity = (m.have_movement == 1).then(|| Velocity {
         velocity: m.velocity.as_ref().map_or([0.0; 3], vec3),
@@ -280,9 +266,6 @@ pub(super) fn mover(
             move_algorithm: turning.move_algorithm,
             min_collision: turning.min_collision_size_multiplier,
             fast_turn: flags & 2 != 0,
-            walk_speed,
-            run_speed,
-            stand_speed: with(standing),
             facets: sprite_facets,
             weapon_range: objects
                 .master(s.master_obj)

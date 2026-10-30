@@ -183,9 +183,6 @@ impl Attack {
             attack.enter_ready(unit, &mut g, &ready.fight, &ready.reads)?;
         }
         if begun.arrived {
-            if let Some(m) = unit.body.mover_mut() {
-                m.shows_standing();
-            }
             unit.shows_standing_sprite(
                 c.w.masters.get(c.player),
                 &c.w.graphics,

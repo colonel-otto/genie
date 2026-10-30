@@ -374,22 +374,19 @@ impl World {
     /// sprite's ([`crate::movement::Mover::shows_standing`]), and the sprite itself where the
     /// slice holds it.
     pub(crate) fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+        let master = self.players.live(p, idx)?.life.master_id;
+        let standing = self.master(p, master)?.standing_sprite;
+        let shown = self.graphics.get(&standing).copied();
         let unit = self.players.live_mut(p, idx)?;
         if let Some(m) = unit.body.mover_mut() {
-            m.shows_standing();
+            m.shows(shown.as_ref());
         }
         if unit.sprite.is_none() {
             return Ok(());
         }
-        let master = self.players.live(p, idx)?.life.master_id;
-        let standing = self.master(p, master)?.standing_sprite;
-        let g = self
-            .graphics
-            .get(&standing)
-            .copied()
-            .ok_or(GenieError::unsupported(
-                "a unit without its standing sprite",
-            ))?;
+        let g = shown.ok_or(GenieError::unsupported(
+            "a unit without its standing sprite",
+        ))?;
         let rng = self.streams.get(Stream::Sprite);
         let u = self.players.live_mut(p, idx)?;
         crate::objects::sprite::new_sprite(&mut u.sprite, u.body.move_stats_mut(), g, rng);

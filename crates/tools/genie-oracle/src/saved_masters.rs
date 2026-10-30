@@ -359,23 +359,6 @@ pub(super) fn moving_stats(
         move_algorithm: turning.move_algorithm,
         min_collision: turning.min_collision_size_multiplier,
         fast_turn: s.object_flags & 2 != 0,
-        walk_speed: {
-            let f = table.sprite_speed(moving.move_sprite_id).unwrap_or(0.0);
-            if 0.0 < f { base * f } else { base }
-        },
-        run_speed: {
-            let id = if 0 <= moving.run_sprite_id {
-                moving.run_sprite_id
-            } else {
-                moving.move_sprite_id
-            };
-            let f = table.sprite_speed(id).unwrap_or(0.0);
-            if 0.0 < f { base * f } else { base }
-        },
-        stand_speed: {
-            let f = table.sprite_speed(s.idle_sprite_id).unwrap_or(0.0);
-            if 0.0 < f { base * f } else { base }
-        },
         facets: master_facets(m, s, table),
         weapon_range: combat_master(m).map_or(0.0, |c| c.weapon_range),
     })

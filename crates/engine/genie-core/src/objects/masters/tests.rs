@@ -894,9 +894,6 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
         fly_mode: 0,
         speed: 1.5,
         base: 1.5,
-        walk_speed: 1.5,
-        run_speed: 1.5,
-        stand_speed: 1.0,
         turn_rate: 1.0,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
@@ -913,10 +910,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.multiply_attribute(attribute::MOVEMENT_SPEED, 1.1, &world(false));
     m.follow(attribute::MOVEMENT_SPEED, &graphics, None);
     let s = m.moving.unwrap();
-    assert_eq!(
-        (s.base, s.speed, s.walk_speed, s.stand_speed),
-        (1.1, 1.1 * 1.5, 1.1 * 1.5, 1.1)
-    );
+    assert_eq!((s.base, s.speed), (1.1, 1.1 * 1.5));
     m.set_attribute(attribute::SIZE_Z, 1.0, &world(false));
     m.follow(attribute::SIZE_Z, &graphics, None);
     assert!(m.tall);
@@ -924,7 +918,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.set_attribute(attribute::RUNNING_GRAPHIC, 3.0, &world(false));
     m.follow(attribute::RUNNING_GRAPHIC, &graphics, None);
     let s = m.moving.unwrap();
-    assert_eq!((s.speed, s.run_speed), (1.1 * 0.5, 1.1 * 0.5));
+    assert_eq!(s.speed, 1.1 * 0.5);
     // 8 facets and 16: no common count
     assert_eq!(s.facets, None);
     m.set_attribute(attribute::RUNNING_GRAPHIC, 2.0, &world(false));

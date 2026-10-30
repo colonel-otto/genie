@@ -75,18 +75,18 @@ impl Unit {
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
     ) -> Result<(), GenieError> {
+        let standing = self
+            .master_in(masters)
+            .ok()
+            .map(|m| m.standing_sprite)
+            .and_then(|id| graphics.get(&id).copied());
         if let Some(m) = self.body.mover_mut() {
-            m.shows_standing();
+            m.shows(standing.as_ref());
         }
         if self.sprite.is_some() {
-            let standing = self
-                .master_in(masters)
-                .ok()
-                .map(|m| m.standing_sprite)
-                .and_then(|id| graphics.get(&id).copied())
-                .ok_or(GenieError::unsupported(
-                    "a stopped unit without its standing sprite",
-                ))?;
+            let standing = standing.ok_or(GenieError::unsupported(
+                "a stopped unit without its standing sprite",
+            ))?;
             crate::objects::sprite::new_sprite(
                 &mut self.sprite,
                 self.body.move_stats_mut(),

@@ -397,9 +397,6 @@ impl Unit {
         };
         m.state = m.wait.give_up(waits, stance);
         if m.state == MoveTo::Failed {
-            if let Some(mover) = self.body.mover_mut() {
-                mover.shows_standing();
-            }
             self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         }
         Ok(())
@@ -414,15 +411,18 @@ impl Unit {
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite_rng: &mut Well512,
     ) -> Result<(), GenieError> {
+        let standing = self
+            .master_in(masters)
+            .ok()
+            .map(|m| m.standing_sprite)
+            .and_then(|id| graphics.get(&id).copied());
+        if let Some(m) = self.body.mover_mut() {
+            m.shows(standing.as_ref());
+        }
         if self.sprite.is_some() {
-            let standing = self
-                .master_in(masters)
-                .ok()
-                .map(|m| m.standing_sprite)
-                .and_then(|id| graphics.get(&id).copied())
-                .ok_or(GenieError::unsupported(
-                    "an arrived walker without its standing sprite",
-                ))?;
+            let standing = standing.ok_or(GenieError::unsupported(
+                "an arrived walker without its standing sprite",
+            ))?;
             crate::objects::sprite::new_sprite(
                 &mut self.sprite,
                 self.body.move_stats_mut(),

@@ -217,9 +217,6 @@ impl MoveToAction {
         } else {
             MoveTo::Start
         };
-        if state != MoveTo::Start {
-            mover.shows_standing();
-        }
         Ok(Self {
             state,
             point: t.position,
@@ -284,11 +281,7 @@ impl MoveToAction {
     ) -> Self {
         let state = match mover {
             Some(m) if m.stats.speed != 0.0 => MoveTo::Start,
-            Some(m) => {
-                m.shows_standing();
-                MoveTo::Failed
-            }
-            None => MoveTo::Failed,
+            Some(_) | None => MoveTo::Failed,
         };
         Self {
             state,
@@ -485,7 +478,7 @@ impl MoveToAction {
             rng: &mut *shows.rng,
             graphic: self.sprite.or(shows.master_standing),
         };
-        let (state, asked) = ask_walk(walk, (goal, self.range, self.quiet), ask, Some(shown))?;
+        let (state, asked) = ask_walk(walk, (goal, self.range), ask, Some(shown))?;
         if let Some(point) = asked {
             self.point = point;
         }
@@ -778,12 +771,10 @@ mod tests {
         world.insert(9185, sheep(30.4, 40.0));
         world.insert(9186, sheep(35.0, 40.0));
         let mut walker = crate::gathering::hunt::tests::walker();
-        walker.stats.stand_speed = 0.5;
-        // footprints 0 apart: within ARRIVED, state 1 with the standing sprite's speed
+        // footprints 0 apart: within ARRIVED, state 1 (its owner shows the standing sprite)
         let me = [30.0, 40.0, 0.0];
         let at_hand = MoveToAction::to_target(&world, me, &mut walker, 9185, 0.0, None).unwrap();
         assert!(at_hand.arrived());
-        assert_eq!(walker.stats.speed, 0.5);
         // 4.6 tiles on it starts walking (state 3)
         let mut walker = crate::gathering::hunt::tests::walker();
         let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();
@@ -844,7 +835,6 @@ mod tests {
         let start = |speed: f32| {
             let mut walker = crate::gathering::hunt::tests::walker();
             walker.stats.speed = speed;
-            walker.stats.stand_speed = 0.25;
             let m = MoveToAction::to_point(point, 0.5, Some(RUNNING), Some(&mut walker));
             (m, walker.stats.speed)
         };
@@ -863,10 +853,9 @@ mod tests {
         assert!(!moving.shows_standing());
         assert_eq!(moving.point, point);
         assert_eq!(start(f32::NAN).0.state, MoveTo::Start);
-        let (stuck, speed) = start(0.0);
+        let (stuck, _) = start(0.0);
         assert_eq!(stuck.state, MoveTo::Failed);
         assert!(stuck.shows_standing());
-        assert_eq!(speed, 0.25);
         let none = MoveToAction::to_point(point, 0.0, None, None);
         assert_eq!(none.state, MoveTo::Failed);
     }
@@ -880,7 +869,6 @@ mod tests {
         world.insert(9186, sheep(35.0, 40.0));
         let me = [30.0, 40.0, 0.0];
         let mut walker = crate::gathering::hunt::tests::walker();
-        walker.stats.stand_speed = 0.5;
         let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();
         assert_eq!(far.point, [35.0, 40.0, 0.0]);
         assert_eq!(walker.stats.speed, 0.8);
@@ -888,6 +876,5 @@ mod tests {
         let stuck = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();
         assert_eq!(stuck.state, MoveTo::Failed);
         assert!(stuck.shows_standing());
-        assert_eq!(walker.stats.speed, 0.5);
     }
 }

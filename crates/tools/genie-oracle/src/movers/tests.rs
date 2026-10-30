@@ -57,9 +57,6 @@ fn a_walker_moves_by_its_master_and_sprites() {
     let objects = with_masters(vec![master()]);
     let m = run(&walker(11), &objects, Some(&table())).unwrap().unwrap();
     assert_eq!(m.stats.speed.to_bits(), 2.0_f32.to_bits());
-    assert_eq!(m.stats.walk_speed.to_bits(), 2.0_f32.to_bits());
-    assert_eq!(m.stats.run_speed.to_bits(), 3.0_f32.to_bits());
-    assert_eq!(m.stats.stand_speed.to_bits(), 1.0_f32.to_bits());
     assert_eq!((m.stats.restriction, m.stats.restriction_mask), (1, 0b11));
     assert_eq!(m.angle.to_bits(), 0.25_f32.to_bits());
     assert!(m.velocity.is_none() && m.paths.is_empty());
@@ -70,7 +67,6 @@ fn a_walker_moves_by_its_master_and_sprites() {
         .unwrap()
         .unwrap();
     assert_eq!(m.stats.speed.to_bits(), 1.0_f32.to_bits());
-    assert_eq!(m.stats.run_speed.to_bits(), 2.0_f32.to_bits());
 }
 
 /// An object below type 30 does not move.

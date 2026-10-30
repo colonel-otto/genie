@@ -453,7 +453,7 @@ pub(crate) fn stand(
         return Ok(());
     }
     if let Some(m) = unit.body.mover_mut() {
-        m.shows_standing();
+        m.shows(standing.as_ref());
     }
     if unit.sprite.is_some() {
         let standing = standing.ok_or(GenieError::unsupported(

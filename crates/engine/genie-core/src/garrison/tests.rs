@@ -747,9 +747,6 @@ fn walled_map(
         move_algorithm: 0,
         min_collision: 1.0,
         fast_turn: false,
-        walk_speed: 1.0,
-        stand_speed: 1.0,
-        run_speed: 1.0,
         facets: None,
         weapon_range: 0.0,
     };
@@ -1233,9 +1230,6 @@ fn standing() -> crate::movement::MoveStats {
         fly_mode: 0,
         speed: 0.0,
         base: 0.0,
-        walk_speed: 0.0,
-        run_speed: 0.0,
-        stand_speed: 0.0,
         turn_rate: 0.0,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
@@ -2145,7 +2139,6 @@ fn coast_world(ship: [f32; 2]) -> World {
     let sails = crate::movement::MoveStats {
         speed: 1.1,
         base: 1.1,
-        stand_speed: 1.1,
         radius: [0.5, 0.5, 2.0],
         restriction: 1,
         ..standing()

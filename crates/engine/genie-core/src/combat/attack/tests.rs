@@ -399,9 +399,6 @@ fn soldier_mover(speed: f32) -> Mover {
             move_algorithm: 0,
             min_collision: 1.0,
             fast_turn: false,
-            walk_speed: speed,
-            stand_speed: speed,
-            run_speed: speed,
             facets: Some(crate::objects::facing::SpriteFacets {
                 count: 8,
                 flag_1: true,
@@ -2064,7 +2061,6 @@ fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
     };
     let start = |range| {
         let mut rig = Rig::on_the_path(Victim::default());
-        rig.mover_mut().stats.run_speed = 1.2;
         rig.mover_mut().animated.speed = 1.0;
         let mut a = own_attack(10028, MOVE, range);
         let wait = MoveWait {

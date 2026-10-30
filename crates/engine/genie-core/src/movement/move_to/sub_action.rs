@@ -115,7 +115,7 @@ impl MoveToAction {
                 }
                 let goal = self.walks_to();
                 self.state = MoveTo::Moving;
-                let (started, asked) = ask_walk(walk, (goal, self.range, self.quiet), ask, shown)?;
+                let (started, asked) = ask_walk(walk, (goal, self.range), ask, shown)?;
                 if let Some(point) = asked {
                     self.point = point;
                 }

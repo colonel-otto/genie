@@ -334,9 +334,6 @@ pub(crate) fn builder_masters() -> Masters {
             move_algorithm: 0,
             min_collision: 1.0,
             fast_turn: false,
-            walk_speed: 1.0,
-            stand_speed: 1.0,
-            run_speed: 1.0,
             facets: None,
             weapon_range: 0.0,
         }),
@@ -9276,7 +9273,6 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.velocity = None;
     walker.stats.speed = 0.8;
-    walker.stats.stand_speed = 0.5;
     let sheep = Unit {
         actions: ActionList::default().with_artifact(Some(Artifact::new(true, None))),
         body: crate::objects::layers::Body::Moving(walker),
@@ -9364,7 +9360,8 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         sheep.own_master.as_deref().map(|m| m.line_of_sight),
         Some(3.0)
     );
-    assert_eq!(sheep.body.mover().map(|m| m.stats.speed), Some(0.5));
+    // its standing sprite has no factor: the top speed
+    assert_eq!(sheep.body.mover().map(|m| m.stats.speed), Some(0.8));
     assert_eq!(sheep.actions.artifact().map(|a| a.gaia), Some(false));
     assert_eq!(t.players[1].attributes[16], 100.0);
     assert_eq!(t.spatial.get(9520).map(|p| p.player), Some(1));
@@ -11259,7 +11256,6 @@ fn an_ai_move_of_a_unit_without_speed_fails_at_its_start_standing() {
     let mut u = mover_unit(8);
     let m = u.body.mover_mut().unwrap();
     m.stats.speed = 0.0;
-    m.stats.stand_speed = 0.0;
     u.body.set_anim_speed(1.0);
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![]));
     assert_eq!(u.actions.move_to().map(|m| m.state), Some(MoveTo::Failed));
@@ -11300,8 +11296,6 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         // the deer's speed 0.737 with its standing sprite's factor 1, its walking one's 1.9
         m.stats.base = 0.737;
         m.stats.speed = 1.4003;
-        m.stats.walk_speed = 1.4003;
-        m.stats.stand_speed = 0.737;
         u.sprite = Some(crate::objects::sprite::ActiveSprite::start(walking, rng));
         u.body.set_anim_speed(1.0);
         u.actions.set_move_to(Some(MoveToAction::to_point(
@@ -11943,9 +11937,6 @@ const fn house_moves() -> crate::movement::MoveStats {
         move_algorithm: 0,
         min_collision: 1.0,
         fast_turn: false,
-        walk_speed: 0.0,
-        stand_speed: 0.0,
-        run_speed: 0.0,
         facets: None,
         weapon_range: 0.0,
     }

@@ -469,11 +469,7 @@ impl World {
         let graphic = self.graphics.get(&sprite).copied();
         let (_, u) = self.object_mut(id).ok_or_else(|| member_gone(id))?;
         if let Some(m) = u.body.mover_mut() {
-            m.stats.speed = match shown {
-                Shown::Standing => m.stats.stand_speed,
-                Shown::Walking => m.stats.walk_speed,
-                Shown::Running => m.stats.run_speed,
-            };
+            m.shows(graphic.as_ref());
         }
         if u.sprite.is_none() {
             return Ok(true);

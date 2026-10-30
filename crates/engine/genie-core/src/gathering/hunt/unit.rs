@@ -505,14 +505,17 @@ impl Unit {
         if !failed {
             return Ok(());
         }
+        let standing = self
+            .master(&c.w.masters, c.player)
+            .ok()
+            .and_then(|m| c.w.graphics.get(&m.standing_sprite).copied());
         if let Some(m) = self.body.mover_mut() {
-            m.shows_standing();
+            m.shows(standing.as_ref());
         }
         if self.sprite.is_some() {
-            let master = self.master(&c.w.masters, c.player)?;
-            let standing = c.w.graphics.get(&master.standing_sprite).copied().ok_or(
-                GenieError::unsupported("a hunter without its standing sprite"),
-            )?;
+            let standing = standing.ok_or(GenieError::unsupported(
+                "a hunter without its standing sprite",
+            ))?;
             crate::objects::sprite::new_sprite(
                 &mut self.sprite,
                 self.body.move_stats_mut(),

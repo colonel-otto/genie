@@ -214,7 +214,7 @@ pub enum Goal {
 /// A target that is gone, a unit that does not move, and what the motion step does not model.
 pub fn ask_walk(
     walk: &mut Walk<'_>,
-    (goal, range, quiet): (Goal, f32, bool),
+    (goal, range): (Goal, f32),
     ask: PathAsk,
     shown: Option<Shown<'_>>,
 ) -> Result<(Option<MoveTo>, Option<[f32; 3]>), GenieError> {
@@ -239,9 +239,6 @@ pub fn ask_walk(
         footprint_gap_squared(here, ground, point, radius)
     };
     if ask.ends_in_range && squared <= range * range {
-        if !quiet {
-            mover.shows_standing();
-        }
         return Ok((Some(MoveTo::Arrived), None));
     }
     mover.request_path_asked(here, point, range, target, now, ask);

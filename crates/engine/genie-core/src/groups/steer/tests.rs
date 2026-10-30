@@ -3,23 +3,38 @@ use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::movement::ASIDE;
 use crate::objects::masters::{Master, Masters};
+use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
 use crate::world::Player;
 
+/// The walking and the running sprite's top speeds of the hunt tests' walker (speed 0.8): its
+/// factors 1.125 and 1.875.
+const WALKING: f32 = 0.8 * 1.125;
+const RUNNING: f32 = 0.8 * 1.875;
+
+/// The graphic `id` with the speed factor `factor`.
+const fn graphic(id: i16, factor: f32) -> Graphic {
+    Graphic {
+        id,
+        frames: 1,
+        facets: 8,
+        speed_multiplier: factor,
+        frame_duration: 0.0,
+        replay_delay: 0.0,
+        flags: 0,
+    }
+}
+
 /// The update's seconds (69 ms).
 const DT: f32 = 0.069;
 
 /// A unit of master 4 at (`x`, `y`), where it last moved to, with a free unit AI and the
-/// hunt tests' walker (top speed 0.8, radius 0.2, turn rate the largest), whose walking,
-/// running and standing speeds are 0.9, 1.5 and 0.
+/// hunt tests' walker (top speed 0.8, radius 0.2, turn rate the largest).
 fn member(id: i32, x: f32, y: f32) -> Unit {
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = [x, y, 0.0];
-    mover.stats.walk_speed = 0.9;
-    mover.stats.run_speed = 1.5;
-    mover.stats.stand_speed = 0.0;
     let mut u = Unit {
         id,
         ai: Some(UnitAi {
@@ -50,8 +65,8 @@ fn slot(unit: i32, x: f32, y: f32) -> Slot {
 
 /// Player 1's units 10 at (5, 5) and 11 at (6, 5) in group 1 (its top speed 0.9), whose
 /// formation's slots are at (10, 5) and (6, 9); master 4 a combat unit of class 6 with
-/// standing sprite 6, walking sprite 7 and running sprite 8 (the slice's graphics hold none,
-/// nor the units' sprites); a 32 by 32
+/// standing sprite 6 (no factor), walking sprite 7 (factor 1.125) and running sprite 8 (factor
+/// 1.875), which the slice's graphics hold (not the units' sprites); a 32 by 32
 /// map of the terrain class bit 2 (in the walker's mask) at the world's time 100 and an update of 69 ms.
 fn world() -> World {
     let players = vec![
@@ -77,6 +92,9 @@ fn world() -> World {
         ..Master::default()
     };
     t.masters = vec![Masters::new([master]); 2];
+    for (id, factor) in [(6, 0.0), (7, 1.125), (8, 1.875)] {
+        let _ = t.graphics.insert(id, graphic(id, factor));
+    }
     t.spatial = Spatial::with_tiles([32, 32], Tiles::new(32, 32, vec![2; 32 * 32]));
     let mut g = UnitGroup::new(1);
     g.owner = 1;
@@ -282,7 +300,7 @@ fn a_far_member_turns_and_walks_to_its_slot() {
     let m = mover(&t, 10);
     assert!(0.99 < m.forward[0]);
     assert_eq!(m.velocity.unwrap().velocity[2], 0.8);
-    assert_eq!(m.stats.speed, 0.9);
+    assert_eq!(m.stats.speed, WALKING);
     assert_eq!(t.groups.get(1).unwrap().flags & 0x200, 0x200);
     assert_eq!(state(&t, 0), 0);
     assert_eq!(
@@ -298,15 +316,15 @@ fn a_far_member_turns_and_walks_to_its_slot() {
 fn a_near_member_catches_up_or_takes_the_group_s_speed() {
     let speed = 0.8f32;
     let cases = [
-        (4.0, speed * CATCH_UP, 1.5, 0x200),
+        (4.0, speed * CATCH_UP, RUNNING, 0x200),
         (
             1.5,
             speed + ((speed * CATCH_UP - speed) * 1.5) / CATCH_UP_SPAN,
-            1.5,
+            RUNNING,
             0x200,
         ),
-        (0.5, speed, 0.9, 0),
-        (0.1, 0.9, 0.9, 0),
+        (0.5, speed, WALKING, 0),
+        (0.1, 0.9, WALKING, 0),
     ];
     for (gap, v, shown, flags) in cases {
         let mut t = world();
@@ -344,7 +362,8 @@ fn a_member_about_to_pass_its_slot_stops() {
     let m = mover(&t, 10);
     assert_eq!(m.animated.speed, 0.0);
     assert_eq!(m.velocity.unwrap().velocity[2], 0.0);
-    assert_eq!(m.stats.speed, 0.0);
+    // the standing sprite has no factor: the top speed
+    assert_eq!(m.stats.speed, 0.8);
 }
 
 /// A slot whose time is past: state 1 becomes 2 and the member stops; in state 2 a moving
@@ -410,7 +429,7 @@ fn a_due_slot_takes_its_member() {
     s.time = 50;
     s.state = 3;
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
-    assert_eq!(mover(&t, 10).stats.speed, 0.0);
+    assert_eq!(mover(&t, 10).stats.speed, 0.8);
     assert_eq!(unit(&t, 10).ai.as_ref().unwrap().state_position, [0.0; 2]);
 }
 

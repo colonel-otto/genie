@@ -209,9 +209,6 @@ pub(crate) fn walker() -> Mover {
             move_algorithm: 0,
             min_collision: 1.0,
             fast_turn: false,
-            walk_speed: 1.0,
-            stand_speed: 1.0,
-            run_speed: 1.0,
             facets: Some(crate::objects::facing::SpriteFacets {
                 count: 16,
                 flag_1: true,

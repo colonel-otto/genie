@@ -62,9 +62,6 @@ fn stats() -> MoveStats {
         move_algorithm: 0,
         min_collision: 1.0,
         fast_turn: false,
-        walk_speed: 1.0,
-        stand_speed: 1.0,
-        run_speed: 1.0,
         facets: Some(crate::objects::facing::SpriteFacets {
             count: 16,
             flag_1: true,
@@ -2475,4 +2472,31 @@ fn a_new_move_to_s_wait_lasts_a_second() {
     let mut wait = new;
     let _ = wait.give_up(true, 2);
     assert_eq!((wait.state, wait.delay), (1, 2.0));
+}
+
+/// The unit's top speed with the sprite it shows (slot 0x208, `FUN_14114d1d0`): the master's
+/// speed times the sprite's factor when that is above 0, else the master's.
+#[test]
+fn a_mover_that_shows_a_sprite_has_the_top_speed_of_its_factor() {
+    use crate::objects::sprite::Graphic;
+    let with = |factor: f32| Graphic {
+        id: 1,
+        frames: 1,
+        facets: 8,
+        speed_multiplier: factor,
+        frame_duration: 0.0,
+        replay_delay: 0.0,
+        flags: 0,
+    };
+    let mut m = crate::gathering::hunt::tests::walker();
+    m.stats.base = 0.8;
+    m.shows(Some(&with(1.5)));
+    assert_eq!(m.stats.speed, 0.8 * 1.5);
+    m.shows(Some(&with(0.0)));
+    assert_eq!(m.stats.speed, 0.8);
+    m.shows(Some(&with(f32::NAN)));
+    assert_eq!(m.stats.speed, 0.8);
+    m.shows(Some(&with(2.0)));
+    m.shows(None);
+    assert_eq!(m.stats.speed, 0.8);
 }

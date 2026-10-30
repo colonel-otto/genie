@@ -480,10 +480,7 @@ fn a_deleted_group_lets_its_members_go() {
 #[test]
 fn a_unit_shows_its_standing_walking_or_running_sprite() {
     let mut t = world();
-    let mut walker = crate::gathering::hunt::tests::walker();
-    walker.stats.walk_speed = 0.9;
-    walker.stats.run_speed = 1.5;
-    walker.stats.stand_speed = 0.1;
+    let walker = crate::gathering::hunt::tests::walker();
     t.players[1].objects[0].body.put_mover(Some(walker));
     let speed = |t: &World| t.object(10).unwrap().1.body.mover().unwrap().stats.speed;
     let master = |t: &mut World, class: i16, sprites: [i16; 3]| {
@@ -507,13 +504,27 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
     t.show_standing(10).unwrap();
     assert_eq!(speed(&t), 0.8);
     master(&mut t, 6, [6, 7, 8]);
+    // the sprites' factors on the walker's top speed 0.8
+    for (id, factor) in [(6, 0.125), (7, 1.125), (8, 1.875)] {
+        let graphic = crate::objects::sprite::Graphic {
+            id,
+            frames: 1,
+            facets: 8,
+            speed_multiplier: factor,
+            frame_duration: 0.0,
+            replay_delay: 0.0,
+            flags: 0,
+        };
+        let _ = t.graphics.insert(id, graphic);
+    }
     assert_eq!(t.show_walking(10), Ok(true));
-    assert_eq!(speed(&t), 0.9);
+    assert_eq!(speed(&t), 0.8 * 1.125);
     assert_eq!(t.show_running(10), Ok(true));
-    assert_eq!(speed(&t), 1.5);
+    assert_eq!(speed(&t), 0.8 * 1.875);
     t.show_standing(10).unwrap();
-    assert_eq!(speed(&t), 0.1);
+    assert_eq!(speed(&t), 0.8 * 0.125);
     // a held sprite needs the graphic
+    t.graphics.clear();
     let graphic = crate::objects::sprite::Graphic {
         id: 1,
         frames: 1,
