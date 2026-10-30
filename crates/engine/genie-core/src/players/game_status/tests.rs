@@ -171,6 +171,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         workers: 0,
         drop_site: false,
         gap: 1.2,
+        state: 2,
         radius: [0.5, 0.5],
     };
     let rate = crate::gathering::gather::StopRate {

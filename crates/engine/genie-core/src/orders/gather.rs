@@ -71,6 +71,7 @@ impl World {
             workers: t.workers,
             drop_site: self.drops_at_main(player, idx, target)?,
             gap: crate::movement::footprint_gap(unit.position(), me.radius, t_at, t_radius),
+            state: t.life.state,
             radius: t_radius,
         };
         let computer = owner.computer;
@@ -317,6 +318,7 @@ impl World {
             workers: t.workers,
             drop_site: self.drops_at_main(player, idx, target)?,
             gap: crate::movement::footprint_gap(unit.position(), me.radius, t_at, t_radius),
+            state: t.life.state,
             radius: t_radius,
         };
         let task = HuntTask {

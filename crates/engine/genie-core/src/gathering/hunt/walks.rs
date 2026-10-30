@@ -34,10 +34,10 @@ impl HuntReads {
 }
 
 impl HuntAction {
-    /// The quiet `MoveTo` to the object `target` at `at` within `range` (`FUN_140aa0df0` with the
+    /// The quiet `MoveTo` to the object `to` within `range` (`FUN_140aa0df0` with the
     /// task's walking sprite, `+0x61` 1: it asks again when its target moves; `FUN_140a7a170`
     /// with 1), as the action list adds and starts it ([`MoveToAction::added`]): a unit within
-    /// 0.01 of the target's footprint (`gap`) is there already, state 1; else state 3, or 13 for
+    /// 0.01 of the target's footprint (`to.gap`) is there already, state 1; else state 3, or 13 for
     /// a unit without speed. None for a unit whose state is 3 or more: the list deletes it.
     ///
     /// # Errors
@@ -45,19 +45,11 @@ impl HuntAction {
     /// A sprite the table lacks.
     pub(super) fn move_to_object(
         &self,
-        target: i32,
-        at: [f32; 3],
+        to: WalkTo,
         range: f32,
-        gap: f32,
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let to = WalkTo {
-            id: target,
-            at,
-            gap,
-            state: None,
-        };
         let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
         walks
             .live(mover)

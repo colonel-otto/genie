@@ -8206,6 +8206,7 @@ fn deaths_world() -> World {
         workers: 0,
         drop_site: false,
         gap: 1.0,
+        state: 2,
         radius: [0.5, 0.5],
     };
     let rate = crate::gathering::gather::StopRate {
@@ -11118,6 +11119,7 @@ fn an_ai_move_hands_the_point_to_the_gather() {
         workers: 0,
         drop_site: false,
         gap: 1.2,
+        state: 2,
         radius: [0.5, 0.5],
     };
     let rate = crate::gathering::gather::StopRate {
@@ -12165,6 +12167,7 @@ fn reseed_world() -> World {
         workers: 0,
         drop_site: false,
         gap: 0.0,
+        state: 2,
         radius: [1.5, 1.5],
     };
     let rate = crate::gathering::gather::StopRate {

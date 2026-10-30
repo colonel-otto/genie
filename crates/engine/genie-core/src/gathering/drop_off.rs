@@ -277,6 +277,7 @@ impl Unit {
                     t.position(),
                     t_master.radius,
                 ),
+                state: t.life.state,
                 radius: t_master.radius,
             },
         ))

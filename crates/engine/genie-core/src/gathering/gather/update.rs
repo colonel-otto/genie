@@ -10,6 +10,7 @@ use crate::gathering::gather::{
 };
 use crate::gathering::hunt::walk_sprite;
 use crate::math::rng::Stream;
+use crate::movement::move_to::WalkTo;
 use crate::movement::move_to::{GiveUp, MoveTo, Shown};
 use crate::movement::{Me, Mover, PathAsk};
 use crate::objects::lifecycle::seconds;
@@ -29,6 +30,17 @@ pub(super) const QUIET_CODE: GenieError =
     GenieError::unreachable("a quiet sub-action MoveTo's code that only a loud one gives");
 
 impl GatherAction {
+    /// The object the gather's `MoveTo` walks to, which the update holds as `target`, the unit
+    /// `gap` from its footprint.
+    const fn walk_to(&self, target: &Victim, gap: f32) -> WalkTo {
+        WalkTo {
+            id: target.id,
+            at: target.position,
+            gap,
+            state: Some(target.state),
+        }
+    }
+
     /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::gathering::hunt::asked_drop_off`] on the
     /// task's resource): true when the unit's load asks for `set_state(8)`; false for a load of
     /// another resource (the unit AI takes notify 0x21c, the caller's).
@@ -185,7 +197,8 @@ impl GatherAction {
             self.set_walk_back(radius, mover, &walks)?;
         } else {
             let rng = c.w.streams.get(Stream::Action);
-            self.set_walk(target.position, target.radius, 0.0, mover, rng, &walks)?;
+            let to = self.walk_to(target, 0.0);
+            self.set_walk(to, target.radius, mover, rng, &walks)?;
         }
         Ok(Next::Stay)
     }
@@ -253,7 +266,8 @@ impl GatherAction {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 let rng = c.w.streams.get(Stream::Action);
-                self.set_walk(target.position, target.radius, 0.0, mover, rng, &walks)?;
+                let to = self.walk_to(target, 0.0);
+                self.set_walk(to, target.radius, mover, rng, &walks)?;
                 return Ok(Next::Stay);
             }
         }

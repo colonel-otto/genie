@@ -9,7 +9,7 @@ use crate::gathering::gather::{
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
-use crate::movement::move_to::TargetMoved;
+use crate::movement::move_to::{TargetMoved, WalkTo};
 use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
@@ -242,14 +242,7 @@ impl GatherAction {
             self.carry_to = target.id;
             return self.set_drop(target.position, target.gap, mover, &walks);
         }
-        self.set_walk(
-            target.position,
-            target.radius,
-            target.gap,
-            mover,
-            rng,
-            &walks,
-        )
+        self.set_walk(target.walk_to(), target.radius, mover, rng, &walks)
     }
 
     /// Slot 0x48 (`0x140a903a0`) on the work command's new `target` (one the world holds that is
@@ -330,14 +323,7 @@ impl GatherAction {
             return Ok(true);
         }
         self.carry_to = -1;
-        self.set_walk(
-            target.position,
-            target.radius,
-            target.gap,
-            mover,
-            rng,
-            &walks,
-        )?;
+        self.set_walk(target.walk_to(), target.radius, mover, rng, &walks)?;
         Ok(true)
     }
 
@@ -355,13 +341,13 @@ impl GatherAction {
     /// A gather without its target (the `MoveTo`'s state 13); a sprite the table lacks.
     pub fn set_walk(
         &mut self,
-        position: [f32; 3],
+        to: WalkTo,
         radius: [f32; 2],
-        gap: f32,
         mover: &mut Mover,
         rng: &mut Well512,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
+        let position = to.at;
         self.tear_down(Some(mover))?;
         self.state = WALK;
         self.timer = 0.0;
@@ -377,7 +363,7 @@ impl GatherAction {
             let to = [x, y, position[2]];
             self.move_to_point(to, self.task.range, TargetMoved::AsksAgain, mover, walks)?
         } else {
-            self.move_to_object(self.target, position, gap, mover, walks)?
+            self.move_to_object(to, mover, walks)?
         };
         self.move_to = walk;
         Ok(())
@@ -406,7 +392,13 @@ impl GatherAction {
                 "a gather's drop-off without a drop site (notify 0x203)",
             ));
         }
-        self.move_to = self.move_to_object(self.carry_to, site, gap, mover, walks)?;
+        let to = WalkTo {
+            id: self.carry_to,
+            at: site,
+            gap,
+            state: None,
+        };
+        self.move_to = self.move_to_object(to, mover, walks)?;
         Ok(())
     }
 

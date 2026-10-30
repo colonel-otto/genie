@@ -1,7 +1,7 @@
 use super::*;
 use crate::gathering::gather::Walks;
 use crate::movement::move_to::{
-    MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved,
+    MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::objects::masters::class;
 use crate::objects::sprite::Graphic;
@@ -50,6 +50,27 @@ pub(crate) fn walks(held: (i16, f32)) -> Walks<'static> {
         },
         held,
     }
+}
+
+/// `FUN_140aa0df0` takes a target in state 6 or below and holds a later one as none
+/// (`FUN_140a7a230`): the hunt's `MoveTo` then has no target and walks to its place.
+#[test]
+fn a_hunt_s_move_to_refuses_a_target_past_state_6() {
+    let mover = walker();
+    let h = hunting(31);
+    let walk = |state| {
+        let to = WalkTo {
+            id: 31,
+            at: [5.0, 6.0, 0.0],
+            gap: 0.0,
+            state: Some(state),
+        };
+        h.move_to_object(to, 1.0, &mover, &walks((-1, 0.0)))
+            .unwrap()
+            .map(|m| (m.target, m.point, m.state))
+    };
+    assert_eq!(walk(6), Some((31, [5.0, 6.0, 0.0], MoveTo::Arrived)));
+    assert_eq!(walk(7), Some((-1, [5.0, 6.0, 0.0], MoveTo::Start)));
 }
 
 /// The quiet `MoveTo` in `state` to the house 10028 at (30, 88) within `range`, which asks again

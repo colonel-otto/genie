@@ -174,8 +174,23 @@ pub struct Resource {
     /// The footprint gap between the gatherer and it (`FUN_14118f680`), which the `MoveTo`'s start
     /// reads.
     pub gap: f32,
+    /// Its object state (`+0x640`), which a `MoveTo` to it reads (`FUN_140a7a230`).
+    pub state: u8,
     /// Its master's radii (`+0x5d8`, `+0x5dc`), over which a farm's stops spread.
     pub radius: [f32; 2],
+}
+
+impl Resource {
+    /// The object a `MoveTo` of the gatherer walks to: its place, the footprint gap and its state.
+    #[must_use]
+    pub const fn walk_to(&self) -> crate::movement::move_to::WalkTo {
+        crate::movement::move_to::WalkTo {
+            id: self.id,
+            at: self.position,
+            gap: self.gap,
+            state: Some(self.state),
+        }
+    }
 }
 
 /// What the Gather's update reads of the gatherer and its player as it starts.

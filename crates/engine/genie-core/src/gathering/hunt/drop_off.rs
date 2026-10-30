@@ -9,6 +9,7 @@ use crate::gathering::hunt::{
     DROP, DropOff, HuntAction, Lead, PointWalker, SEARCH, asked_drop_off, resource_kind,
 };
 use crate::movement::move_to::GiveUp;
+use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
@@ -54,7 +55,13 @@ impl HuntAction {
             ));
         }
         let range = self.task.range;
-        self.move_to = self.move_to_object(self.carry_to, site, range, gap, mover, walks)?;
+        let to = WalkTo {
+            id: self.carry_to,
+            at: site,
+            gap,
+            state: None,
+        };
+        self.move_to = self.move_to_object(to, range, mover, walks)?;
         Ok(())
     }
 

@@ -2,7 +2,7 @@ use super::*;
 use crate::gathering::make::FARM_FOOD_KIND;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{
-    MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved,
+    MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::movement::{Me, Mover};
 use crate::objects::masters::class;
@@ -188,6 +188,7 @@ fn bush() -> Resource {
         workers: 0,
         drop_site: false,
         gap: 1.2,
+        state: 2,
         radius: [0.5, 0.5],
     }
 }
@@ -224,6 +225,7 @@ fn farm() -> Resource {
         workers: 0,
         drop_site: false,
         gap: 0.0,
+        state: 2,
         radius: [1.5, 1.5],
     }
 }
@@ -304,6 +306,27 @@ fn a_stop_idles_the_gather_and_lets_its_targets_go() {
     assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
 }
 
+/// `FUN_140aa0df0` takes a target in state 6 or below and holds a later one as none
+/// (`FUN_140a7a230`): the `MoveTo` has no target and walks to its place as to a point, far.
+#[test]
+fn a_gather_s_move_to_refuses_a_target_past_state_6() {
+    let mover = crate::gathering::hunt::tests::walker();
+    let g = GatherAction::new(task(), &farm(), true, rate()).unwrap();
+    let to = |state| WalkTo {
+        id: 31,
+        at: [5.0, 6.0, 0.0],
+        gap: 0.0,
+        state: Some(state),
+    };
+    let walk = |state| {
+        g.move_to_object(to(state), &mover, &walks((-1, 0.0)))
+            .unwrap()
+            .map(|m| (m.target, m.point, m.state))
+    };
+    assert_eq!(walk(6), Some((31, [5.0, 6.0, 0.0], MoveTo::Arrived)));
+    assert_eq!(walk(7), Some((-1, [5.0, 6.0, 0.0], MoveTo::Start)));
+}
+
 #[test]
 fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
     let mut mover = crate::gathering::hunt::tests::walker();
@@ -316,15 +339,14 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
     let mut rng = Well512::default();
     let at = stop_point([112.5, 173.5, 3.0], [1.5, 1.5], [0.0; 2], &mut rng.clone());
     let walks = walks((-1, 0.0));
-    g.set_walk(
-        [112.5, 173.5, 3.0],
-        [1.5, 1.5],
-        0.0,
-        &mut mover,
-        &mut rng,
-        &walks,
-    )
-    .unwrap();
+    let to = WalkTo {
+        id: g.target,
+        at: [112.5, 173.5, 3.0],
+        gap: 0.0,
+        state: Some(2),
+    };
+    g.set_walk(to, [1.5, 1.5], &mut mover, &mut rng, &walks)
+        .unwrap();
     // a farm's stop: a quiet MoveTo to a point of the farm within the task's range, which asks
     // again when it moves (`+0x61` 1)
     let to_stop = MoveToAction {

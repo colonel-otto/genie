@@ -11,6 +11,7 @@ use crate::gathering::hunt::{
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::footprint_gap;
+use crate::movement::move_to::WalkTo;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
@@ -56,7 +57,13 @@ impl HuntAction {
         let mover = body.mover().ok_or(crate::world::HUNTER_UNMOVING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(body.position(), ground, t.position, t.radius);
-        self.move_to = self.move_to_object(self.target, t.position, range, gap, mover, walks)?;
+        let to = WalkTo {
+            id: self.target,
+            at: t.position,
+            gap,
+            state: Some(victim.state),
+        };
+        self.move_to = self.move_to_object(to, range, mover, walks)?;
         Ok(())
     }
 

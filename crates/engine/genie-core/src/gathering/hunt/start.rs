@@ -10,6 +10,7 @@ use crate::gathering::hunt::{
     WALK_POINT, WALK_SEARCH, food,
 };
 use crate::movement::move_to::GiveUp;
+use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -196,8 +197,13 @@ impl HuntAction {
             } else {
                 OWN_LIVESTOCK_RANGE
             };
-            self.move_to =
-                self.move_to_object(target.id, target.position, range, attack.gap, mover, walks)?;
+            let to = WalkTo {
+                id: target.id,
+                at: target.position,
+                gap: attack.gap,
+                state: Some(target.state),
+            };
+            self.move_to = self.move_to_object(to, range, mover, walks)?;
             return Ok(false);
         }
         if target.class != class::FARM && target.allied {

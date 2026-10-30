@@ -5,6 +5,7 @@ use crate::combat::victims::{readable, victim, write_back};
 use crate::gathering::gather::Walks;
 use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::Stream;
+use crate::movement::move_to::WalkTo;
 use crate::movement::move_to::{MoveDefaults, SpriteReads};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::masters::Masters;
@@ -258,13 +259,20 @@ impl Unit {
                 .get_known(gather.target)?
                 .ok_or(GenieError::unsupported("a gather's target without a place"))?;
         let gap = footprint_gap(self.body.position(), radius, t.position, t.radius);
+        let state = c.w.object_state(gather.target);
         let mover = self
             .body
             .mover_mut()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let rng = c.w.streams.get(Stream::Action);
+        let to = WalkTo {
+            id: gather.target,
+            at: t.position,
+            gap,
+            state,
+        };
         gather
-            .set_walk(t.position, t.radius, gap, mover, rng, &walks)
+            .set_walk(to, t.radius, mover, rng, &walks)
             .map(|()| HeadCode::Keeps)
     }
 
