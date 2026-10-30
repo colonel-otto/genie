@@ -27,7 +27,7 @@ const SCALED_BY_38: i16 = 0x2f3;
 /// The attribute 0x2f3's cost adjustments scale by (`+0x130`).
 const ATTRIBUTE_38: i16 = 38;
 /// The resource a cost the player cannot meet takes the rest from (`+0x18`: gold).
-const GOLD: i16 = 3;
+const GOLD: i16 = attribute::GOLD as i16;
 /// A researched technology's state (3), which a disable command keeps (`FUN_1413cdb00`) and the
 /// player's tree counts.
 pub(crate) const RESEARCHED: i16 = 3;

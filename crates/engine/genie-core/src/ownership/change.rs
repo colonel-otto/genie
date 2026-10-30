@@ -6,6 +6,7 @@ use crate::map::spatial::Spatial;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
+use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, player_master};
 use crate::objects::unit::Unit;
@@ -285,7 +286,7 @@ impl World {
         let building = master.building.as_ref();
         if let Some(stack) = building.map(|b| b.stack_unit).filter(|&s| 0 <= s) {
             let stack = if master.id == PASTURE_1889 && rice {
-                crate::construction::build::RICE_PASTURE
+                PASTURE_MANGROVE
             } else {
                 stack
             };

@@ -66,7 +66,7 @@ const COMPUTER_TYPE: u8 = 3;
 /// The mill's master, whose livestock makes food (`FUN_14104f960` with 0x44).
 const MILL: i32 = 68;
 /// The king's master, which the regicide rule asks the tracker for (`FUN_14104eea0` with 0x1b2).
-const KING: i32 = 434;
+const KING: i32 = crate::objects::masters::ids::KING as i32;
 /// The town centres' masters (`FUN_141658970`'s and `FUN_141658a30`'s keys 0x6d and 0x1bc).
 const TOWN_CENTRES: [i32; 2] = [109, 444];
 /// The classes that never keep their player (`0x48000800`: other 11, walls 27, flags 30).

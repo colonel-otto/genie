@@ -5,6 +5,10 @@
 
 /// Food: the first of the four resources (food, wood, stone, gold: 0 to 3).
 pub const FOOD: usize = 0;
+/// Wood.
+pub const WOOD: usize = 1;
+/// Stone.
+pub const STONE: usize = 2;
 /// Gold: a sale gives it and a purchase costs it, the treason costs it.
 pub const GOLD: usize = 3;
 /// The current age (`+0x30`, `player+0x100`), as the `i16` game mode 16's QUEUE, a new soldier's

@@ -420,8 +420,6 @@ pub(crate) const DROPPED_ORDERS: [OrderKind; 3] =
     [OrderKind::Gather, OrderKind::Hunt, OrderKind::OnTarget];
 /// The point a `MoveTo` without a target walks to (`FUN_140aa0df0` leaves its zeroed `+0x38`).
 const NO_TARGET_POINT: [f32; 3] = [0.0; 3];
-/// The pasture master 1889's stack unit on mangrove or rice terrain (`0x765`).
-pub(crate) const RICE_PASTURE: i16 = 0x765;
 
 #[cfg(test)]
 mod stack_tests {

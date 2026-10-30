@@ -619,6 +619,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ids::HOUSE;
     use crate::objects::masters::master_type::DOPPELGANGER;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
@@ -627,7 +628,6 @@ mod tests {
 
     /// A gold mine's master (it leaves ghosts), a house's and the ghosts' own.
     const MINE: i16 = 66;
-    const HOUSE: i16 = 70;
     const TREE: i16 = 411;
 
     fn masters(recyclable: bool) -> Masters {

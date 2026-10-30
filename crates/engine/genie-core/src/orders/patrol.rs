@@ -7,7 +7,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::orders::{
-    ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
+    ATTACK_MOVE_QUEUED, LISTED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
 };
 use crate::players::PlayerId;
@@ -152,8 +152,6 @@ impl World {
         waypoints: &[[f32; 2]],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
-        /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
-        const LISTED: usize = 60;
         let Sweep { patrol, reset, .. } = sweep;
         if !patrol {
             self.reset_for_attack_move(ids);

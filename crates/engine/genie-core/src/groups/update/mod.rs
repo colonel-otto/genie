@@ -16,9 +16,9 @@ pub use self::awake::IDLE_SPAN;
 const NO_COMMAND: i32 = -1;
 /// The group commands the update tells apart: an attack, a build, a repair, a relic's pick-up
 /// and its delivery.
-const ATTACK: i32 = 9;
-const BUILD: i32 = 0x65;
-const REPAIR: i32 = 0x6a;
+const ATTACK: i32 = crate::combat::attack::ATTACK as i32;
+const BUILD: i32 = crate::objects::masters::action_type::BUILD as i32;
+const REPAIR: i32 = crate::construction::repair::REPAIR as i32;
 const PICK_UP_RELIC: i32 = 0x84;
 const DELIVER_RELIC: i32 = 0x88;
 /// The action types of the tasks that pick up and deliver relics (`FUN_1415c60b0`'s third

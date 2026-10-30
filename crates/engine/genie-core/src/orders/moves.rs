@@ -7,12 +7,11 @@ use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::PASTURE;
+use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::MOVING;
-use crate::orders::{
-    MASTER_1893, MASTER_1897, MoveOrder, PASTURE_CLASS, Place, TOO_CLOSE, Work, ignore_unit, packs,
-    readiness, work_reach,
-};
+use crate::orders::{MoveOrder, Place, TOO_CLOSE, Work, ignore_unit, packs, readiness, work_reach};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -382,7 +381,7 @@ impl World {
         let target = self.task_target(order.target, 0)?;
         let pasture = master.class == class::VILLAGER
             && target.master.kind == BUILDING
-            && matches!(target.master.id, MASTER_1893 | MASTER_1897);
+            && matches!(target.master.id, PASTURE_MANGROVE | PASTURE);
         if !pasture {
             return Ok(Some(-1));
         }
@@ -414,7 +413,7 @@ impl World {
             let search = crate::unit_ai::Notify::own(
                 id,
                 crate::unit_ai::REQUIRES_SEARCH,
-                [ActionKind::Hunt.value(), i32::from(PASTURE_CLASS), -1],
+                [ActionKind::Hunt.value(), i32::from(class::FARM), -1],
             );
             let _ = ai.accept(search, state);
         }

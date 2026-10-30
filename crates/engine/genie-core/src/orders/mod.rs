@@ -112,11 +112,8 @@ const fn packs(class: i16, reach: Option<(bool, bool)>, targetless: bool, comput
 /// A hunt sends at most this many animals of a herd to its drop site (`FUN_140ac4c60`'s list,
 /// `DAT_143e55e20`).
 const HERD_MOST: usize = 16;
-const MASTER_1893: i16 = 1893;
-/// The class of the farms and a pasture's livestock (`0x31`), which a full pasture's search
-/// names.
-const PASTURE_CLASS: i16 = 49;
-const MASTER_1897: i16 = 1897;
+/// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
+const LISTED: usize = 60;
 /// The range of GUARD's defend order (`DAT_142eb3634`, [`World::guard`]).
 const GUARD_RANGE: f32 = crate::math::image::order::GUARD_RANGE;
 /// The task filter of garrisoning (3).

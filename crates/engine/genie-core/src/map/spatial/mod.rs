@@ -40,8 +40,8 @@ const CLOSEST_RANGE: f32 = crate::math::image::spatial::CLOSEST_RANGE;
 const SEARCH_REUSE_SQUARED: f32 = crate::math::image::spatial::SEARCH_REUSE_SQUARED;
 
 /// The pasture and livestock classes `ClosestObject` treats apart.
-const PASTURE_CLASS: i32 = 49;
-const LIVESTOCK_CLASS: i32 = 58;
+const PASTURE_CLASS: i32 = crate::objects::masters::class::FARM as i32;
+const LIVESTOCK_CLASS: i32 = crate::objects::masters::class::LIVESTOCK as i32;
 
 /// The caller's reachability check of a found object (slot 0x3d0 within a range): it paths over
 /// the spatial index the search reads, which the check's queries write, so the search hands it
@@ -140,7 +140,10 @@ fn players_seen(found: &[Vec<Record>; 5]) -> u32 {
 
 /// The pastures, whose workers and livestock `ClosestObject` counts (`FUN_140c488b0`, raw
 /// `0x6801`, `0x6805`).
-const PASTURES: [i16; 2] = [1893, 1897];
+const PASTURES: [i16; 2] = [
+    crate::objects::masters::ids::PASTURE_MANGROVE,
+    crate::objects::masters::ids::PASTURE,
+];
 /// The fishing ships' masters (`FUN_1411945a0`: 13, 2356, 2171).
 const TRAPPERS: [i16; 3] = [13, 2356, 2171];
 

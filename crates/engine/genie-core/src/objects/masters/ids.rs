@@ -50,6 +50,12 @@ pub const ID_1105: i16 = 1105;
 /// The mule cart (`.dat` MULECART, class 3, `0x710`, raw `0x67ac`), which answers the town bell besides the villagers and
 /// which a building's watch leaves out.
 pub const MASTER_1808: i16 = 1808;
+/// The mangrove pasture (`.dat` `PASTURE_MANGROVE`, `0x765`): a completed building's stack unit on
+/// mangrove or rice terrain, and a pasture a gather and a hunt treat apart.
+pub const PASTURE_MANGROVE: i16 = 1893;
+/// The pasture (`.dat` `PASTURE`, 1897), which a gather and a hunt treat apart with
+/// [`PASTURE_MANGROVE`].
+pub const PASTURE: i16 = 1897;
 /// The pasture master (`0x761`) whose foundation keeps its snow and whose stack unit depends on
 /// the rice terrain under it.
 pub const PASTURE_1889: i16 = 1889;

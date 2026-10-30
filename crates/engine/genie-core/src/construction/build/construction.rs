@@ -4,13 +4,13 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    CASTLE_WONDER_COST, CASTLES_BUILT, Construction, RICE_PASTURE, SITE_GONE, STARTED,
-    WONDERS_BUILT,
+    CASTLE_WONDER_COST, CASTLES_BUILT, Construction, SITE_GONE, STARTED, WONDERS_BUILT,
 };
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::MONASTERY;
+use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::ids::WONDER;
 use crate::pathing::Pathing;
 use crate::world::{CASTLES, MONASTERIES, WONDERS};
@@ -47,7 +47,7 @@ pub(super) fn hand_storage(
 
 /// The completion's ground ([`crate::world::World::complete_building`]): on snow the building gets its snow flag; its foundation
 /// terrain covers its clearance (terrain 0x3f under master 1889's pasture on mangrove or rice,
-/// `stack_master` [`RICE_PASTURE`]; [`crate::map::terrain::Terrain::cover`]).
+/// `stack_master` [`PASTURE_MANGROVE`]; [`crate::map::terrain::Terrain::cover`]).
 ///
 /// # Errors
 ///
@@ -72,7 +72,7 @@ pub(super) fn lay_foundation(
         c.snow = true;
     }
     if 0 <= building.foundation_terrain {
-        let laid = if stack_master == RICE_PASTURE {
+        let laid = if stack_master == PASTURE_MANGROVE {
             RICE_PASTURE_TERRAIN
         } else {
             building.foundation_terrain as u8

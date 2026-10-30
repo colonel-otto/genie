@@ -7,8 +7,10 @@ use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
+use crate::objects::masters::ids::PASTURE;
+use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
-use crate::orders::{GATHERED_BUILDING, MASTER_1893, MASTER_1897};
+use crate::orders::GATHERED_BUILDING;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -67,7 +69,7 @@ impl World {
                     None => (tp, t),
                 };
                 let main_master = main.master(&self.masters, mp)?.id;
-                if (main.life.state < 2 || matches!(main_master, MASTER_1893 | MASTER_1897))
+                if (main.life.state < 2 || matches!(main_master, PASTURE_MANGROVE | PASTURE))
                     && mp == player
                 {
                     return Err(GenieError::unsupported(

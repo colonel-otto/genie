@@ -6,8 +6,8 @@ use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{
-    Interact, MoveOrder, Place, Split, Work, grid_point, ignore_unit, offset_point, readiness,
-    set_differentiator_groups,
+    Interact, LISTED, MoveOrder, Place, Split, Work, grid_point, ignore_unit, offset_point,
+    readiness, set_differentiator_groups,
 };
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -296,8 +296,6 @@ impl World {
         split: &mut Split,
         order: &MoveOrder,
     ) -> Result<(), GenieError> {
-        /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
-        const LISTED: usize = 60;
         let mut listed: Vec<i32> = Vec::new();
         for units in split.groups.clone() {
             let units = &units[..];

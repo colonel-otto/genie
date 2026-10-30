@@ -8,7 +8,7 @@ use crate::players::attribute;
 use crate::technology::effect::Change;
 use crate::world::World;
 
-pub(crate) const POPULATION: i16 = 11;
+pub(crate) const POPULATION: i16 = attribute::POPULATION as i16;
 pub(super) const RESOURCE_19: i16 = 19;
 /// A storage flag of `'@'` (64): the object's storage stays with it (`FUN_141195a50`).
 pub(super) const KEPT_STORAGE: u8 = 64;

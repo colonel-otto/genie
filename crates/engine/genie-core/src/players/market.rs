@@ -11,11 +11,11 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::world::World;
 
-/// The commodities: food, wood and stone (the commands' only ones) and the ore (attribute
-/// 0x38), which only the price reads know.
-const FOOD: u8 = 0;
-const WOOD: u8 = 1;
-const STONE: u8 = 2;
+/// The commodities are the player's attribute indices: food, wood and stone (the commands' only
+/// ones) and the ore (attribute 0x38), which only the price reads know.
+const FOOD: u8 = attribute::FOOD as u8;
+const WOOD: u8 = attribute::WOOD as u8;
+const STONE: u8 = attribute::STONE as u8;
 const ORE: u8 = 0x38;
 /// The player's attribute 78, the share of a trade's worth the market keeps.
 const FEE: usize = 78;

@@ -34,5 +34,5 @@ outside the tick's own frame seeds.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`combat`](../../combat/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`orders`](../../orders/), [`unit_ai`](../../unit_ai/), [`world`](../../world/).
+- Uses: [`combat`](../../combat/), [`construction`](../../construction/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`orders`](../../orders/), [`unit_ai`](../../unit_ai/), [`world`](../../world/).
 <!-- /uses -->
