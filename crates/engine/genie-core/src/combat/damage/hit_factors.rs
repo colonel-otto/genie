@@ -121,12 +121,15 @@ pub fn charge_hit(a: &Attacker, v: &Victim) -> bool {
 /// group's) target in reach; false for other masters. Special attack 3 is not modelled.
 pub(super) const fn special_charge_ready(a: &Attacker) -> Result<bool, GenieError> {
     if a.special_attack == 3 {
-        return Err(GenieError::unsupported(
-            "a charge of special attack 3 (FUN_1412161b0)",
-        ));
+        return Err(SPECIAL_CHARGE_GAP);
     }
     Ok(false)
 }
+
+/// The gap of [`special_charge_ready`], which a unit's speed (slot 0x208, `FUN_141202c70`) reads
+/// too.
+pub(crate) const SPECIAL_CHARGE_GAP: GenieError =
+    GenieError::unsupported("a charge of special attack 3 (FUN_1412161b0)");
 
 /// `FUN_141202580`: the damage a ready charge adds, the charge itself; a master of special
 /// attack 3 adds it only while [`special_charge_ready`] holds.

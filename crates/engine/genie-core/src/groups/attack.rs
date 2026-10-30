@@ -72,11 +72,6 @@ pub(crate) struct AttackOrder {
     pub(crate) filter: i16,
 }
 
-/// A member within reach of the target when the command comes: the game has it attack at once
-/// (slot 0x128, with a retarget timer drawn on the AI stream, `FUN_14102bbd0`), which is not
-/// modelled.
-const IN_REACH: GenieError = crate::groups::order::TARGET_COMMAND_GAP;
-
 impl UnitGroup {
     /// The group's target data forgets its target, place, radius and retargeting byte (the
     /// resets in `FUN_14100f7f0`); its range and certain action stay.
@@ -210,56 +205,71 @@ impl World {
 
     /// `FUN_14102bbd0` of group `group` against `target`: `range` rises to the largest range the
     /// members work at. A member within the range of its weapon against the target and not
-    /// nearer than its minimum range attacks at once, which is not modelled.
+    /// nearer than its minimum range is sent at it at once ([`World::send_in_reach`]); the
+    /// others are not. Nothing for an owner the world does not hold.
     ///
     /// # Errors
     ///
-    /// A member within reach, and a member or a master the world does not hold.
+    /// A member or a master the world does not hold, and what the sending does not model.
     pub(super) fn reach_pass(
-        &self,
+        &mut self,
         group: i32,
         target: i32,
         order: AttackOrder,
         range: &mut f32,
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
-        if self.players.get(g.owner as usize).is_none() {
+        let Some(computer) = self.players.get(g.owner as usize).map(|p| p.computer) else {
             return Ok(());
+        };
+        let ids: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        for id in ids {
+            if self.in_reach_of(id, target, order, range)? {
+                self.send_in_reach(group, id, target, (order, computer))?;
+            }
         }
+        Ok(())
+    }
+
+    /// The member `id` against `target` in [`World::reach_pass`]: `range` rises to its reach,
+    /// and it is within reach when the footprint gap squared is at most the reach squared (its
+    /// weapon range against the target when the reach is negative) and at least its least range
+    /// squared. A member the world does not hold is not.
+    fn in_reach_of(
+        &self,
+        id: i32,
+        target: i32,
+        order: AttackOrder,
+        range: &mut f32,
+    ) -> Result<bool, GenieError> {
+        let Some((p, u)) = self.object(id) else {
+            return Ok(false);
+        };
         let t = self
             .world_object(target)
             .ok_or_else(|| member_gone(target))?;
         let t_master = self.master(t.player(), t.master_id())?;
-        for m in &g.members {
-            let (p, u) = self.object(m.id).ok_or_else(|| member_gone(m.id))?;
-            let master = u.master(&self.masters, p)?;
-            let gap = crate::movement::footprint_gap_squared(
-                u.position(),
-                master.radius,
-                t.position(),
-                t_master.radius,
-            );
-            let mut reach = self.task_reach(p, master.id, order.filter)?;
-            if reach < 0.0
-                && RANGED_MEMBER_KIND <= master.kind
-                && !self.charge_hits(u, master, &t)?
-            {
-                reach = weapon_range(master);
-            }
-            let against = self.range_against(WorldObject::Unit(p, u), Some(t))?;
-            let reach_squared = if reach < 0.0 {
-                against * against
-            } else {
-                reach * reach
-            };
-            if *range < reach {
-                *range = reach;
-            }
-            if gap <= reach_squared && master.min_range * master.min_range <= gap {
-                return Err(IN_REACH);
-            }
+        let master = u.master(&self.masters, p)?;
+        let gap = crate::movement::footprint_gap_squared(
+            u.position(),
+            master.radius,
+            t.position(),
+            t_master.radius,
+        );
+        let mut reach = self.task_reach(p, master.id, order.filter)?;
+        if reach < 0.0 && RANGED_MEMBER_KIND <= master.kind && !self.charge_hits(u, master, &t)? {
+            reach = weapon_range(master);
         }
-        Ok(())
+        let against = self.range_against(WorldObject::Unit(p, u), Some(t))?;
+        let reach_squared = if reach < 0.0 {
+            against * against
+        } else {
+            reach * reach
+        };
+        if *range < reach {
+            *range = reach;
+        }
+        Ok(gap <= reach_squared && master.min_range * master.min_range <= gap)
     }
 
     /// `FUN_1415cd0d0` of the member master `master` of player `player` with the order's task

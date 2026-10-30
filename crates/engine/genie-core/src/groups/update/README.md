@@ -8,6 +8,8 @@ holds that update.
   front, and a new layout.
 - `moves.rs` runs the group's current command: a move, the members' moves and steps, the orders
   that are due and the idle timer.
+- `send.rs` sends a member that is within reach at the target of its group's order: the gate
+  part it strikes, its speed and its retarget timer.
 - `checks.rs` holds what the update asks of the world: whether the units keep apart, whether a
   target is still there, whether a member is idle.
 
@@ -28,6 +30,7 @@ outside the tick's own frame seeds.
 | [`entry.rs`](entry.rs) | The update's entry: a player's groups, a group's update and its deletion, the members' check and a hibernating group. |
 | [`mod.rs`](mod.rs) | A group's update (FD-036): `BUnitGroup::update` (`FUN_14103d910`), which the world runs for the groups a player owns before the player's objects, and the deletion of a group whose update returns 0 (the world list's unlink, then `BUnitGroup`'s destructor, `FUN_140fe1920`). |
 | [`moves.rs`](moves.rs) | The current command's update: a move, the members' moves and steps, the order queue's due orders and the idle timer. |
+| [`send.rs`](send.rs) | A member sent at the target of its group's order (FD-036): the branch of `FUN_14102bbd0` for a member within reach, with the gate rule that picks the part of a gate it strikes (`FUN_14100dbe0`), the unit's speed (slot 0x208, `FUN_141202c70`) and its weapon reach (slot 0x1e8, `FUN_141086330`). |
 | [`tests.rs`](tests.rs) | Tests. |
 <!-- /files -->
 

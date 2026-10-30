@@ -14,6 +14,10 @@ use crate::unit_ai::{
     point_gap_squared,
 };
 
+/// The least span [`UnitAi::set_randomized_retarget_timer`] draws around (`999 < span`: the
+/// immediate `1000`).
+const RETARGET_SPAN_LEAST: u32 = 1000;
+
 impl UnitAi {
     /// The idle part of the full update (`0x140c66b10` after slot 73): a unit without an action
     /// value (and without a target or not busy) runs slot 72 once its idle timer passes its
@@ -650,6 +654,14 @@ impl UnitAi {
         self.set_action(Some(ActionKind::Move));
         self.target_at(id, Some(i32::from(class)), position);
         Ok(())
+    }
+
+    /// `setRandomizedRetargetTimer` (`FUN_140c64cf0`): the retarget timer (`+0x1cc`) becomes a
+    /// draw of the AI stream (`rand15`) modulo half of `span` milliseconds (at least 1000) plus
+    /// three quarters of it, so between three and five quarters of it.
+    pub fn set_randomized_retarget_timer(&mut self, span: u32, ai: &mut Well512) {
+        let span = span.max(RETARGET_SPAN_LEAST);
+        self.retarget_timer = (ai.rand15() % (span >> 1)).wrapping_add(span.wrapping_mul(3) >> 2);
     }
 
     /// The boar's end of its full update: without a target it is no longer furious.

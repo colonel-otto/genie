@@ -201,6 +201,34 @@ impl World {
         self.order_work(player, idx, &work)
     }
 
+    /// Slot 0x128 (`FUN_141211b80`) of object `id` with `work`: `+0xa14` takes `work.notified`
+    /// while the command runs, and with it set the unit AI's order queue empties
+    /// (`FUN_140c5e010`); `FUN_14106c590` passes the order on to slot 0x7e8 unless the target
+    /// is the unit itself (its `+0x888` count is not held). Nothing for an object the world
+    /// does not hold live.
+    ///
+    /// # Errors
+    ///
+    /// What the work command does not model.
+    pub(crate) fn give_work(&mut self, id: i32, work: &Work) -> Result<(), GenieError> {
+        let Some(Place::Live(player, idx)) = self.place(id) else {
+            return Ok(());
+        };
+        if work.notified
+            && let Some(ai) = self
+                .players
+                .get_mut(player)
+                .and_then(|p| p.objects.by_id_mut(id))
+                .and_then(|u| u.ai.as_mut())
+        {
+            ai.orders.clear();
+        }
+        if work.target == id {
+            return Ok(());
+        }
+        self.order_work(player, idx, work)
+    }
+
     /// The unit AI's order on a target (`FUN_140c5c170` case `0x2db`, from its queue): the unit's
     /// slot 0x128 on the target at its place with 0 — its `+0xa14` clear while the work command
     /// runs, so the new action's notify leaves the AI's notifies, and its order queue stays —

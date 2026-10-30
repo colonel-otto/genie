@@ -490,6 +490,39 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
     t
 }
 
+/// Every object of every player in the spatial index at its place (`FUN_14118f8c0`-style gaps and
+/// the work command's reach read it).
+fn register(t: &mut World) {
+    let placed: Vec<(i32, crate::map::spatial::Placed)> = t
+        .players
+        .iter()
+        .enumerate()
+        .flat_map(|(p, player)| player.objects.iter().map(move |u| (p, u)))
+        .filter_map(|(p, u)| {
+            let m = t.masters.get(p)?.get(u.life.master_id)?;
+            Some((
+                u.id,
+                crate::map::spatial::Placed {
+                    position: u.position(),
+                    radius: m.radius,
+                    class: m.class,
+                    player: p,
+                    master: m.id,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: false,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            ))
+        })
+        .collect();
+    for (id, placed) in placed {
+        t.spatial.insert(id, placed);
+    }
+}
+
 fn attack_on(filter: i16) -> attack::AttackOrder {
     attack::AttackOrder {
         disable_retargeting: false,
@@ -562,18 +595,33 @@ fn a_group_with_two_queued_commands_takes_its_smallest_unit_range() {
     assert_eq!(t.groups.get(1).unwrap().current_target.range, 2.5);
 }
 
-/// `FUN_14102bbd0`: a member within its weapon's reach of the target and not nearer than its
-/// minimum range is not modelled; the pass raises the range to the largest a member works at.
+/// `FUN_14102bbd0`: the pass raises the range to the largest a member works at; a member
+/// within its weapon's reach of the target and not nearer than its minimum range is sent at it.
 #[test]
-fn the_reach_pass_raises_the_range_and_stops_at_a_member_in_reach() {
-    let t = attack_world(&[(7, 4, 10.0, 10.0), (8, 4, 38.0, 45.0)]);
+fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
+    let mut t = attack_world(&[(7, 4, 10.0, 10.0), (8, 4, 38.0, 45.0)]);
+    register(&mut t);
+    for u in &mut t.players[1].objects {
+        u.ai = Some(crate::unit_ai::UnitAi {
+            retarget_timer: 7,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        u.body
+            .put_mover(Some(crate::gathering::hunt::tests::walker()));
+    }
+    let mut reference = t.streams.clone();
+    let draw = reference.get(crate::math::rng::Stream::Ai).rand15();
     let mut range = -1.0;
-    assert!(
-        t.reach_pass(1, 60, attack_on(-1), &mut range).is_err(),
-        "member 8 is at the target"
-    );
+    t.reach_pass(1, 60, attack_on(-1), &mut range).unwrap();
     assert_eq!(range, 4.0);
-    let t = attack_world(&[(7, 4, 10.0, 10.0)]);
+    // member 8 touches the target (a gap 0, so the timer's span is the least, 1000); 7 is far
+    let timers: Vec<u32> = t.players[1]
+        .objects
+        .iter()
+        .map(|u| u.ai.as_ref().unwrap().retarget_timer)
+        .collect();
+    assert_eq!(timers, [7, 750 + draw % 500]);
+    let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
     let mut range = -1.0;
     t.reach_pass(1, 60, attack_on(-1), &mut range).unwrap();
     assert_eq!(range, 4.0);

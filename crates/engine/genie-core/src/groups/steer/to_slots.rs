@@ -133,7 +133,7 @@ impl World {
     /// # Errors
     ///
     /// An action the slice does not model, and an object of a master the slice does not have.
-    pub(super) fn action_list(
+    pub(in crate::groups) fn action_list(
         &self,
         p: usize,
         u: &crate::objects::unit::Unit,

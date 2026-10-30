@@ -9,6 +9,7 @@ mod awake;
 mod checks;
 mod entry;
 mod moves;
+mod send;
 
 pub use self::awake::IDLE_SPAN;
 

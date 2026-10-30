@@ -3602,6 +3602,22 @@ fn retarget_draws_before_look_around() {
     assert_eq!(u.look_around_timeout, 4500 + 25269 % 1000);
 }
 
+/// `FUN_140c64cf0`: the timer is a draw of the stream modulo half the span plus three
+/// quarters of it; a span below 1000 is 1000.
+#[test]
+fn the_randomized_retarget_timer_draws_around_its_span() {
+    let mut u = idle(8);
+    u.set_randomized_retarget_timer(4000, &mut rng());
+    assert_eq!(u.retarget_timer, 7241 % 2000 + 3000);
+    u.set_randomized_retarget_timer(10, &mut rng());
+    assert_eq!(u.retarget_timer, 7241 % 500 + 750);
+    u.set_randomized_retarget_timer(u32::MAX, &mut rng());
+    assert_eq!(
+        u.retarget_timer,
+        7241_u32.wrapping_add(u32::MAX.wrapping_mul(3) >> 2)
+    );
+}
+
 #[test]
 fn the_idle_timer_restarts_after_its_timeout_and_the_secondary_timer_stops_at_0() {
     let mut u = UnitAi {

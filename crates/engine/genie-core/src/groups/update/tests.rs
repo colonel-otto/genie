@@ -1494,3 +1494,77 @@ fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
         "{to:?}"
     );
 }
+
+/// Owner 2's masters: master 4 and a gate (master 5: a building of class 39) and the target 20
+/// is the gate, with 21 its annex at (2.5, 2.5).
+fn gate_world() -> World {
+    let mut t = world();
+    let m4 = t.masters[2].get(4).unwrap().clone();
+    let gate = Master {
+        id: 5,
+        kind: 80,
+        class: 39,
+        radius: [0.5, 0.5],
+        standing_sprite: -1,
+        ..Master::default()
+    };
+    t.masters[2] = Masters::new([m4, gate]);
+    t.players[2].objects[0].life.master_id = 5;
+    let mut annex = soldier(21, 2.5, 2.5);
+    annex.life.master_id = 5;
+    annex.annex_of = Some(20);
+    t.players[2].objects.push(annex);
+    t.spatial.set_annex(21, Some(20));
+    t
+}
+
+/// `FUN_14100dbe0`: a gate out of the unit's reach (slot 0x1e8) is struck at its nearest part by
+/// the footprint gap squared, the gate first; a gate in reach, and any other target, stands for
+/// itself.
+#[test]
+fn a_gate_out_of_reach_is_struck_at_its_nearest_part() {
+    let mut t = gate_world();
+    // 11 at (2, 1): the annex is nearer than the gate
+    assert_eq!(t.gate_part(11, 20).unwrap(), 21);
+    t.spatial.set_annex(21, None);
+    assert_eq!(t.gate_part(11, 20).unwrap(), 20);
+    // within its weapon range and above the least one: the gate itself
+    t.spatial.set_annex(21, Some(20));
+    let mut m4 = t.masters[1].get(4).unwrap().clone();
+    m4.weapon_range = 10.0;
+    t.masters[1] = Masters::new([m4.clone()]);
+    assert_eq!(t.gate_part(11, 20).unwrap(), 20);
+    // below the least range (a squared 3.9 against 5 squared) it is out of reach again
+    m4.min_range = 5.0;
+    t.masters[1] = Masters::new([m4]);
+    assert_eq!(t.gate_part(11, 20).unwrap(), 21);
+    // a target that is no gate
+    t.players[2].objects[0].life.master_id = 4;
+    assert_eq!(t.gate_part(11, 20).unwrap(), 20);
+}
+
+/// Slot 0x208 (`FUN_141202c70`) of a unit: its mover's speed (0 without a mover); a charger
+/// (type 70 with `max_charge`) of special attack 3 is the charge's, which is not modelled.
+#[test]
+fn a_unit_s_speed_is_its_movers_unless_a_charge_runs() {
+    let mut t = world();
+    t.players[1].objects[0]
+        .body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
+    let speed = |t: &World, id| {
+        let (p, u) = t.object(id).unwrap();
+        t.unit_speed(p, u)
+    };
+    assert_eq!(speed(&t, 11).unwrap(), 0.0);
+    assert_eq!(speed(&t, 10).unwrap(), 0.8);
+    let mut m4 = t.masters[1].get(4).unwrap().clone();
+    m4.max_charge = 1.0;
+    t.masters[1] = Masters::new([m4.clone()]);
+    assert_eq!(speed(&t, 10).unwrap(), 0.8);
+    m4.special_attack = 3;
+    t.masters[1] = Masters::new([m4.clone()]);
+    assert!(speed(&t, 10).is_err());
+    m4.max_charge = 0.0;
+    t.masters[1] = Masters::new([m4]);
+    assert_eq!(speed(&t, 10).unwrap(), 0.8);
+}

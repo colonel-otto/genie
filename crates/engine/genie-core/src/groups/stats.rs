@@ -586,7 +586,7 @@ impl World {
 
 /// The master types of the combat objects (`RGE_Combat_Object` and its subclasses: combat,
 /// missile, TRIBE combat and building), whose slot 0x230 is `FUN_14108d960`.
-const COMBAT_KINDS: [u8; 4] = [50, 60, 70, 80];
+pub(in crate::groups) const COMBAT_KINDS: [u8; 4] = [50, 60, 70, 80];
 
 /// [`World::statistics_only`]'s totals: the group's statistics reset, then the members' views
 /// added up (centroid, radii, ranges, attack times), `objects` its search list; the members

@@ -196,6 +196,27 @@ impl World {
         ))
     }
 
+    /// `FUN_14118f680` of `a` and `b`: [`World::footprint_gap_squared`]'s per-axis gaps, the
+    /// length of the two ([`crate::movement::footprint_gap`]).
+    ///
+    /// # Errors
+    ///
+    /// An object of a master the slice does not have.
+    pub(super) fn footprint_gap(
+        &self,
+        a: WorldObject<'_>,
+        b: WorldObject<'_>,
+    ) -> Result<f32, GenieError> {
+        let ra = self.master(a.player(), a.master_id())?.radius;
+        let rb = self.master(b.player(), b.master_id())?.radius;
+        Ok(crate::movement::footprint_gap(
+            a.position(),
+            ra,
+            b.position(),
+            rb,
+        ))
+    }
+
     /// `FUN_1410176b0` of group `group`: whether its target is still to act on. None without
     /// members (or a group the world does not hold). A relic's pick-up (132) and delivery (136)
     /// ask their own ([`World::relic_pickup_pending`], `FUN_141017c70`;
