@@ -5,6 +5,7 @@
 //! shape shrunk by `d = 0x200000 - r` (shapes are stored grown by half a tile). The map of the
 //! search, its node types and its ties: `docs/AoE2DE_s_exe_SHORT_PATHER.md`.
 
+use crate::GenieError;
 use crate::math::fmath;
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 
@@ -95,6 +96,10 @@ pub struct Hit {
     pub side: u8,
 }
 
+/// A sweep that counts a shape without the point and side its counting hit writes first.
+const COUNT_WITHOUT_HIT: GenieError =
+    GenieError::unreachable("a counting hit that wrote no point and side before it counted");
+
 /// An axis sweep's outputs as the game leaves them: whether a shape counted, the shape, and the
 /// point and side of the last hit tested (written even for a shape the sweep then let pass).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -108,14 +113,14 @@ struct Sweep {
 impl Sweep {
     /// The counted shape with the last hit's side and point: a sweep that counts a shape has
     /// written a point and a side by then (the hit that counts writes them first).
-    fn counted(&self) -> Option<(u32, u8, Point)> {
+    const fn counted(&self) -> Result<Option<(u32, u8, Point)>, GenieError> {
         if !self.found {
-            return None;
+            return Ok(None);
         }
         let (Some(shape), Some(side), Some(at)) = (self.shape, self.side, self.point) else {
-            unreachable!("a counting hit writes its point and side before it counts");
+            return Err(COUNT_WITHOUT_HIT);
         };
-        Some((shape, side, at))
+        Ok(Some((shape, side, at)))
     }
 }
 

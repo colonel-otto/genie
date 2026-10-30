@@ -90,7 +90,7 @@ impl Search<'_> {
         shape: &mut u32,
         u: &mut i32,
         steps: i32,
-    ) -> i32 {
+    ) -> Result<i32, GenieError> {
         let b = self.bounds;
         let w = side.wrapping_sub(1) & 3;
         let (target, dir) = match w {
@@ -101,7 +101,7 @@ impl Search<'_> {
         };
         let sw = self.ctx.sweep(*pos, target, dir);
         let u_new = Self::along(*pos, w);
-        let Some((hid, hs, hp)) = sw.counted() else {
+        let Some((hid, hs, hp)) = sw.counted()? else {
             if steps == 0 {
                 *first = target;
             }
@@ -109,7 +109,7 @@ impl Search<'_> {
             *shape = NONE;
             *side = w;
             *pos = target;
-            return 1;
+            return Ok(1);
         };
         if steps == 0 {
             *first = hp;
@@ -118,7 +118,7 @@ impl Search<'_> {
         *shape = hid;
         *side = u32::from(hs);
         *pos = hp;
-        0
+        Ok(0)
     }
 
     /// `FUN_140fa8fa0`: trace the outline of the cluster of touching shapes from shape `shape0`'s
@@ -212,7 +212,7 @@ impl Search<'_> {
                         continue 'segment;
                     }
                     let r = self
-                        .border_walk(&mut pos, &mut first, &mut side, &mut shape, &mut u, steps);
+                        .border_walk(&mut pos, &mut first, &mut side, &mut shape, &mut u, steps)?;
                     if r == 0 {
                         break;
                     }

@@ -32,6 +32,9 @@ use crate::map::spatial::{BLOCKED, Tiles};
 use crate::math::fmath::Vec3;
 use crate::pathing::tile_path::Path;
 
+/// A heap pop finds the heap empty where the caller checked its top.
+const EMPTY_HEAP: GenieError = GenieError::unreachable("a heap pop without a top");
+
 /// The search expands at most this many tiles (`FUN_140f9eb70`: `20000 < n` breaks).
 const MOST_EXPANSIONS: i32 = 20000;
 
@@ -182,16 +185,16 @@ impl Heap {
     /// The pop after the top's expansion check (`FUN_140f9eb70`): the last slot moves to the top
     /// and sinks, the game's way: only while the count's half is above 1, only to a child below
     /// that half, past a child whose cost is not above it.
-    fn pop(&mut self) {
-        let last = self.slots.pop().expect("a heap with a top");
+    fn pop(&mut self) -> Result<(), GenieError> {
+        let last = self.slots.pop().ok_or(EMPTY_HEAP)?;
         let count = self.count();
         if count < 1 {
-            return;
+            return Ok(());
         }
         self.slots[1] = last;
         let half = count / 2;
         if half <= 1 {
-            return;
+            return Ok(());
         }
         let mut i = 1usize;
         loop {
@@ -211,6 +214,7 @@ impl Heap {
         if i != 1 {
             self.slots[i] = last;
         }
+        Ok(())
     }
 }
 
@@ -511,7 +515,7 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
         if near < nearest.1 {
             nearest = ([cx, cy], near);
         }
-        heap.pop();
+        heap.pop()?;
         let came = entered[index(cx, cy)];
         let back = behind(came.unwrap_or(8));
         for (dir, step) in STEPS.iter().enumerate() {
@@ -752,7 +756,7 @@ mod tests {
             h.push([i as i32, 0], c);
         }
         assert_eq!(h.slots[1].1, 1);
-        h.pop();
+        h.pop().unwrap();
         // count 5, half 2: no sinking past the top's children below 2
         let costs: Vec<i32> = h.slots[1..].iter().map(|s| s.1).collect();
         assert_eq!(costs, [2, 3, 8, 5, 9]);

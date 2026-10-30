@@ -463,35 +463,35 @@ impl HullPather<'_> {
             self.hulls[hit].points[back as usize],
             self.hulls[hit].points[fwd],
         );
-        match (a, b) {
-            (None, None) => {}
-            (Some(x), y) if y.is_none_or(|y| self.nodes[x].cost < self.nodes[y].cost) => {
-                let _ = self.add_node(NewNode {
-                    list: 0,
-                    open: true,
-                    parent: Some(x),
-                    position: qa,
-                    goal: Some(to),
-                    hull: hit as i32,
-                    vertex: back,
-                    direction: -1,
-                    by_place: false,
-                });
-            }
-            (_, Some(y)) => {
-                let _ = self.add_node(NewNode {
-                    list: 0,
-                    open: true,
-                    parent: Some(y),
-                    position: qb,
-                    goal: Some(to),
-                    hull: hit as i32,
-                    vertex: fwd as i32,
-                    direction: -1,
-                    by_place: false,
-                });
-            }
-            (Some(_), None) => unreachable!("taken by the arm above"),
+        let on_a = match (a, b) {
+            (Some(x), Some(y)) => (self.nodes[x].cost < self.nodes[y].cost).then_some(x),
+            (Some(x), None) => Some(x),
+            (None, _) => None,
+        };
+        if let Some(x) = on_a {
+            let _ = self.add_node(NewNode {
+                list: 0,
+                open: true,
+                parent: Some(x),
+                position: qa,
+                goal: Some(to),
+                hull: hit as i32,
+                vertex: back,
+                direction: -1,
+                by_place: false,
+            });
+        } else if let Some(y) = b {
+            let _ = self.add_node(NewNode {
+                list: 0,
+                open: true,
+                parent: Some(y),
+                position: qb,
+                goal: Some(to),
+                hull: hit as i32,
+                vertex: fwd as i32,
+                direction: -1,
+                by_place: false,
+            });
         }
     }
 }

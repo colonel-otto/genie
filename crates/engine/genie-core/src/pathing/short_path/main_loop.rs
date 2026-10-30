@@ -226,7 +226,7 @@ impl Search<'_> {
                 }
             }
             if k == 2 {
-                self.corner_axis(n, t);
+                self.corner_axis(n, t)?;
                 return Ok(());
             }
         }
@@ -259,19 +259,19 @@ impl Search<'_> {
     /// Type 3 when every ray touches: along x toward `t`, then along y; a leg's hit becomes a
     /// side node; with both legs clear, one tile toward `t` (at most) becomes a waypoint that may
     /// be the best (by cost, not estimate).
-    pub(super) fn corner_axis(&mut self, n: Node, t: Point) {
+    pub(super) fn corner_axis(&mut self, n: Node, t: Point) -> Result<(), GenieError> {
         let p = n.at;
         let dx = t[0].wrapping_sub(p[0]);
         let dy = t[1].wrapping_sub(p[1]);
         let m = [t[0], p[1]];
         let sw = self.ctx.sweep(p, m, if 0 < dx { 1 } else { 3 });
-        if let Some((shape, side, at)) = sw.counted() {
+        if let Some((shape, side, at)) = sw.counted()? {
             let g = n.g.wrapping_add(float_distance(p, at));
             self.side_node(g, n.idx, shape, side, at);
-            return;
+            return Ok(());
         }
         let sw2 = self.ctx.sweep(m, t, if 0 < dy { 2 } else { 0 });
-        if !sw2.found {
+        let Some((shape, side, at)) = sw2.counted()? else {
             let step = if dx.wrapping_abs() < 0x40_0000 {
                 dx
             } else {
@@ -286,20 +286,17 @@ impl Search<'_> {
             if self.best == NONE || w.g < self.arena[self.best as usize].g {
                 self.best = w.idx;
             }
-            return;
-        }
+            return Ok(());
+        };
         let mid = self.add(
             through_float(dx.wrapping_abs()).wrapping_add(n.g),
             n.idx,
             m,
             Kind::Waypoint,
         );
-        // the second sweep counted a shape (`found`, tested above): its outputs are written
-        let (shape, side, at) = sw2
-            .counted()
-            .expect("a sweep that counts a shape writes its point and side");
         let g = through_float((at[1].wrapping_sub(p[1])).wrapping_abs()).wrapping_add(mid.g);
         self.side_node(g, mid.idx, shape, side, at);
+        Ok(())
     }
 }
 
