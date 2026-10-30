@@ -7,6 +7,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GroundOffset;
 use crate::map::Offset;
 use crate::movement::MoveStats;
 use crate::technology::TechId;
@@ -186,7 +187,7 @@ pub struct BuildingMaster {
     /// `+0x998` (x) and `+0x9a8` (y), each annex slot's place off the building's (the `.dat`'s
     /// building annexes' `misplacement`), which the building constructor (`FUN_1411de5f0`) makes
     /// its annexes at.
-    pub annex_offsets: [[f32; 2]; 4],
+    pub annex_offsets: [GroundOffset; 4],
     /// `+0x9b8`, `head_unit`: the building it is an annex of (−1 for none).
     pub head_unit: Option<MasterId>,
     /// `+0x9ba`, `transform_unit`: the master it transforms into (−1 for none); a gate with one

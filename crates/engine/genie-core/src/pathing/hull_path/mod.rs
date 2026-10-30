@@ -23,6 +23,7 @@
 //! under a listed one-tile object that the unit's terrain cannot cross.
 
 use crate::map::Footprint;
+use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::sqrt;
@@ -99,10 +100,11 @@ const TURN: f32 = crate::math::image::hull_path::TURN;
 const UNTURN: f32 = crate::math::image::hull_path::UNTURN;
 /// `DAT_1439e6870`: the 16 directions of the first steps out of a box (the game's table: its 12th
 /// repeats the 11th).
-const DIRECTIONS: [[f32; 2]; 16] = crate::math::image::hull_path::DIRECTIONS;
+const DIRECTIONS: [GroundOffset; 16] =
+    GroundOffset::table(crate::math::image::hull_path::DIRECTIONS);
 /// `DAT_1439e68f0`: the four ray directions of a walk out of a hull or into one (down, up, left,
 /// right).
-const SIDES: [[f32; 2]; 4] = crate::math::image::hull_path::SIDES;
+const SIDES: [GroundOffset; 4] = GroundOffset::table(crate::math::image::hull_path::SIDES);
 
 /// A box in a hull (`ObstructionInfo`, 0x14 bytes): an obstruction's box grown by the unit's
 /// radius and the obstruction's id (an object's, or a tile's [`tile_record_id`]).

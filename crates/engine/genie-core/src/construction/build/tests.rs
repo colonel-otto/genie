@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
 use crate::objects::ObjectId;
@@ -612,7 +613,7 @@ fn built_master(id: MasterId, cost: Vec<(i16, i16, bool)>) -> Master {
             garrison_heal_rate: 0.0,
             garrison_repair_rate: 0.0,
             annexes: [None; 4],
-            annex_offsets: [[0.0; 2]; 4],
+            annex_offsets: [GroundOffset::ZERO; 4],
             head_unit: None,
             transform_unit: None,
             destruction_sprite: -1,

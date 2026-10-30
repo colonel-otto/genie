@@ -269,7 +269,7 @@ impl HullPather<'_> {
         let d = self.radius + self.radius;
         let mut made = false;
         for dir in DIRECTIONS {
-            let mut q = Point::new(d * dir[0] + p.x(), d * dir[1] + p.y());
+            let mut q = Point::new(d * dir.x() + p.x(), d * dir.y() + p.y());
             if let Some((at, _)) = self.hulls.checked(hull)?.intersection(false, p, q) {
                 q = at;
             }
@@ -583,7 +583,7 @@ impl HullPather<'_> {
             if *count < most {
                 if nudge {
                     let s = *SIDES.checked(side as usize)?;
-                    q = Point::new(q.x() + s[0] * NUDGE, q.y() + s[1] * NUDGE);
+                    q = Point::new(q.x() + s.x() * NUDGE, q.y() + s.y() * NUDGE);
                 }
                 if let Some(end) = self.add_node(NewNode {
                     list: 1,

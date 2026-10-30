@@ -8,7 +8,7 @@ mod radii;
 pub mod spatial;
 pub mod terrain;
 
-pub use self::offset::Offset;
+pub use self::offset::{GroundOffset, Offset};
 pub use self::point::{Axis, Point};
 pub use self::position::Position;
 pub use self::radii::{Footprint, Radii};

@@ -20,7 +20,7 @@ vision and the unit AI's searches read it.
 | File | What it holds |
 | --- | --- |
 | [`mod.rs`](mod.rs) | The map: the terrain of each tile and where the world's objects stand (their places, radii, footprints and the grid that finds them). |
-| [`offset.rs`](offset.rs) | A displacement on the map as one type (`Offset`): x, y and z, apart from a place (`crate::map::Position`) and the game's vectors (x, height, y, `crate::math::fmath::BVector`). |
+| [`offset.rs`](offset.rs) | A displacement on the map as one type (`Offset`): x, y and z, apart from a place (`crate::map::Position`) and the game's vectors (x, height, y, `crate::math::fmath::BVector`); and one on the ground (`GroundOffset`): x and y, apart from a point (`crate::map::Point`). |
 | [`point.rs`](point.rs) | A point on the ground as one type (`Point`): x and y, apart from a place with its height (`crate::map::Position`) and an object's radii (`crate::map::Footprint`). |
 | [`position.rs`](position.rs) | A place on the map as one type (`Position`): x, y and z, apart from the game's vectors (x, height, y, `crate::math::fmath::BVector`). |
 | [`radii.rs`](radii.rs) | An object's size as two types: its three radii (`Radii`, x, y and z, as its master holds them) and their part on the ground (`Footprint`, x and y), apart from a place (`crate::map::Position`) and a displacement (`crate::map::Offset`). |

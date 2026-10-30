@@ -353,7 +353,7 @@ impl World {
             attacking_units: Vec::new(),
         });
         self.settle_building(player, id, &made, (position, desolid), foundation)?;
-        for (slot, &annex) in building.annexes.iter().enumerate() {
+        for (&annex, &off) in building.annexes.iter().zip(&building.annex_offsets) {
             let Some(annex) = annex else {
                 continue;
             };
@@ -363,9 +363,8 @@ impl World {
             };
             // the .dat's annexes are buildings (type 80): another type's master has no building
             // part, which the constructor below refuses
-            let [ox, oy] = building.annex_offsets[slot];
             let ai = Ok(am.unit_ai_type(annex));
-            let at = Position::new(position.x() + ox, position.y() + oy, given_z);
+            let at = Position::new(position.x() + off.x(), position.y() + off.y(), given_z);
             let (aid, at) = self.make_building(player, annex, ai, at)?;
             self.link_annex(player, id.get(), aid, &made, &am)?;
             self.clear_footprint(player, annex, at.ground(), false)?;

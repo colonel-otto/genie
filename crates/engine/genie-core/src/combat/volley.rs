@@ -5,7 +5,7 @@ use crate::combat::damage::Victim;
 use crate::combat::missile::AimAt;
 use crate::map::Radii;
 use crate::map::spatial::Placed;
-use crate::map::{Offset, Position};
+use crate::map::{GroundOffset, Offset, Position};
 use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
@@ -168,10 +168,10 @@ impl Unit {
             for _ in 0..extra {
                 let object = c.w.streams.get(Stream::Object);
                 let (x, y) = (object.rand15(), object.rand15());
-                let scatter = [
+                let scatter = GroundOffset::new(
                     crate::combat::missile::scatter(x, x_spread),
                     crate::combat::missile::scatter(y, y_spread),
-                ];
+                );
                 self.volley_missile(c, &aimed, scatter)?;
             }
         }
@@ -262,7 +262,7 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         aimed: &Aimed,
-        scatter: [f32; 2],
+        scatter: GroundOffset,
     ) -> Result<(), GenieError> {
         let masters =
             c.w.masters
@@ -312,7 +312,7 @@ impl Unit {
             point: crate::combat::missile::spawn_point(
                 aimed.position,
                 facing,
-                Offset::new(scatter[0], scatter[1], 0.0),
+                scatter.with_height(0.0),
             ),
             reach: crate::combat::missile::volley_reach(master.radius, master.weapon_range),
             shooter,

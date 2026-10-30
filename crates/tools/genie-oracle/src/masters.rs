@@ -3,7 +3,7 @@
 //! and the default task's action. They are game data, which patches and DLCs change, so they come
 //! from the `.dat` of the recording's game, never from constants.
 
-use genie_core::map::{Footprint, Radii};
+use genie_core::map::{Footprint, GroundOffset, Radii};
 use genie_core::objects::lifecycle::MasterData;
 use genie_core::objects::masters as work;
 use genie_core::objects::masters::MasterId;
@@ -233,7 +233,7 @@ fn dat_work(
             garrison_heal_rate: b.garrison_heal_rate,
             garrison_repair_rate: b.garrison_repair_rate,
             annexes: b.annexes.map(|a| MasterId::of_data(a.unit_id)),
-            annex_offsets: b.annexes.map(|a| a.misplacement),
+            annex_offsets: b.annexes.map(|a| GroundOffset::from(a.misplacement)),
             head_unit: MasterId::of_data(b.head_unit),
             transform_unit: MasterId::of_data(b.transform_unit),
             destruction_sprite: b.destruction_graphic_id,

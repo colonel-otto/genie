@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
-use crate::map::Point;
+use crate::map::{GroundOffset, Point};
 use crate::world::slots::CheckedIndex;
 
 /// No active slot lies nearer than `f32::MAX`: the game reads the slot before the array then.
@@ -34,13 +34,13 @@ pub(super) const PASS_CELLS: i32 = 100;
 pub(super) const GRID_BYTES: usize = 10000;
 /// The nudges of a slot by its cell's count (the tables `DAT_142f49470` and `DAT_142f49dd0`
 /// with the literals 0 and 0.25 after them, `0x14103cd8c` and `0x14103cda4`), x and y.
-pub(super) const SLOT_NUDGE: [[f32; 2]; 5] = [
+pub(super) const SLOT_NUDGE: [GroundOffset; 5] = GroundOffset::table([
     [SLOT_NUDGE_X[0], SLOT_NUDGE_Z[0]],
     [SLOT_NUDGE_X[1], SLOT_NUDGE_Z[1]],
     [SLOT_NUDGE_X[2], SLOT_NUDGE_Z[2]],
     [SLOT_NUDGE_X[3], SLOT_NUDGE_Z[3]],
     [0.0, 0.25],
-];
+]);
 
 impl World {
     /// `FormationTransform` (`FUN_14103a1f0`) of `formation` for group `g`, `column_to_line`
@@ -203,8 +203,8 @@ impl World {
             if crate::math::fmath::below_or_unordered(un.spacing, PASS_ONE) {
                 s.transform_position = s
                     .transform_position
-                    .with_x(x as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?[0])
-                    .with_y(y as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?[1]);
+                    .with_x(x as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?.x())
+                    .with_y(y as f32 + PASS_HALF + SLOT_NUDGE.checked(nudge)?.y());
             } else {
                 s.transform_position = s
                     .transform_position

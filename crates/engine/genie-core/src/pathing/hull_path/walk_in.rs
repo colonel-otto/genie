@@ -192,7 +192,7 @@ impl HullPather<'_> {
                     continue;
                 }
                 let s = *SIDES.checked(side as usize)?;
-                q = Point::new(q.x() - s[0] * NUDGE, q.y() - s[1] * NUDGE);
+                q = Point::new(q.x() - s.x() * NUDGE, q.y() - s.y() * NUDGE);
                 if let Some(end) = self.add_node(NewNode {
                     list: 1,
                     open: false,

@@ -12,7 +12,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Radii;
-use crate::map::{Offset, Position};
+use crate::map::{GroundOffset, Offset, Position};
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -210,14 +210,14 @@ pub fn volley_spawn_point(
     angle: f32,
     offset: Offset,
     adjustment: f32,
-    scatter: [f32; 2],
+    scatter: GroundOffset,
     building_at: Option<Point>,
 ) -> Position {
     let (ox, oy) = (offset.x(), offset.y());
     let offset = if 0.0 < adjustment {
         Offset::new(
-            scatter[0] / adjustment + ox,
-            scatter[1] / adjustment + oy,
+            scatter.x() / adjustment + ox,
+            scatter.y() / adjustment + oy,
             0.0 / adjustment + offset.z(),
         )
     } else {
@@ -681,10 +681,24 @@ mod tests {
     {
         let at = Position::new(10.0, 10.0, 0.0);
         // facing x (angle 0): the offset's x goes along -y, its y along x
-        let p = volley_spawn_point(at, 0.0, Offset::new(0.0, 2.0, 1.0), 0.0, [0.0, 0.0], None);
+        let p = volley_spawn_point(
+            at,
+            0.0,
+            Offset::new(0.0, 2.0, 1.0),
+            0.0,
+            GroundOffset::ZERO,
+            None,
+        );
         assert_eq!(p, Position::new(12.0, 10.0, 1.0));
         // the scatter over the adjustment adds to the offset
-        let p = volley_spawn_point(at, 0.0, Offset::new(0.0, 2.0, 1.0), 0.5, [0.0, 0.25], None);
+        let p = volley_spawn_point(
+            at,
+            0.0,
+            Offset::new(0.0, 2.0, 1.0),
+            0.5,
+            GroundOffset::new(0.0, 0.25),
+            None,
+        );
         assert_eq!(p, Position::new(12.5, 10.0, 1.0));
         // a building's target a tile off: nearer than the offset's 2
         let p = volley_spawn_point(
@@ -692,7 +706,7 @@ mod tests {
             0.0,
             Offset::new(0.0, 2.0, 1.0),
             0.0,
-            [0.0, 0.0],
+            GroundOffset::ZERO,
             Some(Point::new(11.0, 10.0)),
         );
         assert_eq!(p, Position::new(11.0, 10.0, 1.0));
@@ -701,7 +715,7 @@ mod tests {
             0.0,
             Offset::new(0.0, 2.0, 1.0),
             0.0,
-            [0.0, 0.0],
+            GroundOffset::ZERO,
             Some(Point::new(13.0, 10.0)),
         );
         assert_eq!(p, Position::new(12.0, 10.0, 1.0));

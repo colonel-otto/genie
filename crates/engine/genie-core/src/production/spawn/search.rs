@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::Position;
 use crate::production::spawn::{GAP, NONE, SIDE_SHARE, SMALL, Site, Tested};
@@ -11,7 +12,7 @@ use crate::production::spawn::{GAP, NONE, SIDE_SHARE, SMALL, Site, Tested};
 /// `(x + dir.x * step.x * i, y + dir.y * step.y * i)`.
 pub(super) struct Spot {
     pub(super) at: Point,
-    pub(super) step: [f32; 2],
+    pub(super) step: GroundOffset,
     pub(super) dir: [i32; 2],
     pub(super) count: i32,
 }
@@ -23,8 +24,8 @@ pub(super) fn try_spot(
     test: &mut dyn FnMut(Point) -> Result<Tested, GenieError>,
 ) -> Result<Option<Point>, GenieError> {
     for i in 0..=spot.count {
-        let x = spot.dir[0] as f32 * spot.step[0] * i as f32 + spot.at.x();
-        let y = spot.dir[1] as f32 * spot.step[1] * i as f32 + spot.at.y();
+        let x = spot.dir[0] as f32 * spot.step.x() * i as f32 + spot.at.x();
+        let y = spot.dir[1] as f32 * spot.step.y() * i as f32 + spot.at.y();
         match test(Point::new(x, y))? {
             Tested::Free => return Ok(Some(Point::new(x, y))),
             Tested::Blocked { stays: true } => return Ok(None),
@@ -93,8 +94,8 @@ struct Run {
 /// corners (left top, right top, right bottom, left bottom), and the gather point and its
 /// distances from the centre (the axes the gather point lacks: [`NONE`]).
 struct Frame {
-    step: [f32; 2],
-    half: [f32; 2],
+    step: GroundOffset,
+    half: Footprint,
     centre: Point,
     left: f32,
     right: f32,
@@ -102,7 +103,7 @@ struct Frame {
     bottom: f32,
     walls: [bool; 4],
     gather: Point,
-    away: [f32; 2],
+    away: GroundOffset,
     no_x: bool,
     no_y: bool,
 }
@@ -122,8 +123,8 @@ impl Frame {
             (p.x(), p.y())
         };
         Self {
-            step: [sx, sy],
-            half: [bx, by],
+            step: GroundOffset::new(sx, sy),
+            half: site.radius,
             centre: Point::new(x, y),
             left: x - (bx + sx),
             right: x + bx + sx,
@@ -131,7 +132,7 @@ impl Frame {
             bottom: y - (by + sy),
             walls: site.walls,
             gather: Point::new(gx, gy),
-            away: [(x - gx).abs(), (y - gy).abs()],
+            away: GroundOffset::new((x - gx).abs(), (y - gy).abs()),
             no_x: gx == NONE,
             no_y: gy == NONE,
         }
@@ -150,7 +151,7 @@ impl Frame {
             self.gather.x(),
             self.gather.y(),
         );
-        let [dx, dy] = self.away;
+        let (dx, dy) = (self.away.x(), self.away.y());
         let mut out = Vec::new();
         if !left_top {
             self.top_left(second, &mut out);
@@ -163,7 +164,8 @@ impl Frame {
             self.bottom_side(second, &mut out);
         }
         if !right_bottom && right_top && left_bottom && second {
-            let ([sx, sy], [bx, by]) = (self.step, self.half);
+            let (sx, sy) = (self.step.x(), self.step.y());
+            let (bx, by) = (self.half.x(), self.half.y());
             let (right, bottom) = (self.right, self.bottom);
             out.push(vec![
                 run(Side::Down, (right, -sx, right - bx), false, bottom),
@@ -185,8 +187,9 @@ impl Frame {
             self.gather.x(),
             self.gather.y(),
         );
-        let [dx, dy] = self.away;
-        let ([sx, sy], [bx, by]) = (self.step, self.half);
+        let (dx, dy) = (self.away.x(), self.away.y());
+        let (sx, sy) = (self.step.x(), self.step.y());
+        let (bx, by) = (self.half.x(), self.half.y());
         let (left, top) = (self.left, self.top);
         let (no_x, no_y) = (self.no_x, self.no_y);
         if no_y || second || ((y < gy && dx <= dy) && (no_x || gx < x)) {
@@ -211,7 +214,7 @@ impl Frame {
     /// pass), (6) its lower half without a wall at the bottom right.
     fn right_side(&self, second: bool, out: &mut Vec<Vec<Run>>) {
         let y = self.centre.y();
-        let ([_, sy], [_, by]) = (self.step, self.half);
+        let (sy, by) = (self.step.y(), self.half.y());
         let (right, top) = (self.right, self.top);
         if self.no_y || second || y < self.gather.y() {
             out.push(vec![run(Side::Right, (top, -sy, top - by), false, right)]);
@@ -226,7 +229,7 @@ impl Frame {
     /// pass), (8) its right half without a wall at the bottom right.
     fn bottom_side(&self, second: bool, out: &mut Vec<Vec<Run>>) {
         let x = self.centre.x();
-        let ([sx, _], [bx, _]) = (self.step, self.half);
+        let (sx, bx) = (self.step.x(), self.half.x());
         let (left, bottom) = (self.left, self.bottom);
         if self.no_x || second || self.gather.x() < x {
             out.push(vec![run(Side::Down, (left, sx, left + bx), true, bottom)]);
@@ -241,15 +244,15 @@ impl Frame {
     /// horizontal run tries its point and the next one up (or down); a vertical run's, the next
     /// one out.
     fn spots(&self, r: &Run) -> Vec<Spot> {
-        let [sx, sy] = self.step;
+        let (sx, sy) = (self.step.x(), self.step.y());
         let mut spots = Vec::new();
         let mut c = r.start;
         while if r.rising { c < r.end } else { r.end < c } {
             let (at, step, dir) = match r.side {
-                Side::Up => (Point::new(c, r.fixed), [0.0, sy], [0, 1]),
-                Side::Down => (Point::new(c, r.fixed), [0.0, sy], [0, -1]),
-                Side::Left => (Point::new(r.fixed, c), [sx, 0.0], [-1, 0]),
-                Side::Right => (Point::new(r.fixed, c), [sx, 0.0], [1, 0]),
+                Side::Up => (Point::new(c, r.fixed), GroundOffset::new(0.0, sy), [0, 1]),
+                Side::Down => (Point::new(c, r.fixed), GroundOffset::new(0.0, sy), [0, -1]),
+                Side::Left => (Point::new(r.fixed, c), GroundOffset::new(sx, 0.0), [-1, 0]),
+                Side::Right => (Point::new(r.fixed, c), GroundOffset::new(sx, 0.0), [1, 0]),
             };
             spots.push(Spot {
                 at,

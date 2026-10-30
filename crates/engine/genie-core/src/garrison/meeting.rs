@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::{EnterAction, EnterTarget, NO_SPEED, WalkStart};
+use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
@@ -83,8 +84,8 @@ pub fn meet_at(t: &MeetingTarget) -> MeetAt {
 /// 0x278: [`shore`]) is where the two meet. Nothing when the tiles are one.
 #[derive(Clone, Debug)]
 pub struct LandingWalk {
-    /// The difference over the step count, x and y.
-    step: [f32; 2],
+    /// The difference over the step count.
+    step: GroundOffset,
     /// The float place reached.
     at: Point,
     /// The steps left.
@@ -107,7 +108,7 @@ impl LandingWalk {
             steps.max(0)
         };
         Self {
-            step: [fx / steps as f32, fy / steps as f32],
+            step: GroundOffset::new(fx / steps as f32, fy / steps as f32),
             at: Point::new(from[0] as f32, from[1] as f32),
             left,
             last: [-999, -999],
@@ -121,7 +122,7 @@ impl Iterator for LandingWalk {
     fn next(&mut self) -> Option<Self::Item> {
         while 0 < self.left {
             self.left -= 1;
-            self.at = Point::new(self.at.x() + self.step[0], self.at.y() + self.step[1]);
+            self.at = self.at.moved(self.step);
             let tile = [cvttss2si(self.at.x()), cvttss2si(self.at.y())];
             if tile != self.last {
                 self.last = tile;

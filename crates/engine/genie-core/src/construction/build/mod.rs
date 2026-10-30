@@ -409,6 +409,7 @@ pub(crate) const DROPPED_ORDERS: [OrderKind; 3] =
 mod stack_tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::map::GroundOffset;
     use crate::map::Radii;
     use crate::map::spatial::{Placed, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
@@ -428,10 +429,10 @@ mod stack_tests {
         (r, z, kind): (f32, f32, u8),
         (bt, hp): (i16, i16),
         head: i16,
-        annexes: &[(i16, [f32; 2])],
+        annexes: &[(i16, GroundOffset)],
     ) -> Master {
         let mut slots = [None; 4];
-        let mut offsets = [[0.0; 2]; 4];
+        let mut offsets = [GroundOffset::ZERO; 4];
         for (k, &(a, o)) in annexes.iter().enumerate() {
             slots[k] = opt_master(a);
             offsets[k] = o;
@@ -479,10 +480,10 @@ mod stack_tests {
             (100, 2400),
             621,
             &[
-                (618, [1.0, -1.0]),
-                (619, [-0.5, 0.5]),
-                (620, [-1.0, 1.0]),
-                (890, [-1.0, 1.0]),
+                (618, GroundOffset::new(1.0, -1.0)),
+                (619, GroundOffset::new(-0.5, 0.5)),
+                (620, GroundOffset::new(-1.0, 1.0)),
+                (890, GroundOffset::new(-1.0, 1.0)),
             ],
         );
         tc.storage = vec![(4, 5.0, 4), (506, 1.0, 16), (-1, 0.0, 0)];
@@ -498,7 +499,10 @@ mod stack_tests {
                 (1.5, 0.0, 0),
                 (100, 2400),
                 621,
-                &[(1649, [0.75, -0.75]), (2160, [0.0, 0.0])],
+                &[
+                    (1649, GroundOffset::new(0.75, -0.75)),
+                    (2160, GroundOffset::ZERO),
+                ],
             ),
             building(620, (1.0, 0.0, 0), (100, 2400), 621, &[]),
             building(1649, (0.0, 0.0, 0), (0, 1), 619, &[]),

@@ -5,7 +5,7 @@
 use crate::GenieError;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
-use crate::map::Point;
+use crate::map::{GroundOffset, Point};
 use crate::math::fmath::BVector;
 use crate::math::fmath::{self, cross, normalize};
 use crate::objects::masters::MasterId;
@@ -15,12 +15,12 @@ use crate::world::slots::CheckedIndex;
 
 /// The spiral's steps (`FUN_141007630`'s table from `DAT_142f49460` and `DAT_142f49480`), x and y:
 /// up y, up x, down y, down x.
-const SPIRAL: [[f32; 2]; 4] = [
+const SPIRAL: [GroundOffset; 4] = GroundOffset::table([
     crate::math::image::group::SPIRAL_FIRST[0],
     crate::math::image::group::SPIRAL_FIRST[1],
     crate::math::image::group::SPIRAL_LAST[0],
     crate::math::image::group::SPIRAL_LAST[1],
-];
+]);
 /// The points the spiral tries (`FUN_141007630`'s count from 1 below `0x191`).
 const SPIRAL_POINTS: i32 = 400;
 /// `FUN_141049e10` refuses a forward whose dot product with the up is below this
@@ -55,8 +55,7 @@ impl Spiral {
     /// One step in the direction; it turns when the count divides by the leg's length, and the
     /// leg grows on a turn to y (an even direction).
     fn step(&mut self) -> Result<(), GenieError> {
-        let [dx, dy] = *SPIRAL.checked(self.direction)?;
-        self.at = Point::new(self.at.x() + dx, self.at.y() + dy);
+        self.at = self.at.moved(*SPIRAL.checked(self.direction)?);
         if self.count % self.leg == 0 {
             self.direction = (self.direction + 1) % SPIRAL.len();
             if self.direction.is_multiple_of(2) {

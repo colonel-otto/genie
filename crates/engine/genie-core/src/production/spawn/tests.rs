@@ -1,5 +1,6 @@
 use super::*;
 use crate::commands::GatherPoint;
+use crate::map::GroundOffset;
 use crate::map::Radii;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -171,7 +172,7 @@ fn the_tc_spawns_its_villager_below_the_sheep_on_its_right() {
 fn a_blocker_that_moves_lets_the_spot_try_its_next_candidate() {
     let spot = Spot {
         at: Point::new(1.0, 1.0),
-        step: [0.5, 0.0],
+        step: GroundOffset::new(0.5, 0.0),
         dir: [1, 0],
         count: 1,
     };
