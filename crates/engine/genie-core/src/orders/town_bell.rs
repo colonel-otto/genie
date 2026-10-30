@@ -19,6 +19,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 use genie_diff::Diff;
 
 /// One back-to-work record.
@@ -232,8 +233,8 @@ impl World {
         let mut units = Vec::new();
         let mut shelters = crate::garrison::Shelters::default();
         let mut k = 0;
-        while k < self.players[owner].objects.len() {
-            let o = &self.players[owner].objects[k];
+        while k < self.players.player(owner)?.objects.len() {
+            let o = &self.players.live(owner, k)?;
             k += 1;
             if o.life.state != 2 || o.life.inside.is_some() {
                 continue;
@@ -255,7 +256,7 @@ impl World {
             } else if kind == BUILDING && takes_villagers && near(self)? {
                 shelters.buildings.push(id);
                 shelters.counts.push(self.garrisoned(id)?);
-                self.players[owner].objects[k - 1].town_bell.flag = true;
+                self.players.live_mut(owner, k - 1)?.town_bell.flag = true;
             }
         }
         self.shelter(owner, &units, &shelters, true, false)
@@ -279,17 +280,17 @@ impl World {
         }
         let (at, radius) = self.ground(tc)?;
         let mut k = 0;
-        while k < self.players[owner].objects.len() {
+        while k < self.players.player(owner)?.objects.len() {
             let idx = k;
             k += 1;
-            let b = &self.players[owner].objects[idx];
+            let b = &self.players.live(owner, idx)?;
             let m = b.master(&self.masters, owner)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
             if m.kind != BUILDING || 3 <= b.life.state || !takes_villagers || !b.town_bell.flag {
                 continue;
             }
             let id = b.id;
-            self.players[owner].objects[idx].town_bell.flag = false;
+            self.players.live_mut(owner, idx)?.town_bell.flag = false;
             let (b_at, b_radius) = self.ground(id)?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
@@ -326,10 +327,10 @@ impl World {
         }
         let (at, radius) = self.ground(id)?;
         let mut k = 0;
-        while k < self.players[owner].objects.len() {
+        while k < self.players.player(owner)?.objects.len() {
             let idx = k;
             k += 1;
-            let b = &self.players[owner].objects[idx];
+            let b = &self.players.live(owner, idx)?;
             let m = b.master(&self.masters, owner)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
             if b.life.state != 2
@@ -354,10 +355,10 @@ impl World {
     /// villager (class 4) or of master 1808 back to work, from the last in
     /// ([`crate::world::World::back_to_work`]; its sound, slot 0x4c0, is not simulation).
     fn workers_out(&mut self, owner: usize, idx: usize) -> Result<(), GenieError> {
-        let mut i = self.players[owner].objects[idx].garrison.len();
+        let mut i = self.players.live(owner, idx)?.garrison.len();
         while 0 < i {
             i -= 1;
-            let Some(&inside) = self.players[owner].objects[idx].garrison.get(i) else {
+            let Some(&inside) = self.players.live(owner, idx)?.garrison.get(i) else {
                 continue;
             };
             // any player's unit; an id the world no longer holds is a null entry
@@ -376,7 +377,7 @@ impl World {
     /// 1808 (`FUN_14104f960`), in that order, not inside another (`+0x2f0`) goes back to work
     /// from where it is.
     fn workers_back(&mut self, owner: usize) -> Result<(), GenieError> {
-        let tracker = &self.players[owner].tracker;
+        let tracker = &self.players.player(owner)?.tracker;
         let mut ids = tracker.class_list(i32::from(class::VILLAGER)).to_vec();
         ids.extend_from_slice(tracker.list(i32::from(MASTER_1808)));
         for id in ids {
@@ -408,7 +409,7 @@ impl World {
         let Some(crate::orders::Place::Live(up, ui)) = self.place(id) else {
             return Ok(false);
         };
-        if !self.players[up].objects[ui].town_bell.flag {
+        if !self.players.live(up, ui)?.town_bell.flag {
             return Ok(false);
         }
         let [x, y] = point;
@@ -456,7 +457,7 @@ impl World {
         target: i32,
         filter: i16,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         if !(master.class == class::VILLAGER || master.id == MASTER_1808) {
             return Ok(());
@@ -480,7 +481,7 @@ impl World {
         };
         self.record_town_bell(player, idx)?;
         if let Some(flag) = takes {
-            self.players[player].objects[idx].town_bell.flag = flag;
+            self.players.live_mut(player, idx)?.town_bell.flag = flag;
         }
         Ok(())
     }
@@ -494,7 +495,7 @@ impl World {
     /// where the world holds them.
     pub(crate) fn record_town_bell(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
         use crate::orders::town_bell::BackToWork;
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         if unit.town_bell.flag {
             return Ok(());
         }
@@ -547,7 +548,7 @@ impl World {
             target2,
             point,
         };
-        self.players[player].objects[idx].town_bell.record(now);
+        self.players.live_mut(player, idx)?.town_bell.record(now);
         Ok(())
     }
 }

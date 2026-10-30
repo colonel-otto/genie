@@ -12,6 +12,7 @@ use crate::orders::{
 };
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// What the loop over the splitter's groups takes of its order ([`World::order_groups`]).
 struct GroupsOrder {
@@ -69,7 +70,10 @@ impl World {
         // issuer only queuing it
         let issuer = player;
         let player = p;
-        let master = self.players[player].objects[idx].master(&self.masters, player)?;
+        let master = self
+            .players
+            .live(player, idx)?
+            .master(&self.masters, player)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         let still = master.kind < MOVING || (master.class != class::CLASS_54 && speed <= 0.0);
         if still {
@@ -84,7 +88,7 @@ impl World {
             .object(ObjectId::field(order.target))
             .map(|(tp, t)| (t.life.master_id, tp));
         let map = self.spatial.map;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         // its ignore list empties, it waits to move and lists the others; an object that does
         // not move holds no movement state, which only a walk reads
         match unit.body.mover_mut() {
@@ -180,7 +184,7 @@ impl World {
         target: i32,
         point: [f32; 2],
     ) -> Result<(), GenieError> {
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
@@ -215,7 +219,7 @@ impl World {
             "a queued order on a target that is gone",
         ))?;
         let point = t.position();
-        if order.target != self.players[player].objects[idx].id {
+        if order.target != self.players.live(player, idx)?.id {
             let work = Work {
                 target: order.target,
                 point,
@@ -225,10 +229,14 @@ impl World {
             };
             self.order_work(player, idx, &work)?;
         }
-        let class = self.players[player].objects[idx]
+        let class = self
+            .players
+            .live(player, idx)?
             .master(&self.masters, player)?
             .class;
-        let ai = self.players[player].objects[idx]
+        let ai = self
+            .players
+            .live_mut(player, idx)?
             .ai
             .as_mut()
             .ok_or(GenieError::unsupported(
@@ -281,7 +289,7 @@ impl World {
             }
         };
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
-        if 1 < loose.len() && self.players[player].computer {
+        if 1 < loose.len() && self.players.player(player)?.computer {
             return Err(GenieError::unsupported(
                 "a move of several units of a computer player (FUN_140d61870)",
             ));

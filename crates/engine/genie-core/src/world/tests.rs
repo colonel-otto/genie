@@ -7010,54 +7010,65 @@ fn a_research_s_check_refuses_another_player_s_buildings() {
     };
     // its own: listed alone, or with the others checked
     assert_eq!(
-        t.research_check(&at(player_id(0), Some(object_id(9)), 1, vec![])),
+        t.research_check(&at(player_id(0), Some(object_id(9)), 1, vec![]))
+            .unwrap(),
         Some(vec![])
     );
     assert_eq!(
-        t.research_check(&at(player_id(0), Some(object_id(9)), 3, vec![9, 77, 10])),
+        t.research_check(&at(player_id(0), Some(object_id(9)), 3, vec![9, 77, 10]))
+            .unwrap(),
         Some(object_ids([9, -1, 10]))
     );
     assert_eq!(
-        t.research_check(&at(player_id(0), Some(object_id(9)), 0, vec![])),
+        t.research_check(&at(player_id(0), Some(object_id(9)), 0, vec![]))
+            .unwrap(),
         None
     );
     assert_eq!(
-        t.research_check(&at(player_id(0), Some(object_id(9)), -2, vec![])),
+        t.research_check(&at(player_id(0), Some(object_id(9)), -2, vec![]))
+            .unwrap(),
         None
     );
     // player 1's: another's building, one alone the world lacks, a list of none of its own
     assert_eq!(
-        t.research_check(&at(player_id(1), Some(object_id(9)), 1, vec![])),
+        t.research_check(&at(player_id(1), Some(object_id(9)), 1, vec![]))
+            .unwrap(),
         None
     );
     assert_eq!(
-        t.research_check(&at(player_id(1), Some(object_id(9)), 2, vec![9, 10])),
+        t.research_check(&at(player_id(1), Some(object_id(9)), 2, vec![9, 10]))
+            .unwrap(),
         None
     );
     assert_eq!(
-        t.research_check(&at(player_id(1), Some(object_id(77)), 1, vec![])),
+        t.research_check(&at(player_id(1), Some(object_id(77)), 1, vec![]))
+            .unwrap(),
         None
     );
     assert_eq!(
-        t.research_check(&at(player_id(1), Some(object_id(77)), 2, vec![9, 10])),
+        t.research_check(&at(player_id(1), Some(object_id(77)), 2, vec![9, 10]))
+            .unwrap(),
         None
     );
     // a building the world lacks with a list skips the packet's own test
     assert_eq!(
-        t.research_check(&at(player_id(0), Some(object_id(77)), 2, vec![77, 10])),
+        t.research_check(&at(player_id(0), Some(object_id(77)), 2, vec![77, 10]))
+            .unwrap(),
         Some(object_ids([-1, 10]))
     );
     // a computer's list left without one still runs
     t.players[1].computer = true;
     assert_eq!(
-        t.research_check(&at(player_id(1), Some(object_id(77)), 2, vec![9, 10])),
+        t.research_check(&at(player_id(1), Some(object_id(77)), 2, vec![9, 10]))
+            .unwrap(),
         Some(object_ids([-1, -1]))
     );
     // while players may order each other's
     t.settings.cheats_enabled = true;
     t.players[1].computer = false;
     assert_eq!(
-        t.research_check(&at(player_id(1), Some(object_id(9)), 1, vec![])),
+        t.research_check(&at(player_id(1), Some(object_id(9)), 1, vec![]))
+            .unwrap(),
         Some(vec![])
     );
 }
@@ -15699,7 +15710,7 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
             }),
             1,
             |w| {
-                let Some(buildings) = w.research_check(&research()) else {
+                let Some(buildings) = w.research_check(&research())? else {
                     return Ok(());
                 };
                 w.research(&research(), &buildings)

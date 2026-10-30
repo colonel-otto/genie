@@ -11,6 +11,7 @@ use crate::orders::object_gone;
 use crate::orders::{HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// `UNIT_ORDER`'s drop-off of a carrying unit without a gather action on top
@@ -28,7 +29,7 @@ impl World {
         idx: usize,
         way_back: bool,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[p].objects[idx];
+        let unit = &self.players.live(p, idx)?;
         let master = unit.master(&self.masters, p)?;
         let (kind, class, at) = (
             master.kind,
@@ -41,7 +42,7 @@ impl World {
             site = self.ordered_drop_site(p, idx)?;
         }
         if site.is_none() {
-            site = self.table_drop_site(p, at, held, class);
+            site = self.table_drop_site(p, at, held, class)?;
         }
         let Some(site) = site else {
             return Ok(());
@@ -78,7 +79,7 @@ impl World {
         p: usize,
         idx: usize,
     ) -> Result<Option<i32>, GenieError> {
-        let unit = &self.players[p].objects[idx];
+        let unit = &self.players.live(p, idx)?;
         let master = unit.master(&self.masters, p)?;
         let seeks = master.kind < COMBAT
             || (!master.drop_sites.iter().any(|&d| d == 45 || d == 2172)
@@ -88,7 +89,7 @@ impl World {
         ))?;
         if !seeks {
             return crate::gathering::drop_sites::drop_site_search(
-                &self.players[p].objects,
+                &self.players.player(p)?.objects,
                 masters,
                 &master.drop_sites,
                 unit.position(),
@@ -97,7 +98,7 @@ impl World {
             );
         }
         let state = unit.top_action().map_or(0, |a| a.state);
-        let player = &self.players[p];
+        let player = &self.players.player(p)?;
         let mut world = crate::unit_ai::world_view::DropWorld {
             masters: self.masters.get(p),
             spatial: &mut self.spatial,
@@ -110,7 +111,9 @@ impl World {
             groups: &self.groups,
         };
         let others = crate::world::others::OthersRef::of(&self.players, p)?;
-        player.objects[idx].drop_site_with(&mut world, others, state, (false, false, -1))
+        player
+            .live(idx)?
+            .drop_site_with(&mut world, others, state, (false, false, -1))
     }
 
     /// `FUN_141658e20` for player `p` at `at`: of the buildings the drop-site table gives for the
@@ -127,14 +130,14 @@ impl World {
         at: [f32; 2],
         held: i16,
         class: i16,
-    ) -> Option<i32> {
-        let player = &self.players[p];
+    ) -> Result<Option<i32>, GenieError> {
+        let player = self.players.player(p)?;
         let look = |id: i32| self.object(id).map(|(_, o)| (o.life.state, o.position()));
-        nearest_table_site(
+        Ok(nearest_table_site(
             (&self.drop_sites, player.civ, &player.tracker),
             (at, held, class),
             look,
-        )
+        ))
     }
 
     /// The Build's `set_state(8)` as `UNIT_ORDER`'s drop-off (slot 0x78) gives it to the builder
@@ -148,7 +151,7 @@ impl World {
     pub(crate) fn build_drop_off_now(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
         let by = self.releaser(p, idx);
-        let unit = &self.players[p].objects[idx];
+        let unit = &self.players.live(p, idx)?;
         let task_range = unit
             .actions
             .build()
@@ -164,7 +167,7 @@ impl World {
         );
         let class = unit.master(&self.masters, p)?.class;
         let search = if 0.0 < amount {
-            match self.table_drop_site(p, at, held, class) {
+            match self.table_drop_site(p, at, held, class)? {
                 None => DropSearch::Nothing,
                 Some(id) => {
                     let found = self.find_work_task(p, idx, id, -1, false)?;
@@ -194,13 +197,18 @@ impl World {
     /// Slot 0x78's answer to a load of another resource than its task's (`FUN_140a78060`): the
     /// unit AI's slot 0x38 takes notify 0x21c ([`crate::unit_ai::OTHER_LOAD`]) from and to the
     /// unit at (`p`, `idx`); a unit without a unit AI, none.
-    pub(super) fn other_load(&mut self, p: usize, idx: usize) {
-        let unit = &mut self.players[p].objects[idx];
+    ///
+    /// # Errors
+    ///
+    /// A unit the world does not hold at (`p`, `idx`), or a notify the AI's queue does not take.
+    pub(super) fn other_load(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+        let unit = self.players.live_mut(p, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
             let n = crate::unit_ai::Notify::own(id, crate::unit_ai::OTHER_LOAD, [0; 3]);
             let _ = ai.accept(n, state);
         }
+        Ok(())
     }
 
     /// The villager's case 0x21c ([`crate::unit_ai::AiCommand::DropElsewhere`]) for the unit at
@@ -241,7 +249,7 @@ impl World {
         let Some((target, master, owner, place)) = back else {
             return Ok(());
         };
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
             let order = crate::unit_ai::QueuedOrder {
@@ -271,7 +279,7 @@ impl World {
     /// unit AI only looks the records up.
     pub(crate) fn queue_way_back(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         use crate::orders::town_bell::RecordTarget;
-        let mut bell = self.players[p].objects[idx].town_bell;
+        let mut bell = self.players.live(p, idx)?.town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
             let (op, o) = self.object(t)?;
             let m = o.master(&self.masters, op).ok()?;
@@ -298,7 +306,7 @@ impl World {
             }
             None => (record.target, record.target_type, -1, record.point),
         };
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         unit.town_bell = bell;
         let Some(ai) = unit.ai.as_mut() else {
             return Ok(());

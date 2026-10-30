@@ -11,16 +11,16 @@ pub(super) fn centroid(points: &[[f32; 2]]) -> Option<[f32; 2]> {
     const SPREAD: f32 = crate::math::image::order::SPREAD;
     let (mut least, mut most, mut sum) = ([BOX_START; 2], [0.0f32; 2], [0.0f32; 2]);
     for p in points {
-        for k in 0..2 {
-            let v = p[k];
-            if least[k] <= v {
-                if most[k] < v {
-                    most[k] = v;
+        let axes = p.iter().zip(least.iter_mut().zip(most.iter_mut()));
+        for (&v, ((lo, hi), total)) in axes.zip(sum.iter_mut()).map(|(a, t)| (a.0, (a.1, t))) {
+            if *lo <= v {
+                if *hi < v {
+                    *hi = v;
                 }
             } else {
-                least[k] = v;
+                *lo = v;
             }
-            sum[k] += v;
+            *total += v;
         }
     }
     if SPREAD < most[0] - least[0] || SPREAD < most[1] - least[1] {

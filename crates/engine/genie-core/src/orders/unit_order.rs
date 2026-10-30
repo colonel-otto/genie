@@ -13,6 +13,7 @@ use crate::orders::object_gone;
 use crate::orders::{HERD_MOST, NO_POINT, Place};
 use crate::players::PlayerId;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
@@ -28,7 +29,7 @@ impl World {
         target: i32,
     ) -> Result<(), GenieError> {
         let by = self.releaser(player, idx);
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let livestock = unit.master(&self.masters, player)?.class == class::LIVESTOCK;
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an Artifact's move to an object the slice does not hold",
@@ -44,14 +45,14 @@ impl World {
             .ok_or(GenieError::unsupported(
                 "an Artifact's move to an object without a place",
             ))?;
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
         let sprites = crate::movement::move_to::SpriteReads::of(
             unit.master(&self.masters, player)?,
             unit.abilities.look.as_ref(),
             &self.graphics,
         );
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let (targets, gone) = match unit.actions.artifact_mut() {
             Some(a) => a.take_object((target, alive), at, to_building, to_town_centre, &sprites)?,
             None => Default::default(),
@@ -67,7 +68,8 @@ impl World {
             self.release(t, by)?;
         }
         if gone.stops {
-            self.players[player].objects[idx]
+            self.players
+                .live_mut(player, idx)?
                 .body
                 .mover_mut()
                 .ok_or(crate::world::WALKER_UNMOVING)?
@@ -129,7 +131,7 @@ impl World {
                     let Some(Place::Live(q, i)) = self.place(id) else {
                         continue;
                     };
-                    let u = &self.players[q].objects[i];
+                    let u = &self.players.live(q, i)?;
                     if q != p
                         || u.life.state != 2
                         || u.master(&self.masters, q)?.class != class::LIVESTOCK
@@ -190,7 +192,7 @@ impl World {
             let Place::Live(p, idx) = place else {
                 return Err(GenieError::unsupported("a cancel at a sleeping object"));
             };
-            let unit = &self.players[p].objects[idx];
+            let unit = &self.players.live(p, idx)?;
             if unit.life.state != 2 || unit.master(&self.masters, p)?.kind < BUILDING {
                 continue;
             }
@@ -236,7 +238,7 @@ impl World {
             };
             // any player's unit the world holds: the command's list (`FUN_140e6b750`) and the
             // order filter none by owner
-            let unit = &self.players[p].objects[idx];
+            let unit = &self.players.live(p, idx)?;
             let kind = unit.master(&self.masters, p)?.kind;
             if unit.life.state != 2 || kind < ACTION || unit.life.amount <= 0.0 {
                 continue;
@@ -246,7 +248,7 @@ impl World {
                     "a UNIT_ORDER drop-off of an action not held",
                 ));
             }
-            match self.drop_off_ask(p, idx, (asks, way_back)) {
+            match self.drop_off_ask(p, idx, (asks, way_back))? {
                 Some(ask) => self.asked_drop_off(p, idx, ask)?,
                 None => self.drop_off_unasked(p, idx, way_back)?,
             }
@@ -263,10 +265,10 @@ impl World {
         p: usize,
         idx: usize,
         (asks, way_back): (bool, bool),
-    ) -> Option<DropOffAsk> {
-        let unit = &self.players[p].objects[idx];
+    ) -> Result<Option<DropOffAsk>, GenieError> {
+        let unit = self.players.live(p, idx)?;
         let top = if asks { unit.top_action_kind() } else { None };
-        let (by, target, point, resource) = match top {
+        let found = match top {
             Some(crate::gathering::gather::GATHER) => unit
                 .actions
                 .gather()
@@ -280,16 +282,19 @@ impl World {
                 .hunt()
                 .map(|h| (DropOffBy::Hunt, h.target, h.point, h.task.resource)),
             _ => None,
-        }?;
-        Some(DropOffAsk {
+        };
+        let Some((by, target, point, resource)) = found else {
+            return Ok(None);
+        };
+        Ok(Some(DropOffAsk {
             by,
             asked: crate::gathering::hunt::asked_drop_off(
                 resource,
                 unit.life.attribute_type,
-                self.players[p].attributes.len(),
+                self.players.player(p)?.attributes.len(),
             ),
             unaimed: way_back && target == -1 && point[0] == NO_POINT && point[1] == NO_POINT,
-        })
+        }))
     }
 
     /// The drop-off order to an action that `ask`s for it: a load of another resource takes
@@ -305,7 +310,7 @@ impl World {
         ask: DropOffAsk,
     ) -> Result<(), GenieError> {
         if !ask.asked {
-            self.other_load(p, idx);
+            self.other_load(p, idx)?;
         }
         if ask.unaimed {
             self.record_town_bell(p, idx)?;
@@ -331,8 +336,8 @@ impl World {
         idx: usize,
         by: DropOffBy,
     ) -> Result<(), GenieError> {
-        let mut unit = self.players[p].objects.take_out(idx);
-        let player = &self.players[p];
+        let mut unit = self.players.player_mut(p)?.objects.take_out(idx);
+        let player = &self.players.player(p)?;
         let world = crate::unit_ai::world_view::DropWorld {
             masters: self.masters.get(p),
             spatial: &mut self.spatial,

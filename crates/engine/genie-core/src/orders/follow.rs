@@ -10,6 +10,8 @@ use crate::orders::{Followed, GUARD_RANGE, Place, follow_axis, follow_spread, ig
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::Held;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// FOLLOW (0x14): the command's check (`FUN_140e54c50`, [`World::command_check`]), then
@@ -28,7 +30,7 @@ impl World {
         units: &[i32],
         target: i32,
     ) -> Result<(), GenieError> {
-        let Some(ids) = self.command_check(player, units) else {
+        let Some(ids) = self.command_check(player, units)? else {
             return Ok(());
         };
         let Some((tp, t)) = self.object(target) else {
@@ -40,12 +42,12 @@ impl World {
             place: [t.position()[0], t.position()[1]],
             class: (0.0 < tm.radius[0] || 0.0 < tm.radius[1]).then_some(i32::from(tm.class)),
         };
-        let cap = if self.players[player].computer {
+        let cap = if self.players.player(player)?.computer {
             500
         } else {
             60
         };
-        let ids = &ids[..ids.len().min(cap)];
+        let ids = ids.split_at(ids.len().min(cap)).0;
         let split = self.split(ids, &|_| true, false)?;
         if !split.groups.is_empty() {
             return Err(GenieError::unsupported(
@@ -107,12 +109,12 @@ impl World {
             ready: true,
             target_type: i32::from(tm.id),
         };
-        let cap = if self.players[player].computer {
+        let cap = if self.players.player(player)?.computer {
             500
         } else {
             60
         };
-        for &id in &units[..units.len().min(cap)] {
+        for &id in units.iter().take(cap) {
             let Some(place) = self.place(id) else {
                 continue;
             };
@@ -121,14 +123,14 @@ impl World {
                 Place::Live(p, i) => (p, i),
                 // only slot 0x180 puts an object to sleep, one of a type below 30 without a
                 // unit AI
-                Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
+                Place::Sleeping(p, i) if self.players.asleep(p, i)?.ai.is_none() => continue,
                 Place::Sleeping(..) => {
                     return Err(GenieError::unsupported(
                         "a GUARD of a sleeping object with a unit AI",
                     ));
                 }
             };
-            if self.players[p].objects[idx].ai.is_none() {
+            if self.players.live(p, idx)?.ai.is_none() {
                 continue;
             }
             let order = crate::unit_ai::QueuedOrder {
@@ -174,13 +176,14 @@ impl World {
         loose: &[i32],
         i: usize,
     ) -> Result<(usize, usize), GenieError> {
-        let Some(Place::Live(p, idx)) = self.place(loose[i]) else {
+        let Some(Place::Live(p, idx)) = self.place(*loose.at(i)?) else {
             return Err(GenieError::unsupported(
                 "a FOLLOW of a sleeping object of a type of 30 or more",
             ));
         };
         let mover =
-            self.players[p].objects[idx]
+            self.players
+                .live_mut(p, idx)?
                 .body
                 .mover_mut()
                 .ok_or(GenieError::unsupported(
@@ -210,15 +213,15 @@ impl World {
         i: usize,
         followed: Followed,
     ) -> Result<(), GenieError> {
-        self.leave_group_of(loose[i], followed.id)?;
-        if self.follower(loose[i])?.is_none() {
+        self.leave_group_of(*loose.at(i)?, followed.id)?;
+        if self.follower(*loose.at(i)?)?.is_none() {
             return Ok(());
         }
         let (p, idx) = self.follower_start(loose, i)?;
         let [x, y] = followed.place;
         let taken = self.move_to_object_with(p, idx, followed.id, [x, y, 0.0], true)?;
         let rng = self.streams.get(Stream::Ai);
-        if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
+        if let Some(ai) = self.players.live_mut(p, idx)?.ai.as_mut() {
             if !taken {
                 ai.set_order(Some(OrderKind::Follow), rng);
                 ai.set_action(Some(ActionKind::Follow));
@@ -243,7 +246,7 @@ impl World {
         followed: Followed,
         mean: [f32; 2],
     ) -> Result<(), GenieError> {
-        let Some([x, y]) = self.follower(loose[i])? else {
+        let Some([x, y]) = self.follower(*loose.at(i)?)? else {
             return Ok(());
         };
         let (p, idx) = self.follower_start(loose, i)?;
@@ -260,7 +263,7 @@ impl World {
             None => self.move_point_order_with(p, idx, at, true)?,
         }
         let rng = self.streams.get(Stream::Ai);
-        if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
+        if let Some(ai) = self.players.live_mut(p, idx)?.ai.as_mut() {
             ai.set_order(Some(OrderKind::Move), rng);
             ai.set_action(Some(ActionKind::Move));
             let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
@@ -305,11 +308,13 @@ impl World {
         a14: bool,
     ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
-        let class = self.players[player].objects[idx]
+        let class = self
+            .players
+            .live(player, idx)?
             .master(&self.masters, player)?
             .class;
         let villager = class == class::VILLAGER;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if villager {
             unit.town_bell.flag = false;
         }
@@ -326,7 +331,7 @@ impl World {
                 ai.clear_notifies_at(world_time, place, side, rng)
             })?;
         }
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
         if unit.ai.is_some()
             && !stop_after_kill
@@ -334,7 +339,7 @@ impl World {
         {
             return Ok(true);
         }
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         if unit.unmodelled_action.is_some() {
             return Err(GenieError::unsupported(
                 "a move to an object of a unit with an action",
@@ -352,11 +357,31 @@ impl World {
             self.take(target, self.releaser(player, idx))?;
         }
         self.clear_actions(player, idx)?;
-        let master = self.players[player].objects[idx].master(&self.masters, player)?;
+        self.start_object_move(player, idx, (target, t_state), livestock)
+    }
+
+    /// [`World::move_to_object_with`]'s new `MoveTo` toward `target` (in state `t_state`), once the
+    /// unit's actions are cleared: its range and sprite, the action's start and the standing
+    /// sprite it may show. Always false: no action took the move.
+    ///
+    /// # Errors
+    ///
+    /// What the start does not model.
+    fn start_object_move(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (target, t_state): (i32, u8),
+        livestock: bool,
+    ) -> Result<bool, GenieError> {
+        let master = self
+            .players
+            .live(player, idx)?
+            .master(&self.masters, player)?;
         let range = crate::movement::move_to::object_range(0.0, Some(master));
         let sprite = crate::movement::move_to::object_sprite(master)
             .and_then(|id| self.graphics.get(&id).copied());
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let here = unit.position();
         let mover = unit.body.mover_mut().ok_or(GenieError::unsupported(
             "a moved unit without movement state",
@@ -396,7 +421,7 @@ impl World {
         target: Option<i32>,
         point: [f32; 3],
     ) -> Result<bool, GenieError> {
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let Some(target) = target else {
             return self.point_taken(player, idx, point);
         };
@@ -447,7 +472,7 @@ impl World {
         point: [f32; 3],
     ) -> Result<bool, GenieError> {
         let by = self.releaser(player, idx);
-        let (released, left) = match self.players[player].objects[idx].head_takes_point(
+        let (released, left) = match self.players.live_mut(player, idx)?.head_takes_point(
             point,
             player,
             self.masters.get(player),

@@ -71,7 +71,8 @@ impl BuildWallCommand {
         let Some(listed) = w.read_units(self.player, &self.builders) else {
             return Ok(());
         };
-        let Some(builders) = w.command_check(self.player.index(), &ObjectId::fields(listed)) else {
+        let Some(builders) = w.command_check(self.player.index(), &ObjectId::fields(listed))?
+        else {
             return Ok(());
         };
         w.build_wall(self, &builders)

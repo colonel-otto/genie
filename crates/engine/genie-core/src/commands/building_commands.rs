@@ -157,32 +157,41 @@ impl World {
     /// the listed ones (`+0x11..`) as the unit commands' ([`World::command_check`]). None for a
     /// refused one, else the list with none for the ones left out. The packet's size tests are the
     /// decoder's, and the world's `+0xb12` cheat is not held.
-    pub(crate) fn research_check(&self, r: &ResearchCommand) -> Option<Vec<Option<ObjectId>>> {
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    pub(crate) fn research_check(
+        &self,
+        r: &ResearchCommand,
+    ) -> Result<Option<Vec<Option<ObjectId>>>, GenieError> {
         let player = r.player.index();
         let listed = usize::try_from(r.count).unwrap_or(0);
         if listed == 0 {
-            return None;
+            return Ok(None);
         }
         let own = self
             .object(ObjectId::field(r.building))
             .map(|(p, _)| p == player || self.settings.cheats_enabled);
         match own {
-            Some(false) => return None,
-            None if listed == 1 => return None,
+            Some(false) => return Ok(None),
+            None if listed == 1 => return Ok(None),
             _ => {}
         }
         if listed == 1 {
-            return Some(r.buildings.clone());
+            return Ok(Some(r.buildings.clone()));
         }
-        let n = listed.min(r.buildings.len());
-        let checked = self.command_check(player, &ObjectId::fields(&r.buildings[..n]))?;
-        Some(
+        let (listed_ids, rest) = r.buildings.split_at(listed.min(r.buildings.len()));
+        let Some(checked) = self.command_check(player, &ObjectId::fields(listed_ids))? else {
+            return Ok(None);
+        };
+        Ok(Some(
             checked
                 .into_iter()
                 .map(ObjectId::of_field)
-                .chain(r.buildings[n..].iter().copied())
+                .chain(rest.iter().copied())
                 .collect(),
-        )
+        ))
     }
 
     /// RESEARCH (`0x140e7e270`) for `player`: a `qId` other than −1, or a technology the tree

@@ -5,6 +5,8 @@ use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{Interact, MAX_UNGROUPED, Split, Splittable, centroid, splits_together};
 use crate::world::World;
+use crate::world::slots::Held;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// INTERACT (`0x140e68b90`) to its units, after their unit AIs reset. The splitter
@@ -32,7 +34,7 @@ impl World {
         let loose = loose?;
         self.leave_groups(player, &loose, ObjectId::field(order.target))?;
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
-        if 1 < loose.len() && self.players[player].computer {
+        if 1 < loose.len() && self.players.player(player)?.computer {
             return Err(GenieError::unsupported(
                 "an order to several units of a computer player (FUN_140d61870)",
             ));
@@ -174,19 +176,19 @@ impl World {
         }
         // the units in a group the world holds, with the order's other members of their group
         let mut taken = vec![false; left.len()];
-        for i in 0..left.len() {
-            if taken[i] {
+        for (i, first) in left.iter().enumerate() {
+            if *taken.at(i)? {
                 continue;
             }
-            let Some(group) = self.groups.get(left[i].group) else {
+            let Some(group) = self.groups.get(first.group) else {
                 continue;
             };
-            taken[i] = true;
-            let mut members = vec![left[i].id];
+            *taken.at_mut(i)? = true;
+            let mut members = vec![first.id];
             for (j, u) in left.iter().enumerate() {
-                if !taken[j] && group.has(u.id) {
+                if !*taken.at(j)? && group.has(u.id) {
                     members.push(u.id);
-                    taken[j] = true;
+                    *taken.at_mut(j)? = true;
                 }
             }
             match members[..] {
@@ -199,7 +201,7 @@ impl World {
             .zip(taken)
             .filter_map(|(u, taken)| (!taken).then_some(u))
             .collect();
-        let formations = self.players[owner].formations;
+        let formations = self.players.player(owner)?.formations;
         if !formations.auto {
             split.loose.extend(left.iter().map(|u| u.id));
             return Ok(());
@@ -256,7 +258,7 @@ impl World {
                 while i < left.len() {
                     if splits_together(
                         &chosen,
-                        &left[i],
+                        left.at(i)?,
                         formations,
                         true,
                         &mut path,
@@ -289,7 +291,7 @@ impl World {
         loose: &[i32],
         target: i32,
     ) -> Result<(), GenieError> {
-        let target = if 1 < loose.len() && !self.players[player].computer {
+        let target = if 1 < loose.len() && !self.players.player(player)?.computer {
             -1
         } else {
             self.world_object(target).map_or(-1, |t| t.id())

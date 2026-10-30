@@ -136,8 +136,11 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
     for id in [503, 502, 500] {
         t.players[0].tracker.complete(id, key);
     }
-    assert_eq!(t.table_drop_site(0, [10.0, 10.0], 0, 58), Some(503));
-    assert_eq!(t.table_drop_site(0, [10.0, 10.0], 1, 58), None);
+    assert_eq!(
+        t.table_drop_site(0, [10.0, 10.0], 0, 58).unwrap(),
+        Some(503)
+    );
+    assert_eq!(t.table_drop_site(0, [10.0, 10.0], 1, 58).unwrap(), None);
     let before = t.players[0].objects[0].clone();
     assert!(t.drop_off_unasked(0, 0, true).is_ok());
     assert_eq!(t.players[0].objects[0], before);
@@ -726,22 +729,25 @@ fn the_command_check_drops_gone_units_and_others_units_of_its_first_60() {
         ..Unit::default()
     });
     assert_eq!(
-        t.command_check(1, &[11, 30, 99, -1]),
+        t.command_check(1, &[11, 30, 99, -1]).unwrap(),
         Some(vec![11, -1, -1, -1])
     );
     t.settings.cheats_enabled = true;
-    assert_eq!(t.command_check(1, &[11, 30, 99]), Some(vec![11, 30, -1]));
+    assert_eq!(
+        t.command_check(1, &[11, 30, 99]).unwrap(),
+        Some(vec![11, 30, -1])
+    );
     t.settings.cheats_enabled = false;
-    assert_eq!(t.command_check(1, &[30, 99]), None);
+    assert_eq!(t.command_check(1, &[30, 99]).unwrap(), None);
     t.players[1].computer = true;
-    assert_eq!(t.command_check(1, &[30, 99]), Some(vec![-1, -1]));
+    assert_eq!(t.command_check(1, &[30, 99]).unwrap(), Some(vec![-1, -1]));
     t.players[1].computer = false;
     // past the first 60 nothing is checked
     let mut ids = vec![99; 60];
     ids.push(30);
-    assert_eq!(t.command_check(1, &ids), None);
+    assert_eq!(t.command_check(1, &ids).unwrap(), None);
     ids[0] = 11;
-    let checked = t.command_check(1, &ids).unwrap();
+    let checked = t.command_check(1, &ids).unwrap().unwrap();
     assert_eq!((checked[0], checked[1], checked[60]), (11, -1, 30));
 }
 
@@ -764,7 +770,7 @@ fn the_unload_check_keeps_an_ally_s_object_the_command_ties_to_the_issuer() {
     });
     t.players[1].relations = vec![3, 0, 4];
     t.players[2].relations = vec![3, 0, 0];
-    let check = |t: &World, flag, named| t.unload_check(1, &[11, 30, 99], flag, named);
+    let check = |t: &World, flag, named| t.unload_check(1, &[11, 30, 99], flag, named).unwrap();
     assert_eq!(check(&t, 3, 12), Some(vec![11, 30, -1]));
     assert_eq!(check(&t, 6, 12), Some(vec![11, 30, -1]));
     assert_eq!(check(&t, 1, 1), Some(vec![11, 30, -1]));
@@ -779,14 +785,20 @@ fn the_unload_check_keeps_an_ally_s_object_the_command_ties_to_the_issuer() {
     t.settings.cheats_enabled = true;
     assert_eq!(check(&t, 0, 12), Some(vec![11, 30, -1]));
     t.settings.cheats_enabled = false;
-    assert_eq!(t.unload_check(1, &[30, 99], 3, 12), None);
+    assert_eq!(t.unload_check(1, &[30, 99], 3, 12).unwrap(), None);
     t.players[1].computer = true;
-    assert_eq!(t.unload_check(1, &[30, 99], 3, 12), Some(vec![-1, -1]));
+    assert_eq!(
+        t.unload_check(1, &[30, 99], 3, 12).unwrap(),
+        Some(vec![-1, -1])
+    );
     t.players[1].computer = false;
     // past the first 60 nothing goes on
     let mut ids = vec![11; 60];
     ids.push(12);
-    assert_eq!(t.unload_check(1, &ids, 3, 12).map(|c| c.len()), Some(60));
+    assert_eq!(
+        t.unload_check(1, &ids, 3, 12).unwrap().map(|c| c.len()),
+        Some(60)
+    );
 }
 
 /// `FUN_140e6b750`: each id's object, live or sleeping, None for a gone one, in the ids' order.
@@ -3310,23 +3322,23 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
     let mut t = foraging();
     let ask = |by, asked, unaimed| Some(DropOffAsk { by, asked, unaimed });
     assert_eq!(
-        t.drop_off_ask(1, 0, (true, true)),
+        t.drop_off_ask(1, 0, (true, true)).unwrap(),
         ask(DropOffBy::Gather, true, false)
     );
-    assert_eq!(t.drop_off_ask(1, 0, (false, true)), None);
+    assert_eq!(t.drop_off_ask(1, 0, (false, true)).unwrap(), None);
     t.players[1].objects[0].life.attribute_type = 1;
     assert_eq!(
-        t.drop_off_ask(1, 0, (true, false)),
+        t.drop_off_ask(1, 0, (true, false)).unwrap(),
         ask(DropOffBy::Gather, false, false)
     );
     let g = t.players[1].objects[0].actions.gather_mut().unwrap();
     (g.target, g.point) = (-1, [NO_POINT, NO_POINT, 0.0]);
     assert_eq!(
-        t.drop_off_ask(1, 0, (true, true)),
+        t.drop_off_ask(1, 0, (true, true)).unwrap(),
         ask(DropOffBy::Gather, false, true)
     );
     assert_eq!(
-        t.drop_off_ask(1, 0, (true, false)),
+        t.drop_off_ask(1, 0, (true, false)).unwrap(),
         ask(DropOffBy::Gather, false, false)
     );
     // a Hunt and a Build of a wood task, aimed
@@ -3336,7 +3348,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
     v.actions.set_gather(None);
     v.actions.set_hunt(Some(hunt));
     assert_eq!(
-        t.drop_off_ask(1, 0, (true, true)),
+        t.drop_off_ask(1, 0, (true, true)).unwrap(),
         ask(DropOffBy::Hunt, true, false)
     );
     let task = crate::construction::build::BuildTask {
@@ -3356,13 +3368,13 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
             task,
         )));
     assert_eq!(
-        t.drop_off_ask(1, 0, (true, true)),
+        t.drop_off_ask(1, 0, (true, true)).unwrap(),
         ask(DropOffBy::Build, true, false)
     );
     let v = &mut t.players[1].objects[0];
     v.actions.set_build(None);
     v.actions.set_hunt(None);
-    assert_eq!(t.drop_off_ask(1, 0, (true, true)), None);
+    assert_eq!(t.drop_off_ask(1, 0, (true, true)).unwrap(), None);
 }
 
 /// The drop-off order 7 to the forager's Gather: it carries its berries to the town centre

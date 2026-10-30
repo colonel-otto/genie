@@ -17,6 +17,8 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::unit_ai::task_finder::{Actor, enabled};
 use crate::world::World;
+use crate::world::slots::Held;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// The work command's check of the unit's top Attack (`FUN_14106ff70`): one on this very
@@ -34,7 +36,7 @@ impl World {
         point: [f32; 3],
         clears: bool,
     ) -> Result<bool, GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let top = unit.top_action_kind();
         let attacking = unit
             .actions
@@ -51,7 +53,7 @@ impl World {
         ))?;
         let class = i32::from(t.master(&self.masters, tp)?.class);
         let world_time = self.world_time;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.last_retarget_time = world_time;
             ai.notify_work(
@@ -71,6 +73,24 @@ impl World {
         Ok(true)
     }
 
+    /// The unit at `idx` of player `player` as the task finder's actor.
+    ///
+    /// # Errors
+    ///
+    /// A unit or a master the world does not hold.
+    fn garrison_actor(&self, player: usize, idx: usize) -> Result<Actor<'_>, GenieError> {
+        let owner = self.players.player(player)?;
+        let unit = owner.live(idx)?;
+        Ok(Actor {
+            id: unit.id,
+            master: unit.master(&self.masters, player)?,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+            civ: owner.civ,
+        })
+    }
+
     /// The unit's own task list's finder with filter 3 (slot 2 of its master's `+0x788`,
     /// `FUN_1412784d0`: the garrison's, [`crate::unit_ai::task_finder::find_task`]) on `target` at
     /// the gather `point`: whether it finds a task, as a gather point on a building asks
@@ -82,17 +102,8 @@ impl World {
         target: i32,
         point: [f32; 3],
     ) -> Result<bool, GenieError> {
-        let unit = &self.players[player].objects[idx];
-        let owner = &self.players[player];
-        let master = unit.master(&self.masters, player)?;
-        let actor = Actor {
-            id: unit.id,
-            master,
-            player,
-            held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-            civ: owner.civ,
-        };
+        let actor = self.garrison_actor(player, idx)?;
+        let master = actor.master;
         let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
@@ -124,10 +135,12 @@ impl World {
         task: &crate::objects::masters::Task,
     ) -> Result<(), GenieError> {
         let food = |k: i16| k == 0 || (15..=17).contains(&k);
-        let class = self.players[player].objects[idx]
+        let class = self
+            .players
+            .live(player, idx)?
             .master(&self.masters, player)?
             .class;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if matches!(task.action_type, GATHER | HUNT) {
             let (kind, held) = (task.attribute_type, unit.life.attribute_type);
             if held != kind && !(food(kind) && food(held)) {
@@ -163,7 +176,7 @@ impl World {
             filter,
             notified,
         } = *order;
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         if unit.id == target {
             return Ok(());
         }
@@ -183,15 +196,15 @@ impl World {
             return self.work_move(player, idx, target, point, (clears, notified));
         };
         // a new master's task is another than the one the unit's action holds
-        let same_master = with == self.players[player].objects[idx].life.master_id;
+        let same_master = with == self.players.live(player, idx)?.life.master_id;
         if !same_master {
             self.change_master(player, idx, with)?;
         }
-        if !enabled(&self.players[player].attributes, task.enablement) {
+        if !enabled(&self.players.player(player)?.attributes, task.enablement) {
             return Ok(());
         }
         // LAB_1410706a8: an action on the task found takes the new target itself (its slot 9)
-        let top = self.players[player].objects[idx].top_action_kind();
+        let top = self.players.live(player, idx)?.top_action_kind();
         let kept = self.retake_task(player, idx, (target, point, clears), &task, same_master)?;
         if carry_test {
             self.carried_resource_test(player, idx, &task)?;
@@ -223,12 +236,12 @@ impl World {
         (target, point): (i32, [f32; 3]),
         filter: i16,
     ) -> Result<Option<(i16, crate::objects::masters::Task)>, GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let masters = self
             .masters
             .get(player)
             .ok_or(GenieError::unsupported("a work command: no master table"))?;
-        let owner = &self.players[player];
+        let owner = &self.players.player(player)?;
         let actor = Actor {
             id: unit.id,
             master: unit.master(&self.masters, player)?,
@@ -279,7 +292,7 @@ impl World {
         task: &crate::objects::masters::Task,
         same_master: bool,
     ) -> Result<bool, GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let top = unit.top_action_kind();
         Ok(match unit.actions.hunt().copied() {
             Some(h) if task.action_type == HUNT && h.task.id == task.id => {
@@ -354,7 +367,7 @@ impl World {
         }
         let class = i32::from(t.master.class);
         self.retarget_hunt(player, idx, target)?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Hunt),
@@ -387,7 +400,7 @@ impl World {
         let class = i32::from(t.master.class);
         let took = self.retarget_gather(player, idx, target)?;
         if took {
-            let unit = &mut self.players[player].objects[idx];
+            let unit = self.players.live_mut(player, idx)?;
             if let Some(ai) = unit.ai.as_mut() {
                 ai.notify_work(
                     Some(OrderKind::Gather),
@@ -469,7 +482,7 @@ impl World {
         point: [f32; 3],
         (clears, notified): (bool, bool),
     ) -> Result<(), GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         if !master.moving.is_some_and(|m| 0.0 < m.speed) {
             return Ok(());
@@ -491,7 +504,7 @@ impl World {
         } else {
             (None, None)
         };
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 order,
@@ -531,9 +544,9 @@ impl World {
         filter: i16,
         change: bool,
     ) -> Result<Option<crate::objects::masters::Task>, GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let own = unit.master(&self.masters, player)?;
-        let owner = &self.players[player];
+        let owner = &self.players.player(player)?;
         let actor = Actor {
             id: unit.id,
             master: own,
@@ -571,7 +584,7 @@ impl World {
         }
         let mut found = None;
         // the master table exists: master_of found the unit's own in it
-        for candidate in self.masters[player].iter() {
+        for candidate in self.masters.at(player)?.iter() {
             if candidate.class != own.class
                 || candidate.kind != own.kind
                 || candidate.task_by_group != own.task_by_group

@@ -54,7 +54,7 @@ impl World {
         buildings: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         let (player, unit_id) = (q.player.index(), q.unit.get());
-        let Some(ids) = self.command_check(player, &ObjectId::fields(buildings)) else {
+        let Some(ids) = self.command_check(player, &ObjectId::fields(buildings))? else {
             return Ok(());
         };
         let owner = &self.players[player];

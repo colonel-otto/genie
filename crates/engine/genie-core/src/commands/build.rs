@@ -54,7 +54,7 @@ impl BuildCommand {
             return Ok(());
         };
         let player = self.player.index();
-        let Some(builders) = w.command_check(player, &ObjectId::fields(listed)) else {
+        let Some(builders) = w.command_check(player, &ObjectId::fields(listed))? else {
             return Ok(());
         };
         if self.q_id != -1 && !w.players[player].computer {

@@ -55,7 +55,7 @@ impl World {
             ..
         } = *u;
         let (player, point) = (player.index(), point.xy());
-        let Some(checked) = self.unload_check(player, ids, flag, unit_type) else {
+        let Some(checked) = self.unload_check(player, ids, flag, unit_type)? else {
             return Ok(());
         };
         // the drop locations' last place across the command's units (FUN_14161f410's locals)

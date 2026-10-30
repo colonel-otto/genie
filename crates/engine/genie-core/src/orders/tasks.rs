@@ -9,6 +9,7 @@ use crate::orders::{HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A repairer whose top action is no Repair where the order retargets it.
 const NO_REPAIR: GenieError = GenieError::unreachable("a repair retarget without a Repair on top");
@@ -79,7 +80,7 @@ impl World {
         let task = self
             .find_work_task(player, idx, target, -1, true)?
             .ok_or(GenieError::unsupported("a gather command without a task"))?;
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         if unit.top_action_kind() == Some(crate::gathering::gather::GATHER)
             && unit.actions.gather().is_some_and(|g| g.task.id == task.id)
         {
@@ -111,7 +112,7 @@ impl World {
         ))?;
         let tm = t.master(&self.masters, tp)?;
         let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class));
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let builder = unit.master(&self.masters, player)?;
         let gap = crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius);
         let build_task = crate::construction::build::BuildTask::of(
@@ -119,7 +120,7 @@ impl World {
             builder.work_rate + unit.work_rate_powerup,
         );
         self.take(target, self.releaser(player, idx))?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Build),
@@ -136,7 +137,7 @@ impl World {
             )?;
         }
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx].actions.set_build(Some(
+        self.players.live_mut(player, idx)?.actions.set_build(Some(
             crate::construction::build::BuildAction::start(target, t_at, gap, build_task),
         ));
         Ok(())
@@ -163,7 +164,7 @@ impl World {
             return Err(crate::construction::repair::SHIP_REPAIR);
         }
         let (t_at, class) = (t.position(), i32::from(tm.class));
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
         let sprites = crate::movement::move_to::SpriteReads::of(
@@ -197,7 +198,7 @@ impl World {
     ) -> Result<(), GenieError> {
         // the task finder found the task on the target, which the world holds
         let (repair, class) = self.new_repair(player, idx, target, task)?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Repair),
@@ -214,7 +215,8 @@ impl World {
             )?;
         }
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx]
+        self.players
+            .live_mut(player, idx)?
             .actions
             .set_repair(Some(repair));
         Ok(())
@@ -249,7 +251,8 @@ impl World {
                 if let Some(task) = task {
                     let (repair, _) = self.new_repair(player, idx, target, &task)?;
                     self.clear_actions(player, idx)?;
-                    self.players[player].objects[idx]
+                    self.players
+                        .live_mut(player, idx)?
                         .actions
                         .set_repair(Some(repair));
                 }
@@ -270,7 +273,7 @@ impl World {
         clears: bool,
     ) -> Result<(), GenieError> {
         let class = self.repair_retarget(player, idx, target)?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Repair),
@@ -312,8 +315,10 @@ impl World {
             i32::from(tm.class),
             crate::construction::repair::SHIPS.contains(&tm.class),
         );
-        let computer = self.players[player].computer;
-        let repair = self.players[player].objects[idx]
+        let computer = self.players.player(player)?.computer;
+        let repair = self
+            .players
+            .live(player, idx)?
             .actions
             .repair()
             .copied()
@@ -328,14 +333,14 @@ impl World {
             if ship {
                 return Err(crate::construction::repair::SHIP_REPAIR);
             }
-            let unit = &self.players[player].objects[idx];
+            let unit = &self.players.live(player, idx)?;
             // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
             let sprites = crate::movement::move_to::SpriteReads::of(
                 unit.master(&self.masters, player)?,
                 unit.abilities.look.as_ref(),
                 &self.graphics,
             );
-            let unit = &mut self.players[player].objects[idx];
+            let unit = self.players.live_mut(player, idx)?;
             let r = unit.actions.repair_mut().ok_or(NO_REPAIR)?;
             // slot 0x68 dropped the count on another target; set_state(4)'s prelude makes a
             // repairer still counted leave its repairers
@@ -369,7 +374,7 @@ impl World {
         clears: bool,
     ) -> Result<(), GenieError> {
         let class = self.build_take(player, idx, target)?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Build),
@@ -406,7 +411,7 @@ impl World {
         }
         let tm = t.master(&self.masters, tp)?;
         let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class));
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let old = unit
             .actions
             .build()
@@ -419,7 +424,7 @@ impl World {
         if old.target != target {
             // the task finder took the new target below state 3, which slot 0x68 keeps
             let _ = self.build_set_target(player, idx, (old.target, old.added), target)?;
-            let unit = &mut self.players[player].objects[idx];
+            let unit = self.players.live_mut(player, idx)?;
             let (Some(build), mover) = (unit.actions.build_mut(), unit.body.mover_mut()) else {
                 return Err(GenieError::unsupported(
                     "a Build's retarget without its Build",
@@ -428,18 +433,18 @@ impl World {
             build.retarget((target, t_at), gap, mover)?;
             return Ok(class);
         }
-        let computer = self.players[player].computer;
+        let computer = self.players.player(player)?.computer;
         let Some(Place::Live(fp, fi)) = self.place(target) else {
             return Err(GenieError::unsupported("a Build's foundation that sleeps"));
         };
         let (mut build, mut mover) = {
-            let unit = &mut self.players[player].objects[idx];
+            let unit = self.players.live_mut(player, idx)?;
             (unit.actions.take_build(), unit.body.take_mover())
         };
         // FUN_140aaddb0's building: an annex's main building
         let counted = match self.counted_building(target)? {
             Some(id) if id != target => self.object_mut(id).map(|(_, b)| b),
-            _ => Some(&mut self.players[fp].objects[fi]),
+            _ => Some(self.players.live_mut(fp, fi)?),
         };
         let builders = counted
             .and_then(|b| b.construction.as_mut())
@@ -449,7 +454,7 @@ impl World {
                 .as_mut()
                 .ok_or(NO_BUILD)?
                 .retake((t_at, gap), mover.as_mut(), builders, computer);
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         unit.actions.set_build(build);
         unit.body.put_mover(mover);
         r?;
@@ -473,7 +478,7 @@ impl World {
             self.leave_builders(old)?;
         }
         let target = self.retarget_action(player, idx, old, new, false)?;
-        if let Some(build) = self.players[player].objects[idx].actions.build_mut() {
+        if let Some(build) = self.players.live_mut(player, idx)?.actions.build_mut() {
             build.target = target;
             build.added &= !leaves;
         }

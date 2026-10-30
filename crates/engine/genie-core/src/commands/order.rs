@@ -55,7 +55,7 @@ impl OrderCommand {
     /// is not a computer, `FUN_141659cf0`), then the order runs.
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
         let (player, order) = (self.player.index(), self.order);
-        let Some(units) = self.units(w) else {
+        let Some(units) = self.units(w)? else {
             return Ok(());
         };
         if let Order::Work(_) = order {
@@ -99,31 +99,40 @@ impl OrderCommand {
     /// count past the packet's ids, the count `0xffff` too, and they take the first 60 units
     /// of their packet (500 for a computer, [`World::read_units`]); GUARD's check is BUILD's
     /// builders' ([`World::command_check`]), FOLLOW's runs in [`World::follow`].
-    fn units(&self, w: &mut World) -> Option<Vec<i32>> {
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    fn units(&self, w: &mut World) -> Result<Option<Vec<i32>>, GenieError> {
         let (source, order) = (&self.units, self.order);
         if let Order::Follow(_) | Order::Guard(_) = order {
-            let ids = ObjectId::fields(w.read_units(self.player, source)?);
+            let Some(read) = w.read_units(self.player, source) else {
+                return Ok(None);
+            };
+            let ids = ObjectId::fields(read);
             return match order {
                 Order::Guard(_) => w.command_check(self.player.index(), &ids),
-                _ => Some(ids),
+                _ => Ok(Some(ids)),
             };
         }
         let player = self.player.index();
         let last = source.names_last_commanded();
         if source.overruns() && !last {
-            return None;
+            return Ok(None);
         }
-        let computer = w.players.get(player)?.computer;
+        let Some(computer) = w.players.get(player).map(|p| p.computer) else {
+            return Ok(None);
+        };
         let checked = w.checked_units(player, &w.command_units(player, source));
         if last {
             w.set_last_commanded(player, checked.clone());
         }
         if !computer && checked.iter().all(|&id| id == -1) {
-            return None;
+            return Ok(None);
         }
         if !last {
             w.set_last_commanded(player, checked.clone());
         }
-        Some(checked)
+        Ok(Some(checked))
     }
 }

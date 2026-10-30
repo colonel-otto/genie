@@ -402,15 +402,15 @@ impl World {
 /// 0x140c42cd4), which the caller runs ([`World::object_stop`]); with 0 (BUILD's and
 /// `BUILD_WALL`'s) every order is ready after it.
 pub(crate) fn readiness(orders: &mut Vec<crate::unit_ai::QueuedOrder>, drop_ready: bool) {
-    let mut i = orders.len();
-    while 0 < i {
-        i -= 1;
-        if !orders[i].ready {
-            orders[i].ready = true;
-        } else if drop_ready {
-            let _ = orders.remove(i);
+    // each order is judged alone, so the walk's direction does not matter
+    orders.retain_mut(|order| {
+        if order.ready {
+            !drop_ready
+        } else {
+            order.ready = true;
+            true
         }
-    }
+    });
 }
 
 /// `FUN_1412066b0`, a master change's powerups: the attack (`+0xa24`), reload (`+0xa28`), work

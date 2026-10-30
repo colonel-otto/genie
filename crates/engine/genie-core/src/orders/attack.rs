@@ -5,6 +5,7 @@ use crate::combat::attack::{Attack, AttackReads, Fight};
 use crate::gathering::hunt::HuntRetarget;
 use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
+use crate::world::slots::PlayerSlots;
 
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -56,14 +57,17 @@ impl World {
         let world_time = self.world_time;
         self.attack_notifies(player, idx, (target, &aim), point, clears)?;
         self.clear_actions(player, idx)?;
-        let master = self.players[player].objects[idx].master(&self.masters, player)?;
+        let master = self
+            .players
+            .live(player, idx)?
+            .master(&self.masters, player)?;
         // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
         let arms =
             crate::combat::attack::arms(master, &self.graphics, task.sprites, task.sprites[0]);
         let standing = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
         let me_at = *self
             .spatial
-            .get(self.players[player].objects[idx].id)
+            .get(self.players.live(player, idx)?.id)
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let t_at = *self
             .spatial
@@ -72,18 +76,18 @@ impl World {
         let (tx, ty) = (t_at.position[0] as i32, t_at.position[1] as i32);
         let visible = self.spatial.sees_tile(player, tx, ty)
             || (aim.fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
-        let u = &self.players[player].objects[idx];
+        let u = &self.players.live(player, idx)?;
         let reads = AttackReads::of(
             u,
             master,
             (self.masters.get(player), &self.graphics),
             u.ai.as_ref(),
-            (self.players[player].computer, world_time),
+            (self.players.player(player)?.computer, world_time),
         );
         let own = crate::combat::victims::victim_of(
             u,
             master,
-            &self.players[player].attributes,
+            &self.players.player(player)?.attributes,
             player,
             self.spatial.terrain.as_ref(),
             self.mode_680,
@@ -94,19 +98,21 @@ impl World {
                 reads,
                 fight: Fight { victim, own },
             });
-        let speed = self.players[player].objects[idx]
+        let speed = self
+            .players
+            .live(player, idx)?
             .body
             .mover()
             .map_or(0.0, |m| m.stats.speed);
         let e = crate::combat::attack::engagement(
-            self.players[player].objects[idx].ai.as_ref(),
+            self.players.live(player, idx)?.ai.as_ref(),
             speed,
             master,
             &me_at,
             &t_at,
             world_time,
         )?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if unit.sprite.is_none() {
             return Err(GenieError::unsupported(
                 "an attack task of a unit whose sprite the slice does not hold",
@@ -132,7 +138,7 @@ impl World {
         let (mut attack, posted) =
             self.run_on_step(player, idx, |unit, c| Attack::command(c, unit, &cmd))?;
         // the start's notifies go to the unit AI (the unit's slot 0x328 -> the AI's slot 0x38)
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         for (kind, p) in posted {
             if let Some(ai) = unit.ai.as_mut() {
@@ -186,13 +192,13 @@ impl World {
         clears: bool,
     ) -> Result<(), GenieError> {
         let world_time = self.world_time;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.set_action(Some(ActionKind::Attack));
             ai.set_target(aim.aimed, aim.aimed_class, aim.at);
         }
         self.take(target, self.releaser(player, idx))?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.last_retarget_time = world_time;
             ai.notify_work(
@@ -223,7 +229,9 @@ impl World {
     ) -> Result<(), GenieError> {
         let quarry = self.quarry(player, target)?;
         let engagement = self.engagement(player, idx, target)?;
-        let task = self.players[player].objects[idx]
+        let task = self
+            .players
+            .live(player, idx)?
             .actions
             .hunt()
             .map(|h| h.task)
@@ -233,12 +241,14 @@ impl World {
         let arms = self.arms(player, idx, &task)?;
         // FUN_14109d4f0: the target's master is one of the unit's master's drop sites
         let target_master = self.object(target).map(|(_, t)| t.life.master_id);
-        let drops_here = self.players[player].objects[idx]
+        let drops_here = self
+            .players
+            .live(player, idx)?
             .master(&self.masters, player)?
             .drop_sites
             .iter()
             .any(|&d| Some(d) == target_master);
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let old = unit.actions.hunt().map(|h| h.target).filter(|&t| t != -1);
         let held = unit.life.amount;
         let (Some(hunt), Some(mover)) = (unit.actions.hunt_mut(), unit.body.mover_mut()) else {

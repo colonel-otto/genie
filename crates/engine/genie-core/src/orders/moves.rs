@@ -17,6 +17,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// One unit of MOVE: an object that does not move ignores an order not queued. The unit's
@@ -49,7 +50,10 @@ impl World {
         // move as its own player's, the issuer only queuing it
         let issuer = player;
         let player = p;
-        let master = self.players[player].objects[idx].master(&self.masters, player)?;
+        let master = self
+            .players
+            .live(player, idx)?
+            .master(&self.masters, player)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || speed <= 0.0 {
             if order.queued {
@@ -62,7 +66,7 @@ impl World {
         let target = self
             .object(ObjectId::field(order.target))
             .map(|(tp, t)| (t.life.master_id, tp));
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         // FUN_141197da0, then slot 0x2a0 with 1: it waits to move
         let mover = unit.body.mover_mut().ok_or(GenieError::unsupported(
             "a moved unit without movement state",
@@ -128,7 +132,7 @@ impl World {
         // and action, its target forgotten (FUN_140c4dcb0); every unit then the point
         // (FUN_140c64be0); in a grid every unit gets the order, the action and its cell, its
         // target kept; slot 0x2d8's walk and show targets are not held
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             let ai_stream = self.streams.get(Stream::Ai);
             match cell {
@@ -152,10 +156,12 @@ impl World {
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
         // head action's slot 0x40 take the point unless it stops after a kill (FUN_140c41c10)
         let world_time = self.world_time;
-        let class = self.players[player].objects[idx]
+        let class = self
+            .players
+            .live(player, idx)?
             .master(&self.masters, player)?
             .class;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let place = ([unit.position()[0], unit.position()[1]], class);
         if unit.ai.is_some() {
             // a completion's stop (slot 0xb0 with 1): the unit's stopAction at once
@@ -163,7 +169,7 @@ impl World {
                 ai.clear_notifies_at(world_time, place, side, rng)
             })?;
         }
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
         let taken = unit.ai.is_some()
             && !stop_after_kill
@@ -174,7 +180,7 @@ impl World {
             // clears, then the start)
             self.clear_actions(player, idx)?;
             let sprite = self.point_move_sprite(player, idx)?;
-            let unit = &mut self.players[player].objects[idx];
+            let unit = self.players.live_mut(player, idx)?;
             let move_to = crate::movement::move_to::MoveToAction::to_point(
                 point,
                 0.0,
@@ -203,7 +209,7 @@ impl World {
         player: usize,
         idx: usize,
     ) -> Result<Option<crate::objects::sprite::Graphic>, GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         let look = unit.abilities.look.as_ref();
         Ok(crate::movement::move_to::point_sprite(master, look, false)
@@ -219,11 +225,11 @@ impl World {
         idx: usize,
         m: crate::unit_ai::AiMove,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let class = unit.master(&self.masters, player)?.class;
         let by = self.releaser(player, idx);
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
-        let sails = self.players[player].objects[idx].ai_move_with(
+        let sails = self.players.live_mut(player, idx)?.ai_move_with(
             m,
             (class, player),
             (&mut releases, &mut builder_leaves, by),
@@ -266,7 +272,7 @@ impl World {
         idx: usize,
         order: &Work,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         // the class-54 test of its top action comes first in the game, but either way the order
         // is ignored
@@ -280,7 +286,7 @@ impl World {
             class,
             reach,
             target.is_none(),
-            self.players[player].computer,
+            self.players.player(player)?.computer,
         );
         // a class 54 under an action the slice does not hold may be under its Pack or Unpack
         if packs || (class == class::CLASS_54 && unit.unmodelled_action.is_some()) {
@@ -289,7 +295,7 @@ impl World {
             ));
         }
         if reach.is_some_and(|(_, too_close)| too_close) {
-            let unit = &mut self.players[player].objects[idx];
+            let unit = self.players.live_mut(player, idx)?;
             unit.post_own(TOO_CLOSE, [order.target, -1, -1])?;
             return Ok(());
         }
@@ -305,7 +311,10 @@ impl World {
             // FUN_141189ca0 with −1: the unit leaves the pasture it tends
             return self.tend_pasture(player, idx, -1);
         }
-        let master = self.players[player].objects[idx].master(&self.masters, player)?;
+        let master = self
+            .players
+            .live(player, idx)?
+            .master(&self.masters, player)?;
         // livestock (class 58) takes the enter command (slot 0x3a0); where it enters nothing, the
         // work command goes to the target's place without a target
         let mut order = *order;
@@ -373,7 +382,7 @@ impl World {
     ) -> Result<Option<i32>, GenieError> {
         use crate::gathering::pasture::PASTURE_WORKERS;
         use crate::technology::Attributes;
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         if order.target == -1 {
             return Ok(Some(-1));
@@ -385,7 +394,7 @@ impl World {
         if !pasture {
             return Ok(Some(-1));
         }
-        let room = Attributes::get(&self.players[player], PASTURE_WORKERS)?;
+        let room = Attributes::get(self.players.player(player)?, PASTURE_WORKERS)?;
         let workers = self.livestock_workers(order.target) as f32;
         // COMISS room with the workers, JBE: a NaN is full
         if room > workers {
@@ -407,7 +416,7 @@ impl World {
         }
         // its unit AI's slot 0x38 takes a search (0x202 with the hunt action, class 49 and −1,
         // from and to the unit)
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
             let search = crate::unit_ai::Notify::own(
@@ -443,11 +452,13 @@ impl World {
         point: [f32; 3],
         a14: bool,
     ) -> Result<(), GenieError> {
-        let villager = self.players[player].objects[idx]
+        let villager = self
+            .players
+            .live(player, idx)?
             .master(&self.masters, player)?
             .class
             == class::VILLAGER;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if villager {
             unit.town_bell.flag = false;
         }

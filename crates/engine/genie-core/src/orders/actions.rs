@@ -15,6 +15,7 @@ use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A live list that holds nothing right after a push.
 const NOTHING_PUSHED: GenieError = GenieError::unreachable("a live list empty right after a push");
@@ -76,7 +77,7 @@ impl World {
         idx: usize,
         (order, action): (Option<OrderKind>, Option<ActionKind>),
     ) -> Result<(), GenieError> {
-        let u = &self.players[player].objects[idx];
+        let u = &self.players.live(player, idx)?;
         let Some(target) = u.ai.as_ref().map(|a| a.current_target).filter(|&t| 0 <= t) else {
             return Ok(());
         };
@@ -97,7 +98,7 @@ impl World {
             category: crate::unit_ai::best_target::category(t.life.master_id, class),
             target_position: t.moved_vector(),
         };
-        if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
+        if let Some(ai) = self.players.live_mut(player, idx)?.ai.as_mut() {
             ai.remember_order(record);
         }
         Ok(())
@@ -111,7 +112,7 @@ impl World {
     pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
         let by = self.releaser(player, idx);
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
-        self.players[player].objects[idx].clear_own_actions(
+        self.players.live_mut(player, idx)?.clear_own_actions(
             &mut releases,
             &mut builder_leaves,
             by,
@@ -144,7 +145,7 @@ impl World {
         if p != player || self.master(player, master).is_err() {
             return Ok(());
         }
-        let unit = &self.players[p].objects[idx];
+        let unit = &self.players.live(p, idx)?;
         if unit.life.master_id != TROPHY || !TROPHIES.contains(&master) {
             return Ok(());
         }
@@ -163,7 +164,7 @@ impl World {
     ) -> Result<(), GenieError> {
         self.change_master(player, idx, new)?;
         let build_time = self.master(player, new)?.build_time;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if unit.life.state == 2
             && let Some(c) = unit.construction.as_mut()
         {
@@ -179,7 +180,7 @@ impl World {
     /// those its count finds, [`World::shut_in_gate`]) and takes the world time plus 1 as its
     /// last move time (`+0x870`).
     pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         if unit.gate.is_some_and(|g| g.other_masters) {
             return Err(GenieError::unsupported(
                 "a gate's toggle to a master of its own or its original owner's",
@@ -197,14 +198,16 @@ impl World {
         let height = self.master(player, new)?.height;
         let now = self.world_time;
         if 0.0 < height {
-            let id = self.players[player].objects[idx].id;
-            let annexes = crate::objects::unit::annexes_of(id, &self.players[player].objects);
+            let id = self.players.live(player, idx)?.id;
+            let annexes =
+                crate::objects::unit::annexes_of(id, &self.players.player(player)?.objects);
             let (units, _) =
                 crate::construction::gates::gate_units(&mut self.spatial, id, &annexes)?;
             for u in units {
                 self.shut_in_gate(u)?;
             }
-            self.players[player].objects[idx]
+            self.players
+                .live_mut(player, idx)?
                 .body
                 .mover_mut()
                 .ok_or(GenieError::unsupported(
@@ -242,14 +245,18 @@ impl World {
             return Ok(());
         }
         let unit = match self.place(id).ok_or_else(|| object_gone(id))? {
-            Place::Live(p, i) => &mut self.players[p].objects[i],
+            Place::Live(p, i) => self.players.live_mut(p, i)?,
             Place::Sleeping(p, i) => {
-                let woken = self.players[p].sleeping.swap_remove(i);
+                let woken = self.players.player_mut(p)?.sleeping.swap_remove(i);
                 let (id, master) = (woken.id, woken.life.master_id);
-                self.players[p].objects.push(woken);
+                self.players.player_mut(p)?.objects.push(woken);
                 // the wake's remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
                 self.track_relist(p, id, master);
-                self.players[p].objects.last_mut().ok_or(NOTHING_PUSHED)?
+                self.players
+                    .player_mut(p)?
+                    .objects
+                    .last_mut()
+                    .ok_or(NOTHING_PUSHED)?
             }
         };
         unit.life.goto_sleep = false;
@@ -273,7 +280,7 @@ impl World {
         new: i16,
     ) -> Result<(), GenieError> {
         self.clear_actions(player, idx)?;
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let old = unit.master(&self.masters, player)?.clone();
         let next = self.master(player, new)?.clone();
         let world = SwitchWorld {
@@ -282,19 +289,19 @@ impl World {
             graphics: &self.graphics,
             sprite: self.streams.get(Stream::Sprite),
         };
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let switched = switch_master(unit, &old, &next, world)?;
-        let owner = &mut self.players[player];
+        let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.leaving {
             owner.add_attribute(kind, amount)?;
         }
         if switched.promoted {
             // the tracker's promotion (FUN_14104fb20): last in its new key master's list and
             // class's
-            let id = self.players[player].objects[idx].id;
+            let id = self.players.live(player, idx)?.id;
             self.track_promote(player, id, old.id, new);
         }
-        let owner = &mut self.players[player];
+        let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.coming {
             owner.add_attribute(kind, amount)?;
         }

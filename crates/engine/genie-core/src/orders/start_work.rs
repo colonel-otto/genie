@@ -24,6 +24,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::orders::Work;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The game mode that puts the villagers to work at the start (`+0x34` 13, Empire Wars).
 pub const EMPIRE_WARS: i32 = 13;
@@ -67,8 +68,8 @@ impl World {
     /// ship's own search (its unit AI's slot 0x80), and what the work command does not model.
     pub(crate) fn start_work(&mut self, p: usize) -> Result<(), GenieError> {
         let mut i = 0;
-        while i < self.players[p].objects.len() {
-            let unit = &self.players[p].objects[i];
+        while i < self.players.player(p)?.objects.len() {
+            let unit = &self.players.live(p, i)?;
             let master = unit.master(&self.masters, p)?;
             let class = master.class;
             let building = master.kind == crate::objects::masters::master_type::BUILDING;
@@ -106,7 +107,8 @@ impl World {
                 }
                 None => self.closest_of_groups(p, i)?,
             };
-            if let Some(target) = target.filter(|&t| t != self.players[p].objects[i].id) {
+            let own = self.players.live(p, i)?.id;
+            if let Some(target) = target.filter(|&t| t != own) {
                 let point = self
                     .spatial
                     .get_known(target)?
@@ -130,7 +132,7 @@ impl World {
 
     /// The first farm in the object list of the unit's tile (a fish trap for a fishing ship).
     fn farm_under(&self, p: usize, i: usize, class: i16) -> Result<Option<i32>, GenieError> {
-        let at = self.players[p].objects[i].position();
+        let at = self.players.live(p, i)?.position();
         let (x, y) = (at[0] as i32, at[1] as i32);
         self.spatial.check_known([at[0], at[1], at[0], at[1]])?;
         for (id, _) in self.spatial.objects_on(x, y) {
@@ -158,20 +160,18 @@ impl World {
         Ok(best.1)
     }
 
-    /// [`gather_search::closest_resource_at`] for the unit at `i` of player `p` outside its
-    /// update: the tiles the player explored that its restriction lets it stand on, the objects
-    /// the world holds on them, its reach by the planners (slot 0x3d0 with the range 0).
-    fn resource_search_from(
-        &mut self,
+    /// The seeker and the walk's view of the unit `unit` of player `p` for
+    /// [`World::resource_search_from`].
+    ///
+    /// # Errors
+    ///
+    /// A master the world does not hold, or a unit without a unit AI.
+    fn search_seeker(
+        &self,
         p: usize,
-        i: usize,
-        kind: u8,
-    ) -> Result<(i32, Option<i32>), GenieError> {
-        let unit = &self.players[p].objects[i];
+        unit: &crate::objects::unit::Unit,
+    ) -> Result<(gather_search::Seeker, Me), GenieError> {
         let master = unit.master(&self.masters, p)?;
-        let mover = unit.body.mover().ok_or(GenieError::unsupported(
-            "a resource search without movement state",
-        ))?;
         let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(
             "a resource search without a unit AI",
         ))?;
@@ -189,6 +189,24 @@ impl World {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
+        Ok((seeker, me_walk))
+    }
+
+    /// [`gather_search::closest_resource_at`] for the unit at `i` of player `p` outside its
+    /// update: the tiles the player explored that its restriction lets it stand on, the objects
+    /// the world holds on them, its reach by the planners (slot 0x3d0 with the range 0).
+    fn resource_search_from(
+        &mut self,
+        p: usize,
+        i: usize,
+        kind: u8,
+    ) -> Result<(i32, Option<i32>), GenieError> {
+        let owner = self.players.player(p)?;
+        let unit = owner.live(i)?;
+        let mover = unit.body.mover().ok_or(GenieError::unsupported(
+            "a resource search without movement state",
+        ))?;
+        let (seeker, me_walk) = self.search_seeker(p, unit)?;
         let (mask, master_id) = (mover.stats.restriction_mask, unit.life.master_id);
         let (players, masters) = (&self.players, &self.masters);
         let candidate =
@@ -236,9 +254,9 @@ impl World {
         let mut plan = Planning {
             pathing: &mut self.pathing,
             now: self.world_time,
-            computer: self.players[p].computer,
+            computer: owner.computer,
             object: self.streams.get(Stream::Object),
-            construction_rate: self.players[p].construction_rate,
+            construction_rate: owner.construction_rate,
             groups: &self.groups,
         };
         let blocked = u64::from(mask ^ 0xff) | crate::map::spatial::BLOCKED;

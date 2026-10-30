@@ -17,6 +17,9 @@ const NO_PLAYER: GenieError = GenieError::unreachable("a player the world does n
 const NO_SLOT: GenieError =
     GenieError::unreachable("an object slot the player's list does not hold");
 
+/// A position the slice the caller holds does not hold.
+const NO_ELEMENT: GenieError = GenieError::unreachable("a position the list does not hold");
+
 /// Player `p`, and the objects at a position of its lists, as errors where a slice's index
 /// would panic.
 pub(crate) trait PlayerSlots {
@@ -53,6 +56,54 @@ pub(crate) trait PlayerSlots {
             .live_mut(i)
             .map_err(|e| e.with("player", p))
     }
+
+    /// The object at position `i` of player `p`'s sleeping list.
+    ///
+    /// # Errors
+    ///
+    /// A player or a position the lists do not hold.
+    fn asleep(&self, p: usize, i: usize) -> Result<&Unit, GenieError> {
+        self.player(p)?.asleep(i).map_err(|e| e.with("player", p))
+    }
+
+    /// The object at position `i` of player `p`'s sleeping list, to change.
+    ///
+    /// # Errors
+    ///
+    /// A player or a position the lists do not hold.
+    fn asleep_mut(&mut self, p: usize, i: usize) -> Result<&mut Unit, GenieError> {
+        self.player_mut(p)?
+            .asleep_mut(i)
+            .map_err(|e| e.with("player", p))
+    }
+}
+
+/// A position of a slice the caller holds, as an error where `v[i]` would panic: the index
+/// comes from the code's own loop or search, so a miss is an invariant broken.
+pub(crate) trait Held<T> {
+    /// The element at `i`.
+    ///
+    /// # Errors
+    ///
+    /// A position the slice does not hold.
+    fn at(&self, i: usize) -> Result<&T, GenieError>;
+
+    /// The element at `i`, to change.
+    ///
+    /// # Errors
+    ///
+    /// A position the slice does not hold.
+    fn at_mut(&mut self, i: usize) -> Result<&mut T, GenieError>;
+}
+
+impl<T> Held<T> for [T] {
+    fn at(&self, i: usize) -> Result<&T, GenieError> {
+        self.get(i).ok_or_else(|| NO_ELEMENT.with("index", i))
+    }
+
+    fn at_mut(&mut self, i: usize) -> Result<&mut T, GenieError> {
+        self.get_mut(i).ok_or_else(|| NO_ELEMENT.with("index", i))
+    }
 }
 
 impl PlayerSlots for [Player] {
@@ -85,11 +136,43 @@ impl Player {
             .get_mut(i)
             .ok_or_else(|| NO_SLOT.with("index", i))
     }
+
+    /// The object at position `i` of the sleeping list.
+    ///
+    /// # Errors
+    ///
+    /// A position the list does not hold.
+    pub(crate) fn asleep(&self, i: usize) -> Result<&Unit, GenieError> {
+        self.sleeping.get(i).ok_or_else(|| NO_SLOT.with("index", i))
+    }
+
+    /// The object at position `i` of the sleeping list, to change.
+    ///
+    /// # Errors
+    ///
+    /// A position the list does not hold.
+    pub(crate) fn asleep_mut(&mut self, i: usize) -> Result<&mut Unit, GenieError> {
+        self.sleeping
+            .get_mut(i)
+            .ok_or_else(|| NO_SLOT.with("index", i))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A position past a slice's end is an error that names it.
+    #[test]
+    fn a_position_past_the_end_is_an_error_naming_it() {
+        let mut v = [1, 2, 3];
+        assert_eq!(*v.at(2).unwrap(), 3);
+        *v.at_mut(0).unwrap() = 9;
+        assert_eq!(v, [9, 2, 3]);
+        let e = v.at(3).unwrap_err();
+        assert_eq!(e.context().collect::<Vec<_>>(), [("index", "3")]);
+        assert!(v.at_mut(4).is_err());
+    }
 
     /// A player or a position the table does not hold is an error that names it.
     #[test]
@@ -106,6 +189,9 @@ mod tests {
             [("index", "0".to_owned()), ("player", "1".to_owned())]
         );
         assert!(players.live_mut(0, 3).is_err());
+        assert!(players.asleep(0, 0).is_err());
+        assert!(players.asleep_mut(9, 0).is_err());
+        assert!(players.player_mut(0).unwrap().asleep_mut(0).is_err());
         assert!(players.player(0).unwrap().live(0).is_err());
     }
 }

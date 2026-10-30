@@ -15,6 +15,8 @@ use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::Held;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// PATROL (0x15): the command's check (`FUN_140e55590`, [`World::command_check`]: of the
@@ -33,15 +35,15 @@ impl World {
         let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let waypoints: &[[f32; 2]] = &waypoints.iter().map(|p| p.xy()).collect::<Vec<_>>();
-        let Some(ids) = self.command_check(player, ids) else {
+        let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
-        let cap = if self.players[player].computer {
+        let cap = if self.players.player(player)?.computer {
             500
         } else {
             60
         };
-        self.patrol_order(&ids[..ids.len().min(cap)], waypoints, reset)
+        self.patrol_order(ids.split_at(ids.len().min(cap)).0, waypoints, reset)
     }
 
     /// `ATTACK_MOVE` (0x21): the command's check (`FUN_140e54490`, [`World::command_check`], as
@@ -64,15 +66,15 @@ impl World {
         let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let waypoints: &[[f32; 2]] = &waypoints.iter().map(|p| p.xy()).collect::<Vec<_>>();
-        let Some(ids) = self.command_check(player, ids) else {
+        let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
-        let cap = if self.players[player].computer {
+        let cap = if self.players.player(player)?.computer {
             500
         } else {
             60
         };
-        self.sweep_order(&ids[..ids.len().min(cap)], waypoints, sweep)
+        self.sweep_order(ids.split_at(ids.len().min(cap)).0, waypoints, sweep)
     }
 
     /// `FUN_14161b970` for PATROL (its patrol flag 1, no target, `param_7` 0, `param_8` 1):
@@ -110,12 +112,14 @@ impl World {
     /// or not, resets as for an order.
     pub(super) fn reset_for_attack_move(&mut self, ids: &[i32]) {
         for &id in ids {
-            let unit = match self.place(id) {
-                Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
-                Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
-                None => continue,
-            };
-            if let Some(ai) = unit.ai.as_mut() {
+            let ai = self.players.iter_mut().find_map(|player| {
+                let unit = player
+                    .objects
+                    .by_id_mut(id)
+                    .or_else(|| player.sleeping.by_id_mut(id))?;
+                unit.ai.as_mut()
+            });
+            if let Some(ai) = ai {
                 ai.reset_for_order(self.streams.get(Stream::Ai));
             }
         }
@@ -260,7 +264,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let mut i = 0;
         while i < split.loose.len() {
-            let id = split.loose[i];
+            let id = *split.loose.at(i)?;
             let Some((p, u)) = self.object(id) else {
                 i += 1;
                 continue;
@@ -303,7 +307,7 @@ impl World {
             }
             // slot 0x520: +0x824 as the game holds it (x, height, y)
             let d = crate::math::fmath::sub([moved[0], moved[2], moved[1]], at);
-            let influence = self.players[p].formations.influence;
+            let influence = self.players.player(p)?.formations.influence;
             if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] <= influence * influence {
                 let _ = split.loose.remove(i);
                 let _ = self.add_to_group(group, id)?;
@@ -343,7 +347,7 @@ impl World {
         waypoints: &[[f32; 2]],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
-        let id = loose[i];
+        let id = *loose.at(i)?;
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };
@@ -390,8 +394,8 @@ impl World {
             self.move_aside(p, idx, walk)?;
         }
         let unit = match self.place(id) {
-            Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
-            Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
+            Some(Place::Live(p, i)) => self.players.live_mut(p, i)?,
+            Some(Place::Sleeping(p, i)) => self.players.asleep_mut(p, i)?,
             None => return Ok(()),
         };
         let rng = self.streams.get(Stream::Ai);

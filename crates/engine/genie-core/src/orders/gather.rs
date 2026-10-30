@@ -16,6 +16,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The Hunt a work command starts ([`World::start_hunt`]'s arguments).
 #[derive(Clone, Copy, Debug)]
@@ -53,36 +54,12 @@ impl World {
             "a gather's target the slice does not hold",
         ))?;
         let tm = t.master(&self.masters, tp)?;
-        if tm.kind == BUILDING {
-            // The action type of a packed siege unit unpacking (an Unpack, 125, `0x7d`), whose target a gather drops
-            // (`FUN_140a903a0`).
-            if t.top_action_kind() == Some(action_type::UNPACK) || t.unmodelled_action.is_some() {
-                return Err(GenieError::unsupported(
-                    "a gather retargeted to a building with an action (packing)",
-                ));
-            }
-            if tm.object_flags & GATHERED_BUILDING == 0 {
-                let (mp, main) = match t.annex_of {
-                    Some(m) => self.object(m).ok_or(GenieError::unsupported(
-                        "an annex whose main building is gone",
-                    ))?,
-                    None => (tp, t),
-                };
-                let main_master = main.master(&self.masters, mp)?.id;
-                if (main.life.state < 2 || matches!(main_master, PASTURE_MANGROVE | PASTURE))
-                    && mp == player
-                {
-                    return Err(GenieError::unsupported(
-                        "a gather retargeted to its player's foundation (its build)",
-                    ));
-                }
-                if tm.class != class::FARM {
-                    return Ok(false);
-                }
-            }
+        if !self.gatherable_building(player, (tp, t), tm)? {
+            return Ok(false);
         }
         let (t_at, t_radius) = (t.position(), tm.radius);
-        let unit = &self.players[player].objects[idx];
+        let owner = self.players.player(player)?;
+        let unit = owner.live(idx)?;
         let me = unit.master(&self.masters, player)?;
         let resource = crate::gathering::gather::Resource {
             id: target,
@@ -95,7 +72,7 @@ impl World {
             gap: crate::movement::footprint_gap(unit.position(), me.radius, t_at, t_radius),
             radius: t_radius,
         };
-        let computer = self.players[player].computer;
+        let computer = owner.computer;
         let farm_stops = self.settings.walkable_farms;
         let by = self.releaser(player, idx);
         // a stop farm's time per stop: the gatherer's work rate (its master's plus its powerup),
@@ -106,10 +83,10 @@ impl World {
             capacity: f32::from(me.capacity),
             productivity: crate::gathering::gather::productivity_of(
                 productivity,
-                &self.players[player].attributes,
+                &owner.attributes,
             ),
         };
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let held = unit.life.amount;
         let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -165,7 +142,7 @@ impl World {
         ))?;
         let tm = o.master(&self.masters, tp)?;
         let (at, radius) = (o.position(), tm.radius);
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let me = unit.master(&self.masters, player)?;
         let moved_to = Some(crate::gathering::gather::MoveTarget {
             id: target,
@@ -174,7 +151,7 @@ impl World {
             gap: crate::movement::footprint_gap(unit.position(), me.radius, at, radius),
         });
         let by = self.releaser(player, idx);
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let held = unit.life.amount;
         let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -218,7 +195,7 @@ impl World {
             Some((mp, m)) => m.master(&self.masters, mp)?.id,
             None => tm.id,
         };
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         Ok(unit
             .master(&self.masters, player)?
             .drop_sites
@@ -243,7 +220,7 @@ impl World {
         let quarry = Some(q);
         let gap = self.engagement(player, idx, target)?.gap;
         let by = self.releaser(player, idx);
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let (held, my_pasture) = (unit.life.amount, unit.my_pasture);
         let (Some(hunt), Some(mover)) = (unit.actions.hunt_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -322,7 +299,7 @@ impl World {
         ))?;
         let tm = t.master(&self.masters, tp)?;
         let (t_at, t_radius) = (t.position(), tm.radius);
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let me = unit.master(&self.masters, player)?;
         let resource = crate::gathering::gather::Resource {
             id: target,
@@ -351,7 +328,7 @@ impl World {
             capacity: f32::from(me.capacity),
             productivity: crate::gathering::gather::productivity_of(
                 task.productivity,
-                &self.players[player].attributes,
+                &self.players.player(player)?.attributes,
             ),
         };
         let mut gather = crate::gathering::gather::GatherAction::new(
@@ -361,7 +338,7 @@ impl World {
             rate,
         )?;
         self.take(target, self.releaser(player, idx))?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {
             ai.notify_work(
                 Some(OrderKind::Gather),
@@ -378,9 +355,9 @@ impl World {
             )?;
         }
         self.clear_actions(player, idx)?;
-        let computer = self.players[player].computer;
+        let computer = self.players.player(player)?.computer;
         let carry_rule = self.settings.carry_rule();
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let mover = unit
             .body
             .mover_mut()
@@ -421,7 +398,7 @@ impl World {
         idx: usize,
         task: &HuntTask,
     ) -> Result<Arms, GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         let moving = task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
         Ok(crate::combat::attack::arms(
@@ -439,7 +416,7 @@ impl World {
         idx: usize,
         target: i32,
     ) -> Result<Engagement, GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         let me = self
             .spatial
@@ -460,6 +437,50 @@ impl World {
         )
     }
 
+    /// [`World::retarget_gather`]'s test of a target that is a building: whether the gather goes
+    /// on (a building it can gather from, or a farm).
+    ///
+    /// # Errors
+    ///
+    /// A building with an action, a foundation of the unit's player, or an annex whose main
+    /// building is gone: not modelled.
+    fn gatherable_building(
+        &self,
+        player: usize,
+        (tp, t): (usize, &crate::objects::unit::Unit),
+        tm: &crate::objects::masters::Master,
+    ) -> Result<bool, GenieError> {
+        if tm.kind == BUILDING {
+            // The action type of a packed siege unit unpacking (an Unpack, 125, `0x7d`), whose target a gather drops
+            // (`FUN_140a903a0`).
+            if t.top_action_kind() == Some(action_type::UNPACK) || t.unmodelled_action.is_some() {
+                return Err(GenieError::unsupported(
+                    "a gather retargeted to a building with an action (packing)",
+                ));
+            }
+            if tm.object_flags & GATHERED_BUILDING == 0 {
+                let (mp, main) = match t.annex_of {
+                    Some(m) => self.object(m).ok_or(GenieError::unsupported(
+                        "an annex whose main building is gone",
+                    ))?,
+                    None => (tp, t),
+                };
+                let main_master = main.master(&self.masters, mp)?.id;
+                if (main.life.state < 2 || matches!(main_master, PASTURE_MANGROVE | PASTURE))
+                    && mp == player
+                {
+                    return Err(GenieError::unsupported(
+                        "a gather retargeted to its player's foundation (its build)",
+                    ));
+                }
+                if tm.class != class::FARM {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
     /// The Hunt from the factory (`FUN_140aca4b0` case 0x6e): the action takes its target (slot
     /// 0x178); the work command's unit AI notify (`FUN_14106e4e0`, `notify`) sets the hunt order;
     /// the install (`FUN_14106e990`) clears the action list and starts the hunt.
@@ -476,7 +497,7 @@ impl World {
         let mut quarry = self.quarry(player, target)?;
         quarry.drop_site = self.drops_at_main(player, idx, target)?;
         self.take(target, self.releaser(player, idx))?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut().filter(|_| notify) {
             ai.notify_work(
                 Some(OrderKind::Hunt),
@@ -489,17 +510,34 @@ impl World {
             self.remember_order(player, idx, (Some(OrderKind::Hunt), Some(ActionKind::Hunt)))?;
         }
         self.clear_actions(player, idx)?;
+        self.begin_hunt(player, idx, (task, &quarry))
+    }
+
+    /// [`World::start_hunt`]'s start of the Hunt action itself, once the unit's actions are
+    /// cleared: the engagement and arms, the action's start and its first sprite, and a load to its
+    /// own drop site.
+    ///
+    /// # Errors
+    ///
+    /// What the start does not model.
+    fn begin_hunt(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (task, quarry): (HuntTask, &Quarry),
+    ) -> Result<(), GenieError> {
+        let target = quarry.id;
         let engagement = self.engagement(player, idx, target)?;
         let arms = self.arms(player, idx, &task)?;
-        let computer = self.players[player].computer;
+        let computer = self.players.player(player)?.computer;
         let carry_rule = self.settings.carry_rule();
-        let unit = &mut self.players[player].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
             HuntStart {
                 task,
-                target: &quarry,
+                target: quarry,
                 player,
                 computer,
                 carry_rule,

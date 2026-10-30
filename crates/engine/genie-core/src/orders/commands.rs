@@ -11,6 +11,7 @@ use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// `UNIT_AI_STATE` (`do_command` case 0x12): the check ([`World::command_check`]), then
@@ -26,10 +27,10 @@ impl World {
     ) -> Result<(), GenieError> {
         let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
-        let Some(ids) = self.command_check(player, ids) else {
+        let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
-        let cap = if self.players[player].computer {
+        let cap = if self.players.player(player)?.computer {
             500
         } else {
             60
@@ -42,14 +43,14 @@ impl World {
                 Place::Live(p, i) => (p, i),
                 // only slot 0x180 puts an object to sleep, one of a type below 30, which has no
                 // unit AI: the handler passes it over
-                Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
+                Place::Sleeping(p, i) if self.players.asleep(p, i)?.ai.is_none() => continue,
                 Place::Sleeping(..) => {
                     return Err(GenieError::unsupported(
                         "a UNIT_AI_STATE of a sleeping object with a unit AI",
                     ));
                 }
             };
-            let unit = &self.players[p].objects[idx];
+            let unit = &self.players.live(p, idx)?;
             if unit.ai.is_none() {
                 continue;
             }
@@ -61,7 +62,7 @@ impl World {
                 continue;
             }
             let class = master.class;
-            let unit = &self.players[p].objects[idx];
+            let unit = &self.players.live(p, idx)?;
             let place = ([unit.position()[0], unit.position()[1]], class);
             // slot 0x1c0, its stop a call on the unit at once
             self.run_ai_calls((p, idx), |ai, side, rng| {
@@ -118,7 +119,7 @@ impl World {
         use crate::unit_ai::QueuedOrder;
         let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
-        let cap = if self.players[player].computer {
+        let cap = if self.players.player(player)?.computer {
             500
         } else {
             60
@@ -131,14 +132,14 @@ impl World {
                 Place::Live(p, i) => (p, i),
                 // only slot 0x180 puts an object to sleep, one of a type below 30, which has no
                 // unit AI: the handler passes it over
-                Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
+                Place::Sleeping(p, i) if self.players.asleep(p, i)?.ai.is_none() => continue,
                 Place::Sleeping(..) => {
                     return Err(GenieError::unsupported(
                         "an AUTO_SCOUT of a sleeping object with a unit AI",
                     ));
                 }
             };
-            let unit = &self.players[p].objects[idx];
+            let unit = &self.players.live(p, idx)?;
             if unit.ai.is_none() {
                 continue;
             }
@@ -201,7 +202,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
-        let Some(ids) = self.command_check(player, ids) else {
+        let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
         let list: Vec<Option<i32>> = self
@@ -213,8 +214,8 @@ impl World {
         let units: Vec<i32> = list.iter().flatten().copied().collect();
         for &id in &units {
             let unit = match self.place(id) {
-                Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
-                Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
+                Some(Place::Live(p, i)) => self.players.live_mut(p, i)?,
+                Some(Place::Sleeping(p, i)) => self.players.asleep_mut(p, i)?,
                 None => continue,
             };
             if let Some(ai) = unit.ai.as_mut() {
@@ -257,7 +258,7 @@ impl World {
                 continue;
             };
             self.object_stop(p, idx)?;
-            if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
+            if let Some(m) = self.players.live_mut(p, idx)?.body.mover_mut() {
                 m.stand()?;
             }
         }
@@ -272,12 +273,20 @@ impl World {
     /// The packet's own tests (its size, a player the game lacks) are
     /// [`World::read_units`]'s, and the world's `+0xb12` (the cheat that would let either
     /// through) is not held.
-    pub(crate) fn command_check(&self, player: usize, ids: &[i32]) -> Option<Vec<i32>> {
-        let computer = self.players[player].computer;
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    pub(crate) fn command_check(
+        &self,
+        player: usize,
+        ids: &[i32],
+    ) -> Result<Option<Vec<i32>>, GenieError> {
+        let computer = self.players.player(player)?.computer;
         let checked = ids.len().min(if computer { 500 } else { 60 });
         let mut ids = ids.to_vec();
         let mut dropped = 0;
-        for id in &mut ids[..checked] {
+        for id in ids.iter_mut().take(checked) {
             let keep = self
                 .object(*id)
                 .is_some_and(|(p, _)| p == player || self.settings.cheats_enabled);
@@ -287,9 +296,9 @@ impl World {
             }
         }
         if checked <= dropped && !computer {
-            return None;
+            return Ok(None);
         }
-        Some(ids)
+        Ok(Some(ids))
     }
 
     /// UNLOAD's check (`FUN_140e6f620`) of the ids of `player`: only the first 60 (500 for a
@@ -301,15 +310,23 @@ impl World {
     /// ([`crate::world::settings::Settings::cheats_enabled`]). A human's command whose ids all
     /// went is refused (None). The packet's size tests are the decoder's, and the world's
     /// `+0xb12` is not held.
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
     pub(crate) fn unload_check(
         &self,
         player: usize,
         ids: &[i32],
         flag: u8,
         named: i32,
-    ) -> Option<Vec<i32>> {
-        let computer = self.players[player].computer;
-        let mut ids = ids[..ids.len().min(if computer { 500 } else { 60 })].to_vec();
+    ) -> Result<Option<Vec<i32>>, GenieError> {
+        let computer = self.players.player(player)?.computer;
+        let mut ids: Vec<i32> = ids
+            .iter()
+            .take(if computer { 500 } else { 60 })
+            .copied()
+            .collect();
         let tied = |owner: usize| {
             self.mutual_allies(owner, player)
                 && match flag {
@@ -330,9 +347,9 @@ impl World {
             }
         }
         if ids.len() <= dropped && !computer {
-            return None;
+            return Ok(None);
         }
-        Some(ids)
+        Ok(Some(ids))
     }
 
     /// `FUN_1416642c0` with the ally flag: players `a` and `b` each count the other as its own
@@ -357,14 +374,14 @@ impl World {
     /// sprite's ([`crate::movement::Mover::shows_standing`]), and the sprite itself where the
     /// slice holds it.
     pub(crate) fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         if let Some(m) = unit.body.mover_mut() {
             m.shows_standing();
         }
         if unit.sprite.is_none() {
             return Ok(());
         }
-        let master = self.players[p].objects[idx].life.master_id;
+        let master = self.players.live(p, idx)?.life.master_id;
         let standing = self.master(p, master)?.standing_sprite;
         let g = self
             .graphics
@@ -374,7 +391,7 @@ impl World {
                 "a unit without its standing sprite",
             ))?;
         let rng = self.streams.get(Stream::Sprite);
-        let u = &mut self.players[p].objects[idx];
+        let u = self.players.live_mut(p, idx)?;
         crate::objects::sprite::new_sprite(&mut u.sprite, u.body.move_stats_mut(), g, rng);
         Ok(())
     }
