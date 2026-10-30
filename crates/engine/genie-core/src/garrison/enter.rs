@@ -7,7 +7,7 @@ use crate::garrison::{
     ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, UNPLACED, UNREACHED, WalkStart, Walking,
     enter_view, ship_reaches,
 };
-use crate::movement::move_to::SpriteReads;
+use crate::movement::move_to::MoveToReads;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::GARRISON;
@@ -328,11 +328,7 @@ impl World {
         let master = target.master(&self.masters, tp)?.clone();
         let target = placed_object(&self.players, self.place(action.target))?;
         let unit = &self.players[player].objects[idx];
-        let sprites = SpriteReads::of(
-            unit.master(&self.masters, player)?,
-            unit.abilities.look.as_ref(),
-            &self.graphics,
-        );
+        let reads = MoveToReads::of(unit, unit.master(&self.masters, player)?, &self.graphics);
         let meeting = Meeting {
             spatial: &mut self.spatial,
             zones: &mut self.zones,
@@ -341,7 +337,7 @@ impl World {
             room: t.room,
             unit,
         };
-        action.walk_again(t, start, meeting, &sprites)
+        action.walk_again(t, start, meeting, &reads)
     }
 
     /// `FUN_140a85f30` ([`meeting`], [`Meeting::point`]) for unit `idx` of `player` and its

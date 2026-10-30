@@ -434,10 +434,7 @@ pub(crate) fn enter_view(
             in_reach,
             building,
         },
-        WalkStart {
-            gap,
-            speed: stats.speed,
-        },
+        WalkStart { gap },
     ))
 }
 

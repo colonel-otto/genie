@@ -1,7 +1,7 @@
 use super::*;
 use crate::commands::{GatherPoint, UnloadCommand};
 use crate::map::Point;
-use crate::movement::move_to::{MoveDefaults, MoveToAction};
+use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::BuildingMaster;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -140,6 +140,17 @@ fn the_unload_groups() {
     assert_eq!(group(4), [0i16; 0]);
 }
 
+/// Unit `idx` of player 1 moves at `speed`.
+fn walks_at(t: &mut World, idx: usize, speed: f32) {
+    let mut walker = crate::gathering::hunt::tests::walker();
+    walker.stats = crate::movement::MoveStats {
+        speed,
+        base: speed,
+        ..standing()
+    };
+    t.players[1].objects[idx].body.put_mover(Some(walker));
+}
+
 /// [`garrison_world`] with villager 9149 of player 1, and its index.
 fn walk_again_world() -> (World, usize) {
     let mut t = garrison_world();
@@ -169,6 +180,8 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     // MarvinBlue/426048731's 9171 garrisons the town centre at (104, 47) from 3.5 tiles off:
     // set_state(4)'s MoveTo to it (FUN_140aa0df0), quiet, starts in state 3
     let (mut t, v) = walk_again_world();
+    // the villager walks at 0.8
+    walks_at(&mut t, v, 0.8);
     let tc = EnterTarget {
         state: 2,
         allied: true,
@@ -177,7 +190,7 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
         in_reach: false,
         building: true,
     };
-    let start = |gap| WalkStart { gap, speed: 0.8 };
+    let start = |gap| WalkStart { gap };
     let mut far = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
     assert_eq!(
         t.enter_walk_again(1, v, &mut far, &tc, start(3.5)),
@@ -229,6 +242,27 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
 }
 
 #[test]
+fn an_enter_of_a_unit_without_speed_starts_failed_beyond_arrived() {
+    // `0x140aa2100`: beyond ARRIVED of its target a MoveTo without speed starts in state 13
+    let (mut t, v) = walk_again_world();
+    walks_at(&mut t, v, 0.0);
+    let tc = EnterTarget {
+        state: 2,
+        allied: true,
+        room: true,
+        position: [104.0, 47.0, 0.0],
+        in_reach: false,
+        building: true,
+    };
+    let mut e = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
+    assert_eq!(
+        t.enter_walk_again(1, v, &mut e, &tc, WalkStart { gap: 3.5 }),
+        Ok(Walking::Walk(None))
+    );
+    assert_eq!(e.move_to.map(|m| m.state), Some(MoveTo::Failed));
+}
+
+#[test]
 fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
     // FUN_140a87320 case 4 on a transport: the point and code of FUN_140a85f30. An idle ship
     // meets the villager on the shore on the way (code 1): the transport is sent there at its
@@ -244,10 +278,7 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
         in_reach: false,
         building: false,
     };
-    let start = WalkStart {
-        gap: 6.0,
-        speed: 0.8,
-    };
+    let start = WalkStart { gap: 6.0 };
     let mut enter = EnterAction::new(200, [5.5, 30.5, 0.0], &enter_task(1.0, 20));
     assert_eq!(
         t.enter_walk_again(1, v, &mut enter, &ship, start),
@@ -278,12 +309,6 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
         Ok(Walking::Walk(None))
     );
     assert_eq!(enter.point, [9.5, 19.5, 0.0]);
-    // a unit without speed beyond ARRIVED: the MoveTo's state 13, not modelled
-    let still = WalkStart {
-        gap: 6.0,
-        speed: 0.0,
-    };
-    assert_eq!(EnterAction::walk_start(still), Err(NO_SPEED));
 }
 
 /// Villager 1000's index in player 1's list.
@@ -415,32 +440,6 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
         enter_update(&mut t, 500).map_err(|e| e.reason().to_owned()),
         Err(UNREACHED.reason().to_owned())
     );
-}
-
-/// The sprite its `MoveTo` shows: the task's moving sprite, else the default of its
-/// constructor: `FUN_140aa0df0`'s toward a building or from a meeting point below 0,
-/// `FUN_140aa0d30`'s toward a transport's point (a NaN is not below 0).
-#[test]
-fn an_enter_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
-    let defaults = MoveDefaults {
-        point: Some(20),
-        object: Some(21),
-    };
-    let shown = |point: [f32; 3], building, moving| {
-        EnterAction {
-            moving,
-            ..EnterAction::new(7420, point, &enter_task(1.0, 20))
-        }
-        .move_shown(building, defaults)
-    };
-    let at = [82.5, 89.5, 0.0];
-    assert_eq!(shown(at, true, None), Some(21));
-    assert_eq!(shown(at, false, None), Some(20));
-    assert_eq!(shown([-1.0, 89.5, 0.0], false, None), Some(21));
-    assert_eq!(shown([82.5, -0.5, 0.0], false, None), Some(21));
-    assert_eq!(shown([f32::NAN, 89.5, 0.0], false, None), Some(20));
-    assert_eq!(shown(at, true, Some(3)), Some(3));
-    assert_eq!(shown(at, false, Some(3)), Some(3));
 }
 
 /// The Enter's waiting `MoveTo` (state 2, after the motion step gave up): the world's dt

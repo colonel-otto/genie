@@ -67,6 +67,18 @@ impl WalkTo {
     }
 }
 
+impl WalkTo {
+    /// The target the `MoveTo` takes (slot 0x68, `FUN_140a7a230`) and the gap its start measures:
+    /// an object in a state above [`LAST_TAKEN`] is refused (the id -1) and far
+    /// ([`NO_TARGET_GAP`]).
+    const fn held(&self) -> (i32, f32) {
+        match self.state {
+            Some(s) if LAST_TAKEN < s => (-1, NO_TARGET_GAP),
+            _ => (self.id, self.gap),
+        }
+    }
+}
+
 impl<'g> MoveToReads<'g> {
     /// What a new `MoveTo` reads of `unit` of `master` (its own, or the one its task switches it
     /// to), with the sprites' table `graphics`: an object without movement has no speed (a
@@ -134,12 +146,7 @@ impl<'g> MoveToReads<'g> {
         given: Option<i16>,
         on_target_moved: TargetMoved,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let refused = to.state.is_some_and(|s| LAST_TAKEN < s);
-        let (target, gap) = if refused {
-            (-1, NO_TARGET_GAP)
-        } else {
-            (to.id, to.gap)
-        };
+        let (target, gap) = to.held();
         let walk = MoveToAction {
             state: MoveTo::Start,
             point: to.at,
@@ -149,6 +156,30 @@ impl<'g> MoveToReads<'g> {
             quiet: true,
             on_target_moved,
             wait: MoveWait::NEW,
+        };
+        Ok(walk.added(self.state, gap, self.speed))
+    }
+
+    /// A quiet `MoveTo` to `point` within `range` (`FUN_140aa0d30`, `FUN_140a7a170` with 1) that
+    /// then takes the object `to` as its target (slot 0x68, which leaves the point) with
+    /// `on_target_moved`, as the list adds it: the gap its start measures is the object's
+    /// ([`WalkTo::gap`]).
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn to_point_of(
+        &self,
+        to: WalkTo,
+        (point, range): ([f32; 3], f32),
+        given: Option<i16>,
+        on_target_moved: TargetMoved,
+    ) -> Result<Option<MoveToAction>, GenieError> {
+        let (target, gap) = to.held();
+        let walk = MoveToAction {
+            target,
+            on_target_moved,
+            ..MoveToAction::sub_to_point(point, range, self.sprites.to_point(given)?)
         };
         Ok(walk.added(self.state, gap, self.speed))
     }

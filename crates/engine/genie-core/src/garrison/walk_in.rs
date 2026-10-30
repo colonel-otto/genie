@@ -7,7 +7,7 @@ use crate::garrison::{ENTER_NEAR, HALF_TILE};
 use crate::math::rng::Stream;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{
-    GiveUp, MoveDefaults, MoveTo, MoveToAction, MoveWait, Shown, SpriteReads,
+    GiveUp, MoveDefaults, MoveTo, MoveToAction, MoveToReads, Shown, SpriteReads, WalkTo,
 };
 use crate::movement::{Me, PathAsk};
 use crate::objects::lifecycle::seconds;
@@ -25,9 +25,6 @@ use genie_diff::Diff;
 /// The Enter action's type (`RGE_Action_Enter`, vtable `0x142ed4db8`), which word 9 adds.
 pub const ENTER: i16 = 3;
 
-/// The gap below which the Enter's `MoveTo` starts arrived (`0x140aa2100`, `DAT_142eb99cc`).
-pub(super) const ARRIVED: f32 = crate::math::image::move_to::ARRIVED;
-
 /// An Enter whose target died or is not allied: the update lets it go and turns to state 11
 /// (`FUN_140a87320` case 11: a quiet `MoveTo` to the meeting point), which is not modelled.
 const ENTER_TARGET_DIED: GenieError =
@@ -38,8 +35,7 @@ pub(super) const WALK: u8 = 4;
 /// `0x3f800000` it stores).
 pub(super) const WAIT_SECONDS: f32 = 1.0;
 
-/// An Enter's `MoveTo` of a unit without speed (`0x140aa2100`'s state 13), or of a unit without
-/// movement state, which is not modelled.
+/// An Enter of a unit without movement state, which is not modelled.
 pub(crate) const NO_SPEED: GenieError =
     GenieError::unsupported("an Enter's MoveTo of a unit without speed");
 
@@ -96,13 +92,11 @@ pub struct EnterTarget {
 }
 
 /// What a new `MoveTo` of an Enter starts by (`0x140aa2100` with 1,
-/// [`EnterAction::walk_start`]).
+/// [`crate::movement::move_to::MoveToAction::added`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WalkStart {
     /// The footprints' gap of the unit and its target (`FUN_14118f680`).
     pub gap: f32,
-    /// The unit's speed.
-    pub speed: f32,
 }
 
 /// What an Enter's update (`FUN_140a87a80`) reads as it starts.
@@ -154,19 +148,6 @@ impl EnterAction {
         }
     }
 
-    /// The sprite its `MoveTo` shows (`set_state(4)`, `FUN_140a87320` case 4): the task's moving
-    /// sprite, else its constructor's default from `defaults`: `FUN_140aa0df0`'s toward a
-    /// `building` or toward a transport from a point below 0, `FUN_140aa0d30`'s toward a
-    /// transport's point (`UCOMISS`: a NaN coordinate is not below 0).
-    #[must_use]
-    pub fn move_shown(&self, building: bool, defaults: MoveDefaults) -> Option<i16> {
-        if building || self.point[0] < 0.0 || self.point[1] < 0.0 {
-            defaults.to_object(self.moving)
-        } else {
-            defaults.to_point(self.moving)
-        }
-    }
-
     /// `set_state(4)` (`FUN_140a87320` case 4) after the start's or the update's tests: its
     /// sub-actions go (`FUN_140a98620`; a `MoveTo`'s teardown stops the unit, the caller's), and
     /// its room test repeats theirs, which nothing between changes. A unit in reach of the
@@ -191,7 +172,7 @@ impl EnterAction {
         t: &EnterTarget,
         start: WalkStart,
         meeting: Meeting<'_>,
-        sprites: &SpriteReads<'_>,
+        reads: &MoveToReads<'_>,
     ) -> Result<Walking, GenieError> {
         self.move_to = None;
         self.state = WALK;
@@ -205,45 +186,34 @@ impl EnterAction {
             self.point[..2].copy_from_slice(&point);
             code
         };
-        let sprite = crate::movement::move_to::graphic_of(
-            sprites.graphics,
-            self.move_shown(t.building, sprites.defaults),
-        )?;
-        // its point (`+0x38`): `FUN_140aa0df0`'s target's place, or `FUN_140aa0d30`'s meeting
-        // point toward a transport (the constructors of [`EnterAction::move_shown`])
-        let to_object = t.building || self.point[0] < 0.0 || self.point[1] < 0.0;
-        self.move_to = Some(MoveToAction {
-            state: Self::walk_start(start)?,
-            point: if to_object { t.position } else { self.point },
-            target: self.target,
-            range: self.walk_range(t.building),
-            sprite,
-            quiet: true,
-            on_target_moved: TargetMoved::Ignores,
-            wait: MoveWait::NEW,
-        });
+        // `FUN_140aa0df0`'s: the target's place; `FUN_140aa0d30`'s: the meeting point toward a
+        // transport (a point below 0 would make the first)
+        let to = WalkTo {
+            id: self.target,
+            at: t.position,
+            gap: start.gap,
+            state: Some(t.state),
+        };
+        self.move_to = if t.building || self.point[0] < 0.0 || self.point[1] < 0.0 {
+            reads.to_object(
+                to,
+                self.walk_range(t.building),
+                self.moving,
+                TargetMoved::Ignores,
+            )?
+        } else {
+            reads.to_point_of(
+                to,
+                (self.point, self.walk_range(false)),
+                self.moving,
+                TargetMoved::Ignores,
+            )?
+        };
         Ok(Walking::Walk((code == 1).then_some([
             self.point[0],
             self.point[1],
             t.position[2],
         ])))
-    }
-
-    /// The `MoveTo`'s start (`0x140aa2100` with 1): beyond [`ARRIVED`] of the target's footprint
-    /// (`start.gap`) state 3, or 13 for a unit without speed ([`NO_SPEED`], not modelled); else
-    /// state 1.
-    ///
-    /// # Errors
-    ///
-    /// [`NO_SPEED`].
-    pub(super) fn walk_start(start: WalkStart) -> Result<MoveTo, GenieError> {
-        if ARRIVED < start.gap {
-            if start.speed == 0.0 {
-                return Err(NO_SPEED);
-            }
-            return Ok(MoveTo::Start);
-        }
-        Ok(MoveTo::Arrived)
     }
 
     /// The Enter with a `MoveTo` in `state` to its target within the task's range, as
@@ -258,7 +228,7 @@ impl EnterAction {
             sprite: None,
             quiet: true,
             on_target_moved: TargetMoved::Ignores,
-            wait: MoveWait::NEW,
+            wait: crate::movement::move_to::MoveWait::NEW,
         });
         self
     }
@@ -495,7 +465,8 @@ impl EnterAction {
                 defaults: reads.defaults,
                 graphics: &w.graphics,
             };
-            self.walk_again(t, reads.start, meeting, &sprites)?
+            let moves = MoveToReads::with_sprites(sprites, meeting.unit);
+            self.walk_again(t, reads.start, meeting, &moves)?
         };
         match walking {
             Walking::Enter => {

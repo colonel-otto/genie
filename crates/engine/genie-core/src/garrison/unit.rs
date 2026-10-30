@@ -87,13 +87,7 @@ impl Unit {
                     );
                 (Some(view), start)
             }
-            None => (
-                None,
-                crate::garrison::WalkStart {
-                    gap: 0.0,
-                    speed: 0.0,
-                },
-            ),
+            None => (None, crate::garrison::WalkStart { gap: 0.0 }),
         };
         let master = self.master(&c.w.masters, c.player);
         let villager = master.as_ref().is_ok_and(|m| m.class == class::VILLAGER);
