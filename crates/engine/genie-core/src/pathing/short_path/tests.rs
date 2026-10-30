@@ -39,37 +39,46 @@ fn search_toward(mesh: &Mesh, at: Point, range: i32) -> Search<'_> {
 fn a_goal_candidate_in_range_and_cheaper_becomes_the_goal_else_maybe_the_best() {
     let mesh = Mesh::new(64);
     let mut s = search_toward(&mesh, [10 * ONE, 10 * ONE], 2 * ONE);
-    assert!(s.goal_test(Corner {
-        cost: 5 * ONE,
-        parent: 0,
-        dir: 0,
-        low: 0,
-        high: 0,
-        poly: 0,
-        point: [11 * ONE, 10 * ONE]
-    }));
+    assert!(
+        s.goal_test(Corner {
+            cost: 5 * ONE,
+            parent: 0,
+            dir: 0,
+            low: 0,
+            high: 0,
+            poly: 0,
+            point: [11 * ONE, 10 * ONE]
+        })
+        .unwrap()
+    );
     assert_eq!(s.goal_node, 1);
     // in range but dearer: the best instead, as it lies nearer than the start's estimate
-    assert!(!s.goal_test(Corner {
-        cost: 6 * ONE,
-        parent: 0,
-        dir: 0,
-        low: 0,
-        high: 0,
-        poly: 0,
-        point: [11 * ONE, 10 * ONE]
-    }));
+    assert!(
+        !s.goal_test(Corner {
+            cost: 6 * ONE,
+            parent: 0,
+            dir: 0,
+            low: 0,
+            high: 0,
+            poly: 0,
+            point: [11 * ONE, 10 * ONE]
+        })
+        .unwrap()
+    );
     assert_eq!((s.goal_node, s.best), (1, 2));
     // out of range and farther than the best's estimate (one tile): nothing
-    assert!(!s.goal_test(Corner {
-        cost: ONE,
-        parent: 0,
-        dir: 0,
-        low: 0,
-        high: 0,
-        poly: 0,
-        point: [30 * ONE, 30 * ONE]
-    }));
+    assert!(
+        !s.goal_test(Corner {
+            cost: ONE,
+            parent: 0,
+            dir: 0,
+            low: 0,
+            high: 0,
+            poly: 0,
+            point: [30 * ONE, 30 * ONE]
+        })
+        .unwrap()
+    );
     assert_eq!((s.arena.len(), s.best), (3, 2));
 }
 
@@ -90,7 +99,8 @@ fn the_goal_s_foot_on_a_spanning_edge_is_a_goal_candidate() {
         dir: 0,
         start_cost: ONE,
         parent: 0,
-    });
+    })
+    .unwrap();
     assert_eq!(s.arena.len(), 1);
     s.foot_test(Foot {
         poly: 0,
@@ -102,7 +112,8 @@ fn the_goal_s_foot_on_a_spanning_edge_is_a_goal_candidate() {
         dir: 0,
         start_cost: ONE,
         parent: 0,
-    });
+    })
+    .unwrap();
     let goal = s.arena[s.goal_node as usize];
     assert_eq!((goal.at, goal.g), ([10 * ONE, 9 * ONE], 6 * ONE));
 }
@@ -264,12 +275,12 @@ fn a_start_deep_in_blocked_terrain_is_blocked_unless_in_range() {
     let mut pather = Pather::default();
     // each row of blocked tiles is a shape half a tile wider all round: the start sits 0.75
     // tiles inside row 5's, beyond twice the radius from its sides
-    assert!(pather.start_blocked(&mut mesh, &blocked, &q));
+    assert!(pather.start_blocked(&mut mesh, &blocked, &q).unwrap());
     let n = mesh.shapes.len() as u32;
     assert!(0 < n && (0..n).all(|id| !mesh.is_shape(id)));
-    assert!(!pather.start_blocked(&mut mesh, &free, &q));
+    assert!(!pather.start_blocked(&mut mesh, &free, &q).unwrap());
     q.range = 3.0;
-    assert!(!pather.start_blocked(&mut mesh, &blocked, &q));
+    assert!(!pather.start_blocked(&mut mesh, &blocked, &q).unwrap());
 }
 
 /// `FUN_140f9e540`'s entry tests as compiled: the target's gap clamps each axis by `MAXSS`
@@ -578,9 +589,9 @@ fn shape_at_2_2() -> Mesh {
 fn a_start_in_range_free_or_held_answers_by_its_escape_candidates() {
     let mesh = shape_at_2_2();
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 2 * ONE);
-    assert_eq!(s.start([11 * ONE, 12 * ONE]), 3);
+    assert_eq!(s.start([11 * ONE, 12 * ONE]).unwrap(), 3);
     assert_eq!((s.arena.len(), s.open.len()), (1, 0));
-    assert_eq!(s.start([10 * ONE, 10 * ONE]), 0);
+    assert_eq!(s.start([10 * ONE, 10 * ONE]).unwrap(), 0);
     assert_eq!((s.arena.len(), s.open.len()), (2, 1));
     assert_eq!(
         (s.open[0].at, s.open[0].kind),
@@ -588,7 +599,7 @@ fn a_start_in_range_free_or_held_answers_by_its_escape_candidates() {
     );
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     s.goal.r = ONE;
-    assert_eq!(s.start([4 * ONE, 3 * ONE]), 1);
+    assert_eq!(s.start([4 * ONE, 3 * ONE]).unwrap(), 1);
     assert_eq!(s.open.len(), 1);
     let n = s.open[0];
     // the touching point on side 1 has the lowest estimate toward (12, 12)
@@ -597,7 +608,7 @@ fn a_start_in_range_free_or_held_answers_by_its_escape_candidates() {
     assert_eq!(s.arena[n.idx as usize].f, n.f);
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     s.goal.r = ONE / 8;
-    assert_eq!(s.start([4 * ONE, 4 * ONE]), 2);
+    assert_eq!(s.start([4 * ONE, 4 * ONE]).unwrap(), 2);
 }
 
 /// `FUN_140fa4410`'s scan: every corner tile of the box twice the radius out is read once;
@@ -609,11 +620,11 @@ fn the_start_s_scan_reads_each_corner_tile_once_and_skips_ignored_shapes() {
     let p = [4 * ONE, 3 * ONE];
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     s.goal.r = ONE;
-    s.escape_candidates(p, 0);
+    s.escape_candidates(p, 0).unwrap();
     let mut one = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     one.goal.r = ONE;
     for k in 0..4 {
-        one.escape_side(p, 0, (0, k), 4 * i64::from(ONE));
+        one.escape_side(p, 0, (0, k), 4 * i64::from(ONE)).unwrap();
     }
     let tiles = [(2, 1), (6, 1), (6, 5), (2, 5)];
     let holding = tiles
@@ -626,7 +637,7 @@ fn the_start_s_scan_reads_each_corner_tile_once_and_skips_ignored_shapes() {
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     s.ctx.ignore = &ignore;
     s.goal.r = ONE;
-    s.escape_candidates(p, 0);
+    s.escape_candidates(p, 0).unwrap();
     assert_eq!(s.open.len(), 0);
 }
 
@@ -640,7 +651,7 @@ fn a_shape_s_side_gives_the_circle_s_crossings_the_foot_and_a_near_corner() {
     let side = |shape, side| Kind::Side { shape, side };
     let rr2 = 4 * i64::from(ONE);
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 0), rr2);
+    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 0), rr2).unwrap();
     let mut got = opened(&s);
     got.sort_by_key(|&(at, _, _)| at);
     assert_eq!(got.len(), 3);
@@ -655,17 +666,17 @@ fn a_shape_s_side_gives_the_circle_s_crossings_the_foot_and_a_near_corner() {
         assert!((g - 2 * ONE).abs() <= 2, "{g}");
     }
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 1), rr2);
+    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 1), rr2).unwrap();
     assert_eq!(
         opened(&s),
         vec![([6 * ONE, 3 * ONE], 2 * ONE, side(0, 1)); 3]
     );
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 2), rr2);
+    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 2), rr2).unwrap();
     assert_eq!(opened(&s), vec![]);
     // from (3, 3) the corner (2, 2) lies √2 away
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([3 * ONE, 3 * ONE], 0, (0, 0), rr2);
+    s.escape_side([3 * ONE, 3 * ONE], 0, (0, 0), rr2).unwrap();
     assert!(
         opened(&s)
             .iter()
@@ -675,7 +686,7 @@ fn a_shape_s_side_gives_the_circle_s_crossings_the_foot_and_a_near_corner() {
     let mut mesh = shape_at_2_2();
     let _ = mesh.add([5 * ONE, 0, 9 * ONE, 3 * ONE]);
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 0), rr2);
+    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 0), rr2).unwrap();
     let got = opened(&s);
     assert_eq!(got.len(), 3);
     assert!(got.iter().all(|&(at, _, _)| at[0] <= 5 * ONE));
@@ -698,7 +709,7 @@ fn the_start_s_foot_on_a_side_lies_between_its_corners_in_the_box_and_free() {
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     let p = [3 * ONE, 5 * ONE / 2];
     for k in 0..4 {
-        s.escape_foot(p, 0, (0, k), corners(k));
+        s.escape_foot(p, 0, (0, k), corners(k)).unwrap();
     }
     let mut got = opened(&s);
     got.sort_by_key(|&(_, g, _)| g);
@@ -712,15 +723,17 @@ fn the_start_s_foot_on_a_side_lies_between_its_corners_in_the_box_and_free() {
         ]
     );
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_foot([2 * ONE, 5 * ONE / 2], 0, (0, 0), corners(0));
-    s.escape_foot([3 * ONE, 6 * ONE], 0, (0, 1), corners(1));
+    s.escape_foot([2 * ONE, 5 * ONE / 2], 0, (0, 0), corners(0))
+        .unwrap();
+    s.escape_foot([3 * ONE, 6 * ONE], 0, (0, 1), corners(1))
+        .unwrap();
     assert_eq!(opened(&s), vec![]);
     s.bounds = [0, 0, 64 * ONE, ONE];
-    s.escape_foot(p, 0, (0, 0), corners(0));
+    s.escape_foot(p, 0, (0, 0), corners(0)).unwrap();
     let mut held = shape_at_2_2();
     let _ = held.add([0, 0, 4 * ONE, 4 * ONE]);
     let mut t = search_toward(&held, [12 * ONE, 12 * ONE], 0);
-    t.escape_foot(p, 0, (0, 0), corners(0));
+    t.escape_foot(p, 0, (0, 0), corners(0)).unwrap();
     assert_eq!((opened(&s), opened(&t)), (vec![], vec![]));
 }
 
@@ -755,7 +768,8 @@ fn a_side_s_contacts_become_candidates_when_wide_free_and_near() {
     let ignore = [false, false, false, true];
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     s.ctx.ignore = &ignore;
-    s.escape_contacts([4 * ONE, 3 * ONE], 0, (0, 0), 4 * i64::from(ONE));
+    s.escape_contacts([4 * ONE, 3 * ONE], 0, (0, 0), 4 * i64::from(ONE))
+        .unwrap();
     let side = Kind::Side { shape: 0, side: 0 };
     // 3/4 and 1 tile off: 5/4 tiles
     let mut got = opened(&s);

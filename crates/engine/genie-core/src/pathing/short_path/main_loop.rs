@@ -5,7 +5,15 @@ use crate::pathing::short_path::{
     ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits, float_distance, in_box,
     isqrt, through_float,
 };
+use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
+
+/// What a polygon's re-walk keeps fixed: the node it comes from, the polygon and its vertex count.
+struct Rewalk {
+    parent: u32,
+    poly: u32,
+    count: u32,
+}
 
 impl Search<'_> {
     /// Type 2, a node on a shape's side: a polygon already holding its point is walked again from
@@ -20,15 +28,20 @@ impl Search<'_> {
         let p = n.at;
         let d = self.ctx.d;
         for i in 0..self.polys.len() {
-            let Some(e) =
-                Self::edge_holding(&self.polys[i], p, u32::from(side), self.ctx.mesh, shape, d)
-            else {
+            let Some(e) = Self::edge_holding(
+                self.polys.checked(i)?,
+                p,
+                u32::from(side),
+                self.ctx.mesh,
+                shape,
+                d,
+            ) else {
                 continue;
             };
-            if !RECT_HEURISTIC || !self.polys[i].flag {
+            if !RECT_HEURISTIC || !self.polys.checked(i)?.flag {
                 return Ok(None);
             }
-            self.rewalk(n, i as u32, e);
+            self.rewalk(n, i as u32, e)?;
             return Ok(None);
         }
         self.polys.push(Poly::default());
@@ -38,11 +51,11 @@ impl Search<'_> {
         'older: for j in 0..last {
             for k in 0..poly.vertices.len() {
                 let hit = Self::edge_holding(
-                    &self.polys[j],
-                    poly.vertices[k],
-                    u32::from(poly.sides[k]),
+                    self.polys.checked(j)?,
+                    *poly.vertices.checked(k)?,
+                    u32::from(*poly.sides.checked(k)?),
                     self.ctx.mesh,
-                    poly.shapes[k],
+                    *poly.shapes.checked(k)?,
                     d,
                 );
                 if hit.is_some() {
@@ -52,126 +65,128 @@ impl Search<'_> {
             }
         }
         let empty = poly.vertices.is_empty();
-        self.polys[last] = poly;
+        *self.polys.checked_mut(last)? = poly;
         if rc == 1 || rc == 2 || empty {
             return Ok(Some(ShortPath {
                 result: 4,
                 points: Vec::new(),
             }));
         }
-        self.walk_new(last as u32, p, n.g, n.idx);
+        self.walk_new(last as u32, p, n.g, n.idx)?;
         Ok(None)
     }
 
     /// The re-walk of a polygon from edge `e` (0x140fa63d4..0x140fa6639): backward from `v[e]`,
     /// forward from `v[e + 1]`, the forward side on equal costs, each while its cost stays below
     /// the vertex's; vertices no corner node reached are passed over.
-    pub(super) fn rewalk(&mut self, n: Node, pi: u32, e: u32) {
+    pub(super) fn rewalk(&mut self, n: Node, pi: u32, e: u32) -> Result<(), GenieError> {
         let p = n.at;
-        let poly = &self.polys[pi as usize];
+        let poly = self.polys.checked(pi as usize)?;
         let m = poly.vertices.len() as u32;
         let next0 = (e + 1) % m;
         let mut bv = e;
         let mut fv = next0;
-        let mut gb = cheb(poly.vertices[e as usize], p).wrapping_add(n.g);
-        let mut gf = cheb(poly.vertices[next0 as usize], p).wrapping_add(n.g);
+        let mut gb = cheb(*poly.vertices.checked(e as usize)?, p).wrapping_add(n.g);
+        let mut gf = cheb(*poly.vertices.checked(next0 as usize)?, p).wrapping_add(n.g);
         let alive = |cost: i32, g: i32| g < cost || cost == UNSET;
-        let mut alive_b = alive(poly.costs[e as usize], gb);
-        let mut alive_f = alive(poly.costs[next0 as usize], gf);
+        let mut alive_b = alive(*poly.costs.checked(e as usize)?, gb);
+        let mut alive_f = alive(*poly.costs.checked(next0 as usize)?, gf);
+        let walk = Rewalk {
+            parent: n.idx,
+            poly: pi,
+            count: m,
+        };
         loop {
             if !(alive_b || alive_f) {
-                return;
+                return Ok(());
             }
             let forward = (gf <= gb && alive_f) || !alive_b;
-            let poly = self.polys[pi as usize].clone();
+            let poly = self.polys.checked(pi as usize)?.clone();
             if forward {
-                let v = poly.vertices[fv as usize];
-                let sp = poly.sides[((fv + m - 1) % m) as usize];
-                let sn = poly.sides[fv as usize];
-                let sh = poly.shapes[fv as usize];
-                if poly.costs[fv as usize] != UNSET
-                    && !self.goal_test(Corner {
-                        cost: gf,
-                        parent: n.idx,
-                        dir: 0,
-                        low: e,
-                        high: fv,
-                        poly: pi,
-                        point: v,
-                    })
-                    && sp != sn
-                    && sh != NONE
-                    && let Some(token) = corner_emits(sp, sn, v, self.goal.at)
-                {
-                    let kind = Kind::Corner {
-                        dir: 0,
-                        lo: e,
-                        hi: fv,
-                        poly: pi,
-                        token: u32::from(token),
-                        prev: sp,
-                        next: sn,
-                    };
-                    let node = self.add(gf, n.idx, v, kind);
-                    self.push(node);
-                    self.polys[pi as usize].costs[fv as usize] = gf;
-                }
-                let costs = &self.polys[pi as usize].costs;
-                let mut at = v;
-                loop {
-                    fv = (fv + 1) % m;
-                    let w = poly.vertices[fv as usize];
-                    gf = gf.wrapping_add(cheb(at, w));
-                    alive_f = gf < costs[fv as usize];
-                    at = w;
-                    if costs[fv as usize] != UNSET {
-                        break;
-                    }
-                }
+                self.rewalk_corner(&walk, &poly, (fv, gf), (0, e, fv))?;
+                (fv, gf, alive_f) = self.rewalk_advance(&walk, &poly, (fv, gf), true)?;
             } else {
-                let v = poly.vertices[bv as usize];
-                let sp = poly.sides[((bv + m - 1) % m) as usize];
-                let sn = poly.sides[bv as usize];
-                let sh = poly.shapes[bv as usize];
-                if poly.costs[bv as usize] != UNSET
-                    && !self.goal_test(Corner {
-                        cost: gb,
-                        parent: n.idx,
-                        dir: 1,
-                        low: bv,
-                        high: next0,
-                        poly: pi,
-                        point: v,
-                    })
-                    && sp != sn
-                    && sh != NONE
-                    && let Some(token) = corner_emits(sp, sn, v, self.goal.at)
-                {
-                    let kind = Kind::Corner {
-                        dir: 1,
-                        lo: bv,
-                        hi: next0,
-                        poly: pi,
-                        token: u32::from(token),
-                        prev: sp,
-                        next: sn,
-                    };
-                    let node = self.add(gb, n.idx, v, kind);
-                    self.push(node);
-                    self.polys[pi as usize].costs[bv as usize] = gb;
-                }
-                let costs = &self.polys[pi as usize].costs;
-                let mut at = v;
-                loop {
-                    bv = (m - 1 + bv) % m;
-                    let w = poly.vertices[bv as usize];
-                    gb = gb.wrapping_add(cheb(at, w));
-                    alive_b = gb < costs[bv as usize];
-                    at = w;
-                    if costs[bv as usize] != UNSET {
-                        break;
-                    }
-                }
+                self.rewalk_corner(&walk, &poly, (bv, gb), (1, bv, next0))?;
+                (bv, gb, alive_b) = self.rewalk_advance(&walk, &poly, (bv, gb), false)?;
+            }
+        }
+    }
+
+    /// The re-walk's corner at vertex `at` of `poly`, reached with cost `g` as a walk in
+    /// direction `dir` over the run `lo`..`hi`: a vertex a corner node reached before and no goal
+    /// candidate, where the sides differ and the corner emits a token, becomes a corner node.
+    fn rewalk_corner(
+        &mut self,
+        walk: &Rewalk,
+        poly: &Poly,
+        (at, g): (u32, i32),
+        (dir, lo, hi): (u8, u32, u32),
+    ) -> Result<(), GenieError> {
+        let m = walk.count;
+        let v = *poly.vertices.checked(at as usize)?;
+        let sp = *poly.sides.checked(((at + m - 1) % m) as usize)?;
+        let sn = *poly.sides.checked(at as usize)?;
+        let sh = *poly.shapes.checked(at as usize)?;
+        if *poly.costs.checked(at as usize)? != UNSET
+            && !self.goal_test(Corner {
+                cost: g,
+                parent: walk.parent,
+                dir,
+                low: lo,
+                high: hi,
+                poly: walk.poly,
+                point: v,
+            })?
+            && sp != sn
+            && sh != NONE
+            && let Some(token) = corner_emits(sp, sn, v, self.goal.at)
+        {
+            let kind = Kind::Corner {
+                dir,
+                lo,
+                hi,
+                poly: walk.poly,
+                token: u32::from(token),
+                prev: sp,
+                next: sn,
+            };
+            let node = self.add(g, walk.parent, v, kind);
+            self.push(node);
+            *self
+                .polys
+                .checked_mut(walk.poly as usize)?
+                .costs
+                .checked_mut(at as usize)? = g;
+        }
+        Ok(())
+    }
+
+    /// The re-walk on from vertex `from` (cost `g`) to the next vertex a corner node reached,
+    /// forward or backward: its place, the cost there and whether it is still below the
+    /// vertex's.
+    fn rewalk_advance(
+        &self,
+        walk: &Rewalk,
+        poly: &Poly,
+        (from, g): (u32, i32),
+        forward: bool,
+    ) -> Result<(u32, i32, bool), GenieError> {
+        let m = walk.count;
+        let costs = &self.polys.checked(walk.poly as usize)?.costs;
+        let (mut vi, mut g) = (from, g);
+        let mut at = *poly.vertices.checked(from as usize)?;
+        loop {
+            vi = if forward {
+                (vi + 1) % m
+            } else {
+                (m - 1 + vi) % m
+            };
+            let w = *poly.vertices.checked(vi as usize)?;
+            g = g.wrapping_add(cheb(at, w));
+            let cost = *costs.checked(vi as usize)?;
+            at = w;
+            if cost != UNSET {
+                return Ok((vi, g, g < cost));
             }
         }
     }
@@ -191,16 +206,16 @@ impl Search<'_> {
         let mut t = range_point(self.goal.range, p, self.goal.at)?;
         let mut frac = T_START;
         let reach = n.g.wrapping_add(float_distance(t, p));
-        if self.goal_node != NONE && (reach >= self.arena[self.goal_node as usize].g) {
+        if self.goal_node != NONE && (reach >= self.arena.checked(self.goal_node as usize)?.g) {
             return Ok(());
         }
         let mut hit = Hit {
             shape: NONE,
             side: 0,
         };
-        let mut k = self
-            .ctx
-            .raycast(p, t, &mut frac, &mut hit, Callback::Corner, &mut self.token);
+        let mut k =
+            self.ctx
+                .raycast(p, t, &mut frac, &mut hit, Callback::Corner, &mut self.token)?;
         if k == 2 {
             let b = self.bounds;
             for dir in NUDGES {
@@ -216,9 +231,14 @@ impl Search<'_> {
                 };
                 self.token = u32::from(tok);
                 let mut f2 = T_START;
-                k = self
-                    .ctx
-                    .raycast(p, tj, &mut f2, &mut hit, Callback::Corner, &mut self.token);
+                k = self.ctx.raycast(
+                    p,
+                    tj,
+                    &mut f2,
+                    &mut hit,
+                    Callback::Corner,
+                    &mut self.token,
+                )?;
                 if k != 2 {
                     frac = f2;
                     t = tj;
@@ -232,7 +252,7 @@ impl Search<'_> {
         }
         if k == 1 {
             let mut h = Self::at_fraction(p, t, frac);
-            self.settle(&mut h, &mut hit);
+            self.settle(&mut h, &mut hit)?;
             if h != p {
                 let g = n.g.wrapping_add(float_distance(p, h));
                 self.side_node(g, n.idx, hit.shape, hit.side, h);
@@ -250,7 +270,7 @@ impl Search<'_> {
             next: 0xff,
         };
         let node = self.add(g, n.idx, t, kind);
-        if self.goal_node == NONE || node.g < self.arena[self.goal_node as usize].g {
+        if self.goal_node == NONE || node.g < self.arena.checked(self.goal_node as usize)?.g {
             self.goal_node = node.idx;
         }
         Ok(())
@@ -264,13 +284,13 @@ impl Search<'_> {
         let dx = t[0].wrapping_sub(p[0]);
         let dy = t[1].wrapping_sub(p[1]);
         let m = [t[0], p[1]];
-        let sw = self.ctx.sweep(p, m, if 0 < dx { 1 } else { 3 });
+        let sw = self.ctx.sweep(p, m, if 0 < dx { 1 } else { 3 })?;
         if let Some((shape, side, at)) = sw.counted()? {
             let g = n.g.wrapping_add(float_distance(p, at));
             self.side_node(g, n.idx, shape, side, at);
             return Ok(());
         }
-        let sw2 = self.ctx.sweep(m, t, if 0 < dy { 2 } else { 0 });
+        let sw2 = self.ctx.sweep(m, t, if 0 < dy { 2 } else { 0 })?;
         let Some((shape, side, at)) = sw2.counted()? else {
             let step = if dx.wrapping_abs() < 0x40_0000 {
                 dx
@@ -283,7 +303,7 @@ impl Search<'_> {
                 [step.wrapping_add(p[0]), p[1]],
                 Kind::Waypoint,
             );
-            if self.best == NONE || w.g < self.arena[self.best as usize].g {
+            if self.best == NONE || w.g < self.arena.checked(self.best as usize)?.g {
                 self.best = w.idx;
             }
             return Ok(());
@@ -303,7 +323,7 @@ impl Search<'_> {
 impl Search<'_> {
     /// The search itself, after the prologue: the start, the main loop, the path.
     pub(super) fn run(&mut self, start: Point) -> Result<ShortPath, GenieError> {
-        let res4410 = self.start(start);
+        let res4410 = self.start(start)?;
         match res4410 {
             3 => {
                 return Ok(ShortPath {
@@ -333,28 +353,28 @@ impl Search<'_> {
         }
         // the path from the goal back, without the root
         let mut pts: Vec<Point> = Vec::new();
-        let mut node = self.arena[self.goal_node as usize];
+        let mut node = *self.arena.checked(self.goal_node as usize)?;
         let mut is_root = node.parent == NONE;
         while !is_root {
-            let parent = self.arena[node.parent as usize];
+            let parent = *self.arena.checked(node.parent as usize)?;
             match node.kind {
                 Kind::Corner {
                     poly, dir, lo, hi, ..
                 } if poly != NONE => {
                     pts.push(node.at);
-                    let v = &self.polys[poly as usize].vertices;
+                    let v = &self.polys.checked(poly as usize)?.vertices;
                     let n = v.len() as u32;
                     if dir == 1 {
                         let mut k = lo;
                         while k != hi {
-                            pts.push(v[k as usize]);
+                            pts.push(*v.checked(k as usize)?);
                             k = (k + 1) % n;
                         }
                     } else {
                         let mut k = hi;
                         while k != lo {
                             k = (k + n - 1) % n;
-                            pts.push(v[k as usize]);
+                            pts.push(*v.checked(k as usize)?);
                         }
                     }
                 }
@@ -379,7 +399,7 @@ impl Search<'_> {
         while i < pts.len() {
             let mut j = i + 2;
             while j < pts.len() {
-                if !sight.sight_blocked(pts[j], pts[i]) {
+                if !sight.sight_blocked(*pts.checked(j)?, *pts.checked(i)?)? {
                     let _ = pts.drain(i + 1..j);
                     j = i + 1;
                 }
@@ -407,10 +427,10 @@ impl Search<'_> {
         let d = self.ctx.d;
         match n.kind {
             Kind::Waypoint => {
-                let _ = self.pop_test(&n);
+                let _ = self.pop_test(&n)?;
             }
             Kind::Start => {
-                if self.pop_test(&n) {
+                if self.pop_test(&n)? {
                     return Ok(None);
                 }
                 let t = range_point(self.goal.range, p, self.goal.at)?;
@@ -422,7 +442,7 @@ impl Search<'_> {
                 let mut token = self.token;
                 let k = self
                     .ctx
-                    .raycast(p, t, &mut frac, &mut hit, Callback::Box, &mut token);
+                    .raycast(p, t, &mut frac, &mut hit, Callback::Box, &mut token)?;
                 self.token = token;
                 match k {
                     0 => {
@@ -434,14 +454,14 @@ impl Search<'_> {
                     2 => self.touch_from(n, p, t, frac, hit)?,
                     _ => {
                         let mut h = Self::at_fraction(p, t, frac);
-                        self.settle(&mut h, &mut hit);
+                        self.settle(&mut h, &mut hit)?;
                         let g = n.g.wrapping_add(float_distance(p, h));
                         self.side_node(g, n.idx, hit.shape, hit.side, h);
                     }
                 }
             }
             Kind::Side { shape, side } => {
-                if self.pop_test(&n) {
+                if self.pop_test(&n)? {
                     return Ok(None);
                 }
                 let _ = self.side_expand(n, shape, side)?;
@@ -449,7 +469,7 @@ impl Search<'_> {
             Kind::Corner {
                 token, prev, next, ..
             } => {
-                if self.pop_test(&n) {
+                if self.pop_test(&n)? {
                     return Ok(None);
                 }
                 self.corner_expand(n, token, prev, next)?;
@@ -473,7 +493,7 @@ impl Search<'_> {
         let mut base = n;
         while 1 <= frac {
             let qp = Self::at_fraction(p, t, frac);
-            if self.ctx.holder(qp).is_none() {
+            if self.ctx.holder(qp)?.is_none() {
                 let dx = ((i64::from(t[0].wrapping_sub(p[0])) * i64::from(frac)) >> 22) as i32;
                 let dy = ((i64::from(t[1].wrapping_sub(p[1])) * i64::from(frac)) >> 22) as i32;
                 let fy = dy as f32 * TO_FLOAT;
@@ -484,7 +504,7 @@ impl Search<'_> {
             }
             frac -= 0x6_6666;
         }
-        let r = self.ctx.mesh.shapes[hit.shape as usize];
+        let r = *self.ctx.mesh.shapes.checked(hit.shape as usize)?;
         let centre = [
             r[0].wrapping_add(
                 (((i64::from(r[2] - r[0]) * 0x40_0000)

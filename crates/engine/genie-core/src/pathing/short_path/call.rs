@@ -5,6 +5,7 @@ use crate::pathing::mesh::{Mesh, ONE};
 use crate::pathing::short_path::{
     Ctx, Goal, NONE, Point, Search, TO_FIXED, TO_FLOAT, clip, tile_of,
 };
+use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
 /// The short pather's arguments (`FUN_140f9d3a0`'s block, which `FUN_140f9e540` and
@@ -267,7 +268,7 @@ impl Pather {
             self.ignore.resize(mesh.shapes.len(), false);
         }
         for &id in ignore {
-            self.ignore[id as usize] = true;
+            *self.ignore.checked_mut(id as usize)? = true;
         }
         let result = self.core(mesh, words, &q.fixed());
         for &id in ignore {
@@ -289,7 +290,7 @@ impl Pather {
         mesh: &mut Mesh,
         words: &dyn Fn(u32, u32) -> u64,
         q: &Query,
-    ) -> bool {
+    ) -> Result<bool, GenieError> {
         let q = &q.fixed();
         if self.ignore.len() < mesh.shapes.len() {
             self.ignore.resize(mesh.shapes.len(), false);
@@ -348,9 +349,9 @@ impl Pather {
             best: 0,
             token: 0,
         };
-        let blocked = s.start(q.from) == 2;
+        let started = s.start(q.from);
         self.remove_terrain(mesh);
-        blocked
+        Ok(started? == 2)
     }
 
     /// `FUN_140fa53d0`. Its call counter (`DAT_143f0f364 += 1` at entry) has no reader (its only

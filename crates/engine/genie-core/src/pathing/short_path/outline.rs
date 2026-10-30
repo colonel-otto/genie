@@ -7,6 +7,7 @@ use crate::pathing::short_path::{
     Corner, Foot, Kind, NONE, Point, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
     contact_point, corner_emits, in_box, inside, shrunk_corner,
 };
+use crate::world::slots::CheckedIndex;
 
 /// A vertex the tracer adds to the outline being traced ([`Search::append`]'s arguments after
 /// the polygon).
@@ -26,6 +27,12 @@ pub(super) struct Traced {
     pub(super) shape: u32,
     /// The turns so far (4 a full one).
     pub(super) winding: i32,
+}
+
+/// A new polygon's walk: the polygon and the node it comes from.
+struct NewWalk {
+    poly: u32,
+    parent: u32,
 }
 
 impl Search<'_> {
@@ -99,7 +106,7 @@ impl Search<'_> {
             2 => ([b[2], b[1]], 0),
             _ => ([b[2], b[3]], 1),
         };
-        let sw = self.ctx.sweep(*pos, target, dir);
+        let sw = self.ctx.sweep(*pos, target, dir)?;
         let u_new = Self::along(*pos, w);
         let Some((hid, hs, hp)) = sw.counted()? else {
             if steps == 0 {
@@ -141,14 +148,17 @@ impl Search<'_> {
         let mut wprev: i32 = 0;
         let mut shape = shape0;
         let mut side = s0;
-        let mut pos = start.unwrap_or_else(|| shrunk_corner(mesh.shapes[shape as usize], s0, d));
+        let mut pos = match start {
+            Some(p) => p,
+            None => shrunk_corner(*mesh.shapes.checked(shape as usize)?, s0, d),
+        };
         let mut u = Self::along(pos, s0);
         let mut first = pos;
         'segment: loop {
-            let contacts = &mesh.sides[shape as usize][side as usize];
+            let contacts = mesh.sides.checked(shape as usize)?.checked(side as usize)?;
             let next_side;
             if let Some(k) = self.nearest_contact(contacts, side, u) {
-                let c = contacts[k];
+                let c = *contacts.checked(k)?;
                 let q = contact_point(c.at, c.side, d, c.flag);
                 pos = q;
                 if steps == 0 {
@@ -162,7 +172,7 @@ impl Search<'_> {
                 shape = c.other;
             } else {
                 next_side = (side + 1) & 3;
-                let corner = shrunk_corner(mesh.shapes[shape as usize], next_side, d);
+                let corner = shrunk_corner(*mesh.shapes.checked(shape as usize)?, next_side, d);
                 if steps == 0 {
                     first = corner;
                 }
@@ -293,17 +303,17 @@ impl Search<'_> {
         let v = &poly.vertices;
         let sides = &poly.sides;
         let mut limit = n;
-        let mut prev = sides[n.wrapping_sub(2) as usize % sides.len()];
+        let mut prev = *sides.get(n.wrapping_sub(2) as usize % sides.len())?;
         let mut cur = n - 1;
         let mut i: u32 = 0;
         loop {
-            let s_cur = sides[cur as usize];
-            let mut s_i = sides[i as usize];
+            let s_cur = *sides.get(cur as usize)?;
+            let mut s_i = *sides.get(i as usize)?;
             let mut nxt = i;
             if s_i == s_cur {
                 loop {
                     i = (i + 1) % n;
-                    s_i = sides[i as usize];
+                    s_i = *sides.get(i as usize)?;
                     if s_i != s_cur {
                         break;
                     }
@@ -313,10 +323,10 @@ impl Search<'_> {
                     limit = 0;
                 }
             }
-            let vc = v[cur as usize];
-            if Self::vertex_in_overlap(mesh, (p, vc, poly.shapes[cur as usize]), shape, d)
+            let vc = *v.get(cur as usize)?;
+            if Self::vertex_in_overlap(mesh, (p, vc, *poly.shapes.get(cur as usize)?), shape, d)
                 || (side == u32::from(s_cur)
-                    && Self::on_edge(s_cur, (vc, v[nxt as usize]), p, (prev, s_i)))
+                    && Self::on_edge(s_cur, (vc, *v.get(nxt as usize)?), p, (prev, s_i)))
             {
                 return Some(cur);
             }
@@ -341,8 +351,12 @@ impl Search<'_> {
         if p != vc || vs == NONE {
             return false;
         }
-        let sr = mesh.shapes[shape as usize];
-        let vr = mesh.shapes[vs as usize];
+        let (Some(&sr), Some(&vr)) = (
+            mesh.shapes.get(shape as usize),
+            mesh.shapes.get(vs as usize),
+        ) else {
+            return false;
+        };
         let y1 = if sr[3] - d < vr[3] - d {
             sr[3] - d
         } else {
@@ -423,88 +437,29 @@ impl Search<'_> {
     /// `FUN_140fa7b50`: from `p` on a new polygon's closing edge, walk the outline both ways at
     /// once, the cheaper side first (ties forward): each corner the goal test does not end
     /// becomes a corner node toward the goal when it emits; each edge gets its foot test.
-    pub(super) fn walk_new(&mut self, pi: u32, p: Point, g0: i32, parent: u32) {
-        let poly = self.polys[pi as usize].clone();
+    pub(super) fn walk_new(
+        &mut self,
+        pi: u32,
+        p: Point,
+        g0: i32,
+        parent: u32,
+    ) -> Result<(), GenieError> {
+        let poly = self.polys.checked(pi as usize)?.clone();
         let v = &poly.vertices;
         let n = v.len() as u32;
         let last = n - 1;
-        let dxb = v[last as usize][0] - p[0];
-        let dyb = v[last as usize][1] - p[1];
-        let dxf = v[0][0] - p[0];
-        let dyf = v[0][1] - p[1];
-        self.foot_test(Foot {
-            poly: pi,
-            start: p,
-            end: v[last as usize],
-            x_extent: dxb,
-            low: last,
-            high: 0,
-            dir: 1,
-            start_cost: g0,
-            parent,
-        });
-        self.foot_test(Foot {
-            poly: pi,
-            start: p,
-            end: v[0],
-            x_extent: dxf,
-            low: 0,
-            high: 0,
-            dir: 0,
-            start_cost: g0,
-            parent,
-        });
-        let mut cb = (if dyb.wrapping_abs() < dxb.wrapping_abs() {
-            dxb.wrapping_abs()
-        } else {
-            dyb.wrapping_abs()
-        })
-        .wrapping_add(g0);
-        let mut cf = (if dyf.wrapping_abs() < dxf.wrapping_abs() {
-            dxf.wrapping_abs()
-        } else {
-            dyf.wrapping_abs()
-        })
-        .wrapping_add(g0);
+        let walk = NewWalk { poly: pi, parent };
+        let (mut cb, mut cf) = self.walk_new_start(&walk, &poly, p, g0)?;
         let mut bi = last;
         let mut fi: u32 = 0;
         if bi == 0 {
-            return;
+            return Ok(());
         }
         loop {
             if cb < cf {
-                let vv = v[bi as usize];
-                let sp = poly.sides[(bi - 1) as usize];
-                let sn = poly.sides[bi as usize];
-                let sh = poly.shapes[bi as usize];
-                if !self.goal_test(Corner {
-                    cost: cb,
-                    parent,
-                    dir: 1,
-                    low: bi,
-                    high: 0,
-                    poly: pi,
-                    point: vv,
-                }) && sp != sn
-                    && sh != NONE
-                    && let Some(token) = corner_emits(sp, sn, vv, self.goal.at)
-                {
-                    let kind = Kind::Corner {
-                        dir: 1,
-                        lo: bi,
-                        hi: 0,
-                        poly: pi,
-                        token: u32::from(token),
-                        prev: sp,
-                        next: sn,
-                    };
-                    let node = self.add(cb, parent, vv, kind);
-                    self.push(node);
-                    let pm = &mut self.polys[pi as usize];
-                    pm.flag = true;
-                    pm.costs[bi as usize] = cb;
-                }
-                let w = v[(bi - 1) as usize];
+                let vv = *v.checked(bi as usize)?;
+                self.walk_new_corner(&walk, &poly, (bi, bi - 1), cb, (1, bi, 0))?;
+                let w = *v.checked((bi - 1) as usize)?;
                 let dx = vv[0] - w[0];
                 self.foot_test(Foot {
                     poly: pi,
@@ -516,43 +471,14 @@ impl Search<'_> {
                     dir: 1,
                     start_cost: cb,
                     parent,
-                });
+                })?;
                 cb = cb.wrapping_add(cheb(vv, w));
                 bi -= 1;
             } else {
-                let vv = v[fi as usize];
-                let sn = poly.sides[fi as usize];
-                let sh = poly.shapes[fi as usize];
-                let sp = poly.sides[((n - 1 + fi) % n) as usize];
-                if !self.goal_test(Corner {
-                    cost: cf,
-                    parent,
-                    dir: 0,
-                    low: 0,
-                    high: fi,
-                    poly: pi,
-                    point: vv,
-                }) && sp != sn
-                    && sh != NONE
-                    && let Some(token) = corner_emits(sp, sn, vv, self.goal.at)
-                {
-                    let kind = Kind::Corner {
-                        dir: 0,
-                        lo: 0,
-                        hi: fi,
-                        poly: pi,
-                        token: u32::from(token),
-                        prev: sp,
-                        next: sn,
-                    };
-                    let node = self.add(cf, parent, vv, kind);
-                    self.push(node);
-                    let pm = &mut self.polys[pi as usize];
-                    pm.flag = true;
-                    pm.costs[fi as usize] = cf;
-                }
+                let vv = *v.checked(fi as usize)?;
+                self.walk_new_corner(&walk, &poly, (fi, (n - 1 + fi) % n), cf, (0, 0, fi))?;
                 fi += 1;
-                let w = v[fi as usize];
+                let w = *v.checked(fi as usize)?;
                 let dx = vv[0] - w[0];
                 self.foot_test(Foot {
                     poly: pi,
@@ -564,12 +490,106 @@ impl Search<'_> {
                     dir: 0,
                     start_cost: cf,
                     parent,
-                });
+                })?;
                 cf = cf.wrapping_add(cheb(vv, w));
             }
             if fi >= bi {
-                return;
+                return Ok(());
             }
         }
+    }
+
+    /// The walk of a new polygon's start: the foot tests of the two edges from `p` to the
+    /// closing vertices, and the costs of the two walks (the larger axis distance on top of
+    /// `g0`), backward then forward.
+    fn walk_new_start(
+        &mut self,
+        walk: &NewWalk,
+        poly: &Poly,
+        p: Point,
+        g0: i32,
+    ) -> Result<(i32, i32), GenieError> {
+        let v = &poly.vertices;
+        let last = v.len() - 1;
+        let (vb, vf) = (*v.checked(last)?, *v.checked(0)?);
+        let (dxb, dyb) = (vb[0] - p[0], vb[1] - p[1]);
+        let (dxf, dyf) = (vf[0] - p[0], vf[1] - p[1]);
+        self.foot_test(Foot {
+            poly: walk.poly,
+            start: p,
+            end: vb,
+            x_extent: dxb,
+            low: last as u32,
+            high: 0,
+            dir: 1,
+            start_cost: g0,
+            parent: walk.parent,
+        })?;
+        self.foot_test(Foot {
+            poly: walk.poly,
+            start: p,
+            end: vf,
+            x_extent: dxf,
+            low: 0,
+            high: 0,
+            dir: 0,
+            start_cost: g0,
+            parent: walk.parent,
+        })?;
+        let cost = |dx: i32, dy: i32| {
+            (if dy.wrapping_abs() < dx.wrapping_abs() {
+                dx.wrapping_abs()
+            } else {
+                dy.wrapping_abs()
+            })
+            .wrapping_add(g0)
+        };
+        Ok((cost(dxb, dyb), cost(dxf, dyf)))
+    }
+
+    /// The corner at vertex `at` of a new polygon (its side before it at `before`), reached with
+    /// cost `g` as a walk in direction `dir` over the run `lo`..`hi`: where the goal test does not
+    /// end it, the sides differ and the corner emits a token, it becomes a corner node and the
+    /// polygon is flagged.
+    fn walk_new_corner(
+        &mut self,
+        walk: &NewWalk,
+        poly: &Poly,
+        (at, before): (u32, u32),
+        g: i32,
+        (dir, lo, hi): (u8, u32, u32),
+    ) -> Result<(), GenieError> {
+        let vv = *poly.vertices.checked(at as usize)?;
+        let sp = *poly.sides.checked(before as usize)?;
+        let sn = *poly.sides.checked(at as usize)?;
+        let sh = *poly.shapes.checked(at as usize)?;
+        if !self.goal_test(Corner {
+            cost: g,
+            parent: walk.parent,
+            dir,
+            low: lo,
+            high: hi,
+            poly: walk.poly,
+            point: vv,
+        })? && sp != sn
+            && sh != NONE
+            && let Some(token) = corner_emits(sp, sn, vv, self.goal.at)
+        {
+            let kind = Kind::Corner {
+                dir,
+                lo,
+                hi,
+                poly: walk.poly,
+                token: u32::from(token),
+                prev: sp,
+                next: sn,
+            };
+            let node = self.add(g, walk.parent, vv, kind);
+            self.push(node);
+            let pm = self.polys.checked_mut(walk.poly as usize)?;
+            pm.flag = true;
+            *pm.costs.checked_mut(at as usize)? = g;
+        }
+        Ok(())
     }
 }

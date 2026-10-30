@@ -1,7 +1,9 @@
 //! The search's nodes: the open list, the goal and foot tests, a polygon corner's test and
 //! the clip to the box.
 
+use crate::GenieError;
 use crate::pathing::short_path::{Kind, NONE, Node, Point, RECT_HEURISTIC, Search};
+use crate::world::slots::CheckedIndex;
 
 /// A polygon corner reached as a goal candidate (`FUN_140fa3860`'s arguments, [`Search::goal_test`]).
 #[derive(Clone, Copy, Debug)]
@@ -176,9 +178,10 @@ impl Search<'_> {
     /// `FUN_140fa2eb0`: into the open list, sorted by f descending, before the equal ones from the
     /// back (so equal f leave first in, first out).
     pub(super) fn push(&mut self, n: Node) {
-        let at = (0..self.open.len())
-            .rev()
-            .find(|&i| n.f < self.open[i].f)
+        let at = self
+            .open
+            .iter()
+            .rposition(|o| n.f < o.f)
             .map_or(0, |i| i + 1);
         self.open.insert(at, n);
     }
@@ -190,7 +193,7 @@ impl Search<'_> {
 
     /// `FUN_140fa3860`: a node at `pt` reached with cost `g`: within range and better than the goal
     /// so far, it becomes the goal (true); else, nearer than the best so far, the best.
-    pub(super) fn goal_test(&mut self, corner: Corner) -> bool {
+    pub(super) fn goal_test(&mut self, corner: Corner) -> Result<bool, GenieError> {
         let Corner {
             cost: g,
             parent,
@@ -216,24 +219,24 @@ impl Search<'_> {
             prev: 0,
             next: 0,
         };
-        let better = self.goal_node == NONE || g < self.arena[self.goal_node as usize].g;
+        let better = self.goal_node == NONE || g < self.arena.checked(self.goal_node as usize)?.g;
         if self.goal.range2 < d2 || !better {
-            let b = self.arena[self.best as usize];
+            let b = *self.arena.checked(self.best as usize)?;
             let h = i64::from(b.f.wrapping_sub(b.g));
             if d2 < (h * h) >> 22 {
                 let n = self.add(g, parent, pt, kind);
                 self.best = n.idx;
             }
-            return false;
+            return Ok(false);
         }
         let n = self.add(g, parent, pt, kind);
         self.goal_node = n.idx;
-        true
+        Ok(true)
     }
 
     /// `FUN_140fa8210`: the goal's foot on an axis edge `a`–`b` (horizontal when `dx != 0`) as a
     /// goal candidate.
-    pub(super) fn foot_test(&mut self, edge: Foot) {
+    pub(super) fn foot_test(&mut self, edge: Foot) -> Result<(), GenieError> {
         let Foot {
             poly,
             start: a,
@@ -263,25 +266,24 @@ impl Search<'_> {
                 high: hi,
                 poly,
                 point: foot,
-            });
+            })?;
         }
+        Ok(())
     }
 
     /// `FUN_140fa2740`, a popped node's test: the best (lowest estimate) so far; in range and
     /// cheaper than the goal: the new goal (true); no cheaper than the goal: pruned (true).
-    pub(super) fn pop_test(&mut self, n: &Node) -> bool {
+    pub(super) fn pop_test(&mut self, n: &Node) -> Result<bool, GenieError> {
         let h = n.f.wrapping_sub(n.g);
-        let b = self.arena[self.best as usize];
+        let b = *self.arena.checked(self.best as usize)?;
         if h < b.f.wrapping_sub(b.g) {
             self.best = n.idx;
         }
-        let better = |s: &Self| s.goal_node == NONE || n.g < s.arena[s.goal_node as usize].g;
-        if (h < self.goal.range || self.goal.rect_distance2(n.at) <= self.goal.range2)
-            && better(self)
-        {
+        let better = self.goal_node == NONE || n.g < self.arena.checked(self.goal_node as usize)?.g;
+        if (h < self.goal.range || self.goal.rect_distance2(n.at) <= self.goal.range2) && better {
             self.goal_node = n.idx;
-            return true;
+            return Ok(true);
         }
-        !better(self)
+        Ok(!better)
     }
 }

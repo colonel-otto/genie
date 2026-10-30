@@ -5,6 +5,7 @@ use crate::pathing::short_path::{
     Hit, Kind, NONE, Node, Point, Search, TO_FIXED, TO_FLOAT, contact_point, in_box, shrunk_corner,
     snap_to_side, strictly_inside, through_float, tile_of,
 };
+use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
 /// The corners of each side of a shape as the start's scan walks it ([`shrunk_corner`]'s
@@ -26,10 +27,10 @@ impl Search<'_> {
     /// already lies within range, 0 when it is free (the node opened), else the escape
     /// candidates (type 2) around it within twice the radius: 2 for fewer than two, else 1 with
     /// only the cheapest kept open.
-    pub(super) fn start(&mut self, p: Point) -> i32 {
+    pub(super) fn start(&mut self, p: Point) -> Result<i32, GenieError> {
         let g = &self.goal;
         if g.range2 >= g.rect_distance2(p) {
-            return 3;
+            return Ok(3);
         }
         let fx = (g.at[0].wrapping_sub(p[0])) as f32 * TO_FLOAT;
         let fy = (g.at[1].wrapping_sub(p[1])) as f32 * TO_FLOAT;
@@ -45,28 +46,28 @@ impl Search<'_> {
             kind: Kind::Start,
         };
         self.arena.push(start);
-        if self.ctx.holder(p).is_none() {
+        if self.ctx.holder(p)?.is_none() {
             self.push(start);
-            return 0;
+            return Ok(0);
         }
-        self.escape_candidates(p, start.idx);
+        self.escape_candidates(p, start.idx)?;
         if self.open.len() < 2 {
-            return 2;
+            return Ok(2);
         }
         let keep = self.open.len() - 1;
         let _ = self.open.drain(..keep);
-        let n = &mut self.open[0];
+        let n = self.open.checked_mut(0)?;
         let f = self.goal.heuristic(n.at).wrapping_add(n.g);
         n.f = f;
         let idx = n.idx as usize;
-        self.arena[idx].f = f;
-        1
+        self.arena.checked_mut(idx)?.f = f;
+        Ok(1)
     }
 
     /// `FUN_140fa4410`'s scan around a held start `p`: every side of every shape not ignored
     /// over the tiles under the corners of the box twice the radius out (each tile once, the map's
     /// only) gives its escape candidates ([`Search::escape_side`]), children of node `root`.
-    pub(super) fn escape_candidates(&mut self, p: Point, root: u32) {
+    pub(super) fn escape_candidates(&mut self, p: Point, root: u32) -> Result<(), GenieError> {
         let mesh = self.ctx.mesh;
         let w = mesh.width as i32;
         let total = mesh.width * mesh.width;
@@ -81,19 +82,21 @@ impl Search<'_> {
             tile(px - rr, py + rr),
         ];
         for ti in 0..4 {
-            if tiles[..ti].contains(&tiles[ti]) || total <= tiles[ti] {
+            let here = *tiles.checked(ti)?;
+            if tiles.head(ti)?.contains(&here) || total <= here {
                 continue;
             }
-            let list = mesh.tiles[tiles[ti] as usize].clone();
+            let list = mesh.tiles.checked(here as usize)?.clone();
             for &id in &list {
                 if self.ctx.ignored(id) {
                     continue;
                 }
                 for k in 0..4u32 {
-                    self.escape_side(p, root, (id, k), rr2);
+                    self.escape_side(p, root, (id, k), rr2)?;
                 }
             }
         }
+        Ok(())
     }
 
     /// Side `k` of shape `id`, shrunk by the search's `d`, when its line comes within `rr2` (the
@@ -101,13 +104,19 @@ impl Search<'_> {
     /// the start's foot on it ([`Search::escape_foot`]), its first corner within the circle and
     /// its contacts ([`Search::escape_contacts`]) become escape candidates, each in the search's
     /// box and held by no other shape.
-    pub(super) fn escape_side(&mut self, p: Point, root: u32, (id, k): (u32, u32), rr2: i64) {
+    pub(super) fn escape_side(
+        &mut self,
+        p: Point,
+        root: u32,
+        (id, k): (u32, u32),
+        rr2: i64,
+    ) -> Result<(), GenieError> {
         let d = self.ctx.d;
-        let r = self.ctx.mesh.shapes[id as usize];
+        let r = *self.ctx.mesh.shapes.checked(id as usize)?;
         let [px, py] = p;
-        let a = shrunk_corner(r, SIDE_CORNERS[k as usize].0, d);
-        let e = shrunk_corner(r, SIDE_CORNERS[k as usize].1, d);
-        let dir = SIDE_DIRS[k as usize];
+        let a = shrunk_corner(r, SIDE_CORNERS.checked(k as usize)?.0, d);
+        let e = shrunk_corner(r, SIDE_CORNERS.checked(k as usize)?.1, d);
+        let dir = *SIDE_DIRS.checked(k as usize)?;
         let side = k as u8;
         let (t, dist2, span) = if k == 0 || k == 2 {
             let u = i64::from(dir[0]);
@@ -123,7 +132,7 @@ impl Search<'_> {
             (t, ((perp * perp) >> 22) + ((dx * dx) >> 22), e[1] - a[1])
         };
         if dist2 > rr2 {
-            return;
+            return Ok(());
         }
         let b = self.bounds;
         let h = (fmath::sqrt((rr2 - dist2) as f32 * TO_FLOAT) * TO_FIXED) as i32;
@@ -133,14 +142,14 @@ impl Search<'_> {
                     ((i64::from(dir[0]) * i64::from(c)) >> 22) as i32 + a[0],
                     ((i64::from(dir[1]) * i64::from(c)) >> 22) as i32 + a[1],
                 ];
-                if in_box(q, b) && self.ctx.holder_but(q, id, d).is_none() {
+                if in_box(q, b) && self.ctx.holder_but(q, id, d)?.is_none() {
                     self.side_node(float_distance(p, q), root, id, side, q);
                 }
             }
         }
-        self.escape_foot(p, root, (id, k), (a, e));
+        self.escape_foot(p, root, (id, k), (a, e))?;
         // the side's first corner
-        if in_box(a, b) && self.ctx.holder_but(a, id, d).is_none() {
+        if in_box(a, b) && self.ctx.holder_but(a, id, d)?.is_none() {
             let dx = i64::from(px - a[0]);
             let dy = i64::from(py - a[1]);
             let d2 = ((dx * dx) >> 22) + ((dy * dy) >> 22);
@@ -149,7 +158,8 @@ impl Search<'_> {
                 self.side_node(g, root, id, side, a);
             }
         }
-        self.escape_contacts(p, root, (id, k), rr2);
+        self.escape_contacts(p, root, (id, k), rr2)?;
+        Ok(())
     }
 
     /// The start `p`'s foot on side `k` of shape `id` (its corners `a` and `e`), strictly
@@ -161,22 +171,23 @@ impl Search<'_> {
         root: u32,
         (id, k): (u32, u32),
         (a, e): (Point, Point),
-    ) {
+    ) -> Result<(), GenieError> {
         let side = k as u8;
         let b = self.bounds;
         if k == 0 || k == 2 {
             if a[0] < px && px < e[0] {
                 let q = [px, a[1]];
-                if in_box(q, b) && self.ctx.holder(q).is_none() {
+                if in_box(q, b) && self.ctx.holder(q)?.is_none() {
                     self.side_node((py - a[1]).wrapping_abs(), root, id, side, q);
                 }
             }
         } else if a[1] < py && py < e[1] {
             let q = [a[0], py];
-            if in_box(q, b) && self.ctx.holder(q).is_none() {
+            if in_box(q, b) && self.ctx.holder(q)?.is_none() {
                 self.side_node((a[0] - px).wrapping_abs(), root, id, side, q);
             }
         }
+        Ok(())
     }
 
     /// The contacts on side `k` of shape `id`: each wider than the search's `d`, with a shape
@@ -189,13 +200,12 @@ impl Search<'_> {
         root: u32,
         (id, k): (u32, u32),
         rr2: i64,
-    ) {
+    ) -> Result<(), GenieError> {
         let mesh = self.ctx.mesh;
         let d = self.ctx.d;
         let b = self.bounds;
         let side = k as u8;
-        for ci in 0..mesh.sides[id as usize][k as usize].len() {
-            let c = mesh.sides[id as usize][k as usize][ci];
+        for &c in mesh.sides.checked(id as usize)?.checked(k as usize)? {
             if (d >= c.half) || self.ctx.ignored(c.other) {
                 continue;
             }
@@ -211,11 +221,11 @@ impl Search<'_> {
                     2 => nudged[1] -= 1,
                     _ => nudged[0] -= 1,
                 }
-                if !strictly_inside(mesh.shapes[c.other as usize], nudged, d) {
+                if !strictly_inside(*mesh.shapes.checked(c.other as usize)?, nudged, d) {
                     continue;
                 }
             }
-            if self.ctx.holder(q).is_some() {
+            if self.ctx.holder(q)?.is_some() {
                 continue;
             }
             let dx = i64::from(px - q[0]);
@@ -227,6 +237,7 @@ impl Search<'_> {
                 self.side_node(g, root, id, side, q);
             }
         }
+        Ok(())
     }
 
     /// The point where the walk from `p` toward `t` meets the hit at fraction `frac` (`>> 22`).
@@ -242,13 +253,19 @@ impl Search<'_> {
     /// the game's). It ends: a holder holds the point strictly inside, so the snap keeps the other
     /// coordinate and moves this one past the holder's side, always the same way (side 0 and 3
     /// lower, 1 and 2 higher); no shape holds it again, and the mesh has finitely many.
-    pub(super) fn settle(&self, h: &mut Point, hit: &mut Hit) {
+    pub(super) fn settle(&self, h: &mut Point, hit: &mut Hit) -> Result<(), GenieError> {
         let d = self.ctx.d;
-        snap_to_side(h, self.ctx.mesh.shapes[hit.shape as usize], hit.side, d);
-        while let Some(id) = self.ctx.holder(*h) {
-            snap_to_side(h, self.ctx.mesh.shapes[id as usize], hit.side, d);
+        snap_to_side(
+            h,
+            *self.ctx.mesh.shapes.checked(hit.shape as usize)?,
+            hit.side,
+            d,
+        );
+        while let Some(id) = self.ctx.holder(*h)? {
+            snap_to_side(h, *self.ctx.mesh.shapes.checked(id as usize)?, hit.side, d);
             hit.shape = id;
         }
+        Ok(())
     }
 
     /// `FUN_140fa2b20`: the two legs of an L toward `c` from node `b`, the first along direction
@@ -267,7 +284,7 @@ impl Search<'_> {
         } else {
             [p[0], c[1]]
         };
-        let sw = self.ctx.sweep(p, m, a);
+        let sw = self.ctx.sweep(p, m, a)?;
         let (g, parent, sw) = if sw.found {
             (
                 through_float(delta[0].wrapping_abs()).wrapping_add(b.g),
@@ -281,7 +298,7 @@ impl Search<'_> {
                 m,
                 Kind::Waypoint,
             );
-            let sw2 = self.ctx.sweep(m, c, second);
+            let sw2 = self.ctx.sweep(m, c, second)?;
             (
                 through_float(delta[1].wrapping_abs()).wrapping_add(mid.g),
                 mid.idx,

@@ -249,7 +249,7 @@ impl Mover {
             .ok_or(GenieError::unsupported(
                 "a start test without the game's mesh",
             ))?;
-        Ok(pather.start_blocked(mesh, &words, &query))
+        pather.start_blocked(mesh, &words, &query)
     }
 
     /// After a short path (`FUN_140f9e540`) for the new level: when the top path (`FUN_140f960f0`

@@ -1,10 +1,12 @@
 //! The searches' walks over the mesh's tiles ([`Ctx`]): a point's holder, the raycast, the
 //! axis sweeps and the sight test.
 
+use crate::GenieError;
 use crate::pathing::mesh::{ONE, Rect};
 use crate::pathing::short_path::{
     Callback, Ctx, Hit, Point, Sweep, T_START, inside, ray_rect, strictly_inside, tile_of,
 };
+use crate::world::slots::CheckedIndex;
 
 /// One tile of a raycast ([`Ctx::ray_tile`]'s arguments).
 #[derive(Debug)]
@@ -30,34 +32,44 @@ impl Ctx<'_> {
         self.ignore.get(id as usize).copied().unwrap_or(false)
     }
 
-    pub(super) fn tile(&self, tx: i32, ty: i32) -> &[u32] {
+    pub(super) fn tile(&self, tx: i32, ty: i32) -> Result<&[u32], GenieError> {
         let i = (ty.wrapping_mul(self.mesh.width as i32).wrapping_add(tx)) as u32 as usize;
-        &self.mesh.tiles[i]
+        Ok(self.mesh.tiles.checked(i)?)
     }
 
     /// `FUN_140fa3dc0`: the first shape of `p`'s tile, not ignored, strictly holding `p` (shrunk).
-    pub(super) fn holder(&self, p: Point) -> Option<u32> {
-        self.tile(tile_of(p[0]), tile_of(p[1]))
-            .iter()
-            .copied()
-            .find(|&id| {
-                !self.ignored(id) && strictly_inside(self.mesh.shapes[id as usize], p, self.d)
-            })
+    pub(super) fn holder(&self, p: Point) -> Result<Option<u32>, GenieError> {
+        for &id in self.tile(tile_of(p[0]), tile_of(p[1]))? {
+            if !self.ignored(id)
+                && strictly_inside(*self.mesh.shapes.checked(id as usize)?, p, self.d)
+            {
+                return Ok(Some(id));
+            }
+        }
+        Ok(None)
     }
 
     /// `FUN_140fa2630`: the first shape of `p`'s tile other than `excl`, not ignored, holding `p`
     /// with its edges.
-    pub(super) fn holder_but(&self, p: Point, excl: u32, d: i32) -> Option<u32> {
-        self.tile(tile_of(p[0]), tile_of(p[1]))
-            .iter()
-            .copied()
-            .find(|&id| {
-                id != excl && !self.ignored(id) && inside(self.mesh.shapes[id as usize], p, d)
-            })
+    pub(super) fn holder_but(
+        &self,
+        p: Point,
+        excl: u32,
+        d: i32,
+    ) -> Result<Option<u32>, GenieError> {
+        for &id in self.tile(tile_of(p[0]), tile_of(p[1]))? {
+            if id != excl
+                && !self.ignored(id)
+                && inside(*self.mesh.shapes.checked(id as usize)?, p, d)
+            {
+                return Ok(Some(id));
+            }
+        }
+        Ok(None)
     }
 
     /// One tile of the raycast: the callback over the tile's shapes.
-    pub(super) fn ray_tile(&self, tile: RayTile<'_>) -> i32 {
+    pub(super) fn ray_tile(&self, tile: RayTile<'_>) -> Result<i32, GenieError> {
         let RayTile {
             callback: cb,
             list,
@@ -90,7 +102,7 @@ impl Ctx<'_> {
             if self.ignored(id) {
                 continue;
             }
-            let r = self.mesh.shapes[id as usize];
+            let r = *self.mesh.shapes.checked(id as usize)?;
             let shrunk = [r[0] + d, r[1] + d, r[2] - d, r[3] - d];
             match cb {
                 Callback::Corner => {
@@ -137,7 +149,7 @@ impl Ctx<'_> {
                 }
             }
         }
-        result
+        Ok(result)
     }
 
     /// `FUN_140faa820`: the segment `a`–`b` walked tile by tile (4-connected, x first on a corner),
@@ -151,7 +163,7 @@ impl Ctx<'_> {
         hit: &mut Hit,
         cb: Callback,
         token: &mut u32,
-    ) -> i32 {
+    ) -> Result<i32, GenieError> {
         let (x0, y0, x1, y1) = (a[0], a[1], b[0], b[1]);
         let dx = x1.wrapping_sub(x0);
         let adx = dx.wrapping_abs();
@@ -199,7 +211,7 @@ impl Ctx<'_> {
         let mut result = 0;
         while 0 < count {
             let e = err;
-            let list = self.tile(tx, ty);
+            let list = self.tile(tx, ty)?;
             let r = self.ray_tile(RayTile {
                 callback: cb,
                 list,
@@ -208,7 +220,7 @@ impl Ctx<'_> {
                 fraction: t,
                 hit,
                 token,
-            });
+            })?;
             let mut left = count;
             if r != 0 {
                 let hy = ((i64::from(y1.wrapping_sub(y0)) * i64::from(*t)) >> 22) as i32 + y0;
@@ -226,7 +238,7 @@ impl Ctx<'_> {
                 ty += step_y;
             }
         }
-        result
+        Ok(result)
     }
 
     /// `FUN_140fa2d00`: an axis ray from `from` toward `end` in direction `dir` (0 −y, 1 +x, 2 +y,
@@ -265,16 +277,16 @@ impl Ctx<'_> {
     /// (later hits must be nearer). A hit at `from` itself while the end is still `to` is checked
     /// backward from `to`: landing on `from` again means a shape too thin to count; the game has
     /// already written that hit's point and side by then ([`Sweep`]).
-    pub(super) fn sweep(&self, from: Point, to: Point, dir: u8) -> Sweep {
+    pub(super) fn sweep(&self, from: Point, to: Point, dir: u8) -> Result<Sweep, GenieError> {
         let d = self.d;
         let mut end = to;
         let mut out = Sweep::default();
-        let visit = |list: &[u32], end: &mut Point, out: &mut Sweep| {
+        let visit = |list: &[u32], end: &mut Point, out: &mut Sweep| -> Result<(), GenieError> {
             for &id in list {
                 if self.ignored(id) {
                     continue;
                 }
-                let r = self.mesh.shapes[id as usize];
+                let r = *self.mesh.shapes.checked(id as usize)?;
                 let Some((hp, side)) = Self::axis_hit(from, *end, r, d, dir) else {
                     continue;
                 };
@@ -290,13 +302,14 @@ impl Ctx<'_> {
                 out.shape = Some(id);
                 out.found = true;
             }
+            Ok(())
         };
         match dir {
             1 => {
                 let row = tile_of(from[1]);
                 let mut x = tile_of(from[0]) as u32;
                 while x <= tile_of(to[0]) as u32 {
-                    visit(self.tile(x as i32, row), &mut end, &mut out);
+                    visit(self.tile(x as i32, row)?, &mut end, &mut out)?;
                     x = x.wrapping_add(1);
                 }
             }
@@ -304,7 +317,7 @@ impl Ctx<'_> {
                 let col = tile_of(from[0]);
                 let mut y = tile_of(from[1]) as u32;
                 while y <= tile_of(to[1]) as u32 {
-                    visit(self.tile(col, y as i32), &mut end, &mut out);
+                    visit(self.tile(col, y as i32)?, &mut end, &mut out)?;
                     y = y.wrapping_add(1);
                 }
             }
@@ -312,7 +325,7 @@ impl Ctx<'_> {
                 let row = tile_of(from[1]);
                 let mut x = tile_of(from[0]);
                 while tile_of(to[0]) <= x {
-                    visit(self.tile(x, row), &mut end, &mut out);
+                    visit(self.tile(x, row)?, &mut end, &mut out)?;
                     x -= 1;
                 }
             }
@@ -320,28 +333,28 @@ impl Ctx<'_> {
                 let col = tile_of(from[0]);
                 let mut y = tile_of(from[1]);
                 while tile_of(to[1]) <= y {
-                    visit(self.tile(col, y), &mut end, &mut out);
+                    visit(self.tile(col, y)?, &mut end, &mut out)?;
                     y -= 1;
                 }
             }
         }
-        out
+        Ok(out)
     }
 
     /// `FUN_140fa8e60`: whether the straight walk from `a` to `b` is blocked (the smoothing's line of
     /// sight): an axis sweep along an axis, else the raycast with callback C.
-    pub(super) fn sight_blocked(&self, a: Point, b: Point) -> bool {
+    pub(super) fn sight_blocked(&self, a: Point, b: Point) -> Result<bool, GenieError> {
         if a[0] == b[0] {
             let dir = if 0 < b[1] - a[1] { 2 } else { 0 };
-            return self.sweep(a, b, dir).found;
+            return Ok(self.sweep(a, b, dir)?.found);
         }
         if a[1] == b[1] {
             let dir = if 0 < b[0] - a[0] { 1 } else { 3 };
-            return self.sweep(a, b, dir).found;
+            return Ok(self.sweep(a, b, dir)?.found);
         }
         let mut t = T_START;
         let mut hit = Hit::default();
         let mut token = 0;
-        self.raycast(a, b, &mut t, &mut hit, Callback::Sight, &mut token) != 0
+        Ok(self.raycast(a, b, &mut t, &mut hit, Callback::Sight, &mut token)? != 0)
     }
 }
