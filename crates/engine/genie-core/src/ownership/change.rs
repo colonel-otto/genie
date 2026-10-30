@@ -24,7 +24,7 @@ impl World {
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
     pub(crate) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), GenieError> {
-        let mut unit = self.players[q].objects.take_out(j);
+        let mut unit = self.players[q].objects.take_out(j)?;
         let changed = change_hands(
             &mut unit,
             (q, 0),
@@ -36,7 +36,7 @@ impl World {
         if !changed? {
             return Ok(());
         }
-        let unit = self.players[q].objects.swap_remove(j);
+        let unit = self.players[q].objects.swap_remove(j)?;
         let handed = self.hand_over_attributes(q, 0, &unit);
         // the old owner's remove and Gaia's add (slots 0x2d8, 0x2d0) move it between the
         // trackers; a building whose build points reach its build time completes in Gaia's
@@ -245,7 +245,7 @@ impl World {
         new: usize,
         id: i32,
     ) -> Result<usize, GenieError> {
-        let mut unit = self.players[old].objects.take_out(idx);
+        let mut unit = self.players[old].objects.take_out(idx)?;
         let changed = change_hands(
             &mut unit,
             (old, new),
@@ -255,7 +255,7 @@ impl World {
         );
         let idx = self.put_back_own(old, unit)?;
         Ok(if changed? {
-            let unit = self.players[old].objects.swap_remove(idx);
+            let unit = self.players[old].objects.swap_remove(idx)?;
             let handed = self.hand_over_attributes(old, new, &unit);
             let master_id = unit.life.master_id;
             self.players[new].objects.push(unit);

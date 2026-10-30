@@ -20,10 +20,12 @@ impl Masters {
         let mut by_id: Vec<Option<Master>> = Vec::new();
         for m in masters {
             let i = m.id as usize;
-            if by_id.len() <= i {
-                by_id.resize(i + 1, None);
+            if let Some(slot) = by_id.get_mut(i) {
+                *slot = Some(m);
+            } else {
+                by_id.resize(i, None);
+                by_id.push(Some(m));
             }
-            by_id[i] = Some(m);
         }
         Self { by_id }
     }

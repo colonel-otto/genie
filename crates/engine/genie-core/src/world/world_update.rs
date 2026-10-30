@@ -164,7 +164,7 @@ impl World {
         let player = self.players.player_mut(p)?;
         match outcome {
             Outcome::Leave => {
-                let gone = player.objects.swap_remove(i);
+                let gone = player.objects.swap_remove(i)?;
                 if let Err(e) = self.leave_world(p, &gone) {
                     crate::trace::player_unsupported(self.ticks, p, &e);
                     let _ = self
@@ -181,7 +181,7 @@ impl World {
                 // and the list's loop (0x141166550) goes on past it: that object's update waits
                 // for the next tick; the player's remove and add (slots 0x2d8, 0x2d0) file it last
                 // in the tracker
-                let asleep = player.objects.swap_remove(i);
+                let asleep = player.objects.swap_remove(i)?;
                 let k = crate::players::tracker::key(
                     self.masters.get(p),
                     &self.lines,
@@ -232,11 +232,11 @@ impl World {
         let player = self.players.player_mut(p)?;
         let mut moved = Vec::new();
         if main {
-            moved.push(player.objects.swap_remove(i));
+            moved.push(player.objects.swap_remove(i)?);
         }
         for id in also {
             if let Some(k) = player.objects.position_of(id) {
-                moved.push(player.objects.swap_remove(k));
+                moved.push(player.objects.swap_remove(k)?);
             }
         }
         let mut failed = None;

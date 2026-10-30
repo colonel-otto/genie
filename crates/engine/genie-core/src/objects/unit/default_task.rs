@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl Unit {
@@ -31,7 +32,7 @@ impl Unit {
             self.actions
                 .set_make(Some(crate::gathering::make::MakeAction::start(
                     task,
-                    &c.w.players[c.player].attributes,
+                    &c.w.players.player(c.player)?.attributes,
                     &mut self.life,
                 )));
             return Ok(true);

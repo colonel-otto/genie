@@ -133,7 +133,7 @@ impl Step<'_> {
         let i = own.position_of(self.me).ok_or_else(|| {
             GenieError::unreachable("a lent object left its list").with("object", self.me)
         })?;
-        *me = own.take_out(i);
+        *me = own.take_out(i)?;
         let stand_in = if side { me.ai.take() } else { None };
         let answer = answer?;
         if side && stand_in != Some(UnitAi::default()) {

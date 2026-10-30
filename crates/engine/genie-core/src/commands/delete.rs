@@ -532,7 +532,7 @@ impl World {
                 i
             }
             Place::Sleeping(p, i) => {
-                let mut woken = self.players[p].sleeping.swap_remove(i);
+                let mut woken = self.players[p].sleeping.swap_remove(i)?;
                 woken.life.goto_sleep = false;
                 let (id, master) = (woken.id, woken.life.master_id);
                 self.players[p].objects.push(woken);

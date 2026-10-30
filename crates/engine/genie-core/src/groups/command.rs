@@ -775,7 +775,7 @@ mod tests {
         top.has_path = true;
         top.path_flags = 1;
         t.groups.get_mut(1).unwrap().motion.paths = vec![walked, top];
-        let asleep = t.players[1].objects.remove(0);
+        let asleep = t.players[1].objects.remove(0).unwrap();
         t.players[1].sleeping.push(Unit {
             ai: Some(crate::unit_ai::UnitAi::default()),
             ..asleep

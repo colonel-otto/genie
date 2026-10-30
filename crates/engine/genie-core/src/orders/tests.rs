@@ -1249,7 +1249,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
     };
     assert_eq!(reason(&mut t), "an ordered unit without movement state");
     let mut t = mover();
-    let u = t.players[1].objects.remove(0);
+    let u = t.players[1].objects.remove(0).unwrap();
     t.players[1].sleeping.push(u);
     assert_eq!(
         reason(&mut t),

@@ -83,7 +83,7 @@ impl UnitLines {
                 // "Unit line is incorrectly defined and is missing a key variable"
                 continue;
             };
-            let Some(slot) = Self::slot(line) else {
+            let Some(first) = Self::slot(line).and_then(|slot| out.firsts.get_mut(slot)) else {
                 // "Unit line ID is out of bounds (%d)"
                 continue;
             };
@@ -98,7 +98,7 @@ impl UnitLines {
                     continue;
                 };
                 if i == 0 {
-                    out.firsts[slot] = id;
+                    *first = id;
                 }
                 *e = LineEntry {
                     next,

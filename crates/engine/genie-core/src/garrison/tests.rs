@@ -2651,7 +2651,7 @@ fn a_unit_inside_an_ally_s_transport_unloaded_goes_ashore() {
             .iter()
             .position(|u| u.id == 200)
             .unwrap();
-        let ship = t.players[1].objects.remove(i);
+        let ship = t.players[1].objects.remove(i).unwrap();
         t.players[2].objects.push(ship);
         t.players[1].relations = vec![3, 0, 0, 3];
         t.players[2].relations = vec![3, if both_ways { 4 } else { 3 }, 0, 3];
@@ -2732,7 +2732,7 @@ fn a_villager_enters_an_allys_ship_with_its_owners_masters() {
         .iter()
         .position(|u| u.id == 200)
         .unwrap();
-    let ship = t.players[1].objects.remove(k);
+    let ship = t.players[1].objects.remove(k).unwrap();
     t.players[2].objects.push(ship);
     let mut placed = *t.spatial.get(200).unwrap();
     placed.player = 2;
@@ -2754,7 +2754,7 @@ fn a_villager_enters_an_allys_ship_with_its_owners_masters() {
         .iter()
         .position(|u| u.id == 200)
         .unwrap();
-    let ship = t.players[1].objects.remove(k);
+    let ship = t.players[1].objects.remove(k).unwrap();
     t.players[3].objects.push(ship);
     t.garrison_order(
         player_id(1),

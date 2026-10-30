@@ -336,7 +336,7 @@ impl World {
         idx: usize,
         by: DropOffBy,
     ) -> Result<(), GenieError> {
-        let mut unit = self.players.player_mut(p)?.objects.take_out(idx);
+        let mut unit = self.players.player_mut(p)?.objects.take_out(idx)?;
         let player = &self.players.player(p)?;
         let world = crate::unit_ai::world_view::DropWorld {
             masters: self.masters.get(p),

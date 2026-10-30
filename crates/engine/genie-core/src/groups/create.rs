@@ -640,7 +640,7 @@ mod tests {
         for u in &mut t.players[1].objects {
             u.ai = Some(crate::unit_ai::UnitAi::default());
         }
-        let asleep = t.players[1].objects.remove(2);
+        let asleep = t.players[1].objects.remove(2).unwrap();
         t.players[1].sleeping.push(asleep);
         t.stances_state(1, 5);
         assert_eq!(
@@ -684,7 +684,7 @@ mod tests {
             3
         );
         let mut t = three();
-        let _ = t.players[1].objects.remove(2);
+        let _ = t.players[1].objects.remove(2).unwrap();
         assert!(t.remove_unit(1, 12, -1, false).unwrap());
         let g = t.groups.get(1).unwrap();
         assert_eq!(

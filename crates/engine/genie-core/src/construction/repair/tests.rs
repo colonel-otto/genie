@@ -390,12 +390,12 @@ fn a_repair_s_walk_to_its_point_shows_its_sprite_as_it_starts() {
 fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
     type Change = fn(&mut crate::world::World);
     let cases: [(Change, bool); 4] = [
-        (|t| drop(t.players[1].objects.remove(1)), false),
+        (|t| drop(t.players[1].objects.remove(1).unwrap()), false),
         (|t| t.players[1].objects[1].life.state = 3, true),
         (|t| t.players[1].objects[1].life.hp = 0.25, true),
         (
             |t| {
-                let house = t.players[1].objects.remove(1);
+                let house = t.players[1].objects.remove(1).unwrap();
                 t.players.push(crate::world::Player {
                     objects: vec![house].into(),
                     attributes: vec![0.0; 300],
@@ -453,7 +453,7 @@ fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
 #[test]
 fn gaia_s_object_is_repaired() {
     let mut t = repair_at(NEAR, |r| (r.state, r.move_to) = (FACE, None));
-    let house = t.players[1].objects.remove(1);
+    let house = t.players[1].objects.remove(1).unwrap();
     t.players[0].objects.push(house);
     t.players[0].attributes = vec![0.0; 300];
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));

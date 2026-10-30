@@ -3994,7 +3994,7 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
 fn a_gathering_hunt_whose_target_left_searches_without_reading_one() {
     use crate::gathering::hunt::{GATHER, SEARCH};
     let mut t = hunter_in(|h| (h.state, h.attack, h.move_to) = (GATHER, None, None));
-    let _ = t.players[0].objects.remove(0);
+    let _ = t.players[0].objects.remove(0).unwrap();
     let _ = t.spatial.leave(500);
     let r = in_update(&mut t, (1, 0), 50, |unit, c| {
         unit.hunt_targets(c)?;
@@ -4208,7 +4208,7 @@ fn lumber_world(near: f32) -> World {
 /// 520.
 fn lets_world() -> World {
     let mut t = lumber_world(31.5);
-    let asleep = t.players[0].objects.swap_remove(3);
+    let asleep = t.players[0].objects.swap_remove(3).unwrap();
     t.players[0].sleeping.push(asleep);
     for masters in &mut t.masters {
         let annex = Master {
@@ -4979,7 +4979,7 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
     let entered = |ally: bool| {
         let mut t = enter_world(vec![], 5);
         if ally {
-            let house = t.players[1].objects.remove(1);
+            let house = t.players[1].objects.remove(1).unwrap();
             let mut ally = Player {
                 attributes: vec![0.0; 250],
                 ..Player::default()
@@ -7249,7 +7249,7 @@ fn a_research_s_unmodelled_parts_fail() {
     );
     assert_eq!(
         fails(&|t| {
-            let tc = t.players[0].objects.remove(0);
+            let tc = t.players[0].objects.remove(0).unwrap();
             t.players.push(Player {
                 objects: vec![tc].into(),
                 ..Player::default()
@@ -8906,7 +8906,7 @@ fn only_a_static_object_let_go_by_its_last_worker_goes_to_sleep() {
     assert_eq!(let_go(25, 1.0), (0, false));
     assert_eq!(let_go(10, f32::NAN), (0, false));
     let mut t = deaths_world();
-    let mut tree = t.players[0].objects.remove(0);
+    let mut tree = t.players[0].objects.remove(0).unwrap();
     tree.workers = 2;
     t.players[0].sleeping.push(tree);
     t.release(50, by).unwrap();
@@ -9582,7 +9582,7 @@ fn a_lent_object_is_the_world_s_for_the_call() {
         let during = c.lend(unit, |w| {
             let hp = w.object(id).map(|(_, u)| u.life.hp);
             w.object_mut(id).expect("lent").1.life.amount = 3.0;
-            let _ = w.players[1].objects.swap_remove(0);
+            let _ = w.players[1].objects.swap_remove(0).unwrap();
             Ok(hp)
         })?;
         let out = c.w.object(id).is_none();
@@ -9696,7 +9696,7 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     let last = before.len() - 1;
     let stepped = t
         .step_object((1, last), (50, None, false), |_, c| {
-            let _ = c.w.players[1].objects.swap_remove(0);
+            let _ = c.w.players[1].objects.swap_remove(0).unwrap();
             Ok(Outcome::Stay)
         })
         .unwrap();
@@ -12520,7 +12520,7 @@ fn livestock_inside_gets_its_default_artifact_and_loses_it_by_turns() {
 fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
     let mut t = build_world();
     t.masters[0] = builder_masters();
-    let theirs = t.players[1].objects.remove(1);
+    let theirs = t.players[1].objects.remove(1).unwrap();
     t.players[0].objects.push(theirs);
     let build = |builders: Vec<i32>| {
         Command::Build(BuildCommand {
@@ -13203,7 +13203,7 @@ fn a_forager_without_its_bush_after_the_drop_takes_the_next_one() {
         let carries =
             |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) == Some(8);
         forage_until(&mut t, 800, carries);
-        let _ = t.players[0].objects.remove(0);
+        let _ = t.players[0].objects.remove(0).unwrap();
         t.spatial.remove(600);
         let dropped =
             |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) != Some(8);
@@ -13224,7 +13224,7 @@ fn dropped_without_a_bush(setup: impl FnOnce(&mut World)) -> World {
     let mut t = foraging();
     let carries = |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) == Some(8);
     forage_until(&mut t, 800, carries);
-    let _ = t.players[0].objects.remove(0);
+    let _ = t.players[0].objects.remove(0).unwrap();
     t.spatial.remove(600);
     setup(&mut t);
     let dropped = |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) != Some(8);
@@ -13268,7 +13268,7 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
     };
     // the Gather's state 8 after the deposit, its bush gone, two orders queued
     let mut t = foraging();
-    let _ = t.players[0].objects.remove(0);
+    let _ = t.players[0].objects.remove(0).unwrap();
     t.spatial.remove(600);
     let v = &mut t.players[1].objects[0];
     v.actions.gather_mut().unwrap().target = -1;
@@ -14600,7 +14600,7 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     // player 0's house, the players allied: repaired, then repaired to full
     let allied = |hp: f32| {
         let mut t = repairing(near);
-        let mut house = t.players[1].objects.remove(1);
+        let mut house = t.players[1].objects.remove(1).unwrap();
         (house.life.hp, house.armor_removed, house.workers) = (hp, [3, 4], 0);
         t.players[0].objects.push(house);
         t.players[0].attributes = vec![0.0; 300];

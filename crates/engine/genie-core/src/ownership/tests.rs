@@ -45,7 +45,7 @@ fn stopped(mut t: World, class: i16) -> Result<(Unit, Vec<i32>), GenieError> {
             .filter(|(_, b)| b.workers == 0);
         Ok(gone.map(|(_, b)| b.id).collect())
     })?;
-    Ok((t.players[1].objects.swap_remove(0), released))
+    Ok((t.players[1].objects.swap_remove(0).unwrap(), released))
 }
 
 /// `FUN_14108c050` without an Artifact: the action list goes (the `MoveTo`'s teardown stops the

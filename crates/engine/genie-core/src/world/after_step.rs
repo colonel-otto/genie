@@ -73,7 +73,7 @@ impl World {
     ) -> Result<(), GenieError> {
         // TRIBE_Combat_Object::update's regeneration after RGE_Combat_Object::update
         if own_update {
-            self.regenerate_object((p, i, id), seconds(dt));
+            self.regenerate_object((p, i, id), seconds(dt))?;
         }
         // TRIBE_Combat_Object::update's passive abilities (FUN_1412072f0) as the object's owner
         // after its update; a removal reward's command comes back as the recording's own
@@ -85,7 +85,7 @@ impl World {
             };
             let _ = self.abilities((id, p, i), owner, leaves)?;
             // then its hit point powerup check
-            self.clamp_object_powerup((p, i, id));
+            self.clamp_object_powerup((p, i, id))?;
         }
         // TRIBE_Building_Object::update: the production after the combat update
         if matches!(outcome, Outcome::Stay) && own_update {

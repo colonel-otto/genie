@@ -9,9 +9,41 @@ use crate::objects::masters::Master;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::{NO_DYING_SPRITE, Unit};
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl Unit {
+    /// The death of a built building from state 2 ([`Unit::died`]): the storage leaves
+    /// (`FUN_1411e63f0`), the owner's watched list lets it go, the tiles unlink, and a
+    /// monastery's, wonder's or castle's count leaves. The technology its last one withdraws.
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold, or what the death does not model.
+    fn built_building_died(
+        &mut self,
+        c: &mut Step<'_>,
+        master: &Master,
+    ) -> Result<Option<(i16, i16)>, GenieError> {
+        // FUN_1411dbb70 to state 3 from 2: the storage leaves (FUN_1411e63f0), the owner's
+        // watched list lets it go (FUN_141091310), the tiles unlink (FUN_140f65580), and
+        // a monastery's, wonder's or castle's count leaves, at least 0 left
+        let death = built_death(self, master, c.w.players.player(c.player)?.computer)?;
+        c.w.players
+            .player_mut(c.player)?
+            .add_attributes(death.adds)?;
+        c.w.unwatch(c.player, self.id);
+        if let (Some(v), Some(at)) = (c.w.spatial.sight.as_mut(), death.unlink) {
+            v.unlink_building(at, master.radius);
+        }
+        if let Some(kind) = death.building.count {
+            c.w.players
+                .player_mut(c.player)?
+                .take_at_least_zero(kind, 1.0)?;
+        }
+        Ok(death.building.tech)
+    }
+
     /// The death's `set_state(3)` (from `before`, the state the object had) and the static
     /// update's dying sprite after it (slot 0x7a0, then slot 0x68, `FUN_141217000`). A building's
     /// (`FUN_1411dbb70`) first lets its annexes go (each takes its hit points at once, in the
@@ -48,19 +80,7 @@ impl Unit {
                 }
             }
             if before == 2 {
-                // FUN_1411dbb70 to state 3 from 2: the storage leaves (FUN_1411e63f0), the owner's
-                // watched list lets it go (FUN_141091310), the tiles unlink (FUN_140f65580), and
-                // a monastery's, wonder's or castle's count leaves, at least 0 left
-                let death = built_death(self, master, c.w.players[c.player].computer)?;
-                c.w.players[c.player].add_attributes(death.adds)?;
-                c.w.unwatch(c.player, self.id);
-                if let (Some(v), Some(at)) = (c.w.spatial.sight.as_mut(), death.unlink) {
-                    v.unlink_building(at, master.radius);
-                }
-                if let Some(kind) = death.building.count {
-                    c.w.players[c.player].take_at_least_zero(kind, 1.0)?;
-                }
-                tech = death.building.tech;
+                tech = self.built_building_died(c, master)?;
             } else if before == 0 {
                 self.foundation_died(c, master)?;
             }
@@ -81,7 +101,7 @@ impl Unit {
         if before == 2 {
             // FUN_14121cc40: the paid cost leaves attributes 98 and 164 (a building's 98 and
             // 165), each at least 0 (slots 0xf8, then 0xf0 with 0)
-            let owner = &mut c.w.players[c.player];
+            let owner = c.w.players.player_mut(c.player)?;
             for (kind, cost) in refund_of(master, self.annex_of) {
                 owner.take_at_least_zero(kind, cost)?;
             }
@@ -146,9 +166,9 @@ impl Unit {
             .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
         let completion = Completion {
             master: Some(master),
-            farm_bonus: farm_bonus(&c.w.players[c.player].attributes),
+            farm_bonus: farm_bonus(&c.w.players.player(c.player)?.attributes),
             masters: c.w.masters.get(c.player),
-            computer: c.w.players[c.player].computer,
+            computer: c.w.players.player(c.player)?.computer,
             ai: self.ai.is_some(),
         };
         let part = completion.first_part(construction)?;
@@ -158,8 +178,13 @@ impl Unit {
             &c.w.lines,
             self.life.master_id,
         );
-        c.w.players[c.player].tracker.complete(self.id, k);
-        c.w.players[c.player].add_attributes(part.attributes)?;
+        c.w.players
+            .player_mut(c.player)?
+            .tracker
+            .complete(self.id, k);
+        c.w.players
+            .player_mut(c.player)?
+            .add_attributes(part.attributes)?;
         // a pasture's livestock and a mule cart's search (from state 0), the foundation lent to
         // the world for what they place and search
         if part.pasture || part.cart {

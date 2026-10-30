@@ -276,10 +276,9 @@ impl<'a> Others<'a> {
             (q, objects, sleeping, tracker)
         });
         for (q, live, sleeping, tracker) in own.chain(foreign) {
-            let Some(i) = sleeping.position_of(id) else {
+            let Some(mut woken) = sleeping.swap_remove_id(id) else {
                 continue;
             };
-            let mut woken = sleeping.swap_remove(i);
             woken.life.goto_sleep = false;
             let k = key(masters.get(q), lines, woken.life.master_id);
             live.push(woken);
@@ -309,8 +308,7 @@ impl World {
     /// holds it.
     pub(crate) fn wake_sleeper(&mut self, id: i32) -> bool {
         let woken = self.players.iter_mut().enumerate().find_map(|(p, player)| {
-            let i = player.sleeping.position_of(id)?;
-            let mut woken = player.sleeping.swap_remove(i);
+            let mut woken = player.sleeping.swap_remove_id(id)?;
             woken.life.goto_sleep = false;
             let master = woken.life.master_id;
             player.objects.push(woken);
@@ -332,7 +330,7 @@ impl World {
     /// A player the world does not hold.
     pub(crate) fn take_out_own(&mut self, p: usize, id: i32) -> Result<Option<Unit>, GenieError> {
         let own = &mut self.players.player_mut(p)?.objects;
-        Ok(own.position_of(id).map(|i| own.take_out(i)))
+        own.position_of(id).map(|i| own.take_out(i)).transpose()
     }
 
     /// `unit`, out of player `p`'s live list, goes back to the slot its stand-in holds now (the

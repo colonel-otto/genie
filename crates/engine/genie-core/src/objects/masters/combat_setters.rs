@@ -41,7 +41,11 @@ impl Master {
             a::FRIENDLY_FIRE_DAMAGE => self.friendly_fire = v,
             a::GARRISON_FIREPOWER => self.garrison_firepower = v,
             a::DISPLACEMENT_X..=a::DISPLACEMENT_Z => {
-                self.weapon_offset[usize::from(attribute - a::DISPLACEMENT_X)] = v;
+                *a::lane_mut(
+                    &mut self.weapon_offset,
+                    attribute,
+                    (a::DISPLACEMENT_X, a::DISPLACEMENT_Y),
+                ) = v;
             }
             _ => self.set_action(attribute, v, world),
         }
@@ -107,8 +111,11 @@ impl Master {
             a::FRIENDLY_FIRE_DAMAGE => self.friendly_fire += v,
             a::GARRISON_FIREPOWER => self.garrison_firepower += v,
             a::DISPLACEMENT_X..=a::DISPLACEMENT_Z => {
-                let o = &mut self.weapon_offset[usize::from(attribute - a::DISPLACEMENT_X)];
-                *o += v;
+                *a::lane_mut(
+                    &mut self.weapon_offset,
+                    attribute,
+                    (a::DISPLACEMENT_X, a::DISPLACEMENT_Y),
+                ) += v;
             }
             _ => self.add_action(attribute, v, world),
         }
@@ -172,8 +179,11 @@ impl Master {
             a::FRIENDLY_FIRE_DAMAGE => self.friendly_fire *= v,
             a::GARRISON_FIREPOWER => self.garrison_firepower *= v,
             a::DISPLACEMENT_X..=a::DISPLACEMENT_Z => {
-                let o = &mut self.weapon_offset[usize::from(attribute - a::DISPLACEMENT_X)];
-                *o *= v;
+                *a::lane_mut(
+                    &mut self.weapon_offset,
+                    attribute,
+                    (a::DISPLACEMENT_X, a::DISPLACEMENT_Y),
+                ) *= v;
             }
             _ => self.multiply_action(attribute, v, world),
         }

@@ -102,7 +102,7 @@ impl World {
             };
             kinds.push(kind);
         }
-        let cart = self.players[p].objects.take_out(idx);
+        let cart = self.players[p].objects.take_out(idx)?;
         let result = (|| {
             let (before, rest) = self.players.split_at_mut(p);
             let (player, after) = rest.split_first_mut().expect("p is a player");

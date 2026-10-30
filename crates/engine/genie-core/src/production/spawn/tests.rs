@@ -588,7 +588,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
         u.town_bell.flag = true;
         u.ai.as_mut().unwrap().orders.push(queued_move());
         t.gather_move(1, 0, [40.0, 80.0, 0.0], notified).unwrap();
-        t.players[1].objects.swap_remove(0)
+        t.players[1].objects.swap_remove(0).unwrap()
     };
     let u = walked(true);
     assert_eq!(u.body.mover().unwrap().waiting, 1);

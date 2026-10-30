@@ -67,14 +67,25 @@ impl Master {
                 }
             }
             a::MIN_CONVERSION_TIME_MODIFIER..=a::CONVERSION_CHANCE_MODIFIER => {
-                self.conversion[usize::from(attribute - a::MIN_CONVERSION_TIME_MODIFIER)] = v;
+                *a::lane_mut(
+                    &mut self.conversion,
+                    attribute,
+                    (
+                        a::MIN_CONVERSION_TIME_MODIFIER,
+                        a::MAX_CONVERSION_TIME_MODIFIER,
+                    ),
+                ) = v;
             }
             a::FORMATION_CATEGORY => self.formation_category = low8(v),
             a::REGENERATION_HP_PERCENT => self.regeneration = f32::from(self.hit_points) * v,
             a::ATTACK_PRIORITY => self.attack_priority = low8(v),
             a::INVULNERABILITY_LEVEL => self.invulnerability = v,
             a::SPAWNING_AREA_WIDTH..=a::SPAWNING_AREA_RANDOMNESS => {
-                self.volley_spread[usize::from(attribute - a::SPAWNING_AREA_WIDTH)] = v;
+                *a::lane_mut(
+                    &mut self.volley_spread,
+                    attribute,
+                    (a::SPAWNING_AREA_WIDTH, a::SPAWNING_AREA_LENGTH),
+                ) = v;
             }
             // the ability's button, tooltips and hotkey action are the interface's
             a::ABILITY_BUTTON_ICON_ID..=a::ABILITY_HOTKEY_ACTION => {}
@@ -189,9 +200,14 @@ impl Master {
             a::MAXIMUM_TOTAL_MISSILES => self.max_volley = self.max_volley.wrapping_add(low8(v)),
             a::REGENERATION_RATE => self.regeneration += v,
             a::MIN_CONVERSION_TIME_MODIFIER..=a::CONVERSION_CHANCE_MODIFIER => {
-                let c =
-                    &mut self.conversion[usize::from(attribute - a::MIN_CONVERSION_TIME_MODIFIER)];
-                *c += v;
+                *a::lane_mut(
+                    &mut self.conversion,
+                    attribute,
+                    (
+                        a::MIN_CONVERSION_TIME_MODIFIER,
+                        a::MAX_CONVERSION_TIME_MODIFIER,
+                    ),
+                ) += v;
             }
             a::REGENERATION_HP_PERCENT => {
                 self.regeneration += f32::from(self.hit_points) * v;
@@ -200,8 +216,11 @@ impl Master {
             // FUN_141533c70 tests the new id; the game takes the sprite from the same table
             a::ATTACK_GRAPHIC_2 => add_sprite(&mut self.attack_sprite2, v, world),
             a::SPAWNING_AREA_WIDTH..=a::SPAWNING_AREA_RANDOMNESS => {
-                let s = &mut self.volley_spread[usize::from(attribute - a::SPAWNING_AREA_WIDTH)];
-                *s += v;
+                *a::lane_mut(
+                    &mut self.volley_spread,
+                    attribute,
+                    (a::SPAWNING_AREA_WIDTH, a::SPAWNING_AREA_LENGTH),
+                ) += v;
             }
             a::TRAIN_LOCATIONS_ENTRY_MOD => {
                 let n = cvttss2si(f32::from(self.train_location_entry) + v);
@@ -254,14 +273,22 @@ impl Master {
             }
             a::REGENERATION_RATE => self.regeneration *= v,
             a::MIN_CONVERSION_TIME_MODIFIER..=a::CONVERSION_CHANCE_MODIFIER => {
-                let c =
-                    &mut self.conversion[usize::from(attribute - a::MIN_CONVERSION_TIME_MODIFIER)];
-                *c *= v;
+                *a::lane_mut(
+                    &mut self.conversion,
+                    attribute,
+                    (
+                        a::MIN_CONVERSION_TIME_MODIFIER,
+                        a::MAX_CONVERSION_TIME_MODIFIER,
+                    ),
+                ) *= v;
             }
             a::INVULNERABILITY_LEVEL => self.invulnerability *= v,
             a::SPAWNING_AREA_WIDTH..=a::SPAWNING_AREA_RANDOMNESS => {
-                let s = &mut self.volley_spread[usize::from(attribute - a::SPAWNING_AREA_WIDTH)];
-                *s *= v;
+                *a::lane_mut(
+                    &mut self.volley_spread,
+                    attribute,
+                    (a::SPAWNING_AREA_WIDTH, a::SPAWNING_AREA_LENGTH),
+                ) *= v;
             }
             a::TRAIN_LOCATIONS_ENTRY_MOD => {
                 insert_train_location(&mut self.train_locations, &mut self.train_location_entry, v);

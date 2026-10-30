@@ -120,7 +120,7 @@ fn lost_members_leave_the_group_and_stop() {
     t.players[1].objects[1].life.hp = 0.5;
     let mut stray = soldier(12, 1.0, 2.0);
     stray.group.id = 1;
-    let _ = t.players[1].objects.remove(2);
+    let _ = t.players[1].objects.remove(2).unwrap();
     t.players[2].objects.push(stray);
     let mut mute = soldier(13, 2.0, 2.0);
     mute.ai = None;

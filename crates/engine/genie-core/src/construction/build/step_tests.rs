@@ -271,7 +271,7 @@ fn put(t: &mut World, id: i32, at: [f32; 3]) {
 /// The foundation leaves the world: its list and the map.
 fn remove_house(t: &mut World) {
     let i = t.players[1].objects.position_of(HOUSE).unwrap();
-    let _ = t.players[1].objects.take_out(i);
+    let _ = t.players[1].objects.take_out(i).unwrap();
     t.spatial.remove(HOUSE);
 }
 
@@ -1192,7 +1192,7 @@ fn a_builder_s_drop_off_without_its_drop_site_searches_again() {
     assert_eq!(searched(left, MoveTo::Arrived), (MOVE, 10.0, 1));
     let gone: fn(&mut World) = |t| {
         let i = t.players[1].objects.position_of(300).unwrap();
-        let _ = t.players[1].objects.take_out(i);
+        let _ = t.players[1].objects.take_out(i).unwrap();
         t.spatial.remove(300);
     };
     assert_eq!(searched(gone, MoveTo::Arrived), (MOVE, 10.0, 1));

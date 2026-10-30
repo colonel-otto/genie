@@ -9,6 +9,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// The object whose action lets its target go (the target's slot 0x180 takes it): its id, its
@@ -83,7 +84,7 @@ impl World {
         let master = gone.master(&self.masters, p).ok();
         forget_resource(&mut self.spatial, master, gone.id, gone.position());
         if let Some(m) = master.filter(|m| COMBAT <= m.kind) {
-            count_class(&mut self.players[p].attributes, m, -1.0);
+            count_class(&mut self.players.player_mut(p)?.attributes, m, -1.0);
         }
         let recyclable = master.is_some_and(|m| m.recyclable);
         let left = self.spatial.leave(gone.id);
@@ -99,35 +100,52 @@ impl World {
     /// `TRIBE_Combat_Object::update`'s regeneration ([`Unit::regenerate`]) of the object in
     /// `slot` ([`World::live_slot`]), a combat object or building (types 70 and 80) by its own
     /// master, else its player's.
-    pub(crate) fn regenerate_object(&mut self, slot: (usize, usize, i32), dt_seconds: f32) {
+    ///
+    /// # Errors
+    ///
+    /// A slot the player's list does not hold.
+    pub(crate) fn regenerate_object(
+        &mut self,
+        slot: (usize, usize, i32),
+        dt_seconds: f32,
+    ) -> Result<(), GenieError> {
         let Some((p, i)) = self.live_slot(slot) else {
-            return;
+            return Ok(());
         };
-        let unit = &self.players[p].objects[i];
+        let unit = self.players.live(p, i)?;
         let Some(master) = unit
             .master(&self.masters, p)
             .ok()
             .filter(|m| matches!(m.kind, COMBAT | BUILDING))
             .cloned()
         else {
-            return;
+            return Ok(());
         };
-        self.players[p].objects[i].regenerate(&master, dt_seconds);
+        self.players.live_mut(p, i)?.regenerate(&master, dt_seconds);
+        Ok(())
     }
 
     /// `TRIBE_Combat_Object::update`'s hit point powerup check ([`Unit::clamp_hp_powerup`]) of the
     /// object in `slot` ([`World::live_slot`]), a combat object or building (types 70 and 80).
-    pub(crate) fn clamp_object_powerup(&mut self, slot: (usize, usize, i32)) {
+    ///
+    /// # Errors
+    ///
+    /// A slot the player's list does not hold.
+    pub(crate) fn clamp_object_powerup(
+        &mut self,
+        slot: (usize, usize, i32),
+    ) -> Result<(), GenieError> {
         let Some((p, i)) = self.live_slot(slot) else {
-            return;
+            return Ok(());
         };
-        let unit = &self.players[p].objects[i];
+        let unit = self.players.live(p, i)?;
         let combat = unit
             .master(&self.masters, p)
             .is_ok_and(|m| matches!(m.kind, COMBAT | BUILDING));
         if combat {
-            self.players[p].objects[i].clamp_hp_powerup();
+            self.players.live_mut(p, i)?.clamp_hp_powerup();
         }
+        Ok(())
     }
 }
 

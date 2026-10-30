@@ -243,10 +243,14 @@ pub const TRAIL_MODE: u8 = 146;
 pub const TRAIL_DENSITY: u8 = 147;
 /// "Projectile Graphic Displacement X" (`+0x844`; Y and Z follow).
 pub const DISPLACEMENT_X: u8 = 148;
+/// "Projectile Graphic Displacement Y" (`+0x848`).
+pub const DISPLACEMENT_Y: u8 = 149;
 /// "Projectile Graphic Displacement Z" (`+0x84c`).
 pub const DISPLACEMENT_Z: u8 = 150;
 /// "Projectile Spawning Area Width" (`+0x8c8`; the length and the randomness follow).
 pub const SPAWNING_AREA_WIDTH: u8 = 151;
+/// "Projectile Spawning Area Length" (`+0x8cc`).
+pub const SPAWNING_AREA_LENGTH: u8 = 152;
 /// "Projectile Spawning Area Randomness" (`+0x8d0`).
 pub const SPAWNING_AREA_RANDOMNESS: u8 = 153;
 /// "Damage Graphics Entry Mod" (`+0x731`).
@@ -261,3 +265,20 @@ pub const DAMAGE_GRAPHIC_APPLY_MODE: u8 = 157;
 pub const TRAIN_LOCATIONS_ENTRY_MOD: u8 = 158;
 /// "Train Locations Total Num" (`+0x898`'s count).
 pub const TRAIN_LOCATIONS_TOTAL_NUM: u8 = 159;
+
+/// The lane of an attribute that sets one of three consecutive attributes' values: `first` and
+/// `second` name the first two lanes, any other attribute of the range is the third.
+pub(crate) const fn lane_mut(
+    lanes: &mut [f32; 3],
+    attribute: u8,
+    (first, second): (u8, u8),
+) -> &mut f32 {
+    let [one, two, three] = lanes;
+    if attribute == first {
+        one
+    } else if attribute == second {
+        two
+    } else {
+        three
+    }
+}
