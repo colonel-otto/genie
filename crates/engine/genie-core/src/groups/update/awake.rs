@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::UnitGroup;
+use crate::groups::group_list::{NO_FORMATION, member_gone};
 use crate::groups::update::{
     ATTACK, DIFFERENTIATORS, FRONT_AHEAD, NO_COMMAND, OTHER_COMMANDS, RELAYOUT_SPACING, TURN_LIMIT,
 };
@@ -34,28 +35,28 @@ impl World {
     ///
     /// What the update does not model.
     pub(super) fn awake_update(&mut self, group: i32) -> Result<bool, GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let far = if g.command_queue.is_empty() {
             self.kept_apart_leave(group)?
         } else {
             false
         };
-        if self.groups.get(group).expect("held").flags & 0x4_0000 != 0 {
+        if self.groups.held(group)?.flags & 0x4_0000 != 0 {
             self.lead_to_target(group, far)?;
         }
-        let g = self.groups.get(group).expect("held");
+        let g = self.groups.held(group)?;
         if awake_group_ends(g) {
             return Ok(false);
         }
         if self.any_member_held(group) && g.flags & 0x1_0000 != 0 {
             self.group_statistics(group, far)?;
         }
-        if self.groups.get(group).expect("held").flags & 0x40 != 0 {
+        if self.groups.held(group)?.flags & 0x40 != 0 {
             return Ok(false);
         }
         let lead = self.nearest_to_target(group);
-        self.groups.get_mut(group).expect("held").motion.lead = lead;
-        let g = self.groups.get(group).expect("held");
+        self.groups.held_mut(group)?.motion.lead = lead;
+        let g = self.groups.held(group)?;
         if self.lead_object(&g.motion).is_none() {
             return Ok(false);
         }
@@ -65,9 +66,9 @@ impl World {
             .is_some_and(|f| f.kind == crate::groups::formation::HORDE);
         if (g.motion.flags & 2 != 0 && g.flags & 0x400 == 0 && !horde) || g.flags & 0x8000 != 0 {
             self.set_initial_position(group)?;
-            self.groups.get_mut(group).expect("held").flags &= !0x8000;
+            self.groups.held_mut(group)?.flags &= !0x8000;
         }
-        let g = self.groups.get_mut(group).expect("held");
+        let g = self.groups.held_mut(group)?;
         g.unit_types.retain(|s| !s.units.is_empty());
         let budget = g.flags & 0x100 == 0;
         let forward = g.motion.position[1];
@@ -85,7 +86,7 @@ impl World {
     ///
     /// What the target's test and the leaving do not model.
     pub(super) fn kept_apart_leave(&mut self, group: i32) -> Result<bool, GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let patrol = crate::groups::formation::top_path(&g.motion.paths)
             .is_some_and(|p| p.path_flags & 1 != 0);
         // the dword compare at 0x14103dd78: the list's size (64 bits) against the count
@@ -94,13 +95,13 @@ impl World {
             && !patrol
             && g.flags >> 11 & 1 == 0
         {
-            while let Some(&id) = self.groups.get(group).expect("held").objects.first() {
+            while let Some(&id) = self.groups.held(group)?.objects.first() {
                 if !self.remove_unit(group, id, -1, false)? {
-                    let _ = self.groups.get_mut(group).expect("held").objects.remove(0);
+                    let _ = self.groups.held_mut(group)?.objects.remove(0);
                 }
             }
         }
-        let g = self.groups.get(group).expect("held");
+        let g = self.groups.held(group)?;
         Ok(g.command_queue.is_empty() && g.motion.flags & 2 == 0)
     }
 
@@ -114,18 +115,18 @@ impl World {
     /// What the motion update and the statistics do not model.
     pub(super) fn lead_to_target(&mut self, group: i32, far: bool) -> Result<(), GenieError> {
         let lead = self.nearest_to_target(group);
-        self.groups.get_mut(group).expect("held").motion.lead = lead;
+        self.groups.held_mut(group)?.motion.lead = lead;
         if lead == -1 {
             return Ok(());
         }
         self.motion_update(group, false)?;
-        if self.groups.get(group).expect("held").motion.flags & 2 == 0 {
+        if self.groups.held(group)?.motion.flags & 2 == 0 {
             self.group_statistics(group, far)?;
-            let g = self.groups.get_mut(group).expect("held");
+            let g = self.groups.held_mut(group)?;
             g.motion.new_position[0] = g.centroid;
             g.motion.position[0] = g.centroid;
         }
-        self.groups.get_mut(group).expect("held").flags &= !0x4_0000;
+        self.groups.held_mut(group)?.flags &= !0x4_0000;
         Ok(())
     }
 
@@ -157,26 +158,26 @@ impl World {
         far: bool,
         forward: Vec3,
     ) -> Result<bool, GenieError> {
-        if self.groups.get(group).expect("held").flags & 0x100 != 0 {
+        if self.groups.held(group)?.flags & 0x100 != 0 {
             self.turn_formation(group, forward)?;
         }
-        let count = self.groups.get(group).expect("held").members.len();
-        if self.groups.get(group).expect("held").flags & 0x1_0000 == 0 {
+        let count = self.groups.held(group)?.members.len();
+        if self.groups.held(group)?.flags & 0x1_0000 == 0 {
             self.group_statistics(group, far)?;
         }
-        self.groups.get_mut(group).expect("held").flags &= !0x1_0000;
+        self.groups.held_mut(group)?.flags &= !0x1_0000;
         // DAT_143f15860 (0x14103e3a5..0x14103e442), which only the members' moves read
-        let g = self.groups.get(group).expect("held");
+        let g = self.groups.held(group)?;
         let differentiators = self.groups.differentiator_units(g, DIFFERENTIATORS);
         self.line_ranges(group)?;
-        let (mut relayout, refill) = self.relayout_choice(group, count);
+        let (mut relayout, refill) = self.relayout_choice(group, count)?;
         if !self.command_update(group, &mut relayout)? {
             return Ok(false);
         }
         if !self.any_member_held(group) {
             relayout = false;
         }
-        let g = self.groups.get(group).expect("held");
+        let g = self.groups.held(group)?;
         if refill && g.current_formation.is_some() {
             // FUN_1410163f0: an attack's formation of kind 6 fills its slots anew; only an
             // attack (9) chooses it, whose update stops above
@@ -185,22 +186,36 @@ impl World {
         if relayout {
             self.update_desired_positions(group, -1)?;
         }
-        let g = self.groups.get_mut(group).expect("held");
+        self.slots_step(group, &differentiators)?;
+        self.update_end_steps(group)
+    }
+
+    /// [`World::after_motion`]'s members' moves to their slots: an awake group (not
+    /// hibernating) clears flags bit 9 and, with a formation holding slots, moves its members to
+    /// them ([`World::members_to_slots`]).
+    fn slots_step(&mut self, group: i32, differentiators: &[i32]) -> Result<(), GenieError> {
+        let g = self.groups.held_mut(group)?;
         if g.hibernating == 0 {
             g.flags &= !0x200;
             if g.current_formation
                 .as_ref()
                 .is_some_and(|f| !f.slots.is_empty())
             {
-                self.members_to_slots(group, &differentiators)?;
+                self.members_to_slots(group, differentiators)?;
             }
         }
+        Ok(())
+    }
+
+    /// [`World::after_motion`]'s last steps: the members' own moves, the order queue's due
+    /// orders and the idle timer. True while the group has members.
+    fn update_end_steps(&mut self, group: i32) -> Result<bool, GenieError> {
         self.specific_moves_step(group)?;
-        if !self.groups.get(group).expect("held").order_queue.is_empty() {
+        if !self.groups.held(group)?.order_queue.is_empty() {
             self.drop_due_orders(group);
         }
-        self.idle_timer_step(group);
-        Ok(!self.groups.get(group).expect("held").members.is_empty())
+        self.idle_timer_step(group)?;
+        Ok(!self.groups.held(group)?.members.is_empty())
     }
 
     /// The formation's turn (`0x14103e037`..`0x14103e37b`, flags bit 8): when the motion turned
@@ -215,63 +230,43 @@ impl World {
     /// ([`World::formation_transform`], `param_4` 0) and flags bit 8 clears. The debug drawing
     /// (`DAT_143f15a9c`) holds no state.
     pub(super) fn turn_formation(&mut self, group: i32, forward: Vec3) -> Result<(), GenieError> {
-        if self.turns_formation(group, forward) {
-            let g = self.groups.get(group).expect("held");
+        if self.turns_formation(group, forward)? {
+            let g = self.groups.held(group)?;
             let without_path = g.motion.paths.first().is_some_and(|l| !l.has_path);
-            self.groups
-                .get_mut(group)
-                .expect("held")
-                .stored_positions
-                .clear_points();
+            self.groups.held_mut(group)?.stored_positions.clear_points();
             if without_path {
-                self.front_by_centroid(group);
+                self.front_by_centroid(group)?;
             } else {
                 self.move_position_to_front(group, FRONT_AHEAD)?;
             }
             self.update_desired_positions(group, -1)?;
-            if let Some(mut f) = self
-                .groups
-                .get_mut(group)
-                .expect("held")
-                .current_formation
-                .take()
-            {
+            if let Some(mut f) = self.groups.held_mut(group)?.current_formation.take() {
                 f.clear_units();
-                let g = self.groups.get(group).expect("held").clone();
+                let g = self.groups.held(group)?.clone();
                 let placed = self.populate_slots(&mut f, &g);
-                self.groups.get_mut(group).expect("held").current_formation = Some(f);
+                self.groups.held_mut(group)?.current_formation = Some(f);
                 placed?;
             }
-            self.groups.get_mut(group).expect("held").flags &= !0x4000;
+            self.groups.held_mut(group)?.flags &= !0x4000;
         }
-        self.groups
-            .get_mut(group)
-            .expect("held")
-            .motion
-            .drop_to_high_level();
+        self.groups.held_mut(group)?.motion.drop_to_high_level();
         self.motion_update(group, true)?;
-        if let Some(mut f) = self
-            .groups
-            .get_mut(group)
-            .expect("held")
-            .current_formation
-            .take()
-        {
+        if let Some(mut f) = self.groups.held_mut(group)?.current_formation.take() {
             let moved = self.formation_transform(&mut f, group, false);
-            self.groups.get_mut(group).expect("held").current_formation = Some(f);
+            self.groups.held_mut(group)?.current_formation = Some(f);
             let _ = moved?;
         }
-        self.groups.get_mut(group).expect("held").flags &= !0x100;
+        self.groups.held_mut(group)?.flags &= !0x100;
         Ok(())
     }
 
     /// Whether the formation's turn lays it out anew: the motion turned more than π/4 from
     /// `forward` (the size of `FUN_14087e650`'s angle; `COMISS` then `JA` at `0x14103e154`, a NaN
     /// does not), or motion flags bit 1 or flags bit 14 is set.
-    pub(super) fn turns_formation(&self, group: i32, forward: Vec3) -> bool {
-        let g = self.groups.get(group).expect("held");
+    pub(super) fn turns_formation(&self, group: i32, forward: Vec3) -> Result<bool, GenieError> {
+        let g = self.groups.held(group)?;
         let turn = crate::math::fmath::angle_between(g.motion.position[1], forward).abs();
-        TURN_LIMIT < turn || g.motion.flags & 2 != 0 || g.flags & 0x4000 != 0
+        Ok(TURN_LIMIT < turn || g.motion.flags & 2 != 0 || g.flags & 0x4000 != 0)
     }
 
     /// `movePositionToFrontUsingCentroid` (inline at `0x14103e199`, its log aside): the group's
@@ -279,17 +274,17 @@ impl World {
     /// divided by the member count, `CVTDQ2PS`) plus the forward scaled by 0 (`FUN_14087e530`:
     /// a zero but for an infinite or NaN forward).
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When the world does not hold a member: the game reads its null object; the members'
     /// check at the update's start leaves only held ones.
-    pub(super) fn front_by_centroid(&mut self, group: i32) {
-        let g = self.groups.get(group).expect("held");
+    pub(super) fn front_by_centroid(&mut self, group: i32) -> Result<(), GenieError> {
+        let g = self.groups.held(group)?;
         let mut sum = [0.0f32; 3];
         for m in &g.members {
             let v = self
                 .world_object(m.id)
-                .expect("the update's start keeps only held members")
+                .ok_or_else(|| member_gone(m.id))?
                 .moved_vector()
                 .xhy();
             sum = [sum[0] + v[0], sum[1] + v[1], sum[2] + v[2]];
@@ -301,9 +296,10 @@ impl World {
             sum[1] / n + ahead[1],
             sum[2] / n + ahead[2],
         ];
-        let g = self.groups.get_mut(group).expect("held");
+        let g = self.groups.held_mut(group)?;
         g.motion.new_position[0] = point;
         g.motion.position[0] = point;
+        Ok(())
     }
 
     /// Each formation line in use's (`mNumberLines`, `+0x2c`) attack range (`+0x10`,
@@ -317,7 +313,7 @@ impl World {
     /// A line place without a slot (index -1 or past the slots, where the game reads outside the
     /// slots' array), and a unit of a master the slice does not have.
     pub(crate) fn line_ranges(&mut self, group: i32) -> Result<(), GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let Some(f) = g.current_formation.as_ref() else {
             return Ok(());
         };
@@ -350,11 +346,10 @@ impl World {
         }
         let f = self
             .groups
-            .get_mut(group)
-            .expect("held")
+            .held_mut(group)?
             .current_formation
             .as_mut()
-            .expect("found above");
+            .ok_or(NO_FORMATION)?;
         for (line, range) in f.lines.iter_mut().zip(ranges) {
             line.attack_range = range;
         }
@@ -367,9 +362,13 @@ impl World {
     /// at most 6 (`COMISS` then `JBE`: a NaN too), else relays out. Flags bit 7 with a spacing
     /// above 6 relays out and clears bits 7 and 1; then flags bit 1 with a spacing above 6 and an
     /// idle group ([`World::is_idle`]) relays out and clears bit 1.
-    pub(super) fn relayout_choice(&mut self, group: i32, count: usize) -> (bool, bool) {
+    pub(super) fn relayout_choice(
+        &mut self,
+        group: i32,
+        count: usize,
+    ) -> Result<(bool, bool), GenieError> {
         let idle = self.is_idle(group);
-        let g = self.groups.get_mut(group).expect("held");
+        let g = self.groups.held_mut(group)?;
         let (mut relayout, mut refill) = (false, false);
         if count != g.members.len() {
             if g.current_command == ATTACK
@@ -390,7 +389,7 @@ impl World {
             g.flags &= !2;
             relayout = true;
         }
-        (relayout, refill)
+        Ok((relayout, refill))
     }
 }
 

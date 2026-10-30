@@ -2,6 +2,7 @@
 //! (`FUN_141008d90`, `FUN_1410116c0`) and a unit's radius in a formation (`FUN_141025920`).
 
 use crate::GenieError;
+use crate::groups::group_list::member_gone;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
 use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
@@ -175,8 +176,6 @@ impl World {
     ///
     /// A member of a master the slice does not have, or a stand the slice does not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn remove_unit(
@@ -209,7 +208,7 @@ impl World {
                 self.spatial.set_gait(id, gait);
             }
         }
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         let seconds: Vec<f32> = g
             .members
             .iter()
@@ -221,19 +220,12 @@ impl World {
         }
         g.spare_seconds.insert(0, seconds[seconds.len() - 1]);
         let _ = self.leave_statistic(group, id)?;
-        let g = self.groups.get(group).expect("the group found above");
+        let g = self.groups.held(group)?;
         if g.motion.lead == id {
             let lead = self.nearest_to_target(group);
-            self.groups
-                .get_mut(group)
-                .expect("the group found above")
-                .motion
-                .lead = lead;
+            self.groups.held_mut(group)?.motion.lead = lead;
         }
-        self.groups
-            .get_mut(group)
-            .expect("the group found above")
-            .flags |= 0x1_0002;
+        self.groups.held_mut(group)?.flags |= 0x1_0002;
         Ok(true)
     }
 }
@@ -250,8 +242,6 @@ impl World {
     ///
     /// A held object of a master the slice does not have.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: its caller (`removeUnit`) holds it.
     pub(crate) fn leave_statistic(&mut self, group: i32, id: i32) -> Result<bool, GenieError> {
         let category = match self.world_object(id) {
@@ -266,11 +256,12 @@ impl World {
             .collect();
         let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
         let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
-        let left = self
-            .groups
-            .get_mut(group)
-            .expect("removeUnit holds the group")
-            .drop_from_statistic(id, category, &masters_of, &mut scratch);
+        let left = self.groups.held_mut(group)?.drop_from_statistic(
+            id,
+            category,
+            &masters_of,
+            &mut scratch,
+        );
         self.groups.unit_types_scratch = scratch;
         Ok(left)
     }
@@ -329,7 +320,7 @@ impl World {
     /// `FUN_141011300`, enters only the rams' rule, which never holds
     /// ([`World::unit_category`]): the port takes none.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
@@ -347,7 +338,7 @@ impl World {
         }
         let unit = FormationUnit::of(u.master(&self.masters, p)?);
         let old = u.group.id;
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         if g.has(id) {
             return Ok(true);
         }
@@ -358,7 +349,7 @@ impl World {
             // the unit leaves its old group first (removeUnit with -1, moving stopped)
             let _ = self.remove_unit(old, id, -1, false)?;
         }
-        let place = self.place(id).expect("the unit found above");
+        let place = self.place(id).ok_or_else(|| member_gone(id))?;
         let ai_rng = self.streams.get(crate::math::rng::Stream::Ai);
         // a sleeping unit joins as a live one
         let u = match place {
@@ -388,7 +379,7 @@ impl World {
             .collect();
         let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
         let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         let seconds = g.next_seconds();
         g.members.push(Member {
             id,

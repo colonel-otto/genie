@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::groups::formation::{
     BOX, COLUMN, EPSILON, FLANKED, HORDE, LINE, PHALANX, STAGGERED, USER_DEFINED,
 };
+use crate::groups::group_list::NO_FORMATION;
 use crate::groups::{Formation, UnitGroup};
 use crate::math::fmath::{Vec3, add, sub};
 use crate::movement::PathData;
@@ -144,12 +145,10 @@ impl World {
     /// A member of a master the slice does not have, and the
     /// layouts' and the transform's.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn update_desired_positions(&mut self, group: i32, given: i32) -> Result<(), GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         if g.members.is_empty() {
             return Ok(());
         }
@@ -160,7 +159,7 @@ impl World {
             && g.current_formation
                 .as_ref()
                 .is_some_and(|f| f.kind == kind && f.slots.len() == g.members.len());
-        let g = self.groups.get_mut(group).expect("the group read above");
+        let g = self.groups.held_mut(group)?;
         if g.current_formation.is_none() {
             g.current_formation = Some(Formation::new());
         }
@@ -168,7 +167,7 @@ impl World {
             g.previous_formation = g.current_formation.take();
             g.current_formation = Some(Formation::new());
         }
-        let mut f = g.current_formation.take().expect("made above");
+        let mut f = g.current_formation.take().ok_or(NO_FORMATION)?;
         let result = match kind {
             LINE | STAGGERED | FLANKED | COLUMN if !laid_out => self
                 .create_column_line(
@@ -196,10 +195,7 @@ impl World {
             // laid out already, or a type the switch does not know: the transform alone
             _ => self.formation_transform(&mut f, group, false).map(|_| ()),
         };
-        self.groups
-            .get_mut(group)
-            .expect("the group read above")
-            .current_formation = Some(f);
+        self.groups.held_mut(group)?.current_formation = Some(f);
         result
     }
 }

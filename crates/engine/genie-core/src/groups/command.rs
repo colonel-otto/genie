@@ -95,12 +95,10 @@ impl World {
     ///
     /// A member of a master the slice does not have.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn all_horde_units(&self, group: i32) -> Result<bool, GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         self.horde_units_only(g)
     }
 
@@ -136,8 +134,6 @@ impl World {
     ///
     /// A target, a horde, or what the move does not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn group_command(
@@ -147,10 +143,7 @@ impl World {
         point: [f32; 2],
         (queued, direct): (bool, bool),
     ) -> Result<bool, GenieError> {
-        let g = self
-            .groups
-            .get_mut(group)
-            .expect("the caller holds the group");
+        let g = self.groups.held_mut(group)?;
         g.flags &= !0x20;
         if target != -1 {
             return Err(GenieError::unsupported(
@@ -162,7 +155,7 @@ impl World {
                 "a horde's command (commandHorde, FUN_141010180)",
             ));
         }
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         g.replaces_queue = u8::from(!queued);
         let moved = self.command_move_to(
             group,
@@ -178,7 +171,7 @@ impl World {
         if moved {
             self.stop_all_units(group, false)?;
         }
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         g.flags &= !0x2_0000;
         Ok(moved)
     }
@@ -192,8 +185,6 @@ impl World {
     ///
     /// A queued command the queue cannot run.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`.
     fn queue_move(
         &mut self,
@@ -201,10 +192,7 @@ impl World {
         point: [f32; 2],
         how: &MoveTo,
     ) -> Result<Option<bool>, GenieError> {
-        let g = self
-            .groups
-            .get_mut(group)
-            .expect("the caller holds the group");
+        let g = self.groups.held_mut(group)?;
         let at = [point[0], 0.0, point[1]];
         if how.queued {
             g.queue_command(GroupCommand {
@@ -276,8 +264,6 @@ impl World {
     /// A horde, a queued command the queue cannot run ([`World::check_queued_orders`]),
     /// or what the members' stop and the formation do not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn command_move_to(
@@ -288,10 +274,7 @@ impl World {
         how: MoveTo,
     ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
-        let g = self
-            .groups
-            .get_mut(group)
-            .expect("the caller holds the group");
+        let g = self.groups.held_mut(group)?;
         g.flags &= !0x1020;
         let changed = if target == -1 {
             g.current_target.target != -1
@@ -301,7 +284,7 @@ impl World {
         if let Some(done) = self.queue_move(group, point, &how)? {
             return Ok(done);
         }
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         if g.replaces_queue != 0 {
             g.clear_command_queue();
         }
@@ -322,7 +305,62 @@ impl World {
                 "a horde's move (commandHorde, FUN_141010180)",
             ));
         }
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let Some((patrol, length)) = self.set_move_level(group, point, &how, (target, changed))?
+        else {
+            return Ok(false);
+        };
+        self.stop_all_units(group, false)?;
+        let ids: Vec<i32> = self
+            .groups
+            .held(group)?
+            .members
+            .iter()
+            .map(|m| m.id)
+            .collect();
+        for id in ids {
+            // FUN_1415417a0 finds a sleeping member too
+            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
+                ai.clear_notifies(world_time)?;
+            }
+        }
+        let owner = self.groups.held(group)?.owner as usize;
+        let min_column = self
+            .players
+            .get(owner)
+            .map_or(0, |p| p.formations.min_column_distance);
+        let g = self.groups.held_mut(group)?;
+        g.current_target.original_position[0] = point[0];
+        g.current_target.original_position[2] = point[1];
+        g.current_command = MOVE_COMMAND;
+        if g.motion.flags & 2 == 0 && !patrol {
+            let column =
+                length.is_none_or(|l| crate::math::fmath::below_or_unordered(min_column as f32, l));
+            self.update_desired_positions(
+                group,
+                if column {
+                    crate::groups::formation::COLUMN
+                } else {
+                    crate::groups::formation::LINE
+                },
+            )?;
+        }
+        let g = self.groups.held_mut(group)?;
+        g.flags |= 0x100;
+        Ok(true)
+    }
+
+    /// [`World::command_move_to`]'s path and level: the group's walked level takes the path from
+    /// its place through its waypoints to `point`. Its (patrol, length), None for a group whose
+    /// top speed is below the tolerance.
+    fn set_move_level(
+        &mut self,
+        group: i32,
+        point: [f32; 2],
+        how: &MoveTo,
+        (target, changed): (i32, bool),
+    ) -> Result<Option<(bool, Option<f32>)>, GenieError> {
+        let world_time = self.world_time;
+        let g = self.groups.held_mut(group)?;
         // FUN_141046500: the top ancestor's path, else the walked level's
         let patrol = crate::groups::formation::top_path(&g.motion.paths)
             .is_some_and(|l| l.path_flags & 1 != 0)
@@ -332,7 +370,7 @@ impl World {
         }
         // the top speed below the tolerance (`COMISS`/`JA` at 0x141010cc3)
         if g.motion.maximum_velocity_forward < EPSILON {
-            return Ok(false);
+            return Ok(None);
         }
         let mut path = Path::default();
         let _ = path.push(g.motion.position[0]);
@@ -368,45 +406,7 @@ impl World {
         } else {
             g.motion.paths[0] = level;
         }
-        self.stop_all_units(group, false)?;
-        let ids: Vec<i32> = self
-            .groups
-            .get(group)
-            .expect("found above")
-            .members
-            .iter()
-            .map(|m| m.id)
-            .collect();
-        for id in ids {
-            // FUN_1415417a0 finds a sleeping member too
-            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
-                ai.clear_notifies(world_time)?;
-            }
-        }
-        let owner = self.groups.get(group).expect("found above").owner as usize;
-        let min_column = self
-            .players
-            .get(owner)
-            .map_or(0, |p| p.formations.min_column_distance);
-        let g = self.groups.get_mut(group).expect("the group found above");
-        g.current_target.original_position[0] = point[0];
-        g.current_target.original_position[2] = point[1];
-        g.current_command = MOVE_COMMAND;
-        if g.motion.flags & 2 == 0 && !patrol {
-            let column =
-                length.is_none_or(|l| crate::math::fmath::below_or_unordered(min_column as f32, l));
-            self.update_desired_positions(
-                group,
-                if column {
-                    crate::groups::formation::COLUMN
-                } else {
-                    crate::groups::formation::LINE
-                },
-            )?;
-        }
-        let g = self.groups.get_mut(group).expect("the group found above");
-        g.flags |= 0x100;
-        Ok(true)
+        Ok(Some((patrol, length)))
     }
 
     /// `checkQueuedOrders` (`FUN_14100d460`) of group `group`: with no queued command a
@@ -428,15 +428,10 @@ impl World {
     /// a run whose last command the game frees before its move (it reads a null command: the
     /// run's commands equal an unapproved one behind them), and what the move does not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn check_queued_orders(&mut self, group: i32) -> Result<(), GenieError> {
-        let g = self
-            .groups
-            .get_mut(group)
-            .expect("the caller holds the group");
+        let g = self.groups.held_mut(group)?;
         if !g.command_queue.is_empty() {
             g.replaces_queue = 0;
             // a command on a held target would end the run without the move (`bVar2`); those
@@ -444,7 +439,7 @@ impl World {
             let (mut first, mut kept, mut ran) = (-1, None, false);
             let mut i = 0;
             loop {
-                let g = self.groups.get(group).expect("the group found above");
+                let g = self.groups.held(group)?;
                 let Some(&node) = g.command_queue.get(i) else {
                     break;
                 };
@@ -458,7 +453,7 @@ impl World {
                     first = node.command;
                 }
                 let count = g.command_queue.len();
-                let g = self.groups.get_mut(group).expect("the group found above");
+                let g = self.groups.held_mut(group)?;
                 match node.command {
                     c if TARGET_COMMANDS.contains(&c) && held => {
                         return Err(GenieError::unsupported(
@@ -506,7 +501,7 @@ impl World {
                 )?;
             }
         }
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         if g.hibernating != 0 {
             if g.hibernating == 1 {
                 g.flags |= 0x4_c000;
@@ -526,53 +521,61 @@ impl World {
     /// A member with an action the slice does not model or a
     /// sleeping one, or what the stop does not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn stop_all_units(&mut self, group: i32, all: bool) -> Result<(), GenieError> {
         let ids: Vec<i32> = self
             .groups
-            .get(group)
-            .expect("the caller holds the group")
+            .held(group)?
             .members
             .iter()
             .map(|m| m.id)
             .collect();
         for (k, id) in ids.into_iter().enumerate() {
-            // FUN_1415417a0: a sleeping member too
-            let Some(place) = self.place(id) else {
-                continue;
-            };
-            let u = match place {
-                Place::Live(p, i) => &self.players[p].objects[i],
-                Place::Sleeping(p, i) => &self.players[p].sleeping[i],
-            };
-            if u.unmodelled_action.is_some() {
-                return Err(GenieError::unsupported(
-                    "stopAllUnits of a member with an action the slice does not model",
-                ));
-            }
-            // slot 0x530: the top action's type, -1 without one
-            if !all && u.top_action_kind().is_none() {
-                continue;
-            }
-            let Place::Live(p, idx) = place else {
-                return Err(GenieError::unsupported(
-                    "stopAllUnits' stop of a sleeping member (the stop takes the live list)",
-                ));
-            };
-            self.object_stop(p, idx)?;
-            if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
-                m.stand()?;
-            }
-            let g = self.groups.get_mut(group).expect("the group found above");
-            g.members[k].specific_move = SpecificMove {
-                path_id: -1,
-                reason: -1,
-                ..SpecificMove::default()
-            };
+            self.stop_listed_unit(group, (k, id), all)?;
         }
+        Ok(())
+    }
+
+    /// [`World::stop_all_units`]' stop of the member `id` at index `k` of group `group`.
+    fn stop_listed_unit(
+        &mut self,
+        group: i32,
+        (k, id): (usize, i32),
+        all: bool,
+    ) -> Result<(), GenieError> {
+        // FUN_1415417a0: a sleeping member too
+        let Some(place) = self.place(id) else {
+            return Ok(());
+        };
+        let u = match place {
+            Place::Live(p, i) => &self.players[p].objects[i],
+            Place::Sleeping(p, i) => &self.players[p].sleeping[i],
+        };
+        if u.unmodelled_action.is_some() {
+            return Err(GenieError::unsupported(
+                "stopAllUnits of a member with an action the slice does not model",
+            ));
+        }
+        // slot 0x530: the top action's type, -1 without one
+        if !all && u.top_action_kind().is_none() {
+            return Ok(());
+        }
+        let Place::Live(p, idx) = place else {
+            return Err(GenieError::unsupported(
+                "stopAllUnits' stop of a sleeping member (the stop takes the live list)",
+            ));
+        };
+        self.object_stop(p, idx)?;
+        if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
+            m.stand()?;
+        }
+        let g = self.groups.held_mut(group)?;
+        g.members[k].specific_move = SpecificMove {
+            path_id: -1,
+            reason: -1,
+            ..SpecificMove::default()
+        };
         Ok(())
     }
 }

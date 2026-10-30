@@ -98,23 +98,18 @@ impl World {
     ///
     /// What [`World::clear_spot`] does not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, and its
     /// callers pass a group they hold.
     pub fn set_initial_position(&mut self, group: i32) -> Result<(), GenieError> {
-        let g = self
-            .groups
-            .get_mut(group)
-            .expect("SetInitialPosition's caller holds the group");
+        let g = self.groups.held_mut(group)?;
         g.stored_positions.clear_points();
         let centroid = g.centroid;
         let at = self.clear_spot(group, centroid)?;
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         g.motion.new_position[0] = at;
         g.motion.position[0] = at;
-        self.set_initial_orientation(group);
-        let g = self.groups.get_mut(group).expect("the group found above");
+        self.set_initial_orientation(group)?;
+        let g = self.groups.held_mut(group)?;
         g.flags |= 0x400;
         Ok(())
     }
@@ -138,12 +133,10 @@ impl World {
     /// restriction, a map without its terrain, and a point query near a record whose place the
     /// slice does not know.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn clear_spot(&mut self, group: i32, centroid: Vec3) -> Result<Vec3, GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let Some(first) = g.members.first() else {
             return Ok(centroid);
         };
@@ -180,15 +173,12 @@ impl World {
     /// member's forward, else ([`DEFAULT_FORWARD`], 0, 0). The motion faces it with up
     /// (0, 1, 0), position and new position alike ([`Motion::set_orientation`]).
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, and its
     /// caller ([`World::set_initial_position`]) holds it.
-    pub fn set_initial_orientation(&mut self, group: i32) {
-        let g = self
-            .groups
-            .get(group)
-            .expect("SetInitialOrientation's caller holds the group");
+    pub fn set_initial_orientation(&mut self, group: i32) -> Result<(), GenieError> {
+        let g = self.groups.held(group)?;
         let forwards: Vec<Vec3> = g
             .members
             .iter()
@@ -212,8 +202,9 @@ impl World {
             let l = fmath::sqrt(squared);
             [sum[0] / l, sum[1] / l, sum[2] / l]
         };
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         let _ = g.motion.set_orientation(forward, [0.0, 1.0, 0.0], true);
+        Ok(())
     }
 }
 
@@ -236,8 +227,6 @@ impl World {
     ///
     /// The lead's master, restriction or the map's terrain missing ([`World::master_mask`]),
     /// and its point test near a record whose place the slice does not know.
-    ///
-    /// # Panics
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
@@ -283,7 +272,7 @@ impl World {
                 mask,
                 &members,
             )? {
-                let g = self.groups.get_mut(group).expect("the group found above");
+                let g = self.groups.held_mut(group)?;
                 g.motion.new_position[0] = centre;
                 g.motion.position[0] = centre;
                 return Ok(());
@@ -341,7 +330,7 @@ impl World {
         let Some(at) = spot else {
             return Ok(());
         };
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         g.stored_positions.clear_points();
         g.motion.new_position[0] = at;
         g.motion.position[0] = at;
@@ -638,7 +627,7 @@ mod tests {
                 })
                 .collect();
             let mut t = front_world(units);
-            t.set_initial_orientation(1);
+            t.set_initial_orientation(1).unwrap();
             t.groups.groups[0].motion.position[1]
         };
         assert_eq!(facing(&[Some([0.0, 0.0, 1.0]), None]), [0.0, 0.0, 1.0]);
@@ -652,7 +641,7 @@ mod tests {
             ..crate::groups::Member::default()
         }];
         t.groups.groups[0].motion.position[1] = [0.0, 0.0, 1.0];
-        t.set_initial_orientation(1);
+        t.set_initial_orientation(1).unwrap();
         assert_eq!(t.groups.groups[0].motion.position[1], [1.0, 0.0, 0.0]);
     }
 

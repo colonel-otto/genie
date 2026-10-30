@@ -554,16 +554,16 @@ fn the_formation_turns_past_a_quarter_turn() {
     g.flags = 0;
     g.motion.flags = 0;
     g.motion.position[1] = [1.0, 0.0, 0.0];
-    assert!(!t.turns_formation(1, [0.72, 0.0, 0.693_974_1]));
-    assert!(t.turns_formation(1, [0.70, 0.0, 0.714_142_8]));
-    assert!(t.turns_formation(1, [0.0, 0.0, -1.0]));
-    assert!(!t.turns_formation(1, [f32::NAN, 0.0, 0.0]));
+    assert!(!t.turns_formation(1, [0.72, 0.0, 0.693_974_1]).unwrap());
+    assert!(t.turns_formation(1, [0.70, 0.0, 0.714_142_8]).unwrap());
+    assert!(t.turns_formation(1, [0.0, 0.0, -1.0]).unwrap());
+    assert!(!t.turns_formation(1, [f32::NAN, 0.0, 0.0]).unwrap());
     t.groups.get_mut(1).unwrap().flags = 0x4000;
-    assert!(t.turns_formation(1, [1.0, 0.0, 0.0]));
+    assert!(t.turns_formation(1, [1.0, 0.0, 0.0]).unwrap());
     let g = t.groups.get_mut(1).unwrap();
     g.flags = 0;
     g.motion.flags = 2;
-    assert!(t.turns_formation(1, [1.0, 0.0, 0.0]));
+    assert!(t.turns_formation(1, [1.0, 0.0, 0.0]).unwrap());
 }
 
 /// `movePositionToFrontUsingCentroid`: the members' mean place (x, height, y) plus the
@@ -573,14 +573,14 @@ fn the_centroid_front_is_the_members_mean_place() {
     let mut t = world();
     t.players[1].objects[2].place_for_test([1.0, 4.0, 3.0]);
     t.groups.get_mut(1).unwrap().motion.position[1] = [1.0, 0.0, 0.0];
-    t.front_by_centroid(1);
+    t.front_by_centroid(1).unwrap();
     let g = t.groups.get(1).unwrap();
     let mean = [4.0 / 3.0, 1.0, 2.0];
     assert_eq!(g.motion.position[0], mean);
     assert_eq!(g.motion.new_position[0], mean);
     // an infinite forward makes the place NaN (inf times 0)
     t.groups.get_mut(1).unwrap().motion.position[1] = [f32::INFINITY, 0.0, 0.0];
-    t.front_by_centroid(1);
+    t.front_by_centroid(1).unwrap();
     assert!(t.groups.get(1).unwrap().motion.position[0][0].is_nan());
 }
 
@@ -649,23 +649,23 @@ fn the_relayout_follows_the_count_and_the_spacing() {
         g.total_spacing = spacing;
     };
     set(&mut t, 0, 6.0);
-    assert_eq!(t.relayout_choice(1, 3), (false, false));
-    assert_eq!(t.relayout_choice(1, 4), (false, false));
+    assert_eq!(t.relayout_choice(1, 3).unwrap(), (false, false));
+    assert_eq!(t.relayout_choice(1, 4).unwrap(), (false, false));
     assert_eq!(t.groups.get(1).unwrap().flags, 0x80);
     set(&mut t, 0, f32::NAN);
-    assert_eq!(t.relayout_choice(1, 4), (false, false));
+    assert_eq!(t.relayout_choice(1, 4).unwrap(), (false, false));
     assert_eq!(t.groups.get(1).unwrap().flags, 0x80);
     set(&mut t, 0, 6.5);
-    assert_eq!(t.relayout_choice(1, 4), (true, false));
+    assert_eq!(t.relayout_choice(1, 4).unwrap(), (true, false));
     set(&mut t, 0x82, 6.5);
-    assert_eq!(t.relayout_choice(1, 3), (true, false));
+    assert_eq!(t.relayout_choice(1, 3).unwrap(), (true, false));
     assert_eq!(t.groups.get(1).unwrap().flags, 0);
     set(&mut t, 0x2, 6.5);
-    assert_eq!(t.relayout_choice(1, 3), (true, false));
+    assert_eq!(t.relayout_choice(1, 3).unwrap(), (true, false));
     assert_eq!(t.groups.get(1).unwrap().flags, 0);
     t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
     set(&mut t, 0x2, 6.5);
-    assert_eq!(t.relayout_choice(1, 3), (false, false));
+    assert_eq!(t.relayout_choice(1, 3).unwrap(), (false, false));
     assert_eq!(t.groups.get(1).unwrap().flags, 2);
     let g = t.groups.get_mut(1).unwrap();
     g.current_command = 9;
@@ -674,7 +674,7 @@ fn the_relayout_follows_the_count_and_the_spacing() {
         ..crate::groups::Formation::default()
     });
     set(&mut t, 0, 6.0);
-    assert_eq!(t.relayout_choice(1, 4), (false, true));
+    assert_eq!(t.relayout_choice(1, 4).unwrap(), (false, true));
     assert_eq!(t.groups.get(1).unwrap().flags, 0);
 }
 
@@ -1020,15 +1020,15 @@ fn the_idle_timer_counts_while_idle() {
     let mut t = world();
     t.dt_seconds = crate::objects::lifecycle::seconds(69);
     t.groups.get_mut(1).unwrap().idle_timer = 2931;
-    t.idle_timer_step(1);
+    t.idle_timer_step(1).unwrap();
     assert_eq!(t.groups.get(1).unwrap().idle_timer, 3000);
     let mut streams = t.streams.clone();
     let draw = streams.get(crate::math::rng::Stream::World).rand15();
-    t.idle_timer_step(1);
+    t.idle_timer_step(1).unwrap();
     assert_eq!(t.groups.get(1).unwrap().idle_timer, draw % 750);
     t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
     t.groups.get_mut(1).unwrap().idle_timer = 5;
-    t.idle_timer_step(1);
+    t.idle_timer_step(1).unwrap();
     assert!(t.groups.get(1).unwrap().idle_timer < 750);
     for dt in 0..=100_000 {
         t.dt_seconds = crate::objects::lifecycle::seconds(dt);

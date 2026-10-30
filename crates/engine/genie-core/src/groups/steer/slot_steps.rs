@@ -3,8 +3,9 @@
 
 use crate::GenieError;
 use crate::groups::SpecificMove;
+use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone, slot_gone};
 use crate::groups::motion::passes_waypoint;
-use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, MOVES, SLOT_REACH};
+use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, SLOT_REACH};
 use crate::math::fmath::{Vec3, at_most_or_unordered, below_or_unordered};
 use crate::objects::masters::master_type::BUILDING;
 use crate::world::World;
@@ -18,31 +19,31 @@ impl World {
         index: usize,
         slot: usize,
     ) -> Result<bool, GenieError> {
-        let g = self.groups.get(group).expect("held");
+        let g = self.groups.held(group)?;
         let id = g.members[index].id;
-        let s = g.current_formation.as_ref().expect("a formation").slots[slot];
+        let s = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot];
         if s.state == 1 {
-            self.set_slot_state(group, slot, 2);
+            self.set_slot_state(group, slot, 2)?;
             self.stop_member(id)?;
         }
-        let g = self.groups.get(group).expect("held");
-        let state = g.current_formation.as_ref().expect("a formation").slots[slot].state;
+        let g = self.groups.held(group)?;
+        let state = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot].state;
         let mut placed = false;
         match state {
             2 => {
                 if !g.motion.moving() {
                     placed = self.try_slot(group, id, s.transform_position)?;
                 }
-                self.set_slot_state(group, slot, 3);
+                self.set_slot_state(group, slot, 3)?;
             }
             3 => {}
             _ => return Ok(false),
         }
         self.show_standing(id)?;
         if placed {
-            self.face_group(group, id);
+            self.face_group(group, id)?;
         }
-        self.groups.get_mut(group).expect("held").members[index]
+        self.groups.held_mut(group)?.members[index]
             .specific_move
             .consecutive_move_failures = 0;
         Ok(true)
@@ -56,9 +57,9 @@ impl World {
     ///
     /// What the pathers and the position setter do not model.
     pub(super) fn try_slot(&mut self, group: i32, id: i32, to: Vec3) -> Result<bool, GenieError> {
-        let (p, u) = self.object(id).expect("the member is held");
-        let mover = u.body.mover().expect(MOVES);
-        let g = self.groups.get(group).expect("held");
+        let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
+        let mover = u.body.mover().ok_or(NO_MOVER)?;
+        let g = self.groups.held(group)?;
         let computer = self.players.get(p).is_some_and(|q| q.computer);
         let solid = mover.stats.radius.iter().all(|&r| 0.0 < r);
         let found = if solid {
@@ -107,7 +108,7 @@ impl World {
         };
         if found {
             self.place_member(id, to)?;
-            self.face_group(group, id);
+            self.face_group(group, id)?;
         }
         Ok(found)
     }
@@ -121,16 +122,16 @@ impl World {
         id: i32,
         gap: f32,
     ) -> Result<(), GenieError> {
-        let g = self.groups.get(group).expect("held");
-        let to = g.current_formation.as_ref().expect("a formation").slots[slot].transform_position;
+        let g = self.groups.held(group)?;
+        let to = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot].transform_position;
         let dt = self.dt_seconds;
-        let (_, u) = self.object_mut(id).expect("the member is held");
+        let (_, u) = self.object_mut(id).ok_or_else(|| member_gone(id))?;
         let facets = u.sprite.map(|s| crate::objects::facing::SpriteFacets {
             count: s.graphic.facets,
             flag_1: s.graphic.flags & 2 != 0,
         });
         let at = u.moved_vector().xhy();
-        let mover = u.body.mover_mut().expect(MOVES);
+        let mover = u.body.mover_mut().ok_or(NO_MOVER)?;
         let direction = mover.direction_to(at, to);
         let (turn, _) = mover.turn_toward(mover.forward, direction, mover.turn_dt(dt));
         let facets = facets.or_else(|| mover.facets());
@@ -139,14 +140,14 @@ impl World {
         let state = i32::from(passes_waypoint(to, at, next));
         let radius = mover.stats.radius[0];
         let speed = mover.stats.speed;
-        self.set_slot_state(group, slot, state);
+        self.set_slot_state(group, slot, state)?;
         let within = !below_or_unordered(radius, gap);
         let near = !within && !below_or_unordered(radius * SLOT_REACH, gap);
         if state == 2 {
             self.stop_member(id)?;
-            let (_, u) = self.object(id).expect("held");
+            let (_, u) = self.object(id).ok_or_else(|| member_gone(id))?;
             let paused = u.body.mover().is_some_and(crate::movement::Mover::paused);
-            let g = self.groups.get(group).expect("held");
+            let g = self.groups.held(group)?;
             let patrol = crate::groups::formation::top_path(&g.motion.paths)
                 .is_some_and(|p| p.path_flags & 1 != 0);
             let walks = g
@@ -161,20 +162,15 @@ impl World {
             self.set_member_speed(id, speed);
             let _ = self.show_walking(id)?;
         } else if within {
-            let top = self
-                .groups
-                .get(group)
-                .expect("held")
-                .motion
-                .maximum_velocity_forward;
+            let top = self.groups.held(group)?.motion.maximum_velocity_forward;
             self.set_member_speed(id, top);
             let _ = self.show_walking(id)?;
         } else {
-            self.groups.get_mut(group).expect("held").flags |= 0x200;
+            self.groups.held_mut(group)?.flags |= 0x200;
             if at_most_or_unordered(SLOT_REACH, gap) {
                 self.set_member_speed(id, speed);
                 let _ = self.show_walking(id)?;
-                self.groups.get_mut(group).expect("held").flags |= 0x200;
+                self.groups.held_mut(group)?.flags |= 0x200;
             } else {
                 let v = if at_most_or_unordered(CATCH_UP_SPAN, gap) {
                     speed * CATCH_UP
@@ -201,9 +197,20 @@ impl World {
     }
 
     /// Slot `slot` of group `group`'s formation takes state `state`.
-    pub(super) fn set_slot_state(&mut self, group: i32, slot: usize, state: i32) {
-        let g = self.groups.get_mut(group).expect("held");
-        g.current_formation.as_mut().expect("a formation").slots[slot].state = state;
+    pub(super) fn set_slot_state(
+        &mut self,
+        group: i32,
+        slot: usize,
+        state: i32,
+    ) -> Result<(), GenieError> {
+        let g = self.groups.held_mut(group)?;
+        let formation = g.current_formation.as_mut().ok_or(NO_FORMATION)?;
+        let held = formation
+            .slots
+            .get_mut(slot)
+            .ok_or_else(|| slot_gone(slot))?;
+        held.state = state;
+        Ok(())
     }
 
     /// Slot 0x5d0 of member `id`: it stops ([`crate::movement::Mover::stop`]).
@@ -227,14 +234,15 @@ impl World {
 
     /// Slot 0x568 of member `id` with group `group`'s forward and up vectors (`+0x14`,
     /// `+0x20`, [`crate::movement::Mover::set_orientation`]).
-    pub(super) fn face_group(&mut self, group: i32, id: i32) {
-        let g = self.groups.get(group).expect("held");
+    pub(super) fn face_group(&mut self, group: i32, id: i32) -> Result<(), GenieError> {
+        let g = self.groups.held(group)?;
         let [_, forward, up, _] = g.motion.position;
         if let Some((_, u)) = self.object_mut(id)
             && let Some(mover) = u.body.mover_mut()
         {
             mover.set_orientation(forward, up);
         }
+        Ok(())
     }
 
     /// Slot 0x58 of member `id` (`FUN_14108c320`) with the place `to` (x, height, y): the
@@ -256,7 +264,7 @@ impl World {
             return Ok(());
         };
         let (p, master_id) = {
-            let (p, u) = self.object(id).expect("placed");
+            let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
             (p, u.life.master_id)
         };
         let kind = self.master(p, master_id)?.kind;
@@ -296,19 +304,19 @@ impl World {
         id: i32,
         (path, reason): (i32, i32),
         (goal, timer, distance): (Vec3, f32, f32),
-    ) -> bool {
+    ) -> Result<bool, GenieError> {
         let Some(index) = self
             .groups
             .get(group)
             .and_then(|g| g.members.iter().position(|m| m.id == id))
         else {
-            return false;
+            return Ok(false);
         };
         let Some((_, u)) = self.object(id) else {
-            return false;
+            return Ok(false);
         };
         let last = u.moved_vector().xhy();
-        let own = &mut self.groups.get_mut(group).expect("held").members[index].specific_move;
+        let own = &mut self.groups.held_mut(group)?.members[index].specific_move;
         *own = if reason == -1 {
             SpecificMove {
                 path_id: -1,
@@ -327,6 +335,6 @@ impl World {
                 ..*own
             }
         };
-        true
+        Ok(true)
     }
 }

@@ -243,8 +243,6 @@ impl World {
     ///
     /// What the path step does not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn motion_update(&mut self, group: i32, budget: bool) -> Result<(), GenieError> {
@@ -268,7 +266,7 @@ impl World {
                 })
                 .collect(),
         };
-        let g = self.groups.get_mut(group).expect("the group found above");
+        let g = self.groups.held_mut(group)?;
         let mut motion = std::mem::take(&mut g.motion);
         let result = {
             let mut plan = Planning {
@@ -289,10 +287,7 @@ impl World {
         if result.is_ok() {
             motion.integrate(self.dt_seconds);
         }
-        self.groups
-            .get_mut(group)
-            .expect("the group found above")
-            .motion = motion;
+        self.groups.held_mut(group)?.motion = motion;
         result.map(|_| ())
     }
 }

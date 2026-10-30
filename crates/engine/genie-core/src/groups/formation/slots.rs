@@ -4,6 +4,10 @@
 use crate::GenieError;
 use crate::groups::formation::{BOX, COLUMN};
 use crate::groups::{Formation, UnitGroup, sub_formation};
+
+/// A line order that lacks a place up to the list's length: the game reads past the order.
+const NO_PLACE_IN_ORDER: GenieError =
+    GenieError::unreachable("a line order that lacks a place up to the list's length");
 use crate::math::fmath::{Vec3, sub};
 use crate::math::image::group::FARTHEST;
 use crate::world::World;
@@ -247,8 +251,6 @@ impl World {
     ///
     /// A held member of a master the slice does not have.
     ///
-    /// # Panics
-    ///
     /// For more than 70 members or slots, which the game's arrays do not hold either: a group
     /// takes fewer than 70 members ([`crate::groups::create`]'s `AddUnit`) and its layouts a slot
     /// each.
@@ -353,10 +355,8 @@ impl World {
     ///
     /// A member of a master the slice does not have.
     ///
-    /// # Panics
-    ///
-    /// Never for [`World::from_previous_column`]'s order, a permutation of the places (the game
-    /// reads past one that lacks a place).
+    /// An order that lacks a place ([`World::from_previous_column`]'s is a permutation of the
+    /// places; the game reads past one that lacks a place).
     pub(super) fn populate_in_order(
         &self,
         formation: &mut Formation,
@@ -376,7 +376,7 @@ impl World {
             let at = order
                 .iter()
                 .position(|&o| o == k as i32)
-                .expect("the line order holds every place up to the list's length");
+                .ok_or(NO_PLACE_IN_ORDER)?;
             let (category, sub_category) = {
                 let s = formation.slot_mut(at);
                 (s.desired_category, s.desired_sub_category)
@@ -417,8 +417,6 @@ impl World {
     /// # Errors
     ///
     /// As the routines it runs.
-    ///
-    /// # Panics
     ///
     /// For a line of no width, which the game divides by too (createColumnLine lays a line of a
     /// column at least).

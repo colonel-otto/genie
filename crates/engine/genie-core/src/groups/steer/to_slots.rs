@@ -2,10 +2,9 @@
 //! steering toward its slot (`FUN_141025fb0`).
 
 use crate::groups::SpecificMove;
+use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::motion::hold;
-use crate::groups::steer::{
-    ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO, MOVES,
-};
+use crate::groups::steer::{ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO};
 use crate::math::fmath::{Vec3, below_or_unordered};
 use crate::movement::ASIDE;
 use crate::objects::masters::master_type::ACTION;
@@ -42,8 +41,6 @@ impl World {
     ///
     /// What the members' tests and steering do not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the group update passes its own.
     pub fn members_to_slots(
         &mut self,
@@ -52,7 +49,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
-            let g = self.groups.get(group).expect("the caller holds the group");
+            let g = self.groups.held(group)?;
             let Some(m) = g.members.get(i).copied() else {
                 break;
             };
@@ -71,13 +68,13 @@ impl World {
                 continue;
             };
             if m.specific_move.active == 1 {
-                let to = g.current_formation.as_ref().expect("found above").slots[slot]
+                let to = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot]
                     .transform_position;
                 let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
                 let from = u.moved_vector().xhy();
                 let clear = self.line_clear(m.id, from, to, CLEARANCE, &members)?;
                 let dt = self.dt_seconds;
-                let g = self.groups.get_mut(group).expect("held");
+                let g = self.groups.held_mut(group)?;
                 let own = &mut g.members[index].specific_move;
                 let ends = if clear {
                     true
@@ -93,12 +90,11 @@ impl World {
                 {
                     mover.stand()?;
                 }
-                self.groups.get_mut(group).expect("held").members[index].specific_move =
-                    SpecificMove {
-                        path_id: -1,
-                        reason: -1,
-                        ..SpecificMove::default()
-                    };
+                self.groups.held_mut(group)?.members[index].specific_move = SpecificMove {
+                    path_id: -1,
+                    reason: -1,
+                    ..SpecificMove::default()
+                };
             }
             self.steer_to_slot(group, index, slot, differentiators)?;
         }
@@ -163,9 +159,7 @@ impl World {
     ///
     /// A record whose place the slice does not know near the line.
     ///
-    /// # Panics
-    ///
-    /// For a unit without movement state: a group's members move ([`MOVES`]).
+    /// For a unit without movement state: a group's members move (see `NO_MOVER`).
     pub(super) fn line_clear(
         &mut self,
         id: i32,
@@ -177,7 +171,7 @@ impl World {
         let (_, u) = self.object(id).ok_or(GenieError::unreachable(
             "a steered member the world does not hold",
         ))?;
-        let mover = u.body.mover().expect(MOVES);
+        let mover = u.body.mover().ok_or(NO_MOVER)?;
         let (radius, mask) = (mover.stats.radius[0], mover.stats.restriction_mask);
         let own = [id];
         let ignore = if ignore.is_empty() { &own[..] } else { ignore };
@@ -244,8 +238,6 @@ impl World {
     ///
     /// What the steps and the way round do not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`, or `index` or `slot` is outside it: the members'
     /// moves pass their own.
     ///
@@ -257,15 +249,15 @@ impl World {
         slot: usize,
         differentiators: &[i32],
     ) -> Result<(), GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let id = g.members[index].id;
-        let Some((p, u)) = self.object(id) else {
+        let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
         if u.ai.is_none() {
             return Ok(());
         }
-        let s = g.current_formation.as_ref().expect("a formation").slots[slot];
+        let s = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot];
         let to = s.transform_position;
         let late = s.time < self.world_time;
         let at = u.moved_vector().xhy();
@@ -273,7 +265,7 @@ impl World {
         d[1] = 0.0;
         let gap = fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
         if !below_or_unordered(EPSILON, gap) && s.state == 3 {
-            self.groups.get_mut(group).expect("held").members[index]
+            self.groups.held_mut(group)?.members[index]
                 .specific_move
                 .consecutive_move_failures = 0;
             self.set_state_position(id, to);
@@ -281,32 +273,18 @@ impl World {
         }
         if MOST_FAILURES < g.members[index].specific_move.consecutive_move_failures {
             // A member's own move for being moved aside (`mReason`).
-            let _ = self.set_specific_move(group, id, (-1, ASIDE), (at, ASIDE_TIMER, 0.0));
+            let _ = self.set_specific_move(group, id, (-1, ASIDE), (at, ASIDE_TIMER, 0.0))?;
             self.stop_member(id)?;
-            self.groups.get_mut(group).expect("held").flags |= 0x200;
+            self.groups.held_mut(group)?.flags |= 0x200;
             return Ok(());
         }
         if !self.member_idle(id)? {
-            let (keeps_moving, _) = self.action_list(p, u)?;
-            if !keeps_moving
-                && u.body
-                    .mover()
-                    .is_some_and(crate::movement::Mover::is_moving)
-            {
-                self.stop_member(id)?;
-            }
-            let g = self.groups.get_mut(group).expect("held");
-            g.members[index].specific_move.consecutive_move_failures = 0;
-            let state = &mut g.current_formation.as_mut().expect("a formation").slots[slot].state;
-            if matches!(*state, 1 | 2) {
-                *state = 3;
-            }
-            return Ok(());
+            return self.steer_busy_member(group, (index, slot), id);
         }
-        let g = self.groups.get_mut(group).expect("held");
+        let g = self.groups.held_mut(group)?;
         let moving = g.motion.moving();
         let waits = g.motion.waits_to_move();
-        let state = &mut g.current_formation.as_mut().expect("a formation").slots[slot].state;
+        let state = &mut g.current_formation.as_mut().ok_or(NO_FORMATION)?.slots[slot].state;
         if *state == 3 && (moving || waits) {
             *state = 0;
         }
@@ -322,6 +300,32 @@ impl World {
         }
         self.steer_member(group, slot, id, gap)?;
         self.set_state_position(id, to);
+        Ok(())
+    }
+
+    /// [`World::steer_to_slot`] of a member that is not idle: it stops unless its action keeps
+    /// it moving, its failures reset and a slot in state 1 or 2 takes state 3.
+    fn steer_busy_member(
+        &mut self,
+        group: i32,
+        (index, slot): (usize, usize),
+        id: i32,
+    ) -> Result<(), GenieError> {
+        let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
+        let (keeps_moving, _) = self.action_list(p, u)?;
+        if !keeps_moving
+            && u.body
+                .mover()
+                .is_some_and(crate::movement::Mover::is_moving)
+        {
+            self.stop_member(id)?;
+        }
+        let g = self.groups.held_mut(group)?;
+        g.members[index].specific_move.consecutive_move_failures = 0;
+        let state = &mut g.current_formation.as_mut().ok_or(NO_FORMATION)?.slots[slot].state;
+        if matches!(*state, 1 | 2) {
+            *state = 3;
+        }
         Ok(())
     }
 }

@@ -161,7 +161,10 @@ fn a_member_s_own_move_is_set_or_ended() {
     t.groups.get_mut(1).unwrap().members[0]
         .specific_move
         .consecutive_move_failures = 4;
-    assert!(t.set_specific_move(1, 10, (7, 0), ([1.0, 2.0, 3.0], 3.0, 2.5)));
+    assert!(
+        t.set_specific_move(1, 10, (7, 0), ([1.0, 2.0, 3.0], 3.0, 2.5))
+            .unwrap()
+    );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!(
         own,
@@ -176,7 +179,10 @@ fn a_member_s_own_move_is_set_or_ended() {
             last_position: [5.0, 0.0, 5.0],
         }
     );
-    assert!(t.set_specific_move(1, 10, (7, -1), ([1.0; 3], 1.0, 1.0)));
+    assert!(
+        t.set_specific_move(1, 10, (7, -1), ([1.0; 3], 1.0, 1.0))
+            .unwrap()
+    );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!(
         own,
@@ -186,12 +192,18 @@ fn a_member_s_own_move_is_set_or_ended() {
             ..SpecificMove::default()
         }
     );
-    assert!(!t.set_specific_move(1, 12, (0, 0), ([0.0; 3], 0.0, 0.0)));
+    assert!(
+        !t.set_specific_move(1, 12, (0, 0), ([0.0; 3], 0.0, 0.0))
+            .unwrap()
+    );
     t.groups.get_mut(1).unwrap().members.push(Member {
         id: 99,
         ..Member::default()
     });
-    assert!(!t.set_specific_move(1, 99, (0, 0), ([0.0; 3], 0.0, 0.0)));
+    assert!(
+        !t.set_specific_move(1, 99, (0, 0), ([0.0; 3], 0.0, 0.0))
+            .unwrap()
+    );
 }
 
 /// A member on its slot (1e-7 or nearer, not a NaN) in state 3 clears its failures and

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::command::MOVE_COMMAND;
+use crate::groups::group_list::member_gone;
 use crate::groups::update::{
     ATTACK, CLOSE, FOLLOW, FOLLOW_SHARE, IDLE_LIMIT, IDLE_SPAN, NO_COMMAND, OTHER_COMMANDS,
 };
@@ -25,7 +26,7 @@ impl World {
         group: i32,
         relayout: &mut bool,
     ) -> Result<bool, GenieError> {
-        let g = self.groups.get(group).expect("held");
+        let g = self.groups.held(group)?;
         let finished = match g.current_command {
             NO_COMMAND => false,
             MOVE_COMMAND => self.move_update(group, relayout)?,
@@ -37,17 +38,17 @@ impl World {
                     .map(|t| (t.moved_vector().xhy(), t.position()));
                 let lead = if to.is_some() {
                     let lead = self.nearest_to_target(group);
-                    self.groups.get_mut(group).expect("held").motion.lead = lead;
+                    self.groups.held_mut(group)?.motion.lead = lead;
                     lead
                 } else {
                     -1
                 };
                 match to {
                     Some((moved, [x, y, _])) if lead != -1 => {
-                        let g = self.groups.get(group).expect("held");
+                        let g = self.groups.held(group)?;
                         let leader = self
                             .lead_object(&g.motion)
-                            .expect("the nearest member is held");
+                            .ok_or_else(|| member_gone(g.motion.lead))?;
                         let sight = self
                             .master(leader.player(), leader.master_id())?
                             .line_of_sight;
@@ -70,7 +71,7 @@ impl World {
                                 },
                             )?;
                         }
-                        self.groups.get_mut(group).expect("held").flags |= 0x1000;
+                        self.groups.held_mut(group)?.flags |= 0x1000;
                         return Ok(true);
                     }
                     _ => true,
@@ -79,16 +80,10 @@ impl World {
             _ => return Err(OTHER_COMMANDS),
         };
         if finished {
-            if self
-                .groups
-                .get(group)
-                .expect("held")
-                .command_queue
-                .is_empty()
-            {
+            if self.groups.held(group)?.command_queue.is_empty() {
                 return Ok(false);
             }
-            self.groups.get_mut(group).expect("held").hibernating = 1;
+            self.groups.held_mut(group)?.hibernating = 1;
         }
         Ok(true)
     }
@@ -115,11 +110,9 @@ impl World {
     ///
     /// What the leaves, the lock and the members' moves do not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the group update passes its own.
     pub fn move_update(&mut self, group: i32, relayout: &mut bool) -> Result<bool, GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         if g.motion.flags & 2 != 0 {
             *relayout = true;
             return Ok(false);
@@ -131,29 +124,10 @@ impl World {
             .is_some_and(|l| l.has_path && !l.points.is_empty());
         let follows = g.flags >> 12 & 1 != 0;
         if g.motion.moving() {
-            if follows {
-                let Some(target) = self.world_object(g.current_target.target) else {
-                    return Ok(false);
-                };
-                if let Some(top) = crate::groups::formation::top_path(&g.motion.paths) {
-                    let end = match top.points.as_slice() {
-                        [.., _, last] => *last,
-                        // DAT_143f0dc78, zero-initialised (.bss) and written by nothing
-                        _ => [0.0; 3],
-                    };
-                    let d = crate::math::fmath::sub(end, target.moved_vector().xhy());
-                    let squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-                    if !crate::math::fmath::below_or_unordered(squared, CLOSE) {
-                        self.groups.get_mut(group).expect("held").current_command = FOLLOW;
-                        return Ok(false);
-                    }
-                }
-            }
-            *relayout = true;
-            return Ok(false);
+            return self.moving_step(group, follows, relayout);
         }
         if follows {
-            self.groups.get_mut(group).expect("held").current_command = FOLLOW;
+            self.groups.held_mut(group)?.current_command = FOLLOW;
             return Ok(false);
         }
         if g.motion.number_wait_delays != 0 || g.motion.waits_to_move() {
@@ -196,18 +170,50 @@ impl World {
                 if !walks {
                     if kept == slots.len() {
                         self.lock_formation(group, kind)?;
-                        self.groups.get_mut(group).expect("held").current_command = NO_COMMAND;
+                        self.groups.held_mut(group)?.current_command = NO_COMMAND;
                         return Ok(false);
                     }
-                    self.groups.get_mut(group).expect("held").current_command = NO_COMMAND;
+                    self.groups.held_mut(group)?.current_command = NO_COMMAND;
                 }
                 return self.move_members_on(group, walks, patrolling);
             }
         }
         if !walks {
-            self.groups.get_mut(group).expect("held").current_command = NO_COMMAND;
+            self.groups.held_mut(group)?.current_command = NO_COMMAND;
         }
         self.move_members_on(group, walks, patrolling)
+    }
+
+    /// [`World::move_update`] of a group whose motion moves: a following group (flags bit 12)
+    /// whose top path ends at least [`CLOSE`] from its target goes on following; any other
+    /// asks for a layout anew. The update does not end.
+    fn moving_step(
+        &mut self,
+        group: i32,
+        follows: bool,
+        relayout: &mut bool,
+    ) -> Result<bool, GenieError> {
+        let g = self.groups.held(group)?;
+        if follows {
+            let Some(target) = self.world_object(g.current_target.target) else {
+                return Ok(false);
+            };
+            if let Some(top) = crate::groups::formation::top_path(&g.motion.paths) {
+                let end = match top.points.as_slice() {
+                    [.., _, last] => *last,
+                    // DAT_143f0dc78, zero-initialised (.bss) and written by nothing
+                    _ => [0.0; 3],
+                };
+                let d = crate::math::fmath::sub(end, target.moved_vector().xhy());
+                let squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+                if !crate::math::fmath::below_or_unordered(squared, CLOSE) {
+                    self.groups.held_mut(group)?.current_command = FOLLOW;
+                    return Ok(false);
+                }
+            }
+        }
+        *relayout = true;
+        Ok(false)
     }
 
     /// `FUN_141041420`'s end (`0x1410416dc`): flags bit 2 clears, bit 5 sets, the members move
@@ -219,7 +225,7 @@ impl World {
         walks: bool,
         patrolling: bool,
     ) -> Result<bool, GenieError> {
-        let g = self.groups.get_mut(group).expect("held");
+        let g = self.groups.held_mut(group)?;
         g.flags = (g.flags & !4) | 0x20;
         self.move_to_desired_positions(group, MOVE_COMMAND, -1)?;
         Ok(!walks && !patrolling)
@@ -240,8 +246,6 @@ impl World {
     /// `DAT_142eb6e48`, which has no image role, then slot 0x5d0, `FUN_140f9b6c0`, slot 0x548
     /// and the unit's move, slot 0x128): not modelled.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: its callers pass their own.
     pub fn move_to_desired_positions(
         &mut self,
@@ -249,7 +253,7 @@ impl World {
         command: i32,
         target: i32,
     ) -> Result<(), GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let Some(f) = g
             .current_formation
             .as_ref()
@@ -297,7 +301,7 @@ impl World {
     pub(super) fn specific_moves_step(&mut self, group: i32) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
-            let g = self.groups.get(group).expect("held");
+            let g = self.groups.held(group)?;
             let Some(m) = g.members.get(i).copied() else {
                 break;
             };
@@ -312,21 +316,19 @@ impl World {
                 // slot 0x608 (FUN_1411581e0): the unit's own motion step (FUN_141150f00), then
                 // its facet from its angle (FUN_14114d8b0, not held)
                 if self.member_step(m.id)? {
-                    self.groups.get_mut(group).expect("held").members[i - 1].specific_move =
-                        SpecificMove {
-                            path_id: -1,
-                            reason: -1,
-                            ..SpecificMove::default()
-                        };
+                    self.groups.held_mut(group)?.members[i - 1].specific_move = SpecificMove {
+                        path_id: -1,
+                        reason: -1,
+                        ..SpecificMove::default()
+                    };
                     continue;
                 }
                 let _ = self.show_walking(m.id)?;
                 let at = self
                     .object(m.id)
                     .map(|(_, u)| u.moved_vector().xhy())
-                    .expect("the member is held");
-                let own =
-                    &mut self.groups.get_mut(group).expect("held").members[i - 1].specific_move;
+                    .ok_or_else(|| member_gone(m.id))?;
+                let own = &mut self.groups.held_mut(group)?.members[i - 1].specific_move;
                 let mut d = crate::math::fmath::sub(at, own.last_position);
                 d[1] = 0.0;
                 own.distance -= crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
@@ -338,7 +340,7 @@ impl World {
             }
             self.show_standing(m.id)?;
             let dt = self.dt_seconds;
-            let g = self.groups.get_mut(group).expect("held");
+            let g = self.groups.held_mut(group)?;
             let timer = &mut g.members[i - 1].specific_move.timer;
             *timer -= dt;
             if !crate::math::fmath::below_or_unordered(0.0, *timer) {
@@ -425,16 +427,17 @@ impl World {
     /// the update's milliseconds (`world+0x7c`) to its timer (`+0x3e4`, wrapping), and past
     /// [`IDLE_LIMIT`] (unsigned) draws it anew ([`World::reset_idle_timer`]); a group that is not
     /// idle draws it anew.
-    pub(super) fn idle_timer_step(&mut self, group: i32) {
+    pub(super) fn idle_timer_step(&mut self, group: i32) -> Result<(), GenieError> {
         if self.is_idle(group) {
             let dt = self.dt_ms();
-            let g = self.groups.get_mut(group).expect("held");
+            let g = self.groups.held_mut(group)?;
             g.idle_timer = g.idle_timer.wrapping_add(dt);
             if g.idle_timer <= IDLE_LIMIT {
-                return;
+                return Ok(());
             }
         }
         self.reset_idle_timer(group);
+        Ok(())
     }
 
     /// The update's milliseconds (`world+0x7c`), of which [`World::dt_seconds`] (`world+0x164`)

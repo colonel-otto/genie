@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::groups::create::FormationUnit;
+use crate::groups::group_list::member_gone;
 use crate::objects::masters::master_type::ACTION;
 use crate::unit_ai::ActionKind;
 use crate::world::World;
@@ -78,14 +79,14 @@ impl World {
     /// [`World::group_statistics`] up to the formation type: true when that follows (motion
     /// flags bit 1).
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn statistics_only(&mut self, group: i32, far: bool) -> Result<bool, GenieError> {
         let dt = self.dt_seconds;
         let (views, objects) = self.member_views(group, far)?;
-        let g = self.groups.get_mut(group).expect("the group read above");
+        let g = self.groups.held_mut(group)?;
         let (held, mut slowest, under_attack) = member_totals(g, &views, objects, dt);
         if held == 0 {
             g.smallest_unit_radius = 0.0;
@@ -98,7 +99,7 @@ impl World {
         for (_, v) in &views {
             self.stop_if_inside(v.id)?;
         }
-        let g = self.groups.get_mut(group).expect("the group read above");
+        let g = self.groups.held_mut(group)?;
         let n = held as f32;
         g.centroid = [g.centroid[0] / n, g.centroid[1] / n, g.centroid[2] / n];
         g.desired_height /= n;
@@ -123,7 +124,7 @@ impl World {
         // place counts even when the world does not hold it); its units are looked up in the
         // world's table, members or not
         self.sub_formation_stats(group, target)?;
-        let g = self.groups.get(group).expect("the group read above");
+        let g = self.groups.held(group)?;
         // the re-attack: an attack plan of 1 before, command 9 (attack) and a target the
         // world's table holds; a target it does not hold does nothing
         if old_plan == 1
@@ -155,7 +156,7 @@ impl World {
         let mut largest = 0.0f32;
         let mut i = 0;
         loop {
-            let g = self.groups.get(group).expect("the caller holds the group");
+            let g = self.groups.held(group)?;
             let Some(m) = g.members.get(i) else {
                 break;
             };
@@ -209,7 +210,7 @@ impl World {
     /// [`World::statistics_only`]'s sub-formations: each one with units gets its attack range
     /// against `target` and its spacing.
     fn sub_formation_stats(&mut self, group: i32, target: i32) -> Result<(), GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let stats: Vec<Vec<i32>> = g.unit_types.iter().map(|u| u.units.clone()).collect();
         for (n, units) in stats.iter().enumerate() {
             if units.is_empty() {
@@ -237,7 +238,7 @@ impl World {
                     widest = radius;
                 }
             }
-            let g = self.groups.get_mut(group).expect("the group read above");
+            let g = self.groups.held_mut(group)?;
             g.unit_types[n].attack_range = range;
             g.unit_types[n].desired_spacing = widest + widest;
         }
@@ -251,15 +252,14 @@ impl World {
     /// formation types 0 ([`World::stances_state`]); a higher one locks the group to it
     /// ([`World::lock_formation`]).
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn calc_formation_type(&mut self, group: i32) -> Result<(), GenieError> {
         let ids: Vec<i32> = self
             .groups
-            .get(group)
-            .expect("the caller holds the group")
+            .held(group)?
             .members
             .iter()
             .map(|m| m.id)
@@ -308,12 +308,10 @@ impl World {
     /// What [`World::update_desired_positions`] does not
     /// model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn lock_formation(&mut self, group: i32, kind: i32) -> Result<(), GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         // the spacing is read again for every member held (0x14102500a): the first whose
         // radius gives one above it sets it, and every later member finds it set
         let mut spacing = g.desired_spacing;
@@ -329,16 +327,10 @@ impl World {
                 }
             }
         }
-        self.groups
-            .get_mut(group)
-            .expect("the group found above")
-            .desired_spacing = spacing;
+        self.groups.held_mut(group)?.desired_spacing = spacing;
         let own_choice = matches!(kind, 1 | 2);
         let locked = if own_choice { 0 } else { kind };
-        self.groups
-            .get_mut(group)
-            .expect("the group found above")
-            .formation_locked_type = locked;
+        self.groups.held_mut(group)?.formation_locked_type = locked;
         self.update_desired_positions(group, if own_choice { -1 } else { kind })?;
         self.stances_state(group, locked as u8);
         Ok(())
@@ -545,13 +537,13 @@ impl World {
         view: &MemberView,
         largest: f32,
     ) -> Result<bool, GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let patrol = crate::groups::formation::top_path(&g.motion.paths)
             .is_some_and(|p| p.path_flags & 1 != 0);
         if patrol || g.flags >> 11 & 1 != 0 {
             return Ok(false);
         }
-        let (p, u) = self.object(view.id).expect("the member is held");
+        let (p, u) = self.object(view.id).ok_or_else(|| member_gone(view.id))?;
         // The types of action objects (`RGE_Action_Object`), whose action list slot 0x538 reads.
         if u.master(&self.masters, p)?.kind >= ACTION {
             if let Some(e) = u.unmodelled_action.clone() {

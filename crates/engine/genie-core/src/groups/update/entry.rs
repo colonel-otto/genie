@@ -36,7 +36,7 @@ impl World {
                 .map(|g| g.members.iter().map(|m| m.id).collect())
                 .unwrap_or_default();
             if self.group_update(id)? {
-                self.group_update_end(id);
+                self.group_update_end(id)?;
             } else {
                 self.delete_group(id)?;
             }
@@ -49,16 +49,14 @@ impl World {
     /// The group's vtable slot 8 after its update ([`UnitGroup::update_end`]) of group `group`,
     /// which its update kept.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When the world does not hold the group: the update loop passes only the groups it holds.
     ///
     /// [`UnitGroup::update_end`]: crate::groups::UnitGroup::update_end
-    pub(super) fn group_update_end(&mut self, group: i32) {
-        self.groups
-            .get_mut(group)
-            .expect("a group the update kept")
-            .update_end();
+    pub(super) fn group_update_end(&mut self, group: i32) -> Result<(), GenieError> {
+        self.groups.held_mut(group)?.update_end();
+        Ok(())
     }
 
     /// A group whose update returned 0 goes (`BaseWorld::update` at `0x1415517a6`): the world's
@@ -118,22 +116,17 @@ impl World {
     ///
     /// What the update does not model.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn group_update(&mut self, group: i32) -> Result<bool, GenieError> {
-        self.groups
-            .get_mut(group)
-            .expect("the caller holds the group")
-            .flags &= !0x2000;
+        self.groups.held_mut(group)?.flags &= !0x2000;
         self.keep_apart(group)?;
         self.drop_lost_members(group)?;
-        if self.groups.get(group).expect("held").hibernating != 0 {
+        if self.groups.held(group)?.hibernating != 0 {
             if !self.hibernating_update(group)? {
                 return Ok(false);
             }
-            if self.groups.get(group).expect("held").motion.flags & 2 == 0 {
+            if self.groups.held(group)?.motion.flags & 2 == 0 {
                 return Ok(true);
             }
         }
@@ -147,7 +140,7 @@ impl World {
         let mut removed = false;
         let mut i = 0;
         loop {
-            let g = self.groups.get(group).expect("the caller holds the group");
+            let g = self.groups.held(group)?;
             let Some(m) = g.members.get(i) else {
                 break;
             };
@@ -170,7 +163,7 @@ impl World {
             i += 1;
         }
         if removed {
-            self.groups.get_mut(group).expect("held").flags |= 0x1_0000;
+            self.groups.held_mut(group)?.flags |= 0x1_0000;
         }
         Ok(())
     }
@@ -203,11 +196,9 @@ impl World {
     ///
     /// What the target tests read that the slice does not hold.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`.
     pub(super) fn hibernation(&self, group: i32) -> Result<Option<bool>, GenieError> {
-        let g = self.groups.get(group).expect("the caller holds the group");
+        let g = self.groups.held(group)?;
         let (target, owner) = (g.current_target.target, g.owner as usize);
         Ok(Some(match g.current_command {
             PICK_UP_RELIC | DELIVER_RELIC | ATTACK => !self.target_pending(group)?,

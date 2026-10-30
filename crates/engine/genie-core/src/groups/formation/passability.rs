@@ -4,6 +4,10 @@
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
+
+/// No active slot lies nearer than `f32::MAX`: the game reads the slot before the array then.
+const NO_NEAREST_SLOT: GenieError =
+    GenieError::unreachable("no active slot lies nearer than f32::MAX");
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{Vec3, scale, sub};
 use crate::math::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
@@ -188,8 +192,6 @@ impl World {
     /// a map without its terrain, and a line query near a record whose place the slice does not
     /// know.
     ///
-    /// # Panics
-    ///
     /// Never: an active slot was found, so the nearest one is too (its distance is finite).
     #[allow(clippy::too_many_lines)]
     pub(super) fn passable_slots(
@@ -224,10 +226,7 @@ impl World {
         // the active slot nearest the group's place, and the box around the tester and them
         let ([min_x, min_z, max_x, max_z], nearest) =
             passability_box(&formation.slots, tester.moved_vector().xhy(), position);
-        let k = nearest.expect(
-            "an active slot lies nearer than f32::MAX (the game reads the slot before the array \
-             when none does)",
-        );
+        let k = nearest.ok_or(NO_NEAREST_SLOT)?;
         if !stands(formation.slots[k].transform_position) {
             if !stands(position) {
                 return Ok(());

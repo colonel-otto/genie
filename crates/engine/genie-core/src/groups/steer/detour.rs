@@ -1,8 +1,9 @@
 //! The way round a record on the line to the slot: the short pather, the long pather and the
 //! tile planner.
 
+use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::steer::{
-    BLOCKED, EPSILON, MOVES, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
+    BLOCKED, EPSILON, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
     ROUND_STILL, ROUND_TIMER,
 };
 use crate::math::fmath::{Vec3, at_most_or_unordered};
@@ -59,9 +60,9 @@ impl World {
         gap: f32,
         differentiators: &[i32],
     ) -> Result<(), GenieError> {
-        let g = self.groups.get(group).expect("held");
+        let g = self.groups.held(group)?;
         let id = g.members[index].id;
-        let to = g.current_formation.as_ref().expect("a formation").slots[slot].transform_position;
+        let to = g.current_formation.as_ref().ok_or(NO_FORMATION)?.slots[slot].transform_position;
         let [place, forward, _, _] = g.motion.position;
         let (moving, waits) = (g.motion.moving(), g.motion.waits_to_move());
         let r = self.rounder(id, differentiators)?;
@@ -85,10 +86,10 @@ impl World {
         if serves && !moving && !waits && ends_farther(&way.record, to, gap) {
             self.stop_member(id)?;
             self.show_standing(id)?;
-            self.groups.get_mut(group).expect("held").members[index]
+            self.groups.held_mut(group)?.members[index]
                 .specific_move
                 .consecutive_move_failures = 0;
-            self.set_slot_state(group, slot, 3);
+            self.set_slot_state(group, slot, 3)?;
             return Ok(());
         }
         if serves {
@@ -99,11 +100,11 @@ impl World {
                 m.take_record_path(way.record.points, way.record.length, now, way.planned);
             }
             let goal = (way.goal, ROUND_TIMER, ROUND_TIMER);
-            let _ = self.set_specific_move(group, id, (-1, 0), goal);
+            let _ = self.set_specific_move(group, id, (-1, 0), goal)?;
         }
-        self.set_slot_state(group, slot, 0);
+        self.set_slot_state(group, slot, 0)?;
         self.stop_member(id)?;
-        self.groups.get_mut(group).expect("held").members[index]
+        self.groups.held_mut(group)?.members[index]
             .specific_move
             .consecutive_move_failures += 1;
         Ok(())
@@ -115,9 +116,9 @@ impl World {
     ///
     /// A member of a master the slice does not have.
     fn rounder<'d>(&self, id: i32, differentiators: &'d [i32]) -> Result<Rounder<'d>, GenieError> {
-        let (p, u) = self.object(id).expect("the member is held");
+        let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let master = u.master(&self.masters, p)?;
-        let mover = u.body.mover().expect(MOVES);
+        let mover = u.body.mover().ok_or(NO_MOVER)?;
         let grow = master.radius[0] * ROUND_RADIUS;
         Ok(Rounder {
             id,
@@ -285,8 +286,10 @@ impl World {
         way.record.points.clear();
         let (_, path) = self.round_long(r.id, [r.at[0], r.at[2]], to)?;
         way.record.points = path.points;
-        if 2 < way.record.points.len() {
-            way.goal = *way.record.points.last().expect("more than 2 points");
+        if 2 < way.record.points.len()
+            && let Some(&last) = way.record.points.last()
+        {
+            way.goal = last;
             return Ok(true);
         }
         Ok(false)
@@ -334,8 +337,8 @@ impl World {
         from: [f32; 2],
         to: Vec3,
     ) -> Result<(bool, Path), GenieError> {
-        let (p, u) = self.object(id).expect("the member is held");
-        let mover = u.body.mover().expect(MOVES);
+        let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
+        let mover = u.body.mover().ok_or(NO_MOVER)?;
         let computer = self.players.get(p).is_some_and(|q| q.computer);
         let walker = crate::movement::LongWalker {
             id,

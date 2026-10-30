@@ -99,9 +99,16 @@ impl UnitGroups {
     ///
     /// A group the table does not hold.
     pub fn held(&self, id: i32) -> Result<&UnitGroup, GenieError> {
-        self.get(id).ok_or_else(|| {
-            GenieError::unreachable("a layout of a group the world does not hold").with("group", id)
-        })
+        self.get(id).ok_or_else(|| group_gone(id))
+    }
+
+    /// The group of id `id` that the caller holds, to change.
+    ///
+    /// # Errors
+    ///
+    /// A group the table does not hold.
+    pub fn held_mut(&mut self, id: i32) -> Result<&mut UnitGroup, GenieError> {
+        self.get_mut(id).ok_or_else(|| group_gone(id))
     }
 
     /// The group of id `id`, to change (`FUN_14152ff40`).
@@ -125,6 +132,30 @@ impl UnitGroups {
         self.groups.push(g);
         &mut self.groups[at]
     }
+}
+
+/// A group that holds no current formation where the game reads one.
+pub(crate) const NO_FORMATION: GenieError =
+    GenieError::unreachable("a group without a current formation where one is read");
+
+/// A formation slot the formation does not hold.
+pub(crate) fn slot_gone(slot: usize) -> GenieError {
+    GenieError::unreachable("a slot the formation does not hold").with("slot", slot)
+}
+
+/// A group's member that the world does not hold, or that has no movement state.
+pub(crate) const NO_MOVER: GenieError =
+    GenieError::unreachable("a group's member is a unit of type 70 or more, which moves");
+
+/// A member of a group that the world does not hold.
+pub(crate) fn member_gone(id: i32) -> GenieError {
+    GenieError::unreachable("a member of a group that the world does not hold").with("object", id)
+}
+
+/// A group the caller holds that the world does not.
+fn group_gone(id: i32) -> GenieError {
+    GenieError::unreachable("a group the caller holds that the world does not hold")
+        .with("group", id)
 }
 
 /// The group that every listed unit is in (`FUN_14152ece0`), from each unit's group link

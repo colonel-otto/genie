@@ -2,6 +2,7 @@
 //! still to act on, the relics, a member's idleness, the sprites shown and the lead.
 
 use crate::GenieError;
+use crate::groups::group_list::member_gone;
 use crate::groups::update::{
     BUILD, DELIVER_RELIC, FARTHEST, NO_COMMAND, PICK_UP_RELIC, RELIC_DELIVERY_ACTION,
     RELIC_PICKUP_ACTION, Shown, TRADE_CART_SPRITES,
@@ -36,18 +37,16 @@ impl World {
     /// the unit AI's `AttackObject`, slot 0xb8, are not modelled), and what the checks read that
     /// the slice does not hold.
     ///
-    /// # Panics
-    ///
     /// When the world does not hold `group`.
     pub(crate) fn keep_apart(&mut self, group: i32) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
-            let g = self.groups.get(group).expect("the caller holds the group");
+            let g = self.groups.held(group)?;
             let Some(&id) = g.objects.get(i) else {
                 break;
             };
             let Some(object) = self.world_object(id) else {
-                let _ = self.groups.get_mut(group).expect("held").objects.remove(i);
+                let _ = self.groups.held_mut(group)?.objects.remove(i);
                 continue;
             };
             if !self.may_interrupt(object)? {
@@ -96,7 +95,7 @@ impl World {
                     ));
                 }
             }
-            let _ = self.groups.get_mut(group).expect("held").objects.remove(i);
+            let _ = self.groups.held_mut(group)?.objects.remove(i);
             if let Some((_, u)) = self.object_mut(id)
                 && let Some(mover) = u.body.mover_mut()
             {
@@ -447,7 +446,7 @@ impl World {
             return Ok(false);
         };
         let graphic = self.graphics.get(&sprite).copied();
-        let (_, u) = self.object_mut(id).expect("found above");
+        let (_, u) = self.object_mut(id).ok_or_else(|| member_gone(id))?;
         if let Some(m) = u.body.mover_mut() {
             m.stats.speed = match shown {
                 Shown::Standing => m.stats.stand_speed,
@@ -461,7 +460,7 @@ impl World {
         let g = graphic.ok_or(GenieError::unsupported(
             "a unit without its sprite's graphic",
         ))?;
-        let place = self.place(id).expect("found above");
+        let place = self.place(id).ok_or_else(|| member_gone(id))?;
         let rng = self.streams.get(crate::math::rng::Stream::Sprite);
         let u = match place {
             crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
