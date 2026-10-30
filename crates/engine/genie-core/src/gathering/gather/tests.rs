@@ -114,7 +114,7 @@ impl Rig {
         dt: u32,
         f: impl FnOnce(&mut Step<'_>, &mut Unit, Me) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
-        crate::world::tests::in_update(&mut self.t, (1, 0), dt, |u, c| {
+        crate::world::tests::in_update(&mut self.t, (PlayerId::new(1), 0), dt, |u, c| {
             let me = Me {
                 id: u.id.get(),
                 group: -1,
@@ -186,7 +186,7 @@ fn bush() -> Resource {
         position: [23.5, 93.5, 0.0],
         class: class::CLASS_7,
         master: 59,
-        player: 0,
+        player: PlayerId::new(0),
         workers: 0,
         drop_site: false,
         gap: 1.2,
@@ -223,7 +223,7 @@ fn farm() -> Resource {
         position: [112.5, 173.5, 3.0],
         class: class::FARM,
         master: 50,
-        player: 1,
+        player: PlayerId::new(1),
         workers: 0,
         drop_site: false,
         gap: 0.0,
@@ -401,8 +401,14 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
     // a move to a point (or an object that is no drop site): state 15 to the point
     let mut g = gatherer();
     let loaded = walks((17, 5.0));
-    g.take_move(None, [30.0, 40.0, 0.0], 7, &mut mover, &loaded)
-        .unwrap();
+    g.take_move(
+        None,
+        [30.0, 40.0, 0.0],
+        PlayerId::new(7),
+        &mut mover,
+        &loaded,
+    )
+    .unwrap();
     // a quiet MoveTo to the point within the task's range; its `+0x61` stays 0
     let to_point = MoveToAction::sub_to_point([30.0, 40.0, 0.0], task().range, None);
     assert_eq!(
@@ -412,13 +418,13 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
     // a loaded gatherer moved to its own mill carries the load there
     let mill = MoveTarget {
         id: 500,
-        player: 7,
+        player: PlayerId::new(7),
         drop_site: true,
         position: [12.5, 5.5, 0.0],
         gap: 3.0,
     };
     let mut g = gatherer();
-    g.take_move(Some(mill), [1.0; 3], 7, &mut mover, &loaded)
+    g.take_move(Some(mill), [1.0; 3], PlayerId::new(7), &mut mover, &loaded)
         .unwrap();
     assert_eq!(
         (g.state, g.target, g.carry_to, g.point),
@@ -438,12 +444,18 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
     assert_eq!(g.move_to, Some(to_mill));
     // already on its way there, nothing changes; empty-handed it walks to the point
     let walking = g.move_to;
-    g.take_move(Some(mill), [1.0; 3], 7, &mut mover, &loaded)
+    g.take_move(Some(mill), [1.0; 3], PlayerId::new(7), &mut mover, &loaded)
         .unwrap();
     assert_eq!((g.state, g.move_to), (DROP, walking));
     let mut g = gatherer();
-    g.take_move(Some(mill), [1.0; 3], 7, &mut mover, &walks((17, 0.0)))
-        .unwrap();
+    g.take_move(
+        Some(mill),
+        [1.0; 3],
+        PlayerId::new(7),
+        &mut mover,
+        &walks((17, 0.0)),
+    )
+    .unwrap();
     assert_eq!((g.state, g.carry_to), (MOVED, -1));
 }
 
@@ -1023,7 +1035,7 @@ fn a_forager_walks_to_its_bush() {
     g.start(
         GatherStart {
             target: &bush(),
-            player: 7,
+            player: PlayerId::new(7),
             computer: false,
             carry_rule: false,
             held: &mut held,
@@ -1049,7 +1061,7 @@ fn a_forager_walks_to_its_bush() {
     g.start(
         GatherStart {
             target: &bush(),
-            player: 7,
+            player: PlayerId::new(7),
             computer: false,
             carry_rule: false,
             held: &mut held,
@@ -1080,7 +1092,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
         g.retarget(
             GatherRetarget {
                 target: &bush(),
-                player: 7,
+                player: PlayerId::new(7),
                 computer: false,
                 walks: walks((17, 0.0)),
                 farm_stops: true,
@@ -1117,7 +1129,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
             g.retarget(
                 GatherRetarget {
                     target: &bush(),
-                    player: 7,
+                    player: PlayerId::new(7),
                     computer,
                     walks: walks((17, 0.0)),
                     farm_stops: true,
@@ -1135,7 +1147,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
     }
     let mill = Resource {
         id: 500,
-        player: 7,
+        player: PlayerId::new(7),
         drop_site: true,
         ..bush()
     };
@@ -1144,7 +1156,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
         g.retarget(
             GatherRetarget {
                 target: &mill,
-                player: 7,
+                player: PlayerId::new(7),
                 computer: false,
                 walks: walks((17, 3.0)),
                 farm_stops: true,

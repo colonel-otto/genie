@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::spatial::{
     Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
 };
+use crate::players::PlayerId;
 
 /// A walk's obstruction query ([`Spatial::walk_hits`]'s arguments).
 #[derive(Clone, Copy, Debug)]
@@ -21,7 +22,7 @@ pub struct WalkQuery<'a> {
     /// an ally.
     pub ally_factor: f32,
     /// The walker's player.
-    pub player: Option<usize>,
+    pub player: Option<PlayerId>,
     /// The objects the query ignores.
     pub ignore: &'a [i32],
 }
@@ -169,17 +170,17 @@ impl Spatial {
     /// a tile's edge (`RGE_Static_Object::new_position`, `0x1411a58b0`).
     /// Player `player`'s scout map, once made (`player+0x1370`).
     #[must_use]
-    pub fn scout_map(&self, player: usize) -> Option<&crate::movement::explore::InfluenceMap> {
+    pub fn scout_map(&self, player: PlayerId) -> Option<&crate::movement::explore::InfluenceMap> {
         self.scout_maps.get(&player)
     }
 
     /// Player `player`'s scout map becomes `map` (the old one goes).
-    pub fn set_scout_map(&mut self, player: usize, map: crate::movement::explore::InfluenceMap) {
+    pub fn set_scout_map(&mut self, player: PlayerId, map: crate::movement::explore::InfluenceMap) {
         let _ = self.scout_maps.insert(player, map);
     }
 
     /// Tile (`x`, `y`) of player `player`'s scout map, if it has one, takes 1 (`FUN_140f4d5e0`).
-    pub fn scout(&mut self, player: usize, x: i32, y: i32) {
+    pub fn scout(&mut self, player: PlayerId, x: i32, y: i32) {
         if let Some(m) = self.scout_maps.get_mut(&player) {
             m.set(x, y, 1);
         }
@@ -263,29 +264,31 @@ impl Spatial {
 
     /// `FUN_141663dc0` with the ally flag ([`Spatial::allied`]), for the walk's avoidance.
     #[must_use]
-    pub fn allied_with(&self, from: usize, to: usize) -> bool {
+    pub fn allied_with(&self, from: PlayerId, to: PlayerId) -> bool {
         self.allied(from, to)
     }
 
     /// The players `from` counts as allies ([`Spatial::allied_with`]), one bit each.
     #[must_use]
-    pub fn allies_of(&self, from: usize) -> u64 {
-        (0..64usize)
+    pub fn allies_of(&self, from: PlayerId) -> u64 {
+        PlayerId::each(64)
             .filter(|&to| self.allied(from, to))
-            .fold(0, |bits, to| bits | (1 << to))
+            .fold(0, |bits, to| bits | (1 << to.get()))
     }
 
     /// `FUN_141663dc0` with the ally flag: `to` counts for `from` when it is `from`, or `from`
     /// stands to it in relation 0 or 4; Gaia counts for no one else.
-    pub(super) fn allied(&self, from: usize, to: usize) -> bool {
+    pub(super) fn allied(&self, from: PlayerId, to: PlayerId) -> bool {
         if from == to {
             return true;
         }
-        if to == 0 {
+        if to == PlayerId::new(0) {
             return false;
         }
         matches!(
-            self.relations.get(from).and_then(|r| r.get(to)),
+            self.relations
+                .get(from.index())
+                .and_then(|r| r.get(to.index())),
             Some(0 | 4)
         )
     }

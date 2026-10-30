@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -69,7 +70,7 @@ impl UnitAi {
         if self.villager_ignores(at, &attacker, fierce)? {
             return Ok(GO_ON);
         }
-        if attacker.owner != 0 && !side.harmless(n.caller)? {
+        if attacker.owner != PlayerId::GAIA && !side.harmless(n.caller)? {
             // "I have %d attackers, evading them.", but on the move action at a speed (not 0,
             // UCOMISS: a NaN keeps moving): the current order goes to the queue's end (slot 0x30
             // neither immediate nor in front), the action stops (slot 0xb0 with 1) and it runs
@@ -127,7 +128,7 @@ impl UnitAi {
             || (gathers
                 && state == 12
                 && at.target.is_some_and(|t| t.class == class::PREDATOR)
-                && attacker.owner == 0)
+                && attacker.owner == PlayerId::GAIA)
             || order == Some(OrderKind::Repair)
             || (fierce && gathers && state < 16 && (0x9110u32 >> state) & 1 != 0))
     }

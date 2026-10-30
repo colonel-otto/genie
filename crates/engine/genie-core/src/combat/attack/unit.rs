@@ -78,11 +78,14 @@ impl Unit {
     ) -> Result<HeadCode, GenieError> {
         let mut attack = *self.actions.attack().ok_or(NO_ATTACK)?;
         let master = self.master(&c.w.masters, c.player)?;
-        let computer = c.w.players.get(c.player).is_some_and(|q| q.computer);
+        let computer =
+            c.w.players
+                .get(c.player.index())
+                .is_some_and(|q| q.computer);
         let r = AttackReads::of(
             self,
             master,
-            (c.w.masters.get(c.player), &c.w.graphics),
+            (c.w.masters.get(c.player.index()), &c.w.graphics),
             self.ai.as_ref(),
             (computer, c.w.world_time),
         );
@@ -107,13 +110,16 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )?;
-        let computer = c.w.players.get(c.player).is_some_and(|q| q.computer);
+        let computer =
+            c.w.players
+                .get(c.player.index())
+                .is_some_and(|q| q.computer);
         let r = AttackReads::of(
             self,
             master,
-            (c.w.masters.get(c.player), &c.w.graphics),
+            (c.w.masters.get(c.player.index()), &c.w.graphics),
             self.ai.as_ref(),
             (computer, c.w.world_time),
         );
@@ -166,7 +172,7 @@ impl Unit {
                 Some(victim_of(
                     self,
                     master,
-                    &c.w.players[c.player].attributes,
+                    &c.w.players[c.player.index()].attributes,
                     c.player,
                     terrain,
                     c.w.mode_680,

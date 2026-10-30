@@ -150,7 +150,7 @@ impl World {
         };
         let mut found = find(own)?;
         if found.is_none() && own.task_by_group != 0 {
-            let masters = self.masters.get(player);
+            let masters = self.masters.get(player.index());
             for candidate in masters.into_iter().flat_map(Masters::iter) {
                 if candidate.class != own.class
                     || candidate.kind != own.kind
@@ -183,7 +183,7 @@ impl World {
             OWN_RANGE_TASK => None,
             OWNER_RANGE_TASK => Some(
                 self.players
-                    .get(target.player)
+                    .get(target.player.index())
                     .and_then(|p| p.attributes.get(OWNER_RANGE_ATTRIBUTE))
                     .copied()
                     .ok_or_else(|| {

@@ -238,7 +238,7 @@ fn tasked_world(masters: Vec<crate::objects::masters::Master>, owner_range: f32)
     let mut t = World::new(
         0,
         1,
-        0,
+        PlayerId::new(0),
         vec![0, 0],
         vec![
             crate::world::Player::default(),
@@ -442,7 +442,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
     let mut t = World::new(
         50,
         0,
-        0,
+        PlayerId::new(0),
         vec![0, 0, 0],
         vec![
             crate::world::Player::default(),
@@ -498,13 +498,11 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
 /// Every object of every player in the spatial index at its place (`FUN_14118f8c0`-style gaps and
 /// the work command's reach read it).
 fn register(t: &mut World) {
-    let placed: Vec<(i32, crate::map::spatial::Placed)> = t
-        .players
-        .iter()
-        .enumerate()
+    let placed: Vec<(i32, crate::map::spatial::Placed)> = PlayerId::each(t.players.len())
+        .zip(&t.players)
         .flat_map(|(p, player)| player.objects.iter().map(move |u| (p, u)))
         .filter_map(|(p, u)| {
-            let m = t.masters.get(p)?.get(u.life.master_id)?;
+            let m = t.masters.get(p.index())?.get(u.life.master_id)?;
             Some((
                 u.id.get(),
                 crate::map::spatial::Placed {
@@ -643,11 +641,11 @@ fn a_filter_takes_the_range_of_the_members_task_of_that_type() {
     }
     t.players[1].attributes = vec![0.0; 300];
     t.players[1].attributes[280] = 2.0;
-    assert_eq!(t.task_reach(1, 4, -1).unwrap(), -1.0);
-    assert_eq!(t.task_reach(1, 4, 5).unwrap(), 6.0);
-    assert_eq!(t.task_reach(1, 4, 0x68).unwrap(), 3.5);
-    assert_eq!(t.task_reach(1, 4, 9).unwrap(), -1.0);
-    assert_eq!(t.task_reach(1, 99, 5).unwrap(), 0.0);
+    assert_eq!(t.task_reach(PlayerId::new(1), 4, -1).unwrap(), -1.0);
+    assert_eq!(t.task_reach(PlayerId::new(1), 4, 5).unwrap(), 6.0);
+    assert_eq!(t.task_reach(PlayerId::new(1), 4, 0x68).unwrap(), 3.5);
+    assert_eq!(t.task_reach(PlayerId::new(1), 4, 9).unwrap(), -1.0);
+    assert_eq!(t.task_reach(PlayerId::new(1), 99, 5).unwrap(), 0.0);
     // the range is the task's with the filter: the pass raises the group's range to it
     let mut range = -1.0;
     t.reach_pass(1, 60, attack_on(5), &mut range).unwrap();

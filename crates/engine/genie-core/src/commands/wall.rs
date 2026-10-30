@@ -73,8 +73,7 @@ impl BuildWallCommand {
         let Some(listed) = w.read_units(self.player, &self.builders) else {
             return Ok(());
         };
-        let Some(builders) = w.command_check(self.player.index(), &ObjectId::fields(listed))?
-        else {
+        let Some(builders) = w.command_check(self.player, &ObjectId::fields(listed))? else {
             return Ok(());
         };
         w.build_wall(self, &builders)
@@ -220,7 +219,7 @@ impl World {
         w: &BuildWallCommand,
         builders: &[i32],
     ) -> Result<(), GenieError> {
-        let (player, master) = (w.player.index(), w.master.get());
+        let (player, master) = (w.player, w.master.get());
         if w.q_id != -1 {
             return Ok(());
         }
@@ -232,7 +231,7 @@ impl World {
             return Ok(());
         }
         let (radius, trained_at) = (site.radius, site.trained_at.clone());
-        let computer = self.players[player].computer;
+        let computer = self.players[player.index()].computer;
         let builders: &[i32] = if computer && builders.first() == Some(&-1) {
             &[]
         } else {
@@ -275,7 +274,7 @@ impl World {
         w: &BuildWallCommand,
         radius: [f32; 2],
     ) -> Result<Vec<(i32, [f32; 3])>, GenieError> {
-        let (player, master) = (w.player.index(), w.master.get());
+        let (player, master) = (w.player, w.master.get());
         let ([x1, y1], [x2, y2]) = (w.from.map(i32::from), w.to.map(i32::from));
         let mut placed: Vec<(i32, [f32; 3])> = Vec::new();
         for (a, b) in segments([x1, y1], [x2, y2]) {
@@ -306,7 +305,7 @@ impl World {
         builders: &[i32],
     ) -> Result<Vec<(i32, f32)>, GenieError> {
         let mut sorted = Vec::new();
-        for id in self.checked_units(w.player.index(), builders) {
+        for id in self.checked_units(w.player, builders) {
             let Some((owner, u)) = self.object(id) else {
                 continue;
             };
@@ -344,13 +343,13 @@ impl World {
         placed: &[(i32, [f32; 3])],
         (foundation, at): (i32, [f32; 3]),
     ) -> Result<(), GenieError> {
-        let (player, master) = (w.player.index(), w.master.get());
+        let (player, master) = (w.player, w.master.get());
         let Some(Place::Live(q, idx)) = self.place(id) else {
             return Err(GenieError::unsupported(
                 "a wall builder the slice does not have",
             ));
         };
-        let direct = self.players[q].objects[idx]
+        let direct = self.players[q.index()].objects[idx]
             .ai
             .as_ref()
             .is_none_or(|ai| !w.queued && (!w.commits || !ai.has_unready_order()));
@@ -363,7 +362,7 @@ impl World {
                 self.queue_build(q, idx, (player, f, master), p)?;
             }
             if w.commits
-                && let Some(ai) = self.players[q].objects[idx].ai.as_mut()
+                && let Some(ai) = self.players[q.index()].objects[idx].ai.as_mut()
             {
                 // the readiness pass with 0: every queued order is ready
                 crate::orders::readiness(&mut ai.orders, false);

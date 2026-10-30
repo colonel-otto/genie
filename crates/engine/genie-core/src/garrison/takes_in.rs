@@ -9,6 +9,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
 use crate::orders::GARRISON;
+use crate::players::PlayerId;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
@@ -97,7 +98,7 @@ impl World {
     /// unit) within its master's capacity (`obj_max`).
     pub(crate) fn has_room(
         &self,
-        bp: usize,
+        bp: PlayerId,
         b: &crate::objects::unit::Unit,
         unit: Option<i32>,
     ) -> Result<bool, GenieError> {
@@ -115,7 +116,7 @@ impl World {
     pub(crate) fn takes_in(
         &self,
         building: i32,
-        player: usize,
+        player: PlayerId,
         master: i16,
     ) -> Result<bool, GenieError> {
         self.takes_in_as(building, player, master, true, true)
@@ -136,7 +137,7 @@ impl World {
     pub(crate) fn takes_in_as(
         &self,
         building: i32,
-        player: usize,
+        player: PlayerId,
         master: i16,
         others: bool,
         unchecked: bool,
@@ -216,7 +217,7 @@ impl World {
             .transpose()?
             .unwrap_or(false);
         let mut count = 0;
-        for (p, player) in self.players.iter().enumerate() {
+        for (p, player) in PlayerId::each(self.players.len()).zip(&self.players) {
             for u in player.objects.iter().chain(&player.sleeping) {
                 if u.life.inside != Some(building) {
                     continue;

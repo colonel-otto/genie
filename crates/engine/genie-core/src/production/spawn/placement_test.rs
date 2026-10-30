@@ -6,6 +6,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::RELIC;
 use crate::objects::masters::master_type::{BUILDING, COMBAT};
+use crate::players::PlayerId;
 use crate::production::spawn::{
     BuildSite, INSIDE, PASSABLE, REACH, Tested, hill_fails, placement_terrains,
 };
@@ -39,7 +40,7 @@ pub struct Near {
     /// A building's `desolid_flag` (`+0xc60`).
     pub desolid: bool,
     /// Its owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its master moves (speed above 0).
     pub moving: bool,
     /// Its master's `fog_visibility` (`+0x605`).
@@ -110,7 +111,7 @@ pub(crate) const NOT_MOVING: GenieError =
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Placing<'a> {
     /// The unit's player.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its master's radii.
     pub radius: [f32; 2],
     /// Its master's height radius is above 0.
@@ -141,11 +142,11 @@ pub trait PlaceMap {
         0
     }
     /// `FUN_141663500` is not 0: the player sees or saw the tile.
-    fn explored(&self, player: usize, x: i32, y: i32) -> bool;
+    fn explored(&self, player: PlayerId, x: i32, y: i32) -> bool;
     /// The player sees the tile now (its mask `+0x2a8` meets the tile's visible bits).
-    fn visible(&self, player: usize, x: i32, y: i32) -> bool;
+    fn visible(&self, player: PlayerId, x: i32, y: i32) -> bool;
     /// The player's masks: what it sees (`+0x2a8`) and what it explored (`+0x2a0`).
-    fn vision(&self, player: usize) -> [u64; 2];
+    fn vision(&self, player: PlayerId) -> [u64; 2];
     /// A tile's elevation (`+0x14`), when the map holds it.
     fn elevation(&self, x: i32, y: i32) -> Option<u8>;
     /// A tile's shape (`+0x8`, [`crate::map::terrain::Terrain::set_elevations`]), when the map holds
@@ -153,7 +154,7 @@ pub trait PlaceMap {
     fn shape(&self, x: i32, y: i32) -> Option<u8>;
     /// Player `a` counts player `b` as an ally (`FUN_141663dc0`): itself; never Gaia; relation 0,
     /// or with `with_4` relation 4 too (the zone mode's relation 1 is not modelled).
-    fn allied(&self, a: usize, b: usize, with_4: bool) -> bool;
+    fn allied(&self, a: PlayerId, b: PlayerId, with_4: bool) -> bool;
     /// The objects on tile (`x`, `y`) (their centre there), in the tile list's order; `Err` where
     /// it cannot tell.
     fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError>;
@@ -456,7 +457,7 @@ pub(super) fn build_passes(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near) -
         && o.state == 2
         && o.moving
         && (o.player == player
-            || o.player == 0
+            || o.player == PlayerId::GAIA
             || (map.allied(player, o.player, false) && map.allied(o.player, player, false)));
     // a felled tree (at most 1 hit point) passes off a forest (`FUN_140f5efb0` on its
     // tile's terrain)

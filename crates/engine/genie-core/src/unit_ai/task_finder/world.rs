@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::terrain::Terrain;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::world_view::Foreign;
 use crate::world::others::OthersRef;
@@ -25,8 +26,11 @@ pub(crate) struct TaskWorld<'a> {
 
 impl Diplomacy for TaskWorld<'_> {
     /// [`crate::unit_ai::task_finder::allied`] with `from`'s diplomacy.
-    fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
-        let relations = self.players.get(from).map_or(&[][..], |p| &p.relations[..]);
+    fn allied(&self, from: PlayerId, to: PlayerId, with_ally: bool) -> bool {
+        let relations = self
+            .players
+            .get(from.index())
+            .map_or(&[][..], |p| &p.relations[..]);
         crate::unit_ai::task_finder::allied(relations, from, to, with_ally)
     }
 
@@ -38,7 +42,7 @@ impl Diplomacy for TaskWorld<'_> {
 /// The players' relations and the drop sites as the task finder reads them while a unit's
 /// owner's list is out for its update ([`UnitView`]): the owner's relations, the others'.
 pub(crate) struct SideWorld<'a> {
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
     pub(crate) relations: &'a [u8],
     pub(crate) foreign: Foreign<'a>,
     pub(crate) drop_sites: &'a [DropSite],
@@ -46,7 +50,7 @@ pub(crate) struct SideWorld<'a> {
 
 impl Diplomacy for SideWorld<'_> {
     /// [`crate::unit_ai::task_finder::allied`] with `from`'s diplomacy.
-    fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
+    fn allied(&self, from: PlayerId, to: PlayerId, with_ally: bool) -> bool {
         let relations = if from == self.player {
             self.relations
         } else {
@@ -87,7 +91,7 @@ pub(crate) fn state_of(id: i32, others: OthersRef<'_>) -> Option<u8> {
 pub(crate) fn task_target_with<'a>(
     id: i32,
     steps: usize,
-    find: &impl Fn(i32) -> Option<(usize, &'a Unit)>,
+    find: &impl Fn(i32) -> Option<(PlayerId, &'a Unit)>,
     every: &'a [Masters],
 ) -> Result<Option<TaskTarget<'a>>, GenieError> {
     let mut id = id;

@@ -8,6 +8,7 @@ use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::DOPPELGANGER;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::{GenieError, math::fmath};
 
@@ -54,7 +55,7 @@ pub struct Bystander {
     /// The object.
     pub id: i32,
     /// Its player (`+0x138`'s `+0x718`).
-    pub player: usize,
+    pub player: PlayerId,
     /// The hitter's player counts it allied (`FUN_141663d90` with the ally flag).
     pub allied: bool,
     /// Its type (`+0xf`).
@@ -92,7 +93,7 @@ pub struct Hitter {
 /// within).
 #[must_use]
 pub fn struck(hitter: &Hitter, range: f32, b: &Bystander) -> bool {
-    if b.id == hitter.id || b.allied || b.player == 0 {
+    if b.id == hitter.id || b.allied || b.player == PlayerId::GAIA {
         return false;
     }
     if b.kind == BUILDING && !STRUCK_BUILDING_CLASSES.contains(&b.class) {
@@ -151,7 +152,7 @@ impl World {
     pub(super) fn movement_damage(
         &mut self,
         (p, i): (usize, usize),
-        owner: usize,
+        owner: PlayerId,
         master: Own,
         task: &Task,
     ) -> Result<(), GenieError> {
@@ -203,9 +204,18 @@ impl World {
     /// # Errors
     ///
     /// An object the slice does not hold ([`crate::construction::build::NOT_HELD`]).
-    pub(super) fn bystander(&self, id: i32, owner: usize) -> Result<Option<Bystander>, GenieError> {
-        let allied = |q: usize| {
-            crate::unit_ai::task_finder::allied(&self.players[owner].relations, owner, q, true)
+    pub(super) fn bystander(
+        &self,
+        id: i32,
+        owner: PlayerId,
+    ) -> Result<Option<Bystander>, GenieError> {
+        let allied = |q: PlayerId| {
+            crate::unit_ai::task_finder::allied(
+                &self.players[owner.index()].relations,
+                owner,
+                q,
+                true,
+            )
         };
         if let Some((q, u)) = self.object(id) {
             let m = u.master(&self.masters, q)?;
@@ -221,7 +231,7 @@ impl World {
                 radius: m.radius,
             }));
         }
-        for (q, player) in self.players.iter().enumerate() {
+        for (q, player) in PlayerId::each(self.players.len()).zip(&self.players) {
             if let Some(g) = player.ghosts.iter().find(|g| g.id == id) {
                 let m = self.master(q, crate::vision::ghost::GHOST_MASTER)?;
                 return Ok(Some(Bystander {
@@ -245,7 +255,7 @@ impl World {
     pub(super) fn movement_hit(
         &mut self,
         b: Bystander,
-        owner: usize,
+        owner: PlayerId,
         damage: f32,
     ) -> Result<(), GenieError> {
         if b.kind == DOPPELGANGER {
@@ -258,7 +268,7 @@ impl World {
         let mut v = crate::combat::victims::victim_of(
             u,
             m,
-            &self.players[q].attributes,
+            &self.players[q.index()].attributes,
             q,
             self.spatial.terrain.as_ref(),
             self.mode_680,
@@ -274,7 +284,7 @@ impl World {
             u.hp_powerups = a.hp_powerups;
         }
         if killed && b.kind == COMBAT {
-            self.count_kill(b.id, owner)?;
+            self.count_kill(b.id, owner.index())?;
         }
         Ok(())
     }

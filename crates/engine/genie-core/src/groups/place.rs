@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
 use crate::math::fmath::{self, Vec3, cross, normalize};
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 
@@ -346,7 +347,7 @@ impl World {
     ///
     /// No such master, a master without a restriction (the game indexes before the table) and a
     /// map without its terrain.
-    pub(crate) fn master_mask(&self, p: usize, master: i16) -> Result<u8, GenieError> {
+    pub(crate) fn master_mask(&self, p: PlayerId, master: i16) -> Result<u8, GenieError> {
         let restriction =
             usize::try_from(self.master(p, master)?.terrain_restriction).map_err(|_| {
                 GenieError::unsupported("a terrain mask of a master without a restriction")
@@ -415,7 +416,7 @@ mod tests {
         let mut t = World::new(
             0,
             1,
-            0,
+            PlayerId::new(0),
             vec![0],
             vec![crate::world::Player {
                 objects: units.clone().into(),
@@ -450,7 +451,7 @@ mod tests {
                     position: u.position(),
                     radius: [0.4, 0.4],
                     class: class::CLASS_6,
-                    player: 0,
+                    player: PlayerId::new(0),
                     master: 4,
                     obstruction_type: 0,
                     buildable_on: 0,

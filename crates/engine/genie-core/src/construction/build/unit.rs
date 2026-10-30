@@ -13,6 +13,7 @@ use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::death_parts::clear_look_of;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
@@ -66,7 +67,7 @@ impl Unit {
                 } else {
                     continue;
                 };
-                if let Some(l) = clear_look_of(u, c.w.masters.get(owner)) {
+                if let Some(l) = clear_look_of(u, c.w.masters.get(owner.index())) {
                     let _ = looks.insert(id, l);
                 }
             }
@@ -108,7 +109,7 @@ impl Unit {
         };
         let master = self.master(&c.w.masters, c.player);
         // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
-        let attributes = c.w.players[c.player].attributes.len();
+        let attributes = c.w.players[c.player.index()].attributes.len();
         let has_kind = usize::try_from(self.life.attribute_type).is_ok_and(|k| k < attributes);
         Ok(BuildReads {
             site,
@@ -145,12 +146,12 @@ impl Unit {
             master,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),
-            attribute_95: c.w.players[c.player]
+            attribute_95: c.w.players[c.player.index()]
                 .attributes
                 .get(95)
                 .copied()
                 .unwrap_or(0.0),
-            civ: c.w.players[c.player].civ,
+            civ: c.w.players[c.player.index()].civ,
         };
         Ok(state_of(site, others).map(|state| {
             let drop = DropOff {
@@ -201,7 +202,7 @@ impl BuildAction {
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
-        f: impl FnOnce(&mut World, usize, usize) -> Result<R, GenieError>,
+        f: impl FnOnce(&mut World, PlayerId, usize) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         if let Some(b) = builder.actions.build_mut() {
             *b = *self;
@@ -240,7 +241,7 @@ fn drop_site_master(c: &Step<'_>, built: Option<i16>) -> bool {
         DROP_SITE_MASTERS.contains(&m)
             || c.w.drop_sites.iter().any(|d| {
                 d.building == m
-                    && (d.civs.is_empty() || d.civs.contains(&c.w.players[c.player].civ))
+                    && (d.civs.is_empty() || d.civs.contains(&c.w.players[c.player.index()].civ))
             })
     })
 }

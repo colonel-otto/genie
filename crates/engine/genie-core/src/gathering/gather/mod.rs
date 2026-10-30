@@ -17,6 +17,7 @@
 use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use genie_diff::Diff;
 
 mod point_walks;
@@ -166,7 +167,7 @@ pub struct Resource {
     /// Its master's id.
     pub master: i16,
     /// Its owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// How many actions work on it (`+0x644`).
     pub workers: i32,
     /// The gatherer's master has its master (a building annex's main building's, `+0xbb8`) among

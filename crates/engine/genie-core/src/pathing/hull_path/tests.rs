@@ -3,6 +3,7 @@ use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::pathing::hull_path::rounds::Rounds;
+use crate::players::PlayerId;
 
 /// The unit square as `addShapeToHulls` makes a hull of it: high right, low right, low left,
 /// high left.
@@ -120,7 +121,7 @@ fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
         } else {
             class::PREDATOR
         },
-        player: 1,
+        player: PlayerId::new(1),
         master: 0,
         obstruction_type: kind,
         buildable_on: 0,
@@ -692,7 +693,7 @@ fn tall(x: f32, y: f32, r: f32, class: ClassId) -> Placed {
         position: [x, y, 0.0],
         radius: [r, r],
         class,
-        player: 1,
+        player: PlayerId::new(1),
         master: 0,
         obstruction_type: 0,
         buildable_on: 0,

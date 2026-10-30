@@ -37,6 +37,7 @@ use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::sprite::Graphic;
 use crate::pathing::Pathing;
+use crate::players::PlayerId;
 use crate::unit_ai::task_finder::DropSite;
 pub(crate) use crate::world::player::NO_ATTRIBUTE;
 pub use crate::world::player::{AiSettings, Formations, Player};
@@ -217,7 +218,7 @@ pub struct World {
     /// `world+0x7d0`.
     pub frame_seed: u32,
     /// `world+0x188`, `player_turn` in the save.
-    pub player_turn: usize,
+    pub player_turn: PlayerId,
     /// `world+0x18c[p]`, the time each player accumulated since its last turn.
     pub player_time: Vec<u32>,
     /// Every player, Gaia first.
@@ -297,7 +298,7 @@ pub struct World {
     /// `mLocalPlayerIndex` (`world+0x6b0`, saved): the player whose view the game shows, a
     /// recording's point of view. Its masters stand for a building's in a train location's test
     /// (`FUN_141263610` through `FUN_140c88440`, [`crate::players::world_player`]).
-    pub local_player: usize,
+    pub local_player: PlayerId,
     /// The game's tech tree table and its civilisations' unique units, which the defeat check's
     /// count of the units a building will train reads ([`crate::players::world_player::TechTree`]).
     pub tech_tree: crate::players::world_player::TechTree,

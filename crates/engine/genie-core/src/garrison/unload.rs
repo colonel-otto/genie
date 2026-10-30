@@ -55,7 +55,7 @@ impl World {
             sound,
             ..
         } = *u;
-        let (player, point) = (player.index(), point.xy());
+        let (player, point) = (player, point.xy());
         let Some(checked) = self.unload_check(player, ids, flag, unit_type)? else {
             return Ok(());
         };
@@ -66,7 +66,7 @@ impl World {
             let Some(crate::orders::Place::Live(player, idx)) = place else {
                 continue;
             };
-            let unit = &self.players[player].objects[idx];
+            let unit = &self.players[player.index()].objects[idx];
             if unit.life.hp < 1.0 {
                 continue;
             }
@@ -89,7 +89,7 @@ impl World {
                 self.leave_building(c, id, point)?;
                 continue;
             }
-            let unit = &self.players[player].objects[idx];
+            let unit = &self.players[player.index()].objects[idx];
             let master = unit.master(&self.masters, player)?;
             if master.kind < BUILDING {
                 let transport = container
@@ -129,8 +129,10 @@ impl World {
         };
         let _ = self.let_out(cp, ci, id, point, (None, true))?;
         let (up, ui) = self.live_inside(id)?;
-        let kind = self.players[up].objects[ui].master(&self.masters, up)?.kind;
-        let u = &mut self.players[up].objects[ui];
+        let kind = self.players[up.index()].objects[ui]
+            .master(&self.masters, up)?
+            .kind;
+        let u = &mut self.players[up.index()].objects[ui];
         if COMBAT <= kind {
             u.town_bell.flag = false;
         }
@@ -151,13 +153,13 @@ impl World {
     /// not model.
     pub(super) fn unload_building(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         point: [f32; 2],
         (flag, unit_type): (u8, i32),
         sound: bool,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players[player.index()].objects[idx];
         if unit
             .ai
             .as_ref()
@@ -170,7 +172,7 @@ impl World {
         let mut i = unit.garrison.len();
         while 0 < i {
             i -= 1;
-            let Some(&inside) = self.players[player].objects[idx].garrison.get(i) else {
+            let Some(&inside) = self.players[player.index()].objects[idx].garrison.get(i) else {
                 continue;
             };
             // the game skips a null entry; an id the world no longer holds is one
@@ -182,8 +184,10 @@ impl World {
             }
             let _ = self.let_out(player, idx, inside, point, (None, sound))?;
             let (up, ui) = self.live_inside(inside)?;
-            let kind = self.players[up].objects[ui].master(&self.masters, up)?.kind;
-            let u = &mut self.players[up].objects[ui];
+            let kind = self.players[up.index()].objects[ui]
+                .master(&self.masters, up)?
+                .kind;
+            let u = &mut self.players[up.index()].objects[ui];
             // a unit (type 70) is no longer under the town bell (`+0x9dc`)
             if COMBAT <= kind {
                 u.town_bell.flag = false;
@@ -207,13 +211,13 @@ impl World {
     /// under the town bell (`+0x9dc`). Without a free place the interface's message 0x85 is all.
     pub(super) fn drop_out(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         transport: Option<i32>,
         named: i32,
         last: &mut Option<[f32; 2]>,
     ) -> Result<(), GenieError> {
-        let own = self.players[player].objects[idx].id;
+        let own = self.players[player.index()].objects[idx].id;
         let (inner, holder) = match transport {
             Some(t) => (own.get(), t),
             None => match self.object(named) {
@@ -231,7 +235,7 @@ impl World {
                 "a transport that holds units outside the live lists",
             ));
         };
-        let h = &self.players[hp].objects[hi];
+        let h = &self.players[hp.index()].objects[hi];
         let at = h.position();
         let [rx, ry] = h.master(&self.masters, hp)?.radius;
         let around = crate::garrison::transport::Around {
@@ -242,13 +246,13 @@ impl World {
             return Ok(());
         };
         let (up, ui) = self.live_inside(inner)?;
-        let unit = &mut self.players[up].objects[ui];
+        let unit = &mut self.players[up.index()].objects[ui];
         let inner_id = unit.id;
         unit.body
             .base_mut()
             .inside_at(inner_id.get(), at, &mut self.spatial);
-        self.leave_container((hp, hi), (up, ui), &made, [spot[0], spot[1], at[2]])?;
-        let unit = &mut self.players[up].objects[ui];
+        self.leave_container((hp, hi), (up.index(), ui), &made, [spot[0], spot[1], at[2]])?;
+        let unit = &mut self.players[up.index()].objects[ui];
         let place = ([unit.position()[0], unit.position()[1]], Some(made.class));
         if unit.ai.is_some() {
             self.run_ai_calls((up, ui), |ai, side, rng| {
@@ -257,7 +261,7 @@ impl World {
             })?;
         }
         if COMBAT <= made.kind {
-            self.players[up].objects[ui].town_bell.flag = false;
+            self.players[up.index()].objects[ui].town_bell.flag = false;
         }
         Ok(())
     }
@@ -274,17 +278,17 @@ impl World {
     /// 1); slot 0x30 shows the order at its x and y.
     pub(super) fn unload_order(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         point: [f32; 2],
     ) -> Result<(), GenieError> {
-        let id = self.players[player].objects[idx].id;
+        let id = self.players[player.index()].objects[idx].id;
         self.leave_group_of(id.get(), -1)?;
-        let unit = &mut self.players[player].objects[idx];
+        let unit = &mut self.players[player.index()].objects[idx];
         if let Some(m) = unit.body.mover_mut() {
             m.ignore_units.clear();
         }
-        let unit = &self.players[player].objects[idx];
+        let unit = &self.players[player.index()].objects[idx];
         let master = unit.master(&self.masters, player)?;
         // UCOMISS with −1, JP and JNZ: a NaN coordinate is not −1
         let to = if master.class != class::BUILDING && point == [NO_POINT, NO_POINT] {
@@ -293,11 +297,11 @@ impl World {
             point
         };
         let order = crate::unit_ai::QueuedOrder {
-            issuer: player as i32,
+            issuer: player.index() as i32,
             order: OrderKind::Unload,
             priority: 100,
             target: id.get(),
-            target_owner: player as i32,
+            target_owner: player.index() as i32,
             point: [to[0], to[1], 0.0],
             range: UNLOAD_RANGE,
             shown: to,
@@ -322,25 +326,24 @@ impl World {
         player: PlayerId,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         for id in self.checked_units(player, ids) {
             let Some((p, _)) = self.object(id) else {
                 continue;
             };
-            let Some(idx) = self.players[p].objects.position_of(id) else {
+            let Some(idx) = self.players[p.index()].objects.position_of(id) else {
                 return Err(GenieError::unsupported(
                     "a GO_BACK_TO_WORK of a sleeping object",
                 ));
             };
-            let b = &self.players[p].objects[idx];
+            let b = &self.players[p.index()].objects[idx];
             if b.master(&self.masters, p)?.kind != BUILDING {
                 continue;
             }
             let mut i = b.garrison.len();
             while 0 < i {
                 i -= 1;
-                let Some(&inside) = self.players[p].objects[idx].garrison.get(i) else {
+                let Some(&inside) = self.players[p.index()].objects[idx].garrison.get(i) else {
                     continue;
                 };
                 // any player's unit (an ally's too); the game skips a null entry, and an id the
@@ -370,7 +373,7 @@ impl World {
     /// [`TownBell::back_to_work`]: crate::orders::town_bell::TownBell::back_to_work
     pub(crate) fn back_to_work(
         &mut self,
-        from: Option<(usize, usize)>,
+        from: Option<(PlayerId, usize)>,
         id: i32,
     ) -> Result<bool, GenieError> {
         use crate::orders::town_bell::RecordTarget;
@@ -383,7 +386,7 @@ impl World {
                 _ => return Ok(false),
             },
         };
-        let mut bell = self.players[up].objects[ui].town_bell;
+        let mut bell = self.players[up.index()].objects[ui].town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
             let (op, o) = self.object(t)?;
             let m = o.master(&self.masters, op).ok()?;
@@ -397,9 +400,9 @@ impl World {
             })
         };
         let (found, record) = bell.back_to_work(&lookup);
-        self.players[up].objects[ui].town_bell = bell;
+        self.players[up.index()].objects[ui].town_bell = bell;
         if found.is_none() && 0 <= record.target_type && record.action.is_some() {
-            let unit = &mut self.players[up].objects[ui];
+            let unit = &mut self.players[up.index()].objects[ui];
             if let Some(ai) = unit.ai.as_mut() {
                 ai.set_action(record.action);
             }
@@ -431,7 +434,7 @@ impl World {
     /// pick none.
     pub(super) fn unload_picks(
         &self,
-        player: usize,
+        player: PlayerId,
         unit: &crate::objects::unit::Unit,
         flag: u8,
         param: i32,
@@ -452,7 +455,7 @@ impl World {
         let named = named.map(|(_, m)| m);
         Ok(match flag {
             0 => class != WHOLE_SHARE_CLASS,
-            1 => player as i32 == param,
+            1 => player.index() as i32 == param,
             2 => unload_group_takes(param, class),
             3 => id.get() == param,
             4 => match named.filter(|_| same_player) {

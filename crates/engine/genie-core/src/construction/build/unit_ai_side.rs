@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
@@ -32,7 +33,7 @@ impl UnitView<'_, '_> {
     /// Object `id` as slot 0x380 finds it (`FUN_1415417a0`): the unit, the player's live list,
     /// another player's ([`crate::unit_ai::world_view::Foreign::find`]). The owner's sleeping
     /// list holds only objects of a type below 30, never a building.
-    fn find_in<'v>(&'v self, view: OthersRef<'v>, id: i32) -> Option<(usize, &'v Unit)> {
+    fn find_in<'v>(&'v self, view: OthersRef<'v>, id: i32) -> Option<(PlayerId, &'v Unit)> {
         if id == self.unit.id.get() {
             return Some((self.player, &*self.unit));
         }
@@ -58,7 +59,7 @@ impl UnitView<'_, '_> {
             .c
             .w
             .masters
-            .get(self.player)
+            .get(self.player.index())
             .ok_or(crate::world::UNIT_AI_MASTER)?;
         let unit = &*self.unit;
         let own = unit.master(&self.c.w.masters, self.player)?;
@@ -67,7 +68,7 @@ impl UnitView<'_, '_> {
             master: own,
             player: self.player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.c.w.players[self.player]
+            attribute_95: self.c.w.players[self.player.index()]
                 .attributes
                 .get(95)
                 .copied()
@@ -76,7 +77,7 @@ impl UnitView<'_, '_> {
         };
         let dip = SideWorld {
             player: self.player,
-            relations: &self.c.w.players[self.player].relations,
+            relations: &self.c.w.players[self.player.index()].relations,
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
             drop_sites: &self.c.w.drop_sites,
         };
@@ -142,7 +143,7 @@ impl UnitView<'_, '_> {
             found.map(|(p, u)| crate::unit_ai::Named {
                 id,
                 master: i32::from(u.life.master_id),
-                owner: p as i32,
+                owner: p.index() as i32,
                 vector: [u.position()[0], u.position()[2]],
             })
         };
@@ -167,7 +168,7 @@ impl UnitView<'_, '_> {
             z: unit.position()[2],
             class: master.class,
             computer: self.computer,
-            player: player as i32,
+            player: player.index() as i32,
             site: (site != -1).then(|| named(site)).flatten(),
             action_target: target.and_then(named),
         })

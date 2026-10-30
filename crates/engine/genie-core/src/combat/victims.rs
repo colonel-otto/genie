@@ -11,6 +11,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
@@ -23,14 +24,16 @@ impl World {
     /// object the slice holds, live or asleep (the world's table holds both, and a blast walks
     /// the tiles' lists of both), with its relations to the attacker's player and whether its
     /// place is a guess.
-    pub(crate) fn victim(&self, id: i32, attacker: usize) -> Option<Victim> {
-        let (p, u) = self.players.iter().enumerate().find_map(|(p, player)| {
-            player
-                .objects
-                .by_id(id)
-                .or_else(|| player.sleeping.by_id(id))
-                .map(|u| (p, u))
-        })?;
+    pub(crate) fn victim(&self, id: i32, attacker: PlayerId) -> Option<Victim> {
+        let (p, u) = PlayerId::each(self.players.len())
+            .zip(&self.players)
+            .find_map(|(p, player)| {
+                player
+                    .objects
+                    .by_id(id)
+                    .or_else(|| player.sleeping.by_id(id))
+                    .map(|u| (p, u))
+            })?;
         let master = u.master(&self.masters, p).ok()?;
         let world = TaskWorld {
             players: &self.players,
@@ -38,7 +41,7 @@ impl World {
         };
         Some(victim_in(
             u,
-            (p, master, &self.players[p].attributes),
+            (p, master, &self.players[p.index()].attributes),
             (attacker, &world),
             &self.spatial,
             self.mode_680,
@@ -52,9 +55,9 @@ impl World {
     pub(crate) fn seen(
         &self,
         id: i32,
-        viewer: usize,
+        viewer: PlayerId,
     ) -> Result<Option<crate::unit_ai::Seen>, GenieError> {
-        for (p, player) in self.players.iter().enumerate() {
+        for (p, player) in PlayerId::each(self.players.len()).zip(&self.players) {
             if let Some(u) = player
                 .objects
                 .by_id(id)
@@ -76,8 +79,8 @@ impl World {
     pub(crate) fn seen_of(
         &self,
         u: &Unit,
-        p: usize,
-        viewer: usize,
+        p: PlayerId,
+        viewer: PlayerId,
     ) -> Result<crate::unit_ai::Seen, GenieError> {
         let master = u.master(&self.masters, p)?;
         let [x, y, _] = u.position();
@@ -107,7 +110,7 @@ impl World {
     /// tile's list as the unit's update starts (an object the slice cannot read stands in with
     /// its place alone, as a guess); then the main buildings (`+0xbb8`) of the target and of the
     /// annexes among them, which the hits on those annexes go to.
-    pub(crate) fn blasted(&self, unit: &Unit, p: usize, target: i32) -> Vec<Victim> {
+    pub(crate) fn blasted(&self, unit: &Unit, p: PlayerId, target: i32) -> Vec<Victim> {
         let reach = unit
             .master(&self.masters, p)
             .ok()
@@ -172,7 +175,7 @@ impl KillLeft {
 
 /// The object `id` a hit of the updating unit can read ([`victim`]) with its owner and master:
 /// one of any list, live or asleep, of a master its owner has.
-pub(crate) fn readable<'o>(c: &'o Step<'_>, id: i32) -> Option<(usize, &'o Unit, &'o Master)> {
+pub(crate) fn readable<'o>(c: &'o Step<'_>, id: i32) -> Option<(PlayerId, &'o Unit, &'o Master)> {
     let (p, u, _) = c.w.locate(id)?;
     let master = u.master(&c.w.masters, p).ok()?;
     Some((p, u, master))
@@ -186,7 +189,7 @@ pub(crate) fn victim(c: &Step<'_>, id: i32) -> Result<Option<Victim>, GenieError
     };
     let view = OthersRef::of(&c.w.players, c.player)?;
     let attributes = if p == c.player {
-        &c.w.players[c.player].attributes[..]
+        &c.w.players[c.player.index()].attributes[..]
     } else {
         let Some(owner) = view.players().player(p) else {
             return Ok(None);
@@ -195,7 +198,7 @@ pub(crate) fn victim(c: &Step<'_>, id: i32) -> Result<Option<Victim>, GenieError
     };
     let sides = SideWorld {
         player: c.player,
-        relations: &c.w.players[c.player].relations,
+        relations: &c.w.players[c.player.index()].relations,
         foreign: view.players(),
         drop_sites: &c.w.drop_sites,
     };
@@ -298,7 +301,7 @@ pub(crate) fn file_kill(c: &mut Step<'_>, me: &mut Unit, k: KillLeft) -> Result<
         let master = me.master(&c.w.masters, c.player)?.clone();
         c.w.count_killed(c.player, &master, kill)?;
         if kill.to_gaia {
-            me.ai_change_owner(0, c)?;
+            me.ai_change_owner(PlayerId::GAIA, c)?;
         }
     }
     c.w.count_razed(&k.razed)
@@ -373,14 +376,14 @@ impl World {
                 let now = self.world_time;
                 self.players[r.attacker_player].history.add_event(
                     kind,
-                    r.owner as f32,
+                    r.owner.index() as f32,
                     0.0,
                     0,
                     now,
                 );
             }
             for &(p, attribute, amount) in &r.adds {
-                self.players[p].add_attribute(attribute, amount)?;
+                self.players[p.index()].add_attribute(attribute, amount)?;
             }
         }
         Ok(())
@@ -399,8 +402,8 @@ impl World {
     /// 16 and 32, Gaia gains 1, 2 and 32) and its list (the old owner's last object takes its
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
     /// player and the particles (`FUN_141158bb0`).
-    pub(crate) fn killed(&mut self, q: usize, j: usize, kill: Kill) -> Result<(), GenieError> {
-        let u = &self.players[q].objects[j];
+    pub(crate) fn killed(&mut self, q: PlayerId, j: usize, kill: Kill) -> Result<(), GenieError> {
+        let u = &self.players[q.index()].objects[j];
         let master = u.master(&self.masters, q)?.clone();
         self.count_killed(q, &master, kill)?;
         if kill.to_gaia {
@@ -418,11 +421,11 @@ impl World {
     /// A computer player's object, and an attribute a player lacks.
     pub(crate) fn count_killed(
         &mut self,
-        q: usize,
+        q: PlayerId,
         master: &Master,
         kill: Kill,
     ) -> Result<(), GenieError> {
-        if self.players[q].computer {
+        if self.players[q.index()].computer {
             return Err(GenieError::unsupported(
                 "a computer player's killed object (its AI's slot 0x2f0)",
             ));
@@ -431,7 +434,7 @@ impl World {
         if master.class == class::VILLAGER {
             // the attacker's class as the hit saw it: the attacker may be out for its update
             if matches!(kill.attacker_class, class::PREY | class::PREDATOR) {
-                self.players[q].add_attribute(227, 1.0)?;
+                self.players[q.index()].add_attribute(227, 1.0)?;
             }
             let by_kind = match self.players[ap].kind {
                 1 => Some(229),
@@ -440,7 +443,7 @@ impl World {
                 _ => None,
             };
             if let Some(kind) = by_kind {
-                self.players[q].add_attribute(kind, 1.0)?;
+                self.players[q.index()].add_attribute(kind, 1.0)?;
             }
         }
         self.count_kill_of(q, master, ap)
@@ -468,7 +471,7 @@ impl World {
     /// against `ap` (325 + `ap`); both count its paid cost (170 and 152, and 400 + `q`).
     pub(crate) fn count_kill_of(
         &mut self,
-        q: usize,
+        q: PlayerId,
         master: &Master,
         ap: usize,
     ) -> Result<(), GenieError> {
@@ -502,14 +505,14 @@ impl World {
         ];
         if !PEACEFUL.contains(&master.class) {
             self.players[ap].add_attribute(20, 1.0)?;
-            self.players[q].add_attribute(154, 1.0)?;
+            self.players[q.index()].add_attribute(154, 1.0)?;
         }
-        self.players[ap].add_attribute(q as i16 + 300, 1.0)?;
-        self.players[q].add_attribute(ap as i16 + 325, 1.0)?;
+        self.players[ap].add_attribute(q.index() as i16 + 300, 1.0)?;
+        self.players[q.index()].add_attribute(ap as i16 + 325, 1.0)?;
         let cost = paid_cost(master);
         self.players[ap].add_attribute(170, cost)?;
-        self.players[q].add_attribute(152, cost)?;
-        self.players[ap].add_attribute(q as i16 + 400, cost)?;
+        self.players[q.index()].add_attribute(152, cost)?;
+        self.players[ap].add_attribute(q.index() as i16 + 400, cost)?;
         Ok(())
     }
 }
@@ -521,8 +524,8 @@ impl World {
 /// annexes (the world's links).
 pub(crate) fn victim_in(
     u: &Unit,
-    (p, master, attributes): (usize, &Master, &[f32]),
-    (attacker, dip): (usize, &dyn Diplomacy),
+    (p, master, attributes): (PlayerId, &Master, &[f32]),
+    (attacker, dip): (PlayerId, &dyn Diplomacy),
     spatial: &Spatial,
     mode_680: i32,
 ) -> Victim {
@@ -545,7 +548,7 @@ pub(crate) fn victim_of(
     u: &Unit,
     master: &Master,
     attributes: &[f32],
-    p: usize,
+    p: PlayerId,
     terrain: Option<&crate::map::terrain::Terrain>,
     mode_680: i32,
 ) -> Victim {

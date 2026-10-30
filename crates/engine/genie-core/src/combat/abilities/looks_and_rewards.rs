@@ -2,6 +2,7 @@
 
 use crate::combat::abilities::{Look, ONE, Reward};
 use crate::objects::masters::Task;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// A terrain look task's terrain mask (`0x141207501`, a `std::bitset<8>`): a terrain below 0
@@ -52,7 +53,7 @@ pub fn look(task: &Task, mask: u8, flags: u8, exists: impl Fn(i32) -> bool) -> O
 #[must_use]
 pub fn reward(
     task: &Task,
-    player: usize,
+    player: PlayerId,
     multiplier: Option<f32>,
     cost: &[(i16, i16, bool)],
 ) -> Reward {

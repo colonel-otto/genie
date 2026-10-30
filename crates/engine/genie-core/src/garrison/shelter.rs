@@ -71,7 +71,6 @@ impl World {
         through_ai: bool,
         nearby: bool,
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let target = ObjectId::field(target);
         let Some((tp, t)) = self.object(target) else {
@@ -88,7 +87,7 @@ impl World {
             }
         }
         let shelters = if nearby {
-            self.shelters_near(tp, target, target_master)?
+            self.shelters_near(tp.index(), target, target_master)?
         } else {
             let tm = self.master(tp, target_master)?;
             if tm.kind < BUILDING {
@@ -129,9 +128,8 @@ impl World {
         player: PlayerId,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
-        let cap = if self.players[player].computer {
+        let cap = if self.players[player.index()].computer {
             COMPUTER_IDS
         } else {
             HUMAN_IDS
@@ -156,7 +154,7 @@ impl World {
             }
         }
         let mut buildings = Vec::new();
-        for b in &self.players[player].objects {
+        for b in &self.players[player.index()].objects {
             let m = b.master(&self.masters, player)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
             if b.life.state == 2 && b.life.inside.is_none() && m.kind == BUILDING && takes_villagers
@@ -238,7 +236,7 @@ impl World {
     /// follows ([`World::shelter_in`]). Not modelled: the groups the splitter forms.
     pub(crate) fn shelter(
         &mut self,
-        player: usize,
+        player: PlayerId,
         units: &[i32],
         shelters: &Shelters,
         near: bool,
@@ -320,9 +318,9 @@ impl World {
     /// takes the unit in ([`World::takes_in`], with 1 and 1).
     pub(super) fn ai_takes(
         &self,
-        bp: usize,
+        bp: PlayerId,
         b: &crate::objects::unit::Unit,
-        player: usize,
+        player: PlayerId,
         master: i16,
     ) -> Result<bool, GenieError> {
         if b.master(&self.masters, bp)?.kind < COMBAT {
@@ -370,7 +368,7 @@ impl World {
                     "a garrison of a unit the slice does not hold live",
                 ));
             };
-            let unit = &self.players[p].objects[idx];
+            let unit = &self.players[p.index()].objects[idx];
             let kind = unit.master(&self.masters, p)?.kind;
             if (2 < unit.life.state && unit.life.state != 6) || kind < COMBAT {
                 continue;
@@ -382,14 +380,17 @@ impl World {
                     order: OrderKind::Enter,
                     priority: 100,
                     target: building,
-                    target_owner: owner as i32,
+                    target_owner: owner.index() as i32,
                     point,
                     range: 0.0,
                     shown: [point[0], point[1]],
                     ready: true,
                     target_type: i32::from(master),
                 };
-                let ai = self.players[p].objects[idx].ai.as_mut().ok_or(NO_UNIT_AI)?;
+                let ai = self.players[p.index()].objects[idx]
+                    .ai
+                    .as_mut()
+                    .ok_or(NO_UNIT_AI)?;
                 let _ = ai.queue_order(state, order, false, false)?;
                 continue;
             }

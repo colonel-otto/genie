@@ -6,6 +6,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
@@ -78,7 +79,7 @@ fn world() -> World {
             ..Player::default()
         },
     ];
-    let mut t = World::new(0, 0, 0, vec![0; 2], players);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 2], players);
     t.world_time = 100;
     t.dt_seconds = DT;
     let master = Master {
@@ -142,7 +143,7 @@ fn post(x: f32, y: f32) -> Placed {
         position: [x, y, 0.0],
         radius: [0.2, 0.2],
         class: class::VILLAGER,
-        player: 2,
+        player: PlayerId::new(2),
         master: 0,
         obstruction_type: 0,
         buildable_on: 0,
@@ -395,7 +396,7 @@ fn a_due_slot_takes_its_member() {
         10,
         Placed {
             obstruction: None,
-            player: 1,
+            player: PlayerId::new(1),
             ..post(5.0, 5.0)
         },
     );

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use crate::vision::registry::UnitUpdate;
 use crate::vision::visibility::Visibility;
 use crate::world::player::Player;
@@ -23,20 +24,19 @@ const NO_REGISTRY: GenieError =
 #[must_use]
 pub fn sight_taker(
     mask: u64,
-    owner: usize,
+    owner: PlayerId,
     standard: bool,
     players: &[Player],
     allows: &[bool],
-) -> Option<usize> {
-    players
-        .iter()
-        .enumerate()
+) -> Option<PlayerId> {
+    PlayerId::each(players.len())
+        .zip(players)
         .skip(1)
         .filter(|&(q, player)| {
-            standard || !player.computer || allows.get(q).copied().unwrap_or(false)
+            standard || !player.computer || allows.get(q.index()).copied().unwrap_or(false)
         })
         .map(|(q, _)| q)
-        .find(|&q| q != owner && mask & (1u64 << (q & 63)) != 0)
+        .find(|&q| q != owner && mask & (1u64 << (q.index() & 63)) != 0)
 }
 
 impl Visibility {
@@ -53,7 +53,7 @@ impl Visibility {
     pub fn combat_sight(
         &mut self,
         id: i32,
-        owner: usize,
+        owner: PlayerId,
         at: [f32; 3],
         radius: [f32; 2],
         class: ClassId,
@@ -96,7 +96,7 @@ impl Visibility {
         registry.entries.entry(id).or_default().mask = mask;
         registry.update_unit(UnitUpdate {
             id,
-            owner: owner as u8,
+            owner: owner.index() as u8,
             position: [x, y],
             radii: radius,
             class,
@@ -121,7 +121,7 @@ impl Visibility {
     pub fn registry_master(
         &mut self,
         id: i32,
-        owner: usize,
+        owner: PlayerId,
         at: [f32; 3],
         old: ([f32; 2], ClassId),
         new: ([f32; 2], ClassId),
@@ -133,7 +133,7 @@ impl Visibility {
         let place = [at[0], at[1]];
         r.update_unit(UnitUpdate {
             id,
-            owner: owner as u8,
+            owner: owner.index() as u8,
             position: place,
             radii: old.0,
             class: old.1,
@@ -142,7 +142,7 @@ impl Visibility {
         })?;
         r.update_unit(UnitUpdate {
             id,
-            owner: owner as u8,
+            owner: owner.index() as u8,
             position: place,
             radii: new.0,
             class: new.1,
@@ -155,7 +155,7 @@ impl Visibility {
     pub fn registry_leave(
         &mut self,
         id: i32,
-        owner: usize,
+        owner: PlayerId,
         at: [f32; 3],
         radius: [f32; 2],
         class: ClassId,
@@ -166,7 +166,7 @@ impl Visibility {
         let mask = r.entry(id).map_or(0, |e| e.mask);
         r.update_unit(UnitUpdate {
             id,
-            owner: owner as u8,
+            owner: owner.index() as u8,
             position: [at[0], at[1]],
             radii: radius,
             class,
@@ -180,7 +180,7 @@ impl Visibility {
     /// An ownership change's records (`FUN_14120f800`, first of all and whatever the new owner's
     /// masters): an object with an id (`+0x8` not below 0) writes the new owner's id into each of
     /// its records (`+0x8b0`..`+0x8f0`), which keep their place in every list.
-    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), GenieError> {
+    pub fn records_owner(&mut self, id: i32, new: PlayerId) -> Result<(), GenieError> {
         match self.registry.as_mut() {
             Some(r) if 0 <= id => r.owner_changed(id, new),
             _ => Ok(()),
@@ -197,7 +197,7 @@ impl Visibility {
         id: i32,
         position: [f32; 3],
         radius: [f32; 2],
-        (new, los): (usize, f32),
+        (new, los): (PlayerId, f32),
         sees: bool,
     ) -> Result<(), GenieError> {
         if !self.seers.contains_key(&id) {

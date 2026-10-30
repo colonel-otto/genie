@@ -184,7 +184,7 @@ impl Attack {
         }
         if begun.arrived {
             unit.shows_standing_sprite(
-                c.w.masters.get(c.player),
+                c.w.masters.get(c.player.index()),
                 &c.w.graphics,
                 c.w.streams.get(Stream::Sprite),
             )?;

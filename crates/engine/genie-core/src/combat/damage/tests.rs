@@ -41,7 +41,7 @@ fn sheep() -> Victim {
         kind: 70,
         class: class::LIVESTOCK,
         master_id: 705,
-        player: 1,
+        player: PlayerId::new(1),
         position: [10.5, 10.5, 0.0],
         master_hp: 14,
         armored: Some(Armored {
@@ -61,7 +61,7 @@ fn hunter() -> Victim {
         kind: 70,
         class: class::VILLAGER,
         master_id: 592,
-        player: 1,
+        player: PlayerId::new(1),
         position: [10.5, 11.0, 0.0],
         source: Attacker {
             id: 10029,
@@ -69,7 +69,7 @@ fn hunter() -> Victim {
             class: class::VILLAGER,
             master_id: 592,
             missile: -1,
-            player: 1,
+            player: PlayerId::new(1),
             ..Attacker::default()
         },
         weapons: vec![(11, 3), (4, 3), (13, 6), (17, 0)],
@@ -575,7 +575,7 @@ fn a_blast_s_nan_paths_are_the_game_s() {
     let center = elephant.position;
     let enemy = |x: f32, y: f32| Victim {
         id: 2,
-        player: 2,
+        player: PlayerId::new(2),
         position: [x, y, 0.0],
         blast_defense: 2,
         ..sheep()
@@ -647,11 +647,11 @@ fn a_blast_reaches_the_objects_about_its_attacker() {
     elephant.source.area_effect = 1.0;
     elephant.source.blast_level = 2;
     elephant.source.area_damage = 0.5;
-    elephant.source.player = 1;
+    elephant.source.player = PlayerId::new(1);
     elephant.weapons = vec![(4, 10)];
     let enemy = |id: i32, x: f32| Victim {
         id,
-        player: 2,
+        player: PlayerId::new(2),
         position: [x, 11.0, 0.0],
         blast_defense: 2,
         ..sheep()
@@ -695,7 +695,7 @@ fn house() -> Victim {
         kind: BUILDING,
         class: class::BUILDING,
         master_id: 70,
-        player: 2,
+        player: PlayerId::new(2),
         position: [20.5, 20.5, 0.0],
         master_hp: 550,
         armored: Some(Armored {
@@ -841,18 +841,18 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
         razed,
         &[Razed {
             attacker_player: 1,
-            owner: 2,
+            owner: PlayerId::new(2),
             event: Some(crate::players::history::CASTLE_DESTROYED),
             adds: vec![
-                (1, 43, 1.0),
-                (1, 170, 25.0),
-                (2, 152, 25.0),
-                (2, 155, 1.0),
-                (1, 352, 1.0),
-                (2, 376, 1.0),
-                (1, 427, 25.0),
-                (1, 172, 25.0),
-                (2, 153, 25.0),
+                (PlayerId::new(1), 43, 1.0),
+                (PlayerId::new(1), 170, 25.0),
+                (PlayerId::new(2), 152, 25.0),
+                (PlayerId::new(2), 155, 1.0),
+                (PlayerId::new(1), 352, 1.0),
+                (PlayerId::new(2), 376, 1.0),
+                (PlayerId::new(1), 427, 25.0),
+                (PlayerId::new(1), 172, 25.0),
+                (PlayerId::new(2), 153, 25.0),
             ],
         }]
     );
@@ -870,7 +870,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
     );
     let mut gaia = Victim {
         hp: 1.5,
-        player: 0,
+        player: PlayerId::new(0),
         ..house()
     };
     take(&mut gaia, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
@@ -903,15 +903,15 @@ fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
     assert_eq!(
         t.building.as_ref().unwrap().razed[0].adds,
         vec![
-            (1, 20, 1.0),
-            (1, 170, 400.0),
-            (2, 154, 1.0),
-            (2, 152, 400.0),
-            (1, 302, 1.0),
-            (2, 326, 1.0),
-            (1, 402, 400.0),
-            (1, 172, 400.0),
-            (2, 153, 400.0),
+            (PlayerId::new(1), 20, 1.0),
+            (PlayerId::new(1), 170, 400.0),
+            (PlayerId::new(2), 154, 1.0),
+            (PlayerId::new(2), 152, 400.0),
+            (PlayerId::new(1), 302, 1.0),
+            (PlayerId::new(2), 326, 1.0),
+            (PlayerId::new(1), 402, 400.0),
+            (PlayerId::new(1), 172, 400.0),
+            (PlayerId::new(2), 153, 400.0),
         ]
     );
     let mut t = trebuchet(2.0);
@@ -919,7 +919,10 @@ fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
     assert!(t.killed.is_some());
     assert_eq!(
         t.building.as_ref().unwrap().razed[0].adds,
-        vec![(1, 172, 400.0), (2, 153, 400.0)]
+        vec![
+            (PlayerId::new(1), 172, 400.0),
+            (PlayerId::new(2), 153, 400.0)
+        ]
     );
 }
 
@@ -1017,12 +1020,12 @@ fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
     elephant.source.area_effect = 1.0;
     elephant.source.blast_level = 2;
     elephant.source.area_damage = 0.5;
-    elephant.source.player = 1;
+    elephant.source.player = PlayerId::new(1);
     elephant.weapons = vec![(4, 10)];
     let enemy = |id: i32, x: f32, y: f32, tile_place| Victim {
         id,
         tile_place,
-        player: 2,
+        player: PlayerId::new(2),
         position: [x, y, 0.0],
         blast_defense: 2,
         ..sheep()
@@ -1168,7 +1171,7 @@ fn a_blast_s_factor_takes_the_friendly_fire_and_the_falloff() {
         ..attacker.source
     };
     let mut enemy = Victim {
-        player: 2,
+        player: PlayerId::new(2),
         ..sheep()
     };
     let d2 = 0.25;
@@ -1197,7 +1200,7 @@ fn a_blast_s_factor_takes_the_friendly_fire_and_the_falloff() {
         0.5
     );
     let mut main = Victim {
-        player: 2,
+        player: PlayerId::new(2),
         ..house()
     };
     assert_eq!(
@@ -1209,7 +1212,7 @@ fn a_blast_s_factor_takes_the_friendly_fire_and_the_falloff() {
         blast_falloff(&attacker, &missile, &main, (1.0, d2), false),
         0.5
     );
-    enemy.player = 1;
+    enemy.player = PlayerId::new(1);
     enemy.armored.as_mut().unwrap().friendly_fire = 0.25;
     assert_eq!(
         blast_falloff(&attacker, &melee, &enemy, (1.0, d2), false),
@@ -1273,7 +1276,7 @@ fn a_fixed_blast_damage_takes_its_size_and_kills_below_one() {
     use crate::combat::damage::blasts::fixed_blast;
     let attacker = hunter();
     let mut t = Victim {
-        player: 2,
+        player: PlayerId::new(2),
         amount: 5.0,
         ..sheep()
     };
@@ -1286,7 +1289,7 @@ fn a_fixed_blast_damage_takes_its_size_and_kills_below_one() {
         Some((10029, 1))
     );
     let mut gaia = Victim {
-        player: 0,
+        player: PlayerId::new(0),
         ..sheep()
     };
     fixed_blast(&attacker, &attacker.source, &mut gaia, -20.0).unwrap();
@@ -1296,7 +1299,7 @@ fn a_fixed_blast_damage_takes_its_size_and_kills_below_one() {
         ..attacker.source
     };
     let mut t = Victim {
-        player: 2,
+        player: PlayerId::new(2),
         ..sheep()
     };
     assert!(fixed_blast(&attacker, &bonus, &mut t, -20.0).is_err());
@@ -1311,7 +1314,7 @@ fn a_blast_s_hit_adds_a_building_s_loss_to_its_ledger() {
     let mut attacker = hunter();
     let weapons = [(4, 10)];
     let mut enemy = Victim {
-        player: 2,
+        player: PlayerId::new(2),
         ..sheep()
     };
     blast_hit(
@@ -1369,7 +1372,7 @@ fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
     let weapons = [(4, 10)];
     let enemy = Victim {
         id: 2,
-        player: 2,
+        player: PlayerId::new(2),
         position: [10.8, 11.0, 0.0],
         blast_defense: 2,
         ..sheep()

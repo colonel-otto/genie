@@ -311,6 +311,7 @@ mod tests {
     use super::*;
     use crate::map::spatial::Placed;
     use crate::objects::masters::class;
+    use crate::players::PlayerId;
 
     fn mover() -> Mover {
         crate::movement::tests::builder_9177()
@@ -325,7 +326,7 @@ mod tests {
                 position: at,
                 radius: [0.2, 0.2],
                 class: class::VILLAGER,
-                player: 1,
+                player: PlayerId::new(1),
                 master: 83,
                 obstruction_type: 0,
                 buildable_on: 0,

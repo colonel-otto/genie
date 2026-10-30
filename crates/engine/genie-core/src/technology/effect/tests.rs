@@ -3,6 +3,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::test_ids::object_id;
 use crate::world::Player;
@@ -119,7 +120,7 @@ fn a_population_set_moves_each_storage_entry_to_the_new_value() {
     let mut t = World::new(
         0,
         0,
-        0,
+        PlayerId::new(0),
         vec![0],
         vec![Player {
             attributes: vec![0.0; 40],
@@ -136,7 +137,8 @@ fn a_population_set_moves_each_storage_entry_to_the_new_value() {
         ],
         ..Master::default()
     };
-    t.population_storage(0, &master, -8.0).unwrap();
+    t.population_storage(PlayerId::new(0), &master, -8.0)
+        .unwrap();
     let at = |i: i16| t.players[0].attributes[i as usize];
     assert_eq!(
         [
@@ -168,7 +170,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
     let mut t = World::new(
         0,
         0,
-        0,
+        PlayerId::new(0),
         vec![0],
         vec![Player {
             objects: vec![
@@ -188,7 +190,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
                 position: [5.5, 5.5, 0.0],
                 radius: [0.5, 0.5],
                 class: class::CLASS_0,
-                player: 0,
+                player: PlayerId::new(0),
                 master: 70,
                 obstruction_type: 2,
                 buildable_on: 0,
@@ -258,7 +260,7 @@ fn an_effect_spawns_its_villagers_at_each_built_town_centre() {
     t.players[1].attributes = vec![0.0; 600];
     let before = t.players[1].objects.len();
     let mut stream = t.streams.get(Stream::Player).clone();
-    t.spawn_at(1, VILLAGER, TC, 2).unwrap();
+    t.spawn_at(PlayerId::new(1), VILLAGER, TC, 2).unwrap();
     let made: Vec<(i16, Option<i32>)> = t.players[1].objects[before..]
         .iter()
         .map(|u| (u.life.master_id, u.life.inside))
@@ -270,7 +272,7 @@ fn an_effect_spawns_its_villagers_at_each_built_town_centre() {
     // a master neither the player nor Gaia has
     let mut t = let_out_world();
     let before = t.players[1].objects.len();
-    t.spawn_at(1, 999, TC, 2).unwrap();
+    t.spawn_at(PlayerId::new(1), 999, TC, 2).unwrap();
     assert_eq!(t.players[1].objects.len(), before);
 }
 
@@ -295,7 +297,7 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
         .into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.masters = vec![Masters::new([Master {
         id: 83,
         kind: 70,
@@ -329,7 +331,7 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
     ];
     // the load files the objects in the players' trackers
     t.load_trackers().unwrap();
-    t.do_effect(0, &loom, None).unwrap();
+    t.do_effect(PlayerId::new(0), &loom, None).unwrap();
     let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
     // (25 + 15) × 10 / 25 = 16
     assert_eq!(hp, [40.0, 16.0]);
@@ -387,7 +389,7 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
         objects: vec![unit_of(1, 4, 30.0), unit_of(2, 5, 30.0)].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.masters = vec![Masters::new([
         combat(4, class::CLASS_6, 60),
         combat(5, class::CLASS_6, 60),
@@ -396,19 +398,19 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
     // set master 4's hit points to 90: its unit keeps its share, 30 × 90 / 60 = 45
     // the load files the objects in the players' trackers
     t.load_trackers().unwrap();
-    t.do_effect(0, &[attribute(0, 4, 6, 0, 90.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, 4, 6, 0, 90.0)], None)
         .unwrap();
     let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
     assert_eq!(hp, [45.0, 30.0]);
     let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
     assert_eq!(hps, [90, 60, 60]);
     // master 6 lies within the table (up to 7) but has no master: nothing, not the class
-    t.do_effect(0, &[attribute(4, 6, 6, 0, 10.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(4, 6, 6, 0, 10.0)], None)
         .unwrap();
     let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
     assert_eq!(hps, [90, 60, 60]);
     // past the table the class changes: (60 + 10) × 30 / 60 = 35
-    t.do_effect(0, &[attribute(4, 100, 6, 0, 10.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(4, 100, 6, 0, 10.0)], None)
         .unwrap();
     let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
     assert_eq!(hps, [100, 70, 70]);
@@ -429,7 +431,7 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
         objects: vec![tower, archer].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut tower_master = combat(79, class::TOWER, 1020);
     tower_master.kind = 80;
     tower_master.reload = 2.0;
@@ -441,8 +443,12 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
     archer_master.garrison_firepower = 1.0;
     t.masters = vec![Masters::new([archer_master, tower_master])];
     // the tower's rate: 5 / 2 = 2.5; the archer's share 4 / 2 / 2.5 = 0.8, then 6 / 2 / 2.5
-    t.do_effect(0, &[attribute(4, -1, 0, 9, f32::from(0x302_i16))], None)
-        .unwrap();
+    t.do_effect(
+        PlayerId::new(0),
+        &[attribute(4, -1, 0, 9, f32::from(0x302_i16))],
+        None,
+    )
+    .unwrap();
     assert_eq!(t.masters[0].get(4).unwrap().weapons, [(3, 6)]);
     assert_eq!(t.players[0].objects[0].firepower, 2.0 - 0.8 + 1.2);
 }
@@ -464,7 +470,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
         objects: vec![main, annex, foundation].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let building = |id, hit_points, head_unit, annexes| Master {
         id,
         kind: 80,
@@ -485,7 +491,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
     // multiply the class's hit points by 1.5: every object's hit points × 1.5 + 0.5
     // the load files the objects in the players' trackers
     t.load_trackers().unwrap();
-    t.do_effect(0, &[attribute(5, -1, 3, 0, 1.5)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(5, -1, 3, 0, 1.5)], None)
         .unwrap();
     let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
     assert_eq!(hp, [150.0, 75.0, 15.0]);
@@ -504,7 +510,7 @@ fn a_team_effect_reaches_the_mutual_allies() {
     let mut t = World::new(
         0,
         0,
-        0,
+        PlayerId::new(0),
         vec![0; 4],
         vec![
             player(vec![0, 3, 3, 3]),
@@ -514,7 +520,7 @@ fn a_team_effect_reaches_the_mutual_allies() {
         ],
     );
     t.masters = vec![Masters::new([combat(4, class::CLASS_6, 60)]); 4];
-    t.do_effect(1, &[attribute(14, -1, 6, 0, 5.0)], None)
+    t.do_effect(PlayerId::new(1), &[attribute(14, -1, 6, 0, 5.0)], None)
         .unwrap();
     let hps: Vec<i16> = t
         .masters
@@ -522,7 +528,7 @@ fn a_team_effect_reaches_the_mutual_allies() {
         .map(|m| m.get(4).unwrap().hit_points)
         .collect();
     assert_eq!(hps, [60, 65, 65, 60]);
-    t.do_effect(1, &[attribute(44, -1, 6, 0, 5.0)], None)
+    t.do_effect(PlayerId::new(1), &[attribute(44, -1, 6, 0, 5.0)], None)
         .unwrap();
     let hps: Vec<i16> = t
         .masters
@@ -531,7 +537,7 @@ fn a_team_effect_reaches_the_mutual_allies() {
         .collect();
     assert_eq!(hps, [65, 65, 65, 60]);
     // the enemies' block (24): player 3 counts player 1 an enemy and is counted one
-    t.do_effect(1, &[attribute(24, -1, 6, 0, 5.0)], None)
+    t.do_effect(PlayerId::new(1), &[attribute(24, -1, 6, 0, 5.0)], None)
         .unwrap();
     let hps: Vec<i16> = t
         .masters
@@ -550,14 +556,14 @@ fn a_storage_set_moves_the_player_s_attribute_by_each_object() {
         attributes: vec![0.0; 40],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut house = combat(70, class::BUILDING, 550);
     house.storage = vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)];
     t.masters = vec![Masters::new([house])];
     t.players[0].attributes[4] = 10.0;
     // the load files the objects in the players' trackers
     t.load_trackers().unwrap();
-    t.do_effect(0, &[attribute(0, 70, -1, 21, 15.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 21, 15.0)], None)
         .unwrap();
     assert_eq!(t.players[0].attributes[4], 30.0);
     assert_eq!(t.masters[0].get(70).unwrap().storage[0].1, 15.0);
@@ -581,7 +587,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             attributes: vec![0.0; 40],
             ..Player::default()
         };
-        let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
         let stone = Master {
             id: 50,
             kind: 10,
@@ -606,7 +612,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             vec![false],
         );
         let seer = crate::vision::visibility::Seer {
-            player: 0,
+            player: PlayerId::new(0),
             master: 50,
             los: 2.0,
             state: 2,
@@ -627,7 +633,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
                 position,
                 radius,
                 class: class::CLASS_11,
-                player: 0,
+                player: PlayerId::new(0),
                 master: 50,
                 obstruction_type: 0,
                 buildable_on: 0,
@@ -653,29 +659,29 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     let mut t = world();
     assert_eq!(sight(&t), two);
     // a set to 4.9: truncated to 4
-    t.do_effect(0, &[attribute(0, -1, 11, 1, 4.9)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, -1, 11, 1, 4.9)], None)
         .unwrap();
     assert_eq!(sight(&t), four);
     // an add of 3: the master's 2 (the clone before its own change) plus 3
     let mut t = world();
-    t.do_effect(0, &[attribute(4, -1, 11, 1, 3.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(4, -1, 11, 1, 3.0)], None)
         .unwrap();
     assert_eq!(sight(&t), five);
     // a multiply by 3: the master's 2 times 3
     let mut t = world();
-    t.do_effect(0, &[attribute(5, -1, 11, 1, 3.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(5, -1, 11, 1, 3.0)], None)
         .unwrap();
     assert_eq!(sight(&t), six);
     // off the map: the circle stays
     let mut t = world();
     t.players[0].objects[0].life.state = 0;
-    t.do_effect(0, &[attribute(0, -1, 11, 1, 6.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, -1, 11, 1, 6.0)], None)
         .unwrap();
     assert_eq!(sight(&t), two);
     // the second storage: its attribute 4 loses the old 5 and takes the new 8
     let mut t = world();
     t.players[0].attributes[4] = 10.0;
-    t.do_effect(0, &[attribute(0, -1, 11, 26, 8.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, -1, 11, 26, 8.0)], None)
         .unwrap();
     assert_eq!(t.players[0].attributes[4], 13.0);
 }
@@ -714,11 +720,12 @@ fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
         objects: vec![shows, moving(2)].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut m = combat(4, class::CLASS_6, 60);
     (m.max_speed, m.move_sprite, m.run_sprite, m.standing_sprite) = (1.5, -1, -1, -1);
     t.masters = vec![Masters::new([m])];
-    t.master_followers(0, 4, a::MOVEMENT_SPEED).unwrap();
+    t.master_followers(PlayerId::new(0), 4, a::MOVEMENT_SPEED)
+        .unwrap();
     let speeds = |u: &Unit| u.body.mover().map(|m| (m.stats.base, m.stats.speed));
     assert_eq!(speeds(&t.players[0].objects[0]), Some((1.5, 3.0)));
     assert_eq!(speeds(&t.players[0].objects[1]), Some((1.5, 1.5)));
@@ -738,7 +745,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         sleeping: vec![unit_of(2, 4, 30.0)].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut m = combat(4, class::CLASS_6, 60);
     (m.death_sprite, m.death_spawns) = (7, [0, 9]);
     (m.build_time, m.obstruction_type, m.obstruction_class) = (33, 5, 2);
@@ -751,7 +758,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
                 position: [5.5, 5.5, 0.0],
                 radius: [0.5, 0.5],
                 class: class::CLASS_6,
-                player: 0,
+                player: PlayerId::new(0),
                 master: 4,
                 obstruction_type: 0,
                 buildable_on: 0,
@@ -772,7 +779,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         Vec::new(),
     );
     let seer = crate::vision::visibility::Seer {
-        player: 0,
+        player: PlayerId::new(0),
         master: 4,
         los: 2.0,
         state: 2,
@@ -795,8 +802,8 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         a::LINE_OF_SIGHT,
     ];
     for attribute in all {
-        t.master_followers(0, 4, attribute).unwrap();
-        t.master_followers(0, 99, attribute).unwrap();
+        t.master_followers(PlayerId::new(0), 4, attribute).unwrap();
+        t.master_followers(PlayerId::new(0), 99, attribute).unwrap();
     }
     let follows = |u: &Unit| (u.life.dying_sprite, u.life.death_spawn, u.life.remains);
     let p = &t.players[0];
@@ -815,7 +822,8 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     assert_eq!((los(1), los(3)), (6.0, 2.0));
     // a dying sprite below 0 is none
     t.masters[0].get_mut(4).unwrap().death_sprite = -1;
-    t.master_followers(0, 4, a::DYING_GRAPHIC).unwrap();
+    t.master_followers(PlayerId::new(0), 4, a::DYING_GRAPHIC)
+        .unwrap();
     assert_eq!(t.players[0].objects[0].life.dying_sprite, None);
 }
 
@@ -830,12 +838,12 @@ fn a_speed_change_reaches_the_units_movement() {
         objects: vec![walker].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut villager = combat(4, class::VILLAGER, 25);
     villager.max_speed = 0.8;
     villager.moving = Some(stats);
     t.masters = vec![Masters::new([villager])];
-    t.do_effect(0, &[attribute(5, -1, 4, 5, 1.1)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(5, -1, 4, 5, 1.1)], None)
         .unwrap();
     let s = t.players[0].objects[0].body.mover().unwrap().stats;
     // no graphics: the sprites' factors are 0, the speeds the master's
@@ -844,7 +852,7 @@ fn a_speed_change_reaches_the_units_movement() {
     // a speed the loader left at 0 under the moving values stops the change first
     t.masters[0].get_mut(4).unwrap().max_speed = 0.0;
     assert!(
-        t.do_effect(0, &[attribute(5, -1, 4, 5, 1.1)], None)
+        t.do_effect(PlayerId::new(0), &[attribute(5, -1, 4, 5, 1.1)], None)
             .is_err()
     );
     let stats = t.players[0].objects[0].body.mover().unwrap().stats;
@@ -860,17 +868,17 @@ fn the_resource_commands_set_add_and_multiply_an_attribute() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.players[0].attributes[69] = 2.0;
-    t.do_effect(0, &[attribute(1, 78, 0, -1, 0.15)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(1, 78, 0, -1, 0.15)], None)
         .unwrap();
     // Horse Collar: 75 × attribute 69 added to 36
-    t.do_effect(0, &[attribute(1, 36, 1, 69, 75.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(1, 36, 1, 69, 75.0)], None)
         .unwrap();
-    t.do_effect(0, &[attribute(6, 78, -1, -1, 2.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(6, 78, -1, -1, 2.0)], None)
         .unwrap();
     // gold, a resource, lives beside the attributes
-    t.do_effect(0, &[attribute(1, 3, 1, -1, 50.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(1, 3, 1, -1, 50.0)], None)
         .unwrap();
     let a = &t.players[0].attributes;
     assert_eq!(
@@ -899,7 +907,7 @@ fn a_farm_food_change_grows_the_farms_food() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut master = combat(50, class::FARM, 480);
     master.kind = 80;
     t.masters = vec![Masters::new([master])];
@@ -907,7 +915,7 @@ fn a_farm_food_change_grows_the_farms_food() {
     t.players[0].attributes[36] = 175.0;
     // the load files the objects in the players' trackers
     t.load_trackers().unwrap();
-    t.do_effect(0, &[attribute(1, 36, 1, -1, 75.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(1, 36, 1, -1, 75.0)], None)
         .unwrap();
     assert_eq!(t.players[0].attributes[36], 250.0);
     // (175 / 175)^1 × 75 + 175 − 75
@@ -936,7 +944,7 @@ fn the_resource_commands_side_effects() {
     let mut t = World::new(
         0,
         0,
-        0,
+        PlayerId::new(0),
         vec![0; 3],
         vec![
             player(vec![0, 3, 3]),
@@ -945,23 +953,23 @@ fn the_resource_commands_side_effects() {
         ],
     );
     t.spatial.vision = vec![[0; 2]; 3];
-    t.do_effect(1, &[attribute(1, 50, 1, -1, 1.0)], None)
+    t.do_effect(PlayerId::new(1), &[attribute(1, 50, 1, -1, 1.0)], None)
         .unwrap();
     assert!(t.players[1].allied_vision);
     assert_eq!(t.players[1].attributes[50], 1.0);
     assert_eq!(t.spatial.vision[1][0] & 0b110, 0b110);
-    t.do_effect(2, &[attribute(1, 0xc4, 0, -1, 7.0)], None)
+    t.do_effect(PlayerId::new(2), &[attribute(1, 0xc4, 0, -1, 7.0)], None)
         .unwrap();
     let spread: Vec<f32> = t.players.iter().map(|p| p.attributes[0xc4]).collect();
     assert_eq!(spread, [0.0, 7.0, 7.0]);
-    t.do_effect(1, &[attribute(1, 0xc4, 0, -1, 9.0)], None)
+    t.do_effect(PlayerId::new(1), &[attribute(1, 0xc4, 0, -1, 9.0)], None)
         .unwrap();
     assert_eq!(t.players[1].attributes[0xc4], 7.0);
-    t.do_effect(1, &[attribute(1, 0xb7, 0, -1, 1.0)], None)
+    t.do_effect(PlayerId::new(1), &[attribute(1, 0xb7, 0, -1, 1.0)], None)
         .unwrap();
     assert_eq!(t.spatial.vision[1][0] & 0b110, 0b110);
     assert!(
-        t.do_effect(1, &[attribute(1, 0x21, 0, -1, 7.0)], None)
+        t.do_effect(PlayerId::new(1), &[attribute(1, 0x21, 0, -1, 7.0)], None)
             .is_err()
     );
 }
@@ -987,7 +995,7 @@ fn barracks_tech() -> World {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.techs = vec![TechDef {
         required: [-1; 6],
         locations: vec![(12, 30)],
@@ -1002,16 +1010,16 @@ fn barracks_tech() -> World {
 #[test]
 fn the_research_time_modifier_changes_the_adjustment_and_may_complete() {
     let mut t = barracks_tech();
-    t.do_effect(0, &[attribute(b'g', 0, -1, 1, 4.9)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(b'g', 0, -1, 1, 4.9)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].locations[0].adjustment, 4.0);
-    t.do_effect(0, &[attribute(b'g', 0, -1, 2, 0.8)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(b'g', 0, -1, 2, 0.8)], None)
         .unwrap();
     // (0.8 − 1) × 30 − 0.5 = −6.5, truncated −6, plus 4
     assert_eq!(t.players[0].techs[0].locations[0].adjustment, -2.0);
     assert_eq!(t.players[0].techs[0].state, 1);
     // set to 20: the adjustment −10, and 20 seconds are done
-    t.do_effect(0, &[attribute(b'g', 0, -1, 0, 20.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(b'g', 0, -1, 0, 20.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].locations[0].adjustment, -10.0);
     assert_eq!(t.players[0].techs[0].state, 3);
@@ -1030,30 +1038,31 @@ fn a_technology_change_reaches_its_costs_locations_and_state() {
         paid: 1,
     };
     t.masters = vec![Masters::new([combat(87, class::BUILDING, 1000)])];
-    t.do_effect(0, &[attribute(8, 0, 0x4002, -1, 25.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 0x4002, -1, 25.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].cost_adj, [25, 0, 0]);
     // a building the player lacks leaves the location
-    t.do_effect(0, &[attribute(8, 0, 4, -1, 88.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 4, -1, 88.0)], None)
         .unwrap();
-    t.do_effect(0, &[attribute(8, 0, 4, -1, 87.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 4, -1, 87.0)], None)
         .unwrap();
-    t.do_effect(0, &[attribute(8, 0, 5, -1, 7.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 5, -1, 7.0)], None)
         .unwrap();
-    t.do_effect(0, &[attribute(8, 0, 10, -1, 2.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 10, -1, 2.0)], None)
         .unwrap();
     let s = &t.players[0].techs[0];
     assert_eq!((s.locations[0].building, s.locations[0].button), (87, 7));
     assert_eq!(s.research_cap, 2);
     // a location past the list adds a copy of the last, without a building
-    t.do_effect(0, &[attribute(8, 0, 5, 3, 9.0)], None).unwrap();
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 5, 3, 9.0)], None)
+        .unwrap();
     let s = &t.players[0].techs[0];
     assert_eq!(s.locations.len(), 2);
     assert_eq!((s.locations[1].building, s.locations[1].button), (-1, 9));
-    t.do_effect(0, &[attribute(8, 0, 12, -1, 0.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 0.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].state, -1);
-    t.do_effect(0, &[attribute(8, 0, 12, -1, 2.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 2.0)], None)
         .unwrap();
     assert_eq!(
         (t.players[0].techs[0].state, t.players[0].techs[0].enabled),
@@ -1061,11 +1070,11 @@ fn a_technology_change_reaches_its_costs_locations_and_state() {
     );
     // state 3 completes it (its first location has a building and a button: it counts);
     // once researched, again gives its effect and counts whatever its location
-    t.do_effect(0, &[attribute(8, 0, 12, -1, 3.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 3.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].state, 3);
     assert_eq!(t.players[0].attributes[0x15], 1.0);
-    t.do_effect(0, &[attribute(8, 0, 12, -1, 3.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 3.0)], None)
         .unwrap();
     assert_eq!(t.players[0].attributes[0x15], 2.0);
 }
@@ -1085,33 +1094,35 @@ fn a_technology_change_s_location_stacking_and_effect_override() {
         button: 4,
         adjustment: 0.0,
     });
-    t.do_effect(0, &[attribute(8, 5, 9, -1, 1.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 5, 9, -1, 1.0)], None)
         .unwrap();
     assert!(!t.players[0].techs[0].stack);
-    t.do_effect(0, &[attribute(8, 0, 9, -1, 1.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 9, -1, 1.0)], None)
         .unwrap();
     assert!(t.players[0].techs[0].stack);
-    t.do_effect(0, &[attribute(8, 0, 5, 1, 9.0)], None).unwrap();
-    t.do_effect(0, &[attribute(8, 0, -2, 1, 5.9)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 5, 1, 9.0)], None)
+        .unwrap();
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, -2, 1, 5.9)], None)
         .unwrap();
     let s = &t.players[0].techs[0];
     let at = |i: usize| (s.locations[i].button, s.locations[i].adjustment);
     assert_eq!([at(0), at(1)], [(3, 0.0), (9, 5.0)]);
-    t.do_effect(0, &[attribute(8, 0, 12, -1, 1.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 1.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].state, 0);
-    t.do_effect(0, &[attribute(8, 0, 18, -1, 7.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 18, -1, 7.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].effect_override, 7);
     t.players[0].techs[0].state = 3;
     assert!(
-        t.do_effect(0, &[attribute(8, 0, 18, -1, 8.0)], None)
+        t.do_effect(PlayerId::new(0), &[attribute(8, 0, 18, -1, 8.0)], None)
             .is_err()
     );
     // no locations: a location past the list changes nothing
     let mut t = barracks_tech();
     t.players[0].techs[0].locations.clear();
-    t.do_effect(0, &[attribute(8, 0, 5, 2, 9.0)], None).unwrap();
+    t.do_effect(PlayerId::new(0), &[attribute(8, 0, 5, 2, 9.0)], None)
+        .unwrap();
     assert_eq!(t.players[0].techs[0].locations.len(), 0);
 }
 
@@ -1121,14 +1132,14 @@ fn a_technology_change_s_location_stacking_and_effect_override() {
 #[test]
 fn an_upgrade_copies_the_new_master_into_the_old() {
     let player = Player::default();
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut militia = combat(74, class::CLASS_6, 40);
     militia.available = true;
     let mut man_at_arms = combat(75, class::CLASS_6, 45);
     man_at_arms.weapons = vec![(4, 6)];
     man_at_arms.available = false;
     t.masters = vec![Masters::new([militia, man_at_arms])];
-    t.do_effect(0, &[attribute(3, 74, 75, -1, 0.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(3, 74, 75, -1, 0.0)], None)
         .unwrap();
     let m = t.masters[0].get(74).unwrap();
     assert_eq!(
@@ -1138,12 +1149,12 @@ fn an_upgrade_copies_the_new_master_into_the_old() {
     assert!(m.available);
     // mode 1 leaves the master
     t.masters[0].get_mut(75).unwrap().hit_points = 50;
-    t.do_effect(0, &[attribute(3, 74, 75, 1, 0.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(3, 74, 75, 1, 0.0)], None)
         .unwrap();
     assert_eq!(t.masters[0].get(74).unwrap().hit_points, 45);
     // with an object: its slot 0x98 keeps its share of the hit points (45 of 45: 50 of 50)
     t.players[0].objects.push(unit_of(1, 74, 45.0));
-    t.do_effect(0, &[attribute(3, 74, 75, -1, 0.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(3, 74, 75, -1, 0.0)], None)
         .unwrap();
     let u = &t.players[0].objects[0];
     assert_eq!((u.life.master_id, u.life.hp), (74, 50.0));
@@ -1161,23 +1172,23 @@ fn spawns_and_cost_entries() {
         objects: vec![centre].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut tc = combat(109, ClassId::of_master(80), 2400);
     tc.kind = 80;
     let mut serjeant = combat(1658, class::CLASS_6, 60);
     serjeant.cost = vec![(0, 60, true), (2, 35, true)];
     t.masters = vec![Masters::new([tc, serjeant])];
-    t.do_effect(0, &[attribute(7, 1658, 109, 5, 0.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
         .unwrap();
     t.players[0].objects[0].life.state = 2;
     assert!(
-        t.do_effect(0, &[attribute(7, 1658, 109, 5, 0.0)], None)
+        t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
             .is_err()
     );
-    t.do_effect(0, &[attribute(5, 1658, -1, 106, -2.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(5, 1658, -1, 106, -2.0)], None)
         .unwrap();
     assert_eq!(t.masters[0].get(1658).unwrap().cost, [(0, 60, true)]);
-    t.do_effect(0, &[attribute(5, 1658, -1, 105, -1.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(5, 1658, -1, 105, -1.0)], None)
         .unwrap();
     assert_eq!(
         t.masters[0].get(1658).unwrap().cost,
@@ -1189,15 +1200,19 @@ fn spawns_and_cost_entries() {
 /// 203 to 206 need the effect's object, which a research has not.
 #[test]
 fn the_object_kinds_without_an_object_do_nothing() {
-    let mut t = World::new(0, 0, 0, vec![0], vec![Player::default()]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![Player::default()]);
     t.masters = vec![Masters::new([combat(82, class::TOWER, 4800)])];
     for kind in 200..=206 {
-        t.do_effect(0, &[attribute(kind, 82, -1, 8, 770.0)], None)
+        t.do_effect(PlayerId::new(0), &[attribute(kind, 82, -1, 8, 770.0)], None)
             .unwrap();
     }
     assert!(
-        t.do_effect(0, &[attribute(204, 82, -1, 0, 1500.0)], Some(5))
-            .is_err()
+        t.do_effect(
+            PlayerId::new(0),
+            &[attribute(204, 82, -1, 0, 1500.0)],
+            Some(5)
+        )
+        .is_err()
     );
     assert_eq!(t.masters[0].get(82).unwrap().hit_points, 4800);
 }
@@ -1206,7 +1221,7 @@ fn the_object_kinds_without_an_object_do_nothing() {
 /// is disabled; master 0x26d is never enabled in game mode 11.
 #[test]
 fn the_enable_command_sets_available_unless_disabled() {
-    let mut t = World::new(0, 0, 0, vec![0], vec![Player::default()]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![Player::default()]);
     let mut locked = combat(5, class::CLASS_6, 10);
     locked.disabled = true;
     t.masters = vec![Masters::new([
@@ -1215,7 +1230,7 @@ fn the_enable_command_sets_available_unless_disabled() {
         combat(0x26d, class::BUILDING, 10),
     ])];
     t.do_effect(
-        0,
+        PlayerId::new(0),
         &[attribute(2, 4, 1, -1, 0.0), attribute(2, 5, 1, -1, 0.0)],
         None,
     )
@@ -1223,15 +1238,15 @@ fn the_enable_command_sets_available_unless_disabled() {
     let available: Vec<bool> = t.masters[0].iter().map(|m| m.available).collect();
     assert_eq!(available, [true, false, false]);
     t.settings.game_mode = 11;
-    t.do_effect(0, &[attribute(2, 0x26d, 1, -1, 0.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(2, 0x26d, 1, -1, 0.0)], None)
         .unwrap();
     assert!(!t.masters[0].get(0x26d).unwrap().available);
     t.settings.game_mode = 0;
     assert!(
-        t.do_effect(0, &[attribute(2, 0x26d, 1, -1, 0.0)], None)
+        t.do_effect(PlayerId::new(0), &[attribute(2, 0x26d, 1, -1, 0.0)], None)
             .is_err()
     );
-    t.do_effect(0, &[attribute(2, 4, 0, -1, 0.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(2, 4, 0, -1, 0.0)], None)
         .unwrap();
     assert!(!t.masters[0].get(4).unwrap().available);
 }
@@ -1251,7 +1266,7 @@ fn a_research_whose_effect_needs_its_building_stops() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let def = |effect| TechDef {
         required: [-1; 6],
         effect_id: 7,
@@ -1262,12 +1277,12 @@ fn a_research_whose_effect_needs_its_building_stops() {
         def(vec![attribute(204, 82, -1, 0, 1500.0)]),
         def(vec![attribute(4, -1, 4, 0, 15.0)]),
     ];
-    assert!(t.complete_research(0, 0, None).is_err());
+    assert!(t.complete_research(PlayerId::new(0), 0, None).is_err());
     assert_eq!(t.players[0].techs[0].state, 2);
     t.players[0].techs[1].effect_override = 9;
-    assert!(t.complete_research(0, 1, None).is_err());
+    assert!(t.complete_research(PlayerId::new(0), 1, None).is_err());
     t.players[0].techs[1].effect_override = 7;
-    assert_eq!(t.complete_research(0, 1, None), Ok(true));
+    assert_eq!(t.complete_research(PlayerId::new(0), 1, None), Ok(true));
 }
 
 /// An age (101 to 103) completes as any research and adds its event (0 to 2) to the
@@ -1285,7 +1300,7 @@ fn an_age_adds_its_event_to_the_history() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.techs = vec![
         TechDef {
             required: [-1; 6],
@@ -1295,9 +1310,9 @@ fn an_age_adds_its_event_to_the_history() {
     ];
     t.world_time = 612_345;
     t.players[0].history.entries = vec![[3, 0]; 20];
-    assert_eq!(t.complete_research(0, 100, None), Ok(true));
+    assert_eq!(t.complete_research(PlayerId::new(0), 100, None), Ok(true));
     assert_eq!(t.players[0].history.events, []);
-    assert_eq!(t.complete_research(0, 102, None), Ok(true));
+    assert_eq!(t.complete_research(PlayerId::new(0), 102, None), Ok(true));
     assert_eq!(t.players[0].techs[102].state, 3);
     assert_eq!(
         t.players[0].history.events,
@@ -1333,9 +1348,9 @@ fn a_dependent_technology_done_already_completes_with_its_requirement() {
         techs: vec![TechState::default(), free.clone(), free.clone(), free],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.techs = vec![def(-1, 0), def(0, 1), def(1, 1), def(0, 2)];
-    assert_eq!(t.complete_research(0, 0, None), Ok(true));
+    assert_eq!(t.complete_research(PlayerId::new(0), 0, None), Ok(true));
     let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
     assert_eq!(states, [3, 3, 3, 0]);
 }
@@ -1359,7 +1374,7 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
             techs: vec![TechState::default(); 5],
             ..Player::default()
         };
-        let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
         t.settings.full_tech_tree = full_tech_tree;
         t.techs = vec![
             def(-1, 0, 0),
@@ -1368,7 +1383,7 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
             def(0, 7, 0),
             def(0, 0, 0),
         ];
-        assert_eq!(t.complete_research(0, 0, None), Ok(true));
+        assert_eq!(t.complete_research(PlayerId::new(0), 0, None), Ok(true));
         t.players[0]
             .techs
             .iter()
@@ -1394,7 +1409,7 @@ fn the_technology_commands_disable_and_adjust_costs() {
         techs: vec![state(1), state(3), state(0), state(1)],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let kind = |k: i16| TechDef {
         kind: k,
         costs: [
@@ -1420,24 +1435,28 @@ fn the_technology_commands_disable_and_adjust_costs() {
     ];
     let command = |kind: u8, a: i16, b: i16, c: i16, d: f32| EffectCommand { kind, a, b, c, d };
     for tech in 0..4 {
-        t.do_effect(0, &[command(b'f', -1, -1, -1, tech as f32)], None)
-            .unwrap();
+        t.do_effect(
+            PlayerId::new(0),
+            &[command(b'f', -1, -1, -1, tech as f32)],
+            None,
+        )
+        .unwrap();
     }
     let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
     assert_eq!(states, [-1, 3, 1, 1]);
     // gold of technology 0 costs 10 more; food set to 100; every paid cost scaled by 0.5
-    t.do_effect(0, &[command(b'e', 0, 3, 1, 10.0)], None)
+    t.do_effect(PlayerId::new(0), &[command(b'e', 0, 3, 1, 10.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].cost_adj, [0, 10, 0]);
-    t.do_effect(0, &[command(b'e', 0, 0, 0, 100.0)], None)
+    t.do_effect(PlayerId::new(0), &[command(b'e', 0, 0, 0, 100.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].cost_adj, [-50, 10, 0]);
-    t.do_effect(0, &[command(b'e', 1, -1, 2, 0.5)], None)
+    t.do_effect(PlayerId::new(0), &[command(b'e', 1, -1, 2, 0.5)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[1].cost_adj, [-75, -25, 0]);
     // the research time modifier changes a location's adjustment; a technology without
     // locations has none to change
-    t.do_effect(0, &[command(b'g', 0, -1, 1, 5.0)], None)
+    t.do_effect(PlayerId::new(0), &[command(b'g', 0, -1, 1, 5.0)], None)
         .unwrap();
 }
 
@@ -1454,7 +1473,7 @@ fn the_disable_command_reads_its_id_s_low_16_bits() {
         techs: vec![state(0), state(0), state(0)],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.techs = vec![TechDef::default(); 3];
     let disable = |d: f32| EffectCommand {
         kind: b'f',
@@ -1463,10 +1482,12 @@ fn the_disable_command_reads_its_id_s_low_16_bits() {
         c: -1,
         d,
     };
-    t.do_effect(0, &[disable(65538.0)], None).unwrap();
+    t.do_effect(PlayerId::new(0), &[disable(65538.0)], None)
+        .unwrap();
     let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
     assert_eq!(states, [0, 0, -1]);
-    t.do_effect(0, &[disable(65535.0)], None).unwrap();
+    t.do_effect(PlayerId::new(0), &[disable(65535.0)], None)
+        .unwrap();
     let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
     assert_eq!(states, [-1, -1, -1]);
 }
@@ -1480,7 +1501,7 @@ fn a_cost_change_past_the_i32_range_adds_nothing() {
         techs: vec![TechState::default()],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.techs = vec![TechDef {
         costs: [
             Cost {
@@ -1500,7 +1521,7 @@ fn a_cost_change_past_the_i32_range_adds_nothing() {
         c: 1,
         d: 3.0e9,
     };
-    t.do_effect(0, &[change], None).unwrap();
+    t.do_effect(PlayerId::new(0), &[change], None).unwrap();
     assert_eq!(t.players[0].techs[0].cost_adj, [0, 0, 0]);
     // mode 2 at 1.5: (1.5 − 1) × 150 + 0.5 = 75.5, truncated to 75
     let scale = EffectCommand {
@@ -1508,7 +1529,7 @@ fn a_cost_change_past_the_i32_range_adds_nothing() {
         d: 1.5,
         ..change
     };
-    t.do_effect(0, &[scale], None).unwrap();
+    t.do_effect(PlayerId::new(0), &[scale], None).unwrap();
     assert_eq!(t.players[0].techs[0].cost_adj, [75, 0, 0]);
 }
 
@@ -1534,15 +1555,15 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
         }],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.techs = vec![TechDef {
         required: [-1; 6],
         ..TechDef::default()
     }];
-    t.withdraw_tech(0, 1640, 0).unwrap();
+    t.withdraw_tech(PlayerId::new(0), 1640, 0).unwrap();
     assert_eq!(t.players[0].techs[0].state, 3);
     t.players[0].objects.truncate(1);
-    t.withdraw_tech(0, 1640, 0).unwrap();
+    t.withdraw_tech(PlayerId::new(0), 1640, 0).unwrap();
     assert_eq!(t.players[0].techs[0].state, 0);
 }
 
@@ -1582,7 +1603,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
         objects: vec![shown(1, 0), shown(2, 1), exploring].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.masters = vec![Masters::new([Master {
         standing_sprite: 300,
         ..combat(4, class::CLASS_6, 60)
@@ -1591,7 +1612,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
         .into_iter()
         .collect();
     t.load_trackers().unwrap();
-    t.do_effect(0, &[attribute(0, 4, -1, 71, 301.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, 4, -1, 71, 301.0)], None)
         .unwrap();
     let sprite = |i: usize| {
         t.players[0].objects[i]
@@ -1624,7 +1645,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         objects: vec![house, soldier].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.masters = vec![Masters::new([
         combat(4, class::CLASS_6, 60),
         Master {
@@ -1645,7 +1666,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
             position: [5.5, 5.5, 0.0],
             radius: [0.5, 0.5],
             class: class::BUILDING,
-            player: 0,
+            player: PlayerId::new(0),
             master: 70,
             obstruction_type: 2,
             buildable_on: 0,
@@ -1657,26 +1678,26 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
     );
     t.load_trackers().unwrap();
     let record = |t: &World| t.spatial.get(1).and_then(|p| p.obstruction);
-    t.do_effect(0, &[attribute(0, 70, -1, 32, 2.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 32, 2.0)], None)
         .unwrap();
     assert_eq!(
         record(&t),
         Some(crate::map::spatial::Obstruction { kind: 2, class: 2 })
     );
-    t.do_effect(0, &[attribute(0, 70, -1, 78, 3.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 78, 3.0)], None)
         .unwrap();
     assert_eq!(
         record(&t),
         Some(crate::map::spatial::Obstruction { kind: 3, class: 2 })
     );
-    t.do_effect(0, &[attribute(0, 70, -1, 32, 0.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 32, 0.0)], None)
         .unwrap();
     assert_eq!(record(&t), None);
     assert!(
-        t.do_effect(0, &[attribute(0, 4, -1, 40, 1.0)], None)
+        t.do_effect(PlayerId::new(0), &[attribute(0, 4, -1, 40, 1.0)], None)
             .is_err()
     );
     t.players[0].objects[1].group.id = -1;
-    t.do_effect(0, &[attribute(0, 4, -1, 40, 1.0)], None)
+    t.do_effect(PlayerId::new(0), &[attribute(0, 4, -1, 40, 1.0)], None)
         .unwrap();
 }

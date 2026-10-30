@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::master_type::RGE_COMBAT;
+use crate::players::PlayerId;
 use crate::production::spawn::{Near, PlaceMap};
 use crate::world::World;
 
@@ -47,16 +48,16 @@ impl PlaceMap for WorldMap<'_> {
         ))
     }
 
-    fn explored(&self, player: usize, x: i32, y: i32) -> bool {
+    fn explored(&self, player: PlayerId, x: i32, y: i32) -> bool {
         // without the sight the spawn stops before (World::spawn)
         self.turns.spatial.explored(player, x, y).unwrap_or(false)
     }
 
-    fn visible(&self, player: usize, x: i32, y: i32) -> bool {
+    fn visible(&self, player: PlayerId, x: i32, y: i32) -> bool {
         self.turns.spatial.visible(player, x, y)
     }
 
-    fn vision(&self, player: usize) -> [u64; 2] {
+    fn vision(&self, player: PlayerId) -> [u64; 2] {
         self.turns.spatial.vision(player)
     }
 
@@ -76,12 +77,12 @@ impl PlaceMap for WorldMap<'_> {
             .flatten()
     }
 
-    fn allied(&self, a: usize, b: usize, with_4: bool) -> bool {
+    fn allied(&self, a: PlayerId, b: PlayerId, with_4: bool) -> bool {
         a == b
-            || (b != 0
-                && self.turns.players.get(a).is_some_and(|p| {
-                    matches!(p.relations.get(b), Some(0))
-                        || (with_4 && p.relations.get(b) == Some(&4))
+            || (b != PlayerId::new(0)
+                && self.turns.players.get(a.index()).is_some_and(|p| {
+                    matches!(p.relations.get(b.index()), Some(0))
+                        || (with_4 && p.relations.get(b.index()) == Some(&4))
                 }))
     }
 

@@ -45,7 +45,7 @@ impl Unit {
         let task = hunt.task;
         if hunt.target_class == Some(class::PREDATOR) {
             // a human player's hunt is done (set_state 2), a computer player's ends (1)
-            if c.w.players[c.player].computer {
+            if c.w.players[c.player.index()].computer {
                 return Err(GenieError::unsupported(
                     "a computer player's hunt of class 10's search (set_state 1)",
                 ));
@@ -120,14 +120,14 @@ impl Unit {
             -1
         } else {
             let mut w = DropWorld {
-                masters: c.w.masters.get(c.player),
+                masters: c.w.masters.get(c.player.index()),
                 spatial: &mut c.w.spatial,
                 zones: &mut c.w.zones,
                 pathing: &mut c.w.pathing,
                 object: c.w.streams.get(Stream::Object),
                 world_time: c.w.world_time,
-                computer: c.w.players[c.player].computer,
-                construction_rate: c.w.players[c.player].construction_rate,
+                computer: c.w.players[c.player.index()].computer,
+                construction_rate: c.w.players[c.player.index()].construction_rate,
                 groups: &c.w.groups,
             };
             let (site, _) = self.drop_site(&mut w, others, -1, crate::gathering::hunt::SEARCH)?;
@@ -354,9 +354,9 @@ impl Unit {
         let mut plan = Planning {
             pathing: &mut c.w.pathing,
             now: c.w.world_time,
-            computer: c.w.players[c.player].computer,
+            computer: c.w.players[c.player.index()].computer,
             object: c.w.streams.get(Stream::Object),
-            construction_rate: c.w.players[c.player].construction_rate,
+            construction_rate: c.w.players[c.player.index()].construction_rate,
             groups: &c.w.groups,
         };
         let master_id = self.life.master_id;
@@ -395,7 +395,7 @@ impl Unit {
     /// [`crate::gathering::hunt::HuntAction::search_walk`]); one without would wait
     /// (`set_state(2)`), not modelled.
     fn hunt_found_nothing(&mut self, c: &Step<'_>, kind: i8) -> Result<(), GenieError> {
-        if c.w.players[c.player].computer && kind != 0 {
+        if c.w.players[c.player.index()].computer && kind != 0 {
             return Err(GenieError::unsupported(
                 "a computer player's hunt that found nothing after its drop-off (set_state 1)",
             ));
@@ -429,7 +429,7 @@ impl Unit {
         let relations =
             c.w.spatial
                 .relations
-                .get(c.player)
+                .get(c.player.index())
                 .map_or(&[][..], |r| &r[..]);
         if matches!(t.life.master_id, 1893 | 1897) {
             return Err(GenieError::unsupported(
@@ -544,14 +544,14 @@ impl Unit {
     /// [`drop_site_search`]: crate::gathering::drop_sites::drop_site_search
     pub(crate) fn hunt_drop_off(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let w = DropWorld {
-            masters: c.w.masters.get(c.player),
+            masters: c.w.masters.get(c.player.index()),
             spatial: &mut c.w.spatial,
             zones: &mut c.w.zones,
             pathing: &mut c.w.pathing,
             object: c.w.streams.get(Stream::Object),
             world_time: c.w.world_time,
-            computer: c.w.players[c.player].computer,
-            construction_rate: c.w.players[c.player].construction_rate,
+            computer: c.w.players[c.player.index()].computer,
+            construction_rate: c.w.players[c.player.index()].construction_rate,
             groups: &c.w.groups,
         };
         let others = OthersRef::of(&c.w.players, c.player)?;

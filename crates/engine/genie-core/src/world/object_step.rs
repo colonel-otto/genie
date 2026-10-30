@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::construction::building_update::blasts_at_death;
 use crate::objects::unit::{Outcome, Unit};
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -18,7 +19,7 @@ impl World {
     #[allow(clippy::too_many_lines)]
     pub(super) fn run_object(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (PlayerId, usize),
         (dt, turn): (u32, Option<u32>),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Outcome, GenieError> {
@@ -78,7 +79,7 @@ impl World {
     /// `f`'s, and what its effects do not model.
     pub(crate) fn run_on_step<R>(
         &mut self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
@@ -103,7 +104,7 @@ impl World {
     /// A unit without a unit AI, and what the AI's run and its calls do not model.
     pub(crate) fn run_ai_calls<R>(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (PlayerId, usize),
         f: impl FnOnce(
             &mut crate::unit_ai::UnitAi,
             &mut dyn crate::unit_ai::UnitSide,
@@ -130,7 +131,7 @@ impl World {
     /// What the AI's run and its effects do not model.
     pub(crate) fn run_unit_ai(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (PlayerId, usize),
         f: impl FnOnce(
             &mut crate::unit_ai::UnitAi,
             &crate::unit_ai::Surroundings,

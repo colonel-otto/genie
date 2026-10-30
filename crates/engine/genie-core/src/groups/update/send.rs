@@ -17,6 +17,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// The retarget timer of a unit sent at a target is the milliseconds it needs to get there at
@@ -137,7 +138,7 @@ impl World {
         let rng = self.streams.get(Stream::Ai);
         if let Some(ai) = self
             .players
-            .get_mut(player)
+            .get_mut(player.index())
             .and_then(|p| p.objects.by_id_mut(id))
             .and_then(|u| u.ai.as_mut())
         {
@@ -211,7 +212,7 @@ impl World {
     /// # Errors
     ///
     /// A master the world lacks and a charge of special attack 3.
-    pub(super) fn unit_speed(&self, player: usize, unit: &Unit) -> Result<f32, GenieError> {
+    pub(super) fn unit_speed(&self, player: PlayerId, unit: &Unit) -> Result<f32, GenieError> {
         let Some(mover) = unit.body.mover() else {
             return Ok(0.0);
         };

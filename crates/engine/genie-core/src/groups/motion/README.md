@@ -29,5 +29,5 @@ the walked level, turns, and sets the velocity along its vectors.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`pathing`](../../pathing/), [`world`](../../world/).
+- Uses: [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`pathing`](../../pathing/), [`players`](../../players/), [`world`](../../world/).
 <!-- /uses -->

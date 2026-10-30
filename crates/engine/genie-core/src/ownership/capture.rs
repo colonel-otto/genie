@@ -9,6 +9,7 @@ use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::orders::object_gone;
 use crate::ownership::change::change_hands;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
@@ -26,7 +27,7 @@ impl Unit {
     pub(crate) fn capture(
         &mut self,
         c: &mut Step<'_>,
-        new: usize,
+        new: PlayerId,
     ) -> Result<(bool, Vec<i32>), GenieError> {
         let class = self.placed_class(c)?;
         self.capture_stop(c, class)?;
@@ -36,7 +37,7 @@ impl Unit {
         // The livestock class (`-0xe72` raw).
         // The siege class (`-0xe9f` raw), whose ownership change drops the units it carries
         // (`FUN_14120f800`).
-        if class == class::LIVESTOCK && (if changed { new } else { c.player }) != 0 {
+        if class == class::LIVESTOCK && (if changed { new } else { c.player }) != PlayerId::GAIA {
             scan_livestock(c, self.position(), new, &mut taken)?;
         }
         Ok((changed, taken))
@@ -84,7 +85,7 @@ impl Unit {
                 crate::world::lets::release(c, self, t, by)?;
             }
             self.show_standing(
-                c.w.masters.get(c.player),
+                c.w.masters.get(c.player.index()),
                 &c.w.graphics,
                 c.w.streams.get(Stream::Sprite),
             )?;
@@ -130,7 +131,7 @@ impl Unit {
     /// [`Outcome::Captured`]: crate::objects::unit::Outcome::Captured
     pub(crate) fn ai_change_owner(
         &mut self,
-        new: usize,
+        new: PlayerId,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let changed = self.change_owner(c, new)?;
@@ -145,7 +146,11 @@ impl Unit {
     /// then `+0x924` goes 0. The local player's sound and its capture notice (`FUN_1414c3380`)
     /// are not simulation. Not modelled: a siege weapon's (class 13) drop of the units it carries
     /// (`FUN_14120f800` with `FUN_141192d10`).
-    pub(crate) fn take_by_sight(&mut self, c: &mut Step<'_>, new: usize) -> Result<(), GenieError> {
+    pub(crate) fn take_by_sight(
+        &mut self,
+        c: &mut Step<'_>,
+        new: PlayerId,
+    ) -> Result<(), GenieError> {
         let master = self.master(&c.w.masters, c.player);
         if master.is_ok_and(|m| m.class == class::SIEGE) && !self.garrison.is_empty() {
             return Err(HANDS_LEFT);
@@ -170,7 +175,7 @@ impl Unit {
     pub(crate) fn change_owner(
         &mut self,
         c: &mut Step<'_>,
-        new: usize,
+        new: PlayerId,
     ) -> Result<bool, GenieError> {
         let master = self.master(&c.w.masters, c.player);
         if master.is_ok_and(|m| m.kind == crate::objects::masters::master_type::BUILDING) {
@@ -178,12 +183,12 @@ impl Unit {
             return Ok(c
                 .w
                 .masters
-                .get(new)
+                .get(new.index())
                 .is_some_and(|m| m.get(self.life.master_id).is_some()));
         }
         change_hands(
             self,
-            (c.player, new),
+            (c.player.index(), new),
             &c.w.masters,
             &mut c.w.spatial,
             c.w.world_time,
@@ -211,7 +216,7 @@ pub(crate) const TRADE_ACTION: i32 = 0x6f;
 pub(crate) fn scan_livestock(
     c: &mut Step<'_>,
     at: [f32; 3],
-    new: usize,
+    new: PlayerId,
     taken: &mut Vec<i32>,
 ) -> Result<(), GenieError> {
     let (tx, ty) = (at[0] as i32, at[1] as i32);
@@ -254,7 +259,7 @@ fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Result<Vec<i
                 && c.w
                     .spatial
                     .get(u.id.get())
-                    .is_some_and(|p| p.class == class::LIVESTOCK && p.player == 0)
+                    .is_some_and(|p| p.class == class::LIVESTOCK && p.player == PlayerId::GAIA)
         })
         .map(|u| u.id.get())
         .collect())
@@ -263,7 +268,11 @@ fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Result<Vec<i
 /// The scan takes livestock `id` for `new`: out of its slot while its stop reaches the view, as
 /// the updating object, its capture stop and its ownership change. Its place when `new` took it;
 /// None when `new` lacks the master and the animal stays Gaia's, which scans nothing.
-fn take_livestock(c: &mut Step<'_>, id: i32, new: usize) -> Result<Option<[f32; 3]>, GenieError> {
+fn take_livestock(
+    c: &mut Step<'_>,
+    id: i32,
+    new: PlayerId,
+) -> Result<Option<[f32; 3]>, GenieError> {
     let mut unit =
         c.w.take_out_own(c.player, id)?
             .ok_or_else(|| object_gone(id))?;
@@ -284,7 +293,7 @@ fn take_livestock(c: &mut Step<'_>, id: i32, new: usize) -> Result<Option<[f32; 
 /// [`Outcome::Captured`]: crate::objects::unit::Outcome::Captured
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Captured {
-    pub(crate) new: usize,
+    pub(crate) new: PlayerId,
     pub(crate) main: bool,
     pub(crate) also: Vec<i32>,
     /// The object is a building: its slot 0x70 (`FUN_1411cd860`) is the caller's, whole

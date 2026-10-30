@@ -147,7 +147,7 @@ impl World {
             return Ok(());
         }
         let n = self.players.len();
-        let target = g.target(n).map(PlayerId::index);
+        let target = g.target(n);
         match g.sub {
             sub::DIPLOMACY if self.alliance_locked == 0 => {
                 if let Some(p) = target {
@@ -162,14 +162,14 @@ impl World {
             }
             sub::ALLIED_VICTORY if self.alliance_locked == 0 => {
                 if let Some(p) = target {
-                    self.players[p].allied_victory = g.a as u8;
+                    self.players[p.index()].allied_victory = g.a as u8;
                     self.resolve_teams();
                 }
             }
             sub::CHEAT if self.settings.cheats_enabled => return Err(CHEAT),
             sub::PRODUCTION_QUEUE => {
                 if let Some(p) = target {
-                    self.players[p].production_queue_on = g.a as u8;
+                    self.players[p.index()].production_queue_on = g.a as u8;
                 }
             }
             sub::TREASON => {
@@ -177,13 +177,13 @@ impl World {
                     && self.has_treason_building(p)
                 {
                     // The pending debit's entry of gold (`FUN_141630ef0` with 3).
-                    self.players[p].pending_debit[attribute::GOLD] -= TREASON_COST;
+                    self.players[p.index()].pending_debit[attribute::GOLD] -= TREASON_COST;
                     self.treason(p)?;
                 }
             }
             sub::AI_SETTING => {
                 if let Some(p) = target
-                    && self.players[p].computer
+                    && self.players[p.index()].computer
                 {
                     self.set_ai_setting(p, g.a, g.value);
                 }
@@ -202,7 +202,7 @@ impl World {
             }
             sub::POSTURE => {
                 if let Some(p) = target {
-                    let owner = &mut self.players[p];
+                    let owner = &mut self.players[p.index()];
                     owner.posture = i32::from(owner.posture == 0);
                 }
             }
@@ -223,7 +223,7 @@ impl World {
     /// # Errors
     ///
     /// What the purchase and the refund do not model.
-    fn game_queue(&mut self, p: usize, g: &GameCommand) -> Result<(), GenieError> {
+    fn game_queue(&mut self, p: PlayerId, g: &GameCommand) -> Result<(), GenieError> {
         let count = i32::from(g.a);
         match g.sub {
             sub::FARM_QUEUE => {
@@ -239,7 +239,7 @@ impl World {
                 let _ = self.unqueue_farms(p, count, PASTURE)?;
             }
             sub::AUTO_FARM_QUEUE => {
-                let owner = &mut self.players[p];
+                let owner = &mut self.players[p.index()];
                 owner.auto_farm_queue = !owner.auto_farm_queue;
             }
             sub::FISH_TRAP_QUEUE => {
@@ -249,7 +249,7 @@ impl World {
                 let _ = self.unqueue_fish_traps(p, count)?;
             }
             sub::AUTO_FISH_TRAP_QUEUE => {
-                let owner = &mut self.players[p];
+                let owner = &mut self.players[p.index()];
                 owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
             }
             _ => {}
@@ -263,16 +263,16 @@ impl World {
     /// 0x10, 0x12, 0x13); 0xd the value as a float (`CVTSI2SS` of the zero-extended 32 bits),
     /// 0xf and 0x11 the value as it is. 0x13 is `mAllowCapturingGaiaUnits` (`+0x670`,
     /// [`World::allow_gaia_capture`]). Another setting changes nothing.
-    pub(crate) fn set_ai_setting(&mut self, p: usize, setting: i16, value: u32) {
+    pub(crate) fn set_ai_setting(&mut self, p: PlayerId, setting: i16, value: u32) {
         let byte = value as u8;
         if setting == 0x13 {
-            if self.allow_gaia_capture.len() <= p {
-                self.allow_gaia_capture.resize(p + 1, false);
+            if self.allow_gaia_capture.len() <= p.index() {
+                self.allow_gaia_capture.resize(p.index() + 1, false);
             }
-            self.allow_gaia_capture[p] = value != 0;
+            self.allow_gaia_capture[p.index()] = value != 0;
             return;
         }
-        let owner = &mut self.players[p];
+        let owner = &mut self.players[p.index()];
         let s = &mut owner.ai_settings;
         match setting {
             1 => owner.dodge_chance = byte,
@@ -321,7 +321,7 @@ mod tests {
         World::new(
             0,
             1,
-            0,
+            PlayerId::new(0),
             vec![0; 4],
             vec![player(), player(), player(), player()],
         )
@@ -369,8 +369,8 @@ mod tests {
             ..Master::default()
         };
         t.masters = vec![Masters::new([]), Masters::new([castle])];
-        t.track_add(1, 500, CASTLE).unwrap();
-        t.track_complete(1, 500, CASTLE).unwrap();
+        t.track_add(PlayerId::new(1), 500, CASTLE).unwrap();
+        t.track_complete(PlayerId::new(1), 500, CASTLE).unwrap();
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
         assert_eq!(t.players[1].pending_debit[attribute::GOLD], -TREASON_COST);
     }

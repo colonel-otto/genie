@@ -192,7 +192,7 @@ impl Mover {
                     class::BUILDING | class::WALL | class::GATE | class::FARM | class::TOWER
                 ) && world
                     .task_0x99
-                    .get(p.player)
+                    .get(p.player.index())
                     .is_some_and(|m| m.contains(&p.master));
                 if !matches!(
                     p.class,
@@ -207,7 +207,10 @@ impl Mover {
                     continue;
                 }
                 let allied = owner.is_some_and(|o| {
-                    let relations = world.relations.get(p.player).map_or(&[][..], |r| &r[..]);
+                    let relations = world
+                        .relations
+                        .get(p.player.index())
+                        .map_or(&[][..], |r| &r[..]);
                     crate::unit_ai::task_finder::allied(relations, p.player, o, true)
                 });
                 let gap = footprint_gap_squared(p.position, p.radius, t.position, t.radius);

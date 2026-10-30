@@ -336,9 +336,7 @@ pub(crate) fn short_path_for(
 /// The owner's number (`+0x718` of the object's player, `+0x138`) the short pather takes for
 /// the gates' passage; -1 for an object the world does not place.
 pub(super) fn owner_number(world: &Spatial, id: i32) -> i32 {
-    world
-        .get(id)
-        .map_or(-1, |p| i32::try_from(p.player).unwrap_or(-1))
+    world.get(id).map_or(-1, |p| i32::from(p.player.get()))
 }
 
 /// The short pather (`FUN_140f9e540`) for `walker` from `from` (x, y on the map) to `to` within

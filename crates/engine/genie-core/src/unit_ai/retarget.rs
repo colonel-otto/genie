@@ -5,6 +5,7 @@ use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
@@ -136,7 +137,7 @@ impl UnitAi {
     pub(super) fn idle_part_end(
         &mut self,
         class: Option<ClassId>,
-        player: usize,
+        player: PlayerId,
         group: Option<GroupState>,
     ) -> Result<(), GenieError> {
         if self.patrols(group) {
@@ -159,7 +160,8 @@ impl UnitAi {
             }
             return Ok(());
         }
-        if (self.current_action.is_some() || self.current_target != -1) && 0 < player {
+        if (self.current_action.is_some() || self.current_target != -1) && player != PlayerId::GAIA
+        {
             self.idle_timer = 0;
         }
         Ok(())
@@ -410,7 +412,7 @@ impl UnitAi {
     /// better target reads ([`UnitAi::retarget_search`]), or None.
     pub(super) fn retarget_outcome(
         &self,
-        target: Option<(usize, ClassId)>,
+        target: Option<(PlayerId, ClassId)>,
         weapon_range: f32,
         computer: bool,
         action_state: Option<u8>,
@@ -423,7 +425,7 @@ impl UnitAi {
         let mut search = false;
         if self.current_target != -1 {
             match target {
-                Some((0, _)) => return Ok(None),
+                Some((PlayerId::GAIA, _)) => return Ok(None),
                 Some((_, class)) if searches_on_class(class) => {
                     if attack_order && !computer {
                         return Ok(None);
@@ -512,7 +514,7 @@ impl UnitAi {
                         self.target_point[0] = t.position[0];
                         self.target_point[1] = t.position[1];
                     }
-                    2 < t.state && t.owner != 0
+                    2 < t.state && t.owner != PlayerId::GAIA
                 }
             };
             if ends {

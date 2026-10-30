@@ -1,6 +1,7 @@
 use super::*;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::players::PlayerId;
 use crate::unit_ai::best_target::choice::{add_extra, kept_by_owner_and_class, may_attack};
 
 fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
@@ -215,7 +216,7 @@ fn soldier() -> Searcher {
 fn enemy(id: i32, class: ClassId, distance: f32, hp: f32) -> (Thing, Candidate) {
     (
         Thing {
-            owner: 2,
+            owner: PlayerId::new(2),
             state: 2,
             has_ai: true,
             master: 4,
@@ -571,7 +572,10 @@ fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
     };
     assert!(!kept_by_owner_and_class(&human, &Ask::default(), &house));
     assert!(kept_by_owner_and_class(&human, &any, &house));
-    let gaia = Thing { owner: 0, ..thing };
+    let gaia = Thing {
+        owner: PlayerId::new(0),
+        ..thing
+    };
     let holding = Thing { held: 5.0, ..gaia };
     let taken = Thing {
         capture: true,

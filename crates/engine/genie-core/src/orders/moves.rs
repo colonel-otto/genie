@@ -12,6 +12,7 @@ use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{MoveOrder, Place, TOO_CLOSE, Work, ignore_unit, packs, readiness, work_reach};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -29,7 +30,7 @@ impl World {
     /// Otherwise the unit takes the move itself (slot 0x138) to the point, or to its grid `cell`.
     pub(super) fn move_unit(
         &mut self,
-        player: usize,
+        player: PlayerId,
         id: i32,
         others: &[i32],
         cell: Option<[f32; 2]>,
@@ -87,9 +88,9 @@ impl World {
                 return Ok(());
             };
             let (target_type, target_owner) =
-                target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
+                target.map_or((-1, -1), |(m, o)| (i32::from(m), o.index() as i32));
             let queued = crate::unit_ai::QueuedOrder {
-                issuer: issuer as i32,
+                issuer: issuer.index() as i32,
                 order: OrderKind::Move,
                 priority: 100,
                 target: if target.is_some() {
@@ -149,7 +150,7 @@ impl World {
     /// `MoveTo` to the point replaces its actions. True when the action took it.
     pub(crate) fn move_to_point(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         point: [f32; 3],
     ) -> Result<bool, GenieError> {
@@ -189,7 +190,7 @@ impl World {
             );
             if move_to.shows_standing() {
                 unit.shows_standing_sprite(
-                    self.masters.get(player),
+                    self.masters.get(player.index()),
                     &self.graphics,
                     self.streams.get(Stream::Sprite),
                 )?;
@@ -206,7 +207,7 @@ impl World {
     /// [`point_sprite`]: crate::movement::move_to::point_sprite
     pub(crate) fn point_move_sprite(
         &self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
     ) -> Result<Option<crate::objects::sprite::Graphic>, GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -221,7 +222,7 @@ impl World {
     /// leaves its building ([`World::leave_builders`]), the targets go ([`World::release`]).
     pub(crate) fn move_aside(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         m: crate::unit_ai::AiMove,
     ) -> Result<(), GenieError> {
@@ -234,7 +235,7 @@ impl World {
             (class, player),
             (&mut releases, &mut builder_leaves, by),
             (
-                self.masters.get(player),
+                self.masters.get(player.index()),
                 &self.graphics,
                 self.streams.get(Stream::Sprite),
             ),
@@ -268,7 +269,7 @@ impl World {
     /// leaves the pasture it tends ([`World::tend_pasture`], `FUN_141189ca0`).
     pub(crate) fn order_work(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         order: &Work,
     ) -> Result<(), GenieError> {
@@ -342,10 +343,10 @@ impl World {
     /// two's places; none against an ally's target or none.
     pub(super) fn order_reach(
         &self,
-        player: usize,
+        player: PlayerId,
         id: i32,
         order: &Work,
-        target: Option<usize>,
+        target: Option<PlayerId>,
         master: &Master,
     ) -> Result<Option<(bool, bool)>, GenieError> {
         let world = TaskWorld {
@@ -376,7 +377,7 @@ impl World {
     /// search.
     pub(super) fn work_pasture(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         order: &Work,
     ) -> Result<Option<i32>, GenieError> {
@@ -433,7 +434,7 @@ impl World {
     /// unit's `+0xa14` 1): [`World::move_point_order_with`].
     pub(crate) fn move_point_order(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         point: [f32; 3],
     ) -> Result<(), GenieError> {
@@ -447,7 +448,7 @@ impl World {
     /// (`FUN_141211b80`), which holds it at its argument while its work command runs.
     pub(crate) fn move_point_order_with(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         point: [f32; 3],
         a14: bool,

@@ -12,6 +12,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::gather::HuntOrder;
 use crate::orders::{ATTACK_TASK, Work};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -29,7 +30,7 @@ impl World {
     /// [`Attack::keeps`]: crate::combat::attack::Attack::keeps
     pub(super) fn keep_attack(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         filter: i16,
@@ -78,7 +79,7 @@ impl World {
     /// # Errors
     ///
     /// A unit or a master the world does not hold.
-    fn garrison_actor(&self, player: usize, idx: usize) -> Result<Actor<'_>, GenieError> {
+    fn garrison_actor(&self, player: PlayerId, idx: usize) -> Result<Actor<'_>, GenieError> {
         let owner = self.players.player(player)?;
         let unit = owner.live(idx)?;
         Ok(Actor {
@@ -97,7 +98,7 @@ impl World {
     /// (`FUN_140ace9c0`).
     pub(crate) fn garrison_task_found(
         &self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 3],
@@ -130,7 +131,7 @@ impl World {
     /// the test's 1).
     pub(super) fn carried_resource_test(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         task: &crate::objects::masters::Task,
     ) -> Result<(), GenieError> {
@@ -165,7 +166,7 @@ impl World {
     /// AI's notify (slot 0x828) and the install (slot 0x808).
     pub(super) fn work_command(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         order: &Work,
     ) -> Result<(), GenieError> {
@@ -231,7 +232,7 @@ impl World {
     /// found.
     pub(super) fn work_task(
         &self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (target, point): (i32, [f32; 3]),
         filter: i16,
@@ -239,7 +240,7 @@ impl World {
         let unit = &self.players.live(player, idx)?;
         let masters = self
             .masters
-            .get(player)
+            .get(player.index())
             .ok_or(GenieError::unsupported("a work command: no master table"))?;
         let owner = &self.players.player(player)?;
         let actor = Actor {
@@ -286,7 +287,7 @@ impl World {
     /// Answers whether an action kept the work.
     pub(super) fn retake_task(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (target, point, clears): (i32, [f32; 3], bool),
         task: &crate::objects::masters::Task,
@@ -355,7 +356,7 @@ impl World {
     /// player's master 84 is not modelled.
     pub(super) fn retarget_hunt_work(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (target, point, clears): (i32, [f32; 3], bool),
     ) -> Result<(), GenieError> {
@@ -387,7 +388,7 @@ impl World {
     /// Answers whether it took it; a gather sent to its player's master 84 is not modelled.
     pub(super) fn retarget_gather_work(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (target, point, clears): (i32, [f32; 3], bool),
     ) -> Result<bool, GenieError> {
@@ -425,7 +426,7 @@ impl World {
     /// action (the move without one, [`World::work_move`]).
     pub(super) fn start_task(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (target, point): (i32, [f32; 3]),
         task: &crate::objects::masters::Task,
@@ -476,7 +477,7 @@ impl World {
     /// `+0xa14`, the work's `notified`); one that does not move does nothing.
     pub(super) fn work_move(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 3],
@@ -538,7 +539,7 @@ impl World {
     /// [`find_task`]: crate::unit_ai::task_finder::find_task
     pub(crate) fn find_work_task(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         filter: i16,
@@ -584,7 +585,7 @@ impl World {
         }
         let mut found = None;
         // the master table exists: master_of found the unit's own in it
-        for candidate in self.masters.checked(player)?.iter() {
+        for candidate in self.masters.checked(player.index())?.iter() {
             if candidate.class != own.class
                 || candidate.kind != own.kind
                 || candidate.task_by_group != own.task_by_group

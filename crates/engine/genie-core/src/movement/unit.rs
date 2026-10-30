@@ -37,7 +37,7 @@ impl Unit {
         }
         // the velocity step (FUN_140f9ba80) runs for a unit with velocity data (+0x868)
         let group = match self.body.mover().and_then(|m| m.velocity.as_ref()) {
-            Some(_) => self.group_speed(&c.w.groups, c.w.masters.get(c.player))?,
+            Some(_) => self.group_speed(&c.w.groups, c.w.masters.get(c.player.index()))?,
             None => None,
         };
         if let Some(mover) = self.body.mover_mut() {
@@ -125,10 +125,10 @@ impl Unit {
                 .is_ok_and(|m| m.class == class::VILLAGER);
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             self.own_move_gave_up(
-                villager && !c.w.players[c.player].computer,
+                villager && !c.w.players[c.player.index()].computer,
                 stance,
                 (
-                    c.w.masters.get(c.player),
+                    c.w.masters.get(c.player.index()),
                     &c.w.graphics,
                     c.w.streams.get(Stream::Sprite),
                 ),
@@ -194,7 +194,7 @@ impl Unit {
                 let master = object_master(
                     self.own_master.as_deref(),
                     (self.id.get(), self.life.master_id),
-                    c.w.masters.get(c.player),
+                    c.w.masters.get(c.player.index()),
                 )
                 .ok();
                 let graphic = |id: Option<i16>| id.and_then(|id| c.w.graphics.get(&id).copied());

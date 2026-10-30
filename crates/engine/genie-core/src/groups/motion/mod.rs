@@ -7,6 +7,7 @@ use crate::GenieError;
 use crate::groups::Motion;
 use crate::math::fmath::{self, Vec3};
 use crate::movement::Walker;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 
@@ -68,7 +69,7 @@ pub(crate) struct Lead {
     /// Its ignore units (`+0x670`).
     pub(crate) ignore_units: Vec<i32>,
     /// Its owner's index and whether that is a computer player (`FUN_141659cf0`).
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
     pub(crate) computer: bool,
     /// Its group (`+0x6d0`), when the world holds it.
     pub(crate) group: Option<LeadGroup>,
@@ -247,7 +248,7 @@ impl World {
             solid: mover.stats.radius.iter().all(|&r| 0.0 < r),
             ignore_units: mover.ignore_units.clone(),
             player: p,
-            computer: self.players.get(p).is_some_and(|q| q.computer),
+            computer: self.players.get(p.index()).is_some_and(|q| q.computer),
             group,
         })
     }

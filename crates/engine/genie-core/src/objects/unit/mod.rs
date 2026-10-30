@@ -3,6 +3,7 @@
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::MISSILE;
 use crate::objects::masters::master_type::TREE;
+use crate::players::PlayerId;
 use genie_diff::Diff;
 
 use crate::GenieError;
@@ -265,9 +266,9 @@ impl Unit {
     pub fn master<'a>(
         &'a self,
         every: &'a [Masters],
-        player: usize,
+        player: PlayerId,
     ) -> Result<&'a Master, GenieError> {
-        self.master_in(every.get(player))
+        self.master_in(every.get(player.index()))
             .map_err(|e| e.with("player", player))
     }
 
@@ -388,7 +389,7 @@ pub(crate) const TAKEN_OUT: crate::objects::ObjectId = crate::objects::ObjectId:
 /// 15 or one of a blast defence below the missile's (`blast_level`).
 pub(crate) fn missed_passes(
     c: &Step<'_>,
-    (id, player, kind, level): (i32, usize, u8, u8),
+    (id, player, kind, level): (i32, PlayerId, u8, u8),
     target: i32,
     blast_level: u8,
 ) -> bool {
@@ -397,7 +398,7 @@ pub(crate) fn missed_passes(
     }
     let other = id != target;
     c.w.spatial.allied_with(c.player, player)
-        || (other && player == 0 && TREE < kind)
+        || (other && player == PlayerId::new(0) && TREE < kind)
         || (other && level < blast_level)
 }
 

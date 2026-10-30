@@ -108,6 +108,7 @@ use self::surroundings::{LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_i
 use crate::math::rng::Well512;
 #[cfg(test)]
 use crate::movement::PathAsk;
+use crate::players::PlayerId;
 use genie_diff::Diff;
 
 /// A notify to a unit AI (the save's `temp_notify`, 0x18 bytes): from `caller` to `recipient`, of
@@ -365,7 +366,7 @@ pub enum Effect {
     /// The unit's ownership change (its slot 0x70, `FUN_14120f800` for a combat unit,
     /// `FUN_1411cd860` for a building) to the player, which the artifact's processIdle asks of
     /// it (`FUN_140c1e410`); the unit runs it at once.
-    ChangeOwner(usize),
+    ChangeOwner(PlayerId),
     /// A command of the unit's own that the AI gives it ([`AiCommand`]), which the unit runs at
     /// once.
     Command(AiCommand),

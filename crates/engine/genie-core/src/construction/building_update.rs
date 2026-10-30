@@ -98,9 +98,12 @@ impl Unit {
         }
         let (p, id) = (c.player, self.id);
         c.lend(self, |w| {
-            let i = w.players[p].objects.position_of(id.get()).ok_or_else(|| {
-                GenieError::unreachable("a lent gate left its list").with("object", id)
-            })?;
+            let i = w.players[p.index()]
+                .objects
+                .position_of(id.get())
+                .ok_or_else(|| {
+                    GenieError::unreachable("a lent gate left its list").with("object", id)
+                })?;
             w.toggle_gate(p, i)
         })
     }
@@ -219,7 +222,7 @@ impl Unit {
         let Ok(master) = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         ) else {
             return Ok(());
         };
@@ -238,7 +241,11 @@ impl Unit {
         if walls_branch(master) {
             return Ok(());
         }
-        if c.w.players[c.player].attributes.get(BUILDING_TERRAIN) == Some(&f32::from(master.id)) {
+        if c.w.players[c.player.index()]
+            .attributes
+            .get(BUILDING_TERRAIN)
+            == Some(&f32::from(master.id))
+        {
             return Err(GenieError::unsupported(
                 "a building whose master attribute 255 names (FUN_1411c39b0)",
             ));
@@ -270,13 +277,13 @@ impl Unit {
         let rate = bm.garrison_heal_rate;
         let mut villagers = 0;
         for &id in &self.garrison {
-            let Some(u) = c.w.players[c.player].objects.by_id_mut(id) else {
+            let Some(u) = c.w.players[c.player.index()].objects.by_id_mut(id) else {
                 continue;
             };
             let m = object_master(
                 u.own_master.as_deref(),
                 (u.id.get(), u.life.master_id),
-                c.w.masters.get(c.player),
+                c.w.masters.get(c.player.index()),
             )?;
             // The villager's class (4), which a building's repair by its garrison counts.
             if m.class == class::VILLAGER {
@@ -376,7 +383,7 @@ impl Unit {
         let mut own = victim_of(
             self,
             master,
-            &c.w.players[c.player].attributes,
+            &c.w.players[c.player.index()].attributes,
             c.player,
             terrain,
             c.w.mode_680,

@@ -1,6 +1,7 @@
 //! `Process_New_Tiles` at the end of a player's update and a new object's visible resources.
 
 use crate::GenieError;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -17,11 +18,14 @@ impl World {
     /// An object of a master the slice does not have.
     ///
     /// [`VisibleResources::add`]: crate::vision::visibility::VisibleResources::add
-    pub(crate) fn process_new_tiles(&mut self, p: usize) -> Result<(), GenieError> {
+    pub(crate) fn process_new_tiles(&mut self, p: PlayerId) -> Result<(), GenieError> {
         let Some(sight) = self.spatial.sight.as_ref() else {
             return Ok(());
         };
-        let (Some(tiles), Some(lists)) = (sight.new_tiles.get(p), sight.resources.get(p)) else {
+        let (Some(tiles), Some(lists)) = (
+            sight.new_tiles.get(p.index()),
+            sight.resources.get(p.index()),
+        ) else {
             return Ok(());
         };
         if lists.lists.is_empty() {
@@ -43,7 +47,7 @@ impl World {
             .spatial
             .sight
             .as_mut()
-            .and_then(|v| v.resources.get_mut(p))
+            .and_then(|v| v.resources.get_mut(p.index()))
         {
             for (id, group, [x, y, _]) in found {
                 r.add(id, group, x, y);
@@ -63,7 +67,7 @@ impl World {
     /// A master the slice does not have, or no players' sight.
     ///
     /// [`Spatial::explored`]: crate::map::spatial::Spatial::explored
-    pub(crate) fn made_new_object(&mut self, p: usize) -> Result<(), GenieError> {
+    pub(crate) fn made_new_object(&mut self, p: PlayerId) -> Result<(), GenieError> {
         let Some(u) = self.players.player(p)?.objects.last() else {
             return Ok(());
         };
@@ -75,7 +79,7 @@ impl World {
         let group = master.gather_group;
         let (tx, ty) = (x as i32, y as i32);
         let mut explored = Vec::new();
-        for q in 0..self.players.len() {
+        for q in PlayerId::each(self.players.len()) {
             explored.push(self.spatial.explored(q, tx, ty)?);
         }
         if let Some(v) = self.spatial.sight.as_mut() {

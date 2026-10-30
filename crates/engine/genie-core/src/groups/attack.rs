@@ -15,6 +15,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -280,14 +281,14 @@ impl World {
     /// a master the player does not have 0.
     pub(super) fn task_reach(
         &self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         filter: i16,
     ) -> Result<f32, GenieError> {
         if filter < 0 {
             return Ok(NO_RANGE);
         }
-        let Some(master) = self.masters.get(player).and_then(|m| m.get(master)) else {
+        let Some(master) = self.masters.get(player.index()).and_then(|m| m.get(master)) else {
             return Ok(0.0);
         };
         for task in &master.tasks {

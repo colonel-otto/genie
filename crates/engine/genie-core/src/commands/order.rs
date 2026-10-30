@@ -54,7 +54,7 @@ impl OrderCommand {
     /// (`+0x15`, `FUN_140e5e780`; FOLLOW's when a unit the world holds belongs to a player who
     /// is not a computer, `FUN_141659cf0`), then the order runs.
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
-        let (player, order) = (self.player.index(), self.order);
+        let (player, order) = (self.player, self.order);
         let Some(units) = self.units(w)? else {
             return Ok(());
         };
@@ -69,9 +69,10 @@ impl OrderCommand {
         let human = match order {
             Order::Interact(o) => o.human,
             Order::Move(o) => o.human,
-            Order::Follow(_) | Order::Guard(_) => units
-                .iter()
-                .any(|&id| w.object(id).is_some_and(|(p, _)| !w.players[p].computer)),
+            Order::Follow(_) | Order::Guard(_) => units.iter().any(|&id| {
+                w.object(id)
+                    .is_some_and(|(p, _)| !w.players[p.index()].computer)
+            }),
             Order::Work(_) | Order::Retreat(_) => false,
         };
         w.reset_order_units(&units);
@@ -111,27 +112,27 @@ impl OrderCommand {
             };
             let ids = ObjectId::fields(read);
             return match order {
-                Order::Guard(_) => w.command_check(self.player.index(), &ids),
+                Order::Guard(_) => w.command_check(self.player, &ids),
                 _ => Ok(Some(ids)),
             };
         }
-        let player = self.player.index();
+        let player = self.player;
         let last = source.names_last_commanded();
         if source.overruns() && !last {
             return Ok(None);
         }
-        let Some(computer) = w.players.get(player).map(|p| p.computer) else {
+        let Some(computer) = w.players.get(player.index()).map(|p| p.computer) else {
             return Ok(None);
         };
-        let checked = w.checked_units(player, &w.command_units(player, source));
+        let checked = w.checked_units(player, &w.command_units(player.index(), source));
         if last {
-            w.set_last_commanded(player, checked.clone());
+            w.set_last_commanded(player.index(), checked.clone());
         }
         if !computer && checked.iter().all(|&id| id == -1) {
             return Ok(None);
         }
         if !last {
-            w.set_last_commanded(player, checked.clone());
+            w.set_last_commanded(player.index(), checked.clone());
         }
         Ok(Some(checked))
     }

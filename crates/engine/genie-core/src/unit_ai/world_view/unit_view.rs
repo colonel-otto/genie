@@ -6,6 +6,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, WorldPicker};
 use crate::world::slots::PlayerSlots;
@@ -71,7 +72,7 @@ impl UnitView<'_, '_> {
     /// a helper that answers.
     pub(crate) fn helper_free(
         &self,
-        owner: usize,
+        owner: PlayerId,
         u: &Unit,
         m: &crate::objects::masters::Master,
         attacker: i32,

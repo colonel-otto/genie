@@ -195,7 +195,7 @@ impl TransportAction {
         r: &TransportReads,
     ) -> Result<u8, GenieError> {
         let walked = self.walk(c, unit, me)?;
-        let computer = c.w.players[c.player].computer;
+        let computer = c.w.players[c.player.index()].computer;
         let World {
             spatial,
             zones,

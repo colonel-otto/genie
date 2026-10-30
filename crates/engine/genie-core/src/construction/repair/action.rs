@@ -16,6 +16,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::world::step::Step;
 
@@ -149,7 +150,7 @@ impl RepairAction {
             return Ok(HeadCode::Keeps);
         }
         if let Some(t) = reads.target
-            && (t.state != 2 || LEAST_HP > t.hp || (!t.allied && t.owner != 0))
+            && (t.state != 2 || LEAST_HP > t.hp || (!t.allied && t.owner != PlayerId::GAIA))
         {
             self.drop_target(c, repairer, reads)?;
             self.set_state(c, repairer, DONE, reads)?;
@@ -456,7 +457,7 @@ impl RepairAction {
     ) -> Result<(), GenieError> {
         let standing = |c: &mut Step<'_>, repairer: &mut Unit| {
             repairer.show_standing(
-                c.w.masters.get(c.player),
+                c.w.masters.get(c.player.index()),
                 &c.w.graphics,
                 c.w.streams.get(Stream::Sprite),
             )

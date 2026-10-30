@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::world_player::{
     COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, get, set,
@@ -15,7 +16,7 @@ impl World {
     /// The trickles of player `p`: each of attributes 230 to 233 above 0 (`COMISS` with 0,
     /// `JBE` skips a NaN) adds its sixtieth to food, wood, stone and gold in turn, through the
     /// attribute add with its statistic and its sharing ([`World::add_resource`] with 1 and 1).
-    pub fn trickles(&mut self, p: usize) -> Result<(), GenieError> {
+    pub fn trickles(&mut self, p: PlayerId) -> Result<(), GenieError> {
         for kind in 0..4 {
             let rate = get(
                 &self.players.player(p)?.attributes,
@@ -35,7 +36,7 @@ impl World {
     /// 0); food grows by attribute 254 over 60 times (`time` times logf(sum / 200 + 1))
     /// ([`crate::math::fmath::log`]), with its statistic and its sharing ([`World::add_resource`]),
     /// also when that is 0. `time` is the update time before the loop's step.
-    pub fn mill_food(&mut self, p: usize, time: f32) -> Result<(), GenieError> {
+    pub fn mill_food(&mut self, p: PlayerId, time: f32) -> Result<(), GenieError> {
         let mut sum = 0.0;
         for &id in self.players.player(p)?.tracker.list(MILL) {
             let Some((owner, unit)) = self.object(id) else {
@@ -64,7 +65,7 @@ impl World {
     /// not resources: their branches are [`crate::world::Player::add_attribute`]'s.
     pub fn add_resource(
         &mut self,
-        p: usize,
+        p: PlayerId,
         kind: usize,
         amount: f32,
         stat: u8,
@@ -98,7 +99,7 @@ impl World {
     /// (`+0x6fc`, unsaved) is not held; no resource add reaches it.
     pub(super) fn add_attribute_base(
         &mut self,
-        p: usize,
+        p: PlayerId,
         kind: usize,
         amount: f32,
         stat: u8,
@@ -129,7 +130,7 @@ impl World {
             }
         }
         if share && player.sharing && kind < 4 {
-            for q in 0..self.players.len() {
+            for q in PlayerId::each(self.players.len()) {
                 if q != p && self.shares_with(p, q) {
                     self.add_resource(q, kind, amount, stat, false)?;
                 }
@@ -144,24 +145,24 @@ impl World {
     /// while the world's treaty holds (`FUN_1415e8e10`: `world+0x820`'s `+0x10` is 1), which the
     /// slice does not model.
     #[must_use]
-    pub fn shares_with(&self, p: usize, q: usize) -> bool {
+    pub fn shares_with(&self, p: PlayerId, q: PlayerId) -> bool {
         let n = self.players.len();
-        if q == 0 || n <= q || p == q {
+        if q == PlayerId::GAIA || n <= q.index() || p == q {
             return false;
         }
         let mine = self
             .players
-            .get(p)
-            .and_then(|pl| pl.relations.get(q).copied());
+            .get(p.index())
+            .and_then(|pl| pl.relations.get(q.index()).copied());
         if !matches!(mine, Some(0 | 4)) {
             return false;
         }
-        p != 0
-            && p < n
+        p != PlayerId::GAIA
+            && p.index() < n
             && self
                 .players
-                .get(q)
-                .and_then(|pl| pl.relations.get(p))
+                .get(q.index())
+                .and_then(|pl| pl.relations.get(p.index()))
                 .is_some_and(|&r| r & 0xfb == 0)
     }
 
@@ -172,7 +173,7 @@ impl World {
     /// clears, is the list's length: only the AI's `FUN_140b90b90`, which a playback does not
     /// run, reads it too, and the player's update ends with the list emptied (`FUN_141661030`).
     /// Gaia's update has no tail.
-    pub fn world_player_tail(&mut self, p: usize) -> Result<(), GenieError> {
+    pub fn world_player_tail(&mut self, p: PlayerId) -> Result<(), GenieError> {
         if self.players.player(p)?.kind == GAIA_TYPE || self.spatial.scout_map(p).is_none() {
             return Ok(());
         }
@@ -180,7 +181,7 @@ impl World {
             .spatial
             .sight
             .as_ref()
-            .and_then(|v| v.new_tiles.get(p))
+            .and_then(|v| v.new_tiles.get(p.index()))
             .cloned()
         else {
             return Ok(());

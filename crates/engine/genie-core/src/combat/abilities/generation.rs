@@ -5,6 +5,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::{GenieError, math::fmath};
 
@@ -110,7 +111,7 @@ impl World {
     pub(super) fn generate(
         &mut self,
         (p, i): (usize, usize),
-        owner: usize,
+        owner: PlayerId,
         master: Own,
         task: &Task,
     ) -> Result<(), GenieError> {
@@ -152,7 +153,7 @@ impl World {
         if !generates(task, master.kind, master.kind, top, built) {
             return Ok(());
         }
-        let player = &mut self.players[owner];
+        let player = &mut self.players[owner.index()];
         let multiplier = usize::try_from(task.attribute_type2)
             .ok()
             .and_then(|a| player.attribute(a))
@@ -171,7 +172,7 @@ impl World {
             give,
         )?;
         for (kind, amount) in adds {
-            self.players[owner].add_attribute(kind, amount)?;
+            self.players[owner.index()].add_attribute(kind, amount)?;
         }
         Ok(())
     }

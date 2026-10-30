@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::fmath::Vec3;
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use crate::unit_ai::Search;
 use genie_diff::Diff;
 
@@ -122,7 +123,7 @@ pub struct Surroundings {
     /// `FUN_14106d100`, is 0).
     pub busy: bool,
     /// The owner's id (`player+0x718`); Gaia is 0.
-    pub player: usize,
+    pub player: PlayerId,
     /// The unit's master's class (decoded).
     pub class: Option<ClassId>,
     /// The master's `combat_level` (`+0x62c`).
@@ -284,7 +285,7 @@ pub struct UnitSeen {
     /// Its master's class.
     pub class: ClassId,
     /// Its owner's id (`+0x138`, `player+0x718`); Gaia is 0.
-    pub owner: usize,
+    pub owner: PlayerId,
     /// Its master's `combat_level` (`+0x62c`).
     pub combat_level: u8,
     /// `+0x640`.
@@ -340,7 +341,7 @@ pub struct Seen {
     /// Its master's type.
     pub kind: u8,
     /// Its owner.
-    pub owner: usize,
+    pub owner: PlayerId,
     /// Its master's class.
     pub class: ClassId,
     /// Its place.

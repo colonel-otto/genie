@@ -36,6 +36,7 @@ use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{ClassId, class};
+use crate::players::PlayerId;
 use crate::world::slots::PlayerSlots;
 
 /// A pending key is its done key + this (a master's + 90000, a class's + 90900).
@@ -332,8 +333,8 @@ impl Tracker {
 impl crate::world::World {
     /// [`key`] of player `p`'s master `master`.
     #[must_use]
-    pub fn tracker_key(&self, p: usize, master: i16) -> Key {
-        key(self.masters.get(p), &self.lines, master)
+    pub fn tracker_key(&self, p: PlayerId, master: i16) -> Key {
+        key(self.masters.get(p.index()), &self.lines, master)
     }
 
     /// The load's filing: each player's objects as its lists hold them, the live ones then the
@@ -346,7 +347,7 @@ impl crate::world::World {
     ///
     /// A player the world does not hold.
     pub fn load_trackers(&mut self) -> Result<(), GenieError> {
-        for p in 0..self.players.len() {
+        for p in PlayerId::each(self.players.len()) {
             let mut tracker = Tracker::default();
             let player = self.players.player(p)?;
             for u in player.objects.iter().chain(&player.sleeping) {
@@ -376,7 +377,12 @@ impl crate::world::World {
 
     /// The player's add (slot 0x2d0, `FUN_14165cc80`'s tracker part) of its object `id` of
     /// master `master`.
-    pub(crate) fn track_add(&mut self, p: usize, id: i32, master: i16) -> Result<(), GenieError> {
+    pub(crate) fn track_add(
+        &mut self,
+        p: PlayerId,
+        id: i32,
+        master: i16,
+    ) -> Result<(), GenieError> {
         let k = self.tracker_key(p, master);
         self.players.player_mut(p)?.tracker.add(id, k);
         Ok(())
@@ -386,7 +392,7 @@ impl crate::world::World {
     /// master `master`.
     pub(crate) fn track_remove(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         master: i16,
     ) -> Result<(), GenieError> {
@@ -400,7 +406,7 @@ impl crate::world::World {
     /// add (slot 0x2d0), which files it last.
     pub(crate) fn track_relist(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         master: i16,
     ) -> Result<(), GenieError> {
@@ -414,7 +420,7 @@ impl crate::world::World {
     /// A building's completion's first part (`FUN_1411c6bd0`'s tracker part).
     pub(crate) fn track_complete(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         master: i16,
     ) -> Result<(), GenieError> {
@@ -427,7 +433,7 @@ impl crate::world::World {
     /// `old` to `new`.
     pub(crate) fn track_promote(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         old: i16,
         new: i16,
@@ -442,7 +448,7 @@ impl crate::world::World {
     /// (`FUN_1415417a0`) of any player.
     pub(crate) fn track_move_all(
         &mut self,
-        p: usize,
+        p: PlayerId,
         from: i16,
         to: i16,
     ) -> Result<(), GenieError> {
@@ -724,7 +730,13 @@ mod tests {
             sleeping: vec![unit(15, 83, None)].into(),
             ..Player::default()
         };
-        let mut t = World::new(0, 0, 0, vec![0; 2], vec![Player::default(), player]);
+        let mut t = World::new(
+            0,
+            0,
+            PlayerId::new(0),
+            vec![0; 2],
+            vec![Player::default(), player],
+        );
         t.masters = vec![masters(), masters()];
         t.lines = lines();
         t
@@ -752,14 +764,14 @@ mod tests {
     fn a_relisted_object_goes_last_and_a_completed_one_joins_its_done_lists() {
         let mut t = world();
         t.load_trackers().unwrap();
-        t.track_relist(1, 11, 83).unwrap();
+        t.track_relist(PlayerId::new(1), 11, 83).unwrap();
         assert_eq!(
             t.players[1].tracker.class_list(class::VILLAGER),
             [13, 15, 11]
         );
-        t.track_complete(1, 12, 109).unwrap();
+        t.track_complete(PlayerId::new(1), 12, 109).unwrap();
         assert_eq!(t.players[1].tracker.list(109), [10, 12]);
-        t.track_promote(1, 15, 83, 118).unwrap();
+        t.track_promote(PlayerId::new(1), 15, 83, 118).unwrap();
         assert_eq!(
             (
                 t.players[1].tracker.list(118),
@@ -767,8 +779,8 @@ mod tests {
             ),
             (&[13, 15][..], &[13, 11, 15][..])
         );
-        t.track_remove(1, 13, 118).unwrap();
-        t.track_add(1, 16, 83).unwrap();
+        t.track_remove(PlayerId::new(1), 13, 118).unwrap();
+        t.track_add(PlayerId::new(1), 16, 83).unwrap();
         assert_eq!(
             t.players[1].tracker.class_list(class::VILLAGER),
             [11, 15, 16]
@@ -780,7 +792,7 @@ mod tests {
         let mut t = world();
         t.load_trackers().unwrap();
         // the villagers' list (83) moves to 118's; their class (4) stays theirs
-        t.track_move_all(1, 83, 118).unwrap();
+        t.track_move_all(PlayerId::new(1), 83, 118).unwrap();
         let tracker = &t.players[1].tracker;
         assert_eq!(
             (tracker.list(83), tracker.list(118)),

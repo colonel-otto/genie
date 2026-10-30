@@ -54,13 +54,17 @@ impl World {
     /// (`FUN_140b26630`: a master the player has, `FUN_141659d20`, else none; the count of its
     /// done list, `FUN_14104eea0`).
     #[must_use]
-    pub fn pays_tribute(&self, p: usize) -> bool {
-        let has = |m: i16| self.masters.get(p).is_some_and(|ms| ms.get(m).is_some());
+    pub fn pays_tribute(&self, p: PlayerId) -> bool {
+        let has = |m: i16| {
+            self.masters
+                .get(p.index())
+                .is_some_and(|ms| ms.get(m).is_some())
+        };
         MARKETS.iter().any(|&m| {
             has(m)
                 && self
                     .players
-                    .get(p)
+                    .get(p.index())
                     .is_some_and(|pl| !pl.tracker.list(i32::from(m)).is_empty())
         })
     }
@@ -85,8 +89,6 @@ impl World {
         to: PlayerId,
         gifts: &[Gift; 4],
     ) -> Result<(), GenieError> {
-        let from = from.index();
-        let to = to.index();
         if from == to || !self.pays_tribute(from) {
             return Ok(());
         }
@@ -106,10 +108,10 @@ impl World {
             let giver = self.players.player_mut(from)?;
             giver.add_attribute(TRIBUTE_GIVEN, given)?;
             giver.add_attribute(TRIBUTE_PAID, paid)?;
-            giver.add_attribute(TRIBUTE_TO + i16::from(to as u8), given)?;
+            giver.add_attribute(TRIBUTE_TO + i16::from(to.index() as u8), given)?;
             let receiver = self.players.player_mut(to)?;
             receiver.add_attribute(TRIBUTE_RECEIVED, given)?;
-            receiver.add_attribute(TRIBUTE_FROM + i16::from(from as u8), given)?;
+            receiver.add_attribute(TRIBUTE_FROM + i16::from(from.index() as u8), given)?;
             if receiver.computer {
                 return Err(GenieError::unsupported(
                     "a computer player's AI told of a tribute (0x20a, slot 0x3c8)",
@@ -168,7 +170,7 @@ mod tests {
         let mut t = World::new(
             0,
             1,
-            0,
+            PlayerId::new(0),
             vec![0; 3],
             vec![Player::default(), player(), player()],
         );

@@ -14,6 +14,7 @@ use crate::objects::masters::ids::FARM;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::player_master;
+use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::production::{cost_test, pay, refund_master};
 use crate::world::World;
@@ -43,7 +44,7 @@ impl World {
     /// 0x761) for its mill's queue ([`World::buy_ahead`]).
     pub(crate) fn queue_farms(
         &mut self,
-        p: usize,
+        p: PlayerId,
         count: i32,
         master: i16,
     ) -> Result<bool, GenieError> {
@@ -52,7 +53,7 @@ impl World {
 
     /// `FUN_141616540`: player `p` buys `count` fish traps (199) for its dock's queue
     /// ([`World::buy_ahead`]).
-    pub(crate) fn queue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, GenieError> {
+    pub(crate) fn queue_fish_traps(&mut self, p: PlayerId, count: i32) -> Result<bool, GenieError> {
         // The fish trap (master 199, its master table's `+0x638`).
         // The farm a mill's queue buys (`0x32`, GAME 0xd and 0xe).
         self.buy_ahead(p, count, FISH_TRAP, Queue::FishTraps)
@@ -62,7 +63,7 @@ impl World {
     /// ([`World::give_back`]).
     pub(crate) fn unqueue_farms(
         &mut self,
-        p: usize,
+        p: PlayerId,
         count: i32,
         master: i16,
     ) -> Result<bool, GenieError> {
@@ -71,7 +72,11 @@ impl World {
 
     /// `FUN_1416308f0`: player `p` takes back `count` fish traps from its dock's queue
     /// ([`World::give_back`]).
-    pub(crate) fn unqueue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, GenieError> {
+    pub(crate) fn unqueue_fish_traps(
+        &mut self,
+        p: PlayerId,
+        count: i32,
+    ) -> Result<bool, GenieError> {
         self.give_back(p, count, FISH_TRAP, Queue::FishTraps)
     }
 
@@ -83,7 +88,7 @@ impl World {
     /// queue, which may then pass the limit. False when none can, or the payment failed.
     fn buy_ahead(
         &mut self,
-        p: usize,
+        p: PlayerId,
         count: i32,
         master: i16,
         queue: Queue,
@@ -91,10 +96,10 @@ impl World {
         if count < 1 || QUEUE_LIMIT <= self.queued(p, queue) {
             return Ok(false);
         }
-        let Some(masters) = self.masters.get(p) else {
+        let Some(masters) = self.masters.get(p.index()) else {
             return Ok(false);
         };
-        let player = &mut self.players[p];
+        let player = &mut self.players[p.index()];
         let mut n = count;
         loop {
             if cost_test(masters, master, n as f32, false, &*player)? {
@@ -120,7 +125,7 @@ impl World {
     /// paid flag, its amount times the count). False with none.
     fn give_back(
         &mut self,
-        p: usize,
+        p: PlayerId,
         count: i32,
         master: i16,
         queue: Queue,
@@ -129,7 +134,7 @@ impl World {
         if n < 1 {
             return Ok(false);
         }
-        let player = &mut self.players[p];
+        let player = &mut self.players[p.index()];
         match queue {
             Queue::Farms => player.farm_queue -= n,
             Queue::FishTraps => player.fish_trap_queue -= n,
@@ -149,8 +154,8 @@ impl World {
     /// (`CVTSI2SS`, `COMISS`). A base id the player lacks makes none (the game reads its table's
     /// slot unchecked; the `.dat`'s masters name their own).
     #[must_use]
-    pub fn can_make(&self, p: usize, master: i16) -> bool {
-        let Some(ms) = self.masters.get(p) else {
+    pub fn can_make(&self, p: PlayerId, master: i16) -> bool {
+        let Some(ms) = self.masters.get(p.index()) else {
             return false;
         };
         let Some(m) = ms.get(master) else {
@@ -178,7 +183,7 @@ impl World {
         // The town centre (621, `0x26d`), whose availability also counts the town centres standing
         // against attribute 218 (`FUN_141663f80`).
         if base == TOWN_CENTRE_621 {
-            let limit = self.players[p]
+            let limit = self.players[p.index()]
                 .attribute(attribute::TOWN_CENTRE_LIMIT)
                 .unwrap_or(0.0);
             if (self.town_centre_count(p) as f32) < limit {
@@ -192,7 +197,7 @@ impl World {
     /// the player can make it ([`World::can_make`]) and it is of the farm class, else the pasture
     /// (0x761) so; else none.
     #[must_use]
-    pub fn reseed_master(&self, p: usize) -> Option<i16> {
+    pub fn reseed_master(&self, p: PlayerId) -> Option<i16> {
         [FARM, PASTURE].into_iter().find(|&m| {
             self.can_make(p, m)
                 && player_master(&self.masters, p, m).is_some_and(|m| m.class == class::FARM)
@@ -219,8 +224,8 @@ impl World {
     /// modelled) would build it too; then the gatherer's ignore list empties (`FUN_141197da0`)
     /// and its slot 0x128 sends it to build the foundation at the spot ([`World::build_task`],
     /// [`World::build_directly`]). True when the foundation was made.
-    pub(crate) fn reseed(&mut self, p: usize, idx: usize) -> Result<bool, GenieError> {
-        let unit = &self.players[p].objects[idx];
+    pub(crate) fn reseed(&mut self, p: PlayerId, idx: usize) -> Result<bool, GenieError> {
+        let unit = &self.players[p.index()].objects[idx];
         let Some(gather) = unit.actions.gather().copied() else {
             return Ok(false);
         };
@@ -229,7 +234,7 @@ impl World {
             return Ok(false);
         }
         let class = unit.master(&self.masters, p)?.class;
-        let owner = &self.players[p];
+        let owner = &self.players[p.index()];
         let (master, auto, queue) =
             if (!owner.auto_farm_queue && owner.farm_queue < 1) || class != class::VILLAGER {
                 if !owner.auto_fishtrap_queue && owner.fish_trap_queue < 1 {
@@ -267,12 +272,12 @@ impl World {
         }
         let mut from_queue = !auto;
         if auto {
-            let Some(masters) = self.masters.get(p) else {
+            let Some(masters) = self.masters.get(p.index()) else {
                 // unreachable: the gatherer's master was found in this table above
                 return Ok(false);
             };
-            if cost_test(masters, master, ONE_FARM, false, &self.players[p])? {
-                if !pay(masters, master, ONE_FARM, &mut self.players[p])? {
+            if cost_test(masters, master, ONE_FARM, false, &self.players[p.index()])? {
+                if !pay(masters, master, ONE_FARM, &mut self.players[p.index()])? {
                     return Ok(false);
                 }
             } else {
@@ -287,7 +292,7 @@ impl World {
         let at = [farm[0], farm[1], 0.0];
         let (foundation, _) = self.make_building(p, master, ai, at)?;
         if from_queue {
-            let player = &mut self.players[p];
+            let player = &mut self.players[p.index()];
             let count = match queue {
                 Queue::Farms => &mut player.farm_queue,
                 Queue::FishTraps => &mut player.fish_trap_queue,
@@ -296,7 +301,7 @@ impl World {
                 *count -= 1;
             }
         }
-        let id = self.players[p].objects[idx].id;
+        let id = self.players[p.index()].objects[idx].id;
         let site = (p, foundation, master);
         let task = self.build_task(p, id.get(), site, at)?;
         self.build_directly(p, idx, task, site, at)?;
@@ -310,7 +315,7 @@ impl World {
     /// `FUN_140a8b6b0`'s sprite, the targets it lets go released).
     pub(crate) fn reseed_after_walk(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         arrived: bool,
     ) -> Result<(), GenieError> {
@@ -318,10 +323,10 @@ impl World {
             return Ok(());
         }
         let by = self.releaser(p, idx);
-        let master_id = self.players[p].objects[idx].life.master_id;
+        let master_id = self.players[p.index()].objects[idx].life.master_id;
         let standing = self.master(p, master_id)?.standing_sprite;
-        let computer = self.players[p].computer;
-        let unit = &mut self.players[p].objects[idx];
+        let computer = self.players[p.index()].computer;
+        let unit = &mut self.players[p.index()].objects[idx];
         let Some(gather) = unit.actions.gather_mut() else {
             return Ok(());
         };
@@ -349,10 +354,10 @@ impl World {
     }
 
     /// Player `p`'s queue `queue`.
-    fn queued(&self, p: usize, queue: Queue) -> i32 {
+    fn queued(&self, p: PlayerId, queue: Queue) -> i32 {
         match queue {
-            Queue::Farms => self.players[p].farm_queue,
-            Queue::FishTraps => self.players[p].fish_trap_queue,
+            Queue::Farms => self.players[p.index()].farm_queue,
+            Queue::FishTraps => self.players[p.index()].fish_trap_queue,
         }
     }
 }
@@ -382,7 +387,13 @@ mod tests {
             resources: [0.0, wood, 0.0, 0.0],
             ..Player::default()
         };
-        let mut t = World::new(0, 1, 0, vec![0; 2], vec![Player::default(), player]);
+        let mut t = World::new(
+            0,
+            1,
+            PlayerId::new(0),
+            vec![0; 2],
+            vec![Player::default(), player],
+        );
         let masters = Masters::new([
             master(FARM, vec![(1, 60, true)]),
             master(PASTURE, vec![(1, 100, true), (0, 50, false)]),
@@ -396,11 +407,11 @@ mod tests {
     #[test]
     fn the_mill_s_queue_buys_what_the_player_can_pay() {
         let mut t = world(250.0);
-        assert!(t.queue_farms(1, 5, FARM).unwrap());
+        assert!(t.queue_farms(PlayerId::new(1), 5, FARM).unwrap());
         assert_eq!(t.players[1].farm_queue, 4);
         assert_eq!(t.players[1].resources[1], 10.0);
-        assert!(!t.queue_farms(1, 1, FARM).unwrap());
-        assert!(!t.queue_farms(1, 0, FARM).unwrap());
+        assert!(!t.queue_farms(PlayerId::new(1), 1, FARM).unwrap());
+        assert!(!t.queue_farms(PlayerId::new(1), 0, FARM).unwrap());
         assert_eq!(t.players[1].farm_queue, 4);
     }
 
@@ -410,14 +421,14 @@ mod tests {
     fn pastures_and_fish_traps_pay_their_paid_entries() {
         let mut t = world(1000.0);
         t.players[1].resources[0] = 99.0;
-        assert!(t.queue_farms(1, 2, PASTURE).unwrap());
+        assert!(t.queue_farms(PlayerId::new(1), 2, PASTURE).unwrap());
         assert_eq!(t.players[1].farm_queue, 1);
         assert_eq!(t.players[1].resources, [99.0, 900.0, 0.0, 0.0]);
         t.players[1].resources[0] = 100.0;
-        assert!(t.queue_farms(1, 2, PASTURE).unwrap());
+        assert!(t.queue_farms(PlayerId::new(1), 2, PASTURE).unwrap());
         assert_eq!(t.players[1].resources, [100.0, 700.0, 0.0, 0.0]);
         t.players[1].farm_queue = 2;
-        assert!(t.queue_fish_traps(1, 3).unwrap());
+        assert!(t.queue_fish_traps(PlayerId::new(1), 3).unwrap());
         assert_eq!(t.players[1].fish_trap_queue, 3);
         assert_eq!(t.players[1].farm_queue, 2);
         assert_eq!(t.players[1].resources[1], 400.0);
@@ -428,9 +439,9 @@ mod tests {
     fn a_full_queue_takes_no_purchase() {
         let mut t = world(10_000.0);
         t.players[1].farm_queue = 40;
-        assert!(!t.queue_farms(1, 1, FARM).unwrap());
+        assert!(!t.queue_farms(PlayerId::new(1), 1, FARM).unwrap());
         t.players[1].farm_queue = 39;
-        assert!(t.queue_farms(1, 3, FARM).unwrap());
+        assert!(t.queue_farms(PlayerId::new(1), 3, FARM).unwrap());
         assert_eq!(t.players[1].farm_queue, 42);
     }
 
@@ -438,7 +449,7 @@ mod tests {
     #[test]
     fn a_master_the_player_lacks_buys_nothing() {
         let mut t = world(1000.0);
-        assert!(!t.queue_farms(1, 2, 1187).unwrap());
+        assert!(!t.queue_farms(PlayerId::new(1), 2, 1187).unwrap());
         assert_eq!(t.players[1].resources[1], 1000.0);
     }
 
@@ -474,13 +485,13 @@ mod tests {
             building(302, class::BUILDING, 302, true, -1),
             building(303, class::BUILDING, 999, true, -1),
         ]);
-        assert!(t.can_make(1, FARM));
+        assert!(t.can_make(PlayerId::new(1), FARM));
         // the pasture's base 300 heads 301, whose base 302 is available
-        assert!(t.can_make(1, PASTURE));
-        assert!(!t.can_make(1, 1187));
-        assert!(!t.can_make(1, 303));
+        assert!(t.can_make(PlayerId::new(1), PASTURE));
+        assert!(!t.can_make(PlayerId::new(1), 1187));
+        assert!(!t.can_make(PlayerId::new(1), 303));
         t.masters[1] = Masters::new([building(FARM, class::FARM, FARM, false, -1)]);
-        assert!(!t.can_make(1, FARM));
+        assert!(!t.can_make(PlayerId::new(1), FARM));
     }
 
     /// The town centre 621 is also made while the town centres standing are fewer than
@@ -495,9 +506,9 @@ mod tests {
             false,
             -1,
         )]);
-        assert!(!t.can_make(1, TOWN_CENTRE_621));
+        assert!(!t.can_make(PlayerId::new(1), TOWN_CENTRE_621));
         t.players[1].attributes[attribute::TOWN_CENTRE_LIMIT] = 1.0;
-        assert!(t.can_make(1, TOWN_CENTRE_621));
+        assert!(t.can_make(PlayerId::new(1), TOWN_CENTRE_621));
     }
 
     /// `FUN_141658b40`: the farm when the player can make it, else the pasture, each of the
@@ -512,13 +523,13 @@ mod tests {
             ])
         };
         t.masters[1] = masters(true, true, class::FARM);
-        assert_eq!(t.reseed_master(1), Some(FARM));
+        assert_eq!(t.reseed_master(PlayerId::new(1)), Some(FARM));
         t.masters[1] = masters(false, true, class::FARM);
-        assert_eq!(t.reseed_master(1), Some(PASTURE));
+        assert_eq!(t.reseed_master(PlayerId::new(1)), Some(PASTURE));
         t.masters[1] = masters(true, true, class::BUILDING);
-        assert_eq!(t.reseed_master(1), Some(PASTURE));
+        assert_eq!(t.reseed_master(PlayerId::new(1)), Some(PASTURE));
         t.masters[1] = masters(false, false, class::FARM);
-        assert_eq!(t.reseed_master(1), None);
+        assert_eq!(t.reseed_master(PlayerId::new(1)), None);
     }
 
     /// A return gives back at most the queue's count, each its paid costs.
@@ -526,16 +537,16 @@ mod tests {
     fn a_return_refunds_at_most_the_queue() {
         let mut t = world(0.0);
         t.players[1].farm_queue = 3;
-        assert!(t.unqueue_farms(1, 5, FARM).unwrap());
+        assert!(t.unqueue_farms(PlayerId::new(1), 5, FARM).unwrap());
         assert_eq!(t.players[1].farm_queue, 0);
         assert_eq!(t.players[1].resources[1], 180.0);
-        assert!(!t.unqueue_farms(1, 1, FARM).unwrap());
+        assert!(!t.unqueue_farms(PlayerId::new(1), 1, FARM).unwrap());
         t.players[1].farm_queue = 2;
-        assert!(t.unqueue_farms(1, 1, PASTURE).unwrap());
+        assert!(t.unqueue_farms(PlayerId::new(1), 1, PASTURE).unwrap());
         assert_eq!(t.players[1].resources, [0.0, 280.0, 0.0, 0.0]);
         t.players[1].fish_trap_queue = 1;
-        assert!(!t.unqueue_fish_traps(1, 0).unwrap());
-        assert!(t.unqueue_fish_traps(1, 2).unwrap());
+        assert!(!t.unqueue_fish_traps(PlayerId::new(1), 0).unwrap());
+        assert!(t.unqueue_fish_traps(PlayerId::new(1), 2).unwrap());
         assert_eq!(t.players[1].fish_trap_queue, 0);
         assert_eq!(t.players[1].resources[1], 380.0);
     }

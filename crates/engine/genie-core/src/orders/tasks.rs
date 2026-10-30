@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::gather::HuntOrder;
 use crate::orders::{HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -32,7 +33,7 @@ impl World {
     /// as done: not modelled.
     pub(crate) fn hunt_command(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<(), GenieError> {
@@ -72,7 +73,7 @@ impl World {
     /// no task would fail the command, which the unit AI took as done: not modelled.
     pub(crate) fn gather_command(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<(), GenieError> {
@@ -104,7 +105,7 @@ impl World {
     /// value, the master's work rate with the unit's powerup), as BUILD's builders take it.
     pub(super) fn start_build(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
@@ -165,7 +166,7 @@ impl World {
     /// class.
     pub(super) fn new_repair(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
@@ -199,7 +200,7 @@ impl World {
     /// (slot 0x808) clears the action list and holds the Repair.
     pub(super) fn start_repair(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
@@ -242,7 +243,7 @@ impl World {
     /// What the master change, the retarget and the Repair do not model.
     pub(crate) fn repair_order(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         order: crate::unit_ai::world_view::RepairOrder,
     ) -> Result<(), GenieError> {
@@ -276,7 +277,7 @@ impl World {
     /// with its class, the work's point).
     pub(super) fn retake_repair(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 3],
@@ -312,7 +313,7 @@ impl World {
     /// With the target's class.
     pub(super) fn repair_retarget(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<i32, GenieError> {
@@ -375,7 +376,7 @@ impl World {
     /// not modelled.
     pub(super) fn retake_build(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 3],
@@ -405,7 +406,7 @@ impl World {
     /// before the notify): returns the target's master class.
     pub(crate) fn build_take(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<i32, GenieError> {
@@ -485,7 +486,7 @@ impl World {
     /// Build's target after it.
     pub(crate) fn build_set_target(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (old, added): (i32, bool),
         new: i32,
@@ -523,6 +524,8 @@ impl World {
     /// unit's its own); none once the world no longer holds `id`. Outside an update
     /// ([`crate::world::lets::Lets::leave_builders`] on the whole world).
     pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), GenieError> {
-        self.with_lets(0, |lets, others| lets.leave_builders(others, None, id))?
+        self.with_lets(PlayerId::GAIA, |lets, others| {
+            lets.leave_builders(others, None, id)
+        })?
     }
 }

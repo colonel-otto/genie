@@ -3,6 +3,7 @@
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{Error, game_state, header_objects, moving_speed, placement, saved_ghosts};
+use genie_core::players::PlayerId;
 use genie_core::vision::visibility::{
     BuildingSight, Extent, Seer, Visibility, VisibleMap, VisibleResource, VisibleResources,
     capture_kind,
@@ -155,7 +156,7 @@ pub(super) fn spatial(
         .map(|p| p.world_player().base.unit_diplomacy.clone())
         .collect();
     let mut sight = saved_sight(header);
-    for (player, section) in header.players().iter().enumerate() {
+    for (player, section) in PlayerId::each(header.players().len()).zip(header.players()) {
         let all = section.live_objects().chain(section.sleeping_objects());
         for o in all {
             let Some(s) = o.static_part() else { continue };

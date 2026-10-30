@@ -14,6 +14,7 @@ use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::world::step::Step;
 
 /// What a gather's start takes besides its mover and stream ([`GatherAction::start`]'s
@@ -23,7 +24,7 @@ pub struct GatherStart<'a> {
     /// The target.
     pub target: &'a Resource,
     /// The owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// The owner's type test (`FUN_141659cf0`).
     pub computer: bool,
     /// The game settings' test `FUN_141302150`.
@@ -41,7 +42,7 @@ pub struct GatherRetarget<'a> {
     /// The work command's new target.
     pub target: &'a Resource,
     /// The owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// The owner's type test (`FUN_141659cf0`).
     pub computer: bool,
     /// What the gatherer carries and the sprites its `MoveTo`s take for none.
@@ -80,7 +81,7 @@ pub struct MoveTarget {
     /// The object.
     pub id: i32,
     /// Its owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// The gatherer's master drops its loads there (its main building's master for an annex,
     /// `+0xbb8`; `FUN_14109d4f0`).
     pub drop_site: bool,
@@ -417,7 +418,7 @@ impl GatherAction {
         &mut self,
         target: Option<MoveTarget>,
         point: [f32; 3],
-        player: usize,
+        player: PlayerId,
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {

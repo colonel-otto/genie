@@ -55,8 +55,8 @@ impl World {
     }
 
     /// Object `idx` of player `player` as the releaser of its actions' targets.
-    pub(crate) fn releaser(&self, player: usize, idx: usize) -> Releaser {
-        let u = &self.players[player].objects[idx];
+    pub(crate) fn releaser(&self, player: PlayerId, idx: usize) -> Releaser {
+        let u = &self.players[player.index()].objects[idx];
         Releaser {
             id: u.id.get(),
             class: u.master(&self.masters, player).ok().map(|m| m.class),
@@ -74,7 +74,7 @@ impl World {
     /// target) records nothing.
     pub(crate) fn remember_order(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (order, action): (Option<OrderKind>, Option<ActionKind>),
     ) -> Result<(), GenieError> {
@@ -110,7 +110,7 @@ impl World {
     /// counted builder leaves its building (`FUN_140aadbf0` before its base teardown,
     /// [`World::leave_builders`]), then the targets go (slot 0x180, [`World::release`]). A
     /// building's production is a list of its own, which stays.
-    pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn clear_actions(&mut self, player: PlayerId, idx: usize) -> Result<(), GenieError> {
         let by = self.releaser(player, idx);
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
         self.players.live_mut(player, idx)?.clear_own_actions(
@@ -137,7 +137,6 @@ impl World {
         id: ObjectId,
         master: MasterId,
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let id = id.get();
         let master = master.get();
         let Some(Place::Live(p, idx)) = self.place(id) else {
@@ -159,7 +158,7 @@ impl World {
     /// construction record.
     pub(super) fn transform_building(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         new: i16,
     ) -> Result<(), GenieError> {
@@ -180,7 +179,7 @@ impl World {
     /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8 on
     /// those its count finds, [`World::shut_in_gate`]) and takes the world time plus 1 as its
     /// last move time (`+0x870`).
-    pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn toggle_gate(&mut self, player: PlayerId, idx: usize) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
         if unit.gate.is_some_and(|g| g.other_masters) {
             return Err(GenieError::unsupported(
@@ -276,7 +275,7 @@ impl World {
     /// per-master counts, facet, class registry (`DAT_143f69170`) and particles are not held.
     pub(crate) fn change_master(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         new: i16,
     ) -> Result<(), GenieError> {

@@ -39,7 +39,7 @@ impl World {
         formation: i32,
     ) -> Result<(), GenieError> {
         let ids = ObjectId::fields(ids);
-        let Some(units) = self.command_check(player.index(), &ids)? else {
+        let Some(units) = self.command_check(player, &ids)? else {
             return Ok(());
         };
         for &id in &units {
@@ -102,7 +102,7 @@ impl World {
         units: &[i32],
         number: usize,
     ) -> Result<i32, GenieError> {
-        let owner = split.owner.map_or(u32::MAX, |p| p as u32);
+        let owner = split.owner.map_or(u32::MAX, |p| p.index() as u32);
         let id = self.groups.create(owner).id;
         for &unit in units {
             let _ = self.add_to_group(id, unit)?;
@@ -128,7 +128,7 @@ impl World {
         };
         let Some(unit) = self
             .players
-            .get_mut(p)
+            .get_mut(p.index())
             .and_then(|pl| pl.objects.by_id_mut(id))
         else {
             return Ok(());
@@ -148,7 +148,7 @@ impl World {
         self.object_stop(p, idx)?;
         if let Some(m) = self
             .players
-            .get_mut(p)
+            .get_mut(p.index())
             .and_then(|pl| pl.objects.by_id_mut(id))
             .and_then(|u| u.body.mover_mut())
         {

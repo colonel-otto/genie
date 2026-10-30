@@ -669,6 +669,7 @@ mod tests {
     use crate::objects::masters::{ClassId, class};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::players::PlayerId;
     use crate::test_ids::object_id;
     use crate::vision::registry::UnitUpdate;
     use crate::world::Player;
@@ -736,7 +737,7 @@ mod tests {
                 ..Player::default()
             },
         ];
-        let mut t = World::new(0, 0, 0, vec![0; 4], players);
+        let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
         let master = |id: i16, class: ClassId| Master {
             id,
             kind: 70,

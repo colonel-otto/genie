@@ -24,7 +24,13 @@ fn a_top_target_below_minus_one_is_none() {
         objects: vec![held(7), held(-3)].into(),
         ..Player::default()
     };
-    let t = World::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
+    let t = World::new(
+        0,
+        0,
+        PlayerId::new(0),
+        vec![0, 0],
+        vec![Player::default(), player],
+    );
     assert_eq!(t.top_target_object(&hunter(7)), 7);
     assert_eq!(t.top_target_object(&hunter(-3)), -1);
     assert_eq!(t.top_target_object(&hunter(9)), -1);
@@ -309,7 +315,7 @@ fn lead() -> Lead {
         moves: true,
         solid: true,
         ignore_units: Vec::new(),
-        player: 1,
+        player: PlayerId::new(1),
         computer: false,
         group: None,
     }
@@ -413,7 +419,7 @@ fn target_at(y: f32) -> Placed {
         position: [5.0, y, 0.0],
         radius: [0.5, 0.5],
         class: class::CLASS_0,
-        player: 0,
+        player: PlayerId::new(0),
         master: 0,
         obstruction_type: 0,
         buildable_on: 0,

@@ -25,7 +25,6 @@ impl World {
         ids: &[Option<ObjectId>],
         state: u8,
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
@@ -79,7 +78,6 @@ impl World {
     /// lock: slot 0x670 ([`lock_gate`]) with slot 0x668's value negated. Its sound (slot 0x4c0)
     /// and the UI's flag are not held.
     pub(crate) fn gate(&mut self, player: PlayerId, id: ObjectId) -> Result<(), GenieError> {
-        let player = player.index();
         let id = id.get();
         let Some((p, unit)) = self.object(id) else {
             return Ok(());
@@ -117,7 +115,6 @@ impl World {
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         use crate::unit_ai::QueuedOrder;
-        let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let cap = if self.players.player(player)?.computer {
             500
@@ -159,7 +156,7 @@ impl World {
                 .as_ref()
                 .is_some_and(|ai| ai.current_action == Some(ActionKind::AutoScout));
             let order = QueuedOrder {
-                issuer: p as i32,
+                issuer: p.index() as i32,
                 order: if scouts {
                     OrderKind::Stop
                 } else {
@@ -206,7 +203,6 @@ impl World {
         player: PlayerId,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
@@ -285,7 +281,7 @@ impl World {
     /// A player the world does not hold.
     pub(crate) fn command_check(
         &self,
-        player: usize,
+        player: PlayerId,
         ids: &[i32],
     ) -> Result<Option<Vec<i32>>, GenieError> {
         let computer = self.players.player(player)?.computer;
@@ -322,7 +318,7 @@ impl World {
     /// A player the world does not hold.
     pub(crate) fn unload_check(
         &self,
-        player: usize,
+        player: PlayerId,
         ids: &[i32],
         flag: u8,
         named: i32,
@@ -333,10 +329,10 @@ impl World {
             .take(if computer { 500 } else { 60 })
             .copied()
             .collect();
-        let tied = |owner: usize| {
+        let tied = |owner: PlayerId| {
             self.mutual_allies(owner, player)
                 && match flag {
-                    1 => usize::try_from(named) == Ok(player),
+                    1 => usize::try_from(named) == Ok(player.index()),
                     3..=6 => self.place(named).is_some_and(|p| p.player() == player),
                     _ => false,
                 }
@@ -361,10 +357,10 @@ impl World {
     /// `FUN_1416642c0` with the ally flag: players `a` and `b` each count the other as its own
     /// or allied ([`crate::unit_ai::task_finder::allied`] on each one's relations); not for a
     /// player the world lacks.
-    pub(crate) fn mutual_allies(&self, a: usize, b: usize) -> bool {
-        let allied = |from: usize, to: usize| {
+    pub(crate) fn mutual_allies(&self, a: PlayerId, b: PlayerId) -> bool {
+        let allied = |from: PlayerId, to: PlayerId| {
             self.players
-                .get(from)
+                .get(from.index())
                 .is_some_and(|p| crate::unit_ai::task_finder::allied(&p.relations, from, to, true))
         };
         allied(a, b) && allied(b, a)
@@ -379,7 +375,7 @@ impl World {
     /// Slot 0x68 with the master's standing sprite (`+0x470`): the unit's top speed is the
     /// sprite's ([`crate::movement::Mover::shows_standing`]), and the sprite itself where the
     /// slice holds it.
-    pub(crate) fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn standing_sprite(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         let master = self.players.live(p, idx)?.life.master_id;
         let standing = self.master(p, master)?.standing_sprite;
         let shown = self.graphics.get(&standing).copied();

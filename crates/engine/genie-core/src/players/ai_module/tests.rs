@@ -3,6 +3,7 @@ use crate::math::rng::Well512;
 use crate::movement::explore::Area;
 use crate::movement::explore::InfluenceMap;
 use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::players::ai_module::search::{DEAD_END, EXPLORED, PUNTED, UNEXPLORED};
 use crate::players::ai_module::{
     AiModule, AiModules, InfoModule, SLOTS, SearchArea, SearchUnit, TacticalModule,
@@ -66,17 +67,17 @@ fn a_slot_past_the_saved_words_or_the_slots_is_minus_one() {
 #[test]
 fn the_table_holds_a_module_by_player() {
     let mut t = AiModules::default();
-    assert!(t.get(3).is_none());
-    t.set(3, module());
-    assert!(t.get(3).is_some());
-    assert!(t.get(2).is_none());
-    t.get_mut(3).unwrap().info.explorer = None;
+    assert!(t.get(PlayerId::new(3)).is_none());
+    t.set(PlayerId::new(3), module());
+    assert!(t.get(PlayerId::new(3)).is_some());
+    assert!(t.get(PlayerId::new(2)).is_none());
+    t.get_mut(PlayerId::new(3)).unwrap().info.explorer = None;
 }
 
 #[test]
 fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
     use crate::vision::visibility::{Visibility, VisibleMap};
-    let mut t = crate::world::World::new(0, 1, 0, vec![0; 3], Vec::new());
+    let mut t = crate::world::World::new(0, 1, PlayerId::new(0), vec![0; 3], Vec::new());
     let n = 16 * 16;
     let mut v = Visibility::new(
         16,
@@ -93,17 +94,23 @@ fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
         0,
         vec![false, true, false],
     );
-    assert_eq!(v.explore(1, 3, 2, 0, false), Ok(1));
-    assert_eq!(v.explore(2, 5, 5, 0, false), Ok(1));
+    assert_eq!(v.explore(PlayerId::new(1), 3, 2, 0, false), Ok(1));
+    assert_eq!(v.explore(PlayerId::new(2), 5, 5, 0, false), Ok(1));
     t.spatial.sight = Some(v);
     let mut m = module();
     m.info.width = 16;
     m.info.height = 16;
     m.info.path_map = InfluenceMap::new([16, 16], 0xff);
-    t.ai.set(1, m);
+    t.ai.set(PlayerId::new(1), m);
     assert!(t.take_sight_unsupported().is_none());
-    assert_eq!(t.ai.get(1).unwrap().info.path_map.get(3, 2), Some(0));
-    assert_eq!(t.ai.get(1).unwrap().info.path_map.get(5, 5), Some(0xff));
+    assert_eq!(
+        t.ai.get(PlayerId::new(1)).unwrap().info.path_map.get(3, 2),
+        Some(0)
+    );
+    assert_eq!(
+        t.ai.get(PlayerId::new(1)).unwrap().info.path_map.get(5, 5),
+        Some(0xff)
+    );
 }
 
 /// A map of `size` by `size` tiles for the search: what it sees now, which tiles are in the

@@ -14,6 +14,7 @@ use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::UnitAi;
 use crate::world::{BUILDING_COST, Gate, World};
 
@@ -24,14 +25,14 @@ impl World {
     /// paid). Its id and position.
     pub(crate) fn found(
         &mut self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         position: [f32; 3],
     ) -> Result<(i32, [f32; 3]), GenieError> {
         let unit_ai = self.master(player, master)?.unit_ai_type(master);
         let made = self.make_building(player, master, Ok(unit_ai), position)?;
         let cost = self.master(player, master)?.cost.clone();
-        let owner = &mut self.players[player];
+        let owner = &mut self.players[player.index()];
         for &(resource, amount, paid) in &cost {
             let slot = usize::try_from(resource)
                 .ok()
@@ -52,11 +53,11 @@ impl World {
     /// in attribute 247 (slot 0xf8).
     pub(super) fn building_combat_setup(
         &mut self,
-        player: usize,
+        player: PlayerId,
         master: i16,
     ) -> Result<(), GenieError> {
         if let Some(m) = player_master(&self.masters, player, master) {
-            count_class(&mut self.players[player].attributes, m, 1.0);
+            count_class(&mut self.players[player.index()].attributes, m, 1.0);
         }
         let _ = self.streams.get(Stream::Object).rand15();
         if let Some(m) = player_master(&self.masters, player, master)
@@ -68,7 +69,7 @@ impl World {
                 .filter(|&&(resource, _, paid)| 0 <= resource && paid)
                 .map(|&(_, amount, _)| i32::from(amount))
                 .sum();
-            self.players[player].add_attribute(BUILDING_COST, paid as f32)?;
+            self.players[player.index()].add_attribute(BUILDING_COST, paid as f32)?;
         }
         Ok(())
     }
@@ -78,14 +79,14 @@ impl World {
     /// building holds (`FUN_141193710`; none: −1 and 0).
     pub(super) fn building_storage(
         &mut self,
-        player: usize,
+        player: PlayerId,
         master: i16,
     ) -> Result<(i16, f32), GenieError> {
         let storage = player_master(&self.masters, player, master)
             .map(|m| m.storage.clone())
             .unwrap_or_default();
         let mut held = (-1, 0.0);
-        let owner = &mut self.players[player];
+        let owner = &mut self.players[player.index()];
         for &(kind, amount, flag) in &storage {
             if flag == 0 && kind != -1 {
                 held = (kind, amount);
@@ -128,7 +129,7 @@ impl World {
     #[track_caller]
     pub(crate) fn make_building(
         &mut self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         unit_ai: Result<Option<u32>, GenieError>,
         position: [f32; 3],
@@ -152,7 +153,7 @@ impl World {
         let ai = ai.unwrap_or_else(|e| {
             // the constructor's draws are unknown, so the turn player's are too
             crate::trace::player_unsupported(self.ticks, self.player_turn, &e);
-            let turn = &mut self.players[self.player_turn];
+            let turn = &mut self.players[self.player_turn.index()];
             let at = turn.objects.len();
             let _ = turn.unsupported.get_or_insert((self.ticks, at, e));
             turn.stopped = true;
@@ -234,7 +235,7 @@ impl World {
         let desolid = 0 < made.build_time
             && !matches!(made.class, class::CLASS_51 | class::CLASS_54)
             && progress == 0.0;
-        let owner = &mut self.players[player];
+        let owner = &mut self.players[player.index()];
         owner.objects.push(Unit {
             id,
             footprint_waits: 0,
@@ -364,7 +365,7 @@ impl World {
     /// tracker's pending lists), its place, a foundation's terrain and its footprint.
     fn settle_building(
         &mut self,
-        player: usize,
+        player: PlayerId,
         id: i32,
         made: &Master,
         (position, desolid): ([f32; 3], bool),
@@ -387,7 +388,7 @@ impl World {
     /// tiles keep their links, as an annex's do).
     pub(crate) fn link_annex(
         &mut self,
-        player: usize,
+        player: PlayerId,
         id: i32,
         aid: i32,
         made: &Master,

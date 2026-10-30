@@ -19,6 +19,7 @@ use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::players::PlayerId;
 use crate::world::step::Step;
 use std::collections::BTreeMap;
 
@@ -194,7 +195,7 @@ impl Attack {
                 "an Attack of a unit other than a villager whose target died",
             ));
         }
-        if f.victim.player != 0 {
+        if f.victim.player != PlayerId::new(0) {
             return Err(GenieError::unsupported(
                 "a villager's Attack whose player-owned target died (its unit AI forgets it)",
             ));
@@ -241,7 +242,7 @@ impl Attack {
                 AiOrder::Idle => true,
                 AiOrder::Order(_) => !r.queue_empty,
             };
-            if f.own.player == 0 || gives_up {
+            if f.own.player == PlayerId::new(0) || gives_up {
                 return self.out_of_sight(c, unit, f, r).map(Some);
             }
             if self.state != GOTO_SEEN {
@@ -269,7 +270,7 @@ impl Attack {
         // the Attack took it (+0x9f)
         let spared = matches!(f.victim.class, class::LIVESTOCK | class::FARM) && self.same_owner;
         let rng = c.w.streams.get(Stream::Sprite);
-        if alive && f.own.player != 0 && !spared && f.victim.allied[0] {
+        if alive && f.own.player != PlayerId::new(0) && !spared && f.victim.allied[0] {
             self.finish(unit, rng)?;
             if !self.sub_action {
                 unit.post_own(0x1fb, [600, self.target, 0])?;
@@ -407,7 +408,11 @@ impl Attack {
             self.ready(unit, &mut c.w.attack_ground(), f, r)?;
             return Ok(0);
         }
-        if self.state == GOTO_SEEN && f.own.player != 0 && SEEN_RANGE <= self.range && !r.computer {
+        if self.state == GOTO_SEEN
+            && f.own.player != PlayerId::new(0)
+            && SEEN_RANGE <= self.range
+            && !r.computer
+        {
             self.enter(GOTO_POINT, unit)?;
             self.range = f.own.source.weapon_range;
             self.goto_point(unit, r, &c.w.graphics)?;

@@ -159,7 +159,7 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )?;
         let me_at =
             c.w.spatial
@@ -173,12 +173,12 @@ impl Unit {
                     master,
                     player: c.player,
                     held: (self.life.attribute_type, self.life.amount),
-                    attribute_95: c.w.players[c.player]
+                    attribute_95: c.w.players[c.player.index()]
                         .attributes
                         .get(95)
                         .copied()
                         .unwrap_or(0.0),
-                    civ: c.w.players[c.player].civ,
+                    civ: c.w.players[c.player.index()].civ,
                 };
                 Some(crate::gathering::hunt::DropOff {
                     takes: crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, s.master, &actor),
@@ -193,7 +193,7 @@ impl Unit {
             None => None,
         };
         let who = crate::gathering::hunt::PointWalker {
-            computer: c.w.players[c.player].computer,
+            computer: c.w.players[c.player.index()].computer,
             villager: master.class == class::VILLAGER,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
@@ -253,10 +253,10 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )?;
         let who = crate::gathering::hunt::PointWalker {
-            computer: c.w.players[c.player].computer,
+            computer: c.w.players[c.player.index()].computer,
             villager: master.class == class::VILLAGER,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };

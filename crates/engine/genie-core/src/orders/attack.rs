@@ -6,6 +6,7 @@ use crate::gathering::hunt::HuntRetarget;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::PlayerId;
 use crate::world::slots::PlayerSlots;
 
 use crate::unit_ai::ActionKind;
@@ -15,7 +16,7 @@ use crate::world::World;
 /// Where an attack task's target aims ([`World::attack_aim`]).
 pub(super) struct Aim {
     /// The target's owner.
-    pub(super) owner: usize,
+    pub(super) owner: PlayerId,
     /// The target's master's class and fog visibility.
     pub(super) class: ClassId,
     pub(super) fog_visibility: u8,
@@ -42,7 +43,7 @@ impl World {
     /// not held; a task range other than 0 is not modelled.
     pub(super) fn start_attack(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
@@ -81,7 +82,7 @@ impl World {
         let reads = AttackReads::of(
             u,
             master,
-            (self.masters.get(player), &self.graphics),
+            (self.masters.get(player.index()), &self.graphics),
             u.ai.as_ref(),
             (self.players.player(player)?.computer, world_time),
         );
@@ -133,7 +134,7 @@ impl World {
             engagement: &e,
             arms,
             visible,
-            target_owner: aim.owner,
+            target_owner: aim.owner.index(),
             ready,
         };
         let (mut attack, posted) =
@@ -186,7 +187,7 @@ impl World {
     /// cleared with `clears`) and the order history.
     pub(super) fn attack_notifies(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (target, aim): (i32, &Aim),
         point: [f32; 3],
@@ -224,7 +225,7 @@ impl World {
     /// starts over.
     pub(super) fn retarget_hunt(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<(), GenieError> {
@@ -292,7 +293,7 @@ impl World {
     /// [`World::take`]) unless `quiet`. Returns the action's target id (`+0x30`) after it.
     pub(crate) fn retarget_action(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         old: i32,
         new: i32,

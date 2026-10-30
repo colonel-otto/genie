@@ -13,6 +13,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
 use genie_diff::Diff;
@@ -187,7 +188,7 @@ pub struct Placed {
     /// The master's class (`+0x410`, decoded): the motion step treats gates (39) apart.
     pub class: ClassId,
     /// The owning player.
-    pub player: usize,
+    pub player: PlayerId,
     /// The master's id.
     pub master: i16,
     /// The master's `obstruction_type` (`+0x651`), whether or not the object has its record yet.
@@ -468,7 +469,7 @@ impl Tiles {
 
     /// A static record marks the tiles it covers that no player marked yet.
     fn mark(&mut self, p: &Placed, o: Obstruction) {
-        let player = p.player as u64;
+        let player = p.player.index() as u64;
         let mut bits =
             ((player << 8 | u64::from(o.class & 0x3f) | 0x40) << 8) | (0x80_0000 << player);
         if o.class == 5 {
@@ -488,7 +489,7 @@ impl Tiles {
     /// where another object (its centre on the tile) holds a static record (`static_record`:
     /// kind 0, 1, 2, 11 or 13), the rest stays as it is and the planners hear nothing (false).
     fn unmark(&mut self, p: &Placed, me: i32, static_record: impl Fn(i32) -> bool) -> bool {
-        let own = 1u64 << p.player;
+        let own = 1u64 << p.player.get();
         for i in self.covered_indices(p) {
             if self
                 .lists
@@ -561,7 +562,7 @@ pub struct Spatial {
     /// What the walk reads of the moving objects it meets ([`Gait`]).
     gaits: BTreeMap<i32, Gait>,
     /// Each player's scout map (`player+0x1370`, `mIsScoutMapEnabled` `+0x1368`), once made.
-    scout_maps: BTreeMap<usize, crate::movement::explore::InfluenceMap>,
+    scout_maps: BTreeMap<PlayerId, crate::movement::explore::InfluenceMap>,
     /// Each annex's main building (`+0xbb8`), which the walk's avoidance takes for the annex.
     annexes: BTreeMap<i32, i32>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.

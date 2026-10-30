@@ -9,6 +9,7 @@ use crate::objects::masters::Master;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
+use crate::players::PlayerId;
 use crate::unit_ai::world_view::{OwnerView, UnitView, changed_view};
 use crate::unit_ai::{AfterOrder, Surroundings, UnitAi};
 use crate::world::others::OthersRef;
@@ -49,7 +50,7 @@ impl Unit {
             )
             && c.w
                 .masters
-                .get(q)
+                .get(q.index())
                 .is_some_and(|m| m.get(self.life.master_id).is_some())
         {
             self.take_by_sight(c, q)?;
@@ -93,7 +94,7 @@ impl Unit {
         c: &Step<'_>,
         view: &OwnerView,
         (master, class): (Option<&Master>, Option<ClassId>),
-        (player, busy, interruptible): (usize, bool, bool),
+        (player, busy, interruptible): (PlayerId, bool, bool),
     ) -> Result<Surroundings, GenieError> {
         Ok(Surroundings {
             position: self.position(),
@@ -168,16 +169,24 @@ impl Unit {
                     .map_or_else(|| self.position(), |m| m.moved_at);
                 [x, height, y]
             },
-            dodge_chance: c.w.players.get(player).map_or(0, |q| q.dodge_chance),
+            dodge_chance: c
+                .w
+                .players
+                .get(player.index())
+                .map_or(0, |q| q.dodge_chance),
             keep_distance_chance: c
                 .w
                 .players
-                .get(player)
+                .get(player.index())
                 .map_or(0, |q| q.keep_distance_chance),
             disable_tower_priority: view.ai_settings.disable_tower_priority,
             guest_computer: self.garrison.iter().any(|&g| {
                 c.w.spatial.get(g).is_some_and(|p| {
-                    p.player != player && c.w.players.get(p.player).is_some_and(|q| q.computer)
+                    p.player != player
+                        && c.w
+                            .players
+                            .get(p.player.index())
+                            .is_some_and(|q| q.computer)
                 })
             }),
         })
@@ -201,7 +210,7 @@ impl Unit {
         c: &mut Step<'_>,
         view: &OwnerView,
         attacker: crate::unit_ai::Attacker,
-        (player, computer): (usize, bool),
+        (player, computer): (PlayerId, bool),
         f: impl FnOnce(&mut UnitAi, &mut UnitView<'_, '_>, &mut Well512) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let mut ai = self.ai.take().ok_or(NO_UNIT_AI)?;
@@ -346,7 +355,7 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )
         .ok();
         let class = master.map(|ms| ms.class);
@@ -355,10 +364,10 @@ impl Unit {
         let (turn, player, computer) = match captured {
             Some(k) if k.main => (
                 (k.new == c.w.player_turn)
-                    .then(|| c.w.player_time.get(k.new).copied())
+                    .then(|| c.w.player_time.get(k.new.index()).copied())
                     .flatten(),
                 k.new,
-                c.w.players.get(k.new).is_some_and(|q| q.computer),
+                c.w.players.get(k.new.index()).is_some_and(|q| q.computer),
             ),
             _ => (c.turn, c.player, c.w.players.player(c.player)?.computer),
         };
@@ -428,7 +437,7 @@ impl Unit {
     fn ai_target(
         &self,
         c: &Step<'_>,
-        viewer: usize,
+        viewer: PlayerId,
     ) -> Result<Option<crate::unit_ai::Seen>, GenieError> {
         match self.ai.as_ref().map(|ai| ai.current_target) {
             None | Some(-1) => Ok(None),

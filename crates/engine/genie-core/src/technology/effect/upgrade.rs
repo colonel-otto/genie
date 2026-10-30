@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::objects::masters::ids::{RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
 use crate::objects::masters::{ClassId, Master, master_type, player_master};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::technology::EffectCommand;
 use crate::technology::effect::kind;
 use crate::world::World;
@@ -26,7 +27,7 @@ impl World {
     /// are not held).
     pub(super) fn upgrade_master(
         &mut self,
-        p: usize,
+        p: PlayerId,
         from: i16,
         to: i16,
         mode: i16,
@@ -54,13 +55,13 @@ impl World {
     /// 0xa8, their graphics' loading, is not simulation).
     pub(crate) fn upgrade_objects(
         &mut self,
-        p: usize,
+        p: PlayerId,
         from: i16,
         to: i16,
         mode: i16,
         object: Option<i32>,
     ) -> Result<(), GenieError> {
-        let Some(masters) = self.masters.get(p) else {
+        let Some(masters) = self.masters.get(p.index()) else {
             return Ok(());
         };
         let (Some(old), Some(new)) = (masters.get(from), masters.get(to)) else {
@@ -92,7 +93,7 @@ impl World {
         self.track_move_upgraded(p, from, to)?;
         if keep
             && old.kind == new.kind
-            && let Some(m) = self.masters.checked_mut(p)?.get_mut(from)
+            && let Some(m) = self.masters.checked_mut(p.index())?.get_mut(from)
         {
             m.copy_from(&new);
         }
@@ -102,7 +103,7 @@ impl World {
     /// Mode 2's own part of [`World::upgrade_objects`]: the object `id` gets a master of its own
     /// (a copy of the one it reads) where its kind lets it, takes slot 0x98 to `new` and copies
     /// `new` into its own master.
-    fn upgrade_named(&mut self, p: usize, id: i32, new: &Master) -> Result<(), GenieError> {
+    fn upgrade_named(&mut self, p: PlayerId, id: i32, new: &Master) -> Result<(), GenieError> {
         use crate::technology::upgrade::upgradable;
         if let Some(place) = self.place(id) {
             let u = self.object_at(place)?;
@@ -123,7 +124,7 @@ impl World {
     /// `from`'s id); `masters` holds the table's old and new masters and the dead unit master.
     fn upgrade_walk(
         &mut self,
-        p: usize,
+        p: PlayerId,
         (from, mode, keep): (i16, i16, bool),
         Masters { old, new, dead }: Masters<'_>,
     ) -> Result<(), GenieError> {
@@ -163,7 +164,7 @@ impl World {
     }
 
     /// The upgrades to 0x67f and 0x6a1 move the tracker's list of `from` (`FUN_14104fd10`).
-    fn track_move_upgraded(&mut self, p: usize, from: i16, to: i16) -> Result<(), GenieError> {
+    fn track_move_upgraded(&mut self, p: PlayerId, from: i16, to: i16) -> Result<(), GenieError> {
         if matches!(to, 0x67f | 0x6a1) {
             self.track_move_all(p, from, to)?;
         }
@@ -171,7 +172,7 @@ impl World {
     }
 
     /// The master object `u` of player `p` reads: its own, else its player's.
-    pub(super) fn master_read(&self, p: usize, u: &Unit) -> Result<Master, GenieError> {
+    pub(super) fn master_read(&self, p: PlayerId, u: &Unit) -> Result<Master, GenieError> {
         u.own_master
             .as_deref()
             .map_or_else(|| u.master(&self.masters, p).cloned(), |m| Ok(m.clone()))
@@ -183,7 +184,7 @@ impl World {
     /// 40, 70 or 80, from its player's table; its slot 0xa8, the graphics, is not simulation).
     pub(super) fn own_and_dead_master(
         &mut self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         old: &Master,
     ) -> Result<(), GenieError> {
@@ -213,7 +214,7 @@ impl World {
     /// 0x318's spawns are not simulation.
     pub(super) fn spawn_at(
         &mut self,
-        p: usize,
+        p: PlayerId,
         master: i16,
         at: i16,
         count: i16,
@@ -221,10 +222,14 @@ impl World {
         let has = |q: usize, id: i16| self.masters.get(q).is_some_and(|m| m.get(id).is_some());
         let building =
             player_master(&self.masters, p, at).is_some_and(|m| m.kind == master_type::BUILDING);
-        if !building || !(has(p, master) || has(0, master)) || count <= 0 {
+        if !building || !(has(p.index(), master) || has(0, master)) || count <= 0 {
             return Ok(());
         }
-        let owner = if has(p, master) { p } else { 0 };
+        let owner = if has(p.index(), master) {
+            p
+        } else {
+            PlayerId::GAIA
+        };
         let attribute =
             |q: &crate::world::Player, i: usize| q.attributes.get(i).copied().unwrap_or(0.0);
         let limit = attribute(self.players.player(p)?, 234) as i32;
@@ -310,7 +315,7 @@ impl World {
     /// `unit − 900`, every master of it by id. Only a master from type 70 on has costs. The game
     /// scans four entries, the fourth past the three (not modelled); the slice holds the entries
     /// of a resource only, so an added one goes after them.
-    pub(super) fn cost_entries(&mut self, p: usize, unit: i16, attribute: i16, how: i32) {
+    pub(super) fn cost_entries(&mut self, p: PlayerId, unit: i16, attribute: i16, how: i32) {
         let resource = match attribute {
             103 => 0,
             104 => 1,
@@ -321,7 +326,7 @@ impl World {
         if how != -2 && how != -1 {
             return;
         }
-        let Some(masters) = self.masters.get_mut(p) else {
+        let Some(masters) = self.masters.get_mut(p.index()) else {
             return;
         };
         let class = (900..1000)

@@ -17,6 +17,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
+use crate::players::PlayerId;
 use crate::world::step::Step;
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
@@ -56,7 +57,7 @@ pub struct HuntStart<'a> {
     /// The target.
     pub target: &'a Quarry,
     /// The owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// The owner's type test (`FUN_141659cf0`).
     pub computer: bool,
     /// The game settings' test `FUN_141302150`.
@@ -74,7 +75,7 @@ pub struct HuntRetarget<'a> {
     /// The work command's new target.
     pub target: &'a Quarry,
     /// The owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// What the hunter carries, and what its `MoveTo`s' constructors read of it.
     pub walks: Walks<'a>,
     /// The target is a drop site of the hunter's master.
@@ -89,7 +90,7 @@ pub struct HuntMove<'a> {
     /// The move's point.
     pub point: [f32; 3],
     /// The owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// What the hunter carries, and what its `MoveTo`s' constructors read of it.
     pub walks: Walks<'a>,
     /// The target is a drop site of the hunter's master.
@@ -180,7 +181,7 @@ impl HuntAction {
     pub(crate) fn chase(
         &mut self,
         target: &Quarry,
-        player: usize,
+        player: PlayerId,
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,

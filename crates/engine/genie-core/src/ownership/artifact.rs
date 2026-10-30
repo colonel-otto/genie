@@ -17,6 +17,7 @@ use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -50,7 +51,7 @@ pub enum Handover {
     /// `FUN_140aab570`), its sub-actions gone ([`Artifact::drop_sub_actions`]).
     Taken {
         /// The player that takes it.
-        new: usize,
+        new: PlayerId,
         /// The sub-actions that went.
         gone: SubActionsGone,
     },
@@ -374,7 +375,7 @@ impl Artifact {
     pub fn step(
         &mut self,
         dt_ms: u32,
-        owner: Option<usize>,
+        owner: Option<PlayerId>,
     ) -> Result<Option<Handover>, GenieError> {
         match self.state {
             CHECK => {
@@ -544,10 +545,10 @@ impl Unit {
             Some(Handover::ToGaia) => {
                 let class = self.placed_class(c)?;
                 self.capture_stop(c, class)?;
-                let main = self.change_owner(c, 0)?;
+                let main = self.change_owner(c, PlayerId::GAIA)?;
                 let building = std::mem::take(&mut c.building_handover);
                 Ok((main || building).then(|| Captured {
-                    new: 0,
+                    new: PlayerId::new(0),
                     main,
                     also: Vec::new(),
                     building,
@@ -716,11 +717,11 @@ mod tests {
         // the check that finds an owner deletes it too
         let mut c = Artifact::new(false, None);
         c.enter = Some(e);
-        let found = c.step(50, Some(2)).unwrap();
+        let found = c.step(50, Some(PlayerId::new(2))).unwrap();
         assert_eq!(
             found,
             Some(Handover::Taken {
-                new: 2,
+                new: PlayerId::new(2),
                 gone: by_enter
             })
         );
@@ -784,12 +785,12 @@ mod tests {
     #[test]
     fn a_check_that_finds_a_new_owner_hands_the_animal_over_and_stays_a_check() {
         let mut a = Artifact::new(true, None);
-        let found = a.step(50, Some(2)).unwrap();
+        let found = a.step(50, Some(PlayerId::new(2))).unwrap();
         assert_eq!(
             (found, a.state),
             (
                 Some(Handover::Taken {
-                    new: 2,
+                    new: PlayerId::new(2),
                     gone: SubActionsGone::default()
                 }),
                 6
@@ -841,11 +842,11 @@ mod tests {
         a.goal = Some([5.0, 6.0, 0.0]);
         a.target = 9149;
         a.move_to = Some(to_object(9149, MoveTo::Moving));
-        let found = a.step(50, Some(1)).unwrap();
+        let found = a.step(50, Some(PlayerId::new(1))).unwrap();
         assert_eq!(
             found,
             Some(Handover::Taken {
-                new: 1,
+                new: PlayerId::new(1),
                 gone: SubActionsGone {
                     stops: true,
                     released: None
@@ -991,7 +992,7 @@ mod tests {
         Releaser {
             id: 9177,
             class: Some(class::VILLAGER),
-            player: 1,
+            player: PlayerId::new(1),
         }
     }
 
@@ -1219,7 +1220,8 @@ mod tests {
             .unwrap();
         assert_eq!(lost.move_to.map(|m| m.target), Some(-1));
         // a target that died (state 7) is let go, and the walk ends at once (code 5)
-        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default()).holding(600, 1);
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default())
+            .holding(600, PlayerId::new(1));
         if let Some(u) = rig.t.players[1].objects.last_mut() {
             u.life.state = 7;
         }
@@ -1242,8 +1244,8 @@ mod tests {
     #[test]
     fn an_ended_walk_lets_the_target_go() {
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default())
-            .holding(9149, 1)
-            .holding(77, 1);
+            .holding(9149, PlayerId::new(1))
+            .holding(77, PlayerId::new(1));
         let mut a = Artifact::new(false, None);
         a.target = 9149;
         a.goal = Some([1.0, 1.0, 0.0]);
@@ -1251,7 +1253,7 @@ mod tests {
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         assert_eq!(
-            (a.target, a.goal, rig.workers(9149, 1)),
+            (a.target, a.goal, rig.workers(9149, PlayerId::new(1))),
             (-1, None, Some(0))
         );
         assert_eq!(rig.posted(), vec![]);
@@ -1266,7 +1268,10 @@ mod tests {
             crate::unit_ai::ACTION_FAILED,
             [ActionKind::Move.value(), 0, 0],
         );
-        assert_eq!((rig.workers(77, 1), rig.posted()), (Some(0), vec![failed]));
+        assert_eq!(
+            (rig.workers(77, PlayerId::new(1)), rig.posted()),
+            (Some(0), vec![failed])
+        );
         // nothing walking: nothing more
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
@@ -1289,17 +1294,19 @@ mod tests {
             &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
         );
         e = e.walking(MoveTo::Moving);
-        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default()).holding(11970, 1);
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default())
+            .holding(11970, PlayerId::new(1));
         rig.mover_mut().animated.speed = 1.0;
         let mut b = Artifact::new(false, None);
         b.enter = Some(e);
-        let found = b.step(50, Some(2)).unwrap();
-        let Some(Handover::Taken { new: 2, gone }) = found else {
+        let found = b.step(50, Some(PlayerId::new(2))).unwrap();
+        let Some(Handover::Taken { new, gone }) = found else {
             panic!("a handover to player 2: {found:?}");
         };
+        assert_eq!(new, PlayerId::new(2));
         rig.run(50, |c, u, _, _| let_go_gone(c, u, gone, by()))
             .unwrap();
         assert_eq!(rig.mover().animated.speed, 0.0);
-        assert_eq!(rig.workers(11970, 1), Some(0));
+        assert_eq!(rig.workers(11970, PlayerId::new(1)), Some(0));
     }
 }

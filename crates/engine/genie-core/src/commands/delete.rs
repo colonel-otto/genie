@@ -67,19 +67,19 @@ impl World {
     ///
     /// What the deletes do not model.
     pub(crate) fn delete(&mut self, player: PlayerId, id: ObjectId) -> Result<(), GenieError> {
-        let player = player.index();
         let id = id.get();
         let Some((owner, unit)) = self.object(id) else {
             return Ok(());
         };
-        let mutual =
-            |a: usize, b: usize| self.spatial.allied_with(a, b) && self.spatial.allied_with(b, a);
+        let mutual = |a: PlayerId, b: PlayerId| {
+            self.spatial.allied_with(a, b) && self.spatial.allied_with(b, a)
+        };
         // The buildings' master type, whose slot 0x8b8 is the building's.
         // The first master type whose slot 0xd0 is the action object's (`FUN_14106c420`), and the
         // TRIBE combat objects' type, whose slot 0xa0 is `FUN_14121cc40`.
         // A player's game status once it lost (`+0x89`).
         // A town centre's master whose delete also tells the world's `+0x820` (`FUN_1414615d0`).
-        let lost_ally = self.players[owner].game_status == LOST && mutual(player, owner);
+        let lost_ally = self.players[owner.index()].game_status == LOST && mutual(player, owner);
         if owner != player && !self.settings.cheats_enabled && !lost_ally {
             return Ok(());
         }
@@ -167,7 +167,7 @@ impl World {
     /// livestock holding some, else `FUN_14118f580`: a sleeping unit wakes to the end of its
     /// player's live list and its hit points go to 0. Not held: the deleted mark, the killer
     /// (`+0x690`, its owner) and the special-object list (`+0x30c` bit 0).
-    fn delete_unit(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    fn delete_unit(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
         let (_, unit) = self.object(id).ok_or_else(|| object_gone(id))?;
         let class = unit.master(&self.masters, owner)?.class;
         if UNDELETABLE.contains(&class) {
@@ -179,7 +179,7 @@ impl World {
             return Ok(());
         }
         let i = self.wake(id)?;
-        self.players[owner].objects[i].life.hp = 0.0;
+        self.players[owner.index()].objects[i].life.hp = 0.0;
         Ok(())
     }
 
@@ -193,7 +193,7 @@ impl World {
     /// zones first ([`World::clear_treaty_zones`]). Not held: the deleted marks (`+0xa0c`, `+0xc`, `+0xb9c`), the
     /// semi-asleep list (`+0xc98`), the killer (`+0x690`) and a computer player's AI event (slot
     /// 0x380).
-    fn delete_building(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    fn delete_building(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
         let (_, unit) = self.object(id).ok_or_else(|| object_gone(id))?;
         let master = unit.master(&self.masters, owner)?;
         if master.id == TOWN_CENTRE_621 {
@@ -206,7 +206,7 @@ impl World {
     /// construction start's clearing ([`World::clear_foundations_under`]): the building wakes,
     /// a foundation's paid cost comes back by the share its build time has still to go, its hit
     /// points go to 0 and a desolid foundation is destroyed at once.
-    pub(crate) fn remove_building(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn remove_building(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
         let (_, unit) = self.object(id).ok_or(GenieError::unsupported(
             "a removed building the slice does not hold",
         ))?;
@@ -230,12 +230,13 @@ impl World {
         if 0.0 < share {
             for (resource, amount, paid) in cost {
                 if 0 <= resource && paid {
-                    self.players[owner].add_attribute(resource, f32::from(amount) * share)?;
+                    self.players[owner.index()]
+                        .add_attribute(resource, f32::from(amount) * share)?;
                 }
             }
         }
         let i = self.wake(id)?;
-        self.players[owner].objects[i].life.hp = 0.0;
+        self.players[owner.index()].objects[i].life.hp = 0.0;
         if state < 2 && desolid {
             self.destroy_foundation(owner, id)?;
         }
@@ -243,7 +244,7 @@ impl World {
     }
 
     /// A foundation's destroy (slot 0xd0, [`World::destroy`]) from its delete.
-    fn destroy_foundation(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    fn destroy_foundation(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
         self.destroy(owner, id)
     }
 
@@ -261,7 +262,7 @@ impl World {
     /// # Errors
     ///
     /// An object the slice does not hold, and what the parts do not model.
-    pub(crate) fn destroy(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn destroy(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
         let (_, u) = self
             .object(id)
             .ok_or(crate::construction::build::NOT_HELD)?;
@@ -307,7 +308,7 @@ impl World {
 
     /// `FUN_1416597e0(owner, 0)`: the owner's tracker files a town centre the world holds
     /// ([`World::town_centre_at`]).
-    fn has_town_centre(&self, owner: usize) -> bool {
+    fn has_town_centre(&self, owner: PlayerId) -> bool {
         self.town_centre_at(owner, 0).is_some()
     }
 
@@ -316,7 +317,7 @@ impl World {
     /// [`World::set_state`]). An object inside another would leave it first (slot 0x1a8): not
     /// modelled. Not held: the special-object list (`+0x30c` bit 0, `FUN_141677380`) and the log
     /// line.
-    pub(crate) fn base_destroy(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn base_destroy(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
         let (_, u) = self
             .object(id)
             .ok_or(crate::construction::build::NOT_HELD)?;
@@ -329,7 +330,7 @@ impl World {
             ));
         }
         let i = self.wake(id)?;
-        self.players[owner].objects[i].life.hp = 0.0;
+        self.players[owner.index()].objects[i].life.hp = 0.0;
         self.set_state(owner, id, 7)
     }
 
@@ -342,7 +343,12 @@ impl World {
     /// # Errors
     ///
     /// What the parts do not model.
-    pub(crate) fn set_state(&mut self, owner: usize, id: i32, new: u8) -> Result<(), GenieError> {
+    pub(crate) fn set_state(
+        &mut self,
+        owner: PlayerId,
+        id: i32,
+        new: u8,
+    ) -> Result<(), GenieError> {
         let (_, u) = self.object(id).ok_or(GenieError::unsupported(
             "a set_state of an object the slice does not hold",
         ))?;
@@ -363,7 +369,7 @@ impl World {
     /// `set_state`); any other goes to the combat object's ([`World::combat_set_state`]).
     fn building_set_state(
         &mut self,
-        owner: usize,
+        owner: PlayerId,
         id: i32,
         new: u8,
         master: &Master,
@@ -399,7 +405,7 @@ impl World {
     /// least 0); then the base `set_state` ([`World::base_set_state`]).
     fn combat_set_state(
         &mut self,
-        owner: usize,
+        owner: PlayerId,
         id: i32,
         new: u8,
         master: &Master,
@@ -421,7 +427,7 @@ impl World {
         }
         if new == 3 && state == 2 {
             for (kind, amount) in crate::objects::lifecycle::death_parts::refund_of(master, main) {
-                let player = &mut self.players[owner];
+                let player = &mut self.players[owner.index()];
                 player.add_attribute(kind, -amount)?;
                 if player.attributes[kind as usize] < 0.0 {
                     player.attributes[kind as usize] = 0.0;
@@ -442,7 +448,7 @@ impl World {
     /// 6. Not held: the statistics and the scenario's events.
     fn base_set_state(
         &mut self,
-        owner: usize,
+        owner: PlayerId,
         id: i32,
         new: u8,
         master: &Master,
@@ -457,12 +463,12 @@ impl World {
         if 2 < new && old < 3 {
             for &(kind, amount, flag) in &master.storage {
                 if 0 <= kind && matches!(flag, 2 | 16) {
-                    self.players[owner].add_attribute(kind, -amount)?;
+                    self.players[owner.index()].add_attribute(kind, -amount)?;
                 }
             }
             if master.ghost_on_death == crate::vision::ghost::LEAVES_GHOSTS && self.game_state != 2
             {
-                self.ghosts_at_death(owner, id)?;
+                self.ghosts_at_death(owner.index(), id)?;
             }
         }
         if old < 4 && 6 < new {
@@ -477,7 +483,7 @@ impl World {
         if old < 7 && new == 7 {
             for &(kind, amount, flag) in &master.storage {
                 if 0 <= kind && flag == 32 {
-                    self.players[owner].add_attribute(kind, -amount)?;
+                    self.players[owner.index()].add_attribute(kind, -amount)?;
                 }
             }
         }
@@ -495,17 +501,17 @@ impl World {
     /// lowers and its technology follow (as its own update's caller does them).
     fn built_building_dies(
         &mut self,
-        owner: usize,
+        owner: PlayerId,
         id: i32,
         master: &Master,
     ) -> Result<(), GenieError> {
-        let computer = self.players[owner].computer;
+        let computer = self.players[owner.index()].computer;
         let (_, u) = self
             .object_mut(id)
             .ok_or(crate::construction::build::NOT_HELD)?;
         let death = crate::objects::lifecycle::death_parts::built_death(u, master, computer)?;
         for &(kind, amount) in &death.adds {
-            self.players[owner].add_attribute(kind, amount)?;
+            self.players[owner.index()].add_attribute(kind, amount)?;
         }
         self.unwatch(owner, id)?;
         if let (Some(v), Some(at)) = (self.spatial.sight.as_mut(), death.unlink) {
@@ -513,7 +519,7 @@ impl World {
         }
         self.combat_set_state(owner, id, 3, master)?;
         if let Some(kind) = death.building.count {
-            let player = &mut self.players[owner];
+            let player = &mut self.players[owner.index()];
             player.add_attribute(kind, -1.0)?;
             if player.attributes[kind as usize] < 0.0 {
                 player.attributes[kind as usize] = 0.0;
@@ -534,17 +540,17 @@ impl World {
     pub(crate) fn wake(&mut self, id: i32) -> Result<usize, GenieError> {
         Ok(match self.place(id).ok_or_else(|| object_gone(id))? {
             Place::Live(p, i) => {
-                self.players[p].objects[i].life.goto_sleep = false;
+                self.players[p.index()].objects[i].life.goto_sleep = false;
                 i
             }
             Place::Sleeping(p, i) => {
-                let mut woken = self.players[p].sleeping.swap_remove(i)?;
+                let mut woken = self.players[p.index()].sleeping.swap_remove(i)?;
                 woken.life.goto_sleep = false;
                 let (id, master) = (woken.id, woken.life.master_id);
-                self.players[p].objects.push(woken);
+                self.players[p.index()].objects.push(woken);
                 // the remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
                 self.track_relist(p, id.get(), master)?;
-                self.players[p].objects.len() - 1
+                self.players[p.index()].objects.len() - 1
             }
         })
     }
@@ -581,7 +587,7 @@ mod tests {
         let mut t = World::new(
             0,
             1,
-            0,
+            PlayerId::new(0),
             vec![0; 3],
             vec![
                 Player::default(),
@@ -751,7 +757,7 @@ mod clearing_tests {
     }
 
     /// Its place on the map, from its master.
-    fn placed(u: &Unit, m: &Master, player: usize) -> Placed {
+    fn placed(u: &Unit, m: &Master, player: PlayerId) -> Placed {
         Placed {
             position: u.position(),
             radius: m.radius,
@@ -836,7 +842,7 @@ mod clearing_tests {
         let mut t = World::new(
             0,
             1,
-            0,
+            PlayerId::new(0),
             vec![0; 2],
             vec![
                 Player {
@@ -853,11 +859,11 @@ mod clearing_tests {
             ],
         );
         t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
-        for p in 0..2 {
-            let all: Vec<Unit> = t.players[p]
+        for p in PlayerId::each(2) {
+            let all: Vec<Unit> = t.players[p.index()]
                 .objects
                 .iter()
-                .chain(&t.players[p].sleeping)
+                .chain(&t.players[p.index()].sleeping)
                 .cloned()
                 .collect();
             for u in all {
@@ -888,7 +894,8 @@ mod clearing_tests {
             vec![],
         );
         assert_eq!(t.spatial.tiles().list(10, 10), [6084, 6083]);
-        t.clear_footprint(1, 70, [10.5, 10.5], false).unwrap();
+        t.clear_footprint(PlayerId::new(1), 70, [10.5, 10.5], false)
+            .unwrap();
         let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id.get()).collect();
         assert_eq!(ids, [1, 6084, 6083]);
         assert_eq!(t.players[0].sleeping.len(), 0);
@@ -908,7 +915,8 @@ mod clearing_tests {
         corpse.life.class = Class::Animated;
         let mut t = world(vec![], vec![], vec![corpse]);
         t.players[1].attributes[7] = 3.0;
-        t.clear_footprint(1, 70, [10.5, 10.5], false).unwrap();
+        t.clear_footprint(PlayerId::new(1), 70, [10.5, 10.5], false)
+            .unwrap();
         let u = &t.players[1].objects[0];
         assert_eq!((u.life.state, u.life.hp), (7, 0.0));
         assert_eq!(t.players[1].attributes[7], 2.0);
@@ -922,7 +930,8 @@ mod clearing_tests {
         let mut t = world(vec![object(40, 254, 10.5, 10.5)], vec![], vec![]);
         t.players[0].attributes[98] = 5.0;
         assert!(t.spatial.get(40).unwrap().obstruction.is_some());
-        t.clear_footprint(1, 70, [10.5, 10.5], true).unwrap();
+        t.clear_footprint(PlayerId::new(1), 70, [10.5, 10.5], true)
+            .unwrap();
         let u = &t.players[0].objects[0];
         assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
         let p = t.spatial.get(40).unwrap();
@@ -937,7 +946,8 @@ mod clearing_tests {
     #[test]
     fn a_cleared_dead_farm_goes_through_the_building_s_destroy() {
         let mut t = world(vec![], vec![], vec![object(50, 357, 10.5, 10.5)]);
-        t.clear_footprint(1, 70, [10.5, 10.5], false).unwrap();
+        t.clear_footprint(PlayerId::new(1), 70, [10.5, 10.5], false)
+            .unwrap();
         let u = &t.players[1].objects[0];
         assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
     }
@@ -961,26 +971,26 @@ mod clearing_tests {
         t.players[0].attributes[4..8].copy_from_slice(&[10.0, 10.0, 10.0, 10.0]);
         t.players[0].objects[0].life.state = 2;
         // the same state, then a lower one: nothing
-        t.set_state(0, 1, 2).unwrap();
+        t.set_state(PlayerId::new(0), 1, 2).unwrap();
         t.players[0].objects[0].life.state = 5;
-        t.set_state(0, 1, 3).unwrap();
+        t.set_state(PlayerId::new(0), 1, 3).unwrap();
         assert_eq!(t.players[0].objects[0].life.state, 5);
         assert_eq!(at(&t), [10.0; 3]);
         // from 2 to 5: flags 2 and 16 leave, flag 32 stays; then to 7, flag 32 leaves
         t.players[0].objects[0].life.state = 2;
-        t.set_state(0, 1, 5).unwrap();
+        t.set_state(PlayerId::new(0), 1, 5).unwrap();
         assert_eq!(at(&t), [8.0, 7.0, 10.0]);
-        t.set_state(0, 1, 7).unwrap();
+        t.set_state(PlayerId::new(0), 1, 7).unwrap();
         assert_eq!(at(&t), [8.0, 7.0, 9.0]);
         assert_eq!(t.players[0].objects[0].life.state, 7);
         // a sleeper set to 6 sleeps on, one set to 7 wakes
         t.players[0].sleeping[0].life.state = 5;
-        t.set_state(0, 2, 6).unwrap();
+        t.set_state(PlayerId::new(0), 2, 6).unwrap();
         assert_eq!(t.players[0].sleeping.len(), 2);
-        t.set_state(0, 3, 7).unwrap();
+        t.set_state(PlayerId::new(0), 3, 7).unwrap();
         let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id.get()).collect();
         assert_eq!((ids, t.players[0].sleeping.len()), (vec![1, 3], 1));
-        assert!(t.set_state(0, 99, 7).is_err());
+        assert!(t.set_state(PlayerId::new(0), 99, 7).is_err());
     }
 
     /// `FUN_14121cc40`'s refund at a death from state 2: a unit's paid cost leaves attributes 98

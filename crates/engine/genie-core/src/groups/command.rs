@@ -271,10 +271,10 @@ impl World {
                 ai.clear_notifies(world_time)?;
             }
         }
-        let owner = self.groups.held(group)?.owner as usize;
+        let owner = self.groups.held(group)?.owner_player()?;
         let min_column = self
             .players
-            .get(owner)
+            .get(owner.index())
             .map_or(0, |p| p.formations.min_column_distance);
         let g = self.groups.held_mut(group)?;
         g.current_target.original_position[0] = point[0];
@@ -636,6 +636,7 @@ mod tests {
     use crate::groups::{GroupCommand, Member, UnitGroups};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::players::PlayerId;
     use crate::test_ids::object_id;
     use crate::world::Player;
 
@@ -655,7 +656,7 @@ mod tests {
                 ..Player::default()
             },
         ];
-        let mut t = World::new(50, 0, 0, vec![0, 0], players);
+        let mut t = World::new(50, 0, PlayerId::new(0), vec![0, 0], players);
         let master = Master {
             id: 4,
             kind: 70,

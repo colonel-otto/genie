@@ -140,7 +140,7 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<bool, GenieError> {
-        let computer = c.w.players[c.player].computer;
+        let computer = c.w.players[c.player.index()].computer;
         let site = Self::site_unit(c, reads);
         let pasture = site
             .and_then(|u| u.master(&c.w.masters, c.player).ok())
@@ -167,7 +167,7 @@ impl BuildAction {
             crate::world::lets::release(c, builder, target, reads.by)?;
         }
         let (kind, amount) = (builder.life.attribute_type, builder.life.amount);
-        let attributes = c.w.players[c.player].attributes.len();
+        let attributes = c.w.players[c.player.index()].attributes.len();
         if usize::try_from(kind).is_ok_and(|k| k < attributes) {
             let kind = if matches!(kind, 15..=17) { 0 } else { kind };
             Self::drop_load(c, builder, kind, amount)?;
@@ -326,7 +326,7 @@ impl BuildAction {
     /// What the `MoveTo`'s answer to the motion step giving up reads ([`GiveUp`]): a human
     /// player's villager waits (by its unit AI's stance).
     pub(super) fn gives_up(c: &Step<'_>, builder: &Unit, reads: &BuildReads) -> GiveUp {
-        let computer = c.w.players[c.player].computer;
+        let computer = c.w.players[c.player.index()].computer;
         GiveUp {
             waits: reads.class == Some(class::VILLAGER) && !computer,
             stance: builder.ai.as_ref().map_or(0, |ai| ai.stance),

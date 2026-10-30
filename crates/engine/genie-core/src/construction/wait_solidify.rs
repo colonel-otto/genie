@@ -97,7 +97,7 @@ impl UnitView<'_, '_> {
             .c
             .w
             .masters
-            .get(self.player)
+            .get(self.player.index())
             .ok_or(crate::world::UNIT_AI_MASTER)?;
         let own = unit.master(&self.c.w.masters, self.player)?;
         let actor = Actor {
@@ -105,7 +105,7 @@ impl UnitView<'_, '_> {
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.c.w.players[self.player]
+            attribute_95: self.c.w.players[self.player.index()]
                 .attributes
                 .get(95)
                 .copied()
@@ -114,7 +114,7 @@ impl UnitView<'_, '_> {
         };
         let dip = SideWorld {
             player,
-            relations: &self.c.w.players[self.player].relations,
+            relations: &self.c.w.players[self.player.index()].relations,
             foreign,
             drop_sites: &self.c.w.drop_sites,
         };

@@ -308,7 +308,7 @@ impl BuildAction {
     ) -> Result<(), GenieError> {
         let site = Self::site_unit(c, reads).ok_or(FOREIGN_SITE)?;
         let mut rate = self.task.work_rate * self.task.work_value * seconds(c.dt);
-        let mut factor = c.w.players[c.player].construction_rate;
+        let mut factor = c.w.players[c.player.index()].construction_rate;
         if site.life.master_id == WONDER && WONDER_RATE < factor {
             factor = WONDER_RATE;
         }

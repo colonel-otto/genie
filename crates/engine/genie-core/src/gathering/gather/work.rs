@@ -205,7 +205,7 @@ impl GatherAction {
             self.random_wait(c, unit);
             return Ok(Dropped::Going);
         }
-        let attributes = c.w.players[c.player].attributes.len();
+        let attributes = c.w.players[c.player.index()].attributes.len();
         let kind = crate::gathering::hunt::resource_kind(unit.life.attribute_type, attributes);
         let amount = unit.life.amount;
         unit.life.attribute_type = -1;

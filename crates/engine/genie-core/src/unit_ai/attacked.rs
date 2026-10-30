@@ -6,6 +6,7 @@ use crate::math::rng::Well512;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::MISSILE;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -120,7 +121,7 @@ impl UnitAi {
     /// `attacker` (`attacker_id`): its attack on it already; a human player's unit's order other
     /// than the patrols (711, 733), or its group that is not idle (`held_by_group`); a computer
     /// player's unit on the explore order (0x2c1) attacked by another player than Gaia.
-    pub(super) const fn ignores_attacker(
+    pub(super) fn ignores_attacker(
         &self,
         attacker: &UnitSeen,
         attacker_id: i32,
@@ -143,7 +144,9 @@ impl UnitAi {
         if !computer && held_by_group {
             return true;
         }
-        computer && matches!(self.current_order, Some(OrderKind::Explore)) && attacker.owner != 0
+        computer
+            && matches!(self.current_order, Some(OrderKind::Explore))
+            && attacker.owner != PlayerId::GAIA
     }
 
     /// [`UnitAi::damaged`]'s step 4's search, `bestUnitToAttack` into

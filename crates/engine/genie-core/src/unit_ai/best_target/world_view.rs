@@ -2,6 +2,7 @@
 //! world ([`Battlefield`]).
 
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use crate::unit_ai::best_target::Candidate;
 
 /// The order history's window (`DAT_142efe420`, 60000 ms as a float).
@@ -79,7 +80,7 @@ pub struct Ask {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Thing {
     /// Its owner's id.
-    pub owner: usize,
+    pub owner: PlayerId,
     /// The unit's owner counts its owner an ally (`FUN_141663d90` with the ally flag).
     pub allied: bool,
     /// `+0x640`.

@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::{AttributeWorld, Master, master_type, player_master};
+use crate::players::PlayerId;
 use crate::technology::effect::{
     CAPPED, Change, OBJECT_GONE, has_actions, shows_sprite, within_table,
 };
@@ -19,18 +20,19 @@ impl World {
     /// first.
     pub(crate) fn modify_attribute(
         &mut self,
-        p: usize,
+        p: PlayerId,
         change: Change,
         unit: i16,
         class: Option<ClassId>,
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        if let Some(why) = self
-            .reached_masters(p, unit, class)
-            .iter()
-            .find_map(|&id| self.masters.get(p)?.get(id)?.unloaded_for(attribute))
-        {
+        if let Some(why) = self.reached_masters(p, unit, class).iter().find_map(|&id| {
+            self.masters
+                .get(p.index())?
+                .get(id)?
+                .unloaded_for(attribute)
+        }) {
             return Err(GenieError::unsupported(why));
         }
         self.effect_hooks(p, false, unit, class, attribute)?;
@@ -46,7 +48,7 @@ impl World {
     /// master or class shows it ([`World::show_changed_sprite`]).
     pub(super) fn effect_hooks(
         &mut self,
-        p: usize,
+        p: PlayerId,
         after: bool,
         unit: i16,
         class: Option<ClassId>,
@@ -84,7 +86,7 @@ impl World {
     /// ([`crate::garrison::share`]) off its volleys (`+0xa00`), or adds it.
     pub(super) fn garrison_volleys(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         after: bool,
     ) -> Result<(), GenieError> {
@@ -92,7 +94,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        let masters = self.masters.checked(p)?;
+        let masters = self.masters.checked(p.index())?;
         let master = u.master(&self.masters, p)?;
         if u.garrison.is_empty() || at_most_or_unordered(master.reload, 0.0) {
             return Ok(());
@@ -110,7 +112,7 @@ impl World {
             if m.kind == master_type::COMBAT {
                 shares.push(crate::garrison::share(
                     m,
-                    self.masters.checked(q)?,
+                    self.masters.checked(q.index())?,
                     unit.reload_powerup,
                     rate,
                 )?);
@@ -138,7 +140,7 @@ impl World {
     /// other actions' slot 0x50 does nothing.
     pub(super) fn show_changed_sprite(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         attribute: u8,
     ) -> Result<(), GenieError> {
@@ -208,14 +210,14 @@ impl World {
     /// annexes of their own), the pending ones, then each master of the class, by id.
     pub(super) fn change_attribute(
         &mut self,
-        p: usize,
+        p: PlayerId,
         change: Change,
         unit: i16,
         class: Option<ClassId>,
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        let Some(masters) = self.masters.get(p) else {
+        let Some(masters) = self.masters.get(p.index()) else {
             return Ok(());
         };
         if within_table(masters, unit) {
@@ -262,8 +264,13 @@ impl World {
 
     /// The masters of player `p` slot 0x148 changes ([`World::change_attribute`]): master `unit`
     /// within the table (none for a null slot), else those of class `class`, by id.
-    pub(super) fn reached_masters(&self, p: usize, unit: i16, class: Option<ClassId>) -> Vec<i16> {
-        let Some(masters) = self.masters.get(p) else {
+    pub(super) fn reached_masters(
+        &self,
+        p: PlayerId,
+        unit: i16,
+        class: Option<ClassId>,
+    ) -> Vec<i16> {
+        let Some(masters) = self.masters.get(p.index()) else {
             return Vec::new();
         };
         if within_table(masters, unit) {
@@ -290,7 +297,7 @@ impl World {
     /// (`FUN_14102c160`, `FUN_1410083c0`), which the slice's groups do not model.
     pub(super) fn change_master_attribute(
         &mut self,
-        p: usize,
+        p: PlayerId,
         change: Change,
         unit: i16,
         v: f32,
@@ -401,7 +408,7 @@ impl World {
     /// the slice derives from it follow ([`Master::follow`], [`World::master_followers`]).
     pub(super) fn change_one_master(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i16,
         change: Change,
         v: f32,
@@ -415,7 +422,7 @@ impl World {
                 capped: CAPPED,
             };
             let terrain = self.spatial.terrain.as_ref();
-            let Some(m) = self.masters.get_mut(p).and_then(|m| m.get_mut(id)) else {
+            let Some(m) = self.masters.get_mut(p.index()).and_then(|m| m.get_mut(id)) else {
                 return Ok(());
             };
             match change {
@@ -435,7 +442,7 @@ impl World {
     /// their sight's line of sight and their tile's height test.
     pub(super) fn master_followers(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i16,
         attribute: u8,
     ) -> Result<(), GenieError> {

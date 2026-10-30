@@ -6,6 +6,7 @@ use crate::math::rng::Well512;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -207,7 +208,10 @@ impl UnitAi {
         let Some(t) = id.map(|id| side.target_flags(id)).transpose()?.flatten() else {
             return Ok(());
         };
-        let captured_again = at.player == 0 && t.owner == 0 && COMBAT <= t.kind && t.capture == 2;
+        let captured_again = at.player == PlayerId::GAIA
+            && t.owner == PlayerId::GAIA
+            && COMBAT <= t.kind
+            && t.capture == 2;
         let action = if captured_again {
             None
         } else {

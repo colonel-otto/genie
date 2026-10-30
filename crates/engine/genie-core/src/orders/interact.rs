@@ -10,6 +10,7 @@ use crate::orders::{
     Interact, LISTED, MoveOrder, Place, Split, Work, grid_point, ignore_unit, offset_point,
     readiness, set_differentiator_groups,
 };
+use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -49,7 +50,7 @@ impl World {
     /// queued nor direct the readiness pass with 1 and the unit's stop ([`readiness`]).
     pub(super) fn interact_unit(
         &mut self,
-        player: usize,
+        player: PlayerId,
         id: i32,
         others: &[i32],
         centroid: Option<[f32; 2]>,
@@ -142,9 +143,9 @@ impl World {
             return self.order_work(player, idx, &work);
         }
         let (target_type, target_owner) =
-            target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
+            target.map_or((-1, -1), |(m, o)| (i32::from(m), o.index() as i32));
         let queued = crate::unit_ai::QueuedOrder {
-            issuer: issuer as i32,
+            issuer: issuer.index() as i32,
             order: OrderKind::OnTarget,
             priority: 100,
             target: if target.is_some() {
@@ -179,7 +180,7 @@ impl World {
     /// (its `+0x888` count is not held).
     pub(super) fn order_at_once(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 2],
@@ -217,7 +218,7 @@ impl World {
         if work.notified
             && let Some(ai) = self
                 .players
-                .get_mut(player)
+                .get_mut(player.index())
                 .and_then(|p| p.objects.by_id_mut(id))
                 .and_then(|u| u.ai.as_mut())
         {
@@ -239,7 +240,7 @@ impl World {
     /// The unit AI runs the case on a target that is gone itself.
     pub(crate) fn order_on_target(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         order: crate::unit_ai::QueuedOrder,
     ) -> Result<(), GenieError> {
@@ -291,7 +292,7 @@ impl World {
     /// [`centroid`]: crate::orders::points::centroid
     pub(crate) fn move_order(
         &mut self,
-        player: usize,
+        player: PlayerId,
         units: &[i32],
         order: &MoveOrder,
     ) -> Result<(), GenieError> {
@@ -415,7 +416,7 @@ impl World {
                 }
             };
             let id = if new {
-                let owner = split.owner.map_or(u32::MAX, |p| p as u32);
+                let owner = split.owner.map_or(u32::MAX, |p| p.index() as u32);
                 let id = self.groups.create(owner).id;
                 for &unit in units {
                     let _ = self.add_to_group(id, unit)?;

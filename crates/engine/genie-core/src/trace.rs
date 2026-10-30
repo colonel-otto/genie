@@ -29,6 +29,7 @@
 
 use crate::GenieError;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 
 /// The target of the update, player and object spans and the command events.
 pub const UPDATE: &str = "genie_core::update";
@@ -54,11 +55,11 @@ pub(crate) fn draw(stream: u8, draw: u32, value: u32) {
 /// A new object of `master` for `player` took the world's next object id `object` in update
 /// `tick` ([`STATE`]); `at` is the line of the engine that made it.
 #[track_caller]
-pub(crate) fn new_object(tick: u32, player: usize, object: i32, master: i16) {
+pub(crate) fn new_object(tick: u32, player: PlayerId, object: i32, master: i16) {
     tracing::debug!(
         target: STATE,
         tick,
-        player,
+        player = player.index(),
         object,
         master,
         at = %std::panic::Location::caller(),
@@ -73,13 +74,13 @@ fn context_of(why: &GenieError) -> Option<String> {
 }
 
 /// An object's update meets a case the engine does not model: the object freezes.
-pub(crate) fn object_freezes(tick: u32, player: usize, object: i32, why: &GenieError) {
+pub(crate) fn object_freezes(tick: u32, player: PlayerId, object: i32, why: &GenieError) {
     let (reason, at) = (why.reason(), why.location());
     if let Some(context) = context_of(why) {
         tracing::warn!(
             target: UNSUPPORTED,
             tick,
-            player,
+            player = player.index(),
             object,
             why = reason,
             at = %at,
@@ -90,7 +91,7 @@ pub(crate) fn object_freezes(tick: u32, player: usize, object: i32, why: &GenieE
         tracing::warn!(
             target: UNSUPPORTED,
             tick,
-            player,
+            player = player.index(),
             object,
             why = reason,
             at = %at,
@@ -100,13 +101,13 @@ pub(crate) fn object_freezes(tick: u32, player: usize, object: i32, why: &GenieE
 }
 
 /// A command or a pass meets a case the engine does not model: the whole player stops.
-pub(crate) fn player_stops(tick: u32, player: usize, why: &GenieError) {
+pub(crate) fn player_stops(tick: u32, player: PlayerId, why: &GenieError) {
     let (reason, at) = (why.reason(), why.location());
     if let Some(context) = context_of(why) {
         tracing::warn!(
             target: UNSUPPORTED,
             tick,
-            player,
+            player = player.index(),
             why = reason,
             at = %at,
             context,
@@ -116,7 +117,7 @@ pub(crate) fn player_stops(tick: u32, player: usize, why: &GenieError) {
         tracing::warn!(
             target: UNSUPPORTED,
             tick,
-            player,
+            player = player.index(),
             why = reason,
             at = %at,
             "a player stops"
@@ -126,13 +127,13 @@ pub(crate) fn player_stops(tick: u32, player: usize, why: &GenieError) {
 
 /// A case the engine does not model after an object's update (its leave, a capture's transfer,
 /// a new object's unit AI): the player's first unmodelled case, without a freeze.
-pub(crate) fn player_unsupported(tick: u32, player: usize, why: &GenieError) {
+pub(crate) fn player_unsupported(tick: u32, player: PlayerId, why: &GenieError) {
     let (reason, at) = (why.reason(), why.location());
     if let Some(context) = context_of(why) {
         tracing::warn!(
             target: UNSUPPORTED,
             tick,
-            player,
+            player = player.index(),
             why = reason,
             at = %at,
             context,
@@ -142,7 +143,7 @@ pub(crate) fn player_unsupported(tick: u32, player: usize, why: &GenieError) {
         tracing::warn!(
             target: UNSUPPORTED,
             tick,
-            player,
+            player = player.index(),
             why = reason,
             at = %at,
             "a case not modelled"
@@ -178,7 +179,7 @@ impl Watch {
     }
 
     /// Tell the subscriber what changed from `self` to `u` in the update `tick` of `player`.
-    pub(crate) fn report(self, u: &Unit, tick: u32, player: usize) {
+    pub(crate) fn report(self, u: &Unit, tick: u32, player: PlayerId) {
         let Some(now) = Self::of(u) else {
             return;
         };
@@ -187,7 +188,7 @@ impl Watch {
             tracing::debug!(
                 target: STATE,
                 tick,
-                player,
+                player = player.index(),
                 object,
                 from = self.object_state,
                 to = now.object_state,
@@ -200,7 +201,7 @@ impl Watch {
             tracing::debug!(
                 target: STATE,
                 tick,
-                player,
+                player = player.index(),
                 object,
                 from = field(self.action),
                 to = field(now.action),
@@ -214,7 +215,7 @@ impl Watch {
             tracing::debug!(
                 target: STATE,
                 tick,
-                player,
+                player = player.index(),
                 object,
                 from_order = part(self.order, 0),
                 to_order = part(now.order, 0),
@@ -323,7 +324,7 @@ mod tests {
             objects: objects.into(),
             ..Player::default()
         };
-        World::new(0, 1, 0, vec![0], vec![player])
+        World::new(0, 1, PlayerId::new(0), vec![0], vec![player])
     }
 
     /// Each step names its stream, the draw count, the raw value and the engine's line that

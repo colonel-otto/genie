@@ -98,6 +98,7 @@ mod tests {
     use crate::commands::{BuildCommand, Command, StopCommand, UnitList};
     use crate::map::Point;
     use crate::objects::ObjectId;
+    use crate::players::PlayerId;
     use crate::test_ids::master_id;
     use crate::test_ids::object_ids;
     use crate::test_ids::player_id;
@@ -113,7 +114,7 @@ mod tests {
         World::new(
             0,
             1,
-            1,
+            PlayerId::new(1),
             vec![0; 3],
             vec![player(false), player(false), player(true)],
         )

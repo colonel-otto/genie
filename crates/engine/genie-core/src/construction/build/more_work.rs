@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 
@@ -31,9 +32,12 @@ impl Unit {
         /// The reach a line of sight below the floor takes (the Build's immediate 4.0).
         const REACH_LOW: f32 = 4.0;
         let others = OthersRef::of(&c.w.players, c.player)?;
-        let masters = c.w.masters.get(c.player).ok_or(GenieError::unsupported(
-            "a builder without its player's masters",
-        ))?;
+        let masters =
+            c.w.masters
+                .get(c.player.index())
+                .ok_or(GenieError::unsupported(
+                    "a builder without its player's masters",
+                ))?;
         let master = self.master_in(Some(masters))?;
         let site = masters.get(built).ok_or(GenieError::unsupported(
             "a building of a master the slice does not have",
@@ -45,7 +49,7 @@ impl Unit {
             &c.w.drop_sites,
             built,
             master.class,
-            c.w.players[c.player].civ,
+            c.w.players[c.player.index()].civ,
         );
         let los = site.line_of_sight;
         let held = if REACH_FLOOR <= los { los } else { REACH_LOW };
@@ -62,7 +66,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let restriction = mover.stats.restriction;
         let (player, me_id, every) = (c.player, self.id, &c.w.masters);
-        let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
+        let candidate = |id: i32, owner: PlayerId, u: &Self, position: [f32; 3]| {
             let m = u.master(every, owner)?;
             Ok(Candidate {
                 id,

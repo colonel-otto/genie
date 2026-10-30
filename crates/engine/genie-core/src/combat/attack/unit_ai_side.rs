@@ -114,7 +114,7 @@ impl UnitView<'_, '_> {
             engagement: &e,
             arms,
             visible,
-            target_owner: t.player,
+            target_owner: t.player.index(),
             ready: self.ready_reads(target, master, ai)?,
         };
         let unit = &mut *self.unit;
@@ -256,7 +256,7 @@ impl UnitView<'_, '_> {
             return Ok(None);
         };
         let attributes = if view.own(id).is_some() {
-            &self.c.w.players[self.player].attributes
+            &self.c.w.players[self.player.index()].attributes
         } else {
             let Some(owner) = view.players().player(q) else {
                 return Ok(None);
@@ -268,7 +268,7 @@ impl UnitView<'_, '_> {
         };
         let dip = SideWorld {
             player: self.player,
-            relations: &self.c.w.players[self.player].relations,
+            relations: &self.c.w.players[self.player.index()].relations,
             foreign: view.players(),
             drop_sites: &self.c.w.drop_sites,
         };
@@ -299,7 +299,7 @@ impl UnitView<'_, '_> {
         let own = victim_of(
             unit,
             master,
-            &self.c.w.players[self.player].attributes,
+            &self.c.w.players[self.player.index()].attributes,
             self.player,
             self.c.w.spatial.terrain.as_ref(),
             self.c.w.mode_680,
@@ -307,7 +307,10 @@ impl UnitView<'_, '_> {
         let reads = AttackReads::of(
             unit,
             master,
-            (self.c.w.masters.get(self.player), &self.c.w.graphics),
+            (
+                self.c.w.masters.get(self.player.index()),
+                &self.c.w.graphics,
+            ),
             Some(ai),
             (self.computer, self.c.w.world_time),
         );

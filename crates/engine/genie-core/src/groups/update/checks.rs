@@ -15,6 +15,7 @@ use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -245,7 +246,7 @@ impl World {
         let Some(target) = self.world_object(g.current_target.target) else {
             return Ok(false);
         };
-        let owner = g.owner as usize;
+        let owner = g.owner_player()?;
         let most = if g.current_command == BUILD { 0 } else { 2 };
         if most < target.state() || target.inside() {
             return Ok(false);
@@ -262,7 +263,7 @@ impl World {
     /// relic (its master's class `0x2a`), or deliver them (136) and its target is a relic or
     /// none the world holds.
     pub(super) fn relic_pickup_pending(&self, g: &UnitGroup) -> Result<bool, GenieError> {
-        let owner = g.owner as usize;
+        let owner = g.owner_player()?;
         for m in &g.members {
             let Some(WorldObject::Unit(_, u)) = self.world_object(m.id) else {
                 continue;
@@ -292,7 +293,7 @@ impl World {
     /// (136): the target is a monastery (master 104) and the member's master's tasks deliver or
     /// pick up relics.
     pub(super) fn relic_delivery_pending(&self, g: &UnitGroup) -> Result<bool, GenieError> {
-        let owner = g.owner as usize;
+        let owner = g.owner_player()?;
         for m in &g.members {
             let Some(WorldObject::Unit(_, u)) = self.world_object(m.id) else {
                 continue;
@@ -325,11 +326,11 @@ impl World {
     /// A player whose masters the slice does not have.
     pub(crate) fn has_task(
         &self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         action: i16,
     ) -> Result<bool, GenieError> {
-        let Some(masters) = self.masters.get(player) else {
+        let Some(masters) = self.masters.get(player.index()) else {
             return self.master(player, master).map(|_| false);
         };
         Ok(masters
@@ -349,7 +350,7 @@ impl World {
     pub(super) fn sees_object(
         &self,
         object: WorldObject<'_>,
-        player: usize,
+        player: PlayerId,
     ) -> Result<bool, GenieError> {
         let master = self.master(object.player(), object.master_id())?;
         let [x, y, _] = object.position();

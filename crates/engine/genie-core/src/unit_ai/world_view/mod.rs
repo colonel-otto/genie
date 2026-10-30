@@ -7,6 +7,7 @@ use crate::math::rng::Well512;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::player::Player;
@@ -90,12 +91,13 @@ pub(crate) struct Foreign<'a> {
     pub(crate) after: &'a [Player],
     /// The live list of the player whose list is out, once its object changed hands: that
     /// object's AI part reads it as another player's ([`OthersRef::changed_hands`]).
-    pub(crate) left: Option<(usize, &'a crate::objects::object_list::ObjectList)>,
+    pub(crate) left: Option<(PlayerId, &'a crate::objects::object_list::ObjectList)>,
 }
 
 impl<'a> Foreign<'a> {
     /// Player `q`, unless it is the one whose list is out.
-    pub(crate) fn player(&self, q: usize) -> Option<&'a Player> {
+    pub(crate) fn player(&self, q: PlayerId) -> Option<&'a Player> {
+        let q = q.index();
         let own = self.before.len();
         match q.cmp(&own) {
             std::cmp::Ordering::Less => self.before.get(q),
@@ -112,8 +114,8 @@ impl<'a> Foreign<'a> {
 /// world's (the side's diplomacy: [`OwnerView::relations`]).
 #[derive(Clone, Copy)]
 pub(crate) struct OwnerView {
-    pub(crate) player: usize,
-    pub(crate) new_owner: Option<usize>,
+    pub(crate) player: PlayerId,
+    pub(crate) new_owner: Option<PlayerId>,
     pub(crate) civ: u8,
     pub(crate) construction_rate: f32,
     pub(crate) ai_settings: crate::world::player::AiSettings,
@@ -126,9 +128,9 @@ impl OwnerView {
     /// # Errors
     ///
     /// A player the world does not hold.
-    pub(crate) fn of(c: &Step<'_>, new: Option<usize>) -> Result<Self, GenieError> {
+    pub(crate) fn of(c: &Step<'_>, new: Option<PlayerId>) -> Result<Self, GenieError> {
         let taker = new.filter(|&n| n != c.player);
-        let Some((new, q)) = taker.and_then(|n| Some((n, c.w.players.get(n)?))) else {
+        let Some((new, q)) = taker.and_then(|n| Some((n, c.w.players.get(n.index())?))) else {
             let owner = c.w.players.player(c.player)?;
             return Ok(Self {
                 player: c.player,
@@ -162,14 +164,14 @@ impl OwnerView {
 /// own and the old owner's among the others' ([`OthersRef::changed_hands`]).
 pub(crate) fn owner_view(
     players: &[Player],
-    p: usize,
-    new: Option<usize>,
+    p: PlayerId,
+    new: Option<PlayerId>,
 ) -> Result<OthersRef<'_>, GenieError> {
     Ok(changed_view(OthersRef::of(players, p)?, new))
 }
 
 /// `view` as the unit AI of a unit player `new` took over reads it ([`owner_view`]).
-pub(crate) fn changed_view(view: OthersRef<'_>, new: Option<usize>) -> OthersRef<'_> {
+pub(crate) fn changed_view(view: OthersRef<'_>, new: Option<PlayerId>) -> OthersRef<'_> {
     match new.and_then(|new| Some((new, view.players().player(new)?))) {
         Some((new, q)) => view.changed_hands(new, &q.objects),
         None => view,
@@ -189,13 +191,13 @@ pub(crate) struct UnitView<'u, 's> {
     pub(crate) attacker: crate::unit_ai::Attacker,
     /// The owner, as the AI runs (a captured unit's new one): its diplomacy, attributes and
     /// civ are what the task search reads of it.
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
     /// The owner is a computer player.
     pub(crate) computer: bool,
     /// The owner's construction rate.
     pub(crate) construction_rate: f32,
     /// The player that took the unit over in its update ([`changed_view`]).
-    pub(crate) new_owner: Option<usize>,
+    pub(crate) new_owner: Option<PlayerId>,
     /// The owner's civ.
     pub(crate) civ: u8,
     /// The owner's AI settings.

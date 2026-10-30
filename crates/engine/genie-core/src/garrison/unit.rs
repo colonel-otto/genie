@@ -17,6 +17,7 @@ use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::orders::action_state::DONE;
 use crate::pathing::Pathing;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::vision::registry::UnitUpdate;
@@ -78,9 +79,9 @@ impl Unit {
                     enter.range,
                 )?;
                 // FUN_141663dc0 with allies, or Gaia's
-                view.allied = tp == 0
+                view.allied = tp == PlayerId::GAIA
                     || crate::unit_ai::task_finder::allied(
-                        &c.w.players[c.player].relations,
+                        &c.w.players[c.player.index()].relations,
                         c.player,
                         tp,
                         true,
@@ -94,7 +95,7 @@ impl Unit {
         Ok(crate::garrison::EnterReads {
             target,
             start,
-            waits: villager && !c.w.players[c.player].computer,
+            waits: villager && !c.w.players[c.player.index()].computer,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
             defaults: master.map_or_else(
                 |_| MoveDefaults::default(),
@@ -134,7 +135,7 @@ impl Unit {
         )?;
         for _ in 0..2 {
             self.set_entered(
-                c.w.masters.get(c.player),
+                c.w.masters.get(c.player.index()),
                 &c.w.graphics,
                 c.w.streams.get(Stream::Sprite),
             )?;
@@ -158,7 +159,7 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )?;
         let given = crate::garrison::transport::TransportAction::given_sprite(t.task, master)?;
         let reads = crate::garrison::transport::TransportReads {
@@ -238,7 +239,7 @@ impl Unit {
     /// notify 0x1f9 with the enter action value.
     pub(crate) fn entered(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         self.set_entered(
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
             &c.w.graphics,
             c.w.streams.get(Stream::Sprite),
         )
@@ -300,13 +301,15 @@ impl Unit {
         let (tp, building) = c.w.object(target).ok_or(GenieError::unreachable(
             "an enter into a building the world does not hold",
         ))?;
-        let own = c.w.masters.get(c.player);
+        let own = c.w.masters.get(c.player.index());
         let masters = own.ok_or(crate::garrison::NO_MASTERS)?;
         // copies: going inside changes the unit and the world, which hold them
-        let bm = building.master_in(c.w.masters.get(tp).or(own))?.clone();
+        let bm = building
+            .master_in(c.w.masters.get(tp.index()).or(own))?
+            .clone();
         let hp = building.life.hp;
         let me = self.master_in(Some(masters))?.clone();
-        let owner = &c.w.players[c.player];
+        let owner = &c.w.players[c.player.index()];
         let actor = Actor {
             id: self.id.get(),
             master: &me,
@@ -335,7 +338,7 @@ impl Unit {
                     resource,
                     self.life.amount,
                 )?;
-                c.w.players[c.player].add_attributes(adds)?;
+                c.w.players[c.player.index()].add_attributes(adds)?;
                 self.life.attribute_type = -1;
                 self.life.amount = 0.0;
             }
@@ -444,17 +447,17 @@ impl Unit {
         &self,
         c: &mut Step<'_>,
         target: i32,
-        bp: usize,
+        bp: PlayerId,
         reload: f32,
         me: &Master,
         bm: &Master,
     ) -> Result<(), GenieError> {
         let masters =
             c.w.masters
-                .get(c.player)
+                .get(c.player.index())
                 .ok_or(crate::garrison::NO_MASTERS)?;
         let firepower = if me.kind == COMBAT {
-            let own = c.w.masters.get(bp).unwrap_or(masters);
+            let own = c.w.masters.get(bp.index()).unwrap_or(masters);
             let rate = crate::garrison::attack_rate(bm, own, reload);
             crate::garrison::share(me, masters, self.reload_powerup, rate)?
         } else {
@@ -487,7 +490,7 @@ impl Unit {
             let mask = r.entry(id.get()).map_or(0, |e| e.mask);
             r.update_unit(UnitUpdate {
                 id: id.get(),
-                owner: c.player as u8,
+                owner: c.player.index() as u8,
                 position: [self.position()[0], self.position()[1]],
                 radii: placed.radius,
                 class: placed.class,

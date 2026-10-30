@@ -50,6 +50,8 @@ pub(crate) use crate::construction::build::world_side::{NO_CONSTRUCTION, NOT_HEL
 use crate::map::spatial::Spatial;
 #[cfg(test)]
 use crate::pathing::Pathing;
+#[cfg(test)]
+use crate::players::PlayerId;
 
 /// A builder within this of its foundation's footprint has reached it (`DAT_142eb5690`).
 const REACH: f32 = crate::math::image::build::REACH;
@@ -521,7 +523,7 @@ mod stack_tests {
         let mut t = World::new(
             0,
             1,
-            0,
+            PlayerId::new(0),
             vec![0; 2],
             vec![
                 Player::default(),
@@ -553,7 +555,7 @@ mod stack_tests {
                 position: [54.0, 147.0, 0.0],
                 radius: [2.0, 2.0],
                 class: class::BUILDING,
-                player: 1,
+                player: PlayerId::new(1),
                 master: 621,
                 obstruction_type: 2,
                 buildable_on: 0,
@@ -677,7 +679,7 @@ mod stack_tests {
                 m.building.as_mut().unwrap().annexes = [-1; 4];
             }
             let (id, _) = t
-                .make_building(1, 109, Ok(None), [80.0, 80.0, 0.0])
+                .make_building(PlayerId::new(1), 109, Ok(None), [80.0, 80.0, 0.0])
                 .unwrap();
             let placed = t.spatial.get(id).unwrap().obstruction;
             assert_eq!(placed.map(|o| (o.kind, o.class)), record, "height {height}");
@@ -726,7 +728,7 @@ mod stack_tests {
                 ..crate::world::Gate::default()
             });
             t.stack_unit(
-                1,
+                PlayerId::new(1),
                 8759,
                 StackUnit {
                     master: 109,

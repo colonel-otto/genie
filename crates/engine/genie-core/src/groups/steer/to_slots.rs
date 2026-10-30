@@ -8,6 +8,7 @@ use crate::groups::steer::{ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_F
 use crate::math::fmath::{Vec3, below_or_unordered};
 use crate::movement::ASIDE;
 use crate::objects::masters::master_type::ACTION;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
@@ -145,7 +146,7 @@ impl World {
     /// An action the slice does not model, and an object of a master the slice does not have.
     pub(in crate::groups) fn action_list(
         &self,
-        p: usize,
+        p: PlayerId,
         u: &crate::objects::unit::Unit,
     ) -> Result<(bool, u8), GenieError> {
         if u.master(&self.masters, p)?.kind < ACTION {

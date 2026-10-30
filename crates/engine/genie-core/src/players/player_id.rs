@@ -8,7 +8,7 @@ use getset::CopyGetters;
 /// the player who sent it, a comm player the game looks up whatever its value
 /// (`FUN_140e6b210`; the slice takes comm and world players as equal), so every byte is one.
 /// The world's players are in this order ([`PlayerId::index`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, CopyGetters)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, CopyGetters)]
 pub struct PlayerId(
     /// Its number, as a command's byte holds it.
     #[getset(get_copy = "pub")]
@@ -16,6 +16,9 @@ pub struct PlayerId(
 );
 
 impl PlayerId {
+    /// Gaia, the neutral player 0 (also the default: a record not yet given an owner).
+    pub const GAIA: Self = Self(0);
+
     /// Its place in the world's players.
     #[must_use]
     pub fn index(self) -> usize {
@@ -44,10 +47,18 @@ impl genie_diff::Diff for PlayerId {
     }
 }
 
+impl PlayerId {
+    /// The player of number `number`, as a command's byte holds it (for a constant).
+    #[must_use]
+    pub const fn new(number: u8) -> Self {
+        Self(number)
+    }
+}
+
 impl From<u8> for PlayerId {
     /// The player of number `number`, as a command's byte holds it.
     fn from(number: u8) -> Self {
-        Self(number)
+        Self::new(number)
     }
 }
 
@@ -95,8 +106,8 @@ mod tests {
     #[test]
     fn a_player_prints_as_its_number_and_differs_by_equality() {
         use genie_diff::{Scope, differences};
-        let (one, two) = (PlayerId::from(1), PlayerId::from(2));
-        assert_eq!(PlayerId::from(7).to_string(), "7");
+        let (one, two) = (PlayerId::new(1), PlayerId::new(2));
+        assert_eq!(PlayerId::new(7).to_string(), "7");
         assert_eq!(differences(&one, &one, Scope::All).len(), 0);
         assert_eq!(differences(&one, &two, Scope::All).len(), 1);
     }

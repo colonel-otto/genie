@@ -73,7 +73,7 @@ impl BuildAction {
         let view = OthersRef::of(&c.w.players, c.player)?;
         let masters =
             c.w.masters
-                .get(c.player)
+                .get(c.player.index())
                 .ok_or(crate::world::OBJECT_MASTER)?;
         let own = builder.master_in(Some(masters))?;
         let at = [builder.position()[0], builder.position()[1]];
@@ -81,8 +81,8 @@ impl BuildAction {
         let found = crate::orders::nearest_table_site(
             (
                 &c.w.drop_sites,
-                c.w.players[c.player].civ,
-                &c.w.players[c.player].tracker,
+                c.w.players[c.player.index()].civ,
+                &c.w.players[c.player.index()].tracker,
             ),
             (at, builder.life.attribute_type, own.class),
             look,
@@ -110,16 +110,16 @@ impl BuildAction {
                     master: own,
                     player,
                     held: (builder.life.attribute_type, builder.life.amount),
-                    attribute_95: c.w.players[c.player]
+                    attribute_95: c.w.players[c.player.index()]
                         .attributes
                         .get(95)
                         .copied()
                         .unwrap_or(0.0),
-                    civ: c.w.players[c.player].civ,
+                    civ: c.w.players[c.player.index()].civ,
                 };
                 let dip = SideWorld {
                     player,
-                    relations: &c.w.players[c.player].relations,
+                    relations: &c.w.players[c.player.index()].relations,
                     foreign,
                     drop_sites: &c.w.drop_sites,
                 };
@@ -245,7 +245,7 @@ impl BuildAction {
             builder.body.set_anim_speed(0.0);
             return Ok(HeadCode::Keeps);
         }
-        let attributes = c.w.players[c.player].attributes.len();
+        let attributes = c.w.players[c.player.index()].attributes.len();
         let kind = crate::gathering::hunt::resource_kind(builder.life.attribute_type, attributes);
         let amount = builder.life.amount;
         Self::drop_load(c, builder, kind, amount)?;
@@ -287,7 +287,7 @@ impl BuildAction {
         }
         // UCOMISS against −1 (DAT_14330ec20): a NaN is not
         if self.point[0] == -1.0 || self.point[1] == -1.0 {
-            if c.w.players[c.player].computer {
+            if c.w.players[c.player.index()].computer {
                 self.end(c, builder, DONE)?;
             } else {
                 self.halt_in(c, builder, reads)?;

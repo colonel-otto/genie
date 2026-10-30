@@ -128,7 +128,7 @@ impl Unit {
                 .walk_back(0.0, mover, &walks)
                 .map(|()| HeadCode::Keeps);
         }
-        if c.w.players[c.player].computer {
+        if c.w.players[c.player.index()].computer {
             return Ok(HeadCode::Deletes);
         }
         let carry_to = gather.carry_to;
@@ -192,14 +192,17 @@ impl Unit {
         let (owner, resource) =
             self.found_resource(c, OthersRef::of(&c.w.players, c.player)?, found)?;
         let master = self.master(&c.w.masters, c.player)?;
-        let (computer, farm_stops) = (c.w.players[c.player].computer, c.w.settings.walkable_farms);
+        let (computer, farm_stops) = (
+            c.w.players[c.player.index()].computer,
+            c.w.settings.walkable_farms,
+        );
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let rate = crate::gathering::gather::StopRate {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
             productivity: crate::gathering::gather::productivity_of(
                 self.actions.gather().map_or(-1, |g| g.task.productivity),
-                &c.w.players[c.player].attributes,
+                &c.w.players[c.player.index()].attributes,
             ),
         };
         let (Some(gather), Some(mover)) = (self.actions.gather_mut(), self.body.mover_mut()) else {
@@ -232,9 +235,9 @@ impl Unit {
             if new == -1 {
                 continue;
             }
-            if owner == c.player && new == found {
+            if owner == c.player.index() && new == found {
                 // one of its own player's: allied, never listed
-                let u = c.w.players[c.player]
+                let u = c.w.players[c.player.index()]
                     .objects
                     .by_id_mut(found)
                     .expect("found above");
@@ -262,7 +265,7 @@ impl Unit {
         let master = self.master(&c.w.masters, c.player)?;
         let t_master = t.master(&c.w.masters, owner)?;
         Ok((
-            owner,
+            owner.index(),
             crate::gathering::gather::Resource {
                 id: found,
                 position: t.position(),
@@ -290,14 +293,14 @@ impl Unit {
     /// part (notify 0x203) is not modelled.
     pub(crate) fn gather_drop_off(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let w = DropWorld {
-            masters: c.w.masters.get(c.player),
+            masters: c.w.masters.get(c.player.index()),
             spatial: &mut c.w.spatial,
             zones: &mut c.w.zones,
             pathing: &mut c.w.pathing,
             object: c.w.streams.get(Stream::Object),
             world_time: c.w.world_time,
-            computer: c.w.players[c.player].computer,
-            construction_rate: c.w.players[c.player].construction_rate,
+            computer: c.w.players[c.player.index()].computer,
+            construction_rate: c.w.players[c.player.index()].construction_rate,
             groups: &c.w.groups,
         };
         let others = OthersRef::of(&c.w.players, c.player)?;

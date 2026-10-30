@@ -6,6 +6,7 @@ use crate::commands::Command;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -117,7 +118,7 @@ impl World {
     /// A player the world does not hold, or a slot of its list the loop's count misses.
     pub(super) fn update_objects(
         &mut self,
-        p: usize,
+        p: PlayerId,
         (dt, turn): (u32, Option<u32>),
     ) -> Result<(), GenieError> {
         // the loop's count, which goes on past each object but one that leaves
@@ -157,7 +158,7 @@ impl World {
     /// A player the world does not hold, or a slot its list does not hold.
     pub(super) fn file_step(
         &mut self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         outcome: Outcome,
     ) -> Result<bool, GenieError> {
@@ -183,7 +184,7 @@ impl World {
                 // in the tracker
                 let asleep = player.objects.swap_remove(i)?;
                 let k = crate::players::tracker::key(
-                    self.masters.get(p),
+                    self.masters.get(p.index()),
                     &self.lines,
                     asleep.life.master_id,
                 );
@@ -225,7 +226,12 @@ impl World {
     /// # Errors
     ///
     /// A player the world does not hold.
-    fn hand_over_units(&mut self, p: usize, i: usize, taken: Captured) -> Result<(), GenieError> {
+    fn hand_over_units(
+        &mut self,
+        p: PlayerId,
+        i: usize,
+        taken: Captured,
+    ) -> Result<(), GenieError> {
         let Captured {
             new, main, also, ..
         } = taken;
@@ -241,7 +247,7 @@ impl World {
         }
         let mut failed = None;
         for u in &moved {
-            if let Err(e) = self.hand_over_attributes(p, new, u) {
+            if let Err(e) = self.hand_over_attributes(p.index(), new.index(), u) {
                 let _ = failed.get_or_insert(e);
             }
         }
@@ -257,9 +263,9 @@ impl World {
         // 0x2d0), each tracker by its own masters
         for u in &moved {
             let m = u.life.master_id;
-            let old = crate::players::tracker::key(self.masters.get(p), &self.lines, m);
+            let old = crate::players::tracker::key(self.masters.get(p.index()), &self.lines, m);
             self.players.player_mut(p)?.tracker.remove(u.id.get(), old);
-            let k = crate::players::tracker::key(self.masters.get(new), &self.lines, m);
+            let k = crate::players::tracker::key(self.masters.get(new.index()), &self.lines, m);
             self.players.player_mut(new)?.tracker.add(u.id.get(), k);
         }
         self.players.player_mut(new)?.objects.extend(moved);
@@ -275,7 +281,7 @@ impl World {
     /// A player the world does not hold.
     fn freeze_object(
         &mut self,
-        p: usize,
+        p: PlayerId,
         (i, id): (usize, i32),
         e: GenieError,
     ) -> Result<(), GenieError> {

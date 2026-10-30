@@ -10,6 +10,7 @@ use crate::commands::{
     UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
 use crate::map::Point;
+use crate::players::PlayerId;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
@@ -252,7 +253,7 @@ fn a_patrol_reads_one_to_ten_waypoints() {
 #[test]
 fn a_trade_of_another_commodity_does_nothing() {
     let player = crate::world::Player::default();
-    let mut w = crate::world::World::new(0, 1, 1, vec![0; 2], vec![player; 2]);
+    let mut w = crate::world::World::new(0, 1, PlayerId::new(1), vec![0; 2], vec![player; 2]);
     let before = w.clone();
     for attribute in [3, 0x0103] {
         TradeCommand {

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{Interact, MAX_UNGROUPED, Split, Splittable, centroid, splits_together};
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 use crate::world::slots::PlayerSlots;
@@ -18,7 +19,7 @@ impl World {
     /// takes nothing.
     pub(crate) fn interact(
         &mut self,
-        player: usize,
+        player: PlayerId,
         units: &[i32],
         order: &Interact,
     ) -> Result<(), GenieError> {
@@ -137,7 +138,7 @@ impl World {
     /// and one the run's next entry repeats are left out.
     pub(super) fn split_run(
         &mut self,
-        owner: usize,
+        owner: PlayerId,
         run: &[Option<i32>],
         control: bool,
         split: &mut Split,
@@ -287,7 +288,7 @@ impl World {
     /// when the world holds it (`FUN_140e6b820`), -1 without (`0x140e6873b`, `0x140e6991e`).
     pub(super) fn leave_groups(
         &mut self,
-        player: usize,
+        player: PlayerId,
         loose: &[i32],
         target: i32,
     ) -> Result<(), GenieError> {

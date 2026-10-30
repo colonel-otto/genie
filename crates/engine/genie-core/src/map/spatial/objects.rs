@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, SearchCache, Spatial, Tiles, WalkTest, tile_record_id,
 };
+use crate::players::PlayerId;
 use std::collections::BTreeMap;
 
 impl Spatial {
@@ -190,7 +191,7 @@ impl Spatial {
     /// (`+0x2a8`) and what it explored (`+0x2a0`). False off the map and without the players'
     /// sight.
     #[must_use]
-    pub fn sees_and_explored(&self, player: usize, x: i32, y: i32) -> bool {
+    pub fn sees_and_explored(&self, player: PlayerId, x: i32, y: i32) -> bool {
         let Some(v) = self.sight.as_ref() else {
             return false;
         };
@@ -318,7 +319,7 @@ impl Spatial {
             let Some(u) = q.unknown.filter(|_| other != id) else {
                 return false;
             };
-            if q.player == 0 {
+            if q.player == PlayerId::GAIA {
                 // Gaia's units (animals) do not work on objects
                 return false;
             }

@@ -7,6 +7,7 @@ use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::UnitAi;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -33,13 +34,13 @@ pub(crate) struct Step<'a> {
     pub(crate) blasted: Vec<Victim>,
     /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
     /// whether it has the unit's master: the update ends with the takeover ([`crate::objects::unit::Outcome::Captured`]).
-    pub(crate) taken_over: Option<(usize, bool)>,
+    pub(crate) taken_over: Option<(PlayerId, bool)>,
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
     /// caller's ([`crate::ownership::capture::Captured::building`]).
     pub(crate) building_handover: bool,
     /// The owner's id: the updating object's player, whose fields the update reads through
     /// the world (`w.players[player]`).
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
     /// While the unit AI's side runs ([`Unit::with_side`]: the AI out of the unit), the notifies
     /// the step's calls give that AI, posted to it as the side returns; None otherwise.
     pub(crate) side_notifies: Option<Vec<(crate::unit_ai::Notify, u8)>>,
@@ -148,7 +149,7 @@ impl Step<'_> {
     pub(crate) fn lend_at<R>(
         &mut self,
         me: &mut Unit,
-        f: impl FnOnce(&mut World, usize, usize) -> Result<R, GenieError>,
+        f: impl FnOnce(&mut World, PlayerId, usize) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let (p, id) = (self.player, self.me);
         self.lend(me, |w| {
@@ -214,8 +215,8 @@ impl Step<'_> {
         Pace {
             dt: seconds(self.dt),
             now: self.w.world_time,
-            computer: self.w.players[self.player].computer,
-            construction_rate: self.w.players[self.player].construction_rate,
+            computer: self.w.players[self.player.index()].computer,
+            construction_rate: self.w.players[self.player.index()].construction_rate,
         }
     }
 }
@@ -237,9 +238,9 @@ impl Step<'_> {
                 plan: Some(Planning {
                     pathing: &mut self.w.pathing,
                     now: self.w.world_time,
-                    computer: self.w.players[self.player].computer,
+                    computer: self.w.players[self.player.index()].computer,
                     object,
-                    construction_rate: self.w.players[self.player].construction_rate,
+                    construction_rate: self.w.players[self.player.index()].construction_rate,
                     groups: &self.w.groups,
                 }),
             },

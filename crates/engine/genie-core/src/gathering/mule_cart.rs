@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
+use crate::players::PlayerId;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
 use crate::world::others::OthersRef;
@@ -16,31 +17,36 @@ impl World {
     /// test, `FUN_140c87f20` not 4, holds in every recording probed), all of it inside the
     /// completion's `set_state(state)`; then a cart with a target moves to it (slot 0x138 at the
     /// target's place).
-    pub(crate) fn cart_search(&mut self, p: usize, id: i32, state: u8) -> Result<(), GenieError> {
-        let Some(idx) = self.players[p].objects.position_of(id) else {
+    pub(crate) fn cart_search(
+        &mut self,
+        p: PlayerId,
+        id: i32,
+        state: u8,
+    ) -> Result<(), GenieError> {
+        let Some(idx) = self.players[p.index()].objects.position_of(id) else {
             return Ok(());
         };
-        let Some(current) = self.players[p].objects[idx]
+        let Some(current) = self.players[p.index()].objects[idx]
             .ai
             .as_ref()
             .map(|ai| ai.current_target)
         else {
             return Ok(());
         };
-        let found = if current == -1 && !self.players[p].computer {
+        let found = if current == -1 && !self.players[p.index()].computer {
             Some(self.cart_find(p, idx)?)
         } else {
             None
         };
         // all of it runs inside the completion's set_state(2), before the cart is in state 2
-        let built = std::mem::replace(&mut self.players[p].objects[idx].life.state, state);
+        let built = std::mem::replace(&mut self.players[p.index()].objects[idx].life.state, state);
         let result = (|| {
             if let Some(found) = found {
                 self.cart_work(p, idx, found)?;
             }
             // with a target (the one the work command gave the unit AI) the cart moves to it
             // (slot 0x138 at its place)
-            let target = self.players[p].objects[idx]
+            let target = self.players[p.index()].objects[idx]
                 .ai
                 .as_ref()
                 .map_or(-1, |ai| ai.current_target);
@@ -51,7 +57,7 @@ impl World {
             }
             Ok::<_, GenieError>(())
         })();
-        self.players[p].objects[idx].life.state = built;
+        self.players[p.index()].objects[idx].life.state = built;
         result
     }
 
@@ -59,7 +65,7 @@ impl World {
     /// the cart at `idx` of player `p`: [`World::cart_find`], then [`World::cart_work`]. The
     /// completion runs it ([`World::cart_search`]), and so does the Empire Wars start
     /// ([`crate::orders::start_work`]).
-    pub(crate) fn cart_work_search(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn cart_work_search(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         let found = self.cart_find(p, idx)?;
         self.cart_work(p, idx, found)
     }
@@ -72,21 +78,21 @@ impl World {
     /// (`FUN_14118f8c0`, below 99999, `DAT_142ef9008`), with its place; none at the cart's own.
     pub(crate) fn cart_find(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
     ) -> Result<(i32, [f32; 3]), GenieError> {
         const CART_REACH: f32 = crate::math::image::turn::CART_REACH;
-        let id = self.players[p].objects[idx].id;
-        let current = self.players[p].objects[idx]
+        let id = self.players[p.index()].objects[idx].id;
+        let current = self.players[p.index()].objects[idx]
             .ai
             .as_ref()
             .map_or(-1, |ai| ai.current_target);
-        if self.players[p].objects[idx].body.mover().is_none() {
+        if self.players[p.index()].objects[idx].body.mover().is_none() {
             return Err(GenieError::unsupported(
                 "a mule cart's search without its movement state (a moving building's setup)",
             ));
         }
-        let master = self.players[p].objects[idx].master(&self.masters, p)?;
+        let master = self.players[p.index()].objects[idx].master(&self.masters, p)?;
         let mut kinds = Vec::new();
         let mut class = -1;
         for t in &master.tasks {
@@ -102,9 +108,9 @@ impl World {
             };
             kinds.push(kind);
         }
-        let cart = self.players[p].objects.take_out(idx)?;
+        let cart = self.players[p.index()].objects.take_out(idx)?;
         let result = (|| {
-            let (before, rest) = self.players.split_at_mut(p);
+            let (before, rest) = self.players.split_at_mut(p.index());
             let (player, after) = rest.split_first_mut().expect("p is a player");
             let mut w = ResourceWorld {
                 player: p,
@@ -116,7 +122,7 @@ impl World {
                     left: None,
                 },
                 every: &self.masters,
-                masters: self.masters.get(p),
+                masters: self.masters.get(p.index()),
                 plan: Planning {
                     pathing: &mut self.pathing,
                     now: self.world_time,
@@ -144,8 +150,8 @@ impl World {
         })();
         let idx = self.put_back_own(p, cart)?;
         let found = result?;
-        let cart_master = self.players[p].objects[idx].master(&self.masters, p)?;
-        let at = self.players[p].objects[idx].position();
+        let cart_master = self.players[p.index()].objects[idx].master(&self.masters, p)?;
+        let at = self.players[p.index()].objects[idx].position();
         let mut best: Option<(i32, [f32; 3])> = None;
         let mut best_d = CART_REACH;
         for f in found {
@@ -166,7 +172,7 @@ impl World {
     /// task; `+0x888`'s count is not held).
     pub(crate) fn cart_work(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         (target, point): (i32, [f32; 3]),
     ) -> Result<(), GenieError> {

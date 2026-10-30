@@ -11,6 +11,7 @@ use crate::movement::footprint_gap;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
+use crate::players::PlayerId;
 
 impl Attack {
     /// `set_state(6)` (case 6): with a target or a point (`+0x38` not −1, `UCOMISS`: a NaN one
@@ -222,7 +223,7 @@ pub(super) fn target_unseen(
     t: &crate::map::spatial::Placed,
 ) -> Result<bool, GenieError> {
     let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
-    Ok(0 < t.player
+    Ok(t.player != PlayerId::GAIA
         && !world.sees_tile(f.own.player, tx, ty)
         && !(f.victim.fog_visibility != 0 && world.explored(f.own.player, tx, ty)?))
 }

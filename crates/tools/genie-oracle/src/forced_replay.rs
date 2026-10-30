@@ -335,7 +335,9 @@ pub fn forced_run(
                     ));
                 }
                 for (p, id, why) in turns.force(&game) {
-                    report.unsupported.push((p as u32, Some(id), tick, why));
+                    report
+                        .unsupported
+                        .push((p.index() as u32, Some(id), tick, why));
                 }
                 // a parsed save's state is dropped on the pool: its drop costs the run as much as
                 // its forcing

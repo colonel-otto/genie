@@ -196,7 +196,6 @@ impl World {
         id: ObjectId,
         activate: bool,
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let id = id.get();
         let Some((owner, _)) = (id != -1).then(|| self.object(id)).flatten() else {
             return Ok(());
@@ -219,7 +218,7 @@ impl World {
     /// with its count ([`crate::world::World::garrisoned`]) and its bell flag (`+0x9dc`) set (its
     /// sound, slot 0x4c0, is not simulation); then [`crate::world::World::shelter`] with the
     /// reach (`param_6` 1), no transports, not through the unit AIs.
-    pub(crate) fn ring_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), GenieError> {
+    pub(crate) fn ring_town_bell(&mut self, owner: PlayerId, tc: i32) -> Result<(), GenieError> {
         let Some((_, t)) = self.object(tc) else {
             return Ok(());
         };
@@ -272,7 +271,7 @@ impl World {
     /// 0x4c0, is not simulation). Then every unit its owner's tracker files under class 4
     /// (`FUN_14104f8f0`) and master 1808 (`FUN_14104f960`), in that order, not inside another
     /// (`+0x2f0`) goes back to work from where it is.
-    pub(crate) fn end_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), GenieError> {
+    pub(crate) fn end_town_bell(&mut self, owner: PlayerId, tc: i32) -> Result<(), GenieError> {
         let Some((_, t)) = self.object(tc) else {
             return Ok(());
         };
@@ -318,7 +317,6 @@ impl World {
         player: PlayerId,
         id: ObjectId,
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let id = id.get();
         let Some((owner, _)) = self.object(id) else {
             return Ok(());
@@ -355,7 +353,7 @@ impl World {
     /// The building at `idx` of player `owner` lets each unit inside of type 70 or more that is a
     /// villager (class 4) or of master 1808 back to work, from the last in
     /// ([`crate::world::World::back_to_work`]; its sound, slot 0x4c0, is not simulation).
-    fn workers_out(&mut self, owner: usize, idx: usize) -> Result<(), GenieError> {
+    fn workers_out(&mut self, owner: PlayerId, idx: usize) -> Result<(), GenieError> {
         let mut i = self.players.live(owner, idx)?.garrison.len();
         while 0 < i {
             i -= 1;
@@ -377,7 +375,7 @@ impl World {
     /// Every unit player `owner`'s tracker files under class 4 (`FUN_14104f8f0`) and master
     /// 1808 (`FUN_14104f960`), in that order, not inside another (`+0x2f0`) goes back to work
     /// from where it is.
-    fn workers_back(&mut self, owner: usize) -> Result<(), GenieError> {
+    fn workers_back(&mut self, owner: PlayerId) -> Result<(), GenieError> {
         let tracker = &self.players.player(owner)?.tracker;
         let mut ids = tracker.class_list(class::VILLAGER).to_vec();
         ids.extend_from_slice(tracker.list(i32::from(MASTER_1808)));
@@ -453,7 +451,7 @@ impl World {
     /// The UI's flag for the viewing player's building (`+0x1874`) is not held.
     pub(crate) fn town_bell_order(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         filter: i16,
@@ -494,7 +492,11 @@ impl World {
     /// place. Then a Gather's or Hunt's target class (`+0x68`), its unit AI's current action
     /// (`+0x44`) and the top action's second target (`FUN_140a78430`). The targets count only
     /// where the world holds them.
-    pub(crate) fn record_town_bell(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn record_town_bell(
+        &mut self,
+        player: PlayerId,
+        idx: usize,
+    ) -> Result<(), GenieError> {
         use crate::orders::town_bell::BackToWork;
         let unit = &self.players.live(player, idx)?;
         if unit.town_bell.flag {
@@ -558,6 +560,7 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     fn work(target: i32, action: Option<ActionKind>, point: [f32; 2]) -> BackToWork {
@@ -693,6 +696,7 @@ mod tests {
         use crate::garrison::tests::{
             ARCHER, VILLAGER, inside_tc, let_out_world, sized_world, tracked, walker,
         };
+        use crate::players::PlayerId;
         use crate::test_ids::object_id;
         use crate::test_ids::player_id;
         use crate::world::World;
@@ -706,9 +710,9 @@ mod tests {
             // FUN_14163a650: villager 1000 is within 25 tiles of town centre 100, 1001 is not,
             // archer 1002 is no villager; the centre takes villagers and is in reach of itself
             let mut t = sized_world(60, 60);
-            walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
-            walker(&mut t, 1, 1001, VILLAGER, [45.5, 45.5]);
-            walker(&mut t, 1, 1002, ARCHER, [6.5, 5.5]);
+            walker(&mut t, PlayerId::new(1), 1000, VILLAGER, [5.5, 5.5]);
+            walker(&mut t, PlayerId::new(1), 1001, VILLAGER, [45.5, 45.5]);
+            walker(&mut t, PlayerId::new(1), 1002, ARCHER, [6.5, 5.5]);
             t.town_bell(player_id(1), object_id(100), true).unwrap();
             assert_eq!(
                 [1000, 1001, 1002].map(|id| enter(&t, id)),
@@ -720,7 +724,7 @@ mod tests {
         #[test]
         fn the_bell_is_its_owners_or_any_players_with_allied_control() {
             let mut t = let_out_world();
-            walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+            walker(&mut t, PlayerId::new(1), 1000, VILLAGER, [5.5, 5.5]);
             // player 2 rings player 1's centre: refused
             t.town_bell(player_id(2), object_id(100), true).unwrap();
             assert_eq!(enter(&t, 1000), None);
@@ -729,7 +733,7 @@ mod tests {
             assert_eq!(enter(&t, 1000), Some(100));
             // an object that is no town centre rings nothing; nor does an id the world lacks
             let mut t = let_out_world();
-            walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+            walker(&mut t, PlayerId::new(1), 1000, VILLAGER, [5.5, 5.5]);
             t.town_bell(player_id(1), object_id(1000), true).unwrap();
             t.town_bell(player_id(1), object_id(4242), true).unwrap();
             assert_eq!(enter(&t, 1000), None);
@@ -742,10 +746,10 @@ mod tests {
             // point (slot 0x340); 1002 has no flag and stays; 1003 is not filed and stays
             let mut t = let_out_world();
             t.object_mut(100).unwrap().1.town_bell.flag = true;
-            inside_tc(&mut t, 1, 1000, VILLAGER);
-            walker(&mut t, 1, 1001, VILLAGER, [5.5, 5.5]);
-            walker(&mut t, 1, 1002, VILLAGER, [6.5, 5.5]);
-            walker(&mut t, 1, 1003, VILLAGER, [7.5, 5.5]);
+            inside_tc(&mut t, PlayerId::new(1), 1000, VILLAGER);
+            walker(&mut t, PlayerId::new(1), 1001, VILLAGER, [5.5, 5.5]);
+            walker(&mut t, PlayerId::new(1), 1002, VILLAGER, [6.5, 5.5]);
+            walker(&mut t, PlayerId::new(1), 1003, VILLAGER, [7.5, 5.5]);
             for (id, point) in [(1000, [4.5, 4.5]), (1001, [3.5, 3.5]), (1002, [2.5, 2.5])] {
                 let v = &mut t.object_mut(id).unwrap().1.town_bell;
                 v.flag = id != 1002;
@@ -773,7 +777,7 @@ mod tests {
             assert_eq!(goal(&t, 1003), (None, true));
             // a record without a point on an axis (an exact -1) keeps the unit and its flag
             let mut t = let_out_world();
-            walker(&mut t, 1, 1001, VILLAGER, [5.5, 5.5]);
+            walker(&mut t, PlayerId::new(1), 1001, VILLAGER, [5.5, 5.5]);
             let v = &mut t.object_mut(1001).unwrap().1.town_bell;
             v.flag = true;
             v.work.point = [3.5, -1.0];
@@ -789,8 +793,8 @@ mod tests {
             let world = || {
                 let mut t = let_out_world();
                 t.object_mut(100).unwrap().1.town_bell.flag = true;
-                inside_tc(&mut t, 1, 1000, VILLAGER);
-                walker(&mut t, 1, 1001, VILLAGER, [5.5, 5.5]);
+                inside_tc(&mut t, PlayerId::new(1), 1000, VILLAGER);
+                walker(&mut t, PlayerId::new(1), 1001, VILLAGER, [5.5, 5.5]);
                 for (id, point) in [(1000, [4.5, 4.5]), (1001, [3.5, 3.5])] {
                     let v = &mut t.object_mut(id).unwrap().1.town_bell;
                     v.flag = true;

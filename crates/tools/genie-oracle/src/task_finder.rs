@@ -2,6 +2,7 @@
 
 use crate::masters::MasterTable;
 use crate::{Error, work_masters};
+use genie_core::players::PlayerId;
 use genie_rec::de;
 
 /// What the task finder (`genie_core::unit_ai::task_finder`) reads of a save: every player's masters as the work
@@ -27,7 +28,7 @@ pub struct FinderWorld {
 #[derive(Clone, Copy, Debug)]
 pub struct FinderObject {
     /// Its player.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its master.
     pub master: i16,
     /// Its state.
@@ -54,14 +55,18 @@ impl genie_core::unit_ai::task_finder::Diplomacy for FinderWorld {
     /// `FUN_141663dc0`: one's own player counts; Gaia never does; else the relation 0 does, and
     /// 4 with the ally flag. Relation 1 counts only under allied victory (`FUN_1415e8e10`), which
     /// the slice does not model.
-    fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
+    fn allied(&self, from: PlayerId, to: PlayerId, with_ally: bool) -> bool {
         if from == to {
             return true;
         }
-        if to == 0 {
+        if to == PlayerId::GAIA {
             return false;
         }
-        match self.relations.get(from).and_then(|r| r.get(to)) {
+        match self
+            .relations
+            .get(from.index())
+            .and_then(|r| r.get(to.index()))
+        {
             Some(0) => true,
             Some(4) => with_ally,
             _ => false,
@@ -92,7 +97,7 @@ impl FinderWorld {
         let o = self.objects.get(&id)?;
         Some(genie_core::unit_ai::task_finder::TaskTarget {
             id,
-            master: self.masters.get(o.player)?.get(o.master)?,
+            master: self.masters.get(o.player.index())?.get(o.master)?,
             player: o.player,
             state: o.state,
             held: o.held,
@@ -116,11 +121,15 @@ impl FinderWorld {
         let o = self.objects.get(&id)?;
         Some(genie_core::unit_ai::task_finder::Actor {
             id,
-            master: self.masters.get(o.player)?.get(o.master)?,
+            master: self.masters.get(o.player.index())?.get(o.master)?,
             player: o.player,
             held: o.held,
-            attribute_95: self.attribute_95.get(o.player).copied().unwrap_or(0.0),
-            civ: self.civs.get(o.player).copied().unwrap_or(0),
+            attribute_95: self
+                .attribute_95
+                .get(o.player.index())
+                .copied()
+                .unwrap_or(0.0),
+            civ: self.civs.get(o.player.index()).copied().unwrap_or(0),
         })
     }
 }
@@ -138,7 +147,7 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
         .map(|p| work_masters(p.objects(), p.world_player().base.civ_id, table))
         .collect();
     let mut objects = std::collections::HashMap::new();
-    for (player, section) in sections.iter().enumerate() {
+    for (player, section) in PlayerId::each(sections.len()).zip(&sections) {
         for o in section.live_objects().chain(section.sleeping_objects()) {
             let Some(s) = o.static_part() else { continue };
             let combat = o.combat();

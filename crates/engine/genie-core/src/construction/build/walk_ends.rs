@@ -138,7 +138,7 @@ impl BuildAction {
     /// What the removal does not model.
     pub(super) fn remove_marked(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
         if let Some((q, _)) = c.w.object(self.target)
-            && !c.w.players[q].computer
+            && !c.w.players[q.index()].computer
         {
             c.w.remove_building(q, self.target)?;
         }

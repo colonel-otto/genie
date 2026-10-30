@@ -4,6 +4,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -53,7 +54,7 @@ fn world() -> World {
             ..Player::default()
         },
     ];
-    let mut t = World::new(0, 0, 0, vec![0; 4], players);
+    let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
     let master = Master {
         id: 4,
         kind: 70,
@@ -471,7 +472,7 @@ fn a_deleted_group_lets_its_members_go() {
     let mut t = world();
     t.groups.get_mut(1).unwrap().members.clear();
     assert!(!t.group_update(1).unwrap());
-    t.update_groups(1).unwrap();
+    t.update_groups(PlayerId::new(1)).unwrap();
     assert!(t.groups.get(1).is_none());
 }
 
@@ -958,7 +959,7 @@ fn a_member_s_own_move_walks_its_path() {
             position: [1.0, 1.0, 0.0],
             radius: [0.2, 0.2],
             class: class::CLASS_6,
-            player: 1,
+            player: PlayerId::new(1),
             master: 4,
             obstruction_type: 0,
             buildable_on: 0,
@@ -1002,7 +1003,7 @@ fn a_group_update_leaves_its_members_gaits_current() {
         t.spatial.set_gait(u.id.get(), u.gait());
     }
     assert!(t.spatial.gait(10).unwrap().moving);
-    t.update_groups(1).unwrap();
+    t.update_groups(PlayerId::new(1)).unwrap();
     for id in 10..=12 {
         let gait = t.object(id).unwrap().1.gait();
         assert!(!gait.unwrap().moving, "{id}");
@@ -1244,7 +1245,7 @@ fn the_lead_is_the_member_nearest_the_targets_place() {
         .into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 1, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
     let member = |id| Member {
         id,
         ..Member::default()
@@ -1274,7 +1275,7 @@ fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
         objects: vec![held].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 1, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
     let member = |id| Member {
         id,
         ..Member::default()
@@ -1365,15 +1366,15 @@ fn grounded() -> World {
     ));
     t.spatial.sight.as_mut().unwrap().registry =
         Some(crate::vision::registry::Registry::new(4, 65));
-    for p in 1..4 {
-        for u in &mut t.players[p].objects {
+    for p in PlayerId::each(4).skip(1) {
+        for u in &mut t.players[p.index()].objects {
             u.ai.as_mut().unwrap().ai_type = crate::unit_ai::SOLDIER_AI;
             u.body.put_mover(Some(crate::movement::Mover {
                 moved_at: u.position(),
                 ..crate::gathering::hunt::tests::walker()
             }));
         }
-        for u in t.players[p].objects.clone() {
+        for u in t.players[p.index()].objects.clone() {
             t.spatial.insert(
                 u.id.get(),
                 crate::map::spatial::Placed {
@@ -1534,13 +1535,11 @@ fn attacking(t: &mut World) {
 /// Every object of every player in the spatial index at its place (`FUN_14118f8c0`-style gaps and
 /// the work command's reach read it).
 fn register(t: &mut World) {
-    let placed: Vec<(i32, crate::map::spatial::Placed)> = t
-        .players
-        .iter()
-        .enumerate()
+    let placed: Vec<(i32, crate::map::spatial::Placed)> = PlayerId::each(t.players.len())
+        .zip(&t.players)
         .flat_map(|(p, player)| player.objects.iter().map(move |u| (p, u)))
         .filter_map(|(p, u)| {
-            let m = t.masters.get(p)?.get(u.life.master_id)?;
+            let m = t.masters.get(p.index())?.get(u.life.master_id)?;
             Some((
                 u.id.get(),
                 crate::map::spatial::Placed {

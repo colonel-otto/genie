@@ -127,7 +127,7 @@ impl MakeAction {
         let master = object_master(
             farm.own_master.as_deref(),
             (farm.id.get(), farm.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )?;
         match self.state {
             // `+0x18`: the state whose update reports the action done (`FUN_140a99e30` returns 1).
@@ -145,7 +145,7 @@ impl MakeAction {
                         farm.life.amount = capacity;
                     }
                 } else {
-                    c.w.players[c.player].add_attribute(self.task.attribute_type, rate)?;
+                    c.w.players[c.player.index()].add_attribute(self.task.attribute_type, rate)?;
                 }
                 self.remaining -= farm.life.amount - before;
             }
@@ -182,6 +182,7 @@ impl Unit {
 mod tests {
     use super::*;
     use crate::objects::masters::{Master, Masters};
+    use crate::players::PlayerId;
     use crate::test_ids::object_id;
     use crate::world::{Player, World};
 
@@ -235,7 +236,13 @@ mod tests {
             attributes: attributes(),
             ..Player::default()
         };
-        let mut t = World::new(0, 1, 1, vec![0, 0], vec![Player::default(), owner]);
+        let mut t = World::new(
+            0,
+            1,
+            PlayerId::new(1),
+            vec![0, 0],
+            vec![Player::default(), owner],
+        );
         let wall = Master {
             class: NEVER_EXHAUSTED_CLASS,
             ..farm_master(7)
@@ -248,7 +255,8 @@ mod tests {
     /// The farm's update of 104 ms through its step: its code, its Make, what it holds and its
     /// hit points.
     fn made(t: &mut World) -> (HeadCode, MakeAction, f32, f32) {
-        let code = crate::world::tests::in_update(t, (1, 0), 104, Unit::make_part).unwrap();
+        let code =
+            crate::world::tests::in_update(t, (PlayerId::new(1), 0), 104, Unit::make_part).unwrap();
         let farm = &t.players[1].objects[0];
         (
             code,
@@ -368,7 +376,7 @@ mod tests {
     #[test]
     fn a_farm_without_its_master_fails() {
         let mut t = farm_world(making(0.0, 0.0, farm_task()), 99, 0.0);
-        let r = crate::world::tests::in_update(&mut t, (1, 0), 104, Unit::make_part);
+        let r = crate::world::tests::in_update(&mut t, (PlayerId::new(1), 0), 104, Unit::make_part);
         assert!(r.is_err());
     }
 }

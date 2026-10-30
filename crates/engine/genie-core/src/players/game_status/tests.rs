@@ -6,6 +6,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
+use crate::players::PlayerId;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
@@ -74,7 +75,7 @@ fn game() -> World {
     let mut t = World::new(
         61_000,
         1,
-        0,
+        PlayerId::new(0),
         vec![0; 3],
         vec![
             Player::default(),
@@ -125,7 +126,7 @@ fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
     t.players[1].attributes[301] = 50.0;
     t.players[1].history.entries = vec![[1, 0]; 4];
     t.world_time = 5_000;
-    t.defeat_event(1).unwrap();
+    t.defeat_event(PlayerId::new(1)).unwrap();
     assert_eq!(
         t.players[1].history.events,
         [crate::players::history::Event {
@@ -139,7 +140,7 @@ fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
     );
     t.players[2].resigned = true;
     t.players[2].history.entries = vec![[1, 0]];
-    t.defeat_event(2).unwrap();
+    t.defeat_event(PlayerId::new(2)).unwrap();
     assert_eq!(t.players[2].history.events, []);
 }
 
@@ -170,7 +171,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         position: [3.5, 3.5, 0.0],
         class: class::CLASS_7,
         master: 59,
-        player: 0,
+        player: PlayerId::new(0),
         workers: 0,
         drop_site: false,
         gap: 1.2,
@@ -260,20 +261,27 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         ..Unit::default()
     });
     assert_eq!(
-        t.halt_other(1, gather, crate::gathering::gather::GATHER),
-        Ok(true)
-    );
-    assert_eq!(t.halt_other(1, build, action_type::BUILD), Ok(true));
-    assert_eq!(
-        t.halt_other(1, repair, crate::construction::repair::REPAIR),
+        t.halt_other(PlayerId::new(1), gather, crate::gathering::gather::GATHER),
         Ok(true)
     );
     assert_eq!(
-        t.halt_other(1, attack, crate::combat::attack::ATTACK),
+        t.halt_other(PlayerId::new(1), build, action_type::BUILD),
+        Ok(true)
+    );
+    assert_eq!(
+        t.halt_other(
+            PlayerId::new(1),
+            repair,
+            crate::construction::repair::REPAIR
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        t.halt_other(PlayerId::new(1), attack, crate::combat::attack::ATTACK),
         Ok(true)
     );
     let kind = crate::ownership::artifact::ARTIFACT_TYPE;
-    assert_eq!(t.halt_other(1, artifact, kind), Ok(true));
+    assert_eq!(t.halt_other(PlayerId::new(1), artifact, kind), Ok(true));
     let objects = &t.players[1].objects;
     assert_eq!(objects[gather].actions.gather().map(|g| g.state), Some(2));
     assert_eq!(objects[build].actions.build().map(|b| b.state), Some(2));
@@ -286,7 +294,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         objects[artifact].actions.artifact().map(|a| a.state),
         Some(6)
     );
-    assert!(t.halt_other(1, gather, 99).is_err());
+    assert!(t.halt_other(PlayerId::new(1), gather, 99).is_err());
 }
 
 #[test]
@@ -336,13 +344,13 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     let idx = t.players[1].objects.len() - 1;
     let mut without_ai = t.clone();
     // the unit AI's stopAction (slot 0x3c0) then empties the list
-    t.object_stop(1, idx).unwrap();
+    t.object_stop(PlayerId::new(1), idx).unwrap();
     let u = &t.players[1].objects[idx];
     assert_eq!(u.actions.hunt().copied(), None);
     assert_eq!(u.ai.as_ref().unwrap().current_action, None);
     // without a unit AI the halted Hunt stays
     without_ai.players[1].objects[idx].ai = None;
-    without_ai.object_stop(1, idx).unwrap();
+    without_ai.object_stop(PlayerId::new(1), idx).unwrap();
     let u = &without_ai.players[1].objects[idx];
     assert_eq!(
         u.actions.hunt().map(|h| h.state),
@@ -395,12 +403,12 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
     tc.queue = queue(&[villager(83, 4, 50.0)]);
     t.players[1].attributes[80] = 4.0;
     t.players[1].objects[0].life.state = 3;
-    t.building_production(1, 0, 0.05).unwrap();
+    t.building_production(PlayerId::new(1), 0, 0.05).unwrap();
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[80]), (200.0, 0.0));
     let q = &p.objects[0].production.as_ref().unwrap().queue;
     assert_eq!((q.count, q.total, q.changes), (0, 0, 1));
-    t.building_production(1, 0, 0.05).unwrap();
+    t.building_production(PlayerId::new(1), 0, 0.05).unwrap();
     let q = &t.players[1].objects[0].production.as_ref().unwrap().queue;
     assert_eq!((q.count, q.changes), (0, 2));
     let mut t = game();
@@ -415,7 +423,7 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
         .unwrap()
         .queue
         .enabled = false;
-    t.building_production(1, 0, 0.05).unwrap();
+    t.building_production(PlayerId::new(1), 0, 0.05).unwrap();
     let p = &t.players[1];
     assert_eq!(p.objects[0].production.as_ref().unwrap().queue.count, 1);
     assert_eq!(p.resources[0], 0.0);
@@ -429,7 +437,7 @@ fn a_cancel_of_the_first_unit_drops_the_make_action_of_an_entry_that_stays() {
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[villager(83, 3, 46.0)]);
     t.players[1].attributes[80] = 3.0;
-    t.cancel_queued(1, 0, 0, false).unwrap();
+    t.cancel_queued(PlayerId::new(1), 0, 0, false).unwrap();
     let p = &t.players[1];
     let production = p.objects[0].production.as_ref().unwrap();
     assert_eq!(
@@ -452,11 +460,11 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     tc.queue = queue(&[villager(83, 3, 46.0), villager(293, 4, 46.0)]);
     t.players[1].attributes[80] = 7.0;
     t.masters[1] = Masters::new([
-        t.master(1, 109).unwrap().clone(),
-        t.master(1, 83).unwrap().clone(),
+        t.master(PlayerId::new(1), 109).unwrap().clone(),
+        t.master(PlayerId::new(1), 83).unwrap().clone(),
         Master {
             id: 293,
-            ..t.master(1, 83).unwrap().clone()
+            ..t.master(PlayerId::new(1), 83).unwrap().clone()
         },
     ]);
     t.cancel_order(&object_ids([9]), 0, true).unwrap();
@@ -507,7 +515,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     t.players[1].attributes[80] = 4.0;
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[archer(2), villager(83, 2, 46.0)]);
-    t.cancel_queued(1, 0, 0, true).unwrap();
+    t.cancel_queued(PlayerId::new(1), 0, 0, true).unwrap();
     let p = &t.players[1];
     assert_eq!(p.resources, [92.0, 50.0, 0.0, 90.0]);
     assert_eq!(p.attributes[80], 0.0);
@@ -523,7 +531,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[villager(83, 2, 46.0), research]);
     t.players[1].attributes[80] = 2.0;
-    t.cancel_queued(1, 0, 0, true).unwrap();
+    t.cancel_queued(PlayerId::new(1), 0, 0, true).unwrap();
     let q = &t.players[1].objects[0].production.as_ref().unwrap().queue;
     assert_eq!(
         (q.count, q.slots[0].tech, t.players[1].resources[0]),
@@ -628,7 +636,7 @@ fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_o
     let mut t = researching(30.0);
     let s = &mut t.players[1].techs[22];
     (s.stack, s.research_cap) = (true, 5);
-    t.cancel_queue(1, 0).unwrap();
+    t.cancel_queue(PlayerId::new(1), 0).unwrap();
     let p = &t.players[1];
     assert_eq!(p.resources[3], 150.0);
     let s = &p.techs[22];
@@ -642,7 +650,7 @@ fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_o
     let mut t = researching(10.0);
     let s = &mut t.players[1].techs[22];
     (s.stack, s.research_cap) = (true, 5);
-    t.cancel_queue(1, 0).unwrap();
+    t.cancel_queue(PlayerId::new(1), 0).unwrap();
     let s = &t.players[1].techs[22];
     assert_eq!((s.state, s.times_researched, s.pending), (1, 0, 0));
 }
@@ -667,7 +675,7 @@ fn a_research_gives_the_effect_attribute_269_names() {
             d: 20.0,
         }];
         let gold = t.players[1].resources[3];
-        t.produce(1, 0, 1.0).unwrap();
+        t.produce(PlayerId::new(1), 0, 1.0).unwrap();
         t.players[1].resources[3] - gold
     };
     assert_eq!(run(300.0), 20.0);

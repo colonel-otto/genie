@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -31,7 +32,7 @@ impl World {
     /// The step's, or the first of what follows it; the object's outputs after it do not apply.
     pub(super) fn step_object(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (PlayerId, usize),
         (dt, turn, full): (u32, Option<u32>, bool),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Stepped, GenieError> {
@@ -51,7 +52,7 @@ impl World {
     /// # Errors
     ///
     /// The object left the list in its own step.
-    fn slot_of(&self, p: usize, id: i32) -> Result<usize, GenieError> {
+    fn slot_of(&self, p: PlayerId, id: i32) -> Result<usize, GenieError> {
         self.players
             .player(p)?
             .objects
@@ -67,7 +68,7 @@ impl World {
     /// check, and a building's production.
     fn finish_own_update(
         &mut self,
-        (p, i, id): (usize, usize, i32),
+        (p, i, id): (PlayerId, usize, i32),
         (dt, own_update): (u32, bool),
         outcome: &Outcome,
     ) -> Result<(), GenieError> {

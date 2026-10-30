@@ -12,6 +12,7 @@ use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
 use crate::objects::object_list::ObjectList;
 use crate::objects::unit::{TAKEN_OUT, Unit};
+use crate::players::PlayerId;
 use crate::players::tracker::{Tracker, key};
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
@@ -23,7 +24,7 @@ use crate::world::slots::PlayerSlots;
 #[derive(Clone, Copy)]
 pub(crate) struct OthersRef<'a> {
     /// The owner, as the update reads it (a captured unit's new one).
-    player: usize,
+    player: PlayerId,
     /// The owner's live list (the updating object's slot holds its stand-in, [`TAKEN_OUT`]).
     own: &'a ObjectList,
     /// The other players' lists.
@@ -32,7 +33,7 @@ pub(crate) struct OthersRef<'a> {
 
 impl<'a> OthersRef<'a> {
     /// Player `player`'s view: its live list `own` and the other players' `foreign`.
-    pub(crate) const fn new(player: usize, own: &'a ObjectList, foreign: Foreign<'a>) -> Self {
+    pub(crate) const fn new(player: PlayerId, own: &'a ObjectList, foreign: Foreign<'a>) -> Self {
         Self {
             player,
             own,
@@ -42,7 +43,7 @@ impl<'a> OthersRef<'a> {
 
     /// Player `player`'s view of its live list `own` alone, no other player's.
     #[cfg(test)]
-    pub(crate) const fn alone(player: usize, own: &'a ObjectList) -> Self {
+    pub(crate) const fn alone(player: PlayerId, own: &'a ObjectList) -> Self {
         let foreign = Foreign {
             before: &[],
             after: &[],
@@ -56,11 +57,11 @@ impl<'a> OthersRef<'a> {
     /// # Errors
     ///
     /// When `players` holds no player `p`.
-    pub(crate) fn of(players: &'a [Player], p: usize) -> Result<Self, GenieError> {
+    pub(crate) fn of(players: &'a [Player], p: PlayerId) -> Result<Self, GenieError> {
         let no_player = || {
             GenieError::unreachable("a view of a player the world does not hold").with("player", p)
         };
-        let (before, rest) = players.split_at_checked(p).ok_or_else(no_player)?;
+        let (before, rest) = players.split_at_checked(p.index()).ok_or_else(no_player)?;
         let (player, after) = rest.split_first().ok_or_else(no_player)?;
         let foreign = Foreign {
             before,
@@ -72,7 +73,7 @@ impl<'a> OthersRef<'a> {
 
     /// The view of player `new`, which took the updating object over in its update, with its
     /// live list `list`: this view's owner's list counts among the other players' (`left`).
-    pub(crate) const fn changed_hands(self, new: usize, list: &'a ObjectList) -> Self {
+    pub(crate) const fn changed_hands(self, new: PlayerId, list: &'a ObjectList) -> Self {
         Self {
             player: new,
             own: list,
@@ -95,15 +96,15 @@ impl<'a> OthersRef<'a> {
 
     /// The other players' live and sleeping objects with their players: the players in their
     /// order, each one's live list before its sleeping one, then the list `left` names.
-    pub(crate) fn foreign_iter(&self) -> impl Iterator<Item = (usize, &'a Unit)> + use<'a> {
+    pub(crate) fn foreign_iter(&self) -> impl Iterator<Item = (PlayerId, &'a Unit)> + use<'a> {
         let Foreign {
             before,
             after,
             left,
         } = self.foreign;
         let skip = before.len() + 1;
-        let before = before.iter().enumerate();
-        let after = after.iter().enumerate().map(move |(q, p)| (q + skip, p));
+        let before = numbered(before, 0);
+        let after = numbered(after, skip);
         let lists = before
             .chain(after)
             .flat_map(|(q, p)| p.objects.iter().chain(&p.sleeping).map(move |u| (q, u)));
@@ -116,15 +117,15 @@ impl<'a> OthersRef<'a> {
 
     /// Another player's live or sleeping object `id`, with that player
     /// ([`OthersRef::foreign_iter`]'s first).
-    pub(crate) fn foreign(&self, id: i32) -> Option<(usize, &'a Unit)> {
+    pub(crate) fn foreign(&self, id: i32) -> Option<(PlayerId, &'a Unit)> {
         let Foreign {
             before,
             after,
             left,
         } = self.foreign;
         let skip = before.len() + 1;
-        let before = before.iter().enumerate();
-        let after = after.iter().enumerate().map(move |(q, p)| (q + skip, p));
+        let before = numbered(before, 0);
+        let after = numbered(after, skip);
         let mut players = before.chain(after);
         players
             .find_map(|(q, p)| {
@@ -142,7 +143,7 @@ impl<'a> OthersRef<'a> {
     }
 
     /// Object `id` with its owner: the owner's own, else another player's.
-    pub(crate) fn find(&self, id: i32) -> Option<(usize, &'a Unit)> {
+    pub(crate) fn find(&self, id: i32) -> Option<(PlayerId, &'a Unit)> {
         self.own(id)
             .map(|u| (self.player, u))
             .or_else(|| self.foreign(id))
@@ -159,10 +160,27 @@ impl<'a> OthersRef<'a> {
     }
 }
 
+/// Players `players` in order, numbered from `first`: the slice's share of the world's players.
+fn numbered(players: &[Player], first: usize) -> impl Iterator<Item = (PlayerId, &Player)> + Clone {
+    PlayerId::each(first + players.len())
+        .skip(first)
+        .zip(players)
+}
+
+/// [`numbered`], to change.
+fn numbered_mut(
+    players: &mut [Player],
+    first: usize,
+) -> impl Iterator<Item = (PlayerId, &mut Player)> {
+    PlayerId::each(first + players.len())
+        .skip(first)
+        .zip(players)
+}
+
 /// The objects besides the one that updates, to change: what [`OthersRef`] reads, with the
 /// owner's other live objects and the other players to write.
 pub(crate) struct Others<'a> {
-    player: usize,
+    player: PlayerId,
     own: &'a mut ObjectList,
     /// The owner's sleeping list, which only a write by id reaches.
     own_sleeping: &'a mut ObjectList,
@@ -175,7 +193,7 @@ impl<'a> Others<'a> {
     /// The view of player `player`'s objects as one of them updates: the player's live list
     /// `own`, its sleeping list `own_sleeping` and the players `before` and `after` it.
     pub(crate) const fn new(
-        player: usize,
+        player: PlayerId,
         (own, own_sleeping): (&'a mut ObjectList, &'a mut ObjectList),
         (before, after): (&'a mut [Player], &'a mut [Player]),
     ) -> Self {
@@ -200,7 +218,7 @@ impl<'a> Others<'a> {
 
     /// Object `id` of any list, live or sleeping, with its owner, to change: what the world's
     /// table by id (`FUN_1415417a0`) gives the game's call on it.
-    pub(crate) fn get_mut(&mut self, id: i32) -> Option<(usize, &mut Unit)> {
+    pub(crate) fn get_mut(&mut self, id: i32) -> Option<(PlayerId, &mut Unit)> {
         let p = self.player;
         if let Some(u) = self.own.by_id_mut(id) {
             return Some((p, u));
@@ -209,12 +227,8 @@ impl<'a> Others<'a> {
             return Some((p, u));
         }
         let skip = self.before.len() + 1;
-        let before = self.before.iter_mut().enumerate();
-        let after = self
-            .after
-            .iter_mut()
-            .enumerate()
-            .map(|(q, pl)| (q + skip, pl));
+        let before = numbered_mut(self.before, 0);
+        let after = numbered_mut(self.after, skip);
         before.chain(after).find_map(|(q, pl)| {
             let Player {
                 objects, sleeping, ..
@@ -228,7 +242,7 @@ impl<'a> Others<'a> {
 
     /// Object `id` of any list with its owner and whether it sleeps: what the world's table by
     /// id (`FUN_1415417a0`) gives, the owner's lists first.
-    pub(crate) fn locate(&self, id: i32) -> Option<(usize, &Unit, bool)> {
+    pub(crate) fn locate(&self, id: i32) -> Option<(PlayerId, &Unit, bool)> {
         let p = self.player;
         if let Some(u) = self.own.by_id(id) {
             return Some((p, u, false));
@@ -237,8 +251,8 @@ impl<'a> Others<'a> {
             return Some((p, u, true));
         }
         let skip = self.before.len() + 1;
-        let before = self.before.iter().enumerate();
-        let after = self.after.iter().enumerate().map(|(q, pl)| (q + skip, pl));
+        let before = numbered(self.before, 0);
+        let after = numbered(self.after, skip);
         before.chain(after).find_map(|(q, pl)| {
             let live = pl.objects.by_id(id).map(|u| (q, u, false));
             live.or_else(|| pl.sleeping.by_id(id).map(|u| (q, u, true)))
@@ -260,12 +274,8 @@ impl<'a> Others<'a> {
         let p = self.player;
         let skip = self.before.len() + 1;
         let own = std::iter::once((p, &mut *self.own, &mut *self.own_sleeping, own_tracker));
-        let before = self.before.iter_mut().enumerate();
-        let after = self
-            .after
-            .iter_mut()
-            .enumerate()
-            .map(|(q, pl)| (q + skip, pl));
+        let before = numbered_mut(self.before, 0);
+        let after = numbered_mut(self.after, skip);
         let foreign = before.chain(after).map(|(q, pl)| {
             let Player {
                 objects,
@@ -280,7 +290,7 @@ impl<'a> Others<'a> {
                 continue;
             };
             woken.life.goto_sleep = false;
-            let k = key(masters.get(q), lines, woken.life.master_id);
+            let k = key(masters.get(q.index()), lines, woken.life.master_id);
             live.push(woken);
             tracker.remove(id, k);
             tracker.add(id, k);
@@ -293,13 +303,15 @@ impl<'a> Others<'a> {
 impl World {
     /// Object `id` of any list with its owner and whether it sleeps: what the world's table by
     /// id (`FUN_1415417a0`) gives.
-    pub(crate) fn locate(&self, id: i32) -> Option<(usize, &Unit, bool)> {
-        self.players.iter().enumerate().find_map(|(p, player)| {
-            if let Some(u) = player.objects.by_id(id) {
-                return Some((p, u, false));
-            }
-            player.sleeping.by_id(id).map(|u| (p, u, true))
-        })
+    pub(crate) fn locate(&self, id: i32) -> Option<(PlayerId, &Unit, bool)> {
+        PlayerId::each(self.players.len())
+            .zip(&self.players)
+            .find_map(|(p, player)| {
+                if let Some(u) = player.objects.by_id(id) {
+                    return Some((p, u, false));
+                }
+                player.sleeping.by_id(id).map(|u| (p, u, true))
+            })
     }
 
     /// The sleeping object `id` wakes (`FUN_14119deb0` with 0): it leaves its player's sleeping
@@ -307,13 +319,15 @@ impl World {
     /// (slots 0x2d8, 0x2d0) file it last in its player's tracker. False when no sleeping list
     /// holds it.
     pub(crate) fn wake_sleeper(&mut self, id: i32) -> Result<bool, GenieError> {
-        let woken = self.players.iter_mut().enumerate().find_map(|(p, player)| {
-            let mut woken = player.sleeping.swap_remove_id(id)?;
-            woken.life.goto_sleep = false;
-            let master = woken.life.master_id;
-            player.objects.push(woken);
-            Some((p, master))
-        });
+        let woken = PlayerId::each(self.players.len())
+            .zip(&mut self.players)
+            .find_map(|(p, player)| {
+                let mut woken = player.sleeping.swap_remove_id(id)?;
+                woken.life.goto_sleep = false;
+                let master = woken.life.master_id;
+                player.objects.push(woken);
+                Some((p, master))
+            });
         let Some((p, master)) = woken else {
             return Ok(false);
         };
@@ -328,7 +342,11 @@ impl World {
     /// # Errors
     ///
     /// A player the world does not hold.
-    pub(crate) fn take_out_own(&mut self, p: usize, id: i32) -> Result<Option<Unit>, GenieError> {
+    pub(crate) fn take_out_own(
+        &mut self,
+        p: PlayerId,
+        id: i32,
+    ) -> Result<Option<Unit>, GenieError> {
         let own = &mut self.players.player_mut(p)?.objects;
         own.position_of(id).map(|i| own.take_out(i)).transpose()
     }
@@ -340,7 +358,7 @@ impl World {
     ///
     /// Its stand-in left the list: the unit goes to the list's end; a stand-in itself (its
     /// object lost in a lend, [`crate::world::step::Step::lend`]) goes nowhere.
-    pub(crate) fn put_back_own(&mut self, p: usize, unit: Unit) -> Result<usize, GenieError> {
+    pub(crate) fn put_back_own(&mut self, p: PlayerId, unit: Unit) -> Result<usize, GenieError> {
         if unit.id == TAKEN_OUT {
             return Err(GenieError::unreachable(
                 "a stand-in put back for its object",
@@ -393,21 +411,44 @@ mod tests {
             after: &after,
             left: None,
         };
-        let v = OthersRef::new(1, &own, foreign);
+        let v = OthersRef::new(PlayerId::new(1), &own, foreign);
         assert_eq!(v.own(10).map(|u| u.id.get()), Some(10));
         assert!(v.own(1).is_none(), "another player's is not the owner's");
-        assert_eq!(v.find(12).map(|(q, u)| (q, u.life.hp)), Some((1, 5.0)));
-        assert_eq!(v.foreign(12).map(|(q, u)| (q, u.life.hp)), Some((2, 7.0)));
-        assert_eq!(v.find(2).map(|(q, u)| (q, u.id.get())), Some((0, 2)));
-        assert_eq!(v.find(20).map(|(q, _)| q), Some(2));
+        assert_eq!(
+            v.find(12).map(|(q, u)| (q, u.life.hp)),
+            Some((PlayerId::new(1), 5.0))
+        );
+        assert_eq!(
+            v.foreign(12).map(|(q, u)| (q, u.life.hp)),
+            Some((PlayerId::new(2), 7.0))
+        );
+        assert_eq!(
+            v.find(2).map(|(q, u)| (q, u.id.get())),
+            Some((PlayerId::new(0), 2))
+        );
+        assert_eq!(v.find(20).map(|(q, _)| q), Some(PlayerId::new(2)));
         assert_eq!(v.get(1).map(|u| u.id.get()), Some(1));
-        assert_eq!(v.players().player(2).map(|p| p.objects.len()), Some(2));
+        assert_eq!(
+            v.players()
+                .player(PlayerId::new(2))
+                .map(|p| p.objects.len()),
+            Some(2)
+        );
         assert!(
-            v.players().player(1).is_none(),
+            v.players().player(PlayerId::new(1)).is_none(),
             "the owner's data is the update's own"
         );
-        let foreign: Vec<(usize, i32)> = v.foreign_iter().map(|(q, u)| (q, u.id.get())).collect();
-        assert_eq!(foreign, [(0, 1), (0, 2), (2, 20), (2, 12)]);
+        let foreign: Vec<(PlayerId, i32)> =
+            v.foreign_iter().map(|(q, u)| (q, u.id.get())).collect();
+        assert_eq!(
+            foreign,
+            [
+                (PlayerId::new(0), 1),
+                (PlayerId::new(0), 2),
+                (PlayerId::new(2), 20),
+                (PlayerId::new(2), 12)
+            ]
+        );
         let every: Vec<i32> = v.every().map(|u| u.id.get()).collect();
         assert_eq!(every, [10, 12, 1, 2, 20, 12]);
         assert!(
@@ -421,13 +462,17 @@ mod tests {
     fn the_owner_s_objects_iterate_in_list_order_without_the_one_that_updates() {
         let (mut own, mut before, mut after) = world();
         let mut asleep = ObjectList::from(vec![unit(13)]);
-        let mut others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
+        let mut others = Others::new(
+            PlayerId::new(1),
+            (&mut own, &mut asleep),
+            (&mut before, &mut after),
+        );
         let ids: Vec<i32> = others.view().own_iter().map(|u| u.id.get()).collect();
         assert_eq!(ids, [10, 12]);
         for (id, owner) in [(10, 1), (12, 1), (13, 1), (2, 0), (20, 2)] {
             let (q, u) = others.get_mut(id).expect("any list's object");
             u.life.hp = 4.0;
-            assert_eq!(q, owner);
+            assert_eq!(q, PlayerId::from(owner));
         }
         assert!(others.get_mut(11).is_none(), "the updating object is out");
         assert!(
@@ -437,7 +482,10 @@ mod tests {
         assert_eq!(others.view().own(10).map(|u| u.life.hp), Some(4.0));
         assert_eq!(others.view().find(2).map(|(_, u)| u.life.hp), Some(4.0));
         assert_eq!(others.view().find(12).map(|(_, u)| u.life.hp), Some(4.0));
-        assert_eq!(others.view().find(20).map(|(q, _)| q), Some(2));
+        assert_eq!(
+            others.view().find(20).map(|(q, _)| q),
+            Some(PlayerId::new(2))
+        );
         assert_eq!(others.view().foreign(10).map(|(q, _)| q), None);
         assert_eq!(own[1].id, TAKEN_OUT, "the stand-in stays as it was");
     }
@@ -446,16 +494,24 @@ mod tests {
     fn a_lookup_by_id_reaches_every_list_and_says_whether_the_object_sleeps() {
         let (mut own, mut before, mut after) = world();
         let mut asleep = ObjectList::from(vec![unit(13)]);
-        let others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
+        let others = Others::new(
+            PlayerId::new(1),
+            (&mut own, &mut asleep),
+            (&mut before, &mut after),
+        );
         let at = |id| {
             others
                 .locate(id)
                 .map(|(q, u, sleeps)| (q, u.id.get(), sleeps))
         };
-        assert_eq!(at(12), Some((1, 12, false)), "the owner's before another's");
-        assert_eq!(at(13), Some((1, 13, true)));
-        assert_eq!(at(2), Some((0, 2, true)));
-        assert_eq!(at(20), Some((2, 20, false)));
+        assert_eq!(
+            at(12),
+            Some((PlayerId::new(1), 12, false)),
+            "the owner's before another's"
+        );
+        assert_eq!(at(13), Some((PlayerId::new(1), 13, true)));
+        assert_eq!(at(2), Some((PlayerId::new(0), 2, true)));
+        assert_eq!(at(20), Some((PlayerId::new(2), 20, false)));
         assert_eq!(at(11), None, "the updating object is out");
         assert_eq!(at(TAKEN_OUT.get()), None);
     }
@@ -477,11 +533,18 @@ mod tests {
         for id in [2, 1] {
             before[0].tracker.add(id, k);
         }
-        let mut others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
+        let mut others = Others::new(
+            PlayerId::new(1),
+            (&mut own, &mut asleep),
+            (&mut before, &mut after),
+        );
         assert!(others.wake(13, &mut tracker, (&[], &lines)));
         assert!(others.wake(2, &mut tracker, (&[], &lines)));
         assert!(!others.wake(20, &mut tracker, (&[], &lines)), "20 is awake");
-        assert_eq!(others.locate(13).map(|(q, _, s)| (q, s)), Some((1, false)));
+        assert_eq!(
+            others.locate(13).map(|(q, _, s)| (q, s)),
+            Some((PlayerId::new(1), false))
+        );
         assert_eq!(
             others.view().own(13).map(|u| u.life.goto_sleep),
             Some(false)
@@ -509,12 +572,16 @@ mod tests {
             after: &after,
             left: None,
         };
-        let v = OthersRef::new(1, &own, foreign).changed_hands(2, &after[0].objects);
+        let v = OthersRef::new(PlayerId::new(1), &own, foreign)
+            .changed_hands(PlayerId::new(2), &after[0].objects);
         assert_eq!(v.own(20).map(|u| u.id.get()), Some(20));
-        assert_eq!(v.find(12).map(|(q, u)| (q, u.life.hp)), Some((2, 7.0)));
+        assert_eq!(
+            v.find(12).map(|(q, u)| (q, u.life.hp)),
+            Some((PlayerId::new(2), 7.0))
+        );
         assert_eq!(
             v.find(10).map(|(q, _)| q),
-            Some(1),
+            Some(PlayerId::new(1)),
             "the old owner's list is left"
         );
         assert_eq!(v.own_iter().count(), 2);

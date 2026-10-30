@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
+use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::game_status::{ONE_UNIT_AGE, ONE_UNIT_MODE};
 use crate::production::{Making, refund, refund_research};
@@ -24,7 +25,7 @@ impl World {
     /// ([`World::refund_researches`]). Then the interface's `+0xc02` (the local player's event
     /// 0x7d) is left; the entries go, the production list's action goes
     /// ([`World::end_production_action`]), the change counter grows and the total is 0.
-    pub(crate) fn cancel_queue(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn cancel_queue(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         let Some(production) = self.players.live(p, idx)?.production.as_ref() else {
             return Ok(());
         };
@@ -54,7 +55,7 @@ impl World {
     /// times the count (slot 0xf8 with −population × count).
     pub(super) fn cancel_units(
         &mut self,
-        p: usize,
+        p: PlayerId,
         e: &crate::production::Entry,
         count: i16,
     ) -> Result<(), GenieError> {
@@ -82,7 +83,7 @@ impl World {
     /// by the count.
     pub(super) fn refund_researches(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         e: &crate::production::Entry,
         count: i16,
@@ -131,7 +132,7 @@ impl World {
     /// local player's event 0x7d are left).
     pub(crate) fn cancel_queued(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         index: u32,
         all: bool,
@@ -194,7 +195,7 @@ impl World {
     /// its population (slot 0xf8).
     pub(super) fn give_back_one(
         &mut self,
-        p: usize,
+        p: PlayerId,
         entry: &crate::production::Entry,
     ) -> Result<(), GenieError> {
         let class = self.tracker_key(p, entry.master).class;
@@ -222,12 +223,16 @@ impl World {
     /// the simulation does not hold): taken as no entry of the kind, which ends the loop.
     pub(super) fn cancel_five(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         index: u32,
         e: usize,
     ) -> Result<(), GenieError> {
-        fn queue(t: &World, p: usize, idx: usize) -> Result<&crate::production::Queue, GenieError> {
+        fn queue(
+            t: &World,
+            p: PlayerId,
+            idx: usize,
+        ) -> Result<&crate::production::Queue, GenieError> {
             Ok(&t
                 .players
                 .live(p, idx)?
@@ -302,7 +307,7 @@ impl World {
     /// other sex).
     pub(crate) fn cancel_some(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         (master, count): (i16, i16),
         from: i32,
@@ -376,7 +381,7 @@ impl World {
     /// reads heap memory the simulation does not hold: taken as no master.
     pub(crate) fn cancel_tail(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         index: u32,
     ) -> Result<(), GenieError> {

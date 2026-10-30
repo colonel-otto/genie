@@ -15,6 +15,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::TaskTarget;
@@ -128,13 +129,13 @@ const ATTACK_TASK: i16 = 7;
 /// Where an object is: its player and its index in the live or the sleeping list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Place {
-    Live(usize, usize),
-    Sleeping(usize, usize),
+    Live(PlayerId, usize),
+    Sleeping(PlayerId, usize),
 }
 
 impl Place {
     /// The object's player (`+0x138`'s number).
-    pub(crate) const fn player(self) -> usize {
+    pub(crate) const fn player(self) -> PlayerId {
         match self {
             Self::Live(p, _) | Self::Sleeping(p, _) => p,
         }
@@ -167,7 +168,7 @@ struct Splittable {
 pub(crate) struct Split {
     /// The owner of the list's first unit (`DAT_143f11960`), whose groups a new group of the
     /// split joins; None for a list whose first unit is gone (the game's −1).
-    pub(crate) owner: Option<usize>,
+    pub(crate) owner: Option<PlayerId>,
     pub(crate) loose: Vec<i32>,
     pub(crate) groups: Vec<Vec<i32>>,
     /// The units a path from them did not join (`+0x3a48`, a `std::unordered_set` the splitter
@@ -298,20 +299,28 @@ pub(crate) fn tech_outside(tech: i16) -> GenieError {
 
 impl World {
     pub(crate) fn place(&self, id: i32) -> Option<Place> {
-        self.players.iter().enumerate().find_map(|(p, player)| {
-            if let Some(i) = player.objects.position_of(id) {
-                return Some(Place::Live(p, i));
-            }
-            let i = player.sleeping.position_of(id)?;
-            Some(Place::Sleeping(p, i))
-        })
+        PlayerId::each(self.players.len())
+            .zip(&self.players)
+            .find_map(|(p, player)| {
+                if let Some(i) = player.objects.position_of(id) {
+                    return Some(Place::Live(p, i));
+                }
+                let i = player.sleeping.position_of(id)?;
+                Some(Place::Sleeping(p, i))
+            })
     }
 
     /// The live slot of object `id` when its own update knows it, `(p, i)`: that slot while it
     /// still holds the object (the game's update works on the object itself, not its id), else
     /// the live slot [`World::place`] finds.
-    pub(crate) fn live_slot(&self, (p, i, id): (usize, usize, i32)) -> Option<(usize, usize)> {
-        let held = self.players.get(p).and_then(|player| player.objects.get(i));
+    pub(crate) fn live_slot(
+        &self,
+        (p, i, id): (PlayerId, usize, i32),
+    ) -> Option<(PlayerId, usize)> {
+        let held = self
+            .players
+            .get(p.index())
+            .and_then(|player| player.objects.get(i));
         if held.is_some_and(|u| u.id.get() == id) {
             return Some((p, i));
         }
@@ -321,14 +330,16 @@ impl World {
         }
     }
 
-    pub(crate) fn object(&self, id: i32) -> Option<(usize, &Unit)> {
-        self.players.iter().enumerate().find_map(|(p, player)| {
-            let u = player
-                .objects
-                .by_id(id)
-                .or_else(|| player.sleeping.by_id(id))?;
-            Some((p, u))
-        })
+    pub(crate) fn object(&self, id: i32) -> Option<(PlayerId, &Unit)> {
+        PlayerId::each(self.players.len())
+            .zip(&self.players)
+            .find_map(|(p, player)| {
+                let u = player
+                    .objects
+                    .by_id(id)
+                    .or_else(|| player.sleeping.by_id(id))?;
+                Some((p, u))
+            })
     }
 
     /// The object state (`+0x640`) of the object `id`, live or sleeping, None for −1 or an id the
@@ -342,14 +353,16 @@ impl World {
     }
 
     /// The object `id`, live or sleeping, to change (`FUN_1415417a0`'s object).
-    pub(crate) fn object_mut(&mut self, id: i32) -> Option<(usize, &mut Unit)> {
-        self.players.iter_mut().enumerate().find_map(|(p, player)| {
-            let crate::world::player::Player {
-                objects, sleeping, ..
-            } = player;
-            let u = objects.by_id_mut(id).or_else(|| sleeping.by_id_mut(id))?;
-            Some((p, u))
-        })
+    pub(crate) fn object_mut(&mut self, id: i32) -> Option<(PlayerId, &mut Unit)> {
+        PlayerId::each(self.players.len())
+            .zip(&mut self.players)
+            .find_map(|(p, player)| {
+                let crate::world::player::Player {
+                    objects, sleeping, ..
+                } = player;
+                let u = objects.by_id_mut(id).or_else(|| sleeping.by_id_mut(id))?;
+                Some((p, u))
+            })
     }
 
     /// Player `player`'s master `master` ([`player_master`]), which the caller's object or
@@ -359,7 +372,7 @@ impl World {
     ///
     /// A player without a table or a table without the master ([`crate::world::OBJECT_MASTER`],
     /// with the player and the master).
-    pub(crate) fn master(&self, player: usize, master: i16) -> Result<&Master, GenieError> {
+    pub(crate) fn master(&self, player: PlayerId, master: i16) -> Result<&Master, GenieError> {
         player_master(&self.masters, player, master).ok_or_else(|| {
             crate::world::OBJECT_MASTER
                 .with("player", player)

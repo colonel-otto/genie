@@ -38,7 +38,7 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )?;
         let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
         let victim = hunt_victim(c, &hunt)?;
@@ -83,7 +83,7 @@ impl Unit {
         herd: Option<Herd>,
         tree_lost: bool,
     ) -> HuntReads {
-        let owner = &c.w.players[c.player];
+        let owner = &c.w.players[c.player.index()];
         let productivity = usize::try_from(hunt.task.productivity)
             .ok()
             .and_then(|i| owner.attributes.get(i))
@@ -96,7 +96,7 @@ impl Unit {
             attack: AttackReads::of(
                 self,
                 master,
-                (c.w.masters.get(c.player), &c.w.graphics),
+                (c.w.masters.get(c.player.index()), &c.w.graphics),
                 self.ai.as_ref(),
                 (owner.computer, c.w.world_time),
             ),
@@ -190,7 +190,7 @@ impl Unit {
                 (action.drop_site, d)
             })
         } else {
-            if c.w.players[c.player].computer {
+            if c.w.players[c.player.index()].computer {
                 return Err(GenieError::unsupported(
                     "a computer player's hunt of its livestock (its drop-site search)",
                 ));

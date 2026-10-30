@@ -30,5 +30,5 @@ ashore, the transport sails to a random point near the old one and tries again.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`orders`](../../orders/), [`pathing`](../../pathing/), [`production`](../../production/), [`unit_ai`](../../unit_ai/), [`world`](../../world/).
+- Uses: [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`orders`](../../orders/), [`pathing`](../../pathing/), [`players`](../../players/), [`production`](../../production/), [`unit_ai`](../../unit_ai/), [`world`](../../world/).
 <!-- /uses -->

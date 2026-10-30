@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::action_type;
+use crate::players::PlayerId;
 
 use crate::gathering::gather::Walks;
 use crate::gathering::hunt::HuntMove;
@@ -40,7 +41,7 @@ impl Unit {
             m,
             (class, c.player),
             (&mut releases, &mut leaves, by),
-            (c.w.masters.get(c.player), &c.w.graphics, sprite_rng),
+            (c.w.masters.get(c.player.index()), &c.w.graphics, sprite_rng),
         )?;
         crate::world::lets::torn_down(c, self, (leaves, releases))?;
         if sails {
@@ -48,7 +49,7 @@ impl Unit {
             self.transport_sail(
                 m.point,
                 (&c.w.spatial, &mut c.w.zones, &mut c.w.pathing),
-                (c.w.masters.get(c.player), &c.w.graphics, sprite_rng),
+                (c.w.masters.get(c.player.index()), &c.w.graphics, sprite_rng),
             )?;
         }
         Ok(())
@@ -75,7 +76,7 @@ impl Unit {
     pub(crate) fn ai_move_with(
         &mut self,
         m: AiMove,
-        (class, player): (ClassId, usize),
+        (class, player): (ClassId, PlayerId),
         (releases, builder_leaves, by): (&mut Vec<(i32, Releaser)>, &mut Vec<i32>, Releaser),
         (masters, graphics, sprite_rng): (
             Option<&Masters>,
@@ -149,7 +150,7 @@ impl Unit {
     pub(crate) fn head_takes_point(
         &mut self,
         point: [f32; 3],
-        player: usize,
+        player: PlayerId,
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
     ) -> Result<PointMove, GenieError> {
@@ -241,7 +242,7 @@ impl Unit {
     fn hunt_takes_point(
         &mut self,
         point: [f32; 3],
-        player: usize,
+        player: PlayerId,
         sprites: SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
         let my_pasture = self.my_pasture;
@@ -274,7 +275,7 @@ impl Unit {
     fn gather_takes_point(
         &mut self,
         point: [f32; 3],
-        player: usize,
+        player: PlayerId,
         sprites: SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
         let walks = Walks::of(sprites, self);
@@ -364,7 +365,7 @@ impl Unit {
         )?;
         if move_to.shows_standing() {
             self.shows_standing_sprite(
-                c.w.masters.get(c.player),
+                c.w.masters.get(c.player.index()),
                 &c.w.graphics,
                 c.w.streams.get(Stream::Sprite),
             )?;

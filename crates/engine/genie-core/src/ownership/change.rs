@@ -10,6 +10,7 @@ use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, player_master};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::players::attribute;
 
 use crate::unit_ai::OWNER_CHANGED;
@@ -23,11 +24,11 @@ impl World {
     /// attributes ([`World::hand_over_attributes`]). Its only callers give livestock, which
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
-    pub(crate) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), GenieError> {
-        let mut unit = self.players[q].objects.take_out(j)?;
+    pub(crate) fn give_gaia(&mut self, q: PlayerId, j: usize) -> Result<(), GenieError> {
+        let mut unit = self.players[q.index()].objects.take_out(j)?;
         let changed = change_hands(
             &mut unit,
-            (q, 0),
+            (q.index(), PlayerId::GAIA),
             &self.masters,
             &mut self.spatial,
             self.world_time,
@@ -36,8 +37,8 @@ impl World {
         if !changed? {
             return Ok(());
         }
-        let unit = self.players[q].objects.swap_remove(j)?;
-        let handed = self.hand_over_attributes(q, 0, &unit);
+        let unit = self.players[q.index()].objects.swap_remove(j)?;
+        let handed = self.hand_over_attributes(q.index(), 0, &unit);
         // the old owner's remove and Gaia's add (slots 0x2d8, 0x2d0) move it between the
         // trackers; a building whose build points reach its build time completes in Gaia's
         // (`FUN_1411cd860`, `COMISS`/`JC`: a NaN does not)
@@ -52,9 +53,9 @@ impl World {
                 .is_some_and(|c| f32::from(c.build_time) <= c.progress);
         self.players[0].objects.push(unit);
         self.track_remove(q, id.get(), master_id)?;
-        self.track_add(0, id.get(), master_id)?;
+        self.track_add(PlayerId::GAIA, id.get(), master_id)?;
         if built {
-            self.track_complete(0, id.get(), master_id)?;
+            self.track_complete(PlayerId::GAIA, id.get(), master_id)?;
         }
         handed
     }
@@ -96,16 +97,16 @@ impl World {
     /// A building asleep ([`crate::ownership::capture::HANDS_LEFT`]), and what the parts do not model.
     pub(crate) fn building_changes_hands(
         &mut self,
-        old: usize,
+        old: PlayerId,
         id: i32,
-        new: usize,
+        new: PlayerId,
         watched: bool,
     ) -> Result<(), GenieError> {
         self.annexes_change_hands(old, id, new)?;
         let Some(crate::orders::Place::Live(_, idx)) = self.place(id) else {
             return Err(crate::ownership::capture::HANDS_LEFT);
         };
-        let u = &self.players[old].objects[idx];
+        let u = &self.players[old.index()].objects[idx];
         let master = match u.own_master.as_deref() {
             Some(m) => m.clone(),
             None => u.master(&self.masters, old)?.clone(),
@@ -122,7 +123,7 @@ impl World {
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
         if state == 2 {
-            lose_built_storage(&mut self.players[old], &master, held, amount)?;
+            lose_built_storage(&mut self.players[old.index()], &master, held, amount)?;
         }
         if state == 0 {
             self.foundation_sight_off(id, placed)?;
@@ -145,7 +146,7 @@ impl World {
         }
         if state == 2 {
             self.built_with_new_owner(owner, id, &master, rice)?;
-            gain_built_storage(&mut self.players[owner], &master, held, amount)?;
+            gain_built_storage(&mut self.players[owner.index()], &master, held, amount)?;
         }
         self.garrison_leaves(owner, id)?;
         if state < 3 {
@@ -161,7 +162,7 @@ impl World {
     /// owner `old`: its actions, its production action and its queue, and its watched entry.
     fn clear_for_hand_over(
         &mut self,
-        old: usize,
+        old: PlayerId,
         (idx, id): (usize, i32),
         watched: bool,
     ) -> Result<(), GenieError> {
@@ -224,9 +225,9 @@ impl World {
     /// An annex of a master the slice does not have, and what its change does not model.
     pub(crate) fn annexes_change_hands(
         &mut self,
-        old: usize,
+        old: PlayerId,
         id: i32,
-        new: usize,
+        new: PlayerId,
     ) -> Result<(), GenieError> {
         for annex in self.spatial.annexes_of(id) {
             let Some((q, a)) = self.object(annex) else {
@@ -235,7 +236,10 @@ impl World {
             if a.master(&self.masters, q)?.kind != BUILDING {
                 continue;
             }
-            let annex_watched = self.players[old].watched.iter().any(|w| w.id == annex);
+            let annex_watched = self.players[old.index()]
+                .watched
+                .iter()
+                .any(|w| w.id == annex);
             if annex_watched {
                 self.unwatch(old, annex)?;
             }
@@ -254,25 +258,25 @@ impl World {
     /// What the change and the attributes do not model.
     pub(crate) fn hand_building_over(
         &mut self,
-        old: usize,
+        old: PlayerId,
         idx: usize,
-        new: usize,
+        new: PlayerId,
         id: i32,
-    ) -> Result<usize, GenieError> {
-        let mut unit = self.players[old].objects.take_out(idx)?;
+    ) -> Result<PlayerId, GenieError> {
+        let mut unit = self.players[old.index()].objects.take_out(idx)?;
         let changed = change_hands(
             &mut unit,
-            (old, new),
+            (old.index(), new),
             &self.masters,
             &mut self.spatial,
             self.world_time,
         );
         let idx = self.put_back_own(old, unit)?;
         Ok(if changed? {
-            let unit = self.players[old].objects.swap_remove(idx)?;
-            let handed = self.hand_over_attributes(old, new, &unit);
+            let unit = self.players[old.index()].objects.swap_remove(idx)?;
+            let handed = self.hand_over_attributes(old.index(), new.index(), &unit);
             let master_id = unit.life.master_id;
-            self.players[new].objects.push(unit);
+            self.players[new.index()].objects.push(unit);
             self.track_remove(old, id, master_id)?;
             self.track_add(new, id, master_id)?;
             handed?;
@@ -292,7 +296,7 @@ impl World {
     /// What the stack unit and the research do not model.
     pub(crate) fn built_with_new_owner(
         &mut self,
-        owner: usize,
+        owner: PlayerId,
         id: i32,
         master: &Master,
         rice: bool,
@@ -320,7 +324,7 @@ impl World {
     /// # Errors
     ///
     /// What the leaving and the destruction do not model.
-    pub(crate) fn garrison_leaves(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn garrison_leaves(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
         let inside = self
             .object(id)
             .map_or_else(Vec::new, |(_, u)| u.garrison.clone());
@@ -397,7 +401,7 @@ pub(crate) const DEAD_COPY_TYPES: [u8; 6] = [10, 20, 30, 40, 70, 80];
 /// masters' graphics).
 pub(crate) fn change_hands(
     u: &mut Unit,
-    (old, new): (usize, usize),
+    (old, new): (usize, PlayerId),
     masters: &[Masters],
     spatial: &mut Spatial,
     world_time: u32,
@@ -434,12 +438,12 @@ pub(crate) fn change_hands(
     let sees = u.life.state == 2 && u.life.inside.is_none();
     spatial.change_owner(u.id.get(), new, los, sees)?;
     if let Some(a) = u.actions.artifact_mut() {
-        a.gaia = new == 0;
+        a.gaia = new == PlayerId::GAIA;
     }
     if let Some(ai) = u.ai.as_mut() {
         ai.clear_notifies(world_time)?;
     }
-    u.post_own(OWNER_CHANGED, [new as i32, 0, 0])?;
+    u.post_own(OWNER_CHANGED, [new.index() as i32, 0, 0])?;
     Ok(true)
 }
 

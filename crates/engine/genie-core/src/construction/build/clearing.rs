@@ -4,6 +4,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::PlayerId;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -17,7 +18,7 @@ use crate::map::spatial::Spatial;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ClearingSite {
     /// The building's owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its master's id.
     pub master: i16,
     /// Its master's class (`+0x410`).

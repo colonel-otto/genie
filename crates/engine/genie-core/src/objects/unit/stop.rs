@@ -22,7 +22,7 @@ impl Unit {
         self.stop_with(
             (&mut releases, &mut leaves),
             by,
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
             &c.w.graphics,
             sprite,
         )?;

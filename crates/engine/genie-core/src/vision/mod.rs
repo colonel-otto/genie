@@ -14,6 +14,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::ids::TOWN_CENTRE;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -46,8 +47,11 @@ const SHARED_MASKS: [usize; 2] = [285, 286];
 /// The masks of player `p` before any sharing: its own bits and the bits no tile has, with the
 /// ended ones for a player who won or lost.
 #[must_use]
-pub const fn own_masks(p: usize, ended: bool) -> [u64; 2] {
-    let mut masks = [(1u64 << p) | NO_TILE, (1u64 << (32 + p)) | NO_TILE_EXPLORED];
+pub fn own_masks(p: PlayerId, ended: bool) -> [u64; 2] {
+    let mut masks = [
+        (1u64 << p.get()) | NO_TILE,
+        (1u64 << (32 + p.get())) | NO_TILE_EXPLORED,
+    ];
     if ended {
         masks[0] |= ENDED;
         masks[1] |= ENDED_EXPLORED;
@@ -63,23 +67,24 @@ impl World {
     /// flags (`+0x290`) and the third parties' table (`+0x2b0`, `+0x2b8`) are not held.
     pub fn rebuild_vision(&mut self) -> Result<(), GenieError> {
         let n = self.players.len();
-        let mut masks: Vec<[u64; 2]> = self
-            .players
-            .iter()
-            .enumerate()
+        let mut masks: Vec<[u64; 2]> = PlayerId::each(self.players.len())
+            .zip(&self.players)
             .map(|(p, player)| own_masks(p, matches!(player.game_status, 1 | 2)))
             .collect();
         let mut flares = Vec::new();
-        for (p, me) in self.players.iter().enumerate().skip(1) {
+        for (p, me) in PlayerId::each(self.players.len())
+            .zip(&self.players)
+            .skip(1)
+        {
             let attribute = |i: usize| me.attributes.get(i).copied().unwrap_or(0.0);
             let allies = |q: usize| {
                 me.relations.get(q) == Some(&0)
-                    && self.players.get(q).and_then(|o| o.relations.get(p)) == Some(&0)
+                    && self.players.get(q).and_then(|o| o.relations.get(p.index())) == Some(&0)
             };
-            let mine = masks.checked_mut(p)?;
+            let mine = masks.checked_mut(p.index())?;
             if me.allied_vision {
                 for q in 1..n {
-                    if q != p && allies(q) {
+                    if q != p.index() && allies(q) {
                         mine[0] |= 1 << q;
                         mine[1] |= 1 << (32 + q);
                     }
@@ -96,8 +101,8 @@ impl World {
             // (`mTCFlared`), unless the screen's mode is 4 (`FUN_140c87f20`, the editor's: a
             // playback has no such screen, the probe reads 0)
             if REVEAL_CENTRES < me.attributes.len() && 0.0 < attribute(REVEAL_CENTRES) {
-                for q in 1..n {
-                    if allies(q) || me.tc_flared.get(q).copied().unwrap_or(false) {
+                for q in PlayerId::each(n).skip(1) {
+                    if allies(q.index()) || me.tc_flared.get(q.index()).copied().unwrap_or(false) {
                         continue;
                     }
                     flares.extend(
@@ -126,10 +131,10 @@ impl World {
             self.remains(p, FLARE4, at, None)?;
             self.made_new_object(p)?;
             let flared = &mut self.players.player_mut(p)?.tc_flared;
-            if flared.len() <= q {
-                flared.resize(q + 1, false);
+            if flared.len() <= q.index() {
+                flared.resize(q.index() + 1, false);
             }
-            *flared.checked_mut(q)? = true;
+            *flared.checked_mut(q.index())? = true;
         }
         Ok(())
     }
@@ -154,7 +159,7 @@ mod tests {
         World::new(
             0,
             1,
-            0,
+            PlayerId::new(0),
             vec![0; 5],
             vec![
                 Player::default(),
@@ -170,7 +175,7 @@ mod tests {
     fn mutual_allies_share_their_sight() {
         let mut t = teams();
         t.rebuild_vision().unwrap();
-        assert_eq!(t.spatial.vision[0], own_masks(0, false));
+        assert_eq!(t.spatial.vision[0], own_masks(PlayerId::new(0), false));
         assert_eq!(t.spatial.vision[1], [0x2000_000a, 0x2000_000a_0000_0000]);
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
     }
@@ -181,8 +186,8 @@ mod tests {
         t.players[3].relations[1] = 3;
         t.players[2].allied_vision = false;
         t.rebuild_vision().unwrap();
-        assert_eq!(t.spatial.vision[1], own_masks(1, false));
-        assert_eq!(t.spatial.vision[2], own_masks(2, false));
+        assert_eq!(t.spatial.vision[1], own_masks(PlayerId::new(1), false));
+        assert_eq!(t.spatial.vision[2], own_masks(PlayerId::new(2), false));
         assert_eq!(t.spatial.vision[4], [0x2000_0014, 0x2000_0014_0000_0000]);
     }
 
@@ -196,8 +201,14 @@ mod tests {
 
     #[test]
     fn a_player_alone_sees_with_its_own_bits() {
-        assert_eq!(own_masks(2, false), [0x2000_0004, 0x2000_0004_0000_0000]);
-        assert_eq!(own_masks(1, true), [0x6000_0002, 0x6000_0002_0000_0000]);
+        assert_eq!(
+            own_masks(PlayerId::new(2), false),
+            [0x2000_0004, 0x2000_0004_0000_0000]
+        );
+        assert_eq!(
+            own_masks(PlayerId::new(1), true),
+            [0x6000_0002, 0x6000_0002_0000_0000]
+        );
     }
 
     /// Attribute 209 (reveal the enemies' town centres) does not touch the masks: it leaves them

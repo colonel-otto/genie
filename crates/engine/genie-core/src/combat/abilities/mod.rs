@@ -39,6 +39,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
+use crate::players::PlayerId;
 use crate::world::World;
 use genie_diff::Diff;
 
@@ -131,7 +132,7 @@ pub struct Look {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Reward {
     /// The player the command is for (`player+0x718`).
-    pub player: usize,
+    pub player: PlayerId,
     /// The task's `attribute_type3` (`+0x24`).
     pub attribute: i16,
     /// The amount, truncated (`CVTTSS2SI`).
@@ -178,18 +179,18 @@ impl World {
     /// [`World::movement_damage`]).
     pub(crate) fn abilities(
         &mut self,
-        (id, p, i): (i32, usize, usize),
-        owner: usize,
+        (id, p, i): (i32, PlayerId, usize),
+        owner: PlayerId,
         leaves: bool,
     ) -> Result<Vec<Reward>, GenieError> {
-        let i = match self.players[p].objects.get(i) {
+        let i = match self.players[p.index()].objects.get(i) {
             Some(u) if u.id.get() == id => i,
             _ => match self.place(id) {
                 Some(crate::orders::Place::Live(q, j)) if q == p => j,
                 _ => return Ok(Vec::new()),
             },
         };
-        let unit = &self.players[p].objects[i];
+        let unit = &self.players[p.index()].objects[i];
         let Some(master) = unit
             .master(&self.masters, p)
             .ok()
@@ -222,7 +223,7 @@ impl World {
                 if task.action_type == REMOVAL_REWARD && task.work_range < EPSILON {
                     let multiplier = usize::try_from(task.attribute_type2)
                         .ok()
-                        .and_then(|a| self.players[owner].attribute(a));
+                        .and_then(|a| self.players[owner.index()].attribute(a));
                     let cost = player_master(&self.masters, owner, own.id)
                         .map_or(&[][..], |m| &m.cost[..]);
                     rewards.push(reward(task, owner, multiplier, cost));
@@ -232,10 +233,10 @@ impl World {
         }
         for task in &tasks {
             match task.action_type {
-                GENERATE => self.generate((p, i), owner, own, task)?,
-                MOVEMENT_DAMAGE => self.movement_damage((p, i), owner, own, task)?,
+                GENERATE => self.generate((p.index(), i), owner, own, task)?,
+                MOVEMENT_DAMAGE => self.movement_damage((p.index(), i), owner, own, task)?,
                 // the terrain mask's throw ends the game
-                TERRAIN_LOOK if !self.terrain_look((p, i), task) => return Ok(rewards),
+                TERRAIN_LOOK if !self.terrain_look((p.index(), i), task) => return Ok(rewards),
                 _ => {}
             }
         }

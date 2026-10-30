@@ -16,6 +16,7 @@ use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::master_type::STATIC;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::production::spawn::{
     Facing, NOT_MOVING, Placing, Site, WorldMap, corner_tiles, placement, spawn_point,
 };
@@ -29,12 +30,12 @@ impl World {
     /// placement test at each candidate ([`placement`]).
     pub(crate) fn spot_beside(
         &self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         made: &crate::objects::masters::Master,
         toward: Option<[f32; 2]>,
     ) -> Result<[f32; 2], GenieError> {
-        let building = &self.players[p].objects[i];
+        let building = &self.players[p.index()].objects[i];
         let site_master = building.master(&self.masters, p)?;
         let position = building.position();
         let mut walls = [false; 4];
@@ -94,7 +95,7 @@ impl World {
     /// the remains' sprite.
     pub(crate) fn remains(
         &mut self,
-        p: usize,
+        p: PlayerId,
         master: i16,
         at: [f32; 3],
         facet: Option<u8>,
@@ -119,7 +120,7 @@ impl World {
                         flag_1: g.flags & 2 != 0,
                     },
                 );
-                if let Some(m) = self.players[p].objects[new].body.mover_mut() {
+                if let Some(m) = self.players[p.index()].objects[new].body.mover_mut() {
                     m.angle = crate::objects::facing::angle_of_facet(facet, own);
                 }
             }
@@ -133,7 +134,7 @@ impl World {
     fn seer_comes(
         &mut self,
         id: i32,
-        (p, master): (usize, i16),
+        (p, master): (PlayerId, i16),
         made: &crate::objects::masters::Master,
         at: [f32; 3],
     ) -> Result<(), GenieError> {
@@ -179,7 +180,7 @@ impl World {
     /// of an object without a facet the slice holds, and what the sight does not model.
     pub(crate) fn plain_object(
         &mut self,
-        p: usize,
+        p: PlayerId,
         master: i16,
         made: &crate::objects::masters::Master,
         at: [f32; 3],
@@ -273,7 +274,7 @@ impl World {
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
         }
-        let owner = &mut self.players[p];
+        let owner = &mut self.players[p.index()];
         let mut held = (-1, 0.0);
         for &(kind, amount, flag) in &made.storage {
             if kind >= 0 && matches!(flag, 1 | 2 | 32) {
@@ -363,7 +364,7 @@ impl World {
             self.spatial.get(target).map(|p| p.position)
         };
         let at = at.unwrap_or([point[0], point[1], 0.0]);
-        for p in 1..usize::from(players) {
+        for p in PlayerId::each(usize::from(players)).skip(1) {
             self.remains(p, FLARE, at, None)?;
             self.made_new_object(p)?;
         }
@@ -380,16 +381,16 @@ impl World {
     /// What the new object does not model.
     pub(crate) fn make_flare(
         &mut self,
-        p: usize,
+        p: PlayerId,
         at: [f32; 3],
         doubled: bool,
     ) -> Result<(), GenieError> {
         /// The flare a hit leaves (`0x70`, FLARE).
         const HIT_FLARE: i16 = 112;
-        let before = self.players[p].objects.len();
+        let before = self.players[p.index()].objects.len();
         self.remains(p, HIT_FLARE, at, None)?;
         self.made_new_object(p)?;
-        if doubled && let Some(f) = self.players[p].objects.get_mut(before) {
+        if doubled && let Some(f) = self.players[p.index()].objects.get_mut(before) {
             f.life.amount += f.life.amount;
         }
         Ok(())
@@ -406,11 +407,11 @@ impl World {
     /// A computer player's (its AI's slot 0x398), and what the building's making does not model.
     pub(super) fn new_building(
         &mut self,
-        p: usize,
+        p: PlayerId,
         made: &crate::objects::masters::Master,
         at: [f32; 3],
     ) -> Result<(), GenieError> {
-        if self.players[p].computer {
+        if self.players[p.index()].computer {
             return Err(GenieError::unsupported(
                 "a computer player's new building (its AI's slot 0x398)",
             ));

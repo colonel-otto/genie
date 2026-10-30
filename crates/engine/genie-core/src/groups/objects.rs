@@ -2,6 +2,7 @@
 //! sub-formation.
 
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::PlayerId;
 
 /// An object of the world's id table (`FUN_1415417a0`, `BaseWorld::object`): the objects of
 /// every player's live, sleeping and doppelganger lists, which the player's add and removal
@@ -12,14 +13,14 @@ use crate::objects::masters::master_type::COMBAT;
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum WorldObject<'a> {
     /// An object of player `.0`'s live or sleeping list.
-    Unit(usize, &'a crate::objects::unit::Unit),
+    Unit(PlayerId, &'a crate::objects::unit::Unit),
     /// A ghost of player `.0`'s doppelganger list (type 25, its master `243`).
-    Ghost(usize, &'a crate::vision::ghost::Ghost),
+    Ghost(PlayerId, &'a crate::vision::ghost::Ghost),
 }
 
 impl WorldObject<'_> {
     /// The player whose list holds it (`+0x138`).
-    pub(crate) const fn player(&self) -> usize {
+    pub(crate) const fn player(&self) -> PlayerId {
         match *self {
             Self::Unit(p, _) | Self::Ghost(p, _) => p,
         }
@@ -106,7 +107,7 @@ impl crate::world::World {
             return Some(WorldObject::Unit(p, u));
         }
         if id < 0 {
-            for (p, player) in self.players.iter().enumerate() {
+            for (p, player) in PlayerId::each(self.players.len()).zip(&self.players) {
                 if let Some(g) = player.ghosts.iter().find(|g| g.id == id) {
                     return Some(WorldObject::Ghost(p, g));
                 }

@@ -16,6 +16,7 @@ use crate::map::spatial::{BLOCKED, Placed, Tiles};
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 use crate::pathing::short_path::Pather;
 use crate::pathing::tile_path::Planner;
+use crate::players::PlayerId;
 use std::collections::BTreeMap;
 
 pub mod hull_path;
@@ -86,24 +87,27 @@ impl PlanBudget {
 impl Pathing {
     /// Player `player`'s budget, a default (no caps, no plans) for one the slice has none of.
     #[must_use]
-    pub fn budget(&self, player: usize) -> PlanBudget {
-        self.budgets.get(player).copied().unwrap_or(PlanBudget {
-            attempt_cap: -1,
-            delay_cap: -1,
-            plans: 0,
-        })
+    pub fn budget(&self, player: PlayerId) -> PlanBudget {
+        self.budgets
+            .get(player.index())
+            .copied()
+            .unwrap_or(PlanBudget {
+                attempt_cap: -1,
+                delay_cap: -1,
+                plans: 0,
+            })
     }
 
     /// `FUN_141663c50`: player `player` made a plan.
-    pub fn count_plan(&mut self, player: usize) {
-        if let Some(b) = self.budgets.get_mut(player) {
+    pub fn count_plan(&mut self, player: PlayerId) {
+        if let Some(b) = self.budgets.get_mut(player.index()) {
             b.plans += 1;
         }
     }
 
     /// `WorldPlayerBase::update` (`0x141677450`): the player's plans start over.
-    pub fn reset_plans(&mut self, player: usize) {
-        if let Some(b) = self.budgets.get_mut(player) {
+    pub fn reset_plans(&mut self, player: PlayerId) {
+        if let Some(b) = self.budgets.get_mut(player.index()) {
             b.plans = 0;
         }
     }
@@ -413,13 +417,13 @@ mod tests {
             budgets: vec![PlanBudget::default(), b],
             ..Pathing::default()
         };
-        p.count_plan(1);
-        assert_eq!(p.budget(1).plans, 7);
-        p.reset_plans(1);
-        assert_eq!(p.budget(1).plans, 0);
+        p.count_plan(PlayerId::new(1));
+        assert_eq!(p.budget(PlayerId::new(1)).plans, 7);
+        p.reset_plans(PlayerId::new(1));
+        assert_eq!(p.budget(PlayerId::new(1)).plans, 0);
         // a player the slice holds no budget of: no caps
-        assert!(p.budget(5).allows(0));
-        p.count_plan(5);
+        assert!(p.budget(PlayerId::new(5)).allows(0));
+        p.count_plan(PlayerId::new(5));
     }
 
     /// `FUN_140f7ca70`: the first planner whose values are another length, or none, or all
@@ -485,7 +489,7 @@ mod tests {
             position: [x, y, 0.0],
             radius: [0.2, 0.2],
             class: class::VILLAGER,
-            player: 2,
+            player: PlayerId::new(2),
             master: 118,
             obstruction_type: 5,
             buildable_on: 0,

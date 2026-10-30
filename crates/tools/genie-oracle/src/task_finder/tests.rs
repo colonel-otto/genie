@@ -1,11 +1,12 @@
 use crate::task_finder::{FinderObject, FinderWorld};
 use genie_core::objects::masters::{Master, Masters};
+use genie_core::players::PlayerId;
 use genie_core::unit_ai::task_finder::Diplomacy;
 
 /// An object of player 1, master 83, at the main building `annex_of` if it is an annex.
 fn object(annex_of: Option<i32>) -> FinderObject {
     FinderObject {
-        player: 1,
+        player: PlayerId::new(1),
         master: 83,
         state: 2,
         held: (0, 5.0),
@@ -46,13 +47,13 @@ fn world(relation: u8) -> FinderWorld {
 #[test]
 fn allied_follows_the_relation() {
     let w = world(0);
-    assert!(w.allied(1, 1, false));
-    assert!(!w.allied(1, 0, true));
-    assert!(w.allied(1, 2, false));
-    assert!(world(4).allied(1, 2, true));
-    assert!(!world(4).allied(1, 2, false));
-    assert!(!world(3).allied(1, 2, true));
-    assert!(!w.allied(5, 2, true));
+    assert!(w.allied(PlayerId::new(1), PlayerId::new(1), false));
+    assert!(!w.allied(PlayerId::new(1), PlayerId::new(0), true));
+    assert!(w.allied(PlayerId::new(1), PlayerId::new(2), false));
+    assert!(world(4).allied(PlayerId::new(1), PlayerId::new(2), true));
+    assert!(!world(4).allied(PlayerId::new(1), PlayerId::new(2), false));
+    assert!(!world(3).allied(PlayerId::new(1), PlayerId::new(2), true));
+    assert!(!w.allied(PlayerId::new(5), PlayerId::new(2), true));
 }
 
 /// An annex stands for its main building, one step for each of `steps`; an object or a
@@ -64,7 +65,10 @@ fn an_annex_stands_for_its_main_building() {
     assert_eq!(w.target(12).map(|t| t.id), Some(11));
     assert_eq!(w.target_up(12, 5).map(|t| t.id), Some(10));
     let target = w.target(10).unwrap();
-    assert_eq!((target.player, target.state, target.hp), (1, 2, 25.0));
+    assert_eq!(
+        (target.player, target.state, target.hp),
+        (PlayerId::new(1), 2, 25.0)
+    );
     assert_eq!((target.pasture, target.top_action), (-1, Some(5)));
     assert!(w.target(99).is_none());
     let mut lost = world(0);
@@ -76,7 +80,10 @@ fn an_annex_stands_for_its_main_building() {
 fn the_actor_reads_its_player_s_attribute_95_and_civ() {
     let w = world(0);
     let actor = w.actor(10).unwrap();
-    assert_eq!((actor.id, actor.player, actor.civ), (10, 1, 4));
+    assert_eq!(
+        (actor.id, actor.player, actor.civ),
+        (10, PlayerId::new(1), 4)
+    );
     assert_eq!(actor.attribute_95.to_bits(), 1.5_f32.to_bits());
     assert!(w.actor(99).is_none());
 }

@@ -47,6 +47,7 @@ use self::taking::take_static;
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::players::PlayerId;
 
 /// Elevation: a higher attacker hits at 1.25 (`DAT_142eb56a8`), a lower one at 0.75
 /// (`DAT_142e7f388`), each plus its player's and the target's player's attributes (211/272,
@@ -149,7 +150,7 @@ pub struct Victim {
     pub fog_visibility: u8,
     /// Its player, and that player's attributes 272 and 273 (a higher or lower attacker's hits
     /// add them) and 211 and 212 (its own hits from higher or lower up add them).
-    pub player: usize,
+    pub player: PlayerId,
     /// Its player's attributes 272 and 273: what a higher or lower attacker's hits add.
     pub elevation: [f32; 2],
     /// Its player's attributes 211 and 212: what its own hits from higher or lower up add.
@@ -220,12 +221,12 @@ pub struct Razed {
     /// The attacker's player (`param_5`), whose history takes the event.
     pub attacker_player: usize,
     /// The building's owner (`+0x718`), the event's `data1`.
-    pub owner: usize,
+    pub owner: PlayerId,
     /// A castle's (master 82) or a wonder's (276) destruction
     /// ([`crate::players::history::CASTLE_DESTROYED`], [`crate::players::history::WONDER_DESTROYED`]).
     pub event: Option<u8>,
     /// The attribute adds: (player, attribute, amount).
-    pub adds: Vec<(usize, i16, f32)>,
+    pub adds: Vec<(PlayerId, i16, f32)>,
 }
 
 /// What a killing hit leaves for the caller after the update
@@ -351,7 +352,7 @@ pub struct Attacker {
     pub mode_680: i32,
     /// Its player and whether its master has a task of action type 0x9a (a kill bonus,
     /// `FUN_1415c6510`).
-    pub player: usize,
+    pub player: PlayerId,
     /// Its master has a task of action type 0x9a (a kill bonus).
     pub kill_bonus_tasks: bool,
     /// What a missile was fired from (`+0x998`), its damage notify's sender; a missile without

@@ -10,6 +10,7 @@ use crate::movement::move_to::{MoveToReads, WalkTo};
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::player_master;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::{TaskWorld, point_terrain, task_search, task_target_with};
@@ -38,7 +39,7 @@ impl World {
     /// 0 (`FUN_140c42b60`, [`crate::orders::readiness`]): every queued order is ready.
     pub(crate) fn task_builders(
         &mut self,
-        player: usize,
+        player: PlayerId,
         foundation: i32,
         master: i16,
         position: [f32; 3],
@@ -70,7 +71,7 @@ impl World {
             };
             if to_queue {
                 self.queue_build(q, idx, site, position)?;
-                if commits && let Some(ai) = self.players[q].objects[idx].ai.as_mut() {
+                if commits && let Some(ai) = self.players[q.index()].objects[idx].ai.as_mut() {
                     // the readiness pass with 0: every queued order is ready
                     crate::orders::readiness(&mut ai.orders, false);
                 }
@@ -90,7 +91,7 @@ impl World {
                     notified: true,
                 };
                 self.order_work(q, idx, &work)?;
-            } else if let Some(m) = self.players[q].objects[idx].body.mover_mut() {
+            } else if let Some(m) = self.players[q.index()].objects[idx].body.mover_mut() {
                 m.ignore_units.clear();
             }
         }
@@ -101,9 +102,9 @@ impl World {
     /// combat object's and a building's (`FUN_141211b80`, types 70 and 80) set `+0xa14` and
     /// empty their unit AI's order queue (`FUN_140c5e010`); the action object's
     /// (`FUN_14106c590`, types 40 to 60) goes straight to the work.
-    pub(super) fn empty_queue_for_work(&mut self, q: usize, idx: usize, kind: u8) {
+    pub(super) fn empty_queue_for_work(&mut self, q: PlayerId, idx: usize, kind: u8) {
         if crate::objects::masters::master_type::COMBAT <= kind
-            && let Some(ai) = self.players[q].objects[idx].ai.as_mut()
+            && let Some(ai) = self.players[q.index()].objects[idx].ai.as_mut()
         {
             ai.orders.clear();
         }
@@ -118,12 +119,12 @@ impl World {
     /// [`Masters::work_master`]: crate::objects::masters::Masters::work_master
     pub(crate) fn build_task(
         &self,
-        q: usize,
+        q: PlayerId,
         id: i32,
-        (fp, foundation, master): (usize, i32, i16),
+        (fp, foundation, master): (PlayerId, i32, i16),
         position: [f32; 3],
     ) -> Result<(i16, BuildAction), GenieError> {
-        let masters = self.masters.get(q).ok_or(GenieError::unsupported(
+        let masters = self.masters.get(q.index()).ok_or(GenieError::unsupported(
             "BUILD tasks the builders: no master table",
         ))?;
         let site = player_master(&self.masters, fp, master).ok_or(GenieError::unsupported(
@@ -145,7 +146,7 @@ impl World {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        let owner = &world.players[q];
+        let owner = &world.players[q.index()];
         let unit = owner
             .objects
             .by_id(id)
@@ -209,22 +210,22 @@ impl World {
     /// [`World::build_order`]: crate::world::World::build_order
     pub(crate) fn queue_build(
         &mut self,
-        q: usize,
+        q: PlayerId,
         idx: usize,
-        (fp, foundation, master): (usize, i32, i16),
+        (fp, foundation, master): (PlayerId, i32, i16),
         position: [f32; 3],
     ) -> Result<(), GenieError> {
-        let unit = &mut self.players[q].objects[idx];
+        let unit = &mut self.players[q.index()].objects[idx];
         if let Some(m) = unit.body.mover_mut() {
             m.ignore_units.clear();
         }
         let state = unit.life.state;
         let order = crate::unit_ai::QueuedOrder {
-            issuer: q as i32,
+            issuer: q.index() as i32,
             order: OrderKind::Build,
             priority: 100,
             target: foundation,
-            target_owner: fp as i32,
+            target_owner: fp.index() as i32,
             point: [position[0], position[1], 0.0],
             range: 0.0,
             shown: [position[0], position[1]],
@@ -245,14 +246,14 @@ impl World {
     /// AI's notify, the action list clears and holds the Build.
     pub(crate) fn build_directly(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (with, build): (i16, BuildAction),
-        (fp, foundation, master): (usize, i32, i16),
+        (fp, foundation, master): (PlayerId, i32, i16),
         position: [f32; 3],
     ) -> Result<(), GenieError> {
         let site_class = i32::from(self.master(fp, master)?.class.get());
-        if let Some(m) = self.players[player].objects[idx].body.mover_mut() {
+        if let Some(m) = self.players[player.index()].objects[idx].body.mover_mut() {
             m.ignore_units.clear();
         }
         // slot 0x128 -> slot 0x7e8 (task filter -1): the villager's town-bell record, its
@@ -260,13 +261,13 @@ impl World {
         self.town_bell_order(player, idx, foundation, -1)?;
         // the work command (FUN_14106ff70): the master changes (slot 0x90, its action list
         // cleared); the Build action takes its foundation (FUN_140a7a230, slot 0x178)
-        if self.players[player].objects[idx].life.master_id != with {
+        if self.players[player.index()].objects[idx].life.master_id != with {
             self.change_master(player, idx, with)?;
         }
         self.take(foundation, self.releaser(player, idx))?;
         // the work command's notify (slot 0x828): the build order and the foundation, with
         // the point slot 0x128 passes (BUILD's x and y, on the ground)
-        let unit = &mut self.players[player].objects[idx];
+        let unit = &mut self.players[player.index()].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Build),
@@ -285,7 +286,7 @@ impl World {
         // the install (slot 0x808): the action list clears (its actions' teardowns), then
         // holds the Build
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx]
+        self.players[player.index()].objects[idx]
             .actions
             .set_build(Some(build));
         Ok(())
@@ -299,7 +300,7 @@ impl World {
     /// `FUN_14106e990`: the wait's slot 0x70 with no action and its start both do nothing).
     pub(crate) fn wait_for_foundation(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         wait: Wait,
     ) -> Result<(), GenieError> {
@@ -307,7 +308,7 @@ impl World {
             self.change_master(player, idx, master)?;
         }
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx]
+        self.players[player.index()].objects[idx]
             .actions
             .set_wait_solidify(Some(crate::construction::wait_solidify::WaitSolidify::new(
                 wait.task,
@@ -327,14 +328,14 @@ impl World {
     /// [`crate::unit_ai::UnitSide::builds`]).
     pub(crate) fn build_command(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         foundation: i32,
     ) -> Result<bool, GenieError> {
         if self.object(foundation).is_none() {
             return Ok(false);
         }
-        if self.players[player].objects[idx].top_action_kind() == Some(action_type::BUILD) {
+        if self.players[player.index()].objects[idx].top_action_kind() == Some(action_type::BUILD) {
             let _ = self.build_take(player, idx, foundation)?;
             return Ok(true);
         }
@@ -348,13 +349,13 @@ impl World {
             task_target_with(foundation, 2, &find, &self.masters)?.ok_or_else(|| gone.clone())?;
         let masters = self
             .masters
-            .get(player)
+            .get(player.index())
             .ok_or(GenieError::unsupported("a build order: no master table"))?;
         let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        let owner = &world.players[player];
+        let owner = &world.players[player.index()];
         let unit = &owner.objects[idx];
         let actor = Actor {
             id: unit.id.get(),
@@ -390,7 +391,7 @@ impl World {
         }
         self.take(foundation, self.releaser(player, idx))?;
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx]
+        self.players[player.index()].objects[idx]
             .actions
             .set_build(Some(build));
         Ok(true)

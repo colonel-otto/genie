@@ -57,7 +57,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
     let spatial = Spatial::new([120, 120]);
     let attacker = crate::unit_ai::Attacker {
         ai_type: 8,
-        player: 1,
+        player: PlayerId::new(1),
         computer: false,
         state: 2,
         held: -1,
@@ -90,8 +90,8 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         attacker: &attacker,
         seeker: None,
         me: 123,
-        player: 1,
-        others: OthersRef::new(1, &none, foreign),
+        player: PlayerId::new(1),
+        others: OthersRef::new(PlayerId::new(1), &none, foreign),
         foreign,
         every: &every,
         restriction: -1,
@@ -155,7 +155,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
     ];
     let attacker = crate::unit_ai::Attacker {
         ai_type: 13,
-        player: 1,
+        player: PlayerId::new(1),
         computer: false,
         state: 2,
         held: -1,
@@ -187,8 +187,8 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         attacker: &attacker,
         seeker: None,
         me: 123,
-        player: 1,
-        others: OthersRef::new(1, &others, foreign),
+        player: PlayerId::new(1),
+        others: OthersRef::new(PlayerId::new(1), &others, foreign),
         foreign,
         every: &every,
         restriction: -1,
@@ -283,7 +283,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     let spatial = Spatial::new([120, 120]);
     let attacker = crate::unit_ai::Attacker {
         ai_type: 13,
-        player: 1,
+        player: PlayerId::new(1),
         computer: false,
         state: 2,
         held: -1,
@@ -316,8 +316,8 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         attacker: &attacker,
         seeker: None,
         me: 123,
-        player: 1,
-        others: OthersRef::new(1, &none, foreign),
+        player: PlayerId::new(1),
+        others: OthersRef::new(PlayerId::new(1), &none, foreign),
         foreign,
         every: &every,
         restriction: -1,

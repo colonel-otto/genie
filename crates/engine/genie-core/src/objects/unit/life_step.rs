@@ -82,7 +82,7 @@ impl Unit {
             {
                 // the ghosts of the death (FUN_14118e990), the object lent to the world
                 let (p, id) = (c.player, self.id);
-                c.lend(self, |w| w.ghosts_at_death(p, id.get()))?;
+                c.lend(self, |w| w.ghosts_at_death(p.index(), id.get()))?;
             }
         }
         self.annexes_follow(c, before, after)?;

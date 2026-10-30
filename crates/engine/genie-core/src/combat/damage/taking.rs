@@ -14,6 +14,7 @@ use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::RGE_COMBAT;
+use crate::players::PlayerId;
 
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
 /// already done to it (`blast_taken`, a building's `+0xb90`): a static, animated, doppelganger,
@@ -115,7 +116,7 @@ pub(super) fn take_building(
         }
     }
     let b = t.building.get_or_insert_with(Building::default);
-    if 0 < t.player && ONE > t.hp {
+    if t.player != PlayerId::GAIA && ONE > t.hp {
         let (ap, q) = (src.player, t.player);
         let event = match t.master_id {
             CASTLE => Some(crate::players::history::CASTLE_DESTROYED),
@@ -126,7 +127,7 @@ pub(super) fn take_building(
         if b.main.is_none() && t.class != class::WALL {
             let cost = b.cost;
             // 16-bit adds of the players' ids (`ADD DX, word ptr [.. + 0x718]`)
-            let (qa, apa) = (q as i16, ap as i16);
+            let (qa, apa) = (q.index() as i16, ap.index() as i16);
             if !b.trebuchet {
                 adds.extend([
                     (ap, 43, ONE),
@@ -152,7 +153,7 @@ pub(super) fn take_building(
             adds.extend([(ap, 172, cost), (q, 153, cost)]);
         }
         b.razed.push(Razed {
-            attacker_player: ap,
+            attacker_player: ap.index(),
             owner: q,
             event,
             adds,

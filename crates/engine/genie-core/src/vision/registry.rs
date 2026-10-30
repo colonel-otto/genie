@@ -9,6 +9,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
 
@@ -87,7 +88,7 @@ pub struct UnitUpdate {
 #[derive(Clone, Copy, Debug)]
 pub struct VisibleQuery<'a> {
     /// The player whose lists it reads.
-    pub player: usize,
+    pub player: PlayerId,
     /// The searcher's place (x, y).
     pub position: [f32; 2],
     /// How far, at most 44.
@@ -217,7 +218,7 @@ impl Registry {
     }
 
     /// An ownership change (`FUN_14120f800`): the object's records take the new owner's id.
-    pub fn owner_changed(&mut self, id: i32, owner: usize) -> Result<(), GenieError> {
+    pub fn owner_changed(&mut self, id: i32, owner: PlayerId) -> Result<(), GenieError> {
         let Some(e) = self.entries.get(&id).copied() else {
             return Ok(());
         };
@@ -232,7 +233,7 @@ impl Registry {
                 .ok_or(GenieError::unsupported(
                     "an object's registry slot without its record",
                 ))?;
-            record.owner = owner as u8;
+            record.owner = owner.index() as u8;
         }
         Ok(())
     }
@@ -273,7 +274,7 @@ impl Registry {
             size: [rx, ry],
             wanted,
         } = query;
-        if classes.is_empty() || self.players <= player {
+        if classes.is_empty() || self.players <= player.index() {
             return Ok(None);
         }
         let radius = if radius <= MOST_RADIUS {
@@ -290,7 +291,7 @@ impl Registry {
         for &class in classes {
             let list = usize::try_from(class)
                 .ok()
-                .and_then(|c| self.lists.get(player)?.get(c))
+                .and_then(|c| self.lists.get(player.index())?.get(c))
                 .ok_or(GenieError::unsupported(
                     "a query of a class beyond the registry's",
                 ))?;
@@ -438,7 +439,7 @@ mod tests {
         let relations = [1, 4, 4];
         let found = r
             .visible_units(VisibleQuery {
-                player: 0,
+                player: PlayerId::new(0),
                 position: [10.0, 10.0],
                 radius: 3.0,
                 mode: 0,
@@ -457,7 +458,7 @@ mod tests {
         assert!((found[4][0].distance - (1.8f32 * 1.8 + 0.04).sqrt()).abs() < 1e-6);
         assert_eq!(
             r.visible_units(VisibleQuery {
-                player: 0,
+                player: PlayerId::new(0),
                 position: [10.0, 10.0],
                 radius: 3.0,
                 mode: 0,
@@ -496,7 +497,7 @@ mod tests {
         .unwrap();
         let found = r
             .visible_units(VisibleQuery {
-                player: 0,
+                player: PlayerId::new(0),
                 position: [10.0, 10.0],
                 radius: 100.0,
                 mode: 1,
@@ -526,7 +527,7 @@ mod tests {
         .unwrap();
         let found = r
             .visible_units(VisibleQuery {
-                player: 0,
+                player: PlayerId::new(0),
                 position: [10.0, 10.0],
                 radius: 3.0,
                 mode: 0,

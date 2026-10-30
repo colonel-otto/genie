@@ -9,6 +9,7 @@ use crate::map::spatial::{
 };
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
+use crate::players::PlayerId;
 use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
 use crate::vision::registry::VisibleQuery;
@@ -125,7 +126,7 @@ impl Spatial {
     /// Fails when a frozen object of `player` that may have moved sees, or saw, near `rect`: the
     /// player's visible map there, and the registry's records the objects' masks keep, may differ
     /// from the game's (its sight, plus a tile, beyond what it may have moved).
-    pub fn check_sight(&self, player: usize, rect: [f32; 4]) -> Result<(), GenieError> {
+    pub fn check_sight(&self, player: PlayerId, rect: [f32; 4]) -> Result<(), GenieError> {
         let Some(v) = self.sight.as_ref() else {
             return Ok(());
         };
@@ -203,10 +204,10 @@ impl Spatial {
     /// # Errors
     ///
     /// A player whose kinds the slice did not load.
-    pub fn query_kinds(&self, player: usize, players: usize) -> Result<Vec<u32>, GenieError> {
+    pub fn query_kinds(&self, player: PlayerId, players: usize) -> Result<Vec<u32>, GenieError> {
         let kinds = self
             .unit_diplomacy
-            .get(player)
+            .get(player.index())
             .ok_or(GenieError::unsupported(
                 "a search of a player without its unit diplomacy",
             ))?;
@@ -218,7 +219,11 @@ impl Spatial {
     /// lists it leaves are [`Spatial::searched`]'s.
     ///
     /// [`SearchCache`]: crate::map::spatial::SearchCache
-    pub fn search_query(&mut self, player: usize, search: &Search<'_>) -> Result<bool, GenieError> {
+    pub fn search_query(
+        &mut self,
+        player: PlayerId,
+        search: &Search<'_>,
+    ) -> Result<bool, GenieError> {
         let v = self.sight.as_ref().ok_or(GenieError::unsupported(
             "a search without the players' sight",
         ))?;
@@ -279,7 +284,7 @@ impl Spatial {
     /// The search's pick of what it found ([`Spatial::search`]).
     pub(super) fn pick_found(
         &mut self,
-        (me, player): (i32, usize),
+        (me, player): (i32, PlayerId),
         search: &Search<'_>,
         fresh: bool,
         attack: &mut dyn crate::unit_ai::AttackPicker,
@@ -364,7 +369,7 @@ impl Spatial {
     pub(super) fn closest_object(
         &mut self,
         me: i32,
-        player: usize,
+        player: PlayerId,
         filter: Filter,
         reach: &mut Reach<'_>,
         checks: ClosestChecks<'_>,
@@ -443,7 +448,7 @@ pub struct SearchQuery<'a> {
     /// The searching object.
     pub searcher: i32,
     /// Its player.
-    pub player: usize,
+    pub player: PlayerId,
     /// What it searches for.
     pub search: &'a Search<'a>,
     /// An attack pick's reads of the unit and the objects.
@@ -510,7 +515,7 @@ pub(super) fn closest_kept(
     id: i32,
     (seer, p): (&Seer, &Placed),
     filter: Filter,
-    (player, searcher): (usize, Searcher),
+    (player, searcher): (PlayerId, Searcher),
     (moving, shuns, farm): ClosestChecks<'_>,
 ) -> Result<bool, GenieError> {
     if filter.group != -1 && i32::from(p.class.get()) != filter.group {

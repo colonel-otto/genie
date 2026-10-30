@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::masters::class;
+use crate::players::PlayerId;
 
 fn task(action_type: i16, object_group: i16, object_id: i16, work_val1: f32) -> Task {
     Task {
@@ -80,7 +81,7 @@ fn villagers() -> Masters {
 struct Alone;
 
 impl Diplomacy for Alone {
-    fn allied(&self, from: usize, to: usize, _: bool) -> bool {
+    fn allied(&self, from: PlayerId, to: PlayerId, _: bool) -> bool {
         from == to
     }
 
@@ -1091,7 +1092,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
         let site = TaskTarget {
             id: 12557,
             master: m.get(50).unwrap(),
-            player: 2,
+            player: PlayerId::new(2),
             state: 2,
             held: (-1, 0.0),
             hp: 1.0,
@@ -1103,7 +1104,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
         let actor = Actor {
             id: 9181,
             master: own,
-            player: 2,
+            player: PlayerId::new(2),
             held: (-1, 0.0),
             attribute_95: 0.0,
             civ: 1,
@@ -1142,7 +1143,7 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
     let site = TaskTarget {
         id: 10028,
         master: m.get(70).unwrap(),
-        player: 2,
+        player: PlayerId::new(2),
         state: 0,
         held: (-1, 0.0),
         hp: 1.0,
@@ -1155,7 +1156,7 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
         let actor = Actor {
             id: 9181,
             master: m.get(own).unwrap(),
-            player: 2,
+            player: PlayerId::new(2),
             held: (-1, 0.0),
             attribute_95: 0.0,
             civ: 1,
@@ -1201,9 +1202,9 @@ fn a_master_s_unit_ai_type_reads_its_class_volley_missile_and_combat_level() {
 #[test]
 fn a_master_is_found_by_its_player_and_id() {
     let every = vec![Masters::default(), villagers()];
-    let found = player_master(&every, 1, 83).map(|m| m.id);
+    let found = player_master(&every, PlayerId::new(1), 83).map(|m| m.id);
     assert_eq!(found, Some(83));
-    assert!(player_master(&every, 0, 83).is_none());
-    assert!(player_master(&every, 1, -1).is_none());
-    assert!(player_master(&every, 2, 83).is_none());
+    assert!(player_master(&every, PlayerId::new(0), 83).is_none());
+    assert!(player_master(&every, PlayerId::new(1), -1).is_none());
+    assert!(player_master(&every, PlayerId::new(2), 83).is_none());
 }

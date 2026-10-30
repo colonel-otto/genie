@@ -8,6 +8,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::{Task, TaskId};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 
@@ -26,7 +27,7 @@ impl crate::world::World {
     /// A map without its terrain, and what the actions' teardowns do not model.
     pub(crate) fn start_transport(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (PlayerId, usize),
         (target, point): (i32, [f32; 3]),
         task: &Task,
         clears: bool,
@@ -35,7 +36,9 @@ impl crate::world::World {
         self.clear_actions(p, i)?;
         let mut t = TransportAction::on_task(Some(task.id), point);
         let changed = self.with_shore(p, i, t.task, |ship, shore| t.start(true, ship, shore))?;
-        self.players[p].objects[i].actions.set_transport(Some(t));
+        self.players[p.index()].objects[i]
+            .actions
+            .set_transport(Some(t));
         self.transport_changed(p, i, changed)
     }
 
@@ -52,12 +55,12 @@ impl crate::world::World {
     /// [`World`]: crate::world::World
     pub(crate) fn retake_transport(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (PlayerId, usize),
         (target, point): (i32, [f32; 3]),
         task: &Task,
         clears: bool,
     ) -> Result<bool, GenieError> {
-        let unit = &self.players[p].objects[i];
+        let unit = &self.players[p.index()].objects[i];
         let on_task = unit.top_action_kind() == Some(TRANSPORT)
             && unit.actions.transport().copied().and_then(|t| t.task) == Some(task.id);
         if !on_task || self.trade_at_own_market((p, i), target)? {
@@ -74,7 +77,9 @@ impl crate::world::World {
         let changed = self.with_shore(p, i, t.task, |ship, shore| {
             t.work(point, by_self, ship, shore)
         })?;
-        self.players[p].objects[i].actions.set_transport(Some(t));
+        self.players[p.index()].objects[i]
+            .actions
+            .set_transport(Some(t));
         self.transport_changed(p, i, changed)?;
         self.notify_transport((p, i), (target, point), clears)?;
         Ok(true)
@@ -82,13 +87,19 @@ impl crate::world::World {
 
     /// `LAB_1410706a8`'s exception: the unit is a trade cart or boat (`FUN_141195400`,
     /// `FUN_141195490`) and the target its own player's market.
-    fn trade_at_own_market(&self, (p, i): (usize, usize), target: i32) -> Result<bool, GenieError> {
+    fn trade_at_own_market(
+        &self,
+        (p, i): (PlayerId, usize),
+        target: i32,
+    ) -> Result<bool, GenieError> {
         let Some((tp, t)) = self.object(target) else {
             return Ok(false);
         };
         // The market (`0x60f0` raw), whose own trade units the work command never retakes.
         let market = tp == p && t.master(&self.masters, tp)?.id == MARKET;
-        let class = self.players[p].objects[i].master(&self.masters, p)?.class;
+        let class = self.players[p.index()].objects[i]
+            .master(&self.masters, p)?
+            .class;
         Ok(market && TRADE_CLASSES.contains(&class))
     }
 
@@ -97,7 +108,7 @@ impl crate::world::World {
     /// world does not hold) and the work's point.
     fn notify_transport(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (PlayerId, usize),
         (target, point): (i32, [f32; 3]),
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -105,7 +116,7 @@ impl crate::world::World {
             Some((tp, t)) => Some((target, i32::from(t.master(&self.masters, tp)?.class.get()))),
             None => None,
         };
-        let unit = &mut self.players[p].objects[i];
+        let unit = &mut self.players[p.index()].objects[i];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Transport),
@@ -130,17 +141,17 @@ impl crate::world::World {
     /// [`World`]: crate::world::World
     fn with_shore(
         &mut self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         task: Option<TaskId>,
         f: impl FnOnce(&Ship<'_>, &mut MapShore<'_>) -> Result<Changed, GenieError>,
     ) -> Result<Changed, GenieError> {
         let ship = {
-            let unit = &self.players[p].objects[i];
+            let unit = &self.players[p.index()].objects[i];
             let master = unit.master(&self.masters, p)?;
             Ship::of_unit(unit, master, self.spatial.map, &self.graphics, task)?
         };
-        let restriction = self.players[p].objects[i]
+        let restriction = self.players[p.index()].objects[i]
             .master(&self.masters, p)?
             .terrain_restriction;
         let mut shore = MapShore::new(

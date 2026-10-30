@@ -22,6 +22,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use genie_diff::Diff;
 
 pub(crate) mod ai_moves;
@@ -547,7 +548,7 @@ const fn looping_next(level: &mut PathData, index: i32) -> i32 {
 /// does not hold: neither pauses), any other two by id (slot 0x5f8).
 fn pause_rank(
     me: &Me,
-    (player, computer): (usize, bool),
+    (player, computer): (PlayerId, bool),
     (id, other): (i32, &Placed),
     world: &Spatial,
     groups: Option<&crate::groups::UnitGroups>,

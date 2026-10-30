@@ -217,12 +217,12 @@ impl ExploreAction {
         let master = object_master(
             explorer.own_master.as_deref(),
             (explorer.id.get(), explorer.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )
         .ok();
         let villager = master.is_some_and(|m| m.class == class::VILLAGER);
         let gives_up = GiveUp {
-            waits: villager && !c.w.players[c.player].computer,
+            waits: villager && !c.w.players[c.player.index()].computer,
             stance: explorer.ai.as_ref().map_or(0, |ai| ai.stance),
         };
         let how = ListUpdate {
@@ -561,7 +561,7 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         );
         master.map_or_else(
             |_| ExploreMove {

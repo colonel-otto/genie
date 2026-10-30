@@ -12,6 +12,7 @@ use crate::math::fmath;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::math::image::group::{CHASING_SLACK, CLOSE, CONTACT_SLACK, FARTHEST, RANGED_SLACK};
 use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// The formation categories a group keeps its units by, which the update walks in order.
@@ -277,7 +278,7 @@ impl World {
         &mut self,
         group: i32,
         target: i32,
-        owner: usize,
+        owner: PlayerId,
     ) -> Result<Option<bool>, GenieError> {
         let g = self.groups.held(group)?;
         if g.current_target.kind != OBJECT_TARGET {

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::objects::masters::ids::WONDER;
+use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::world_player::{
     ALIVE_STORE_MODE, BUILDING_CLASS, COMPUTER_TYPE, GAIA_TYPE, HUMAN_TYPE, KING, PACKED_CLASS,
@@ -23,7 +24,7 @@ impl World {
     /// # Errors
     ///
     /// The second's work met a part of the game the slice does not model.
-    pub fn update_world_player(&mut self, p: usize) -> Result<(), GenieError> {
+    pub fn update_world_player(&mut self, p: PlayerId) -> Result<(), GenieError> {
         let dt = self.dt_seconds;
         let player = self.players.player_mut(p)?;
         if player.kind == GAIA_TYPE {
@@ -55,7 +56,7 @@ impl World {
     /// # Errors
     ///
     /// The defeat check's ([`World::defeat_check`]).
-    pub(super) fn world_player_second(&mut self, p: usize, time: f32) -> Result<(), GenieError> {
+    pub(super) fn world_player_second(&mut self, p: PlayerId, time: f32) -> Result<(), GenieError> {
         let (world_time, period) = (self.world_time, self.history_period);
         let player = self.players.player_mut(p)?;
         player
@@ -93,9 +94,9 @@ impl World {
     /// (`CVTDQ2PS`) before the division. None in a slice without the players' sight, whose
     /// attribute 22 the update then leaves.
     #[must_use]
-    pub fn explored_share(&self, p: usize) -> Option<f32> {
+    pub fn explored_share(&self, p: PlayerId) -> Option<f32> {
         let sight = self.spatial.sight.as_ref()?;
-        let map = sight.maps.get(p)?;
+        let map = sight.maps.get(p.index())?;
         Some(map.explored as f32 / (sight.width * sight.height) as f32)
     }
 
@@ -115,7 +116,7 @@ impl World {
     /// An object of a master the slice does not have; the status setter's.
     ///
     /// [`VictoryTimes::running`]: crate::players::world_player::VictoryTimes::running
-    pub fn defeat_check(&mut self, p: usize) -> Result<(), GenieError> {
+    pub fn defeat_check(&mut self, p: PlayerId) -> Result<(), GenieError> {
         let mut stays = self.players.player(p)?.victory_times.running();
         if !stays {
             for unit in &self.players.player(p)?.objects {
@@ -170,7 +171,7 @@ impl World {
     /// An object of a master the slice does not have.
     pub fn keeps_alive(
         &self,
-        p: usize,
+        p: PlayerId,
         unit: &crate::objects::unit::Unit,
     ) -> Result<bool, GenieError> {
         let master = unit.master(&self.masters, p)?;

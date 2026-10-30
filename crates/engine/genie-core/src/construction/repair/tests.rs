@@ -249,7 +249,7 @@ fn repair_at(at: [f32; 3], set: impl FnOnce(&mut RepairAction)) -> crate::world:
         filter: -1,
         notified: true,
     };
-    t.order_work(1, 0, &work).unwrap();
+    t.order_work(PlayerId::new(1), 0, &work).unwrap();
     let v = &mut t.players[1].objects[0];
     let standing = graphics()[&5];
     v.sprite = Some(crate::objects::sprite::ActiveSprite::start(
@@ -268,7 +268,7 @@ fn passable(t: &mut crate::world::World) {
 
 /// The repairer's Repair part of 50 ms through its step (`Unit::repair_part`): its code.
 fn repaired(t: &mut crate::world::World) -> Result<HeadCode, GenieError> {
-    crate::world::tests::in_update(t, (1, 0), 50, |unit, c| {
+    crate::world::tests::in_update(t, (PlayerId::new(1), 0), 50, |unit, c| {
         let me = Me {
             id: unit.id.get(),
             group: unit.group.id,

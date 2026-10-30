@@ -18,6 +18,7 @@ pub(crate) use self::search::{SearchArea, SearchUnit};
 
 use crate::movement::explore::InfluenceMap;
 use crate::objects::ObjectId;
+use crate::players::PlayerId;
 
 /// The number of slots [`TacticalModule::slot`] reads (`FUN_140c09de0`): an index from here on
 /// gives -1.
@@ -81,33 +82,35 @@ pub struct AiModules {
 
 impl AiModules {
     /// Player `player` holds `module`.
-    pub fn set(&mut self, player: usize, module: AiModule) {
-        if self.modules.len() <= player {
-            self.modules.resize(player + 1, None);
+    pub fn set(&mut self, player: PlayerId, module: AiModule) {
+        if self.modules.len() <= player.index() {
+            self.modules.resize(player.index() + 1, None);
         }
-        self.modules[player] = Some(module);
+        self.modules[player.index()] = Some(module);
     }
 
     /// Player `player`'s module, out of the table until [`AiModules::put_back`] (a search that
     /// reads the rest of the world holds it meanwhile).
-    pub fn take(&mut self, player: usize) -> Option<AiModule> {
-        self.modules.get_mut(player).and_then(Option::take)
+    pub fn take(&mut self, player: PlayerId) -> Option<AiModule> {
+        self.modules.get_mut(player.index()).and_then(Option::take)
     }
 
     /// Player `player`'s module taken out by [`AiModules::take`] goes back.
-    pub fn put_back(&mut self, player: usize, module: AiModule) {
+    pub fn put_back(&mut self, player: PlayerId, module: AiModule) {
         self.set(player, module);
     }
 
     /// Player `player`'s module.
     #[must_use]
-    pub fn get(&self, player: usize) -> Option<&AiModule> {
-        self.modules.get(player).and_then(Option::as_ref)
+    pub fn get(&self, player: PlayerId) -> Option<&AiModule> {
+        self.modules.get(player.index()).and_then(Option::as_ref)
     }
 
     /// Player `player`'s module, to change.
-    pub fn get_mut(&mut self, player: usize) -> Option<&mut AiModule> {
-        self.modules.get_mut(player).and_then(Option::as_mut)
+    pub fn get_mut(&mut self, player: PlayerId) -> Option<&mut AiModule> {
+        self.modules
+            .get_mut(player.index())
+            .and_then(Option::as_mut)
     }
 }
 

@@ -14,6 +14,7 @@
 
 use crate::GenieError;
 use crate::movement::PathData;
+use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
 
 mod group_list;
@@ -440,6 +441,18 @@ impl Motion {
 }
 
 impl UnitGroup {
+    /// The player the group belongs to (`+0xdc`, set by the order's handler).
+    ///
+    /// # Errors
+    ///
+    /// A group no player owns yet (the constructor's `u32::MAX`).
+    pub(crate) fn owner_player(&self) -> Result<PlayerId, GenieError> {
+        usize::try_from(self.owner)
+            .map_err(|_| GenieError::unreachable("a group's owner past the players"))
+            .and_then(PlayerId::try_from)
+            .map_err(|e| e.with("owner", self.owner))
+    }
+
     /// `BUnitGroup`'s constructor (`FUN_140fe1550` after [`Motion::new`]) with id `id`
     /// (`FUN_141039640`): the owner -1 (the 64-bit -1 over `+0xd8` and `+0xdc`, whose id the
     /// id's setter then writes; [`UnitGroups::create`] sets the owner after), state -1, no

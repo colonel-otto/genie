@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::{Master, Masters, master_type, player_master};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::technology::effect::{Change, OBJECT_GONE};
 use crate::world::World;
@@ -36,7 +37,7 @@ impl World {
     /// order (a queued unit's place holds −1, which no object has).
     pub(super) fn tracked_class(
         &self,
-        p: usize,
+        p: PlayerId,
         class: ClassId,
     ) -> Result<(Vec<i32>, Vec<i32>), GenieError> {
         let t = &self.players.player(p)?.tracker;
@@ -49,7 +50,7 @@ impl World {
 
     /// The ids player `p`'s tracker files as done under key master `key` (`FUN_14104f560`'s list
     /// of one key, whatever the objects' masters), in the tracker's order.
-    pub(super) fn tracked_key(&self, p: usize, key: i16) -> Result<Vec<i32>, GenieError> {
+    pub(super) fn tracked_key(&self, p: PlayerId, key: i16) -> Result<Vec<i32>, GenieError> {
         Ok(self
             .players
             .player(p)?
@@ -64,7 +65,7 @@ impl World {
     /// masters. Each in the tracker's order.
     pub(super) fn tracked_master(
         &self,
-        p: usize,
+        p: PlayerId,
         master: &Master,
     ) -> Result<(Vec<i32>, Vec<i32>), GenieError> {
         let player = self.players.player(p)?;
@@ -137,7 +138,7 @@ impl World {
     /// old amount to the new one (slot 0xf8 twice) unless the master keeps it (flag `'@'`).
     pub(super) fn change_static(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         master: &Master,
         change: Change,
@@ -223,7 +224,7 @@ impl World {
     /// glow's particles (40) are not simulation; the rest is the static object's.
     pub(super) fn change_combat(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         master: &Master,
         change: Change,
@@ -258,7 +259,7 @@ impl World {
     /// magnitude (slot 0xf8 each).
     pub(super) fn population_storage(
         &mut self,
-        p: usize,
+        p: PlayerId,
         master: &Master,
         v: f32,
     ) -> Result<(), GenieError> {
@@ -288,7 +289,7 @@ impl World {
     /// its icon override (17, `+0xe`) is the interface's; the rest is the combat unit's.
     pub(super) fn change_building(
         &mut self,
-        p: usize,
+        p: PlayerId,
         id: i32,
         master: &Master,
         change: Change,

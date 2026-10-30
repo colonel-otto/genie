@@ -12,6 +12,7 @@ use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::Releaser;
 use crate::orders::GATHERED_BUILDING;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -23,7 +24,7 @@ use crate::world::slots::PlayerSlots;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct HuntOrder {
     /// The hunter's player.
-    pub(super) player: usize,
+    pub(super) player: PlayerId,
     /// The hunter's index in the player's objects.
     pub(super) index: usize,
     /// The target.
@@ -47,7 +48,7 @@ impl World {
     /// 1893 or 1897 of the unit's player (slots 0x808 and 0x7e8: its build).
     pub(super) fn retarget_gather(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<bool, GenieError> {
@@ -147,7 +148,7 @@ impl World {
     /// targets that changed are let go and taken.
     pub(crate) fn gather_take_move(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 3],
@@ -185,7 +186,7 @@ impl World {
     /// (`+0xbb8`): the unit's master has that master among its drop sites.
     pub(super) fn drops_at_main(
         &self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<bool, GenieError> {
@@ -217,7 +218,7 @@ impl World {
     /// [`HuntAction::take_move`]: crate::gathering::hunt::HuntAction::take_move
     pub(crate) fn hunt_take_move(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 3],
@@ -264,7 +265,7 @@ impl World {
     }
 
     /// What a hunt reads of its target.
-    pub(super) fn quarry(&self, player: usize, target: i32) -> Result<Quarry, GenieError> {
+    pub(super) fn quarry(&self, player: PlayerId, target: i32) -> Result<Quarry, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold",
         ))?;
@@ -296,7 +297,7 @@ impl World {
     /// target as the second target, then lets it go as the first.
     pub(super) fn start_gather(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         task: &crate::objects::masters::Task,
@@ -405,7 +406,7 @@ impl World {
     /// the `MoveTo` shows the hunt's walking sprite, [`HuntTask::walk_sprite_id`]).
     pub(super) fn arms(
         &self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         task: &HuntTask,
     ) -> Result<Arms, GenieError> {
@@ -423,7 +424,7 @@ impl World {
     /// [`crate::combat::attack::engagement`] of the unit at `idx` with `target`.
     pub(super) fn engagement(
         &self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<Engagement, GenieError> {
@@ -457,8 +458,8 @@ impl World {
     /// building is gone: not modelled.
     fn gatherable_building(
         &self,
-        player: usize,
-        (tp, t): (usize, &crate::objects::unit::Unit),
+        player: PlayerId,
+        (tp, t): (PlayerId, &crate::objects::unit::Unit),
         tm: &crate::objects::masters::Master,
     ) -> Result<bool, GenieError> {
         if tm.kind == BUILDING {
@@ -533,7 +534,7 @@ impl World {
     /// What the start does not model.
     fn begin_hunt(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (task, quarry): (HuntTask, &Quarry),
     ) -> Result<(), GenieError> {

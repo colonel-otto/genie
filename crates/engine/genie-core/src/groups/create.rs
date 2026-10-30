@@ -417,6 +417,7 @@ mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::players::PlayerId;
     use crate::test_ids::object_id;
     use crate::world::{Player, World};
 
@@ -448,7 +449,13 @@ mod tests {
             objects: vec![unit(10, 4, 1.0), walking, unit(12, 6, 3.0)].into(),
             ..Player::default()
         };
-        let mut t = World::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
+        let mut t = World::new(
+            0,
+            0,
+            PlayerId::new(0),
+            vec![0, 0],
+            vec![Player::default(), player],
+        );
         let master = |id: i16, category: u8| Master {
             id,
             kind: 70,

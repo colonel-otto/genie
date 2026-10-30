@@ -5,6 +5,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover, Planning};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::owner_view;
@@ -50,7 +51,7 @@ impl UnitView<'_, '_> {
             .c
             .w
             .masters
-            .get(self.player)
+            .get(self.player.index())
             .ok_or(crate::world::UNIT_AI_MASTER)?;
         let own = unit.master(&self.c.w.masters, self.player)?;
         let switch = crate::construction::repair::REPAIRERS
@@ -142,7 +143,7 @@ impl UnitView<'_, '_> {
             .c
             .w
             .masters
-            .get(self.player)
+            .get(self.player.index())
             .ok_or(crate::world::UNIT_AI_MASTER)?;
         let own = unit.master(&self.c.w.masters, self.player)?;
         let (Some(t), Some(general)) = (
@@ -297,7 +298,7 @@ pub(crate) struct ScoutArea<'a> {
     pub(crate) plan: Planning<'a>,
     pub(crate) mover: &'a Mover,
     pub(crate) me: Me,
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
     pub(crate) master: i16,
     pub(crate) radius: [f32; 2],
     /// The reach of slot 0x3d8: the line of sight less a tile.

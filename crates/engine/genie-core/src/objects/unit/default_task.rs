@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
+use crate::players::PlayerId;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -45,7 +46,7 @@ impl Unit {
                 .and_then(Master::default_task)
                 .and_then(|t| crate::objects::sprite::sprite_id(t.sprites[0]));
             self.actions
-                .set_artifact(Some(Artifact::new(c.player == 0, moving)));
+                .set_artifact(Some(Artifact::new(c.player == PlayerId::GAIA, moving)));
             return Ok(true);
         }
         if let Some(e) = &self.default_task {

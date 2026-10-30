@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use crate::production::spawn::PlaceMap;
 
 /// What BUILD's placement test reads of the building master and the game.
 #[derive(Clone, Copy, Debug)]
 pub struct BuildSite<'a> {
     /// The player who places it.
-    pub player: usize,
+    pub player: PlayerId,
     /// A human player (`p6`: the explored test).
     pub human: bool,
     /// The master's radii the test measures by (`p9`): its clearance radii (`+0x5fc`, `+0x600`)

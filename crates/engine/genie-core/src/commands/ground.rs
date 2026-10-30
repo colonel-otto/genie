@@ -4,6 +4,7 @@
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
+use crate::players::PlayerId;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -54,7 +55,8 @@ impl World {
                 .mover()
                 .and_then(|m| m.paths.first())
                 .map(|l| l.state);
-            let stands = (owner == 0 && matches!(master.class, class::PREY | class::PREDATOR))
+            let stands = (owner == PlayerId::GAIA
+                && matches!(master.class, class::PREY | class::PREDATOR))
                 || (!walking && level.is_none_or(|s| matches!(s, 0 | 6)));
             let busy = u.ai.as_ref().is_none_or(|ai| {
                 matches!(
@@ -75,7 +77,7 @@ impl World {
                     "a sleeping unit sent off a footprint",
                 ));
             };
-            if let Some(ai) = self.players[q].objects[i].ai.as_mut() {
+            if let Some(ai) = self.players[q.index()].objects[i].ai.as_mut() {
                 ai.post(Notify::own(id, crate::unit_ai::SENT_OFF, p), state)?;
             }
         }
@@ -127,8 +129,8 @@ impl World {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
             };
-            let z = self.players[q].objects[i].position()[2];
-            if let Some(ai) = self.players[q].objects[i].ai.as_mut() {
+            let z = self.players[q.index()].objects[i].position()[2];
+            if let Some(ai) = self.players[q.index()].objects[i].ai.as_mut() {
                 ai.set_action(Some(ActionKind::MoveAside));
             }
             self.move_point_order(q, i, [x, y, z])?;
@@ -137,7 +139,7 @@ impl World {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
             };
-            let unit = &mut self.players[q].objects[i];
+            let unit = &mut self.players[q.index()].objects[i];
             let state = unit.life.state;
             if let Some(ai) = unit.ai.as_mut()
                 && ai.current_action != Some(ActionKind::MoveAside)
@@ -157,7 +159,7 @@ impl World {
     /// [`crate::map::terrain::Terrain::cover`]), before the footprint clearing.
     pub(crate) fn construction_terrain(
         &mut self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         position: [f32; 3],
     ) -> Result<(), GenieError> {
@@ -200,7 +202,7 @@ impl World {
     /// What the choice and the deletes do not model.
     pub(crate) fn clear_footprint(
         &mut self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         at: [f32; 2],
         trees: bool,
@@ -252,7 +254,7 @@ impl World {
     /// What the footprint clearing reads of object `id` ([`crate::construction::build::ClearLook`]).
     pub(crate) fn clear_look(&self, id: i32) -> Option<ClearLook> {
         let (p, u) = self.object(id)?;
-        clear_look_of(u, self.masters.get(p))
+        clear_look_of(u, self.masters.get(p.index()))
     }
 
     /// An object the footprint clearing deletes ([`crate::construction::build::Cleared`]): a wall first goes
@@ -291,7 +293,7 @@ impl World {
     /// desolid flag unlinks them).
     pub(crate) fn building_place(
         &mut self,
-        player: usize,
+        player: PlayerId,
         id: i32,
         made: &Master,
         position: [f32; 3],

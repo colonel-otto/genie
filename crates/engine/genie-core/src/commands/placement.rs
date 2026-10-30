@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::Master;
 use crate::objects::masters::ids::FARM;
 use crate::objects::masters::player_master;
+use crate::players::PlayerId;
 use crate::world::{RICE_FARM, World};
 
 impl World {
@@ -25,7 +26,7 @@ impl World {
 
     /// BUILD's pending debit (`FUN_141630d10` with 0, before its placement test): every cost
     /// entry of the master, paid or not, by resource, comes off the player's pending debit.
-    pub(crate) fn debit_listed(&mut self, player: usize, master: i16) -> Result<(), GenieError> {
+    pub(crate) fn debit_listed(&mut self, player: PlayerId, master: i16) -> Result<(), GenieError> {
         let site = player_master(&self.masters, player, master).ok_or(GenieError::unsupported(
             "BUILD of a master the player does not have",
         ))?;
@@ -35,7 +36,11 @@ impl World {
                 listed[r] = listed[r].wrapping_add(amount);
             }
         }
-        for (debit, amount) in self.players[player].pending_debit.iter_mut().zip(listed) {
+        for (debit, amount) in self.players[player.index()]
+            .pending_debit
+            .iter_mut()
+            .zip(listed)
+        {
             *debit -= f32::from(amount);
         }
         Ok(())
@@ -46,11 +51,11 @@ impl World {
     /// holds, `FUN_140e6bad0`, follows from it), else it places nothing; a computer's passes.
     pub(crate) fn build_has_builder(
         &self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         builders: &[i32],
     ) -> Result<bool, GenieError> {
-        if self.players[player].computer {
+        if self.players[player.index()].computer {
             return Ok(true);
         }
         let trained_at = self.master(player, master)?.trained_at.clone();
@@ -69,11 +74,11 @@ impl World {
     /// player's slot 0x380 shows why). A cost in population (attribute 4) is not modelled.
     pub(crate) fn build_allowed(
         &self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         at: [f32; 2],
     ) -> Result<bool, GenieError> {
-        let human = !self.players[player].computer;
+        let human = !self.players[player.index()].computer;
         if self.placement_code(player, master, at, human)? != 0 {
             return Ok(false);
         }
@@ -85,7 +90,7 @@ impl World {
     /// may go there, else the game's code.
     pub(crate) fn placement_code(
         &self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         at: [f32; 2],
         human: bool,
@@ -97,7 +102,7 @@ impl World {
     /// its annexes).
     pub(crate) fn placement_code_beside(
         &self,
-        player: usize,
+        player: PlayerId,
         master: i16,
         at: [f32; 2],
         human: bool,
@@ -189,9 +194,9 @@ impl World {
     /// The payment's test of a foundation of `master` for `player` (`FUN_14162fb60` ->
     /// `FUN_141618db0`): every cost entry of a resource, paid or not, at most what the player
     /// holds. A cost in population (attribute 4) is not modelled.
-    pub(crate) fn affords(&self, player: usize, master: i16) -> Result<bool, GenieError> {
+    pub(crate) fn affords(&self, player: PlayerId, master: i16) -> Result<bool, GenieError> {
         let site = self.master(player, master)?;
-        let owner = &self.players[player];
+        let owner = &self.players[player.index()];
         for &(resource, amount, _) in &site.cost {
             let Ok(r) = usize::try_from(resource) else {
                 continue;

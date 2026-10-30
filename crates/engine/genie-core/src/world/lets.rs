@@ -15,6 +15,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::{Releaser, released, released_fields};
 use crate::objects::unit::Unit;
 use crate::orders::object_gone;
+use crate::players::PlayerId;
 use crate::players::tracker::Tracker;
 use crate::unit_ai::Notify;
 use crate::world::others::{Others, OthersRef};
@@ -27,7 +28,7 @@ use crate::world::{Player, World};
 /// updating object's own unit AI while the AI runs (taken out of the unit, it is posted them,
 /// with the unit's state, when its side's call returns: [`crate::objects::unit::Unit::with_side`]).
 pub(crate) struct Lets<'l> {
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
     pub(crate) relations: &'l [u8],
     pub(crate) masters: &'l [Masters],
     pub(crate) lines: &'l UnitLines,
@@ -42,7 +43,7 @@ impl World {
     /// with the updating object, out of its slot, as `me`.
     pub(crate) fn with_lets<R>(
         &mut self,
-        player: usize,
+        player: PlayerId,
         f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
     ) -> Result<R, GenieError> {
         // no unit AI's side runs here: an updating unit holds its AI (one without has none to
@@ -54,7 +55,7 @@ impl World {
     /// whose AI is out of the unit: the notifies for it go to `own_notifies`.
     pub(crate) fn with_lets_for<R>(
         &mut self,
-        player: usize,
+        player: PlayerId,
         own_notifies: &mut Vec<(Notify, u8)>,
         f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
     ) -> Result<R, GenieError> {
@@ -64,7 +65,7 @@ impl World {
         };
         let (before, rest) = self
             .players
-            .split_at_mut_checked(player)
+            .split_at_mut_checked(player.index())
             .ok_or_else(no_player)?;
         let (own, after) = rest.split_first_mut().ok_or_else(no_player)?;
         let Player {
@@ -215,7 +216,7 @@ impl Lets<'_> {
     /// Slot 0x178 on the live object `u` of player `p`, `allied` to the taker's player: it counts
     /// its worker ([`crate::objects::unit::Unit::taken`]; a building first lists an unallied
     /// taker of a foundation with a stack unit).
-    fn taken_live(&self, u: &mut Unit, (p, allied): (usize, bool), by: Releaser) {
+    fn taken_live(&self, u: &mut Unit, (p, allied): (PlayerId, bool), by: Releaser) {
         let listed = u
             .master(self.masters, p)
             .is_ok_and(|m| u.lists_taker(m, allied));
@@ -326,7 +327,7 @@ impl Lets<'_> {
 
     /// The building whose builders object `f` (`id`, of player `p`) counts in: an annex's main
     /// building, else the object itself.
-    fn site_of(&self, f: &Unit, p: usize, id: i32) -> Result<i32, GenieError> {
+    fn site_of(&self, f: &Unit, p: PlayerId, id: i32) -> Result<i32, GenieError> {
         // The building master type RESEARCH asks for (`'P'`, 80).
         Ok(if f.master(self.masters, p)?.kind == BUILDING {
             f.annex_of.unwrap_or(id)
@@ -337,7 +338,7 @@ impl Lets<'_> {
 
     /// Player `from` counts player `to` as its own or allied, with its allies (`FUN_141663dc0`
     /// with 1): the updating player's relations, another's from the view.
-    fn allied(&self, view: OthersRef<'_>, from: usize, to: usize) -> bool {
+    fn allied(&self, view: OthersRef<'_>, from: PlayerId, to: PlayerId) -> bool {
         let relations = if from == self.player {
             self.relations
         } else {

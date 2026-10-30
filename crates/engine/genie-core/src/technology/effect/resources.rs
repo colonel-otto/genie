@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::{master_type, player_master};
+use crate::players::PlayerId;
 use crate::technology::effect::OBJECT_GONE;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -36,7 +37,7 @@ impl World {
     /// mode 4 (a playback's is not) or with the game's `+0x668` set (not held: taken unset).
     pub(super) fn modify_resource(
         &mut self,
-        p: usize,
+        p: PlayerId,
         attribute: i16,
         amount: f32,
         mode: u8,
@@ -54,7 +55,7 @@ impl World {
     /// [`World::modify_resource`], the attribute set to its value times `v` (`FUN_1416614c0`).
     pub(super) fn multiply_resource(
         &mut self,
-        p: usize,
+        p: PlayerId,
         attribute: i16,
         v: f32,
     ) -> Result<(), GenieError> {
@@ -66,7 +67,11 @@ impl World {
 
     /// `FUN_141217ac0` (`after` false) or `FUN_14120b910` on each of player `p`'s live combat
     /// units and buildings ([`World::garrison_volleys`]).
-    pub(super) fn all_garrison_volleys(&mut self, p: usize, after: bool) -> Result<(), GenieError> {
+    pub(super) fn all_garrison_volleys(
+        &mut self,
+        p: PlayerId,
+        after: bool,
+    ) -> Result<(), GenieError> {
         let ids: Vec<i32> = self
             .players
             .player(p)?
@@ -92,7 +97,7 @@ impl World {
     /// peaks (`+0x6dc`) and attribute 262's fields (`+0x628`..`+0x630`) are not held.
     pub(super) fn store_attribute(
         &mut self,
-        p: usize,
+        p: PlayerId,
         attribute: i16,
         v: f32,
     ) -> Result<(), GenieError> {
@@ -118,7 +123,7 @@ impl World {
     /// calls the scripts' `EffectFunction<v>` (the XS runtime is not modelled).
     pub(crate) fn set_player_attribute(
         &mut self,
-        p: usize,
+        p: PlayerId,
         attribute: i16,
         v: f32,
     ) -> Result<(), GenieError> {
@@ -129,7 +134,7 @@ impl World {
                     return Ok(());
                 }
                 // the message to the players is the interface's
-                for q in 1..self.players.len() {
+                for q in PlayerId::each(self.players.len()).skip(1) {
                     if q != p && self.attribute_of(q, SPREAD_ATTRIBUTE) <= 0.0 {
                         self.store_attribute(q, SPREAD_ATTRIBUTE, v)?;
                     }
@@ -156,7 +161,7 @@ impl World {
     /// 0xc4 (nothing for a player above 0; the others at most 0 add it too).
     pub(crate) fn add_player_attribute(
         &mut self,
-        p: usize,
+        p: PlayerId,
         attribute: i16,
         v: f32,
     ) -> Result<(), GenieError> {
@@ -167,7 +172,7 @@ impl World {
                 if 0.0 < self.attribute_of(p, SPREAD_ATTRIBUTE) {
                     return Ok(());
                 }
-                for q in 1..self.players.len() {
+                for q in PlayerId::each(self.players.len()).skip(1) {
                     let theirs = self.attribute_of(q, SPREAD_ATTRIBUTE);
                     if q != p && theirs <= 0.0 {
                         self.store_attribute(q, SPREAD_ATTRIBUTE, v + theirs)?;
@@ -185,7 +190,7 @@ impl World {
     /// Attribute 0x32's side effect: player `p`'s allied vision (`+0x2cc`) on, the masks rebuilt
     /// (the world's slot 0x78, `FUN_1415e92b0`) and its tile list refilled
     /// ([`World::refill_tiles`], `FUN_141285cb0`).
-    pub(super) fn allied_vision_on(&mut self, p: usize) -> Result<(), GenieError> {
+    pub(super) fn allied_vision_on(&mut self, p: PlayerId) -> Result<(), GenieError> {
         self.players.player_mut(p)?.allied_vision = true;
         self.rebuild_vision()?;
         self.refill_tiles(p);
@@ -200,7 +205,7 @@ impl World {
     /// held` (`powf`, here libm's).
     pub(super) fn farm_food(
         &mut self,
-        p: usize,
+        p: PlayerId,
         before: f32,
         amount: f32,
     ) -> Result<(), GenieError> {

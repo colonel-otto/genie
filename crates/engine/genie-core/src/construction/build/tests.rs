@@ -4,6 +4,7 @@ use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::test_ids::object_id;
 use crate::world::{Player, World};
 use std::collections::BTreeMap;
@@ -32,7 +33,7 @@ fn on_map(
         position: [x, y, 0.0],
         radius: [r, r],
         class,
-        player: 1,
+        player: PlayerId::new(1),
         master,
         obstruction_type: 0,
         buildable_on: buildable,
@@ -122,7 +123,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     }
     let look: BTreeMap<i32, ClearLook> = objects.iter().map(|o| (o.0, o.2)).collect();
     let site = |class: ClassId, trees: bool| ClearingSite {
-        player: 1,
+        player: PlayerId::new(1),
         master: 70,
         class,
         radius: [1.0, 1.0],
@@ -143,7 +144,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     world.insert(
         4,
         crate::map::spatial::Placed {
-            player: 2,
+            player: PlayerId::new(2),
             ..objects[5].1
         },
     );
@@ -236,7 +237,7 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
     let look: BTreeMap<i32, ClearLook> = looks.iter().copied().collect();
     let goes = |trees: bool| -> Vec<i32> {
         let s = ClearingSite {
-            player: 1,
+            player: PlayerId::new(1),
             master: 70,
             class: class::BUILDING,
             radius: [1.0, 1.0],
@@ -411,7 +412,7 @@ fn house() -> crate::map::spatial::Placed {
         position: [30.0, 88.0, 0.0],
         radius: [1.0, 1.0],
         class: class::BUILDING,
-        player: 2,
+        player: PlayerId::new(2),
         master: 70,
         obstruction_type: 2,
         buildable_on: 0,
@@ -537,7 +538,7 @@ fn site_world(spatial: Spatial, masters: Vec<Master>, units: Vec<Unit>) -> World
     let mut t = World::new(
         0,
         1,
-        0,
+        PlayerId::new(0),
         vec![0; 2],
         vec![
             Player::default(),

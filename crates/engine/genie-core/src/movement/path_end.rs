@@ -12,6 +12,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
 use crate::pathing::tile_path::{Path, Request};
+use crate::players::PlayerId;
 use crate::{GenieError, math::fmath};
 
 /// The classes whose hits a group member on an own move of reason 0 still keeps in
@@ -405,7 +406,7 @@ impl Mover {
     pub(super) fn keeps_hit(
         &self,
         me: &Me,
-        player: usize,
+        player: PlayerId,
         (id, other): (i32, &Placed),
         projected: Vec3,
         world: &Spatial,
@@ -520,7 +521,7 @@ impl Mover {
                 if 0 <= level.target && id == level.target {
                     continue;
                 }
-                if (player == 0 || other.player != 0)
+                if (player == PlayerId::GAIA || other.player != PlayerId::GAIA)
                     && pause_rank(me, (player, computer), (id, other), world, groups) != Some(true)
                 {
                     continue;

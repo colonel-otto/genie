@@ -13,6 +13,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -320,7 +321,7 @@ impl Unit {
     /// `+0x15`, not held) is not modelled; a master of fly mode 1 lifts the bird to the fly
     /// height (slot 0x58, the position setter: its tile stays, so do its counts).
     pub(crate) fn start_fly(&mut self, c: &mut Step<'_>, task: Task) -> Result<(), GenieError> {
-        if c.player != 0 {
+        if c.player != PlayerId::GAIA {
             return Err(GenieError::unsupported(
                 "a player's bird's default Fly (its task's +0x15)",
             ));
@@ -424,7 +425,7 @@ mod tests {
             objects: vec![bird].into(),
             ..Player::default()
         };
-        let mut t = World::new(0, 1, 0, vec![0], vec![gaia]);
+        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![gaia]);
         t.spatial = crate::map::spatial::Spatial::new([120, 120]);
         t.streams.get(Stream::Action).set_seed(seed);
         t.graphics = hawk_graphics();
@@ -464,7 +465,7 @@ mod tests {
             group: -1,
             action_state: 0,
         };
-        crate::world::tests::in_update(t, (0, 0), 21, |u, c| u.fly_part(c, me))?;
+        crate::world::tests::in_update(t, (PlayerId::new(0), 0), 21, |u, c| u.fly_part(c, me))?;
         Ok(*t.players[0].objects[0].actions.fly().unwrap())
     }
 

@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use crate::unit_ai::{
     Attacked, Duel, Effect, Found, Notify, PatrolPath, Search, Seeker, UnitAi, UnitSeen,
 };
@@ -391,7 +392,7 @@ pub enum UnitCommand {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TargetFlags {
     /// Its owner's id (`+0x138`, `player+0x718`); Gaia is 0.
-    pub owner: usize,
+    pub owner: PlayerId,
     /// Its type (`+0xf`).
     pub kind: u8,
     /// `capture_flag` (`+0x924`, `FUN_14107cc90`).

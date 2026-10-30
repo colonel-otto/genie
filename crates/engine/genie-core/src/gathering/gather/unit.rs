@@ -13,6 +13,7 @@ use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
@@ -103,7 +104,7 @@ impl Unit {
     pub(crate) fn move_walks<'g>(
         &self,
         every: &[Masters],
-        player: usize,
+        player: PlayerId,
         graphics: &'g BTreeMap<i16, Graphic>,
     ) -> Result<Walks<'g>, GenieError> {
         let sprites = SpriteReads::of(
@@ -131,7 +132,7 @@ impl Unit {
         let master = self.master(&c.w.masters, c.player)?;
         let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
         let task = gather.task;
-        let attributes = &c.w.players[c.player].attributes;
+        let attributes = &c.w.players[c.player.index()].attributes;
         Ok(crate::gathering::gather::GatherReads {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
@@ -152,7 +153,7 @@ impl Unit {
             master: self.life.master_id,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
             farm_stops: c.w.settings.walkable_farms,
-            computer: c.w.players[c.player].computer,
+            computer: c.w.players[c.player.index()].computer,
             stop_productivity: crate::gathering::gather::productivity_of(
                 task.productivity,
                 attributes,
@@ -219,12 +220,12 @@ impl Unit {
             master,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),
-            attribute_95: c.w.players[c.player]
+            attribute_95: c.w.players[c.player.index()]
                 .attributes
                 .get(95)
                 .copied()
                 .unwrap_or(0.0),
-            civ: c.w.players[c.player].civ,
+            civ: c.w.players[c.player.index()].civ,
         };
         Ok(Some(crate::gathering::hunt::DropOff {
             takes: crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, s.master, &actor),
@@ -357,14 +358,14 @@ impl Unit {
             carry_to
         } else if master.drop_sites.first().is_some_and(|&d| d != -1) {
             let mut w = DropWorld {
-                masters: c.w.masters.get(c.player),
+                masters: c.w.masters.get(c.player.index()),
                 spatial: &mut c.w.spatial,
                 zones: &mut c.w.zones,
                 pathing: &mut c.w.pathing,
                 object: c.w.streams.get(Stream::Object),
                 world_time: c.w.world_time,
-                computer: c.w.players[c.player].computer,
-                construction_rate: c.w.players[c.player].construction_rate,
+                computer: c.w.players[c.player.index()].computer,
+                construction_rate: c.w.players[c.player.index()].construction_rate,
                 groups: &c.w.groups,
             };
             self.drop_site_from(&mut w, others, state, false)?
@@ -386,13 +387,14 @@ impl Unit {
 /// `FUN_14165d040`): a sharing player with allies is not modelled.
 pub(crate) fn give_load(
     (relations, sharing): (&[Vec<u8>], bool),
-    player: usize,
+    player: PlayerId,
     adds: &mut Vec<(i16, f32)>,
     kind: i16,
     amount: f32,
 ) -> Result<(), GenieError> {
-    let own = relations.get(player).map_or(&[][..], |r| &r[..]);
-    let allied = (1..own.len())
+    let own = relations.get(player.index()).map_or(&[][..], |r| &r[..]);
+    let allied = PlayerId::each(own.len())
+        .skip(1)
         .any(|q| q != player && crate::unit_ai::task_finder::allied(own, player, q, true));
     if sharing && allied {
         return Err(GenieError::unsupported(

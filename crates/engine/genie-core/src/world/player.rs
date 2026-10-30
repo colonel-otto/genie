@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::objects::object_list::ObjectList;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -223,7 +224,7 @@ impl World {
     /// ([`Player::stop`]), and a subscriber hears why ([`crate::trace`]).
     /// A player the world does not hold has nothing to stop: the trace's subscriber hears that
     /// instead (every caller steps the players it counts, so it does not happen).
-    pub(crate) fn stop_player(&mut self, p: usize, why: GenieError) {
+    pub(crate) fn stop_player(&mut self, p: PlayerId, why: GenieError) {
         crate::trace::player_stops(self.ticks, p, &why);
         match self.players.player_mut(p) {
             Ok(player) => player.stop(self.ticks, why),

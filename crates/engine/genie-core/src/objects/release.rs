@@ -8,6 +8,7 @@ use crate::objects::masters::master_type::ANIMATED;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::Notify;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -19,7 +20,7 @@ use crate::world::step::Step;
 pub(crate) struct Releaser {
     pub(crate) id: i32,
     pub(crate) class: Option<ClassId>,
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
 }
 
 /// Slot 0x180 on object `u` of master type `kind`, let go by `by`: the static object's
@@ -80,7 +81,7 @@ impl World {
     /// owner's watched list (`FUN_141091310`), a recyclable master's missile goes to the pool of
     /// type 60 (the world's `+0x1d8`), and it leaves the mesh. Every step runs; returns the
     /// world's leave of the place that the slice does not model.
-    pub(crate) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
+    pub(crate) fn leave_world(&mut self, p: PlayerId, gone: &Unit) -> Result<(), GenieError> {
         self.track_remove(p, gone.id.get(), gone.life.master_id)?;
         let master = gone.master(&self.masters, p).ok();
         forget_resource(&mut self.spatial, master, gone.id.get(), gone.position())?;
@@ -107,7 +108,7 @@ impl World {
     /// A slot the player's list does not hold.
     pub(crate) fn regenerate_object(
         &mut self,
-        slot: (usize, usize, i32),
+        slot: (PlayerId, usize, i32),
         dt_seconds: f32,
     ) -> Result<(), GenieError> {
         let Some((p, i)) = self.live_slot(slot) else {
@@ -134,7 +135,7 @@ impl World {
     /// A slot the player's list does not hold.
     pub(crate) fn clamp_object_powerup(
         &mut self,
-        slot: (usize, usize, i32),
+        slot: (PlayerId, usize, i32),
     ) -> Result<(), GenieError> {
         let Some((p, i)) = self.live_slot(slot) else {
             return Ok(());

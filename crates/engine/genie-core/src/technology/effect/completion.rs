@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::{master_type, player_master};
+use crate::players::PlayerId;
 use crate::technology::EffectCommand;
 use crate::technology::RESEARCHED;
 use crate::technology::effect::{
@@ -31,7 +32,7 @@ impl World {
     /// (`FUN_140ea93a0`; such a technology is never available to be researched).
     pub(crate) fn complete_research(
         &mut self,
-        p: usize,
+        p: PlayerId,
         t: usize,
         building: Option<i16>,
     ) -> Result<bool, GenieError> {
@@ -84,7 +85,7 @@ impl World {
     /// `param_4`, which the callers do not pass yet): an effect that reaches its object (an
     /// enable for one building, an upgrade of the object, the object's kinds 203 to 206, a
     /// disable of a building's own technology) would differ without it.
-    pub(super) fn research_effect_known(&self, p: usize, t: usize) -> Result<(), GenieError> {
+    pub(super) fn research_effect_known(&self, p: PlayerId, t: usize) -> Result<(), GenieError> {
         let def = self.techs.checked(t)?;
         let state = &self.players.player(p)?.techs.checked(t)?;
         let shared = |c: &EffectCommand| {
@@ -115,7 +116,7 @@ impl World {
     /// `set_state(2)`): [`World::complete_research`] with `param_3` 0 and no building, so the
     /// technology's first location decides its statistics; a technology beyond the player's tree
     /// is not researched.
-    pub(crate) fn research_built(&mut self, p: usize, t: i16) -> Result<(), GenieError> {
+    pub(crate) fn research_built(&mut self, p: PlayerId, t: i16) -> Result<(), GenieError> {
         let tree = self.players.player(p)?.techs.len();
         if tree == 0 || self.techs.len() != tree {
             return Err(GenieError::unsupported(
@@ -134,7 +135,7 @@ impl World {
     /// `FUN_1413cce70`, [`World::update_dependents`]).
     pub(crate) fn withdraw_tech(
         &mut self,
-        p: usize,
+        p: PlayerId,
         master: i16,
         tech: i16,
     ) -> Result<(), GenieError> {
@@ -169,7 +170,7 @@ impl World {
     /// location's time), which completes it ([`World::complete_research`]). Each such technology, and each in
     /// state 2, counts; none counted sets attribute 39 to 1 where it is 0. The game's lists hold
     /// the dependents by id, as the `.dat`'s requirements give them.
-    pub(crate) fn update_dependents(&mut self, p: usize, t: usize) -> Result<(), GenieError> {
+    pub(crate) fn update_dependents(&mut self, p: PlayerId, t: usize) -> Result<(), GenieError> {
         let mut counted = 0;
         let civ = i16::from(self.players.player(p)?.civ);
         for d in 0..self.techs.len() {
@@ -192,7 +193,7 @@ impl World {
     /// and the changed technology `t`: how much it adds to the count.
     fn update_dependent(
         &mut self,
-        p: usize,
+        p: PlayerId,
         civ: i16,
         (d, t): (usize, usize),
     ) -> Result<i32, GenieError> {
@@ -258,7 +259,7 @@ impl World {
 
     /// The end of [`World::update_dependent`] for the technology `d` whose requirements are all
     /// met: the change to the count.
-    fn finish_dependent(&mut self, p: usize, d: usize) -> Result<i32, GenieError> {
+    fn finish_dependent(&mut self, p: PlayerId, d: usize) -> Result<i32, GenieError> {
         let mut counted = 0;
         let state = self.players.player_mut(p)?.techs.checked_mut(d)?;
         let reached = |l: &crate::technology::Location| {
@@ -296,7 +297,7 @@ impl World {
     /// its first entry. A technology out of the tree is let be.
     pub(super) fn tech_cost(
         &mut self,
-        p: usize,
+        p: PlayerId,
         tech: i16,
         resource: i16,
         amount: f32,
@@ -337,7 +338,7 @@ impl World {
     /// but a researched one (state 3) to −1; a negative id does so to every technology.
     pub(super) fn disable_tech(
         &mut self,
-        p: usize,
+        p: PlayerId,
         tech: i32,
         object: Option<i32>,
     ) -> Result<(), GenieError> {
@@ -397,7 +398,7 @@ impl World {
     /// one building (`FUN_1411c69f0`, `FUN_1411c6a50`: the building's list, not held).
     pub(super) fn enable_master(
         &mut self,
-        p: usize,
+        p: PlayerId,
         master: i16,
         enable: u8,
         one: bool,
@@ -430,7 +431,7 @@ impl World {
         }
         let m = self
             .masters
-            .checked_mut(p)?
+            .checked_mut(p.index())?
             .get_mut(master)
             .ok_or(NO_MASTER)?;
         if !m.disabled {

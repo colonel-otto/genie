@@ -7,6 +7,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     Attacker, BUILDING_AI, CIVILIAN, DEFEND_GROWTH, LION_AI, PREDATOR_AI, PRIEST_AI,
@@ -36,7 +37,7 @@ pub struct Converter<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Convertee {
     /// Its owner's id.
-    pub owner: usize,
+    pub owner: PlayerId,
     /// Its master's class.
     pub class: ClassId,
     /// Its master's id.
@@ -75,7 +76,7 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
     let Some(t) = t else {
         return false;
     };
-    if t.owner == 0
+    if t.owner == PlayerId::GAIA
         || p.attributes.get(67).is_some_and(|&a| a <= 0.0)
         || t.class == class::LIVESTOCK
     {
@@ -360,7 +361,7 @@ pub fn siege_can_attack(
         return Ok(false);
     }
     let takes_by_sight = !me.scenario && COMBAT <= me.kind && me.capture == 0;
-    if me.player == 0 && !takes_by_sight {
+    if me.player == PlayerId::GAIA && !takes_by_sight {
         return Ok(false);
     }
     if (t.kind == BUILDING && t.desolid) || me.state < 2 {
@@ -389,7 +390,7 @@ pub(super) fn siege_in_reach(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
     );
     let gap = footprint_point_gap(t.position, t.radius, s.state_position) - diagonal;
     let mut range = me.range;
-    if t.owner == 0 {
+    if t.owner == PlayerId::GAIA {
         range += GAIA_TARGET_REACH;
     }
     match s.stance {

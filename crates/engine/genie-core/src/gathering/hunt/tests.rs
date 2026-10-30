@@ -240,7 +240,7 @@ fn tree() -> Quarry {
         class: class::TREE,
         kind: 10,
         state: 2,
-        player: 0,
+        player: PlayerId::new(0),
         amount: 100.0,
         allied: false,
         top_action: None,
@@ -296,7 +296,7 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
         HuntStart {
             task: CHOP,
             target: &tree(),
-            player: 2,
+            player: PlayerId::new(2),
             computer: false,
             carry_rule: false,
             held: &mut held,
@@ -337,7 +337,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
         HuntStart {
             task: CHOP,
             target: &tree(),
-            player: 2,
+            player: PlayerId::new(2),
             computer: false,
             carry_rule: false,
             held: &mut held,
@@ -352,7 +352,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
         hunt.retarget(
             HuntRetarget {
                 target: q,
-                player: 2,
+                player: PlayerId::new(2),
                 walks: walks((-1, 0.0)),
                 drops_here: false,
             },
@@ -402,7 +402,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
         HuntStart {
             task: CHOP,
             target: &tree(),
-            player: 2,
+            player: PlayerId::new(2),
             computer: false,
             carry_rule: false,
             held: &mut held,
@@ -429,7 +429,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
         .retarget(
             HuntRetarget {
                 target: &tree(),
-                player: 2,
+                player: PlayerId::new(2),
                 walks: walks((-1, 0.0)),
                 drops_here: false,
             },
@@ -443,7 +443,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
         .retarget(
             HuntRetarget {
                 target: &other,
-                player: 2,
+                player: PlayerId::new(2),
                 walks: walks((-1, 0.0)),
                 drops_here: false,
             },
@@ -463,7 +463,7 @@ fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
             HuntStart {
                 task: CHOP,
                 target: &tree(),
-                player: 2,
+                player: PlayerId::new(2),
                 computer: false,
                 carry_rule,
                 held: &mut held,
@@ -571,7 +571,7 @@ fn a_hunt_on_a_live_ally_fails() {
         HuntStart {
             task: CHOP,
             target: &ally,
-            player: 2,
+            player: PlayerId::new(2),
             computer: false,
             carry_rule: false,
             held: &mut held,
@@ -596,7 +596,7 @@ fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
     let dead = Quarry { state: 3, ..tree() };
     let sheep = Quarry {
         class: class::LIVESTOCK,
-        player: 2,
+        player: PlayerId::new(2),
         ..tree()
     };
     for (q, range) in [(dead, CHOP.range), (sheep, 1.5)] {
@@ -605,7 +605,7 @@ fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
             HuntStart {
                 task: CHOP,
                 target: &q,
-                player: 2,
+                player: PlayerId::new(2),
                 computer: false,
                 carry_rule: false,
                 held: &mut held,
@@ -692,7 +692,7 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
         id: 15371,
         class: class::FARM,
         kind: 30,
-        player: 1,
+        player: PlayerId::new(1),
         state: 5,
         ..Victim::default()
     };
@@ -718,7 +718,14 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
     assert_eq!(r, Ok(HuntNext::Stay));
     assert_eq!((hunt.state, hunt.timer, hunt.move_to), (FACE, 0.0, None));
     assert_eq!(shown, Some(1880));
-    assert!(face(Victim { player: 2, ..ibex }).0.is_err());
+    assert!(
+        face(Victim {
+            player: PlayerId::new(2),
+            ..ibex
+        })
+        .0
+        .is_err()
+    );
 }
 
 /// A hunt's walk to its point (states 11 and 15, `0x140ac7a00` cases 0xa and 0xe): an ended
@@ -841,13 +848,13 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
     };
     let state = |h: &HuntAction| h.move_to.map(|m| m.state);
     let site = || to_house(MoveTo::Start, CHOP.range);
-    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
+    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, PlayerId::new(0));
     rig.mover_mut().paths.clear();
     let mut h = dropping(Some(site()));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(state(&h), Some(MoveTo::Moving));
     assert_eq!(rig.mover_mut().paths.len(), 2);
-    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
+    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, PlayerId::new(0));
     let mut h = dropping(Some(to_house(MoveTo::Moving, CHOP.range)));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(state(&h), Some(MoveTo::Moving));
@@ -934,7 +941,7 @@ fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
     ];
     for state in [DROP, WALK_POINT] {
         for move_to in [MoveTo::Start, MoveTo::Moving] {
-            let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
+            let mut rig = Rig::on_the_path(Victim::default()).holding(10028, PlayerId::new(0));
             rig.mover_mut().in_the_way = vec![77, 78];
             let mut h = HuntAction {
                 state,
@@ -974,7 +981,7 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
             spatial,
             &mut players[1].objects[0].body,
             victim,
-            1,
+            PlayerId::new(1),
             &walks((-1, 0.0)),
         )
     };
@@ -985,7 +992,7 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
     };
     let own = Victim {
         class: class::LIVESTOCK,
-        player: 1,
+        player: PlayerId::new(1),
         state: 2,
         ..Victim::default()
     };
@@ -1006,7 +1013,10 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
     let mut h = hunting(9177);
     assert_eq!(set_walk(&mut h, &mut rig, &dead), Ok(()));
     assert_eq!(h.move_to.map(|m| m.state), Some(MoveTo::Arrived));
-    let alive = Victim { player: 2, ..own };
+    let alive = Victim {
+        player: PlayerId::new(2),
+        ..own
+    };
     assert!(set_walk(&mut hunting(10028), &mut rig, &alive).is_err());
     // a unit without speed: its MoveTo fails at its start (state 13)
     rig.mover_mut().stats.speed = 0.0;
@@ -1034,7 +1044,7 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
     let animal = |position| Victim {
         id: 10028,
         class: class::LIVESTOCK,
-        player: 1,
+        player: PlayerId::new(1),
         state: 2,
         position,
         ..Victim::default()
@@ -1122,7 +1132,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
         let me = me(h.state);
         rig.run(100, |c, u, f, _| h.update(c, u, me, f, &r))
     };
-    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
+    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, PlayerId::new(0));
     let reason = |r: Result<HuntNext, crate::GenieError>| r.unwrap_err().reason();
     let r = update(&mut hunting(10028), &mut rig, true, 0.0);
     assert_eq!(reason(r), "a computer player's hunt (FUN_140fde4f0)");
@@ -1146,7 +1156,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
     let state = |h: &HuntAction| (h.state, h.move_to.map(|m| m.state));
     // its MoveTo's first check finds the house past state 6 (code 5): the target goes and the
     // hunt walks to its point
-    let mut lost = Rig::on_the_path(Victim::default()).holding(10028, 0);
+    let mut lost = Rig::on_the_path(Victim::default()).holding(10028, PlayerId::new(0));
     lost.t.players[0]
         .objects
         .iter_mut()
@@ -1207,7 +1217,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
     let sheep = || Victim {
         id: 10028,
         class: class::LIVESTOCK,
-        player: 1,
+        player: PlayerId::new(1),
         state: 2,
         position: [30.0, 88.0, 0.0],
         ..Victim::default()
@@ -1225,11 +1235,11 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
             flags: 0,
         });
         h.attack = Some(a);
-        let mut rig = Rig::on_the_path(victim).holding(10028, 1);
+        let mut rig = Rig::on_the_path(victim).holding(10028, PlayerId::new(1));
         let mut r = hunt_reads();
         (r.attack.queue_empty, r.predator_hunts_end) = (queue_empty, ends);
         let got = rig.run(100, |c, u, f, _| h.update(c, u, me(ATTACK), f, &r));
-        (got, rig.workers(10028, 1) == Some(0))
+        (got, rig.workers(10028, PlayerId::new(1)) == Some(0))
     };
     let fresh = |target| HuntAction {
         state: ATTACK,
@@ -1314,7 +1324,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     let sheep = |state| Victim {
         id: 10028,
         class: class::LIVESTOCK,
-        player: 1,
+        player: PlayerId::new(1),
         state,
         position: [29.5, 89.0, 0.0],
         ..Victim::default()
@@ -1475,7 +1485,7 @@ fn a_hunt_s_walk_starts_toward_its_target() {
             state: 3,
             ..Victim::default()
         };
-        let mut rig = Rig::on_the_path(house).holding(10028, 0);
+        let mut rig = Rig::on_the_path(house).holding(10028, PlayerId::new(0));
         rig.mover_mut().paths.clear();
         let mut h = HuntAction {
             state: WALK,
@@ -1534,7 +1544,7 @@ fn a_move_to_that_lost_its_target_ends_the_drop_off_and_the_point_walk() {
         stance: 0,
     };
     let lost = || {
-        let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
+        let mut rig = Rig::on_the_path(Victim::default()).holding(10028, PlayerId::new(0));
         rig.t.players[0]
             .objects
             .iter_mut()
@@ -1574,7 +1584,7 @@ fn a_hunt_of_a_tree_searches_on_a_failed_walk_or_a_target_let_go() {
     let tree_lost = |state: u8, move_to: MoveTo, holding: bool| {
         let mut rig = Rig::on_the_path(Victim::default());
         if holding {
-            rig = rig.holding(10028, 0);
+            rig = rig.holding(10028, PlayerId::new(0));
             rig.t.players[0]
                 .objects
                 .iter_mut()

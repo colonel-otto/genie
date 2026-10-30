@@ -6,6 +6,7 @@ use crate::map::spatial::{BLOCKED, Spatial};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::PlayerId;
 use crate::vision::visibility::Visibility;
 impl Spatial {
     /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects on
@@ -23,7 +24,7 @@ impl Spatial {
         &self,
         me: i32,
         players: &[crate::world::player::Player],
-    ) -> Result<Option<usize>, GenieError> {
+    ) -> Result<Option<PlayerId>, GenieError> {
         const KEPT: [ClassId; 16] = [
             class::ARTIFACT,
             class::CLASS_60,
@@ -79,7 +80,7 @@ impl Spatial {
         let unsure = self.frozen().any(|(id, q)| {
             q.unknown.is_some_and(|u| {
                 let counts = v.seer(id).is_some_and(|s| s.kind == COMBAT)
-                    && !out(q.player)
+                    && !out(q.player.index())
                     && !KEPT.contains(&q.class);
                 let [bx0, by0, bx1, by1] = q.bounds();
                 counts
@@ -111,16 +112,17 @@ impl Spatial {
             if s.kind != COMBAT || s.state != 2 || KEPT.contains(&q.class) {
                 continue;
             }
-            if (q.player == 0 && s.capture != 0) || out(q.player) {
+            if (q.player == PlayerId::GAIA && s.capture != 0) || out(q.player.index()) {
                 continue;
             }
             let o = q.player;
-            let (Some(count), Some(near)) = (counts.get_mut(o), nearest.get_mut(o)) else {
+            let (Some(count), Some(near)) = (counts.get_mut(o.index()), nearest.get_mut(o.index()))
+            else {
                 return Err(GenieError::unsupported(
                     "an owner search's unit of a player beyond the list",
                 ));
             };
-            let strong = livestock && attribute_97(o).is_some_and(|a| 0.0 < a);
+            let strong = livestock && attribute_97(o.index()).is_some_and(|a| 0.0 < a);
             if o == p.player {
                 if strong {
                     return Ok(None);
@@ -143,11 +145,9 @@ impl Spatial {
         if own_seen && !taker {
             return Ok(None);
         }
-        let takers: Vec<usize> = counts
-            .iter()
-            .enumerate()
-            .take(players)
-            .filter(|&(o, &c)| 0 < c && !out(o))
+        let takers: Vec<PlayerId> = PlayerId::each(players)
+            .zip(&counts)
+            .filter(|&(o, &c)| 0 < c && !out(o.index()))
             .map(|(o, _)| o)
             .collect();
         match takers[..] {
@@ -155,17 +155,17 @@ impl Spatial {
             [one] => Ok(Some(one)),
             _ if !taker => {
                 let mut best = (999.0f32, None);
-                for (o, &d) in nearest.iter().enumerate() {
-                    if d < best.0 && !out(o) {
+                for (o, &d) in PlayerId::each(nearest.len()).zip(&nearest) {
+                    if d < best.0 && !out(o.index()) {
                         best = (d, Some(o));
                     }
                 }
-                Ok(best.1.filter(|&o| 0 < o))
+                Ok(best.1.filter(|&o| o != PlayerId::GAIA))
             }
             _ => {
                 let mut best = (0, None);
-                for (o, &n) in counts.iter().enumerate() {
-                    if best.0 < n && !out(o) {
+                for (o, &n) in PlayerId::each(counts.len()).zip(&counts) {
+                    if best.0 < n && !out(o.index()) {
                         best = (n, Some(o));
                     }
                 }
@@ -175,7 +175,7 @@ impl Spatial {
     }
 
     /// An ownership change's records ([`Visibility::records_owner`]), which come first.
-    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), GenieError> {
+    pub fn records_owner(&mut self, id: i32, new: PlayerId) -> Result<(), GenieError> {
         self.sight
             .as_mut()
             .map_or(Ok(()), |v| v.records_owner(id, new))
@@ -187,7 +187,7 @@ impl Spatial {
     pub fn change_owner(
         &mut self,
         id: i32,
-        new: usize,
+        new: PlayerId,
         los: f32,
         sees: bool,
     ) -> Result<(), GenieError> {
@@ -207,9 +207,9 @@ impl Spatial {
     /// The vision masks of player `player` (`+0x2a8`, `+0x2a0`; [`crate::vision`]): the world's
     /// rebuild's, else its own bits and the ones no tile has.
     #[must_use]
-    pub fn vision(&self, player: usize) -> [u64; 2] {
+    pub fn vision(&self, player: PlayerId) -> [u64; 2] {
         self.vision
-            .get(player)
+            .get(player.index())
             .copied()
             .unwrap_or_else(|| crate::vision::own_masks(player, false))
     }
@@ -217,10 +217,10 @@ impl Spatial {
     /// The map revealed to player `player` (`FUN_141639860` -> `FUN_1412847b0` with
     /// `0x4000000040000000`): every word of the unified map takes the ended bits 30 and 62, and
     /// the player's masks (`+0x2a8`, `+0x2a0`) too.
-    pub fn reveal_to(&mut self, player: usize) {
+    pub fn reveal_to(&mut self, player: PlayerId) {
         use crate::vision::{ENDED, ENDED_EXPLORED};
         self.reveal_map(ENDED | ENDED_EXPLORED);
-        if let Some(m) = self.vision.get_mut(player) {
+        if let Some(m) = self.vision.get_mut(player.index()) {
             m[0] |= ENDED;
             m[1] |= ENDED_EXPLORED;
         }
@@ -242,7 +242,7 @@ impl Spatial {
     /// explored it or the word is explored by all; else 0, also off the map. None without the
     /// players' sight.
     #[must_use]
-    pub fn tile_sight(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+    pub fn tile_sight(&self, player: PlayerId, x: i32, y: i32) -> Option<u8> {
         use crate::vision::registry::MASK;
         use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
         let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
@@ -266,7 +266,7 @@ impl Spatial {
     /// when neither: a ghost of it on its tile that the player is not among the blind of decides
     /// then (0xf), which the world does not hold. Without the players' sight: 0.
     #[must_use]
-    pub fn building_sight(&self, id: i32, position: [f32; 3], player: usize) -> Option<u8> {
+    pub fn building_sight(&self, id: i32, position: [f32; 3], player: PlayerId) -> Option<u8> {
         use crate::math::conversions::cvttss2si;
         let Some(v) = self.sight.as_ref() else {
             return Some(0);
@@ -294,7 +294,7 @@ impl Spatial {
     /// does, else 0, also off the map (the visible map's own size, `+0x20`, `+0x24`, the map's).
     /// The revealed bits 29 and 61 lie outside the mask. None without the players' sight.
     #[must_use]
-    pub fn scout_sight(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+    pub fn scout_sight(&self, player: PlayerId, x: i32, y: i32) -> Option<u8> {
         let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
             return Some(0);
         };
@@ -317,7 +317,7 @@ impl Spatial {
     /// position setter holds on the map, so off the map is 0 here. None without the players'
     /// sight.
     #[must_use]
-    pub fn visibility(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+    pub fn visibility(&self, player: PlayerId, x: i32, y: i32) -> Option<u8> {
         let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
             return Some(0);
         };
@@ -346,13 +346,13 @@ impl Spatial {
     /// Whether player `player` sees tile (`x`, `y`): [`Spatial::tile_sight`] is 0xf. False
     /// without the players' sight.
     #[must_use]
-    pub fn sees_tile(&self, player: usize, x: i32, y: i32) -> bool {
+    pub fn sees_tile(&self, player: PlayerId, x: i32, y: i32) -> bool {
         self.tile_sight(player, x, y) == Some(0xf)
     }
 
     /// [`Spatial::tile_sight`] is not 0: player `player` sees tile (`x`, `y`) or explored it.
     /// Unknown without the players' sight.
-    pub fn explored(&self, player: usize, x: i32, y: i32) -> Result<bool, GenieError> {
+    pub fn explored(&self, player: PlayerId, x: i32, y: i32) -> Result<bool, GenieError> {
         let answer = self
             .tile_sight(player, x, y)
             .ok_or(GenieError::unsupported(
@@ -364,7 +364,7 @@ impl Spatial {
     /// [`Spatial::visibility`] is 0xf: player `player` sees tile (`x`, `y`) now. False without
     /// the players' sight.
     #[must_use]
-    pub fn visible(&self, player: usize, x: i32, y: i32) -> bool {
+    pub fn visible(&self, player: PlayerId, x: i32, y: i32) -> bool {
         self.visibility(player, x, y) == Some(0xf)
     }
 

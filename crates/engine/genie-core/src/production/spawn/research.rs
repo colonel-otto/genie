@@ -2,6 +2,7 @@
 //! its destructor.
 
 use crate::GenieError;
+use crate::players::PlayerId;
 use crate::production::spawn::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeObj, MakeTech, Making};
 use crate::unit_ai::ActionKind;
@@ -34,12 +35,12 @@ impl World {
     /// tree and the `.dat`'s record (RESEARCH queued only technologies of both).
     pub(super) fn research_tech(
         &self,
-        p: usize,
+        p: PlayerId,
         tech: i16,
     ) -> Result<(usize, &crate::technology::TechDef), GenieError> {
         let t = usize::try_from(tech)
             .ok()
-            .filter(|&t| t < self.players[p].techs.len())
+            .filter(|&t| t < self.players[p.index()].techs.len())
             .ok_or(GenieError::unsupported(
                 "a research of a technology the tree has not got",
             ))?;
@@ -60,17 +61,17 @@ impl World {
     /// 0 as the tick oracle holds it).
     pub(super) fn research_step(
         &mut self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         dt_seconds: f32,
     ) -> Result<u8, GenieError> {
         use crate::technology::Attributes;
-        if self.players[p].computer {
+        if self.players[p.index()].computer {
             return Err(GenieError::unsupported(
                 "a computer player's research (its handicaps)",
             ));
         }
-        let owner = &self.players[p];
+        let owner = &self.players[p.index()];
         let building = &owner.objects[i];
         let Some(Some(Making::Research(r))) = building.production.as_ref().map(|q| q.action) else {
             return Err(NO_RESEARCH_ACTION);
@@ -94,7 +95,7 @@ impl World {
                 "a research at a technology without locations",
             ))?;
         let times = state.times_researched;
-        let owner = &mut self.players[p];
+        let owner = &mut self.players[p.index()];
         let state = &mut owner.techs[t];
         if state.state != 2 && (repeatable || shared) {
             state.state = 2;
@@ -141,14 +142,14 @@ impl World {
     /// [`TechState::repeatable`]: crate::technology::TechState::repeatable
     pub(super) fn research_done(
         &mut self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         t: usize,
         master: i16,
         repeat: bool,
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;
-        let owner = &self.players[p];
+        let owner = &self.players[p.index()];
         let state = &owner.techs[t];
         let def = &self.techs[t];
         if state.state == 2 || repeat {
@@ -166,7 +167,7 @@ impl World {
                 let _ = self.complete_research(p, t, Some(master))?;
             }
         }
-        let building = &mut self.players[p].objects[i];
+        let building = &mut self.players[p.index()].objects[i];
         let (id, state) = (building.id, building.life.state);
         if let Some(Some(Making::Research(r))) =
             building.production.as_mut().map(|q| q.action.as_mut())
@@ -186,7 +187,8 @@ impl World {
         // attribute 269, cut by CVTTSS2SI and its low short above 0, names an effect of the
         // world's table the player gets with the building as its object (its slot 0x10,
         // `TRIBE_Effects::do_effect`, which skips an id the table does not hold)
-        let reward = crate::math::conversions::cvttss2si(self.players[p].get(WORLD_EFFECT)?) as i16;
+        let reward =
+            crate::math::conversions::cvttss2si(self.players[p.index()].get(WORLD_EFFECT)?) as i16;
         if 0 < reward
             && let Some(effect) = usize::try_from(reward)
                 .ok()
@@ -212,7 +214,7 @@ impl World {
     /// `+0xe` set and its effect no upgrade), else in state 3; not done, state 1.
     pub(super) fn research_destroyed(
         &mut self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         r: &MakeTech,
     ) -> Result<(), GenieError> {
@@ -221,13 +223,13 @@ impl World {
         let def = &self.techs[t];
         if r.state != MakeObj::DONE && self.game_state == 0 {
             if !r.paid {
-                let owner = &mut self.players[p];
+                let owner = &mut self.players[p.index()];
                 let mut state = std::mem::take(&mut owner.techs[t]);
                 let done = crate::production::refund_tech(&mut state, def, r.tech, owner);
                 owner.techs[t] = state;
                 let _ = done?;
             }
-            let building = &mut self.players[p].objects[i];
+            let building = &mut self.players[p.index()].objects[i];
             let (id, state) = (building.id, building.life.state);
             if let Some(ai) = building.ai.as_mut() {
                 ai.post(
@@ -240,10 +242,10 @@ impl World {
                 )?;
             }
         }
-        let owner = &self.players[p];
+        let owner = &self.players[p.index()];
         let state = &owner.techs[t];
         if def.kind == crate::technology::SHARED_KIND {
-            let state = &mut self.players[p].techs[t];
+            let state = &mut self.players[p.index()].techs[t];
             state.state = 1;
             state.times_researched = 0;
             state.pending = 0;
@@ -270,7 +272,7 @@ impl World {
             time *= modifier;
         }
         let done = adjustment + time <= r.progress;
-        let state = &mut self.players[p].techs[t];
+        let state = &mut self.players[p.index()].techs[t];
         state.research_done = r.progress;
         if done {
             state.times_researched = state.times_researched.wrapping_add(1);

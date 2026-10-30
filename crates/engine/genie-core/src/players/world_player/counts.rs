@@ -5,6 +5,7 @@ use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::player_master;
+use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::world_player::{AGES, TOWN_CENTRES, TreeQuery, full_tree_civ, get};
 use crate::technology::RESEARCHED;
@@ -15,8 +16,8 @@ impl World {
     /// files under masters 109 and 444 (`FUN_14104f560`, `FUN_14104f4b0`: the first list, then
     /// the second), the objects the world holds.
     #[must_use]
-    pub fn first_town_centre(&self, p: usize) -> Option<i32> {
-        let tracker = &self.players.get(p)?.tracker;
+    pub fn first_town_centre(&self, p: PlayerId) -> Option<i32> {
+        let tracker = &self.players.get(p.index())?.tracker;
         TOWN_CENTRES
             .iter()
             .flat_map(|&k| tracker.list(k).iter().copied())
@@ -27,8 +28,8 @@ impl World {
     /// state) among the ids player `p`'s tracker files under masters 109 and 444 (`FUN_14104f560`,
     /// `FUN_14104f4b0`: the first list, then the second).
     #[must_use]
-    pub fn town_centre_at(&self, p: usize, n: usize) -> Option<i32> {
-        let tracker = &self.players.get(p)?.tracker;
+    pub fn town_centre_at(&self, p: PlayerId, n: usize) -> Option<i32> {
+        let tracker = &self.players.get(p.index())?.tracker;
         TOWN_CENTRES
             .iter()
             .flat_map(|&k| tracker.list(k).iter().copied())
@@ -40,8 +41,8 @@ impl World {
     /// files under masters 109 and 444, then those waiting under 109's pending list
     /// (`FUN_14104fa50`, key + 90000).
     #[must_use]
-    pub fn town_centre_count(&self, p: usize) -> i32 {
-        let Some(player) = self.players.get(p) else {
+    pub fn town_centre_count(&self, p: PlayerId) -> i32 {
+        let Some(player) = self.players.get(p.index()) else {
             return 0;
         };
         let tracker = &player.tracker;
@@ -65,8 +66,8 @@ impl World {
     /// [`crate::objects::masters::Master::disabled`]), a set one as 1: the limit bits 1 to 3 are none, and
     /// the limited units' tests not reached.
     #[must_use]
-    pub fn trainable_count(&self, p: usize, building: i16) -> i16 {
-        let Some(masters) = self.masters.get(p) else {
+    pub fn trainable_count(&self, p: PlayerId, building: i16) -> i16 {
+        let Some(masters) = self.masters.get(p.index()) else {
             return 0;
         };
         let mut count = 0i16;
@@ -80,7 +81,7 @@ impl World {
         // The builder's master (`FUN_141625a20`'s 0x76).
         // The town centre a builder may place (`FUN_141625a20`'s 0x26d).
         if building == BUILDER {
-            let Some(player) = self.players.get(p) else {
+            let Some(player) = self.players.get(p.index()) else {
                 return 0;
             };
             let a = &player.attributes;
@@ -111,11 +112,11 @@ impl World {
     /// [`TechTree::tech`]: crate::players::world_player::tech_tree::TechTree::tech
     /// [`TechTree`]: crate::players::world_player::tech_tree::TechTree
     #[must_use]
-    pub fn upgradable_count(&self, p: usize, building: i16) -> i16 {
-        let Some(masters) = self.masters.get(p) else {
+    pub fn upgradable_count(&self, p: PlayerId, building: i16) -> i16 {
+        let Some(masters) = self.masters.get(p.index()) else {
             return 0;
         };
-        let Some(player) = self.players.get(p) else {
+        let Some(player) = self.players.get(p.index()) else {
             return 0;
         };
         let full = self.settings.full_tech_tree;

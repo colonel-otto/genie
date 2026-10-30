@@ -17,6 +17,7 @@ use crate::objects::masters::Task;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::sprite::sprite_id;
+use crate::players::PlayerId;
 use genie_diff::Diff;
 
 mod action;
@@ -132,7 +133,7 @@ pub struct Repairee {
     /// Its hit points (`+0x278`).
     pub hp: f32,
     /// Its owner's id (`player+0x718`).
-    pub owner: usize,
+    pub owner: PlayerId,
     /// The repairer's player counts its owner as its own or an ally (`FUN_141663dc0` with the
     /// ally flag).
     pub allied: bool,

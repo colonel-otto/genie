@@ -4,6 +4,7 @@
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
 use genie_core::objects::ObjectId;
+use genie_core::players::PlayerId;
 use genie_core::world::{Player, World};
 use genie_save::{Header, PlayerSection};
 
@@ -173,7 +174,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
     let mut turns = World::new(
         world.world_time,
         world.current_frame_random_seed,
-        world.player_turn.max(0) as usize,
+        PlayerId::try_from(world.player_turn.max(0) as usize).unwrap_or_default(),
         world.player_time_delta.clone(),
         players,
     );
@@ -188,7 +189,8 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         Err(e) => stop_all(&mut turns, &e),
     }
     turns.market = market(&header.world);
-    turns.local_player = usize::try_from(world.local_player_index).unwrap_or(0);
+    turns.local_player = PlayerId::try_from(usize::try_from(world.local_player_index).unwrap_or(0))
+        .unwrap_or_default();
     turns.alliance_locked = world.alliance_locked;
     // the world's teams (+0x984, `playerTeams[i]`, saved as bytes)
     for (team, &saved) in turns.teams.iter_mut().zip(&header.world.player_teams) {
@@ -201,7 +203,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         Err(e) => stop_all(&mut turns, &e),
     }
     // the players' scout maps (`mIsScoutMapEnabled` and its InfluenceMap, player+0x1370)
-    for (i, p) in header.players().iter().enumerate() {
+    for (i, p) in PlayerId::each(header.players().len()).zip(header.players()) {
         let wp = p.world_player();
         if wp.is_scout_map_enabled.unwrap_or_default() == 0 {
             continue;
@@ -228,7 +230,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         }
     }
     // the computer players' AI modules (player+0x7a8, saved only where the AI was created)
-    for (i, p) in header.players().iter().enumerate() {
+    for (i, p) in PlayerId::each(header.players().len()).zip(header.players()) {
         if let Some(m) = p.world_player().tribe_main_decision_aimodule.as_deref() {
             turns.ai.set(i, ai_module(m));
         }

@@ -13,6 +13,7 @@ use crate::objects::masters::{Master, Task, master_type, player_master};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::Place;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -264,7 +265,7 @@ impl World {
     /// actions' change and the stop do not model.
     pub(crate) fn upgrade_object(
         &mut self,
-        p: usize,
+        p: PlayerId,
         place: Place,
         (old, new): (&Master, &Master),
         keep: bool,
@@ -365,7 +366,7 @@ impl World {
     /// (`FUN_141186580`): a combat object leaves its class counters
     /// ([`crate::objects::lifecycle::death_parts::count_class`] with −1) and a villager's load
     /// goes to its player (slot 0xf8 with 1 and 1, the foods as food).
-    fn hand_in_load(&mut self, p: usize, place: Place, old: &Master) -> Result<(), GenieError> {
+    fn hand_in_load(&mut self, p: PlayerId, place: Place, old: &Master) -> Result<(), GenieError> {
         let kind = old.kind;
         if master_type::COMBAT <= kind {
             crate::objects::lifecycle::death_parts::count_class(
@@ -551,7 +552,7 @@ impl World {
     /// `FUN_141215a90` on the object at `place`, whose master became `new`: its unit AI goes and
     /// the factory's type for `new` makes another ([`crate::unit_ai::factory_type`],
     /// [`crate::unit_ai::UnitAi::constructed`] on the AI stream), none for a class without.
-    fn new_unit_ai(&mut self, p: usize, place: Place, new: &Master) -> Result<(), GenieError> {
+    fn new_unit_ai(&mut self, p: PlayerId, place: Place, new: &Master) -> Result<(), GenieError> {
         let position = self.object_at(place)?.position();
         let made = self.new_object(p, new.id, new, position)?;
         let ai = new.unit_ai_type(new.id).and_then(|t| {
@@ -913,7 +914,7 @@ mod tests {
             objects: vec![house, object(11, 70, 4, 0.0), object(12, 1403, 2, 1.0)].into(),
             ..crate::world::Player::default()
         };
-        let mut t = World::new(0, 1, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
         t.masters = vec![Masters::new([
             old,
             new,
@@ -924,7 +925,8 @@ mod tests {
             .map(|id| (id, graphic(id)))
             .into_iter()
             .collect();
-        t.upgrade_objects(0, 70, 464, -1, None).unwrap();
+        t.upgrade_objects(PlayerId::new(0), 70, 464, -1, None)
+            .unwrap();
         let [house, dead, rubble] = &t.players[0].objects[..] else {
             panic!("three objects");
         };
@@ -970,10 +972,10 @@ mod tests {
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
-        let mut t = World::new(0, 1, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
         t.masters = vec![Masters::new([old, new])];
         t.players[0].attributes[37] = 1.0;
-        t.upgrade_objects(0, 83, 6, 0, None).unwrap();
+        t.upgrade_objects(PlayerId::new(0), 83, 6, 0, None).unwrap();
         let v = &t.players[0].objects[0];
         assert_eq!((v.life.master_id, v.life.hp, v.firepower), (6, 50.0, 3.0));
         assert_eq!((v.life.attribute_type, v.life.amount), (-1, 0.0));
@@ -1002,7 +1004,7 @@ mod tests {
             ..Task::default()
         };
         let mut t = crate::world::tests::forage_world();
-        t.gather_command(1, 0, 600).unwrap();
+        t.gather_command(PlayerId::new(1), 0, 600).unwrap();
         let mut old = t.masters[1].get(120).unwrap().clone();
         old.tasks
             .push(task(TaskId::test(3), action_type::BUILD, 3, 0.25));
@@ -1049,7 +1051,7 @@ mod tests {
                 task: waiting,
                 target: 10028,
             }));
-        t.actions_take_master(Place::Live(1, 0), &old, &new)
+        t.actions_take_master(Place::Live(PlayerId::new(1), 0), &old, &new)
             .unwrap();
         let u = &t.players[1].objects[0];
         assert_eq!(
@@ -1073,7 +1075,7 @@ mod tests {
         let gather = u.actions.gather().copied().unwrap().task;
         let mut bare = old.clone();
         bare.tasks.clear();
-        t.actions_take_master(Place::Live(1, 0), &bare, &new)
+        t.actions_take_master(Place::Live(PlayerId::new(1), 0), &bare, &new)
             .unwrap();
         assert_eq!(
             t.players[1].objects[0]
@@ -1105,13 +1107,13 @@ mod tests {
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
-        let mut t = World::new(0, 1, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
         t.masters = vec![Masters::new([
             soldier(4, 40),
             soldier(5, 60),
             soldier(0x67f, 60),
         ])];
-        t.track_add(0, 10, 4).unwrap();
+        t.track_add(PlayerId::new(0), 10, 4).unwrap();
         t
     }
 
@@ -1130,20 +1132,22 @@ mod tests {
                 .collect()
         };
         let mut t = upgrade_world();
-        t.upgrade_objects(0, 4, 5, 2, Some(10)).unwrap();
+        t.upgrade_objects(PlayerId::new(0), 4, 5, 2, Some(10))
+            .unwrap();
         let own = t.players[0].objects[0].own_master.as_deref().unwrap();
         assert_eq!((own.id, own.hit_points), (4, 60));
         assert_eq!(hp(&t), [30.0, 20.0, 20.0]);
         assert_eq!(t.masters[0].get(4).map(|m| m.hit_points), Some(40));
         let mut t = upgrade_world();
-        t.upgrade_objects(0, 4, 5, 3, None).unwrap();
+        t.upgrade_objects(PlayerId::new(0), 4, 5, 3, None).unwrap();
         assert_eq!(hp(&t), [30.0, 30.0, 30.0]);
         let own = t.players[0].objects[1].own_master.as_deref().unwrap();
         assert_eq!((own.id, own.hit_points), (4, 60));
         assert_eq!(t.masters[0].get(4).map(|m| m.hit_points), Some(60));
         for (p, to) in [(0, 99), (3, 5)] {
             let mut t = upgrade_world();
-            t.upgrade_objects(p, 4, to, 0, None).unwrap();
+            t.upgrade_objects(PlayerId::from(p), 4, to, 0, None)
+                .unwrap();
             assert_eq!(t, upgrade_world());
         }
     }
@@ -1153,11 +1157,12 @@ mod tests {
     #[test]
     fn an_upgrade_to_0x67f_moves_the_tracker_s_list() {
         let mut t = upgrade_world();
-        t.upgrade_objects(0, 4, 0x67f, 0, None).unwrap();
+        t.upgrade_objects(PlayerId::new(0), 4, 0x67f, 0, None)
+            .unwrap();
         let tracker = &t.players[0].tracker;
         assert_eq!((tracker.list(0x67f), tracker.list(4)), (&[10][..], &[][..]));
         let mut t = upgrade_world();
-        t.upgrade_objects(0, 4, 5, 0, None).unwrap();
+        t.upgrade_objects(PlayerId::new(0), 4, 5, 0, None).unwrap();
         assert_eq!(t.players[0].tracker.list(4), [10]);
     }
     /// A world of player 0 holding `objects`, its masters `masters`, its graphics `graphics`
@@ -1168,7 +1173,7 @@ mod tests {
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
-        let mut t = World::new(0, 1, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
         t.masters = vec![Masters::new(masters)];
         t.graphics = graphics.iter().map(|&id| (id, graphic(id))).collect();
         t
@@ -1179,14 +1184,14 @@ mod tests {
     #[test]
     fn an_upgrade_stops_a_top_action_the_new_master_has_no_task_for() {
         let mut t = crate::world::tests::forage_world();
-        t.gather_command(1, 0, 600).unwrap();
+        t.gather_command(PlayerId::new(1), 0, 600).unwrap();
         let old = t.masters[1].get(120).unwrap().clone();
         let bare = Master {
             id: 121,
             tasks: Vec::new(),
             ..old.clone()
         };
-        let place = Place::Live(1, 0);
+        let place = Place::Live(PlayerId::new(1), 0);
         let mut kept = t.clone();
         kept.upgrade_actions(place, (&old, &bare), true).unwrap();
         assert!(kept.players[1].objects[0].actions.gather().is_some());
@@ -1221,7 +1226,7 @@ mod tests {
                 &mut Well512::default(),
             ));
             let mut t = one_player(vec![u], vec![old.clone()], &[100, 101, 102, 200, 201]);
-            t.upgrade_moving_sprite(Place::Live(0, 0), (&old, new))
+            t.upgrade_moving_sprite(Place::Live(PlayerId::new(0), 0), (&old, new))
                 .unwrap();
             t.players[0].objects[0].sprite.map(|s| s.graphic.id)
         };
@@ -1257,7 +1262,8 @@ mod tests {
             (v.life.attribute_type, v.life.amount) = (kind, amount);
             let mut t = one_player(vec![v], vec![master.clone()], &[]);
             t.players[0].attributes[37] = 1.0;
-            t.hand_in_load(0, Place::Live(0, 0), master).unwrap();
+            t.hand_in_load(PlayerId::new(0), Place::Live(PlayerId::new(0), 0), master)
+                .unwrap();
             let v = &t.players[0].objects[0];
             (
                 (v.life.attribute_type, v.life.amount),
@@ -1299,7 +1305,7 @@ mod tests {
                     position: [5.5, 5.5, 0.0],
                     radius: [0.2, 0.2],
                     class: class::CLASS_6,
-                    player: 0,
+                    player: PlayerId::new(0),
                     master: 4,
                     obstruction_type: 0,
                     buildable_on: 0,
@@ -1325,7 +1331,7 @@ mod tests {
             v.add_seer(
                 10,
                 crate::vision::visibility::Seer {
-                    player: 0,
+                    player: PlayerId::new(0),
                     master: 4,
                     los: 5.0,
                     state: 2,
@@ -1337,7 +1343,7 @@ mod tests {
                 },
             );
             t.spatial.sight = Some(v);
-            t.upgrade_sight(Place::Live(0, 0), (&old, &new), keep)
+            t.upgrade_sight(Place::Live(PlayerId::new(0), 0), (&old, &new), keep)
                 .unwrap();
             let seer = t.spatial.sight.as_ref().and_then(|v| v.seer(10)).copied();
             seer.map(|s| (s.los, s.master))
@@ -1384,7 +1390,8 @@ mod tests {
             ));
             let graphics = [300, 301, 302, 303, 304, 400, 402, 403];
             let mut t = one_player(vec![u], vec![old.clone()], &graphics);
-            t.upgrade_hit_points(Place::Live(0, 0), (old, new)).unwrap();
+            t.upgrade_hit_points(Place::Live(PlayerId::new(0), 0), (old, new))
+                .unwrap();
             let u = &t.players[0].objects[0];
             (u.life.hp, u.sprite.map(|s| s.graphic.id), u.charge)
         };

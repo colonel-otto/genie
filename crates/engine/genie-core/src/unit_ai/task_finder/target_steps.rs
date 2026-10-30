@@ -6,6 +6,7 @@ use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::{Master, Task};
+use crate::players::PlayerId;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::BUILDING;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -160,8 +161,9 @@ pub(super) fn repair_finding<'m>(
     filter: i16,
     dip: &impl Diplomacy,
 ) -> Finding<'m> {
-    let repairable =
-        t.player == actor.player || t.player == 0 || dip.allied(actor.player, t.player, true);
+    let repairable = t.player == actor.player
+        || t.player == PlayerId::GAIA
+        || dip.allied(actor.player, t.player, true);
     let repair_class = t.master.kind == BUILDING
         || [
             class::TRANSPORT,

@@ -7,6 +7,7 @@ use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{Followed, GUARD_RANGE, Place, follow_axis, follow_spread, ignore_unit};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -26,7 +27,7 @@ impl World {
     /// ([`World::follow_offset`]); else each follows the target ([`World::follow_unit`]).
     pub(crate) fn follow(
         &mut self,
-        player: usize,
+        player: PlayerId,
         units: &[i32],
         target: i32,
     ) -> Result<(), GenieError> {
@@ -88,7 +89,7 @@ impl World {
     /// ready (slot 0x30's last argument, 1); slot 0x30 shows the order at its x and y.
     pub(crate) fn guard(
         &mut self,
-        player: usize,
+        player: PlayerId,
         units: &[i32],
         target: i32,
     ) -> Result<(), GenieError> {
@@ -102,7 +103,7 @@ impl World {
             order: OrderKind::Defend,
             priority: 100,
             target,
-            target_owner: tp as i32,
+            target_owner: tp.index() as i32,
             point: [x, y, z],
             range: GUARD_RANGE,
             shown: [x, y],
@@ -134,7 +135,7 @@ impl World {
                 continue;
             }
             let order = crate::unit_ai::QueuedOrder {
-                issuer: p as i32,
+                issuer: p.index() as i32,
                 ..order
             };
             self.run_unit_ai((p, idx), |ai, at, side, computer, rng| {
@@ -175,7 +176,7 @@ impl World {
         &mut self,
         loose: &[i32],
         i: usize,
-    ) -> Result<(usize, usize), GenieError> {
+    ) -> Result<(PlayerId, usize), GenieError> {
         let Some(Place::Live(p, idx)) = self.place(*loose.checked(i)?) else {
             return Err(GenieError::unsupported(
                 "a FOLLOW of a sleeping object of a type of 30 or more",
@@ -276,7 +277,7 @@ impl World {
     /// [`World::move_to_object_with`].
     pub(crate) fn move_to_object(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 3],
@@ -301,7 +302,7 @@ impl World {
     /// [`MoveToAction::to_object`]: crate::movement::move_to::MoveToAction::to_object
     pub(crate) fn move_to_object_with(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
         point: [f32; 3],
@@ -369,7 +370,7 @@ impl World {
     /// What the start does not model.
     fn start_object_move(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         (target, t_state): (i32, u8),
         livestock: bool,
@@ -396,7 +397,7 @@ impl World {
         )?;
         if move_to.shows_standing() {
             unit.shows_standing_sprite(
-                self.masters.get(player),
+                self.masters.get(player.index()),
                 &self.graphics,
                 self.streams.get(Stream::Sprite),
             )?;
@@ -416,7 +417,7 @@ impl World {
     /// [`World::gather_take_move`]) decide themselves.
     pub(super) fn head_takes_move(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: Option<i32>,
         point: [f32; 3],
@@ -467,7 +468,7 @@ impl World {
     /// the targets it let go are released and a counted repairer leaves its target's repairers.
     pub(super) fn point_taken(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         point: [f32; 3],
     ) -> Result<bool, GenieError> {
@@ -475,7 +476,7 @@ impl World {
         let (released, left) = match self.players.live_mut(player, idx)?.head_takes_point(
             point,
             player,
-            self.masters.get(player),
+            self.masters.get(player.index()),
             &self.graphics,
         )? {
             crate::movement::ai_moves::PointMove::Declined => return Ok(false),

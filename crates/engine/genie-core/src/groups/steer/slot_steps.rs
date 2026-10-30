@@ -75,7 +75,7 @@ impl World {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let mover = u.body.mover().ok_or(NO_MOVER)?;
         let g = self.groups.held(group)?;
-        let computer = self.players.get(p).is_some_and(|q| q.computer);
+        let computer = self.players.get(p.index()).is_some_and(|q| q.computer);
         let solid = mover.stats.radius.iter().all(|&r| 0.0 < r);
         let found = if solid {
             let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();

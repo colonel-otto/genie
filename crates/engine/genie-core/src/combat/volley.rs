@@ -16,6 +16,7 @@ use crate::objects::release::Releaser;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
+use crate::players::PlayerId;
 use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
@@ -97,7 +98,7 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )?;
         if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135)
             || matches!(master.class, class::CLASS_35 | class::CLASS_64))
@@ -152,7 +153,7 @@ impl Unit {
             // a target of a player but Gaia: its player makes a flare (master 112, slot 0x1c0)
             // at the attacker's place, which lasts twice as long from a trebuchet (class 54:
             // its amount, +0x310, doubled)
-            if 0 < aimed.player {
+            if aimed.player != PlayerId::GAIA {
                 c.w.make_flare(aimed.player, self.position(), trebuchet)?;
             }
             for _ in 0..extra {
@@ -165,7 +166,12 @@ impl Unit {
                 self.volley_missile(c, &aimed, scatter)?;
             }
         }
-        if (extra != 0 || missile) && c.w.players.get(aimed.player).is_some_and(|q| q.computer) {
+        if (extra != 0 || missile)
+            && c.w
+                .players
+                .get(aimed.player.index())
+                .is_some_and(|q| q.computer)
+        {
             return Err(GenieError::unsupported(
                 "a hit on a computer player's object (its notify 0x214)",
             ));
@@ -219,7 +225,12 @@ impl Unit {
         // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
         // spare friends
         let spares_friends = !(1.0 < weapon_range && blast_level & 4 == 0);
-        if !spares_friends && c.w.players.get(aimed.player).is_some_and(|q| q.computer) {
+        if !spares_friends
+            && c.w
+                .players
+                .get(aimed.player.index())
+                .is_some_and(|q| q.computer)
+        {
             return Err(GenieError::unsupported(
                 "a missile fired at a computer player's object (its notify 0x20f)",
             ));
@@ -244,7 +255,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let masters =
             c.w.masters
-                .get(c.player)
+                .get(c.player.index())
                 .ok_or(GenieError::unsupported("a volley without the masters"))?;
         let master = self.master_in(Some(masters))?;
         let facing = self
@@ -440,7 +451,7 @@ impl Unit {
             );
             let _ = v.sight_on(id.get(), position, made.radius, false, false)?;
         }
-        let held = missile_storage(&mut c.w.players[c.player], &made.storage)?;
+        let held = missile_storage(&mut c.w.players[c.player.index()], &made.storage)?;
         // its action: the target and the shooter taken (slot 0x178), then the start
         let mut action = crate::combat::missile::MissileAction {
             state: 0,
@@ -459,7 +470,7 @@ impl Unit {
                     position: self.position(),
                     radius: made.radius,
                     master: i32::from(self.life.master_id),
-                    owner: c.player as i32,
+                    owner: c.player.index() as i32,
                 }
             } else {
                 crate::combat::missile::Origin::NONE
@@ -520,11 +531,11 @@ impl Unit {
         };
         // it joins the end of its owner's list (slot 0x2d0, which files it in the tracker);
         // then its action takes the target and the shooter
-        c.w.players[c.player].tracker.add(
+        c.w.players[c.player.index()].tracker.add(
             id.get(),
-            crate::players::tracker::key(c.w.masters.get(c.player), &c.w.lines, made.id),
+            crate::players::tracker::key(c.w.masters.get(c.player.index()), &c.w.lines, made.id),
         );
-        c.w.players[c.player].objects.push(missile);
+        c.w.players[c.player.index()].objects.push(missile);
         let missile = Releaser {
             id: id.get(),
             class: Some(made.class),
@@ -546,7 +557,7 @@ pub(crate) struct Aimed {
     pub(crate) position: [f32; 3],
     pub(crate) radius: [f32; 3],
     pub(crate) class: ClassId,
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
 }
 
 impl Aimed {

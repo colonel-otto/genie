@@ -8,6 +8,7 @@
 use crate::GenieError;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::KING;
+use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -27,18 +28,18 @@ impl World {
     /// `+0x6b4` at 1, which a load leaves at the game's, [`World::mode_680`]): a master it has
     /// (`FUN_140b26630`) with at least one in its tracker's done list (`FUN_14104eea0`).
     #[must_use]
-    pub fn has_treason_building(&self, p: usize) -> bool {
+    pub fn has_treason_building(&self, p: PlayerId) -> bool {
         let castle = if self.mode_680 == 1 {
             CASTLE_MODE_1
         } else {
             CASTLE
         };
         self.masters
-            .get(p)
+            .get(p.index())
             .is_some_and(|ms| ms.get(castle).is_some())
             && self
                 .players
-                .get(p)
+                .get(p.index())
                 .is_some_and(|pl| !pl.tracker.list(i32::from(castle)).is_empty())
     }
 
@@ -52,7 +53,7 @@ impl World {
     /// player from 1 the player counts as its own or allied a flare at its place (that player's
     /// slot 0x1c0 with master 697, [`World::remains`]); the sound and the minimap's mark
     /// (`FUN_140c7d6c0`, the game's `+0xa78`) are the interface's, as the local player's message.
-    pub(crate) fn treason(&mut self, p: usize) -> Result<(), GenieError> {
+    pub(crate) fn treason(&mut self, p: PlayerId) -> Result<(), GenieError> {
         let discount = self.players.player(p)?.attribute(DISCOUNT).unwrap_or(0.0);
         let cost = if 0.0 < discount {
             TREASON_DISCOUNT_COST
@@ -65,7 +66,7 @@ impl World {
         }
         self.players.player_mut(p)?.resources[attribute::GOLD] = gold - cost;
         let n = self.players.len();
-        for i in 1..n {
+        for i in PlayerId::each(n).skip(1) {
             if crate::unit_ai::task_finder::allied(&self.players.player(p)?.relations, p, i, false)
             {
                 continue;
@@ -84,7 +85,7 @@ impl World {
                 Some((_, holder)) => holder.position(),
                 None => king.position(),
             };
-            for j in 1..n {
+            for j in PlayerId::each(n).skip(1) {
                 if crate::unit_ai::task_finder::allied(
                     &self.players.player(p)?.relations,
                     p,
@@ -117,7 +118,13 @@ mod tests {
                 .collect(),
             ..Player::default()
         };
-        let mut t = World::new(0, 1, 0, vec![0; 4], (0..4).map(player).collect());
+        let mut t = World::new(
+            0,
+            1,
+            PlayerId::new(0),
+            vec![0; 4],
+            (0..4).map(player).collect(),
+        );
         t.players[1].resources[attribute::GOLD] = 500.0;
         t
     }
@@ -126,14 +133,14 @@ mod tests {
     #[test]
     fn treason_needs_the_regicide_rule_and_the_gold() {
         let mut t = world();
-        t.treason(1).unwrap();
+        t.treason(PlayerId::new(1)).unwrap();
         assert_eq!(t.players[1].resources[attribute::GOLD], 500.0);
         t.settings.game_mode = 1;
         t.players[1].resources[attribute::GOLD] = 399.0;
-        t.treason(1).unwrap();
+        t.treason(PlayerId::new(1)).unwrap();
         assert_eq!(t.players[1].resources[attribute::GOLD], 399.0);
         t.players[1].attributes[DISCOUNT] = 1.0;
-        t.treason(1).unwrap();
+        t.treason(PlayerId::new(1)).unwrap();
         assert_eq!(t.players[1].resources[attribute::GOLD], 199.0);
     }
 
@@ -143,7 +150,7 @@ mod tests {
         let mut t = world();
         t.settings.game_mode = 1;
         let before = t.players[3].objects.len();
-        t.treason(1).unwrap();
+        t.treason(PlayerId::new(1)).unwrap();
         assert_eq!(t.players[1].resources[attribute::GOLD], 100.0);
         assert_eq!(t.players[3].objects.len(), before);
     }
@@ -189,7 +196,7 @@ mod tests {
         ]
         .into();
         t.players[3].objects = vec![king(30, [1.0, 1.0, 0.0], None)].into();
-        t.treason(1).unwrap();
+        t.treason(PlayerId::new(1)).unwrap();
         let flares = |t: &World, p: usize| -> Vec<(i32, [f32; 3])> {
             t.players[p]
                 .objects
@@ -208,7 +215,7 @@ mod tests {
         let mut castle = king(40, [12.0, 13.0, 0.0], None);
         castle.life.master_id = CASTLE;
         t.players[2].objects = vec![king(20, [5.0, 6.0, 0.0], Some(40)), castle].into();
-        t.treason(1).unwrap();
+        t.treason(PlayerId::new(1)).unwrap();
         assert_eq!(flares(&t, 1)[0].1, [12.0, 13.0, 0.0]);
     }
 
@@ -216,6 +223,6 @@ mod tests {
     #[test]
     fn a_player_without_a_castle_has_no_treason() {
         let t = world();
-        assert!(!t.has_treason_building(1));
+        assert!(!t.has_treason_building(PlayerId::new(1)));
     }
 }

@@ -3,6 +3,7 @@
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::PlayerId;
 use crate::unit_ai::best_target::{
     Ask, Battlefield, EPSILON, STATISTICS, Searcher, Statistics, Thing, category,
 };
@@ -65,7 +66,7 @@ pub(super) fn tested(
     if !may_attack(me, (id, &t), kind, world)? {
         return Ok(None);
     }
-    let gaia_taken = !me.scenario && t.owner == 0 && COMBAT <= t.kind;
+    let gaia_taken = !me.scenario && t.owner == PlayerId::GAIA && COMBAT <= t.kind;
     if gaia_taken && t.capture {
         return Ok(None);
     }
@@ -110,7 +111,7 @@ pub(super) fn kept_by_owner_and_class(me: &Searcher, ask: &Ask, t: &Thing) -> bo
     let captured = COMBAT <= t.kind && t.capture;
     // nothing held (`+0x310` at most 0) and not taken by sight
     let free = t.held <= 0.0 && !captured;
-    if me.computer && t.owner == 0 && !free {
+    if me.computer && t.owner == PlayerId::GAIA && !free {
         return false;
     }
     let boat_free = me.class == Some(class::TOWER)

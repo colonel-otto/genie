@@ -7,6 +7,7 @@ use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::PlayerId;
 use crate::technology::Attributes;
 use crate::world::World;
 
@@ -86,14 +87,14 @@ impl World {
     ///
     /// Its master or attributes the player has not got, a facet draw on a sprite of one facet
     /// (the game divides by zero), and what the object's making does not model.
-    pub(crate) fn setup_pasture(&mut self, p: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn setup_pasture(&mut self, p: PlayerId, id: i32) -> Result<(), GenieError> {
         let (at, master) = self
             .object(id)
             .map(|(_, u)| (u.position(), u.life.master_id))
             .ok_or(GenieError::unreachable("a pasture its completion names"))?;
         let radius_x = self.master(p, master)?.radius[0];
         let mut points = edge_points(at, radius_x);
-        let owner = &self.players[p];
+        let owner = &self.players[p.index()];
         let count = cvttss2si(Attributes::get(owner, PASTURE_LIVESTOCK)?);
         let food = Attributes::get(owner, PASTURE_FOOD)? / count as f32;
         let map = self.spatial.map;
@@ -166,7 +167,7 @@ impl World {
     pub(crate) fn pasture_pick(
         &self,
         pasture: i32,
-        p: usize,
+        p: PlayerId,
         idx: usize,
     ) -> Result<i32, GenieError> {
         let Some((q, b)) = self.object(pasture) else {
@@ -175,7 +176,7 @@ impl World {
         if q != p {
             return Ok(-1);
         }
-        let unit = &self.players[p].objects[idx];
+        let unit = &self.players[p.index()].objects[idx];
         let reach = unit.master(&self.masters, p)?.radius;
         let mut tended = Vec::new();
         for &id in &b.livestock {
@@ -192,7 +193,7 @@ impl World {
             tended.push((id, l.workers, gap));
         }
         crate::math::msvc::sort(&mut tended, &|a, b| a.2 < b.2);
-        let room = Attributes::get(&self.players[q], PASTURE_WORKERS)?;
+        let room = Attributes::get(&self.players[q.index()], PASTURE_WORKERS)?;
         let mut pick = -1;
         for (id, workers, _) in tended {
             if workers == 0 {
@@ -216,11 +217,11 @@ impl World {
     /// A master the players have not got.
     pub(crate) fn tend_pasture(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         pasture: i32,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[p].objects[idx];
+        let unit = &self.players[p.index()].objects[idx];
         let (id, named) = (
             unit.id,
             if pasture == -1 {
@@ -240,7 +241,7 @@ impl World {
                 b.pasture_workers.push(id.get());
             }
         }
-        self.players[p].objects[idx].my_pasture = pasture;
+        self.players[p.index()].objects[idx].my_pasture = pasture;
         Ok(())
     }
 

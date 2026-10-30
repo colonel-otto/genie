@@ -182,7 +182,7 @@ fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
 /// A 16 × 16 map of terrain `class` with player 2's drop-off walker 9177 standing at (5.5, 5.5),
 /// its target the house 10028 at (12.5, 5.5), and the records `near` about it (id, place,
 /// radius, class, player), each of the master numbered as its class.
-fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, usize)]) -> Spatial {
+fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, PlayerId)]) -> Spatial {
     let mut w = Spatial::with_tiles(
         [16, 16],
         crate::map::spatial::Tiles::new(16, 16, vec![class; 256]),
@@ -200,12 +200,15 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, usize)]) -> S
         unknown: None,
         obstruction: Some(Obstruction { kind: 5, class: 2 }),
     };
-    w.insert(9177, placed([5.5, 5.5], 0.2, class::VILLAGER, 2));
+    w.insert(
+        9177,
+        placed([5.5, 5.5], 0.2, class::VILLAGER, PlayerId::new(2)),
+    );
     w.insert(
         10028,
         Placed {
             obstruction: None,
-            ..placed([12.5, 5.5], 1.0, class::BUILDING, 2)
+            ..placed([12.5, 5.5], 1.0, class::BUILDING, PlayerId::new(2))
         },
     );
     for &(id, at, r, class, player) in near {
@@ -225,15 +228,15 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, usize)]) -> S
 #[test]
 fn a_drop_off_walker_ignores_the_allied_workers_standing_beside_it() {
     let near = [
-        (1, [5.6, 5.5], 0.2, class::VILLAGER, 2),
-        (2, [5.6, 5.6], 0.2, class::CLASS_7, 2),
-        (3, [5.4, 5.5], 0.2, class::VILLAGER, 2),
-        (4, [5.5, 5.6], 0.2, class::VILLAGER, 2),
-        (5, [5.5, 5.4], 0.2, class::VILLAGER, 3),
-        (6, [5.4, 5.4], 0.2, class::FISHING_SHIP, 4),
-        (7, [5.6, 5.4], 0.5, class::WALL, 2),
-        (8, [5.4, 5.6], 0.5, class::GATE, 2),
-        (9, [5.5, 5.5], 7.0, class::VILLAGER, 2),
+        (1, [5.6, 5.5], 0.2, class::VILLAGER, PlayerId::new(2)),
+        (2, [5.6, 5.6], 0.2, class::CLASS_7, PlayerId::new(2)),
+        (3, [5.4, 5.5], 0.2, class::VILLAGER, PlayerId::new(2)),
+        (4, [5.5, 5.6], 0.2, class::VILLAGER, PlayerId::new(2)),
+        (5, [5.5, 5.4], 0.2, class::VILLAGER, PlayerId::new(3)),
+        (6, [5.4, 5.4], 0.2, class::FISHING_SHIP, PlayerId::new(4)),
+        (7, [5.6, 5.4], 0.5, class::WALL, PlayerId::new(2)),
+        (8, [5.4, 5.6], 0.5, class::GATE, PlayerId::new(2)),
+        (9, [5.5, 5.5], 7.0, class::VILLAGER, PlayerId::new(2)),
     ];
     let mut world = drop_off_world(1, &near);
     let gait = |moving, path_made| {
@@ -339,7 +342,7 @@ fn walled(radius: f32) -> Spatial {
             position: [4.5, 5.5, 0.0],
             radius: [radius, radius],
             class: class::VILLAGER,
-            player: 2,
+            player: PlayerId::new(2),
             master: 0,
             obstruction_type: 5,
             buildable_on: 0,
@@ -607,7 +610,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
         position: [x, 5.5, 0.0],
         radius: [r, r],
         class: class::VILLAGER,
-        player: 2,
+        player: PlayerId::new(2),
         master: 0,
         obstruction_type: 5,
         buildable_on: 0,
@@ -687,7 +690,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
             position: [5.5, 5.5, 0.0],
             radius: [0.2, 0.2],
             class: class::VILLAGER,
-            player: 2,
+            player: PlayerId::new(2),
             master: 83,
             obstruction_type: 0,
             buildable_on: 0,
@@ -988,7 +991,7 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
         position: [x, 10.0, 0.0],
         radius: [0.5, 0.5],
         class,
-        player: 1,
+        player: PlayerId::new(1),
         master: 0,
         obstruction_type: 2,
         buildable_on: 0,
@@ -1174,7 +1177,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
             position: [25.0, 93.0, 0.0],
             radius: [0.5, 0.5],
             class: class::TREE,
-            player: 0,
+            player: PlayerId::new(0),
             master: 0,
             obstruction_type: 2,
             buildable_on: 0,
@@ -1247,7 +1250,7 @@ pub(crate) fn world() -> Spatial {
         position: [x, y, 0.0],
         radius: [0.2, 0.2],
         class: class::VILLAGER,
-        player: 2,
+        player: PlayerId::new(2),
         master: 0,
         obstruction_type: 0,
         buildable_on: 0,
@@ -1264,7 +1267,7 @@ pub(crate) fn world() -> Spatial {
             position: [30.0, 88.0, 0.0],
             radius: [1.0, 1.0],
             class: class::BUILDING,
-            player: 2,
+            player: PlayerId::new(2),
             master: 0,
             obstruction_type: 0,
             buildable_on: 0,
@@ -1344,7 +1347,7 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
         position: [28.0, y, 0.0],
         radius: [0.5, 0.5],
         class,
-        player: 1,
+        player: PlayerId::new(1),
         master: 72,
         obstruction_type: 0,
         buildable_on: 0,
@@ -1563,7 +1566,7 @@ impl WalkRig {
 /// house 10028, on the open tiles of [`tiled_world`] with the pather's mesh.
 pub(crate) fn path_world(owner: crate::world::Player) -> crate::world::World {
     let players = vec![crate::world::Player::default(), owner];
-    let mut t = crate::world::World::new(0, 0, 0, vec![0; 2], players);
+    let mut t = crate::world::World::new(0, 0, PlayerId::new(0), vec![0; 2], players);
     t.spatial = tiled_world(vec![4; 120 * 120]);
     t.pathing.start_mesh(120);
     let mover = builder_9177().placed([28.0, 89.0, 0.0]);
@@ -1812,7 +1815,7 @@ fn a_top_level_short_of_its_moved_target_arrives() {
         m.stats.weapon_range = weapon_range;
         m
     };
-    let run = |m: &mut Mover, last_move: u32, target_player: usize, target_id: i32| {
+    let run = |m: &mut Mover, last_move: u32, target_player: PlayerId, target_id: i32| {
         let mut world = Spatial::new([120, 120]);
         let placed = Placed {
             position: [40.0, 88.0, 0.0],
@@ -1851,31 +1854,31 @@ fn a_top_level_short_of_its_moved_target_arrives() {
     };
     let mut m = walk(0.0);
     assert!(matches!(
-        run(&mut m, 150, 0, 500),
+        run(&mut m, 150, PlayerId::new(0), 500),
         Ok(Next::Done(Motion::Arrived))
     ));
     assert_eq!(m.paths.len(), 1);
     assert_eq!(m.paths[0].created, 0);
     let mut m = walk(0.0);
     assert!(matches!(
-        run(&mut m, 50, 0, 500),
+        run(&mut m, 50, PlayerId::new(0), 500),
         Ok(Next::Done(Motion::Done))
     ));
     assert_eq!(m.paths[0].state, 6);
     let mut m = walk(2.0);
     assert!(matches!(
-        run(&mut m, 150, 0, 500),
+        run(&mut m, 150, PlayerId::new(0), 500),
         Ok(Next::Done(Motion::Done))
     ));
     // a tie: a target of a higher id yields, a lower one does not
     let mut m = walk(0.0);
     assert!(matches!(
-        run(&mut m, 100, 0, 9500),
+        run(&mut m, 100, PlayerId::new(0), 9500),
         Ok(Next::Done(Motion::Arrived))
     ));
     let mut m = walk(0.0);
     assert!(matches!(
-        run(&mut m, 100, 0, 500),
+        run(&mut m, 100, PlayerId::new(0), 500),
         Ok(Next::Done(Motion::Done))
     ));
 }
@@ -1906,7 +1909,7 @@ fn a_next_waypoint_an_object_stands_on_goes() {
             position: [31.0, 88.5, 0.0],
             radius: [0.5, 0.5],
             class: class::BUILDING,
-            player: 2,
+            player: PlayerId::new(2),
             master: 70,
             obstruction_type: 2,
             buildable_on: 0,

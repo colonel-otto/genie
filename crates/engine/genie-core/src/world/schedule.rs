@@ -225,9 +225,10 @@ impl World {
             observe(self, UpdateStep::World(step));
         }
         for player in self.player_ids() {
-            let p = player.index();
+            let p = player;
             let _player =
-                tracing::debug_span!(target: crate::trace::UPDATE, "player", player = p).entered();
+                tracing::debug_span!(target: crate::trace::UPDATE, "player", player = p.index())
+                    .entered();
             for step in EACH_PLAYER {
                 let _step =
                     tracing::trace_span!(target: crate::trace::UPDATE, "step", step = %step.name())
@@ -249,9 +250,9 @@ impl World {
     /// # Errors
     ///
     /// A player without a slot.
-    fn clock_mut(&mut self, p: usize) -> Result<&mut u32, GenieError> {
+    fn clock_mut(&mut self, p: PlayerId) -> Result<&mut u32, GenieError> {
         self.player_time
-            .get_mut(p)
+            .get_mut(p.index())
             .ok_or_else(|| NO_CLOCK.with("player", p))
     }
 
@@ -266,7 +267,7 @@ impl World {
         let _step = tracing::trace_span!(target: crate::trace::UPDATE, "step", step = %step.name())
             .entered();
         if let Err(e) = self.run_world_step(step, run) {
-            for p in 0..self.players.len() {
+            for p in PlayerId::each(self.players.len()) {
                 self.stop_player(p, e.clone());
             }
         }
@@ -291,14 +292,14 @@ impl World {
             // (FUN_1410905e0); the objects' visibility masks (FUN_14107d280 on +0x80, before the
             // draw) are the registry's, kept as the objects update
             WorldStep::Ghosts => {
-                for p in 0..self.players.len() {
+                for p in PlayerId::each(self.players.len()) {
                     if let Err(e) = self.update_ghosts(p) {
                         self.stop_player(p, e);
                     }
                 }
             }
             WorldStep::Watched => {
-                for p in 0..self.players.len() {
+                for p in PlayerId::each(self.players.len()) {
                     if let Err(e) = self.watch_pass(p) {
                         self.stop_player(p, e);
                     }
@@ -307,7 +308,8 @@ impl World {
             WorldStep::Reseed => self.streams.seed_all(run.seed),
             WorldStep::Turn => {
                 *self.clock_mut(self.player_turn)? = 0;
-                self.player_turn = (self.player_turn + 1) % self.players.len();
+                self.player_turn =
+                    PlayerId::try_from((self.player_turn.index() + 1) % self.players.len())?;
             }
             WorldStep::Victory => self.victory_check()?,
             WorldStep::FrameSeed => self.frame_seed = self.streams.get(Stream::World).rand15(),
@@ -329,7 +331,7 @@ impl World {
         &mut self,
         step: PlayerStep,
         run: &mut UpdateRun<'_>,
-        p: usize,
+        p: PlayerId,
     ) -> Result<(), GenieError> {
         match step {
             PlayerStep::Clock => {
@@ -384,7 +386,13 @@ mod tests {
 
     /// A world of `n` players without objects, its turn at player 1.
     fn bare(n: usize) -> World {
-        World::new(0, 29910, 1, vec![0; n], vec![Player::default(); n])
+        World::new(
+            0,
+            29910,
+            PlayerId::new(1),
+            vec![0; n],
+            vec![Player::default(); n],
+        )
     }
 
     /// The number of world steps: [`world_place`]'s arms.
@@ -472,7 +480,7 @@ mod tests {
         });
         assert_eq!(clocks, [[10, 0, 0], [10, 10, 0], [10, 10, 10]]);
         // player 1's turn ends: its time starts over and the turn passes to player 2
-        assert_eq!(turns, [(2, vec![10, 0, 10])]);
+        assert_eq!(turns, [(PlayerId::new(2), vec![10, 0, 10])]);
     }
 
     /// An observed update leaves the world as the update without an observer does.
@@ -488,7 +496,7 @@ mod tests {
     #[test]
     fn a_step_is_named_by_its_variant() {
         assert_eq!(UpdateStep::World(WorldStep::FrameSeed).name(), "FrameSeed");
-        let objects = UpdateStep::Player(PlayerStep::Objects, PlayerId::from(2));
+        let objects = UpdateStep::Player(PlayerStep::Objects, PlayerId::new(2));
         assert_eq!(objects.name(), "Objects");
         assert_eq!(objects.to_string(), "Objects of player 2");
     }

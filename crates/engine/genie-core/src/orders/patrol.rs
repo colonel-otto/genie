@@ -32,7 +32,6 @@ impl World {
         waypoints: &[Point],
         reset: bool,
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let waypoints: &[[f32; 2]] = &waypoints.iter().map(|p| p.xy()).collect::<Vec<_>>();
         let Some(ids) = self.command_check(player, ids)? else {
@@ -63,7 +62,6 @@ impl World {
         waypoints: &[Point],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
-        let player = player.index();
         let ids: &[i32] = &ObjectId::fields(ids);
         let waypoints: &[[f32; 2]] = &waypoints.iter().map(|p| p.xy()).collect::<Vec<_>>();
         let Some(ids) = self.command_check(player, ids)? else {
@@ -178,7 +176,7 @@ impl World {
                 self.keep_group(&mut split, id, None)?;
                 id
             } else {
-                let owner = split.owner.map_or(u32::MAX, |p| p as u32);
+                let owner = split.owner.map_or(u32::MAX, |p| p.index() as u32);
                 let id = self.groups.create(owner).id;
                 for &unit in &units {
                     let _ = self.add_to_group(id, unit)?;

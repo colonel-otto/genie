@@ -6,6 +6,7 @@ use crate::math::fmath::Vec3;
 use crate::movement::{
     ALLY_PAUSE, EPSILON, FAST_TURN, Me, Motion, Mover, Next, OTHER_PAUSE, UP, Velocity, vector,
 };
+use crate::players::PlayerId;
 use crate::{GenieError, math::fmath};
 
 impl Mover {
@@ -40,7 +41,7 @@ impl Mover {
             let Some(other) = world.get_known(id)? else {
                 continue;
             };
-            let outranks = if player == 0 || other.player != 0 {
+            let outranks = if player == PlayerId::GAIA || other.player != PlayerId::GAIA {
                 let mine = world.gait(me.id).map_or(0, |g| g.human_order);
                 let theirs = world.gait(id).map_or(0, |g| g.human_order);
                 if !computer && (other.player != player || theirs != mine) {

@@ -1,6 +1,7 @@
 use super::*;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::DOPPELGANGER;
+use crate::players::PlayerId;
 use crate::test_ids::object_id;
 
 /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
@@ -41,7 +42,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
     let mut t = World::new(
         0,
         0,
-        0,
+        PlayerId::new(0),
         vec![0, 0],
         vec![crate::world::Player::default(), player],
     );
@@ -86,7 +87,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
                 position: u.position(),
                 radius: [0.2, 0.2],
                 class: class::CLASS_6,
-                player: 1,
+                player: PlayerId::new(1),
                 master: u.life.master_id,
                 obstruction_type: 0,
                 buildable_on: 0,
@@ -210,7 +211,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
     let ghost = t.world_object(-1);
     assert!(matches!(
         ghost,
-        Some(crate::groups::WorldObject::Ghost(1, _))
+        Some(crate::groups::WorldObject::Ghost(p, _)) if p == PlayerId::new(1)
     ));
     assert_eq!(t.unit_category(ghost).unwrap(), -1);
     assert_eq!(t.unit_category(t.world_object(35)).unwrap(), 2);
@@ -745,7 +746,7 @@ fn type_world(paths: Vec<PathData>) -> World {
     let mut t = World::new(
         0,
         0,
-        0,
+        PlayerId::new(0),
         vec![0, 0],
         vec![crate::world::Player::default(), player],
     );

@@ -23,7 +23,7 @@ impl BuildAction {
     pub(super) fn site_unit<'w>(c: &'w Step<'_>, reads: &BuildReads) -> Option<&'w Unit> {
         reads
             .site
-            .and_then(|id| c.w.players[c.player].objects.by_id(id))
+            .and_then(|id| c.w.players[c.player.index()].objects.by_id(id))
     }
 
     /// The builder count (`+0x9e8`) of the building `FUN_140aaddb0` gives a Build on `site`
@@ -148,7 +148,7 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<HeadCode, GenieError> {
-        if c.w.players[c.player].computer {
+        if c.w.players[c.player.index()].computer {
             return Err(GenieError::unsupported(
                 "a computer player's builder after its work",
             ));
@@ -255,7 +255,7 @@ impl BuildAction {
     /// [`Unit::show_standing`]'s.
     pub(super) fn stand(c: &mut Step<'_>, builder: &mut Unit) -> Result<(), GenieError> {
         builder.show_standing(
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
             &c.w.graphics,
             c.w.streams.get(Stream::Sprite),
         )

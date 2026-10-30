@@ -10,12 +10,13 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Work;
+use crate::players::PlayerId;
 use crate::world::World;
 
 impl World {
     /// The player and live index of the unit `id` inside a building or a transport, whoever's
     /// it is.
-    pub(crate) fn live_inside(&self, id: i32) -> Result<(usize, usize), GenieError> {
+    pub(crate) fn live_inside(&self, id: i32) -> Result<(PlayerId, usize), GenieError> {
         match self.place(id) {
             Some(crate::orders::Place::Live(p, i)) => Ok((p, i)),
             _ => Err(GenieError::unsupported(
@@ -48,13 +49,13 @@ impl World {
     /// unit AI keeps its notifies and its queued orders.
     pub(crate) fn let_out(
         &mut self,
-        player: usize,
+        player: PlayerId,
         building: usize,
         id: i32,
         point: [f32; 2],
         (work_on, _sound): (Option<i32>, bool),
     ) -> Result<bool, GenieError> {
-        let b = &self.players[player].objects[building];
+        let b = &self.players[player.index()].objects[building];
         let bid = b.id;
         let bm = b.master(&self.masters, player)?.clone();
         let gather = b.gather_point;
@@ -77,7 +78,7 @@ impl World {
         };
         // the unit is any player's (an ally's too): its own player's masters and orders
         let (up, ui) = self.live_inside(id)?;
-        let unit = &self.players[up].objects[ui];
+        let unit = &self.players[up.index()].objects[ui];
         let made = unit.master(&self.masters, up)?.clone();
         // The class of siege weapons, whose own place an Enter's point keeps (`FUN_140a85f30`, the
         // short `0xd`).
@@ -99,11 +100,11 @@ impl World {
                 "an unload whose unit finds no spot (its later rings)",
             ));
         };
-        let z = self.players[player].objects[building].position()[2];
+        let z = self.players[player.index()].objects[building].position()[2];
         let at = [spot[0], spot[1], z];
         // slot 0x1a8 (`FUN_141213120`) does its part only for a unit inside an object (`+0x2f0`):
         // a new unit an effect could not take in (`FUN_1416136f0`) comes out from where it stands
-        let inside = self.players[up].objects[ui].life.inside.is_some();
+        let inside = self.players[up.index()].objects[ui].life.inside.is_some();
         if !inside {
             return self.let_out_from_the_map(
                 up,
@@ -112,7 +113,7 @@ impl World {
                 (point, gather, bid.get(), work_on),
             );
         }
-        self.leave_container((player, building), (up, ui), &made, at)?;
+        self.leave_container((player, building), (up.index(), ui), &made, at)?;
         self.came_out(up, ui, made.class, (point, gather, bid.get(), work_on))
     }
 
@@ -133,29 +134,31 @@ impl World {
     /// cases.
     pub(crate) fn leave_container(
         &mut self,
-        (player, container): (usize, usize),
+        (player, container): (PlayerId, usize),
         (up, ui): (usize, usize),
         made: &Master,
         at: [f32; 3],
     ) -> Result<(), GenieError> {
-        let b = &self.players[player].objects[container];
+        let b = &self.players[player.index()].objects[container];
         let (bid, id) = (b.id, self.players[up].objects[ui].id);
         let bm = b.master(&self.masters, player)?.clone();
         // the container's slot 0x1c8 (`FUN_141217910`, a building's through `FUN_1411d6ad0`): a
         // unit (type 70) takes its share off the volleys (the container's rate by its player's
         // masters, the unit's share by its own)
         let share = if made.kind == COMBAT {
-            let (Some(own), Some(theirs)) = (self.masters.get(player), self.masters.get(up)) else {
+            let (Some(own), Some(theirs)) =
+                (self.masters.get(player.index()), self.masters.get(up))
+            else {
                 return Err(GenieError::unsupported("an unload without the masters"));
             };
-            let b = &self.players[player].objects[container];
+            let b = &self.players[player.index()].objects[container];
             let unit = &self.players[up].objects[ui];
             let rate = attack_rate(&bm, own, b.reload_powerup);
             Some(share(made, theirs, unit.reload_powerup, rate)?)
         } else {
             None
         };
-        let b = &mut self.players[player].objects[container];
+        let b = &mut self.players[player.index()].objects[container];
         if let Some(share) = share {
             b.firepower -= share;
         }
@@ -222,7 +225,7 @@ impl World {
     /// What the work, the gather and the move do not model.
     pub(super) fn came_out(
         &mut self,
-        up: usize,
+        up: PlayerId,
         ui: usize,
         class: ClassId,
         (point, gather, bid, work_on): ([f32; 2], Option<GatherPoint>, i32, Option<i32>),
@@ -245,7 +248,7 @@ impl World {
         let to = match let_out_aim(gather, point, bid) {
             LetOutAim::Target(g) => {
                 if g.target != -1 && self.object(g.target).is_some() {
-                    if let Some(ai) = self.players[up].objects[ui].ai.as_mut() {
+                    if let Some(ai) = self.players[up.index()].objects[ui].ai.as_mut() {
                         ai.remove_target();
                     }
                     // slot 0x128 with `+0xa14` 0: the unit AI keeps its notifies
@@ -261,7 +264,7 @@ impl World {
             // 1, whose stopAction runs on the unit), forgets its target (`FUN_140c5e1e0`) and
             // takes its own stance again at the unit's place (slot 0x1c0 with `+0x1a9`); a unit
             // without a unit AI stays where it came out
-            let unit = &mut self.players[up].objects[ui];
+            let unit = &mut self.players[up.index()].objects[ui];
             let place = ([unit.position()[0], unit.position()[1]], Some(class));
             if unit.ai.is_some() {
                 self.run_ai_calls((up, ui), |ai, side, rng| {
@@ -275,7 +278,7 @@ impl World {
         }
         // a move to the point: the unit AI forgets its target (`FUN_140c5e1e0`), then slot 0x2a0
         // and slot 0x128 with no target, `+0xa14` 0
-        if let Some(ai) = self.players[up].objects[ui].ai.as_mut() {
+        if let Some(ai) = self.players[up.index()].objects[ui].ai.as_mut() {
             ai.remove_target();
         }
         self.gather_move(up, ui, [to[0], to[1], 0.0], false)?;
@@ -292,12 +295,12 @@ impl World {
     /// A unit without a place, and what [`World::came_out`] does not model.
     pub(super) fn let_out_from_the_map(
         &mut self,
-        up: usize,
+        up: PlayerId,
         ui: usize,
         (made, at): (&Master, [f32; 3]),
         rest: ([f32; 2], Option<GatherPoint>, i32, Option<i32>),
     ) -> Result<bool, GenieError> {
-        let id = self.players[up].objects[ui].id;
+        let id = self.players[up.index()].objects[ui].id;
         let mut placed = *self
             .spatial
             .get(id.get())
@@ -312,7 +315,7 @@ impl World {
                 class: made.obstruction_class,
             });
         let world_time = self.world_time;
-        let unit = &mut self.players[up].objects[ui];
+        let unit = &mut self.players[up.index()].objects[ui];
         let placed = unit.body.base_mut().put_down(
             id.get(),
             at,
@@ -324,7 +327,7 @@ impl World {
             v.moved(id.get(), from, at, placed.radius)?;
             v.registry_moved(id.get(), placed.class, from, at);
         }
-        let unit = &mut self.players[up].objects[ui];
+        let unit = &mut self.players[up.index()].objects[ui];
         if let Some(m) = unit.body.mover_mut() {
             m.mark_move(at, world_time);
         }

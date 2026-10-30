@@ -21,7 +21,7 @@ fn the_record_cells_answer_as_the_full_scan_does() {
         position: [position[0], position[1], 0.0],
         radius: [r, r * 0.5],
         class: class::CLASS_0,
-        player: 1,
+        player: PlayerId::new(1),
         master: 4,
         obstruction_type: 0,
         buildable_on: 0,
@@ -77,9 +77,9 @@ fn a_query_takes_its_kinds_of_players_from_the_save() {
     let mut s = Spatial::new([10, 10]);
     s.relations = vec![vec![1, 4, 4], vec![1, 0, 4], vec![1, 2, 0]];
     s.unit_diplomacy = vec![vec![1, 4, 4], vec![0, 1, 4], vec![0, 2, 1]];
-    assert_eq!(s.query_kinds(2, 3), Ok(vec![0, 2, 1]));
-    assert_eq!(s.query_kinds(2, 2), Ok(vec![0, 2]));
-    assert!(s.query_kinds(3, 3).is_err());
+    assert_eq!(s.query_kinds(PlayerId::new(2), 3), Ok(vec![0, 2, 1]));
+    assert_eq!(s.query_kinds(PlayerId::new(2), 2), Ok(vec![0, 2]));
+    assert!(s.query_kinds(PlayerId::new(3), 3).is_err());
 }
 
 /// `FUN_1410576a0`: counter-clockwise 1, clockwise -1, on the segment 0, beyond its end 1;
@@ -125,7 +125,7 @@ fn villager(x: f32, y: f32) -> Placed {
         position: [x, y, 0.0],
         radius: [0.2, 0.2],
         class: class::VILLAGER,
-        player: 2,
+        player: PlayerId::new(2),
         master: 0,
         obstruction_type: 0,
         buildable_on: 0,
@@ -176,7 +176,7 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
         let f = s
             .search(SearchQuery {
                 searcher: 9,
-                player: 2,
+                player: PlayerId::new(2),
                 search: &look(at),
                 attack: &mut never,
                 reach: &mut reach,
@@ -412,7 +412,7 @@ fn a_walk_past_the_maps_edge_meets_its_record_first() {
             rect,
             grow: 0.2,
             ally_factor: 1.0,
-            player: Some(2),
+            player: Some(PlayerId::new(2)),
             ignore: &[],
         })
         .unwrap();
@@ -465,7 +465,7 @@ fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
     assert_eq!(s.grid, Grid { levels: 6 });
     let mut bush = villager(31.5, 154.5);
     bush.radius = [0.5, 0.5];
-    bush.player = 0;
+    bush.player = PlayerId::new(0);
     bush.obstruction = Some(Obstruction { kind: 2, class: 1 });
     s.insert(13594, bush);
     assert_eq!(s.filed(&bush, 2), (5, 3, 19));
@@ -487,7 +487,7 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
     let mut s = Spatial::with_tiles([220, 220], Tiles::new(220, 220, vec![1; 220 * 220]));
     let mut bush = villager(140.5, 3.5);
     bush.radius = [0.5, 0.5];
-    bush.player = 0;
+    bush.player = PlayerId::new(0);
     bush.obstruction = Some(Obstruction { kind: 2, class: 1 });
     s.insert(808, bush);
     s.insert(0, bush);
@@ -558,7 +558,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             rect,
             grow: 0.25,
             ally_factor: 0.5,
-            player: Some(2),
+            player: Some(PlayerId::new(2)),
             ignore: &[]
         }),
         Ok(vec![])
@@ -573,7 +573,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             rect,
             grow: 0.4,
             ally_factor: 1.0,
-            player: Some(2),
+            player: Some(PlayerId::new(2)),
             ignore: &[]
         }),
         Ok(vec![9175])
@@ -585,7 +585,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             rect,
             grow: 0.4,
             ally_factor: 1.0,
-            player: Some(2),
+            player: Some(PlayerId::new(2)),
             ignore: &[9175]
         }),
         Ok(vec![])
@@ -605,7 +605,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             rect,
             grow: 0.4,
             ally_factor: 0.5,
-            player: Some(2),
+            player: Some(PlayerId::new(2)),
             ignore: &[]
         }),
         Ok(vec![])
@@ -619,7 +619,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             rect,
             grow: 0.4,
             ally_factor: 0.5,
-            player: Some(1),
+            player: Some(PlayerId::new(1)),
             ignore: &[]
         }),
         Ok(vec![9175])
@@ -635,7 +635,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
         position: [2.0, 2.0, 0.0],
         radius: [1.0, 1.0],
         class: class::BUILDING,
-        player: 2,
+        player: PlayerId::new(2),
         master: 0,
         obstruction_type: 0,
         buildable_on: 0,
@@ -649,7 +649,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
         position: [0.5, 0.5, 0.0],
         radius: [0.5, 0.5],
         class: class::TREE,
-        player: 0,
+        player: PlayerId::new(0),
         master: 0,
         obstruction_type: 0,
         buildable_on: 0,
@@ -797,7 +797,7 @@ fn revealing_the_map_sets_the_mask_in_every_word() {
         [0, 1 << 1, 1 << 33].map(|w: u64| w | NO_TILE | NO_TILE_EXPLORED)
     );
     let mut s = sighted(vec![0, 0]);
-    s.reveal_to(1);
+    s.reveal_to(PlayerId::new(1));
     assert!(
         s.sight
             .as_ref()
@@ -808,22 +808,31 @@ fn revealing_the_map_sets_the_mask_in_every_word() {
     );
     // player 1 lost: its masks take the ended bits; the tile tests mask them out
     // (registry::MASK holds neither bit 30 nor 62)
-    assert_eq!(s.vision[1], crate::vision::own_masks(1, true));
-    assert_eq!(s.tile_sight(1, 0, 0), Some(0));
+    assert_eq!(
+        s.vision[1],
+        crate::vision::own_masks(PlayerId::new(1), true)
+    );
+    assert_eq!(s.tile_sight(PlayerId::new(1), 0, 0), Some(0));
 }
 
 #[test]
 fn a_revealed_map_gives_the_player_the_ended_bits() {
     let mut s = Spatial {
         vision: vec![
-            crate::vision::own_masks(0, false),
-            crate::vision::own_masks(1, false),
+            crate::vision::own_masks(PlayerId::new(0), false),
+            crate::vision::own_masks(PlayerId::new(1), false),
         ],
         ..Spatial::default()
     };
-    s.reveal_to(1);
-    assert_eq!(s.vision[1], crate::vision::own_masks(1, true));
-    assert_eq!(s.vision[0], crate::vision::own_masks(0, false));
+    s.reveal_to(PlayerId::new(1));
+    assert_eq!(
+        s.vision[1],
+        crate::vision::own_masks(PlayerId::new(1), true)
+    );
+    assert_eq!(
+        s.vision[0],
+        crate::vision::own_masks(PlayerId::new(0), false)
+    );
 }
 
 /// A map of two tiles holding `words`, which players 0 and 1 see with their own masks.
@@ -840,8 +849,8 @@ fn sighted(words: Vec<u64>) -> Spatial {
             Vec::new(),
         )),
         vision: vec![
-            crate::vision::own_masks(0, false),
-            crate::vision::own_masks(1, false),
+            crate::vision::own_masks(PlayerId::new(0), false),
+            crate::vision::own_masks(PlayerId::new(1), false),
         ],
         ..Spatial::default()
     }
@@ -861,17 +870,20 @@ fn a_player_s_tile_test_answers_seen_explored_or_neither_and_reads_the_revealed_
         NO_TILE,
         NO_TILE | explored,
     ]);
-    let answers = |p: usize| (0..7).map(|x| s.tile_sight(p, x, 0)).collect::<Vec<_>>();
+    let answers = |p: PlayerId| (0..7).map(|x| s.tile_sight(p, x, 0)).collect::<Vec<_>>();
     let some = |v: [u8; 7]| v.map(Some).to_vec();
-    assert_eq!(answers(1), some([0xf, 0x80, 0x80, 0xf, 0, 0xf, 0]));
-    assert_eq!(answers(0), some([0, 0, 0x80, 0xf, 0, 0, 0]));
-    assert_eq!(s.tile_sight(1, -1, 0), Some(0));
-    assert_eq!(s.tile_sight(1, 0, 1), Some(0));
-    assert_eq!(Spatial::default().tile_sight(1, 0, 0), None);
+    assert_eq!(
+        answers(PlayerId::new(1)),
+        some([0xf, 0x80, 0x80, 0xf, 0, 0xf, 0])
+    );
+    assert_eq!(answers(PlayerId::new(0)), some([0, 0, 0x80, 0xf, 0, 0, 0]));
+    assert_eq!(s.tile_sight(PlayerId::new(1), -1, 0), Some(0));
+    assert_eq!(s.tile_sight(PlayerId::new(1), 0, 1), Some(0));
+    assert_eq!(Spatial::default().tile_sight(PlayerId::new(1), 0, 0), None);
     // sees_tile is its 0xf, explored any answer
-    assert!(s.sees_tile(0, 3, 0) && !s.sees_tile(0, 2, 0));
-    assert_eq!(s.explored(0, 2, 0), Ok(true));
-    assert_eq!(s.explored(0, 4, 0), Ok(false));
+    assert!(s.sees_tile(PlayerId::new(0), 3, 0) && !s.sees_tile(PlayerId::new(0), 2, 0));
+    assert_eq!(s.explored(PlayerId::new(0), 2, 0), Ok(true));
+    assert_eq!(s.explored(PlayerId::new(0), 4, 0), Ok(false));
 }
 
 /// `FUN_141285350` and `FUN_140c68a00`: the word under the registry's mask only, so the
@@ -881,13 +893,17 @@ fn the_visible_map_s_tile_test_reads_only_the_players_bits() {
     use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
     let (seen, explored) = (1 << 1, 1 << 33);
     let s = sighted(vec![seen, explored, NO_TILE | NO_TILE_EXPLORED, 0]);
-    let scout = (0..5).map(|x| s.scout_sight(1, x, 0)).collect::<Vec<_>>();
+    let scout = (0..5)
+        .map(|x| s.scout_sight(PlayerId::new(1), x, 0))
+        .collect::<Vec<_>>();
     assert_eq!(scout, [0xf, 0x80, 0, 0, 0].map(Some).to_vec());
-    let seen_now = (0..4).map(|x| s.visibility(1, x, 0)).collect::<Vec<_>>();
+    let seen_now = (0..4)
+        .map(|x| s.visibility(PlayerId::new(1), x, 0))
+        .collect::<Vec<_>>();
     assert_eq!(seen_now, [0xf, 0x80, 0, 0].map(Some).to_vec());
-    assert!(s.visible(1, 0, 0) && !s.visible(1, 1, 0));
-    assert_eq!(Spatial::default().scout_sight(1, 0, 0), None);
-    assert_eq!(Spatial::default().visibility(1, 0, 0), None);
+    assert!(s.visible(PlayerId::new(1), 0, 0) && !s.visible(PlayerId::new(1), 1, 0));
+    assert_eq!(Spatial::default().scout_sight(PlayerId::new(1), 0, 0), None);
+    assert_eq!(Spatial::default().visibility(PlayerId::new(1), 0, 0), None);
 }
 
 #[test]
@@ -938,7 +954,7 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     // player 2 counts player 3 allied, player 3 counts player 2 neutral
     s.relations = vec![vec![0; 4], vec![0; 4], vec![0, 3, 1, 0], vec![0, 3, 3, 1]];
     let mut wall = villager(30.5, 88.5);
-    wall.player = 3;
+    wall.player = PlayerId::new(3);
     wall.radius = [0.5, 0.5];
     s.insert(33990, wall);
     let look = |state: u8, kind: u8, desolid: bool| ClearLook {
@@ -1160,7 +1176,7 @@ fn a_frozen_object_may_be_anywhere_its_speed_could_take_it() {
 fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_it() {
     let mut s = Spatial::new([64, 64]);
     let tree = Placed {
-        player: 0,
+        player: PlayerId::new(0),
         speed: 0.0,
         ..villager(24.5, 97.5 - 60.0)
     };
@@ -1171,7 +1187,7 @@ fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_i
     assert!(s.check_known(near).is_ok());
     // a stopped villager 10 tiles off, 0.8 tiles a second
     let mut walker = villager(34.5, 37.5);
-    walker.player = 1;
+    walker.player = PlayerId::new(1);
     walker.speed = 0.8;
     s.insert(9200, walker);
     s.freeze(9200);
@@ -1230,7 +1246,7 @@ const fn any_filter() -> Filter {
 /// The sight of a combat unit of player 2 in `state`.
 const fn seer_in(state: u8) -> crate::vision::visibility::Seer {
     crate::vision::visibility::Seer {
-        player: 2,
+        player: PlayerId::new(2),
         master: 0,
         los: 4.0,
         state,
@@ -1296,7 +1312,13 @@ fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
     let checks: ClosestChecks<'_> = (&still, &takes, &farm);
     let p = villager(1.0, 1.0);
     let kept = |filter, p: &Placed, state, searcher, checks| {
-        closest_kept(7, (&seer_in(state), p), filter, (1, searcher), checks)
+        closest_kept(
+            7,
+            (&seer_in(state), p),
+            filter,
+            (PlayerId::new(1), searcher),
+            checks,
+        )
     };
     let plain = Searcher::default();
     let with = |f: fn(&mut Filter)| {
@@ -1328,7 +1350,7 @@ fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
     };
     assert!(!kept(livestock, &sheep, 2, plain, checks).unwrap());
     assert!(kept(livestock, &sheep, 1, plain, checks).unwrap());
-    sheep.player = 1;
+    sheep.player = PlayerId::new(1);
     assert!(kept(livestock, &sheep, 2, plain, checks).unwrap());
     assert!(!kept(livestock, &sheep, 2, plain, (&moving, &takes, &farm)).unwrap());
     let wolf = Searcher {
@@ -1398,6 +1420,6 @@ fn closest_object_takes_a_free_farm_its_searcher_gathers_from() {
     let (still, takes) = (|_: i32| false, |_: &Placed| Ok(false));
     let checks: ClosestChecks<'_> = (&still, &takes, &look);
     let s = seer_in(2);
-    assert!(closest_kept(1, (&s, &farm), filter, (1, farmer), checks).unwrap());
-    assert!(!closest_kept(2, (&s, &farm), filter, (1, farmer), checks).unwrap());
+    assert!(closest_kept(1, (&s, &farm), filter, (PlayerId::new(1), farmer), checks).unwrap());
+    assert!(!closest_kept(2, (&s, &farm), filter, (PlayerId::new(1), farmer), checks).unwrap());
 }

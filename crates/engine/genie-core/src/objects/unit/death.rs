@@ -164,14 +164,14 @@ impl Unit {
         let completion = Completion {
             master: Some(master),
             farm_bonus: farm_bonus(&c.w.players.player(c.player)?.attributes),
-            masters: c.w.masters.get(c.player),
+            masters: c.w.masters.get(c.player.index()),
             computer: c.w.players.player(c.player)?.computer,
             ai: self.ai.is_some(),
         };
         let part = completion.first_part(construction)?;
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
         let k = crate::players::tracker::key(
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
             &c.w.lines,
             self.life.master_id,
         );

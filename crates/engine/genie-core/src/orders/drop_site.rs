@@ -10,6 +10,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::object_gone;
 use crate::orders::{HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
+use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -26,7 +27,7 @@ impl World {
     /// ([`World::queue_way_back`]).
     pub(super) fn drop_off_unasked(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         way_back: bool,
     ) -> Result<(), GenieError> {
@@ -77,7 +78,7 @@ impl World {
     /// drops at neither 45 nor 2172 and of a class other than 21 and 2 (`FUN_141226580`).
     pub(super) fn ordered_drop_site(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
     ) -> Result<Option<i32>, GenieError> {
         let unit = &self.players.live(p, idx)?;
@@ -85,7 +86,7 @@ impl World {
         let seeks = master.kind < COMBAT
             || (!master.drop_sites.iter().any(|&d| d == 45 || d == 2172)
                 && !matches!(master.class, class::FISHING_SHIP | class::TRADE_BOAT));
-        let masters = self.masters.get(p).ok_or(GenieError::unsupported(
+        let masters = self.masters.get(p.index()).ok_or(GenieError::unsupported(
             "a drop-off of a player without masters",
         ))?;
         if !seeks {
@@ -101,7 +102,7 @@ impl World {
         let state = unit.top_action().map_or(0, |a| a.state);
         let player = &self.players.player(p)?;
         let mut world = crate::unit_ai::world_view::DropWorld {
-            masters: self.masters.get(p),
+            masters: self.masters.get(p.index()),
             spatial: &mut self.spatial,
             zones: &mut self.zones,
             pathing: &mut self.pathing,
@@ -127,7 +128,7 @@ impl World {
     /// [`TABLE_DROP_FAR`]: crate::orders::TABLE_DROP_FAR
     pub(crate) fn table_drop_site(
         &self,
-        p: usize,
+        p: PlayerId,
         at: [f32; 2],
         held: i16,
         class: ClassId,
@@ -149,7 +150,7 @@ impl World {
     /// [`crate::construction::build::BuildAction::set_drop`]: a counted builder leaves its
     /// foundation's builders, the second targets go and come at once, notify 0x203 goes to the
     /// unit AI.
-    pub(crate) fn build_drop_off_now(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn build_drop_off_now(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
         let by = self.releaser(p, idx);
         let unit = &self.players.live(p, idx)?;
@@ -202,7 +203,7 @@ impl World {
     /// # Errors
     ///
     /// A unit the world does not hold at (`p`, `idx`), or a notify the AI's queue does not take.
-    pub(super) fn other_load(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    pub(super) fn other_load(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         let unit = self.players.live_mut(p, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
@@ -226,7 +227,7 @@ impl World {
     /// What the work and the queue do not model.
     pub(crate) fn drop_elsewhere(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         site: i32,
         back: Option<i32>,
@@ -258,7 +259,7 @@ impl World {
                 order: OrderKind::OnTarget,
                 priority: 100,
                 target,
-                target_owner: owner as i32,
+                target_owner: owner.index() as i32,
                 point: place,
                 range: 0.0,
                 shown: [place[0], place[1]],
@@ -278,7 +279,7 @@ impl World {
     /// the target's, its place the point) or on the record's target (its target type, owner −1,
     /// its point); height 0, range 0, priority 100, shown at the point, ready. A unit without a
     /// unit AI only looks the records up.
-    pub(crate) fn queue_way_back(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn queue_way_back(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         use crate::orders::town_bell::RecordTarget;
         let mut bell = self.players.live(p, idx)?.town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
@@ -301,7 +302,7 @@ impl World {
                 (
                     f.id,
                     i32::from(master),
-                    op as i32,
+                    op.index() as i32,
                     [o.position()[0], o.position()[1]],
                 )
             }
@@ -315,7 +316,7 @@ impl World {
         let (id, target_type, owner, [x, y]) = target;
         ai.insert_order(
             crate::unit_ai::QueuedOrder {
-                issuer: p as i32,
+                issuer: p.index() as i32,
                 order: OrderKind::OnTarget2,
                 priority: 100,
                 target: id,

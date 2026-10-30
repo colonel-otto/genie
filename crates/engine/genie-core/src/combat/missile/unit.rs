@@ -10,6 +10,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::orders::action_state::DONE;
+use crate::players::PlayerId;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::World;
 use crate::world::others::OthersRef;
@@ -239,7 +240,7 @@ impl Unit {
         stats: &crate::combat::missile::MissileStats,
         old: [f32; 3],
         c: &mut Step<'_>,
-    ) -> Result<Vec<(i32, usize, u8, u8)>, GenieError> {
+    ) -> Result<Vec<(i32, PlayerId, u8, u8)>, GenieError> {
         let [w, h] = c.w.spatial.map;
         let hold = |v: f32, size: i32| {
             if v < 0.0 {
@@ -332,7 +333,7 @@ impl Unit {
             objects,
             attributes,
             ..
-        } = &mut players[p];
+        } = &mut players[p.index()];
         let shooter = objects
             .by_id_mut(action.fired_from)
             .ok_or(GenieError::unsupported(
@@ -398,7 +399,7 @@ impl Unit {
         let mut own = victim_of(
             self,
             master,
-            &c.w.players[c.player].attributes,
+            &c.w.players[c.player.index()].attributes,
             c.player,
             terrain,
             c.w.mode_680,

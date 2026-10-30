@@ -24,6 +24,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::orders::Work;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -67,7 +68,7 @@ impl World {
     ///
     /// The pass without the game's farm setting (the player's nearest unworked farm), a fishing
     /// ship's own search (its unit AI's slot 0x80), and what the work command does not model.
-    pub(crate) fn start_work(&mut self, p: usize) -> Result<(), GenieError> {
+    pub(crate) fn start_work(&mut self, p: PlayerId) -> Result<(), GenieError> {
         let mut i = 0;
         while i < self.players.player(p)?.objects.len() {
             let unit = &self.players.live(p, i)?;
@@ -132,7 +133,7 @@ impl World {
     }
 
     /// The first farm in the object list of the unit's tile (a fish trap for a fishing ship).
-    fn farm_under(&self, p: usize, i: usize, class: ClassId) -> Result<Option<i32>, GenieError> {
+    fn farm_under(&self, p: PlayerId, i: usize, class: ClassId) -> Result<Option<i32>, GenieError> {
         let at = self.players.live(p, i)?.position();
         let (x, y) = (at[0] as i32, at[1] as i32);
         self.spatial.check_known([at[0], at[1], at[0], at[1]])?;
@@ -150,7 +151,7 @@ impl World {
 
     /// The unit AI's `ClosestResourceObject` for each gather group (no drop site, any workers,
     /// `param_6` 2, no point): the answer at the least distance, the first group at a tie.
-    fn closest_of_groups(&mut self, p: usize, i: usize) -> Result<Option<i32>, GenieError> {
+    fn closest_of_groups(&mut self, p: PlayerId, i: usize) -> Result<Option<i32>, GenieError> {
         let mut best = (NO_DISTANCE, None);
         for kind in 0..GROUPS {
             let (id, distance) = self.resource_search_from(p, i, kind)?;
@@ -169,7 +170,7 @@ impl World {
     /// A master the world does not hold, or a unit without a unit AI.
     fn search_seeker(
         &self,
-        p: usize,
+        p: PlayerId,
         unit: &crate::objects::unit::Unit,
     ) -> Result<(gather_search::Seeker, Me), GenieError> {
         let master = unit.master(&self.masters, p)?;
@@ -198,7 +199,7 @@ impl World {
     /// the world holds on them, its reach by the planners (slot 0x3d0 with the range 0).
     fn resource_search_from(
         &mut self,
-        p: usize,
+        p: PlayerId,
         i: usize,
         kind: u8,
     ) -> Result<(i32, Option<i32>), GenieError> {
@@ -212,9 +213,8 @@ impl World {
         let (players, masters) = (&self.players, &self.masters);
         let candidate =
             |spatial: &crate::map::spatial::Spatial, id: i32| -> Result<Candidate, GenieError> {
-                let (owner, u) = players
-                    .iter()
-                    .enumerate()
+                let (owner, u) = PlayerId::each(players.len())
+                    .zip(players)
                     .find_map(|(q, player)| {
                         player
                             .objects

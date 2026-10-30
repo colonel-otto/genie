@@ -7,6 +7,7 @@ use crate::GenieError;
 use crate::math::msvc;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::players::PlayerId;
 use crate::unit_ai::task_finder::DropSite;
 
 /// What the searches read of an object in a map tile's list.
@@ -15,7 +16,7 @@ pub struct Candidate {
     /// `+8`.
     pub id: i32,
     /// The owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its master's class (`+0x410`, decoded).
     pub class: ClassId,
     /// Its master's id.
@@ -214,7 +215,7 @@ pub fn reached(
 #[derive(Clone, Copy, Debug)]
 pub struct Seeker {
     /// The owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// The unit's place.
     pub position: [f32; 3],
     /// Its master's line of sight (`+0x5d0`).
@@ -642,7 +643,7 @@ mod tests {
     fn tree(id: i32, x: f32, y: f32) -> Candidate {
         Candidate {
             id,
-            player: 0,
+            player: PlayerId::new(0),
             class: class::TREE,
             master: 349,
             state: 2,
@@ -784,7 +785,7 @@ mod tests {
     #[test]
     fn the_resource_search_walks_out_from_the_unit_and_takes_the_first_it_reaches() {
         let seeker = Seeker {
-            player: 1,
+            player: PlayerId::new(1),
             position: [10.2, 10.7, 0.0],
             line_of_sight: 4.0,
             state: 2,
@@ -850,7 +851,7 @@ mod tests {
     #[test]
     fn a_search_from_a_drop_site_starts_from_its_footprint_then_from_the_unit() {
         let seeker = Seeker {
-            player: 1,
+            player: PlayerId::new(1),
             position: [10.2, 10.7, 0.0],
             line_of_sight: 4.0,
             state: 2,
@@ -919,7 +920,7 @@ mod tests {
     /// The searching unit of `closest_resource_at`'s tests: at (10.2, 10.7), line of sight 4
     /// (its distance at most 9), in state 2.
     const SEEKER: Seeker = Seeker {
-        player: 1,
+        player: PlayerId::new(1),
         position: [10.2, 10.7, 0.0],
         line_of_sight: 4.0,
         state: 2,

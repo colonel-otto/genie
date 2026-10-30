@@ -249,6 +249,7 @@ mod tests {
     use crate::objects::masters::TaskId;
     use crate::pathing::Pathing;
     use crate::pathing::zones::ZoneMap;
+    use crate::players::PlayerId;
     use crate::test_ids::object_id;
 
     /// The town centre (master 109) and the mill (master 68), the villager's drop sites.
@@ -314,7 +315,7 @@ mod tests {
             position: [at[0], at[1], 0.0],
             radius: [1.5, 1.5],
             class,
-            player: 1,
+            player: PlayerId::new(1),
             master: 50,
             obstruction_type: 0,
             buildable_on: 0,

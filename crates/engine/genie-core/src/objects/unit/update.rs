@@ -203,7 +203,7 @@ impl Unit {
             if let Ok(master) = object_master(
                 self.own_master.as_deref(),
                 (self.id.get(), self.life.master_id),
-                c.w.masters.get(c.player),
+                c.w.masters.get(c.player.index()),
             ) {
                 let (standing, second) = (master.standing_sprite, master.standing_sprite_2);
                 self.idle_swap(

@@ -63,7 +63,7 @@ impl Unit {
         let own =
             c.w.spatial
                 .relations
-                .get(c.player)
+                .get(c.player.index())
                 .ok_or(GenieError::unsupported(
                     "a hunter's player without relations",
                 ))?;
@@ -82,7 +82,7 @@ impl Unit {
         let master = object_master(
             self.own_master.as_deref(),
             (self.id.get(), self.life.master_id),
-            c.w.masters.get(c.player),
+            c.w.masters.get(c.player.index()),
         )?;
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let at = |id| {

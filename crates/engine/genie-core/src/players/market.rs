@@ -140,9 +140,9 @@ impl Market {
 impl World {
     /// The market fee's attribute of player `p` (78, read without a bound check; 0 past the
     /// player's attributes).
-    fn fee(&self, p: usize) -> f32 {
+    fn fee(&self, p: PlayerId) -> f32 {
         self.players
-            .get(p)
+            .get(p.index())
             .and_then(|pl| pl.attributes.get(FEE).copied())
             .unwrap_or(0.0)
     }
@@ -161,7 +161,6 @@ impl World {
         attribute: u8,
         times: u16,
     ) -> Result<(), GenieError> {
-        let p = p.index();
         for _ in 0..times {
             let volume = self.players.player(p)?.commodity_volume;
             let held = self
@@ -196,7 +195,6 @@ impl World {
     /// held: the statistics (`FUN_141778560`) and the local player's telemetry
     /// (`FUN_14097daf0`).
     pub(crate) fn buy(&mut self, p: PlayerId, attribute: u8, times: u16) -> Result<(), GenieError> {
-        let p = p.index();
         for _ in 0..times {
             let volume = self.players.player(p)?.commodity_volume;
             if volume < 1 {
@@ -315,7 +313,13 @@ mod tests {
             commodity_volume: 100,
             ..Player::default()
         };
-        let mut t = World::new(0, 1, 0, vec![0; 2], vec![Player::default(), player]);
+        let mut t = World::new(
+            0,
+            1,
+            PlayerId::new(0),
+            vec![0; 2],
+            vec![Player::default(), player],
+        );
         t.market = market();
         t
     }

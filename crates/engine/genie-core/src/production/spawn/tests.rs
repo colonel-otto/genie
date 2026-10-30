@@ -24,7 +24,7 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
     let mut t = World::new(
         0,
         1,
-        0,
+        PlayerId::new(0),
         vec![0, 0],
         vec![
             crate::world::Player {
@@ -63,13 +63,19 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         target: 5,
         target_master: 349,
     };
-    assert_eq!(t.lost_gather_target(1, 0, g).unwrap(), Some(10));
+    assert_eq!(
+        t.lost_gather_target(PlayerId::new(1), 0, g).unwrap(),
+        Some(10)
+    );
     // 7 tiles from the closest tree's footprint, beyond the villager's sight of 4
     let far = GatherPoint {
         point: [30.0, 21.0, 0.0],
         ..g
     };
-    assert_eq!(t.lost_gather_target(1, 0, far).unwrap(), None);
+    assert_eq!(
+        t.lost_gather_target(PlayerId::new(1), 0, far).unwrap(),
+        None
+    );
 }
 
 /// MarvinBlue/426048731's TC 9149 at (104, 47), radii 2: its gather point (107.2451,
@@ -87,13 +93,13 @@ impl PlaceMap for Hill {
     fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
         Ok(0)
     }
-    fn explored(&self, _: usize, _: i32, _: i32) -> bool {
+    fn explored(&self, _: PlayerId, _: i32, _: i32) -> bool {
         true
     }
-    fn visible(&self, _: usize, _: i32, _: i32) -> bool {
+    fn visible(&self, _: PlayerId, _: i32, _: i32) -> bool {
         true
     }
-    fn vision(&self, _: usize) -> [u64; 2] {
+    fn vision(&self, _: PlayerId) -> [u64; 2] {
         [0; 2]
     }
     fn elevation(&self, _: i32, _: i32) -> Option<u8> {
@@ -102,7 +108,7 @@ impl PlaceMap for Hill {
     fn shape(&self, _: i32, _: i32) -> Option<u8> {
         Some(self.0)
     }
-    fn allied(&self, a: usize, b: usize, _: bool) -> bool {
+    fn allied(&self, a: PlayerId, b: PlayerId, _: bool) -> bool {
         a == b
     }
     fn objects(&self, _: i32, _: i32) -> Result<Vec<Near>, GenieError> {
@@ -184,7 +190,7 @@ fn sheep(state: u8) -> Near {
         auto_gather: false,
         state,
         desolid: false,
-        player: 0,
+        player: PlayerId::new(0),
         moving: true,
         fog_visibility: 0,
         fog_mask: None,
@@ -218,13 +224,13 @@ impl PlaceMap for Fogged {
     fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
         Ok(0)
     }
-    fn explored(&self, _: usize, _: i32, _: i32) -> bool {
+    fn explored(&self, _: PlayerId, _: i32, _: i32) -> bool {
         true
     }
-    fn visible(&self, _: usize, _: i32, _: i32) -> bool {
+    fn visible(&self, _: PlayerId, _: i32, _: i32) -> bool {
         false
     }
-    fn vision(&self, _: usize) -> [u64; 2] {
+    fn vision(&self, _: PlayerId) -> [u64; 2] {
         self.1
     }
     fn elevation(&self, _: i32, _: i32) -> Option<u8> {
@@ -233,7 +239,7 @@ impl PlaceMap for Fogged {
     fn shape(&self, _: i32, _: i32) -> Option<u8> {
         Some(0)
     }
-    fn allied(&self, a: usize, b: usize, _: bool) -> bool {
+    fn allied(&self, a: PlayerId, b: PlayerId, _: bool) -> bool {
         a == b
     }
     fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
@@ -259,13 +265,13 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
         master: 70,
         obstruction_type: 2,
         moving: false,
-        player: 2,
+        player: PlayerId::new(2),
         state: 2,
         fog_mask: Some((1 << 1) | (1 << 33)),
         ..sheep(2)
     };
     let site = BuildSite {
-        player: 1,
+        player: PlayerId::new(1),
         human: true,
         radius: [1.0, 1.0],
         tall: false,
@@ -294,7 +300,7 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
     assert_eq!(
         test(
             Near {
-                player: 1,
+                player: PlayerId::new(1),
                 ..unmasked
             },
             [0, 0]
@@ -312,13 +318,13 @@ impl PlaceMap for Flat {
     fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
         Ok(0)
     }
-    fn explored(&self, _: usize, _: i32, _: i32) -> bool {
+    fn explored(&self, _: PlayerId, _: i32, _: i32) -> bool {
         true
     }
-    fn visible(&self, _: usize, _: i32, _: i32) -> bool {
+    fn visible(&self, _: PlayerId, _: i32, _: i32) -> bool {
         true
     }
-    fn vision(&self, _: usize) -> [u64; 2] {
+    fn vision(&self, _: PlayerId) -> [u64; 2] {
         [0; 2]
     }
     fn elevation(&self, _: i32, _: i32) -> Option<u8> {
@@ -327,7 +333,7 @@ impl PlaceMap for Flat {
     fn shape(&self, _: i32, _: i32) -> Option<u8> {
         Some(0)
     }
-    fn allied(&self, a: usize, b: usize, _: bool) -> bool {
+    fn allied(&self, a: PlayerId, b: PlayerId, _: bool) -> bool {
         a == b
     }
     fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
@@ -343,7 +349,7 @@ impl PlaceMap for Flat {
 #[test]
 fn the_sheep_blocks_the_villager_where_their_boxes_overlap() {
     let villager = Placing {
-        player: 1,
+        player: PlayerId::new(1),
         radius: [0.2, 0.2],
         tall: true,
         class: class::VILLAGER,
@@ -363,7 +369,7 @@ fn the_sheep_blocks_the_villager_where_their_boxes_overlap() {
 #[test]
 fn the_first_object_of_a_tile_s_list_reports_the_block() {
     let villager = Placing {
-        player: 1,
+        player: PlayerId::new(1),
         radius: [0.2, 0.2],
         tall: true,
         class: class::VILLAGER,
@@ -425,7 +431,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     };
     let mut t = world();
     let before = t.players[1].objects.len();
-    t.spawn(1, 2, 83, 1.0).unwrap();
+    t.spawn(PlayerId::new(1), 2, 83, 1.0).unwrap();
     let p = &t.players[1];
     assert_eq!(p.objects.len(), before + 1);
     let made = p.objects.last().unwrap();
@@ -462,7 +468,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         .unwrap()
         .building_orders
         .push(order);
-    t.spawn(1, 2, 83, 1.0).unwrap();
+    t.spawn(PlayerId::new(1), 2, 83, 1.0).unwrap();
     let made = t.players[1].objects.last().unwrap();
     let queued = made
         .ai
@@ -478,12 +484,12 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     );
     let mut t = world();
     t.players[1].computer = true;
-    assert!(t.spawn(1, 2, 83, 1.0).is_err());
+    assert!(t.spawn(PlayerId::new(1), 2, 83, 1.0).is_err());
     let mut t = world();
     t.spatial.sight = None;
-    assert!(t.spawn(1, 2, 83, 1.0).is_err());
+    assert!(t.spawn(PlayerId::new(1), 2, 83, 1.0).is_err());
     let mut t = world();
-    assert!(t.spawn(1, 2, 59, 1.0).is_err());
+    assert!(t.spawn(PlayerId::new(1), 2, 59, 1.0).is_err());
 }
 
 /// `FUN_140ace9c0` sends the new unit to its building's gather point only for a state of 1
@@ -523,7 +529,7 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
             target: -1,
             target_master: -1,
         });
-        t.spawn(1, 2, 83, 1.0).unwrap();
+        t.spawn(PlayerId::new(1), 2, 83, 1.0).unwrap();
         t.players[1]
             .objects
             .last()
@@ -643,7 +649,8 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
         let u = &mut t.players[1].objects[0];
         u.town_bell.flag = true;
         u.ai.as_mut().unwrap().orders.push(queued_move());
-        t.gather_move(1, 0, [40.0, 80.0, 0.0], notified).unwrap();
+        t.gather_move(PlayerId::new(1), 0, [40.0, 80.0, 0.0], notified)
+            .unwrap();
         t.players[1].objects.swap_remove(0).unwrap()
     };
     let u = walked(true);
@@ -688,16 +695,18 @@ fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
         .unwrap()
         .stats
         .speed = 0.0;
-    t.gather_move(1, 0, [40.0, 80.0, 0.0], true).unwrap();
+    t.gather_move(PlayerId::new(1), 0, [40.0, 80.0, 0.0], true)
+        .unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(u.body.mover().unwrap().waiting, 1);
     assert_eq!(u.actions.move_to().copied(), None);
     assert_eq!(u.ai.as_ref().unwrap().current_order, None);
     // a second walk finds the first's `MoveTo`
     let mut t = crate::world::tests::forage_world();
-    t.gather_move(1, 0, [40.0, 80.0, 0.0], true).unwrap();
+    t.gather_move(PlayerId::new(1), 0, [40.0, 80.0, 0.0], true)
+        .unwrap();
     let reason = |t: &mut World| {
-        t.gather_move(1, 0, [41.0, 80.0, 0.0], true)
+        t.gather_move(PlayerId::new(1), 0, [41.0, 80.0, 0.0], true)
             .unwrap_err()
             .reason()
     };
@@ -770,7 +779,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
     let food = t.players[1].attributes[4];
     let i = t
         .plain_object(
-            1,
+            PlayerId::new(1),
             800,
             &made(&t, 800),
             [30.5, 85.5, 0.0],
@@ -786,7 +795,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
     assert_eq!(t.players[1].attributes[4], food + 1.0);
     let i = t
         .plain_object(
-            1,
+            PlayerId::new(1),
             801,
             &made(&t, 801),
             [31.5, 85.5, 0.0],
@@ -806,7 +815,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
         let mut t = remains_world();
         let mut m = made(&t, 801);
         change(&mut m);
-        t.plain_object(1, m.id, &m, [31.5, 85.5, 0.0], facing)
+        t.plain_object(PlayerId::new(1), m.id, &m, [31.5, 85.5, 0.0], facing)
             .unwrap_err()
             .reason()
     };
@@ -849,13 +858,13 @@ impl PlaceMap for Dark {
     fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
         Ok(0)
     }
-    fn explored(&self, _: usize, _: i32, _: i32) -> bool {
+    fn explored(&self, _: PlayerId, _: i32, _: i32) -> bool {
         false
     }
-    fn visible(&self, _: usize, _: i32, _: i32) -> bool {
+    fn visible(&self, _: PlayerId, _: i32, _: i32) -> bool {
         false
     }
-    fn vision(&self, _: usize) -> [u64; 2] {
+    fn vision(&self, _: PlayerId) -> [u64; 2] {
         [0; 2]
     }
     fn elevation(&self, _: i32, _: i32) -> Option<u8> {
@@ -864,7 +873,7 @@ impl PlaceMap for Dark {
     fn shape(&self, _: i32, _: i32) -> Option<u8> {
         Some(0)
     }
-    fn allied(&self, a: usize, b: usize, _: bool) -> bool {
+    fn allied(&self, a: PlayerId, b: PlayerId, _: bool) -> bool {
         a == b
     }
     fn objects(&self, _: i32, _: i32) -> Result<Vec<Near>, GenieError> {
@@ -876,7 +885,7 @@ impl PlaceMap for Dark {
 /// rates; `human` or not.
 const fn house_site(restriction: &[f32], human: bool) -> BuildSite<'_> {
     BuildSite {
-        player: 1,
+        player: PlayerId::new(1),
         human,
         radius: [1.0, 1.0],
         tall: false,
@@ -946,14 +955,28 @@ fn build_s_scan_counts_what_the_player_sees_of_a_tile() {
         ..sheep(2)
     };
     let sees = |map: &dyn PlaceMap, o: Near, sight| build_sees(&site, map, &o, sight);
-    assert_eq!(sees(&flat, o(2, 0), (true, true)), Ok(true));
-    assert_eq!(sees(&flat, o(2, 3), (true, true)), Ok(false));
-    assert_eq!(sees(&fogged, o(2, 1), (true, false)), Ok(true));
-    assert_eq!(sees(&fogged, o(2, 0), (true, false)), Ok(false));
-    assert_eq!(sees(&fogged, o(1, 0), (true, false)), Ok(true));
-    assert_eq!(sees(&Dark, o(2, 0), (false, false)), Ok(true));
+    assert_eq!(sees(&flat, o(PlayerId::new(2), 0), (true, true)), Ok(true));
+    assert_eq!(sees(&flat, o(PlayerId::new(2), 3), (true, true)), Ok(false));
     assert_eq!(
-        sees(&fogged, o(2, 3), (true, false)).unwrap_err().reason(),
+        sees(&fogged, o(PlayerId::new(2), 1), (true, false)),
+        Ok(true)
+    );
+    assert_eq!(
+        sees(&fogged, o(PlayerId::new(2), 0), (true, false)),
+        Ok(false)
+    );
+    assert_eq!(
+        sees(&fogged, o(PlayerId::new(1), 0), (true, false)),
+        Ok(true)
+    );
+    assert_eq!(
+        sees(&Dark, o(PlayerId::new(2), 0), (false, false)),
+        Ok(true)
+    );
+    assert_eq!(
+        sees(&fogged, o(PlayerId::new(2), 3), (true, false))
+            .unwrap_err()
+            .reason(),
         "a fogged object of fog visibility 3 near a BUILD"
     );
 }
@@ -970,7 +993,7 @@ fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() 
         kind: 80,
         class: class::BUILDING,
         moving: false,
-        player: 2,
+        player: PlayerId::new(2),
         state: 2,
         ..sheep(2)
     };
@@ -1000,14 +1023,14 @@ fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() 
     };
     let own_wall = Near {
         class: class::WALL,
-        player: 1,
+        player: PlayerId::new(1),
         ..house
     };
     assert!(ignores(&gate, own_wall));
     assert!(!ignores(
         &gate,
         Near {
-            player: 2,
+            player: PlayerId::new(2),
             ..own_wall
         }
     ));
@@ -1036,18 +1059,18 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
         kind: 70,
         class: class::CLASS_6,
         moving: true,
-        player: 1,
+        player: PlayerId::new(1),
         state: 2,
         ..sheep(1)
     };
     let passes = |o: Near| build_passes(&site, &flat, &o);
     assert!(passes(walker));
     assert!(passes(Near {
-        player: 0,
+        player: PlayerId::new(0),
         ..walker
     }));
     assert!(!passes(Near {
-        player: 2,
+        player: PlayerId::new(2),
         ..walker
     }));
     assert!(!passes(Near {
@@ -1095,7 +1118,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         master: 70,
         obstruction_type: 2,
         moving: false,
-        player: 2,
+        player: PlayerId::new(2),
         state: 2,
         ..sheep(2)
     };
@@ -1105,7 +1128,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         Near { state: 3, ..house },
         Near {
             kind: 70,
-            player: 1,
+            player: PlayerId::new(1),
             moving: true,
             ..house
         },
@@ -1136,7 +1159,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
     };
     let wall = Near {
         class: class::WALL,
-        player: 1,
+        player: PlayerId::new(1),
         ..house
     };
     assert!(!blocks(&gate, wall));
@@ -1167,7 +1190,7 @@ fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
         kind: 80,
         class: class::BUILDING,
         moving: false,
-        player: 2,
+        player: PlayerId::new(2),
         state: 4,
         obstruction_type: 2,
         ..sheep(2)

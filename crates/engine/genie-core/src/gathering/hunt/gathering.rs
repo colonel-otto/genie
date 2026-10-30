@@ -16,6 +16,7 @@ use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::world::step::Step;
 
 impl HuntAction {
@@ -30,7 +31,7 @@ impl HuntAction {
         map: &Spatial,
         body: &mut Body,
         victim: &Victim,
-        player: usize,
+        player: PlayerId,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.tear_down(body.mover_mut())?;

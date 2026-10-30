@@ -280,7 +280,7 @@ impl World {
     /// (`FUN_1415417a0`, live or sleeping) that is the player's own, or any while players may
     /// order each other's units ([`crate::world::settings::Settings::cheats_enabled`]); −1 for
     /// the others.
-    pub(crate) fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
+    pub(crate) fn checked_units(&self, player: PlayerId, units: &[i32]) -> Vec<i32> {
         units
             .iter()
             .map(|&id| match self.place(id) {

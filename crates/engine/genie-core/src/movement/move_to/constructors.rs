@@ -10,6 +10,7 @@ use crate::movement::move_to::{
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::world::World;
 use std::collections::BTreeMap;
 
@@ -236,7 +237,7 @@ impl Unit {
     pub(crate) fn move_to_reads<'g>(
         &self,
         every: &[Masters],
-        player: usize,
+        player: PlayerId,
         graphics: &'g BTreeMap<i16, Graphic>,
     ) -> Result<MoveToReads<'g>, GenieError> {
         Ok(MoveToReads::of(self, self.master(every, player)?, graphics))

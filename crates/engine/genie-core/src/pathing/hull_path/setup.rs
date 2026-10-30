@@ -88,9 +88,7 @@ impl<'w> HullPather<'w> {
     /// across searches holds the same state.
     #[must_use]
     pub fn new(world: &'w mut Spatial, unit: i32, target: i32, mask: u8, radius: f32) -> Self {
-        let player = world
-            .get(unit)
-            .map_or(-1, |p| i32::try_from(p.player).unwrap_or(-1));
+        let player = world.get(unit).map_or(-1, |p| i32::from(p.player.get()));
         Self::for_list(world, &[unit, target], mask, radius, player)
     }
 

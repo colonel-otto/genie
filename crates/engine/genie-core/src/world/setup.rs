@@ -6,6 +6,7 @@ use crate::math::rng::Streams;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
 use crate::pathing::Pathing;
+use crate::players::PlayerId;
 use crate::world::player::Player;
 use crate::world::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, World};
 
@@ -13,7 +14,7 @@ impl World {
     /// The world's next object id (`FUN_14152fd70`) for a new object of `master` for `player`: it
     /// counts on, and the id goes to the trace ([`crate::trace::new_object`]).
     #[track_caller]
-    pub(crate) fn take_object_id(&mut self, player: usize, master: i16) -> ObjectId {
+    pub(crate) fn take_object_id(&mut self, player: PlayerId, master: i16) -> ObjectId {
         let id = self.next_object_id;
         self.next_object_id = id.successor();
         crate::trace::new_object(self.ticks, player, id.get(), master);
@@ -25,7 +26,7 @@ impl World {
     pub fn new(
         world_time: u32,
         frame_seed: u32,
-        player_turn: usize,
+        player_turn: PlayerId,
         player_time: Vec<u32>,
         players: Vec<Player>,
     ) -> Self {
@@ -63,7 +64,7 @@ impl World {
             dt: 0,
             history_period: HISTORY_PERIOD,
             allow_gaia_capture: Vec::new(),
-            local_player: 0,
+            local_player: PlayerId::new(0),
             tech_tree: crate::players::world_player::TechTree::default(),
             alliance_locked: 0,
             teams: [1; 8],
@@ -102,7 +103,7 @@ impl World {
     pub fn build_mesh(&mut self) {
         let width = u32::try_from(self.spatial.map[0]).unwrap_or(0);
         self.pathing.start_mesh(width);
-        for (q, p) in self.players.iter().enumerate() {
+        for (q, p) in PlayerId::each(self.players.len()).zip(&self.players) {
             for u in p.objects.iter().chain(&p.sleeping) {
                 if u.life.inside.is_some() || 7 <= u.life.state {
                     continue;

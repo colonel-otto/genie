@@ -7,6 +7,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
+use crate::players::PlayerId;
 
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -28,7 +29,7 @@ impl World {
     /// [`UnitAi::notify_work`]: crate::unit_ai::UnitAi::notify_work
     pub(crate) fn gather_move(
         &mut self,
-        p: usize,
+        p: PlayerId,
         new: usize,
         point: [f32; 3],
         notified: bool,
@@ -44,8 +45,8 @@ impl World {
             // The gate class, whose own walls BUILD's placement scan passes over (`FUN_14123aee0`).
             // The relic's master, which always stays (`FUN_141194e80`).
             // The villager class, whose new units count in attribute 248.
-            self.players[p].objects[new].master(&self.masters, p)?.class == class::VILLAGER;
-        let unit = &mut self.players[p].objects[new];
+            self.players[p.index()].objects[new].master(&self.masters, p)?.class == class::VILLAGER;
+        let unit = &mut self.players[p.index()].objects[new];
         if let Some(m) = unit.body.mover_mut() {
             m.waiting = 1;
         }
@@ -111,7 +112,7 @@ impl World {
     /// over Gaia's sleeping objects (`+0x38`). None found: the unit moves to the point.
     pub(super) fn lost_gather_target(
         &self,
-        p: usize,
+        p: PlayerId,
         new: usize,
         g: GatherPoint,
     ) -> Result<Option<i32>, GenieError> {
@@ -120,7 +121,7 @@ impl World {
             .first()
             .and_then(|m| m.get(g.target_master))
             .map(|m| m.class);
-        let los = self.players[p].objects[new]
+        let los = self.players[p.index()].objects[new]
             .master(&self.masters, p)?
             .line_of_sight;
         let [x, y, _] = g.point;
@@ -131,7 +132,7 @@ impl World {
         let closest = |list: &[Unit]| -> Result<Option<i32>, GenieError> {
             let mut best: Option<(&Unit, f32)> = None;
             for u in list {
-                if Some(u.master(&self.masters, 0)?.class) != class {
+                if Some(u.master(&self.masters, PlayerId::GAIA)?.class) != class {
                     continue;
                 }
                 let (dx, dy) = (x - u.position()[0], y - u.position()[1]);
@@ -143,7 +144,7 @@ impl World {
             let Some((u, _)) = best else {
                 return Ok(None);
             };
-            let [rx, ry] = u.master(&self.masters, 0)?.radius;
+            let [rx, ry] = u.master(&self.masters, PlayerId::GAIA)?.radius;
             let gap = |d: f32, r: f32| {
                 let g = d.abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
@@ -176,7 +177,7 @@ impl World {
     /// fewer than 10 or fewer than its capacity.
     pub(crate) fn gather(
         &mut self,
-        p: usize,
+        p: PlayerId,
         new: usize,
         g: GatherPoint,
         building: i32,
@@ -212,7 +213,7 @@ impl World {
             "unreachable: a gather point's target found",
         ))?;
         let on_building = t.master(&self.masters, owner)?.kind == BUILDING;
-        if let Some(m) = self.players[p].objects[new].body.mover_mut() {
+        if let Some(m) = self.players[p.index()].objects[new].body.mover_mut() {
             m.waiting = 1;
         }
         let garrison = finder

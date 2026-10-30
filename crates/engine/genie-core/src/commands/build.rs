@@ -53,11 +53,11 @@ impl BuildCommand {
         let Some(listed) = w.read_units(self.player, &self.builders) else {
             return Ok(());
         };
-        let player = self.player.index();
+        let player = self.player;
         let Some(builders) = w.command_check(player, &ObjectId::fields(listed))? else {
             return Ok(());
         };
-        if self.q_id != -1 && !w.players[player].computer {
+        if self.q_id != -1 && !w.players[player.index()].computer {
             return Ok(());
         }
         let [x, y] = self.position.xy();
@@ -70,7 +70,7 @@ impl BuildCommand {
             return Ok(());
         }
         let (id, position) = w.found(player, master, [x, y, 0.0])?;
-        let sprite_override = self.sprite_override_of(w.players[player].civ);
+        let sprite_override = self.sprite_override_of(w.players[player.index()].civ);
         if let Some((_, u)) = w.object_mut(id) {
             if let Some(c) = u.construction.as_mut() {
                 c.sprite_override = sprite_override != -1;

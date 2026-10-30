@@ -295,7 +295,7 @@ impl UnitSide for HelpSide {
         Ok(self.holds.then_some(UnitSeen {
             id,
             class: class::CLASS_35,
-            owner: 0,
+            owner: PlayerId::new(0),
             combat_level: 0,
             state: 4,
             target: None,
@@ -345,7 +345,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
         tasks: &tasks,
     };
     let knight = Convertee {
-        owner: 2,
+        owner: PlayerId::new(2),
         class: class::CLASS_12,
         master: 38,
         hero: 0,
@@ -358,7 +358,10 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
     assert!(!can_convert(&tired, Some(&knight), false));
     assert!(can_convert(&tired, Some(&knight), true));
     assert!(!can_convert(&monk, None, true));
-    let gaia = Convertee { owner: 0, ..knight };
+    let gaia = Convertee {
+        owner: PlayerId::new(0),
+        ..knight
+    };
     assert!(!can_convert(&monk, Some(&gaia), true));
     let sheep = Convertee {
         class: class::LIVESTOCK,
@@ -1690,7 +1693,7 @@ fn an_idle_lion_attacks_what_it_finds_within_its_reach() {
             seen: UnitSeen {
                 id: found[0].max(found[1]),
                 class: class::VILLAGER,
-                owner: 1,
+                owner: PlayerId::new(1),
                 state: 2,
                 gap_squared,
                 ..UnitSeen::default()
@@ -1897,7 +1900,7 @@ fn hit_villager() -> (UnitAi, Surroundings, Notify) {
         position: [10.0, 10.0, 0.0],
         speed: 1.0,
         class: Some(class::VILLAGER),
-        player: 1,
+        player: PlayerId::new(1),
         state: 2,
         map: [100, 100],
         anim_speed: Some(1.0),
@@ -2042,7 +2045,7 @@ fn a_villager_s_invalidated_action_off_its_searches_stops_it() {
 fn an_invalidated_action_of_the_order_or_an_attack_stops_the_unit() {
     let at = Surroundings {
         id: 20,
-        player: 1,
+        player: PlayerId::new(1),
         kind: 70,
         state: 2,
         ..Surroundings::default()
@@ -2143,7 +2146,7 @@ fn a_completed_action_of_the_order_or_an_attack_stops_the_unit() {
     let at = Surroundings {
         id: 20,
         position: [12.0, 13.0, 0.0],
-        player: 1,
+        player: PlayerId::new(1),
         kind: 70,
         state: 2,
         ..Surroundings::default()
@@ -2227,7 +2230,7 @@ fn a_completed_action_of_the_order_or_an_attack_stops_the_unit() {
 fn the_base_handler_takes_each_kind_it_models() {
     let at = Surroundings {
         id: 20,
-        player: 1,
+        player: PlayerId::new(1),
         kind: 70,
         speed: 1.0,
         state: 2,
@@ -2444,7 +2447,7 @@ fn ward(gap_squared: f32) -> UnitSeen {
     UnitSeen {
         id: 20,
         class: class::CLASS_6,
-        owner: 1,
+        owner: PlayerId::new(1),
         state: 2,
         position: [11.0, 10.0, 0.0],
         gap_squared,
@@ -2498,7 +2501,10 @@ fn a_defend_order_ends_with_its_ward_gone_foreign_or_dead() {
         );
         assert!(fx.contains(&Effect::Stop), "{fx:?}");
     }
-    let gaia = UnitSeen { owner: 0, ..dead };
+    let gaia = UnitSeen {
+        owner: PlayerId::new(0),
+        ..dead
+    };
     let mut u = guarding(20);
     let mut side = DamageSide {
         units: vec![gaia],
@@ -2618,7 +2624,7 @@ fn foe(id: i32, class: ClassId) -> UnitSeen {
     UnitSeen {
         id,
         class,
-        owner: 2,
+        owner: PlayerId::new(2),
         state: 2,
         position: [12.0, 10.0, 0.0],
         hp: 30.0,
@@ -2631,7 +2637,7 @@ fn foe(id: i32, class: ClassId) -> UnitSeen {
 fn soldier_at() -> Surroundings {
     Surroundings {
         id: 1,
-        player: 1,
+        player: PlayerId::new(1),
         kind: 70,
         class: Some(class::CLASS_6),
         speed: 1.0,
@@ -3115,7 +3121,7 @@ fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
             ..idle(13)
         };
         let at = Surroundings {
-            player: 1,
+            player: PlayerId::new(1),
             kind: 70,
             master: 448,
             class: Some(class::CLASS_47),
@@ -3173,7 +3179,7 @@ fn a_patrol_s_kill_ends_the_patrol_order_with_its_timers() {
         ..idle(13)
     };
     let at = Surroundings {
-        player: 1,
+        player: PlayerId::new(1),
         kind: 70,
         action_state: Some(0),
         ..Surroundings::default()
@@ -3211,7 +3217,7 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
         stance,
         ..idle(13)
     };
-    let sheep = Some((1, class::LIVESTOCK));
+    let sheep = Some((PlayerId::new(1), class::LIVESTOCK));
     assert_eq!(
         scout(2).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
         Ok(None)
@@ -3229,7 +3235,13 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
     );
     // a building target is searched past even while attacking
     assert_eq!(
-        scout(0).retarget_outcome(Some((1, class::BUILDING)), 0.0, true, Some(6), Some(true)),
+        scout(0).retarget_outcome(
+            Some((PlayerId::new(1), class::BUILDING)),
+            0.0,
+            true,
+            Some(6),
+            Some(true)
+        ),
         Ok(Some(RetargetSearch {
             building: true,
             work_state: true
@@ -3245,13 +3257,25 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
         ..idle(2)
     };
     assert_eq!(
-        entering.retarget_outcome(Some((8, class::BUILDING)), 0.0, false, Some(4), Some(false)),
+        entering.retarget_outcome(
+            Some((PlayerId::new(8), class::BUILDING)),
+            0.0,
+            false,
+            Some(4),
+            Some(false)
+        ),
         Ok(None)
     );
     // an action list the slice does not hold stops at the state's test
     assert!(
         entering
-            .retarget_outcome(Some((8, class::BUILDING)), 0.0, false, None, None)
+            .retarget_outcome(
+                Some((PlayerId::new(8), class::BUILDING)),
+                0.0,
+                false,
+                None,
+                None
+            )
             .is_err()
     );
 }
@@ -3277,7 +3301,7 @@ fn a_hunter_hit_by_its_boar_ignores_the_damage() {
         ..idle(8)
     };
     let boar = UnitSeen {
-        owner: 0,
+        owner: PlayerId::new(0),
         ..attacker(9731, class::PREDATOR, 0.5)
     };
     let at = Surroundings {
@@ -3317,7 +3341,7 @@ fn a_hunter_hit_by_its_boar_ignores_the_damage() {
     );
     // another player's attacker that is not its target would make it call for help
     let enemy = UnitSeen {
-        owner: 1,
+        owner: PlayerId::new(1),
         ..attacker(9800, class::VILLAGER, 1.0)
     };
     let at = Surroundings {
@@ -3431,7 +3455,7 @@ fn a_builder_s_idle_timer_stays_0_and_its_look_around_is_redrawn() {
     let at = Surroundings {
         position: [29.5, 89.5, 0.0],
         busy: true,
-        player: 2,
+        player: PlayerId::new(2),
         class: Some(class::VILLAGER),
         ..Surroundings::default()
     };
@@ -3868,13 +3892,13 @@ fn a_new_artifact_unit_ai_draws_four_timers() {
 /// under-attack value.
 struct ArtifactSide {
     found: Found,
-    owner: Option<usize>,
+    owner: Option<PlayerId>,
     searches: Vec<(f32, Vec<i32>, bool)>,
     under_attack: bool,
 }
 
 impl ArtifactSide {
-    fn finding(id: i32, players: u32, owner: Option<usize>) -> Self {
+    fn finding(id: i32, players: u32, owner: Option<PlayerId>) -> Self {
         Self {
             found: Found {
                 id,
@@ -4074,7 +4098,7 @@ fn rock_church() -> (UnitAi, Surroundings) {
         size: [2.0, 2.0],
         los: 5.0,
         search_radius: 5.0,
-        player: 0,
+        player: PlayerId::new(0),
         state: 2,
         class: Some(class::ARTIFACT),
         kind: 80,
@@ -4091,17 +4115,17 @@ fn rock_church() -> (UnitAi, Surroundings) {
 #[test]
 fn the_artifact_goes_to_the_owner_of_the_closest_object_one_player_sees() {
     let (mut ai, at) = rock_church();
-    let mut side = ArtifactSide::finding(500, 1, Some(2));
+    let mut side = ArtifactSide::finding(500, 1, Some(PlayerId::new(2)));
     let mut fx = Vec::new();
     let took = ai.process_idle(&at, false, &mut rng(), &mut With::new(&mut side, &mut fx));
     assert_eq!(took, Ok(true));
-    assert_eq!(fx, [Effect::ChangeOwner(2)]);
+    assert_eq!(fx, [Effect::ChangeOwner(PlayerId::new(2))]);
     assert_eq!(side.searches, [(6.0, ARTIFACT_CARED.to_vec(), false)]);
     for (players, id, owner) in [
-        (2, 500, Some(2)),
-        (1, -1, Some(2)),
+        (2, 500, Some(PlayerId::new(2))),
+        (1, -1, Some(PlayerId::new(2))),
         (1, 500, None),
-        (0, 500, Some(0)),
+        (0, 500, Some(PlayerId::new(0))),
     ] {
         let mut side = ArtifactSide::finding(id, players, owner);
         let mut fx = Vec::new();
@@ -4127,11 +4151,11 @@ fn the_artifact_goes_to_the_owner_of_the_closest_object_one_player_sees() {
 fn the_artifact_s_update_hands_it_over_then_stops() {
     let (mut ai, at) = rock_church();
     ai.idle_timer = 900;
-    let mut side = ArtifactSide::finding(500, 1, Some(3));
+    let mut side = ArtifactSide::finding(500, 1, Some(PlayerId::new(3)));
     let fx = ai
         .update_fx(100, 5000, false, &at, &mut rng(), &mut side)
         .unwrap();
-    assert_eq!(fx, [Effect::ChangeOwner(3), Effect::Stop]);
+    assert_eq!(fx, [Effect::ChangeOwner(PlayerId::new(3)), Effect::Stop]);
     assert_eq!((ai.current_target, ai.idle_timer), (-1, 0));
     // nobody near: nothing, the idle timer runs
     let (mut ai, at) = rock_church();
@@ -5043,7 +5067,7 @@ fn scout_at(interruptible: bool, busy: bool) -> Surroundings {
     Surroundings {
         position: [93.5, 58.25, 0.0],
         busy,
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::CLASS_12),
         interruptible,
         ..Surroundings::default()
@@ -5531,12 +5555,12 @@ fn a_making_building_runs_process_idle_only_without_a_target() {
 fn a_unit_ai_with_a_target_runs_its_update_on_any_order() {
     let at = Surroundings {
         busy: true,
-        player: 1,
+        player: PlayerId::new(1),
         state: 2,
         target: Some(Seen {
             state: 2,
             kind: 70,
-            owner: 2,
+            owner: PlayerId::new(2),
             class: class::VILLAGER,
             ..Seen::default()
         }),
@@ -5859,7 +5883,7 @@ fn idle_scout() -> (UnitAi, Surroundings) {
     };
     let at = Surroundings {
         position: [21.947_916, 92.489_586, 0.0],
-        player: 2,
+        player: PlayerId::new(2),
         class: Some(class::CLASS_12),
         size: [0.2, 0.2],
         los: 4.0,
@@ -5938,7 +5962,7 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
 fn a_gaia_soldier_that_takes_owners_by_sight_does_not_search() {
     let (mut u, at) = idle_scout();
     let gaia = Surroundings {
-        player: 0,
+        player: PlayerId::new(0),
         capture: 1,
         ..at
     };
@@ -5951,7 +5975,7 @@ fn a_gaia_soldier_that_takes_owners_by_sight_does_not_search() {
 /// Player 2's town centre 9156 in MarvinBlue/426048731's update 1506.
 const TC: Attacker = Attacker {
     ai_type: 15,
-    player: 2,
+    player: PlayerId::new(2),
     computer: false,
     state: 2,
     held: -1,
@@ -5977,7 +6001,7 @@ const TC: Attacker = Attacker {
 
 /// Gaia's boar 9731 (master 48, class 10).
 const BOAR: Target = Target {
-    owner: 0,
+    owner: PlayerId::new(0),
     class: class::PREDATOR,
     kind: 70,
     master: 48,
@@ -6069,7 +6093,14 @@ fn a_tower_passes_a_boar_but_not_a_wolf() {
     // Gaia's tower attacks nothing; a Gaia object outside classes 9 and 10 that takes owners
     // by sight neither
     assert_eq!(
-        can_attack(&Attacker { player: 0, ..TC }, &IDLE, &wolf),
+        can_attack(
+            &Attacker {
+                player: PlayerId::new(0),
+                ..TC
+            },
+            &IDLE,
+            &wolf
+        ),
         Ok(false)
     );
     let sheep = Target {
@@ -6093,7 +6124,7 @@ fn a_tower_passes_a_boar_but_not_a_wolf() {
     // a tower without a missile is armed only by the firepower of the units inside it
     let bare = Attacker { missile: -1, ..TC };
     let enemy = Target {
-        owner: 1,
+        owner: PlayerId::new(1),
         class: class::CLASS_6,
         ..BOAR
     };
@@ -6109,7 +6140,7 @@ fn a_tower_passes_a_boar_but_not_a_wolf() {
 /// as records/425906646's 27272 at update 4268.
 const SCOUT: Attacker = Attacker {
     ai_type: 13,
-    player: 1,
+    player: PlayerId::new(1),
     kind: 70,
     class: Some(class::CLASS_47),
     master: 448,
@@ -6130,7 +6161,7 @@ const STAND_GROUND: Seeker = Seeker {
 #[test]
 fn a_soldier_standing_its_ground_attacks_within_its_range_of_its_state_position() {
     let villager = |x: f32| Target {
-        owner: 2,
+        owner: PlayerId::new(2),
         class: class::VILLAGER,
         master: 83,
         position: [x, 183.5, 0.0],
@@ -6183,7 +6214,7 @@ fn an_idle_tower_searches_with_its_classes() {
     };
     let at = Surroundings {
         position: [29.0, 94.0, 0.0],
-        player: 2,
+        player: PlayerId::new(2),
         size: [2.0, 2.0],
         los: 8.0,
         search_radius: 0.0,
@@ -6286,7 +6317,7 @@ fn a_unit_takes_orders_by_its_0x99_task_and_with_task_only_needs_it() {
 #[test]
 fn a_tower_attacks_a_started_building_but_not_a_desolid_foundation() {
     let house = Target {
-        owner: 1,
+        owner: PlayerId::new(1),
         class: class::BUILDING,
         kind: 80,
         master: 70,
@@ -6299,7 +6330,7 @@ fn a_tower_attacks_a_started_building_but_not_a_desolid_foundation() {
     };
     assert_eq!(tower_can_attack(&TC, &foundation), Ok(false));
     let unit = Target {
-        owner: 1,
+        owner: PlayerId::new(1),
         class: class::CLASS_6,
         desolid: true,
         ..BOAR
@@ -6627,7 +6658,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
     };
     let at = |group| Surroundings {
         position: [3.0, 4.0, 0.0],
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::TRANSPORT),
         group,
         ..Surroundings::default()
@@ -6689,7 +6720,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
     let seen = Seen {
         state: 2,
         kind: 70,
-        owner: 2,
+        owner: PlayerId::new(2),
         class: class::CLASS_6,
         position: [5.0, 5.0, 0.0],
         radius: [0.2, 0.2],
@@ -6759,7 +6790,7 @@ fn an_idle_transport_ship_s_check_caps_its_human_order_time_and_does_nothing() {
         ..idle(11)
     };
     let at = Surroundings {
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::TRANSPORT),
         ..Surroundings::default()
     };
@@ -6851,7 +6882,7 @@ fn a_wolf_whose_attack_target_died_attacks_the_next_villager() {
         seen: UnitSeen {
             id: 700,
             class: class::VILLAGER,
-            owner: 1,
+            owner: PlayerId::new(1),
             state: 2,
             gap_squared: 1.0,
             ..UnitSeen::default()
@@ -6881,7 +6912,7 @@ fn a_no_attack_tower_only_searches() {
     };
     let at = Surroundings {
         position: [29.0, 94.0, 0.0],
-        player: 2,
+        player: PlayerId::new(2),
         size: [2.0, 2.0],
         los: 8.0,
         state: 2,
@@ -6920,7 +6951,7 @@ fn an_idle_tower_attacks_what_its_search_found() {
     };
     let at = Surroundings {
         position: [29.0, 94.0, 0.0],
-        player: 2,
+        player: PlayerId::new(2),
         size: [2.0, 2.0],
         los: 8.0,
         state: 2,
@@ -6952,7 +6983,7 @@ fn an_idle_tower_attacks_what_its_search_found() {
 fn a_human_player_s_king_s_idle_check_only_caps() {
     let at = Surroundings {
         position: [31.5, 106.5, 0.0],
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::KING),
         master: 434,
         ..Surroundings::default()
@@ -7211,7 +7242,7 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
         units: vec![UnitSeen {
             id: 700,
             class: class::VILLAGER,
-            owner: 1,
+            owner: PlayerId::new(1),
             state: 2,
             position: [x, 10.0, 0.0],
             ..UnitSeen::default()
@@ -7714,13 +7745,13 @@ fn a_human_player_s_king_runs_from_its_attacker() {
         position: [20.0, 30.0, 0.0],
         speed: 1.0,
         map: [64, 64],
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::KING),
         state: 2,
         units: vec![UnitSeen {
             id: 77,
             class: class::CLASS_6,
-            owner: 2,
+            owner: PlayerId::new(2),
             state: 2,
             target: Some(500),
             position: [22.0, 30.0, 0.0],
@@ -7779,7 +7810,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
     let seen = |id, class, x| UnitSeen {
         id,
         class,
-        owner: 2,
+        owner: PlayerId::new(2),
         state: 2,
         target: Some(500),
         position: [x, 30.0, 0.0],
@@ -7790,7 +7821,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         position: [20.0, 30.0, 0.0],
         speed: 1.0,
         map: [64, 64],
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::CLASS_6),
         state: 2,
         units: vec![
@@ -7834,7 +7865,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         };
         assert_eq!(run(&mut u, &at, true, false), (Ok(false), vec![]));
         let gaia = Surroundings {
-            player: 0,
+            player: PlayerId::new(0),
             ..at.clone()
         };
         let mut u = UnitAi {
@@ -8020,7 +8051,7 @@ fn patroller(secondary: u32) -> (UnitAi, Surroundings) {
     };
     let at = Surroundings {
         position: [20.0, 20.0, 0.0],
-        player: 1,
+        player: PlayerId::new(1),
         kind: 70,
         state: 2,
         size: [0.2, 0.2],
@@ -8462,9 +8493,9 @@ fn the_rest_after_an_order_that_gave_an_action_reads_it() {
     u.current_action = Some(ActionKind::Attack);
     u.current_target = 77;
     let at = Surroundings {
-        player: 1,
+        player: PlayerId::new(1),
         target: Some(Seen {
-            owner: 2,
+            owner: PlayerId::new(2),
             class: class::CLASS_6,
             ..Seen::default()
         }),
@@ -8507,7 +8538,7 @@ fn the_rest_after_an_order_that_gave_no_action_runs_the_idle_check() {
     let mut u = ordered(CIVILIAN);
     u.orders.clear();
     let at = Surroundings {
-        player: 1,
+        player: PlayerId::new(1),
         ..Surroundings::default()
     };
     let mut r = rng();
@@ -8557,13 +8588,13 @@ fn attacked_transport() -> (UnitAi, Surroundings) {
         position: [20.0, 30.0, 0.0],
         speed: 1.0,
         map: [64, 64],
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::TRANSPORT),
         state: 2,
         units: vec![UnitSeen {
             id: 77,
             class: class::WARSHIP,
-            owner: 2,
+            owner: PlayerId::new(2),
             state: 2,
             target: Some(500),
             position: [22.0, 30.0, 0.0],
@@ -8925,7 +8956,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
         speed: 1.0,
         map: [64, 64],
         los: 4.0,
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::FISHING_SHIP),
         ..Surroundings::default()
     };
@@ -9137,7 +9168,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
         id: 500,
         position: [20.0, 30.0, 0.0],
         los: 4.0,
-        player: 1,
+        player: PlayerId::new(1),
         state: 2,
         ..Surroundings::default()
     };
@@ -9233,7 +9264,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
 /// state position.
 const MANGONEL: Attacker = Attacker {
     ai_type: SIEGE_AI,
-    player: 1,
+    player: PlayerId::new(1),
     kind: 70,
     class: Some(class::SIEGE),
     master: 280,
@@ -9295,7 +9326,7 @@ fn an_attacker_spares_by_its_priority_and_its_blast() {
 #[test]
 fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     let villager = |x: f32| Target {
-        owner: 2,
+        owner: PlayerId::new(2),
         class: class::VILLAGER,
         master: 83,
         position: [x, 20.0, 0.0],
@@ -9323,7 +9354,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     assert_eq!(check(&MANGONEL, &seeker(2), &villager(x - 0.01)), Ok(true));
     assert_eq!(check(&MANGONEL, &seeker(2), &villager(x + 0.01)), Ok(false));
     let gaia = Target {
-        owner: 0,
+        owner: PlayerId::new(0),
         ..villager(x + 1.4)
     };
     assert_eq!(check(&MANGONEL, &seeker(2), &gaia), Ok(true));
@@ -9337,7 +9368,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     assert!(check(&MANGONEL, &patrolling, &villager(30.0)).is_err());
     // Gaia's unit, a low state, a packed unit, a packing one
     let gaia_unit = Attacker {
-        player: 0,
+        player: PlayerId::new(0),
         capture: 1,
         ..MANGONEL
     };
@@ -9479,7 +9510,7 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
     let at = Surroundings {
         id: 500,
         position: [20.0, 20.0, 0.0],
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::SIEGE),
         kind: 70,
         los: 9.0,
@@ -9540,7 +9571,7 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
     assert!(matches!(fx.last(), Some(Effect::Move(_))));
     // Gaia's that does not take owners by sight
     let gaia = Surroundings {
-        player: 0,
+        player: PlayerId::new(0),
         capture: 1,
         ..at.clone()
     };
@@ -9564,7 +9595,7 @@ fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
     let at = Surroundings {
         id: 500,
         position: [20.0, 20.0, 0.0],
-        player: 1,
+        player: PlayerId::new(1),
         class: Some(class::SIEGE),
         kind: 70,
         weapon_range: 7.0,
@@ -9624,7 +9655,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
     let at = Surroundings {
         id: 500,
         weapon_range: 7.0,
-        player: 1,
+        player: PlayerId::new(1),
         ..Surroundings::default()
     };
     let mut u = idle(SIEGE_AI);
@@ -9709,7 +9740,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
 #[test]
 fn a_priest_retargets_but_on_an_order_on_a_target() {
     let at = Surroundings {
-        player: 1,
+        player: PlayerId::new(1),
         ..Surroundings::default()
     };
     let priest = |order| UnitAi {
@@ -9805,7 +9836,7 @@ impl UnitSide for TailSide {
 
 /// A target the tail lets be: a player's, targetable and attackable, outside a pasture.
 const PLAIN: TargetFlags = TargetFlags {
-    owner: 2,
+    owner: PlayerId::new(2),
     kind: 70,
     capture: 0,
     pasture: -1,
@@ -9823,7 +9854,7 @@ fn on_target(action: Option<ActionKind>) -> UnitAi {
     }
 }
 
-fn tail(u: &mut UnitAi, player: usize, flags: TargetFlags, fx: &mut Vec<Effect>) {
+fn tail(u: &mut UnitAi, player: PlayerId, flags: TargetFlags, fx: &mut Vec<Effect>) {
     let at = Surroundings {
         player,
         ..Surroundings::default()
@@ -9842,13 +9873,13 @@ fn the_tail_stops_a_gaia_unit_on_a_gaia_object_others_can_take_again() {
     // 0x140c68519: a Gaia unit, a Gaia target of type 70 or more, its +0x924 2: the target
     // goes (FUN_140c5e1e0) and the action stops (slot 0xb0 with 1)
     let again = TargetFlags {
-        owner: 0,
+        owner: PlayerId::new(0),
         capture: 2,
         ..PLAIN
     };
     let mut u = on_target(Some(ActionKind::Attack));
     let mut fx = Vec::new();
-    tail(&mut u, 0, again, &mut fx);
+    tail(&mut u, PlayerId::new(0), again, &mut fx);
     assert_eq!(fx, [Effect::Stop]);
     assert_eq!((u.current_target, u.last_target), (-1, 500));
     assert_eq!(
@@ -9858,7 +9889,13 @@ fn the_tail_stops_a_gaia_unit_on_a_gaia_object_others_can_take_again() {
     // a player's unit, a player's target, another capture flag or a type below 70 stays
     for (player, flags) in [
         (1, again),
-        (0, TargetFlags { owner: 1, ..again }),
+        (
+            0,
+            TargetFlags {
+                owner: PlayerId::new(1),
+                ..again
+            },
+        ),
         (
             0,
             TargetFlags {
@@ -9870,7 +9907,7 @@ fn the_tail_stops_a_gaia_unit_on_a_gaia_object_others_can_take_again() {
     ] {
         let mut u = on_target(Some(ActionKind::Attack));
         let mut fx = Vec::new();
-        tail(&mut u, player, flags, &mut fx);
+        tail(&mut u, PlayerId::new(player), flags, &mut fx);
         assert_eq!(fx, Vec::<Effect>::new(), "{player} {flags:?}");
         assert_eq!(u.current_target, 500);
     }
@@ -9887,19 +9924,19 @@ fn the_tail_stops_work_on_a_target_without_its_targeting_flag() {
     for action in [Some(ActionKind::Gather), Some(ActionKind::Attack), None] {
         let mut u = on_target(action);
         let mut fx = Vec::new();
-        tail(&mut u, 1, untargetable, &mut fx);
+        tail(&mut u, PlayerId::new(1), untargetable, &mut fx);
         assert_eq!(fx, [Effect::Stop], "{action:?}");
         assert_eq!(u.current_target, -1);
     }
     let mut u = on_target(Some(ActionKind::Trade));
     let mut fx = Vec::new();
-    tail(&mut u, 1, untargetable, &mut fx);
+    tail(&mut u, PlayerId::new(1), untargetable, &mut fx);
     assert_eq!(fx, Vec::<Effect>::new());
     // one in a pasture stays
     let mut u = on_target(Some(ActionKind::Gather));
     tail(
         &mut u,
-        1,
+        PlayerId::new(1),
         TargetFlags {
             pasture: 77,
             ..untargetable
@@ -9913,22 +9950,22 @@ fn the_tail_stops_work_on_a_target_without_its_targeting_flag() {
         ..PLAIN
     };
     let mut u = on_target(Some(ActionKind::Gather));
-    tail(&mut u, 1, unattackable, &mut fx);
+    tail(&mut u, PlayerId::new(1), unattackable, &mut fx);
     assert_eq!(fx, Vec::<Effect>::new());
     let mut u = on_target(Some(ActionKind::Attack));
-    tail(&mut u, 1, unattackable, &mut fx);
+    tail(&mut u, PlayerId::new(1), unattackable, &mut fx);
     assert_eq!(fx, [Effect::Stop]);
     // both: the second test reads the action value the first stop left (−1), so an
     // untargetable target stops it again
     let both = TargetFlags {
-        owner: 0,
+        owner: PlayerId::new(0),
         capture: 2,
         untargetable: true,
         ..PLAIN
     };
     let mut u = on_target(Some(ActionKind::Attack));
     let mut fx = Vec::new();
-    tail(&mut u, 0, both, &mut fx);
+    tail(&mut u, PlayerId::new(0), both, &mut fx);
     assert_eq!(fx, [Effect::Stop, Effect::Stop]);
     assert_eq!((u.current_action, u.last_action), (None, None));
     let unattackable_again = TargetFlags {
@@ -9938,7 +9975,7 @@ fn the_tail_stops_work_on_a_target_without_its_targeting_flag() {
     };
     let mut u = on_target(Some(ActionKind::Attack));
     let mut fx = Vec::new();
-    tail(&mut u, 0, unattackable_again, &mut fx);
+    tail(&mut u, PlayerId::new(0), unattackable_again, &mut fx);
     assert_eq!(fx, [Effect::Stop]);
 }
 
@@ -9949,7 +9986,7 @@ fn the_tail_reads_the_top_target_the_update_s_commands_left() {
         ..PLAIN
     };
     let at = Surroundings {
-        player: 1,
+        player: PlayerId::new(1),
         ..Surroundings::default()
     };
     let mut side = TailSide {
@@ -10061,7 +10098,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
     let at = Surroundings {
         position: [14.0, 10.0, 0.0],
         weapon_range: 15.0,
-        player: 1,
+        player: PlayerId::new(1),
         ..Surroundings::default()
     };
     let standing = |action| UnitAi {
@@ -10205,7 +10242,7 @@ fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
         position: [14.0, y, 0.0],
         moved_at: [14.0, 0.0, y],
         weapon_range: 15.0,
-        player: 1,
+        player: PlayerId::new(1),
         ..Surroundings::default()
     };
     let unit = |stance| UnitAi {
@@ -10274,13 +10311,13 @@ fn a_busy_villager_on_the_attack_order_runs_its_full_update() {
     };
     let at = Surroundings {
         busy: true,
-        player: 3,
+        player: PlayerId::new(3),
         class: Some(class::VILLAGER),
         state: 2,
         target: Some(Seen {
             state: 2,
             kind: 70,
-            owner: 0,
+            owner: PlayerId::new(0),
             class: class::PREDATOR,
             ..Seen::default()
         }),
@@ -10448,7 +10485,7 @@ fn run_order(
         map: [100, 100],
         class: Some(class),
         master: 4,
-        player: 1,
+        player: PlayerId::new(1),
         state: 2,
         ..Surroundings::default()
     };
@@ -11687,7 +11724,7 @@ fn packed_siege() -> (UnitAi, Surroundings) {
         units: vec![UnitSeen {
             id: 77,
             class: class::WARSHIP,
-            owner: 2,
+            owner: PlayerId::new(2),
             state: 2,
             position: [22.0, 30.0, 0.0],
             ..UnitSeen::default()
@@ -11836,7 +11873,7 @@ fn retargeting(target: i32) -> (UnitAi, Surroundings) {
     let seen = |id, class: ClassId, kind: u8, main| UnitSeen {
         id,
         class,
-        owner: 2,
+        owner: PlayerId::new(2),
         state: 2,
         kind,
         main,
@@ -11846,7 +11883,7 @@ fn retargeting(target: i32) -> (UnitAi, Surroundings) {
     let at = Surroundings {
         id: 500,
         class: Some(class::CLASS_6),
-        player: 1,
+        player: PlayerId::new(1),
         position: [10.0, 10.0, 0.0],
         los: 6.0,
         units: vec![

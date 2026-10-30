@@ -24,7 +24,7 @@ impl World {
     /// 0x5d0).
     pub(crate) fn artifact_take_object(
         &mut self,
-        player: usize,
+        player: PlayerId,
         idx: usize,
         target: i32,
     ) -> Result<(), GenieError> {
@@ -84,7 +84,12 @@ impl World {
     /// # Errors
     ///
     /// What the moves do not model.
-    pub(crate) fn lead_herd(&mut self, p: usize, sheep: i32, site: i32) -> Result<(), GenieError> {
+    pub(crate) fn lead_herd(
+        &mut self,
+        p: PlayerId,
+        sheep: i32,
+        site: i32,
+    ) -> Result<(), GenieError> {
         self.send_to_site(p, sheep, site)?;
         let mut listed = Vec::new();
         self.herd_from(p, sheep, site, &mut listed)
@@ -98,7 +103,7 @@ impl World {
     /// the site (slot 0x138) and herds from it in turn; once 16 are listed it ends.
     pub(super) fn herd_from(
         &mut self,
-        p: usize,
+        p: PlayerId,
         sheep: i32,
         site: i32,
         listed: &mut Vec<i32>,
@@ -153,7 +158,7 @@ impl World {
     /// Slot 0x138 of player `p`'s animal `sheep` to the drop site `site` at its place.
     pub(super) fn send_to_site(
         &mut self,
-        p: usize,
+        p: PlayerId,
         sheep: i32,
         site: i32,
     ) -> Result<(), GenieError> {
@@ -261,7 +266,7 @@ impl World {
     /// another action, for none and for the order 6.
     pub(super) fn drop_off_ask(
         &self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         (asks, way_back): (bool, bool),
     ) -> Result<Option<DropOffAsk>, GenieError> {
@@ -304,7 +309,7 @@ impl World {
     /// [`World::queue_way_back`]).
     pub(super) fn asked_drop_off(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         ask: DropOffAsk,
     ) -> Result<(), GenieError> {
@@ -331,14 +336,14 @@ impl World {
     /// 0x178, [`World::take`]).
     pub(super) fn drop_off_at_site(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         by: DropOffBy,
     ) -> Result<(), GenieError> {
         let mut unit = self.players.player_mut(p)?.objects.take_out(idx)?;
         let player = &self.players.player(p)?;
         let world = crate::unit_ai::world_view::DropWorld {
-            masters: self.masters.get(p),
+            masters: self.masters.get(p.index()),
             spatial: &mut self.spatial,
             zones: &mut self.zones,
             pathing: &mut self.pathing,

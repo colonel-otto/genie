@@ -4,6 +4,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
+use crate::players::PlayerId;
 
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -38,7 +39,7 @@ fn stopped(mut t: World, class: ClassId) -> Result<(Unit, Vec<i32>), GenieError>
     for b in &mut t.players[0].objects {
         b.workers = 1;
     }
-    let released = in_update(&mut t, (1, 0), 50, |u, c| {
+    let released = in_update(&mut t, (PlayerId::new(1), 0), 50, |u, c| {
         u.capture_stop(c, class)?;
         let gone = OthersRef::of(&c.w.players, c.player)
             .unwrap()

@@ -182,7 +182,7 @@ impl Spatial {
         let (x0, y0) = (cvttss2si(sx - rx).max(0), cvttss2si(sy - ry).max(0));
         let x1 = cvttss2si((sx + rx) - 0.001).min(w - 1);
         let y1 = cvttss2si((sy + ry) - 0.001).min(h - 1);
-        let own = 1u32 << (site.player as u32 & 0x1f);
+        let own = 1u32 << (site.player.index() as u32 & 0x1f);
         (y0..=y1).any(|y| {
             (x0..=x1).any(|x| {
                 let players = (self.tiles.word(x, y).unwrap_or(0) >> 23) as u32;

@@ -18,8 +18,8 @@ impl World {
     /// Whether the player's object `i` takes a gather point: its master garrisons (`+0xb53`) or
     /// the player trains a unit there (`FUN_141625a20`'s count with no object,
     /// [`World::trainable_count`]). The test SET GATHER POINT and SET GATHER STATE make.
-    fn takes_gather_point(&self, player: usize, i: usize) -> Result<bool, GenieError> {
-        let master = self.players[player].objects[i].master(&self.masters, player)?;
+    fn takes_gather_point(&self, player: PlayerId, i: usize) -> Result<bool, GenieError> {
+        let master = self.players[player.index()].objects[i].master(&self.masters, player)?;
         Ok(master.garrison != 0 || self.trainable_count(player, master.id) > 0)
     }
 
@@ -43,17 +43,18 @@ impl World {
             own,
             ..
         } = *g;
-        let (player, [x, y]) = (player.index(), point.xy());
+        let (player, [x, y]) = (player, point.xy());
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone
-            let Some(i) = id.and_then(|id| self.players[player].objects.position_of(id.get()))
+            let Some(i) =
+                id.and_then(|id| self.players[player.index()].objects.position_of(id.get()))
             else {
                 continue;
             };
             if !self.takes_gather_point(player, i)? {
                 continue;
             }
-            let unit = &self.players[player].objects[i];
+            let unit = &self.players[player.index()].objects[i];
             let old = unit.gather_point;
             let kept = old.is_some_and(|g| g.state == GatherPoint::KEPT);
             let z = old.map_or(0.0, |g| g.point[2]);
@@ -82,7 +83,7 @@ impl World {
                     target_master,
                 })
             };
-            let unit = &mut self.players[player].objects[i];
+            let unit = &mut self.players[player.index()].objects[i];
             unit.gather_point = gather;
             // the unit AI's slot 0x210 (FUN_140c16790): its command queue empties
             if let Some(ai) = unit.ai.as_mut() {
@@ -104,16 +105,16 @@ impl World {
         state: u8,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let player = player.index();
         for &id in ids {
-            let Some(i) = id.and_then(|id| self.players[player].objects.position_of(id.get()))
+            let Some(i) =
+                id.and_then(|id| self.players[player.index()].objects.position_of(id.get()))
             else {
                 continue;
             };
             let gather = if state == 0 {
                 None
             } else if self.takes_gather_point(player, i)? {
-                let unit = &self.players[player].objects[i];
+                let unit = &self.players[player.index()].objects[i];
                 Some(GatherPoint {
                     state: i32::from(state),
                     point: unit.position(),
@@ -123,7 +124,7 @@ impl World {
             } else {
                 continue;
             };
-            self.players[player].objects[i].gather_point = gather;
+            self.players[player.index()].objects[i].gather_point = gather;
         }
         Ok(())
     }
@@ -152,7 +153,7 @@ impl World {
             let (target, owner, class) = match named {
                 Some((tp, u)) => (
                     t,
-                    tp as i32,
+                    tp.index() as i32,
                     i32::from(u.master(&turns.masters, tp)?.class.get()),
                 ),
                 None => (-1, -1, -1),
@@ -183,7 +184,7 @@ impl World {
                 }
                 continue;
             };
-            let unit = &self.players[p].objects[i];
+            let unit = &self.players[p.index()].objects[i];
             let Some(ai) = unit.ai.as_ref() else {
                 continue;
             };
@@ -203,7 +204,7 @@ impl World {
                 queued.push(first);
             }
             queued.push(step(self, target, [x, y])?);
-            let unit = &mut self.players[p].objects[i];
+            let unit = &mut self.players[p.index()].objects[i];
             if building {
                 unit.gather_point = None;
             }
@@ -229,7 +230,7 @@ impl World {
         &self,
         r: &ResearchCommand,
     ) -> Result<Option<Vec<Option<ObjectId>>>, GenieError> {
-        let player = r.player.index();
+        let player = r.player;
         let listed = usize::try_from(r.count).unwrap_or(0);
         if listed == 0 {
             return Ok(None);
@@ -276,8 +277,8 @@ impl World {
         r: &ResearchCommand,
         buildings: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let player = r.player.index();
-        let owner = &self.players[player];
+        let player = r.player;
+        let owner = &self.players[player.index()];
         if r.q_id != -1 || r.tech < 0 || owner.techs.len() <= r.tech as usize {
             return Ok(());
         }
@@ -294,10 +295,14 @@ impl World {
                 sums[k] = sums[k].wrapping_add(amount);
             }
         }
-        for (debit, amount) in self.players[player].pending_debit.iter_mut().zip(sums) {
+        for (debit, amount) in self.players[player.index()]
+            .pending_debit
+            .iter_mut()
+            .zip(sums)
+        {
             *debit -= f32::from(amount);
         }
-        let owner = &self.players[player];
+        let owner = &self.players[player.index()];
         let state = &owner.techs[tech];
         let repeatable = state.repeatable(def, false);
         if def.kind == crate::technology::SHARED_KIND {
@@ -362,7 +367,7 @@ impl World {
                     "RESEARCH of Castle Age in game mode 16 (the treaty monitor's +0x17)",
                 ));
             }
-            let building = &mut self.players[player].objects[i];
+            let building = &mut self.players[player.index()].objects[i];
             if let Some(ai) = building.ai.as_mut() {
                 ai.set_action(Some(ActionKind::Research));
             }
@@ -377,14 +382,14 @@ impl World {
     /// `FUN_1413cdcd0` researches at once) are linked ones, which RESEARCH refuses before.
     pub(crate) fn queue_research(
         &mut self,
-        player: usize,
+        player: PlayerId,
         i: usize,
         tech: i16,
         shift: bool,
     ) -> Result<bool, GenieError> {
         let t = usize::try_from(tech).map_err(|_| tech_outside(tech))?;
         let def = &self.techs[t];
-        let state = &self.players[player].techs[t];
+        let state = &self.players[player.index()].techs[t];
         let one = !state.allow_multiple || def.upgrades();
         let count: u16 = if !shift || one { 1 } else { 5 };
         self.queue_at(player, i, -1, count, tech, -1)

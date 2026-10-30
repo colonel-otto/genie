@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::release::Releaser;
+use crate::players::PlayerId;
 use crate::players::game_status::{KEEPING_TYPES, UNSTOPPED_BUILDINGS};
 use crate::unit_ai::ActionKind;
 use crate::world::World;
@@ -23,7 +24,7 @@ impl World {
     /// `FUN_140f98e80`); a building stops but for a few masters (`FUN_1411e6290`) and gives
     /// back its queue ([`World::cancel_queue`]); every unit AI's orders go (`FUN_140c5e010`). The
     /// slice holds no unit groups (`+0x6d0`).
-    pub(super) fn stop_everything(&mut self, p: usize) -> Result<(), GenieError> {
+    pub(super) fn stop_everything(&mut self, p: PlayerId) -> Result<(), GenieError> {
         for idx in 0..self.players.player(p)?.objects.len() {
             let unit = &self.players.live(p, idx)?;
             let master = unit.master(&self.masters, p)?;
@@ -64,7 +65,7 @@ impl World {
     /// a class other than 58 whose action value is not `0x2c2` and whose top action is no trade
     /// (0x6f) with a load stops (slot 0xb0 with 0: the order ends, and stopAction, slot 0x3c0)
     /// and forgets its target and its last target (`FUN_140c4dcb0`).
-    pub(crate) fn object_stop(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn object_stop(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         let unit = &self.players.live(p, idx)?;
         let master = unit.master(&self.masters, p)?;
         let class = master.class;
@@ -121,7 +122,7 @@ impl World {
     /// tends lets it go (`FUN_141189ca0` with −1), and the answer is true. The Fly (Bird), the
     /// missile's, the Make and the wait for a foundation keep the base's too; the Gather, the
     /// Build, the Attack and the Artifact halt ([`World::halt_other`]).
-    pub(super) fn halt_top_action(&mut self, p: usize, idx: usize) -> Result<bool, GenieError> {
+    pub(super) fn halt_top_action(&mut self, p: PlayerId, idx: usize) -> Result<bool, GenieError> {
         let computer = self.players.player(p)?.computer;
         let by = self.releaser(p, idx);
         let master_id = self.players.live(p, idx)?.life.master_id;
@@ -197,7 +198,7 @@ impl World {
     /// kind.
     pub(super) fn halt_other(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         kind: i16,
     ) -> Result<bool, GenieError> {
@@ -232,7 +233,7 @@ impl World {
     /// target go, released by `by`. `standing` is the master's standing sprite.
     pub(super) fn halt_gather(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         standing: i16,
         by: Releaser,
@@ -264,7 +265,7 @@ impl World {
     /// unit stands, and the foundation and the second target go, released by `by`.
     pub(super) fn halt_build(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         by: Releaser,
     ) -> Result<(), GenieError> {
@@ -286,7 +287,7 @@ impl World {
 
     /// [`World::halt_other`] of a Repair (`FUN_140adaa00`): `set_state(2)`, a counted repairer
     /// out of its target's repairers, the standing sprite; the target stays.
-    pub(super) fn halt_repair(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    pub(super) fn halt_repair(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         let unit = self.players.live_mut(p, idx)?;
         let repair = unit.actions.repair_mut().ok_or(NO_TOP_ACTION)?;
         let target = repair.target;
@@ -300,7 +301,7 @@ impl World {
     /// `by`, the Enter's first), a walking animal stops, and it stands.
     pub(super) fn halt_artifact(
         &mut self,
-        p: usize,
+        p: PlayerId,
         idx: usize,
         by: Releaser,
     ) -> Result<(), GenieError> {

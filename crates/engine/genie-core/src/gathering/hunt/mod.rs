@@ -12,6 +12,7 @@ use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::sprite::Graphic;
+use crate::players::PlayerId;
 use genie_diff::Diff;
 
 /// A hunter's update without its Hunt: the caller's test.
@@ -265,7 +266,7 @@ pub struct Quarry {
     /// Its state (`+0x640`).
     pub state: u8,
     /// Its owner.
-    pub player: usize,
+    pub player: PlayerId,
     /// What it holds (`+0x310`).
     pub amount: f32,
     /// The hunter's player counts the target's player as its own or allied (`FUN_141663d90` with

@@ -9,6 +9,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::objects::masters::{Masters, player_master};
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::others::OthersRef;
 
@@ -41,7 +42,7 @@ pub(crate) struct WorldPicker<'a> {
     /// The unit.
     pub(crate) me: i32,
     /// Its owner.
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
     /// The owner's other objects.
     pub(crate) others: OthersRef<'a>,
     /// The other players' lists.
@@ -70,7 +71,7 @@ impl WorldPicker<'_> {
     pub(super) fn held(
         &self,
         id: i32,
-    ) -> Option<(usize, &Unit, &[f32], &crate::objects::masters::Master)> {
+    ) -> Option<(PlayerId, &Unit, &[f32], &crate::objects::masters::Master)> {
         let (q, u, attributes) = if id == self.me {
             (self.player, self.unit, self.attributes)
         } else if let Some(u) = self.others.own(id) {

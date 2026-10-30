@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::spatial::{Spatial, WalkQuery};
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
+use crate::players::PlayerId;
 use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, World};
 
 /// The units in gate `gate` (`FUN_1411d0570`): the obstruction manager's query from its first
@@ -70,7 +71,7 @@ pub(crate) fn gate_units(
         };
         let counts = !matches!(p.class, class::WALL | class::GATE | class::TOWER)
             && (p.class != class::BUILDING || p.speed != 0.0)
-            && (GATE_EPSILON <= p.speed || p.player != 0);
+            && (GATE_EPSILON <= p.speed || p.player != PlayerId::GAIA);
         if counts {
             units.push(id);
             if spatial.allied_with(owner, p.player) {
@@ -85,9 +86,9 @@ impl World {
     /// Player `q`'s gate list (`+0x1360`, `FUN_141616200` adds to its front): its live objects
     /// of class 39 whose master transforms ([`crate::objects::masters::BuildingMaster::transform_unit`]),
     /// newest first.
-    pub(crate) fn gate_list(&self, q: usize) -> Vec<usize> {
-        let masters = self.masters.get(q);
-        let owner = &self.players[q];
+    pub(crate) fn gate_list(&self, q: PlayerId) -> Vec<usize> {
+        let masters = self.masters.get(q.index());
+        let owner = &self.players[q.index()];
         (0..owner.objects.len())
             .rev()
             .filter(|&i| {
@@ -103,8 +104,8 @@ impl World {
     /// stands (state below 3), its master is of class 39 and transforms (`+0x9ba` not -1), it is
     /// not locked (`mGateLocked`) and its owner and `p` count each other as allies
     /// (`FUN_141663dc0`, `FUN_141663d90`; a player counts itself).
-    pub(crate) fn gate_passes(&self, q: usize, i: usize, p: usize) -> bool {
-        let gate = &self.players[q].objects[i];
+    pub(crate) fn gate_passes(&self, q: PlayerId, i: usize, p: PlayerId) -> bool {
+        let gate = &self.players[q.index()].objects[i];
         let transforming = gate.master(&self.masters, q).is_ok_and(|m| {
             m.class == class::GATE && m.building.as_ref().is_some_and(|b| b.transform_unit != -1)
         });
@@ -120,12 +121,12 @@ impl World {
     /// (`open`, the update's flags), open for `p` (`q`'s slot 0x318, `FUN_14162faf0`): each gate
     /// `p` may pass ([`World::gate_passes`]) loses its record, its tiles' marks and its mesh shape
     /// (`FUN_141055b40`), so `p`'s units walk and plan through it.
-    pub(crate) fn open_gates(&mut self, p: usize, open: &mut [bool]) -> Result<(), GenieError> {
-        if p == 0 {
+    pub(crate) fn open_gates(&mut self, p: PlayerId, open: &mut [bool]) -> Result<(), GenieError> {
+        if p == PlayerId::GAIA {
             return Ok(());
         }
         let players = self.players.len();
-        for (q, is_open) in open.iter_mut().enumerate().take(players).skip(1) {
+        for (q, is_open) in PlayerId::each(players).zip(open.iter_mut()).skip(1) {
             if *is_open
                 || (q != p && !(self.spatial.allied_with(p, q) && self.spatial.allied_with(q, p)))
             {
@@ -135,7 +136,7 @@ impl World {
                 if !self.gate_passes(q, i, p) {
                     continue;
                 }
-                let id = self.players[q].objects[i].id;
+                let id = self.players[q.index()].objects[i].id;
                 if self
                     .spatial
                     .get(id.get())
@@ -159,18 +160,20 @@ impl World {
     /// counted one by it (they stay open for it): each gate `p` may pass gets its record, its
     /// tiles' marks and its mesh shape again (`FUN_141056460`), but for a part of obstruction
     /// kind 0 or 12 or of class 0 ([`crate::map::spatial::Obstruction::recorded`]).
-    pub(crate) fn close_gates(&mut self, p: usize, open: &mut [bool]) {
-        if p == 0 {
+    pub(crate) fn close_gates(&mut self, p: PlayerId, open: &mut [bool]) {
+        if p == PlayerId::GAIA {
             return;
         }
-        let (next, players) = (p + 1, self.players.len());
-        for (q, is_open) in open.iter_mut().enumerate().take(players).skip(1) {
+        let players = self.players.len();
+        let next = PlayerId::try_from(p.index() + 1)
+            .ok()
+            .filter(|n| n.index() < players);
+        for (q, is_open) in PlayerId::each(players).zip(open.iter_mut()).skip(1) {
             if !*is_open {
                 continue;
             }
-            if next < players
-                && self.spatial.allied_with(next, q)
-                && self.spatial.allied_with(q, next)
+            if next
+                .is_some_and(|n| self.spatial.allied_with(n, q) && self.spatial.allied_with(q, n))
             {
                 continue;
             }
@@ -178,7 +181,7 @@ impl World {
                 if !self.gate_passes(q, i, p) {
                     continue;
                 }
-                let gate = &self.players[q].objects[i];
+                let gate = &self.players[q.index()].objects[i];
                 let (id, master) = (gate.id, gate.life.master_id);
                 let Some(m) = player_master(&self.masters, q, master) else {
                     continue;

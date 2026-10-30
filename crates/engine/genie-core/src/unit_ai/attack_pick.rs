@@ -6,6 +6,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
@@ -142,7 +143,7 @@ pub struct Attacker {
     /// The unit AI's type.
     pub ai_type: u32,
     /// The unit's player.
-    pub player: usize,
+    pub player: PlayerId,
     /// The owner is a computer player (`FUN_141659cf0`).
     pub computer: bool,
     /// The unit's state.
@@ -194,7 +195,7 @@ pub struct Attacker {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Target {
     /// The object's player.
-    pub owner: usize,
+    pub owner: PlayerId,
     /// Its master's class.
     pub class: ClassId,
     /// Its master's type.
@@ -338,11 +339,14 @@ pub(super) fn predator_may_attack(attack_priority: u8, class: ClassId) -> bool {
 /// (`FUN_14120ea30`: classes 51 and 54, or a missile, or else a firepower, `+0xa00`, above 1)
 /// and its attack priority is not 3 or the class one of [`PRIORITY_3_CLASSES`].
 pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
-    if me.player == 0 || matches!(t.class, class::ARTIFACT | class::RELIC) {
+    if me.player == PlayerId::GAIA || matches!(t.class, class::ARTIFACT | class::RELIC) {
         return Ok(false);
     }
     let gaia_combat = !me.scenario && COMBAT <= t.kind && t.capture == 0;
-    if !gaia_combat && t.owner == 0 && !matches!(t.class, class::PREY | class::PREDATOR) {
+    if !gaia_combat
+        && t.owner == PlayerId::GAIA
+        && !matches!(t.class, class::PREY | class::PREDATOR)
+    {
         return Ok(false);
     }
     if (t.kind == BUILDING && t.desolid) || TOWER_SPARED.contains(&t.master) || me.state <= 1 {
@@ -419,10 +423,13 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
         return Ok(false);
     }
     let gaia_combat = !me.scenario && COMBAT <= t.kind && t.capture == 0;
-    if me.player == 0 && !gaia_combat {
+    if me.player == PlayerId::GAIA && !gaia_combat {
         return Ok(false);
     }
-    if t.owner == 0 && !matches!(t.class, class::PREY | class::PREDATOR) && !gaia_combat {
+    if t.owner == PlayerId::GAIA
+        && !matches!(t.class, class::PREY | class::PREDATOR)
+        && !gaia_combat
+    {
         return Ok(false);
     }
     if !t.targeting {

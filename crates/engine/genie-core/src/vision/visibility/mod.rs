@@ -25,6 +25,7 @@
 use crate::GenieError;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::players::PlayerId;
 use crate::vision::registry::{MASK, Registry};
 use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
@@ -78,7 +79,7 @@ pub struct BuildingSight {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Seer {
     /// The object's player.
-    pub player: usize,
+    pub player: PlayerId,
     /// The master's id (`+0x58`, decoded).
     pub master: i16,
     /// The master's `line_of_sight` (`+0x5d0`); slot 0x210 adds the object's powerup (`+0xad4`).
@@ -236,7 +237,7 @@ pub struct Visibility {
     pub computer: Vec<bool>,
     /// The tiles a computer player's map explored that its AI module has not heard of yet, in
     /// order ([`Visibility::take_ai_tiles`]).
-    ai_tiles: Vec<(usize, [i32; 2])>,
+    ai_tiles: Vec<(PlayerId, [i32; 2])>,
     seers: BTreeMap<i32, Seer>,
     /// The objects-in-sight registry, when the slice holds it (the save does not).
     pub registry: Option<Registry>,
@@ -256,7 +257,7 @@ pub struct Visibility {
 /// and 10, and master 826), and for masters 854 and Gaia's 814, which another player takes over
 /// by seeing them; 3 for classes 58 and 1 (livestock).
 #[must_use]
-pub fn capture_kind(player: usize, class: ClassId, master: i16) -> u8 {
+pub fn capture_kind(player: PlayerId, class: ClassId, master: i16) -> u8 {
     const KEPT: [ClassId; 11] = [
         class::CLASS_40,
         class::RELIC,
@@ -271,10 +272,10 @@ pub fn capture_kind(player: usize, class: ClassId, master: i16) -> u8 {
         class::PREDATOR,
     ];
     let mut kind = 0;
-    if (player == 0 && !KEPT.contains(&class) && master != 826) || master == 854 {
+    if (player == PlayerId::GAIA && !KEPT.contains(&class) && master != 826) || master == 854 {
         kind = 1;
     }
-    if player == 0 && master == 814 {
+    if player == PlayerId::GAIA && master == 814 {
         kind = 1;
     }
     if class == class::LIVESTOCK || class == class::ARTIFACT {
@@ -337,7 +338,7 @@ impl Visibility {
     }
 
     /// The tiles a computer player's map explored since the last call, as (player, tile).
-    pub fn take_ai_tiles(&mut self) -> Vec<(usize, [i32; 2])> {
+    pub fn take_ai_tiles(&mut self) -> Vec<(PlayerId, [i32; 2])> {
         std::mem::take(&mut self.ai_tiles)
     }
 
@@ -348,16 +349,16 @@ impl Visibility {
     }
 
     /// `RGE_Tile_List::add_node` (`FUN_14165d500`) on player `player`'s tile list.
-    fn new_tile(&mut self, player: usize, x: i32, y: i32) {
-        if let Some(list) = self.new_tiles.get_mut(player) {
+    fn new_tile(&mut self, player: PlayerId, x: i32, y: i32) {
+        if let Some(list) = self.new_tiles.get_mut(player.index()) {
             list.push([x, y]);
         }
     }
 
     /// `RGE_Tile_List::del_list` (`FUN_141661030`) on player `player`'s tile list, after the
     /// player's update (`BaseWorld::update`); the list is never frozen in a game (`+0x10`).
-    pub fn clear_new_tiles(&mut self, player: usize) {
-        if let Some(list) = self.new_tiles.get_mut(player) {
+    pub fn clear_new_tiles(&mut self, player: PlayerId) {
+        if let Some(list) = self.new_tiles.get_mut(player.index()) {
             list.clear();
         }
     }

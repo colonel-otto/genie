@@ -7,6 +7,7 @@ use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{Foreign, UnitView};
 use crate::world::others::OthersRef;
@@ -14,7 +15,7 @@ use crate::world::step::Step;
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
 pub(crate) struct ResourceWorld<'a, 'b> {
-    pub(crate) player: usize,
+    pub(crate) player: PlayerId,
     pub(crate) spatial: &'a mut Spatial,
     pub(crate) zones: &'a mut crate::pathing::zones::Zones,
     pub(crate) foreign: Foreign<'a>,
@@ -102,7 +103,7 @@ pub(crate) fn closest_resource_of(
     ))?;
     let mask = mover.stats.restriction_mask;
     let (player, me_id, every) = (c.player, unit.id, c.every);
-    let candidate = |id: i32, owner: usize, u: &Unit, position: [f32; 3]| {
+    let candidate = |id: i32, owner: PlayerId, u: &Unit, position: [f32; 3]| {
         let m = u.master(every, owner)?;
         Ok(Candidate {
             id,
@@ -195,7 +196,7 @@ impl UnitView<'_, '_> {
             zones: &mut self.c.w.zones,
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
             every: &self.c.w.masters,
-            masters: self.c.w.masters.get(self.player),
+            masters: self.c.w.masters.get(self.player.index()),
             plan: Planning {
                 pathing: &mut self.c.w.pathing,
                 now: self.c.w.world_time,
@@ -269,13 +270,13 @@ impl Unit {
             zones: &mut c.w.zones,
             foreign: others.players(),
             every: &c.w.masters,
-            masters: c.w.masters.get(c.player),
+            masters: c.w.masters.get(c.player.index()),
             plan: Planning {
                 pathing: &mut c.w.pathing,
                 now: c.w.world_time,
-                computer: c.w.players[c.player].computer,
+                computer: c.w.players[c.player.index()].computer,
                 object: c.w.streams.get(Stream::Object),
-                construction_rate: c.w.players[c.player].construction_rate,
+                construction_rate: c.w.players[c.player.index()].construction_rate,
                 groups: &c.w.groups,
             },
         };

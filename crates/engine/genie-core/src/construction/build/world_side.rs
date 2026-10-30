@@ -9,6 +9,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, player_master};
 use crate::orders::Place;
+use crate::players::PlayerId;
 
 impl crate::world::World {
     /// What a built building's storage gave its owner leaves (`FUN_1411e63f0`, then
@@ -19,13 +20,13 @@ impl crate::world::World {
     /// An object the slice does not hold, its own store, and an attribute the owner lacks.
     pub(crate) fn storage_leaves(
         &mut self,
-        owner: usize,
+        owner: PlayerId,
         id: i32,
         master: &Master,
     ) -> Result<(), GenieError> {
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
         for (kind, amount) in crate::objects::lifecycle::death_parts::storage_leaves(u, master) {
-            self.players[owner].add_attribute(kind, amount)?;
+            self.players[owner.index()].add_attribute(kind, amount)?;
         }
         Ok(())
     }
@@ -40,7 +41,7 @@ impl crate::world::World {
     /// What the part does not model.
     pub(crate) fn completion_part(
         &mut self,
-        owner: usize,
+        owner: PlayerId,
         id: i32,
         master: &Master,
     ) -> Result<(), GenieError> {
@@ -49,17 +50,17 @@ impl crate::world::World {
         let completion = Completion {
             master: Some(master),
             farm_bonus: crate::objects::lifecycle::death_parts::farm_bonus(
-                &self.players[owner].attributes,
+                &self.players[owner.index()].attributes,
             ),
-            masters: self.masters.get(owner),
-            computer: self.players[owner].computer,
+            masters: self.masters.get(owner.index()),
+            computer: self.players[owner.index()].computer,
             ai: u.ai.is_some(),
         };
         let part = completion.first_part(&construction)?;
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
         self.track_complete(owner, id, master.id)?;
         for (kind, amount) in part.attributes {
-            self.players[owner].add_attribute(kind, amount)?;
+            self.players[owner.index()].add_attribute(kind, amount)?;
         }
         if part.pasture {
             self.setup_pasture(owner, id)?;
@@ -78,7 +79,11 @@ impl crate::world::World {
     /// # Errors
     ///
     /// What the start does not model.
-    pub(crate) fn construction_starts(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn construction_starts(
+        &mut self,
+        owner: PlayerId,
+        id: i32,
+    ) -> Result<(), GenieError> {
         let place = self.place(id).ok_or(NOT_HELD)?;
         let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
         let volley = held(&mut self.players, place)
@@ -124,8 +129,8 @@ pub(crate) fn held(
     place: Place,
 ) -> &mut crate::objects::unit::Unit {
     match place {
-        Place::Live(p, i) => &mut players[p].objects[i],
-        Place::Sleeping(p, i) => &mut players[p].sleeping[i],
+        Place::Live(p, i) => &mut players[p.index()].objects[i],
+        Place::Sleeping(p, i) => &mut players[p.index()].sleeping[i],
     }
 }
 
@@ -207,7 +212,7 @@ impl crate::world::World {
     /// What the parts do not model.
     pub(crate) fn stack_unit(
         &mut self,
-        p: usize,
+        p: PlayerId,
         building: i32,
         stack: StackUnit,
     ) -> Result<(), GenieError> {
@@ -308,7 +313,7 @@ impl crate::world::World {
     /// [`crate::world::World::plain_object`], [`crate::world::World::make_building`]).
     pub(crate) fn make_new_object(
         &mut self,
-        p: usize,
+        p: PlayerId,
         master: i16,
         at: [f32; 3],
         flagged: bool,
@@ -320,7 +325,7 @@ impl crate::world::World {
         // cleared with the flag, its visible resources for one that gathers by itself
         if made.kind == COMBAT {
             let idx = self.combat_object(p, master, &made, at)?;
-            let id = self.players[p].objects[idx].id;
+            let id = self.players[p.index()].objects[idx].id;
             if flagged {
                 self.clear_footprint(p, master, [at[0], at[1]], true)?;
             }
@@ -339,7 +344,7 @@ impl crate::world::World {
                 at,
                 crate::production::spawn::Facing::Drawn,
             )?;
-            let id = self.players[p].objects[idx].id;
+            let id = self.players[p.index()].objects[idx].id;
             if flagged {
                 self.clear_footprint(p, master, [at[0], at[1]], true)?;
             }
@@ -355,7 +360,7 @@ impl crate::world::World {
             let _ = self.work_building(id, STACK_WORK)?;
         }
         if made.auto_gather {
-            if self.players[p].objects.last().map(|u| u.id.get()) != Some(id) {
+            if self.players[p.index()].objects.last().map(|u| u.id.get()) != Some(id) {
                 return Err(GenieError::unsupported(
                     "an auto-gathered new building with annexes (its visible resources)",
                 ));

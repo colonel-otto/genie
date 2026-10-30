@@ -16,6 +16,7 @@ use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::players::PlayerId;
 use crate::unit_ai::BOAR_AI;
 use crate::unit_ai::LION_AI;
 use crate::world::step::Step;
@@ -122,13 +123,15 @@ impl Attack {
         r: &AttackReads,
     ) -> Result<u8, GenieError> {
         // The villagers' class, whose `MoveTo` waits once when the motion step gives up.
-        if r.ai_order.has_ai() && (f.victim.player != 0 || f.own.class != class::VILLAGER) {
+        if r.ai_order.has_ai()
+            && (f.victim.player != PlayerId::new(0) || f.own.class != class::VILLAGER)
+        {
             forget_target(unit);
         }
         let target = std::mem::replace(&mut self.target, -1);
         let_go(c, unit, target)?;
         self.point = [NONE; 3];
-        let human = f.own.player != 0 && !r.computer;
+        let human = f.own.player != PlayerId::new(0) && !r.computer;
         let waits = match r.ai_order {
             AiOrder::Absent => true,
             AiOrder::Idle => false,

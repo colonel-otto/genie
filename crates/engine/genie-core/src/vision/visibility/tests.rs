@@ -2,7 +2,7 @@ use super::*;
 use crate::objects::masters::class;
 use crate::vision::registry::UnitUpdate;
 
-fn world(players: usize) -> Visibility {
+fn world(players: PlayerId) -> Visibility {
     let n = 120 * 120;
     Visibility::new(
         120,
@@ -12,16 +12,16 @@ fn world(players: usize) -> Visibility {
                 counts: vec![-1; n],
                 explored: 0,
             };
-            players
+            players.index()
         ],
         vec![0; n],
         Vec::new(),
         0,
-        vec![false; players],
+        vec![false; players.index()],
     )
 }
 
-fn unit(player: usize, los: f32) -> Seer {
+fn unit(player: PlayerId, los: f32) -> Seer {
     Seer {
         player,
         master: 83,
@@ -65,41 +65,65 @@ fn the_first_other_player_that_sees_the_object_takes_it_over() {
     };
     let humans = players([false; 4]);
     let none = [false; 4];
-    assert_eq!(sight_taker(0b0111, 0, true, &humans, &none), Some(1));
-    assert_eq!(sight_taker(0b0110, 1, true, &humans, &none), Some(2));
-    assert_eq!(sight_taker(0b0001, 1, true, &humans, &none), None);
-    assert_eq!(sight_taker(1 << 33 | 0b10, 1, true, &humans, &none), None);
+    assert_eq!(
+        sight_taker(0b0111, PlayerId::new(0), true, &humans, &none),
+        Some(PlayerId::new(1))
+    );
+    assert_eq!(
+        sight_taker(0b0110, PlayerId::new(1), true, &humans, &none),
+        Some(PlayerId::new(2))
+    );
+    assert_eq!(
+        sight_taker(0b0001, PlayerId::new(1), true, &humans, &none),
+        None
+    );
+    assert_eq!(
+        sight_taker(1 << 33 | 0b10, PlayerId::new(1), true, &humans, &none),
+        None
+    );
     let ai = players([false, true, false, true]);
     let allows = [false, false, false, true];
-    assert_eq!(sight_taker(0b1110, 0, false, &ai, &allows), Some(2));
-    assert_eq!(sight_taker(0b1010, 0, false, &ai, &allows), Some(3));
-    assert_eq!(sight_taker(0b0010, 0, false, &ai, &allows), None);
-    assert_eq!(sight_taker(0b0010, 0, true, &ai, &allows), Some(1));
+    assert_eq!(
+        sight_taker(0b1110, PlayerId::new(0), false, &ai, &allows),
+        Some(PlayerId::new(2))
+    );
+    assert_eq!(
+        sight_taker(0b1010, PlayerId::new(0), false, &ai, &allows),
+        Some(PlayerId::new(3))
+    );
+    assert_eq!(
+        sight_taker(0b0010, PlayerId::new(0), false, &ai, &allows),
+        None
+    );
+    assert_eq!(
+        sight_taker(0b0010, PlayerId::new(0), true, &ai, &allows),
+        Some(PlayerId::new(1))
+    );
 }
 
 /// The combat object's sight answers a changed mask only for an object others take over by
 /// seeing it (`+0x924` 1), once the registry took it.
 #[test]
 fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
-    let mut v = world(3);
+    let mut v = world(PlayerId::new(3));
     v.registry = Some(Registry::new(3, 65));
-    let mut gaia = unit(0, 2.0);
+    let mut gaia = unit(PlayerId::new(0), 2.0);
     gaia.capture = 1;
     v.add_seer(7, gaia);
-    v.add_seer(8, unit(0, 2.0));
+    v.add_seer(8, unit(PlayerId::new(0), 2.0));
     let i = 10 * 120 + 10;
     v.unified[i] = 0b011;
     let at = [10.5, 10.5, 0.0];
     assert_eq!(
-        v.combat_sight(7, 0, at, [0.2, 0.2], class::CLASS_6, None),
+        v.combat_sight(7, PlayerId::new(0), at, [0.2, 0.2], class::CLASS_6, None),
         Ok(Some(0b011))
     );
     assert_eq!(
-        v.combat_sight(7, 0, at, [0.2, 0.2], class::CLASS_6, None),
+        v.combat_sight(7, PlayerId::new(0), at, [0.2, 0.2], class::CLASS_6, None),
         Ok(None)
     );
     assert_eq!(
-        v.combat_sight(8, 0, at, [0.2, 0.2], class::CLASS_6, None),
+        v.combat_sight(8, PlayerId::new(0), at, [0.2, 0.2], class::CLASS_6, None),
         Ok(None)
     );
     let r = v.registry.as_ref().unwrap();
@@ -111,7 +135,7 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
 /// list (`+0x8b0`..); one without an id has none to write.
 #[test]
 fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
-    let mut v = world(3);
+    let mut v = world(PlayerId::new(3));
     let mut r = Registry::new(3, 65);
     r.entries.entry(7).or_default().mask = 0b11;
     r.update_unit(UnitUpdate {
@@ -125,8 +149,8 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
     })
     .unwrap();
     v.registry = Some(r);
-    v.records_owner(7, 2).unwrap();
-    v.records_owner(-5, 2).unwrap();
+    v.records_owner(7, PlayerId::new(2)).unwrap();
+    v.records_owner(-5, PlayerId::new(2)).unwrap();
     let r = v.registry.as_ref().unwrap();
     assert_eq!([r.lists[0][6][0].owner, r.lists[1][6][0].owner], [2, 2]);
     assert_eq!(r.lists[2][6].len(), 0);
@@ -139,22 +163,24 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
 #[test]
 fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
     let at = [10.5, 10.5, 0.0];
-    let mut v = world(3);
-    v.add_seer(7, unit(0, 2.0));
+    let mut v = world(PlayerId::new(3));
+    v.add_seer(7, unit(PlayerId::new(0), 2.0));
     let _ = v.sight_on(7, at, [0.2, 0.2], false, false).unwrap();
     let tile = |x: i32, y: i32| (y * 120 + x) as usize;
     assert_eq!(v.maps[0].counts[tile(12, 10)], 1);
-    v.owner_changed(7, at, [0.2, 0.2], (1, 3.0), true).unwrap();
+    v.owner_changed(7, at, [0.2, 0.2], (PlayerId::new(1), 3.0), true)
+        .unwrap();
     assert_eq!(v.maps[0].counts[tile(12, 10)], 0);
     assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
     assert_eq!(v.maps[1].counts[tile(14, 10)], -1);
     let s = v.seer(7).copied().unwrap();
-    assert_eq!((s.player, s.los), (1, 3.0));
-    v.owner_changed(7, at, [0.2, 0.2], (2, 4.0), false).unwrap();
+    assert_eq!((s.player, s.los), (PlayerId::new(1), 3.0));
+    v.owner_changed(7, at, [0.2, 0.2], (PlayerId::new(2), 4.0), false)
+        .unwrap();
     assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
     assert_eq!(v.maps[2].counts[tile(10, 10)], -1);
     let s = v.seer(7).copied().unwrap();
-    assert_eq!((s.player, s.los), (2, 4.0));
+    assert_eq!((s.player, s.los), (PlayerId::new(2), 4.0));
 }
 
 /// `AddResource` (`FUN_141288830`): the record goes last in its group's list at the object's
@@ -221,9 +247,9 @@ fn the_closest_resource_skips_the_ids_given_and_keeps_its_distance() {
 /// player's update ends with the list cleared (`FUN_141661030`).
 #[test]
 fn newly_explored_tiles_join_the_player_s_tile_list_until_its_update_ends() {
-    let mut v = world(2);
-    let _ = v.explore(1, 10, 10, 0, false).unwrap();
-    let _ = v.explore(1, 10, 10, 1, false).unwrap();
+    let mut v = world(PlayerId::new(2));
+    let _ = v.explore(PlayerId::new(1), 10, 10, 0, false).unwrap();
+    let _ = v.explore(PlayerId::new(1), 10, 10, 1, false).unwrap();
     assert_eq!(
         v.new_tiles[1],
         [
@@ -238,11 +264,11 @@ fn newly_explored_tiles_join_the_player_s_tile_list_until_its_update_ends() {
             [11, 11]
         ]
     );
-    let _ = v.explore_rect(1, 11, 9, 12, 9).unwrap();
-    let _ = v.reveal_rect(1, 11, 8, 12, 8).unwrap();
+    let _ = v.explore_rect(PlayerId::new(1), 11, 9, 12, 9).unwrap();
+    let _ = v.reveal_rect(PlayerId::new(1), 11, 8, 12, 8).unwrap();
     assert_eq!(v.new_tiles[1][9..], [[12, 9], [11, 8], [12, 8]]);
     assert_eq!(v.new_tiles[0], Vec::<[i32; 2]>::new());
-    v.clear_new_tiles(1);
+    v.clear_new_tiles(PlayerId::new(1));
     assert_eq!(v.new_tiles[1], Vec::<[i32; 2]>::new());
 }
 
@@ -250,12 +276,12 @@ fn newly_explored_tiles_join_the_player_s_tile_list_until_its_update_ends() {
 /// of the unified map, from 0 while the player exists) loses the object from its group's list.
 #[test]
 fn a_resource_leaves_the_lists_of_the_players_that_explored_its_tile() {
-    let mut v = world(3);
+    let mut v = world(PlayerId::new(3));
     v.resources = vec![resources(5), resources(5), resources(5)];
     for r in &mut v.resources {
         r.add(7, 1, 20.5, 30.5);
     }
-    let _ = v.explore(2, 20, 30, 0, false).unwrap();
+    let _ = v.explore(PlayerId::new(2), 20, 30, 0, false).unwrap();
     v.forget_resource(7, [20.5, 30.5, 0.0], 1).unwrap();
     assert_eq!(v.resources[2].lists[1], []);
     assert_eq!(v.resources[0].lists[1], [rec(7, 20.5, 30.5)]);
@@ -264,31 +290,31 @@ fn a_resource_leaves_the_lists_of_the_players_that_explored_its_tile() {
 
 #[test]
 fn a_sight_counts_its_circle_explored_then_visible_and_leaves_it_explored() {
-    let mut v = world(3);
-    assert_eq!(v.explore(2, 10, 10, 1, false).unwrap(), 9);
+    let mut v = world(PlayerId::new(3));
+    assert_eq!(v.explore(PlayerId::new(2), 10, 10, 1, false).unwrap(), 9);
     assert_eq!(v.maps[2].explored, 9);
     let i = v.index(10, 10);
     assert_eq!(v.maps[2].counts[i], 1);
     assert_eq!(v.unified[i], 1 << 2 | 1 << 34);
-    assert_eq!(v.explore(2, 11, 10, 1, false).unwrap(), 3);
+    assert_eq!(v.explore(PlayerId::new(2), 11, 10, 1, false).unwrap(), 3);
     assert_eq!(v.maps[2].counts[i], 2);
-    v.unexplore(2, 10, 10, 1, false).unwrap();
+    v.unexplore(PlayerId::new(2), 10, 10, 1, false).unwrap();
     assert_eq!(v.maps[2].counts[i], 1);
-    v.unexplore(2, 11, 10, 1, false).unwrap();
+    v.unexplore(PlayerId::new(2), 11, 10, 1, false).unwrap();
     assert_eq!(v.maps[2].counts[i], 0);
     assert_eq!(v.unified[i], 1 << 34, "explored, no longer visible");
     assert_eq!(v.maps[2].explored, 12);
     // a tile at 0 stays 0; one never explored goes to -2
-    v.unexplore(2, 10, 10, 0, false).unwrap();
+    v.unexplore(PlayerId::new(2), 10, 10, 0, false).unwrap();
     assert_eq!(v.maps[2].counts[i], 0);
-    v.unexplore(2, 20, 20, 0, false).unwrap();
+    v.unexplore(PlayerId::new(2), 20, 20, 0, false).unwrap();
     assert_eq!(v.maps[2].counts[v.index(20, 20)], -2);
 }
 
 #[test]
 fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies() {
-    let mut v = world(3);
-    v.add_seer(7, unit(1, 2.0));
+    let mut v = world(PlayerId::new(3));
+    v.add_seer(7, unit(PlayerId::new(1), 2.0));
     let r = [0.5, 0.5];
     let _ = v.sight_on(7, [5.5, 5.5, 0.0], r, false, false).unwrap();
     let before = v.maps[1].counts.clone();
@@ -311,7 +337,7 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
 
 #[test]
 fn the_extent_list_matches_the_saved_entries_of_a_town_centre_and_a_house() {
-    let mut v = world(1);
+    let mut v = world(PlayerId::new(1));
     assert_eq!(v.extent_entry(29, 94, 27, 92, 30, 95), 1);
     assert_eq!(v.extents[0].guid, 0x0101_0202);
     assert_eq!(
@@ -360,7 +386,7 @@ fn the_extent_list_matches_the_saved_entries_of_a_town_centre_and_a_house() {
 
 #[test]
 fn a_first_sight_of_a_building_s_tile_explores_the_building() {
-    let mut v = world(3);
+    let mut v = world(PlayerId::new(3));
     assert_eq!(v.link_building([29.0, 94.0, 0.0], [2.0, 2.0]).unwrap(), 1);
     assert_eq!(v.link(29, 94).unwrap(), (ANCHOR, 1));
     assert_eq!(v.link(28, 93).unwrap(), (LINKED, 0xff));
@@ -368,7 +394,7 @@ fn a_first_sight_of_a_building_s_tile_explores_the_building() {
     assert_eq!(v.anchor_of(27, 92), Some([29, 94]));
     assert_eq!(v.extent_of(30, 92), Some([27, 92, 30, 95]));
     // a sight of LOS 0 on the building's corner tile
-    assert_eq!(v.explore(1, 27, 92, 0, false).unwrap(), 1);
+    assert_eq!(v.explore(PlayerId::new(1), 27, 92, 0, false).unwrap(), 1);
     assert_eq!(v.maps[1].counts[v.index(27, 92)], 1);
     assert_eq!(v.maps[1].counts[v.index(30, 95)], 0);
     assert_eq!(v.maps[1].explored, 16);
@@ -378,13 +404,13 @@ fn a_first_sight_of_a_building_s_tile_explores_the_building() {
 
 #[test]
 fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner() {
-    let mut v = world(3);
+    let mut v = world(PlayerId::new(3));
     let site = Seer {
         master: 70,
         explored: false,
         state: 0,
         building: Some(BuildingSight::default()),
-        ..unit(2, 2.0)
+        ..unit(PlayerId::new(2), 2.0)
     };
     v.add_seer(9, site);
     let (at, r) = ([10.0, 10.0, 0.0], [1.0, 1.0]);
@@ -411,11 +437,11 @@ fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner(
 /// tile; a human player's sight queues nothing.
 #[test]
 fn a_computer_players_newly_explored_tiles_are_queued_for_its_ai_module() {
-    let mut v = world(3);
+    let mut v = world(PlayerId::new(3));
     v.computer = vec![false, true, false];
-    assert_eq!(v.explore(1, 10, 10, 0, false), Ok(1));
-    assert_eq!(v.explore(1, 10, 10, 0, false), Ok(0));
-    assert_eq!(v.explore(2, 20, 20, 0, false), Ok(1));
-    assert_eq!(v.take_ai_tiles(), vec![(1, [10, 10])]);
+    assert_eq!(v.explore(PlayerId::new(1), 10, 10, 0, false), Ok(1));
+    assert_eq!(v.explore(PlayerId::new(1), 10, 10, 0, false), Ok(0));
+    assert_eq!(v.explore(PlayerId::new(2), 20, 20, 0, false), Ok(1));
+    assert_eq!(v.take_ai_tiles(), vec![(PlayerId::new(1), [10, 10])]);
     assert_eq!(v.take_ai_tiles(), vec![]);
 }

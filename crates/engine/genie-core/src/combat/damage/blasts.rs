@@ -10,6 +10,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
+use crate::players::PlayerId;
 use crate::{GenieError, math::fmath};
 
 /// `FUN_141082e80`: the damage ([`armor_damage`]) beyond what a blast has done: an attacker of
@@ -65,11 +66,13 @@ pub(super) fn damage(
         }
         t.killed = Some(Kill {
             attacker: src.id,
-            attacker_player: src.player,
+            attacker_player: src.player.index(),
             attacker_class: src.class,
             // The livestock class, which goes to Gaia when killed.
             // The artifact class (1), which no blast reaches.
-            to_gaia: t.kind == COMBAT && t.class == class::LIVESTOCK && t.player != 0,
+            to_gaia: t.kind == COMBAT
+                && t.class == class::LIVESTOCK
+                && t.player != PlayerId::new(0),
         });
     }
     Ok(())
@@ -393,10 +396,10 @@ pub(super) fn fixed_blast(
         if f32::from(t.capacity) < t.amount {
             t.amount = f32::from(t.capacity);
         }
-        if 1.0 <= before && 0 < t.player && t.kind == COMBAT {
+        if 1.0 <= before && t.player != PlayerId::GAIA && t.kind == COMBAT {
             t.killed = Some(Kill {
                 attacker: attacker.id,
-                attacker_player: attacker.player,
+                attacker_player: attacker.player.index(),
                 attacker_class: attacker.class,
                 to_gaia: false,
             });

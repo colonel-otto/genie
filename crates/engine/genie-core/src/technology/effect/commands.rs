@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::ClassId;
+use crate::players::PlayerId;
 use crate::technology::EffectCommand;
 use crate::technology::effect::{
     COST_ATTRIBUTES, Change, FARM_FOOD, TECH_COST, TECH_DISABLE, TECH_TIME, kind,
@@ -42,21 +43,28 @@ impl World {
     /// The players party `party` reaches from player `p`: for a relation, each player past Gaia
     /// (`FUN_14152fdd0`, from 1, the player itself when it counts itself so) whose and to whom
     /// the relations (`+0x260`, `FUN_141667f50`) are the party's, in order.
-    pub(super) fn party(&self, p: usize, party: Party) -> Vec<usize> {
-        let relation = |a: usize, b: usize| self.players.get(a)?.relations.get(b).copied();
-        let mutual = |q: usize, wanted: &[u8]| {
+    pub(super) fn party(&self, p: PlayerId, party: Party) -> Vec<PlayerId> {
+        let relation = |a: PlayerId, b: PlayerId| {
+            self.players
+                .get(a.index())?
+                .relations
+                .get(b.index())
+                .copied()
+        };
+        let mutual = |q: PlayerId, wanted: &[u8]| {
             wanted
                 .iter()
                 .any(|&r| relation(p, q) == Some(r) && relation(q, p) == Some(r))
         };
         let wanted: &[u8] = match party {
             Party::Own => return vec![p],
-            Party::Gaia => return vec![0],
+            Party::Gaia => return vec![PlayerId::GAIA],
             Party::Allies => &[0],
             Party::Enemies => &[3, 4],
             Party::Neutrals => &[1],
         };
-        (1..self.players.len())
+        PlayerId::each(self.players.len())
+            .skip(1)
             .filter(|&q| mutual(q, wanted))
             .collect()
     }
@@ -69,7 +77,7 @@ impl World {
     /// modifier (`'g'`, [`World::research_time`]); then the base's ([`World::base_effect`]).
     pub(crate) fn do_effect(
         &mut self,
-        p: usize,
+        p: PlayerId,
         effect: &[EffectCommand],
         object: Option<i32>,
     ) -> Result<(), GenieError> {
@@ -99,7 +107,7 @@ impl World {
     /// last such command's value before and amount.
     pub(super) fn base_effect(
         &mut self,
-        p: usize,
+        p: PlayerId,
         effect: &[EffectCommand],
         object: Option<i32>,
     ) -> Result<(), GenieError> {
@@ -137,7 +145,7 @@ impl World {
     /// entries instead, except in Gaia's block (`FUN_141666ee0`).
     pub(super) fn attribute_command(
         &mut self,
-        p: usize,
+        p: PlayerId,
         party: Party,
         c: &EffectCommand,
     ) -> Result<(), GenieError> {
@@ -168,7 +176,7 @@ impl World {
     /// multiply of a resource 0 or above; each for the block's players.
     pub(super) fn resource_command(
         &mut self,
-        p: usize,
+        p: PlayerId,
         party: Party,
         c: &EffectCommand,
         farms: &mut Option<(f32, f32)>,
@@ -200,7 +208,7 @@ impl World {
     /// (the own block's with the effect's object), the spawn and the technology change.
     pub(super) fn master_command(
         &mut self,
-        p: usize,
+        p: PlayerId,
         party: Party,
         c: &EffectCommand,
         object: Option<i32>,
@@ -242,7 +250,7 @@ impl World {
 
     /// A resource command's amount (`FUN_140ec2ac0`'s kinds 1, 11, ...): its value times the
     /// effect's player's attribute named by its third argument, when the player has it.
-    pub(super) fn scaled_amount(&self, p: usize, c: &EffectCommand) -> f32 {
+    pub(super) fn scaled_amount(&self, p: PlayerId, c: &EffectCommand) -> f32 {
         usize::try_from(c.c)
             .ok()
             .and_then(|i| self.attribute_value(p, i))
@@ -251,8 +259,8 @@ impl World {
 
     /// Player `p`'s attribute `i` (the resources are [`crate::world::Player::resources`]), None
     /// past its count (`+0x90`, the saved attributes').
-    pub(super) fn attribute_value(&self, p: usize, i: usize) -> Option<f32> {
-        let player = self.players.get(p)?;
+    pub(super) fn attribute_value(&self, p: PlayerId, i: usize) -> Option<f32> {
+        let player = self.players.get(p.index())?;
         let value = player.attributes.get(i).copied()?;
         Some(if i < 4 {
             *player.resources.get(i)?
@@ -262,7 +270,7 @@ impl World {
     }
 
     /// Player `p`'s attribute `i`, 0 past its count.
-    pub(super) fn attribute_of(&self, p: usize, i: i16) -> f32 {
+    pub(super) fn attribute_of(&self, p: PlayerId, i: i16) -> f32 {
         usize::try_from(i)
             .ok()
             .and_then(|i| self.attribute_value(p, i))

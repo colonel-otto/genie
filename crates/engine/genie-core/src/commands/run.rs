@@ -12,7 +12,7 @@ impl World {
     pub(crate) fn run(&mut self, command: &Command) {
         if let Err(e) = command.run(self) {
             let player = command.stopped_player(self.players.len());
-            self.stop_player(player.index(), e);
+            self.stop_player(player, e);
         }
     }
 
@@ -48,7 +48,7 @@ impl World {
             let (p, i) = match place {
                 crate::orders::Place::Live(p, i) | crate::orders::Place::Sleeping(p, i) => (p, i),
             };
-            let player = &mut self.players[p];
+            let player = &mut self.players[p.index()];
             let unit = match place {
                 crate::orders::Place::Live(..) => &mut player.objects[i],
                 crate::orders::Place::Sleeping(..) => &mut player.sleeping[i],

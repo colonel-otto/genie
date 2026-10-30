@@ -7,6 +7,7 @@ use crate::movement::Mover;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::Unit;
+use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -87,7 +88,7 @@ impl World {
     /// what could not be forced (an object that changed hands or masters, or
     /// that the game made and the slice did not). Not part of a replay: a dev hook to see past a
     /// freeze.
-    pub fn force(&mut self, game: &GameState) -> Vec<(usize, i32, GenieError)> {
+    pub fn force(&mut self, game: &GameState) -> Vec<(PlayerId, i32, GenieError)> {
         let mut notes = Vec::new();
         self.force_world_values(game);
         // the objects the slice holds, sorted: forcing only takes away objects the game no
@@ -98,8 +99,8 @@ impl World {
             .flat_map(|q| q.objects.iter().chain(&q.sleeping).map(|u| u.id.get()))
             .collect();
         known.sort_unstable();
-        for p in 0..self.players.len() {
-            let Some(theirs) = game.players.get(p) else {
+        for p in PlayerId::each(self.players.len()) {
+            let Some(theirs) = game.players.get(p.index()) else {
                 continue;
             };
             // an error here belongs to the player, not to an object: id -1
@@ -163,22 +164,22 @@ impl World {
     /// # Errors
     ///
     /// A player the world does not hold.
-    fn force_player_values(&mut self, p: usize, game: &GameState) -> Result<bool, GenieError> {
+    fn force_player_values(&mut self, p: PlayerId, game: &GameState) -> Result<bool, GenieError> {
         let player = self.players.player_mut(p)?;
         let stopped = player.stopped;
         if stopped {
-            if let Some(r) = game.resources.get(p) {
+            if let Some(r) = game.resources.get(p.index()) {
                 player.resources = *r;
             }
-            if let Some(d) = game.pending_debit.get(p) {
+            if let Some(d) = game.pending_debit.get(p.index()) {
                 player.pending_debit = *d;
             }
-            if let Some(t) = game.techs.get(p) {
+            if let Some(t) = game.techs.get(p.index()) {
                 player.techs.clone_from(t);
             }
             player.stopped = false;
         }
-        if let Some(&(status, resigned)) = game.statuses.get(p) {
+        if let Some(&(status, resigned)) = game.statuses.get(p.index()) {
             player.game_status = status;
             player.resigned = resigned;
         }
@@ -194,10 +195,10 @@ impl World {
     /// changed hands or masters stays, noted.
     fn force_objects(
         &mut self,
-        p: usize,
+        p: PlayerId,
         theirs: &[Unit],
         (game, stopped): (&GameState, bool),
-        notes: &mut Vec<(usize, i32, GenieError)>,
+        notes: &mut Vec<(PlayerId, i32, GenieError)>,
     ) -> Result<(), GenieError> {
         let mut i = 0;
         while i < self.players.player(p)?.objects.len() {
@@ -250,7 +251,7 @@ impl World {
     /// # Errors
     ///
     /// A player or a slot the world does not hold.
-    fn take_game_object(&mut self, p: usize, i: usize, g: &Unit) -> Result<(), GenieError> {
+    fn take_game_object(&mut self, p: PlayerId, i: usize, g: &Unit) -> Result<(), GenieError> {
         let unit = &self.players.live(p, i)?;
         let id = unit.id;
         let mut forced = g.clone();
@@ -342,13 +343,13 @@ mod tests {
         let mut t = forage_world();
         let before = t.players[1].resources;
         t.players[1].unsupported = Some((1, 0, GenieError::unsupported("a part")));
-        assert!(!t.force_player_values(1, &game).unwrap());
+        assert!(!t.force_player_values(PlayerId::new(1), &game).unwrap());
         let player = &t.players[1];
         assert_eq!(player.resources, before);
         assert_eq!((player.game_status, player.resigned), (2, true));
         assert!(player.unsupported.is_none());
         t.players[1].stopped = true;
-        assert!(t.force_player_values(1, &game).unwrap());
+        assert!(t.force_player_values(PlayerId::new(1), &game).unwrap());
         let player = &t.players[1];
         assert_eq!(
             (player.resources, player.pending_debit, player.techs.len()),

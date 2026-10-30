@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::{Master, Masters, Task};
+use crate::players::PlayerId;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskOn, find_task};
 
 /// Player `player`'s master `id` in `every`, the world's masters: one table per player, as the
@@ -10,8 +11,8 @@ use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskOn, find_task};
 /// player and id: an object's master goes through [`crate::objects::unit::Unit::master`], an
 /// invariant one through [`crate::world::World::master`].
 #[must_use]
-pub fn player_master(every: &[Masters], player: usize, id: i16) -> Option<&Master> {
-    every.get(player)?.get(id)
+pub fn player_master(every: &[Masters], player: PlayerId, id: i16) -> Option<&Master> {
+    every.get(player.index())?.get(id)
 }
 
 impl Masters {

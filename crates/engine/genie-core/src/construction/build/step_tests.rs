@@ -19,6 +19,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::players::PlayerId;
 use crate::test_ids::object_id;
 use crate::unit_ai::{ActionKind, OrderKind, QueuedOrder, UnitAi};
 use crate::world::step::Step;
@@ -66,7 +67,7 @@ const fn placed(at: [f32; 3], r: f32, class: ClassId, master: i16) -> Placed {
         position: at,
         radius: [r, r],
         class,
-        player: 1,
+        player: PlayerId::new(1),
         master,
         obstruction_type: 2,
         buildable_on: 0,
@@ -157,7 +158,7 @@ fn site_world(class: ClassId, at: [f32; 3], build: BuildAction) -> World {
     let mut t = World::new(
         0,
         1,
-        1,
+        PlayerId::new(1),
         vec![0, 0],
         vec![
             Player::default(),
@@ -200,7 +201,7 @@ type Top = (Option<i16>, Option<i32>);
 /// [`Unit::build_part`]), its code and the builder's top action right after it (the work it
 /// gives within the update, slot 0x7e8, replaces the Build).
 fn update(t: &mut World, dt: u32) -> Result<(HeadCode, Top), GenieError> {
-    in_update(t, (1, 0), dt, |u, c| {
+    in_update(t, (PlayerId::new(1), 0), dt, |u, c| {
         let me = Me {
             id: u.id.get(),
             group: u.group.id,
@@ -222,7 +223,7 @@ fn on_build<R>(
     t: &mut World,
     f: impl FnOnce(&mut BuildAction, &mut Step<'_>, &mut Unit, &BuildReads) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
-    in_update(t, (1, 0), 20, |u, c| {
+    in_update(t, (PlayerId::new(1), 0), 20, |u, c| {
         let mut b = *u.actions.build().unwrap();
         let reads = u.build_reads(c, b)?;
         let answer = f(&mut b, c, u, &reads);
@@ -755,7 +756,7 @@ fn stump(t: &mut World) {
     t.spatial.insert(
         77,
         Placed {
-            player: 0,
+            player: PlayerId::new(0),
             obstruction: Some(Obstruction { kind: 2, class: 0 }),
             ..placed([10.2, 10.2, 0.0], 0.5, class::TREE, 349)
         },
