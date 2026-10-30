@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::construction::building_update::blasts_at_death;
 use crate::objects::unit::{Outcome, Unit};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl World {
@@ -21,7 +22,7 @@ impl World {
         (dt, turn): (u32, Option<u32>),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Outcome, GenieError> {
-        let mut unit = self.players[p].objects.take_out(i);
+        let mut unit = self.players.player_mut(p)?.objects.take_out(i);
         let watch = crate::trace::Watch::of(&unit);
         // the objects a hit's blast may reach about its target (one a hit can read), or about
         // the unit for its blast at death (TRIBE_Combat_Object::update)

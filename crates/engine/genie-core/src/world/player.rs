@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::objects::object_list::ObjectList;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A player's settings for the groups an order's splitter forms ([`Player::formations`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -196,20 +197,21 @@ pub(crate) const NO_ATTRIBUTE: GenieError =
 impl crate::technology::Attributes for Player {
     /// An attribute's value (the resources' from [`Player::resources`]).
     fn get(&self, i: i16) -> Result<f32, GenieError> {
-        match usize::try_from(i) {
-            Ok(r @ 0..=3) => Ok(self.resources[r]),
-            Ok(k) => self.attributes.get(k).copied().ok_or(NO_ATTRIBUTE),
-            Err(_) => Err(GenieError::unsupported("a negative attribute")),
-        }
+        let k = usize::try_from(i).map_err(|_| GenieError::unsupported("a negative attribute"))?;
+        self.resources
+            .get(k)
+            .or_else(|| self.attributes.get(k))
+            .copied()
+            .ok_or(NO_ATTRIBUTE)
     }
 
     /// An attribute set to `v`, as a technology's payment writes it (no side effects).
     fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError> {
         match usize::try_from(i) {
-            Ok(r @ 0..=3) => self.resources[r] = v,
-            Ok(k) => {
-                *self.attributes.get_mut(k).ok_or(NO_ATTRIBUTE)? = v;
-            }
+            Ok(k) => match self.resources.get_mut(k) {
+                Some(r) => *r = v,
+                None => *self.attributes.get_mut(k).ok_or(NO_ATTRIBUTE)? = v,
+            },
             Err(_) => return Err(GenieError::unsupported("a negative attribute")),
         }
         Ok(())
@@ -219,9 +221,14 @@ impl crate::technology::Attributes for Player {
 impl World {
     /// A command or a pass the slice does not model for player `p`: the player stops
     /// ([`Player::stop`]), and a subscriber hears why ([`crate::trace`]).
+    /// A player the world does not hold has nothing to stop: the trace's subscriber hears that
+    /// instead (every caller steps the players it counts, so it does not happen).
     pub(crate) fn stop_player(&mut self, p: usize, why: GenieError) {
         crate::trace::player_stops(self.ticks, p, &why);
-        self.players[p].stop(self.ticks, why);
+        match self.players.player_mut(p) {
+            Ok(player) => player.stop(self.ticks, why),
+            Err(missing) => crate::trace::player_unsupported(self.ticks, p, &missing),
+        }
     }
 }
 
@@ -237,7 +244,7 @@ impl Player {
     #[must_use]
     pub fn attribute(&self, i: usize) -> Option<f32> {
         let value = self.attributes.get(i).copied()?;
-        Some(if i < 4 { self.resources[i] } else { value })
+        Some(self.resources.get(i).copied().unwrap_or(value))
     }
 
     /// `FUN_141616820` for the attributes an object's storage holds: the attribute's value grows
@@ -252,7 +259,7 @@ impl Player {
                 "an attribute whose change has side effects",
             )),
             0..=3 => {
-                self.resources[i] += amount;
+                *self.resources.get_mut(i).ok_or(NO_ATTRIBUTE)? += amount;
                 Ok(())
             }
             _ => {

@@ -17,7 +17,7 @@
 //!
 //! The module's files: the world as the header save holds it (`setup`), one world update
 //! (`world_update`), one object's step (`object_step`) with what it reads and writes (`step`),
-//! a player (`player`), the game options (`settings`), the checkpoint's state block
+//! a player (`player`) and the checked reach into its lists (`slots`), the game options (`settings`), the checkpoint's state block
 //! (`checkpoint`) and the forced replay (`forced`).
 //!
 //! [`Mover::step_velocity`]: crate::movement::Mover::step_velocity
@@ -26,6 +26,7 @@ pub mod checkpoint;
 pub(crate) mod lets;
 pub(crate) mod others;
 pub(crate) mod player;
+pub(crate) mod slots;
 pub(crate) mod step;
 
 use crate::GenieError;

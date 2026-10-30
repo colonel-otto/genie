@@ -7,6 +7,7 @@ use crate::movement::Mover;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::Unit;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The game's state after a tick, for the oracle's forced replay (dev only: the oracle reads it
 /// from the tick oracle's saves, genie-core never reads the game): the frame seed and every
@@ -100,8 +101,17 @@ impl World {
             let Some(theirs) = game.players.get(p) else {
                 continue;
             };
-            let stopped = self.force_player_values(p, game);
-            self.force_objects(p, theirs, (game, stopped), &mut notes);
+            // an error here belongs to the player, not to an object: id -1
+            let stopped = match self.force_player_values(p, game) {
+                Ok(stopped) => stopped,
+                Err(e) => {
+                    notes.push((p, -1, e));
+                    continue;
+                }
+            };
+            if let Err(e) = self.force_objects(p, theirs, (game, stopped), &mut notes) {
+                notes.push((p, -1, e));
+            }
             for g in theirs {
                 if known.binary_search(&g.id).is_err() {
                     notes.push((
@@ -148,8 +158,12 @@ impl World {
     /// Player `p`'s forced values: a stopped player takes the game's resources, pending debit
     /// and technologies and runs again; every player takes its game status and resignation, and
     /// its first unmodelled part goes. True when it had stopped.
-    fn force_player_values(&mut self, p: usize, game: &GameState) -> bool {
-        let player = &mut self.players[p];
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    fn force_player_values(&mut self, p: usize, game: &GameState) -> Result<bool, GenieError> {
+        let player = self.players.player_mut(p)?;
         let stopped = player.stopped;
         if stopped {
             if let Some(r) = game.resources.get(p) {
@@ -169,7 +183,7 @@ impl World {
         }
         // each update's first unmodelled part is its own: a freeze's would hide a later stop
         player.unsupported = None;
-        stopped
+        Ok(stopped)
     }
 
     /// Player `p`'s live objects against the game's (`theirs`): an object that froze (or whose
@@ -183,10 +197,10 @@ impl World {
         theirs: &[Unit],
         (game, stopped): (&GameState, bool),
         notes: &mut Vec<(usize, i32, GenieError)>,
-    ) {
+    ) -> Result<(), GenieError> {
         let mut i = 0;
-        while i < self.players[p].objects.len() {
-            let unit = &self.players[p].objects[i];
+        while i < self.players.player(p)?.objects.len() {
+            let unit = &self.players.live(p, i)?;
             let resync = game.resync.contains(&unit.id);
             let (id, frozen) = (unit.id, stopped || unit.stopped || resync);
             // a dead object never freezes, but one that differs takes the game's state too
@@ -206,7 +220,7 @@ impl World {
                     i += 1;
                     continue;
                 }
-                let gone = self.players[p].objects.swap_remove(i);
+                let gone = self.players.player_mut(p)?.objects.swap_remove(i);
                 if let Err(e) = self.leave_world(p, &gone) {
                     notes.push((p, id, e));
                 }
@@ -221,17 +235,22 @@ impl World {
                 i += 1;
                 continue;
             }
-            self.take_game_object(p, i, g);
+            self.take_game_object(p, i, g)?;
             i += 1;
         }
+        Ok(())
     }
 
     /// Object `i` of player `p` becomes the game's `g`, with what the save does not hold kept
     /// (a hunted animal's origin, a boar's flag) and its inside list in the slice's order while
     /// it holds the same objects; the world places it where the game has it, follows its state
     /// (a resource past state 6 is forgotten), unfreezes it and files its gait and mesh place.
-    fn take_game_object(&mut self, p: usize, i: usize, g: &Unit) {
-        let unit = &self.players[p].objects[i];
+    ///
+    /// # Errors
+    ///
+    /// A player or a slot the world does not hold.
+    fn take_game_object(&mut self, p: usize, i: usize, g: &Unit) -> Result<(), GenieError> {
+        let unit = &self.players.live(p, i)?;
         let id = unit.id;
         let mut forced = g.clone();
         // the objects inside it keep the slice's order (the game's history, which no save
@@ -268,7 +287,8 @@ impl World {
             self.pathing.moved(id, &placed, moving);
         }
         forced.stopped = false;
-        self.players[p].objects[i] = forced;
+        *self.players.live_mut(p, i)? = forced;
+        Ok(())
     }
 }
 
@@ -320,13 +340,13 @@ mod tests {
         let mut t = forage_world();
         let before = t.players[1].resources;
         t.players[1].unsupported = Some((1, 0, GenieError::unsupported("a part")));
-        assert!(!t.force_player_values(1, &game));
+        assert!(!t.force_player_values(1, &game).unwrap());
         let player = &t.players[1];
         assert_eq!(player.resources, before);
         assert_eq!((player.game_status, player.resigned), (2, true));
         assert!(player.unsupported.is_none());
         t.players[1].stopped = true;
-        assert!(t.force_player_values(1, &game));
+        assert!(t.force_player_values(1, &game).unwrap());
         let player = &t.players[1];
         assert_eq!(
             (player.resources, player.pending_debit, player.techs.len()),

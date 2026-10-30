@@ -9,6 +9,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 pub(crate) struct Step<'a> {
     /// The world the update reaches (FD-045-D28): its objects by id, every player and the
@@ -128,7 +129,7 @@ impl Step<'_> {
         }
         let lent = std::mem::replace(me, Unit::taken_out());
         let answer = self.w.put_back_own(p, lent).and_then(|_| f(self.w));
-        let own = &mut self.w.players[p].objects;
+        let own = &mut self.w.players.player_mut(p)?.objects;
         let i = own.position_of(self.me).ok_or_else(|| {
             GenieError::unreachable("a lent object left its list").with("object", self.me)
         })?;
@@ -157,9 +158,14 @@ impl Step<'_> {
     ) -> Result<R, GenieError> {
         let (p, id) = (self.player, self.me);
         self.lend(me, |w| {
-            let i = w.players[p].objects.position_of(id).ok_or_else(|| {
-                GenieError::unreachable("a lent object left its list").with("object", id)
-            })?;
+            let i = w
+                .players
+                .player(p)?
+                .objects
+                .position_of(id)
+                .ok_or_else(|| {
+                    GenieError::unreachable("a lent object left its list").with("object", id)
+                })?;
             f(w, p, i)
         })
     }
@@ -199,14 +205,14 @@ impl Step<'_> {
         crate::gathering::gather::unit::give_load(
             (
                 &self.w.spatial.relations,
-                self.w.players[self.player].sharing,
+                self.w.players.player(self.player)?.sharing,
             ),
             self.player,
             &mut adds,
             kind,
             amount,
         )?;
-        self.w.players[self.player].add_attributes(adds)
+        self.w.players.player_mut(self.player)?.add_attributes(adds)
     }
 
     /// What a walk takes of the update beside the world ([`World::walk_beside`]).

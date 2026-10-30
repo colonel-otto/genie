@@ -2984,7 +2984,7 @@ fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
         v.life.hp = 20.0;
         let ai = v.ai.as_mut().unwrap();
         (ai.idle_timer, ai.look_around_timer) = (5000, 2000);
-        t.update_objects(1, (50, Some(50)));
+        t.update_objects(1, (50, Some(50))).unwrap();
         let v = &t.players[1].objects[0];
         let ai = v.ai.as_ref().unwrap();
         (
@@ -4329,8 +4329,8 @@ fn outside_an_update_the_lets_run_on_the_whole_world() {
 fn an_own_object_taken_out_leaves_the_world_until_it_goes_back() {
     let mut t = lets_world();
     let id = t.players[1].objects[0].id;
-    assert!(t.take_out_own(0, id).is_none(), "another player's");
-    let mut u = t.take_out_own(1, id).expect("the owner's");
+    assert!(t.take_out_own(0, id).unwrap().is_none(), "another player's");
+    let mut u = t.take_out_own(1, id).unwrap().expect("the owner's");
     assert_eq!(u.id, id);
     assert!(t.object(id).is_none() && t.locate(id).is_none());
     assert_eq!(t.players[1].objects[0].id, crate::objects::unit::TAKEN_OUT);
@@ -9690,10 +9690,10 @@ fn the_list_s_loop_runs_its_count_again_only_after_a_leave() {
     use crate::objects::unit::Outcome;
     let mut t = house_builder();
     let n = t.players[1].objects.len();
-    assert!(t.file_step(1, 0, Outcome::Stay));
-    assert!(t.file_step(1, 0, Outcome::Sleep));
+    assert!(t.file_step(1, 0, Outcome::Stay).unwrap());
+    assert!(t.file_step(1, 0, Outcome::Sleep).unwrap());
     assert_eq!(t.players[1].objects.len(), n - 1);
-    assert!(!t.file_step(1, 0, Outcome::Leave));
+    assert!(!t.file_step(1, 0, Outcome::Leave).unwrap());
     assert_eq!(t.players[1].objects.len(), n - 2);
 }
 

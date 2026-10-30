@@ -186,6 +186,9 @@ struct UpdateRun<'a> {
     seed: u32,
 }
 
+/// A player without a time slot in the world.
+const NO_CLOCK: GenieError = GenieError::unreachable("a player without a time slot");
+
 impl World {
     /// One world update of `dt` game milliseconds, with the commands recorded in it: the
     /// schedule's steps in turn ([`World::tick_observed`]).
@@ -241,6 +244,17 @@ impl World {
         }
     }
 
+    /// Player `p`'s time slot (`world+0x18c[p]`).
+    ///
+    /// # Errors
+    ///
+    /// A player without a slot.
+    fn clock_mut(&mut self, p: usize) -> Result<&mut u32, GenieError> {
+        self.player_time
+            .get_mut(p)
+            .ok_or_else(|| NO_CLOCK.with("player", p))
+    }
+
     /// The world's players in their order; a world holds at most a byte's players (a save's
     /// player count).
     fn player_ids(&self) -> impl Iterator<Item = PlayerId> + use<> {
@@ -292,7 +306,7 @@ impl World {
             }
             WorldStep::Reseed => self.streams.seed_all(run.seed),
             WorldStep::Turn => {
-                self.player_time[self.player_turn] = 0;
+                *self.clock_mut(self.player_turn)? = 0;
                 self.player_turn = (self.player_turn + 1) % self.players.len();
             }
             WorldStep::Victory => self.victory_check(),
@@ -318,7 +332,10 @@ impl World {
         p: usize,
     ) -> Result<(), GenieError> {
         match step {
-            PlayerStep::Clock => self.player_time[p] = self.player_time[p].wrapping_add(run.dt),
+            PlayerStep::Clock => {
+                let time = self.clock_mut(p)?;
+                *time = time.wrapping_add(run.dt);
+            }
             PlayerStep::OpenGates => self.open_gates(p, &mut run.gates_open)?,
             PlayerStep::StartWork if run.start_work => self.start_work(p)?,
             PlayerStep::StartWork => {}
@@ -334,8 +351,12 @@ impl World {
                 done?;
             }
             PlayerStep::Objects => {
-                let turn = (p == self.player_turn).then_some(self.player_time[p]);
-                self.update_objects(p, (run.dt, turn));
+                let turn = if p == self.player_turn {
+                    Some(*self.clock_mut(p)?)
+                } else {
+                    None
+                };
+                self.update_objects(p, (run.dt, turn))?;
             }
             PlayerStep::NewTiles => self.process_new_tiles(p)?,
             PlayerStep::ScoutMap => self.world_player_tail(p),

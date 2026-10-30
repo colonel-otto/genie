@@ -12,11 +12,11 @@ use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
 use crate::objects::object_list::ObjectList;
 use crate::objects::unit::{TAKEN_OUT, Unit};
-use crate::orders::Place;
 use crate::players::tracker::{Tracker, key};
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
 use crate::world::player::Player;
+use crate::world::slots::PlayerSlots;
 
 /// The objects besides the one that updates, to read: its owner's other live objects in their
 /// list's order and the other players' live and sleeping ones.
@@ -202,11 +202,11 @@ impl<'a> Others<'a> {
     /// table by id (`FUN_1415417a0`) gives the game's call on it.
     pub(crate) fn get_mut(&mut self, id: i32) -> Option<(usize, &mut Unit)> {
         let p = self.player;
-        if let Some(i) = self.own.position_of(id) {
-            return Some((p, &mut self.own[i]));
+        if let Some(u) = self.own.by_id_mut(id) {
+            return Some((p, u));
         }
-        if let Some(i) = self.own_sleeping.position_of(id) {
-            return Some((p, &mut self.own_sleeping[i]));
+        if let Some(u) = self.own_sleeping.by_id_mut(id) {
+            return Some((p, u));
         }
         let skip = self.before.len() + 1;
         let before = self.before.iter_mut().enumerate();
@@ -295,10 +295,12 @@ impl World {
     /// Object `id` of any list with its owner and whether it sleeps: what the world's table by
     /// id (`FUN_1415417a0`) gives.
     pub(crate) fn locate(&self, id: i32) -> Option<(usize, &Unit, bool)> {
-        match self.place(id)? {
-            Place::Live(p, i) => Some((p, &self.players[p].objects[i], false)),
-            Place::Sleeping(p, i) => Some((p, &self.players[p].sleeping[i], true)),
-        }
+        self.players.iter().enumerate().find_map(|(p, player)| {
+            if let Some(u) = player.objects.by_id(id) {
+                return Some((p, u, false));
+            }
+            player.sleeping.by_id(id).map(|u| (p, u, true))
+        })
     }
 
     /// The sleeping object `id` wakes (`FUN_14119deb0` with 0): it leaves its player's sleeping
@@ -306,13 +308,17 @@ impl World {
     /// (slots 0x2d8, 0x2d0) file it last in its player's tracker. False when no sleeping list
     /// holds it.
     pub(crate) fn wake_sleeper(&mut self, id: i32) -> bool {
-        let Some(Place::Sleeping(p, i)) = self.place(id) else {
+        let woken = self.players.iter_mut().enumerate().find_map(|(p, player)| {
+            let i = player.sleeping.position_of(id)?;
+            let mut woken = player.sleeping.swap_remove(i);
+            woken.life.goto_sleep = false;
+            let master = woken.life.master_id;
+            player.objects.push(woken);
+            Some((p, master))
+        });
+        let Some((p, master)) = woken else {
             return false;
         };
-        let mut woken = self.players[p].sleeping.swap_remove(i);
-        woken.life.goto_sleep = false;
-        let master = woken.life.master_id;
-        self.players[p].objects.push(woken);
         self.track_relist(p, id, master);
         true
     }
@@ -320,10 +326,13 @@ impl World {
     /// Player `p`'s live object `id` out of its slot (its stand-in, [`TAKEN_OUT`], holds it),
     /// for a call on it that reaches the world as the updating object's do; it goes back with
     /// [`World::put_back_own`].
-    pub(crate) fn take_out_own(&mut self, p: usize, id: i32) -> Option<Unit> {
-        let own = &mut self.players[p].objects;
-        let i = own.position_of(id)?;
-        Some(own.take_out(i))
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    pub(crate) fn take_out_own(&mut self, p: usize, id: i32) -> Result<Option<Unit>, GenieError> {
+        let own = &mut self.players.player_mut(p)?.objects;
+        Ok(own.position_of(id).map(|i| own.take_out(i)))
     }
 
     /// `unit`, out of player `p`'s live list, goes back to the slot its stand-in holds now (the
@@ -339,7 +348,7 @@ impl World {
                 "a stand-in put back for its object",
             ));
         }
-        let own = &mut self.players[p].objects;
+        let own = &mut self.players.player_mut(p)?.objects;
         own.put_back(unit).map_err(|unit| {
             let id = unit.id;
             own.push(*unit);

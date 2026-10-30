@@ -320,10 +320,13 @@ impl World {
     }
 
     pub(crate) fn object(&self, id: i32) -> Option<(usize, &Unit)> {
-        match self.place(id)? {
-            Place::Live(p, i) => Some((p, &self.players[p].objects[i])),
-            Place::Sleeping(p, i) => Some((p, &self.players[p].sleeping[i])),
-        }
+        self.players.iter().enumerate().find_map(|(p, player)| {
+            let u = player
+                .objects
+                .by_id(id)
+                .or_else(|| player.sleeping.by_id(id))?;
+            Some((p, u))
+        })
     }
 
     /// The object state (`+0x640`) of the object `id`, live or sleeping, None for −1 or an id the
@@ -338,10 +341,13 @@ impl World {
 
     /// The object `id`, live or sleeping, to change (`FUN_1415417a0`'s object).
     pub(crate) fn object_mut(&mut self, id: i32) -> Option<(usize, &mut Unit)> {
-        match self.place(id)? {
-            Place::Live(p, i) => Some((p, &mut self.players[p].objects[i])),
-            Place::Sleeping(p, i) => Some((p, &mut self.players[p].sleeping[i])),
-        }
+        self.players.iter_mut().enumerate().find_map(|(p, player)| {
+            let crate::world::player::Player {
+                objects, sleeping, ..
+            } = player;
+            let u = objects.by_id_mut(id).or_else(|| sleeping.by_id_mut(id))?;
+            Some((p, u))
+        })
     }
 
     /// Player `player`'s master `master` ([`player_master`]), which the caller's object or

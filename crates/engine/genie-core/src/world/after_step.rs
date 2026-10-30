@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// What an object's step left for its list's loop ([`World::step_object`]).
@@ -34,7 +35,7 @@ impl World {
         (dt, turn, full): (u32, Option<u32>, bool),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Stepped, GenieError> {
-        let id = self.players[p].objects[i].id;
+        let id = self.players.live(p, i)?.id;
         let outcome = self.run_object((p, i), (dt, turn), f)?;
         let at = (p, self.slot_of(p, id)?, id);
         self.finish_own_update(at, (dt, full), &outcome)?;
@@ -51,10 +52,14 @@ impl World {
     ///
     /// The object left the list in its own step.
     fn slot_of(&self, p: usize, id: i32) -> Result<usize, GenieError> {
-        self.players[p].objects.position_of(id).ok_or_else(|| {
-            GenieError::unreachable("a stepped object left its list in its outcome")
-                .with("object", id)
-        })
+        self.players
+            .player(p)?
+            .objects
+            .position_of(id)
+            .ok_or_else(|| {
+                GenieError::unreachable("a stepped object left its list in its outcome")
+                    .with("object", id)
+            })
     }
 
     /// The parts of the object's own update after its actions, once, with the update's unit AI

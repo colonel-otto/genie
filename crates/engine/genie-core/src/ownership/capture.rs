@@ -255,7 +255,7 @@ fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Result<Vec<i
 /// None when `new` lacks the master and the animal stays Gaia's, which scans nothing.
 fn take_livestock(c: &mut Step<'_>, id: i32, new: usize) -> Result<Option<[f32; 3]>, GenieError> {
     let mut unit =
-        c.w.take_out_own(c.player, id)
+        c.w.take_out_own(c.player, id)?
             .ok_or_else(|| object_gone(id))?;
     let done = (|| {
         unit.capture_stop(c, class::LIVESTOCK)?;

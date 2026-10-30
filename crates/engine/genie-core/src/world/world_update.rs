@@ -7,6 +7,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// One world update of `dt` game milliseconds without commands.
@@ -110,28 +111,38 @@ impl World {
     /// ([`World::file_step`]). An object whose update is not modelled freezes, and so do all live
     /// objects of a player a command stopped; dead objects still run their state steps, which
     /// draw nothing and depend on nothing the stop changed.
-    pub(super) fn update_objects(&mut self, p: usize, (dt, turn): (u32, Option<u32>)) {
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold, or a slot of its list the loop's count misses.
+    pub(super) fn update_objects(
+        &mut self,
+        p: usize,
+        (dt, turn): (u32, Option<u32>),
+    ) -> Result<(), GenieError> {
         // the loop's count, which goes on past each object but one that leaves
         let mut i = 0;
-        while i < self.players[p].objects.len() {
-            let player = &self.players[p];
-            let stopped = player.stopped || player.objects[i].stopped;
-            if stopped && player.objects[i].life.is_alive() {
-                self.spatial.freeze(player.objects[i].id);
+        while i < self.players.player(p)?.objects.len() {
+            let player = self.players.player(p)?;
+            let unit = player.live(i)?;
+            let stopped = player.stopped || unit.stopped;
+            if stopped && unit.life.is_alive() {
+                self.spatial.freeze(unit.id);
                 i += 1;
                 continue;
             }
-            let (id, master) = (player.objects[i].id, player.objects[i].life.master_id);
+            let (id, master) = (unit.id, unit.life.master_id);
             let _object =
                 tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master).entered();
             match self.step_object((p, i), (dt, turn, true), Unit::update) {
-                Ok(s) => i += usize::from(self.file_step(p, s.slot, s.outcome)),
+                Ok(s) => i += usize::from(self.file_step(p, s.slot, s.outcome)?),
                 Err(e) => {
-                    self.freeze_object(p, (i, id), e);
+                    self.freeze_object(p, (i, id), e)?;
                     i += 1;
                 }
             }
         }
+        Ok(())
     }
 
     /// Files object `i` of player `p` by the step it finished (the list's loop,
@@ -140,19 +151,30 @@ impl World {
     /// past one that leaves (the game's loop runs its count again, the list's last object in the
     /// slot), past any other (a sleeper's slot holds the last object too, whose update waits
     /// for the next tick).
-    pub(super) fn file_step(&mut self, p: usize, i: usize, outcome: Outcome) -> bool {
-        let player = &mut self.players[p];
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold, or a slot its list does not hold.
+    pub(super) fn file_step(
+        &mut self,
+        p: usize,
+        i: usize,
+        outcome: Outcome,
+    ) -> Result<bool, GenieError> {
+        let player = self.players.player_mut(p)?;
         match outcome {
             Outcome::Leave => {
                 let gone = player.objects.swap_remove(i);
                 if let Err(e) = self.leave_world(p, &gone) {
                     crate::trace::player_unsupported(self.ticks, p, &e);
-                    let _ = self.players[p]
+                    let _ = self
+                        .players
+                        .player_mut(p)?
                         .unsupported
                         .get_or_insert((self.ticks, i, e));
                 }
                 // the list's last object took its place
-                false
+                Ok(false)
             }
             Outcome::Sleep => {
                 // the list's remove (FUN_1411664a0) puts its last object in the sleeper's place,
@@ -168,26 +190,28 @@ impl World {
                 player.tracker.remove(asleep.id, k);
                 player.tracker.add(asleep.id, k);
                 player.sleeping.push(asleep);
-                true
+                Ok(true)
             }
             Outcome::Captured(Captured { new, building, .. }) if building => {
                 // a building's slot 0x70 (FUN_1411cd860), whole: its annexes, its lists' moves
                 // and its new owner's parts
-                let id = player.objects[i].id;
+                let id = player.live(i)?.id;
                 let watched = player.watched.iter().any(|w| w.id == id);
                 if let Err(e) = self.building_changes_hands(p, id, new, watched) {
                     crate::trace::player_unsupported(self.ticks, p, &e);
-                    let _ = self.players[p]
+                    let _ = self
+                        .players
+                        .player_mut(p)?
                         .unsupported
                         .get_or_insert((self.ticks, i, e));
                 }
-                true
+                Ok(true)
             }
             Outcome::Captured(taken) => {
-                self.hand_over_units(p, i, taken);
-                true
+                self.hand_over_units(p, i, taken)?;
+                Ok(true)
             }
-            Outcome::Stay => true,
+            Outcome::Stay => Ok(true),
         }
     }
 
@@ -197,11 +221,15 @@ impl World {
     /// (`FUN_1411664a0`, the last in each place; the loop goes on past the first) and the new
     /// owner's gains them (`FUN_141616200`), each with its attributes
     /// ([`World::hand_over_attributes`]).
-    fn hand_over_units(&mut self, p: usize, i: usize, taken: Captured) {
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    fn hand_over_units(&mut self, p: usize, i: usize, taken: Captured) -> Result<(), GenieError> {
         let Captured {
             new, main, also, ..
         } = taken;
-        let player = &mut self.players[p];
+        let player = self.players.player_mut(p)?;
         let mut moved = Vec::new();
         if main {
             moved.push(player.objects.swap_remove(i));
@@ -219,7 +247,9 @@ impl World {
         }
         if let Some(e) = failed {
             crate::trace::player_unsupported(self.ticks, p, &e);
-            let _ = self.players[p]
+            let _ = self
+                .players
+                .player_mut(p)?
                 .unsupported
                 .get_or_insert((self.ticks, i, e));
         }
@@ -228,21 +258,31 @@ impl World {
         for u in &moved {
             let m = u.life.master_id;
             let old = crate::players::tracker::key(self.masters.get(p), &self.lines, m);
-            self.players[p].tracker.remove(u.id, old);
+            self.players.player_mut(p)?.tracker.remove(u.id, old);
             let k = crate::players::tracker::key(self.masters.get(new), &self.lines, m);
-            self.players[new].tracker.add(u.id, k);
+            self.players.player_mut(new)?.tracker.add(u.id, k);
         }
-        self.players[new].objects.extend(moved);
+        self.players.player_mut(new)?.objects.extend(moved);
+        Ok(())
     }
 
     /// Object `id` of player `p`, whose step at the loop's count `i` failed with `e`, freezes:
     /// it stays in its list, stopped, its error in the player's freezes, and the player keeps
     /// its first error with the object's slot (the count, once the step took it from the list).
-    fn freeze_object(&mut self, p: usize, (i, id): (usize, i32), e: GenieError) {
-        let player = &mut self.players[p];
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    fn freeze_object(
+        &mut self,
+        p: usize,
+        (i, id): (usize, i32),
+        e: GenieError,
+    ) -> Result<(), GenieError> {
+        let player = self.players.player_mut(p)?;
         let slot = player.objects.position_of(id);
         let e = match slot {
-            Some(k) => player.objects[k].in_context(e),
+            Some(k) => player.live(k)?.in_context(e),
             None => e.with("object", id),
         };
         crate::trace::object_freezes(self.ticks, p, id, &e);
@@ -250,9 +290,10 @@ impl World {
         let first = (self.ticks, slot.unwrap_or(i), e);
         let _ = player.unsupported.get_or_insert(first);
         if let Some(k) = slot {
-            player.objects[k].stopped = true;
+            player.live_mut(k)?.stopped = true;
         }
         self.spatial.freeze(id);
+        Ok(())
     }
 }
 

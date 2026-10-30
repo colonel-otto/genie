@@ -43,6 +43,7 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 | [`schedule.rs`](schedule.rs) | The world update as a declared schedule (FD-045-D13): its steps in the game's order, each with the game routine it ports, and the update that runs them with an observer. |
 | [`settings.rs`](settings.rs) | The game options the simulation reads: the object `FUN_140c87b90` returns (`GameOptions`, 0x1088 bytes), which the header saves and its load `FUN_141305310` fills. |
 | [`setup.rs`](setup.rs) | The world as the header save holds it (`World::new`): the next object id, the planners and the shape mesh the game's load builds. |
+| [`slots.rs`](slots.rs) | The checked reach into the world's player table and the players' object lists. |
 | [`step.rs`](step.rs) | What a tick's update of one object reads and writes (`Step`) and its walks. |
 | [`tests.rs`](tests.rs) | Tests. |
 | [`world_update.rs`](world_update.rs) | The world update's parts (`crate::world::schedule` runs them): the command phase, the moving objects, the players' relations and each player's objects' updates. |
