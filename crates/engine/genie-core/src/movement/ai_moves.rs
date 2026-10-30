@@ -219,8 +219,9 @@ impl Unit {
         point: [f32; 3],
         sprites: &SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
+        let reads = MoveToReads::with_sprites(*sprites, self);
         let gone = match self.actions.artifact_mut() {
-            Some(a) => a.take_point(point, sprites)?,
+            Some(a) => a.take_point(point, &reads)?,
             None => crate::ownership::artifact::SubActionsGone::default(),
         };
         if gone.stops {

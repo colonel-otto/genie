@@ -34,7 +34,6 @@ impl World {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an Artifact's move to an object the slice does not hold",
         ))?;
-        let alive = t.life.state < 7;
         let t_master = t.master(&self.masters, tp)?;
         let to_building = livestock && t_master.kind == BUILDING;
         let to_town_centre = livestock && t_master.id == TOWN_CENTRE;
@@ -46,15 +45,15 @@ impl World {
                 "an Artifact's move to an object without a place",
             ))?;
         let unit = &self.players.live(player, idx)?;
-        // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
-        let sprites = crate::movement::move_to::SpriteReads::of(
-            unit.master(&self.masters, player)?,
-            unit.abilities.look.as_ref(),
-            &self.graphics,
-        );
+        // what its MoveTo's constructor (FUN_140aa0df0) reads of the unit and the target
+        let reads = unit.move_to_reads(&self.masters, player, &self.graphics)?;
+        let to = reads.walk_to(self, target)?.ok_or(GenieError::unsupported(
+            "an Artifact's move to an object the slice does not hold",
+        ))?;
+        let to = crate::movement::move_to::WalkTo { at, ..to };
         let unit = self.players.live_mut(player, idx)?;
         let (targets, gone) = match unit.actions.artifact_mut() {
-            Some(a) => a.take_object((target, alive), at, to_building, to_town_centre, &sprites)?,
+            Some(a) => a.take_object(to, (to_building, to_town_centre), &reads)?,
             None => Default::default(),
         };
         if let Some(t) = targets.released {

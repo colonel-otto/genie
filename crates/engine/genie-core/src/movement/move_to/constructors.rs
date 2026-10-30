@@ -53,6 +53,20 @@ pub struct WalkTo {
     pub state: Option<u8>,
 }
 
+impl WalkTo {
+    /// A `MoveTo` that holds no object but walks to `at` as to a point that is far (a livestock
+    /// `MoveTo` to a town centre, `FUN_140aa0df0`): no target, [`NO_TARGET_GAP`].
+    #[must_use]
+    pub const fn unheld(at: [f32; 3]) -> Self {
+        Self {
+            id: -1,
+            at,
+            gap: NO_TARGET_GAP,
+            state: None,
+        }
+    }
+}
+
 impl<'g> MoveToReads<'g> {
     /// What a new `MoveTo` reads of `unit` of `master` (its own, or the one its task switches it
     /// to), with the sprites' table `graphics`: an object without movement has no speed (a
