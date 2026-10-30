@@ -1,6 +1,11 @@
-use crate::{DRSHeader, DRSResource, DRSTable, ResourceType};
+use crate::{DRSHeader, DRSResource, DRSTable, IntoResourceType, ResourceType};
 use byteorder::{LE, WriteBytesExt};
 use std::io::{self, Read, Seek, SeekFrom, Write};
+
+/// The error of a count or a size the format cannot hold.
+fn invalid(reason: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, reason.to_owned())
+}
 
 /// Strategy to use when writing files to the archive.
 ///
@@ -74,7 +79,7 @@ where
         resource.size = u32::try_from(bytes.len())
             .ok()
             .filter(|&size| size < u32::MAX)
-            .expect("file too large");
+            .ok_or_else(|| invalid("file too large"))?;
         self.resources.push((table, bytes));
         Ok(resource)
     }
@@ -83,10 +88,9 @@ where
     // against that beyond the assert, so the casts keep their truncating behaviour.
     #[allow(clippy::cast_possible_truncation)]
     fn close(&mut self, drs: &mut InnerDRSWriter<W>) -> Result<(), io::Error> {
-        assert!(
-            self.resources.len() < u32::MAX as usize,
-            "too many resources"
-        );
+        if u32::MAX as usize <= self.resources.len() {
+            return Err(invalid("too many resources"));
+        }
 
         let num_tables = drs.tables.len();
         let num_resources = drs.tables.iter().fold(0, |acc, t| acc + t.len());
@@ -119,7 +123,9 @@ where
                 }
             });
             for _ in &table.resources {
-                let bytes = data.next().expect("genie-drs bug: mismatch between InMemoryStrategy resources and DRSWriter table data");
+                let bytes = data.next().ok_or_else(|| {
+                    invalid("mismatch between InMemoryStrategy resources and DRSWriter table data")
+                })?;
                 drs.output.write_all(bytes)?;
             }
         }
@@ -174,24 +180,25 @@ where
         mut resource: DRSResource,
         data: &mut dyn Read,
     ) -> Result<DRSResource, io::Error> {
-        assert!(self.file_space_left > 0, "too many files");
-        self.file_space_left -= 1;
+        self.file_space_left = self
+            .file_space_left
+            .checked_sub(1)
+            .ok_or_else(|| invalid("too many files"))?;
 
         let len = io::copy(data, &mut drs.output)?;
         resource.offset = self.write_offset;
         resource.size = u32::try_from(len)
             .ok()
             .filter(|&size| size < u32::MAX)
-            .expect("file too large");
+            .ok_or_else(|| invalid("file too large"))?;
         self.write_offset += resource.size;
         Ok(resource)
     }
 
     fn close(&mut self, drs: &mut InnerDRSWriter<W>) -> Result<(), io::Error> {
-        assert!(
-            drs.tables.len() <= self.reserved_tables as usize,
-            "too many tables"
-        );
+        if drs.tables.len() > self.reserved_tables as usize {
+            return Err(invalid("too many tables"));
+        }
 
         // Update the resource type count
         let _ = drs.output.seek(SeekFrom::Start(56))?;
@@ -199,8 +206,7 @@ where
         let _ = drs.output.seek(SeekFrom::Current(4))?;
 
         // Assign table offsets
-        let num_tables =
-            u32::try_from(drs.tables.len()).expect("at most `reserved_tables`, checked above");
+        let num_tables = u32::try_from(drs.tables.len()).map_err(|_| invalid("too many tables"))?;
         let mut table_offset = 64 + 12 * num_tables;
         for table in &mut drs.tables {
             table.offset = table_offset;
@@ -328,13 +334,12 @@ where
     ///
     /// Returns an error if reading `data` or writing to the output fails.
     ///
-    /// # Panics
-    ///
-    /// Panics if the file is 4 GiB or larger, or, with [`ReserveDirectoryStrategy`], if more
-    /// files are added than were reserved.
+    /// Returns an `InvalidData` error if the resource type is not 4 bytes of UTF-8 at most, if
+    /// the file is 4 GiB or larger, or, with [`ReserveDirectoryStrategy`], if more files are
+    /// added than were reserved.
     #[inline]
-    pub fn add(&mut self, t: impl Into<ResourceType>, id: u32, data: impl Read) -> io::Result<()> {
-        self.add_inner(t.into(), id, data)
+    pub fn add(&mut self, t: impl IntoResourceType, id: u32, data: impl Read) -> io::Result<()> {
+        self.add_inner(t.into_resource_type()?, id, data)
     }
 
     fn add_inner(&mut self, t: ResourceType, id: u32, mut data: impl Read) -> io::Result<()> {
@@ -368,17 +373,14 @@ where
     ///
     /// # Errors
     ///
-    /// Returns an error if writing to or seeking in the output fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there are `u32::MAX` or more tables or resources, or, with
+    /// Returns an error if writing to or seeking in the output fails, and an `InvalidData` error
+    /// if there are `u32::MAX` or more tables or resources, or, with
     /// [`ReserveDirectoryStrategy`], more tables than were reserved.
     pub fn flush(mut self) -> io::Result<W> {
         self.inner.header.num_resource_types = u32::try_from(self.inner.tables.len())
             .ok()
             .filter(|&n| n < u32::MAX)
-            .expect("too many tables");
+            .ok_or_else(|| invalid("too many tables"))?;
 
         self.strategy.close(&mut self.inner)?;
 
@@ -401,6 +403,51 @@ mod test {
     /// Table "txt", offset 76, resources 1
     /// File 1, offset 88, size 17
     static ONE_FILE: &[u8] = b"Copyright (c) 1997 Ensemble Studios.\x1a\x00\x00\x001.00tribe\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x58\x00\x00\x00 txt\x4C\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x58\x00\x00\x00\x11\x00\x00\x00example test file";
+
+    fn invalid(e: &io::Error) -> bool {
+        e.kind() == io::ErrorKind::InvalidData
+    }
+
+    /// More files than a reserved directory holds fail to add.
+    #[test]
+    fn a_reserved_directory_refuses_one_file_too_many() -> anyhow::Result<()> {
+        let mut drs = DRSWriter::new(Cursor::new(vec![]), ReserveDirectoryStrategy::new(2, 1))?;
+        drs.add("txt", 1, &b"a"[..])?;
+        assert!(invalid(&drs.add("txt", 2, &b"b"[..]).unwrap_err()));
+        Ok(())
+    }
+
+    /// More tables than a reserved directory holds fail to close.
+    #[test]
+    fn a_reserved_directory_refuses_one_table_too_many() -> anyhow::Result<()> {
+        let mut drs = DRSWriter::new(Cursor::new(vec![]), ReserveDirectoryStrategy::new(1, 2))?;
+        drs.add("txt", 1, &b"a"[..])?;
+        drs.add("bin", 2, &b"b"[..])?;
+        assert!(invalid(&drs.flush().unwrap_err()));
+        Ok(())
+    }
+
+    /// A resource type of more than 4 bytes or of bytes that are no UTF-8 fails to add.
+    #[test]
+    fn a_bad_resource_type_fails_to_add() -> anyhow::Result<()> {
+        let mut drs = DRSWriter::new(Cursor::new(vec![]), InMemoryStrategy::default())?;
+        assert!(invalid(&drs.add("toolong", 1, &b"a"[..]).unwrap_err()));
+        assert!(invalid(&drs.add(&[0xff_u8][..], 1, &b"a"[..]).unwrap_err()));
+        assert!(drs.add(&b"ok"[..], 1, &b"a"[..]).is_ok());
+        Ok(())
+    }
+
+    /// A resource type reads back as the text it was given, and one stored as no UTF-8 does not
+    /// read.
+    #[test]
+    fn a_resource_type_reads_back_or_does_not_read() {
+        let slp = ResourceType::try_from(*b" pls").unwrap();
+        assert_eq!(slp.to_string(), "slp");
+        assert!(ResourceType::try_from([0xff, 0, 0, 0]).is_err());
+        let mut table = [0_u8; 12];
+        table[..4].copy_from_slice(&[0xff, 0, 0, 0]);
+        assert!(invalid(&DRSTable::from(&mut &table[..]).unwrap_err()));
+    }
 
     #[test]
     fn one_file_reserve() -> anyhow::Result<()> {

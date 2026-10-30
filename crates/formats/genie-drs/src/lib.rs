@@ -52,10 +52,10 @@ type DRSVersion = [u8; 4];
 /// ```rust
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use genie_drs::ResourceType;
-/// let slp = ResourceType::from(*b" pls");
+/// let slp = ResourceType::try_from(*b" pls")?;
 /// assert_eq!(&slp, "slp", "implements AsRef<str>");
 /// assert_eq!(slp.to_string(), "slp", "implements ToString");
-/// assert_eq!(slp, ResourceType::from(*b" pls"));
+/// assert_eq!(slp, ResourceType::try_from(*b" pls")?);
 /// let bina = "bina".parse::<ResourceType>()?;
 /// assert_ne!(slp, bina);
 /// # Ok(()) }
@@ -82,9 +82,8 @@ impl PartialEq<str> for ResourceType {
 
 impl AsRef<str> for ResourceType {
     fn as_ref(&self) -> &str {
-        str::from_utf8(&self.0[..])
-            .expect("resource type must be utf-8")
-            .trim()
+        // the constructors take only valid UTF-8, so the text is never empty by a failure
+        str::from_utf8(&self.0[..]).map_or("", str::trim)
     }
 }
 
@@ -97,45 +96,84 @@ impl std::fmt::Display for ResourceType {
 /// An error occurred while parsing a resource type.
 ///
 /// This may be caused by:
-///   - The input string not being 4 characters long
+///   - The input not being 4 bytes or fewer long
+///   - The input not being valid UTF-8
 #[derive(Debug, Clone, Copy, thiserror::Error)]
-#[error("invalid resource type, must be 4 characters")]
+#[error("invalid resource type, must be 4 bytes of UTF-8 at most")]
 pub struct ParseResourceTypeError;
+
+impl From<ParseResourceTypeError> for Error {
+    fn from(e: ParseResourceTypeError) -> Self {
+        Self::new(std::io::ErrorKind::InvalidData, e)
+    }
+}
 
 impl core::str::FromStr for ResourceType {
     type Err = ParseResourceTypeError;
     /// Parse a resource type from a string, with error handling.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = s.as_bytes();
-        if bytes.len() > 4 {
-            Err(ParseResourceTypeError)
-        } else {
-            Ok(bytes.into())
-        }
+        s.as_bytes().try_into()
     }
 }
 
-impl From<[u8; 4]> for ResourceType {
-    fn from(mut u: [u8; 4]) -> Self {
+/// Parse a resource type as the archive stores it: reversed, with a UTF-8 name.
+impl TryFrom<[u8; 4]> for ResourceType {
+    type Error = ParseResourceTypeError;
+    fn try_from(mut u: [u8; 4]) -> Result<Self, Self::Error> {
         u.reverse();
-        Self(u)
+        let _ = str::from_utf8(&u).map_err(|_| ParseResourceTypeError)?;
+        Ok(Self(u))
     }
 }
 
-/// Parse a resource type from a byte slice, panics if the slice is too long to fit.
-impl From<&[u8]> for ResourceType {
-    fn from(u: &[u8]) -> Self {
-        assert!(u.len() <= 4);
+/// Parse a resource type from a byte slice of at most 4 bytes of UTF-8.
+impl TryFrom<&[u8]> for ResourceType {
+    type Error = ParseResourceTypeError;
+    fn try_from(u: &[u8]) -> Result<Self, Self::Error> {
+        let _ = str::from_utf8(u).map_err(|_| ParseResourceTypeError)?;
         let mut bytes = [b' '; 4];
-        bytes[0..u.len()].copy_from_slice(u);
-        Self(bytes)
+        bytes
+            .get_mut(..u.len())
+            .ok_or(ParseResourceTypeError)?
+            .copy_from_slice(u);
+        Ok(Self(bytes))
     }
 }
 
-/// Parse a resource type from a string, panics if the string is too long to fit (>4 bytes).
-impl From<&str> for ResourceType {
-    fn from(s: &str) -> Self {
-        s.as_bytes().into()
+/// Parse a resource type from a string of at most 4 bytes.
+impl TryFrom<&str> for ResourceType {
+    type Error = ParseResourceTypeError;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        s.as_bytes().try_into()
+    }
+}
+
+/// What names a resource type for [`DRSWriter::add`]: a [`ResourceType`] itself, or its name as
+/// a string (at most 4 bytes) or as bytes.
+pub trait IntoResourceType {
+    /// The resource type.
+    ///
+    /// # Errors
+    ///
+    /// An `InvalidData` error for a name of more than 4 bytes or one that is not UTF-8.
+    fn into_resource_type(self) -> Result<ResourceType, Error>;
+}
+
+impl IntoResourceType for ResourceType {
+    fn into_resource_type(self) -> Result<ResourceType, Error> {
+        Ok(self)
+    }
+}
+
+impl IntoResourceType for &str {
+    fn into_resource_type(self) -> Result<ResourceType, Error> {
+        Ok(ResourceType::try_from(self)?)
+    }
+}
+
+impl IntoResourceType for &[u8] {
+    fn into_resource_type(self) -> Result<ResourceType, Error> {
+        Ok(ResourceType::try_from(self)?)
     }
 }
 
@@ -203,9 +241,9 @@ impl std::fmt::Debug for DRSHeader {
         write!(
             f,
             "DRSHeader {{ banner_msg: '{}', version: '{}', password: '{}', num_resource_types: {}, directory_size: {} }}",
-            str::from_utf8(&self.banner_msg).expect("banner must be utf8"),
-            str::from_utf8(&self.version).expect("version must be utf8"),
-            str::from_utf8(&self.password).expect("password must be utf8"),
+            String::from_utf8_lossy(&self.banner_msg),
+            String::from_utf8_lossy(&self.version),
+            String::from_utf8_lossy(&self.password),
             self.num_resource_types,
             self.directory_size
         )
@@ -244,7 +282,7 @@ impl DRSTable {
         source.read_exact(&mut resource_type)?;
         let offset = source.read_u32::<LE>()?;
         let num_resources = source.read_u32::<LE>()?;
-        Ok(Self::new(resource_type.into(), offset, num_resources))
+        Ok(Self::new(resource_type.try_into()?, offset, num_resources))
     }
 
     #[inline]

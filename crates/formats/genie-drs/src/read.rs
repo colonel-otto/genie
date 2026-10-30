@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind, Read, Seek, SeekFrom};
 /// A DRS archive reader.
 #[derive(Debug)]
 pub struct DRSReader {
-    header: Option<DRSHeader>,
+    header: DRSHeader,
     tables: Vec<DRSTable>,
 }
 
@@ -19,32 +19,21 @@ impl DRSReader {
     where
         R: Read + Seek,
     {
+        let header = DRSHeader::from(handle)?;
         let mut drs = Self {
-            header: None,
+            header,
             tables: vec![],
         };
-        drs.read_header(handle)?;
         drs.read_tables(handle)?;
         drs.read_dictionary(handle)?;
         Ok(drs)
     }
 
-    /// Read the DRS archive header.
-    fn read_header<R: Read + Seek>(&mut self, handle: &mut R) -> Result<(), Error> {
-        self.header = Some(DRSHeader::from(handle)?);
-        Ok(())
-    }
-
-    /// Read the list of tables.
+    /// Read the list of tables the header counts.
     fn read_tables<R: Read + Seek>(&mut self, handle: &mut R) -> Result<(), Error> {
-        match self.header {
-            Some(ref header) => {
-                for _ in 0..header.num_resource_types {
-                    let table = DRSTable::from(handle)?;
-                    self.tables.push(table);
-                }
-            }
-            None => panic!("must read header first"),
+        for _ in 0..self.header.num_resource_types {
+            let table = DRSTable::from(handle)?;
+            self.tables.push(table);
         }
         Ok(())
     }

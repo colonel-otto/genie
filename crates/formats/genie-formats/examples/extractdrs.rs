@@ -180,11 +180,7 @@ fn add(args: Add) -> anyhow::Result<()> {
     }
 
     for (i, path) in args.file.iter().enumerate() {
-        let mut res_type = [0x20; 4];
-        let slice = args.table[i].as_bytes();
-        res_type[0..slice.len()].copy_from_slice(slice);
-        res_type.reverse();
-        drs_write.add(res_type, args.id[i], File::open(path)?)?;
+        drs_write.add(args.table[i].as_str(), args.id[i], File::open(path)?)?;
     }
 
     // Close the new archive before it replaces the old one.
