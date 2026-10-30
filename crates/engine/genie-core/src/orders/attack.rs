@@ -250,7 +250,7 @@ impl World {
             .any(|&d| Some(d) == target_master);
         let unit = self.players.live_mut(player, idx)?;
         let old = unit.actions.hunt().map(|h| h.target).filter(|&t| t != -1);
-        let held = unit.life.amount;
+        let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let (Some(hunt), Some(mover)) = (unit.actions.hunt_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
@@ -261,7 +261,7 @@ impl World {
             HuntRetarget {
                 target: &quarry,
                 player: unit_player,
-                held,
+                walks,
                 drops_here,
             },
             &engagement,

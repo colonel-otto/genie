@@ -8,7 +8,7 @@
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
 use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
-use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
 
@@ -26,6 +26,7 @@ mod sprites;
 mod start;
 pub(crate) mod unit;
 mod update;
+mod walks;
 
 #[cfg(test)]
 use self::drop_off::DROP_WAIT;
@@ -71,8 +72,6 @@ pub const WALK_SEARCH: u8 = 11;
 /// hunt whose target went searches for the next one (`FUN_140ac4670`).
 pub const TREE_CLASS: i32 = 15;
 
-/// A `MoveTo` starts in place within this gap of its target (`0x140aa2100`).
-const ARRIVED: f32 = 0.01;
 /// Own livestock farther than this squared from its drop site is led there first
 /// (`DAT_142ecccc4`).
 const HERD_REACH: f32 = crate::math::image::hunt::HERD_REACH;
@@ -112,15 +111,10 @@ pub struct HuntAction {
     pub task: HuntTask,
     /// The sub-action of state 12.
     pub attack: Option<Attack>,
-    /// The sub-action of state 4: a `MoveTo` to the target within `walk_range`, quiet (its
-    /// `+0x60` and `+0x61` set: its end changes neither the sprite nor the unit's notifies).
-    pub move_to: Option<MoveTo>,
-    /// The `MoveTo`'s range: the task's (`+0x30`) to a dead target, `OWN_LIVESTOCK_RANGE` to its
-    /// own player's livestock.
-    #[diff(
-        gap = "the MoveTo's range (+0x68) is held per owning action; the save's sub-action holds one"
-    )]
-    pub walk_range: f32,
+    /// The sub-action of states 4, 8, 11 and 15: the quiet `MoveTo` (the one component,
+    /// [`MoveToAction`]) to the target within the task's range (`OWN_LIVESTOCK_RANGE` to its own
+    /// player's livestock), to the drop site, or to the point, which `set_state` makes.
+    pub move_to: Option<MoveToAction>,
     /// `+0x70`: the drop site its own livestock is led to, −1 for none yet.
     pub drop_site: i32,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site the load goes to in state 8,
@@ -128,8 +122,6 @@ pub struct HuntAction {
     pub carry_to: i32,
     /// `+0x44`: the state's timer (state 8 waits with it below 0 before it tries again).
     pub timer: f32,
-    /// Its `MoveTo`'s wait after the motion step gave up.
-    pub move_wait: MoveWait,
     /// What it keeps of the livestock it leads to its drop site.
     pub lead: Lead,
 }
@@ -213,6 +205,9 @@ pub struct HuntTask {
 pub(crate) struct HuntReads {
     /// What its Attack reads ([`AttackReads::of`]).
     pub(crate) attack: AttackReads,
+    /// What the `MoveTo`s' constructors take for a sprite when the task gives none
+    /// (`FUN_140aa0d30`, `FUN_140aa0df0`).
+    pub(crate) defaults: MoveDefaults,
     /// The master's work rate (`+0x798`) plus the unit's powerup (slot 0x6e8, `+0xa30`).
     pub(crate) work_rate: f32,
     /// The master's `attribute_max_amount` (`+0x61c`): what the unit carries at most.

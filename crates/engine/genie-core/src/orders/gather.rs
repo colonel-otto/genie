@@ -88,7 +88,7 @@ impl World {
             ),
         };
         // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-        let walks = unit.gather_walks(&self.masters, player, &self.graphics)?;
+        let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let unit = self.players.live_mut(player, idx)?;
         let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -166,7 +166,7 @@ impl World {
             gap: crate::movement::footprint_gap(unit.position(), me.radius, at, radius),
         });
         let by = self.releaser(player, idx);
-        let walks = unit.gather_walks(&self.masters, player, &self.graphics)?;
+        let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let unit = self.players.live_mut(player, idx)?;
         let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -227,7 +227,8 @@ impl World {
         let gap = self.engagement(player, idx, target)?.gap;
         let by = self.releaser(player, idx);
         let unit = self.players.live_mut(player, idx)?;
-        let (held, my_pasture) = (unit.life.amount, unit.my_pasture);
+        let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
+        let my_pasture = unit.my_pasture;
         let (Some(hunt), Some(mover)) = (unit.actions.hunt_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
@@ -239,7 +240,7 @@ impl World {
                 target: quarry.as_ref(),
                 point,
                 player,
-                held,
+                walks,
                 drops_here: quarry.as_ref().is_some_and(|q| q.drop_site),
                 my_pasture,
                 gap,
@@ -364,7 +365,7 @@ impl World {
         let computer = self.players.player(player)?.computer;
         let carry_rule = self.settings.carry_rule();
         let unit = self.players.live_mut(player, idx)?;
-        let walks = unit.gather_walks(&self.masters, player, &self.graphics)?;
+        let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let mover = unit
             .body
             .mover_mut()
@@ -540,6 +541,7 @@ impl World {
         let computer = self.players.player(player)?.computer;
         let carry_rule = self.settings.carry_rule();
         let unit = self.players.live_mut(player, idx)?;
+        let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
@@ -550,6 +552,7 @@ impl World {
                 computer,
                 carry_rule,
                 held: &mut held,
+                walks,
             },
             &engagement,
             arms,

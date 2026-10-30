@@ -696,7 +696,7 @@ fn hunt(b: RgeAction) -> Action {
     }
 }
 
-/// A Hunt takes its task, drop site and lead, its `MoveTo`'s range and wait; its Attack needs
+/// A Hunt takes its task, drop site and lead, its quiet `MoveTo` with its range and wait; its Attack needs
 /// the sprites' table; a state or sub-action the slice does not model is refused.
 #[test]
 fn a_hunt_takes_its_task_lead_and_move_to() {
@@ -708,7 +708,6 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         .copied()
         .unwrap();
     assert_eq!((h.target_class, h.drop_site, h.task.id), (4, 40, 0));
-    assert_eq!(h.walk_range.to_bits(), 2.0_f32.to_bits());
     assert!(h.lead.moved && h.attack.is_none() && h.move_to.is_none());
     assert_eq!(
         h.lead.start.map(f32::to_bits),
@@ -720,11 +719,17 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         .hunt()
         .copied()
         .unwrap();
+    // every MoveTo of the Hunt is quiet
+    let walk = h.move_to.unwrap();
     assert_eq!(
-        (h.move_to, h.walk_range.to_bits()),
-        (Some(MoveTo::Moving), 0.75_f32.to_bits())
+        (
+            walk.state,
+            walk.quiet,
+            walk.range.to_bits(),
+            walk.wait.state
+        ),
+        (MoveTo::Moving, true, 0.75_f32.to_bits(), 2)
     );
-    assert_eq!(h.move_wait.state, 2);
     let attack = by_type(|t| {
         t.rge_action_attack = Some(Box::new(RgeActionAttack {
             rge_action: base(4),

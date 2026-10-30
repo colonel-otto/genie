@@ -99,7 +99,7 @@ impl Unit {
     /// # Errors
     ///
     /// A gatherer whose master the table lacks.
-    pub(crate) fn gather_walks<'g>(
+    pub(crate) fn move_walks<'g>(
         &self,
         every: &[Masters],
         player: usize,
@@ -253,7 +253,7 @@ impl Unit {
         }
         crate::world::lets::release(c, self, gather.carry_to, by)?;
         // the unit's load is gone (slot 0xf8 after the drop): its walking sprite is the moving one
-        let walks = self.gather_walks(&c.w.masters, c.player, &c.w.graphics)?;
+        let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let gather = self.actions.gather_mut().ok_or(NO_GATHER)?;
         gather.carry_to = -1;
         let t =

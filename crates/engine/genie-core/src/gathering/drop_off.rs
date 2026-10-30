@@ -111,7 +111,7 @@ impl Unit {
             self.life.master_id,
             self.actions.gather().map_or(-1, |g| g.target_type),
         );
-        let walks = self.gather_walks(&c.w.masters, c.player, &c.w.graphics)?;
+        let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let gather = self.actions.gather_mut().expect("the caller's gather");
         if gather.point[0] != -1.0 && gather.point[1] != -1.0 {
             if farm_waits {
@@ -193,7 +193,7 @@ impl Unit {
             self.found_resource(c, OthersRef::of(&c.w.players, c.player)?, found)?;
         let master = self.master(&c.w.masters, c.player)?;
         let (computer, farm_stops) = (c.w.players[c.player].computer, c.w.settings.walkable_farms);
-        let walks = self.gather_walks(&c.w.masters, c.player, &c.w.graphics)?;
+        let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let rate = crate::gathering::gather::StopRate {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
@@ -344,12 +344,13 @@ impl Unit {
         Ok((site != carry_to && site != -1).then_some(site))
     }
 
-    /// [`Unit::hunt_drop_off`] in `w`, from the update or a command: the drop site it took when
-    /// it is a new second target (`FUN_140a7a190`, the caller's to take, slot 0x178).
+    /// [`Unit::hunt_drop_off`] in `w`, from the update or a command, with the sprites' table
+    /// `graphics`: the drop site it took when it is a new second target (`FUN_140a7a190`, the caller's to take, slot 0x178).
     pub(crate) fn drop_off_in(
         &mut self,
         mut c: DropWorld<'_>,
         others: OthersRef<'_>,
+        graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     ) -> Result<Option<i32>, GenieError> {
         if self.life.amount <= 0.0 {
             return Err(GenieError::unsupported(
@@ -364,13 +365,23 @@ impl Unit {
                 "a hunt without a drop site (notify 0x203, set_state 2)",
             ));
         }
+        let at = c.spatial.get_known(site)?.map_or([0.0; 3], |s| s.position);
+        let walks = Walks {
+            sprites: SpriteReads::of(
+                self.master_in(c.masters)?,
+                self.abilities.look.as_ref(),
+                graphics,
+            ),
+            held: (self.life.attribute_type, self.life.amount),
+            state: self.life.state,
+        };
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
         };
         hunt.carry_to = site;
-        hunt.set_drop(gap, mover)?;
+        hunt.set_drop(at, gap, mover, &walks)?;
         Ok((site != carry_to).then_some(site))
     }
 

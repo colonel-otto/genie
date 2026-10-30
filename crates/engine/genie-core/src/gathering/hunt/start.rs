@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::combat::attack::{Arms, Attack, Engagement};
+use crate::gathering::gather::Walks;
+use crate::gathering::hunt::walks::QUIET_CODE;
 use crate::gathering::hunt::{
-    ARRIVED, ATTACK, DROP, HuntAction, HuntTask, IDLE, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH,
+    ATTACK, DROP, HuntAction, HuntTask, IDLE, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH,
     WALK_POINT, WALK_SEARCH, food,
 };
-use crate::movement::move_to::{Goal, MoveTo, MoveWait, walk_or_give_up};
+use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, Mover};
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -61,6 +62,8 @@ pub struct HuntStart<'a> {
     pub carry_rule: bool,
     /// What the hunter carries, its resource kind and amount.
     pub held: &'a mut (i16, f32),
+    /// What its `MoveTo`s' constructors read of the hunter; its load is `held`'s.
+    pub walks: Walks<'a>,
 }
 
 /// What a hunt's retarget takes besides its attack and its mover ([`HuntAction::retarget`]'s
@@ -71,8 +74,8 @@ pub struct HuntRetarget<'a> {
     pub target: &'a Quarry,
     /// The owner.
     pub player: usize,
-    /// What the hunter carries.
-    pub held: f32,
+    /// What the hunter carries, and what its `MoveTo`s' constructors read of it.
+    pub walks: Walks<'a>,
     /// The target is a drop site of the hunter's master.
     pub drops_here: bool,
 }
@@ -86,8 +89,8 @@ pub struct HuntMove<'a> {
     pub point: [f32; 3],
     /// The owner.
     pub player: usize,
-    /// What the hunter carries.
-    pub held: f32,
+    /// What the hunter carries, and what its `MoveTo`s' constructors read of it.
+    pub walks: Walks<'a>,
     /// The target is a drop site of the hunter's master.
     pub drops_here: bool,
     /// The pasture the unit is on (`mMyPastureId`, −1 for none).
@@ -118,6 +121,7 @@ impl HuntAction {
             computer,
             carry_rule,
             held,
+            walks,
         } = start;
         let mut hunt = Self {
             target: target.id,
@@ -127,11 +131,9 @@ impl HuntAction {
             task,
             attack: None,
             move_to: None,
-            walk_range: task.range,
             drop_site: -1,
             carry_to: -1,
             timer: 0.0,
-            move_wait: MoveWait::default(),
             lead: Lead::NEW,
         };
         if 0.0 < target.amount {
@@ -146,6 +148,10 @@ impl HuntAction {
                 }
             }
         }
+        let walks = Walks {
+            held: *held,
+            ..walks
+        };
         // the start (slot 5 with 1): an own target among the hunter's master's drop sites
         // (`+0x7a0`, FUN_14109d4f0; a building annex's main building) takes a load there: it
         // becomes the second target (FUN_140a7a190), the target goes (slot 0x68 with none; the
@@ -156,10 +162,10 @@ impl HuntAction {
             hunt.point = [-1.0; 3];
             hunt.target_class = -1;
             hunt.carry_to = target.id;
-            hunt.set_drop(attack.gap, mover)?;
+            hunt.set_drop(target.position, attack.gap, mover, &walks)?;
             return Ok((hunt, false));
         }
-        let arrived = hunt.chase(target, player, attack, arms, mover)?;
+        let arrived = hunt.chase(target, player, attack, arms, mover, &walks)?;
         Ok((hunt, arrived))
     }
 
@@ -177,6 +183,7 @@ impl HuntAction {
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
+        walks: &Walks<'_>,
     ) -> Result<bool, GenieError> {
         self.tear_down(Some(mover))?;
         self.state = 4;
@@ -184,22 +191,13 @@ impl HuntAction {
         self.point = target.position;
         let own_livestock = target.class == class::LIVESTOCK && target.player == player;
         if 2 < target.state || own_livestock {
-            self.move_wait = MoveWait::default();
-            self.walk_range = if 2 < target.state {
+            let range = if 2 < target.state {
                 self.task.range
             } else {
                 OWN_LIVESTOCK_RANGE
             };
-            self.move_to = Some(if ARRIVED < attack.gap {
-                if mover.stats.speed == 0.0 {
-                    return Err(GenieError::unsupported(
-                        "a MoveTo of a unit without speed (state 13)",
-                    ));
-                }
-                MoveTo::Start
-            } else {
-                MoveTo::Arrived
-            });
+            self.move_to =
+                self.move_to_object(target.id, target.position, range, attack.gap, mover, walks)?;
             return Ok(false);
         }
         if target.class != class::FARM && target.allied {
@@ -235,9 +233,10 @@ impl HuntAction {
         let HuntRetarget {
             target,
             player,
-            held,
+            walks,
             drops_here,
         } = retarget;
+        let held = walks.held.1;
         // A building's master type (`'P'`).
         // A building whose top action is an Unpack takes a hunt sent to it to `set_state` 15.
         if target.kind == BUILDING && target.top_action == Some(action_type::UNPACK) {
@@ -251,7 +250,7 @@ impl HuntAction {
             self.point = [-1.0; 3];
             self.carry_to = target.id;
             self.target_class = target.class;
-            self.set_drop(attack.gap, mover)?;
+            self.set_drop(target.position, attack.gap, mover, &walks)?;
             return Ok(Some(false));
         }
         if target.id == self.target {
@@ -260,7 +259,8 @@ impl HuntAction {
         self.set_target(target.id);
         self.target_class = target.class;
         self.carry_to = -1;
-        self.chase(target, player, attack, arms, mover).map(Some)
+        self.chase(target, player, attack, arms, mover, &walks)
+            .map(Some)
     }
 
     /// Slot 0x40 (`FUN_140ac52c0`): the hunt takes a move's `target` (None for a point) and
@@ -278,11 +278,12 @@ impl HuntAction {
             target,
             point,
             player,
-            held,
+            walks,
             drops_here,
             my_pasture,
             gap,
         } = take;
+        let held = walks.held.1;
         if target.is_none() && self.task.range != 0.0 {
             return Ok(false);
         }
@@ -299,13 +300,13 @@ impl HuntAction {
             self.point = [-1.0; 3];
             self.target_class = t.class;
             self.carry_to = t.id;
-            self.set_drop(gap, mover)?;
+            self.set_drop(t.position, gap, mover, &walks)?;
             return Ok(true);
         }
         self.point = point;
         self.target_class = -1;
         self.set_target(-1);
-        self.set_point_walk(WALK_POINT, mover)?;
+        self.set_point_walk(WALK_POINT, mover, &walks)?;
         Ok(true)
     }
 
@@ -315,31 +316,23 @@ impl HuntAction {
     /// # Errors
     ///
     /// A unit without speed.
-    pub fn search_walk(&mut self, mover: &mut Mover) -> Result<(), GenieError> {
-        self.set_point_walk(WALK_SEARCH, mover)
+    pub fn search_walk(&mut self, mover: &mut Mover, walks: &Walks<'_>) -> Result<(), GenieError> {
+        self.set_point_walk(WALK_SEARCH, mover, walks)
     }
 
     /// `set_state` 11 and 15 (`0x140ac60e0` case 0xb): the sub-actions go, the timer clears and a
-    /// quiet `MoveTo` to the point within the task's range starts (`FUN_140aa0d30`, showing the
-    /// walking sprite of [`walk_sprite`]).
-    ///
-    /// [`walk_sprite`]: crate::gathering::hunt::sprites::walk_sprite
+    /// quiet `MoveTo` to the point within the task's range starts
+    /// ([`HuntAction::move_to_point`]).
     pub(super) fn set_point_walk(
         &mut self,
         state: u8,
         mover: &mut Mover,
+        walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = state;
         self.timer = 0.0;
-        self.walk_range = self.task.range;
-        self.move_wait = MoveWait::default();
-        if mover.stats.speed == 0.0 {
-            return Err(GenieError::unsupported(
-                "a MoveTo of a unit without speed (state 13)",
-            ));
-        }
-        self.move_to = Some(MoveTo::Start);
+        self.move_to = self.move_to_point(mover, walks)?;
         Ok(())
     }
 
@@ -350,20 +343,25 @@ impl HuntAction {
     /// # Errors
     ///
     /// A unit that cannot move.
-    pub fn wait_then_walk(&mut self, dt: f32, mover: &mut Mover) -> Result<(), GenieError> {
+    pub fn wait_then_walk(
+        &mut self,
+        dt: f32,
+        mover: &mut Mover,
+        walks: &Walks<'_>,
+    ) -> Result<(), GenieError> {
         self.timer += dt;
         if self.timer < 0.0 {
             return Ok(());
         }
         self.timer = 0.0;
-        self.set_point_walk(WALK_SEARCH, mover)
+        self.set_point_walk(WALK_SEARCH, mover, walks)
     }
 
     /// State 15's and 11's update (`0x140ac7a00` cases 0xe and 0xa) of `unit`'s hunt on the step,
     /// the hunt copied out of its list: the `MoveTo` to the point walks (the units in its way go
-    /// to the unit AI at once); the motion step giving up turns it to its wait or its failure
-    /// ([`HuntAction::give_up_walk`]); a waiting one asks again after its wait (its case 2, its
-    /// update returns 0). Once it ended (its update returns 1, 2 or 5) or failed (3, quiet: no
+    /// to the unit AI at once, [`HuntAction::update_list`]); the motion step giving up turns it
+    /// to its wait or its failure (`who`); a waiting one asks again after its wait (its case 2,
+    /// its update returns 0). Once it ended (its update returns 1, 2 or 5) or failed (3, quiet: no
     /// notify), the `set_state` that follows tears it down (`FUN_140a98620`; its destructor stops
     /// the unit, slot 0x5d0): a human player's hunt in state 11 searches (`set_state(3)`: the
     /// state here, the rest the caller's), one in state 15 is done (`set_state(2)`: the target
@@ -381,48 +379,15 @@ impl HuntAction {
         me: Me,
         who: PointWalker,
     ) -> Result<PointWalk, GenieError> {
-        let me = Me {
-            action_state: self.state,
-            ..me
+        let gives_up = GiveUp {
+            waits: !who.computer && who.villager,
+            stance: who.stance,
         };
-        let ended = match self.move_to {
-            Some(MoveTo::Start) => {
-                // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
-                if self.move_wait.state == 1 {
-                    self.move_wait.state = 2;
-                }
-                self.move_to = Some(MoveTo::Moving);
-                let to = (Goal::Point(self.point), self.walk_range, true);
-                match self.start_walk(c, unit, me, to)? {
-                    Some(state) => self.move_to = Some(state),
-                    None => self.give_up_walk(who),
-                }
-                return Ok(PointWalk::Walking);
-            }
-            Some(MoveTo::Moving) => {
-                let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
-                unit.post_in_the_way()?;
-                match walked {
-                    Some(state) => self.move_to = Some(state),
-                    None => self.give_up_walk(who),
-                }
-                return Ok(PointWalk::Walking);
-            }
-            Some(MoveTo::Waiting) => {
-                self.move_wait.timer += seconds(c.dt);
-                if self.move_wait.delay <= self.move_wait.timer {
-                    self.move_wait.timer = 0.0;
-                    self.move_to = Some(MoveTo::Start);
-                }
-                return Ok(PointWalk::Walking);
-            }
-            Some(MoveTo::Arrived) => true,
-            Some(MoveTo::Failed) => false,
-            None => {
-                return Err(GenieError::unsupported(
-                    "a Hunt's walk to a point without its MoveTo",
-                ));
-            }
+        let ended = match self.update_list(c, unit, me, gives_up)? {
+            0 => return Ok(PointWalk::Walking),
+            1 | 2 | 5 => true,
+            3 => false,
+            code => return Err(QUIET_CODE.with("code", code)),
         };
         if who.computer {
             return Err(GenieError::unsupported(if ended {
@@ -431,11 +396,7 @@ impl HuntAction {
                 "a computer player's hunt whose walk to a point failed (set_state 13)"
             }));
         }
-        self.move_to = None;
-        unit.body
-            .mover_mut()
-            .ok_or(crate::world::HUNTER_UNMOVING)?
-            .stop()?;
+        self.tear_down(unit.body.mover_mut())?;
         if self.state == WALK_SEARCH {
             self.state = SEARCH;
             return Ok(PointWalk::Search);
@@ -455,12 +416,5 @@ impl HuntAction {
         self.point = [-1.0; 3];
         self.timer = 0.0;
         [target, second]
-    }
-
-    /// The point walk's `MoveTo` answer to the motion step giving up ([`MoveWait::give_up`]: a
-    /// human player's villager waits once; quiet).
-    pub const fn give_up_walk(&mut self, who: PointWalker) {
-        let waits = !who.computer && who.villager;
-        self.move_to = Some(self.move_wait.give_up(waits, who.stance));
     }
 }

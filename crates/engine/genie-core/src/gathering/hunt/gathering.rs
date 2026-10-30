@@ -3,14 +3,14 @@
 use crate::GenieError;
 use crate::combat::attack::Fight;
 use crate::combat::damage::Victim;
+use crate::gathering::gather::Walks;
 use crate::gathering::hunt::{
-    ARRIVED, FACE, GAP, GATHER, HERD_FAR, HERD_REACH, HuntAction, HuntNext, HuntReads, LAST_BIT,
+    FACE, GAP, GATHER, HERD_FAR, HERD_REACH, HuntAction, HuntNext, HuntReads, LAST_BIT,
     OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,
 };
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::footprint_gap;
-use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
@@ -30,6 +30,7 @@ impl HuntAction {
         body: &mut Body,
         victim: &Victim,
         player: usize,
+        walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.tear_down(body.mover_mut())?;
         self.state = WALK;
@@ -47,25 +48,15 @@ impl HuntAction {
             .get_known(self.target)?
             .ok_or(GenieError::unsupported("a hunt's target without a place"))?;
         self.point = t.position;
-        self.walk_range = if victim.state <= 2 {
+        let range = if victim.state <= 2 {
             OWN_LIVESTOCK_RANGE
         } else {
             self.task.range
         };
-        self.move_wait = MoveWait::default();
         let mover = body.mover().ok_or(crate::world::HUNTER_UNMOVING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(body.position(), ground, t.position, t.radius);
-        self.move_to = Some(if ARRIVED < gap {
-            if mover.stats.speed == 0.0 {
-                return Err(GenieError::unsupported(
-                    "a MoveTo of a unit without speed (state 13)",
-                ));
-            }
-            MoveTo::Start
-        } else {
-            MoveTo::Arrived
-        });
+        self.move_to = self.move_to_object(self.target, t.position, range, gap, mover, walks)?;
         Ok(())
     }
 
@@ -129,10 +120,21 @@ impl HuntAction {
             if self.task.range + GAP
                 < footprint_gap(unit.body.position(), ground, t.position, t.radius)
             {
-                self.set_walk(&c.w.spatial, &mut unit.body, &f.victim, f.own.player)?;
+                let walks = r.walks(&c.w.graphics, unit);
+                let player = f.own.player;
+                self.set_walk(&c.w.spatial, &mut unit.body, &f.victim, player, &walks)?;
                 return Ok(HuntNext::Stay);
             }
         }
+        self.begin_face(c, unit, r);
+        Ok(HuntNext::Stay)
+    }
+
+    /// `set_state(6)`'s end (`0x140ac60e0` case 6, after its tests on the target): the timer
+    /// clears and the unit takes the hunt's walking sprite (`FUN_140ac51d0`: the carrying one
+    /// for a load of the task's resource of 1 or more, else the moving one; slot 0x68 takes the
+    /// standing sprite for none).
+    pub(super) fn begin_face(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &HuntReads) {
         self.move_to = None;
         self.state = FACE;
         self.timer = 0.0;
@@ -152,7 +154,6 @@ impl HuntAction {
                 c.w.streams.get(Stream::Sprite),
             );
         }
-        Ok(HuntNext::Stay)
     }
 
     /// `set_state(7)` (case 7): a food task keeps a load of food (`FUN_14119d310` keeps the

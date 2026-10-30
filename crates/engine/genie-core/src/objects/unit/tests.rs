@@ -305,14 +305,14 @@ fn the_top_action_s_object_is_its_target_unless_it_has_none() {
 /// Build's `MoveTo`; none for a `MoveTo` of its own or without an action.
 #[test]
 fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
-    use crate::movement::move_to::{MOVE_TO, MoveTo};
+    use crate::movement::move_to::{MOVE_TO, MoveTo, MoveToAction};
     use crate::world::checkpoint::TopAction;
     let walking = |state| TopAction {
         kind: MOVE_TO,
         state,
     };
     let mut hunt = crate::gathering::hunt::tests::hunting(7);
-    hunt.move_to = Some(MoveTo::Arrived);
+    hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
     let hunter = Unit {
         actions: ActionList::default().with_hunt(Some(hunt)),
         ..Unit::default()

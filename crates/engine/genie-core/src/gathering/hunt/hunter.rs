@@ -64,14 +64,18 @@ impl Unit {
         Ok(())
     }
 
-    /// A hunt whose target went on the walk to it (state 4, its `MoveTo` quiet: code 5), or
-    /// whose `MoveTo` failed (code 3), and whose class is a tree's: it searches for the next tree
-    /// (`FUN_140ac4670` with 8 and -1 both times).
-    pub(crate) fn tree_lost(&self) -> bool {
+    /// A hunt whose target went on the walk to it (state 4: its quiet `MoveTo`'s first check
+    /// finds the target it holds past state 6, code 5), or whose `MoveTo` failed (code 3), and
+    /// whose class is a tree's: it searches for the next tree (`FUN_140ac4670` with 8 and -1
+    /// both times).
+    pub(crate) fn tree_lost(&self, c: &Step<'_>) -> bool {
         self.actions.hunt().is_some_and(|h| {
             h.state == crate::gathering::hunt::WALK
                 && 0.0 <= h.timer
-                && ((h.target == -1 && h.move_to.is_some()) || h.move_to == Some(MoveTo::Failed))
+                && h.move_to.is_some_and(|m| {
+                    m.state == MoveTo::Failed
+                        || (m.target != -1 && c.w.object_state(m.target).is_some_and(|s| 6 < s))
+                })
         }) && self.ai.as_ref().is_some_and(|ai| {
             let class = if ai.target_type == -1 {
                 self.actions
@@ -300,8 +304,9 @@ impl Unit {
     /// Case 3 waiting after a given-up `MoveTo`, its target gone: the timer runs by dt, then the
     /// walk to the point (`set_state` 11, [`crate::gathering::hunt::HuntAction::wait_then_walk`]).
     pub(crate) fn hunt_wait_walk(&mut self, c: &Step<'_>) -> Result<(), GenieError> {
+        let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-        hunt.wait_then_walk(seconds(c.dt), mover)
+        hunt.wait_then_walk(seconds(c.dt), mover, &walks)
     }
 }

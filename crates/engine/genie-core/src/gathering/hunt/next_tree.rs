@@ -100,6 +100,7 @@ impl Unit {
             them,
             c.w.world_time,
         )?;
+        let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let hunt = self.actions.hunt_mut().expect("the caller's");
         let old = hunt.target;
         let moving = hunt
@@ -111,7 +112,7 @@ impl Unit {
             HuntRetarget {
                 target: &quarry,
                 player: c.player,
-                held: self.life.amount,
+                walks,
                 drops_here,
             },
             &engagement,

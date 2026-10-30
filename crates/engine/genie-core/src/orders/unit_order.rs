@@ -351,7 +351,7 @@ impl World {
         };
         let others = crate::world::others::OthersRef::of(&self.players, p)?;
         let result = if by == DropOffBy::Hunt {
-            unit.drop_off_in(world, others)
+            unit.drop_off_in(world, others, &self.graphics)
         } else {
             unit.gather_drop_off_in(world, others, &self.graphics)
         };

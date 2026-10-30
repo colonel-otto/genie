@@ -301,11 +301,9 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             },
             attack: None,
             move_to: None,
-            walk_range: 0.0,
             drop_site: -1,
             carry_to: -1,
             timer: 0.0,
-            move_wait: crate::movement::move_to::MoveWait::default(),
             lead: Lead {
                 moved: true,
                 still_time: 2,

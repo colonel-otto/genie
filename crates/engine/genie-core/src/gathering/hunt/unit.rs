@@ -225,12 +225,13 @@ impl Unit {
         if site != -1 {
             crate::world::lets::release(c, self, site, by)?;
         }
+        let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
         };
-        if hunt.chase(&quarry, c.player, &engagement, arms, mover)? {
+        if hunt.chase(&quarry, c.player, &engagement, arms, mover, &walks)? {
             return Err(GenieError::unsupported(
                 "a hunt's Attack whose MoveTo starts arrived after its drop-off",
             ));
@@ -393,6 +394,7 @@ impl Unit {
                 "a computer player's hunt that found nothing after its drop-off (set_state 1)",
             ));
         }
+        let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.point[0] == -1.0 || hunt.point[1] == -1.0 {
             return Err(GenieError::unsupported(
@@ -400,7 +402,7 @@ impl Unit {
             ));
         }
         let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-        hunt.search_walk(mover)
+        hunt.search_walk(mover, &walks)
     }
 
     /// The object `found` becomes the hunt's target (slot 0x48,
@@ -465,7 +467,7 @@ impl Unit {
         });
         let arms = crate::combat::attack::arms(master, &c.w.graphics, sprites, moving);
         let drops_here = master.drop_sites.contains(&t.life.master_id);
-        let held = self.life.amount;
+        let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let by = self.releaser(c);
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -476,7 +478,7 @@ impl Unit {
             HuntRetarget {
                 target: &quarry,
                 player: c.player,
-                held,
+                walks,
                 drops_here,
             },
             &engagement,
@@ -543,7 +545,8 @@ impl Unit {
             construction_rate: c.w.players[c.player].construction_rate,
             groups: &c.w.groups,
         };
-        if let Some(site) = self.drop_off_in(w, OthersRef::of(&c.w.players, c.player)?)? {
+        let others = OthersRef::of(&c.w.players, c.player)?;
+        if let Some(site) = self.drop_off_in(w, others, &c.w.graphics)? {
             let by = self.releaser(c);
             crate::world::lets::take(c, self, site, by)?;
         }

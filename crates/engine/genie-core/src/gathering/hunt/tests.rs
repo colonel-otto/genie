@@ -1,5 +1,8 @@
 use super::*;
+use crate::gathering::gather::Walks;
+use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait, SpriteReads, TargetMoved};
 use crate::objects::masters::class;
+use crate::objects::sprite::Graphic;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 
@@ -12,6 +15,7 @@ use crate::objects::unit::Unit;
 /// [`crate::combat::attack::tests::reads`].
 pub(crate) fn hunt_reads() -> HuntReads {
     HuntReads {
+        defaults: MoveDefaults::default(),
         attack: crate::combat::attack::tests::reads(),
         work_rate: 1.0,
         capacity: 10.0,
@@ -22,6 +26,43 @@ pub(crate) fn hunt_reads() -> HuntReads {
         predator_hunts_end: false,
         sprites: HuntSprites::default(),
         herd: None,
+    }
+}
+
+/// The sprites' table of a world without sprites.
+static NO_GRAPHICS: std::collections::BTreeMap<i16, Graphic> = std::collections::BTreeMap::new();
+
+/// What the `MoveTo` constructors read of a hunter that carries `held`: no sprites, a unit in
+/// state 2.
+pub(crate) fn walks(held: (i16, f32)) -> Walks<'static> {
+    Walks {
+        sprites: SpriteReads {
+            defaults: MoveDefaults::default(),
+            graphics: &NO_GRAPHICS,
+        },
+        held,
+        state: 2,
+    }
+}
+
+/// The quiet `MoveTo` in `state` to the house 10028 at (30, 88) within `range`, which asks again
+/// when its target moves (`FUN_140aa0df0`, `+0x61` 1).
+fn to_house(state: MoveTo, range: f32) -> MoveToAction {
+    MoveToAction {
+        point: [30.0, 88.0, 0.0],
+        target: 10028,
+        range,
+        on_target_moved: TargetMoved::AsksAgain,
+        ..MoveToAction::sub_in(state)
+    }
+}
+
+/// The quiet `MoveTo` in `state` to a point, which asks again when it moves (`+0x61` 1).
+fn to_point(state: MoveTo, point: [f32; 3], range: f32) -> MoveToAction {
+    MoveToAction {
+        state,
+        on_target_moved: TargetMoved::AsksAgain,
+        ..MoveToAction::sub_to_point(point, range, None)
     }
 }
 
@@ -56,11 +97,9 @@ pub(crate) fn hunting(target: i32) -> HuntAction {
         task: CHOP,
         attack: None,
         move_to: None,
-        walk_range: 0.0,
         drop_site: -1,
         carry_to: -1,
         timer: 0.0,
-        move_wait: MoveWait::default(),
         lead: Lead::default(),
     }
 }
@@ -237,6 +276,7 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
             computer: false,
             carry_rule: false,
             held: &mut held,
+            walks: walks((-1, 0.0)),
         },
         &engagement(),
         ARMS,
@@ -274,6 +314,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
             computer: false,
             carry_rule: false,
             held: &mut held,
+            walks: walks((-1, 0.0)),
         },
         &engagement(),
         ARMS,
@@ -285,7 +326,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
             HuntRetarget {
                 target: q,
                 player: 2,
-                held: 0.0,
+                walks: walks((-1, 0.0)),
                 drops_here: false,
             },
             e,
@@ -333,6 +374,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
             computer: false,
             carry_rule: false,
             held: &mut held,
+            walks: walks((-1, 0.0)),
         },
         &engagement(),
         ARMS,
@@ -356,7 +398,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
             HuntRetarget {
                 target: &tree(),
                 player: 2,
-                held: 0.0,
+                walks: walks((-1, 0.0)),
                 drops_here: false,
             },
             &engagement(),
@@ -370,7 +412,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
             HuntRetarget {
                 target: &other,
                 player: 2,
-                held: 0.0,
+                walks: walks((-1, 0.0)),
                 drops_here: false,
             },
             &engagement(),
@@ -393,6 +435,7 @@ fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
                 computer: false,
                 carry_rule,
                 held: &mut held,
+                walks: walks((-1, 0.0)),
             },
             &engagement(),
             ARMS,
@@ -432,11 +475,9 @@ fn a_villager_gathers_work_rate_times_work_value_times_dt_until_its_load_is_full
         },
         attack: None,
         move_to: None,
-        walk_range: 0.0,
         drop_site: -1,
         carry_to: -1,
         timer: 0.0,
-        move_wait: MoveWait::default(),
         lead: Lead::default(),
     };
     let r = hunt_reads();
@@ -471,11 +512,9 @@ fn a_hunt_without_a_target_carries_its_load_off_or_searches() {
         task: CHOP,
         attack: None,
         move_to: None,
-        walk_range: 0.0,
         drop_site: -1,
         carry_to: -1,
         timer: 0.0,
-        move_wait: MoveWait::default(),
         lead: Lead::default(),
     };
     assert!(h.ends_without_target(0.5));
@@ -504,6 +543,7 @@ fn a_hunt_on_a_live_ally_fails() {
             computer: false,
             carry_rule: false,
             held: &mut held,
+            walks: walks((-1, 0.0)),
         },
         &engagement(),
         ARMS,
@@ -537,15 +577,24 @@ fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
                 computer: false,
                 carry_rule: false,
                 held: &mut held,
+                walks: walks((-1, 0.0)),
             },
             &engagement(),
             ARMS,
             &mut walker(),
         )
         .unwrap();
+        // a quiet MoveTo to the target that asks again when it moves (`+0x61` 1)
+        let walk = hunt
+            .move_to
+            .map(|m| (m.state, m.target, m.range, m.on_target_moved, m.quiet));
         assert_eq!(
-            (hunt.state, hunt.move_to, hunt.walk_range, hunt.attack),
-            (WALK, Some(MoveTo::Start), range, None)
+            (hunt.state, walk, hunt.attack),
+            (
+                WALK,
+                Some((MoveTo::Start, 9365, range, TargetMoved::AsksAgain, true)),
+                None
+            )
         );
     }
 }
@@ -562,30 +611,34 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
         target_class: class::LIVESTOCK,
         task: CHOP,
         attack: None,
-        move_to: Some(MoveTo::Moving),
-        walk_range: CHOP.range,
+        move_to: Some(to_house(MoveTo::Moving, CHOP.range)),
         drop_site: -1,
         carry_to: -1,
         timer: 0.0,
-        move_wait: MoveWait::default(),
         lead: Lead::default(),
     };
-    let mut mover = walker();
+    let mut rig = Rig::on_the_path(Victim::default());
     let mut r = HuntReads {
         ai_class: Some(15),
         ..hunt_reads()
     };
-    assert!(hunt.clone().lost_on_the_way(&mut mover, &r).is_err());
+    let lost = |h: &HuntAction, r: &HuntReads, rig: &mut Rig| {
+        let mut h = *h;
+        let got = rig.run(100, |c, u, _, _| h.lost_on_the_way(c, u, r));
+        (got, h)
+    };
+    assert!(lost(&hunt, &r, &mut rig).0.is_err());
     // the caller's search for the next tree found none: the hunt walks to its point
     r.tree_searched = true;
-    hunt.clone().lost_on_the_way(&mut mover, &r).unwrap();
+    assert!(lost(&hunt, &r, &mut rig).0.is_ok());
     (r.tree_searched, r.ai_class) = (false, Some(-1));
-    hunt.lost_on_the_way(&mut mover, &r).unwrap();
+    (_, hunt) = lost(&hunt, &r, &mut rig);
+    let to_point = to_point(MoveTo::Start, [177.272_75, 62.444_31, 0.0], CHOP.range);
     assert_eq!(
-        (hunt.state, hunt.move_to, hunt.timer, hunt.point[0]),
-        (WALK_SEARCH, Some(MoveTo::Start), 0.0, 177.272_75)
+        (hunt.state, hunt.target, hunt.move_to, hunt.timer),
+        (WALK_SEARCH, -1, Some(to_point), 0.0)
     );
-    assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+    assert_eq!(rig.mover().velocity.unwrap().velocity[2], 0.0);
 }
 
 /// `set_state(6)` on a target of class 49 (429381190's villager 15295 hunting its pasture's
@@ -650,12 +703,10 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
         target_class: class::LIVESTOCK,
         task: CHOP,
         attack: None,
-        move_to: Some(move_to),
-        walk_range: CHOP.range,
+        move_to: Some(MoveToAction::sub_in(move_to)),
         drop_site: -1,
         carry_to: -1,
         timer: 0.0,
-        move_wait: MoveWait::default(),
         lead: Lead::default(),
     };
     let walker_at = PointWalker {
@@ -681,6 +732,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
         second: -1,
     };
     for (state, ends) in [(WALK_SEARCH, PointWalk::Search), (WALK_POINT, done)] {
+        // ended (code 1) or failed (code 3)
         for code in [MoveTo::Arrived, MoveTo::Failed] {
             let mut h = hunt(state, code);
             let (got, speed) = run(&mut h, walker_at);
@@ -709,30 +761,23 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
     );
     // the wait: a second for a stance below 2, then the MoveTo asks again
     let mut h = hunt(WALK_SEARCH, MoveTo::Waiting);
-    h.move_wait = MoveWait {
-        state: 1,
-        timer: 0.0,
-        delay: 1.0,
-    };
-    assert_eq!(run(&mut h, walker_at).0.unwrap(), PointWalk::Walking);
-    assert_eq!((h.move_to, h.move_wait.timer), (Some(MoveTo::Waiting), 0.5));
-    assert_eq!(run(&mut h, walker_at).0.unwrap(), PointWalk::Walking);
-    assert_eq!((h.move_to, h.move_wait.timer), (Some(MoveTo::Start), 0.0));
-    // the MoveTo's answer to the motion step giving up: a human's villager waits once
-    let mut h = hunt(WALK_POINT, MoveTo::Moving);
-    h.give_up_walk(walker_at);
-    assert_eq!(
-        (h.move_to, h.move_wait.state, h.move_wait.delay),
-        (Some(MoveTo::Waiting), 1, 1.0)
-    );
-    h.give_up_walk(walker_at);
-    assert_eq!(h.move_to, Some(MoveTo::Failed));
-    let mut h = hunt(WALK_POINT, MoveTo::Moving);
-    h.give_up_walk(PointWalker {
-        villager: false,
-        ..walker_at
+    h.move_to = h.move_to.map(|m| MoveToAction {
+        wait: MoveWait {
+            state: 1,
+            timer: 0.0,
+            delay: 1.0,
+        },
+        ..m
     });
-    assert_eq!(h.move_to, Some(MoveTo::Failed));
+    let waiting = |h: &HuntAction| h.move_to.map(|m| (m.state, m.wait.timer));
+    assert_eq!(run(&mut h, walker_at).0.unwrap(), PointWalk::Walking);
+    assert_eq!(waiting(&h), Some((MoveTo::Waiting, 0.5)));
+    assert_eq!(run(&mut h, walker_at).0.unwrap(), PointWalk::Walking);
+    assert_eq!(waiting(&h), Some((MoveTo::Start, 0.0)));
+    // an empty list answers 1 ("There is no list."): the walk ended
+    let mut h = hunt(WALK_SEARCH, MoveTo::Arrived);
+    h.move_to = None;
+    assert_eq!(run(&mut h, walker_at).0.unwrap(), PointWalk::Search);
 }
 
 /// The drop-off's and the point walk's `MoveTo` on the way (`0x140ac7a00` cases 7, 0xa and
@@ -756,38 +801,50 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         ) = (1, 3.0);
         rig.run(100, |c, u, _, _| h.update_drop(c, u, me(DROP), None, who))
     };
-    let dropping = |move_to| HuntAction {
+    let dropping = |move_to: Option<MoveToAction>| HuntAction {
         state: DROP,
         carry_to: 10028,
         move_to,
         ..hunting(-1)
     };
-    let mut rig = Rig::on_the_path(Victim::default());
+    let state = |h: &HuntAction| h.move_to.map(|m| m.state);
+    let site = || to_house(MoveTo::Start, CHOP.range);
+    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
     rig.mover_mut().paths.clear();
-    let mut h = dropping(Some(MoveTo::Start));
+    let mut h = dropping(Some(site()));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
-    assert_eq!(h.move_to, Some(MoveTo::Moving));
+    assert_eq!(state(&h), Some(MoveTo::Moving));
     assert_eq!(rig.mover_mut().paths.len(), 2);
-    let mut rig = Rig::on_the_path(Victim::default());
-    let mut h = dropping(Some(MoveTo::Moving));
+    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
+    let mut h = dropping(Some(to_house(MoveTo::Moving, CHOP.range)));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
-    assert_eq!(h.move_to, Some(MoveTo::Moving));
-    rig.mover_mut().move_to_point = Some([35.0, 88.0, 0.0]);
+    assert_eq!(state(&h), Some(MoveTo::Moving));
+    // the site left the point the MoveTo holds: it starts again
+    h.move_to = h.move_to.map(|m| MoveToAction {
+        point: [35.0, 88.0, 0.0],
+        ..m
+    });
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
-    assert_eq!(h.move_to, Some(MoveTo::Start));
-    let mut h = dropping(Some(MoveTo::Waiting));
-    h.move_wait.delay = 0.05;
+    assert_eq!(state(&h), Some(MoveTo::Start));
+    let mut h = dropping(Some(MoveToAction {
+        wait: MoveWait {
+            delay: 0.05,
+            ..MoveWait::NEW
+        },
+        ..to_house(MoveTo::Waiting, CHOP.range)
+    }));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
-    assert_eq!(h.move_to, Some(MoveTo::Start));
+    assert_eq!(state(&h), Some(MoveTo::Start));
     rig.mover_mut().animated.speed = 1.0;
-    let mut h = dropping(Some(MoveTo::Failed));
+    let mut h = dropping(Some(to_house(MoveTo::Failed, CHOP.range)));
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!((h.timer, rig.mover_mut().animated.speed), (DROP_WAIT, 0.0));
     h.timer = -0.05;
     assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Again));
     assert_eq!(h.timer, 0.0);
+    // an empty list answers 1: the drop site is gone from the call, which is not modelled
     assert!(drop(&mut dropping(None), &mut rig).is_err());
-    let mut h = dropping(Some(MoveTo::Arrived));
+    let mut h = dropping(Some(to_house(MoveTo::Arrived, CHOP.range)));
     assert!(drop(&mut h, &mut rig).is_err());
     // the walk to a point
     let point_walk = |h: &mut HuntAction, rig: &mut Rig, who| {
@@ -795,29 +852,37 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
             h.update_point_walk(c, u, me(h.state), who)
         })
     };
-    let walking = |move_to| HuntAction {
+    let point = [35.5, 88.5, 0.0];
+    let walking = |move_to: Option<MoveToAction>| HuntAction {
         state: WALK_POINT,
-        point: [35.5, 88.5, 0.0],
+        point,
         move_to,
         ..hunting(-1)
     };
     let mut rig = Rig::on_the_path(Victim::default());
     rig.mover_mut().paths.clear();
-    let mut h = walking(Some(MoveTo::Start));
-    h.move_wait.state = 1;
+    let mut h = walking(Some(MoveToAction {
+        wait: MoveWait {
+            state: 1,
+            ..MoveWait::NEW
+        },
+        ..to_point(MoveTo::Start, point, CHOP.range)
+    }));
     assert_eq!(point_walk(&mut h, &mut rig, who), Ok(PointWalk::Walking));
-    assert_eq!((h.move_to, h.move_wait.state), (Some(MoveTo::Moving), 2));
+    assert_eq!(
+        h.move_to.map(|m| (m.state, m.wait.state)),
+        Some((MoveTo::Moving, 2))
+    );
     assert_eq!(rig.mover_mut().paths.len(), 2);
     let mut rig = Rig::on_the_path(Victim::default());
-    let mut h = walking(Some(MoveTo::Moving));
+    let mut h = walking(Some(to_point(MoveTo::Moving, point, CHOP.range)));
     assert_eq!(point_walk(&mut h, &mut rig, who), Ok(PointWalk::Walking));
-    assert_eq!(h.move_to, Some(MoveTo::Moving));
-    assert!(point_walk(&mut walking(None), &mut rig, who).is_err());
+    assert_eq!(state(&h), Some(MoveTo::Moving));
     let computer = PointWalker {
         computer: true,
         ..who
     };
-    let mut h = walking(Some(MoveTo::Arrived));
+    let mut h = walking(Some(to_point(MoveTo::Arrived, point, CHOP.range)));
     assert!(point_walk(&mut h, &mut rig, computer).is_err());
 }
 
@@ -837,13 +902,16 @@ fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
     ];
     for state in [DROP, WALK_POINT] {
         for move_to in [MoveTo::Start, MoveTo::Moving] {
-            let mut rig = Rig::on_the_path(Victim::default());
+            let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
             rig.mover_mut().in_the_way = vec![77, 78];
             let mut h = HuntAction {
                 state,
                 carry_to: 10028,
                 point: [35.5, 88.5, 0.0],
-                move_to: Some(move_to),
+                move_to: Some(MoveToAction {
+                    target: if state == DROP { 10028 } else { -1 },
+                    ..to_point(move_to, [35.5, 88.5, 0.0], CHOP.range)
+                }),
                 ..hunting(-1)
             };
             rig.run(100, |c, u, _, _| {
@@ -863,15 +931,22 @@ fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
 /// `set_state(4)` (`0x140ac60e0` case 4) toward house 10028 from 9177: a dead target is
 /// walked to within the task's range, the hunter's own live livestock within
 /// `OWN_LIVESTOCK_RANGE`, the point the target's place; a target the hunter touches already
-/// starts arrived. Another live target and a unit without speed are not modelled.
+/// starts arrived. Another live target is not modelled; a unit without speed fails it at its start.
 #[test]
 fn a_hunt_walks_to_its_target_s_place_within_its_range() {
     let set_walk = |h: &mut HuntAction, rig: &mut Rig, victim: &Victim| {
         let crate::world::World {
             spatial, players, ..
         } = &mut rig.t;
-        h.set_walk(spatial, &mut players[1].objects[0].body, victim, 1)
+        h.set_walk(
+            spatial,
+            &mut players[1].objects[0].body,
+            victim,
+            1,
+            &walks((-1, 0.0)),
+        )
     };
+    let walk = |h: &HuntAction| h.move_to.map(|m| (m.state, m.range, m.point));
     let dead = Victim {
         state: 3,
         ..Victim::default()
@@ -888,26 +963,24 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
         ..hunting(10028)
     };
     assert_eq!(set_walk(&mut h, &mut rig, &dead), Ok(()));
+    let place = [30.0, 88.0, 0.0];
     assert_eq!(
-        (h.state, h.timer, h.point, h.walk_range, h.move_to),
-        (
-            WALK,
-            0.0,
-            [30.0, 88.0, 0.0],
-            CHOP.range,
-            Some(MoveTo::Start)
-        )
+        (h.state, h.timer, h.point, walk(&h)),
+        (WALK, 0.0, place, Some((MoveTo::Start, CHOP.range, place)))
     );
     let mut h = hunting(10028);
     assert_eq!(set_walk(&mut h, &mut rig, &own), Ok(()));
-    assert_eq!(h.walk_range, OWN_LIVESTOCK_RANGE);
+    assert_eq!(walk(&h).map(|w| w.1), Some(OWN_LIVESTOCK_RANGE));
     let mut h = hunting(9177);
     assert_eq!(set_walk(&mut h, &mut rig, &dead), Ok(()));
-    assert_eq!(h.move_to, Some(MoveTo::Arrived));
+    assert_eq!(h.move_to.map(|m| m.state), Some(MoveTo::Arrived));
     let alive = Victim { player: 2, ..own };
     assert!(set_walk(&mut hunting(10028), &mut rig, &alive).is_err());
+    // a unit without speed: its MoveTo fails at its start (state 13)
     rig.mover_mut().stats.speed = 0.0;
-    assert!(set_walk(&mut hunting(10028), &mut rig, &dead).is_err());
+    let mut h = hunting(10028);
+    assert_eq!(set_walk(&mut h, &mut rig, &dead), Ok(()));
+    assert_eq!(h.move_to.map(|m| m.state), Some(MoveTo::Failed));
 }
 
 /// State 10's update (`0x140ac7a00` case 9, [`HuntAction::update_lead`]): without a target the
@@ -995,8 +1068,8 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
         Ok(HuntNext::Stay)
     );
     assert_eq!(
-        (h.state, h.walk_range, h.move_to),
-        (WALK, OWN_LIVESTOCK_RANGE, Some(MoveTo::Start))
+        (h.state, h.move_to.map(|m| (m.state, m.range))),
+        (WALK, Some((MoveTo::Start, OWN_LIVESTOCK_RANGE)))
     );
 }
 
@@ -1017,7 +1090,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
         let me = me(h.state);
         rig.run(100, |c, u, f, _| h.update(c, u, me, f, &r))
     };
-    let mut rig = Rig::on_the_path(Victim::default());
+    let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
     let reason = |r: Result<HuntNext, crate::GenieError>| r.unwrap_err().reason();
     let r = update(&mut hunting(10028), &mut rig, true, 0.0);
     assert_eq!(reason(r), "a computer player's hunt (FUN_140fde4f0)");
@@ -1034,13 +1107,24 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
     let walking = |target, timer, move_to| HuntAction {
         state: WALK,
         timer,
-        move_to: Some(move_to),
+        move_to: Some(to_house(move_to, 0.0)),
         point: [35.5, 88.5, 0.0],
         ..hunting(target)
     };
+    let state = |h: &HuntAction| (h.state, h.move_to.map(|m| m.state));
+    // its MoveTo's first check finds the house past state 6 (code 5): the target goes and the
+    // hunt walks to its point
+    let mut lost = Rig::on_the_path(Victim::default()).holding(10028, 0);
+    lost.t.players[0]
+        .objects
+        .iter_mut()
+        .for_each(|u| u.life.state = 7);
     let mut h = walking(-1, 0.0, MoveTo::Moving);
-    assert_eq!(update(&mut h, &mut rig, false, 0.0), Ok(HuntNext::Stay));
-    assert_eq!((h.state, h.move_to), (WALK_SEARCH, Some(MoveTo::Start)));
+    assert_eq!(update(&mut h, &mut lost, false, 0.0), Ok(HuntNext::Stay));
+    assert_eq!(
+        (h.state, h.target, h.move_to.map(|m| (m.state, m.target))),
+        (WALK_SEARCH, -1, Some((MoveTo::Start, -1)))
+    );
     // a walk that gave up waits its time, then walks to the point
     let mut h = walking(10028, -1.0, MoveTo::Failed);
     assert_eq!(update(&mut h, &mut rig, false, 0.0), Ok(HuntNext::Stay));
@@ -1051,11 +1135,14 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
     // a walk under way to the house at the MoveTo's point steps on; off it, it asks again
     let mut h = walking(10028, 0.0, MoveTo::Moving);
     assert_eq!(update(&mut h, &mut rig, false, 0.0), Ok(HuntNext::Stay));
-    assert_eq!((h.state, h.move_to), (WALK, Some(MoveTo::Moving)));
-    rig.mover_mut().move_to_point = Some([35.0, 88.0, 0.0]);
+    assert_eq!(state(&h), (WALK, Some(MoveTo::Moving)));
     let mut h = walking(10028, 0.0, MoveTo::Moving);
+    h.move_to = h.move_to.map(|m| MoveToAction {
+        point: [35.0, 88.0, 0.0],
+        ..m
+    });
     assert_eq!(update(&mut h, &mut rig, false, 0.0), Ok(HuntNext::Stay));
-    assert_eq!((h.state, h.move_to), (WALK, Some(MoveTo::Start)));
+    assert_eq!(state(&h), (WALK, Some(MoveTo::Start)));
     // a lead without a target and a face on an empty target search
     for state in [LEAD, FACE] {
         let mut h = HuntAction {
@@ -1129,8 +1216,8 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
         (Ok(HuntNext::Stay), false)
     );
     assert_eq!(
-        (h.state, h.walk_range, h.move_to.is_some()),
-        (WALK, OWN_LIVESTOCK_RANGE, true)
+        (h.state, h.move_to.map(|m| m.range)),
+        (WALK, Some(OWN_LIVESTOCK_RANGE))
     );
     let mut h = fresh(-1);
     assert_eq!(
@@ -1242,7 +1329,10 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     assert_eq!(h.state, ATTACK);
     let mut h = walking(10028, false);
     assert_eq!(face(&mut h, sheep(3), None), Ok(HuntNext::Stay));
-    assert_eq!((h.state, h.move_to), (WALK, Some(MoveTo::Start)));
+    assert_eq!(
+        (h.state, h.move_to.map(|m| m.state)),
+        (WALK, Some(MoveTo::Start))
+    );
     let mut h = walking(9177, false);
     assert_eq!(face(&mut h, sheep(3), None), Ok(HuntNext::Stay));
     assert_eq!((h.state, h.move_to, h.timer), (FACE, None, 0.0));
@@ -1260,12 +1350,10 @@ fn a_drop_off_gives_the_load_to_the_player() {
         target_class: 3,
         task: CHOP,
         attack: None,
-        move_to: Some(MoveTo::Arrived),
-        walk_range: CHOP.range,
+        move_to: Some(MoveToAction::sub_in(MoveTo::Arrived)),
         drop_site: -1,
         carry_to: 9156,
         timer: 0.0,
-        move_wait: MoveWait::default(),
         lead: Lead::default(),
     };
     let mut rig = Rig::on(
@@ -1302,10 +1390,10 @@ fn a_drop_off_gives_the_load_to_the_player() {
         (-1, 0.0, None)
     );
     // carried food of a carcass (15) goes as food; a site that does not take it stops
-    hunt.move_to = Some(MoveTo::Arrived);
+    hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
     let got = drop(&mut rig, &mut hunt, (15, 2.0), site).unwrap();
     assert_eq!(got, Dropped::Load(0, 2.0));
-    hunt.move_to = Some(MoveTo::Arrived);
+    hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
     let refused = DropOff {
         takes: false,
         ..site
@@ -1313,7 +1401,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
     assert!(drop(&mut rig, &mut hunt, (15, 2.0), refused).is_err());
     // a site out of a tile's reach: the hunt waits 3 seconds, the unit's animation stopped;
     // at the wait's end it tries again
-    hunt.move_to = Some(MoveTo::Arrived);
+    hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
     let far = DropOff {
         gap_squared: 1.5,
         ..site
@@ -1335,7 +1423,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
     assert_eq!(hunt.timer, 0.0);
 }
 
-/// State 4's `MoveTo` start (`walk_start` in [`HuntAction::update`]) toward house 10028: after
+/// State 4's `MoveTo` start ([`HuntAction::update_list`] in [`HuntAction::update`]) toward house 10028: after
 /// a wait `+0x6c` goes from 1 to 2, the walk asks for its path and the unit shows the hunt's
 /// moving sprite; a target within the walk range is reached at once.
 #[test]
@@ -1349,36 +1437,148 @@ fn a_hunt_s_walk_starts_toward_its_target() {
         replay_delay: 0.0,
         flags: 3,
     };
-    let start = |walk_range: f32| {
+    let start = |range: f32| {
         let house = Victim {
             id: 10028,
             state: 3,
             ..Victim::default()
         };
-        let mut rig = Rig::on_the_path(house);
+        let mut rig = Rig::on_the_path(house).holding(10028, 0);
         rig.mover_mut().paths.clear();
         let mut h = HuntAction {
             state: WALK,
-            move_to: Some(MoveTo::Start),
-            walk_range,
+            move_to: Some(MoveToAction {
+                sprite: Some(MOVING),
+                wait: MoveWait {
+                    state: 1,
+                    ..MoveWait::NEW
+                },
+                ..to_house(MoveTo::Start, range)
+            }),
             ..hunting(10028)
         };
-        h.move_wait.state = 1;
-        let r = HuntReads {
-            sprites: HuntSprites {
-                moving: Some(MOVING),
-                ..HuntSprites::default()
-            },
-            ..hunt_reads()
-        };
+        let r = hunt_reads();
         let got = rig.run(100, |c, u, f, _| h.update(c, u, me(WALK), f, &r));
         let paths = rig.mover().paths.len();
-        (got, h.move_to, h.move_wait.state, paths, rig.sprite())
+        let walk = h.move_to.map(|m| (m.state, m.wait.state));
+        (got, walk, paths, rig.sprite())
     };
     assert_eq!(
         start(0.1),
-        (Ok(HuntNext::Stay), Some(MoveTo::Moving), 2, 2, Some(1880))
+        (Ok(HuntNext::Stay), Some((MoveTo::Moving, 2)), 2, Some(1880))
     );
-    let (got, move_to, ..) = start(5.0);
-    assert_eq!((got, move_to), (Ok(HuntNext::Stay), Some(MoveTo::Arrived)));
+    let (got, walk, ..) = start(5.0);
+    assert_eq!(
+        (got, walk.map(|w| w.0)),
+        (Ok(HuntNext::Stay), Some(MoveTo::Arrived))
+    );
+}
+
+/// State 4's walk that ended after its target went from the world (the `MoveTo`'s check cleared
+/// its target and it walked on to its point, code 1): the decay check does nothing and
+/// `set_state(6)` without a target only shows the walking sprite, timer 0.
+#[test]
+fn a_walk_that_ended_without_its_target_only_turns_to_the_face() {
+    let mut rig = Rig::on_the_path(Victim::default());
+    let mut h = HuntAction {
+        state: WALK,
+        move_to: Some(MoveToAction::sub_in(MoveTo::Arrived)),
+        ..hunting(-1)
+    };
+    let r = hunt_reads();
+    let got = rig.run(100, |c, u, f, _| h.update(c, u, me(WALK), f, &r));
+    assert_eq!(got, Ok(HuntNext::Stay));
+    assert_eq!((h.state, h.timer, h.move_to), (FACE, 0.0, None));
+}
+
+/// A `MoveTo` whose target was let go (code 5: the house went past state 6) ends the drop-off's
+/// walk as a failure does (the hunt waits 3 seconds, the animation stopped, cases 3 to 5) and
+/// the point walk as an arrival does (state 11 searches).
+#[test]
+fn a_move_to_that_lost_its_target_ends_the_drop_off_and_the_point_walk() {
+    let who = PointWalker {
+        computer: false,
+        villager: true,
+        stance: 0,
+    };
+    let lost = || {
+        let mut rig = Rig::on_the_path(Victim::default()).holding(10028, 0);
+        rig.t.players[0]
+            .objects
+            .iter_mut()
+            .for_each(|u| u.life.state = 7);
+        rig
+    };
+    let mut rig = lost();
+    let mut h = HuntAction {
+        state: DROP,
+        carry_to: 10028,
+        move_to: Some(to_house(MoveTo::Moving, CHOP.range)),
+        ..hunting(-1)
+    };
+    let got = rig.run(100, |c, u, _, _| h.update_drop(c, u, me(DROP), None, who));
+    assert_eq!(got, Ok(Dropped::Going));
+    assert_eq!(h.timer, DROP_WAIT);
+    let mut rig = lost();
+    let mut h = HuntAction {
+        state: WALK_SEARCH,
+        move_to: Some(to_house(MoveTo::Moving, CHOP.range)),
+        ..hunting(-1)
+    };
+    let got = rig.run(100, |c, u, _, _| {
+        h.update_point_walk(c, u, me(WALK_SEARCH), who)
+    });
+    assert_eq!(
+        (got, h.state, h.move_to),
+        (Ok(PointWalk::Search), SEARCH, None)
+    );
+}
+
+/// A hunt of a tree's class searches for the next tree when its `MoveTo` failed (code 3) or its
+/// first check finds the target it holds past state 6 (code 5); a target the world no longer
+/// holds is not a loss (the `MoveTo` walks on to its point), and nor is a `MoveTo` on its way.
+#[test]
+fn a_hunt_of_a_tree_searches_on_a_failed_walk_or_a_target_let_go() {
+    let tree_lost = |state: u8, move_to: MoveTo, holding: bool| {
+        let mut rig = Rig::on_the_path(Victim::default());
+        if holding {
+            rig = rig.holding(10028, 0);
+            rig.t.players[0]
+                .objects
+                .iter_mut()
+                .for_each(|u| u.life.state = state);
+        }
+        rig.unit_mut().ai = Some(crate::unit_ai::UnitAi {
+            target_type: 15,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        rig.unit_mut().actions.set_hunt(Some(HuntAction {
+            state: WALK,
+            move_to: Some(to_house(move_to, 0.0)),
+            ..hunting(-1)
+        }));
+        rig.run(100, |c, u, _, _| Ok(u.tree_lost(c)))
+    };
+    assert_eq!(tree_lost(7, MoveTo::Moving, true), Ok(true));
+    assert_eq!(tree_lost(6, MoveTo::Moving, true), Ok(false));
+    assert_eq!(tree_lost(2, MoveTo::Failed, true), Ok(true));
+    assert_eq!(tree_lost(2, MoveTo::Moving, false), Ok(false));
+}
+
+/// A unit in a state of 3 or more adds no sub-action (`FUN_140a977e0` deletes the new
+/// `MoveTo`): the hunt's `set_state` leaves it without one.
+#[test]
+fn a_dying_hunter_makes_no_move_to() {
+    let mut mover = walker();
+    let mut h = hunting(-1);
+    h.point = [5.0, 6.0, 0.0];
+    let dying = Walks {
+        state: 3,
+        ..walks((-1, 0.0))
+    };
+    h.set_point_walk(WALK_SEARCH, &mut mover, &dying).unwrap();
+    assert_eq!((h.state, h.move_to), (WALK_SEARCH, None));
+    h.set_point_walk(WALK_SEARCH, &mut mover, &walks((-1, 0.0)))
+        .unwrap();
+    assert_eq!(h.move_to.map(|m| m.state), Some(MoveTo::Start));
 }

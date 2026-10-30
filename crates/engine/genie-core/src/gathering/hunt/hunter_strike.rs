@@ -8,7 +8,7 @@ use crate::combat::victims::{KillLeft, file_kill, victim};
 use crate::gathering::drop_sites::nearest_drop_site;
 use crate::gathering::hunt::NO_HUNT;
 use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites};
-use crate::movement::move_to::MoveTo;
+use crate::movement::move_to::{MoveDefaults, MoveTo};
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
@@ -91,6 +91,7 @@ impl Unit {
             .unwrap_or(1.0);
         let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
         HuntReads {
+            defaults: MoveDefaults::of(master, self.abilities.look.as_ref()),
             attack: AttackReads::of(
                 self,
                 master,
@@ -152,8 +153,8 @@ impl Unit {
         master: &Master,
         victim: &Victim,
     ) -> Result<Option<Herd>, GenieError> {
-        let faces =
-            action.state == crate::gathering::hunt::WALK && action.move_to == Some(MoveTo::Arrived);
+        let faces = action.state == crate::gathering::hunt::WALK
+            && action.move_to.is_some_and(|m| m.state == MoveTo::Arrived);
         if !((faces && victim.class == class::LIVESTOCK && victim.state <= 2)
             || action.state == crate::gathering::hunt::LEAD)
         {

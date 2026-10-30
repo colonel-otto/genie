@@ -3427,6 +3427,8 @@ fn a_drop_off_order_takes_a_hunt_to_its_site() {
     v.actions.set_gather(None);
     let mut hunt = crate::gathering::hunt::tests::hunting(600);
     hunt.task.resource = 17;
+    // the sprites' table of the world holds none
+    hunt.task.sprites = [-1; 4];
     v.actions.set_hunt(Some(hunt));
     t.unit_order(player_id(1), &object_ids([9175]), 7).unwrap();
     let h = t.players[1].objects[0]

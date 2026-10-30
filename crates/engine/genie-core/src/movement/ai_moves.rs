@@ -174,7 +174,10 @@ impl Unit {
                 let sprites = self.point_sprites(masters, graphics)?;
                 self.artifact_takes_point(point, &sprites)
             }
-            Some(crate::gathering::hunt::HUNT) => self.hunt_takes_point(point, player),
+            Some(crate::gathering::hunt::HUNT) => {
+                let sprites = self.point_sprites(masters, graphics)?;
+                self.hunt_takes_point(point, player, sprites)
+            }
             Some(crate::gathering::gather::GATHER) => {
                 let sprites = self.point_sprites(masters, graphics)?;
                 self.gather_takes_point(point, player, sprites)
@@ -237,8 +240,14 @@ impl Unit {
         &mut self,
         point: [f32; 3],
         player: usize,
+        sprites: SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
-        let (held, my_pasture) = (self.life.amount, self.my_pasture);
+        let my_pasture = self.my_pasture;
+        let walks = Walks {
+            sprites,
+            held: (self.life.attribute_type, self.life.amount),
+            state: self.life.state,
+        };
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
@@ -250,7 +259,7 @@ impl Unit {
                 target: None,
                 point,
                 player,
-                held,
+                walks,
                 drops_here: false,
                 my_pasture,
                 gap: 0.0,

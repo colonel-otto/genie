@@ -205,7 +205,7 @@ impl Unit {
                     kind: crate::combat::attack::ATTACK,
                     state: a.state,
                 })
-                .or_else(|| walking(h.move_to)),
+                .or_else(|| walking(h.move_to.map(|m| m.state))),
             Action::Build(b) => walking(b.move_to),
             Action::Repair(r) => walking(r.move_to.map(|m| m.state)),
             Action::Fly(f) => walking(f.move_to.map(|m| m.state)),

@@ -164,7 +164,7 @@ impl Unit {
     fn hunter_update(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
         self.hunt_targets(c)?;
         let mut own = self.own_victim(c);
-        let tree_lost = self.tree_lost();
+        let tree_lost = self.tree_lost(c);
         self.hunt_part(c, me, &mut own, tree_lost)
     }
 

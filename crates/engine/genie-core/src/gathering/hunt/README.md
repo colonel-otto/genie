@@ -11,6 +11,8 @@ hunts its own livestock can lead the animal toward the drop site first (state 10
 - `gathering.rs`, `drop_off.rs` and `herding.rs` hold the states of the gathering, the drop-off
   and the herding.
 - `sprites.rs` holds the hunt's sprites.
+- `walks.rs` builds the quiet `MoveTo`s of `set_state` (the one component, `MoveToAction`) and
+  runs the sub-action list's update.
 - `next_tree.rs` finds the next tree, the closest one to the hunt's drop site.
 - `hunter.rs` is the hunter's part of its update: the targets checked, and the state the
   hunt is in (the drop-off's waits, the failure, the walks, the search, the lead).
@@ -41,6 +43,7 @@ hunts its own livestock can lead the animal toward the drop site first (state 10
 | [`tests.rs`](tests.rs) | Tests. |
 | [`unit.rs`](unit.rs) | A hunter's search, its walk after a drop and its drop-off. |
 | [`update.rs`](update.rs) | One update (slot 6, `0x140ac7a00`), a target lost on the way and the attack on live livestock (state 12). |
+| [`walks.rs`](walks.rs) | The `MoveTo`s the Hunt's `set_state` makes (`0x140ac60e0`) and the update of its sub-action list (`FUN_140a992b0`). |
 <!-- /files -->
 
 ## How it connects

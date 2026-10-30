@@ -2,15 +2,15 @@
 //! livestock (state 12).
 
 use crate::GenieError;
-use crate::combat::attack::{Attack, AttackReads, Fight, set_walker_anim};
+use crate::combat::attack::{Attack, Fight, set_walker_anim};
+use crate::gathering::hunt::walks::QUIET_CODE;
 use crate::gathering::hunt::{
-    ATTACK, FACE, GATHER, Herd, HuntAction, HuntNext, HuntReads, LEAD, SEARCH, Shown, TREE_CLASS,
-    WALK, WALK_SEARCH, walk_sprite,
+    ATTACK, FACE, GATHER, Herd, HuntAction, HuntNext, HuntReads, LEAD, SEARCH, TREE_CLASS, WALK,
+    WALK_SEARCH,
 };
 use crate::math::rng::Stream;
-use crate::movement::move_to::TargetMoved;
-use crate::movement::move_to::{Goal, MoveTo, start_walk_shown, target_moved, walk_or_give_up};
-use crate::movement::{Me, Mover, PathAsk};
+use crate::movement::Me;
+use crate::movement::move_to::GiveUp;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -42,19 +42,13 @@ impl HuntAction {
                 "a computer player's hunt (FUN_140fde4f0)",
             ));
         }
-        // a target gone or past state 6 went at the update's start (slot 0x68 with none, the
-        // caller's): in state 4 its `MoveTo`, quiet, forgets it too and returns 5
-        if self.state == WALK && self.target == -1 && 0.0 <= self.timer && self.move_to.is_some() {
-            let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-            self.lost_on_the_way(mover, r)?;
-            return Ok(HuntNext::Stay);
-        }
         match self.state {
             ATTACK => self.update_attack(c, unit, me, f, r),
             // case 3: a hunt that gave up on its MoveTo waits (its timer below 0), then set_state 11
             WALK if self.timer < 0.0 => {
+                let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-                self.wait_then_walk(seconds(c.dt), mover)?;
+                self.wait_then_walk(seconds(c.dt), mover, &walks)?;
                 Ok(HuntNext::Stay)
             }
             WALK => self.update_walk(c, unit, me, f, r),
@@ -115,24 +109,29 @@ impl HuntAction {
             }
             1 | 2 | 5 => {
                 self.decay_check(c, unit, r.stops_decay, f)?;
-                self.set_walk(&c.w.spatial, &mut unit.body, &f.victim, f.own.player)?;
+                let walks = r.walks(&c.w.graphics, unit);
+                let player = f.own.player;
+                self.set_walk(&c.w.spatial, &mut unit.body, &f.victim, player, &walks)?;
                 Ok(HuntNext::Stay)
             }
             3 => Ok(HuntNext::AttackFailed),
             _ => {
                 let target = self.let_go();
                 unit.hunt_release(c, [target])?;
+                let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-                self.set_point_walk(WALK_SEARCH, mover)?;
+                self.set_point_walk(WALK_SEARCH, mover, &walks)?;
                 Ok(HuntNext::Stay)
             }
         }
     }
 
-    /// State 4, the walk's `MoveTo` (`FUN_140a992b0`): it starts ([`HuntAction::walk_start`]),
-    /// walks ([`HuntAction::walk_moving`]), fails ([`HuntAction::walk_failed`]), waits (case 2:
-    /// the timer runs by dt; at its end it asks again, `set_state(3)`) or arrives
-    /// ([`HuntAction::walk_arrived`]).
+    /// State 4, the walk's `MoveTo` (case 3, `FUN_140a992b0`, [`HuntAction::update_list`]): its
+    /// code 0 walks or waits; 1 and 2 (the `MoveTo` ended: the list drops it, its destructor
+    /// stops the unit) are the decay check and `set_state(6)`
+    /// ([`HuntAction::walk_arrived`]); 3 failed ([`HuntAction::walk_failed`]); 4 and 5, its
+    /// target let go, walk to the point ([`HuntAction::lost_on_the_way`]). A quiet `MoveTo`
+    /// never gives 4, and none gives 6 (the game's `set_state(13)` with the search's notify).
     fn update_walk(
         &mut self,
         c: &mut Step<'_>,
@@ -141,100 +140,17 @@ impl HuntAction {
         f: &mut Fight,
         r: &HuntReads,
     ) -> Result<HuntNext, GenieError> {
-        match self.move_to {
-            Some(MoveTo::Start) => self.walk_start(c, unit, me, f, r),
-            Some(MoveTo::Moving) => self.walk_moving(c, unit, me, f, &r.attack),
-            Some(MoveTo::Failed) => self.walk_failed(unit, r),
-            Some(MoveTo::Waiting) => {
-                self.move_wait.timer += seconds(c.dt);
-                if self.move_wait.delay <= self.move_wait.timer {
-                    self.move_wait.timer = 0.0;
-                    self.move_to = Some(MoveTo::Start);
-                }
-                return Ok(HuntNext::Stay);
-            }
-            Some(MoveTo::Arrived) => return self.walk_arrived(c, unit, f, r),
-            None => Err(GenieError::unsupported(
-                "a Hunt in state 4 without its MoveTo",
-            )),
-        }
-        .map(|()| HuntNext::Stay)
-    }
-
-    /// The `MoveTo`'s start (case 3; after a wait `+0x6c` goes from 1 to 2 as it asks again):
-    /// the walk to the target within the walk range, what stands in the way (posted at once),
-    /// and the hunt's walking sprite (the `MoveTo`'s `set_state(4)`); without a way it gives up.
-    fn walk_start(
-        &mut self,
-        c: &mut Step<'_>,
-        unit: &mut Unit,
-        me: Me,
-        f: &Fight,
-        r: &HuntReads,
-    ) -> Result<(), GenieError> {
-        if self.move_wait.state == 1 {
-            self.move_wait.state = 2;
-        }
-        self.move_to = Some(MoveTo::Moving);
-        let range = self.walk_range;
-        let goal = Goal::Target(self.target);
-        let graphic = walk_sprite(
-            self.task.resource,
-            unit.life.attribute_type,
-            unit.life.amount,
-            &r.sprites,
-        );
-        let me = Me {
-            action_state: self.state,
-            ..me
+        let gives_up = GiveUp {
+            waits: !r.attack.computer && f.own.class == class::VILLAGER,
+            stance: r.attack.stance,
         };
-        let (walk, sprite_rng, _) = c.walk_sprites_action(&mut unit.body, me);
-        let shown = Shown {
-            sprite: &mut unit.sprite,
-            rng: sprite_rng,
-            graphic,
-        };
-        let ask = PathAsk::default();
-        let walked = start_walk_shown(walk, (goal, range, true), ask, Some(shown))?;
-        unit.post_in_the_way()?;
-        match walked {
-            Some(state) => self.move_to = Some(state),
-            None => self.give_up(&r.attack, f.own.class),
+        match self.update_list(c, unit, me, gives_up)? {
+            0 => Ok(HuntNext::Stay),
+            1 | 2 => self.walk_arrived(c, unit, f, r),
+            3 => self.walk_failed(unit, r).map(|()| HuntNext::Stay),
+            4 | 5 => self.lost_on_the_way(c, unit, r).map(|()| HuntNext::Stay),
+            code => Err(QUIET_CODE.with("code", code)),
         }
-        Ok(())
-    }
-
-    /// The `MoveTo` on its way: a target that moved makes it start again; else the walk's step,
-    /// what stands in the way (posted at once), and without a way the give-up.
-    fn walk_moving(
-        &mut self,
-        c: &mut Step<'_>,
-        unit: &mut Unit,
-        me: Me,
-        f: &Fight,
-        r: &AttackReads,
-    ) -> Result<(), GenieError> {
-        if target_moved(
-            &mut c.walk(&mut unit.body, me),
-            self.target,
-            TargetMoved::AsksAgain,
-        )?
-        .again()
-        {
-            self.move_to = Some(MoveTo::Start);
-            return Ok(());
-        }
-        let me = Me {
-            action_state: self.state,
-            ..me
-        };
-        let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
-        unit.post_in_the_way()?;
-        match walked {
-            Some(m) => self.move_to = Some(m),
-            None => self.give_up(r, f.own.class),
-        }
-        Ok(())
     }
 
     /// The failed `MoveTo`'s update returns 3 (quiet: no notify): `FUN_140ac4670` with 8 and -1
@@ -259,11 +175,13 @@ impl HuntAction {
         f: &mut Fight,
         r: &HuntReads,
     ) -> Result<HuntNext, GenieError> {
-        self.move_to = None;
-        unit.body
-            .mover_mut()
-            .ok_or(crate::world::HUNTER_UNMOVING)?
-            .stop()?;
+        self.tear_down(unit.body.mover_mut())?;
+        // a target the hunt let go (the `MoveTo`'s went from the world): `FUN_140ac44b0` does
+        // nothing, and `set_state(6)` without a target only shows the walking sprite
+        if self.target == -1 {
+            self.begin_face(c, unit, r);
+            return Ok(HuntNext::Stay);
+        }
         self.decay_check(c, unit, r.stops_decay, f)?;
         self.set_face(c, unit, f, r)
     }
@@ -294,11 +212,15 @@ impl HuntAction {
     /// 0x68 with none) and the hunt walks to its point (`set_state` 11).
     pub(super) fn lost_on_the_way(
         &mut self,
-        mover: &mut Mover,
+        c: &Step<'_>,
+        unit: &mut Unit,
         r: &HuntReads,
     ) -> Result<(), GenieError> {
         self.no_tree_search(r)?;
-        self.set_point_walk(WALK_SEARCH, mover)
+        self.set_target(-1);
+        let walks = r.walks(&c.w.graphics, unit);
+        let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
+        self.set_point_walk(WALK_SEARCH, mover, &walks)
     }
 
     /// `FUN_140ac4670` with 8 and −1 for a class the unit AI's slot 0x1b0 gives 0 (trees: the

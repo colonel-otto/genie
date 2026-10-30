@@ -3681,7 +3681,7 @@ fn hunt_part_of(t: &mut World, dt: u32) -> Result<(), GenieError> {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let mut own = unit.own_victim(c);
-        let tree_lost = unit.tree_lost();
+        let tree_lost = unit.tree_lost(c);
         let code = unit.hunt_part(c, me, &mut own, tree_lost)?;
         unit.end_head_update(c, code)
     })
@@ -3724,10 +3724,11 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
 #[test]
 fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
     use crate::gathering::hunt::{ATTACK, DROP};
-    use crate::movement::move_to::MoveTo;
+    use crate::movement::move_to::{MoveTo, MoveToAction};
     let dropping = |move_to| {
         let mut t = hunter_in(|h| {
-            (h.state, h.timer, h.carry_to, h.move_to) = (DROP, 0.0, 700, Some(move_to));
+            (h.state, h.timer, h.carry_to, h.move_to) =
+                (DROP, 0.0, 700, Some(MoveToAction::sub_in(move_to)));
             h.attack = None;
         });
         let v = &mut t.players[1].objects[0];
@@ -3839,10 +3840,10 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
 #[test]
 fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
     use crate::gathering::hunt::{IDLE, SEARCH, WALK, WALK_POINT, WALK_SEARCH};
-    use crate::movement::move_to::MoveTo;
+    use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
     let walked = |state| {
         hunter_in(|h| {
-            (h.state, h.move_to) = (state, Some(MoveTo::Arrived));
+            (h.state, h.move_to) = (state, Some(MoveToAction::sub_in(MoveTo::Arrived)));
             h.attack = None;
         })
     };
@@ -3859,13 +3860,24 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
     );
     assert_eq!(notified(&t, SEARCH_NEEDED).len(), 1);
     let mut t = hunter_in(|h| {
-        (h.state, h.move_to) = (WALK_POINT, Some(MoveTo::Waiting));
-        h.move_wait.delay = 1.0;
+        (h.state, h.move_to) = (
+            WALK_POINT,
+            Some(MoveToAction {
+                wait: MoveWait {
+                    delay: 1.0,
+                    ..MoveWait::NEW
+                },
+                ..MoveToAction::sub_in(MoveTo::Waiting)
+            }),
+        );
         h.attack = None;
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
-    assert_eq!((h.move_to, h.state), (Some(MoveTo::Waiting), WALK_POINT));
+    assert_eq!(
+        (h.move_to.map(|m| m.state), h.state),
+        (Some(MoveTo::Waiting), WALK_POINT)
+    );
     let mut t = hunter_in(|h| {
         (h.state, h.target, h.timer, h.move_to) = (WALK, -1, -0.01, None);
         h.point = [36.0, 89.5, 0.0];
@@ -3960,7 +3972,7 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let mut own = unit.own_victim(c);
-        let tree_lost = unit.tree_lost();
+        let tree_lost = unit.tree_lost(c);
         let code = unit.hunt_part(c, me, &mut own, tree_lost)?;
         unit.end_head_update(c, code)?;
         Ok(OthersRef::of(&c.w.players, c.player)
@@ -4004,7 +4016,7 @@ fn a_gathering_hunt_whose_target_left_searches_without_reading_one() {
 /// the hunter, its hunter's task on livestock, the drop-site table's town centre taking
 /// livestock; the hunt command's hunt faces it (state 4, arrived).
 fn shepherd_world(x: f32) -> World {
-    use crate::movement::move_to::MoveTo;
+    use crate::movement::move_to::{MoveTo, MoveToAction};
     let mut t = hunt_world();
     for masters in &mut t.masters {
         let sheep = Master {
@@ -4070,7 +4082,7 @@ fn shepherd_world(x: f32) -> World {
     }];
     t.hunt_command(1, 0, 510).unwrap();
     let h = t.players[1].objects[0].actions.hunt_mut().unwrap();
-    (h.move_to, h.attack) = (Some(MoveTo::Arrived), None);
+    (h.move_to, h.attack) = (Some(MoveToAction::sub_in(MoveTo::Arrived)), None);
     t
 }
 
@@ -4113,7 +4125,7 @@ fn a_hunter_s_sheep_walks_before_the_hunter_s_update_ends() {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let mut own = unit.own_victim(c);
-        let tree_lost = unit.tree_lost();
+        let tree_lost = unit.tree_lost(c);
         let _ = unit.hunt_part(c, me, &mut own, tree_lost)?;
         Ok(c.w.players[1].objects[3].actions.move_to().is_some())
     });
@@ -8597,6 +8609,9 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
             class: 4,
             radius: [0.2, 0.2],
             drop_sites: vec![109, -1],
+            // no sprites: the sprites' table holds none
+            move_sprite: -1,
+            standing_sprite: -1,
             ..Master::default()
         },
         Master {
@@ -8635,7 +8650,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
             construction_rate: 1.0,
             groups: &t.groups,
         };
-        hunter.drop_off_in(world, OthersRef::alone(1, &others))
+        hunter.drop_off_in(world, OthersRef::alone(1, &others), &t.graphics)
     };
     assert_eq!(drop_off(&mut hunter, &mut t), Ok(Some(9149)));
     let hunt = hunter.actions.hunt().copied().unwrap();

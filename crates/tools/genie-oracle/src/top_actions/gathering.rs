@@ -1,8 +1,8 @@
 //! The gathering actions of a saved object's top action: the Hunt, the Gather and a farm's
 //! Make ([`crate::top_actions::saved_actions`]).
 
-use crate::top_actions::{Saved, TaskAt, move_to_state, saved_move_to, sub_range, sub_state};
-use crate::{saved_attack, saved_move_wait, saved_reload, saved_sprite};
+use crate::top_actions::{Saved, TaskAt, move_to_state, saved_move_to};
+use crate::{saved_attack, saved_reload, saved_sprite};
 use genie_core::GenieError;
 use genie_core::movement::move_to::MOVE_TO;
 use genie_core::objects::masters::Task;
@@ -81,11 +81,9 @@ pub(super) fn import_hunt(
         task,
         attack: None,
         move_to: None,
-        walk_range: task.range,
         drop_site: part.sheep_drop_site_id as i32,
         carry_to: base.target2_id,
         timer: base.timer,
-        move_wait: genie_core::movement::move_to::MoveWait::default(),
         lead: genie_core::gathering::hunt::Lead {
             moved: part.moved_sheep != 0,
             still_time: part.sheep_still_time as i16,
@@ -102,10 +100,8 @@ pub(super) fn import_hunt(
             unit.sprite = saved.graphics.and_then(|g| saved_sprite(saved.s, g));
         }
         Some((MOVE_TO, sub)) => {
-            hunt.move_to = Some(sub_state(sub)?);
-            hunt.walk_range = sub_range(sub)?;
-            // its wait (`+0x6c`, `+0x70`, `+0x74`)
-            hunt.move_wait = saved_move_wait(sub);
+            // every MoveTo of the Hunt is quiet (`FUN_140a7a170` with 1)
+            hunt.move_to = Some(saved_move_to(sub, saved.graphics, true)?);
         }
         Some(_) => {
             return Err(GenieError::unsupported(

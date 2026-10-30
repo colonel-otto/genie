@@ -8,12 +8,11 @@ use genie_diff::Diff;
 use crate::GenieError;
 use crate::commands::GatherPoint;
 use crate::construction::build::Construction;
-use crate::gathering::hunt::{HuntAction, HuntSprites};
 use crate::objects::actions::ActionList;
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::{Master, Masters};
-use crate::objects::sprite::{ActiveSprite, Graphic};
+use crate::objects::sprite::ActiveSprite;
 use crate::ownership::capture::Captured;
 use crate::production::Production;
 use crate::unit_ai::UnitAi;
@@ -316,27 +315,6 @@ impl Unit {
     pub(crate) const fn place_for_test(&mut self, at: [f32; 3]) {
         self.body.base_mut().place_for_test(at);
     }
-}
-
-/// The sprite a hunt's walk shows ([`crate::gathering::hunt::walk_sprite`]) from its task's sprites.
-pub(crate) fn hunt_walk_sprite(
-    hunt: &HuntAction,
-    graphics: &std::collections::BTreeMap<i16, Graphic>,
-    life: &Lifecycle,
-) -> Option<Graphic> {
-    let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
-    let sprites = HuntSprites {
-        moving: g(hunt.task.sprites[0]),
-        working: g(hunt.task.sprites[2]),
-        carrying: g(hunt.task.sprites[3]),
-        standing: None,
-    };
-    crate::gathering::hunt::walk_sprite(
-        hunt.task.resource,
-        life.attribute_type,
-        life.amount,
-        &sprites,
-    )
 }
 
 /// A building's annexes among `objects` (`+0xbc0`.., the save's linked object ids), in id order,
