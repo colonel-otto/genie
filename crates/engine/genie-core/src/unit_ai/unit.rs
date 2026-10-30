@@ -16,6 +16,9 @@ use crate::world::scenario_mode;
 use crate::world::standard_mode;
 use crate::world::step::Step;
 
+/// A unit that runs its unit AI's side where it has none.
+const NO_UNIT_AI: GenieError = GenieError::unreachable("a unit without a unit AI where one runs");
+
 impl Unit {
     /// The end of [`Unit::update`] after the actions (`captured`: the Artifact's capture, `leaves`:
     /// the step its life step left): `RGE_Action_Object::update`'s end (`FUN_141163080`: the
@@ -200,7 +203,7 @@ impl Unit {
         (player, computer): (usize, bool),
         f: impl FnOnce(&mut UnitAi, &mut UnitView<'_, '_>, &mut Well512) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
-        let mut ai = self.ai.take().expect("a unit with a unit AI");
+        let mut ai = self.ai.take().ok_or(NO_UNIT_AI)?;
         // the AI stream is the AI's while it runs: no world routine the side calls draws from it
         let held = c.w.streams.get(Stream::Ai).clone();
         let mut ai_stream = held.clone();

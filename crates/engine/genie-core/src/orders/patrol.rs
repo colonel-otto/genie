@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::RGE_COMBAT;
+use crate::orders::object_gone;
 use crate::orders::{
     ATTACK_MOVE_QUEUED, LISTED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
@@ -186,10 +187,7 @@ impl World {
                 listed.push(id);
             }
             let commands = self.groups.commands;
-            let g = self
-                .groups
-                .get_mut(id)
-                .expect("the group found or made above");
+            let g = self.groups.held_mut(id)?;
             g.differentiator_id = commands;
             let [x, _, z] = g.motion.position[0];
             let kept = waypoints_from([x, z], waypoints);
@@ -244,7 +242,7 @@ impl World {
                 i += 1;
                 continue;
             }
-            let g = self.groups.get(group).expect("the caller holds the group");
+            let g = self.groups.held(group)?;
             let at = g.motion.position[0];
             let from = [u.position()[0], u.position()[1]];
             let moved = u.body.mover().map_or_else(|| u.position(), |m| m.moved_at);
@@ -324,7 +322,7 @@ impl World {
         }
         let kind = u.master(&self.masters, p)?.kind;
         self.leave_group_of(id, -1)?;
-        let (_, u) = self.object_mut(id).expect("the unit found above");
+        let (_, u) = self.object_mut(id).ok_or_else(|| object_gone(id))?;
         if let Some(m) = u.body.mover_mut() {
             m.clear_user_waypoints();
             m.ignore_units.clear();

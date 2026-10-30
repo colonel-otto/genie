@@ -7,6 +7,7 @@ use crate::math::rng::Stream;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::orders::object_gone;
 use crate::orders::{HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -286,7 +287,7 @@ impl World {
         let (found, record) = bell.back_to_work(&lookup);
         let target = match found {
             Some(f) => {
-                let (op, o) = self.object(f.id).expect("the lookup found it");
+                let (op, o) = self.object(f.id).ok_or_else(|| object_gone(f.id))?;
                 let master = o.master(&self.masters, op)?.id;
                 (
                     f.id,

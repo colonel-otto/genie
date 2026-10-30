@@ -12,6 +12,7 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
+use crate::orders::object_gone;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, WorldPicker, patrol_information, town_centre};
 use crate::unit_ai::{Search, UnitAi};
@@ -490,11 +491,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         };
         let u = owner_view(&self.c.w.players, self.c.player, self.new_owner)
             .get(id)
-            .expect("seen_unit found it");
-        let kind = u
-            .master(&self.c.w.masters, seen.owner)
-            .expect("seen_unit found its master")
-            .kind;
+            .ok_or_else(|| object_gone(id))?;
+        let kind = u.master(&self.c.w.masters, seen.owner)?.kind;
         Ok(Some(crate::unit_ai::TargetFlags {
             owner: seen.owner,
             kind,

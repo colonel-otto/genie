@@ -2,10 +2,19 @@
 
 use crate::GenieError;
 use crate::objects::masters::player_master;
+use crate::orders::NO_QUEUE;
 use crate::production::{IN_PRODUCTION, MakeObj, Making, QUEUED, housed, population};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
+
+/// A queue that is enabled and counts an entry, but holds none.
+const EMPTY_QUEUE: GenieError =
+    GenieError::unreachable("a production queue that counts an entry but holds none");
+
+/// A building the make step runs for, whose action is no unit's Make.
+const NO_MAKE_ACTION: GenieError =
+    GenieError::unreachable("a make step of a building without a make action");
 
 /// The make action's type (`+0x8`, 0x66, `TRIBE_Action_Make_Obj`).
 pub(super) const MAKE_OBJ: i16 = 0x66;
@@ -65,9 +74,9 @@ impl World {
         let production = self.players[p].objects[i]
             .production
             .as_ref()
-            .expect("above");
+            .ok_or(NO_QUEUE)?;
         if production.action.is_none() {
-            let first = *production.queue.first().expect("an entry");
+            let first = *production.queue.first().ok_or(EMPTY_QUEUE)?;
             let making = if first.tech == -1 {
                 let pop = player_master(&self.masters, p, first.master)
                     .map_or(0.0, |m| population(&m.storage));
@@ -219,7 +228,7 @@ impl World {
     ) -> Result<u8, GenieError> {
         let building = &self.players[p].objects[i];
         let Some(Some(Making::Unit(make))) = building.production.as_ref().map(|q| q.action) else {
-            unreachable!("the caller's make action");
+            return Err(NO_MAKE_ACTION);
         };
         match make.state {
             MakeObj::DONE => return Ok(1),

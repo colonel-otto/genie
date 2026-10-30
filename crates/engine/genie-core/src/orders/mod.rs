@@ -279,6 +279,21 @@ const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;
 const WAYPOINT_APART: f32 = crate::math::image::order::WAYPOINT_APART;
 const WAYPOINT_APART_LOW: f32 = crate::math::image::order::WAYPOINT_APART_LOW;
 
+/// An object that a caller found or was given, which the world does not hold.
+pub(crate) fn object_gone(id: i32) -> GenieError {
+    GenieError::unreachable("an object the caller holds that the world does not hold")
+        .with("object", id)
+}
+
+/// A building the caller found or was given, which holds no production queue.
+pub(crate) const NO_QUEUE: GenieError =
+    GenieError::unreachable("a building without a production queue where one is read");
+
+/// A technology index outside the tree where RESEARCH has queued one.
+pub(crate) fn tech_outside(tech: i16) -> GenieError {
+    GenieError::invalid_input("a technology outside the tree").with("tech", tech)
+}
+
 impl World {
     pub(crate) fn place(&self, id: i32) -> Option<Place> {
         self.players.iter().enumerate().find_map(|(p, player)| {

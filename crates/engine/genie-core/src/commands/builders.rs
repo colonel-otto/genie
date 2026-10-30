@@ -16,6 +16,10 @@ use crate::unit_ai::task_finder::{Actor, TaskTarget};
 use crate::unit_ai::world_view::Wait;
 use crate::world::{STATIC_TYPES_END, World};
 
+/// `work_master` returns a master the player has; one it lacks is a broken world.
+const NO_WORK_MASTER: GenieError =
+    GenieError::unreachable("a work master the player does not have");
+
 impl World {
     /// BUILD's builders (the cost was paid with the foundation, [`World::found`]; the pending
     /// debit came before, [`World::debit_listed`]), the handler's last loop: each unit of the
@@ -183,9 +187,7 @@ impl World {
                 "a builder whose Build task is not enabled",
             ));
         }
-        let builder = masters
-            .get(with)
-            .expect("work_master returns a master the player has");
+        let builder = masters.get(with).ok_or(NO_WORK_MASTER)?;
         let gap = footprint_gap(unit.position(), builder.radius, position, site.radius);
         let task = BuildTask::of(task, builder.work_rate + unit.work_rate_powerup);
         Ok((with, BuildAction::start(foundation, position, gap, task)))

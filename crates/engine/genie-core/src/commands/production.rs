@@ -12,6 +12,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Masters, player_master};
 use crate::orders::Place;
+use crate::orders::{NO_QUEUE, tech_outside};
 use crate::players::attribute;
 use crate::production::Production;
 use crate::world::{
@@ -389,7 +390,7 @@ impl World {
         count: i16,
         button: i32,
     ) -> Result<bool, GenieError> {
-        let t = usize::try_from(tech).expect("RESEARCH queues a technology of the tree");
+        let t = usize::try_from(tech).map_err(|_| tech_outside(tech))?;
         let def = self.techs.get(t).ok_or(GenieError::unsupported(
             "a technology the data file has not got",
         ))?;
@@ -466,7 +467,7 @@ impl World {
         let queue = &self.players[player].objects[i]
             .production
             .as_ref()
-            .expect("the caller's production")
+            .ok_or(NO_QUEUE)?
             .queue;
         let refill = if queue.full() {
             Some(
@@ -483,7 +484,7 @@ impl World {
         let queue = &mut self.players[player].objects[i]
             .production
             .as_mut()
-            .expect("the caller's production")
+            .ok_or(NO_QUEUE)?
             .queue;
         if let Some(refill) = refill {
             queue.grow(&refill);

@@ -9,6 +9,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
+use crate::orders::object_gone;
 use crate::orders::{HERD_MOST, NO_POINT, Place};
 use crate::players::PlayerId;
 use crate::world::World;
@@ -100,7 +101,11 @@ impl World {
             return Ok(());
         }
         // the animal's own place (+0x3c8, +0x4c8), truncated; send_to_site found it live
-        let at = self.object(sheep).expect("sent to the site").1.position();
+        let at = self
+            .object(sheep)
+            .ok_or_else(|| object_gone(sheep))?
+            .1
+            .position();
         let (x, y) = (
             crate::math::conversions::cvttss2si(at[0]),
             crate::math::conversions::cvttss2si(at[1]),

@@ -8,6 +8,10 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
 
+/// A building the research step runs for, whose action is no Research.
+const NO_RESEARCH_ACTION: GenieError =
+    GenieError::unreachable("a research step of a building without a research action");
+
 impl World {
     /// The research's action (`TRIBE_Action_Make_Tech`, constructor `FUN_140ad0700` with the
     /// first entry's technology and master and 0, so paid; state 0, nothing done) for player
@@ -69,7 +73,7 @@ impl World {
         let owner = &self.players[p];
         let building = &owner.objects[i];
         let Some(Some(Making::Research(r))) = building.production.as_ref().map(|q| q.action) else {
-            unreachable!("the caller's research");
+            return Err(NO_RESEARCH_ACTION);
         };
         match r.state {
             MakeObj::DONE => return Ok(1),

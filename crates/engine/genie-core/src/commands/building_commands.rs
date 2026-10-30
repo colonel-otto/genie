@@ -8,6 +8,7 @@ use crate::map::Point;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
+use crate::orders::tech_outside;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -308,7 +309,7 @@ impl World {
         tech: i16,
         shift: bool,
     ) -> Result<bool, GenieError> {
-        let t = usize::try_from(tech).expect("RESEARCH queues a technology of the tree");
+        let t = usize::try_from(tech).map_err(|_| tech_outside(tech))?;
         let def = &self.techs[t];
         let state = &self.players[player].techs[t];
         let one = !state.allow_multiple || def.upgrades();

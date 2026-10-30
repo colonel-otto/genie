@@ -172,13 +172,13 @@ fn one_of_each(p: u8) -> Vec<Command> {
         Command::Patrol(PatrolCommand {
             player: player_id(p),
             units: unit_list(object_ids(ids.clone())),
-            waypoints: Waypoints::of(&[Point::new(1.0, 1.0)]),
+            waypoints: Waypoints::of(&[Point::new(1.0, 1.0)]).unwrap(),
             reset: false,
         }),
         Command::AttackMove(AttackMoveCommand {
             player: player_id(p),
             units: unit_list(object_ids(ids.clone())),
-            waypoints: Waypoints::of(&[Point::new(1.0, 1.0)]),
+            waypoints: Waypoints::of(&[Point::new(1.0, 1.0)]).unwrap(),
             reset: false,
             queued: false,
             ignore_pending: false,
@@ -241,7 +241,7 @@ fn a_command_names_the_player_whose_lane_it_stops() {
 #[test]
 fn a_patrol_reads_one_to_ten_waypoints() {
     let points = [Point::new(1.0, 2.0), Point::new(3.0, 4.0)];
-    let two = Waypoints::of(&points);
+    let two = Waypoints::of(&points).unwrap();
     assert_eq!(two.used(), Some(&points[..]));
     assert_eq!(Waypoints::default().used(), None);
     let eleven = Waypoints { count: 11, ..two };

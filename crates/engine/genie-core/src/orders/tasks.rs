@@ -10,6 +10,12 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
+/// A repairer whose top action is no Repair where the order retargets it.
+const NO_REPAIR: GenieError = GenieError::unreachable("a repair retarget without a Repair on top");
+
+/// A builder whose Build the retake found gone right after it checked.
+const NO_BUILD: GenieError = GenieError::unreachable("a Build taken from a builder that has none");
+
 impl World {
     /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::AiCommand::HuntObject`], after
     /// the AI's stop, slot 0xb0 with 1, which stopped the unit at once): its hunt command (object
@@ -302,7 +308,7 @@ impl World {
             .actions
             .repair()
             .copied()
-            .expect("the unit's top action");
+            .ok_or(NO_REPAIR)?;
         let same = repair.target == target;
         let stays = same && (repair.state == 6 || (repair.state == 4 && computer));
         if !stays {
@@ -314,7 +320,7 @@ impl World {
                 return Err(crate::construction::repair::SHIP_REPAIR);
             }
             let unit = &mut self.players[player].objects[idx];
-            let r = unit.actions.repair_mut().expect("the unit's top action");
+            let r = unit.actions.repair_mut().ok_or(NO_REPAIR)?;
             // slot 0x68 dropped the count on another target; set_state(4)'s prelude makes a
             // repairer still counted leave its repairers
             let counted = same && r.counted;
@@ -422,12 +428,11 @@ impl World {
         let builders = counted
             .and_then(|b| b.construction.as_mut())
             .map(|k| &mut k.builders);
-        let r = build.as_mut().expect("found above").retake(
-            (t_at, gap),
-            mover.as_mut(),
-            builders,
-            computer,
-        );
+        let r =
+            build
+                .as_mut()
+                .ok_or(NO_BUILD)?
+                .retake((t_at, gap), mover.as_mut(), builders, computer);
         let unit = &mut self.players[player].objects[idx];
         unit.actions.set_build(build);
         unit.body.put_mover(mover);

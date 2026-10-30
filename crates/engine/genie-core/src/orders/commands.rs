@@ -5,6 +5,7 @@ use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
+use crate::orders::object_gone;
 use crate::orders::{Place, lock_gate, set_stance};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
@@ -89,7 +90,7 @@ impl World {
             return Ok(());
         }
         let now = self.world_time;
-        let (_, unit) = self.object_mut(id).expect("found above");
+        let (_, unit) = self.object_mut(id).ok_or_else(|| object_gone(id))?;
         // slot 0x668: the lock's value (a building without its gate state is lock_gate's)
         let locked = unit.gate.is_some_and(|g| g.locked);
         lock_gate(unit, !locked, now)?;

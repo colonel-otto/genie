@@ -16,6 +16,7 @@ use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Place;
+use crate::orders::object_gone;
 use crate::players::PlayerId;
 use crate::players::game_status::LOST;
 use crate::world::World;
@@ -161,7 +162,7 @@ impl World {
     /// player's live list and its hit points go to 0. Not held: the deleted mark, the killer
     /// (`+0x690`, its owner) and the special-object list (`+0x30c` bit 0).
     fn delete_unit(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
-        let (_, unit) = self.object(id).expect("the caller's");
+        let (_, unit) = self.object(id).ok_or_else(|| object_gone(id))?;
         let class = unit.master(&self.masters, owner)?.class;
         if UNDELETABLE.contains(&class) {
             return Ok(());
@@ -171,7 +172,7 @@ impl World {
         if class == class::RELIC || (class == class::LIVESTOCK && 0.0 < unit.life.amount) {
             return Ok(());
         }
-        let i = self.wake(id);
+        let i = self.wake(id)?;
         self.players[owner].objects[i].life.hp = 0.0;
         Ok(())
     }
@@ -187,7 +188,7 @@ impl World {
     /// semi-asleep list (`+0xc98`), the killer (`+0x690`) and a computer player's AI event (slot
     /// 0x380).
     fn delete_building(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
-        let (_, unit) = self.object(id).expect("the caller's");
+        let (_, unit) = self.object(id).ok_or_else(|| object_gone(id))?;
         let master = unit.master(&self.masters, owner)?;
         if master.id == TOWN_CENTRE_621 {
             self.clear_treaty_zones()?;
@@ -227,7 +228,7 @@ impl World {
                 }
             }
         }
-        let i = self.wake(id);
+        let i = self.wake(id)?;
         self.players[owner].objects[i].life.hp = 0.0;
         if state < 2 && desolid {
             self.destroy_foundation(owner, id)?;
@@ -321,7 +322,7 @@ impl World {
                 "a destroyed object inside another (slot 0x1a8)",
             ));
         }
-        let i = self.wake(id);
+        let i = self.wake(id)?;
         self.players[owner].objects[i].life.hp = 0.0;
         self.set_state(owner, id, 7)
     }
@@ -478,7 +479,7 @@ impl World {
             u.life.state = new;
         }
         if !matches!(new, 2 | 6) && matches!(self.place(id), Some(Place::Sleeping(..))) {
-            let _ = self.wake(id);
+            let _ = self.wake(id)?;
         }
         Ok(())
     }
@@ -520,8 +521,12 @@ impl World {
 
     /// `FUN_14119deb0` with 0: an object asleep wakes to the end of its player's live list, a
     /// live one flagged to sleep drops the flag; its index in the live list.
-    pub(crate) fn wake(&mut self, id: i32) -> usize {
-        match self.place(id).expect("the caller's") {
+    ///
+    /// # Errors
+    ///
+    /// An object the world does not hold.
+    pub(crate) fn wake(&mut self, id: i32) -> Result<usize, GenieError> {
+        Ok(match self.place(id).ok_or_else(|| object_gone(id))? {
             Place::Live(p, i) => {
                 self.players[p].objects[i].life.goto_sleep = false;
                 i
@@ -535,7 +540,7 @@ impl World {
                 self.track_relist(p, id, master);
                 self.players[p].objects.len() - 1
             }
-        }
+        })
     }
 }
 

@@ -19,17 +19,21 @@ pub struct Waypoints {
 impl Waypoints {
     /// Waypoints of `points` (at most ten; the slots past them 0).
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// More than ten points.
-    #[must_use]
-    pub fn of(points: &[Point]) -> Self {
+    pub fn of(points: &[Point]) -> Result<Self, GenieError> {
         let mut slots = [Point::default(); 10];
-        slots[..points.len()].copy_from_slice(points);
-        Self {
-            count: u8::try_from(points.len()).expect("at most ten waypoints"),
+        let too_many =
+            || GenieError::invalid_input("more than ten waypoints").with("count", points.len());
+        slots
+            .get_mut(..points.len())
+            .ok_or_else(too_many)?
+            .copy_from_slice(points);
+        Ok(Self {
+            count: u8::try_from(points.len()).map_err(|_| too_many())?,
             points: slots,
-        }
+        })
     }
 
     /// The waypoints the handlers read (`FUN_140e69cc0`, `FUN_140e66200`): the first `count`;

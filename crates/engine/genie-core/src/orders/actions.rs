@@ -9,11 +9,15 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
+use crate::orders::object_gone;
 use crate::orders::{Place, TROPHIES, TROPHY, clear_powerups, damage_share};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+
+/// A live list that holds nothing right after a push.
+const NOTHING_PUSHED: GenieError = GenieError::unreachable("a live list empty right after a push");
 
 impl World {
     /// Slot 0x178 on the object an action of `by` takes as its target, outside an update
@@ -233,7 +237,7 @@ impl World {
         if spared {
             return Ok(());
         }
-        let unit = match self.place(id).expect("found above") {
+        let unit = match self.place(id).ok_or_else(|| object_gone(id))? {
             Place::Live(p, i) => &mut self.players[p].objects[i],
             Place::Sleeping(p, i) => {
                 let woken = self.players[p].sleeping.swap_remove(i);
@@ -241,7 +245,7 @@ impl World {
                 self.players[p].objects.push(woken);
                 // the wake's remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
                 self.track_relist(p, id, master);
-                self.players[p].objects.last_mut().expect("pushed")
+                self.players[p].objects.last_mut().ok_or(NOTHING_PUSHED)?
             }
         };
         unit.life.goto_sleep = false;

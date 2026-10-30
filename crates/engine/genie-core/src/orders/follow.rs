@@ -431,9 +431,10 @@ impl World {
             Some(crate::construction::repair::REPAIR | crate::garrison::transport::TRANSPORT) => {
                 self.point_taken(player, idx, point)
             }
-            Some(other) => {
-                unreachable!("a top action of type {other}, which top_action never holds")
-            }
+            Some(other) => Err(GenieError::unreachable(
+                "a top action of a type that top_action never holds",
+            )
+            .with("type", other)),
         }
     }
 

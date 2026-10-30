@@ -14,6 +14,7 @@ use crate::objects::masters::Masters;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::{Releaser, released, released_fields};
 use crate::objects::unit::Unit;
+use crate::orders::object_gone;
 use crate::players::tracker::Tracker;
 use crate::unit_ai::Notify;
 use crate::world::others::{Others, OthersRef};
@@ -225,14 +226,14 @@ impl Lets<'_> {
         if sleeps {
             // a sleeping object (static: only those sleep) counts a worker less
             // (FUN_141197d00); asleep already (`+0x641`), it is not flagged again
-            let (_, u) = others.get_mut(id).expect("located");
+            let (_, u) = others.get_mut(id).ok_or_else(|| object_gone(id))?;
             if 0 < u.workers {
                 u.workers -= 1;
             }
             return Ok(());
         }
         let allied = self.allied(others.view(), by.player, p);
-        let (_, u) = others.get_mut(id).expect("located");
+        let (_, u) = others.get_mut(id).ok_or_else(|| object_gone(id))?;
         let m = u.master(self.masters, p)?;
         let (kind, listed) = (m.kind, u.lists_taker(m, allied));
         released(u, kind, listed, by)

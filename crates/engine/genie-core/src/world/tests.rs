@@ -15194,7 +15194,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &Command::Patrol(PatrolCommand {
                 player: player_id(1),
                 units: unit_list(v.clone()),
-                waypoints: Waypoints::of(&way),
+                waypoints: Waypoints::of(&way).unwrap(),
                 reset: true,
             }),
             1,
@@ -15205,7 +15205,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &Command::AttackMove(AttackMoveCommand {
                 player: player_id(1),
                 units: unit_list(v.clone()),
-                waypoints: Waypoints::of(&way),
+                waypoints: Waypoints::of(&way).unwrap(),
                 reset: true,
                 queued: false,
                 ignore_pending: false,

@@ -81,6 +81,11 @@ pub struct Settings {
 const ROOT_MODE: crate::GenieError =
     crate::GenieError::unsupported("a technology of mode 15 or -15 (FUN_140c87f20's entry)");
 
+/// A technology mode that [`Settings::tech_mode_allows`] sent to a handler of other modes.
+fn mode_outside(reason: &'static str, mode: u16) -> crate::GenieError {
+    crate::GenieError::unreachable(reason).with("mode", mode)
+}
+
 impl Settings {
     /// `FUN_1413cf2f0`: whether a technology of mode `mode` (its `+0x28`) is for this game.
     /// Modes 0 and 1 (and any not listed) are for every game; a negative mode is the opposite of
@@ -102,7 +107,7 @@ impl Settings {
             n @ 19..=25 => self.resource_level == i32::from(n) - 19,
             26 => self.antiquity,
             32 if mode < 0 => return Ok(true),
-            n @ 27..=34 => self.age_mode(n),
+            n @ 27..=34 => self.age_mode(n)?,
             _ => return Ok(true),
         };
         Ok(if mode < 0 { !positive } else { positive })
@@ -134,17 +139,17 @@ impl Settings {
             16 => m == 16,
             17 => !self.walkable_farms,
             18 => self.shared_exploration,
-            _ => unreachable!("the rule modes are 2 to 18"),
+            _ => return Err(mode_outside("a rule mode outside 2 to 18", n)),
         })
     }
 
     /// [`Settings::tech_mode_allows`]'s modes 27 to 34 (`n`), by the starting age, its default 0
     /// by the game mode.
-    fn age_mode(&self, n: u16) -> bool {
+    fn age_mode(&self, n: u16) -> Result<bool, crate::GenieError> {
         let (m, age) = (self.game_mode, self.starting_age);
         let below = |n: u32| (age as u32) < n;
         let default_in = |modes: &[i32]| age == 0 && modes.contains(&m);
-        match n {
+        Ok(match n {
             27 => age == 2 || (age == 0 && !matches!(m, 13 | 2 | 12)),
             28 => age == 3 || default_in(&[13]),
             29 => age == 4,
@@ -153,8 +158,8 @@ impl Settings {
             32 => !below(3) || default_in(&[13, 2, 12]),
             33 => !below(4) || default_in(&[2, 12]),
             34 => !below(5) || default_in(&[2, 12]),
-            _ => unreachable!("the age modes are 27 to 34"),
-        }
+            _ => return Err(mode_outside("an age mode outside 27 to 34", n)),
+        })
     }
 
     /// `FUN_141302150`: with the villagers' force drop on, a game mode other than King of the
