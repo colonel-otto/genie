@@ -1,12 +1,10 @@
 use crate::fixtures::{
-    action_list, combat_master, combat_mut, combat_object, master_moving_mut, master_static_mut,
-    moving_mut, static_mut, with_masters,
+    combat_master, combat_object, master_moving_mut, master_static_mut, moving_mut, static_mut,
+    with_masters,
 };
 use crate::masters::{MasterTable, Turning};
-use crate::movers::{mover, saved_move_to_point};
-use genie_save::generated::world::{
-    Action, Master, PathData, PlayerObjects, RgeAction, RgeActionByType, RgeActionMoveTo,
-};
+use crate::movers::mover;
+use genie_save::generated::world::{Master, PathData, PlayerObjects};
 
 /// Master 83: restriction 1, top speed 1, turning 0.5, walking as sprite 11 and running as 12.
 fn master() -> Master {
@@ -116,67 +114,4 @@ fn what_the_mover_cannot_read_is_unsupported() {
         ..PathData::default()
     }];
     assert!(run(&lost_path, &objects, Some(&table())).is_err());
-}
-
-/// A `MoveTo` toward `target` at (3, 4, 0).
-fn move_to(target: i32) -> Action {
-    Action {
-        rge_action_by_type: Some(Box::new(RgeActionByType {
-            rge_action_move_to: Some(Box::new(RgeActionMoveTo {
-                rge_action: RgeAction {
-                    target_id: target,
-                    target_x: 3.0,
-                    target_y: 4.0,
-                    ..RgeAction::default()
-                },
-                ..RgeActionMoveTo::default()
-            })),
-            ..RgeActionByType::default()
-        })),
-        ..Action::default()
-    }
-}
-
-/// An action of class `RgeActionByType`'s `explore` kind with the sub-actions `subs`.
-fn with_subs(subs: Vec<(i16, Action)>) -> Action {
-    Action {
-        rge_action_by_type: Some(Box::new(RgeActionByType {
-            rge_action_explore: Some(Box::new(RgeAction {
-                sub_actions: action_list(subs),
-                ..RgeAction::default()
-            })),
-            ..RgeActionByType::default()
-        })),
-        ..Action::default()
-    }
-}
-
-fn walking(top: Vec<(i16, Action)>) -> Option<[f32; 3]> {
-    let mut object = combat_object(5, 83);
-    combat_mut(&mut object)
-        .rge_combat_object
-        .rge_action_object
-        .actions = action_list(top);
-    saved_move_to_point(&object)
-}
-
-/// The point of a `MoveTo` to a target: the top action, its first sub-action, or an
-/// Attack's own first one; none without a target.
-#[test]
-fn the_move_to_point_is_the_walk_toward_a_target() {
-    let point = Some([3.0, 4.0, 0.0]);
-    assert_eq!(walking(vec![(1, move_to(700))]), point);
-    assert_eq!(walking(vec![(1, move_to(-1))]), None);
-    assert_eq!(
-        walking(vec![(110, with_subs(vec![(1, move_to(700))]))]),
-        point
-    );
-    let attack = with_subs(vec![(1, move_to(700))]);
-    assert_eq!(walking(vec![(110, with_subs(vec![(9, attack)]))]), point);
-    assert_eq!(
-        walking(vec![(110, with_subs(vec![(4, move_to(700))]))]),
-        None
-    );
-    assert_eq!(walking(vec![(110, with_subs(vec![]))]), None);
-    assert_eq!(walking(vec![]), None);
 }

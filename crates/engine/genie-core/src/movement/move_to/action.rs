@@ -192,7 +192,7 @@ pub struct Shows<'a> {
 
 impl MoveToAction {
     /// A new `MoveTo` of its own to the object `target` within `range` (`FUN_140aa0df0`; its point
-    /// `+0x38` the target's place, [`Mover::move_to_point`], which a path request renews), with
+    /// `+0x38` the target's place, which a path request renews), with
     /// its `sprite` ([`MoveToAction::sprite`]), as its start (slot 0x808 ->
     /// `0x140aa2100`) leaves it: a unit more than [`ARRIVED`] from the target's footprint
     /// (`FUN_14118f680`) in state 3 with speed (slot 0x208), 13 without; a unit at the target

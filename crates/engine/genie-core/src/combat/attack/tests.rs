@@ -397,7 +397,6 @@ fn soldier_mover(speed: f32) -> Mover {
         user_waypoints: Vec::new(),
         last_turn: 0.0,
         angle: 0.0,
-        move_to_point: None,
         animated: Animated::default(),
         pauses: Vec::new(),
         in_the_way: Vec::new(),

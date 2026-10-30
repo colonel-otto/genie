@@ -1702,7 +1702,6 @@ pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
         user_waypoints: Vec::new(),
         last_turn: 0.0,
         angle: 0.0,
-        move_to_point: None,
         animated: crate::objects::layers::Animated::default(),
         pauses: Vec::new(),
         in_the_way: Vec::new(),

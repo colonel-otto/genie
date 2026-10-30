@@ -247,28 +247,6 @@ pub fn ask_walk(
     Ok((walk_or_give_up(walk.reborrow())?, Some(point)))
 }
 
-/// [`ask_walk`] for an owner that keeps its own `MoveTo` fields until T3 reaches it (the
-/// Build): the target's place it asked toward goes to
-/// [`crate::movement::Mover::move_to_point`] (None for a point), where [`target_moved`] reads
-/// it. Returns the `MoveTo`'s state after it.
-///
-/// # Errors
-///
-/// [`ask_walk`]'s.
-pub fn start_walk_shown(
-    mut walk: Walk<'_>,
-    to: (Goal, f32, bool),
-    ask: PathAsk,
-    shown: Option<Shown<'_>>,
-) -> Result<Option<MoveTo>, GenieError> {
-    let to_target = matches!(to.0, Goal::Target(_));
-    let (state, asked) = ask_walk(&mut walk, to, ask, shown)?;
-    if let (Some(point), Some(mover)) = (asked, walk.body.mover_mut()) {
-        mover.move_to_point = to_target.then_some(point);
-    }
-    Ok(state)
-}
-
 /// A `MoveTo`'s sprite outside the sprites' table.
 const SPRITE_LACKING: GenieError =
     GenieError::missing_data("a MoveTo's sprite outside the sprites' table");
@@ -499,31 +477,6 @@ pub fn target_left(
         }
     }
     Ok(Follow::Blocked)
-}
-
-/// [`target_left`] for an owner that keeps its own `MoveTo` fields until T3 reaches it: the
-/// point is the mover's ([`Mover::move_to_point`]).
-///
-/// # Errors
-///
-/// [`target_left`]'s, and a walker without the `MoveTo`'s point.
-pub fn target_moved(
-    walk: &mut Walk<'_>,
-    target: i32,
-    mode: TargetMoved,
-) -> Result<Follow, GenieError> {
-    if mode == TargetMoved::Ignores {
-        return Ok(Follow::Stays);
-    }
-    let point = walk
-        .body
-        .mover()
-        .ok_or(crate::world::WALKER_UNMOVING)?
-        .move_to_point
-        .ok_or(GenieError::unsupported(
-            "a MoveTo to a target whose point the slice does not hold",
-        ))?;
-    target_left(walk, target, point, mode)
 }
 
 #[cfg(test)]
@@ -810,10 +763,9 @@ mod tests {
         for y in 85..92 {
             walled[y * 120 + 29] = 1;
         }
-        let moved = |classes: &[u8], point, target, mode| {
+        let moved = |classes: &[u8], point: [f32; 3], target, mode| {
             let mut world = crate::movement::tests::tiled_world(classes.to_vec());
-            let mut mover = crate::movement::tests::builder_9177();
-            mover.move_to_point = point;
+            let mover = crate::movement::tests::builder_9177();
             let mut mover = Body::new([28.0, 89.0, 0.0], None, Some(mover));
             let mut walk = Walk {
                 body: &mut mover,
@@ -826,11 +778,11 @@ mod tests {
                 world: &mut world,
                 plan: None,
             };
-            target_moved(&mut walk, target, mode)
+            target_left(&mut walk, target, point, mode)
         };
         let (again, follows) = (TargetMoved::AsksAgain, TargetMoved::Follows);
-        let on = Some([30.4, 88.0, 0.0]);
-        let off = Some([30.6, 88.0, 0.0]);
+        let on = [30.4, 88.0, 0.0];
+        let off = [30.6, 88.0, 0.0];
         assert_eq!(moved(&open, on, 10028, again), Ok(Follow::Stays));
         assert_eq!(moved(&open, on, 10028, follows), Ok(Follow::Stays));
         assert_eq!(moved(&open, off, 10028, again), Ok(Follow::Again));
@@ -839,10 +791,8 @@ mod tests {
             Ok(Follow::PathEnd([30.0, 88.0, 0.0]))
         );
         assert_eq!(moved(&walled, off, 10028, follows), Ok(Follow::Blocked));
-        assert!(moved(&open, None, 10028, again).is_err());
         assert!(moved(&open, on, 4242, again).is_err());
         let ignores = TargetMoved::Ignores;
         assert_eq!(moved(&open, off, 10028, ignores), Ok(Follow::Stays));
-        assert_eq!(moved(&open, None, 4242, ignores), Ok(Follow::Stays));
     }
 }

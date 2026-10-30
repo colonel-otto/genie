@@ -136,7 +136,6 @@ pub(crate) fn builder_9177() -> Mover {
         user_waypoints: Vec::new(),
         last_turn: 0.0,
         angle: 0.0,
-        move_to_point: None,
         animated: Animated::default(),
         pauses: Vec::new(),
         in_the_way: Vec::new(),
@@ -1519,8 +1518,7 @@ pub(crate) struct WalkRig {
 
 impl WalkRig {
     pub(crate) fn on_the_path() -> Self {
-        let mut mover = builder_9177().placed([28.0, 89.0, 0.0]);
-        mover.move_to_point = Some([30.0, 88.0, 0.0]);
+        let mover = builder_9177().placed([28.0, 89.0, 0.0]);
         let mut pathing = Pathing::default();
         pathing.start_mesh(120);
         Self {
@@ -1569,8 +1567,7 @@ pub(crate) fn path_world(owner: crate::world::Player) -> crate::world::World {
     let mut t = crate::world::World::new(0, 0, 0, vec![0; 2], players);
     t.spatial = tiled_world(vec![4; 120 * 120]);
     t.pathing.start_mesh(120);
-    let mut mover = builder_9177().placed([28.0, 89.0, 0.0]);
-    mover.move_to_point = Some([30.0, 88.0, 0.0]);
+    let mover = builder_9177().placed([28.0, 89.0, 0.0]);
     let mut unit = Unit {
         id: 9177,
         pasture: -1,

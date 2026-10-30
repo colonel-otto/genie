@@ -307,7 +307,6 @@ pub(super) fn mover(
         user_waypoints: m.user_defined_waypoints.iter().map(vec3).collect(),
         last_turn: m.turn_towards_time,
         angle: m.angle,
-        move_to_point: saved_move_to_point(object),
         pauses: Vec::new(),
         in_the_way: Vec::new(),
         // the current sprite's, which the unit's update takes from its sprite
@@ -328,25 +327,6 @@ pub(super) fn loaded_ignored(levels: &mut [genie_core::movement::PathData], unit
     for level in below.iter_mut().filter(|l| l.created == top.created) {
         level.ignored = units.to_vec();
     }
-}
-
-/// The point of the `MoveTo` a saved unit walks with to a target object: its top action when that
-/// is a `MoveTo`, else the top action's first sub-action (or that Attack's own first one), when
-/// that `MoveTo` has a target (its `target_x`..`target_z`).
-pub(super) fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
-    let (top_kind, top) = object.actions()?.entries().next()?;
-    if top_kind == genie_core::movement::move_to::MOVE_TO {
-        let b = top.base()?;
-        return (b.target_id != -1).then_some([b.target_x, b.target_y, b.target_z]);
-    }
-    let (mut kind, mut sub) = top.base()?.sub_actions.entries().next()?;
-    // a Hunt's Attack walks with a MoveTo of its own
-    if kind == genie_core::combat::attack::ATTACK {
-        (kind, sub) = sub.base()?.sub_actions.entries().next()?;
-    }
-    let b = sub.base()?;
-    (kind == genie_core::movement::move_to::MOVE_TO && b.target_id != -1)
-        .then_some([b.target_x, b.target_y, b.target_z])
 }
 
 #[cfg(test)]

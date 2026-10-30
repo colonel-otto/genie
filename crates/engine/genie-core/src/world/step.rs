@@ -246,26 +246,4 @@ impl Step<'_> {
             sprite,
         )
     }
-
-    /// What an object's walking action needs from the tick.
-    pub(crate) fn walk<'b>(
-        &'b mut self,
-        body: &'b mut crate::objects::layers::Body,
-        me: Me,
-    ) -> Walk<'b> {
-        Walk {
-            body,
-            me,
-            dt: seconds(self.dt),
-            world: &mut self.w.spatial,
-            plan: Some(Planning {
-                pathing: &mut self.w.pathing,
-                now: self.w.world_time,
-                computer: self.w.players[self.player].computer,
-                object: self.w.streams.get(Stream::Object),
-                construction_rate: self.w.players[self.player].construction_rate,
-                groups: &self.w.groups,
-            }),
-        }
-    }
 }

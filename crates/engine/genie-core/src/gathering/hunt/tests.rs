@@ -200,7 +200,6 @@ pub(crate) fn walker() -> Mover {
         user_waypoints: Vec::new(),
         last_turn: 0.0,
         angle: 0.0,
-        move_to_point: None,
         animated: crate::objects::layers::Animated::default(),
         pauses: Vec::new(),
         in_the_way: Vec::new(),

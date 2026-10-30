@@ -382,7 +382,6 @@ impl Unit {
             user_waypoints: Vec::new(),
             last_turn: 0.0,
             angle,
-            move_to_point: None,
             pauses: Vec::new(),
             in_the_way: Vec::new(),
             sprite_facets: facets,

@@ -252,12 +252,6 @@ pub struct Mover {
     pub last_turn: f32,
     /// `+0x7e8`: where the unit faces, radians 0 to 2π ([`crate::objects::facing`]).
     pub angle: f32,
-    /// The point of the `MoveTo` the unit walks with (`+0x38`..`+0x40`), when it walks to a target
-    /// object: where the target stood when the `MoveTo` last asked for a path, which its check of
-    /// the target reads ([`crate::movement::move_to::target_moved`]). A stop leaves it (the motion step's
-    /// pause stops a unit whose `MoveTo` goes on); a new `MoveTo` sets it.
-    #[diff(gap = "genie keeps the MoveTo's point on the mover past the MoveTo")]
-    pub move_to_point: Option<[f32; 3]>,
     /// The pauses its walk gave units it met (slot 0x5f0 on each: the met unit's walked level's
     /// `+0x34`), for the caller to hand on.
     pub pauses: Vec<(i32, f32)>,
