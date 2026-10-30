@@ -426,7 +426,7 @@ impl World {
             return Ok(false);
         }
         let get = |k: i16| crate::technology::Attributes::get(&*owner, k);
-        let listed = owner.techs[t].listed_costs(def, crate::technology::factors(tech, &get)?);
+        let listed = owner.techs[t].listed_costs(def, crate::technology::factors(tech, &get)?)?;
         let costs = crate::production::as_entry_costs(listed);
         let production = owner.objects[i]
             .production
@@ -527,7 +527,7 @@ impl World {
             return Ok(NO_COSTS);
         };
         let get = |k: i16| crate::technology::Attributes::get(owner, k);
-        Ok(owner.techs[t].entry_costs(def, crate::technology::factors(tech, &get)?))
+        owner.techs[t].entry_costs(def, crate::technology::factors(tech, &get)?)
     }
 }
 

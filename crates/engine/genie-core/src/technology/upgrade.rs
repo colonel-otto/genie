@@ -12,6 +12,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::Place;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A master's hit points this near 0 give no share (`ABS(x) <= 1.1920929e-07`).
 const NO_HIT_POINTS: f32 = f32::EPSILON;
@@ -99,7 +100,10 @@ pub(crate) fn damage_sprites(
     if now == was {
         return Ok(share);
     }
-    let shown = |i: Option<usize>| i.map(|i| entries[i]).filter(|e| 0 <= e.sprite);
+    let shown = |i: Option<usize>| {
+        i.and_then(|i| entries.get(i).copied())
+            .filter(|e| 0 <= e.sprite)
+    };
     let graphic = |id: i16| graphics.get(&id).copied().ok_or(NO_SPRITE);
     if let Some(e) = shown(now) {
         match e.apply_mode {
@@ -254,7 +258,7 @@ impl World {
                 player_master(&self.masters, p, old.id),
             );
         if master_type::COMBAT <= kind {
-            let u = self.object_at_mut(place);
+            let u = self.object_at_mut(place)?;
             u.firepower += new.volley_fire - old.volley_fire;
         }
         if master_type::RGE_COMBAT <= kind && 0 <= new.attack_sprite {
@@ -273,10 +277,10 @@ impl World {
         self.upgrade_sight(place, (old, new), keep)?;
         self.upgrade_hit_points(place, (old, new))?;
         if !keep {
-            self.object_at_mut(place).life.master_id = new.id;
+            self.object_at_mut(place)?.life.master_id = new.id;
             if master_type::COMBAT <= kind {
                 crate::objects::lifecycle::death_parts::count_class(
-                    &mut self.players[p].attributes,
+                    &mut self.players.player_mut(p)?.attributes,
                     new,
                     1.0,
                 );
@@ -297,9 +301,9 @@ impl World {
         (old, new): (&Master, &Master),
         keep: bool,
     ) -> Result<(), GenieError> {
-        self.actions_take_master(place, old, new);
+        self.actions_take_master(place, old, new)?;
         if !keep
-            && let Some(top) = self.object_at(place).top_action_kind()
+            && let Some(top) = self.object_at(place)?.top_action_kind()
             && !new.tasks.iter().any(|t| t.action_type == top)
             && let Place::Live(q, i) = place
         {
@@ -318,7 +322,8 @@ impl World {
     ) -> Result<(), GenieError> {
         let shows = |s: i16| {
             self.object_at(place)
-                .sprite
+                .ok()
+                .and_then(|u| u.sprite)
                 .is_some_and(|a| 0 <= s && a.graphic.id == s)
         };
         if shows(old.move_sprite) {
@@ -339,12 +344,12 @@ impl World {
         let kind = old.kind;
         if master_type::COMBAT <= kind {
             crate::objects::lifecycle::death_parts::count_class(
-                &mut self.players[p].attributes,
+                &mut self.players.player_mut(p)?.attributes,
                 old,
                 -1.0,
             );
         }
-        let u = self.object_at(place);
+        let u = self.object_at(place)?;
         if master_type::COMBAT <= kind
             // The villager class (4), whose load an upgrade without its master kept goes to its player.
             && old.class == class::VILLAGER
@@ -359,16 +364,16 @@ impl World {
             let amount = u.life.amount;
             let mut adds = Vec::new();
             crate::gathering::gather::unit::give_load(
-                (&self.spatial.relations, self.players[p].sharing),
+                (&self.spatial.relations, self.players.player(p)?.sharing),
                 p,
                 &mut adds,
                 kind,
                 amount,
             )?;
             for (k, v) in adds {
-                self.players[p].add_attribute(k, v)?;
+                self.players.player_mut(p)?.add_attribute(k, v)?;
             }
-            let u = self.object_at_mut(place);
+            let u = self.object_at_mut(place)?;
             u.life.attribute_type = -1;
             u.life.amount = 0.0;
         }
@@ -384,8 +389,8 @@ impl World {
         (old, new): (&Master, &Master),
         keep: bool,
     ) -> Result<(), GenieError> {
-        let id = self.object_at(place).id;
-        let u = self.object_at(place);
+        let id = self.object_at(place)?.id;
+        let u = self.object_at(place)?;
         if u.life.state == 2
             && u.life.inside.is_none()
             && let Some(placed) = self.spatial.get(id).copied()
@@ -423,7 +428,7 @@ impl World {
         (old, new): (&Master, &Master),
     ) -> Result<(), GenieError> {
         let kind = old.kind;
-        let u = self.object_at(place);
+        let u = self.object_at(place)?;
         let most = f32::from(old.hit_points);
         let share = if most.abs() <= NO_HIT_POINTS {
             0.0
@@ -432,7 +437,7 @@ impl World {
         };
         let before = damage_share_of(u, old);
         let state = u.life.state;
-        self.object_at_mut(place).life.hp = most;
+        self.object_at_mut(place)?.life.hp = most;
         let mut held = before;
         if state == 2 {
             held = self.damage_sprites_at(place, old, held)?;
@@ -446,7 +451,7 @@ impl World {
             (old.death_sprite, new.death_sprite),
             (old.undead_sprite, new.undead_sprite),
         ];
-        let shown = self.object_at(place).sprite.map(|s| s.graphic.id);
+        let shown = self.object_at(place)?.sprite.map(|s| s.graphic.id);
         let next = sprites
             .iter()
             .find(|&&(from, _)| 0 <= from && shown == Some(from))
@@ -458,10 +463,10 @@ impl World {
         {
             let more = (new.max_charge - old.max_charge).abs();
             if 0.0 < more {
-                self.object_at_mut(place).charge += more;
+                self.object_at_mut(place)?.charge += more;
             }
         }
-        self.object_at_mut(place).life.hp = f32::from(new.hit_points) * share;
+        self.object_at_mut(place)?.life.hp = f32::from(new.hit_points) * share;
         if let Some(s) = next.filter(|&s| 0 <= s) {
             self.show(place, s)?;
         }
@@ -481,7 +486,7 @@ impl World {
         let graphics = std::mem::take(&mut self.graphics);
         let mut object = std::mem::take(self.streams.get(Stream::Object));
         let mut sprite = std::mem::take(self.streams.get(Stream::Sprite));
-        let u = self.object_at_mut(place);
+        let u = self.object_at_mut(place)?;
         let r = damage_sprites(u, master, before, (&graphics, &mut object, &mut sprite));
         self.graphics = graphics;
         *self.streams.get(Stream::Object) = object;
@@ -492,7 +497,7 @@ impl World {
     /// Slot 0x68 on the object at `place` with sprite `to` when it shows `from` (both sprites).
     fn show_if(&mut self, place: Place, from: i16, to: i16) -> Result<(), GenieError> {
         let shows = self
-            .object_at(place)
+            .object_at(place)?
             .sprite
             .is_some_and(|s| 0 <= from && s.graphic.id == from);
         if shows && 0 <= to {
@@ -511,8 +516,8 @@ impl World {
         let g = self.graphics.get(&id).copied().ok_or(NO_SPRITE)?;
         let rng = self.streams.get(Stream::Sprite);
         let u = match place {
-            Place::Live(q, i) => &mut self.players[q].objects[i],
-            Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
+            Place::Live(q, i) => self.players.live_mut(q, i)?,
+            Place::Sleeping(q, i) => self.players.asleep_mut(q, i)?,
         };
         crate::objects::sprite::new_sprite(&mut u.sprite, u.body.move_stats_mut(), g, rng);
         Ok(())
@@ -522,12 +527,12 @@ impl World {
     /// the factory's type for `new` makes another ([`crate::unit_ai::factory_type`],
     /// [`crate::unit_ai::UnitAi::constructed`] on the AI stream), none for a class without.
     fn new_unit_ai(&mut self, p: usize, place: Place, new: &Master) -> Result<(), GenieError> {
-        let position = self.object_at(place).position();
+        let position = self.object_at(place)?.position();
         let made = self.new_object(p, new.id, new, position)?;
         let ai = new.unit_ai_type(new.id).and_then(|t| {
             crate::unit_ai::UnitAi::constructed(t, &made, self.streams.get(Stream::Ai))
         });
-        self.object_at_mut(place).ai = ai;
+        self.object_at_mut(place)?.ai = ai;
         Ok(())
     }
 
@@ -536,7 +541,12 @@ impl World {
     /// action type, target class and target master (none: it keeps its task and changes nothing
     /// else); then its slot 0x50 with the tasks: an Attack's sprites follow `new`'s
     /// ([`crate::technology::effect::follow_master`]), its sub-actions alike (`FUN_140a979b0`).
-    pub(crate) fn actions_take_master(&mut self, place: Place, old: &Master, new: &Master) {
+    pub(crate) fn actions_take_master(
+        &mut self,
+        place: Place,
+        old: &Master,
+        new: &Master,
+    ) -> Result<(), GenieError> {
         let find = |task: &Task| {
             new.tasks
                 .iter()
@@ -560,8 +570,8 @@ impl World {
             combat: master_type::COMBAT <= new.kind,
         };
         let u = match place {
-            Place::Live(q, i) => &mut self.players[q].objects[i],
-            Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
+            Place::Live(q, i) => self.players.live_mut(q, i)?,
+            Place::Sleeping(q, i) => self.players.asleep_mut(q, i)?,
         };
         if let Some(attack) = u.actions.attack_mut() {
             crate::technology::effect::follow_master(&mut attack.arms, None, &sprites);
@@ -605,21 +615,30 @@ impl World {
         {
             b.task = crate::construction::build::BuildTask::of(&t, b.task.work_rate);
         }
+        Ok(())
     }
 
     /// The object at `place`.
-    pub(crate) fn object_at(&self, place: Place) -> &Unit {
+    ///
+    /// # Errors
+    ///
+    /// A place the world does not hold.
+    pub(crate) fn object_at(&self, place: Place) -> Result<&Unit, GenieError> {
         match place {
-            Place::Live(q, i) => &self.players[q].objects[i],
-            Place::Sleeping(q, i) => &self.players[q].sleeping[i],
+            Place::Live(q, i) => self.players.live(q, i),
+            Place::Sleeping(q, i) => self.players.asleep(q, i),
         }
     }
 
     /// The object at `place`, to change.
-    pub(crate) fn object_at_mut(&mut self, place: Place) -> &mut Unit {
+    ///
+    /// # Errors
+    ///
+    /// A place the world does not hold.
+    pub(crate) fn object_at_mut(&mut self, place: Place) -> Result<&mut Unit, GenieError> {
         match place {
-            Place::Live(q, i) => &mut self.players[q].objects[i],
-            Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
+            Place::Live(q, i) => self.players.live_mut(q, i),
+            Place::Sleeping(q, i) => self.players.asleep_mut(q, i),
         }
     }
 }
@@ -985,7 +1004,8 @@ mod tests {
                 task: waiting,
                 target: 10028,
             }));
-        t.actions_take_master(Place::Live(1, 0), &old, &new);
+        t.actions_take_master(Place::Live(1, 0), &old, &new)
+            .unwrap();
         let u = &t.players[1].objects[0];
         assert_eq!(
             u.actions.gather().copied().unwrap().task,
@@ -1008,7 +1028,8 @@ mod tests {
         let gather = u.actions.gather().copied().unwrap().task;
         let mut bare = old.clone();
         bare.tasks.clear();
-        t.actions_take_master(Place::Live(1, 0), &bare, &new);
+        t.actions_take_master(Place::Live(1, 0), &bare, &new)
+            .unwrap();
         assert_eq!(
             t.players[1].objects[0]
                 .actions

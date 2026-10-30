@@ -283,7 +283,7 @@ impl World {
         ))?;
         let get = |i: i16| crate::technology::Attributes::get(owner, i);
         let factors = crate::technology::factors(r.tech, &get)?;
-        let listed = owner.techs[tech].listed_costs(def, factors);
+        let listed = owner.techs[tech].listed_costs(def, factors)?;
         let mut sums = [0i16; 4];
         for (attribute, amount) in listed {
             if let Some(k) = usize::try_from(attribute).ok().filter(|&k| k < 4) {

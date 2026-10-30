@@ -9,6 +9,16 @@ use crate::objects::unit::Unit;
 use crate::technology::EffectCommand;
 use crate::technology::effect::kind;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
+
+/// The masters [`World::upgrade_walk`] reads: the table's old and new ones, and the dead unit
+/// master whose objects take masters of their own.
+#[derive(Clone, Copy)]
+struct Masters<'a> {
+    old: &'a Master,
+    new: &'a Master,
+    dead: Option<&'a Master>,
+}
 
 impl World {
     /// Slot 0x1a0 (`FUN_14160e410`) of player `p`: master `from` upgrades to `to` by `mode`
@@ -50,8 +60,6 @@ impl World {
         mode: i16,
         object: Option<i32>,
     ) -> Result<(), GenieError> {
-        use crate::orders::Place;
-        use crate::technology::upgrade::upgradable;
         let Some(masters) = self.masters.get(p) else {
             return Ok(());
         };
@@ -71,57 +79,85 @@ impl World {
         if mode == 2
             && let Some(id) = object
         {
-            if let Some(place) = self.place(id) {
-                let u = self.object_at(place);
-                let reads = self.master_read(p, u)?;
-                if upgradable(reads.kind, u.life.state) {
-                    self.object_at_mut(place).own_master = Some(Box::new(reads.clone()));
-                    self.upgrade_object(p, place, (&reads, &new), true)?;
-                    if let Some(own) = self.object_at_mut(place).own_master.as_mut() {
-                        own.copy_from(&new);
-                    }
-                }
-            }
+            self.upgrade_named(p, id, &new)?;
         } else {
-            for i in 0..self.players[p].objects.len() {
-                let place = Place::Live(p, i);
-                let u = &self.players[p].objects[i];
-                let table = u.own_master.is_none();
-                if table && u.life.master_id == from {
-                    if upgradable(old.kind, u.life.state) {
-                        self.upgrade_object(p, place, (&old, &new), keep)?;
-                    } else {
-                        self.own_and_dead_master(p, i, &old);
-                    }
-                } else if table && let Some(d) = dead.as_ref().filter(|d| d.id == u.life.master_id)
-                {
-                    let d = d.clone();
-                    self.players[p].objects[i].own_master = Some(Box::new(d));
-                } else if mode == 3
-                    && let Some(own) = u.own_master.as_deref().filter(|m| m.id == from)
-                    && upgradable(own.kind, u.life.state)
-                {
-                    let own = own.clone();
-                    self.upgrade_object(p, place, (&own, &new), true)?;
-                    if let Some(m) = self.players[p].objects[i].own_master.as_mut() {
-                        m.copy_from(&new);
-                    }
-                }
-            }
-            for i in 0..self.players[p].sleeping.len() {
-                let u = &self.players[p].sleeping[i];
-                if u.own_master.is_none() && u.life.master_id == from {
-                    self.upgrade_object(p, Place::Sleeping(p, i), (&old, &new), keep)?;
-                }
-            }
+            let masters = Masters {
+                old: &old,
+                new: &new,
+                dead: dead.as_ref(),
+            };
+            self.upgrade_walk(p, (from, mode, keep), masters)?;
         }
         // the upgrades to 0x67f and 0x6a1 move the tracker's list of `from` (FUN_14104fd10)
         self.track_move_upgraded(p, from, to)?;
         if keep
             && old.kind == new.kind
-            && let Some(m) = self.masters[p].get_mut(from)
+            && let Some(m) = self.masters.checked_mut(p)?.get_mut(from)
         {
             m.copy_from(&new);
+        }
+        Ok(())
+    }
+
+    /// Mode 2's own part of [`World::upgrade_objects`]: the object `id` gets a master of its own
+    /// (a copy of the one it reads) where its kind lets it, takes slot 0x98 to `new` and copies
+    /// `new` into its own master.
+    fn upgrade_named(&mut self, p: usize, id: i32, new: &Master) -> Result<(), GenieError> {
+        use crate::technology::upgrade::upgradable;
+        if let Some(place) = self.place(id) {
+            let u = self.object_at(place)?;
+            let reads = self.master_read(p, u)?;
+            if upgradable(reads.kind, u.life.state) {
+                self.object_at_mut(place)?.own_master = Some(Box::new(reads.clone()));
+                self.upgrade_object(p, place, (&reads, new), true)?;
+                if let Some(own) = self.object_at_mut(place)?.own_master.as_mut() {
+                    own.copy_from(new);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The other modes of [`World::upgrade_objects`]: the live objects in order, then the
+    /// sleeping ones, reading `from` (`keep` its master, `mode` 3 also those whose own master has
+    /// `from`'s id); `masters` holds the table's old and new masters and the dead unit master.
+    fn upgrade_walk(
+        &mut self,
+        p: usize,
+        (from, mode, keep): (i16, i16, bool),
+        Masters { old, new, dead }: Masters<'_>,
+    ) -> Result<(), GenieError> {
+        use crate::orders::Place;
+        use crate::technology::upgrade::upgradable;
+        for i in 0..self.players.player(p)?.objects.len() {
+            let place = Place::Live(p, i);
+            let u = &self.players.live(p, i)?;
+            let table = u.own_master.is_none();
+            if table && u.life.master_id == from {
+                if upgradable(old.kind, u.life.state) {
+                    self.upgrade_object(p, place, (old, new), keep)?;
+                } else {
+                    self.own_and_dead_master(p, i, old)?;
+                }
+            } else if table && let Some(d) = dead.filter(|d| d.id == u.life.master_id) {
+                let d = d.clone();
+                self.players.live_mut(p, i)?.own_master = Some(Box::new(d));
+            } else if mode == 3
+                && let Some(own) = u.own_master.as_deref().filter(|m| m.id == from)
+                && upgradable(own.kind, u.life.state)
+            {
+                let own = own.clone();
+                self.upgrade_object(p, place, (&own, new), true)?;
+                if let Some(m) = self.players.live_mut(p, i)?.own_master.as_mut() {
+                    m.copy_from(new);
+                }
+            }
+        }
+        for i in 0..self.players.player(p)?.sleeping.len() {
+            let u = &self.players.asleep(p, i)?;
+            if u.own_master.is_none() && u.life.master_id == from {
+                self.upgrade_object(p, Place::Sleeping(p, i), (old, new), keep)?;
+            }
         }
         Ok(())
     }
@@ -145,9 +181,14 @@ impl World {
     /// (`FUN_141186d10`: a copy of `old` unless it has one) and its dead master
     /// (`FUN_141201d50`: unless it has one, a copy of `old`'s death spawn, `+0x5e4`, of type 10 to
     /// 40, 70 or 80, from its player's table; its slot 0xa8, the graphics, is not simulation).
-    pub(super) fn own_and_dead_master(&mut self, p: usize, i: usize, old: &Master) {
+    pub(super) fn own_and_dead_master(
+        &mut self,
+        p: usize,
+        i: usize,
+        old: &Master,
+    ) -> Result<(), GenieError> {
         let dead = player_master(&self.masters, p, old.death_spawns[0]).cloned();
-        let u = &mut self.players[p].objects[i];
+        let u = self.players.live_mut(p, i)?;
         if u.own_master.is_none() {
             u.own_master = Some(Box::new(old.clone()));
         }
@@ -156,6 +197,7 @@ impl World {
                 .filter(|d| crate::ownership::change::DEAD_COPY_TYPES.contains(&d.kind))
                 .map(Box::new);
         }
+        Ok(())
     }
 
     /// Slot 0x1a8 (`FUN_1416136f0`) of player `p`: `count` objects of master `master` (Gaia's when
@@ -185,8 +227,10 @@ impl World {
         let owner = if has(p, master) { p } else { 0 };
         let attribute =
             |q: &crate::world::Player, i: usize| q.attributes.get(i).copied().unwrap_or(0.0);
-        let limit = attribute(&self.players[p], 234) as i32;
-        let buildings: Vec<i32> = self.players[p]
+        let limit = attribute(self.players.player(p)?, 234) as i32;
+        let buildings: Vec<i32> = self
+            .players
+            .player(p)?
             .objects
             .iter()
             .filter(|u| u.life.master_id == at && u.life.state == 2)
@@ -225,7 +269,7 @@ impl World {
                     };
                     self.enter_forced(np, ni, b)?;
                 }
-                if attribute(&self.players[p], 283) <= 0.0 {
+                if attribute(self.players.player(p)?, 283) <= 0.0 {
                     let Some(crate::orders::Place::Live(bp, bi)) = self.place(b) else {
                         break;
                     };

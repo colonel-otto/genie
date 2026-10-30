@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::technology::RESEARCHED;
 use crate::technology::effect::{ONE, RESEARCH_SPENT, ROUND, TECHS_RESEARCHED};
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// A tech effect's location above 0 that is no index.
 const BAD_LOCATION: GenieError =
@@ -60,25 +61,46 @@ impl World {
         v: f32,
         location: i16,
     ) -> Result<(), GenieError> {
-        let Some(t) = usize::try_from(tech)
-            .ok()
-            .filter(|&t| t < self.players[p].techs.len())
-        else {
+        let tree = self.players.player(p)?.techs.len();
+        let Some(t) = usize::try_from(tech).ok().filter(|&t| t < tree) else {
             return Ok(());
         };
+        let Some((at, building)) = self.tech_location(p, t, location)? else {
+            return Ok(());
+        };
+        if let Some((resource, cost_mode)) = tech_cost_mode(mode) {
+            self.tech_cost(p, tech, resource, v, cost_mode)?;
+            return Ok(());
+        }
+        if let Some(time_mode) = tech_time_mode(mode) {
+            self.research_time(p, tech, v, time_mode, building)?;
+            return self.update_dependents(p, t);
+        }
+        self.set_tech_field(p, t, (mode, v), at)
+    }
+
+    /// The location a modify command names of player `p`'s technology `t` (`location` above 0:
+    /// the entry at that index, or a copy of the last one with no building): its index and its
+    /// building. `None` for a technology without locations to copy.
+    fn tech_location(
+        &mut self,
+        p: usize,
+        t: usize,
+        location: i16,
+    ) -> Result<Option<(Option<usize>, i16)>, GenieError> {
         let (mut at, mut building) = (None, -1);
         if 0 < location {
-            let state = &mut self.players[p].techs[t];
+            let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
             let i =
                 usize::try_from(location).map_err(|_| BAD_LOCATION.with("location", location))?;
             if i < state.locations.len() {
-                building = state.locations[i].building;
+                building = state.locations.checked(i)?.building;
                 at = Some(i);
             } else {
                 // the game copies the last entry; a technology without locations would read before
                 // an empty list's start (a crash no recording shows)
                 let Some(&last) = state.locations.last() else {
-                    return Ok(());
+                    return Ok(None);
                 };
                 at = Some(state.locations.len());
                 state.locations.push(crate::technology::Location {
@@ -87,55 +109,41 @@ impl World {
                 });
             }
         }
-        if let Some((resource, cost_mode)) = tech_cost_mode(mode) {
-            self.tech_cost(p, tech, resource, v, cost_mode);
-            return Ok(());
-        }
-        if let Some(time_mode) = tech_time_mode(mode) {
-            self.research_time(p, tech, v, time_mode, building)?;
-            return self.update_dependents(p, t);
-        }
+        Ok(Some((at, building)))
+    }
+
+    /// The modify command's plain fields of player `p`'s technology `t` (`mode` 4 the building, 5
+    /// the button, 9 the stacking, 10 the research cap, 12 the state, 18 the effect override),
+    /// those of a location at `at` only (all without one).
+    fn set_tech_field(
+        &mut self,
+        p: usize,
+        t: usize,
+        (mode, v): (i16, f32),
+        at: Option<usize>,
+    ) -> Result<(), GenieError> {
         let short = crate::math::conversions::cvttss2si(v) as i16;
         match mode {
-            4 => {
-                let has = self.masters.get(p).is_some_and(|m| {
-                    m.get(crate::math::conversions::cvttss2si(v) as i16)
-                        .is_some()
-                });
-                if has {
-                    let state = &mut self.players[p].techs[t];
-                    for (i, l) in state.locations.iter_mut().enumerate() {
-                        if at.is_none_or(|a| a == i) {
-                            l.building = short;
-                        }
-                    }
-                }
-            }
+            4 => self.set_tech_building(p, t, v, at)?,
             5 => {
-                let state = &mut self.players[p].techs[t];
+                let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
                 for (i, l) in state.locations.iter_mut().enumerate() {
                     if at.is_none_or(|a| a == i) {
                         l.button = crate::math::conversions::cvttss2si(v) as u8;
                     }
                 }
             }
-            9 => self.players[p].techs[t].stack = v != 0.0,
-            10 => self.players[p].techs[t].research_cap = short,
-            12 => {
-                let state = &mut self.players[p].techs[t];
-                if v == 0.0 {
-                    state.state = -1;
-                } else if v == STATE_UNAVAILABLE {
-                    state.state = 0;
-                } else if v == STATE_AVAILABLE {
-                    state.state = 1;
-                    state.enabled = true;
-                } else if v == STATE_RESEARCHED {
-                    let _ = self.force_research(p, t)?;
-                }
+            9 => self.players.player_mut(p)?.techs.checked_mut(t)?.stack = v != 0.0,
+            10 => {
+                self.players
+                    .player_mut(p)?
+                    .techs
+                    .checked_mut(t)?
+                    .research_cap = short;
             }
+            12 => self.set_tech_state(p, t, v)?,
             18 => {
-                let state = &mut self.players[p].techs[t];
+                let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
                 state.effect_override = short;
                 if state.state == RESEARCHED {
                     return Err(GenieError::unsupported(
@@ -148,23 +156,61 @@ impl World {
         Ok(())
     }
 
+    /// Mode 4: the building of player `p`'s technology `t`'s locations (those of `at`, all
+    /// without one), when `v` names a master.
+    fn set_tech_building(
+        &mut self,
+        p: usize,
+        t: usize,
+        v: f32,
+        at: Option<usize>,
+    ) -> Result<(), GenieError> {
+        let short = crate::math::conversions::cvttss2si(v) as i16;
+        if self.masters.get(p).is_some_and(|m| m.get(short).is_some()) {
+            let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
+            for (i, l) in state.locations.iter_mut().enumerate() {
+                if at.is_none_or(|a| a == i) {
+                    l.building = short;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Mode 12: the state of player `p`'s technology `t` (`v` 0 none, then unavailable,
+    /// available, or researched, which researches it).
+    fn set_tech_state(&mut self, p: usize, t: usize, v: f32) -> Result<(), GenieError> {
+        let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
+        if v == 0.0 {
+            state.state = -1;
+        } else if v == STATE_UNAVAILABLE {
+            state.state = 0;
+        } else if v == STATE_AVAILABLE {
+            state.state = 1;
+            state.enabled = true;
+        } else if v == STATE_RESEARCHED {
+            let _ = self.force_research(p, t)?;
+        }
+        Ok(())
+    }
+
     /// `FUN_1413cdcd0` with `param_3` 1 (kind 8's state 3) for player `p`'s technology `t`: one in
     /// state 0 to 2 completes as [`World::complete_research`] (the civ's disabled technologies are
     /// not asked); any other gives its effect again and counts in attributes 0x15 and 0x63 (its
     /// listed costs) whatever its location, its state left.
     pub(super) fn force_research(&mut self, p: usize, t: usize) -> Result<bool, GenieError> {
-        if (0..=2).contains(&self.players[p].techs[t].state) {
+        if (0..=2).contains(&self.players.player(p)?.techs.checked(t)?.state) {
             return self.complete_research(p, t, None);
         }
-        let def = self.techs[t].clone();
+        let def = self.techs.checked(t)?.clone();
         self.research_effect_known(p, t)?;
         self.do_effect(p, &def.effect, None)?;
-        let owner = &self.players[p];
+        let owner = self.players.player(p)?;
         let get = |k: i16| crate::technology::Attributes::get(owner, k);
         let factors = crate::technology::factors(t as i16, &get)?;
-        let listed = owner.techs[t].listed_costs(&def, factors);
+        let listed = owner.techs.checked(t)?.listed_costs(&def, factors)?;
         let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
-        let owner = &mut self.players[p];
+        let owner = self.players.player_mut(p)?;
         owner.add_attribute(TECHS_RESEARCHED, 1.0)?;
         owner.add_attribute(RESEARCH_SPENT, spent)?;
         Ok(true)
@@ -186,14 +232,15 @@ impl World {
         mode: u8,
         location: i16,
     ) -> Result<(), GenieError> {
-        let Some(t) = usize::try_from(tech)
-            .ok()
-            .filter(|&t| t < self.players[p].techs.len())
-        else {
+        let tree = self.players.player(p)?.techs.len();
+        let Some(t) = usize::try_from(tech).ok().filter(|&t| t < tree) else {
             return Ok(());
         };
         let buildings: Vec<i16> = if location == -1 {
-            self.players[p].techs[t]
+            self.players
+                .player(p)?
+                .techs
+                .checked(t)?
                 .locations
                 .iter()
                 .map(|l| l.building)
@@ -207,7 +254,7 @@ impl World {
                 .get(t)
                 .and_then(|d| d.locations.iter().find(|&&(b, _)| b == building))
                 .map_or(NO_TIME, |&(_, time)| f32::from(time));
-            let state = &mut self.players[p].techs[t];
+            let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
             let i = state
                 .locations
                 .iter()

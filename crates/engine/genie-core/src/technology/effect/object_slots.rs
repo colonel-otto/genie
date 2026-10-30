@@ -7,6 +7,7 @@ use crate::objects::unit::Unit;
 use crate::players::attribute;
 use crate::technology::effect::{Change, OBJECT_GONE};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 pub(crate) const POPULATION: i16 = attribute::POPULATION as i16;
 pub(super) const RESOURCE_19: i16 = 19;
@@ -32,27 +33,40 @@ impl World {
     /// The ids player `p`'s tracker files under class `class` (`FUN_14104f8f0`, key class + 900)
     /// and those pending under it (`FUN_14104f9e0`, key class + 90900), each in the tracker's
     /// order (a queued unit's place holds −1, which no object has).
-    pub(super) fn tracked_class(&self, p: usize, class: i16) -> (Vec<i32>, Vec<i32>) {
-        let t = &self.players[p].tracker;
+    pub(super) fn tracked_class(
+        &self,
+        p: usize,
+        class: i16,
+    ) -> Result<(Vec<i32>, Vec<i32>), GenieError> {
+        let t = &self.players.player(p)?.tracker;
         let key = i32::from(class) + crate::players::tracker::CLASS_KEY;
-        (
+        Ok((
             t.list(key).to_vec(),
             t.list(key + crate::players::tracker::PENDING).to_vec(),
-        )
+        ))
     }
 
     /// The ids player `p`'s tracker files as done under key master `key` (`FUN_14104f560`'s list
     /// of one key, whatever the objects' masters), in the tracker's order.
-    pub(super) fn tracked_key(&self, p: usize, key: i16) -> Vec<i32> {
-        self.players[p].tracker.list(i32::from(key)).to_vec()
+    pub(super) fn tracked_key(&self, p: usize, key: i16) -> Result<Vec<i32>, GenieError> {
+        Ok(self
+            .players
+            .player(p)?
+            .tracker
+            .list(i32::from(key))
+            .to_vec())
     }
 
     /// The ids player `p`'s tracker files under master `master` (`FUN_14104f960`), of which
     /// `FUN_14165a860` keeps those of that very master; and for a building master those pending
     /// under it, or under the stack unit it heads (`FUN_14104fa50`, key + 90000), whatever their
     /// masters. Each in the tracker's order.
-    pub(super) fn tracked_master(&self, p: usize, master: &Master) -> (Vec<i32>, Vec<i32>) {
-        let player = &self.players[p];
+    pub(super) fn tracked_master(
+        &self,
+        p: usize,
+        master: &Master,
+    ) -> Result<(Vec<i32>, Vec<i32>), GenieError> {
+        let player = self.players.player(p)?;
         let of_master = |id: &i32| {
             player
                 .objects
@@ -83,7 +97,7 @@ impl World {
                 .list(i32::from(key) + crate::players::tracker::PENDING)
                 .to_vec();
         }
-        (done, pending)
+        Ok((done, pending))
     }
 }
 
@@ -170,7 +184,7 @@ impl World {
                     && flag != KEPT_STORAGE
                     && 0 <= kind
                 {
-                    let owner = &mut self.players[p];
+                    let owner = self.players.player_mut(p)?;
                     owner.add_attribute(kind, -amount)?;
                     owner.add_attribute(kind, v)?;
                 }
@@ -247,7 +261,7 @@ impl World {
         master: &Master,
         v: f32,
     ) -> Result<(), GenieError> {
-        let owner = &mut self.players[p];
+        let owner = self.players.player_mut(p)?;
         for &(kind, amount, _) in master.storage.iter().take(3) {
             match kind {
                 // The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):

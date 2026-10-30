@@ -9,6 +9,7 @@
 
 use crate::GenieError;
 use crate::players::attribute;
+use crate::world::slots::CheckedIndex;
 
 pub mod effect;
 pub mod upgrade;
@@ -213,15 +214,18 @@ impl TechState {
     /// under −2) gives its attribute and amount, else the `.dat`'s entry; the adjustment times
     /// the scale adds to the amount (in 32 bits), which the modifier above 0 then scales (not
     /// truncated). An entry without either is (−1, 0).
-    #[must_use]
-    pub fn entry_costs(&self, def: &TechDef, (modifier, scale): (f32, i16)) -> [(i32, f32); 3] {
+    pub fn entry_costs(
+        &self,
+        def: &TechDef,
+        (modifier, scale): (f32, i16),
+    ) -> Result<[(i32, f32); 3], GenieError> {
         let mut out = [(-1, 0.0); 3];
         if !matches!(self.state, 2 | 4) {
-            return out;
+            return Ok(out);
         }
         for (j, slot) in out.iter_mut().enumerate() {
-            let (amount, attribute, used) = self.overrides[j];
-            let c = def.costs[j];
+            let (amount, attribute, used) = *self.overrides.checked(j)?;
+            let c = *def.costs.checked(j)?;
             let (attribute, base) = match used {
                 0 => continue,
                 -2 if 0 <= c.attribute => (c.attribute, c.amount),
@@ -230,13 +234,14 @@ impl TechState {
             if attribute < 0 {
                 continue;
             }
-            let mut v = (i32::from(self.cost_adj[j]) * i32::from(scale) + i32::from(base)) as f32;
+            let mut v =
+                (i32::from(*self.cost_adj.checked(j)?) * i32::from(scale) + i32::from(base)) as f32;
             if 0.0 < modifier {
                 v *= modifier;
             }
             *slot = (i32::from(attribute), v);
         }
-        out
+        Ok(out)
     }
 
     /// The research's start test (`FUN_1413cbef0`) against what its queue entry `paid`: each
@@ -252,8 +257,8 @@ impl TechState {
     ) -> Result<bool, GenieError> {
         let (modifier, scale) = factors;
         for j in 0..3 {
-            let (amount, attr, used) = self.overrides[j];
-            let c = def.costs[j];
+            let (amount, attr, used) = *self.overrides.checked(j)?;
+            let c = *def.costs.checked(j)?;
             let attr = if used == 1 { attr } else { c.attribute };
             if attr < 0 || c.paid == 0 {
                 continue;
@@ -261,7 +266,8 @@ impl TechState {
             let mut v = if used == 1 {
                 f32::from(amount)
             } else {
-                (i32::from(self.cost_adj[j]) * i32::from(scale)) as f32 + f32::from(c.amount)
+                (i32::from(*self.cost_adj.checked(j)?) * i32::from(scale)) as f32
+                    + f32::from(c.amount)
             };
             if 0.0 < modifier {
                 v = f32::from((v * modifier) as i32 as i16);
@@ -293,12 +299,15 @@ impl TechState {
     /// gives its attribute and amount, else the `.dat`'s entry does; the adjustment times the
     /// scale adds to the amount, in 16 bits, which the modifier then scales (truncated). An
     /// override of 0 gives none; an amount below 1 leaves no attribute.
-    #[must_use]
-    pub fn listed_costs(&self, def: &TechDef, (modifier, scale): (f32, i16)) -> [(i16, i16); 3] {
+    pub fn listed_costs(
+        &self,
+        def: &TechDef,
+        (modifier, scale): (f32, i16),
+    ) -> Result<[(i16, i16); 3], GenieError> {
         let mut out = [(-1, 0); 3];
         for (j, slot) in out.iter_mut().enumerate() {
-            let (amount, attribute, used) = self.overrides[j];
-            let c = def.costs[j];
+            let (amount, attribute, used) = *self.overrides.checked(j)?;
+            let c = *def.costs.checked(j)?;
             let (attribute, base) = match used {
                 0 => continue,
                 -2 if c.paid != 0 => (c.attribute, c.amount),
@@ -308,7 +317,11 @@ impl TechState {
             if attribute < 0 {
                 continue;
             }
-            let mut v = self.cost_adj[j].wrapping_mul(scale).wrapping_add(base);
+            let mut v = self
+                .cost_adj
+                .checked(j)?
+                .wrapping_mul(scale)
+                .wrapping_add(base);
             if 0.0 < modifier {
                 v = (f32::from(v) * modifier) as i32 as i16;
             }
@@ -319,7 +332,7 @@ impl TechState {
                 slot.0 = -1;
             }
         }
-        out
+        Ok(out)
     }
 
     /// A cost entry as the research test and the payment read it: the attribute (the
@@ -332,8 +345,8 @@ impl TechState {
         j: usize,
         (modifier, scale): (f32, i16),
     ) -> Option<(i16, f32, u8)> {
-        let (amount, attribute, used) = self.overrides[j];
-        let c = def.costs[j];
+        let (amount, attribute, used) = *self.overrides.get(j)?;
+        let c = *def.costs.get(j)?;
         let attribute = if used == 1 { attribute } else { c.attribute };
         if attribute < 0 || (c.paid == 0 && used == 0) {
             return None;
@@ -341,7 +354,7 @@ impl TechState {
         let mut v = if used == 1 {
             f32::from(amount)
         } else {
-            (i32::from(self.cost_adj[j]) * i32::from(scale)) as f32 + f32::from(c.amount)
+            (i32::from(*self.cost_adj.get(j)?) * i32::from(scale)) as f32 + f32::from(c.amount)
         };
         if 0.0 < modifier {
             v = f32::from((v * modifier) as i32 as i16);
@@ -518,7 +531,10 @@ mod tests {
     #[test]
     fn loom_lists_its_gold_and_pays_it_once_queued() {
         let (mut s, d) = loom();
-        assert_eq!(s.listed_costs(&d, (0.0, 1)), [(3, 50), (-1, 0), (-1, 0)]);
+        assert_eq!(
+            s.listed_costs(&d, (0.0, 1)).unwrap(),
+            [(3, 50), (-1, 0), (-1, 0)]
+        );
         assert!(!s.repeatable(&d, false));
         // the game's attributes in 3842 (80 food, 157 wood, 200 stone, 100 gold) and after it
         let mut held = Held([79.956_116, 157.05705, 200.0, 100.0]);
@@ -528,7 +544,7 @@ mod tests {
         // queued, it may not be researched again
         assert_eq!(s.pay(&d, (0.0, 1), false, 109, &mut held), Ok(false));
         // its queue entry records the 50 gold, which its start finds paid
-        let paid = s.entry_costs(&d, (0.0, 1));
+        let paid = s.entry_costs(&d, (0.0, 1)).unwrap();
         assert_eq!(paid, [(3, 50.0), (-1, 0.0), (-1, 0.0)]);
         let get = |i: i16| held.get(i);
         assert_eq!(s.start_test(&d, (0.0, 1), &paid, &get), Ok(true));
@@ -548,6 +564,9 @@ mod tests {
         // the modifier scales the amount (truncated) before the test
         assert_eq!(s.pay(&d, (0.5, 1), false, 109, &mut held), Ok(true));
         assert_eq!(held.0, [0.0, 5.0, 0.0, 100.0]);
-        assert_eq!(s.listed_costs(&d, (0.5, 1)), [(1, 25), (-1, 0), (-1, 0)]);
+        assert_eq!(
+            s.listed_costs(&d, (0.5, 1)).unwrap(),
+            [(1, 25), (-1, 0), (-1, 0)]
+        );
     }
 }

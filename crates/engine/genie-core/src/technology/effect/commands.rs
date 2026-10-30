@@ -42,7 +42,7 @@ impl World {
     /// (`FUN_14152fdd0`, from 1, the player itself when it counts itself so) whose and to whom
     /// the relations (`+0x260`, `FUN_141667f50`) are the party's, in order.
     pub(super) fn party(&self, p: usize, party: Party) -> Vec<usize> {
-        let relation = |a: usize, b: usize| self.players[a].relations.get(b).copied();
+        let relation = |a: usize, b: usize| self.players.get(a)?.relations.get(b).copied();
         let mutual = |q: usize, wanted: &[u8]| {
             wanted
                 .iter()
@@ -76,7 +76,7 @@ impl World {
             // the technology commands read the third argument's low byte as the mode
             let mode = (c.c & 0xff) as u8;
             match c.kind {
-                TECH_COST => self.tech_cost(p, c.a, c.b, c.d, mode),
+                TECH_COST => self.tech_cost(p, c.a, c.b, c.d, mode)?,
                 TECH_DISABLE => {
                     let tech = crate::math::conversions::cvttss2si(c.d);
                     if tech != -1 {
@@ -251,9 +251,13 @@ impl World {
     /// Player `p`'s attribute `i` (the resources are [`crate::world::Player::resources`]), None
     /// past its count (`+0x90`, the saved attributes').
     pub(super) fn attribute_value(&self, p: usize, i: usize) -> Option<f32> {
-        let player = &self.players[p];
+        let player = self.players.get(p)?;
         let value = player.attributes.get(i).copied()?;
-        Some(if i < 4 { player.resources[i] } else { value })
+        Some(if i < 4 {
+            *player.resources.get(i)?
+        } else {
+            value
+        })
     }
 
     /// Player `p`'s attribute `i`, 0 past its count.

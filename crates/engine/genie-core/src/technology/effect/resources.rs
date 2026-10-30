@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::{master_type, player_master};
 use crate::technology::effect::OBJECT_GONE;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
 /// the player's `allied_LOS_Enable` (`+0x2cc`) takes 1, the world's masks are rebuilt (its slot
@@ -66,7 +67,13 @@ impl World {
     /// `FUN_141217ac0` (`after` false) or `FUN_14120b910` on each of player `p`'s live combat
     /// units and buildings ([`World::garrison_volleys`]).
     pub(super) fn all_garrison_volleys(&mut self, p: usize, after: bool) -> Result<(), GenieError> {
-        let ids: Vec<i32> = self.players[p].objects.iter().map(|u| u.id).collect();
+        let ids: Vec<i32> = self
+            .players
+            .player(p)?
+            .objects
+            .iter()
+            .map(|u| u.id)
+            .collect();
         for id in ids {
             let kind = self
                 .object(id)
@@ -83,19 +90,25 @@ impl World {
     /// `FUN_1416674b0`, the attribute's store: within the player's attributes' count it takes `v`
     /// (the resources are [`crate::world::Player::resources`]). A computer player's resource
     /// peaks (`+0x6dc`) and attribute 262's fields (`+0x628`..`+0x630`) are not held.
-    pub(super) fn store_attribute(&mut self, p: usize, attribute: i16, v: f32) {
-        let player = &mut self.players[p];
+    pub(super) fn store_attribute(
+        &mut self,
+        p: usize,
+        attribute: i16,
+        v: f32,
+    ) -> Result<(), GenieError> {
+        let player = self.players.player_mut(p)?;
         let Some(i) = usize::try_from(attribute)
             .ok()
             .filter(|&i| i < player.attributes.len())
         else {
-            return;
+            return Ok(());
         };
         if i < 4 {
-            player.resources[i] = v;
+            *player.resources.checked_mut(i)? = v;
         } else {
-            player.attributes[i] = v;
+            *player.attributes.checked_mut(i)? = v;
         }
+        Ok(())
     }
 
     /// Slot 0xf0 (`FUN_14162d610`) of player `p`: attribute `attribute` takes `v`
@@ -118,7 +131,7 @@ impl World {
                 // the message to the players is the interface's
                 for q in 1..self.players.len() {
                     if q != p && self.attribute_of(q, SPREAD_ATTRIBUTE) <= 0.0 {
-                        self.store_attribute(q, SPREAD_ATTRIBUTE, v);
+                        self.store_attribute(q, SPREAD_ATTRIBUTE, v)?;
                     }
                 }
             }
@@ -129,7 +142,7 @@ impl World {
             }
             _ => {}
         }
-        self.store_attribute(p, attribute, v);
+        self.store_attribute(p, attribute, v)?;
         if attribute == SHARED_VISION {
             // the world's slot 0x78; the message is the interface's
             self.rebuild_vision()?;
@@ -157,15 +170,15 @@ impl World {
                 for q in 1..self.players.len() {
                     let theirs = self.attribute_of(q, SPREAD_ATTRIBUTE);
                     if q != p && theirs <= 0.0 {
-                        self.store_attribute(q, SPREAD_ATTRIBUTE, v + theirs);
+                        self.store_attribute(q, SPREAD_ATTRIBUTE, v + theirs)?;
                     }
                 }
             }
-            _ => return self.players[p].add_attribute(attribute, v),
+            _ => return self.players.player_mut(p)?.add_attribute(attribute, v),
         }
         // FUN_14165d040's store of the sum
         let sum = v + self.attribute_of(p, attribute);
-        self.store_attribute(p, attribute, sum);
+        self.store_attribute(p, attribute, sum)?;
         Ok(())
     }
 
@@ -173,7 +186,7 @@ impl World {
     /// (the world's slot 0x78, `FUN_1415e92b0`) and its tile list refilled
     /// ([`World::refill_tiles`], `FUN_141285cb0`).
     pub(super) fn allied_vision_on(&mut self, p: usize) -> Result<(), GenieError> {
-        self.players[p].allied_vision = true;
+        self.players.player_mut(p)?.allied_vision = true;
         self.rebuild_vision()?;
         self.refill_tiles(p);
         Ok(())
@@ -197,7 +210,7 @@ impl World {
         }
         let mut ids = Vec::new();
         for farm in FARMS {
-            ids.extend(self.tracked_key(p, farm));
+            ids.extend(self.tracked_key(p, farm)?);
         }
         for id in ids {
             let Some((q, u)) = self.object(id) else {

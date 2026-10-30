@@ -706,7 +706,7 @@ fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
     let mut m = combat(4, 6, 60);
     (m.max_speed, m.move_sprite, m.run_sprite, m.standing_sprite) = (1.5, -1, -1, -1);
     t.masters = vec![Masters::new([m])];
-    t.master_followers(0, 4, a::MOVEMENT_SPEED);
+    t.master_followers(0, 4, a::MOVEMENT_SPEED).unwrap();
     let speeds = |u: &Unit| u.body.mover().map(|m| (m.stats.base, m.stats.speed));
     assert_eq!(speeds(&t.players[0].objects[0]), Some((1.5, 3.0)));
     assert_eq!(speeds(&t.players[0].objects[1]), Some((1.5, 1.5)));
@@ -783,8 +783,8 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         a::LINE_OF_SIGHT,
     ];
     for attribute in all {
-        t.master_followers(0, 4, attribute);
-        t.master_followers(0, 99, attribute);
+        t.master_followers(0, 4, attribute).unwrap();
+        t.master_followers(0, 99, attribute).unwrap();
     }
     let follows = |u: &Unit| (u.life.dying_sprite, u.life.death_spawn, u.life.remains);
     let p = &t.players[0];
@@ -803,7 +803,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     assert_eq!((los(1), los(3)), (6.0, 2.0));
     // a dying sprite below 0 is none
     t.masters[0].get_mut(4).unwrap().death_sprite = -1;
-    t.master_followers(0, 4, a::DYING_GRAPHIC);
+    t.master_followers(0, 4, a::DYING_GRAPHIC).unwrap();
     assert_eq!(t.players[0].objects[0].life.dying_sprite, None);
 }
 

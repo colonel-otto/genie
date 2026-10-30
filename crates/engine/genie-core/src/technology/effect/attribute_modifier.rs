@@ -8,6 +8,7 @@ use crate::technology::effect::{
     CAPPED, Change, OBJECT_GONE, has_actions, shows_sprite, within_table,
 };
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 impl World {
     /// Slot 0x148 (`FUN_1416121b0`) of player `p`: the hooks before (`FUN_141614f40` with 0),
@@ -27,7 +28,7 @@ impl World {
         if let Some(why) = self
             .reached_masters(p, unit, class)
             .iter()
-            .find_map(|&id| self.masters[p].get(id)?.unloaded_for(attribute))
+            .find_map(|&id| self.masters.get(p)?.get(id)?.unloaded_for(attribute))
         {
             return Err(GenieError::unsupported(why));
         }
@@ -50,7 +51,13 @@ impl World {
         class: i16,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        let ids: Vec<i32> = self.players[p].objects.iter().map(|u| u.id).collect();
+        let ids: Vec<i32> = self
+            .players
+            .player(p)?
+            .objects
+            .iter()
+            .map(|u| u.id)
+            .collect();
         for id in ids {
             let Some((_, u)) = self.object(id) else {
                 continue;
@@ -81,7 +88,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        let masters = &self.masters[p];
+        let masters = self.masters.checked(p)?;
         let master = u.master(&self.masters, p)?;
         if u.garrison.is_empty() || at_most_or_unordered(master.reload, 0.0) {
             return Ok(());
@@ -99,7 +106,7 @@ impl World {
             if m.kind == master_type::COMBAT {
                 shares.push(crate::garrison::share(
                     m,
-                    &self.masters[q],
+                    self.masters.checked(q)?,
                     unit.reload_powerup,
                     rate,
                 )?);
@@ -152,8 +159,8 @@ impl World {
             let place = self.place(id).ok_or(OBJECT_GONE)?;
             let rng = self.streams.get(Stream::Sprite);
             let u = match place {
-                crate::orders::Place::Live(q, i) => &mut self.players[q].objects[i],
-                crate::orders::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
+                crate::orders::Place::Live(q, i) => self.players.live_mut(q, i)?,
+                crate::orders::Place::Sleeping(q, i) => self.players.asleep_mut(q, i)?,
             };
             if u.sprite.is_some() {
                 crate::objects::sprite::new_sprite(
@@ -216,14 +223,14 @@ impl World {
         if class < 0 {
             return Ok(());
         }
-        let (done, pending) = self.tracked_class(p, class);
+        let (done, pending) = self.tracked_class(p, class)?;
         for id in done {
             if !self.change_object(id, change, v, attribute)? {
                 continue;
             }
             let annexes = match self.object(id) {
                 Some((_, u)) if u.master(&self.masters, p)?.kind == master_type::BUILDING => {
-                    crate::objects::unit::annexes_of(id, &self.players[p].objects)
+                    crate::objects::unit::annexes_of(id, &self.players.player(p)?.objects)
                 }
                 _ => continue,
             };
@@ -233,7 +240,7 @@ impl World {
                 };
                 let am = a.master(&self.masters, p)?;
                 let own_annexes = am.kind == master_type::BUILDING
-                    && !crate::objects::unit::annexes_of(annex, &self.players[p].objects)
+                    && !crate::objects::unit::annexes_of(annex, &self.players.player(p)?.objects)
                         .is_empty();
                 if !own_annexes && am.class == class {
                     let _ = self.change_object(annex, change, v, attribute)?;
@@ -244,7 +251,7 @@ impl World {
             let _ = self.change_object(id, change, v, attribute)?;
         }
         for id in self.reached_masters(p, unit, class) {
-            self.change_one_master(p, id, change, v, attribute);
+            self.change_one_master(p, id, change, v, attribute)?;
         }
         Ok(())
     }
@@ -287,7 +294,7 @@ impl World {
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
         let master = self.master(p, unit)?.clone();
-        let (done, pending) = self.tracked_master(p, &master);
+        let (done, pending) = self.tracked_master(p, &master)?;
         let mut kept = Vec::new();
         for id in done {
             let Some((_, u)) = self.object(id) else {
@@ -317,7 +324,7 @@ impl World {
                 let _ = self.change_object(id, change, v, attribute)?;
             }
         }
-        self.change_one_master(p, unit, change, v, attribute);
+        self.change_one_master(p, unit, change, v, attribute)?;
         let master = self.master(p, unit)?.clone();
         for id in kept {
             match attribute {
@@ -395,7 +402,7 @@ impl World {
         change: Change,
         v: f32,
         attribute: u8,
-    ) {
+    ) -> Result<(), GenieError> {
         {
             let sprite = Self::attribute_world(&self.graphics);
             let world = AttributeWorld {
@@ -405,7 +412,7 @@ impl World {
             };
             let terrain = self.spatial.terrain.as_ref();
             let Some(m) = self.masters.get_mut(p).and_then(|m| m.get_mut(id)) else {
-                return;
+                return Ok(());
             };
             match change {
                 Change::Set => m.set_attribute(attribute, v, &world),
@@ -414,20 +421,26 @@ impl World {
             }
             m.follow(attribute, &self.graphics, terrain);
         }
-        self.master_followers(p, id, attribute);
+        self.master_followers(p, id, attribute)?;
+        Ok(())
     }
 
     /// What player `p`'s objects of master `id` hold of it and the slice keeps beside the master
     /// (the game reads the master): their movement's values ([`Master::follow_moving`]), their
     /// dying sprite and death spawns, their construction's hit points, build time and record,
     /// their sight's line of sight and their tile's height test.
-    pub(super) fn master_followers(&mut self, p: usize, id: i16, attribute: u8) {
+    pub(super) fn master_followers(
+        &mut self,
+        p: usize,
+        id: i16,
+        attribute: u8,
+    ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
         let Some(master) = player_master(&self.masters, p, id).cloned() else {
-            return;
+            return Ok(());
         };
         let terrain = self.spatial.terrain.as_ref();
-        let player = &mut self.players[p];
+        let player = self.players.player_mut(p)?;
         let mut ids = Vec::new();
         for u in player
             .objects
@@ -479,6 +492,7 @@ impl World {
                 _ => {}
             }
         }
+        Ok(())
     }
 }
 
@@ -505,7 +519,7 @@ pub(crate) fn follow_master(
     sprites: &MasterSprites,
 ) {
     let of_task = |s: Option<crate::objects::sprite::Graphic>, i: usize| {
-        task.zip(s).is_some_and(|(t, s)| t[i] == s.id)
+        task.zip(s).is_some_and(|(t, s)| t.get(i) == Some(&s.id))
     };
     if arms.move_sprite.is_some() && !of_task(arms.move_sprite, 0) {
         arms.move_sprite = sprites.moving;
