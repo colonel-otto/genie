@@ -6,6 +6,10 @@ use crate::vision::registry::UnitUpdate;
 use crate::vision::visibility::Visibility;
 use crate::world::player::Player;
 
+/// An object update past the registry check finds the registry gone.
+const NO_REGISTRY: GenieError =
+    GenieError::unreachable("an object update without the objects-in-sight registry");
+
 /// `RGE_Combat_Object::update`'s takeover by sight (`0x14107dfb0`, once the registry took a
 /// changed `mask` of an object with `+0x924` 1, [`Visibility::combat_sight`]): the players from
 /// 1 on, in order, each with its computer flag (`player+0x10 == 3`, [`Player::computer`]) and
@@ -83,7 +87,7 @@ impl Visibility {
                 }
             }
         }
-        let registry = self.registry.as_mut().expect("checked above");
+        let registry = self.registry.as_mut().ok_or(NO_REGISTRY)?;
         let old = registry.entry(id).map_or(0, |e| e.mask);
         if mask == old {
             return Ok(None);
