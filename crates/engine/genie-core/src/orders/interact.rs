@@ -13,6 +13,28 @@ use crate::orders::{
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
+/// What the loop over the splitter's groups takes of its order ([`World::order_groups`]).
+struct GroupsOrder {
+    /// The order's target object, none for a point.
+    target: Option<ObjectId>,
+    /// The order's point.
+    point: [f32; 2],
+    /// The command each group takes at the end.
+    args: CommandArgs,
+    /// The command a queued order's new group first takes on its first unit's target.
+    first: FirstTarget,
+    /// Ctrl locks the new group's formation to a line.
+    lock_line: bool,
+}
+
+/// How a queued order's first command on its first unit's target differs from the order's: its
+/// task filter, and the retargeting byte the handler makes of the unit AI's (`+0x1d6` is 0:
+/// MOVE passes it as is, INTERACT its opposite).
+struct FirstTarget {
+    filter: i16,
+    disable_retargeting: fn(bool) -> bool,
+}
+
 impl World {
     /// One unit of INTERACT: an object that does not move takes the order at once (slot 0x128,
     /// [`World::order_at_once`]) and, the order queued, goes on as a mover does. Its ignore list empties
@@ -279,24 +301,70 @@ impl World {
         Ok(())
     }
 
-    /// MOVE's groups (`FUN_140e67800`'s loop over the splitter's groups): the group all of a
-    /// split group's units are in (`FUN_14152ece0`, [`crate::groups::common_group`]) takes the
-    /// order when it holds just them, the splitter keeping it ([`World::keep_group`]; with a
-    /// target the world holds, `FUN_140fd9f40`'s range test, not modelled); one the world does not
-    /// hold takes nothing; else a new group of the split's owner (`FUN_14152efc0`) takes them
-    /// ([`World::add_to_group`]), its statistics ([`World::group_statistics`]) and its place
-    /// ([`World::set_initial_position`]). Each listed group (60 at most) takes the command count
-    /// as its differentiator, with Ctrl held locks its formation to a line
-    /// ([`World::lock_formation`] with 2) and takes the command ([`World::group_command`]); a new
-    /// group of a queued MOVE first takes a command on its first unit's target
-    /// ([`World::first_unit_target`]), not queued and direct. Then every
-    /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
-    /// `FUN_1410395a0`).
+    /// MOVE's groups (`FUN_140e67800`'s loop over the splitter's groups): see
+    /// [`World::order_groups`], with Ctrl's formation lock and no task filter.
     pub(super) fn move_groups(
         &mut self,
         split: &mut Split,
         order: &MoveOrder,
     ) -> Result<(), GenieError> {
+        let groups = GroupsOrder {
+            target: order.target,
+            point: order.point.xy(),
+            args: CommandArgs {
+                queued: order.queued,
+                direct: order.direct,
+                disable_retargeting: order.control,
+                filter: -1,
+            },
+            first: FirstTarget {
+                filter: -1,
+                disable_retargeting: |retargets| retargets,
+            },
+            lock_line: order.control,
+        };
+        self.order_groups(split, &groups)
+    }
+
+    /// INTERACT's groups (`FUN_140e68b90`'s loop over the splitter's groups): see
+    /// [`World::order_groups`]; the order's bytes `+0x12` and `+0x16` go to the group's command
+    /// and a queued order's first unit's target takes the opposite retargeting byte.
+    pub(super) fn interact_groups(
+        &mut self,
+        split: &mut Split,
+        order: &Interact,
+    ) -> Result<(), GenieError> {
+        let groups = GroupsOrder {
+            target: order.target,
+            point: order.point.xy(),
+            args: CommandArgs {
+                queued: order.queued,
+                direct: order.direct,
+                disable_retargeting: order.carry_test,
+                filter: order.filter,
+            },
+            first: FirstTarget {
+                filter: order.filter,
+                disable_retargeting: |retargets| !retargets,
+            },
+            lock_line: false,
+        };
+        self.order_groups(split, &groups)
+    }
+
+    /// The loop over the splitter's groups that MOVE and INTERACT share: the group all of a
+    /// split group's units are in (`FUN_14152ece0`, [`crate::groups::common_group`]) takes the
+    /// order when it holds just them, the splitter keeping it ([`World::keep_group`], with the
+    /// target the world holds); one the world does not hold takes nothing; else a new group of
+    /// the split's owner (`FUN_14152efc0`) takes them ([`World::add_to_group`]), its statistics
+    /// ([`World::group_statistics`]) and its place ([`World::set_initial_position`]). Each listed
+    /// group (60 at most) takes the command count as its differentiator, with Ctrl held locks
+    /// its formation to a line ([`World::lock_formation`] with 2) and takes the command
+    /// ([`World::group_command`]); a new group of a queued order first takes a command on its
+    /// first unit's target ([`World::first_unit_target`]), not queued and direct. Then every
+    /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
+    /// `FUN_1410395a0`).
+    fn order_groups(&mut self, split: &mut Split, order: &GroupsOrder) -> Result<(), GenieError> {
         let mut listed: Vec<i32> = Vec::new();
         for units in split.groups.clone() {
             let units = &units[..];
@@ -321,12 +389,10 @@ impl World {
                 id
             } else {
                 // FUN_140e6b820's target: the order's object while the world holds it
-                if self.world_object(ObjectId::field(order.target)).is_some() {
-                    return Err(GenieError::unsupported(
-                        "a MOVE of a group the splitter keeps (FUN_140fd9f40)",
-                    ));
-                }
-                self.keep_group(split, common)?;
+                let held = order
+                    .target
+                    .filter(|t| self.world_object(t.get()).is_some());
+                self.keep_group(split, common, held)?;
                 common
             };
             if listed.len() < LISTED {
@@ -336,31 +402,25 @@ impl World {
             if let Some(g) = self.groups.get_mut(id) {
                 g.differentiator_id = commands;
             }
-            if order.control {
+            if order.lock_line {
                 self.lock_formation(id, crate::groups::formation::LINE)?;
             }
-            // a queued MOVE's new group first takes its first unit's target, not queued and
-            // direct (0x140e67b5d..0x140e67cb1)
+            // a queued order's new group first takes its first unit's target, not queued and
+            // direct
             if new
-                && order.queued
+                && order.args.queued
                 && let Some((target, at, retargets)) = self.first_unit_target(units)
             {
                 let args = CommandArgs {
                     queued: false,
                     direct: true,
-                    disable_retargeting: retargets,
-                    filter: -1,
+                    disable_retargeting: (order.first.disable_retargeting)(retargets),
+                    filter: order.first.filter,
                 };
                 let _ = self.group_command(id, target, at, args)?;
             }
-            let args = CommandArgs {
-                queued: order.queued,
-                direct: order.direct,
-                disable_retargeting: order.control,
-                filter: -1,
-            };
             let _ =
-                self.group_command(id, ObjectId::field(order.target), order.point.xy(), args)?;
+                self.group_command(id, ObjectId::field(order.target), order.point, order.args)?;
         }
         let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {

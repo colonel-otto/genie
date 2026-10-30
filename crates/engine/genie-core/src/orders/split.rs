@@ -8,11 +8,12 @@ use crate::world::World;
 
 impl World {
     /// INTERACT (`0x140e68b90`) to its units, after their unit AIs reset. The splitter
-    /// ([`World::loose_units`]) leaves the units out of any group; several of a human player
-    /// whose box ([`World::order_spread`]) is narrow enough take places around the order's point
-    /// at their offsets from their centroid (the loop of `LAB_140e6920a`), any other each the
-    /// point itself (the loop of `LAB_140e69a3c`), in the splitter's order
-    /// ([`World::interact_unit`]). A single unit the world does not hold takes nothing.
+    /// ([`World::split`]) forms groups ([`World::interact_groups`]) and leaves the others loose;
+    /// several loose units of a human player whose box ([`World::order_spread`]) is narrow
+    /// enough take places around the order's point at their offsets from their centroid (the
+    /// loop of `LAB_140e6920a`), any other each the point itself (the loop of `LAB_140e69a3c`),
+    /// in the splitter's order ([`World::interact_unit`]). A single unit the world does not hold
+    /// takes nothing.
     pub(crate) fn interact(
         &mut self,
         player: usize,
@@ -24,7 +25,9 @@ impl World {
             &[id] if self.place(id).is_none() => return Ok(()),
             _ => {}
         }
-        let loose = self.loose_units(units);
+        let loose = self
+            .split(units, &|_| true, false)
+            .and_then(|mut s| self.interact_groups(&mut s, order).map(|()| s.loose));
         self.groups.count_command();
         let loose = loose?;
         self.leave_groups(player, &loose, ObjectId::field(order.target))?;

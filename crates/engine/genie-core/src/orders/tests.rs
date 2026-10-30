@@ -2976,7 +2976,7 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
         groups: vec![vec![11, 12]],
         far: [15].into(),
     };
-    t.keep_group(&mut split, 5).unwrap();
+    t.keep_group(&mut split, 5, None).unwrap();
     assert_eq!(split.loose, [14, 15]);
     let g = t.groups.get(5).unwrap();
     assert!(g.has(13));
@@ -2989,8 +2989,59 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
         loose: vec![13, 15],
         ..Split::default()
     };
-    t.keep_group(&mut split, 5).unwrap();
+    t.keep_group(&mut split, 5, None).unwrap();
     assert_eq!(split.loose, [15]);
+}
+
+/// `FUN_140fd9f40` with a target the world holds: a loose soldier joins the kept group only when
+/// the target is out of its line of sight (the squared gap on the ground above its master's line
+/// of sight squared); one that sees it stays loose.
+#[test]
+fn a_kept_group_takes_only_the_soldiers_that_do_not_see_the_target() {
+    let units = [
+        (11, 4, [20.0, 20.0]),
+        (12, 4, [21.0, 20.0]),
+        (13, 4, [22.0, 20.0]),
+    ];
+    let world = |target_x: f32| {
+        let mut t = soldiers(&units, &[11, 12]);
+        t.masters[1].get_mut(4).unwrap().line_of_sight = 5.0;
+        t.masters[0] = crate::objects::masters::Masters::new([Master {
+            id: 70,
+            kind: BUILDING,
+            class: class::BUILDING,
+            ..Master::default()
+        }]);
+        t.players[0].objects.push(Unit {
+            id: 60,
+            body: crate::objects::layers::Body::at([target_x, 20.0, 0.0]),
+            life: crate::objects::lifecycle::Lifecycle {
+                master_id: 70,
+                state: 2,
+                ..crate::objects::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        t.groups.get_mut(5).unwrap().motion.position[0] = [21.0, 0.0, 20.0];
+        for u in &mut t.players[1].objects {
+            let mut m = crate::gathering::hunt::tests::walker();
+            m.moved_at = u.position();
+            u.body.put_mover(Some(m));
+        }
+        t
+    };
+    for (target_x, joins) in [(30.0, true), (24.0, false)] {
+        let mut t = world(target_x);
+        let mut split = Split {
+            owner: Some(1),
+            loose: vec![13],
+            groups: vec![vec![11, 12]],
+            ..Split::default()
+        };
+        t.keep_group(&mut split, 5, Some(object_id(60))).unwrap();
+        assert_eq!(split.loose.is_empty(), joins, "target at x {target_x}");
+        assert_eq!(t.groups.get(5).unwrap().has(13), joins);
+    }
 }
 
 /// [`patrollers`]' two soldiers near each other in a world whose statistics search works.
@@ -3138,8 +3189,7 @@ fn a_move_of_soldiers_in_no_group_forms_new_groups() {
 
 /// MOVE (`FUN_140e67800`) of the whole of group 5 and a loose soldier beside it: the
 /// splitter keeps the group (`FUN_140fd9f40`), which takes the soldier and the command
-/// (`BUnitGroup::command`); no new group is made. With a target the world holds the kept group's range test is not
-/// modelled.
+/// (`BUnitGroup::command`); no new group is made.
 #[test]
 fn a_move_of_a_whole_group_keeps_it() {
     let units = [
@@ -3169,11 +3219,13 @@ fn a_move_of_a_whole_group_keeps_it() {
     assert_eq!((g.flags & 0x2_0000, g.differentiator_id), (0, 0));
     assert_eq!(t.groups.commands, 1);
     let mut t = kept();
+    // with a target the world holds the kept group takes the command on it (a unit of the
+    // order itself, which has no task: the plain move to it)
     let at_12 = MoveOrder {
         target: Some(object_id(12)),
         ..order
     };
-    assert!(t.move_order(1, &[11, 12, 13], &at_12).is_err());
+    assert!(t.move_order(1, &[11, 12, 13], &at_12).is_ok());
 }
 
 /// The Gather's slot 0x48 on a building (`0x140a903a0`, [`World::retarget_gather`]): its
@@ -3615,4 +3667,72 @@ fn a_work_command_s_factory_starts_the_task_s_action() {
             .map(|e| e.reason()),
         Some("the action factory for a task the slice does not model")
     );
+}
+
+/// INTERACT (`FUN_140e68b90`) of three soldiers on an enemy building: the splitter groups them,
+/// a new group of their owner takes them, its statistics and its place, the command count as its
+/// differentiator and the order: the soldiers' attack task (type 7) on the building is the
+/// group's command 9 on it, and the command count goes on. The soldiers are in the group, none
+/// is loose.
+#[test]
+fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() {
+    let units = [
+        (11, 4, [20.0, 20.0]),
+        (12, 4, [21.0, 20.0]),
+        (13, 4, [22.0, 20.0]),
+    ];
+    let mut t = searchable(patrollers(&units, &[]));
+    t.players.push(crate::world::Player::default());
+    t.players[2].objects = vec![Unit {
+        id: 60,
+        body: crate::objects::layers::Body::at([40.0, 40.0, 0.0]),
+        attackable: true,
+        life: crate::objects::lifecycle::Lifecycle {
+            master_id: 70,
+            state: 2,
+            hp: 550.0,
+            ..crate::objects::lifecycle::Lifecycle::default()
+        },
+        ..Unit::default()
+    }]
+    .into();
+    let building = Master {
+        id: 70,
+        kind: BUILDING,
+        class: class::BUILDING,
+        radius: [2.0, 2.0],
+        hit_points: 550,
+        ..Master::default()
+    };
+    let soldier = Master {
+        tasks: vec![crate::objects::masters::Task {
+            action_type: 7,
+            owner_type: 2,
+            object_group: class::BUILDING,
+            ..crate::objects::masters::Task::default()
+        }],
+        ..t.masters[1].get(4).unwrap().clone()
+    };
+    t.masters[1] = crate::objects::masters::Masters::new([soldier, building.clone()]);
+    t.masters
+        .push(crate::objects::masters::Masters::new([building]));
+    for u in &mut t.players[1].objects {
+        u.life.hp = 25.0;
+    }
+    let order = Interact {
+        target: Some(object_id(60)),
+        point: Point::new(40.0, 40.0),
+        carry_test: false,
+        queued: false,
+        direct: true,
+        human: true,
+        filter: -1,
+    };
+    t.interact(1, &[11, 12, 13], &order).unwrap();
+    let g = &t.groups.groups;
+    assert_eq!(g.len(), 1);
+    let ids: Vec<i32> = g[0].members.iter().map(|m| m.id).collect();
+    assert_eq!(ids, [11, 12, 13]);
+    assert_eq!((g[0].current_command, g[0].current_target.target), (9, 60));
+    assert_eq!(t.groups.commands, 1);
 }

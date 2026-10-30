@@ -171,7 +171,7 @@ impl World {
                 },
             };
             let id = if let Some(id) = kept {
-                self.keep_group(&mut split, id)?;
+                self.keep_group(&mut split, id, None)?;
                 id
             } else {
                 let owner = split.owner.map_or(u32::MAX, |p| p as u32);
@@ -221,7 +221,30 @@ impl World {
         Ok(())
     }
 
-    /// `FUN_140fd9f40` without a target (the patrol's): the splitter kept group `group`. Each
+    /// `FUN_140fd9f40`'s test of a command on a target: the squared gap between the unit and the
+    /// target on the ground (`FUN_14118f8c0`) is above its master's line of sight squared (`COMISS`:
+    /// a NaN is not), so the target is out of its sight.
+    fn out_of_sight(
+        &self,
+        unit: &crate::objects::unit::Unit,
+        master: &crate::objects::masters::Master,
+        target: ObjectId,
+    ) -> Result<bool, GenieError> {
+        let Some(t) = self.world_object(target.get()) else {
+            return Ok(true);
+        };
+        let tm = self.master(t.player(), t.master_id())?;
+        let gap = crate::movement::footprint_gap_squared(
+            unit.position(),
+            master.radius,
+            t.position(),
+            tm.radius,
+        );
+        Ok(master.line_of_sight * master.line_of_sight < gap)
+    }
+
+    /// `FUN_140fd9f40` (the patrol's without a target, INTERACT's and MOVE's with the one the world
+    /// holds, which a loose unit that sees it does not leave for): the splitter kept group `group`. Each
     /// loose unit of `split` the world holds, of type 70 or more whose master has a formation
     /// category (`+0x8bc`) and not among the split's far units, joins it (`FUN_1410083c0`; flags
     /// bit 17 set) when the tile planner of its terrain restriction, where one exists, finds a
@@ -229,7 +252,12 @@ impl World {
     /// where it last moved to (slot 0x520) is within its owner's influence distance of the
     /// group's place in three dimensions (`COMISS`/`JC`: a NaN is not); it leaves the loose units,
     /// and the loop's index goes on past the unit that takes its place, which is passed over.
-    pub(crate) fn keep_group(&mut self, split: &mut Split, group: i32) -> Result<(), GenieError> {
+    pub(crate) fn keep_group(
+        &mut self,
+        split: &mut Split,
+        group: i32,
+        target: Option<ObjectId>,
+    ) -> Result<(), GenieError> {
         let mut i = 0;
         while i < split.loose.len() {
             let id = split.loose[i];
@@ -239,6 +267,12 @@ impl World {
             };
             let master = u.master(&self.masters, p)?;
             if master.kind < COMBAT || master.formation_category == 0 || split.far.contains(&id) {
+                i += 1;
+                continue;
+            }
+            if let Some(t) = target
+                && !self.out_of_sight(u, master, t)?
+            {
                 i += 1;
                 continue;
             }
