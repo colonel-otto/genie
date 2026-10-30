@@ -252,13 +252,14 @@ impl DatFile {
     ///
     /// # Errors
     ///
-    /// [`ErrorKind::Unsupported`] if `file_version` was changed to a string other than `VER 7.1`
-    /// to `VER 8.9`; a file this module read always has a valid one.
+    /// [`ErrorKind::InvalidInput`] if `file_version` was changed to a string other than
+    /// `VER 7.1` to `VER 8.9`; a file this module read always has a valid one.
     ///
-    /// [`ErrorKind::Unsupported`]: genie_error::ErrorKind::Unsupported
+    /// [`ErrorKind::InvalidInput`]: genie_error::ErrorKind::InvalidInput
     pub fn version(&self) -> Result<Version, Error> {
-        Version::of(&self.file_version).ok_or(GenieError::unsupported(
-            "a data file version other than VER 7.1 to VER 8.9",
-        ))
+        Version::of(&self.file_version).ok_or_else(|| {
+            GenieError::invalid_input("a file_version set outside VER 7.1 to VER 8.9")
+                .with("version", String::from_utf8_lossy(&self.file_version))
+        })
     }
 }

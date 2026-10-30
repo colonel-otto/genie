@@ -56,3 +56,18 @@ fn the_installed_data_file_has_the_values_genieutils_reads() {
     let flare = civ2.units[332].as_ref().unwrap();
     assert_eq!((flare.resource_decay, flare.bird.is_none()), (1.0, true));
 }
+
+/// A `file_version` set outside the versions the reader takes is the caller's invalid input, not
+/// a format the reader lacks.
+#[test]
+fn a_file_version_set_outside_the_read_ones_is_invalid_input() {
+    let Some(data) = inflated() else {
+        return eprintln!("GENIE_DAT is not set; skipping");
+    };
+    let mut dat = DatFile::from_inflated(&data).unwrap();
+    dat.file_version = *b"VER 9.9\0";
+    assert_eq!(
+        dat.version().unwrap_err().kind(),
+        genie_error::ErrorKind::InvalidInput
+    );
+}
