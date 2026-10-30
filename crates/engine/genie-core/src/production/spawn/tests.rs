@@ -2,6 +2,7 @@ use super::*;
 use crate::commands::GatherPoint;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::unit::Unit;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -184,7 +185,7 @@ fn sheep(state: u8) -> Near {
         position: Position::new(106.68481, 47.14652, 0.0),
         radius: [0.35, 0.35],
         tall: true,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::LIVESTOCK,
         master: master_id(705),
         buildable_on: 0,
@@ -209,7 +210,7 @@ fn livestock_stays_alive_a_tree_only_once_dead() {
     assert!(!sheep(1).stays());
     let tree = Near {
         class: class::TREE,
-        kind: 10,
+        kind: master_type::STATIC,
         ..sheep(2)
     };
     assert!(!tree.stays());
@@ -262,7 +263,7 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
         id: 500,
         position: Position::new(20.5, 20.5, 0.0),
         radius: [1.0, 1.0],
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         master: ids::HOUSE,
         obstruction_type: 2,
@@ -764,7 +765,7 @@ fn remains_world() -> World {
     }
     let static_remains = Master {
         id: master_id(800),
-        kind: 10,
+        kind: master_type::STATIC,
         death_sprite: 20,
         standing_sprite: -1,
         storage: vec![(4, 1.0, 2), (11, 5.0, 0)],
@@ -772,7 +773,7 @@ fn remains_world() -> World {
     };
     let moving_remains = Master {
         id: master_id(801),
-        kind: 30,
+        kind: master_type::MOVING,
         standing_sprite: 21,
         moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
@@ -849,13 +850,13 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
     };
     let unchanged = |_: &mut crate::objects::masters::Master| {};
     assert_eq!(
-        reason(&|m| m.kind = 70, Facing::Drawn),
+        reason(&|m| m.kind = master_type::COMBAT, Facing::Drawn),
         "remains of a type other than 10 and 20 to 39"
     );
     assert_eq!(
         reason(
             &|m| {
-                m.kind = 10;
+                m.kind = master_type::STATIC;
                 m.hit_points = 5;
             },
             Facing::Drawn
@@ -1018,7 +1019,7 @@ fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() 
     let site = house_site(&[1.0], true);
     let flat = Flat(Vec::new());
     let house = Near {
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         moving: false,
         player: PlayerId::new(2),
@@ -1029,7 +1030,7 @@ fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() 
     assert!(!ignores(&site, house));
     assert!(ignores(&site, Near { state: 3, ..house }));
     let unit = Near {
-        kind: 70,
+        kind: master_type::COMBAT,
         state: 6,
         ..house
     };
@@ -1084,7 +1085,7 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
     let site = house_site(&[1.0], true);
     let flat = Flat(Vec::new());
     let walker = Near {
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         moving: true,
         player: PlayerId::new(1),
@@ -1116,7 +1117,7 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
     }));
     let stump = Near {
         class: class::TREE,
-        kind: 10,
+        kind: master_type::STATIC,
         hp: 1.0,
         ..still
     };
@@ -1141,7 +1142,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         id: 500,
         position: Position::new(20.5, 20.5, 0.0),
         radius: [1.0, 1.0],
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         master: ids::HOUSE,
         obstruction_type: 2,
@@ -1155,7 +1156,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
     for passed in [
         Near { state: 3, ..house },
         Near {
-            kind: 70,
+            kind: master_type::COMBAT,
             player: PlayerId::new(1),
             moving: true,
             ..house
@@ -1166,7 +1167,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         },
         Near {
             class: class::TREE,
-            kind: 10,
+            kind: master_type::STATIC,
             hp: 1.0,
             ..house
         },
@@ -1215,7 +1216,7 @@ fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
         id: 600,
         position: Position::new(21.5, 21.5, 0.0),
         radius: [1.0, 1.0],
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         moving: false,
         player: PlayerId::new(2),

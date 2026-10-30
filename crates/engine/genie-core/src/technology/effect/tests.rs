@@ -3,6 +3,7 @@ use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -311,7 +312,7 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.masters = vec![Masters::new([Master {
         id: ids::VILLAGER_MALE,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         hit_points: 25,
         armors: vec![(4, 0), (3, 0)],
@@ -380,7 +381,7 @@ fn unit_of(id: i32, master: MasterId, hp: f32) -> Unit {
 fn combat(id: MasterId, class: ClassId, hit_points: i16) -> Master {
     Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class,
         hit_points,
         ..Master::default()
@@ -448,7 +449,7 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut tower_master = combat(master_id(79), class::TOWER, 1020);
-    tower_master.kind = 80;
+    tower_master.kind = master_type::BUILDING;
     tower_master.reload = 2.0;
     tower_master.weapon_range = 8.0;
     tower_master.weapons = vec![(3, 5)];
@@ -488,7 +489,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let building = |id: i16, hit_points, head_unit: i16, annexes| Master {
         id: master_id(id),
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         hit_points,
         building: Some(crate::objects::masters::BuildingMaster {
@@ -605,7 +606,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
         let stone = Master {
             id: ids::FARM,
-            kind: 10,
+            kind: master_type::STATIC,
             class: class::CLASS_11,
             hit_points: 10,
             line_of_sight: 2.0,
@@ -635,7 +636,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             building: None,
             umv: 0,
             capture: 0,
-            kind: 10,
+            kind: master_type::STATIC,
         };
         v.add_seer(1, seer);
         let position = Position::new(10.5, 10.5, 0.0);
@@ -809,7 +810,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         building: None,
         umv: 0,
         capture: 0,
-        kind: 70,
+        kind: master_type::COMBAT,
     };
     v.add_seer(1, seer);
     v.add_seer(3, seer);
@@ -933,7 +934,7 @@ fn a_farm_food_change_grows_the_farms_food() {
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut master = combat(ids::FARM, class::FARM, 480);
-    master.kind = 80;
+    master.kind = master_type::BUILDING;
     t.masters = vec![Masters::new([master])];
     t.players[0].attributes[31] = 1.0;
     t.players[0].attributes[36] = 175.0;
@@ -1201,7 +1202,7 @@ fn spawns_and_cost_entries() {
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut tc = combat(ids::TOWN_CENTRE, ClassId::of_master(80), 2400);
-    tc.kind = 80;
+    tc.kind = master_type::BUILDING;
     let mut serjeant = combat(master_id(1658), class::CLASS_6, 60);
     serjeant.cost = vec![(0, 60, true), (2, 35, true)];
     t.masters = vec![Masters::new([tc, serjeant])];
@@ -1685,7 +1686,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         combat(master_id(4), class::CLASS_6, 60),
         Master {
             id: ids::HOUSE,
-            kind: 80,
+            kind: master_type::BUILDING,
             class: class::BUILDING,
             hit_points: 550,
             radius: [0.5, 0.5],

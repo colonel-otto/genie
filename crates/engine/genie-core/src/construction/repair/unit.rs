@@ -7,7 +7,9 @@ use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::BVector;
 use crate::movement::Me;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::{Master, Masters};
@@ -100,7 +102,7 @@ impl Unit {
             held: self.life.attribute_type,
             top_action: self.top_action_kind().map(i32::from),
             master: self.life.master_id,
-            kind: master.map_or(0, |m| m.kind),
+            kind: master.map_or(MasterKind::of_data(0), |m| m.kind),
             class: master.map(|m| m.class),
             attack_priority: master.map_or(0, |m| m.attack_priority),
             missile: master.and_then(|m| m.missile),
@@ -224,7 +226,7 @@ pub(crate) fn repair_target(
     c: &mut Step<'_>,
     target: i32,
     amount: f32,
-) -> Result<(u8, u8), GenieError> {
+) -> Result<(u8, MasterKind), GenieError> {
     let player = c.player;
     let mut set = Vec::new();
     let others = OthersRef::of(&c.w.players, player)?;
@@ -239,7 +241,7 @@ pub(crate) fn repair_target(
         }
     }
     let original = set.clone();
-    let kind = set.first().map_or(0, |o| o.kind);
+    let kind = set.first().map_or_else(MasterKind::default, |o| o.kind);
     if set.is_empty() {
         return Err(GenieError::unreachable(
             "a Repair working on an object the world does not hold",
@@ -257,8 +259,12 @@ pub(crate) fn repair_target(
         attributes: &mut paid,
     };
     let answer = match kind {
-        80 => crate::construction::repair::repair_building(&mut set, 0, amount, true, &mut payer),
-        70 => crate::construction::repair::repair_unit(&mut set, 0, amount, &mut payer),
+        BUILDING => {
+            crate::construction::repair::repair_building(&mut set, 0, amount, true, &mut payer)
+        }
+        master_type::COMBAT => {
+            crate::construction::repair::repair_unit(&mut set, 0, amount, &mut payer)
+        }
         // the task finder repairs buildings and combat units of its classes alone
         _ => Err(GenieError::unreachable(
             "a repaired object of a type below 70 (slot 0x110)",

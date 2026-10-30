@@ -2,6 +2,7 @@
 
 use crate::combat::abilities::{ONE, Own, WORKING, WORKING_ACTIONS};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -43,8 +44,8 @@ pub struct WorkTarget {
 #[must_use]
 pub fn generates(
     task: &Task,
-    kind: u8,
-    master_kind: u8,
+    kind: MasterKind,
+    master_kind: MasterKind,
     top: Option<TopWork>,
     built: bool,
 ) -> bool {

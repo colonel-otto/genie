@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::players::PlayerId;
 use crate::unit_ai::Search;
 use genie_diff::Diff;
@@ -152,7 +153,7 @@ pub struct Surroundings {
     /// The unit's state (`+0x640`), type (`+0xf`), `+0x924` and master id.
     pub state: u8,
     /// The unit's type (`+0xf`).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master has a missile (`+0x83c` 0 or more, `FUN_1410bfca0`).
     pub ranged: bool,
     /// Its missiles per volley (`+0xa00`, `FUN_1412136d0`), 0 for a unit without volleys.
@@ -229,7 +230,7 @@ pub struct TopTarget {
     /// `+8`.
     pub id: i32,
     /// Its type (`+0xf`).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its place.
     pub position: Position,
     /// Its master's radii.
@@ -244,7 +245,7 @@ pub(super) struct LiveTop {
     /// `+8`.
     pub(super) id: i32,
     /// Its type (`+0xf`).
-    pub(super) kind: u8,
+    pub(super) kind: MasterKind,
     /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
     pub(super) gap_squared: f32,
 }
@@ -303,7 +304,7 @@ pub struct UnitSeen {
     /// Its master's id and type (`+0xf`).
     pub master: MasterId,
     /// Its type (`+0xf`).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// An annex's main building (`+0xbb8`).
     pub main: Option<i32>,
     /// The unit's owner counts its owner as its own or an ally (`FUN_141663d90` with the ally
@@ -341,7 +342,7 @@ pub struct Seen {
     /// The object's state.
     pub state: u8,
     /// Its master's type.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its owner.
     pub owner: PlayerId,
     /// Its master's class.

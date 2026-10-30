@@ -2,9 +2,11 @@ use super::*;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::ids::WONDER;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::test_ids::master_id;
 use crate::unit_ai::AiCommand;
@@ -307,7 +309,7 @@ impl UnitSide for HelpSide {
             position: Position::new(101.5, 158.5, 0.0),
             hp: 0.0,
             master: ids::ID_0,
-            kind: 0,
+            kind: MasterKind::of_data(0),
             main: None,
             allied: false,
         }))
@@ -2067,7 +2069,7 @@ fn an_invalidated_action_of_the_order_or_an_attack_stops_the_unit() {
     let at = Surroundings {
         id: 20,
         player: PlayerId::new(1),
-        kind: 70,
+        kind: master_type::COMBAT,
         state: 2,
         ..Surroundings::default()
     };
@@ -2168,7 +2170,7 @@ fn a_completed_action_of_the_order_or_an_attack_stops_the_unit() {
         id: 20,
         position: Position::new(12.0, 13.0, 0.0),
         player: PlayerId::new(1),
-        kind: 70,
+        kind: master_type::COMBAT,
         state: 2,
         ..Surroundings::default()
     };
@@ -2252,7 +2254,7 @@ fn the_base_handler_takes_each_kind_it_models() {
     let at = Surroundings {
         id: 20,
         player: PlayerId::new(1),
-        kind: 70,
+        kind: master_type::COMBAT,
         speed: 1.0,
         state: 2,
         ..Surroundings::default()
@@ -2304,7 +2306,7 @@ fn the_base_handler_takes_each_kind_it_models() {
     assert_eq!(run(&mut u, 0x1fd, 20, &at).0, Ok(GO_ON));
     assert_eq!(u.current_order, Some(OrderKind::Attack));
     let fixed = Surroundings {
-        kind: 20,
+        kind: master_type::ANIMATED,
         ..at.clone()
     };
     assert_eq!(run(&mut u, 0x1fd, 20, &fixed).0, Ok(GO_ON));
@@ -2472,7 +2474,7 @@ fn ward(gap_squared: f32) -> UnitSeen {
         state: 2,
         position: Position::new(11.0, 10.0, 0.0),
         gap_squared,
-        kind: 70,
+        kind: master_type::COMBAT,
         allied: true,
         ..UnitSeen::default()
     }
@@ -2652,7 +2654,7 @@ fn foe(id: i32, class: ClassId) -> UnitSeen {
         state: 2,
         position: Position::new(12.0, 10.0, 0.0),
         hp: 30.0,
-        kind: 70,
+        kind: master_type::COMBAT,
         ..UnitSeen::default()
     }
 }
@@ -2662,7 +2664,7 @@ fn soldier_at() -> Surroundings {
     Surroundings {
         id: 1,
         player: PlayerId::new(1),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: Some(class::CLASS_6),
         speed: 1.0,
         los: 4.0,
@@ -3043,7 +3045,7 @@ fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
         (GO_ON, vec![], vec![])
     );
     let missile = UnitSeen {
-        kind: 60,
+        kind: master_type::MISSILE,
         ..foe(7, class::CLASS_6)
     };
     assert_eq!(
@@ -3146,7 +3148,7 @@ fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
         };
         let at = Surroundings {
             player: PlayerId::new(1),
-            kind: 70,
+            kind: master_type::COMBAT,
             master: ids::ID_448,
             class: Some(class::CLASS_47),
             weapon_range: 0.0,
@@ -3204,7 +3206,7 @@ fn a_patrol_s_kill_ends_the_patrol_order_with_its_timers() {
     };
     let at = Surroundings {
         player: PlayerId::new(1),
-        kind: 70,
+        kind: master_type::COMBAT,
         action_state: Some(0),
         ..Surroundings::default()
     };
@@ -4130,7 +4132,7 @@ fn rock_church() -> (UnitAi, Surroundings) {
         player: PlayerId::new(0),
         state: 2,
         class: Some(class::ARTIFACT),
-        kind: 80,
+        kind: BUILDING,
         ..Surroundings::default()
     };
     (ai, at)
@@ -5623,7 +5625,7 @@ fn a_unit_ai_with_a_target_runs_its_update_on_any_order() {
         state: 2,
         target: Some(Seen {
             state: 2,
-            kind: 70,
+            kind: master_type::COMBAT,
             owner: PlayerId::new(2),
             class: class::VILLAGER,
             ..Seen::default()
@@ -5673,7 +5675,7 @@ fn the_target_block_keeps_a_standing_target_and_drops_a_gone_one() {
         state: 2,
         target: Some(Seen {
             state: 2,
-            kind: 80,
+            kind: BUILDING,
             ..Seen::default()
         }),
         ..Surroundings::default()
@@ -5729,7 +5731,7 @@ fn a_dead_target_stops_an_action_that_needs_a_live_one() {
         state: 2,
         target: Some(Seen {
             state: 3,
-            kind: 70,
+            kind: master_type::COMBAT,
             ..Seen::default()
         }),
         ..Surroundings::default()
@@ -5853,7 +5855,7 @@ fn follower(deer: Position, visible: bool) -> (UnitAi, Surroundings) {
         class: Some(class::CLASS_12),
         target: Some(Seen {
             state: 2,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::PREY,
             position: deer,
             radius: [0.2, 0.2],
@@ -5953,7 +5955,7 @@ fn idle_scout() -> (UnitAi, Surroundings) {
         los: 4.0,
         search_radius: 4.0,
         state: 2,
-        kind: 70,
+        kind: master_type::COMBAT,
         master: ids::ID_448,
         ..Surroundings::default()
     };
@@ -6045,7 +6047,7 @@ const TC: Attacker = Attacker {
     held: -1,
     top_action: None,
     master: ids::TOWN_CENTRE,
-    kind: 80,
+    kind: BUILDING,
     class: Some(class::BUILDING),
     attack_priority: 0,
     missile: Some(MasterId::named(54)),
@@ -6067,7 +6069,7 @@ const TC: Attacker = Attacker {
 const BOAR: Target = Target {
     owner: PlayerId::new(0),
     class: class::PREDATOR,
-    kind: 70,
+    kind: master_type::COMBAT,
     master: MasterId::named(48),
     combat_level: 0,
     capture: 0,
@@ -6208,7 +6210,7 @@ fn a_tower_passes_a_boar_but_not_a_wolf() {
 const SCOUT: Attacker = Attacker {
     ai_type: 13,
     player: PlayerId::new(1),
-    kind: 70,
+    kind: master_type::COMBAT,
     class: Some(class::CLASS_47),
     master: ids::ID_448,
     missile: None,
@@ -6286,7 +6288,7 @@ fn an_idle_tower_searches_with_its_classes() {
         los: 8.0,
         search_radius: 0.0,
         state: 2,
-        kind: 80,
+        kind: BUILDING,
         ..Surroundings::default()
     };
     let mut searched = Vec::new();
@@ -6386,7 +6388,7 @@ fn a_tower_attacks_a_started_building_but_not_a_desolid_foundation() {
     let house = Target {
         owner: PlayerId::new(1),
         class: class::BUILDING,
-        kind: 80,
+        kind: BUILDING,
         master: ids::HOUSE,
         ..BOAR
     };
@@ -6786,7 +6788,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
     g.as_mut().unwrap().patrol = true;
     let seen = Seen {
         state: 2,
-        kind: 70,
+        kind: master_type::COMBAT,
         owner: PlayerId::new(2),
         class: class::CLASS_6,
         position: Position::new(5.0, 5.0, 0.0),
@@ -6983,7 +6985,7 @@ fn a_no_attack_tower_only_searches() {
         size: [2.0, 2.0],
         los: 8.0,
         state: 2,
-        kind: 80,
+        kind: BUILDING,
         ..Surroundings::default()
     };
     let mut searched = Vec::new();
@@ -7022,7 +7024,7 @@ fn an_idle_tower_attacks_what_its_search_found() {
         size: [2.0, 2.0],
         los: 8.0,
         state: 2,
-        kind: 80,
+        kind: BUILDING,
         ..Surroundings::default()
     };
     let mut side = SoldierSide {
@@ -8152,7 +8154,7 @@ fn patroller(secondary: u32) -> (UnitAi, Surroundings) {
     let at = Surroundings {
         position: Position::new(20.0, 20.0, 0.0),
         player: PlayerId::new(1),
-        kind: 70,
+        kind: master_type::COMBAT,
         state: 2,
         size: [0.2, 0.2],
         los: 4.0,
@@ -8223,7 +8225,7 @@ fn a_patrol_attacking_a_building_keeps_at_it() {
     let (mut u, mut at) = patroller(0);
     at.top_target = Some(TopTarget {
         id: 50,
-        kind: 80,
+        kind: BUILDING,
         position: Position::new(30.0, 30.0, 0.0),
         radius: [1.0, 1.0],
     });
@@ -8249,7 +8251,7 @@ fn a_soldier_s_idle_check_attacks_its_top_action_s_target_in_range() {
     u.current_order = None;
     let near = TopTarget {
         id: 50,
-        kind: 70,
+        kind: master_type::COMBAT,
         position: Position::new(21.0, 20.0, 0.0),
         radius: [0.2, 0.2],
     };
@@ -8356,7 +8358,7 @@ fn a_soldier_stopped_in_the_update_finds_no_top_action_s_target() {
     u.current_order = None;
     at.top_target = Some(TopTarget {
         id: 50,
-        kind: 70,
+        kind: master_type::COMBAT,
         position: Position::new(21.0, 20.0, 0.0),
         radius: [0.2, 0.2],
     });
@@ -9365,7 +9367,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
 const MANGONEL: Attacker = Attacker {
     ai_type: SIEGE_AI,
     player: PlayerId::new(1),
-    kind: 70,
+    kind: master_type::COMBAT,
     class: Some(class::SIEGE),
     master: MasterId::named(280),
     missile: Some(MasterId::named(656)),
@@ -9515,7 +9517,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     assert_eq!(check(&trebuchet, &seeker(0), &siege), Ok(false));
     let house = Target {
         class: class::BUILDING,
-        kind: 80,
+        kind: BUILDING,
         ..villager(30.0)
     };
     assert_eq!(check(&trebuchet, &seeker(0), &house), Ok(true));
@@ -9527,7 +9529,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     };
     let on_building = Seeker {
         target: 900,
-        target_kind: Some(80),
+        target_kind: Some(BUILDING),
         ..seeker(0)
     };
     for (priority, attacks) in [(0, false), (1, true), (2, false), (3, false), (4, true)] {
@@ -9612,7 +9614,7 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
         position: Position::new(20.0, 20.0, 0.0),
         player: PlayerId::new(1),
         class: Some(class::SIEGE),
-        kind: 70,
+        kind: master_type::COMBAT,
         los: 9.0,
         weapon_range: 7.0,
         state: 2,
@@ -9697,13 +9699,13 @@ fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
         position: Position::new(20.0, 20.0, 0.0),
         player: PlayerId::new(1),
         class: Some(class::SIEGE),
-        kind: 70,
+        kind: master_type::COMBAT,
         weapon_range: 7.0,
         state: 2,
         target: Some(Seen::default()),
         top_target: Some(TopTarget {
             id: 88,
-            kind: 70,
+            kind: master_type::COMBAT,
             position: Position::new(24.0, 20.0, 0.0),
             radius: [0.2, 0.2],
         }),
@@ -9937,7 +9939,7 @@ impl UnitSide for TailSide {
 /// A target the tail lets be: a player's, targetable and attackable, outside a pasture.
 const PLAIN: TargetFlags = TargetFlags {
     owner: PlayerId::new(2),
-    kind: 70,
+    kind: master_type::COMBAT,
     capture: 0,
     pasture: -1,
     untargetable: false,
@@ -10003,7 +10005,13 @@ fn the_tail_stops_a_gaia_unit_on_a_gaia_object_others_can_take_again() {
                 ..again
             },
         ),
-        (0, TargetFlags { kind: 60, ..again }),
+        (
+            0,
+            TargetFlags {
+                kind: master_type::MISSILE,
+                ..again
+            },
+        ),
     ] {
         let mut u = on_target(Some(ActionKind::Attack));
         let mut fx = Vec::new();
@@ -10431,7 +10439,7 @@ fn a_busy_villager_on_the_attack_order_runs_its_full_update() {
         state: 2,
         target: Some(Seen {
             state: 2,
-            kind: 70,
+            kind: master_type::COMBAT,
             owner: PlayerId::new(0),
             class: class::PREDATOR,
             ..Seen::default()
@@ -11849,7 +11857,7 @@ fn packed_siege() -> (UnitAi, Surroundings) {
         }],
         top_target: Some(TopTarget {
             id: 90,
-            kind: 70,
+            kind: master_type::COMBAT,
             position: Position::new(25.0, 30.0, 0.0),
             radius: [0.5, 0.5],
         }),
@@ -11988,7 +11996,7 @@ fn retargeting(target: i32) -> (UnitAi, Surroundings) {
         current_target: target,
         ..idle(SOLDIER_AI)
     };
-    let seen = |id, class: ClassId, kind: u8, main| UnitSeen {
+    let seen = |id, class: ClassId, kind: MasterKind, main| UnitSeen {
         id,
         class,
         owner: PlayerId::new(2),
@@ -12005,12 +12013,12 @@ fn retargeting(target: i32) -> (UnitAi, Surroundings) {
         position: Position::new(10.0, 10.0, 0.0),
         los: 6.0,
         units: vec![
-            seen(25954, class::LIVESTOCK, 70, None),
-            seen(30, class::CLASS_0, 70, None),
-            seen(40, class::BUILDING, 80, None),
-            seen(41, class::BUILDING, 80, Some(40)),
-            seen(42, class::CLASS_54, 80, None),
-            seen(43, class::FARM, 80, None),
+            seen(25954, class::LIVESTOCK, master_type::COMBAT, None),
+            seen(30, class::CLASS_0, master_type::COMBAT, None),
+            seen(40, class::BUILDING, BUILDING, None),
+            seen(41, class::BUILDING, BUILDING, Some(40)),
+            seen(42, class::CLASS_54, BUILDING, None),
+            seen(43, class::FARM, BUILDING, None),
         ],
         ..Surroundings::default()
     };

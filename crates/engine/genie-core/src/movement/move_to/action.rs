@@ -14,6 +14,7 @@ use crate::movement::{Mover, PathAsk, footprint_gap};
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::TOWN_CENTRE;
+use crate::objects::masters::master_type;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite, sprite_id, standing, walking};
 use crate::unit_ai::{ACTION_INVALIDATED, ActionKind, Inbox};
 use genie_diff::Diff;
@@ -98,7 +99,7 @@ pub fn object_range(range: f32, master: Option<&Master>) -> f32 {
         return range;
     }
     let cart = master.is_some_and(|m| {
-        m.kind == crate::objects::masters::master_type::BUILDING
+        m.kind == master_type::BUILDING
             && m.tasks
                 .iter()
                 .any(|t| t.action_type == crate::construction::build::CART_TASK)
@@ -765,7 +766,7 @@ mod tests {
             ..Master::default()
         };
         let unit = Master {
-            kind: 70,
+            kind: master_type::COMBAT,
             ..cart.clone()
         };
         assert_eq!(object_range(0.0, Some(&cart)), 0.75);

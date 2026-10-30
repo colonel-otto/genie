@@ -6,6 +6,7 @@ use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
@@ -88,7 +89,7 @@ fn world() -> World {
     t.dt_seconds = DT;
     let master = Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,
         radius: [0.2, 0.2],

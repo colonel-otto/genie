@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::object_list::ObjectList;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -66,7 +67,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         held: -1,
         top_action: None,
         master: ids::VILLAGER_MALE,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: Some(class::VILLAGER),
         attack_priority: 0,
         missile: None,
@@ -114,7 +115,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
 fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
     let master = |id, radius| crate::objects::masters::Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         radius,
         ..crate::objects::masters::Master::default()
     };
@@ -172,7 +173,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         held: -1,
         top_action: None,
         master: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: Some(class::CLASS_6),
         attack_priority: 0,
         missile: None,
@@ -221,7 +222,7 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
     let villager = crate::objects::masters::Master {
         id: ids::VILLAGER_MALE,
         copy_id: Some(ids::VILLAGER_MALE),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         object_flags: 0x10,
         hit_points: 25,
@@ -259,7 +260,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     use crate::unit_ai::AttackPicker;
     let master = |id, class, weapons| crate::objects::masters::Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class,
         radius: [0.3, 0.3],
         weapons,
@@ -300,7 +301,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         held: -1,
         top_action: None,
         master: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: Some(class::CLASS_6),
         attack_priority: 0,
         missile: None,

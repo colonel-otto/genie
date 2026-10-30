@@ -15,6 +15,7 @@ use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
@@ -153,7 +154,7 @@ impl Place {
 struct Splittable {
     id: i32,
     group: i32,
-    kind: u8,
+    kind: MasterKind,
     grouped: bool,
     flag_1: bool,
     speed: f32,
@@ -222,7 +223,7 @@ pub(crate) const NO_HUNT_TASK: GenieError =
     GenieError::unsupported("a hunt command without a task");
 
 /// The splitter groups units of a type above this (`0x45`).
-const MAX_UNGROUPED: u8 = 69;
+const MAX_UNGROUPED: MasterKind = MasterKind::of_data(69);
 /// Units whose speeds differ by more than this do not join where the player breaks formations by
 /// speed (`FUN_140fd76d0`, `DAT_143cc2918`).
 const SPLIT_SPEED_GAP: f32 = crate::math::image::order::SPLIT_SPEED_GAP;

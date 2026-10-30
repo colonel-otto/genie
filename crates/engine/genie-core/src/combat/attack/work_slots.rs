@@ -8,6 +8,7 @@ use crate::combat::attack::{
 use crate::map::Position;
 use crate::movement::footprint_gap;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::new_sprite;
@@ -21,7 +22,7 @@ pub struct Mark {
     /// The object.
     pub id: i32,
     /// Its master's type (80 a building).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master's class.
     pub class: ClassId,
     /// Its state (`+0x640`).

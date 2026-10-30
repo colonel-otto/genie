@@ -14,6 +14,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::Masters;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
+use crate::objects::masters::master_type;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -766,7 +767,7 @@ fn a_build_s_other_cases_end_walk_to_a_point_go_back_or_wait() {
 fn stump(t: &mut World) {
     let m = Master {
         id: master_id(349),
-        kind: 10,
+        kind: master_type::STATIC,
         class: class::TREE,
         radius: [0.5, 0.5],
         height: 1.0,

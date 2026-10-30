@@ -209,11 +209,11 @@ pub(super) fn spatial(
                     ),
                     // the object's type: the save's factory types 70 and 80, any other below
                     kind: if o.tribe_combat_object.is_some() {
-                        70
+                        genie_core::objects::masters::master_type::COMBAT
                     } else if building.is_some() {
-                        80
+                        genie_core::objects::masters::master_type::BUILDING
                     } else {
-                        0
+                        genie_core::objects::masters::MasterKind::of_data(0)
                     },
                 },
             );

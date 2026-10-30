@@ -2,6 +2,7 @@
 
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -45,7 +46,7 @@ pub struct ClearLook {
     /// `+0x686`.
     pub roo_called: bool,
     /// Its master's type.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// `+0x640`.
     pub state: u8,
     /// `+0xc60`.

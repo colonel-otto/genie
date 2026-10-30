@@ -7,6 +7,8 @@ use crate::groups::attack::moved_place;
 use crate::groups::create::FormationUnit;
 use crate::groups::group_list::member_gone;
 use crate::math::fmath::BVector;
+use crate::objects::masters::MasterKind;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::ACTION;
 use crate::unit_ai::ActionKind;
 use crate::world::World;
@@ -588,7 +590,12 @@ impl World {
 
 /// The master types of the combat objects (`RGE_Combat_Object` and its subclasses: combat,
 /// missile, TRIBE combat and building), whose slot 0x230 is `FUN_14108d960`.
-pub(in crate::groups) const COMBAT_KINDS: [u8; 4] = [50, 60, 70, 80];
+pub(in crate::groups) const COMBAT_KINDS: [MasterKind; 4] = [
+    master_type::RGE_COMBAT,
+    master_type::MISSILE,
+    master_type::COMBAT,
+    master_type::BUILDING,
+];
 
 /// [`World::statistics_only`]'s totals: the group's statistics reset, then the members' views
 /// added up (centroid, radii, ranges, attack times), `objects` its search list; the members
@@ -749,7 +756,7 @@ mod tests {
         let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
         let master = |id: MasterId, class: ClassId| Master {
             id,
-            kind: 70,
+            kind: master_type::COMBAT,
             class,
             formation_category: 1,
             line_of_sight: 4.0,
@@ -912,7 +919,7 @@ mod tests {
         for masters in &mut t.masters {
             let archer = Master {
                 id: ids::ID_7,
-                kind: 70,
+                kind: master_type::COMBAT,
                 class: class::CLASS_0,
                 weapon_range: 6.0,
                 radius: [0.3, 0.3],

@@ -8,6 +8,7 @@ use crate::map::spatial::WalkQuery;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::orders::action_state::DONE;
@@ -246,7 +247,7 @@ impl Unit {
         stats: &crate::combat::missile::MissileStats,
         old: Position,
         c: &mut Step<'_>,
-    ) -> Result<Vec<(i32, PlayerId, u8, u8)>, GenieError> {
+    ) -> Result<Vec<(i32, PlayerId, MasterKind, u8)>, GenieError> {
         let [w, h] = c.w.spatial.map;
         let hold = |v: f32, size: i32| {
             if v < 0.0 {

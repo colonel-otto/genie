@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::groups::group_list::member_gone;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -34,7 +35,7 @@ const CLEARED_ACTIONS: [ActionKind; 3] = [
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FormationUnit {
     pub(crate) master: MasterId,
-    pub(crate) kind: u8,
+    pub(crate) kind: MasterKind,
     pub(crate) hero_flag: u8,
     pub(crate) formation_category: u8,
     /// `FUN_141025920`: the unit's radius in a formation.
@@ -417,6 +418,7 @@ impl World {
 mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Position;
+    use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
@@ -467,7 +469,7 @@ mod tests {
         );
         let master = |id: MasterId, category: u8| Master {
             id,
-            kind: 70,
+            kind: master_type::COMBAT,
             formation_category: category,
             ..Master::default()
         };
@@ -571,13 +573,13 @@ mod tests {
             let extra = [
                 Master {
                     id: ids::ID_7,
-                    kind: 60,
+                    kind: master_type::MISSILE,
                     formation_category: 1,
                     ..Master::default()
                 },
                 Master {
                     id: master_id(8),
-                    kind: 70,
+                    kind: master_type::COMBAT,
                     formation_category: 2,
                     ..Master::default()
                 },

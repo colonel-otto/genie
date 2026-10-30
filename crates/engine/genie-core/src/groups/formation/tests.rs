@@ -3,6 +3,7 @@ use crate::map::Position;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::players::PlayerId;
 use crate::test_ids::master_id;
@@ -52,7 +53,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
     );
     let master = |id: MasterId, category: u8| crate::objects::masters::Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         formation_category: category,
         terrain_restriction: 0,
         radius: [0.2, 0.2],
@@ -194,14 +195,14 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
         *masters = crate::objects::masters::Masters::new([
             crate::objects::masters::Master {
                 id: master_id(4),
-                kind: 70,
+                kind: master_type::COMBAT,
                 formation_category: 1,
                 hero_flag: 0x10,
                 ..crate::objects::masters::Master::default()
             },
             crate::objects::masters::Master {
                 id: ids::ID_35,
-                kind: 70,
+                kind: master_type::COMBAT,
                 class: class::SIEGE,
                 formation_category: 2,
                 ..crate::objects::masters::Master::default()
@@ -809,7 +810,7 @@ fn type_world(paths: Vec<PathData>) -> World {
     );
     let masters = crate::objects::masters::Masters::new([crate::objects::masters::Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         formation_category: 1,
         ..crate::objects::masters::Master::default()
     }]);
@@ -907,7 +908,7 @@ fn a_lock_or_a_given_type_overrides_the_groups_own_choice() {
     assert_eq!(own(&t), LINE);
     t.masters[1] = crate::objects::masters::Masters::new([crate::objects::masters::Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         ..crate::objects::masters::Master::default()
     }]);
     assert_eq!(own(&t), HORDE);

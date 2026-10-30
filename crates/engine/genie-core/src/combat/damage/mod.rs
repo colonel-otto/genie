@@ -20,8 +20,6 @@ mod shown_values;
 mod taking;
 
 pub use self::armor::armor_damage;
-#[cfg(test)]
-use self::armor::class_armor;
 use self::armor::{master_melee_armor, melee_armor};
 pub use self::blasts::blast;
 #[cfg(test)]
@@ -48,6 +46,7 @@ use crate::map::Position;
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 
@@ -129,7 +128,7 @@ pub struct Victim {
     /// Its master's type, class, id, radii, first storage amount (`+0x610`, which a gatherer
     /// reads), `attribute_max_amount` and `area_effect_object_level` (`+0x62b`, the blast
     /// levels that reach it).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master's class.
     pub class: ClassId,
     /// Its master.
@@ -319,7 +318,7 @@ pub struct Attacker {
     /// The attacking object.
     pub id: i32,
     /// Its master's type, class, id, `combat_ability` and `missile_id`.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master's class.
     pub class: ClassId,
     /// Its master.

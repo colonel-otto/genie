@@ -5,6 +5,7 @@ use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -157,7 +158,7 @@ pub struct Attacker {
     /// Its master's id.
     pub master: MasterId,
     /// Its master's type.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master's class.
     pub class: Option<ClassId>,
     /// Its master's `attack_priority`.
@@ -201,7 +202,7 @@ pub struct Target {
     /// Its master's class.
     pub class: ClassId,
     /// Its master's type.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master.
     pub master: MasterId,
     /// Its master's `combat_level`.
@@ -249,7 +250,7 @@ pub struct Seeker {
     /// which the siege unit's attack check reads.
     ///
     /// [`Surroundings::target`]: crate::unit_ai::Surroundings::target
-    pub target_kind: Option<u8>,
+    pub target_kind: Option<MasterKind>,
 }
 
 impl Seeker {

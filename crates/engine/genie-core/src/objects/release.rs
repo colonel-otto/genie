@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type::ANIMATED;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -34,7 +35,7 @@ pub(crate) struct Releaser {
 /// units (`+0xce0`, the rest keeping their order) when it lists it (`listed`, [`Unit::lists_taker`]).
 pub(crate) fn released(
     u: &mut Unit,
-    kind: u8,
+    kind: MasterKind,
     listed: bool,
     by: Releaser,
 ) -> Result<(), GenieError> {
@@ -49,7 +50,7 @@ pub(crate) fn released(
 /// told (none for a releaser of a negative id), which [`released`] posts.
 pub(crate) fn released_fields(
     u: &mut Unit,
-    kind: u8,
+    kind: MasterKind,
     listed: bool,
     by: Releaser,
 ) -> Option<Notify> {

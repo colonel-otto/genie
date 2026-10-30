@@ -5,8 +5,10 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::RELIC;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::{BUILDING, COMBAT};
 use crate::players::PlayerId;
 use crate::production::spawn::{
@@ -26,7 +28,7 @@ pub struct Near {
     pub tall: bool,
     /// Its master's type (`+0x8`), class, id, `can_be_built_on` (`+0x5e9`), `obstruction_type`
     /// (`+0x651`) and `enable_auto_gather` (`+0x681`).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master's class.
     pub class: ClassId,
     /// Its master.
@@ -390,7 +392,7 @@ pub(super) fn build_sees(
         if fog == 0 {
             let [sees, explored] = map.vision(player);
             let shown = o.class != class::FARM
-                && 50 <= o.kind
+                && master_type::RGE_COMBAT <= o.kind
                 && o.fog_mask
                     .is_some_and(|m| m & explored != 0 && m & sees != 0);
             if !shown && (o.player != player || !map.allied(o.player, player, true)) {
@@ -440,7 +442,7 @@ pub(super) fn blocks_build(
 pub(super) fn build_ignores(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near) -> bool {
     let player = site.player;
     let alive = o.state < 3 || (o.kind != BUILDING && o.state < 7);
-    let standing = site.obstructs || o.kind < 30 || !o.moving;
+    let standing = site.obstructs || o.kind < master_type::MOVING || !o.moving;
     let gate_wall = site.class == class::GATE && o.class == class::WALL && o.player == player;
     let foundation = o.kind == BUILDING
         && !matches!(o.class, class::CLASS_51 | class::CLASS_54)
@@ -455,7 +457,7 @@ pub(super) fn build_passes(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near) -
     let player = site.player;
     // a moving unit of the player, of Gaia or of a mutual ally passes (the game type
     // 7's own test of allies is not modelled)
-    let passes = 30 <= o.kind
+    let passes = master_type::MOVING <= o.kind
         && o.state == 2
         && o.moving
         && (o.player == player

@@ -16,7 +16,7 @@ fn task(action_type: i16, object_group: i16, object_id: i16, work_val1: f32) -> 
 fn master(id: MasterId, task_by_group: u8, tasks: Vec<Task>) -> Master {
     Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         task_by_group,
         radius: [0.2, 0.2],
@@ -38,7 +38,7 @@ fn master(id: MasterId, task_by_group: u8, tasks: Vec<Task>) -> Master {
 fn house() -> Master {
     Master {
         id: ids::HOUSE,
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         task_by_group: 0,
         radius: [1.0, 1.0],
@@ -100,7 +100,7 @@ fn world(capped: bool) -> AttributeWorld<'static> {
     }
 }
 
-fn of_type(kind: u8) -> Master {
+fn of_type(kind: MasterKind) -> Master {
     Master {
         kind,
         ..Master::default()
@@ -112,7 +112,7 @@ type Read = fn(&Master) -> f32;
 
 /// A master of `kind` with three storage entries, a paid food cost, 10 hit points, two damage
 /// sprites and two train locations (the second of each selected).
-fn stocked(kind: u8) -> Master {
+fn stocked(kind: MasterKind) -> Master {
     Master {
         kind,
         hit_points: 10,
@@ -128,7 +128,7 @@ fn stocked(kind: u8) -> Master {
 
 /// Each row (attribute, its field, the field after a set of 3, then after an add of 2, then
 /// after a multiply by 2) on a fresh [`stocked`] master of `kind`.
-fn sets_adds_multiplies(kind: u8, rows: &[(u8, Read, [f32; 3])]) {
+fn sets_adds_multiplies(kind: MasterKind, rows: &[(u8, Read, [f32; 3])]) {
     let w = world(false);
     for &(a, read, [set, add, multiply]) in rows {
         let mut m = stocked(kind);
@@ -1089,7 +1089,7 @@ fn a_master_copy_keeps_its_id_class_and_flags() {
 fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
     let farm = Master {
         id: ids::FARM,
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::FARM,
         ..Master::default()
     };

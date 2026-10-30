@@ -3,6 +3,7 @@ use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, W
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::test_ids::master_id;
@@ -52,7 +53,7 @@ const fn seen(hp: f32, height: f32) -> ClearLook {
         hp,
         height,
         roo_called: false,
-        kind: 10,
+        kind: master_type::STATIC,
         state: 2,
         desolid: false,
     }
@@ -206,14 +207,14 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
         (
             5,
             ClearLook {
-                kind: 70,
+                kind: master_type::COMBAT,
                 ..seen(1.0, 0.0)
             },
         ),
         (
             6,
             ClearLook {
-                kind: 80,
+                kind: master_type::BUILDING,
                 desolid: true,
                 ..seen(1.0, 1.0)
             },
@@ -221,14 +222,14 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
         (
             7,
             ClearLook {
-                kind: 80,
+                kind: master_type::BUILDING,
                 ..seen(1.0, 1.0)
             },
         ),
         (
             8,
             ClearLook {
-                kind: 70,
+                kind: master_type::COMBAT,
                 state: 5,
                 ..seen(1.0, 0.0)
             },
@@ -584,7 +585,7 @@ fn foundation_at(id: i32, at: Position, life: Lifecycle, construction: Construct
 fn built_master(id: MasterId, cost: Vec<(i16, i16, bool)>) -> Master {
     Master {
         id,
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         cost,
         building: Some(crate::objects::masters::BuildingMaster {

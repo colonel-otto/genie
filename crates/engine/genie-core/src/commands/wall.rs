@@ -19,6 +19,7 @@ use crate::construction::build::BuildAction;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::BUILDER;
@@ -35,7 +36,7 @@ const ONE: f32 = crate::math::image::wall::ONE;
 const MAP_MARGIN: f32 = crate::math::image::wall::MAP_MARGIN;
 
 /// A builder's master type is above this (`FUN_141262270`: `0x27`).
-const BUILDER_TYPE: u8 = 0x27;
+const BUILDER_TYPE: MasterKind = MasterKind::of_data(0x27);
 /// The villagers' class (`FUN_141195750`: the master's class is 4), tested by the wall's train
 /// locations.
 const CIVILIAN: ClassId = class::VILLAGER;

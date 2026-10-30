@@ -20,8 +20,10 @@ use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
 use crate::vision::registry::MASK;
@@ -39,7 +41,7 @@ const UNWATCHED_CLASSES: [ClassId; 2] = [class::CLASS_51, class::CLASS_54];
 const TERRAIN_ORIGINALS: [MasterId; 2] = [MasterId::named(357), MasterId::named(1188)];
 /// The type from which an object's entry and its ghost follow its footprint's UMV entry
 /// (`FUN_141090430`, `FUN_14108f9b0`: master type above 0x31).
-const MASKED_KIND: u8 = 50;
+const MASKED_KIND: MasterKind = master_type::RGE_COMBAT;
 
 /// What an entry of a watched list follows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -701,20 +703,20 @@ mod tests {
             },
             Master {
                 id: MINE,
-                kind: 30,
+                kind: master_type::MOVING,
                 ghost_on_death: LEAVES_GHOSTS,
                 ..Master::default()
             },
             Master {
                 id: HOUSE,
-                kind: 80,
+                kind: BUILDING,
                 class: class::BUILDING,
                 ghost_on_death: LEAVES_GHOSTS,
                 ..Master::default()
             },
             Master {
                 id: TREE,
-                kind: 30,
+                kind: master_type::MOVING,
                 ..Master::default()
             },
         ])
@@ -755,7 +757,7 @@ mod tests {
                 building: None,
                 umv: 1,
                 capture: 0,
-                kind: 80,
+                kind: BUILDING,
             },
         );
         t.spatial.sight = Some(sight);
@@ -1121,25 +1123,25 @@ mod tests {
         let mut t = world(true);
         let gate = Master {
             id: master_id(88),
-            kind: 80,
+            kind: BUILDING,
             class: class::GATE,
             ..Master::default()
         };
         let annex_master = Master {
             id: master_id(89),
-            kind: 80,
+            kind: BUILDING,
             class: class::BUILDING,
             ..Master::default()
         };
         let wonder = Master {
             id: ids::WONDER,
-            kind: 80,
+            kind: BUILDING,
             class: class::CLASS_51,
             ..Master::default()
         };
         let skipped = Master {
             id: MASTER_1808,
-            kind: 80,
+            kind: BUILDING,
             class: class::BUILDING,
             ..Master::default()
         };

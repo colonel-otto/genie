@@ -127,7 +127,7 @@ pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<ObjectId>, Error> {
             [id, _]
                 if kind
                     == Some(i32::from(
-                        genie_core::objects::masters::master_type::DOPPELGANGER,
+                        genie_core::objects::masters::master_type::DOPPELGANGER.get(),
                     )) =>
             {
                 ghosts.push(pooled_id(id)?);

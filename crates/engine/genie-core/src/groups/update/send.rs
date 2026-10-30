@@ -13,7 +13,9 @@ use crate::math::conversions::cvttss2si_64;
 use crate::math::fmath::at_most_or_unordered;
 use crate::math::image::group::EPSILON;
 use crate::math::rng::Stream;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
@@ -26,7 +28,7 @@ const TRAVEL_MS: i32 = 2000;
 /// The span of a unit that does not move ([`Travel::Any`]): the immediate `1000`.
 const STANDING_SPAN: u32 = 1000;
 /// A combat unit of this type (`'F'`) gets the charge's speed.
-const CHARGER: u8 = 70;
+const CHARGER: MasterKind = master_type::COMBAT;
 
 /// What a unit sent at a target draws its retarget timer for ([`World::set_travel_timer`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -7,7 +7,9 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::orders::object_gone;
@@ -226,7 +228,7 @@ impl World {
     /// special-object list (`+0x30c` bit 0, `FUN_141677380`) is not held.
     pub(super) fn shut_in_gate(&mut self, id: i32) -> Result<(), GenieError> {
         /// The first master type whose slot 0xd8 is `FUN_141211340` (`TRIBE_Combat_Object`).
-        const TRIBE_COMBAT: u8 = 70;
+        const TRIBE_COMBAT: MasterKind = master_type::COMBAT;
         /// The class `FUN_141211340` always spares.
         const SPARED: ClassId = class::RELIC;
         let Some((p, u)) = self.object(id) else {

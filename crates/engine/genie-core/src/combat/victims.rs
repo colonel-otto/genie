@@ -678,7 +678,7 @@ pub(crate) fn victim_of(
 
 /// `FUN_140fde380`: `master` is of type 70 and up, of class 51 or 54, with a weapon (`+0x810`
 /// above 0): a trebuchet, packed or not, whose kill counts as a unit's.
-pub(crate) const fn is_trebuchet(master: &Master) -> bool {
+pub(crate) fn is_trebuchet(master: &Master) -> bool {
     COMBAT <= master.kind
         && matches!(master.class, class::CLASS_51 | class::CLASS_54)
         && !master.weapons.is_empty()

@@ -33,9 +33,11 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::Masters;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
+use crate::objects::masters::master_type;
 use crate::objects::sprite::Graphic;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
@@ -136,7 +138,7 @@ pub const HISTORY_PERIOD: i32 = 25;
 pub(crate) const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
 /// The first master type whose slot 0x128 (a work at an object) does something: the action
 /// objects' (`FUN_14106c590`) and up; below it `FUN_141071bd0` returns at once.
-pub(crate) const STATIC_TYPES_END: u8 = 40;
+pub(crate) const STATIC_TYPES_END: MasterKind = master_type::ACTION;
 /// The buildings' paid costs (attribute 247), which the combat setup adds for a building with a
 /// train location (`FUN_14121df60`).
 pub(crate) const BUILDING_COST: i16 = 247;

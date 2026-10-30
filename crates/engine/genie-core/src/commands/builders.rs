@@ -9,6 +9,7 @@ use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::player_master;
@@ -104,7 +105,7 @@ impl World {
     /// combat object's and a building's (`FUN_141211b80`, types 70 and 80) set `+0xa14` and
     /// empty their unit AI's order queue (`FUN_140c5e010`); the action object's
     /// (`FUN_14106c590`, types 40 to 60) goes straight to the work.
-    pub(super) fn empty_queue_for_work(&mut self, q: PlayerId, idx: usize, kind: u8) {
+    pub(super) fn empty_queue_for_work(&mut self, q: PlayerId, idx: usize, kind: MasterKind) {
         if crate::objects::masters::master_type::COMBAT <= kind
             && let Some(ai) = self.players[q.index()].objects[idx].ai.as_mut()
         {

@@ -7,6 +7,8 @@ use crate::groups::CommandArgs;
 use crate::map::Position;
 use crate::math::image::group::MEMBER_MIN_HP;
 use crate::objects::ObjectId;
+use crate::objects::masters::MasterKind;
+use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::unit_ai::task_finder::{Actor, find_task};
@@ -27,7 +29,7 @@ const BOARD_TASK: i16 = 0x84;
 /// The same for `FUN_14160e140`.
 const UNBOARD_TASK: i16 = 0x88;
 /// A master of this type or above (`0x27` below) may hold the board tasks.
-const FIRST_ACTING_KIND: u8 = 0x28;
+const FIRST_ACTING_KIND: MasterKind = master_type::ACTION;
 
 /// What a member's slot 0x130 gives a group's command: the task's action type (the command the
 /// group runs) and how near the target the work is done.

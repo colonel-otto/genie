@@ -6,6 +6,7 @@ use crate::movement::{Mover, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterKind;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
@@ -124,7 +125,7 @@ impl Unit {
             task_0x99: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x99)),
             garrisoned: self.life.inside.is_some(),
             state: self.life.state,
-            kind: master.map_or(0, |m| m.kind),
+            kind: master.map_or(MasterKind::of_data(0), |m| m.kind),
             ranged: master.is_some_and(|m| m.missile.is_some()),
             firepower: self.firepower,
             capture: self.capture_kind(c),

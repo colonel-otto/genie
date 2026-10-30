@@ -7,6 +7,7 @@ use crate::objects::layers::Animated;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
@@ -154,7 +155,7 @@ fn a_stop_ends_the_attack_and_the_unit_stands() {
 fn mark(id: i32, x: f32) -> Mark {
     Mark {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::PREY,
         state: 2,
         position: Position::new(x, 10.0, 0.5),
@@ -466,7 +467,7 @@ pub(crate) fn reads() -> AttackReads {
 pub(crate) fn soldier() -> Victim {
     Victim {
         id: 1,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         player: PlayerId::new(1),
         ..Victim::default()
@@ -516,7 +517,7 @@ impl Rig {
     fn with_unit(mut t: World, victim: Victim, own: Victim) -> Self {
         let master = Master {
             id: master_id(4),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::CLASS_6,
             move_sprite: -1,
             standing_sprite: -1,
@@ -686,12 +687,12 @@ fn a_strike_on_an_annex_hits_its_main_building() {
     )];
     let mut own = Victim {
         id: 1,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         player: PlayerId::new(1),
         source: damage::Attacker {
             id: 1,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::CLASS_6,
             missile: None,
             player: PlayerId::new(1),
@@ -799,7 +800,7 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
             weapons: vec![(4, 10)],
             source: damage::Attacker {
                 id: 1,
-                kind: 70,
+                kind: master_type::COMBAT,
                 class: class::CLASS_6,
                 missile: None,
                 player: PlayerId::new(1),
@@ -844,7 +845,7 @@ fn a_trample_reads_a_building_s_blast_so_far_or_its_main_building_s() {
         Err(crate::construction::build::NOT_HELD)
     );
     let unit = Victim {
-        kind: 70,
+        kind: master_type::COMBAT,
         ..Victim::default()
     };
     assert_eq!(blast_so_far(&unit, &[]), Ok(0.0));

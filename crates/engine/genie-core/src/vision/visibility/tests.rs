@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 use crate::vision::registry::UnitUpdate;
 
 fn world(players: PlayerId) -> Visibility {
@@ -31,7 +32,7 @@ fn unit(player: PlayerId, los: f32) -> Seer {
         building: None,
         umv: 0,
         capture: 0,
-        kind: 70,
+        kind: master_type::COMBAT,
     }
 }
 

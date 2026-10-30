@@ -11,6 +11,7 @@ use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::TaskId;
 use crate::objects::sprite::Graphic;
 use crate::players::PlayerId;
@@ -263,7 +264,7 @@ pub struct Quarry {
     /// Its master's class and type, its state (`+0x640`) and owner.
     pub class: ClassId,
     /// Its master's type.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its state (`+0x640`).
     pub state: u8,
     /// Its owner.

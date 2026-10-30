@@ -5,7 +5,9 @@ use crate::GenieError;
 use crate::construction::repair::ONE;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 
 /// The classes whose repair pays its unit share (`FUN_1412143b0`: the ships 20, 21, 22, 2 and
 /// 53, the siege 13 and the classes 51, 54 and 55).
@@ -35,7 +37,7 @@ pub struct Repaired {
     /// The object.
     pub id: i32,
     /// Its master's type.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master's class.
     pub class: ClassId,
     /// Its master.
@@ -107,10 +109,10 @@ pub fn repair_building(
     for annex in set[idx].annexes.clone() {
         let a = find(set, annex)?;
         match set[a].kind {
-            70 => {
+            master_type::COMBAT => {
                 let _ = repair_unit(set, a, amount, payer)?;
             }
-            80 => {
+            master_type::BUILDING => {
                 let _ = repair_building(set, a, amount, false, payer)?;
             }
             _ => {}

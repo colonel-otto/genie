@@ -8,6 +8,7 @@ use crate::objects::masters::BuildingMaster;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 use crate::objects::masters::{MasterId, ids};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -51,7 +52,7 @@ fn garrison_masters() -> Masters {
     Masters::new([
         Master {
             id: TC,
-            kind: 80,
+            kind: master_type::BUILDING,
             class: class::TOWER,
             hit_points: 2400,
             garrison: 15,
@@ -63,7 +64,7 @@ fn garrison_masters() -> Masters {
         },
         Master {
             id: VILLAGER,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::VILLAGER,
             copy_id: Some(VILLAGER),
             tasks: vec![task(GARRISON, 3), task(GARRISON, 20)],
@@ -75,14 +76,14 @@ fn garrison_masters() -> Masters {
         },
         Master {
             id: ARCHER,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::CLASS_0,
             tasks: vec![task(7, 3)],
             ..Master::default()
         },
         Master {
             id: SHIP,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::TRANSPORT,
             object_flags: 1,
             garrison: 1,
@@ -94,7 +95,7 @@ fn garrison_masters() -> Masters {
         },
         Master {
             id: GATE,
-            kind: 80,
+            kind: master_type::BUILDING,
             class: class::GATE,
             hit_points: 2750,
             garrison: 0,
@@ -874,13 +875,13 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
     // volley missile 54 every 2 s; its 7 villagers made its firepower 1 + 7
     let arrow = Master {
         id: master_id(54),
-        kind: 60,
+        kind: master_type::MISSILE,
         weapons: vec![(3, 5)],
         ..Master::default()
     };
     let tc = Master {
         id: ids::TOWN_CENTRE,
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         reload: 2.0,
         weapon_range: 6.0,
@@ -892,7 +893,7 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
     };
     let villager = Master {
         id: ids::VILLAGER_MALE,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         reload: 2.0,
         weapons: vec![(11, 3), (4, 3), (13, 6), (24, 0), (17, 0)],
@@ -919,7 +920,7 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
 fn town_center() -> Master {
     Master {
         id: ids::TOWN_CENTRE,
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         reload: 2.0,
         weapon_range: 6.0,
@@ -936,7 +937,7 @@ fn an_attack_rate_needs_a_reload_and_a_range_that_compare_above_their_limits() {
     // value gives no rate, as one at the limit does
     let arrow = Master {
         id: master_id(54),
-        kind: 60,
+        kind: master_type::MISSILE,
         weapons: vec![(3, 5), (4, 7), (38, 2)],
         ..Master::default()
     };
@@ -965,24 +966,24 @@ fn a_volley_missile_slot_the_table_holds_is_taken_even_when_it_is_empty() {
     // missile; a null slot or one without weapons adds nothing, with no fallback
     let missile = Master {
         id: ids::FARM,
-        kind: 60,
+        kind: master_type::MISSILE,
         weapons: vec![(3, 6)],
         ..Master::default()
     };
     let volley = Master {
         id: master_id(54),
-        kind: 60,
+        kind: master_type::MISSILE,
         weapons: vec![(3, 2), (38, 1), (4, 9)],
         ..Master::default()
     };
     let unarmed = Master {
         id: master_id(55),
-        kind: 60,
+        kind: master_type::MISSILE,
         ..Master::default()
     };
     let archer = |volley_missile| Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         reload: 2.0,
         weapons: vec![(3, 4)],
         missile: Some(ids::FARM),
@@ -1010,13 +1011,13 @@ fn the_extra_missiles_truncate_and_multiply_as_the_game_does() {
     // wraps: amount 1 adds -2^31, amount 2 adds 0
     let volley = |amount| Master {
         id: master_id(54),
-        kind: 60,
+        kind: master_type::MISSILE,
         weapons: vec![(3, amount)],
         ..Master::default()
     };
     let tower = Master {
         id: master_id(79),
-        kind: 70,
+        kind: master_type::COMBAT,
         reload: 1.0,
         garrison_firepower: 1.0,
         volley_fire: 1e10,
@@ -1042,7 +1043,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
     // its upper half, +0x656) a master of type 70: that master's firepower over the rate
     let foot = Master {
         id: master_id(1120),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_0,
         reload: 2.0,
         weapons: vec![(3, 2)],
@@ -1052,7 +1053,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
     };
     let mounted = Master {
         id: master_id(1122),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_36,
         reload: 2.0,
         weapons: vec![(3, 6)],
@@ -1071,7 +1072,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
     assert_eq!(share(&reversed, &masters, 0.0, 2.0), Ok(1.5));
     // a named master not of type 70, or none, gives the floor 0.0; flag 3 clear names none
     let building = Master {
-        kind: 80,
+        kind: master_type::BUILDING,
         ..mounted
     };
     let masters_80 = Masters::new([foot.clone(), building]);
@@ -1190,7 +1191,7 @@ fn a_transport_takes_a_combat_unit_with_a_task_on_its_class_and_room() {
     let mut masters = garrison_masters();
     masters = Masters::new(masters.iter().cloned().chain([Master {
         id: master_id(1500),
-        kind: 60,
+        kind: master_type::MISSILE,
         class: class::SIEGE,
         tasks: vec![task(GARRISON, 20)],
         ..Master::default()
@@ -1252,7 +1253,7 @@ fn unload_picks_the_units_its_flag_names_of_any_player() {
     let mut relic = garrison_masters();
     relic = Masters::new(relic.iter().cloned().chain([Master {
         id: ids::RELIC,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: WHOLE_SHARE_CLASS,
         ..Master::default()
     }]));
@@ -1731,7 +1732,7 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
     let mut masters = garrison_masters();
     masters = Masters::new(masters.iter().cloned().chain([Master {
         id: master_id(59),
-        kind: 60,
+        kind: master_type::MISSILE,
         class: class::BUILDING,
         garrison: 5,
         ..Master::default()
@@ -3080,7 +3081,7 @@ fn a_buildings_count_takes_relics_in_and_leaves_raiders_unmodelled() {
     let mut masters = garrison_masters();
     masters = Masters::new(masters.iter().cloned().chain([Master {
         id: ids::RELIC,
-        kind: 20,
+        kind: master_type::ANIMATED,
         class: class::ARTIFACT,
         ..Master::default()
     }]));

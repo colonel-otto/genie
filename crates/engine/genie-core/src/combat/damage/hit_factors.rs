@@ -6,6 +6,7 @@ use crate::combat::damage::{
 };
 use crate::map::Position;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 
@@ -33,7 +34,7 @@ pub fn elevation_factor(z: f32, up_down: [f32; 2], to: &Victim) -> f32 {
 pub fn building_elevation_factor(
     factor: f32,
     relics: [i32; 2],
-    kind: u8,
+    kind: MasterKind,
     victim_relics: [i32; 2],
 ) -> f32 {
     let mut f = factor;
@@ -75,7 +76,12 @@ pub fn facing_offset(at: Position, facing: Facing, other: Position) -> f32 {
 /// for 0, on every object but buildings (type 80) other than classes 51 and 54; else by the bit
 /// of the class's group, none for a class in no group.
 #[must_use]
-pub fn charge_works(charge_target: i16, charge_type: i16, class: ClassId, kind: u8) -> bool {
+pub fn charge_works(
+    charge_target: i16,
+    charge_type: i16,
+    class: ClassId,
+    kind: MasterKind,
+) -> bool {
     let targets = charge_target as u16;
     if targets == 0xffff
         || charge_type == -4

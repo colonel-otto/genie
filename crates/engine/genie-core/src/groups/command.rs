@@ -664,7 +664,7 @@ mod tests {
         let mut t = World::new(50, 0, PlayerId::new(0), vec![0, 0], players);
         let master = Master {
             id: master_id(4),
-            kind: 70,
+            kind: COMBAT,
             formation_category: 1,
             ..Master::default()
         };

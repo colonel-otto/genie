@@ -152,7 +152,7 @@ fn dat_work(
     });
     work::Master {
         id,
-        kind: unit.unit_type,
+        kind: genie_core::objects::masters::MasterKind::of_data(unit.unit_type),
         copy_id: MasterId::of_data(unit.copy_id),
         base_id: MasterId::of_data(base_id(unit.base_id)),
         class: genie_core::objects::masters::ClassId::of_master(unit.class),

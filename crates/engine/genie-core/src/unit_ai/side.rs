@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::players::PlayerId;
 use crate::unit_ai::{
     Attacked, Duel, Effect, Found, Notify, PatrolPath, Search, Seeker, UnitAi, UnitSeen,
@@ -395,7 +396,7 @@ pub struct TargetFlags {
     /// Its owner's id (`+0x138`, `player+0x718`); Gaia is 0.
     pub owner: PlayerId,
     /// Its type (`+0xf`).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// `capture_flag` (`+0x924`, `FUN_14107cc90`).
     pub capture: u8,
     /// `+0x790`, `parent_pasture_id`: the pasture it is in, −1 for none.

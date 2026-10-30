@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
@@ -571,7 +572,7 @@ impl UnitAi {
     /// What the attack tests read of the unit AI ([`Seeker`]), its current target's master type
     /// `target_kind` as the world holds it.
     #[must_use]
-    pub(crate) const fn seeker_with(&self, target_kind: Option<u8>) -> Seeker {
+    pub(crate) const fn seeker_with(&self, target_kind: Option<MasterKind>) -> Seeker {
         Seeker {
             stance: self.stance,
             state_position: self.state_position,

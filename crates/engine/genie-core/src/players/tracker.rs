@@ -480,6 +480,7 @@ mod tests {
     use super::*;
     use crate::objects::lines::UnitLine;
     use crate::objects::masters::ids;
+    use crate::objects::masters::master_type;
     use crate::objects::masters::{BuildingMaster, Master};
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
@@ -503,7 +504,7 @@ mod tests {
     fn unit(id: MasterId, class: ClassId) -> Master {
         Master {
             id,
-            kind: 70,
+            kind: master_type::COMBAT,
             class,
             ..Master::default()
         }

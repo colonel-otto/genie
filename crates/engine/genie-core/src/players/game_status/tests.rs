@@ -5,6 +5,7 @@ use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
@@ -90,13 +91,13 @@ fn game() -> World {
         Master {
             id: ids::TOWN_CENTRE,
             class: class::BUILDING,
-            kind: 80,
+            kind: master_type::BUILDING,
             ..Master::default()
         },
         Master {
             id: ids::VILLAGER_MALE,
             class: class::VILLAGER,
-            kind: 70,
+            kind: master_type::COMBAT,
             cost: vec![(0, 46, true), (4, 1, false)],
             storage: vec![(4, -1.0, 2), (11, 1.0, 2)],
             ..Master::default()
@@ -530,7 +531,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     let ms = &mut t.masters[1];
     *ms = Masters::new(ms.iter().cloned().chain([Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         cost: vec![(1, 25, true), (3, 45, true), (4, 1, false)],
         storage: vec![(4, -1.0, 2)],
         ..Master::default()
@@ -722,7 +723,7 @@ fn a_cancel_in_game_mode_16_clears_the_military_flag() {
         *ms = Masters::new(ms.iter().cloned().chain([Master {
             id: master_id(4),
             class: class::CLASS_6,
-            kind: 70,
+            kind: master_type::COMBAT,
             ..Master::default()
         }]));
         let tc = t.players[1].objects[0].production.as_mut().unwrap();

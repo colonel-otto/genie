@@ -410,6 +410,7 @@ mod stack_tests {
     use super::*;
     use crate::map::spatial::{Placed, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
+    use crate::objects::masters::master_type;
     use crate::objects::masters::{BuildingMaster, Masters};
     use crate::objects::unit::Unit;
     use crate::test_ids::master_id;
@@ -434,7 +435,7 @@ mod stack_tests {
         }
         Master {
             id: master_id(id),
-            kind: 80,
+            kind: master_type::BUILDING,
             class: class::BUILDING,
             radius: [r, r],
             height: z,

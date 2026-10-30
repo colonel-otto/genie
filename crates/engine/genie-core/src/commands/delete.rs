@@ -11,6 +11,7 @@ use crate::construction::build::held;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::master_type::ACTION;
@@ -32,7 +33,7 @@ const UNDELETABLE: [ClassId; 4] = [
 ];
 
 /// The first master type a delete takes (`FUN_1416257c0`: above `0x45`).
-const DELETABLE_TYPE: u8 = 70;
+const DELETABLE_TYPE: MasterKind = MasterKind::of_data(70);
 
 /// A capture flag (`+0x924`) under which no delete takes the object.
 const BEING_CAPTURED: u8 = 2;
@@ -637,20 +638,20 @@ mod tests {
             Master {
                 id: ids::VILLAGER_MALE,
                 class: class::VILLAGER,
-                kind: 70,
+                kind: COMBAT,
                 ..Master::default()
             },
             Master {
                 id: ids::HOUSE,
                 class: class::BUILDING,
-                kind: 80,
+                kind: BUILDING,
                 cost: vec![(1, 25, true), (4, 1, false)],
                 ..Master::default()
             },
             Master {
                 id: master_id(594),
                 class: class::LIVESTOCK,
-                kind: 70,
+                kind: COMBAT,
                 ..Master::default()
             },
         ]);
@@ -739,6 +740,7 @@ mod clearing_tests {
     use crate::map::Position;
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
+    use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
@@ -785,7 +787,7 @@ mod clearing_tests {
     fn masters() -> Masters {
         let deco = |id| Master {
             id,
-            kind: 10,
+            kind: master_type::STATIC,
             class: class::CLASS_5,
             radius: [0.5, 0.5],
             buildable_on: 1,
@@ -794,7 +796,7 @@ mod clearing_tests {
         Masters::new([
             Master {
                 id: ids::HOUSE,
-                kind: 80,
+                kind: BUILDING,
                 class: class::BUILDING,
                 radius: [1.0, 1.0],
                 ..Master::default()
@@ -803,7 +805,7 @@ mod clearing_tests {
             deco(master_id(1358)),
             Master {
                 id: master_id(43),
-                kind: 30,
+                kind: master_type::MOVING,
                 class: class::CLASS_11,
                 radius: [0.2, 0.2],
                 buildable_on: 1,
@@ -812,7 +814,7 @@ mod clearing_tests {
             },
             Master {
                 id: master_id(254),
-                kind: 70,
+                kind: COMBAT,
                 class: class::CLASS_40,
                 radius: [0.5, 0.5],
                 height: 1.0,
@@ -823,7 +825,7 @@ mod clearing_tests {
             },
             Master {
                 id: ids::ID_357,
-                kind: 80,
+                kind: BUILDING,
                 class: class::CLASS_11,
                 radius: [1.5, 1.5],
                 buildable_on: 1,
@@ -1006,7 +1008,7 @@ mod clearing_tests {
     #[test]
     fn a_death_refunds_its_paid_cost_by_its_type() {
         let unit = Master {
-            kind: 70,
+            kind: COMBAT,
             cost: vec![(0, 50, true), (3, 20, true), (1, 5, false)],
             ..Master::default()
         };
@@ -1016,7 +1018,7 @@ mod clearing_tests {
         );
         let house = Master {
             id: ids::HOUSE,
-            kind: 80,
+            kind: BUILDING,
             ..unit
         };
         assert_eq!(

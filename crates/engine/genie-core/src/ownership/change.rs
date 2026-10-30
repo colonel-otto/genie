@@ -5,9 +5,11 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::lifecycle::death_parts::count_class;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::ids::PASTURE_MANGROVE;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, player_master};
 use crate::objects::unit::Unit;
@@ -381,7 +383,14 @@ impl World {
 
 /// The master types whose death-spawn master an ownership change copies (`FUN_14120f800`'s
 /// switch on the master's `+0x8`): static to moving objects, combat units and buildings.
-pub(crate) const DEAD_COPY_TYPES: [u8; 6] = [10, 20, 30, 40, 70, 80];
+pub(crate) const DEAD_COPY_TYPES: [MasterKind; 6] = [
+    master_type::STATIC,
+    master_type::ANIMATED,
+    master_type::MOVING,
+    master_type::ACTION,
+    master_type::COMBAT,
+    BUILDING,
+];
 
 /// `FUN_14120f800`, slot 0x70 of a combat object (`TRIBE_Combat_Object`'s): unit `u` of player
 /// `old` goes to player `new` (`masters`, every player's). First its records take the new owner

@@ -435,6 +435,7 @@ pub fn building_death(master: &Master, look: Option<&Look>, build_points: f32) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::master_type;
     use crate::test_ids::master_id;
 
     /// Build 158041's Lumberjack Female (Attack), graphic 1239: 45 frames of 0.0444 s, animated.
@@ -631,7 +632,7 @@ mod tests {
     fn barracks() -> Master {
         Master {
             id: master_id(12),
-            kind: 80,
+            kind: master_type::BUILDING,
             class: class::BUILDING,
             standing_sprite: 2575,
             death_sprite: 2573,

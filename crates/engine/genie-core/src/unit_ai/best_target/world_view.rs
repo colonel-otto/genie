@@ -3,6 +3,7 @@
 
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::players::PlayerId;
 use crate::unit_ai::best_target::Candidate;
 
@@ -27,7 +28,7 @@ pub struct Searcher {
     /// Its master's class.
     pub class: Option<ClassId>,
     /// Its master's type (`'F'`, 70: the combat type).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master's `attack_priority` (`+0x92c`, `FUN_141202220`).
     pub attack_priority: u8,
     /// Its owner is a computer player (`FUN_141659cf0`).
@@ -95,7 +96,7 @@ pub struct Thing {
     /// Its master's class.
     pub class: ClassId,
     /// Its master's type.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its `+0x924` (`FUN_14107cc90`): others take it over by seeing it.
     pub capture: bool,
     /// Its targeting flag (`+0x689`, `FUN_141188bb0`).

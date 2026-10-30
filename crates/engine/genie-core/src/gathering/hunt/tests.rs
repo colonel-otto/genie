@@ -6,6 +6,7 @@ use crate::movement::move_to::{
 };
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::sprite::Graphic;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
@@ -246,7 +247,7 @@ fn tree() -> Quarry {
         id: 9365,
         position: Position::new(24.5, 97.5, 0.0),
         class: class::TREE,
-        kind: 10,
+        kind: master_type::STATIC,
         state: 2,
         player: PlayerId::new(0),
         amount: 100.0,
@@ -494,7 +495,7 @@ fn victim(amount: f32) -> Victim {
         id: 9357,
         amount,
         state: 3,
-        kind: 10,
+        kind: master_type::STATIC,
         class: class::TREE,
         storage: 100.0,
         ..Victim::default()
@@ -703,7 +704,7 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
     let ibex = Victim {
         id: 15371,
         class: class::FARM,
-        kind: 30,
+        kind: master_type::MOVING,
         player: PlayerId::new(1),
         state: 5,
         ..Victim::default()

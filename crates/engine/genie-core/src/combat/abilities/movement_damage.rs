@@ -5,6 +5,7 @@ use crate::combat::abilities::{ALWAYS_REACHED, ONE, Own, STRUCK_BUILDING_CLASSES
 use crate::combat::damage::Victim;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -60,7 +61,7 @@ pub struct Bystander {
     /// The hitter's player counts it allied (`FUN_141663d90` with the ally flag).
     pub allied: bool,
     /// Its type (`+0xf`).
-    pub kind: u8,
+    pub kind: MasterKind,
     /// Its master's class (`+0x410`).
     pub class: ClassId,
     /// Its state (`+0x640`).

@@ -1,7 +1,9 @@
 use super::*;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
+use crate::objects::masters::master_type;
 use crate::test_ids::{master_id, object_id};
 use crate::vision::registry::UnitUpdate;
 
@@ -958,7 +960,7 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     wall.player = PlayerId::new(3);
     wall.radius = [0.5, 0.5];
     s.insert(object_id(33990), wall);
-    let look = |state: u8, kind: u8, desolid: bool| ClearLook {
+    let look = |state: u8, kind: MasterKind, desolid: bool| ClearLook {
         hp: 1.0,
         height: 1.0,
         roo_called: false,
@@ -966,18 +968,38 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
         state,
         desolid,
     };
-    let looks = |wall: ClearLook| BTreeMap::from([(9175, look(2, 70, false)), (33990, wall)]);
+    let looks = |wall: ClearLook| {
+        BTreeMap::from([(9175, look(2, master_type::COMBAT, false)), (33990, wall)])
+    };
     let occupants = |s: &Spatial, wall| s.footprint_occupants(10028, &house, true, &looks(wall));
-    assert_eq!(occupants(&s, look(0, 80, true)), Ok(vec![9175]));
+    assert_eq!(
+        occupants(&s, look(0, master_type::BUILDING, true)),
+        Ok(vec![9175])
+    );
     // allied both ways, the foundation occupies it; built (not desolid) too
     s.relations[3][2] = 0;
-    assert_eq!(occupants(&s, look(0, 80, true)), Ok(vec![9175, 33990]));
+    assert_eq!(
+        occupants(&s, look(0, master_type::BUILDING, true)),
+        Ok(vec![9175, 33990])
+    );
     s.relations[3][2] = 3;
-    assert_eq!(occupants(&s, look(2, 80, false)), Ok(vec![9175, 33990]));
+    assert_eq!(
+        occupants(&s, look(2, master_type::BUILDING, false)),
+        Ok(vec![9175, 33990])
+    );
     // a building from state 3 on, any object from state 7 on, passes
-    assert_eq!(occupants(&s, look(3, 80, false)), Ok(vec![9175]));
-    assert_eq!(occupants(&s, look(6, 70, false)), Ok(vec![9175, 33990]));
-    assert_eq!(occupants(&s, look(7, 70, false)), Ok(vec![9175]));
+    assert_eq!(
+        occupants(&s, look(3, master_type::BUILDING, false)),
+        Ok(vec![9175])
+    );
+    assert_eq!(
+        occupants(&s, look(6, master_type::COMBAT, false)),
+        Ok(vec![9175, 33990])
+    );
+    assert_eq!(
+        occupants(&s, look(7, master_type::COMBAT, false)),
+        Ok(vec![9175])
+    );
     // the view does not look at it: it counts
     assert_eq!(
         s.footprint_occupants(10028, &house, true, &BTreeMap::new()),
@@ -1255,7 +1277,7 @@ const fn seer_in(state: u8) -> crate::vision::visibility::Seer {
         building: None,
         umv: 0,
         capture: 0,
-        kind: 70,
+        kind: master_type::COMBAT,
     }
 }
 

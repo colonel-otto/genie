@@ -204,7 +204,7 @@ pub struct Master {
     /// The master's id.
     pub id: MasterId,
     /// The master's type (`+0x8`): 70 for a combat unit, 80 (`'P'`) for a building.
-    pub kind: u8,
+    pub kind: MasterKind,
     /// `+0x158`, the `.dat`'s `copy_id`: the master a garrison order asks a building about
     /// (`FUN_141621220`).
     pub copy_id: Option<MasterId>,
@@ -572,10 +572,12 @@ pub mod class;
 mod class_id;
 pub mod ids;
 mod master_id;
+mod master_kind;
 pub mod master_type;
 
 pub use self::class_id::ClassId;
 pub use self::master_id::MasterId;
+pub use self::master_kind::MasterKind;
 
 #[cfg(test)]
 mod tests;

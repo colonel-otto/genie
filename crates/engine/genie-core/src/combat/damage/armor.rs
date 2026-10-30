@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::combat::damage::{Armored, Attacker, Victim, charge_damage, charge_works};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
@@ -77,7 +78,7 @@ pub(super) fn weapon_armor(
     a: &Armored,
     class: i16,
     attacker: &Attacker,
-    kind: u8,
+    kind: MasterKind,
     own_class: ClassId,
     state: u8,
 ) -> i16 {
@@ -105,7 +106,7 @@ pub(super) fn weapon_armor(
 /// [`armor_damage`]'s charge test of the attacker's weapon against the victim (its class
 /// `own_class`, type `kind`): the charge works on it ([`charge_works`]), its type is 1 or 3 and
 /// it is full.
-pub(super) fn charges(attacker: &Attacker, own_class: ClassId, kind: u8) -> bool {
+pub(super) fn charges(attacker: &Attacker, own_class: ClassId, kind: MasterKind) -> bool {
     charge_works(
         attacker.charge_target,
         attacker.charge_type,

@@ -445,7 +445,10 @@ pub(super) fn siege_chooses(me: &Attacker, s: &Seeker, t: &Target) -> bool {
             return TREBUCHET_TARGETS.contains(&t.class);
         }
     }
-    if SIEGE_BUILDING_MASTERS.contains(&me.master) && s.target != -1 && s.target_kind == Some(80) {
+    if SIEGE_BUILDING_MASTERS.contains(&me.master)
+        && s.target != -1
+        && s.target_kind == Some(BUILDING)
+    {
         return priority == 1 || priority & 0xfc != 0;
     }
     priority != 3 || PRIORITY_3_CLASSES.contains(&t.class)

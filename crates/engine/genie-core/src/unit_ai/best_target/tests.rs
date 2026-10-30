@@ -1,6 +1,7 @@
 use super::*;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 use crate::players::PlayerId;
 use crate::test_ids::master_id;
 use crate::unit_ai::best_target::choice::{add_extra, kept_by_owner_and_class, may_attack};
@@ -202,7 +203,7 @@ fn soldier() -> Searcher {
         action: None,
         master: master_id(74),
         class: Some(class::CLASS_6),
-        kind: 70,
+        kind: master_type::COMBAT,
         attack_priority: 1,
         can_move: true,
         sight: 12.0,
@@ -222,7 +223,7 @@ fn enemy(id: i32, class: ClassId, distance: f32, hp: f32) -> (Thing, Candidate) 
             has_ai: true,
             master: master_id(4),
             class,
-            kind: 70,
+            kind: master_type::COMBAT,
             targetable: true,
             attackable: true,
             distance,
@@ -528,7 +529,7 @@ fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_
         (false, vec!['a', 'f', 'n'])
     );
     let building = Searcher {
-        kind: 80,
+        kind: master_type::BUILDING,
         ..soldier()
     };
     assert_eq!(checked(&building, &thing, 4, &[]), (true, vec!['a']));

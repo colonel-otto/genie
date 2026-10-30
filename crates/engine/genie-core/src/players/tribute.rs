@@ -128,6 +128,7 @@ mod tests {
     use super::*;
     use crate::objects::masters::class;
     use crate::objects::masters::ids;
+    use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
     use crate::test_ids::player_id;
     use crate::world::Player;
@@ -178,7 +179,7 @@ mod tests {
         );
         let masters = Masters::new([Master {
             id: ids::MARKET,
-            kind: 80,
+            kind: master_type::BUILDING,
             class: class::BUILDING,
             ..Master::default()
         }]);

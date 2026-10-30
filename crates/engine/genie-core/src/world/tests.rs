@@ -317,7 +317,7 @@ pub(crate) fn builder_masters() -> Masters {
     };
     let villager = |id, group, tasks: Vec<Task>| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         task_by_group: group,
         radius: [0.2, 0.2],
@@ -365,7 +365,7 @@ pub(crate) fn builder_masters() -> Masters {
         villager(VILLAGER_FEMALE, 2, base()),
         Master {
             id: ids::HOUSE,
-            kind: 80,
+            kind: BUILDING,
             class: class::BUILDING,
             task_by_group: 0,
             radius: [1.0, 1.0],
@@ -454,7 +454,7 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
     use crate::math::game_vector::GameVector;
     let master = |id, class| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class,
         ..Master::default()
     };
@@ -560,7 +560,7 @@ fn a_flare_at_a_point_stands_on_the_ground() {
     }
     let flare = Master {
         id: master_id(274),
-        kind: crate::objects::masters::master_type::ANIMATED,
+        kind: master_type::ANIMATED,
         standing_sprite: -1,
         ..Master::default()
     };
@@ -591,7 +591,7 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
     placeable(&mut t);
     let flare = Master {
         id: master_id(112),
-        kind: crate::objects::masters::master_type::ANIMATED,
+        kind: master_type::ANIMATED,
         standing_sprite: -1,
         storage: vec![(12, 1.0, 0)],
         ..Master::default()
@@ -832,7 +832,7 @@ fn a_pasture_counts_each_attempt_and_shares_its_food() {
 #[test]
 fn a_dying_livestock_shows_its_dying_sprite() {
     for (factor, speed) in [(0.0, 0.737), (2.0, 1.474)] {
-        let u = dying_animal(crate::objects::masters::master_type::MOVING, factor);
+        let u = dying_animal(master_type::MOVING, factor);
         assert_eq!(u.sprite.map(|s| s.graphic.id), Some(13171));
         assert_eq!(u.life.state, 4);
         assert_eq!(u.body.mover().map(|m| m.stats.speed), Some(speed));
@@ -843,7 +843,7 @@ fn a_dying_livestock_shows_its_dying_sprite() {
 /// speed factor `factor`) running at 1.4003 when it dies, two updates later (the deer 9655 of
 /// MarvinBlue/426048731, a combat object, likewise in update 3147: the Gaia pin of
 /// `oracle_snapshots`).
-fn dying_animal(kind: u8, factor: f32) -> Unit {
+fn dying_animal(kind: MasterKind, factor: f32) -> Unit {
     let mut t = pasture_game(
         Position::new(20.0, 20.0, 0.0),
         1.0,
@@ -861,10 +861,7 @@ fn dying_animal(kind: u8, factor: f32) -> Unit {
     let _ = t.graphics.insert(13171, dying);
     for m in &mut t.masters {
         let mut all: Vec<Master> = m.iter().cloned().collect();
-        for a in all
-            .iter_mut()
-            .filter(|a| a.kind == crate::objects::masters::master_type::MOVING)
-        {
+        for a in all.iter_mut().filter(|a| a.kind == master_type::MOVING) {
             a.kind = kind;
             a.death_sprite = 13171;
             a.max_speed = 0.737;
@@ -896,7 +893,7 @@ fn tended_pasture(at: Position, room: f32) -> World {
     t.players[1].attributes[290] = room;
     let villager = Master {
         id: VILLAGER_MALE,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         radius: [0.2, 0.2],
         ..Master::default()
@@ -1114,7 +1111,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
     );
     let master = |id, auto_gather, gather_group| Master {
         id,
-        kind: 10,
+        kind: master_type::STATIC,
         auto_gather,
         gather_group,
         ..Master::default()
@@ -1212,7 +1209,7 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
     );
     let master = |id, gather_group| Master {
         id,
-        kind: 10,
+        kind: master_type::STATIC,
         auto_gather: true,
         gather_group,
         ..Master::default()
@@ -1272,7 +1269,7 @@ fn a_new_resource_joins_the_lists_of_the_players_that_explored_its_tile() {
     );
     let master = |id, auto_gather| Master {
         id,
-        kind: 30,
+        kind: master_type::MOVING,
         auto_gather,
         gather_group: 2,
         ..Master::default()
@@ -2477,14 +2474,14 @@ pub(crate) fn forage_world() -> World {
         };
         let bush = Master {
             id: master_id(59),
-            kind: 30,
+            kind: master_type::MOVING,
             class: class::CLASS_7,
             radius: [0.5, 0.5],
             ..Master::default()
         };
         let centre = Master {
             id: ids::TOWN_CENTRE,
-            kind: 80,
+            kind: BUILDING,
             class: class::BUILDING,
             radius: [2.0, 2.0],
             ..Master::default()
@@ -2927,7 +2924,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             });
         let farm = Master {
             id: ids::FARM,
-            kind: 80,
+            kind: BUILDING,
             class: class::FARM,
             radius: [1.5, 1.5],
             ..Master::default()
@@ -3210,7 +3207,7 @@ fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
         for masters in &mut t.masters {
             for id in [83, 118, 120] {
                 if let Some(m) = masters.get_mut(master_id(id)) {
-                    (m.kind, m.hit_points, m.regeneration) = (70, 25, 20.0);
+                    (m.kind, m.hit_points, m.regeneration) = (master_type::COMBAT, 25, 20.0);
                 }
             }
         }
@@ -3383,7 +3380,7 @@ fn cart_world() -> World {
         (bush.auto_gather, bush.gather_group) = (true, 1);
         let cart = Master {
             id: ids::MASTER_1808,
-            kind: 80,
+            kind: BUILDING,
             class: class::BUILDING,
             radius: [0.5, 0.5],
             line_of_sight: 4.0,
@@ -3564,7 +3561,7 @@ fn a_formation_s_units_on_a_new_foundation_move_off_together() {
 fn a_built_castle_s_death_takes_its_headroom_and_its_count() {
     let castle = Master {
         id: ids::CASTLE,
-        kind: 80,
+        kind: BUILDING,
         class: class::BUILDING,
         radius: [2.0, 2.0],
         hit_points: 4800,
@@ -3677,7 +3674,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
     );
     let master = |id, obstruction_class| Master {
         id,
-        kind: 80,
+        kind: BUILDING,
         class: class::BUILDING,
         radius: [1.0, 1.0],
         tall: true,
@@ -3734,14 +3731,14 @@ pub(crate) fn hunt_world() -> World {
         };
         let deer = Master {
             id: master_id(65),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::PREY,
             radius: [0.4, 0.4],
             ..Master::default()
         };
         let centre = Master {
             id: ids::TOWN_CENTRE,
-            kind: 80,
+            kind: BUILDING,
             class: class::BUILDING,
             radius: [2.0, 2.0],
             ..Master::default()
@@ -4317,7 +4314,7 @@ fn shepherd_world(x: f32) -> World {
     for masters in &mut t.masters {
         let sheep = Master {
             id: master_id(594),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::LIVESTOCK,
             radius: [0.2, 0.2],
             moving: Some(crate::gathering::hunt::tests::walker().stats),
@@ -4438,7 +4435,7 @@ fn lumber_world(near: f32) -> World {
     for masters in &mut t.masters {
         let tree = Master {
             id: master_id(349),
-            kind: 10,
+            kind: master_type::STATIC,
             class: class::TREE,
             radius: [0.5, 0.5],
             auto_gather: true,
@@ -5171,7 +5168,7 @@ fn livestock_enter_world() -> World {
     let mut t = enter_world(vec![], 5);
     let sheep = Master {
         id: master_id(594),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::LIVESTOCK,
         radius: [0.2, 0.2],
         tasks: vec![crate::objects::masters::Task {
@@ -5854,7 +5851,7 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
         };
         let deer = Master {
             id: master_id(65),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::PREY,
             radius: [0.4, 0.4],
             ..Master::default()
@@ -6099,7 +6096,7 @@ fn an_unmodelled_action_stops_its_player_unless_the_object_dies_first() {
 fn farm_master() -> Master {
     Master {
         id: ids::FARM,
-        kind: 80,
+        kind: BUILDING,
         class: class::FARM,
         work_rate: 0.4,
         capacity: 15,
@@ -6149,7 +6146,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
         Masters::default(),
         Masters::new([Master {
             id: master_id(594),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::LIVESTOCK,
             ..Master::default()
         }]),
@@ -6180,7 +6177,7 @@ fn life_part(
     // the remains and death spawn the tests name (99, a master the game does not have)
     let left = Master {
         id: master_id(99),
-        kind: 20,
+        kind: master_type::ANIMATED,
         ..Master::default()
     };
     let ms = &mut t.masters[1];
@@ -6258,7 +6255,7 @@ fn a_dying_object_gives_back_its_storage_of_kinds_2_and_16() {
 /// player lacks fails.
 #[test]
 fn a_dead_object_leaves_its_remains_and_its_death_spawn() {
-    let ended = |kind: u8, remains: Option<MasterId>| {
+    let ended = |kind: MasterKind, remains: Option<MasterId>| {
         life_part(
             |m, v| {
                 m.kind = kind;
@@ -6269,11 +6266,11 @@ fn a_dead_object_leaves_its_remains_and_its_death_spawn() {
     };
     let v = forage_world().players[1].objects[0].clone();
     assert_eq!(
-        ended(70, Some(master_id(99))).unwrap().1,
+        ended(master_type::COMBAT, Some(master_id(99))).unwrap().1,
         [(99, v.position())]
     );
-    assert_eq!(ended(70, None).unwrap().1, []);
-    assert_eq!(ended(80, Some(master_id(99))).unwrap().1, []);
+    assert_eq!(ended(master_type::COMBAT, None).unwrap().1, []);
+    assert_eq!(ended(BUILDING, Some(master_id(99))).unwrap().1, []);
     let spawned = life_part(
         |m, _| m.death_spawns = [Some(master_id(99)), None],
         Unit::death_spawn_comes,
@@ -6296,7 +6293,7 @@ fn a_dead_object_leaves_its_remains_and_its_death_spawn() {
 fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
     let master = Master {
         id: master_id(594),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::LIVESTOCK,
         ..Master::default()
     };
@@ -6452,7 +6449,7 @@ fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
     );
     t.masters = vec![Masters::new([Master {
         id: master_id(12),
-        kind: 80,
+        kind: BUILDING,
         class: class::BUILDING,
         hit_points: 550,
         building: Some(crate::objects::masters::BuildingMaster::default()),
@@ -6804,7 +6801,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
 fn gate_world() -> World {
     let gate_master = |id: i16, transform_unit: i16, height| Master {
         id: master_id(id),
-        kind: 80,
+        kind: BUILDING,
         class: class::GATE,
         height,
         hit_points: 1650,
@@ -6823,7 +6820,7 @@ fn gate_world() -> World {
     };
     let soldier = Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         ..Master::default()
     };
@@ -7105,7 +7102,7 @@ fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
     let mut t = one_player(vec![live(7), missile], [0.0; 4]);
     t.masters = vec![Masters::new([Master {
         id: master_id(54),
-        kind: 60,
+        kind: master_type::MISSILE,
         recyclable: true,
         ..Master::default()
     }])];
@@ -7145,7 +7142,7 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
     // of one, made in 2 seconds
     let trained = |id, time| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         available: true,
         trained_at: vec![ids::TOWN_CENTRE],
         train_locations: vec![crate::objects::masters::TrainLocation {
@@ -7164,7 +7161,7 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
     };
     let centre = Master {
         id: ids::TOWN_CENTRE,
-        kind: 80,
+        kind: BUILDING,
         work_rate: 1.0,
         ..Master::default()
     };
@@ -7318,7 +7315,7 @@ fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
         let mut t = one_player(objects, [200.0; 4]);
         let master = Master {
             id: master_id(1649),
-            kind: 80,
+            kind: BUILDING,
             class: class::BUILDING,
             ..Master::default()
         };
@@ -7850,7 +7847,7 @@ fn hands_masters() -> Vec<Masters> {
     let table = |p: u8| {
         let archer = Master {
             id: master_id(4),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::CLASS_0,
             line_of_sight: 6.0 + f32::from(p),
             fog_visibility: p,
@@ -7861,14 +7858,18 @@ fn hands_masters() -> Vec<Masters> {
         };
         let dead = Master {
             id: master_id(3),
-            kind: if p == 1 { 25 } else { 10 },
+            kind: if p == 1 {
+                master_type::DOPPELGANGER
+            } else {
+                master_type::STATIC
+            },
             class: class::CLASS_0,
             hit_points: 9 + i16::from(p),
             ..Master::default()
         };
         let sheep = Master {
             id: master_id(705),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::LIVESTOCK,
             line_of_sight: 2.0 + f32::from(p),
             fog_visibility: p,
@@ -7929,7 +7930,7 @@ fn hands_world(id: i32, p: PlayerId, class: ClassId, master: MasterId, los: f32)
             building: None,
             umv: 0,
             capture: capture_kind(p, class, master),
-            kind: 70,
+            kind: master_type::COMBAT,
         },
     );
     let _ = v.sight_on(id, at, [0.2, 0.2], false, false);
@@ -8074,7 +8075,7 @@ fn owner_search_unit(s: &mut Spatial, id: i32, p: PlayerId, x: f32) {
             building: None,
             umv: 0,
             capture: capture_kind(p, class::CLASS_0, master_id(4)),
-            kind: 70,
+            kind: master_type::COMBAT,
         },
     );
     s.insert(
@@ -8527,11 +8528,11 @@ fn teardown_world() -> World {
         ..Master::default()
     };
     let table = Masters::new([
-        master(master_id(705), 70, class::LIVESTOCK),
-        master(master_id(96), 70, class::CLASS_11),
-        master(VILLAGER_MALE, 70, class::VILLAGER),
-        master(ids::TOWN_CENTRE, 80, class::TOWER),
-        master(ids::HOUSE, 80, class::BUILDING),
+        master(master_id(705), master_type::COMBAT, class::LIVESTOCK),
+        master(master_id(96), master_type::COMBAT, class::CLASS_11),
+        master(VILLAGER_MALE, master_type::COMBAT, class::VILLAGER),
+        master(ids::TOWN_CENTRE, BUILDING, class::TOWER),
+        master(ids::HOUSE, BUILDING, class::BUILDING),
     ]);
     t.masters = vec![table.clone(), table.clone(), table];
     t
@@ -8652,7 +8653,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
 fn a_built_building_s_storage_leaves_its_owner_and_its_store() {
     let master = Master {
         id: ids::TOWN_CENTRE,
-        kind: 80,
+        kind: BUILDING,
         storage: vec![
             (4, 5.0, 4),
             (-1, 5.0, 4),
@@ -8826,10 +8827,10 @@ fn deaths_world() -> World {
         ..Master::default()
     };
     let table = Masters::new([
-        master(master_id(349), 15, class::TREE),
-        master(master_id(48), 70, class::PREY),
-        master(VILLAGER_MALE, 70, class::VILLAGER),
-        master(ids::HOUSE, 80, class::BUILDING),
+        master(master_id(349), master_type::TREE, class::TREE),
+        master(master_id(48), master_type::COMBAT, class::PREY),
+        master(VILLAGER_MALE, master_type::COMBAT, class::VILLAGER),
+        master(ids::HOUSE, BUILDING, class::BUILDING),
     ]);
     t.masters = vec![table.clone(), table];
     t
@@ -8930,7 +8931,7 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
     for m in &mut t.masters {
         *m = Masters::new(m.iter().cloned().chain([Master {
             id: master_id(349),
-            kind: 15,
+            kind: master_type::TREE,
             class: class::TREE,
             ..Master::default()
         }]));
@@ -9139,7 +9140,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     let masters = Masters::new([
         Master {
             id: VILLAGER_MALE,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::VILLAGER,
             radius: [0.2, 0.2],
             drop_sites: vec![ids::TOWN_CENTRE],
@@ -9150,7 +9151,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         },
         Master {
             id: ids::TOWN_CENTRE,
-            kind: 80,
+            kind: BUILDING,
             class: class::TOWER,
             radius: [2.0, 2.0],
             ..Master::default()
@@ -9387,7 +9388,7 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
     );
     let building = |id: i16, stack_unit: i16| Master {
         id: master_id(id),
-        kind: 80,
+        kind: BUILDING,
         class: class::BUILDING,
         building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: opt_master(stack_unit),
@@ -9400,7 +9401,7 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
         building(70, -1),
         Master {
             id: VILLAGER_MALE,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::VILLAGER,
             ..Master::default()
         },
@@ -9456,11 +9457,11 @@ fn only_a_static_object_let_go_by_its_last_worker_goes_to_sleep() {
         released(&mut u, kind, false, by).unwrap();
         (u.workers, u.life.goto_sleep)
     };
-    assert_eq!(let_go(10, 1.0), (0, true));
-    assert_eq!(let_go(15, 1.0), (0, true));
-    assert_eq!(let_go(20, 1.0), (0, false));
-    assert_eq!(let_go(25, 1.0), (0, false));
-    assert_eq!(let_go(10, f32::NAN), (0, false));
+    assert_eq!(let_go(master_type::STATIC, 1.0), (0, true));
+    assert_eq!(let_go(master_type::TREE, 1.0), (0, true));
+    assert_eq!(let_go(master_type::ANIMATED, 1.0), (0, false));
+    assert_eq!(let_go(master_type::DOPPELGANGER, 1.0), (0, false));
+    assert_eq!(let_go(master_type::STATIC, f32::NAN), (0, false));
     let mut t = deaths_world();
     let mut tree = t.players[0].objects.remove(0).unwrap();
     tree.workers = 2;
@@ -9539,14 +9540,14 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
 fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
     let master = |id, class, los| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class,
         line_of_sight: los,
         radius: [0.2, 0.2],
         ..Master::default()
     };
     let workshop = Master {
-        kind: 80,
+        kind: BUILDING,
         build_time: 10,
         storage: vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)],
         obstruction_type: 2,
@@ -9661,7 +9662,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             building: None,
             umv: 0,
             capture: 0,
-            kind: 70,
+            kind: master_type::COMBAT,
         },
     );
     let r = v.registry.as_mut().unwrap();
@@ -9708,7 +9709,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
 fn a_gaia_torch_goes_to_the_one_player_near_it() {
     let master = |id, class, los| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class,
         line_of_sight: los,
         radius: [0.2, 0.2],
@@ -9789,7 +9790,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
             building: None,
             umv: 0,
             capture: 0,
-            kind: 70,
+            kind: master_type::COMBAT,
         },
     );
     let r = v.registry.as_mut().unwrap();
@@ -9866,7 +9867,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
     for m in &mut masters {
         *m = Masters::new(m.iter().cloned().chain([Master {
             id: VILLAGER_MALE,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::VILLAGER,
             radius: [0.2, 0.2],
             ..Master::default()
@@ -9908,7 +9909,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
             building: None,
             umv: 0,
             capture: 0,
-            kind: 70,
+            kind: master_type::COMBAT,
         },
     );
     t.tick(100);
@@ -10379,7 +10380,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     );
     let castle = Master {
         id: ids::CASTLE,
-        kind: 80,
+        kind: BUILDING,
         class: class::BUILDING,
         cost: vec![(2, 650, true), (0, 10, false)],
         weapons: vec![(3, 11)],
@@ -10387,7 +10388,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     };
     let annex = Master {
         id: master_id(1),
-        kind: 80,
+        kind: BUILDING,
         class: class::BUILDING,
         ..Master::default()
     };
@@ -10496,7 +10497,7 @@ fn a_hit_wakes_a_sleeping_object_only_below_1_hit_point() {
         );
         let master = Master {
             id: master_id(349),
-            kind: 10,
+            kind: master_type::STATIC,
             class: class::TREE,
             ..Master::default()
         };
@@ -10530,12 +10531,20 @@ fn a_trebuchet_is_a_master_of_class_51_or_54_with_a_weapon() {
         weapons,
         ..Master::default()
     };
-    assert!(is_trebuchet(&m(80, class::CLASS_54, vec![(4, 200)])));
-    assert!(is_trebuchet(&m(80, class::CLASS_51, vec![(4, 1)])));
-    assert!(is_trebuchet(&m(70, class::CLASS_54, vec![(4, 1)])));
-    assert!(!is_trebuchet(&m(80, class::CLASS_51, vec![])));
-    assert!(!is_trebuchet(&m(60, class::CLASS_54, vec![(4, 1)])));
-    assert!(!is_trebuchet(&m(80, class::BUILDING, vec![(3, 11)])));
+    assert!(is_trebuchet(&m(BUILDING, class::CLASS_54, vec![(4, 200)])));
+    assert!(is_trebuchet(&m(BUILDING, class::CLASS_51, vec![(4, 1)])));
+    assert!(is_trebuchet(&m(
+        master_type::COMBAT,
+        class::CLASS_54,
+        vec![(4, 1)]
+    )));
+    assert!(!is_trebuchet(&m(BUILDING, class::CLASS_51, vec![])));
+    assert!(!is_trebuchet(&m(
+        master_type::MISSILE,
+        class::CLASS_54,
+        vec![(4, 1)]
+    )));
+    assert!(!is_trebuchet(&m(BUILDING, class::BUILDING, vec![(3, 11)])));
     let paid = Master {
         cost: vec![(1, 200, true), (3, 200, true), (-1, 5, true), (2, 7, false)],
         ..Master::default()
@@ -10653,7 +10662,7 @@ fn set_gather_state_leaves_a_building_that_takes_no_gather_point_and_a_gone_obje
     let mut t = one_player(vec![house], [200.0; 4]);
     t.masters = vec![Masters::new([Master {
         id: ids::HOUSE,
-        kind: 80,
+        kind: BUILDING,
         ..Master::default()
     }])];
     let set = |state| {
@@ -10740,17 +10749,17 @@ fn set_gather_point_takes_a_building_that_trains_without_garrisoning() {
     t.masters = vec![Masters::new([
         Master {
             id: master_id(12),
-            kind: 80,
+            kind: BUILDING,
             ..Master::default()
         },
         Master {
             id: ids::HOUSE,
-            kind: 80,
+            kind: BUILDING,
             ..Master::default()
         },
         Master {
             id: master_id(74),
-            kind: 70,
+            kind: master_type::COMBAT,
             available: true,
             trained_at: vec![master_id(12)],
             ..Master::default()
@@ -10802,7 +10811,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
     let mut t = one_player(vec![tc], [200.0; 4]);
     t.masters = vec![Masters::new([Master {
         id: ids::TOWN_CENTRE,
-        kind: 80,
+        kind: BUILDING,
         garrison: 15,
         ..Master::default()
     }])];
@@ -10956,7 +10965,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
     use crate::map::spatial::Placed;
     let petard = Master {
         id: master_id(706),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_35,
         hit_points: 45,
         weapons: vec![(4, 100)],
@@ -10968,7 +10977,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
     };
     let wall = Master {
         id: master_id(117),
-        kind: 80,
+        kind: BUILDING,
         class: class::WALL,
         hit_points: 1800,
         armors: vec![(4, 0)],
@@ -11020,7 +11029,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
     );
     let tree = Master {
         id: master_id(1250),
-        kind: 10,
+        kind: master_type::STATIC,
         class: class::TREE,
         hit_points: 500,
         ..Master::default()
@@ -11137,7 +11146,7 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
     };
     let gate = |id| Master {
         id,
-        kind: 80,
+        kind: BUILDING,
         class: class::GATE,
         hit_points: 1650,
         standing_sprite: 1751,
@@ -11240,7 +11249,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
     };
     let master = |id, death_sprite, destruction_sprite| Master {
         id,
-        kind: 80,
+        kind: BUILDING,
         class: class::GATE,
         hit_points: 10,
         build_time: 70,
@@ -11363,7 +11372,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
 fn a_unit_regenerated_to_its_most_has_its_armor_back() {
     let berserk = Master {
         id: master_id(692),
-        kind: 70,
+        kind: master_type::COMBAT,
         hit_points: 54,
         regeneration: 20.0,
         ..Master::default()
@@ -11397,7 +11406,7 @@ fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
     use crate::objects::hit_points::regeneration_rate;
     let berserk = Master {
         id: master_id(692),
-        kind: 70,
+        kind: master_type::COMBAT,
         hit_points: 54,
         regeneration: 20.0,
         ..Master::default()
@@ -11441,7 +11450,7 @@ fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
     let gate = Master {
         hit_points: 1650,
         regeneration: -1000.0,
-        kind: 80,
+        kind: BUILDING,
         ..Master::default()
     };
     let mut g = unit(1650.0);
@@ -11532,7 +11541,7 @@ fn building_short_of_its_build_time_dies(state: u8) {
     };
     let barracks = Master {
         id: master_id(12),
-        kind: 80,
+        kind: BUILDING,
         class: class::BUILDING,
         standing_sprite: 207,
         death_sprite: 2573,
@@ -12045,7 +12054,7 @@ fn on_side<R>(
                 held: -1,
                 top_action: None,
                 master: ids::ID_448,
-                kind: 70,
+                kind: master_type::COMBAT,
                 class: Some(class::CLASS_47),
                 attack_priority: 0,
                 missile: None,
@@ -12103,7 +12112,7 @@ fn scout_attack_on(
     ]);
     let scout = Master {
         id: ids::ID_448,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_47,
         standing_sprite: 300,
         attack_sprite: 301,
@@ -12113,7 +12122,7 @@ fn scout_attack_on(
     };
     let wolf = Master {
         id: master_id(126),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::PREDATOR,
         ..Master::default()
     };
@@ -12229,7 +12238,7 @@ fn attack_by(
     ]);
     let scout = Master {
         id: ids::ID_448,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_47,
         standing_sprite: 300,
         attack_sprite: 301,
@@ -12239,7 +12248,7 @@ fn attack_by(
     };
     let wolf = Master {
         id: master_id(126),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::PREDATOR,
         ..Master::default()
     };
@@ -12331,7 +12340,7 @@ fn attack_by(
 fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
     let villager = |id, storage| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         task_by_group: 1,
         hit_points: 25,
@@ -12384,7 +12393,7 @@ fn help_view<R>(
 ) -> R {
     let scout = Master {
         id: ids::ID_448,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_47,
         weapon_range: 1.0,
         weapons: vec![(4, 3)],
@@ -12392,7 +12401,7 @@ fn help_view<R>(
     };
     let wolf = Master {
         id: master_id(126),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::PREDATOR,
         combat_level: 4,
         ..Master::default()
@@ -13451,7 +13460,7 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
 fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
     let archer = Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_0,
         hit_points: 30,
         radius: [0.2, 0.2],
@@ -13469,7 +13478,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
     };
     let arrow = Master {
         id: master_id(363),
-        kind: 60,
+        kind: master_type::MISSILE,
         class: class::WALL,
         hit_points: 1,
         radius: [0.1, 0.1],
@@ -13492,7 +13501,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
     };
     let deer = Master {
         id: master_id(65),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::PREDATOR,
         hit_points: 5,
         radius: [0.2, 0.2],
@@ -13586,7 +13595,7 @@ fn a_hit_s_flare_is_made_where_the_volley_runs() {
     let mut t = archer_world(100, 1, 0.0);
     let flare = Master {
         id: master_id(112),
-        kind: crate::objects::masters::master_type::ANIMATED,
+        kind: master_type::ANIMATED,
         standing_sprite: -1,
         storage: vec![(12, 1.0, 0)],
         ..Master::default()
@@ -14775,7 +14784,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
             building: None,
             umv: 0,
             capture: 0,
-            kind: 70,
+            kind: master_type::COMBAT,
         };
         sight.add_seer(id, deer);
     }

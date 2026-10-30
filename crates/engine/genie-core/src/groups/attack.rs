@@ -12,6 +12,7 @@ use crate::math::fmath::{BVector, below_or_unordered};
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
@@ -63,7 +64,7 @@ const CONVERSION_RANGE_ATTRIBUTE: usize = 280;
 const NO_RANGE: f32 = -1.0;
 /// A member of this type or above works at its weapon's range when the filter names no task
 /// (`FUN_14102bbd0`: above `0x31`).
-const RANGED_MEMBER_KIND: u8 = 0x32;
+const RANGED_MEMBER_KIND: MasterKind = MasterKind::of_data(0x32);
 
 /// What a group's command on an attack task is told besides the target.
 #[derive(Clone, Copy, Debug, PartialEq)]

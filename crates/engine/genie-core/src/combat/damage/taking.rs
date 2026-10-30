@@ -14,6 +14,7 @@ use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::master_type::MISSILE;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::players::PlayerId;
 
@@ -38,8 +39,8 @@ pub fn take(
     blast_taken: f32,
 ) -> Result<(), GenieError> {
     match t.kind {
-        70 => take_unit(t, src, others, weapons, factor, blast_taken),
-        50 | 60 => damage(t, src, weapons, factor, blast_taken),
+        COMBAT => take_unit(t, src, others, weapons, factor, blast_taken),
+        RGE_COMBAT | MISSILE => damage(t, src, weapons, factor, blast_taken),
         BUILDING => take_building(t, src, others, weapons, factor, true, blast_taken).map(|_| ()),
         _ => {
             take_static(t, &src.source, weapons, factor);
@@ -179,7 +180,7 @@ pub(super) const DAMAGED_LATELY: u8 = 0x3c;
 /// `FUN_1415c6510`, the kill bonus of the attacker `src` (type 40 and up) for an object it
 /// killed: its master's tasks of action type 0x9a pay their owner's attributes, research
 /// technologies and run effects (not modelled); an attacker without one does nothing.
-pub(super) const fn kill_bonus(src: &Attacker) -> Result<(), GenieError> {
+pub(super) fn kill_bonus(src: &Attacker) -> Result<(), GenieError> {
     if ACTION <= src.kind && src.kill_bonus_tasks {
         return Err(GenieError::unsupported(
             "an attacker's kill bonus task (action type 0x9a)",

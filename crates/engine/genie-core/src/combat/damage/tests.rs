@@ -4,35 +4,37 @@
 fn a_building_s_relics_scale_its_elevation_factor() {
     let up = 1.25_f32;
     assert_eq!(
-        building_elevation_factor(up, [0, 0], 70, [5, 5]).to_bits(),
+        building_elevation_factor(up, [0, 0], master_type::COMBAT, [5, 5]).to_bits(),
         up.to_bits()
     );
     assert_eq!(
-        building_elevation_factor(up, [3, 1], 70, [0, 0]).to_bits(),
+        building_elevation_factor(up, [3, 1], master_type::COMBAT, [0, 0]).to_bits(),
         (up * SPECIFIC_RELIC_BOOST).to_bits()
     );
     assert_eq!(
-        building_elevation_factor(up, [3, 0], 70, [0, 0]).to_bits(),
+        building_elevation_factor(up, [3, 0], master_type::COMBAT, [0, 0]).to_bits(),
         (up * RELIC_BOOST).to_bits()
     );
     assert_eq!(
-        building_elevation_factor(up, [3, 0], 80, [0, 2]).to_bits(),
+        building_elevation_factor(up, [3, 0], BUILDING, [0, 2]).to_bits(),
         (up * RELIC_BOOST / SPECIFIC_RELIC_BOOST).to_bits()
     );
     assert_eq!(
-        building_elevation_factor(up, [0, 0], 80, [1, -1]).to_bits(),
+        building_elevation_factor(up, [0, 0], BUILDING, [1, -1]).to_bits(),
         (up / RELIC_BOOST).to_bits()
     );
     // the counts compare signed
     assert_eq!(
-        building_elevation_factor(up, [-1, -1], 80, [-1, -1]).to_bits(),
+        building_elevation_factor(up, [-1, -1], BUILDING, [-1, -1]).to_bits(),
         up.to_bits()
     );
 }
 
 use super::*;
+use crate::combat::damage::armor::class_armor;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::test_ids::master_id;
 
@@ -40,7 +42,7 @@ fn sheep() -> Victim {
     Victim {
         id: 9520,
         hp: 14.0,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::LIVESTOCK,
         master_id: master_id(705),
         player: PlayerId::new(1),
@@ -60,14 +62,14 @@ fn hunter() -> Victim {
     Victim {
         id: 10029,
         hp: 25.0,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         master_id: master_id(592),
         player: PlayerId::new(1),
         position: Position::new(10.5, 11.0, 0.0),
         source: Attacker {
             id: 10029,
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::VILLAGER,
             master_id: master_id(592),
             missile: None,
@@ -117,11 +119,11 @@ fn a_static_object_takes_a_ready_charge_first() {
     let tree = || Victim {
         hp: 100.0,
         class: class::TREE,
-        kind: 10,
+        kind: master_type::STATIC,
         ..Victim::default()
     };
     let charging = Attacker {
-        kind: 70,
+        kind: master_type::COMBAT,
         charge_type: 1,
         charge_target: -1,
         charge: 5.0,
@@ -148,7 +150,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
     let bird = |hp: f32| Victim {
         hp,
         amount: 50.0,
-        kind: 40,
+        kind: master_type::ACTION,
         class: class::CLASS_38,
         goto_sleep: true,
         ..Victim::default()
@@ -227,7 +229,7 @@ fn a_hit_point_share_reads_the_powerups_and_the_master() {
     v.hp = 40.0;
     assert_eq!(v.hp_share(false), 1.0);
     let mut rge = hunter();
-    rge.kind = 50;
+    rge.kind = master_type::RGE_COMBAT;
     rge.hp = 10.0;
     rge.armored.as_mut().unwrap().hp_powerups = [2.0, 5.0];
     assert_eq!((rge.shown_hp(), rge.most_hp()), (10.0, 25.0));
@@ -326,7 +328,7 @@ fn a_combat_object_shows_its_attack_armor_and_range() {
     let mut far = v.clone();
     far.weapons = vec![(13, 6), (11, -2)];
     assert_eq!(shown_attack(&far, &none), 7);
-    far.kind = 50;
+    far.kind = master_type::RGE_COMBAT;
     assert_eq!(shown_attack(&far, &none), 6);
     // the bonus against its attack's target
     v.bonus_tasks = vec![crate::objects::masters::Task {
@@ -365,7 +367,7 @@ fn a_combat_object_shows_its_attack_armor_and_range() {
     v.source.charge = 0.5;
     assert_eq!(shown_attack(&v, &shot), 4);
     assert_eq!(shown_range(&v, &shot), 5.0);
-    v.kind = 50;
+    v.kind = master_type::RGE_COMBAT;
     v.source.charge = 1.0;
     assert_eq!(shown_range(&v, &shot), 4.0);
     // the melee armor: its best of class 4 plus the powerup; a wall foundation none; type 50
@@ -375,7 +377,7 @@ fn a_combat_object_shows_its_attack_armor_and_range() {
     assert_eq!(shown_melee_armor(&a), Ok(2));
     (a.class, a.state) = (class::WALL, 0);
     assert_eq!(shown_melee_armor(&a), Ok(0));
-    a.kind = 50;
+    a.kind = master_type::RGE_COMBAT;
     a.armored.as_mut().unwrap().armors = vec![(3, 5), (11, 7)];
     assert_eq!(shown_melee_armor(&a), Ok(7));
     a.armored.as_mut().unwrap().armors.clear();
@@ -442,15 +444,25 @@ fn a_ready_charge_adds_to_the_first_melee_weapon_and_empties() {
 #[test]
 fn a_charge_target_picks_the_class_groups() {
     // 0: everything but buildings outside classes 51 and 54
-    assert!(charge_works(0, 1, class::CLASS_6, 70));
-    assert!(!charge_works(0, 1, class::BUILDING, 80));
-    assert!(charge_works(0, 1, class::CLASS_51, 70));
+    assert!(charge_works(0, 1, class::CLASS_6, master_type::COMBAT));
+    assert!(!charge_works(0, 1, class::BUILDING, BUILDING));
+    assert!(charge_works(0, 1, class::CLASS_51, master_type::COMBAT));
     // bit 0 infantry (6), bit 8 buildings (3)
-    assert!(charge_works(1, 1, class::CLASS_6, 70));
-    assert!(!charge_works(1, 1, class::CLASS_12, 70));
-    assert!(charge_works(0x100, 1, class::BUILDING, 80));
-    assert!(!charge_works(0x100, 1, ClassId::of_master(99), 70));
-    assert!(charge_works(0x10, -4, ClassId::of_master(99), 70));
+    assert!(charge_works(1, 1, class::CLASS_6, master_type::COMBAT));
+    assert!(!charge_works(1, 1, class::CLASS_12, master_type::COMBAT));
+    assert!(charge_works(0x100, 1, class::BUILDING, BUILDING));
+    assert!(!charge_works(
+        0x100,
+        1,
+        ClassId::of_master(99),
+        master_type::COMBAT
+    ));
+    assert!(charge_works(
+        0x10,
+        -4,
+        ClassId::of_master(99),
+        master_type::COMBAT
+    ));
 }
 
 /// A shield of type 5 spends a charge of 1 on a melee hit; type 4 only on a missile.

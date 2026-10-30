@@ -561,6 +561,7 @@ fn finder_tail<'m>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::MasterKind;
     use crate::test_ids::master_id;
     use crate::unit_ai::task_finder::target_steps::{
         drop_off_finding, garrison_into, repair_finding,
@@ -589,7 +590,7 @@ mod tests {
         }
     }
 
-    fn master(id: MasterId, kind: u8, class: ClassId, tasks: Vec<Task>) -> Master {
+    fn master(id: MasterId, kind: MasterKind, class: ClassId, tasks: Vec<Task>) -> Master {
         Master {
             id,
             kind,
@@ -810,11 +811,11 @@ mod tests {
         let hunt = task(110, class::PREY.get(), -1, 1.0);
         let hunter = Master {
             object_flags: 0x10,
-            ..master(master_id(122), 70, class::VILLAGER, vec![hunt])
+            ..master(master_id(122), COMBAT, class::VILLAGER, vec![hunt])
         };
         let deer = Master {
             storage: vec![(0, 100.0, 1)],
-            ..master(master_id(65), 70, class::PREY, vec![])
+            ..master(master_id(65), COMBAT, class::PREY, vec![])
         };
         let target = |m| TaskTarget {
             state: 2,
@@ -838,7 +839,7 @@ mod tests {
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
         let site = building(&house, PlayerId::new(2), 0);
         let by = |tasks: Vec<Task>| {
-            let builder = master(ids::BUILDER, 70, class::VILLAGER, tasks);
+            let builder = master(ids::BUILDER, COMBAT, class::VILLAGER, tasks);
             find(&builder, (-1, 0.0), &site).map(Option::<&Task>::copied)
         };
         let generic = task(101, -1, -1, 0.0);
@@ -863,7 +864,7 @@ mod tests {
         };
         let lumberjack = master(
             master_id(123),
-            70,
+            COMBAT,
             class::VILLAGER,
             vec![task(101, -1, -1, 1.0), chop],
         );
@@ -907,7 +908,7 @@ mod tests {
             ..building(&house, PlayerId::new(2), 2)
         };
         let by = |tasks: Vec<Task>, t: &TaskTarget<'_>, filter: i16| {
-            let builder = master(ids::BUILDER, 70, class::VILLAGER, tasks);
+            let builder = master(ids::BUILDER, COMBAT, class::VILLAGER, tasks);
             find_with(&builder, t, filter).map(Option::<&Task>::copied)
         };
         let any = task(106, -1, -1, 0.0);
@@ -971,12 +972,12 @@ mod tests {
         let ship = Master {
             object_flags: 1,
             garrison: 5,
-            ..master(master_id(545), 70, class::TRANSPORT, vec![])
+            ..master(master_id(545), COMBAT, class::TRANSPORT, vec![])
         };
         let enter = task(3, class::TRANSPORT.get(), -1, 0.0);
         let villager = master(
             ids::VILLAGER_FEMALE,
-            70,
+            COMBAT,
             class::VILLAGER,
             vec![task(3, 3, -1, 0.0), enter],
         );
@@ -995,7 +996,7 @@ mod tests {
             owner_type: 0,
             ..task(7, class::TRANSPORT.get(), -1, 0.0)
         };
-        let militia = master(master_id(74), 70, class::CLASS_6, vec![attack]);
+        let militia = master(master_id(74), COMBAT, class::CLASS_6, vec![attack]);
         assert_eq!(
             find_with(&militia, &transport(&ship, PlayerId::new(2)), 3),
             Ok(None)
@@ -1027,10 +1028,10 @@ mod tests {
         let ram = Master {
             object_flags: 1,
             garrison: 4,
-            ..master(ids::ID_35, 70, class::SIEGE, vec![])
+            ..master(ids::ID_35, COMBAT, class::SIEGE, vec![])
         };
         let enter = task(3, class::SIEGE.get(), -1, 0.0);
-        let villager = master(ids::VILLAGER_FEMALE, 70, class::VILLAGER, vec![enter]);
+        let villager = master(ids::VILLAGER_FEMALE, COMBAT, class::VILLAGER, vec![enter]);
         assert_eq!(
             find_with(&villager, &transport(&ram, PlayerId::new(2)), 3),
             Ok(Some(&enter))
@@ -1039,7 +1040,7 @@ mod tests {
             find_with(&villager, &transport(&ram, PlayerId::new(2)), -1),
             Ok(None)
         );
-        let infantry = master(master_id(74), 70, class::CLASS_6, vec![enter]);
+        let infantry = master(master_id(74), COMBAT, class::CLASS_6, vec![enter]);
         assert_eq!(
             find_with(&infantry, &transport(&ram, PlayerId::new(2)), -1),
             Ok(Some(&enter))
@@ -1059,7 +1060,7 @@ mod tests {
             owner_type: 2,
             ..task(7, class::BUILDING.get(), -1, 0.0)
         };
-        let militia = master(master_id(74), 70, class::CLASS_6, vec![attack]);
+        let militia = master(master_id(74), COMBAT, class::CLASS_6, vec![attack]);
         assert_eq!(
             find(&militia, (-1, 0.0), &building(&house, PlayerId::new(1), 2)),
             Ok(Some(&attack))
@@ -1083,7 +1084,7 @@ mod tests {
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
         let villager = master(
             ids::VILLAGER_MALE,
-            70,
+            COMBAT,
             class::VILLAGER,
             vec![task(0x87, -1, -1, 0.0)],
         );
@@ -1099,7 +1100,7 @@ mod tests {
         );
         let ship = Master {
             object_flags: 1,
-            ..master(master_id(545), 70, class::TRANSPORT, vec![])
+            ..master(master_id(545), COMBAT, class::TRANSPORT, vec![])
         };
         assert_eq!(
             finder_head(
@@ -1113,11 +1114,11 @@ mod tests {
         );
         let deer = Master {
             storage: vec![(0, 100.0, 0)],
-            ..master(master_id(65), 70, class::PREY, vec![])
+            ..master(master_id(65), COMBAT, class::PREY, vec![])
         };
         let wolf = Master {
             object_flags: 0x10,
-            ..master(master_id(126), 70, class::PREDATOR, vec![])
+            ..master(master_id(126), COMBAT, class::PREDATOR, vec![])
         };
         let prey = building(&deer, PlayerId::new(0), 2);
         assert_eq!(
@@ -1136,7 +1137,7 @@ mod tests {
             ),
             Ok(Finding::Answer(Some(&villager.tasks[0])))
         );
-        let monk = master(ids::ID_448, 70, class::MONK, vec![]);
+        let monk = master(ids::ID_448, COMBAT, class::MONK, vec![]);
         let converting = Actor {
             attribute_95: 2.0,
             ..actor(&monk, (-1, 0.0))
@@ -1157,7 +1158,7 @@ mod tests {
         };
         let ship = master(
             master_id(545),
-            70,
+            COMBAT,
             class::TRANSPORT,
             vec![task(109, -1, -1, 0.0), beach],
         );
@@ -1169,7 +1170,7 @@ mod tests {
         assert_eq!(found(None, Some(2), 12), Ok(Some(12)));
         assert_eq!(found(None, Some(1), -1), Ok(None));
         assert_eq!(found(None, None, -1), Ok(None));
-        let villager = master(ids::VILLAGER_MALE, 70, class::VILLAGER, vec![]);
+        let villager = master(ids::VILLAGER_MALE, COMBAT, class::VILLAGER, vec![]);
         let peasant = building(&villager, PlayerId::new(2), 2);
         assert_eq!(found(Some(&peasant), Some(2), -1), Ok(Some(12)));
     }
@@ -1183,7 +1184,7 @@ mod tests {
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
         let builder = master(
             ids::BUILDER,
-            70,
+            COMBAT,
             class::VILLAGER,
             vec![task(101, -1, -1, 1.0)],
         );
@@ -1219,7 +1220,7 @@ mod tests {
             )
             .is_err()
         );
-        let m45 = master(ids::ID_45, 70, class::CLASS_6, vec![]);
+        let m45 = master(ids::ID_45, COMBAT, class::CLASS_6, vec![]);
         assert_eq!(
             on_target(
                 &builder,
@@ -1232,7 +1233,7 @@ mod tests {
         );
         let trader = master(
             master_id(128),
-            70,
+            COMBAT,
             class::TRADE_CART,
             vec![
                 task(0x6f, 7, -1, 1.0),
@@ -1276,10 +1277,10 @@ mod tests {
             ),
             Ok(Finding::Next)
         );
-        let soldier = master(master_id(4), 70, class::CLASS_6, vec![]);
+        let soldier = master(master_id(4), COMBAT, class::CLASS_6, vec![]);
         let ship = Master {
             object_flags: 1,
-            ..master(master_id(545), 70, class::TRANSPORT, vec![])
+            ..master(master_id(545), COMBAT, class::TRANSPORT, vec![])
         };
         let sailor = actor(&soldier, (-1, 0.0));
         assert_eq!(
@@ -1307,14 +1308,14 @@ mod tests {
             attribute_type: 0,
             ..task(5, 15, -1, 0.6)
         };
-        let lumberjack = master(master_id(123), 70, class::VILLAGER, vec![chop]);
+        let lumberjack = master(master_id(123), COMBAT, class::VILLAGER, vec![chop]);
         let site = building(&camp, PlayerId::new(2), 2);
         assert_eq!(
             drop(&lumberjack, (0, 10.0), &site),
             Finding::Answer(Some(&lumberjack.tasks[0]))
         );
         assert_eq!(drop(&lumberjack, (-1, 0.0), &site), Finding::Next);
-        let idle = master(master_id(123), 70, class::VILLAGER, vec![]);
+        let idle = master(master_id(123), COMBAT, class::VILLAGER, vec![]);
         assert_eq!(drop(&idle, (0, 10.0), &site), Finding::Next);
         let busy = TaskTarget {
             top_action: Some(0x10),
@@ -1333,11 +1334,11 @@ mod tests {
         }
         let ship = Master {
             object_flags: 1,
-            ..master(master_id(545), 70, class::TRANSPORT, vec![])
+            ..master(master_id(545), COMBAT, class::TRANSPORT, vec![])
         };
         let boarding = task(crate::orders::GARRISON, class::TRANSPORT.get(), -1, 0.0);
-        let soldier = master(master_id(4), 70, class::CLASS_6, vec![boarding]);
-        let bare = master(master_id(4), 70, class::CLASS_6, vec![]);
+        let soldier = master(master_id(4), COMBAT, class::CLASS_6, vec![boarding]);
+        let bare = master(master_id(4), COMBAT, class::CLASS_6, vec![]);
         let t = transport(&ship, PlayerId::new(2));
         assert_eq!(
             into(&soldier, &t, -1),
@@ -1347,9 +1348,9 @@ mod tests {
         assert_eq!(into(&bare, &t, -1), (Finding::Next, true));
         let barge = Master {
             object_flags: 1,
-            ..master(ids::ID_546, 70, class::CLASS_6, vec![])
+            ..master(ids::ID_546, COMBAT, class::CLASS_6, vec![])
         };
-        let villager = master(ids::VILLAGER_MALE, 70, class::VILLAGER, vec![]);
+        let villager = master(ids::VILLAGER_MALE, COMBAT, class::VILLAGER, vec![]);
         assert_eq!(
             into(&villager, &transport(&barge, PlayerId::new(2)), -1),
             (Finding::Next, false)
@@ -1370,7 +1371,7 @@ mod tests {
         };
         let any = master(
             ids::BUILDER,
-            70,
+            COMBAT,
             class::VILLAGER,
             vec![task(106, -1, -1, 0.0)],
         );
@@ -1384,7 +1385,7 @@ mod tests {
         );
         let weak = master(
             ids::BUILDER,
-            70,
+            COMBAT,
             class::VILLAGER,
             vec![task(106, class::BUILDING.get(), -1, 0.0)],
         );
@@ -1415,16 +1416,16 @@ mod tests {
         let own = building(&house, PlayerId::new(2), 2);
         let thirteen = master(
             master_id(9),
-            70,
+            COMBAT,
             class::CLASS_6,
             vec![task(0xd, -1, -1, 0.0)],
         );
         assert_eq!(tail(&thirteen, &own, 0xd), Ok(Some(&thirteen.tasks[0])));
         assert_eq!(tail(&thirteen, &own, -1), Ok(None));
-        let sheep = master(master_id(594), 70, class::LIVESTOCK, vec![]);
+        let sheep = master(master_id(594), COMBAT, class::LIVESTOCK, vec![]);
         let shepherd = master(
             ids::VILLAGER_MALE,
-            70,
+            COMBAT,
             class::VILLAGER,
             vec![task(0x6e, class::LIVESTOCK.get(), -1, 0.0)],
         );
@@ -1433,26 +1434,26 @@ mod tests {
             Ok(Some(&shepherd.tasks[0]))
         );
         for list in [
-            master(master_id(125), 70, class::MONK, vec![]),
+            master(master_id(125), COMBAT, class::MONK, vec![]),
             master(
                 master_id(9),
-                70,
+                COMBAT,
                 class::CLASS_6,
                 vec![task(0x69, -1, -1, 0.0)],
             ),
-            master(master_id(9), 70, class::CLASS_43, vec![]),
-            master(master_id(9), 70, class::CLASS_53, vec![]),
-            master(ids::ID_1105, 70, class::SIEGE, vec![]),
+            master(master_id(9), COMBAT, class::CLASS_43, vec![]),
+            master(master_id(9), COMBAT, class::CLASS_53, vec![]),
+            master(ids::ID_1105, COMBAT, class::SIEGE, vec![]),
         ] {
             assert!(tail(&list, &own, -1).is_err(), "{}", list.id);
         }
         let relic_cart = master(
             master_id(9),
-            70,
+            COMBAT,
             class::CLASS_6,
             vec![task(0x84, -1, -1, 0.0)],
         );
-        let c42 = master(master_id(1), 70, class::RELIC, vec![]);
+        let c42 = master(master_id(1), COMBAT, class::RELIC, vec![]);
         assert!(tail(&relic_cart, &building(&c42, PlayerId::new(2), 2), -1).is_err());
     }
 }

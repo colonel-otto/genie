@@ -1,6 +1,8 @@
 use super::*;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::masters::MasterKind;
+use crate::objects::masters::master_type;
 use crate::objects::masters::{ClassId, class};
 use crate::objects::masters::{MasterId, ids};
 use crate::objects::unit::Unit;
@@ -172,14 +174,14 @@ fn the_stored_positions_keep_their_desired_length() {
 
 #[test]
 fn a_unit_s_sub_formation_follows_its_category_and_its_hero_flag() {
-    assert_eq!(sub_formation(60, 0, 3), None);
-    assert_eq!(sub_formation(70, 0, 3), Some(3));
-    assert_eq!(sub_formation(70, 0, 0), Some(5));
-    assert_eq!(sub_formation(70, 0, 6), Some(0));
-    assert_eq!(sub_formation(70, 0, 255), None);
-    assert_eq!(sub_formation(70, 1, 3), Some(5));
-    assert_eq!(sub_formation(70, 0x90, 3), Some(3));
-    assert_eq!(sub_formation(80, 1, 3), Some(3));
+    assert_eq!(sub_formation(master_type::MISSILE, 0, 3), None);
+    assert_eq!(sub_formation(master_type::COMBAT, 0, 3), Some(3));
+    assert_eq!(sub_formation(master_type::COMBAT, 0, 0), Some(5));
+    assert_eq!(sub_formation(master_type::COMBAT, 0, 6), Some(0));
+    assert_eq!(sub_formation(master_type::COMBAT, 0, 255), None);
+    assert_eq!(sub_formation(master_type::COMBAT, 1, 3), Some(5));
+    assert_eq!(sub_formation(master_type::COMBAT, 0x90, 3), Some(3));
+    assert_eq!(sub_formation(master_type::BUILDING, 1, 3), Some(3));
 }
 
 /// `FUN_140fe1550`: every value the constructor writes that the group holds.
@@ -274,7 +276,7 @@ fn task_master(
 ) -> crate::objects::masters::Master {
     crate::objects::masters::Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         task_by_group: 1,
         hit_points: 25,
@@ -286,7 +288,7 @@ fn task_master(
 fn building_master() -> crate::objects::masters::Master {
     crate::objects::masters::Master {
         id: ids::HOUSE,
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         hit_points: 550,
         ..crate::objects::masters::Master::default()
@@ -411,7 +413,7 @@ fn a_master_with_a_board_task_and_no_task_found_is_not_modelled() {
     own.tasks[0].object_id = Some(master_id(999));
     let t = tasked_world(vec![own.clone(), building_master()], 9.0);
     assert!(t.member_task(member_11(), &query_on(60)).is_err());
-    own.kind = 0x27;
+    own.kind = MasterKind::of_data(0x27);
     let t = tasked_world(vec![own, building_master()], 9.0);
     assert_eq!(t.member_task(member_11(), &query_on(60)).unwrap(), None);
 }
@@ -469,7 +471,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
     );
     let soldier = |id, class| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class,
         formation_category: 1,
         weapon_range: 4.0,

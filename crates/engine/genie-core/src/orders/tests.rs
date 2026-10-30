@@ -6,6 +6,7 @@ use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::action_state::FAILED;
 use crate::test_ids::master_id;
@@ -128,7 +129,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         t.masters[0].get(master_id(1243)).unwrap().clone(),
         Master {
             id: ids::PASTURE,
-            kind: 80,
+            kind: BUILDING,
             class: class::BUILDING,
             ..Master::default()
         },
@@ -261,7 +262,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         t.masters = vec![crate::objects::masters::Masters::new([
             Master {
                 id: ids::VILLAGER_MALE,
-                kind: 70,
+                kind: master_type::COMBAT,
                 class: class::VILLAGER,
                 radius: [0.2, 0.2],
                 // no sprites (the world's sprites' table is empty)
@@ -272,14 +273,14 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             },
             Master {
                 id: ids::HOUSE,
-                kind: 80,
+                kind: BUILDING,
                 class: class::BUILDING,
                 radius: [1.0, 1.0],
                 ..Master::default()
             },
             Master {
                 id: master_id(68),
-                kind: 80,
+                kind: BUILDING,
                 class: class::BUILDING,
                 radius: [1.0, 1.0],
                 ..Master::default()
@@ -631,7 +632,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     soldier.moving = Some(walker.stats);
     t.masters[0] = crate::objects::masters::Masters::new([Master {
         id: master_id(126),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::PREDATOR,
         ..Master::default()
     }]);
@@ -738,7 +739,7 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
     // no sprites: a MoveTo the masters make shows none
     let master = |id, formation_category| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         formation_category,
         move_sprite: -1,
         standing_sprite: -1,
@@ -1122,7 +1123,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     t.masters[1] = crate::objects::masters::Masters::new([
         Master {
             id: master_id(4),
-            kind: 70,
+            kind: master_type::COMBAT,
             ..Master::default()
         },
         Master {
@@ -1516,7 +1517,7 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
     t.players.push(crate::world::Player::default());
     let scout = Master {
         id: ids::ID_448,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_12,
         object_flags: 0x10,
         // no sprites: the Explore's MoveTo takes none (the world's sprites' table holds none)
@@ -1530,7 +1531,7 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
         scout,
         Master {
             id: master_id(4),
-            kind: 70,
+            kind: master_type::COMBAT,
             ..Master::default()
         },
     ]);
@@ -1618,7 +1619,7 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
     t.masters
         .push(crate::objects::masters::Masters::new([Master {
             id: master_id(4),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::CLASS_54,
             ..Master::default()
         }]));
@@ -1651,7 +1652,7 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
 fn a_master_change_inside_a_building_keeps_to_its_record() {
     let old = Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 40,
         radius: [0.2, 0.2],
@@ -1660,7 +1661,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     };
     let next = Master {
         id: master_id(5),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,
         radius: [0.3, 0.3],
@@ -1772,7 +1773,7 @@ fn switched_in_the_open(
 fn switch_masters() -> (Master, Master) {
     let old = Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 40,
         radius: [0.2, 0.2],
@@ -1788,7 +1789,7 @@ fn switch_masters() -> (Master, Master) {
     };
     let next = Master {
         id: master_id(5),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,
         radius: [0.3, 0.3],
@@ -2021,7 +2022,7 @@ fn followers() -> World {
     let walker = crate::gathering::hunt::tests::walker();
     t.masters[1] = crate::objects::masters::Masters::new([Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         moving: Some(walker.stats),
         ..Master::default()
     }]);
@@ -2038,7 +2039,7 @@ fn followers() -> World {
     t.masters
         .push(crate::objects::masters::Masters::new([Master {
             id: master_id(5),
-            kind: 70,
+            kind: master_type::COMBAT,
             class: class::CLASS_6,
             radius: [0.5, 0.5],
             ..Master::default()
@@ -2230,7 +2231,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
     let mut t = soldiers(&units, &[]);
     t.masters[0] = crate::objects::masters::Masters::new([Master {
         id: master_id(66),
-        kind: 70,
+        kind: master_type::COMBAT,
         ..Master::default()
     }]);
     let deer = |id, state, workers| Unit {
@@ -2284,7 +2285,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
     t.masters[1] = crate::objects::masters::Masters::new([
         Master {
             id: master_id(4),
-            kind: 70,
+            kind: master_type::COMBAT,
             ..Master::default()
         },
         Master {
@@ -2372,10 +2373,10 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
         ..Master::default()
     };
     t.masters[1] = crate::objects::masters::Masters::new([
-        master(master_id(4), 70, class::CLASS_6),
-        master(ids::ID_42, 70, class::RELIC),
-        master(master_id(58), 70, class::LIVESTOCK),
-        master(master_id(10), 10, class::CLASS_5),
+        master(master_id(4), master_type::COMBAT, class::CLASS_6),
+        master(ids::ID_42, master_type::COMBAT, class::RELIC),
+        master(master_id(58), master_type::COMBAT, class::LIVESTOCK),
+        master(master_id(10), master_type::STATIC, class::CLASS_5),
     ]);
     let unit = |id, master, amount| Unit {
         id,
@@ -2427,7 +2428,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
     };
     let villager = |id, tasks| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::VILLAGER,
         task_by_group: 1,
         hit_points: 25,
@@ -2494,7 +2495,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     let walker = crate::gathering::hunt::tests::walker();
     let sheep_master = Master {
         id: master_id(594),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::LIVESTOCK,
         radius: [0.2, 0.2],
         moving: Some(walker.stats),
@@ -2504,7 +2505,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         sheep_master.clone(),
         Master {
             id: master_id(4),
-            kind: 70,
+            kind: master_type::COMBAT,
             radius: [1.5, 1.5],
             ..Master::default()
         },
@@ -2649,7 +2650,7 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
     );
     let master = |id, class| Master {
         id,
-        kind: 70,
+        kind: master_type::COMBAT,
         class,
         weapon_range: 5.0,
         min_range: 2.0,
@@ -2787,7 +2788,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
     let unit = |id, grouped, position: Position| Splittable {
         id,
         group: -1,
-        kind: 70,
+        kind: master_type::COMBAT,
         grouped,
         flag_1: false,
         speed: 1.2,
@@ -3872,7 +3873,7 @@ fn a_work_command_s_retarget_to_its_player_s_master_84_fails() {
         for masters in &mut t.masters {
             let m84 = Master {
                 id: ids::MARKET,
-                kind: 70,
+                kind: master_type::COMBAT,
                 class: class::PREY,
                 ..Master::default()
             };

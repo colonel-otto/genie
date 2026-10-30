@@ -183,6 +183,7 @@ impl Unit {
 mod tests {
     use super::*;
     use crate::objects::masters::ids;
+    use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
     use crate::players::PlayerId;
     use crate::test_ids::master_id;
@@ -204,7 +205,7 @@ mod tests {
     fn farm_master(id: MasterId) -> Master {
         Master {
             id,
-            kind: 80,
+            kind: master_type::BUILDING,
             class: class::FARM,
             work_rate: 0.4,
             capacity: 15,

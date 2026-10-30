@@ -11,6 +11,7 @@ use crate::objects::ObjectId;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::ANIMATED;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -188,7 +189,7 @@ impl World {
         at: Position,
         facing: Facing,
     ) -> Result<usize, GenieError> {
-        if made.kind != STATIC && !(20..40).contains(&made.kind) {
+        if made.kind != STATIC && !(ANIMATED..master_type::ACTION).contains(&made.kind) {
             return Err(GenieError::unsupported(
                 "remains of a type other than 10 and 20 to 39",
             ));

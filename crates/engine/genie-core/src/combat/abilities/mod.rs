@@ -37,6 +37,7 @@ use crate::math::fmath;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -157,7 +158,7 @@ struct Own {
     /// The master's id (`+0x58`).
     id: MasterId,
     /// Its type (`+0x8`).
-    kind: u8,
+    kind: MasterKind,
     /// Its `area_effect_level` (`+0x830`).
     blast_level: u8,
     /// Its radii (`+0x5d8`, `+0x5dc`).

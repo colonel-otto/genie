@@ -438,6 +438,7 @@ mod tests {
     use super::*;
     use crate::objects::masters::Masters;
     use crate::objects::masters::ids;
+    use crate::objects::masters::master_type;
     use crate::test_ids::master_id;
     use crate::test_ids::opt_master;
 
@@ -596,7 +597,7 @@ mod tests {
         assert_eq!(train_time(&locations, ids::TOWN_CENTRE, 0x101), 25);
         assert_eq!(train_time(&[], ids::TOWN_CENTRE, 1), 0);
         let mut m = Master {
-            kind: 70,
+            kind: COMBAT,
             train_locations: locations.to_vec(),
             ..Master::default()
         };
@@ -609,7 +610,7 @@ mod tests {
         assert_eq!(make.time(Some(&m), ids::TOWN_CENTRE), 25);
         m.object_flags = 0x80;
         assert_eq!(make.time(Some(&m), ids::TOWN_CENTRE), 99);
-        m.kind = 60;
+        m.kind = master_type::MISSILE;
         assert_eq!(make.time(Some(&m), ids::TOWN_CENTRE), 0);
         make.button = -1;
         assert_eq!(
@@ -707,7 +708,7 @@ mod tests {
     #[test]
     fn a_refund_gives_back_what_the_entry_paid() {
         let m = Master {
-            kind: 70,
+            kind: COMBAT,
             cost: vec![(0, 60, true), (3, 20, true), (4, 1, false)],
             ..Master::default()
         };
@@ -715,7 +716,7 @@ mod tests {
         refund(&m, &[(0, 50.0), (0, 45.0), (4, 1.0)], &mut held).unwrap();
         assert_eq!(held.0, [46.0, 1.0, 1.0, 1.0, 1.0]);
         let low = Master {
-            kind: 60,
+            kind: master_type::MISSILE,
             ..m.clone()
         };
         refund(&low, &[(0, 50.0), (-1, 0.0), (-1, 0.0)], &mut held).unwrap();
@@ -729,7 +730,7 @@ mod tests {
     fn villager(cost: Vec<(i16, i16, bool)>) -> Master {
         Master {
             id: ids::VILLAGER_MALE,
-            kind: 70,
+            kind: COMBAT,
             cost,
             ..Master::default()
         }
@@ -765,7 +766,7 @@ mod tests {
         assert!(cost_test(&ms, ids::VILLAGER_MALE, f32::NAN, false, &h).unwrap());
         assert!(!cost_test(&ms, ids::MARKET, 1.0, false, &h).unwrap());
         let low = Masters::new([Master {
-            kind: 60,
+            kind: master_type::MISSILE,
             ..villager(vec![])
         }]);
         assert!(!cost_test(&low, ids::VILLAGER_MALE, 1.0, false, &h).unwrap());
@@ -792,7 +793,7 @@ mod tests {
         use crate::objects::masters::BuildingMaster;
         let building = |id: i16, head: i16, stack: i16, cost| Master {
             id: master_id(id),
-            kind: 80,
+            kind: master_type::BUILDING,
             cost,
             building: Some(BuildingMaster {
                 head_unit: opt_master(head),

@@ -198,7 +198,10 @@ mod spatial {
         assert_eq!((obstruction.kind, obstruction.class), (2, 3));
         assert_eq!(out.tile_list(1, 1), [10]);
         let seer = out.sight.as_ref().unwrap().seer(10).unwrap();
-        assert_eq!((seer.kind, seer.capture, seer.umv), (70, 5, 0));
+        assert_eq!(
+            (seer.kind, seer.capture, seer.umv),
+            (genie_core::objects::masters::master_type::COMBAT, 5, 0)
+        );
         assert!(seer.explored && seer.building.is_none());
         assert_eq!(out.unit_diplomacy[1], [0, 1]);
     }
@@ -210,7 +213,10 @@ mod spatial {
         let out = placed();
         let sight = out.sight.as_ref().unwrap();
         let standing = sight.seer(11).unwrap();
-        assert_eq!(standing.kind, 80);
+        assert_eq!(
+            standing.kind,
+            genie_core::objects::masters::master_type::BUILDING
+        );
         assert!(standing.explored);
         assert!(standing.building.is_some_and(|b| b.built && !b.started));
         assert!(out.get(11).unwrap().obstruction.is_some());

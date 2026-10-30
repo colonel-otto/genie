@@ -313,7 +313,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                 .iter()
                 .skip(1)
                 .flat_map(genie_core::objects::masters::Masters::iter)
-                .filter(|m| m.kind == 70)
+                .filter(|m| m.kind == genie_core::objects::masters::master_type::COMBAT)
         };
         turns.spatial.fastest = all()
             .filter_map(|m| m.moving.as_ref().map(|s| s.speed))
@@ -541,7 +541,10 @@ pub(super) fn garrison_firepower(turns: &mut World) {
                 continue;
             };
             b.garrison.push(id);
-            let Some(me) = masters.get(master).filter(|m| m.kind == 70) else {
+            let Some(me) = masters
+                .get(master)
+                .filter(|m| m.kind == genie_core::objects::masters::master_type::COMBAT)
+            else {
                 continue;
             };
             let Some(bm) = masters.get(b.life.master_id) else {

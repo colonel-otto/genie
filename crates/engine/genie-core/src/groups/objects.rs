@@ -4,6 +4,7 @@
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 
@@ -126,7 +127,7 @@ impl crate::world::World {
 /// 4 but not both 4 and 7 is 5; categories 1 to 4 are themselves, 0 and 5 are 5, 6 is 0, any
 /// other (255) none ("Invalid formation category").
 #[must_use]
-pub const fn sub_formation(kind: u8, hero_flag: u8, formation_category: u8) -> Option<i32> {
+pub fn sub_formation(kind: MasterKind, hero_flag: u8, formation_category: u8) -> Option<i32> {
     if kind < COMBAT {
         return None;
     }
@@ -135,7 +136,7 @@ pub const fn sub_formation(kind: u8, hero_flag: u8, formation_category: u8) -> O
     }
     match formation_category {
         0 | 5 => Some(5),
-        c @ 1..=4 => Some(c as i32),
+        c @ 1..=4 => Some(i32::from(c)),
         6 => Some(0),
         _ => None,
     }

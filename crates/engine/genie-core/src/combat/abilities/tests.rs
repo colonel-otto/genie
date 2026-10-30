@@ -5,6 +5,7 @@ use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
@@ -53,20 +54,20 @@ fn a_task_with_its_type_s_flag_bit_generates_always() {
     // bit 1 for an object of type 70, bit 2 for one of type 80
     let mut t = feitoria_food();
     t.combat_level_flag = 2;
-    assert!(generates(&t, 70, 70, None, false));
-    assert!(!generates(&t, 80, 80, None, false));
+    assert!(generates(&t, COMBAT, COMBAT, None, false));
+    assert!(!generates(&t, BUILDING, BUILDING, None, false));
     t.combat_level_flag = 4;
-    assert!(generates(&t, 80, 80, None, false));
-    assert!(!generates(&t, 70, 70, None, false));
+    assert!(generates(&t, BUILDING, BUILDING, None, false));
+    assert!(!generates(&t, COMBAT, COMBAT, None, false));
 }
 
 #[test]
 fn a_building_generates_once_built() {
     let t = feitoria_food();
-    assert!(!generates(&t, 80, 80, None, false));
-    assert!(generates(&t, 80, 80, None, true));
+    assert!(!generates(&t, BUILDING, BUILDING, None, false));
+    assert!(generates(&t, BUILDING, BUILDING, None, true));
     // a combat unit's master is not a building's
-    assert!(!generates(&t, 70, 70, None, true));
+    assert!(!generates(&t, COMBAT, COMBAT, None, true));
 }
 
 #[test]
@@ -86,37 +87,67 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
     };
     // the Attack (9), type 7, the Gather (5) and the Hunt (0x6e), in state 7
     for kind in [9, 7, 5, 0x6e] {
-        assert!(generates(&t, 70, 70, top(kind, 7, Some(target)), false));
+        assert!(generates(
+            &t,
+            COMBAT,
+            COMBAT,
+            top(kind, 7, Some(target)),
+            false
+        ));
     }
-    assert!(!generates(&t, 70, 70, top(1, 7, Some(target)), false));
-    assert!(!generates(&t, 70, 70, top(9, 6, Some(target)), false));
-    assert!(!generates(&t, 70, 70, top(9, 7, None), false));
-    assert!(!generates(&t, 70, 70, None, false));
+    assert!(!generates(
+        &t,
+        COMBAT,
+        COMBAT,
+        top(1, 7, Some(target)),
+        false
+    ));
+    assert!(!generates(
+        &t,
+        COMBAT,
+        COMBAT,
+        top(9, 6, Some(target)),
+        false
+    ));
+    assert!(!generates(&t, COMBAT, COMBAT, top(9, 7, None), false));
+    assert!(!generates(&t, COMBAT, COMBAT, None, false));
     // another class
     let other = WorkTarget {
         class: class::CLASS_6,
         ..target
     };
-    assert!(!generates(&t, 70, 70, top(9, 7, Some(other)), false));
+    assert!(!generates(
+        &t,
+        COMBAT,
+        COMBAT,
+        top(9, 7, Some(other)),
+        false
+    ));
     // a dead target counts while its master stores some, never with a NaN
     let dead = WorkTarget {
         hp: 0.0,
         storage: 1.0,
         ..target
     };
-    assert!(generates(&t, 70, 70, top(9, 7, Some(dead)), false));
+    assert!(generates(&t, COMBAT, COMBAT, top(9, 7, Some(dead)), false));
     let empty = WorkTarget {
         hp: 0.0,
         storage: 0.0,
         ..target
     };
-    assert!(!generates(&t, 70, 70, top(9, 7, Some(empty)), false));
+    assert!(!generates(
+        &t,
+        COMBAT,
+        COMBAT,
+        top(9, 7, Some(empty)),
+        false
+    ));
     let nan = WorkTarget {
         hp: f32::NAN,
         storage: f32::NAN,
         ..target
     };
-    assert!(!generates(&t, 70, 70, top(9, 7, Some(nan)), false));
+    assert!(!generates(&t, COMBAT, COMBAT, top(9, 7, Some(nan)), false));
 }
 
 #[test]
@@ -208,7 +239,7 @@ fn bystander() -> Bystander {
         id: 2,
         player: PlayerId::new(2),
         allied: false,
-        kind: 70,
+        kind: COMBAT,
         class: class::CLASS_6,
         state: 2,
         blast_defense: 1,
@@ -238,7 +269,7 @@ fn a_movement_damage_strikes_enemies_in_reach() {
     assert!(!struck(&h, 1.0, &Bystander { state: 3, ..b }));
     // buildings only of classes 51 and 54
     let building = Bystander {
-        kind: 80,
+        kind: BUILDING,
         class: class::BUILDING,
         ..b
     };
@@ -455,7 +486,7 @@ fn world() -> World {
 }
 
 /// Master `id` of `kind` and `class` with `tasks`, given to every player.
-fn give_master(t: &mut World, id: MasterId, kind: u8, class: ClassId, tasks: Vec<Task>) {
+fn give_master(t: &mut World, id: MasterId, kind: MasterKind, class: ClassId, tasks: Vec<Task>) {
     let m = Master {
         id,
         kind,
@@ -547,7 +578,7 @@ fn building_sight(t: &mut World, p: PlayerId, id: i32, built: bool) {
             }),
             umv: 0,
             capture: 0,
-            kind: 80,
+            kind: BUILDING,
         },
     );
     t.spatial.sight = Some(v);
@@ -560,7 +591,7 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
     give_master(
         &mut t,
         master_id(1021),
-        80,
+        BUILDING,
         class::BUILDING,
         vec![task(6), feitoria_food()],
     );
@@ -596,7 +627,13 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
 
 /// A Keshik of player 1 attacking object 77 in state 7.
 fn keshik(t: &mut World) {
-    give_master(t, master_id(1228), 70, class::CLASS_12, vec![keshik_gold()]);
+    give_master(
+        t,
+        master_id(1228),
+        COMBAT,
+        class::CLASS_12,
+        vec![keshik_gold()],
+    );
     put(t, PlayerId::new(1), 60, master_id(1228), 100.0, [5.5, 5.5]);
     let attack = crate::combat::attack::Attack {
         target: 77,
@@ -634,7 +671,7 @@ fn keshik(t: &mut World) {
 fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
     let mut t = world();
     keshik(&mut t);
-    give_master(&mut t, master_id(4), 70, class::CLASS_0, Vec::new());
+    give_master(&mut t, master_id(4), COMBAT, class::CLASS_0, Vec::new());
     put(&mut t, PlayerId::new(2), 77, master_id(4), 30.0, [6.5, 5.5]);
     run(&mut t, PlayerId::new(1), 60);
     let given = 0.5_f32 * 0.01 * 0.5 + 0.999;
@@ -657,7 +694,7 @@ fn trampler(t: &mut World) {
         work_val2: 3.0,
         ..task(MOVEMENT_DAMAGE)
     };
-    give_master(t, master_id(9), 70, class::CLASS_12, vec![trample]);
+    give_master(t, master_id(9), COMBAT, class::CLASS_12, vec![trample]);
     put(t, PlayerId::new(1), 10, master_id(9), 100.0, [5.5, 5.5]);
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.velocity = Some(crate::movement::Velocity {
@@ -671,7 +708,7 @@ fn trampler(t: &mut World) {
 fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
     let mut t = world();
     trampler(&mut t);
-    give_master(&mut t, master_id(4), 70, class::CLASS_6, Vec::new());
+    give_master(&mut t, master_id(4), COMBAT, class::CLASS_6, Vec::new());
     // an enemy in reach, one out of it, one of its own player, one of Gaia
     put(&mut t, PlayerId::new(2), 20, master_id(4), 30.0, [6.5, 5.5]);
     put(&mut t, PlayerId::new(2), 21, master_id(4), 30.0, [9.5, 5.5]);
@@ -699,7 +736,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
 fn a_movement_damage_kill_leaves_0_hit_points_and_counts_the_kill() {
     let mut t = world();
     trampler(&mut t);
-    give_master(&mut t, master_id(4), 70, class::CLASS_6, Vec::new());
+    give_master(&mut t, master_id(4), COMBAT, class::CLASS_6, Vec::new());
     put(&mut t, PlayerId::new(2), 20, master_id(4), 3.0, [6.5, 5.5]);
     t.players[2].objects[0].life.amount = 10.0;
     run(&mut t, PlayerId::new(1), 10);
@@ -750,7 +787,7 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
     give_master(
         &mut t,
         master_id(250),
-        70,
+        COMBAT,
         class::WARSHIP,
         vec![longboat_look()],
     );
@@ -798,7 +835,7 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
     give_master(
         &mut t,
         master_id(5),
-        70,
+        COMBAT,
         class::CLASS_6,
         vec![bounty(), far, bounty()],
     );
@@ -819,7 +856,13 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
 #[test]
 fn an_object_of_another_type_has_no_abilities() {
     let mut t = world();
-    give_master(&mut t, ids::ID_7, 30, class::CLASS_6, vec![bounty()]);
+    give_master(
+        &mut t,
+        ids::ID_7,
+        master_type::MOVING,
+        class::CLASS_6,
+        vec![bounty()],
+    );
     put(&mut t, PlayerId::new(1), 90, ids::ID_7, 0.0, [5.5, 5.5]);
     assert_eq!(rewards(&mut t, PlayerId::new(1), 90, true), Vec::new());
 }

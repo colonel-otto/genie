@@ -4,8 +4,10 @@ use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -62,7 +64,7 @@ fn world() -> World {
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
     let master = Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,
         line_of_sight: 4.0,
@@ -274,13 +276,13 @@ fn relic_carriers_keep_their_command_pending() {
     let mut t = world();
     let relic = Master {
         id: ids::RELIC,
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::RELIC,
         ..Master::default()
     };
     let monastery = Master {
         id: ids::MONASTERY,
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::BUILDING,
         ..Master::default()
     };
@@ -290,7 +292,7 @@ fn relic_carriers_keep_their_command_pending() {
     };
     let monk = |tasks: Vec<Task>| Master {
         id: master_id(4),
-        kind: 70,
+        kind: master_type::COMBAT,
         class: class::MONK,
         tasks,
         ..Master::default()
@@ -494,7 +496,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
     let master = |t: &mut World, class: ClassId, sprites: [i16; 3]| {
         let m = Master {
             id: master_id(4),
-            kind: 70,
+            kind: master_type::COMBAT,
             class,
             hit_points: 60,
             radius: [0.2, 0.2],
@@ -616,7 +618,7 @@ fn the_centroid_front_is_the_members_mean_place() {
 #[test]
 fn each_line_takes_its_units_least_range() {
     let mut t = world();
-    let combat = |id: MasterId, kind: u8, range: f32| Master {
+    let combat = |id: MasterId, kind: MasterKind, range: f32| Master {
         id,
         kind,
         weapon_range: range,
@@ -624,9 +626,9 @@ fn each_line_takes_its_units_least_range() {
     };
     t.masters = vec![
         Masters::new([
-            combat(master_id(4), 70, 3.0),
-            combat(master_id(5), 70, 1.5),
-            combat(ids::ID_6, 30, 2.0)
+            combat(master_id(4), master_type::COMBAT, 3.0),
+            combat(master_id(5), master_type::COMBAT, 1.5),
+            combat(ids::ID_6, master_type::MOVING, 2.0)
         ]);
         4
     ];
@@ -1744,7 +1746,7 @@ fn gate_world() -> World {
     let m4 = t.masters[2].get(master_id(4)).unwrap().clone();
     let gate = Master {
         id: master_id(5),
-        kind: 80,
+        kind: master_type::BUILDING,
         class: class::GATE,
         radius: [0.5, 0.5],
         standing_sprite: -1,

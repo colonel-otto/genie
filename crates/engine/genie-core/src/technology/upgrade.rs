@@ -7,6 +7,7 @@
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Task, master_type, player_master};
@@ -65,7 +66,7 @@ const SPRITE_SHOWN: u8 = 2;
 /// answers 1): whether an object of a master of type `kind` in state `state` takes an upgrade
 /// (below state 4) rather than a master of its own.
 #[must_use]
-pub const fn upgradable(kind: u8, state: u8) -> bool {
+pub fn upgradable(kind: MasterKind, state: u8) -> bool {
     kind < master_type::COMBAT || state < 4
 }
 
@@ -1372,7 +1373,7 @@ mod tests {
                     building: None,
                     umv: 0,
                     capture: 0,
-                    kind: 70,
+                    kind: master_type::COMBAT,
                 },
             );
             t.spatial.sight = Some(v);

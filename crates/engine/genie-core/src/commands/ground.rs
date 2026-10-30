@@ -5,6 +5,7 @@ use crate::map::Position;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
 use crate::players::PlayerId;
@@ -343,7 +344,7 @@ impl World {
                     building: Some(BuildingSight::default()),
                     umv: umv as u8,
                     capture: capture_kind(player, made.class, made.id),
-                    kind: 80,
+                    kind: master_type::BUILDING,
                 },
             );
         }

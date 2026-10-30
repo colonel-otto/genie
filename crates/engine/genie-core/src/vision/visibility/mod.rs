@@ -26,6 +26,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::players::PlayerId;
@@ -101,7 +102,7 @@ pub struct Seer {
     /// for livestock.
     pub capture: u8,
     /// The object's type (`+0xf`): 70 a combat unit, 80 a building, below 70 anything else.
-    pub kind: u8,
+    pub kind: MasterKind,
 }
 
 /// An entry of the map's UMV data list (map `+0x5e08`, `+0x5e10`): a building's extent around

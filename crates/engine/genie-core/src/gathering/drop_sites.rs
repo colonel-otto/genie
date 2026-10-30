@@ -252,6 +252,7 @@ mod tests {
     use crate::objects::masters::Master;
     use crate::objects::masters::TaskId;
     use crate::objects::masters::ids;
+    use crate::objects::masters::master_type;
     use crate::pathing::Pathing;
     use crate::pathing::zones::ZoneMap;
     use crate::players::PlayerId;
@@ -285,7 +286,7 @@ mod tests {
     fn masters() -> Masters {
         let master = |id, class, radius| Master {
             id,
-            kind: 80,
+            kind: master_type::BUILDING,
             class,
             radius: [radius, radius],
             ..Master::default()
