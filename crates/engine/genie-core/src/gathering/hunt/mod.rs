@@ -8,6 +8,7 @@
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
 use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
+use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
@@ -140,7 +141,7 @@ pub struct Lead {
     /// `sheep_still_time`, which `set_state(10)` clears.
     pub still_time: i16,
     /// `sheep_start_x`, `_y`: where the animal stood when the hunt last looked.
-    pub start: [f32; 2],
+    pub start: Point,
 }
 
 impl Lead {
@@ -149,7 +150,7 @@ impl Lead {
     pub const NEW: Self = Self {
         moved: false,
         still_time: 0,
-        start: [-1.0, -1.0],
+        start: Point::new(-1.0, -1.0),
     };
 }
 

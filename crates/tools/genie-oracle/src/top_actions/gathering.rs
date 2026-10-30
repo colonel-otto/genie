@@ -4,6 +4,7 @@
 use crate::top_actions::{Saved, TaskAt, saved_move_to};
 use crate::{saved_attack, saved_reload, saved_sprite};
 use genie_core::GenieError;
+use genie_core::map::Point;
 use genie_core::movement::move_to::MOVE_TO;
 use genie_core::objects::masters::{ClassId, Task};
 use genie_core::objects::unit::Unit;
@@ -87,10 +88,10 @@ pub(super) fn import_hunt(
         lead: genie_core::gathering::hunt::Lead {
             moved: part.moved_sheep != 0,
             still_time: part.sheep_still_time as i16,
-            start: [
+            start: Point::new(
                 f32::from_bits(part.sheep_start_x),
                 f32::from_bits(part.sheep_start_y),
-            ],
+            ),
         },
     };
     match base.sub_actions.entries().next() {
@@ -174,11 +175,11 @@ pub(super) fn import_gather(
         current_stop: part.current_stop,
         time_per_stop: part.time_per_stop,
         time_at_stop: part.time_at_current_stop,
-        last_stop: [part.last_stop_x, part.last_stop_y],
+        last_stop: Point::new(part.last_stop_x, part.last_stop_y),
         // `+0x80` is not saved: set_state(7) set it
         worked: base.state == WORK,
-        farm: [part.farm_x, part.farm_y],
-        gather_at: [part.gather_x, part.gather_y],
+        farm: Point::new(part.farm_x, part.farm_y),
+        gather_at: Point::new(part.gather_x, part.gather_y),
         move_to: None,
     };
     // every MoveTo of the Gather is quiet (`FUN_140a7a170` with 1): to the target, the drop

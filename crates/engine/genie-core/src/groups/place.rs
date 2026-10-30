@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
+use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::math::fmath::{self, cross, normalize};
 use crate::objects::masters::MasterId;
@@ -33,14 +34,14 @@ const DEFAULT_FORWARD: f32 = crate::math::image::group::DEFAULT_FORWARD;
 /// `FUN_141007630`'s spiral: where it is (x, y), its direction in [`SPIRAL`], its leg's length
 /// and its count of steps (from 1).
 struct Spiral {
-    at: [f32; 2],
+    at: Point,
     direction: usize,
     leg: i32,
     count: i32,
 }
 
-impl From<[f32; 2]> for Spiral {
-    fn from(at: [f32; 2]) -> Self {
+impl From<Point> for Spiral {
+    fn from(at: Point) -> Self {
         Self {
             at,
             direction: 0,
@@ -55,7 +56,7 @@ impl Spiral {
     /// leg grows on a turn to y (an even direction).
     fn step(&mut self) -> Result<(), GenieError> {
         let [dx, dy] = *SPIRAL.checked(self.direction)?;
-        self.at = [self.at[0] + dx, self.at[1] + dy];
+        self.at = Point::new(self.at.x() + dx, self.at.y() + dy);
         if self.count % self.leg == 0 {
             self.direction = (self.direction + 1) % SPIRAL.len();
             if self.direction.is_multiple_of(2) {
@@ -160,7 +161,7 @@ impl World {
         let mut spiral = Spiral::from(centroid.ground());
         for _ in 0..SPIRAL_POINTS {
             let at = on_map(
-                BVector::new(spiral.at[0], centroid.height(), spiral.at[1]),
+                BVector::new(spiral.at.x(), centroid.height(), spiral.at.y()),
                 self.spatial.map,
             );
             if !self.spatial.point_hit(at.ground(), grow, &members, true)? {
@@ -724,7 +725,7 @@ mod tests {
     /// takes them (a turn after steps 1, 2, 4, 6, 9, 12, ...).
     #[test]
     fn the_spiral_turns_where_its_step_count_divides_by_the_leg() {
-        let mut spiral = Spiral::from([10.0, 10.0]);
+        let mut spiral = Spiral::from(Point::new(10.0, 10.0));
         let mut points = vec![spiral.at];
         for _ in 0..12 {
             spiral.step().unwrap();
@@ -733,19 +734,19 @@ mod tests {
         assert_eq!(
             points,
             [
-                [10.0, 10.0],
-                [10.0, 11.0],
-                [11.0, 11.0],
-                [11.0, 10.0],
-                [11.0, 9.0],
-                [10.0, 9.0],
-                [9.0, 9.0],
-                [9.0, 10.0],
-                [9.0, 11.0],
-                [9.0, 12.0],
-                [10.0, 12.0],
-                [11.0, 12.0],
-                [12.0, 12.0],
+                Point::new(10.0, 10.0),
+                Point::new(10.0, 11.0),
+                Point::new(11.0, 11.0),
+                Point::new(11.0, 10.0),
+                Point::new(11.0, 9.0),
+                Point::new(10.0, 9.0),
+                Point::new(9.0, 9.0),
+                Point::new(9.0, 10.0),
+                Point::new(9.0, 11.0),
+                Point::new(9.0, 12.0),
+                Point::new(10.0, 12.0),
+                Point::new(11.0, 12.0),
+                Point::new(12.0, 12.0),
             ]
         );
     }

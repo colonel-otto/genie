@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::action_type;
@@ -108,7 +109,7 @@ impl World {
             target_owner: tp.index() as i32,
             point: Position::new(x, y, z),
             range: GUARD_RANGE,
-            shown: [x, y],
+            shown: Point::new(x, y),
             ready: true,
             target_type: i32::from(tm.id.get()),
         };
@@ -160,7 +161,7 @@ impl World {
     /// FOLLOW's test of a unit (`FUN_14161c920`): one the world holds, of a type of 30 or more
     /// whose master moves (slot 0xe8 above 0; `COMISS`, `JNC`: a NaN speed moves), gives its
     /// place on the ground.
-    pub(super) fn follower(&self, id: i32) -> Result<Option<[f32; 2]>, GenieError> {
+    pub(super) fn follower(&self, id: i32) -> Result<Option<Point>, GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(None);
         };
@@ -221,7 +222,7 @@ impl World {
             return Ok(());
         }
         let (p, idx) = self.follower_start(loose, i)?;
-        let [x, y] = followed.place;
+        let (x, y) = (followed.place.x(), followed.place.y());
         let taken =
             self.move_to_object_with(p, idx, followed.id, Position::new(x, y, 0.0), true)?;
         let rng = self.streams.get(Stream::Ai);
@@ -248,16 +249,17 @@ impl World {
         loose: &[i32],
         i: usize,
         followed: Followed,
-        mean: [f32; 2],
+        mean: Point,
     ) -> Result<(), GenieError> {
-        let Some([x, y]) = self.follower(*loose.checked(i)?)? else {
+        let Some(follower) = self.follower(*loose.checked(i)?)? else {
             return Ok(());
         };
+        let (x, y) = (follower.x(), follower.y());
         let (p, idx) = self.follower_start(loose, i)?;
         let map = self.spatial.map;
         let at = Position::new(
-            follow_axis(x - mean[0] + followed.place[0], map[0]),
-            follow_axis(y - mean[1] + followed.place[1], map[1]),
+            follow_axis(x - mean.x() + followed.place.x(), map[0]),
+            follow_axis(y - mean.y() + followed.place.y(), map[1]),
             0.0,
         );
         match followed.class {

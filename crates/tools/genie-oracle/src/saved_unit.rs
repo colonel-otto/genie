@@ -7,6 +7,7 @@ use crate::{
     production, saved_actions, saved_sprite, task_at, unit_ai,
 };
 use genie_core::GenieError;
+use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::MasterId;
@@ -287,20 +288,20 @@ pub(super) fn town_bell(
             target_type: c.back_to_work1_town_bell_target_type,
             action: ActionKind::of_field(c.back_to_work1_town_bell_action)?,
             target2: c.back_to_work1_town_bell_target_id2,
-            point: [
+            point: Point::new(
                 c.back_to_work1_town_bell_target_x,
                 c.back_to_work1_town_bell_target_y,
-            ],
+            ),
         },
         before_building: BackToWork {
             target: c.back_to_work2_town_bell_target_id,
             target_type: c.back_to_work2_town_bell_target_type,
             action: ActionKind::of_field(c.back_to_work2_town_bell_action)?,
             target2: c.back_to_work2_town_bell_target_id2,
-            point: [
+            point: Point::new(
                 c.back_to_work2_town_bell_target_x,
                 c.back_to_work2_town_bell_target_y,
-            ],
+            ),
         },
     })
 }

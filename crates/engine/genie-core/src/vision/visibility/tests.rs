@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
 use crate::vision::registry::UnitUpdate;
@@ -164,7 +165,7 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
     r.update_unit(UnitUpdate {
         id: 7,
         owner: 0,
-        position: [10.5, 10.5],
+        position: Point::new(10.5, 10.5),
         radii: Footprint::new(0.2, 0.2),
         class: class::CLASS_6,
         old: 0,

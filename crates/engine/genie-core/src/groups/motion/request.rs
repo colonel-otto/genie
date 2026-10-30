@@ -7,6 +7,7 @@ use crate::groups::motion::{
     CLOSE, EPSILON, LAST_TRIES, Lead, LeadGroup, NEAR, PATROL_PAUSE, Pass, SHORT_LENGTH,
     SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
 };
+use crate::map::Point;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
@@ -26,7 +27,7 @@ struct Leg {
     target_id: i32,
     waypoint: BVector,
     at: BVector,
-    from: [f32; 2],
+    from: Point,
     way: f32,
 }
 

@@ -8,6 +8,7 @@
 //! is done it goes back to state 3.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Me;
@@ -379,7 +380,7 @@ pub struct Seeker {
     /// The unit AI's current order (`+0x3c`).
     pub order: Option<OrderKind>,
     /// The unit AI's target point (`+0x50`, `+0x54`; x is −1 without one).
-    pub target_point: [f32; 2],
+    pub target_point: Point,
     /// The owner is a computer player (`FUN_141659cf0`, `player+0x10 == 3`).
     pub computer: bool,
 }
@@ -407,7 +408,7 @@ pub fn closest_undiscovered(
     let reach = (seeker.line_of_sight as i32 + SEARCH_PAST_SIGHT) as f32;
     let (mut x0, mut x1) = ((ux - reach) as i32, (reach + ux) as i32);
     let (mut y0, mut y1) = ((uy - reach) as i32, (reach + uy) as i32);
-    let [px, py] = seeker.target_point;
+    let (px, py) = (seeker.target_point.x(), seeker.target_point.y());
     if seeker.order == Some(OrderKind::Scout) {
         (x0, x1) = (
             px as i32 - SEARCH_ABOUT_POINT,
@@ -529,12 +530,8 @@ impl Unit {
     /// it had go, `FUN_140a98620`, and the new one starts, `FUN_140a977e0`). A `MoveTo` of the
     /// Explore that goes stops the unit (its teardown, slot 0x5d0); other actions it would
     /// replace are not modelled.
-    pub(crate) fn explore_to(
-        &mut self,
-        point: [f32; 2],
-        c: &mut Step<'_>,
-    ) -> Result<(), GenieError> {
-        let at = Position::new(point[0], point[1], self.position().z());
+    pub(crate) fn explore_to(&mut self, point: Point, c: &mut Step<'_>) -> Result<(), GenieError> {
+        let at = Position::new(point.x(), point.y(), self.position().z());
         let walk = self.explore_move(c);
         let owner = if let Some(e) = self.actions.explore_mut() {
             let walked = e.move_to.is_some();
@@ -941,7 +938,7 @@ mod tests {
             at: Position::new(20.5, 92.5, 0.0),
             line_of_sight: 4.0,
             order: None,
-            target_point: [NO_POINT, NO_POINT],
+            target_point: Point::new(NO_POINT, NO_POINT),
             computer: false,
         };
         let seeded = || {

@@ -10,6 +10,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Radii;
 use crate::map::{Offset, Position};
 use crate::math::fmath;
@@ -210,7 +211,7 @@ pub fn volley_spawn_point(
     offset: Offset,
     adjustment: f32,
     scatter: [f32; 2],
-    building_at: Option<[f32; 2]>,
+    building_at: Option<Point>,
 ) -> Position {
     let (ox, oy) = (offset.x(), offset.y());
     let offset = if 0.0 < adjustment {
@@ -224,10 +225,10 @@ pub fn volley_spawn_point(
     };
     let mut p = spawn_point(at, angle, offset);
     if let Some(t) = building_at {
-        let (dx, dy) = (t[0] - at.x(), t[1] - at.y());
+        let (dx, dy) = (t.x() - at.x(), t.y() - at.y());
         let gap = (dx * dx + dy * dy).sqrt();
         if gap < (ox * ox + oy * oy).sqrt() {
-            let [tx, ty] = t;
+            let (tx, ty) = (t.x(), t.y());
             p = p.with_x(tx).with_y(ty);
         }
     }
@@ -692,7 +693,7 @@ mod tests {
             Offset::new(0.0, 2.0, 1.0),
             0.0,
             [0.0, 0.0],
-            Some([11.0, 10.0]),
+            Some(Point::new(11.0, 10.0)),
         );
         assert_eq!(p, Position::new(11.0, 10.0, 1.0));
         let p = volley_spawn_point(
@@ -701,7 +702,7 @@ mod tests {
             Offset::new(0.0, 2.0, 1.0),
             0.0,
             [0.0, 0.0],
-            Some([13.0, 10.0]),
+            Some(Point::new(13.0, 10.0)),
         );
         assert_eq!(p, Position::new(12.0, 10.0, 1.0));
     }

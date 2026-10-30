@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Spatial};
 use crate::objects::masters::ClassId;
@@ -511,7 +512,7 @@ impl Spatial {
             return Ok(false);
         }
         if 1 < tall {
-            return self.point_clear(me, [x as f32, y as f32], radius_x * 0.5, mask);
+            return self.point_clear(me, Point::new(x as f32, y as f32), radius_x * 0.5, mask);
         }
         Ok(true)
     }
@@ -528,7 +529,7 @@ impl Spatial {
         me: (i32, f32),
         mask: u8,
         site: (Position, Footprint),
-    ) -> Result<Option<[f32; 2]>, GenieError> {
+    ) -> Result<Option<Point>, GenieError> {
         self.spot_off(from, me, mask, site, false)
     }
 }

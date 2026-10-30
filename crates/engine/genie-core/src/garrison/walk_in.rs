@@ -183,8 +183,8 @@ impl EnterAction {
         let code = if t.building {
             0
         } else {
-            let ([x, y], code) = meeting.point()?;
-            self.point = self.point.with_x(x).with_y(y);
+            let (meet_at, code) = meeting.point()?;
+            self.point = self.point.with_x(meet_at.x()).with_y(meet_at.y());
             code
         };
         // `FUN_140aa0df0`'s: the target's place; `FUN_140aa0d30`'s: the meeting point toward a

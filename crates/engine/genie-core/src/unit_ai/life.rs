@@ -1,6 +1,7 @@
 //! A unit AI's construction, its order and target, its patrol and its moves.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::PathAsk;
@@ -309,7 +310,7 @@ impl UnitAi {
     /// from the unit (`COMISS`, `SETBE`: a NaN distance is). The attack move is on order 733, off
     /// on any other, as it was while a saved patrol is still held.
     #[must_use]
-    pub fn path_ask(ai: Option<&mut Self>, at: [f32; 2], point: [f32; 2]) -> PathAsk {
+    pub fn path_ask(ai: Option<&mut Self>, at: Point, point: Point) -> PathAsk {
         let Some(ai) = ai else {
             return PathAsk {
                 ends_in_range: false,
@@ -331,7 +332,7 @@ impl UnitAi {
                 ask.back_and_forth = saved.flags & 2 != 0;
                 ai.zero_patrol();
             } else {
-                let (dx, dy) = (point[0] - at[0], point[1] - at[1]);
+                let (dx, dy) = (point.x() - at.x(), point.y() - at.y());
                 let d = crate::math::fmath::sqrt(dy * dy + dx * dx);
                 ask.back_and_forth = crate::math::fmath::at_most_or_unordered(PATROL_TURN_REACH, d);
             }
@@ -461,7 +462,7 @@ impl UnitAi {
         &mut self,
         moved: bool,
         target: Option<(i32, i32)>,
-        point: [f32; 2],
+        point: Point,
         ai: &mut Well512,
     ) {
         if moved {
@@ -470,16 +471,16 @@ impl UnitAi {
             self.forget_targets();
         }
         let (id, class) = target.unwrap_or((-1, -1));
-        self.set_target(id, class, Position::new(point[0], point[1], 0.0));
+        self.set_target(id, class, point.with_height(0.0));
     }
 
     /// MOVE's notify to a unit that took its cell of the grid (`FUN_140e67800`): the move order
     /// (`FUN_140c64b60`) and action (`FUN_140c64b50`), then no target and the cell on the ground
     /// (`FUN_140c64be0`); the target it had becomes its last as [`UnitAi::set_target`] does.
-    pub fn notify_grid_move(&mut self, cell: [f32; 2], ai: &mut Well512) {
+    pub fn notify_grid_move(&mut self, cell: Point, ai: &mut Well512) {
         self.set_order(Some(OrderKind::Move), ai);
         self.set_action(Some(ActionKind::Move));
-        self.set_target(-1, -1, Position::new(cell[0], cell[1], 0.0));
+        self.set_target(-1, -1, cell.with_height(0.0));
     }
 
     /// The AI's move (slot 0x130, `FUN_140c55620`): with `force` or no action value, the unit takes

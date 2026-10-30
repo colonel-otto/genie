@@ -7,6 +7,7 @@ use crate::combat::attack::{
     LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveToReads, TargetMoved};
@@ -280,8 +281,8 @@ impl Attack {
     /// readyToAttack's leash of stance 1 on a target at `at` out of reach: its distance from the
     /// unit AI's `state_position` (`+0x1ac`, `+0x1b0`; `FUN_14099ef70` of y's square plus x's) at
     /// least the range plus [`LEASH_SLACK`] (`COMISS`/`JNC`: a NaN distance is within).
-    pub(super) fn off_leash(&self, at: Position, centre: [f32; 2]) -> bool {
-        let (dx, dy) = (at.x() - centre[0], at.y() - centre[1]);
+    pub(super) fn off_leash(&self, at: Position, centre: Point) -> bool {
+        let (dx, dy) = (at.x() - centre.x(), at.y() - centre.y());
         crate::math::fmath::sqrt(dy * dy + dx * dx) >= self.range + LEASH_SLACK
     }
 
@@ -395,7 +396,7 @@ pub fn engagement(
         min_range: master.min_range,
         can_move: ai.is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1),
         stance: ai.map_or(0, |ai| ai.stance),
-        state_position: ai.map_or([0.0; 2], |ai| ai.state_position),
+        state_position: ai.map_or(Point::ORIGIN, |ai| ai.state_position),
         world_time,
         master: master.id,
         target_class: them.class,

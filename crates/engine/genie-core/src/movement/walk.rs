@@ -1,6 +1,7 @@
 //! The walk: its kept hits, the obstruction query's ends, the facets, the steering and the speed
 //! control.
 
+use crate::map::Point;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::BVector;
 use crate::movement::{
@@ -80,17 +81,12 @@ impl Mover {
 
     /// The obstruction query's ends (`FUN_14114cc60`): the step's two ends, each held within 0.1
     /// of the map's far edges (`FUN_141051900` orders them into its rectangle).
-    pub(super) fn query_ends(
-        &self,
-        from: BVector,
-        to: BVector,
-        map: [i32; 2],
-    ) -> ([f32; 2], [f32; 2]) {
+    pub(super) fn query_ends(&self, from: BVector, to: BVector, map: [i32; 2]) -> (Point, Point) {
         let far = |size: i32| size as f32 - 0.1;
         let hold = |v: f32, max: f32| if v < 0.0 { 0.0 } else { v.min(max) };
         (
-            [hold(from.x(), far(map[0])), hold(from.y(), far(map[1]))],
-            [hold(to.x(), far(map[0])), hold(to.y(), far(map[1]))],
+            Point::new(hold(from.x(), far(map[0])), hold(from.y(), far(map[1]))),
+            Point::new(hold(to.x(), far(map[0])), hold(to.y(), far(map[1]))),
         )
     }
 

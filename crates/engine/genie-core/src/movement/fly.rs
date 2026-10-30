@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::{Stream, Well512};
@@ -47,7 +48,7 @@ pub struct Fly {
     /// Its `MoveTo` sub-action to the flight's point (not quiet).
     pub move_to: Option<MoveToAction>,
     /// `+0x38`, `+0x3c`: the point the bird keeps within its task's leash.
-    pub home: [f32; 2],
+    pub home: Point,
     /// The action's task (`+0x48`): its leash (`+0x19`, tiles), rest (`+0x1c`), distance factor
     /// (`+0x28`), avoided class and range (`+0x2c`, `+0x30`), terrain (`+0x16`) and sprites.
     pub task: Task,
@@ -223,7 +224,9 @@ impl Fly {
             angle += ANGLE_STEP;
             tries += 1;
             let inside = 0.0 < px && px <= (w - 1) as f32 && 0.0 < py && py <= (h - 1) as f32;
-            if inside && (leash <= EPSILON || self.near_home(position, radius, [px, py], leash)) {
+            if inside
+                && (leash <= EPSILON || self.near_home(position, radius, Point::new(px, py), leash))
+            {
                 break [px, py];
             }
             if TRIES - 1 < tries {
@@ -286,8 +289,8 @@ impl Fly {
 
     /// The leash test of state 3: the bird within it of the centre (the squared footprint
     /// distance, `FUN_140a847c0`), or the point within it, or no farther than the bird.
-    fn near_home(&self, at: Position, radius: Footprint, point: [f32; 2], leash: f32) -> bool {
-        let [hx, hy] = self.home;
+    fn near_home(&self, at: Position, radius: Footprint, point: Point, leash: f32) -> bool {
+        let (hx, hy) = (self.home.x(), self.home.y());
         let gap = |d: f32, r: f32| {
             let g = d.abs() - r;
             if 0.0 <= g { g } else { 0.0 }
@@ -298,8 +301,8 @@ impl Fly {
         if bird <= leash {
             return true;
         }
-        let ey = point[1] - hy;
-        let ex = point[0] - hx;
+        let ey = point.y() - hy;
+        let ex = point.x() - hx;
         let d = ex * ex + ey * ey;
         d < leash || d <= bird
     }
@@ -393,7 +396,7 @@ mod tests {
             state,
             timer,
             move_to: None,
-            home: [78.5, 103.5],
+            home: Point::new(78.5, 103.5),
             task: Task {
                 action_type: FLY,
                 object_group: -1,
@@ -616,12 +619,12 @@ mod tests {
         let d = 1.32 * (10.0f32 - 0.021) * 1.0;
         let theta = angle as f32 * DEGREE;
         let (c, s) = (cos(theta), sin(theta));
-        let point = [(c * 0.0 - s) * d + AT.x(), (s * 0.0 + c) * d + AT.y()];
-        let inside = |p: [f32; 2]| 0.0 < p[0] && p[0] <= 119.0 && 0.0 < p[1] && p[1] <= 119.0;
+        let point = Point::new((c * 0.0 - s) * d + AT.x(), (s * 0.0 + c) * d + AT.y());
+        let inside = |p: Point| 0.0 < p.x() && p.x() <= 119.0 && 0.0 < p.y() && p.y() <= 119.0;
         assert!(inside(point), "the seed's first angle lands on the map");
         // the sprite draw: the task's moving 846, working 846, proceeding 1595 from r % 3 on
         let drawn = [846, 846, 1595][e.rand15() as usize % 3];
-        let to = Position::new(point[0], point[1], 9.0);
+        let to = point.with_height(9.0);
         let sprite = hawk_graphics().get(&drawn).copied();
         assert_eq!(
             (fly.state, fly.move_to),
@@ -702,7 +705,7 @@ mod tests {
     #[test]
     fn a_leash_keeps_the_point_near_home() {
         let fly = Fly {
-            home: [10.0, 10.0],
+            home: Point::new(10.0, 10.0),
             ..hawk(CHOOSING, 1.0)
         };
         // the bird 5 tiles off with a leash of 3 (9 squared): a point nearer home passes, one
@@ -710,19 +713,19 @@ mod tests {
         assert!(fly.near_home(
             Position::new(15.0, 10.0, 0.0),
             Footprint::ZERO,
-            [12.0, 10.0],
+            Point::new(12.0, 10.0),
             9.0
         ));
         assert!(!fly.near_home(
             Position::new(15.0, 10.0, 0.0),
             Footprint::ZERO,
-            [16.0, 10.0],
+            Point::new(16.0, 10.0),
             9.0
         ));
         assert!(fly.near_home(
             Position::new(12.0, 10.0, 0.0),
             Footprint::ZERO,
-            [40.0, 10.0],
+            Point::new(40.0, 10.0),
             9.0
         ));
     }

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
@@ -100,7 +101,7 @@ impl Visibility {
         registry.update_unit(UnitUpdate {
             id,
             owner: owner.index() as u8,
-            position: [x, y],
+            position: Point::new(x, y),
             radii: radius,
             class,
             old: old & 0xffff_ffff,

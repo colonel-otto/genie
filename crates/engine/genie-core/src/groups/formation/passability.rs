@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
+use crate::map::Point;
 use crate::world::slots::CheckedIndex;
 
 /// No active slot lies nearer than `f32::MAX`: the game reads the slot before the array then.
@@ -293,8 +294,12 @@ impl World {
         // the box's temporary tile records (FUN_141052b90 at 0x14103b8fa) with the buffer the
         // last FUN_1410562d0 left, which the lines grow by too
         let grow = self.spatial.manager_grow();
-        self.spatial
-            .put_tile_records([min_x, min_z], [max_x, max_z], grow, mask);
+        self.spatial.put_tile_records(
+            Point::new(min_x, min_z),
+            Point::new(max_x, max_z),
+            grow,
+            mask,
+        );
         let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
         // the members are the manager's ignore list while the passability runs
         // (FUN_1410562e0, 0x14103b916), which every way out of it clears (0x14103ce93,
@@ -448,7 +453,7 @@ impl World {
         &self,
         grid: &mut PassGrid,
         (fx, fy): (i32, i32),
-        unit_at: [f32; 2],
+        unit_at: Point,
         grow: f32,
         members: &[i32],
     ) -> Result<Option<(i32, i32)>, GenieError> {
@@ -469,7 +474,7 @@ impl World {
         if b & 0x3e < 0xb
             && !self.spatial.still_line_hit(
                 unit_at,
-                [(ddx + fx) as f32 + PASS_HALF, (fy + ddy) as f32 + PASS_HALF],
+                Point::new((ddx + fx) as f32 + PASS_HALF, (fy + ddy) as f32 + PASS_HALF),
                 grow,
                 members,
             )?

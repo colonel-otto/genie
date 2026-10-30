@@ -1,6 +1,7 @@
 //! An order's processing: the combat and work orders, the top target and the attack slots.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -71,7 +72,7 @@ impl UnitAi {
         &mut self,
         o: &QueuedOrder,
         world: Option<(&Surroundings, bool)>,
-        place: Option<([f32; 2], Option<ClassId>)>,
+        place: Option<(Point, Option<ClassId>)>,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {

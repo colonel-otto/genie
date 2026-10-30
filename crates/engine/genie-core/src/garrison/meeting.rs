@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::{EnterAction, EnterTarget, NO_SPEED, WalkStart};
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
@@ -38,9 +39,9 @@ pub struct MeetingTarget {
     /// Its class (`+0x410`).
     pub class: ClassId,
     /// Its place, x and y.
-    pub position: [f32; 2],
+    pub position: Point,
     /// Its top action's point (`FUN_140a7be40`, `FUN_140a7be50`), or why the slice has not got it.
-    pub action_point: Result<[f32; 2], GenieError>,
+    pub action_point: Result<Point, GenieError>,
 }
 
 /// Where `FUN_140a85f30` meets an Enter's target, by the target alone ([`meet_at`]); the
@@ -85,7 +86,7 @@ pub struct LandingWalk {
     /// The difference over the step count, x and y.
     step: [f32; 2],
     /// The float place reached.
-    at: [f32; 2],
+    at: Point,
     /// The steps left.
     left: i32,
     /// The tile last yielded (-999, -999 before the first).
@@ -107,7 +108,7 @@ impl LandingWalk {
         };
         Self {
             step: [fx / steps as f32, fy / steps as f32],
-            at: [from[0] as f32, from[1] as f32],
+            at: Point::new(from[0] as f32, from[1] as f32),
             left,
             last: [-999, -999],
         }
@@ -115,14 +116,13 @@ impl LandingWalk {
 }
 
 impl Iterator for LandingWalk {
-    type Item = ([i32; 2], [f32; 2]);
+    type Item = ([i32; 2], Point);
 
     fn next(&mut self) -> Option<Self::Item> {
         while 0 < self.left {
             self.left -= 1;
-            self.at[0] += self.step[0];
-            self.at[1] += self.step[1];
-            let tile = [cvttss2si(self.at[0]), cvttss2si(self.at[1])];
+            self.at = Point::new(self.at.x() + self.step[0], self.at.y() + self.step[1]);
+            let tile = [cvttss2si(self.at.x()), cvttss2si(self.at.y())];
             if tile != self.last {
                 self.last = tile;
                 return Some((tile, self.at));
@@ -144,15 +144,15 @@ impl Iterator for LandingWalk {
 ///
 /// What slot 0x278 and the count give.
 pub fn walled_off(
-    me: [f32; 2],
-    them: [f32; 2],
+    me: Point,
+    them: Point,
     spatial: &mut Spatial,
     masters: &[Masters],
     (id, stats): (i32, &MoveStats),
 ) -> Result<bool, GenieError> {
     let map = spatial.map;
-    let (mx, my) = (cvttss2si(me[0]), cvttss2si(me[1]));
-    let (tx, ty) = (cvttss2si(them[0]), cvttss2si(them[1]));
+    let (mx, my) = (cvttss2si(me.x()), cvttss2si(me.y()));
+    let (tx, ty) = (cvttss2si(them.x()), cvttss2si(them.y()));
     let (x0, y0) = (mx.min(tx), my.min(ty));
     let (mut x1, mut y1) = (mx.max(tx), my.max(ty));
     if 1 < x1.wrapping_sub(x0) || 1 < y1.wrapping_sub(y0) {
@@ -166,7 +166,7 @@ pub fn walled_off(
                 || (x, y) == (tx, ty)
                 || spatial.point_clear(
                     id,
-                    [x as f32, y as f32],
+                    Point::new(x as f32, y as f32),
                     stats.radius.x(),
                     stats.restriction_mask,
                 )?
@@ -250,7 +250,7 @@ pub(crate) fn meeting_point(
     unit: (i32, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
-) -> Result<([f32; 2], u8), GenieError> {
+) -> Result<(Point, u8), GenieError> {
     match meet_at(t) {
         MeetAt::Place => Ok((t.position, 0)),
         MeetAt::ActionPoint => Ok((t.action_point.clone()?, 0)),
@@ -271,14 +271,17 @@ fn shore_or_beach(
     unit: (i32, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
-) -> Result<([f32; 2], u8), GenieError> {
+) -> Result<(Point, u8), GenieError> {
     let (ux, uy) = (unit.1.x(), unit.1.y());
     if let Some([x, y]) = shore(t, unit, spatial, zones)? {
-        return Ok(([x as f32 + HALF_TILE, y as f32 + HALF_TILE], 1));
+        return Ok((Point::new(x as f32 + HALF_TILE, y as f32 + HALF_TILE), 1));
     }
     let terrain = spatial.terrain.as_ref();
     if terrain.is_some_and(|tr| tr.beach(cvttss2si(ux), cvttss2si(uy))) {
-        return Ok(([(ux + HALF_TILE).floor(), (uy + HALF_TILE).floor()], 1));
+        return Ok((
+            Point::new((ux + HALF_TILE).floor(), (uy + HALF_TILE).floor()),
+            1,
+        ));
     }
     Ok((t.position, 0))
 }
@@ -310,7 +313,7 @@ fn shore(
     let [w, h] = spatial.map;
     let map = zones.of(w, h, &terrain.kinds, values)?;
     let own = map.zone(cvttss2si(ux), cvttss2si(uy));
-    let from = [cvttss2si(t.position[0]), cvttss2si(t.position[1])];
+    let from = [cvttss2si(t.position.x()), cvttss2si(t.position.y())];
     for (tile @ [x, y], place) in LandingWalk::new(from, [cvttss2si(ux), cvttss2si(uy)]) {
         let terrain = spatial
             .terrain
@@ -333,9 +336,9 @@ fn shore(
 #[derive(Debug)]
 pub struct Walls<'a> {
     /// Where the unit last moved to (`+0x824`), x and y.
-    pub me: [f32; 2],
+    pub me: Point,
     /// Where the target last moved to (slot 0x520), x and y.
-    pub them: [f32; 2],
+    pub them: Point,
     /// The map's places and tiles.
     pub spatial: &'a mut Spatial,
     /// Each player's masters, which tell the buildings.
@@ -468,7 +471,7 @@ impl Meeting<'_> {
     /// # Errors
     ///
     /// A unit without movement state ([`NO_SPEED`]), and what the meeting does not model.
-    pub(crate) fn point(self) -> Result<([f32; 2], u8), GenieError> {
+    pub(crate) fn point(self) -> Result<(Point, u8), GenieError> {
         let at = self.target.position();
         if self.master.kind == BUILDING {
             return Ok((at.ground(), 0));
@@ -501,6 +504,6 @@ pub(crate) fn ship_reaches(
         action_state: ship.top_action().map_or(0, |a| a.state),
         group: ship.group.id,
     };
-    let goal = [cvttss2si(to.x()) as f32, cvttss2si(to.y()) as f32];
+    let goal = Point::new(cvttss2si(to.x()) as f32, cvttss2si(to.y()) as f32);
     m.reaches(&me, world, plan, goal, ENTER_NEAR, ship.life.master_id)
 }

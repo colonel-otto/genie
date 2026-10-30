@@ -138,10 +138,10 @@ impl HullPather<'_> {
             Some(t) => {
                 let r = self.radius;
                 [
-                    (t.at[0] - t.radius.x()) - r,
-                    (t.at[1] - t.radius.y()) - r,
-                    t.at[0] + t.radius.x() + r,
-                    t.at[1] + t.radius.y() + r,
+                    (t.at.x() - t.radius.x()) - r,
+                    (t.at.y() - t.radius.y()) - r,
+                    t.at.x() + t.radius.x() + r,
+                    t.at.y() + t.radius.y() + r,
                 ]
             }
         };
@@ -192,7 +192,7 @@ impl HullPather<'_> {
                     continue;
                 }
                 let s = *SIDES.checked(side as usize)?;
-                q = [q[0] - s[0] * NUDGE, q[1] - s[1] * NUDGE];
+                q = Point::new(q.x() - s[0] * NUDGE, q.y() - s[1] * NUDGE);
                 if let Some(end) = self.add_node(NewNode {
                     list: 1,
                     open: false,

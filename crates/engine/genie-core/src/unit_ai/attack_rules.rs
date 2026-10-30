@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
@@ -344,9 +345,9 @@ pub(crate) fn patrol_distance(points: &[BVector], point: BVector) -> Result<f32,
 
 /// `FUN_14118faf0`: the gap from an object at `at` with radii `radius` to `point`: each axis's
 /// distance less the radius, `MAXSS` 0 (an unordered one is 0), then the length (`sqrtf`).
-pub(super) fn footprint_point_gap(at: Position, radius: Footprint, point: [f32; 2]) -> f32 {
-    let gx = crate::math::fmath::maxss((point[0] - at.x()).abs() - radius.x(), 0.0);
-    let gy = crate::math::fmath::maxss((point[1] - at.y()).abs() - radius.y(), 0.0);
+pub(super) fn footprint_point_gap(at: Position, radius: Footprint, point: Point) -> f32 {
+    let gx = crate::math::fmath::maxss((point.x() - at.x()).abs() - radius.x(), 0.0);
+    let gy = crate::math::fmath::maxss((point.y() - at.y()).abs() - radius.y(), 0.0);
     crate::math::fmath::sqrt(gy * gy + gx * gx)
 }
 

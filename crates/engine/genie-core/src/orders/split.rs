@@ -1,6 +1,7 @@
 //! INTERACT and the order splitter: which units move loose and which form groups.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{Interact, MAX_UNGROUPED, Split, Splittable, centroid, splits_together};
@@ -306,7 +307,7 @@ impl World {
         &self,
         loose: &[i32],
         queued: bool,
-    ) -> Result<Option<[f32; 2]>, GenieError> {
+    ) -> Result<Option<Point>, GenieError> {
         let mut points = Vec::with_capacity(loose.len());
         for &id in loose {
             let Some((p, u)) = self.object(id) else {

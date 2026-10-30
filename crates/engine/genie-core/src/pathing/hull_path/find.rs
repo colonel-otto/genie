@@ -143,7 +143,7 @@ impl HullPather<'_> {
         ])?;
         self.empty(0)?;
         let mut rounds = Rounds::new(sqrt(
-            (from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]),
+            (from.y() - to.y()) * (from.y() - to.y()) + (from.x() - to.x()) * (from.x() - to.x()),
         ));
         if let Some(result) = self.search(&q, keep, &mut rounds, &mut path)? {
             return Ok((result, path, true));
@@ -161,10 +161,10 @@ impl HullPather<'_> {
         self.bounds = [r, r, w as f32 - r, h as f32 - r];
         let [_, _, bx1, by1] = self.bounds;
         // each bound by `COMISS`/`JA` (0x140f8569f..0x140f85701): an unordered coordinate passes
-        if from[0] < r || bx1 < from[0] || from[1] < r || by1 < from[1] {
+        if from.x() < r || bx1 < from.x() || from.y() < r || by1 < from.y() {
             return Ok(true);
         }
-        Ok((to[0] < r || bx1 < to[0] || to[1] < r || by1 < to[1])
+        Ok((to.x() < r || bx1 < to.x() || to.y() < r || by1 < to.y())
             && !self.edge_goal(to, target_id)?)
     }
 
@@ -182,7 +182,7 @@ impl HullPather<'_> {
             None
         } else {
             match self.world.get_known(target_id)? {
-                Some(p) if p.position.x() == to[0] && p.position.y() == to[1] => Some(Target {
+                Some(p) if p.position.x() == to.x() && p.position.y() == to.y() => Some(Target {
                     at: p.position.ground(),
                     radius: p.radius,
                     speed: p.speed,
@@ -207,13 +207,14 @@ impl HullPather<'_> {
     /// box or of the goal (the straight walk less the radius).
     fn already_there(&self, q: &HullQuery) -> bool {
         let (from, to) = (q.from, q.to);
-        let straight =
-            sqrt((from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]));
+        let straight = sqrt(
+            (from.y() - to.y()) * (from.y() - to.y()) + (from.x() - to.x()) * (from.x() - to.x()),
+        );
         let gap = q
             .target
             .as_ref()
             .map_or(straight - self.radius, |t| self.target_gap(t, from));
-        (from[0] == to[0] && from[1] == to[1]) || gap <= q.range
+        (from.x() == to.x() && from.y() == to.y()) || gap <= q.range
     }
 
     /// The quick path's goal: without a range (or with a target off the goal) the goal, short of
@@ -225,26 +226,26 @@ impl HullPather<'_> {
             && !q
                 .target
                 .as_ref()
-                .is_some_and(|t| t.at[0] != to[0] && t.at[1] != to[1])
+                .is_some_and(|t| t.at.x() != to.x() && t.at.y() != to.y())
         {
-            let v = [to[0] - from[0], to[1] - from[1], 0.0];
+            let v = [to.x() - from.x(), to.y() - from.y(), 0.0];
             let len = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
             let (ux, uy) = (v[0] / len, v[1] / len);
-            return [ux * q.range + to[0], uy * q.range + to[1]];
+            return Point::new(ux * q.range + to.x(), uy * q.range + to.y());
         }
         let mut goal = to;
         if let Some(t) = q.target.as_ref()
-            && t.at[0] == to[0]
-            && t.at[1] == to[1]
+            && t.at.x() == to.x()
+            && t.at.y() == to.y()
         {
-            let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+            let (dx, dy) = (to.x() - from.x(), to.y() - from.y());
             let d = dy * dy + dx * dx;
             if t.speed != 0.0 || d <= NEAR_TARGET {
                 let len = sqrt(d);
-                goal = [
-                    goal[0] - (dx / len) * (r + t.radius.x()),
-                    goal[1] - (dy / len) * (r + t.radius.y()),
-                ];
+                goal = Point::new(
+                    goal.x() - (dx / len) * (r + t.radius.x()),
+                    goal.y() - (dy / len) * (r + t.radius.y()),
+                );
             }
         }
         goal
@@ -259,10 +260,10 @@ impl HullPather<'_> {
         }
         let [w, h] = self.world.map;
         let tile = |v: f32, d: i32| cvttss2si(v).wrapping_add(d);
-        let x0 = tile(minss(from[0], to[0]), -2);
-        let y0 = tile(minss(from[1], to[1]), -2);
-        let x1 = tile(maxss(from[0], to[0]), 2);
-        let y1 = tile(maxss(from[1], to[1]), 2);
+        let x0 = tile(minss(from.x(), to.x()), -2);
+        let y0 = tile(minss(from.y(), to.y()), -2);
+        let x1 = tile(maxss(from.x(), to.x()), 2);
+        let y1 = tile(maxss(from.y(), to.y()), 2);
         self.area = [
             x0.max(0),
             y0.max(0),
@@ -303,10 +304,14 @@ impl HullPather<'_> {
     /// path without one is NaN). `COMISS`/`JNC` to the partway end at 0x140f86cb6: an unordered
     /// distance takes the node.
     fn node_nearer(&self, end: usize, path: &Waypoints, to: Point) -> Result<bool, GenieError> {
-        let last = *path.points.last().unwrap_or(&[f32::NAN, f32::NAN]);
+        let last = *path
+            .points
+            .last()
+            .unwrap_or(&Point::new(f32::NAN, f32::NAN));
         let e = self.nodes.checked(end)?.at;
-        let d_path = (last[1] - to[1]) * (last[1] - to[1]) + (last[0] - to[0]) * (last[0] - to[0]);
-        let d_node = (e[1] - to[1]) * (e[1] - to[1]) + (e[0] - to[0]) * (e[0] - to[0]);
+        let d_path =
+            (last.y() - to.y()) * (last.y() - to.y()) + (last.x() - to.x()) * (last.x() - to.x());
+        let d_node = (e.y() - to.y()) * (e.y() - to.y()) + (e.x() - to.x()) * (e.x() - to.x());
         Ok(below_or_unordered(d_node, d_path))
     }
 

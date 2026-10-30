@@ -56,8 +56,8 @@ impl BVector {
 
     /// Its place on the ground: x and y.
     #[must_use]
-    pub const fn ground(self) -> [f32; 2] {
-        [self.0[0], self.0[2]]
+    pub const fn ground(self) -> crate::map::Point {
+        crate::map::Point::new(self.0[0], self.0[2])
     }
 
     /// The vector with x `x`.
@@ -231,7 +231,10 @@ mod tests {
             v.get().map(f32::to_bits),
             [0x8000_0000, 2.0f32.to_bits(), 0x7fc0_0001]
         );
-        assert_eq!(v.ground().map(f32::to_bits), [0x8000_0000, 0x7fc0_0001]);
+        assert_eq!(
+            v.ground().get().map(f32::to_bits),
+            [0x8000_0000, 0x7fc0_0001]
+        );
         let p = v.position();
         assert_eq!(
             (p.x().to_bits(), p.y().to_bits(), p.z()),

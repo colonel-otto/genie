@@ -7,6 +7,7 @@ use crate::groups::steer::{
     ROUND_STILL, ROUND_TIMER,
 };
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::{BVector, at_most_or_unordered};
 use crate::pathing::tile_path::Path;
@@ -337,7 +338,7 @@ impl World {
         &mut self,
         walker: crate::movement::Walker,
         computer: bool,
-        from: [f32; 2],
+        from: Point,
         to: BVector,
         ignore: &[i32],
         record: &mut Path,
@@ -369,7 +370,7 @@ impl World {
     pub(super) fn round_long(
         &self,
         id: i32,
-        from: [f32; 2],
+        from: Point,
         to: BVector,
     ) -> Result<(bool, Path), GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
@@ -393,7 +394,7 @@ impl World {
     pub(super) fn round_plan(
         &mut self,
         restriction: usize,
-        from: [f32; 2],
+        from: Point,
         to: BVector,
         record: &mut Path,
     ) -> Result<Option<u8>, GenieError> {

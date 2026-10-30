@@ -23,6 +23,7 @@
 //! under a listed one-tile object that the unit's terrain cannot cross.
 
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::sqrt;
 use std::collections::BTreeSet;
@@ -47,9 +48,6 @@ use self::walk_in::WalkIn;
 use self::walks::WalkOut;
 #[cfg(test)]
 use crate::map::spatial::{Placed, tile_record_id};
-
-/// A point on the map, x and y.
-type Point = [f32; 2];
 
 /// How many records the manager's query lists before it stops (`FUN_141051900`: `0x18 < count`).
 const LINE_HITS: usize = 25;
@@ -120,7 +118,7 @@ impl Shape {
     /// Whether `p` lies inside the box, its sides excluded (`FUN_140f89dc0`'s test).
     fn holds(&self, p: Point) -> bool {
         let [x0, y0, x1, y1] = self.bounds;
-        x0 < p[0] && p[0] < x1 && y0 < p[1] && p[1] < y1
+        x0 < p.x() && p.x() < x1 && y0 < p.y() && p.y() < y1
     }
 }
 
@@ -157,7 +155,7 @@ struct Node {
 impl Node {
     const fn head() -> Self {
         Self {
-            at: [0.0, 0.0],
+            at: Point::new(0.0, 0.0),
             parent: None,
             next: None,
             prev: None,
@@ -206,7 +204,7 @@ impl Waypoints {
             let [a, b] = w else {
                 continue;
             };
-            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let (dx, dy) = (b.x() - a.x(), b.y() - a.y());
             total += sqrt(dx * dx + 0.0 * 0.0 + dy * dy);
         }
         total

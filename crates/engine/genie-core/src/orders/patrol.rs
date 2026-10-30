@@ -35,7 +35,6 @@ impl World {
         reset: bool,
     ) -> Result<(), GenieError> {
         let ids: &[i32] = &ObjectId::fields(ids);
-        let waypoints: &[[f32; 2]] = &waypoints.iter().map(|p| p.xy()).collect::<Vec<_>>();
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
@@ -65,7 +64,6 @@ impl World {
         sweep: Sweep,
     ) -> Result<(), GenieError> {
         let ids: &[i32] = &ObjectId::fields(ids);
-        let waypoints: &[[f32; 2]] = &waypoints.iter().map(|p| p.xy()).collect::<Vec<_>>();
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
@@ -96,7 +94,7 @@ impl World {
     pub(crate) fn patrol_order(
         &mut self,
         ids: &[i32],
-        waypoints: &[[f32; 2]],
+        waypoints: &[Point],
         reset: bool,
     ) -> Result<(), GenieError> {
         let sweep = Sweep {
@@ -154,7 +152,7 @@ impl World {
     pub(crate) fn sweep_order(
         &mut self,
         ids: &[i32],
-        waypoints: &[[f32; 2]],
+        waypoints: &[Point],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
         let Sweep { patrol, reset, .. } = sweep;
@@ -197,8 +195,8 @@ impl World {
             let Some((&last, before)) = kept.split_last() else {
                 continue;
             };
-            for &[x, z] in before {
-                g.add_waypoint(x, z, true);
+            for w in before {
+                g.add_waypoint(w.x(), w.y(), true);
             }
             let leg = crate::groups::CommandMoveTo {
                 range: 0.0,
@@ -343,7 +341,7 @@ impl World {
         &mut self,
         loose: &[i32],
         i: usize,
-        waypoints: &[[f32; 2]],
+        waypoints: &[Point],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
         let id = *loose.checked(i)?;
@@ -371,13 +369,14 @@ impl World {
             }
         }
         let (x, y, z) = (u.position().x(), u.position().y(), u.position().z());
-        let kept = waypoints_from([x, y], waypoints);
-        let Some((&[lx, ly], before)) = kept.split_last() else {
+        let kept = waypoints_from(Point::new(x, y), waypoints);
+        let Some((last, before)) = kept.split_last() else {
             return Ok(());
         };
+        let (lx, ly) = (last.x(), last.y());
         if let Some(m) = u.body.mover_mut() {
-            for &[wx, wy] in before {
-                m.add_user_waypoint(wx, wy, z);
+            for w in before {
+                m.add_user_waypoint(w.x(), w.y(), z);
             }
         }
         // a sleeping object is of a type below 30 (only slot 0x180 puts one to sleep)
@@ -409,7 +408,7 @@ impl World {
                 rng,
             );
             ai.set_action(Some(ActionKind::Move));
-            ai.set_target(-1, -1, Position::new(shown[0], shown[1], z));
+            ai.set_target(-1, -1, shown.with_height(z));
         }
         Ok(())
     }

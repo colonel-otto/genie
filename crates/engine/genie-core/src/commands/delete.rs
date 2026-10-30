@@ -754,6 +754,7 @@ mod tests {
 mod clearing_tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::map::Point;
     use crate::map::Position;
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
@@ -918,7 +919,7 @@ mod clearing_tests {
             vec![],
         );
         assert_eq!(t.spatial.tiles().list(10, 10), [6084, 6083]);
-        t.clear_footprint(PlayerId::new(1), ids::HOUSE, [10.5, 10.5], false)
+        t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)
             .unwrap();
         let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id.get()).collect();
         assert_eq!(ids, [1, 6084, 6083]);
@@ -939,7 +940,7 @@ mod clearing_tests {
         corpse.life.class = Class::Animated;
         let mut t = world(vec![], vec![], vec![corpse]);
         t.players[1].attributes[7] = 3.0;
-        t.clear_footprint(PlayerId::new(1), ids::HOUSE, [10.5, 10.5], false)
+        t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)
             .unwrap();
         let u = &t.players[1].objects[0];
         assert_eq!((u.life.state, u.life.hp), (7, 0.0));
@@ -954,7 +955,7 @@ mod clearing_tests {
         let mut t = world(vec![object(40, master_id(254), 10.5, 10.5)], vec![], vec![]);
         t.players[0].attributes[98] = 5.0;
         assert!(t.spatial.get(40).unwrap().obstruction.is_some());
-        t.clear_footprint(PlayerId::new(1), ids::HOUSE, [10.5, 10.5], true)
+        t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), true)
             .unwrap();
         let u = &t.players[0].objects[0];
         assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
@@ -970,7 +971,7 @@ mod clearing_tests {
     #[test]
     fn a_cleared_dead_farm_goes_through_the_building_s_destroy() {
         let mut t = world(vec![], vec![], vec![object(50, ids::ID_357, 10.5, 10.5)]);
-        t.clear_footprint(PlayerId::new(1), ids::HOUSE, [10.5, 10.5], false)
+        t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)
             .unwrap();
         let u = &t.players[1].objects[0];
         assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));

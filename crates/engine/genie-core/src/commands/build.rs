@@ -62,13 +62,13 @@ impl BuildCommand {
         if self.q_id != -1 && !w.players.player(player)?.computer {
             return Ok(());
         }
-        let [x, y] = self.position.xy();
+        let (x, y) = (self.position.x(), self.position.y());
         let master = w.farm_on_rice_terrain(self.master, Position::new(x, y, 0.0));
         w.debit_listed(player, master)?;
         if !w.build_has_builder(player, master, &builders)? {
             return Ok(());
         }
-        if !w.build_allowed(player, master, self.position.xy())? {
+        if !w.build_allowed(player, master, self.position)? {
             return Ok(());
         }
         let (id, position) = w.found(player, master, Position::new(x, y, 0.0))?;

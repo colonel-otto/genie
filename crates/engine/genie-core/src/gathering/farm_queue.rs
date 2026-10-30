@@ -9,7 +9,6 @@
 //! ([`crate::production::refund_master`]).
 
 use crate::GenieError;
-use crate::map::Position;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FARM;
@@ -240,7 +239,7 @@ impl World {
             return Ok(false);
         };
         let farm = gather.farm;
-        if farm[0] == NO_FARM {
+        if farm.x() == NO_FARM {
             return Ok(false);
         }
         let class = unit.master(&self.masters, p)?.class;
@@ -275,7 +274,7 @@ impl World {
         };
         let made = self.master(p, master)?;
         let ai = Ok(made.unit_ai_type(master));
-        let at = Position::new(farm[0], farm[1], 0.0);
+        let at = farm.with_height(0.0);
         let (foundation, _) = self.make_building(p, master, ai, at)?;
         if from_queue {
             let player = self.players.player_mut(p)?;

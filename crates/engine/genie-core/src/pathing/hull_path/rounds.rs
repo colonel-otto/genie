@@ -348,7 +348,8 @@ impl HullPather<'_> {
         let (to, r) = (q.to, self.radius);
         q.target.as_ref().map_or_else(
             || {
-                let d = (at[1] - to[1]) * (at[1] - to[1]) + (at[0] - to[0]) * (at[0] - to[0]);
+                let d =
+                    (at.y() - to.y()) * (at.y() - to.y()) + (at.x() - to.x()) * (at.x() - to.x());
                 d <= (q.range + r) * (q.range + r) + NUDGE
             },
             |t| self.target_gap(t, at) <= q.range + NUDGE,
@@ -362,7 +363,7 @@ impl HullPather<'_> {
         let mut crossing_d = MOST;
         for (i, hull) in self.hulls.iter().enumerate() {
             if let Some((p, edge)) = hull.intersection(vertex < 0, at, to) {
-                let d = (p[1] - at[1]) * (p[1] - at[1]) + (p[0] - at[0]) * (p[0] - at[0]);
+                let d = (p.y() - at.y()) * (p.y() - at.y()) + (p.x() - at.x()) * (p.x() - at.x());
                 if d < crossing_d {
                     crossing = Some((i, p, edge));
                     crossing_d = d;

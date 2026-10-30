@@ -7,6 +7,7 @@
 //! (`FUN_140efe4a0`, `FUN_140efe450`): the draws of the search leave no trace but its result.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::movement::explore::WANTS_POINT;
 use crate::objects::masters::class;
@@ -107,7 +108,7 @@ impl UnitView<'_, '_> {
         let mut unsynced = self.c.w.streams.get(Stream::Unsynced).clone();
         let (mut area, map, _) = self.scout_area()?;
         let info = &mut module.info;
-        let mut search = |info: &mut crate::players::ai_module::InfoModule, from: [f32; 2]| {
+        let mut search = |info: &mut crate::players::ai_module::InfoModule, from: Point| {
             info.closest_unexplored_tile(&unit, from, &mut area, (map, &mut unsynced))
         };
         let waited = slot.wrapping_mul(1000) as u32;
@@ -142,7 +143,7 @@ impl UnitView<'_, '_> {
         // one more turn than the stack holds points: a point already on top is met twice
         for _ in 0..=info.search.len() {
             if !info.tile_uncovered(tile[0], tile[1])?
-                && let Some(p) = search(info, [tile[0] as f32, tile[1] as f32])?
+                && let Some(p) = search(info, Point::new(tile[0] as f32, tile[1] as f32))?
             {
                 return Ok(Heard::Task(p));
             }

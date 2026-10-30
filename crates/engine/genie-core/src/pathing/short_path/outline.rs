@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::pathing::mesh::Mesh;
 use crate::pathing::short_path::{
-    Corner, Foot, Kind, NONE, Point, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
+    Corner, FixedPoint, Foot, Kind, NONE, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
     contact_point, corner_emits, in_box, inside, shrunk_corner,
 };
 use crate::world::slots::CheckedIndex;
@@ -14,9 +14,9 @@ use crate::world::slots::CheckedIndex;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Traced {
     /// The vertex.
-    pub(super) vertex: Point,
+    pub(super) vertex: FixedPoint,
     /// The outline's first vertex.
-    pub(super) first: Point,
+    pub(super) first: FixedPoint,
     /// Whether the start side runs vertically.
     pub(super) vertical: bool,
     /// The start side.
@@ -83,7 +83,7 @@ impl Search<'_> {
     }
 
     /// The coordinate of `p` along a side's axis (x for sides 0 and 2, y for 1 and 3).
-    pub(super) const fn along(p: Point, side: u32) -> i32 {
+    pub(super) const fn along(p: FixedPoint, side: u32) -> i32 {
         if side & 1 == 1 { p[1] } else { p[0] }
     }
 
@@ -91,8 +91,8 @@ impl Search<'_> {
     /// the side gives, to the first shape side the sweep meets (0) or the border's corner (1).
     pub(super) fn border_walk(
         &self,
-        pos: &mut Point,
-        first: &mut Point,
+        pos: &mut FixedPoint,
+        first: &mut FixedPoint,
         side: &mut u32,
         shape: &mut u32,
         u: &mut i32,
@@ -136,7 +136,7 @@ impl Search<'_> {
         &self,
         shape0: u32,
         s0: u32,
-        start: Option<Point>,
+        start: Option<FixedPoint>,
         poly: &mut Poly,
     ) -> Result<i32, GenieError> {
         let d = self.ctx.d;
@@ -287,7 +287,7 @@ impl Search<'_> {
     /// None if none.
     pub(super) fn edge_holding(
         poly: &Poly,
-        p: Point,
+        p: FixedPoint,
         side: u32,
         mesh: &Mesh,
         shape: u32,
@@ -344,7 +344,7 @@ impl Search<'_> {
     /// `d` on every side.
     pub(super) fn vertex_in_overlap(
         mesh: &Mesh,
-        (p, vc, vs): (Point, Point, u32),
+        (p, vc, vs): (FixedPoint, FixedPoint, u32),
         shape: u32,
         d: i32,
     ) -> bool {
@@ -378,8 +378,8 @@ impl Search<'_> {
     /// counts.
     pub(super) const fn on_edge(
         s_cur: u8,
-        (vc, vn): (Point, Point),
-        p: Point,
+        (vc, vn): (FixedPoint, FixedPoint),
+        p: FixedPoint,
         (prev, next): (u8, u8),
     ) -> bool {
         match s_cur {
@@ -440,7 +440,7 @@ impl Search<'_> {
     pub(super) fn walk_new(
         &mut self,
         pi: u32,
-        p: Point,
+        p: FixedPoint,
         g0: i32,
         parent: u32,
     ) -> Result<(), GenieError> {
@@ -506,7 +506,7 @@ impl Search<'_> {
         &mut self,
         walk: &NewWalk,
         poly: &Poly,
-        p: Point,
+        p: FixedPoint,
         g0: i32,
     ) -> Result<(i32, i32), GenieError> {
         let v = &poly.vertices;

@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
@@ -308,7 +309,7 @@ fn plain_task(action_type: i16, range: f32) -> crate::objects::masters::Task {
 fn query_on(target: i32) -> task::TaskQuery {
     task::TaskQuery {
         target: ObjectId::try_from(target).unwrap(),
-        point: [20.0, 20.0],
+        point: Point::new(20.0, 20.0),
         filter: -1,
         queued: false,
         direct: true,
@@ -701,7 +702,7 @@ fn a_general_command_moves_the_group_to_the_target_and_takes_the_command() {
         .general_command(
             1,
             (5, building_60()),
-            [40.0, 45.0],
+            Point::new(40.0, 45.0),
             3.0,
             general(false, true),
         )
@@ -737,7 +738,7 @@ fn a_general_command_of_a_group_that_cannot_move_does_nothing() {
         !t.general_command(
             1,
             (5, building_60()),
-            [40.0, 45.0],
+            Point::new(40.0, 45.0),
             3.0,
             general(false, true)
         )
@@ -756,7 +757,7 @@ fn a_general_command_queues_or_runs_the_queue() {
         !t.general_command(
             1,
             (5, building_60()),
-            [40.0, 45.0],
+            Point::new(40.0, 45.0),
             3.0,
             general(true, true)
         )
@@ -780,7 +781,7 @@ fn a_general_command_queues_or_runs_the_queue() {
         t.general_command(
             1,
             (5, building_60()),
-            [40.0, 45.0],
+            Point::new(40.0, 45.0),
             3.0,
             general(false, false)
         )
@@ -889,7 +890,7 @@ fn command_args(queued: bool, direct: bool) -> CommandArgs {
 fn a_group_ordered_on_an_enemy_building_runs_the_attack_path() {
     let mut t = attack_world_with_task(&[(7, 4, 10.0, 10.0), (8, 4, 11.0, 10.0)]);
     let moved = t
-        .group_command(1, 60, [40.0, 45.0], command_args(false, true))
+        .group_command(1, 60, Point::new(40.0, 45.0), command_args(false, true))
         .unwrap();
     assert!(moved);
     let g = t.groups.get(1).unwrap();
@@ -910,7 +911,7 @@ fn a_group_ordered_with_a_general_task_runs_the_general_command() {
         }];
     }
     assert!(
-        t.group_command(1, 60, [40.0, 45.0], command_args(false, true))
+        t.group_command(1, 60, Point::new(40.0, 45.0), command_args(false, true))
             .unwrap()
     );
     let g = t.groups.get(1).unwrap();
@@ -923,7 +924,7 @@ fn a_group_ordered_with_a_general_task_runs_the_general_command() {
 fn a_group_ordered_on_an_object_the_world_lacks_moves_to_the_point() {
     let mut t = attack_world_with_task(&[(7, 4, 10.0, 10.0)]);
     assert!(
-        t.group_command(1, 99, [40.0, 45.0], command_args(false, true))
+        t.group_command(1, 99, Point::new(40.0, 45.0), command_args(false, true))
             .unwrap()
     );
     let g = t.groups.get(1).unwrap();
@@ -942,7 +943,10 @@ fn a_queued_attack_joins_the_command_queue() {
         disable_retargeting: true,
         filter: -1,
     };
-    assert!(!t.group_command(1, 60, [40.0, 45.0], args).unwrap());
+    assert!(
+        !t.group_command(1, 60, Point::new(40.0, 45.0), args)
+            .unwrap()
+    );
     let g = t.groups.get(1).unwrap();
     assert_eq!(
         g.command_queue,
@@ -978,7 +982,7 @@ fn an_indirect_attack_behind_queued_commands_runs_the_queue() {
         approved_2: 0xffff,
     }];
     assert!(
-        t.group_command(1, 60, [40.0, 45.0], command_args(false, false))
+        t.group_command(1, 60, Point::new(40.0, 45.0), command_args(false, false))
             .unwrap()
     );
     let g = t.groups.get(1).unwrap();

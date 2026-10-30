@@ -2,6 +2,7 @@
 //! the merge and the rays to a box or out of the hull.
 
 use crate::GenieError;
+use crate::map::Axis;
 use crate::math::fmath::at_most_or_unordered;
 use crate::pathing::hull_path::{
     EPSILON, FAR, FULL_TURN, HALF, HALF_TURN, Hull, MOST, NO_ANGLE, NUDGE, ONE, Point, QUADRANT,
@@ -13,20 +14,21 @@ impl Hull {
     /// `MConvexHull::InsideHull` (`FUN_140f87760`): whether `p`, moved a little toward the bounding
     /// box's middle, lies inside the hull (the crossings of a ray to the right).
     pub(super) fn inside(&self, p: Point) -> bool {
-        let px = p[0] + ((self.max[0] + self.min[0]) * HALF - p[0]) * NUDGE;
-        let py = p[1] + ((self.max[1] + self.min[1]) * HALF - p[1]) * NUDGE;
+        let px = p.x() + ((self.max.x() + self.min.x()) * HALF - p.x()) * NUDGE;
+        let py = p.y() + ((self.max.y() + self.min.y()) * HALF - p.y()) * NUDGE;
         let mut inside = false;
         let mut previous = self.points.last().copied();
-        for &[xi, yi] in &self.points {
-            let Some([xj, yj]) = previous else {
+        for pi in &self.points {
+            let Some(pj) = previous else {
                 break;
             };
+            let ((xi, yi), (xj, yj)) = ((pi.x(), pi.y()), (pj.x(), pj.y()));
             if ((yi <= py && py < yj) || (yj <= py && py < yi))
                 && px < ((py - yi) * (xj - xi)) / (yj - yi) + xi
             {
                 inside = !inside;
             }
-            previous = Some([xi, yi]);
+            previous = Some(*pi);
         }
         inside
     }
@@ -41,7 +43,7 @@ impl Hull {
         b: Point,
     ) -> Option<(Point, usize)> {
         let n = self.points.len();
-        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let (dx, dy) = (b.x() - a.x(), b.y() - a.y());
         let mut best = FAR;
         let mut found: Option<(Point, usize)> = None;
         for k in 1..=n {
@@ -51,8 +53,8 @@ impl Hull {
             } else {
                 *self.points.get(k)?
             };
-            let (ex, ey) = (p1[0] - p0[0], p1[1] - p0[1]);
-            let (rx, ry) = (a[0] - p0[0], a[1] - p0[1]);
+            let (ex, ey) = (p1.x() - p0.x(), p1.y() - p0.y());
+            let (rx, ry) = (a.x() - p0.x(), a.y() - p0.y());
             let denom = dx * ey - dy * ex;
             if denom.abs() < EPSILON {
                 continue;
@@ -63,11 +65,11 @@ impl Hull {
             if !((T_LOW..=T_HIGH).contains(&t) && (T_LOW..=T_HIGH).contains(&u)) {
                 continue;
             }
-            let p = [dx * t + a[0], dy * t + a[1]];
-            if !at_start && (p[0] - a[0]).abs() < EPSILON && (p[1] - a[1]).abs() < EPSILON {
+            let p = Point::new(dx * t + a.x(), dy * t + a.y());
+            if !at_start && (p.x() - a.x()).abs() < EPSILON && (p.y() - a.y()).abs() < EPSILON {
                 continue;
             }
-            let d = (p[1] - a[1]) * (p[1] - a[1]) + (p[0] - a[0]) * (p[0] - a[0]);
+            let d = (p.y() - a.y()) * (p.y() - a.y()) + (p.x() - a.x()) * (p.x() - a.x());
             if found.is_none() || d < best {
                 found = Some((p, k));
                 best = d;
@@ -81,12 +83,12 @@ impl Hull {
     /// left, low right, high right, high left), 1 when a hull point lies in the box or a box side
     /// meets the hull, else 0.
     pub(super) fn shape_overlap(&self, min: Point, max: Point) -> (u8, [bool; 4]) {
-        let ([x0, y0], [x1, y1]) = (min, max);
+        let ((x0, y0), (x1, y1)) = ((min.x(), min.y()), (max.x(), max.y()));
         let mut outside = [true; 4];
-        if !(x0 <= self.max[0] && y0 <= self.max[1] && self.min[0] <= x1 && self.min[1] <= y1) {
+        if !(x0 <= self.max.x() && y0 <= self.max.y() && self.min.x() <= x1 && self.min.y() <= y1) {
             return (0, outside);
         }
-        let corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+        let corners = [min, Point::new(x1, y0), max, Point::new(x0, y1)];
         let mut inside = 0;
         for (c, outside) in corners.iter().zip(outside.iter_mut()) {
             if self.inside(*c) {
@@ -103,15 +105,15 @@ impl Hull {
         if self
             .points
             .iter()
-            .any(|p| x0 <= p[0] && p[0] <= x1 && y0 <= p[1] && p[1] <= y1)
+            .any(|p| x0 <= p.x() && p.x() <= x1 && y0 <= p.y() && p.y() <= y1)
         {
             return (1, outside);
         }
         let sides = [
-            ([x0, y0], [x1, y0]),
-            ([x1, y1], [x1, y0]),
-            ([x1, y1], [x0, y1]),
-            ([x0, y0], [x0, y1]),
+            (min, Point::new(x1, y0)),
+            (max, Point::new(x1, y0)),
+            (max, Point::new(x0, y1)),
+            (min, Point::new(x0, y1)),
         ];
         let meets = sides
             .iter()
@@ -130,7 +132,7 @@ impl Hull {
             let seen = self
                 .points
                 .iter()
-                .any(|s| (p[0] - s[0]).abs() < EPSILON && (p[1] - s[1]).abs() < EPSILON);
+                .any(|s| (p.x() - s.x()).abs() < EPSILON && (p.y() - s.y()).abs() < EPSILON);
             if !seen {
                 scratch.push(*p);
             }
@@ -141,7 +143,7 @@ impl Hull {
         let mut k = 0;
         let mut first = *scratch.checked(0)?;
         for (i, s) in scratch.iter().enumerate() {
-            if first[1] <= s[1] && (first[1] < s[1] || first[0] < s[0]) {
+            if first.y() <= s.y() && (first.y() < s.y() || first.x() < s.x()) {
                 first = *s;
                 k = i;
             }
@@ -155,17 +157,17 @@ impl Hull {
         loop {
             let cur = *scratch.checked(k)?;
             self.points.push(cur);
-            if cur[0] < self.min[0] {
-                self.min[0] = cur[0];
+            if cur.x() < self.min.x() {
+                self.min = self.min.with_x(cur.x());
             }
-            if cur[1] < self.min[1] {
-                self.min[1] = cur[1];
+            if cur.y() < self.min.y() {
+                self.min = self.min.with_y(cur.y());
             }
-            if self.max[0] < cur[0] {
-                self.max[0] = cur[0];
+            if self.max.x() < cur.x() {
+                self.max = self.max.with_x(cur.x());
             }
-            if self.max[1] < cur[1] {
-                self.max[1] = cur[1];
+            if self.max.y() < cur.y() {
+                self.max = self.max.with_y(cur.y());
             }
             if k < left - 1 {
                 scratch.swap(k, left - 1);
@@ -178,10 +180,11 @@ impl Hull {
             let mut best_angle = NO_ANGLE;
             let mut best_d = NO_ANGLE;
             for (i, s) in scratch.head(left)?.iter().enumerate() {
-                let a = pseudo_angle(s[0] - cur[0], s[1] - cur[1]);
+                let a = pseudo_angle(s.x() - cur.x(), s.y() - cur.y());
                 let angle = turn(a * QUADRANT + turned);
                 if best_angle <= angle {
-                    let d = (cur[1] - s[1]) * (cur[1] - s[1]) + (cur[0] - s[0]) * (cur[0] - s[0]);
+                    let d = (cur.y() - s.y()) * (cur.y() - s.y())
+                        + (cur.x() - s.x()) * (cur.x() - s.x());
                     if angle <= best_angle {
                         if d <= best_d {
                             continue;
@@ -198,13 +201,13 @@ impl Hull {
                 return Ok(());
             };
             if 1 < self.points.len() {
-                let a = pseudo_angle(first[0] - cur[0], first[1] - cur[1]);
+                let a = pseudo_angle(first.x() - cur.x(), first.y() - cur.y());
                 let angle = turn(a * QUADRANT + turned);
                 if best_angle < angle {
                     return Ok(());
                 }
-                let d = (cur[1] - first[1]) * (cur[1] - first[1])
-                    + (cur[0] - first[0]) * (cur[0] - first[0]);
+                let d = (cur.y() - first.y()) * (cur.y() - first.y())
+                    + (cur.x() - first.x()) * (cur.x() - first.x());
                 if angle == best_angle && best_d < d {
                     return Ok(());
                 }
@@ -233,44 +236,44 @@ impl Hull {
             let [x0, y0, x1, y1] = o.bounds;
             let mine = k as i32 == own;
             let hit = match side {
-                0 if within(x0, p[0], x1) => {
-                    let past = if mine { y1 < p[1] } else { y1 <= p[1] };
+                0 if within(x0, p.x(), x1) => {
+                    let past = if mine { y1 < p.y() } else { y1 <= p.y() };
                     if past {
-                        Some((y1, 0, p[1] - y1))
-                    } else if p[1] <= y0 {
+                        Some((y1, 0, p.y() - y1))
+                    } else if p.y() <= y0 {
                         None
                     } else {
-                        Some((y0, 2, p[1] - y0))
+                        Some((y0, 2, p.y() - y0))
                     }
                 }
-                1 if within(x0, p[0], x1) => {
-                    let past = if mine { p[1] < y0 } else { p[1] <= y0 };
+                1 if within(x0, p.x(), x1) => {
+                    let past = if mine { p.y() < y0 } else { p.y() <= y0 };
                     if past {
-                        Some((y0, 2, y0 - p[1]))
-                    } else if y1 <= p[1] {
+                        Some((y0, 2, y0 - p.y()))
+                    } else if y1 <= p.y() {
                         None
                     } else {
-                        Some((y1, 0, y1 - p[1]))
+                        Some((y1, 0, y1 - p.y()))
                     }
                 }
-                2 if within(y0, p[1], y1) => {
-                    let past = if mine { x1 < p[0] } else { x1 <= p[0] };
+                2 if within(y0, p.y(), y1) => {
+                    let past = if mine { x1 < p.x() } else { x1 <= p.x() };
                     if past {
-                        Some((x1, 1, p[0] - x1))
-                    } else if p[0] <= x0 {
+                        Some((x1, 1, p.x() - x1))
+                    } else if p.x() <= x0 {
                         None
                     } else {
-                        Some((x0, 3, p[0] - x0))
+                        Some((x0, 3, p.x() - x0))
                     }
                 }
-                3 if within(y0, p[1], y1) => {
-                    let past = if mine { p[0] < x0 } else { p[0] <= x0 };
+                3 if within(y0, p.y(), y1) => {
+                    let past = if mine { p.x() < x0 } else { p.x() <= x0 };
                     if past {
-                        Some((x0, 3, x0 - p[0]))
-                    } else if x1 <= p[0] {
+                        Some((x0, 3, x0 - p.x()))
+                    } else if x1 <= p.x() {
                         None
                     } else {
-                        Some((x1, 1, x1 - p[0]))
+                        Some((x1, 1, x1 - p.x()))
                     }
                 }
                 _ => None,
@@ -279,7 +282,11 @@ impl Hull {
                 && d < best
             {
                 best = d;
-                let at = if side < 2 { [p[0], edge] } else { [edge, p[1]] };
+                let at = if side < 2 {
+                    p.with_y(edge)
+                } else {
+                    p.with_x(edge)
+                };
                 found = Some((at, k, box_side));
             }
         }
@@ -294,23 +301,23 @@ impl Hull {
         let mut found = None;
         // the ray's axis (a), the other (b), and whether it runs toward smaller values
         let (a, b, down) = match side {
-            0 => (1, 0, true),
-            1 => (1, 0, false),
-            2 => (0, 1, true),
-            3 => (0, 1, false),
+            0 => (Axis::Y, Axis::X, true),
+            1 => (Axis::Y, Axis::X, false),
+            2 => (Axis::X, Axis::Y, true),
+            3 => (Axis::X, Axis::Y, false),
             _ => return None,
         };
-        let (pa, pb) = (*p.get(a)?, *p.get(b)?);
+        let (pa, pb) = (p.along(a), p.along(b));
         let mut previous = self.points.last();
         for (i, pi) in self.points.iter().enumerate() {
             let Some(pj) = previous else {
                 break;
             };
             previous = Some(pi);
-            let (bi, bj) = (*pi.get(b)?, *pj.get(b)?);
+            let (bi, bj) = (pi.along(b), pj.along(b));
             let (lo_b, hi_b) = if bi < bj { (bi, bj) } else { (bj, bi) };
             if lo_b <= pb && pb <= hi_b {
-                let (ai, aj) = (*pi.get(a)?, *pj.get(a)?);
+                let (ai, aj) = (pi.along(a), pj.along(a));
                 let sloped = EPSILON <= (bj - bi).abs();
                 let at = |q: f32| ((q - bi) / (bj - bi)) * (aj - ai) + ai;
                 let (lo, hi) = if ai < aj { (ai, aj) } else { (aj, ai) };
@@ -345,9 +352,7 @@ impl Hull {
                     let d = if down { pa - e } else { e - pa };
                     if d < best {
                         best = d;
-                        let mut q = p;
-                        *q.get_mut(a)? = e;
-                        found = Some((q, i));
+                        found = Some((p.with_along(a, e), i));
                     }
                 }
             }

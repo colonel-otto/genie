@@ -37,8 +37,8 @@ impl World {
         p: PlayerId,
         i: usize,
         made: &crate::objects::masters::Master,
-        toward: Option<[f32; 2]>,
-    ) -> Result<[f32; 2], GenieError> {
+        toward: Option<Point>,
+    ) -> Result<Point, GenieError> {
         let building = &self.players.live(p, i)?;
         let site_master = building.master(&self.masters, p)?;
         let position = building.position();
@@ -83,10 +83,11 @@ impl World {
         };
         let map = WorldMap { turns: self };
         let spatial = &self.spatial;
-        spawn_point(&site, made.radius, &mut |[x, y]| {
+        spawn_point(&site, made.radius, &mut |spot| {
+            let (x, y) = (spot.x(), spot.y());
             let (rx, ry) = (made.radius.x(), made.radius.y());
             spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
-            placement(&placing, &map, [x, y], false)
+            placement(&placing, &map, spot, false)
         })
     }
 
@@ -344,7 +345,6 @@ impl World {
         /// The flare's master (`0x112`, FLARE2).
         const FLARE: MasterId = MasterId::named(274);
         let target = ObjectId::field(target);
-        let point = point.xy();
         if self.players.len() < usize::from(players) {
             return Ok(());
         }
@@ -353,7 +353,7 @@ impl World {
         } else {
             self.spatial.get(target).map(|p| p.position)
         };
-        let at = at.unwrap_or_else(|| Position::new(point[0], point[1], 0.0));
+        let at = at.unwrap_or_else(|| point.with_height(0.0));
         for p in PlayerId::each(usize::from(players)).skip(1) {
             self.remains(p, FLARE, at, None)?;
             self.made_new_object(p)?;

@@ -458,7 +458,7 @@ pub(crate) fn reads() -> AttackReads {
         world_time: 0,
         can_move: true,
         stance: 0,
-        state_position: [0.0; 2],
+        state_position: Point::ORIGIN,
         queue_empty: true,
         ai_order: AiOrder::Idle,
         ai_type: None,
@@ -1522,7 +1522,7 @@ fn engaged(gap: f32, speed: f32, can_move: bool, stance: u8) -> Engagement {
         min_range: 0.0,
         can_move,
         stance,
-        state_position: [10.0, 10.0],
+        state_position: Point::new(10.0, 10.0),
         world_time: 0,
         master: master_id(4),
         target_class: class::CLASS_6,
@@ -1680,7 +1680,7 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
         (false, vec![(0x1fd, [0; 3])], true)
     );
     let far = Engagement {
-        state_position: [3.0, 10.0],
+        state_position: Point::new(3.0, 10.0),
         ..engaged(3.0, 1.2, true, 1)
     };
     assert_eq!(start(far, true), (true, vec![(0x1fd, [0; 3])], false));
@@ -1909,9 +1909,9 @@ fn a_swing_with_a_second_sprite_draws_which_one_it_shows() {
 fn ready_to_attack_s_leash_fails_a_target_too_far_from_the_unit_ai_s_point() {
     let at = Position::new(15.0, 10.0, 0.0);
     for (centre, follows) in [
-        ([10.0, 10.0], true),
-        ([9.0, 10.0], false),
-        ([f32::NAN, 10.0], true),
+        (Point::new(10.0, 10.0), true),
+        (Point::new(9.0, 10.0), false),
+        (Point::new(f32::NAN, 10.0), true),
     ] {
         let victim = Victim {
             id: 7,

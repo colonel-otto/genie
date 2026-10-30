@@ -13,6 +13,7 @@
 //! unsynced stream.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::Well512;
@@ -48,7 +49,7 @@ pub struct SearchUnit {
     /// Its id.
     pub id: ObjectId,
     /// Its place on the ground.
-    pub position: [f32; 2],
+    pub position: Point,
     /// Its master's class is the civilian's (4).
     pub civilian: bool,
 }
@@ -121,8 +122,8 @@ impl InfoModule {
 
     /// `FUN_140b96cf0`: the eight points of a ring of `radius` about `centre`, every eighth of a
     /// turn from 0, go onto the stack when they lie on the map.
-    pub fn push_ring(&mut self, radius: f32, centre: [f32; 2]) {
-        let (cx, cy) = (cvttss2si(centre[0]) as f32, cvttss2si(centre[1]) as f32);
+    pub fn push_ring(&mut self, radius: f32, centre: Point) {
+        let (cx, cy) = (cvttss2si(centre.x()) as f32, cvttss2si(centre.y()) as f32);
         for i in 0..8 {
             let angle = i as f32 * crate::math::image::facing::QUARTER_PI;
             let mut p = [
@@ -145,7 +146,7 @@ impl InfoModule {
     pub fn closest_unexplored_tile(
         &mut self,
         unit: &SearchUnit,
-        start: [f32; 2],
+        start: Point,
         area: &mut dyn SearchArea,
         (map, rng): ([i32; 2], &mut Well512),
     ) -> Result<Option<[i32; 2]>, GenieError> {
@@ -168,12 +169,12 @@ impl InfoModule {
     fn flood(
         &mut self,
         unit: &SearchUnit,
-        start: [f32; 2],
+        start: Point,
         own: u8,
         area: &mut dyn SearchArea,
         (map, rng): ([i32; 2], &mut Well512),
     ) -> Result<Flood, GenieError> {
-        let mut first = [cvttss2si(start[0]), cvttss2si(start[1])];
+        let mut first = [cvttss2si(start.x()), cvttss2si(start.y())];
         let _ = self.clamp(&mut first);
         let mut visited = vec![false; (map[0].max(0) * map[1].max(0)) as usize];
         let mut queue = vec![first];
@@ -199,7 +200,7 @@ impl InfoModule {
                 return Ok(Flood::Found([x, y]));
             }
             self.path_map.set(x, y, PUNTED);
-            if differs(start[0], unit.position[0]) || differs(start[1], unit.position[1]) {
+            if differs(start.x(), unit.position.x()) || differs(start.y(), unit.position.y()) {
                 return Ok(Flood::Again);
             }
             return Ok(Flood::Found(self.punt(rng)));

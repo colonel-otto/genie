@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::production::spawn::PlaceMap;
@@ -85,13 +86,13 @@ pub(super) fn hill_fails(
 pub fn placement_terrains(
     placement: [i16; 4],
     map: &dyn PlaceMap,
-    p: [f32; 2],
+    p: Point,
     b: [i32; 4],
 ) -> Result<bool, GenieError> {
     let [side1, side2, t1, t2] = placement;
     let mut b = b;
     if 0 <= t1 || 0 <= t2 {
-        let (x, y) = (p[0] as i32, p[1] as i32);
+        let (x, y) = (p.x() as i32, p.y() as i32);
         if !point_terrain_allows(map, [t1, t2], x, y)? {
             return Ok(false);
         }

@@ -7,6 +7,7 @@ use crate::garrison::transport::{
     Shore, WATER,
 };
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::terrain::Terrain;
 use crate::math::conversions::cvttss2si;
@@ -19,11 +20,11 @@ use crate::math::rng::Well512;
 /// 100; the last draw becomes the point either way. It sails on (true) only when a draw left
 /// the water with more than one draw to spare: the 99th and 100th never count.
 pub(crate) fn retry_point(
-    point: [f32; 2],
+    point: Point,
     map: [i32; 2],
     terrain: &Terrain,
     rng: &mut Well512,
-) -> ([f32; 2], bool) {
+) -> (Point, bool) {
     let [w, h] = map;
     let mut seen = DEEP_WATER;
     let mut at = point;
@@ -34,9 +35,9 @@ pub(crate) fn retry_point(
         if !matches!(seen.wrapping_sub(DEEP_WATER), 0 | 1) && seen != WATER {
             break;
         }
-        let x = (rng.rand15() / RETRY_STEP) as f32 + point[0] - RETRY_SPREAD;
-        let y = (rng.rand15() / RETRY_STEP) as f32 + point[1] - RETRY_SPREAD;
-        at = [x, y];
+        let x = (rng.rand15() / RETRY_STEP) as f32 + point.x() - RETRY_SPREAD;
+        let y = (rng.rand15() / RETRY_STEP) as f32 + point.y() - RETRY_SPREAD;
+        at = Point::new(x, y);
         let (tx, ty) = (cvttss2si(x), cvttss2si(y));
         if 0 <= tx && 0 <= ty && tx < w && ty < h {
             seen = terrain.read(tx as i16, ty as i16);
@@ -53,7 +54,7 @@ pub(crate) fn retry_point(
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Around {
     /// The centre (x, y).
-    pub center: [f32; 2],
+    pub center: Point,
     /// The radii (x, y).
     pub radius: Footprint,
 }
@@ -70,7 +71,7 @@ pub(crate) struct DropDraws<'a> {
     around: Around,
     unit_radius: Footprint,
     map: [i32; 2],
-    last: &'a mut Option<[f32; 2]>,
+    last: &'a mut Option<Point>,
     rng: &'a mut Well512,
     left: u16,
 }
@@ -82,7 +83,7 @@ impl<'a> DropDraws<'a> {
         around: Around,
         unit_radius: Footprint,
         map: [i32; 2],
-        last: &'a mut Option<[f32; 2]>,
+        last: &'a mut Option<Point>,
         rng: &'a mut Well512,
     ) -> Self {
         Self {
@@ -101,22 +102,25 @@ impl<'a> DropDraws<'a> {
     /// # Errors
     ///
     /// [`STACK_PLACE`].
-    pub(crate) fn next_on_map(&mut self) -> Result<Option<[f32; 2]>, GenieError> {
+    pub(crate) fn next_on_map(&mut self) -> Result<Option<Point>, GenieError> {
         let (w, h) = (self.map[0] as f32, self.map[1] as f32);
         while 0 < self.left {
             self.left -= 1;
-            let [x, y] = self.draw()?;
+            let (x, y) = {
+                let p = self.draw()?;
+                (p.x(), p.y())
+            };
             if 0.0 > x || 0.0 > y || x >= w || y >= h {
                 continue;
             }
-            return Ok(Some([x, y]));
+            return Ok(Some(Point::new(x, y)));
         }
         Ok(None)
     }
 
     /// One draw: its side, then its place along it, which `last` keeps.
-    fn draw(&mut self) -> Result<[f32; 2], GenieError> {
-        let [cx, cy] = self.around.center;
+    fn draw(&mut self) -> Result<Point, GenieError> {
+        let (cx, cy) = (self.around.center.x(), self.around.center.y());
         let (rx, ry) = (self.around.radius.x(), self.around.radius.y());
         let off_x = rx + (self.unit_radius.x() + DROP_GAP);
         let off_y = ry + (self.unit_radius.y() + DROP_GAP);
@@ -125,15 +129,15 @@ impl<'a> DropDraws<'a> {
         };
         let side = (self.rng.rand15() as i32 * 4) / 0x7fff;
         let place = match side {
-            0 => [cx + off_x, along(self.rng.rand15(), ry, cy)],
-            1 => [cx - off_x, along(self.rng.rand15(), ry, cy)],
+            0 => Point::new(cx + off_x, along(self.rng.rand15(), ry, cy)),
+            1 => Point::new(cx - off_x, along(self.rng.rand15(), ry, cy)),
             2 => {
                 let y = cy + off_y;
-                [along(self.rng.rand15(), rx, cx), y]
+                Point::new(along(self.rng.rand15(), rx, cx), y)
             }
             3 => {
                 let y = cy - off_y;
-                [along(self.rng.rand15(), rx, cx), y]
+                Point::new(along(self.rng.rand15(), rx, cx), y)
             }
             _ => self.last.ok_or(STACK_PLACE)?,
         };
@@ -151,10 +155,11 @@ impl<'a> DropDraws<'a> {
 ///
 /// A zone past the adjacency table.
 pub(crate) fn in_zone(
-    [x, y]: [f32; 2],
+    at: Point,
     zone: u32,
     zone_map: Option<&crate::pathing::zones::ZoneMap>,
 ) -> Result<bool, GenieError> {
+    let (x, y) = (at.x(), at.y());
     if zone == u32::MAX {
         return Ok(true);
     }
@@ -250,7 +255,7 @@ impl Shore for MapShore<'_> {
         self.terrain.flags_at(x, y)
     }
 
-    fn shore_point(&mut self, from: [f32; 2], to: [f32; 2]) -> Option<[f32; 2]> {
+    fn shore_point(&mut self, from: Point, to: Point) -> Option<Point> {
         let planner = self.pathing.planner(self.restriction?, self.tiles)?;
         planner.last_open_point(from, to)
     }

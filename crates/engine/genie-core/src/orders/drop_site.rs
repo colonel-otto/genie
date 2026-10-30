@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
@@ -130,7 +131,7 @@ impl World {
     pub(crate) fn table_drop_site(
         &self,
         p: PlayerId,
-        at: [f32; 2],
+        at: Point,
         held: i16,
         class: ClassId,
     ) -> Result<Option<i32>, GenieError> {
@@ -316,7 +317,8 @@ impl World {
         let Some(ai) = unit.ai.as_mut() else {
             return Ok(());
         };
-        let (id, target_type, owner, [x, y]) = target;
+        let (id, target_type, owner, at) = target;
+        let (x, y) = (at.x(), at.y());
         ai.insert_order(
             crate::unit_ai::QueuedOrder {
                 issuer: p.index() as i32,
@@ -326,7 +328,7 @@ impl World {
                 target_owner: owner,
                 point: Position::new(x, y, 0.0),
                 range: 0.0,
-                shown: [x, y],
+                shown: Point::new(x, y),
                 ready: true,
                 target_type,
             },

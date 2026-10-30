@@ -159,7 +159,7 @@ struct Splittable {
     flag_1: bool,
     speed: f32,
     position: Position,
-    moved_at: [f32; 2],
+    moved_at: Point,
     state: u8,
     radius: f32,
     restriction: Option<usize>,
@@ -197,7 +197,7 @@ impl Split {
 #[derive(Clone, Copy, Debug)]
 struct Followed {
     id: i32,
-    place: [f32; 2],
+    place: Point,
     class: Option<i32>,
 }
 
@@ -263,7 +263,10 @@ fn splits_together(
     if member && b.state < 2 {
         return Ok(false);
     }
-    let (dx, dy) = (a.moved_at[0] - b.moved_at[0], a.moved_at[1] - b.moved_at[1]);
+    let (dx, dy) = (
+        a.moved_at.x() - b.moved_at.x(),
+        a.moved_at.y() - b.moved_at.y(),
+    );
     let d = crate::math::fmath::sqrt(dx * dx + 0.0 + dy * dy);
     if SPLIT_BY_PATH
         && d < SPLIT_PATH_REACH
@@ -479,11 +482,11 @@ const ATTACK_MOVE_QUEUED: GenieError =
 /// one at least [`WAYPOINT_APART`] from the last one kept on x or on y, either way
 /// (`COMISS`/`JNC` on each of the four: a NaN difference is not), the first measured from
 /// `from`.
-fn waypoints_from(from: [f32; 2], waypoints: &[[f32; 2]]) -> Vec<[f32; 2]> {
+fn waypoints_from(from: Point, waypoints: &[Point]) -> Vec<Point> {
     let mut last = from;
     let mut kept = Vec::with_capacity(waypoints.len());
     for &w in waypoints {
-        let (dx, dy) = (w[0] - last[0], w[1] - last[1]);
+        let (dx, dy) = (w.x() - last.x(), w.y() - last.y());
         if WAYPOINT_APART <= dx
             || dx <= WAYPOINT_APART_LOW
             || WAYPOINT_APART <= dy
@@ -511,7 +514,7 @@ fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
 pub(crate) fn set_stance(
     ai: &mut crate::unit_ai::UnitAi,
     state: u8,
-    place: ([f32; 2], Option<ClassId>),
+    place: (Point, Option<ClassId>),
     side: &mut dyn crate::unit_ai::UnitSide,
     rng: &mut crate::math::rng::Well512,
 ) -> Result<(), GenieError> {
@@ -622,7 +625,7 @@ pub(crate) fn nearest_table_site(
         u8,
         &crate::players::tracker::Tracker,
     ),
-    (at, held, class): ([f32; 2], i16, ClassId),
+    (at, held, class): (Point, i16, ClassId),
     look: impl Fn(i32) -> Option<(u8, Position)>,
 ) -> Option<i32> {
     let buildings =
@@ -636,7 +639,7 @@ pub(crate) fn nearest_table_site(
             if state != 2 {
                 continue;
             }
-            let (dx, dy) = (at[0] - position.x(), at[1] - position.y());
+            let (dx, dy) = (at.x() - position.x(), at.y() - position.y());
             let d = dy * dy + dx * dx;
             if d < best.1 {
                 best = (Some(id), d);

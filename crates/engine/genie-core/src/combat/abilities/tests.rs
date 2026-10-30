@@ -1,5 +1,6 @@
 use super::*;
 use crate::combat::damage::Victim;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
@@ -505,10 +506,10 @@ fn give_master(t: &mut World, id: MasterId, kind: MasterKind, class: ClassId, ta
 
 /// Object `id` of master `m` with `hp` hit points at (`x`, `y`) in player `p`'s list, placed
 /// on its tile.
-fn put(t: &mut World, p: PlayerId, id: i32, m: MasterId, hp: f32, [x, y]: [f32; 2]) {
+fn put(t: &mut World, p: PlayerId, id: i32, m: MasterId, hp: f32, at: Point) {
     let mut u = Unit {
         id: object_id(id),
-        body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
+        body: crate::objects::layers::Body::at(at.with_height(0.0)),
         ..Unit::default()
     };
     u.life.master_id = m;
@@ -521,7 +522,7 @@ fn put(t: &mut World, p: PlayerId, id: i32, m: MasterId, hp: f32, [x, y]: [f32; 
     t.spatial.insert(
         object_id(id),
         Placed {
-            position: Position::new(x, y, 0.0),
+            position: at.with_height(0.0),
             radius,
             class: class::CLASS_0,
             player: p,
@@ -603,7 +604,7 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
         50,
         master_id(1021),
         2000.0,
-        [5.5, 5.5],
+        Point::new(5.5, 5.5),
     );
     building_sight(&mut t, PlayerId::new(1), 50, true);
     t.players[1].attributes[205] = 1.0;
@@ -636,7 +637,14 @@ fn keshik(t: &mut World) {
         class::CLASS_12,
         vec![keshik_gold()],
     );
-    put(t, PlayerId::new(1), 60, master_id(1228), 100.0, [5.5, 5.5]);
+    put(
+        t,
+        PlayerId::new(1),
+        60,
+        master_id(1228),
+        100.0,
+        Point::new(5.5, 5.5),
+    );
     let attack = crate::combat::attack::Attack {
         target: 77,
         target2: -1,
@@ -674,7 +682,14 @@ fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
     let mut t = world();
     keshik(&mut t);
     give_master(&mut t, master_id(4), COMBAT, class::CLASS_0, Vec::new());
-    put(&mut t, PlayerId::new(2), 77, master_id(4), 30.0, [6.5, 5.5]);
+    put(
+        &mut t,
+        PlayerId::new(2),
+        77,
+        master_id(4),
+        30.0,
+        Point::new(6.5, 5.5),
+    );
     run(&mut t, PlayerId::new(1), 60);
     let given = 0.5_f32 * 0.01 * 0.5 + 0.999;
     assert_eq!(t.players[1].resources[3], given);
@@ -697,7 +712,14 @@ fn trampler(t: &mut World) {
         ..task(MOVEMENT_DAMAGE)
     };
     give_master(t, master_id(9), COMBAT, class::CLASS_12, vec![trample]);
-    put(t, PlayerId::new(1), 10, master_id(9), 100.0, [5.5, 5.5]);
+    put(
+        t,
+        PlayerId::new(1),
+        10,
+        master_id(9),
+        100.0,
+        Point::new(5.5, 5.5),
+    );
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.velocity = Some(crate::movement::Velocity {
         velocity: BVector::new(1.0, 0.0, 0.0),
@@ -712,10 +734,38 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
     trampler(&mut t);
     give_master(&mut t, master_id(4), COMBAT, class::CLASS_6, Vec::new());
     // an enemy in reach, one out of it, one of its own player, one of Gaia
-    put(&mut t, PlayerId::new(2), 20, master_id(4), 30.0, [6.5, 5.5]);
-    put(&mut t, PlayerId::new(2), 21, master_id(4), 30.0, [9.5, 5.5]);
-    put(&mut t, PlayerId::new(1), 30, master_id(4), 30.0, [5.5, 6.5]);
-    put(&mut t, PlayerId::new(0), 40, master_id(4), 30.0, [4.5, 5.5]);
+    put(
+        &mut t,
+        PlayerId::new(2),
+        20,
+        master_id(4),
+        30.0,
+        Point::new(6.5, 5.5),
+    );
+    put(
+        &mut t,
+        PlayerId::new(2),
+        21,
+        master_id(4),
+        30.0,
+        Point::new(9.5, 5.5),
+    );
+    put(
+        &mut t,
+        PlayerId::new(1),
+        30,
+        master_id(4),
+        30.0,
+        Point::new(5.5, 6.5),
+    );
+    put(
+        &mut t,
+        PlayerId::new(0),
+        40,
+        master_id(4),
+        30.0,
+        Point::new(4.5, 5.5),
+    );
     run(&mut t, PlayerId::new(1), 10);
     let hp = |t: &World, id| t.object(id).unwrap().1.life.hp;
     assert_eq!(hp(&t, 20), 25.0);
@@ -739,7 +789,14 @@ fn a_movement_damage_kill_leaves_0_hit_points_and_counts_the_kill() {
     let mut t = world();
     trampler(&mut t);
     give_master(&mut t, master_id(4), COMBAT, class::CLASS_6, Vec::new());
-    put(&mut t, PlayerId::new(2), 20, master_id(4), 3.0, [6.5, 5.5]);
+    put(
+        &mut t,
+        PlayerId::new(2),
+        20,
+        master_id(4),
+        3.0,
+        Point::new(6.5, 5.5),
+    );
     t.players[2].objects[0].life.amount = 10.0;
     run(&mut t, PlayerId::new(1), 10);
     let (_, u) = t.object(20).unwrap();
@@ -799,7 +856,7 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
         70,
         master_id(250),
         100.0,
-        [5.5, 6.5],
+        Point::new(5.5, 6.5),
     );
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = Position::new(5.5, 6.5, 0.0);
@@ -841,7 +898,14 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
         class::CLASS_6,
         vec![bounty(), far, bounty()],
     );
-    put(&mut t, PlayerId::new(1), 80, master_id(5), 0.0, [5.5, 5.5]);
+    put(
+        &mut t,
+        PlayerId::new(1),
+        80,
+        master_id(5),
+        0.0,
+        Point::new(5.5, 5.5),
+    );
     t.players[1].attributes[7] = 2.0;
     assert_eq!(rewards(&mut t, PlayerId::new(1), 80, false), Vec::new());
     let r = Reward {
@@ -865,7 +929,14 @@ fn an_object_of_another_type_has_no_abilities() {
         class::CLASS_6,
         vec![bounty()],
     );
-    put(&mut t, PlayerId::new(1), 90, ids::ID_7, 0.0, [5.5, 5.5]);
+    put(
+        &mut t,
+        PlayerId::new(1),
+        90,
+        ids::ID_7,
+        0.0,
+        Point::new(5.5, 5.5),
+    );
     assert_eq!(rewards(&mut t, PlayerId::new(1), 90, true), Vec::new());
 }
 

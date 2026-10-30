@@ -93,7 +93,7 @@ impl HuntAction {
             return Ok(HuntNext::Stay);
         }
         let v = f.victim.position;
-        if v.x() == self.lead.start[0] && v.y() == self.lead.start[1] {
+        if v.x() == self.lead.start.x() && v.y() == self.lead.start.y() {
             self.start_attack(c, unit, &herd)?;
             return Ok(HuntNext::Stay);
         }

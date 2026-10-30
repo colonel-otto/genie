@@ -25,10 +25,10 @@ impl HullPather<'_> {
         while index < hulls.len() {
             let (overlap, outside) = hulls.checked(index)?.shape_overlap(min, max);
             let corners = [
-                [min[0], min[1]],
-                [max[0], min[1]],
-                [max[0], max[1]],
-                [min[0], max[1]],
+                min,
+                Point::new(max.x(), min.y()),
+                max,
+                Point::new(min.x(), max.y()),
             ];
             match overlap {
                 1 => {
@@ -56,10 +56,10 @@ impl HullPather<'_> {
         let Some(mut mine) = hull else {
             hulls.push(Hull {
                 points: vec![
-                    [max[0], max[1]],
-                    [max[0], min[1]],
-                    [min[0], min[1]],
-                    [min[0], max[1]],
+                    max,
+                    Point::new(max.x(), min.y()),
+                    min,
+                    Point::new(min.x(), max.y()),
                 ],
                 entrances: vec![-1; 4],
                 min,
@@ -74,10 +74,10 @@ impl HullPather<'_> {
                     continue;
                 }
                 let (h, o) = (hulls.checked(mine)?, hulls.checked(j)?);
-                if !(h.min[0] <= o.max[0]
-                    && h.min[1] <= o.max[1]
-                    && o.min[0] <= h.max[0]
-                    && o.min[1] <= h.max[1])
+                if !(h.min.x() <= o.max.x()
+                    && h.min.y() <= o.max.y()
+                    && o.min.x() <= h.max.x()
+                    && o.min.y() <= h.max.y())
                 {
                     continue;
                 }
@@ -177,7 +177,11 @@ impl HullPather<'_> {
         // `COMISS`/`JA` (0x140f8b772, 0x140f8b7a4): an unordered radius takes the given hull
         let h = match hull {
             Some(h) if at_most_or_unordered(rx, HALF) && at_most_or_unordered(ry, HALF) => h,
-            _ => Self::add_shape_to(hulls, [bounds[0], bounds[1]], [bounds[2], bounds[3]])?,
+            _ => Self::add_shape_to(
+                hulls,
+                Point::new(bounds[0], bounds[1]),
+                Point::new(bounds[2], bounds[3]),
+            )?,
         };
         let objects = &mut hulls.checked_mut(h)?.objects;
         if !objects.iter().any(|o| o.id == id) {
@@ -218,7 +222,10 @@ impl HullPather<'_> {
                 ];
                 let k = match hull {
                     Some(k) => k,
-                    None => self.add_shape([bounds[0], bounds[1]], [bounds[2], bounds[3]])?,
+                    None => self.add_shape(
+                        Point::new(bounds[0], bounds[1]),
+                        Point::new(bounds[2], bounds[3]),
+                    )?,
                 };
                 let objects = &mut self.hulls.checked_mut(k)?.objects;
                 if !objects.iter().any(|o| o.id == id) {
@@ -278,8 +285,8 @@ impl HullPather<'_> {
 
     /// A run of tiles `x0`..`x1` of row `y` the unit cannot cross: one box, then its tiles.
     pub(super) fn add_run(&mut self, x0: i32, x1: i32, y: i32, r: f32) -> Result<(), GenieError> {
-        let min = [x0 as f32 - r, y as f32 - r];
-        let max = [x1 as f32 + r, (y + 1) as f32 + r];
+        let min = Point::new(x0 as f32 - r, y as f32 - r);
+        let max = Point::new(x1 as f32 + r, (y + 1) as f32 + r);
         let hull = self.add_shape(min, max)?;
         for t in x0..x1 {
             self.process_tile(t, y, self.area, Some(hull))?;
@@ -330,16 +337,16 @@ impl HullPather<'_> {
     pub(super) fn in_area(&self, p: Point) -> bool {
         let r = self.radius;
         let [x0, y0, x1, y1] = self.area;
-        at_most_or_unordered(x0 as f32 + r, p[0])
-            && at_most_or_unordered(p[0], (x1 + 1) as f32 - r)
-            && at_most_or_unordered(y0 as f32 + r, p[1])
-            && at_most_or_unordered(p[1], (y1 + 1) as f32 - r)
+        at_most_or_unordered(x0 as f32 + r, p.x())
+            && at_most_or_unordered(p.x(), (x1 + 1) as f32 - r)
+            && at_most_or_unordered(y0 as f32 + r, p.y())
+            && at_most_or_unordered(p.y(), (y1 + 1) as f32 - r)
     }
 
     /// Whether `p` lies on the map, `r` from its edge.
     pub(super) fn on_map(&self, p: Point) -> bool {
         let r = self.radius;
         let [w, h] = self.world.map;
-        !(p[0] < r || w as f32 - r < p[0] || p[1] < r || h as f32 - r < p[1])
+        !(p.x() < r || w as f32 - r < p.x() || p.y() < r || h as f32 - r < p.y())
     }
 }

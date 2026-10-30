@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover, Planning};
@@ -333,12 +334,16 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
 
     fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
         let mask = self.mover.stats.restriction_mask;
-        self.spatial
-            .point_clear(self.me.id, [x as f32, y as f32], self.radius.x(), mask)
+        self.spatial.point_clear(
+            self.me.id,
+            Point::new(x as f32, y as f32),
+            self.radius.x(),
+            mask,
+        )
     }
 
     fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
-        let to = [x as f32, y as f32];
+        let to = Point::new(x as f32, y as f32);
         self.mover.reaches(
             &self.me,
             self.spatial,

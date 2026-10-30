@@ -2,6 +2,7 @@
 //! queries.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::spatial::{
     Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
 };
@@ -11,9 +12,9 @@ use crate::players::PlayerId;
 #[derive(Clone, Copy, Debug)]
 pub struct WalkQuery<'a> {
     /// The step's start.
-    pub start: [f32; 2],
+    pub start: Point,
     /// The step's end.
-    pub end: [f32; 2],
+    pub end: Point,
     /// The step's rectangle.
     pub rect: [f32; 4],
     /// The walker's radius, which grows the records' boxes and the rectangle.
@@ -355,7 +356,7 @@ impl Spatial {
         // its callers reset the buffer after the query (FUN_1410562d0 with 0)
         self.set_manager_buffer(None);
         let [w, h] = self.map;
-        let walk = [from[0], from[1], to[0], to[1]];
+        let walk = [from.x(), from.y(), to.x(), to.y()];
         let query = [
             rect[0] - grow,
             rect[1] - grow,
@@ -431,8 +432,8 @@ impl Spatial {
     /// As [`Spatial::line_hits`] (the records go all the same).
     pub fn line_query(
         &mut self,
-        from: [f32; 2],
-        to: [f32; 2],
+        from: Point,
+        to: Point,
         grow: f32,
         mask: Option<u8>,
         ignore: &[i32],
@@ -465,18 +466,18 @@ impl Spatial {
     /// A record whose place the slice does not know near the line.
     pub fn line_hits(
         &self,
-        from: [f32; 2],
-        to: [f32; 2],
+        from: Point,
+        to: Point,
         grow: f32,
         tiles: bool,
         ignore: &[i32],
     ) -> Result<Vec<i32>, GenieError> {
         const MOST_HITS: usize = 25;
         let rect = [
-            from[0].min(to[0]),
-            from[1].min(to[1]),
-            from[0].max(to[0]),
-            from[1].max(to[1]),
+            from.x().min(to.x()),
+            from.y().min(to.y()),
+            from.x().max(to.x()),
+            from.y().max(to.y()),
         ];
         let query = [
             rect[0] - grow,
@@ -494,7 +495,7 @@ impl Spatial {
             }
         }
         self.check_known_records(query)?;
-        let walk = [from[0], from[1], to[0], to[1]];
+        let walk = [from.x(), from.y(), to.x(), to.y()];
         let meets = |kind: u8, bx: [f32; 4]| {
             let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
             rect[0] <= grown[2]

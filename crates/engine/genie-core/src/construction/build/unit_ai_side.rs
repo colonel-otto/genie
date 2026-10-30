@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
@@ -155,7 +156,7 @@ impl UnitView<'_, '_> {
                 id,
                 master: i32::from(u.life.master_id.get()),
                 owner: p.index() as i32,
-                vector: [u.position().x(), u.position().z()],
+                vector: Point::new(u.position().x(), u.position().z()),
             })
         };
         let spot = match self.c.w.spatial.get(site) {

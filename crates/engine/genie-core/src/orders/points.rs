@@ -1,50 +1,69 @@
 //! Where the units of an order go: their centroid, offsets, spreads and grid points.
 
+use crate::map::Point;
+
 /// The box of an order's units (`0x140e68b90`, the loop after the splitter): the least and the
 /// greatest x and y, where a value below the least so far moves only the least (the greatest
 /// starts at 0, the least at `BOX_START`), and the sums. A box at most `SPREAD` each way gives
 /// the centroid (the sums alone without a point); a wider one None.
-pub(super) fn centroid(points: &[[f32; 2]]) -> Option<[f32; 2]> {
+pub(super) fn centroid(points: &[Point]) -> Option<Point> {
     /// `DAT_142eea788`.
     const BOX_START: f32 = crate::math::image::order::BOX_START;
     /// `DAT_142eb9430`.
     const SPREAD: f32 = crate::math::image::order::SPREAD;
-    let (mut least, mut most, mut sum) = ([BOX_START; 2], [0.0f32; 2], [0.0f32; 2]);
+    let (mut x, mut y) = (Spread::new(BOX_START), Spread::new(BOX_START));
     for p in points {
-        let axes = p.iter().zip(least.iter_mut().zip(most.iter_mut()));
-        for (&v, ((lo, hi), total)) in axes.zip(sum.iter_mut()).map(|(a, t)| (a.0, (a.1, t))) {
-            if *lo <= v {
-                if *hi < v {
-                    *hi = v;
-                }
-            } else {
-                *lo = v;
-            }
-            *total += v;
-        }
+        x.take(p.x());
+        y.take(p.y());
     }
-    if SPREAD < most[0] - least[0] || SPREAD < most[1] - least[1] {
+    if SPREAD < x.most - x.least || SPREAD < y.most - y.least {
         return None;
     }
-    if !points.is_empty() {
-        let n = points.len() as f32;
-        sum = [sum[0] / n, sum[1] / n];
+    if points.is_empty() {
+        return Some(Point::new(x.sum, y.sum));
     }
-    Some(sum)
+    let n = points.len() as f32;
+    Some(Point::new(x.sum / n, y.sum / n))
+}
+
+/// One axis of [`centroid`]'s box: the least and the greatest value so far and the sum.
+struct Spread {
+    least: f32,
+    most: f32,
+    sum: f32,
+}
+
+impl Spread {
+    /// No value yet: the least at `start`, the greatest and the sum at 0.
+    const fn new(start: f32) -> Self {
+        Self {
+            least: start,
+            most: 0.0,
+            sum: 0.0,
+        }
+    }
+
+    /// A value: below the least so far it moves only the least, else above the greatest the
+    /// greatest; the sum takes it either way.
+    fn take(&mut self, v: f32) {
+        if self.least <= v {
+            if self.most < v {
+                self.most = v;
+            }
+        } else {
+            self.least = v;
+        }
+        self.sum += v;
+    }
 }
 
 /// A unit's point in an order to several (`0x140e68b90`): its offset from their centroid added to
 /// the order's point, `EDGE` inside the map where it falls off it.
-pub(super) fn offset_point(
-    position: [f32; 2],
-    centroid: [f32; 2],
-    point: [f32; 2],
-    map: [i32; 2],
-) -> [f32; 2] {
-    [
-        inside_map(position[0] - centroid[0] + point[0], map[0]),
-        inside_map(position[1] - centroid[1] + point[1], map[1]),
-    ]
+pub(super) fn offset_point(position: Point, centroid: Point, point: Point, map: [i32; 2]) -> Point {
+    Point::new(
+        inside_map(position.x() - centroid.x() + point.x(), map[0]),
+        inside_map(position.y() - centroid.y() + point.y(), map[1]),
+    )
 }
 
 /// An order's point on one axis kept on a map of `size` tiles: below 0 it becomes `EDGE`, at
@@ -69,7 +88,7 @@ pub(super) fn inside_map(v: f32, size: i32) -> f32 {
 /// The box passes when the last unit's spread and the running one's are each at most
 /// [`SPREAD`] (`COMISS`, `JC`: NaN fails); then it gives the mean place (the sums over the
 /// count, none without units).
-pub(super) fn follow_spread(points: &[[f32; 2]]) -> Option<[f32; 2]> {
+pub(super) fn follow_spread(points: &[Point]) -> Option<Point> {
     use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
     /// `DAT_142eea788`.
     const BOX_START: f32 = crate::math::image::order::BOX_START;
@@ -77,7 +96,8 @@ pub(super) fn follow_spread(points: &[[f32; 2]]) -> Option<[f32; 2]> {
     const SPREAD: f32 = crate::math::image::order::SPREAD;
     let (mut lesser, mut least, mut greater, mut greatest) = (BOX_START, BOX_START, 0.0f32, 0.0f32);
     let (mut sx, mut sy) = (0.0f32, 0.0f32);
-    for &[x, y] in points {
+    for p in points {
+        let (x, y) = (p.x(), p.y());
         least = if at_most_or_unordered(lesser, least) {
             lesser
         } else {
@@ -101,7 +121,7 @@ pub(super) fn follow_spread(points: &[[f32; 2]]) -> Option<[f32; 2]> {
         let n = points.len() as i32 as f32;
         (sx, sy) = (sx / n, sy / n);
     }
-    Some([sx, sy])
+    Some(Point::new(sx, sy))
 }
 
 /// A FOLLOW offset's coordinate on a map of `size` tiles (`FUN_14161c920`): above the size less
@@ -123,14 +143,14 @@ pub(super) fn follow_axis(v: f32, size: i32) -> f32 {
 /// The cell of the `i`th of `n` units in MOVE's grid (`FUN_140e67800`): `side` cells a row, the
 /// root of `n` times `GRID_AREA` truncated; the unit's column and row, less half the side, a
 /// `GRID_STEP` each from the order's point, kept on the map ([`inside_map`]).
-pub(super) fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
+pub(super) fn grid_point(i: usize, n: usize, point: Point, map: [i32; 2]) -> Point {
     /// `DAT_142eb4838`.
     const GRID_AREA: f32 = crate::math::image::order::GRID_AREA;
     /// `DAT_142e7f384`.
     const GRID_STEP: f32 = crate::math::image::order::GRID_STEP;
     let side = crate::math::fmath::sqrt(n as i32 as f32 * GRID_AREA) as i32;
     let (i, half) = (i as i32, side / 2);
-    let x = (i % side - half) as f32 * GRID_STEP + point[0];
-    let y = (i / side - half) as f32 * GRID_STEP + point[1];
-    [inside_map(x, map[0]), inside_map(y, map[1])]
+    let x = (i % side - half) as f32 * GRID_STEP + point.x();
+    let y = (i / side - half) as f32 * GRID_STEP + point.y();
+    Point::new(inside_map(x, map[0]), inside_map(y, map[1]))
 }

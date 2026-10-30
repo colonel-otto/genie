@@ -6,6 +6,7 @@
 use crate::GenieError;
 use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
+use crate::map::Point;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
@@ -38,7 +39,7 @@ pub struct BackToWork {
     /// `townBellTargetId2` (`+0x9b8`): the top action's second target (`+0x34`), −1 for none.
     pub target2: i32,
     /// `town_bell_target_x`, `_y` (`+0x9bc`, `+0x9c0`): the target's place, else the unit's own.
-    pub point: [f32; 2],
+    pub point: Point,
 }
 
 impl BackToWork {
@@ -49,7 +50,7 @@ impl BackToWork {
         target_type: -1,
         action: None,
         target2: -1,
-        point: [-1.0, -1.0],
+        point: Point::new(-1.0, -1.0),
     };
 }
 
@@ -176,7 +177,7 @@ impl TownBell {
             self.before_building = BackToWork::NONE;
             return Ok((found, out));
         }
-        let none = [-1.0, -1.0];
+        let none = Point::new(-1.0, -1.0);
         if self.work.point == none {
             Ok((None, before))
         } else {
@@ -410,7 +411,7 @@ impl World {
         &mut self,
         id: i32,
         work_on: Option<i32>,
-        point: [f32; 2],
+        point: Point,
     ) -> Result<bool, GenieError> {
         let Some(crate::orders::Place::Live(up, ui)) = self.place(id) else {
             return Ok(false);
@@ -418,7 +419,7 @@ impl World {
         if !self.players.live(up, ui)?.town_bell.flag {
             return Ok(false);
         }
-        let [x, y] = point;
+        let (x, y) = (point.x(), point.y());
         if x == NO_POINT || y == NO_POINT {
             return Ok(false);
         }
@@ -561,10 +562,11 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+    use crate::map::Point;
 
     use super::*;
 
-    fn work(target: i32, action: Option<ActionKind>, point: [f32; 2]) -> BackToWork {
+    fn work(target: i32, action: Option<ActionKind>, point: Point) -> BackToWork {
         BackToWork {
             target,
             action,
@@ -578,16 +580,16 @@ mod tests {
         // MarvinBlue/426048731's 9181: its first record (no target, its own place), then the
         // INTERACT of update 748 while it builds 10028, then the one of 797 while it cuts a tree
         let mut bell = TownBell {
-            work: work(-1, None, [29.0, 99.0]),
+            work: work(-1, None, Point::new(29.0, 99.0)),
             ..TownBell::default()
         };
-        let building = work(10028, Some(ActionKind::Build), [30.0, 88.0]);
+        let building = work(10028, Some(ActionKind::Build), Point::new(30.0, 88.0));
         bell.record(building);
         assert_eq!(bell.work, building);
-        assert_eq!(bell.before_building, work(-1, None, [29.0, 99.0]));
+        assert_eq!(bell.before_building, work(-1, None, Point::new(29.0, 99.0)));
         let cutting = BackToWork {
             target_type: 15,
-            ..work(9365, Some(ActionKind::Hunt), [24.5, 97.5])
+            ..work(9365, Some(ActionKind::Hunt), Point::new(24.5, 97.5))
         };
         bell.record(cutting);
         assert_eq!(bell.work, cutting);
@@ -597,7 +599,7 @@ mod tests {
         bell.record(cutting);
         assert_eq!(bell.before_building, building);
         bell.flag = true;
-        bell.record(work(1, Some(ActionKind::Wait), [3.0, 4.0]));
+        bell.record(work(1, Some(ActionKind::Wait), Point::new(3.0, 4.0)));
         assert_eq!(bell.work, cutting);
     }
 
@@ -624,7 +626,7 @@ mod tests {
         // FUN_1411f8fa0: the target the world holds
         let shepherd = BackToWork {
             target2: 7,
-            ..work(10, Some(ActionKind::Gather), [5.0, 6.0])
+            ..work(10, Some(ActionKind::Gather), Point::new(5.0, 6.0))
         };
         assert_eq!(
             record_object(shepherd, &|id| Ok(object(id))).unwrap(),
@@ -633,7 +635,7 @@ mod tests {
         // a target the world no longer holds: the second target, unless it is below 0
         let gone = BackToWork {
             target2: 10,
-            ..work(11, Some(ActionKind::Hunt), [5.0, 6.0])
+            ..work(11, Some(ActionKind::Hunt), Point::new(5.0, 6.0))
         };
         assert_eq!(
             record_object(gone, &|id| Ok(object(id))).unwrap(),
@@ -658,7 +660,7 @@ mod tests {
         // a target below 0 is not looked up: the second target is
         let second = BackToWork {
             target2: 10,
-            ..work(-1, Some(ActionKind::Build), [5.0, 6.0])
+            ..work(-1, Some(ActionKind::Build), Point::new(5.0, 6.0))
         };
         assert_eq!(
             record_object(second, &|id| Ok(object(id))).unwrap(),
@@ -669,7 +671,7 @@ mod tests {
         for action in [ActionKind::Build, ActionKind::Gather, ActionKind::Hunt].map(Some) {
             let on_house = BackToWork {
                 target2: 10,
-                ..work(7, action, [5.0, 6.0])
+                ..work(7, action, Point::new(5.0, 6.0))
             };
             let ended = BackToWork {
                 target: -1,
@@ -683,7 +685,7 @@ mod tests {
             // reached through the second target, too
             let through_second = BackToWork {
                 target2: 7,
-                ..work(11, action, [5.0, 6.0])
+                ..work(11, action, Point::new(5.0, 6.0))
             };
             let ended = BackToWork {
                 target: -1,
@@ -696,7 +698,7 @@ mod tests {
             );
             // a house not built yet and a built farm stay
             for kept in [8, 9] {
-                let r = work(kept, action, [5.0, 6.0]);
+                let r = work(kept, action, Point::new(5.0, 6.0));
                 assert_eq!(
                     record_object(r, &|id| Ok(object(id))).unwrap(),
                     (object(kept), r)
@@ -712,7 +714,7 @@ mod tests {
             Some(ActionKind::Defend),
             None,
         ] {
-            let r = work(7, action, [5.0, 6.0]);
+            let r = work(7, action, Point::new(5.0, 6.0));
             assert_eq!(
                 record_object(r, &|id| Ok(object(id))).unwrap(),
                 (object(7), r)
@@ -724,7 +726,7 @@ mod tests {
         use crate::garrison::tests::{
             ARCHER, VILLAGER, inside_tc, let_out_world, sized_world, tracked, walker,
         };
-        use crate::map::Position;
+        use crate::map::{Point, Position};
         use crate::players::PlayerId;
         use crate::test_ids::object_id;
         use crate::test_ids::player_id;
@@ -739,9 +741,21 @@ mod tests {
             // FUN_14163a650: villager 1000 is within 25 tiles of town centre 100, 1001 is not,
             // archer 1002 is no villager; the centre takes villagers and is in reach of itself
             let mut t = sized_world(60, 60);
-            walker(&mut t, PlayerId::new(1), 1000, VILLAGER, [5.5, 5.5]);
-            walker(&mut t, PlayerId::new(1), 1001, VILLAGER, [45.5, 45.5]);
-            walker(&mut t, PlayerId::new(1), 1002, ARCHER, [6.5, 5.5]);
+            walker(
+                &mut t,
+                PlayerId::new(1),
+                1000,
+                VILLAGER,
+                Point::new(5.5, 5.5),
+            );
+            walker(
+                &mut t,
+                PlayerId::new(1),
+                1001,
+                VILLAGER,
+                Point::new(45.5, 45.5),
+            );
+            walker(&mut t, PlayerId::new(1), 1002, ARCHER, Point::new(6.5, 5.5));
             t.town_bell(player_id(1), object_id(100), true).unwrap();
             assert_eq!(
                 [1000, 1001, 1002].map(|id| enter(&t, id)),
@@ -753,7 +767,13 @@ mod tests {
         #[test]
         fn the_bell_is_its_owners_or_any_players_with_allied_control() {
             let mut t = let_out_world();
-            walker(&mut t, PlayerId::new(1), 1000, VILLAGER, [5.5, 5.5]);
+            walker(
+                &mut t,
+                PlayerId::new(1),
+                1000,
+                VILLAGER,
+                Point::new(5.5, 5.5),
+            );
             // player 2 rings player 1's centre: refused
             t.town_bell(player_id(2), object_id(100), true).unwrap();
             assert_eq!(enter(&t, 1000), None);
@@ -762,7 +782,13 @@ mod tests {
             assert_eq!(enter(&t, 1000), Some(100));
             // an object that is no town centre rings nothing; nor does an id the world lacks
             let mut t = let_out_world();
-            walker(&mut t, PlayerId::new(1), 1000, VILLAGER, [5.5, 5.5]);
+            walker(
+                &mut t,
+                PlayerId::new(1),
+                1000,
+                VILLAGER,
+                Point::new(5.5, 5.5),
+            );
             t.town_bell(player_id(1), object_id(1000), true).unwrap();
             t.town_bell(player_id(1), object_id(4242), true).unwrap();
             assert_eq!(enter(&t, 1000), None);
@@ -776,10 +802,32 @@ mod tests {
             let mut t = let_out_world();
             t.object_mut(100).unwrap().1.town_bell.flag = true;
             inside_tc(&mut t, PlayerId::new(1), 1000, VILLAGER);
-            walker(&mut t, PlayerId::new(1), 1001, VILLAGER, [5.5, 5.5]);
-            walker(&mut t, PlayerId::new(1), 1002, VILLAGER, [6.5, 5.5]);
-            walker(&mut t, PlayerId::new(1), 1003, VILLAGER, [7.5, 5.5]);
-            for (id, point) in [(1000, [4.5, 4.5]), (1001, [3.5, 3.5]), (1002, [2.5, 2.5])] {
+            walker(
+                &mut t,
+                PlayerId::new(1),
+                1001,
+                VILLAGER,
+                Point::new(5.5, 5.5),
+            );
+            walker(
+                &mut t,
+                PlayerId::new(1),
+                1002,
+                VILLAGER,
+                Point::new(6.5, 5.5),
+            );
+            walker(
+                &mut t,
+                PlayerId::new(1),
+                1003,
+                VILLAGER,
+                Point::new(7.5, 5.5),
+            );
+            for (id, point) in [
+                (1000, Point::new(4.5, 4.5)),
+                (1001, Point::new(3.5, 3.5)),
+                (1002, Point::new(2.5, 2.5)),
+            ] {
                 let v = &mut t.object_mut(id).unwrap().1.town_bell;
                 v.flag = id != 1002;
                 v.work = crate::orders::town_bell::BackToWork {
@@ -788,7 +836,7 @@ mod tests {
                 };
             }
             t.object_mut(1003).unwrap().1.town_bell.flag = true;
-            t.object_mut(1003).unwrap().1.town_bell.work.point = [1.5, 1.5];
+            t.object_mut(1003).unwrap().1.town_bell.work.point = Point::new(1.5, 1.5);
             tracked(&mut t, VILLAGER, &[1000, 1001, 1002]);
             t.town_bell(player_id(1), object_id(100), false).unwrap();
             assert!(!t.object(100).unwrap().1.town_bell.flag);
@@ -806,10 +854,16 @@ mod tests {
             assert_eq!(goal(&t, 1003), (None, true));
             // a record without a point on an axis (an exact -1) keeps the unit and its flag
             let mut t = let_out_world();
-            walker(&mut t, PlayerId::new(1), 1001, VILLAGER, [5.5, 5.5]);
+            walker(
+                &mut t,
+                PlayerId::new(1),
+                1001,
+                VILLAGER,
+                Point::new(5.5, 5.5),
+            );
             let v = &mut t.object_mut(1001).unwrap().1.town_bell;
             v.flag = true;
-            v.work.point = [3.5, -1.0];
+            v.work.point = Point::new(3.5, -1.0);
             tracked(&mut t, VILLAGER, &[1001]);
             t.town_bell(player_id(1), object_id(100), false).unwrap();
             assert_eq!(goal(&t, 1001), (None, true));
@@ -823,8 +877,14 @@ mod tests {
                 let mut t = let_out_world();
                 t.object_mut(100).unwrap().1.town_bell.flag = true;
                 inside_tc(&mut t, PlayerId::new(1), 1000, VILLAGER);
-                walker(&mut t, PlayerId::new(1), 1001, VILLAGER, [5.5, 5.5]);
-                for (id, point) in [(1000, [4.5, 4.5]), (1001, [3.5, 3.5])] {
+                walker(
+                    &mut t,
+                    PlayerId::new(1),
+                    1001,
+                    VILLAGER,
+                    Point::new(5.5, 5.5),
+                );
+                for (id, point) in [(1000, Point::new(4.5, 4.5)), (1001, Point::new(3.5, 3.5))] {
                     let v = &mut t.object_mut(id).unwrap().1.town_bell;
                     v.flag = true;
                     v.work = crate::orders::town_bell::BackToWork {
@@ -858,8 +918,8 @@ mod tests {
     #[test]
     fn back_to_work_takes_the_first_record_else_the_second_which_moves_up() {
         // FUN_1412035a0: the first record's object wins; the records stay
-        let first = work(10, Some(ActionKind::Gather), [5.0, 6.0]);
-        let second = work(8, Some(ActionKind::Build), [1.0, 2.0]);
+        let first = work(10, Some(ActionKind::Gather), Point::new(5.0, 6.0));
+        let second = work(8, Some(ActionKind::Build), Point::new(1.0, 2.0));
         let mut bell = TownBell {
             flag: false,
             work: first,
@@ -871,7 +931,7 @@ mod tests {
         );
         assert_eq!((bell.work, bell.before_building), (first, second));
         // the first's object gone: the second's object, and the second becomes the first
-        let gone = work(11, Some(ActionKind::Gather), [5.0, 6.0]);
+        let gone = work(11, Some(ActionKind::Gather), Point::new(5.0, 6.0));
         bell.work = gone;
         assert_eq!(
             bell.back_to_work(&|id| Ok(object(id))).unwrap(),
@@ -883,11 +943,11 @@ mod tests {
         );
         // neither has an object: the first record as it is, its targets kept even when a built
         // building ended it
-        let ended = work(7, Some(ActionKind::Build), [5.0, 6.0]);
+        let ended = work(7, Some(ActionKind::Build), Point::new(5.0, 6.0));
         let mut bell = TownBell {
             flag: false,
             work: ended,
-            before_building: work(12, Some(ActionKind::Gather), [1.0, 2.0]),
+            before_building: work(12, Some(ActionKind::Gather), Point::new(1.0, 2.0)),
         };
         assert_eq!(
             bell.back_to_work(&|id| Ok(object(id))).unwrap(),
@@ -895,8 +955,8 @@ mod tests {
         );
         assert_eq!(bell.work, ended);
         // ... or the second when the first has no point (−1, −1 on both axes)
-        let pointless = work(11, Some(ActionKind::Gather), [-1.0, -1.0]);
-        let before = work(12, Some(ActionKind::Gather), [1.0, 2.0]);
+        let pointless = work(11, Some(ActionKind::Gather), Point::new(-1.0, -1.0));
+        let before = work(12, Some(ActionKind::Gather), Point::new(1.0, 2.0));
         let mut bell = TownBell {
             flag: false,
             work: pointless,
@@ -907,7 +967,7 @@ mod tests {
             (None, before)
         );
         // one axis at −1 is a point
-        let half = work(11, Some(ActionKind::Gather), [-1.0, 3.0]);
+        let half = work(11, Some(ActionKind::Gather), Point::new(-1.0, 3.0));
         bell.work = half;
         assert_eq!(
             bell.back_to_work(&|id| Ok(object(id))).unwrap(),

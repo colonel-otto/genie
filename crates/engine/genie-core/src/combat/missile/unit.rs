@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::WalkQuery;
 use crate::math::rng::Stream;
@@ -258,13 +259,13 @@ impl Unit {
             }
         };
         let at = self.position();
-        let from = [hold(old.x(), w), hold(old.y(), h)];
-        let to = [hold(at.x(), w), hold(at.y(), h)];
+        let from = Point::new(hold(old.x(), w), hold(old.y(), h));
+        let to = Point::new(hold(at.x(), w), hold(at.y(), h));
         let rect = [
-            from[0].min(to[0]),
-            from[1].min(to[1]),
-            from[0].max(to[0]),
-            from[1].max(to[1]),
+            from.x().min(to.x()),
+            from.y().min(to.y()),
+            from.x().max(to.x()),
+            from.y().max(to.y()),
         ];
         let grow = stats.radius.x();
         c.w.spatial.check_known_records([

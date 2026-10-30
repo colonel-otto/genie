@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::production::spawn::{GAP, NONE, SIDE_SHARE, SMALL, Site, Tested};
 
 /// One spot (`FUN_1411c5b60`'s argument): its candidates `i` in `0..=count` lie at
 /// `(x + dir.x * step.x * i, y + dir.y * step.y * i)`.
 pub(super) struct Spot {
-    pub(super) at: [f32; 2],
+    pub(super) at: Point,
     pub(super) step: [f32; 2],
     pub(super) dir: [i32; 2],
     pub(super) count: i32,
@@ -19,13 +20,13 @@ pub(super) struct Spot {
 /// the spot.
 pub(super) fn try_spot(
     spot: &Spot,
-    test: &mut dyn FnMut([f32; 2]) -> Result<Tested, GenieError>,
-) -> Result<Option<[f32; 2]>, GenieError> {
+    test: &mut dyn FnMut(Point) -> Result<Tested, GenieError>,
+) -> Result<Option<Point>, GenieError> {
     for i in 0..=spot.count {
-        let x = spot.dir[0] as f32 * spot.step[0] * i as f32 + spot.at[0];
-        let y = spot.dir[1] as f32 * spot.step[1] * i as f32 + spot.at[1];
-        match test([x, y])? {
-            Tested::Free => return Ok(Some([x, y])),
+        let x = spot.dir[0] as f32 * spot.step[0] * i as f32 + spot.at.x();
+        let y = spot.dir[1] as f32 * spot.step[1] * i as f32 + spot.at.y();
+        match test(Point::new(x, y))? {
+            Tested::Free => return Ok(Some(Point::new(x, y))),
             Tested::Blocked { stays: true } => return Ok(None),
             Tested::Blocked { stays: false } => {}
         }
@@ -43,8 +44,8 @@ pub(super) fn try_spot(
 pub fn spawn_point(
     site: &Site,
     unit: Footprint,
-    test: &mut dyn FnMut([f32; 2]) -> Result<Tested, GenieError>,
-) -> Result<[f32; 2], GenieError> {
+    test: &mut dyn FnMut(Point) -> Result<Tested, GenieError>,
+) -> Result<Point, GenieError> {
     let frame = Frame::new(site, unit);
     for pass in 1..=2 {
         for segment in frame.segments(pass == 2) {
@@ -94,13 +95,13 @@ struct Run {
 struct Frame {
     step: [f32; 2],
     half: [f32; 2],
-    centre: [f32; 2],
+    centre: Point,
     left: f32,
     right: f32,
     top: f32,
     bottom: f32,
     walls: [bool; 4],
-    gather: [f32; 2],
+    gather: Point,
     away: [f32; 2],
     no_x: bool,
     no_y: bool,
@@ -116,17 +117,20 @@ impl Frame {
         }
         let (bx, by) = (site.radius.x(), site.radius.y());
         let (x, y) = (site.position.x(), site.position.y());
-        let [gx, gy] = site.gather.unwrap_or([NONE, NONE]);
+        let (gx, gy) = {
+            let p = site.gather.unwrap_or(Point::new(NONE, NONE));
+            (p.x(), p.y())
+        };
         Self {
             step: [sx, sy],
             half: [bx, by],
-            centre: [x, y],
+            centre: Point::new(x, y),
             left: x - (bx + sx),
             right: x + bx + sx,
             top: y + by + sy,
             bottom: y - (by + sy),
             walls: site.walls,
-            gather: [gx, gy],
+            gather: Point::new(gx, gy),
             away: [(x - gx).abs(), (y - gy).abs()],
             no_x: gx == NONE,
             no_y: gy == NONE,
@@ -140,7 +144,13 @@ impl Frame {
     /// side from the right (9) and the right side from the bottom (10).
     fn segments(&self, second: bool) -> Vec<Vec<Run>> {
         let [left_top, right_top, right_bottom, left_bottom] = self.walls;
-        let ([x, y], [gx, gy], [dx, dy]) = (self.centre, self.gather, self.away);
+        let (x, y, gx, gy) = (
+            self.centre.x(),
+            self.centre.y(),
+            self.gather.x(),
+            self.gather.y(),
+        );
+        let [dx, dy] = self.away;
         let mut out = Vec::new();
         if !left_top {
             self.top_left(second, &mut out);
@@ -169,7 +179,13 @@ impl Frame {
     /// the second pass.
     fn top_left(&self, second: bool, out: &mut Vec<Vec<Run>>) {
         let [_, right_top, _, left_bottom] = self.walls;
-        let ([x, y], [gx, gy], [dx, dy]) = (self.centre, self.gather, self.away);
+        let (x, y, gx, gy) = (
+            self.centre.x(),
+            self.centre.y(),
+            self.gather.x(),
+            self.gather.y(),
+        );
+        let [dx, dy] = self.away;
         let ([sx, sy], [bx, by]) = (self.step, self.half);
         let (left, top) = (self.left, self.top);
         let (no_x, no_y) = (self.no_x, self.no_y);
@@ -194,10 +210,10 @@ impl Frame {
     /// The right side down: (5) its top half (toward a gather point above, or on the second
     /// pass), (6) its lower half without a wall at the bottom right.
     fn right_side(&self, second: bool, out: &mut Vec<Vec<Run>>) {
-        let [_, y] = self.centre;
+        let y = self.centre.y();
         let ([_, sy], [_, by]) = (self.step, self.half);
         let (right, top) = (self.right, self.top);
-        if self.no_y || second || y < self.gather[1] {
+        if self.no_y || second || y < self.gather.y() {
             out.push(vec![run(Side::Right, (top, -sy, top - by), false, right)]);
         }
         if !self.walls[2] {
@@ -209,10 +225,10 @@ impl Frame {
     /// The bottom side: (7) its left half (toward a gather point on the left, or on the second
     /// pass), (8) its right half without a wall at the bottom right.
     fn bottom_side(&self, second: bool, out: &mut Vec<Vec<Run>>) {
-        let [x, _] = self.centre;
+        let x = self.centre.x();
         let ([sx, _], [bx, _]) = (self.step, self.half);
         let (left, bottom) = (self.left, self.bottom);
-        if self.no_x || second || self.gather[0] < x {
+        if self.no_x || second || self.gather.x() < x {
             out.push(vec![run(Side::Down, (left, sx, left + bx), true, bottom)]);
         }
         if !self.walls[2] {
@@ -230,10 +246,10 @@ impl Frame {
         let mut c = r.start;
         while if r.rising { c < r.end } else { r.end < c } {
             let (at, step, dir) = match r.side {
-                Side::Up => ([c, r.fixed], [0.0, sy], [0, 1]),
-                Side::Down => ([c, r.fixed], [0.0, sy], [0, -1]),
-                Side::Left => ([r.fixed, c], [sx, 0.0], [-1, 0]),
-                Side::Right => ([r.fixed, c], [sx, 0.0], [1, 0]),
+                Side::Up => (Point::new(c, r.fixed), [0.0, sy], [0, 1]),
+                Side::Down => (Point::new(c, r.fixed), [0.0, sy], [0, -1]),
+                Side::Left => (Point::new(r.fixed, c), [sx, 0.0], [-1, 0]),
+                Side::Right => (Point::new(r.fixed, c), [sx, 0.0], [1, 0]),
             };
             spots.push(Spot {
                 at,

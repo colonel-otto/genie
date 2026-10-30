@@ -46,8 +46,8 @@ impl Position {
 
     /// Its x and y: the place on the ground.
     #[must_use]
-    pub const fn ground(self) -> [f32; 2] {
-        [self.0[0], self.0[1]]
+    pub const fn ground(self) -> crate::map::Point {
+        crate::map::Point::new(self.0[0], self.0[1])
     }
 
     /// The place with x `x`.
@@ -103,7 +103,7 @@ mod tests {
             (0x8000_0000, 2.0, 0x7fc0_0001)
         );
         assert_eq!(
-            p.ground().map(f32::to_bits),
+            p.ground().get().map(f32::to_bits),
             [0x8000_0000, 2.0f32.to_bits()]
         );
         let v = p.vector();

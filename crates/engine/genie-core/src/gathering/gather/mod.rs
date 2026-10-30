@@ -16,6 +16,7 @@
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
@@ -156,15 +157,15 @@ pub struct GatherAction {
     /// `+0x74`, `mTimeAtCurrentStop`.
     pub time_at_stop: f32,
     /// `+0x78`, `+0x7c`: `mLastStopX`, `mLastStopY`.
-    pub last_stop: [f32; 2],
+    pub last_stop: Point,
     /// `+0x80`: the gathering started (`set_state(7)`); not saved.
     #[diff(unsaved)]
     pub worked: bool,
     /// `+0x84`, `+0x88`: `mFarmX`, `mFarmY`, a farm's place.
-    pub farm: [f32; 2],
+    pub farm: Point,
     /// `+0x8c`, `+0x90`: `mGatherX`, `mGatherY`, where the gathering started (−1 while the
     /// game's farm setting holds them, [`GatherReads::farm_stops`]).
-    pub gather_at: [f32; 2],
+    pub gather_at: Point,
     /// The sub-action of states 4, 8, 11, 15 and 0xf2: the quiet `MoveTo` (the one component,
     /// [`MoveToAction`]) to the target, the drop site or a point, which `set_state` makes
     /// ([`GatherAction::set_walk`], [`GatherAction::set_drop`], [`GatherAction::walk_back`]).

@@ -2,6 +2,7 @@
 //! kinds and a negative cost's entries.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::{self, RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
@@ -292,7 +293,7 @@ impl World {
                     let Some(crate::orders::Place::Live(bp, bi)) = self.place(b) else {
                         break;
                     };
-                    let _ = self.let_out(bp, bi, new, [-1.0, -1.0], (None, false))?;
+                    let _ = self.let_out(bp, bi, new, Point::new(-1.0, -1.0), (None, false))?;
                 }
                 if master == RELIC {
                     self.spawned_relics += 1;

@@ -6,6 +6,7 @@ use crate::groups::CommandArgs;
 use crate::groups::attack::AttackOrder;
 use crate::groups::group_list::member_gone;
 use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
+use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
@@ -138,11 +139,11 @@ impl World {
     fn queue_move(
         &mut self,
         group: i32,
-        point: [f32; 2],
+        point: Point,
         how: &MoveTo,
     ) -> Result<Option<bool>, GenieError> {
         let g = self.groups.held_mut(group)?;
-        let at = BVector::new(point[0], 0.0, point[1]);
+        let at = BVector::new(point.x(), 0.0, point.y());
         if how.queued {
             g.queue_command(GroupCommand {
                 command: MOVE_COMMAND,
@@ -219,7 +220,7 @@ impl World {
         &mut self,
         group: i32,
         target: i32,
-        point: [f32; 2],
+        point: Point,
         how: MoveTo,
     ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
@@ -281,8 +282,8 @@ impl World {
         g.current_target.original_position = g
             .current_target
             .original_position
-            .with_x(point[0])
-            .with_y(point[1]);
+            .with_x(point.x())
+            .with_y(point.y());
         g.current_command = MOVE_COMMAND;
         if g.motion.flags & 2 == 0 && !patrol {
             let column =
@@ -307,7 +308,7 @@ impl World {
     fn set_move_level(
         &mut self,
         group: i32,
-        point: [f32; 2],
+        point: Point,
         how: &MoveTo,
         (target, changed): (i32, bool),
     ) -> Result<Option<(bool, Option<f32>)>, GenieError> {
@@ -330,7 +331,7 @@ impl World {
             let _ = path.push(w);
         }
         g.waypoints.clear();
-        let at = BVector::new(point[0], g.desired_height, point[1]);
+        let at = BVector::new(point.x(), g.desired_height, point.y());
         let _ = path.push(at);
         let mut path_flags = move_path_flags(g.motion.position[0], at, how.leg);
         // `keep_flag` sets bit 11 (0x141010dc1) off a leg, which the hold's test then decides
@@ -707,7 +708,7 @@ mod tests {
             direct: true,
             ..MoveTo::default()
         };
-        assert!(!t.command_move_to(1, -1, [3.0, 4.0], how).unwrap());
+        assert!(!t.command_move_to(1, -1, Point::new(3.0, 4.0), how).unwrap());
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.command_queue, [command(1, -1, 3.0, 4.0, 1)]);
         assert_eq!((g.hibernating, g.current_command), (1, -1));
@@ -787,7 +788,7 @@ mod tests {
             range: 0.5,
             ..MoveTo::default()
         };
-        assert!(t.command_move_to(1, -1, [2.0, 3.0], how).unwrap());
+        assert!(t.command_move_to(1, -1, Point::new(2.0, 3.0), how).unwrap());
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.command_queue, Vec::<GroupCommand>::new());
         assert_eq!(
@@ -807,7 +808,10 @@ mod tests {
             hold: true,
             ..MoveTo::default()
         };
-        assert!(t.command_move_to(1, -1, [2.0, 3.0], hold).unwrap());
+        assert!(
+            t.command_move_to(1, -1, Point::new(2.0, 3.0), hold)
+                .unwrap()
+        );
         let g = t.groups.get(1).unwrap();
         assert_eq!(
             (g.flags & 0x800, g.motion.paths[0].path_flags & 1),
@@ -826,7 +830,7 @@ mod tests {
             ..asleep
         });
         assert!(
-            t.command_move_to(1, -1, [2.0, 3.0], MoveTo::default())
+            t.command_move_to(1, -1, Point::new(2.0, 3.0), MoveTo::default())
                 .unwrap()
         );
         let g = t.groups.get(1).unwrap();
@@ -835,7 +839,7 @@ mod tests {
         assert_eq!(ai.last_update_time, 50);
         let mut t = moving_world();
         assert!(
-            t.command_move_to(1, -1, [f32::NAN, 3.0], MoveTo::default())
+            t.command_move_to(1, -1, Point::new(f32::NAN, 3.0), MoveTo::default())
                 .unwrap()
         );
         assert!(t.groups.get(1).unwrap().motion.paths[0].has_path);
@@ -852,7 +856,11 @@ mod tests {
             direct: true,
             ..MoveTo::default()
         };
-        for (point, flags) in [([4.9, 0.0], 7 & !2), ([3.0, 4.0], 7), ([f32::NAN, 0.0], 7)] {
+        for (point, flags) in [
+            (Point::new(4.9, 0.0), 7 & !2),
+            (Point::new(3.0, 4.0), 7),
+            (Point::new(f32::NAN, 0.0), 7),
+        ] {
             let mut t = moving_world();
             t.groups.get_mut(1).unwrap().flags = 0x800;
             assert!(t.command_move_to(1, -1, point, leg).unwrap());
@@ -869,7 +877,7 @@ mod tests {
         top.has_path = true;
         top.path_flags = 1;
         t.groups.get_mut(1).unwrap().motion.paths = vec![top];
-        assert!(t.command_move_to(1, -1, [8.0, 0.0], leg).unwrap());
+        assert!(t.command_move_to(1, -1, Point::new(8.0, 0.0), leg).unwrap());
         assert_eq!(t.groups.get(1).unwrap().flags & 0xc000, 0);
     }
 }

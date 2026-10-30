@@ -1,6 +1,7 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -29,7 +30,7 @@ pub struct ClearingSite {
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
     pub radius: Footprint,
     /// Its place.
-    pub at: [f32; 2],
+    pub at: Point,
     /// `param_6`: the builder's call (the Build's `set_state(7)`) or a new object's
     /// (`FUN_14162ce00` with its flag).
     pub trees: bool,
@@ -140,7 +141,7 @@ pub(crate) fn footprint_clearing(
 
 /// The objects on [`footprint_clearing`]'s tiles about `at` ([`clearing_tiles`]), in its order:
 /// those it may read the [`ClearLook`] of.
-pub(crate) fn clearing_objects(world: &Spatial, at: [f32; 2]) -> Vec<i32> {
+pub(crate) fn clearing_objects(world: &Spatial, at: Point) -> Vec<i32> {
     let Some(([x0, x1], [y0, y1])) = clearing_tiles(at, world.map) else {
         return Vec::new();
     };
@@ -159,7 +160,7 @@ pub(crate) fn clearing_objects(world: &Spatial, at: [f32; 2]) -> Vec<i32> {
 
 /// [`footprint_clearing`]'s tiles: from 4 before the place to 4 past it on each axis
 /// (CVTTSS2SI to 16 bits), held on the map; none when a range is empty.
-pub(super) fn clearing_tiles(at: [f32; 2], [w, h]: [i32; 2]) -> Option<([i16; 2], [i16; 2])> {
+pub(super) fn clearing_tiles(at: Point, [w, h]: [i32; 2]) -> Option<([i16; 2], [i16; 2])> {
     use crate::math::conversions::cvttss2si;
     let range = |v: f32, size: i32| {
         let low = cvttss2si(v - CLEARING_REACH) as i16;
@@ -171,8 +172,8 @@ pub(super) fn clearing_tiles(at: [f32; 2], [w, h]: [i32; 2]) -> Option<([i16; 2]
         };
         (low.max(0), high)
     };
-    let (x0, x1) = range(at[0], w);
-    let (y0, y1) = range(at[1], h);
+    let (x0, x1) = range(at.x(), w);
+    let (y0, y1) = range(at.y(), h);
     (x0 <= x1 && y0 <= y1).then_some(([x0, x1], [y0, y1]))
 }
 
@@ -211,8 +212,8 @@ pub(super) fn clearing_takes(
         return Ok(None);
     }
     let (rx, ry) = (site.radius.x(), site.radius.y());
-    let dx = (o.position.x() - site.at[0]).abs();
-    let dy = (o.position.y() - site.at[1]).abs();
+    let dx = (o.position.x() - site.at.x()).abs();
+    let dy = (o.position.y() - site.at.y()).abs();
     if !(dx < o.radius.x() + rx && dy < o.radius.y() + ry) {
         return Ok(None);
     }

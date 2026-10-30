@@ -78,7 +78,7 @@ impl GatherAction {
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
-        let [x, y] = self.gather_at;
+        let (x, y) = (self.gather_at.x(), self.gather_at.y());
         if x != NO_GATHER_POINT {
             self.point = self.point.with_x(x).with_y(y);
         }

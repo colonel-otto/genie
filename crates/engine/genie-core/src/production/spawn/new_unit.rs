@@ -87,12 +87,7 @@ impl World {
             ));
         }
         let point = self.spot_beside(p, i, &made, toward)?;
-        let new = self.combat_object(
-            p,
-            master,
-            &made,
-            Position::new(point[0], point[1], position.z()),
-        )?;
+        let new = self.combat_object(p, master, &made, point.with_height(position.z()))?;
         let class = self.tracker_key(p, master).class;
         let owner = self.players.player_mut(p)?;
         owner.add_attribute(IN_PRODUCTION, -pop)?;
@@ -176,7 +171,7 @@ impl World {
             if let Some(ai) = unit.ai.as_mut() {
                 let order = crate::unit_ai::QueuedOrder {
                     priority: 100,
-                    point: Position::new(o.point.x(), o.point.y(), z),
+                    point: o.point.with_z(z),
                     range: 0.0,
                     ready: true,
                     ..*o

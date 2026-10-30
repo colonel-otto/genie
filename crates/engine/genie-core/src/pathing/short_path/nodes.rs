@@ -2,7 +2,7 @@
 //! the clip to the box.
 
 use crate::GenieError;
-use crate::pathing::short_path::{Kind, NONE, Node, Point, RECT_HEURISTIC, Search};
+use crate::pathing::short_path::{FixedPoint, Kind, NONE, Node, RECT_HEURISTIC, Search};
 use crate::world::slots::CheckedIndex;
 
 /// A polygon corner reached as a goal candidate (`FUN_140fa3860`'s arguments, [`Search::goal_test`]).
@@ -21,7 +21,7 @@ pub(super) struct Corner {
     /// The polygon.
     pub(super) poly: u32,
     /// The corner's point.
-    pub(super) point: Point,
+    pub(super) point: FixedPoint,
 }
 
 /// A polygon's axis edge whose foot the goal may lie on (`FUN_140fa8210`'s arguments,
@@ -31,9 +31,9 @@ pub(super) struct Foot {
     /// The polygon.
     pub(super) poly: u32,
     /// The edge's start.
-    pub(super) start: Point,
+    pub(super) start: FixedPoint,
     /// The edge's end.
-    pub(super) end: Point,
+    pub(super) end: FixedPoint,
     /// The edge's x extent: horizontal when not 0.
     pub(super) x_extent: i32,
     /// The first vertex of the walked run.
@@ -50,7 +50,7 @@ pub(super) struct Foot {
 
 /// `FUN_140fa3bc0`: whether a polygon corner at `v` between sides `prev` and `next` emits a node
 /// toward `g`, and the token its raycast ignores (0xff none).
-pub(super) fn corner_emits(prev: u8, next: u8, v: Point, g: Point) -> Option<u8> {
+pub(super) fn corner_emits(prev: u8, next: u8, v: FixedPoint, g: FixedPoint) -> Option<u8> {
     let ([vx, vy], [gx, gy]) = (v, g);
     match prev {
         0 if next == 3 => (gx <= vx && gy <= vy).then_some(0xff),
@@ -67,7 +67,11 @@ pub(super) fn corner_emits(prev: u8, next: u8, v: Point, g: Point) -> Option<u8>
 
 /// `FUN_140fa16d0`: Cohen-Sutherland: the segment `a`–`b` clipped to the box; None when it lies
 /// outside.
-pub(super) fn clip(mut a: Point, mut b: Point, bx: [i32; 4]) -> Option<(Point, Point)> {
+pub(super) fn clip(
+    mut a: FixedPoint,
+    mut b: FixedPoint,
+    bx: [i32; 4],
+) -> Option<(FixedPoint, FixedPoint)> {
     let (xmin, xmax) = if bx[2] < bx[0] {
         (bx[2], bx[0])
     } else {
@@ -78,7 +82,7 @@ pub(super) fn clip(mut a: Point, mut b: Point, bx: [i32; 4]) -> Option<(Point, P
     } else {
         (bx[1], bx[3])
     };
-    let code = |[x, y]: Point| {
+    let code = |[x, y]: FixedPoint| {
         let mut c = if x < xmin {
             1
         } else if xmax < x {
@@ -132,12 +136,12 @@ pub(super) fn clip(mut a: Point, mut b: Point, bx: [i32; 4]) -> Option<(Point, P
     Some((a, b))
 }
 
-pub(super) const fn in_box(p: Point, b: [i32; 4]) -> bool {
+pub(super) const fn in_box(p: FixedPoint, b: [i32; 4]) -> bool {
     b[0] <= p[0] && b[1] <= p[1] && p[0] <= b[2] && p[1] <= b[3]
 }
 
 /// `p` held in the box `b` on each axis (`[x0, y0, x1, y1]`).
-pub(super) const fn clamp_to_box(p: Point, b: [i32; 4]) -> Point {
+pub(super) const fn clamp_to_box(p: FixedPoint, b: [i32; 4]) -> FixedPoint {
     [
         if b[0] <= p[0] {
             if b[2] < p[0] { b[2] } else { p[0] }
@@ -153,7 +157,7 @@ pub(super) const fn clamp_to_box(p: Point, b: [i32; 4]) -> Point {
 }
 
 /// Chebyshev distance (`max(|dx|, |dy|)`), the polygon walks' cost.
-pub(super) const fn cheb(a: Point, b: Point) -> i32 {
+pub(super) const fn cheb(a: FixedPoint, b: FixedPoint) -> i32 {
     let dy = (a[1].wrapping_sub(b[1])).wrapping_abs();
     let dx = (a[0].wrapping_sub(b[0])).wrapping_abs();
     if dy < dx { dx } else { dy }
@@ -162,7 +166,7 @@ pub(super) const fn cheb(a: Point, b: Point) -> i32 {
 impl Search<'_> {
     /// Append a node to the arena (`FUN_140fa3fe0`, `FUN_140fa40d0`, `FUN_140fa4210`,
     /// `FUN_140fa4340`): `f = g + h(at)`.
-    pub(super) fn add(&mut self, g: i32, parent: u32, at: Point, kind: Kind) -> Node {
+    pub(super) fn add(&mut self, g: i32, parent: u32, at: FixedPoint, kind: Kind) -> Node {
         let n = Node {
             g,
             f: self.goal.heuristic(at).wrapping_add(g),
@@ -186,7 +190,7 @@ impl Search<'_> {
         self.open.insert(at, n);
     }
 
-    pub(super) fn side_node(&mut self, g: i32, parent: u32, shape: u32, side: u8, at: Point) {
+    pub(super) fn side_node(&mut self, g: i32, parent: u32, shape: u32, side: u8, at: FixedPoint) {
         let n = self.add(g, parent, at, Kind::Side { shape, side });
         self.push(n);
     }

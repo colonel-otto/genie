@@ -4,7 +4,7 @@ use crate::GenieError;
 use crate::commands::unload::UnloadCommand;
 use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
 use crate::map::Footprint;
-use crate::map::Position;
+use crate::map::Point;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -58,7 +58,6 @@ impl World {
             sound,
             ..
         } = *u;
-        let (player, point) = (player, point.xy());
         let Some(checked) = self.unload_check(player, ids, flag, unit_type)? else {
             return Ok(());
         };
@@ -123,7 +122,7 @@ impl World {
         &mut self,
         c: i32,
         id: i32,
-        point: [f32; 2],
+        point: Point,
     ) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(cp, ci)) = self.place(c) else {
             return Err(GenieError::unreachable(
@@ -158,7 +157,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        point: [f32; 2],
+        point: Point,
         (flag, unit_type): (u8, i32),
         sound: bool,
     ) -> Result<(), GenieError> {
@@ -218,7 +217,7 @@ impl World {
         idx: usize,
         transport: Option<i32>,
         named: i32,
-        last: &mut Option<[f32; 2]>,
+        last: &mut Option<Point>,
     ) -> Result<(), GenieError> {
         let own = self.players.player(player)?.objects[idx].id;
         let (inner, holder) = match transport {
@@ -254,12 +253,7 @@ impl World {
         unit.body
             .base_mut()
             .inside_at(inner_id.get(), at, &mut self.spatial);
-        self.leave_container(
-            (hp, hi),
-            (up.index(), ui),
-            &made,
-            Position::new(spot[0], spot[1], at.z()),
-        )?;
+        self.leave_container((hp, hi), (up.index(), ui), &made, spot.with_height(at.z()))?;
         let unit = &mut self.players.player_mut(up)?.objects[ui];
         let place = (unit.position().ground(), Some(made.class));
         if unit.ai.is_some() {
@@ -288,7 +282,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        point: [f32; 2],
+        point: Point,
     ) -> Result<(), GenieError> {
         let id = self.players.player(player)?.objects[idx].id;
         self.leave_group_of(id.get(), -1)?;
@@ -299,7 +293,7 @@ impl World {
         let unit = &self.players.player(player)?.objects[idx];
         let master = unit.master(&self.masters, player)?;
         // UCOMISS with −1, JP and JNZ: a NaN coordinate is not −1
-        let to = if master.class != class::BUILDING && point == [NO_POINT, NO_POINT] {
+        let to = if master.class != class::BUILDING && point == Point::new(NO_POINT, NO_POINT) {
             unit.position().ground()
         } else {
             point
@@ -310,7 +304,7 @@ impl World {
             priority: 100,
             target: id.get(),
             target_owner: player.index() as i32,
-            point: Position::new(to[0], to[1], 0.0),
+            point: to.with_height(0.0),
             range: UNLOAD_RANGE,
             shown: to,
             ready: true,

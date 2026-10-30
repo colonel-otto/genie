@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
@@ -239,7 +240,7 @@ impl UnitSide for With<'_> {
         self.side.off_footprint(site, radius)
     }
 
-    fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, GenieError> {
+    fn can_stand(&mut self, point: Point) -> Result<bool, GenieError> {
         self.side.can_stand(point)
     }
 

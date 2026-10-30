@@ -7,6 +7,7 @@ use crate::garrison::{
     ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, UNPLACED, UNREACHED, WalkStart, Walking,
     enter_view, ship_reaches,
 };
+use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::MoveToReads;
 use crate::objects::masters::Task;
@@ -169,7 +170,7 @@ impl World {
         let tm = t.master(&self.masters, tp)?;
         let (class, height) = (i32::from(tm.class.get()), t.position().z());
         let (at, _) = self.enter_meeting(player, idx, target)?;
-        let action = EnterAction::new(target, Position::new(at[0], at[1], height), task);
+        let action = EnterAction::new(target, at.with_height(height), task);
         self.take(target, self.releaser(player, idx)?)?;
         Ok((action, target, class))
     }
@@ -353,7 +354,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-    ) -> Result<([f32; 2], u8), GenieError> {
+    ) -> Result<(Point, u8), GenieError> {
         let id = self.players.player(player)?.objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
         let master = t.master(&self.masters, tp)?.clone();

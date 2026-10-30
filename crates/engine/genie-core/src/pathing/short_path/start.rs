@@ -2,8 +2,8 @@
 
 use crate::pathing::mesh::ONE;
 use crate::pathing::short_path::{
-    Hit, Kind, NONE, Node, Point, Search, TO_FIXED, TO_FLOAT, contact_point, in_box, shrunk_corner,
-    snap_to_side, strictly_inside, through_float, tile_of,
+    FixedPoint, Hit, Kind, NONE, Node, Search, TO_FIXED, TO_FLOAT, contact_point, in_box,
+    shrunk_corner, snap_to_side, strictly_inside, through_float, tile_of,
 };
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
@@ -13,10 +13,10 @@ use crate::{GenieError, math::fmath};
 /// to 3.
 const SIDE_CORNERS: [(u32, u32); 4] = [(0, 1), (1, 2), (3, 2), (0, 3)];
 /// Each side's direction from its first corner to its second (one tile along x or y).
-const SIDE_DIRS: [Point; 4] = [[ONE, 0], [0, ONE], [ONE, 0], [0, ONE]];
+const SIDE_DIRS: [FixedPoint; 4] = [[ONE, 0], [0, ONE], [ONE, 0], [0, ONE]];
 
 /// The distance from `p` to `a` in fixed point, through floats as the game takes it.
-fn float_distance([px, py]: Point, a: Point) -> i32 {
+fn float_distance([px, py]: FixedPoint, a: FixedPoint) -> i32 {
     let dy = (py.wrapping_sub(a[1])) as f32 * TO_FLOAT;
     let dx = (px.wrapping_sub(a[0])) as f32 * TO_FLOAT;
     (fmath::sqrt(dx * dx + dy * dy) * TO_FIXED) as i32
@@ -27,7 +27,7 @@ impl Search<'_> {
     /// already lies within range, 0 when it is free (the node opened), else the escape
     /// candidates (type 2) around it within twice the radius: 2 for fewer than two, else 1 with
     /// only the cheapest kept open.
-    pub(super) fn start(&mut self, p: Point) -> Result<i32, GenieError> {
+    pub(super) fn start(&mut self, p: FixedPoint) -> Result<i32, GenieError> {
         let g = &self.goal;
         if g.range2 >= g.rect_distance2(p) {
             return Ok(3);
@@ -67,7 +67,7 @@ impl Search<'_> {
     /// `FUN_140fa4410`'s scan around a held start `p`: every side of every shape not ignored
     /// over the tiles under the corners of the box twice the radius out (each tile once, the map's
     /// only) gives its escape candidates ([`Search::escape_side`]), children of node `root`.
-    pub(super) fn escape_candidates(&mut self, p: Point, root: u32) -> Result<(), GenieError> {
+    pub(super) fn escape_candidates(&mut self, p: FixedPoint, root: u32) -> Result<(), GenieError> {
         let mesh = self.ctx.mesh;
         let w = mesh.width as i32;
         let total = mesh.width * mesh.width;
@@ -106,7 +106,7 @@ impl Search<'_> {
     /// box and held by no other shape.
     pub(super) fn escape_side(
         &mut self,
-        p: Point,
+        p: FixedPoint,
         root: u32,
         (id, k): (u32, u32),
         rr2: i64,
@@ -167,10 +167,10 @@ impl Search<'_> {
     /// perpendicular distance.
     pub(super) fn escape_foot(
         &mut self,
-        [px, py]: Point,
+        [px, py]: FixedPoint,
         root: u32,
         (id, k): (u32, u32),
-        (a, e): (Point, Point),
+        (a, e): (FixedPoint, FixedPoint),
     ) -> Result<(), GenieError> {
         let side = k as u8;
         let b = self.bounds;
@@ -196,7 +196,7 @@ impl Search<'_> {
     /// `rr2` of the start `p`: an escape candidate, 0x32 dearer on a side of its own number.
     pub(super) fn escape_contacts(
         &mut self,
-        [px, py]: Point,
+        [px, py]: FixedPoint,
         root: u32,
         (id, k): (u32, u32),
         rr2: i64,
@@ -241,7 +241,7 @@ impl Search<'_> {
     }
 
     /// The point where the walk from `p` toward `t` meets the hit at fraction `frac` (`>> 22`).
-    pub(super) fn at_fraction(p: Point, t: Point, frac: i32) -> Point {
+    pub(super) fn at_fraction(p: FixedPoint, t: FixedPoint, frac: i32) -> FixedPoint {
         [
             ((i64::from(t[0].wrapping_sub(p[0])) * i64::from(frac)) >> 22) as i32 + p[0],
             ((i64::from(t[1].wrapping_sub(p[1])) * i64::from(frac)) >> 22) as i32 + p[1],
@@ -253,7 +253,7 @@ impl Search<'_> {
     /// the game's). It ends: a holder holds the point strictly inside, so the snap keeps the other
     /// coordinate and moves this one past the holder's side, always the same way (side 0 and 3
     /// lower, 1 and 2 higher); no shape holds it again, and the mesh has finitely many.
-    pub(super) fn settle(&self, h: &mut Point, hit: &mut Hit) -> Result<(), GenieError> {
+    pub(super) fn settle(&self, h: &mut FixedPoint, hit: &mut Hit) -> Result<(), GenieError> {
         let d = self.ctx.d;
         snap_to_side(
             h,
@@ -273,10 +273,10 @@ impl Search<'_> {
     pub(super) fn legs(
         &mut self,
         b: Node,
-        c: Point,
+        c: FixedPoint,
         a: u8,
         second: u8,
-        delta: Point,
+        delta: FixedPoint,
     ) -> Result<(), GenieError> {
         let p = b.at;
         let m = if a == 1 || a == 3 {

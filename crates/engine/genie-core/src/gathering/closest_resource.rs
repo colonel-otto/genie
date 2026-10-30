@@ -2,6 +2,7 @@
 //! herded sheep.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
@@ -31,10 +32,11 @@ pub(crate) struct ResourceWorld<'a, 'b> {
 /// site from `point` (at the unit's height), unless both its parts are exactly −1
 /// (`DAT_14330ec20`, `UCOMISS`/`JP`/`JNZ`: a part that is not a number differs); with a site
 /// (`has_site`, which replaces the point) and for (−1, −1) from the unit's place.
-pub(crate) fn search_origin(point: [f32; 2], has_site: bool, unit: Position) -> Position {
-    match point {
-        [x, y] if !has_site && (x != -1.0 || y != -1.0) => Position::new(x, y, unit.z()),
-        _ => unit,
+pub(crate) fn search_origin(point: Point, has_site: bool, unit: Position) -> Position {
+    if !has_site && (point.x() != -1.0 || point.y() != -1.0) {
+        point.with_height(unit.z())
+    } else {
+        unit
     }
 }
 
@@ -51,7 +53,7 @@ pub(crate) fn closest_resource_of(
     c: &mut ResourceWorld<'_, '_>,
     others: OthersRef<'_>,
     (kind, cap, site): (u8, i32, i32),
-    (current, min_state, point): (i32, u8, [f32; 2]),
+    (current, min_state, point): (i32, u8, Point),
 ) -> Result<(i32, Option<i32>), GenieError> {
     use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
     /// The site masters whose search starts from their footprint in any zone.

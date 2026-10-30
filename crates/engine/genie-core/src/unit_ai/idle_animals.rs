@@ -1,6 +1,7 @@
 //! The idle checks of the boar, the hunted animals and the lions.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
@@ -51,7 +52,7 @@ impl UnitAi {
         let d2 = dy * dy + dx * dx;
         let leash = ai.below(BOAR_LEASH_DRAW) as i32 as f32 + BOAR_LEASH;
         let go_home = AiMove {
-            point: Position::new(home.origin.x(), home.origin.y(), z),
+            point: home.origin.with_z(z),
             range: AI_MOVE_RANGE,
             force: true,
             walk: true,
@@ -169,7 +170,7 @@ impl UnitAi {
         ))?;
         let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
         let go_home = AiMove {
-            point: Position::new(h.origin.x(), h.origin.y(), z),
+            point: h.origin.with_z(z),
             range: AI_MOVE_RANGE,
             force: true,
             walk: true,
@@ -196,7 +197,7 @@ impl UnitAi {
             sight
         };
         let found = side.closest(&Search {
-            at: [x, y],
+            at: Point::new(x, y),
             radius,
             classes: &HUNTED_CARED,
             size: at.size,

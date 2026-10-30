@@ -3,6 +3,7 @@
 use crate::{OTHER_SUB_ACTION, combat_master, saved_attack, saved_move_wait, saved_sprite};
 use genie_core::GenieError;
 use genie_core::construction::build::{BuildAction, BuildTask};
+use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
 use genie_core::movement::fly::{FLY, Fly};
 use genie_core::movement::move_to::{MOVE_TO, MoveTo, MoveToAction, TargetMoved};
@@ -330,7 +331,7 @@ fn import_fly(
         state: base.state,
         timer: base.timer,
         move_to,
-        home: [base.target_x, base.target_y],
+        home: Point::new(base.target_x, base.target_y),
         task: fly_task(saved.s.master_obj)?,
     }));
     Ok(())

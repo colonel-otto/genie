@@ -9,6 +9,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
@@ -73,7 +74,7 @@ pub struct UnitUpdate {
     /// The owner's id (`player+0x718`).
     pub owner: u8,
     /// Its place (x, y).
-    pub position: [f32; 2],
+    pub position: Point,
     /// Its master's radii (x, y).
     pub radii: Footprint,
     /// Its master's class.
@@ -91,7 +92,7 @@ pub struct VisibleQuery<'a> {
     /// The player whose lists it reads.
     pub player: PlayerId,
     /// The searcher's place (x, y).
-    pub position: [f32; 2],
+    pub position: Point,
     /// How far, at most 44.
     pub radius: f32,
     /// 0: a rounded box, 1: a box.
@@ -144,12 +145,13 @@ impl Registry {
         let UnitUpdate {
             id,
             owner,
-            position: [x, y],
+            position,
             radii,
             class,
             old,
             new,
         } = unit;
+        let (x, y) = (position.x(), position.y());
         let (rx, ry) = (radii.x(), radii.y());
         let mut changed = (old ^ new) & 0xffff;
         let mut seen = new;
@@ -241,7 +243,8 @@ impl Registry {
     }
 
     /// The combat object's new place (`FUN_14108c320`): its records in every list follow.
-    pub fn moved(&mut self, id: i32, class: ClassId, [x, y]: [f32; 2]) {
+    pub fn moved(&mut self, id: i32, class: ClassId, at: Point) {
+        let (x, y) = (at.x(), at.y());
         let Some(e) = self.entries.get(&id).copied() else {
             return;
         };
@@ -268,7 +271,7 @@ impl Registry {
     ) -> Result<Option<[Vec<Record>; 5]>, GenieError> {
         let VisibleQuery {
             player,
-            position: [x, y],
+            position,
             radius,
             mode,
             classes,
@@ -276,6 +279,7 @@ impl Registry {
             size,
             wanted,
         } = query;
+        let (x, y) = (position.x(), position.y());
         let (rx, ry) = (size.x(), size.y());
         if classes.is_empty() || self.players <= player.index() {
             return Ok(None);
@@ -360,7 +364,7 @@ mod tests {
             r.update_unit(UnitUpdate {
                 id,
                 owner: 1,
-                position: [id as f32, 5.0],
+                position: Point::new(id as f32, 5.0),
                 radii: Footprint::new(0.2, 0.2),
                 class: class::VILLAGER,
                 old: 0,
@@ -378,7 +382,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 1,
             owner: 1,
-            position: [1.0, 5.0],
+            position: Point::new(1.0, 5.0),
             radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0b101,
@@ -392,7 +396,7 @@ mod tests {
         assert_eq!(r.entry(3).unwrap().slots[0], Some(0));
         assert_eq!(r.entry(1).unwrap().slots[0], None);
         assert_eq!(r.entry(1).unwrap().slots[2], Some(0));
-        r.moved(3, class::VILLAGER, [7.0, 7.0]);
+        r.moved(3, class::VILLAGER, Point::new(7.0, 7.0));
         assert_eq!((r.lists[0][4][0].x, r.lists[2][4][2].y), (7.0, 7.0));
     }
 
@@ -402,7 +406,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 1,
             owner: 1,
-            position: [12.0, 10.0],
+            position: Point::new(12.0, 10.0),
             radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
@@ -412,7 +416,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 2,
             owner: 2,
-            position: [10.0, 13.5],
+            position: Point::new(10.0, 13.5),
             radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
@@ -422,7 +426,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 3,
             owner: 2,
-            position: [13.0, 13.0],
+            position: Point::new(13.0, 13.0),
             radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
@@ -432,7 +436,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 4,
             owner: 0,
-            position: [10.5, 10.5],
+            position: Point::new(10.5, 10.5),
             radii: Footprint::new(0.2, 0.2),
             class: class::PREY,
             old: 0,
@@ -443,7 +447,7 @@ mod tests {
         let found = r
             .visible_units(VisibleQuery {
                 player: PlayerId::new(0),
-                position: [10.0, 10.0],
+                position: Point::new(10.0, 10.0),
                 radius: 3.0,
                 mode: 0,
                 classes: &[4, 9],
@@ -462,7 +466,7 @@ mod tests {
         assert_eq!(
             r.visible_units(VisibleQuery {
                 player: PlayerId::new(0),
-                position: [10.0, 10.0],
+                position: Point::new(10.0, 10.0),
                 radius: 3.0,
                 mode: 0,
                 classes: &[],
@@ -481,7 +485,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 1,
             owner: 1,
-            position: [53.5, 10.0],
+            position: Point::new(53.5, 10.0),
             radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
@@ -491,7 +495,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 2,
             owner: 1,
-            position: [60.0, 10.0],
+            position: Point::new(60.0, 10.0),
             radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
@@ -501,7 +505,7 @@ mod tests {
         let found = r
             .visible_units(VisibleQuery {
                 player: PlayerId::new(0),
-                position: [10.0, 10.0],
+                position: Point::new(10.0, 10.0),
                 radius: 100.0,
                 mode: 1,
                 classes: &[4],
@@ -521,7 +525,7 @@ mod tests {
         r.update_unit(UnitUpdate {
             id: 1,
             owner: 1,
-            position: [15.0, 10.0],
+            position: Point::new(15.0, 10.0),
             radii: Footprint::new(2.0, 2.0),
             class: class::VILLAGER,
             old: 0,
@@ -531,7 +535,7 @@ mod tests {
         let found = r
             .visible_units(VisibleQuery {
                 player: PlayerId::new(0),
-                position: [10.0, 10.0],
+                position: Point::new(10.0, 10.0),
                 radius: 3.0,
                 mode: 0,
                 classes: &[4],

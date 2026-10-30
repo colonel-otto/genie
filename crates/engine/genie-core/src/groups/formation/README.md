@@ -34,5 +34,5 @@ The other layouts (a horde, a phalanx, a box, a user-defined formation) are in
 ## How it connects
 
 <!-- uses -->
-- Uses: [`math`](../../math/), [`movement`](../../movement/), [`world`](../../world/).
+- Uses: [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`world`](../../world/).
 <!-- /uses -->

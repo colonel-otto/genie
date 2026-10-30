@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Lifecycle;
@@ -131,7 +132,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
         master: ids::HOUSE,
         class,
         radius: Footprint::new(1.0, 1.0),
-        at: [10.5, 10.5],
+        at: Point::new(10.5, 10.5),
         trees,
     };
     let ids = |world: &Spatial, s: ClearingSite| -> Vec<i32> {
@@ -181,10 +182,16 @@ fn the_clearing_reads_the_objects_on_its_tiles() {
             on_map(x, y, master_id(1358), class::CLASS_5, 0.5, 1),
         );
     }
-    assert_eq!(clearing_objects(&world, [10.5, 10.5]), [2, 3, 1, 6]);
+    assert_eq!(
+        clearing_objects(&world, Point::new(10.5, 10.5)),
+        [2, 3, 1, 6]
+    );
     // at the map's corner the tiles start at 0 and end at its last
-    assert_eq!(clearing_objects(&world, [17.0, 2.0]), [1]);
-    assert_eq!(clearing_objects(&world, [40.0, 40.0]), Vec::<i32>::new());
+    assert_eq!(clearing_objects(&world, Point::new(17.0, 2.0)), [1]);
+    assert_eq!(
+        clearing_objects(&world, Point::new(40.0, 40.0)),
+        Vec::<i32>::new()
+    );
 }
 
 /// The record each cleared object loses in the clearing ([`Cleared::record_goes`]): with
@@ -251,7 +258,7 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
             master: ids::HOUSE,
             class: class::BUILDING,
             radius: Footprint::new(1.0, 1.0),
-            at: [10.5, 10.5],
+            at: Point::new(10.5, 10.5),
             trees,
         };
         footprint_clearing(&world, &s, &look)

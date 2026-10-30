@@ -563,16 +563,16 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
         id: 10028,
         master: 70,
         owner: 1,
-        vector: [30.0, 2.0],
+        vector: Point::new(30.0, 2.0),
     };
     let tree = Named {
         id: 600,
         master: 349,
         owner: 0,
-        vector: [33.5, 2.0],
+        vector: Point::new(33.5, 2.0),
     };
     let off = OffFootprint {
-        spot: Some([29.5, 89.5]),
+        spot: Some(Point::new(29.5, 89.5)),
         z: 2.0,
         class: class::VILLAGER,
         computer: false,
@@ -646,7 +646,7 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     u.post(Notify::own(14054, SENT_OFF, [200, 200, 14100]), 2)
         .unwrap();
     let off = OffFootprint {
-        spot: Some([164.5, 51.5]),
+        spot: Some(Point::new(164.5, 51.5)),
         z: 0.0,
         class: class::PREY,
         computer: false,
@@ -751,7 +751,7 @@ fn sent_off_queue() -> UnitAi {
         target_owner: 1,
         point: Position::new(x, 2.0, 0.0),
         range: 0.0,
-        shown: [x, 2.0],
+        shown: Point::new(x, 2.0),
         ready: true,
         target_type: 70,
     };
@@ -789,7 +789,7 @@ fn the_build_order_builds_and_takes_the_order_at_once() {
             target_owner: 1,
             point: Position::new(30.0, 88.0, 0.0),
             range: 2.0,
-            shown: [30.0, 88.0],
+            shown: Point::new(30.0, 88.0),
             ready: true,
             target_type: 3,
         }],
@@ -1906,7 +1906,7 @@ impl UnitSide for DamageSide {
     fn defended_attacker(&mut self, _: i32) -> Result<Option<i32>, GenieError> {
         Ok(self.defended)
     }
-    fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, GenieError> {
+    fn can_stand(&mut self, _: Point) -> Result<bool, GenieError> {
         Ok(true)
     }
 }
@@ -2217,13 +2217,16 @@ fn a_completed_action_of_the_order_or_an_attack_stops_the_unit() {
         run(&mut u, ActionKind::Gather.value()),
         (Ok(GO_ON), 30, Some(ActionKind::Move))
     );
-    assert_eq!(u.state_position, [0.0; 2]);
+    assert_eq!(u.state_position, Point::ORIGIN);
     let mut u = unit(Some(OrderKind::Attack), Some(ActionKind::Attack));
     assert_eq!(
         run(&mut u, ActionKind::Attack.value()),
         (Ok(GO_ON), -1, None)
     );
-    assert_eq!((u.current_order, u.state_position), (None, [12.0, 13.0]));
+    assert_eq!(
+        (u.current_order, u.state_position),
+        (None, Point::new(12.0, 13.0))
+    );
     let mut u = unit(Some(OrderKind::Move), Some(ActionKind::Move));
     assert_eq!(run(&mut u, ActionKind::Move.value()), (Ok(GO_ON), -1, None));
     let mut u = unit(Some(OrderKind::GroupGather), Some(ActionKind::Move));
@@ -3499,7 +3502,7 @@ fn a_builder_s_idle_timer_stays_0_and_its_look_around_is_redrawn() {
     assert_eq!(u.look_around_timeout, 4500 + 7241 % 1000);
     assert_eq!(r.draws, 1);
     // the state position follows a unit with an order
-    assert_eq!(u.state_position, [29.5, 89.5]);
+    assert_eq!(u.state_position, Point::new(29.5, 89.5));
     // on the attack order, its target gone (the target block forgets it), the civilian's
     // processMisc stops the action and ends the order (slot 0xb0 with 0)
     u.current_order = Some(OrderKind::Attack);
@@ -3562,7 +3565,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
             current_order: None,
             current_action: Some(ActionKind::Build),
             current_target: 4321,
-            state_position: [10.0, 10.0],
+            state_position: Point::new(10.0, 10.0),
             retarget_timer: u32::MAX,
             ..idle(UnitAiType::SOLDIER)
         };
@@ -3853,7 +3856,7 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             retarget_timer: 750 + c % 500,
             stance: 0,
             formation_type: 0,
-            state_position: [30.0, 88.0],
+            state_position: Point::new(30.0, 88.0),
             retarget_disabled: 0,
             alert_mode: false,
             time_since_enemy: 0.0,
@@ -4073,7 +4076,10 @@ fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
         ..ScoutSide::default()
     };
     let (r, fx) = seek(&mut u, &mut side, false);
-    assert_eq!((r, fx), (Ok(BREAK), vec![Effect::Explore([5.0, 6.0])]));
+    assert_eq!(
+        (r, fx),
+        (Ok(BREAK), vec![Effect::Explore(Point::new(5.0, 6.0))])
+    );
     assert_eq!(
         (u.current_action, u.last_action),
         (Some(ActionKind::AutoScout), Some(ActionKind::Explore))
@@ -4084,7 +4090,10 @@ fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
         ..ScoutSide::default()
     };
     let (r, fx) = seek(&mut u, &mut side, false);
-    assert_eq!((r, fx), (Ok(BREAK), vec![Effect::Explore([7.0, 8.0])]));
+    assert_eq!(
+        (r, fx),
+        (Ok(BREAK), vec![Effect::Explore(Point::new(7.0, 8.0))])
+    );
     assert_eq!(
         (u.current_action, u.last_action),
         (Some(ActionKind::AutoScout), Some(ActionKind::AutoScout))
@@ -4398,7 +4407,7 @@ fn each_unit_ai_constructor_draws_its_timers_and_sets_its_stance() {
                 adjusted,
                 stance,
                 capacity,
-                [12.5, 40.0],
+                Point::new(12.5, 40.0),
             ),
             "type {ai_type}"
         );
@@ -4873,7 +4882,7 @@ fn a_move_forgets_the_target_and_an_order_keeps_its_history() {
         target_type: 15,
         ..idle(UnitAiType::SOLDIER)
     };
-    u.notify_move(true, None, [21.947_916, 92.489_586], &mut rng());
+    u.notify_move(true, None, Point::new(21.947_916, 92.489_586), &mut rng());
     assert_eq!(
         (
             u.current_order,
@@ -4979,7 +4988,7 @@ fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
     // the search reaches the line of sight plus 1, the search radius being shorter
     assert_eq!(
         searched,
-        vec![([31.5, 106.5], 3.0, 28, Footprint::new(0.2, 0.2))]
+        vec![(Point::new(31.5, 106.5), 3.0, 28, Footprint::new(0.2, 0.2))]
     );
     assert_eq!(r.draws, 1);
 
@@ -5100,7 +5109,7 @@ fn an_animal_whose_wander_ended_drops_its_move_action_and_turns_idle() {
         .unwrap();
     assert_eq!(
         (u.current_action, u.idle_timer, u.state_position),
-        (Some(ActionKind::Move), 5010, [0.0; 2])
+        (Some(ActionKind::Move), 5010, Point::ORIGIN)
     );
 }
 
@@ -5115,7 +5124,7 @@ fn scout() -> UnitAi {
         target_owner: -1,
         point: Position::new(x, y, 0.0),
         range: 0.0,
-        shown: [x, y],
+        shown: Point::new(x, y),
         ready: true,
         target_type: -1,
     };
@@ -5240,7 +5249,7 @@ fn a_completed_move_on_its_order_ends_the_order_and_stops_the_unit() {
         (u.last_order, u.last_action),
         (Some(OrderKind::Move), Some(ActionKind::Move))
     );
-    assert_eq!(u.state_position, [93.5, 58.25]);
+    assert_eq!(u.state_position, Point::new(93.5, 58.25));
     assert_eq!((u.notifies.len(), u.last_update_time), (0, 60));
 }
 
@@ -5289,7 +5298,7 @@ fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it
         )
         .unwrap();
     assert_eq!((u.current_order, u.current_action), (None, None));
-    assert_eq!(u.state_position, [10.0, 12.0]);
+    assert_eq!(u.state_position, Point::new(10.0, 12.0));
     // another action's failure goes on; a failed attack on the attack order of a unit AI
     // but a boar's is not modelled
     let mut u = UnitAi {
@@ -5964,7 +5973,7 @@ fn idle_scout() -> (UnitAi, Surroundings) {
         idle_timer: 504,
         adjusted_idle_timeout: 503,
         stance: 2,
-        state_position: [21.947_916, 92.489_586],
+        state_position: Point::new(21.947_916, 92.489_586),
         ..idle(UnitAiType::SOLDIER)
     };
     let at = Surroundings {
@@ -6021,7 +6030,7 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
     // StandGround, returning to state pos.", FUN_140c5e7d0), which its processIdle does not
     // count as an action (5)
     let (mut u, at) = idle_scout();
-    u.state_position = [25.0, 92.5];
+    u.state_position = Point::new(25.0, 92.5);
     let mut none = |_: &Search<'_>| Ok(Found::NONE);
     let fx = u
         .update_fx(28, 0, false, &at, &mut rng(), &mut none)
@@ -6105,7 +6114,7 @@ const BOAR: Target = Target {
 /// A unit AI without an order or a target, in the aggressive stance.
 const IDLE: Seeker = Seeker {
     stance: 0,
-    state_position: [0.0, 0.0],
+    state_position: Point::new(0.0, 0.0),
     order: None,
     action: None,
     target: -1,
@@ -6255,7 +6264,7 @@ const SCOUT: Attacker = Attacker {
 };
 const STAND_GROUND: Seeker = Seeker {
     stance: 2,
-    state_position: [118.5, 183.5],
+    state_position: Point::new(118.5, 183.5),
     ..IDLE
 };
 
@@ -6372,7 +6381,7 @@ fn forgetting_the_targets_clears_the_current_and_the_last_and_the_point() {
         last_target_type: 9,
         ..idle(UnitAiType::SOLDIER)
     };
-    moved.notify_move(true, None, [5.0, 6.0], &mut rng());
+    moved.notify_move(true, None, Point::new(5.0, 6.0), &mut rng());
     // the forget, then FUN_140c64be0 with no target: the forgotten -1 becomes the last
     assert_eq!(
         (
@@ -6513,7 +6522,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         target_owner: -1,
         point: Position::new(10.0, 11.0, 0.0),
         range: 0.5,
-        shown: [10.0, 11.0],
+        shown: Point::new(10.0, 11.0),
         ready: true,
         target_type: -1,
     };
@@ -6521,7 +6530,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
     u.order_now(
         order,
         Some(9),
-        Some(([5.0, 6.0], Some(class::VILLAGER))),
+        Some((Point::new(5.0, 6.0), Some(class::VILLAGER))),
         None,
         &mut rng(),
         &mut fx,
@@ -6535,7 +6544,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         target_owner: -1,
         point: Position::new(20.0, 21.0, 0.0),
         range: 2.0,
-        shown: [10.0, 11.0],
+        shown: Point::new(10.0, 11.0),
         ready: true,
         target_type: 3,
     };
@@ -6559,7 +6568,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
     // the stop ended the build order; the move's FUN_140c64c10 made the forgotten -1 the
     // last target
     assert_eq!((u.last_order, u.last_target), (Some(OrderKind::Build), -1));
-    assert_eq!(u.state_position, [5.0, 6.0]);
+    assert_eq!(u.state_position, Point::new(5.0, 6.0));
 }
 
 /// `FUN_140c55c90` immediate for an attack roundup (0x2d9): "We have an `AttackRoundup`, so
@@ -6588,7 +6597,7 @@ fn an_immediate_attack_roundup_keeps_the_target_until_it_attacks_the_next() {
     let r = u.take_order_now(
         2,
         roundup,
-        ([0.0; 2], Some(class::CLASS_6)),
+        (Point::ORIGIN, Some(class::CLASS_6)),
         &mut rng(),
         &mut fx,
     );
@@ -6644,7 +6653,7 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
     let mut u = UnitAi {
         current_action: Some(ActionKind::Attack),
         current_target: 77,
-        state_position: [10.0, 10.0],
+        state_position: Point::new(10.0, 10.0),
         ..idle(UnitAiType::SOLDIER)
     };
     let at = |x: f32| Surroundings {
@@ -6672,7 +6681,7 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
     );
     assert_eq!(u.current_target, 77);
     let mut lost = UnitAi {
-        state_position: [f32::NAN, 10.0],
+        state_position: Point::new(f32::NAN, 10.0),
         ..idle(UnitAiType::SOLDIER)
     };
     assert!(
@@ -6685,11 +6694,20 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
 #[test]
 fn the_point_gap_keeps_a_gap_that_is_not_a_number() {
     assert_eq!(
-        point_gap_squared([3.0, 0.0], Position::ORIGIN, Footprint::new(1.0, 1.0)),
+        point_gap_squared(
+            Point::new(3.0, 0.0),
+            Position::ORIGIN,
+            Footprint::new(1.0, 1.0)
+        ),
         4.0
     );
     assert!(
-        point_gap_squared([f32::NAN, 0.0], Position::ORIGIN, Footprint::new(1.0, 1.0)).is_nan()
+        point_gap_squared(
+            Point::new(f32::NAN, 0.0),
+            Position::ORIGIN,
+            Footprint::new(1.0, 1.0)
+        )
+        .is_nan()
     );
 }
 
@@ -6699,7 +6717,7 @@ fn the_point_gap_keeps_a_gap_that_is_not_a_number() {
 fn a_no_attack_soldier_searches_then_walks_back_to_its_state_position() {
     let (mut u, at) = idle_scout();
     u.stance = 3;
-    u.state_position = [25.0, 92.5];
+    u.state_position = Point::new(25.0, 92.5);
     let mut picks = Vec::new();
     let mut look = |s: &Search<'_>| {
         picks.push(s.pick);
@@ -6724,7 +6742,7 @@ fn a_no_attack_soldier_searches_then_walks_back_to_its_state_position() {
     // on a patrol order it stays
     let (mut u, at) = idle_scout();
     u.stance = 3;
-    u.state_position = [25.0, 92.5];
+    u.state_position = Point::new(25.0, 92.5);
     u.current_order = Some(OrderKind::Patrol);
     let mut fx = Vec::new();
     u.no_attack_idle(
@@ -6773,7 +6791,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
     let mut u = ship();
     let fx = run(&mut u, &at(group(true, false, false))).unwrap();
     assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
-    assert_eq!(u.state_position, [3.0, 4.0]);
+    assert_eq!(u.state_position, Point::new(3.0, 4.0));
     // a group not idle, or a moving unit: no idle check
     for g in [group(false, true, false), group(true, false, true)] {
         let mut u = ship();
@@ -6785,7 +6803,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
     let mut g = group(true, false, false);
     g.as_mut().unwrap().commanded = false;
     let _ = run(&mut u, &at(g)).unwrap();
-    assert_eq!(u.state_position, [0.0; 2]);
+    assert_eq!(u.state_position, Point::ORIGIN);
     // the order queue waits for a group that is not idle
     let order = QueuedOrder {
         issuer: 1,
@@ -6795,7 +6813,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         target_owner: -1,
         point: Position::new(9.0, 9.0, 0.0),
         range: 0.0,
-        shown: [9.0, 9.0],
+        shown: Point::new(9.0, 9.0),
         ready: true,
         target_type: -1,
     };
@@ -7493,7 +7511,7 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
 /// A unit side whose stand test fails a given number of times.
 struct StandSide {
     refusals: usize,
-    tested: Vec<[f32; 2]>,
+    tested: Vec<Point>,
 }
 
 impl UnitSide for StandSide {
@@ -7527,7 +7545,7 @@ impl UnitSide for StandSide {
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, GenieError> {
+    fn can_stand(&mut self, point: Point) -> Result<bool, GenieError> {
         self.tested.push(point);
         if self.refusals == 0 {
             return Ok(true);
@@ -7592,7 +7610,10 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
         ),
         Ok(true)
     );
-    assert_eq!(side.tested, vec![[12.0, 22.0], [ex, ey]]);
+    assert_eq!(
+        side.tested,
+        vec![Point::new(12.0, 22.0), Point::new(ex, ey)]
+    );
     assert_eq!(r.draws, 4);
     assert_eq!(
         fx,
@@ -7760,7 +7781,7 @@ fn a_villager_on_the_attack_order_without_a_target_gives_it_up() {
         ),
         (None, -1, Some(OrderKind::Attack), None)
     );
-    assert_eq!(u.state_position, [12.0, 13.0]);
+    assert_eq!(u.state_position, Point::new(12.0, 13.0));
     for (order, target) in [(OrderKind::Attack, 40), (OrderKind::Build, -1)] {
         let mut u = UnitAi {
             current_order: Some(order),
@@ -8035,7 +8056,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
     // a defensive unit with its state position 5 tiles east runs no farther than that
     let mut u = UnitAi {
         stance: 1,
-        state_position: [25.0, 30.0],
+        state_position: Point::new(25.0, 30.0),
         ..runner(vec![77])
     };
     assert_eq!(
@@ -8108,7 +8129,7 @@ fn the_unit_ai_s_notify_answers_whether_it_took_it() {
 /// its attack move; one off the patrol orders ends in range and stops attack-moving.
 #[test]
 fn a_unit_off_patrol_asks_a_plain_path() {
-    let ask = UnitAi::path_ask(None, [20.0, 20.0], [30.0, 20.0]);
+    let ask = UnitAi::path_ask(None, Point::new(20.0, 20.0), Point::new(30.0, 20.0));
     assert_eq!(
         ask,
         PathAsk {
@@ -8117,7 +8138,7 @@ fn a_unit_off_patrol_asks_a_plain_path() {
         }
     );
     let mut u = idle(UnitAiType::SOLDIER);
-    let ask = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [30.0, 20.0]);
+    let ask = UnitAi::path_ask(Some(&mut u), Point::new(20.0, 20.0), Point::new(30.0, 20.0));
     assert_eq!(
         ask,
         PathAsk {
@@ -8127,7 +8148,7 @@ fn a_unit_off_patrol_asks_a_plain_path() {
     );
     // a saved patrol off the patrol orders stays, and so does the attack move
     u.patrol_path = Some(PatrolPath::default());
-    let ask = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [30.0, 20.0]);
+    let ask = UnitAi::path_ask(Some(&mut u), Point::new(20.0, 20.0), Point::new(30.0, 20.0));
     assert_eq!((ask.attack_move, u.patrol_path.is_some()), (None, true));
 }
 
@@ -8139,7 +8160,7 @@ fn a_patrol_order_s_path_loops_and_turns_back_from_three_tiles() {
         current_order: Some(OrderKind::Patrol),
         ..idle(UnitAiType::SOLDIER)
     };
-    let ask = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [22.9, 20.0]);
+    let ask = UnitAi::path_ask(Some(&mut u), Point::new(20.0, 20.0), Point::new(22.9, 20.0));
     assert_eq!(
         ask,
         PathAsk {
@@ -8150,12 +8171,16 @@ fn a_patrol_order_s_path_loops_and_turns_back_from_three_tiles() {
             attack_move: Some(false),
         }
     );
-    let far = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [20.0, 23.0]);
+    let far = UnitAi::path_ask(Some(&mut u), Point::new(20.0, 20.0), Point::new(20.0, 23.0));
     assert!(far.back_and_forth);
-    let nan = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [f32::NAN, 23.0]);
+    let nan = UnitAi::path_ask(
+        Some(&mut u),
+        Point::new(20.0, 20.0),
+        Point::new(f32::NAN, 23.0),
+    );
     assert!(nan.back_and_forth);
     u.current_order = Some(OrderKind::AttackMove);
-    let attack = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [22.9, 20.0]);
+    let attack = UnitAi::path_ask(Some(&mut u), Point::new(20.0, 20.0), Point::new(22.9, 20.0));
     assert_eq!((attack.patrol, attack.attack_move), (true, Some(true)));
 }
 
@@ -8173,7 +8198,7 @@ fn a_saved_patrol_gives_its_waypoint_to_the_path_and_goes() {
         patrol_waypoint: 2,
         ..idle(UnitAiType::SOLDIER)
     };
-    let ask = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [20.5, 20.0]);
+    let ask = UnitAi::path_ask(Some(&mut u), Point::new(20.0, 20.0), Point::new(20.5, 20.0));
     assert_eq!(
         (ask.resume, ask.back_and_forth, ask.attack_move),
         (2, true, Some(false))
@@ -8503,7 +8528,7 @@ fn a_stop_ends_a_patrol_order_with_its_secondary_timer_capped() {
     let mut fx = Vec::new();
     u.stop_with(
         true,
-        Some(([3.0, 4.0], Some(class::CLASS_6))),
+        Some((Point::new(3.0, 4.0), Some(class::CLASS_6))),
         &mut fx,
         &mut rng(),
     )
@@ -8512,7 +8537,10 @@ fn a_stop_ends_a_patrol_order_with_its_secondary_timer_capped() {
         (u.current_order, u.last_order, u.secondary_timer),
         (None, Some(OrderKind::Patrol), 750)
     );
-    assert_eq!((fx, u.state_position), (vec![Effect::Stop], [3.0, 4.0]));
+    assert_eq!(
+        (fx, u.state_position),
+        (vec![Effect::Stop], Point::new(3.0, 4.0))
+    );
     let mut u = UnitAi {
         current_order: Some(OrderKind::AttackMove),
         adjusted_idle_timeout: 750,
@@ -9084,7 +9112,7 @@ impl UnitSide for ShipSide {
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, GenieError> {
+    fn can_stand(&mut self, _: Point) -> Result<bool, GenieError> {
         Ok(true)
     }
     fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
@@ -9486,7 +9514,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     };
     let seeker = |stance| Seeker {
         stance,
-        state_position: [20.0, 20.0],
+        state_position: Point::new(20.0, 20.0),
         ..IDLE
     };
     let check = |me: &Attacker, s: &Seeker, t: &Target| siege_can_attack(me, s, t, false);
@@ -9699,7 +9727,7 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
     };
     let mut u = UnitAi {
         stance: 1,
-        state_position: [10.0, 20.0],
+        state_position: Point::new(10.0, 20.0),
         ..idle(SIEGE_AI)
     };
     let mut side = SiegeSide::default();
@@ -10154,7 +10182,7 @@ fn the_tail_reads_the_top_target_the_update_s_commands_left() {
     // a move to a point, a stop or an explore left no object to test
     for pending in [
         Effect::Stop,
-        Effect::Explore([1.0, 2.0]),
+        Effect::Explore(Point::new(1.0, 2.0)),
         Effect::Move(AiMove {
             point: Position::new(1.0, 2.0, 0.0),
             range: 0.0,
@@ -10260,7 +10288,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
     };
     let standing = |action| UnitAi {
         stance: 2,
-        state_position: [10.0, 10.0],
+        state_position: Point::new(10.0, 10.0),
         current_action: action,
         current_target: 500,
         retarget_timer: 100_000,
@@ -10333,7 +10361,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
     }
     // a gap that is not a number stays (COMISS, JBE)
     let mut u = UnitAi {
-        state_position: [f32::NAN, 10.0],
+        state_position: Point::new(f32::NAN, 10.0),
         ..standing(Some(ActionKind::Attack))
     };
     let mut fx = Vec::new();
@@ -10419,7 +10447,7 @@ fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
     };
     let unit = |stance| UnitAi {
         stance,
-        state_position: [10.0, 30.0],
+        state_position: Point::new(10.0, 30.0),
         current_action: Some(ActionKind::Attack),
         current_target: 500,
         retarget_timer: 0,
@@ -10593,7 +10621,7 @@ impl UnitSide for OrderSide {
     fn reaches(&mut self, _: i32, _: f32) -> Result<bool, GenieError> {
         Ok(self.reach)
     }
-    fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, GenieError> {
+    fn can_stand(&mut self, _: Point) -> Result<bool, GenieError> {
         Ok(true)
     }
     fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
@@ -10637,7 +10665,7 @@ fn queued(order: OrderKind, target: i32) -> QueuedOrder {
         target_owner: -1,
         point: Position::new(12.7, 30.2, 0.5),
         range: 3.0,
-        shown: [12.5, 30.5],
+        shown: Point::new(12.5, 30.5),
         ready: true,
         target_type: -1,
     }
@@ -10971,7 +10999,10 @@ fn the_explore_orders_explore_their_point_cut_to_tiles() {
     ] {
         let mut u = idle(SOLDIER_AI);
         let (r, fx, _) = run_order(&mut u, queued(order, -1), class::CLASS_12, &mut side);
-        assert_eq!((r, fx), (Ok(1), vec![Effect::Explore([12.0, 30.0])]));
+        assert_eq!(
+            (r, fx),
+            (Ok(1), vec![Effect::Explore(Point::new(12.0, 30.0))])
+        );
         assert_eq!(
             (u.current_order, u.current_action, u.last_action),
             (Some(order), Some(action), last)
@@ -10985,7 +11016,7 @@ fn the_explore_orders_explore_their_point_cut_to_tiles() {
         ..queued(OrderKind::Explore, -1)
     };
     let (_, fx, _) = run_order(&mut u, o, class::CLASS_12, &mut side);
-    assert_eq!(fx, vec![Effect::Explore([i32::MIN as f32, 1.0])]);
+    assert_eq!(fx, vec![Effect::Explore(Point::new(i32::MIN as f32, 1.0))]);
 }
 
 #[test]
@@ -11015,7 +11046,7 @@ fn the_stop_order_stops_and_ends_the_order() {
         (None, -1, None, -1)
     );
     assert_eq!((u.last_order, u.last_target), (Some(OrderKind::Move), 70));
-    assert_eq!(u.state_position, [5.0, 6.0]);
+    assert_eq!(u.state_position, Point::new(5.0, 6.0));
 }
 
 #[test]
@@ -11342,7 +11373,10 @@ fn seek_and_destroy_attacks_and_explore_and_destroy_explores_at_tiles() {
     let destroy = OrderKind::ExploreAndDestroy;
     let mut u = idle(SOLDIER_AI);
     let (r, fx, _) = run_order(&mut u, queued(destroy, -1), class::CLASS_6, &mut side);
-    assert_eq!((r, fx), (Ok(1), vec![Effect::Explore([12.0, 30.0])]));
+    assert_eq!(
+        (r, fx),
+        (Ok(1), vec![Effect::Explore(Point::new(12.0, 30.0))])
+    );
     assert_eq!(
         (
             u.current_order,
@@ -11500,7 +11534,7 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
             cap: 2,
             site: -1,
             current: 7,
-            point: [12.5, 30.5],
+            point: Point::new(12.5, 30.5),
             min_state: 0,
         }]
     );
@@ -11835,7 +11869,7 @@ fn an_attack_completed_on_the_attack_order_looks_for_the_next_or_ends_it() {
         (u.current_target, u.last_target, u.current_action),
         (-1, 70, None)
     );
-    assert_eq!(u.state_position, [5.0, 6.0]);
+    assert_eq!(u.state_position, Point::new(5.0, 6.0));
     // a boar beyond its leash heads home (6): the processing breaks there
     let mut u = UnitAi {
         current_order: Some(OrderKind::Attack),
@@ -11877,14 +11911,14 @@ fn an_attack_completed_on_the_attack_order_looks_for_the_next_or_ends_it() {
     };
     let (r, fx, _) = handled(&mut u, done, &grouped, false);
     assert_eq!((r, fx), (Ok(GO_ON), vec![Effect::Stop]));
-    assert_eq!(u.state_position, [5.0, 6.0]);
+    assert_eq!(u.state_position, Point::new(5.0, 6.0));
     let mut u = UnitAi {
         current_action: Some(ActionKind::Attack),
         current_target: 70,
         ..idle(SOLDIER_AI)
     };
     let _ = handled(&mut u, done, &here, false);
-    assert_eq!(u.state_position, [0.0, 0.0]);
+    assert_eq!(u.state_position, Point::new(0.0, 0.0));
 }
 
 /// A computer player's packed siege unit (class 51) and its attacker 77 at (22, 30), with a
@@ -11978,7 +12012,7 @@ fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
 /// place, reference distance, `any_class` and work state.
 struct RetargetSide {
     soldier: SoldierSide,
-    searched: Vec<([f32; 2], f32, bool, bool)>,
+    searched: Vec<(Point, f32, bool, bool)>,
 }
 
 impl RetargetSide {
@@ -12098,7 +12132,10 @@ fn a_retarget_search_ends_on_another_category_or_without_a_building_target() {
         ),
         Ok(9)
     );
-    assert_eq!(side.searched, [([12.0, 10.0], RETARGET_REACH, false, true)]);
+    assert_eq!(
+        side.searched,
+        [(Point::new(12.0, 10.0), RETARGET_REACH, false, true)]
+    );
     assert_eq!((side.soldier.attacks.len(), fx.len()), (0, 0));
     // the same category: no building target, so nothing more either
     let mut side = RetargetSide::finding(25954);
@@ -12124,7 +12161,7 @@ fn a_retarget_search_ends_on_another_category_or_without_a_building_target() {
         ),
         Ok(9)
     );
-    assert_eq!(side.searched, [([10.0, 10.0], 0.0, true, false)]);
+    assert_eq!(side.searched, [(Point::new(10.0, 10.0), 0.0, true, false)]);
 }
 
 /// With a building target the search goes on: a found building keeps the current target (10),

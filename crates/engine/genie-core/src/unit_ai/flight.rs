@@ -1,6 +1,7 @@
 //! The flight of the hunted animals, the boar and the villagers, and their calls for help.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
@@ -118,11 +119,11 @@ impl UnitAi {
         let mut ex = x - (vx / d) * reach;
         let mut ey = y - (vy / d) * reach;
         if at.player != PlayerId::GAIA && self.stance == 1 {
-            let gx = self.state_position[0] - ex;
-            let gy = self.state_position[1] - ey;
+            let gx = self.state_position.x() - ex;
+            let gy = self.state_position.y() - ey;
             if RUN_LEASH < crate::math::fmath::sqrt(gy * gy + gx * gx) {
-                ex = self.state_position[0] - (vx / d) * RUN_LEASH;
-                ey = self.state_position[1] - (vy / d) * RUN_LEASH;
+                ex = self.state_position.x() - (vx / d) * RUN_LEASH;
+                ey = self.state_position.y() - (vy / d) * RUN_LEASH;
             }
         }
         self.evasive_move(Position::new(ex, ey, z), (true, true), at, ai, side)
@@ -170,7 +171,7 @@ impl UnitAi {
         let mut y = held(near(point.y(), at.position.y()), at.map[1]);
         if tries {
             for _ in 0..5 {
-                if side.can_stand([x, y])? {
+                if side.can_stand(Point::new(x, y))? {
                     break;
                 }
                 let step = |ai: &mut Well512, v: f32| {

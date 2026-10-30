@@ -1,6 +1,7 @@
 //! The drop-site searches (`FUN_1411671e0`): from a unit, or from a point without one.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -97,7 +98,7 @@ impl Seeker<'_, '_> {
     /// # Errors
     ///
     /// The villager's top action is not modelled, or the farm's place is unknown.
-    fn farm_worked(&self) -> Result<Option<[f32; 2]>, GenieError> {
+    fn farm_worked(&self) -> Result<Option<Point>, GenieError> {
         if self.class != class::VILLAGER {
             return Ok(None);
         }
@@ -190,7 +191,7 @@ pub(crate) fn drop_site_search<'u>(
             .transpose()?
             .flatten()
         {
-            [x, y] = farm;
+            (x, y) = (farm.x(), farm.y());
             by_path = false;
         }
         let (dx, dy) = (x - o.position().x(), y - o.position().y());
@@ -263,10 +264,10 @@ mod tests {
     /// The town centre (master 109) and the mill (master 68), the villager's drop sites.
     const SITES: [MasterId; 2] = [MasterId::named(109), MasterId::named(68)];
 
-    fn object(id: i32, master_id: MasterId, at: [f32; 2]) -> Unit {
+    fn object(id: i32, master_id: MasterId, at: Point) -> Unit {
         Unit {
             id: object_id(id),
-            body: crate::objects::layers::Body::at(Position::new(at[0], at[1], 0.0)),
+            body: crate::objects::layers::Body::at(at.with_height(0.0)),
             life: Lifecycle {
                 state: 2,
                 master_id,
@@ -279,8 +280,8 @@ mod tests {
     /// The player's town centre 700 at (20, 14) and mill 701 at (20, 25), in that order.
     fn sites() -> Vec<Unit> {
         vec![
-            object(700, ids::TOWN_CENTRE, [20.0, 14.0]),
-            object(701, master_id(68), [20.0, 25.0]),
+            object(700, ids::TOWN_CENTRE, Point::new(20.0, 14.0)),
+            object(701, master_id(68), Point::new(20.0, 25.0)),
         ]
     }
 
@@ -318,14 +319,14 @@ mod tests {
                     task,
                 )
             })),
-            ..object(10, ids::VILLAGER_MALE, [20.0, 20.0])
+            ..object(10, ids::VILLAGER_MALE, Point::new(20.0, 20.0))
         }
     }
 
     /// The map's objects: a farm 800 (class 49) at `farm` and a house 801 (class 3) at (20, 17).
-    fn spatial(farm: [f32; 2]) -> Spatial {
-        let placed = |at: [f32; 2], class| Placed {
-            position: Position::new(at[0], at[1], 0.0),
+    fn spatial(farm: Point) -> Spatial {
+        let placed = |at: Point, class| Placed {
+            position: at.with_height(0.0),
             radius: Footprint::new(1.5, 1.5),
             class,
             player: PlayerId::new(1),
@@ -339,7 +340,10 @@ mod tests {
         };
         let mut s = Spatial::default();
         s.insert(object_id(800), placed(farm, class::FARM));
-        s.insert(object_id(801), placed([20.0, 17.0], class::BUILDING));
+        s.insert(
+            object_id(801),
+            placed(Point::new(20.0, 17.0), class::BUILDING),
+        );
         s
     }
 
@@ -391,7 +395,7 @@ mod tests {
     #[test]
     fn a_villager_working_a_farm_searches_from_the_farm_by_distance() {
         let at = Position::new(20.0, 20.0, 0.0);
-        let near_tc = spatial([20.0, 17.0]);
+        let near_tc = spatial(Point::new(20.0, 17.0));
         // by path without planners: no length, no site
         assert_eq!(
             search(&sites(), &villager(None), class::VILLAGER, at, &near_tc),
@@ -407,7 +411,7 @@ mod tests {
             ),
             Ok(Some(700))
         );
-        let tie = spatial([20.0, 19.5]);
+        let tie = spatial(Point::new(20.0, 19.5));
         assert_eq!(
             search(&sites(), &villager(Some(800)), class::VILLAGER, at, &tie),
             Ok(Some(700))
@@ -453,7 +457,7 @@ mod tests {
     /// distance.
     #[test]
     fn a_search_from_no_point_takes_the_first_site_and_one_below_it_goes_by_distance() {
-        let map = spatial([20.0, 17.0]);
+        let map = spatial(Point::new(20.0, 17.0));
         let none = Position::new(NO_POINT, NO_POINT, 0.0);
         assert_eq!(
             search(&sites(), &villager(None), class::VILLAGER, none, &map),

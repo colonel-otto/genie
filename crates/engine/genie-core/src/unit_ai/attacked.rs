@@ -3,7 +3,6 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
-use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
@@ -353,10 +352,10 @@ impl UnitAi {
     ) -> Result<u32, GenieError> {
         let radius = Footprint::new(n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE);
         let off = side.off_footprint(n.p[2], radius)?;
-        if let Some([x, y]) = off.spot {
+        if let Some(spot) = off.spot {
             let _ = self.move_aside(
                 AiMove {
-                    point: Position::new(x, y, off.z),
+                    point: spot.with_height(off.z),
                     range: 0.0,
                     force: true,
                     // The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
@@ -378,7 +377,7 @@ impl UnitAi {
                 priority: 100,
                 target: o.id,
                 target_owner: o.owner,
-                point: Position::new(o.vector[0], o.vector[1], 0.0),
+                point: o.vector.with_height(0.0),
                 range: 0.0,
                 shown: o.vector,
                 ready: true,

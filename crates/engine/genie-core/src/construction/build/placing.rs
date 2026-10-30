@@ -362,11 +362,7 @@ impl BuildAction {
                 ))?;
         self.state = CLEAR;
         let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
-        self.move_to = move_reads.to_point(
-            Position::new(spot[0], spot[1], at.z()),
-            0.0,
-            self.task.moving,
-        )?;
+        self.move_to = move_reads.to_point(spot.with_height(at.z()), 0.0, self.task.moving)?;
         Ok(())
     }
 }

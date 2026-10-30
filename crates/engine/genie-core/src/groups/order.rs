@@ -6,6 +6,7 @@ use crate::groups::GroupCommand;
 use crate::groups::attack::AttackOrder;
 use crate::groups::command::{ATTACK_COMMANDS, MOVE_COMMAND, MoveTo};
 use crate::groups::task::TargetTask;
+use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
 use crate::world::World;
@@ -51,7 +52,7 @@ impl World {
         &mut self,
         group: i32,
         target: i32,
-        point: [f32; 2],
+        point: Point,
         order: CommandArgs,
     ) -> Result<bool, GenieError> {
         let g = self.groups.held_mut(group)?;
@@ -125,7 +126,7 @@ impl World {
         &mut self,
         group: i32,
         (command, target): (i32, ObjectId),
-        point: [f32; 2],
+        point: Point,
         range: f32,
         order: CommandArgs,
     ) -> Result<bool, GenieError> {
@@ -134,7 +135,7 @@ impl World {
             command,
             target_id: target.get(),
             range,
-            point: BVector::new(point[0], 0.0, point[1]),
+            point: BVector::new(point.x(), 0.0, point.y()),
             approved,
             disable_retargeting: 0,
             approved_2: u16::MAX,
@@ -201,7 +202,7 @@ impl World {
         &mut self,
         group: i32,
         target: ObjectId,
-        point: [f32; 2],
+        point: Point,
         (task, order): (TargetTask, CommandArgs),
         moved: bool,
     ) -> Result<bool, GenieError> {
@@ -210,7 +211,7 @@ impl World {
             command: i32::from(task.command),
             target_id: target.get(),
             range: task.range.unwrap_or(0.0),
-            point: BVector::new(point[0], 0.0, point[1]),
+            point: BVector::new(point.x(), 0.0, point.y()),
             approved,
             disable_retargeting: u8::from(order.disable_retargeting),
             approved_2: order.filter as u16,

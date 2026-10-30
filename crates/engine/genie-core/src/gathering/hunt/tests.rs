@@ -272,7 +272,7 @@ fn engagement() -> Engagement {
         min_range: 0.0,
         can_move: true,
         stance: 0,
-        state_position: [0.0; 2],
+        state_position: Point::ORIGIN,
         world_time: 0,
         master: ids::VILLAGER_MALE,
         target_class: class::TREE,
@@ -336,7 +336,7 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
     assert_eq!(held, (-1, 0.0));
     // the constructor's lead: the animal's start at (-1, -1)
     assert_eq!(hunt.lead, Lead::NEW);
-    assert_eq!(hunt.lead.start, [-1.0, -1.0]);
+    assert_eq!(hunt.lead.start, Point::new(-1.0, -1.0));
 }
 
 /// Slot 0x48 on another tree: the hunt takes it and its Attack starts over; one within 0.01
@@ -429,7 +429,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
     let led = Lead {
         moved: true,
         still_time: 3,
-        start: [127.5, 30.4],
+        start: Point::new(127.5, 30.4),
     };
     hunt.lead = led;
     let other = Quarry {
@@ -1084,7 +1084,7 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
         state: LEAD,
         timer,
         lead: Lead {
-            start: [29.0, 89.0],
+            start: Point::new(29.0, 89.0),
             ..Lead::default()
         },
         ..hunting(10028)
@@ -1141,7 +1141,7 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
     );
     assert_eq!(
         (h.state, h.timer, h.lead.start),
-        (LEAD, LEAD_WAIT, [29.5, 89.0])
+        (LEAD, LEAD_WAIT, Point::new(29.5, 89.0))
     );
     let mut h = leading(-0.05);
     assert_eq!(
@@ -1398,7 +1398,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     assert_eq!(led, Ok(HuntNext::Stay));
     assert_eq!(
         (h.state, h.drop_site, h.lead.moved, h.lead.start, h.timer),
-        (LEAD, 500, true, [29.5, 89.0], LEAD_WAIT)
+        (LEAD, 500, true, Point::new(29.5, 89.0), LEAD_WAIT)
     );
     for (gap_squared, moved, state) in [
         (4.0, false, ATTACK),

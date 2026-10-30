@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
@@ -198,7 +199,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the test does not model.
-    fn can_stand(&mut self, _point: [f32; 2]) -> Result<bool, GenieError> {
+    fn can_stand(&mut self, _point: Point) -> Result<bool, GenieError> {
         Err(GenieError::unsupported("a stand test without the world"))
     }
 
@@ -426,13 +427,13 @@ pub struct ResourceSearch {
     pub current: i32,
     /// The point the search starts from without a site (`param_7`, `param_8`; (−1, −1) for the
     /// unit's place).
-    pub point: [f32; 2],
+    pub point: Point,
     /// Below this state the unit finds nothing (`param_6`; its −1 is 0 here).
     pub min_state: u8,
 }
 
 /// [`ResourceSearch::point`]'s (−1, −1): the unit's own place (`DAT_14330ec20`).
-pub const NO_POINT: [f32; 2] = [-1.0, -1.0];
+pub const NO_POINT: Point = Point::new(-1.0, -1.0);
 
 /// What the unit AI's `ClosestResourceObject` found ([`UnitSide::closest_resource`]): the object,
 /// its place and its master's class.
@@ -456,8 +457,9 @@ pub struct Named {
     pub master: i32,
     /// Its owner.
     pub owner: i32,
-    /// Its slot 0x520 vector's x and second part (the height).
-    pub vector: [f32; 2],
+    /// Its slot 0x520 vector's x and second part (the height), which the game's orders read as
+    /// a point's x and y.
+    pub vector: Point,
 }
 
 /// What a unit sent off a footprint finds (the base handler's case 0x216).
@@ -465,7 +467,7 @@ pub struct Named {
 pub struct OffFootprint {
     /// The closest spot beside the footprint (`FUN_1411566b0` with 0), None when there is none
     /// (or no foundation).
-    pub spot: Option<[f32; 2]>,
+    pub spot: Option<Point>,
     /// The unit's height.
     pub z: f32,
     /// Its master's class.

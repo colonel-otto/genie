@@ -13,6 +13,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -606,14 +607,14 @@ pub struct Spatial {
 #[derive(Clone, Debug, Default, PartialEq)]
 struct SearchCache {
     holds: bool,
-    at: [f32; 2],
+    at: Point,
     /// The registry's five output lists as the last query left them.
     last: Option<[Vec<Record>; 5]>,
 }
 
 impl SearchCache {
     /// A search that queries sets the place and holds the cache (`FUN_140c63e20`).
-    const fn hold(&mut self, at: [f32; 2]) {
+    const fn hold(&mut self, at: Point) {
         self.holds = true;
         self.at = at;
     }

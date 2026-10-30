@@ -2,10 +2,11 @@
 //! ([`Pather`]): the terrain's shapes, the start test and the core.
 
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::pathing::mesh::{Mesh, ONE};
 use crate::pathing::short_path::{
-    Ctx, Goal, NONE, Point, Search, TO_FIXED, TO_FLOAT, clip, tile_of,
+    Ctx, FixedPoint, Goal, NONE, Search, TO_FIXED, TO_FLOAT, clip, tile_of,
 };
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
@@ -18,9 +19,9 @@ use crate::{GenieError, math::fmath};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Query {
     /// The start.
-    pub from: Point,
+    pub from: FixedPoint,
     /// The goal.
-    pub to: Point,
+    pub to: FixedPoint,
     /// The unit's radius (`+0xc`).
     pub radius: f32,
     /// The target's half sizes, when the goal is its own position (`+0x10`, `+0x14`).
@@ -50,8 +51,8 @@ impl Query {
 /// A [`Query`] in fixed point, as `FUN_140fa53d0` and `FUN_140faa170` take it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Fixed {
-    pub(super) from: Point,
-    pub(super) to: Point,
+    pub(super) from: FixedPoint,
+    pub(super) to: FixedPoint,
     pub(super) radius: i32,
     pub(super) target_size: [i32; 2],
     pub(super) range: i32,
@@ -65,7 +66,7 @@ pub struct ShortPath {
     /// 0 already in range, 1 reached, 2 a partial path, 3 the start blocked, 4 invalid.
     pub result: u8,
     /// The path's points.
-    pub points: Vec<Point>,
+    pub points: Vec<FixedPoint>,
 }
 
 /// The target of a short path (`FUN_140f9e540`'s argument 5): its position and its master's half
@@ -75,7 +76,7 @@ pub struct Target {
     /// The target.
     pub id: i32,
     /// Its place.
-    pub position: [f32; 2],
+    pub position: Point,
     /// Its master's half sizes (`+0x5d8`, `+0x5dc`).
     pub half_size: Footprint,
 }
@@ -96,9 +97,9 @@ pub struct Listed {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Call {
     /// The start.
-    pub from: [f32; 2],
+    pub from: Point,
     /// The goal.
-    pub to: [f32; 2],
+    pub to: Point,
     /// The unit's radius.
     pub radius: f32,
     /// Its range.
@@ -140,13 +141,20 @@ impl Call {
     #[must_use]
     pub fn entry(&self) -> Entry {
         if let Some(t) = self.target {
-            let fx = fmath::maxss((self.from[0] - t.position[0]).abs() - t.half_size.x(), 0.0);
-            let fy = fmath::maxss((self.from[1] - t.position[1]).abs() - t.half_size.y(), 0.0);
+            let fx = fmath::maxss(
+                (self.from.x() - t.position.x()).abs() - t.half_size.x(),
+                0.0,
+            );
+            let fy = fmath::maxss(
+                (self.from.y() - t.position.y()).abs() - t.half_size.y(),
+                0.0,
+            );
             if fmath::sqrt(fy * fy + fx * fx) - self.radius <= self.range {
                 return Entry::InRange;
             }
         }
-        let on_map = |[x, y]: [f32; 2]| {
+        let on_map = |p: Point| {
+            let (x, y) = (p.x(), p.y());
             fmath::at_most_or_unordered(0.0, x)
                 && fmath::at_most_or_unordered(0.0, y)
                 && fmath::below_or_unordered(x, self.map[0] as f32)
@@ -157,10 +165,10 @@ impl Call {
         }
         // CVTTSS2SI into a 64-bit register, its low 32 bits kept
         let fixed = |f: f32| crate::math::conversions::cvttss2si_64(f * TO_FIXED) as i32;
-        let to = [fixed(self.to[0]), fixed(self.to[1])];
+        let to = [fixed(self.to.x()), fixed(self.to.y())];
         let at_target = self
             .target
-            .filter(|t| to == [fixed(t.position[0]), fixed(t.position[1])]);
+            .filter(|t| to == [fixed(t.position.x()), fixed(t.position.y())]);
         let ignore = self
             .listed
             .iter()
@@ -170,7 +178,7 @@ impl Call {
         let size = at_target.map_or(Footprint::ZERO, |t| t.half_size);
         Entry::Search {
             query: Query {
-                from: [fixed(self.from[0]), fixed(self.from[1])],
+                from: [fixed(self.from.x()), fixed(self.from.y())],
                 to,
                 radius: self.radius,
                 target_size: size,
@@ -185,7 +193,7 @@ impl Call {
 /// A path's fixed-point points as the game appends them (`{x * 2^-22, 0, y * 2^-22}` through the
 /// path's dedup, `FUN_140f95a10`).
 #[must_use]
-pub fn to_path(points: &[Point]) -> crate::pathing::tile_path::Path {
+pub fn to_path(points: &[FixedPoint]) -> crate::pathing::tile_path::Path {
     let mut path = crate::pathing::tile_path::Path::default();
     for &[x, y] in points {
         let _ = path.push(BVector::new(x as f32 * TO_FLOAT, 0.0, y as f32 * TO_FLOAT));

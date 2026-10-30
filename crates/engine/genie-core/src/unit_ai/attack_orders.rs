@@ -1,6 +1,7 @@
 //! The orders a unit AI takes at once and its attack commands.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
@@ -31,7 +32,7 @@ impl UnitAi {
         &mut self,
         order: QueuedOrder,
         keep_from: Option<i32>,
-        place: Option<([f32; 2], Option<ClassId>)>,
+        place: Option<(Point, Option<ClassId>)>,
         world: Option<(&Surroundings, bool)>,
         ai: &mut Well512,
         side: &mut dyn UnitSide,

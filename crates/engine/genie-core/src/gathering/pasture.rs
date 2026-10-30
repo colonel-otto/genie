@@ -4,6 +4,7 @@
 //! pasture's food.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Stream;
@@ -42,14 +43,14 @@ const END: f32 = crate::math::image::pasture::END;
 /// edge from the first corner to the second, the right one from the third to the second, the
 /// top one from the third to the fourth and the left one from the first to the fourth.
 #[must_use]
-pub fn edge_points(at: Position, radius_x: f32) -> Vec<[f32; 2]> {
+pub fn edge_points(at: Position, radius_x: f32) -> Vec<Point> {
     let r = radius_x - INSET;
     let (x, y) = (at.x(), at.y());
     let c = [
-        [x - r, y - r],
-        [x + r, y - r],
-        [x + r, y + r],
-        [x - r, y + r],
+        Point::new(x - r, y - r),
+        Point::new(x + r, y - r),
+        Point::new(x + r, y + r),
+        Point::new(x - r, y + r),
     ];
     let edges = [(c[0], c[1]), (c[2], c[1]), (c[2], c[3]), (c[0], c[3])];
     let mut points = Vec::new();
@@ -57,7 +58,10 @@ pub fn edge_points(at: Position, radius_x: f32) -> Vec<[f32; 2]> {
         let mut t = 0.0f32;
         // COMISS END, t with JNC: on while END is at least t
         while t <= END {
-            points.push([(b[0] - a[0]) * t + a[0], (b[1] - a[1]) * t + a[1]]);
+            points.push(Point::new(
+                (b.x() - a.x()) * t + a.x(),
+                (b.y() - a.y()) * t + a.y(),
+            ));
             t += STEP;
         }
     }
@@ -110,7 +114,10 @@ impl World {
             let kind = LIVESTOCK[draw_below(self, LIVESTOCK.len())];
             let mut i = draw_below(self, points.len());
             loop {
-                let [x, y] = points[i];
+                let (x, y) = {
+                    let p = points[i];
+                    (p.x(), p.y())
+                };
                 let (tx, ty) = (cvttss2si(x), cvttss2si(y));
                 let on_map = 0 <= tx && tx < map[0] && 0 <= ty && ty < map[1];
                 if on_map && !self.holds_livestock_of(id, tx, ty) {
@@ -122,7 +129,10 @@ impl World {
                 }
                 i = draw_below(self, points.len());
             }
-            let [x, y] = points[i];
+            let (x, y) = {
+                let p = points[i];
+                (p.x(), p.y())
+            };
             if let Some(new) = self.make_new_object(p, kind, Position::new(x, y, at.z()), false)? {
                 let _ = points.remove(i);
                 if let Some((_, u)) = self.object_mut(id) {
@@ -277,16 +287,16 @@ mod tests {
         let points = edge_points(Position::new(136.0, 72.0, 0.0), 2.0);
         assert_eq!(points.len(), 16);
         let t = [0.0f32, 0.3, 0.6, 0.3 + 0.3 + 0.3];
-        assert_eq!(points[0], [134.5, 70.5]);
-        assert_eq!(points[3], [3.0 * t[3] + 134.5, 70.5]);
-        assert_eq!(points[3], [137.2, 70.5]);
+        assert_eq!(points[0], Point::new(134.5, 70.5));
+        assert_eq!(points[3], Point::new(3.0 * t[3] + 134.5, 70.5));
+        assert_eq!(points[3], Point::new(137.2, 70.5));
         // the right edge from (137.5, 73.5) down to (137.5, 70.5)
-        assert_eq!(points[4], [137.5, 73.5]);
-        assert_eq!(points[5], [137.5, -3.0 * 0.3 + 73.5]);
+        assert_eq!(points[4], Point::new(137.5, 73.5));
+        assert_eq!(points[5], Point::new(137.5, -3.0 * 0.3 + 73.5));
         // the top edge from (137.5, 73.5) to (134.5, 73.5)
-        assert_eq!(points[9], [-3.0 * 0.3 + 137.5, 73.5]);
+        assert_eq!(points[9], Point::new(-3.0 * 0.3 + 137.5, 73.5));
         // the left edge from (134.5, 70.5) up
-        assert_eq!(points[13], [134.5, 71.4]);
-        assert_eq!(points[14], [134.5, 72.3]);
+        assert_eq!(points[13], Point::new(134.5, 71.4));
+        assert_eq!(points[14], Point::new(134.5, 72.3));
     }
 }

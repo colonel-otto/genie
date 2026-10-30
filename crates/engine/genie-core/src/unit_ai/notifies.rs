@@ -1,7 +1,7 @@
 //! The notifies' processing: their queue, their acceptance and their buffer.
 
 use crate::GenieError;
-use crate::map::Position;
+use crate::map::Point;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::ActionKind;
@@ -129,12 +129,12 @@ impl UnitAi {
     pub fn clear_notifies_at(
         &mut self,
         time: u32,
-        place: ([f32; 2], Option<ClassId>),
+        place: (Point, Option<ClassId>),
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
         let at = Surroundings {
-            position: Position::new(place.0[0], place.0[1], 0.0),
+            position: place.0.with_height(0.0),
             class: place.1,
             ..Surroundings::default()
         };

@@ -1,6 +1,7 @@
 //! Path points, the gaps between footprints and the position setter's tests.
 
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Placed;
 use crate::math::fmath;
@@ -53,7 +54,7 @@ pub(super) fn moved_far(a: Position, b: Position) -> bool {
 
 /// The motion step's start-test line for the ignore list (`FUN_141150f00`'s calls of
 /// `FUN_14114ece0`): from the unit's place to the waypoint, both on the ground (x, y).
-pub(super) const fn ground_line(at: Position, waypoint: BVector) -> ([f32; 2], [f32; 2]) {
+pub(super) const fn ground_line(at: Position, waypoint: BVector) -> (Point, Point) {
     (at.ground(), waypoint.ground())
 }
 

@@ -545,7 +545,10 @@ fn a_birds_fly_takes_its_home_and_move_to() {
         (f.state, f.move_to, f.task.id),
         (3, None, TaskId::of_task(8))
     );
-    assert_eq!(f.home.map(f32::to_bits), [1.0_f32, 2.0].map(f32::to_bits));
+    assert_eq!(
+        f.home.get().map(f32::to_bits),
+        [1.0_f32, 2.0].map(f32::to_bits)
+    );
     let f = imported(FLY, bird(with_sub(base(3), MOVE_TO, move_to(4, 0.5))))
         .unwrap()
         .actions
@@ -742,7 +745,7 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
     );
     assert!(h.lead.moved && h.attack.is_none() && h.move_to.is_none());
     assert_eq!(
-        h.lead.start.map(f32::to_bits),
+        h.lead.start.get().map(f32::to_bits),
         [6.0_f32, 7.0].map(f32::to_bits)
     );
     let h = imported(HUNT, hunt(with_sub(base(WALK), MOVE_TO, move_to(4, 0.75))))
@@ -821,7 +824,7 @@ fn a_gather_takes_its_stops_and_move_to() {
         (5, 2, TaskId::of_task(0))
     );
     assert!(g.worked && g.move_to.is_none());
-    assert_eq!(g.farm[0].to_bits(), 3.0_f32.to_bits());
+    assert_eq!(g.farm.x().to_bits(), 3.0_f32.to_bits());
     let g = imported(
         GATHER,
         gather(with_sub(base(WALK), MOVE_TO, move_to(4, 0.75))),

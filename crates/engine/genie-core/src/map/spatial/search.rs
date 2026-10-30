@@ -2,6 +2,7 @@
 //! best unit to attack.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{
     AttackField, CLOSEST_RANGE, ClosestChecks, FarmLook, Filter, LIVESTOCK_CLASS, PASTURE_CLASS,
@@ -37,16 +38,16 @@ impl Spatial {
     /// [`Gait::moving`]: crate::map::spatial::Gait::moving
     pub fn still_line_hit(
         &self,
-        from: [f32; 2],
-        to: [f32; 2],
+        from: Point,
+        to: Point,
         grow: f32,
         ignore: &[i32],
     ) -> Result<bool, GenieError> {
         let rect = [
-            if to[0] <= from[0] { to[0] } else { from[0] },
-            if to[1] <= from[1] { to[1] } else { from[1] },
-            if from[0] <= to[0] { to[0] } else { from[0] },
-            if from[1] <= to[1] { to[1] } else { from[1] },
+            if to.x() <= from.x() { to.x() } else { from.x() },
+            if to.y() <= from.y() { to.y() } else { from.y() },
+            if from.x() <= to.x() { to.x() } else { from.x() },
+            if from.y() <= to.y() { to.y() } else { from.y() },
         ];
         let query = [
             rect[0] - grow,
@@ -61,7 +62,7 @@ impl Spatial {
             return Ok(true);
         }
         self.check_known_records(query)?;
-        let walk = [from[0], from[1], to[0], to[1]];
+        let walk = [from.x(), from.y(), to.x(), to.y()];
         let meets = |kind: u8, bx: [f32; 4]| {
             let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
             rect[0] <= grown[2]
@@ -232,9 +233,9 @@ impl Spatial {
             "a search without the objects-in-sight registry",
         ))?;
         let relations = self.query_kinds(player, r.players)?;
-        let [x, y] = search.at;
+        let (x, y) = (search.at.x(), search.at.y());
         let mut fresh = false;
-        let (dx, dy) = (x - self.search_cache.at[0], y - self.search_cache.at[1]);
+        let (dx, dy) = (x - self.search_cache.at.x(), y - self.search_cache.at.y());
         if SEARCH_REUSE_SQUARED < dy * dy + dx * dx || !self.search_cache.holds {
             self.search_cache.hold(search.at);
             let radius = search.radius.min(1000.0);

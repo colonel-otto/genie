@@ -1,6 +1,7 @@
 //! The planner's entry (`FUN_140f7c530`): the search over the levels, the shortcut near the
 //! start and the search on the tiles.
 
+use crate::map::Point;
 use crate::math::fmath;
 use crate::math::fmath::BVector;
 use crate::pathing::tile_path::{
@@ -16,8 +17,8 @@ impl Planner {
         for &r in &req.closed {
             self.close_rect(r, true);
         }
-        let (sx, sy) = (tile(req.from[0]), tile(req.from[1]));
-        let (gx, gy) = (tile(req.to[0]), tile(req.to[1]));
+        let (sx, sy) = (tile(req.from.x()), tile(req.from.y()));
+        let (gx, gy) = (tile(req.to.x()), tile(req.to.y()));
         if !self.on_map(sx, sy) || !self.on_map(gx, gy) {
             return Found::OffMap;
         }
@@ -42,7 +43,7 @@ impl Planner {
             (None, _) => Found::Nothing,
             (Some(n), result) => {
                 self.last = [gx, gy];
-                let [to_x, to_y] = req.to;
+                let (to_x, to_y) = (req.to.x(), req.to.y());
                 let mut end = BVector::new(to_x, 0.0, to_y);
                 let toward = result != Found::Goal || self.cell(0, gx, gy)[0] == 0;
                 if toward {
@@ -58,7 +59,7 @@ impl Planner {
                 self.points.push(end);
                 self.trace_back(n, [sx, sy]);
                 self.points
-                    .push(BVector::new(req.from[0], 0.0, req.from[1]));
+                    .push(BVector::new(req.from.x(), 0.0, req.from.y()));
                 result
             }
         };
@@ -95,19 +96,19 @@ impl Planner {
         walls: Option<&mut dyn SegmentTest<E>>,
     ) -> Result<Found, E> {
         let (w, h) = (f32::from(self.size[0]), f32::from(self.size[1]));
-        if req.to[0] < 0.0 || w <= req.to[0] || req.to[1] < 0.0 || h <= req.to[1] {
+        if req.to.x() < 0.0 || w <= req.to.x() || req.to.y() < 0.0 || h <= req.to.y() {
             return Ok(Found::OffMap);
         }
         let mut levels = Path::default();
         let mut tiles = Path::default();
         let first = self.search_over_levels(req, &mut levels);
         let mut second = None;
-        let (gx, gy) = (tile(req.to[0]), tile(req.to[1]));
+        let (gx, gy) = (tile(req.to.x()), tile(req.to.y()));
         // the start's cell is read only once the search over the levels reached the goal
         if req.range == 0.0
             && req.full
             && first == Found::Goal
-            && self.cell(0, tile(req.from[0]), tile(req.from[1]))[0] != 0
+            && self.cell(0, tile(req.from.x()), tile(req.from.y()))[0] != 0
             && (self.cell(0, gx, gy)[0] != 0 || (target_box && self.near_passable(gx, gy)))
             && {
                 levels.measure();
@@ -145,7 +146,7 @@ impl Planner {
     /// planner's pool lends, `+0x238` and `+0x278`); when it found one (a result other than 0),
     /// the last of its points whose tile has an edge (byte 0 of its level-0 cell, the tile of the
     /// point's `(short)(int)` coordinates), searched from the end; None without one.
-    pub fn last_open_point(&mut self, from: [f32; 2], to: [f32; 2]) -> Option<[f32; 2]> {
+    pub fn last_open_point(&mut self, from: Point, to: Point) -> Option<Point> {
         let req = Request {
             from,
             to,
@@ -223,8 +224,8 @@ impl Planner {
         for &r in &req.closed {
             self.close_rect(r, true);
         }
-        let (sx, sy) = (tile(req.from[0]), tile(req.from[1]));
-        let (gx, gy) = (tile(req.to[0]), tile(req.to[1]));
+        let (sx, sy) = (tile(req.from.x()), tile(req.from.y()));
+        let (gx, gy) = (tile(req.to.x()), tile(req.to.y()));
         if !self.on_map(sx, sy) || !self.on_map(gx, gy) {
             return Found::OffMap;
         }
@@ -241,7 +242,7 @@ impl Planner {
             (Some(n), result) => {
                 self.last = [gx, gy];
                 let end = if result == Found::Goal && self.cell(0, gx, gy)[0] != 0 {
-                    let [to_x, to_y] = req.to;
+                    let (to_x, to_y) = (req.to.x(), req.to.y());
                     BVector::new(to_x, 0.0, to_y)
                 } else {
                     let (cx, cy) = self.tile_toward(n, gx, gy);
@@ -250,7 +251,7 @@ impl Planner {
                 self.points.push(end);
                 self.trace_back(n, [sx, sy]);
                 self.points
-                    .push(BVector::new(req.from[0], 0.0, req.from[1]));
+                    .push(BVector::new(req.from.x(), 0.0, req.from.y()));
                 result
             }
         };

@@ -4,7 +4,7 @@
 
 use crate::GenieError;
 use crate::groups::CommandArgs;
-use crate::map::Position;
+use crate::map::Point;
 use crate::math::image::group::MEMBER_MIN_HP;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
@@ -50,7 +50,7 @@ pub(crate) struct TaskQuery {
     /// The object the command is on.
     pub(crate) target: ObjectId,
     /// The order's point.
-    pub(crate) point: [f32; 2],
+    pub(crate) point: Point,
     /// The order's task filter (`+0x16`), `-1` for any.
     pub(crate) filter: i16,
     /// The order is queued.
@@ -71,7 +71,7 @@ impl World {
         &self,
         group: i32,
         target: ObjectId,
-        point: [f32; 2],
+        point: Point,
         order: CommandArgs,
     ) -> Result<Option<TargetTask>, GenieError> {
         let query = TaskQuery {
@@ -138,7 +138,7 @@ impl World {
         let target = query.target.get();
         let t = self.task_target(target, 1)?;
         let general = self.task_target(target, 2)?;
-        let terrain = self.task_terrain(Position::new(query.point[0], query.point[1], 0.0));
+        let terrain = self.task_terrain(query.point.with_height(0.0));
         let find = |list: &Master| {
             find_task(
                 list,

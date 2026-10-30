@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Point;
 use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
@@ -74,13 +75,13 @@ fn stats() -> MoveStats {
     }
 }
 
-fn level(level: u8, points: &[[f32; 2]], state: i32) -> PathData {
+fn level(level: u8, points: &[Point], state: i32) -> PathData {
     PathData {
         level,
         linked_type: i32::from(level == 0),
         points: points
             .iter()
-            .map(|&[x, y]| BVector::new(x, 0.0, y))
+            .map(|p| BVector::new(p.x(), 0.0, p.y()))
             .collect(),
         has_path: true,
         path_flags: if level == 0 { 6 } else { 4 },
@@ -131,8 +132,8 @@ pub(crate) fn builder_9177() -> Mover {
             acceleration: BVector::new(0.0, 0.0, f32::MAX),
         }),
         paths: vec![
-            level(0, &[[28.0, 89.0], [30.0, 88.0]], 3),
-            level(2, &[[28.0, 89.0], [30.0, 88.0]], 0),
+            level(0, &[Point::new(28.0, 89.0), Point::new(30.0, 88.0)], 3),
+            level(2, &[Point::new(28.0, 89.0), Point::new(30.0, 88.0)], 0),
         ],
         factor: 1.0,
         stats: stats(),
@@ -177,7 +178,7 @@ fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
     let mut m = builder_9177().placed(Position::new(28.0, 89.0, 0.0));
     m.ignore_units = vec![5, 9177, 6];
     let house = *world.get(10028).unwrap();
-    let line = ([28.0, 0.0], [30.0, 0.0]);
+    let line = (Point::new(28.0, 0.0), Point::new(30.0, 0.0));
     let list = |m: &Mover, plan: &mut Planning<'_>| {
         m.ignore_list(&me, &world, plan, Some(&house), 10028, line)
     };
@@ -193,13 +194,13 @@ fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
 /// A 16 × 16 map of terrain `class` with player 2's drop-off walker 9177 standing at (5.5, 5.5),
 /// its target the house 10028 at (12.5, 5.5), and the records `near` about it (id, place,
 /// radius, class, player), each of the master numbered as its class.
-fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, PlayerId)]) -> Spatial {
+fn drop_off_world(class: u8, near: &[(i32, Point, f32, ClassId, PlayerId)]) -> Spatial {
     let mut w = Spatial::with_tiles(
         [16, 16],
         crate::map::spatial::Tiles::new(16, 16, vec![class; 256]),
     );
-    let placed = |[x, y]: [f32; 2], r: f32, class, player| Placed {
-        position: Position::new(x, y, 0.0),
+    let placed = |at: Point, r: f32, class, player| Placed {
+        position: at.with_height(0.0),
         radius: Footprint::new(r, r),
         class,
         player,
@@ -213,13 +214,18 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, PlayerId)]) -
     };
     w.insert(
         object_id(9177),
-        placed([5.5, 5.5], 0.2, class::VILLAGER, PlayerId::new(2)),
+        placed(Point::new(5.5, 5.5), 0.2, class::VILLAGER, PlayerId::new(2)),
     );
     w.insert(
         object_id(10028),
         Placed {
             obstruction: None,
-            ..placed([12.5, 5.5], 1.0, class::BUILDING, PlayerId::new(2))
+            ..placed(
+                Point::new(12.5, 5.5),
+                1.0,
+                class::BUILDING,
+                PlayerId::new(2),
+            )
         },
     );
     for &(id, at, r, class, player) in near {
@@ -239,15 +245,57 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, PlayerId)]) -
 #[test]
 fn a_drop_off_walker_ignores_the_allied_workers_standing_beside_it() {
     let near = [
-        (1, [5.6, 5.5], 0.2, class::VILLAGER, PlayerId::new(2)),
-        (2, [5.6, 5.6], 0.2, class::CLASS_7, PlayerId::new(2)),
-        (3, [5.4, 5.5], 0.2, class::VILLAGER, PlayerId::new(2)),
-        (4, [5.5, 5.6], 0.2, class::VILLAGER, PlayerId::new(2)),
-        (5, [5.5, 5.4], 0.2, class::VILLAGER, PlayerId::new(3)),
-        (6, [5.4, 5.4], 0.2, class::FISHING_SHIP, PlayerId::new(4)),
-        (7, [5.6, 5.4], 0.5, class::WALL, PlayerId::new(2)),
-        (8, [5.4, 5.6], 0.5, class::GATE, PlayerId::new(2)),
-        (9, [5.5, 5.5], 7.0, class::VILLAGER, PlayerId::new(2)),
+        (
+            1,
+            Point::new(5.6, 5.5),
+            0.2,
+            class::VILLAGER,
+            PlayerId::new(2),
+        ),
+        (
+            2,
+            Point::new(5.6, 5.6),
+            0.2,
+            class::CLASS_7,
+            PlayerId::new(2),
+        ),
+        (
+            3,
+            Point::new(5.4, 5.5),
+            0.2,
+            class::VILLAGER,
+            PlayerId::new(2),
+        ),
+        (
+            4,
+            Point::new(5.5, 5.6),
+            0.2,
+            class::VILLAGER,
+            PlayerId::new(2),
+        ),
+        (
+            5,
+            Point::new(5.5, 5.4),
+            0.2,
+            class::VILLAGER,
+            PlayerId::new(3),
+        ),
+        (
+            6,
+            Point::new(5.4, 5.4),
+            0.2,
+            class::FISHING_SHIP,
+            PlayerId::new(4),
+        ),
+        (7, Point::new(5.6, 5.4), 0.5, class::WALL, PlayerId::new(2)),
+        (8, Point::new(5.4, 5.6), 0.5, class::GATE, PlayerId::new(2)),
+        (
+            9,
+            Point::new(5.5, 5.5),
+            7.0,
+            class::VILLAGER,
+            PlayerId::new(2),
+        ),
     ];
     let mut world = drop_off_world(1, &near);
     let gait = |moving, path_made| {
@@ -283,7 +331,7 @@ fn a_drop_off_walker_ignores_the_allied_workers_standing_beside_it() {
     m.paths.clear();
     m.moved_at = Position::new(5.5, 5.5, 0.0);
     let house = *world.get(10028).unwrap();
-    let line = ([5.5, 5.5], [12.5, 5.5]);
+    let line = (Point::new(5.5, 5.5), Point::new(12.5, 5.5));
     let list = |m: &Mover, world: &Spatial, plan: &mut Planning<'_>, state| {
         m.ignore_list(&me(state), world, plan, Some(&house), 10028, line)
     };
@@ -323,7 +371,12 @@ fn the_drop_off_walker_s_start_is_blocked_in_terrain_its_mask_lacks() {
         let mut target = world_target();
         target.position = Position::new(12.5, 5.5, 0.0);
         let m = builder_9177();
-        m.start_blocked(&world, &mut plan, &target, ([5.5, 5.5], [12.5, 5.5]))
+        m.start_blocked(
+            &world,
+            &mut plan,
+            &target,
+            (Point::new(5.5, 5.5), Point::new(12.5, 5.5)),
+        )
     };
     // class 1 lies outside the villager's mask (6): every row of tiles is a shape
     assert_eq!(test(1), Ok(true));
@@ -406,7 +459,7 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
     let goal = (BVector::new(8.5, 0.0, 5.5), 0.0, -1);
     let r = short_path_for(
         walker,
-        [4.5, 5.5],
+        Point::new(4.5, 5.5),
         &mut world,
         &mut plan,
         goal,
@@ -414,19 +467,21 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
         &mut out,
     );
     let mut pather = HullPather::for_list(&mut world, &[9171], 6, 0.6, 2);
-    let (result, path) = pather.find([4.5, 5.5], [8.5, 5.5], -1, 0.0).unwrap();
+    let (result, path) = pather
+        .find(Point::new(4.5, 5.5), Point::new(8.5, 5.5), -1, 0.0)
+        .unwrap();
     assert_eq!((r, result), (Ok(1), 1), "{path:?}");
     let points: Vec<BVector> = path
         .points
         .iter()
-        .map(|&[x, y]| BVector::new(x, 0.0, y))
+        .map(|p| BVector::new(p.x(), 0.0, p.y()))
         .collect();
     assert_eq!(out.points, points);
     assert_eq!(out.points.len(), 4);
     // off the map: emptied too, 4
     let r = short_path_for(
         walker,
-        [4.5, 5.5],
+        Point::new(4.5, 5.5),
         &mut world,
         &mut plan,
         (BVector::new(20.5, 0.0, 5.5), 0.0, -1),
@@ -440,7 +495,7 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
     };
     let r = short_path_for(
         small,
-        [4.5, 5.5],
+        Point::new(4.5, 5.5),
         &mut world,
         &mut plan,
         goal,
@@ -747,7 +802,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
     let mut m = builder_9177().placed(Position::new(5.5, 5.5, 0.0));
     m.moved_at = Position::new(5.5, 5.5, 0.0);
     // 25 tiles away on open land: the long pather's answer
-    let far = [30.5, 5.5];
+    let far = Point::new(30.5, 5.5);
     assert_eq!(
         m.reaches(&me, &mut world, &mut plan, far, 0.0, ids::VILLAGER_MALE),
         Ok(true)
@@ -903,7 +958,15 @@ fn the_position_setter_holds_y_by_the_map_s_width() {
 /// at its ends and flips bit 2; a path that does not loop has none.
 #[test]
 fn a_looping_path_s_next_waypoint_goes_round_or_back_and_forth() {
-    let mut l = level(1, &[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]], 2);
+    let mut l = level(
+        1,
+        &[
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(2.0, 0.0),
+        ],
+        2,
+    );
     l.path_flags = 0;
     assert_eq!(looping_next(&mut l, 1), -1);
     l.path_flags = 1;
@@ -947,7 +1010,15 @@ fn an_arrived_level_hands_a_looping_parent_its_next_waypoint() {
 fn a_loop_s_reached_waypoint_moves_on_and_its_first_ends_the_step() {
     let looping = |waypoint| {
         let mut m = builder_9177().placed(Position::new(30.0, 88.0, 0.0));
-        m.paths = vec![level(2, &[[28.0, 89.0], [30.0, 88.0], [32.0, 89.0]], 3)];
+        m.paths = vec![level(
+            2,
+            &[
+                Point::new(28.0, 89.0),
+                Point::new(30.0, 88.0),
+                Point::new(32.0, 89.0),
+            ],
+            3,
+        )];
         let l = &mut m.paths[0];
         l.target = -1;
         l.path_flags = 1;
@@ -1209,10 +1280,23 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
     let mut m = builder_9177().placed(Position::new(21.8, 92.2, 0.0));
     m.moved_at = Position::new(21.8, 92.2, 0.0);
     m.paths = vec![
-        level(0, &[[21.5, 91.5], [21.8, 92.2], [25.15, 92.85]], 3),
+        level(
+            0,
+            &[
+                Point::new(21.5, 91.5),
+                Point::new(21.8, 92.2),
+                Point::new(25.15, 92.85),
+            ],
+            3,
+        ),
         level(
             1,
-            &[[21.5, 91.5], [28.5, 93.5], [28.9, 94.1], [40.0, 94.0]],
+            &[
+                Point::new(21.5, 91.5),
+                Point::new(28.5, 93.5),
+                Point::new(28.9, 94.1),
+                Point::new(40.0, 94.0),
+            ],
             0,
         ),
     ];
@@ -1238,8 +1322,16 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
     let mut m = builder_9177().placed(Position::new(21.8, 92.2, 0.0));
     m.moved_at = Position::new(21.8, 92.2, 0.0);
     m.paths = vec![
-        level(0, &[[21.5, 91.5], [21.8, 92.2]], 3),
-        level(1, &[[21.5, 91.5], [28.5, 93.5], [28.9, 94.1]], 0),
+        level(0, &[Point::new(21.5, 91.5), Point::new(21.8, 92.2)], 3),
+        level(
+            1,
+            &[
+                Point::new(21.5, 91.5),
+                Point::new(28.5, 93.5),
+                Point::new(28.9, 94.1),
+            ],
+            0,
+        ),
     ];
     m.paths[1].waypoint = 1;
     w.insert(
@@ -1928,7 +2020,11 @@ fn a_walk_to_a_point_goes_on_until_its_range() {
 fn a_top_level_short_of_its_moved_target_arrives() {
     let walk = |weapon_range: f32| {
         let mut m = builder_9177();
-        m.paths = vec![level(2, &[[28.0, 89.0], [30.0, 88.0]], 3)];
+        m.paths = vec![level(
+            2,
+            &[Point::new(28.0, 89.0), Point::new(30.0, 88.0)],
+            3,
+        )];
         let l = &mut m.paths[0];
         l.flags = 1;
         l.target = 500;
@@ -2015,7 +2111,12 @@ fn a_next_waypoint_an_object_stands_on_goes() {
         let mut m = builder_9177().placed(Position::new(30.0, 88.0, 0.0));
         m.paths = vec![level(
             2,
-            &[[28.0, 89.0], [30.0, 88.0], [31.0, 88.0], [32.0, 88.0]],
+            &[
+                Point::new(28.0, 89.0),
+                Point::new(30.0, 88.0),
+                Point::new(31.0, 88.0),
+                Point::new(32.0, 88.0),
+            ],
             3,
         )];
         let l = &mut m.paths[0];
@@ -2172,7 +2273,7 @@ fn an_arrived_level_under_one_without_a_path_ends_the_step() {
     let mut m = builder_9177().placed(Position::new(30.0, 88.0, 0.0));
     m.velocity.as_mut().unwrap().velocity = BVector::new(0.0, 0.0, 1.32);
     m.paths = vec![
-        level(0, &[[28.0, 89.0], [30.0, 88.0]], 4),
+        level(0, &[Point::new(28.0, 89.0), Point::new(30.0, 88.0)], 4),
         PathData {
             has_path: false,
             path_flags: 0,

@@ -8,6 +8,7 @@ use crate::gathering::gather::{
 };
 use crate::gathering::hunt::HuntTask;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
@@ -113,12 +114,7 @@ pub fn productivity_of(attribute_type2: i16, attributes: &[f32]) -> f32 {
 /// modulo twice each radius, its centre 0.5 in), drawn again while it is the last stop's, at
 /// most ten times.
 #[must_use]
-pub fn stop_point(
-    position: Position,
-    radius: Footprint,
-    last: [f32; 2],
-    rng: &mut Well512,
-) -> [f32; 2] {
+pub fn stop_point(position: Position, radius: Footprint, last: Point, rng: &mut Well512) -> Point {
     let (mut ix, mut iy) = (
         (radius.x() + radius.x()) as i32,
         (radius.y() + radius.y()) as i32,
@@ -130,14 +126,14 @@ pub fn stop_point(
         (position.x() - radius.x()) as i32,
         (position.y() - radius.y()) as i32,
     );
-    let [mut x, mut y] = last;
+    let (mut x, mut y) = (last.x(), last.y());
     let mut draws = 0;
-    while x == last[0] && y == last[1] && draws < STOP_DRAWS {
+    while x == last.x() && y == last.y() && draws < STOP_DRAWS {
         x = ((rng.rand15() as i32) % ix + left) as f32 + STOP_CENTRE;
         y = ((rng.rand15() as i32) % iy + bottom) as f32 + STOP_CENTRE;
         draws += 1;
     }
-    [x, y]
+    Point::new(x, y)
 }
 
 impl GatherAction {
@@ -159,7 +155,7 @@ impl GatherAction {
         let farm = if target.class == class::FARM || SPECIAL_TARGETS.contains(&target.master) {
             target.position.ground()
         } else {
-            [0.0; 2]
+            Point::ORIGIN
         };
         let (stops, time_per_stop) =
             if farm_stops && target.class == class::FARM && STOP_FARMS.contains(&target.master) {
@@ -179,10 +175,10 @@ impl GatherAction {
             current_stop: 0,
             time_per_stop,
             time_at_stop: 0.0,
-            last_stop: [0.0; 2],
+            last_stop: Point::ORIGIN,
             worked: false,
             farm,
-            gather_at: [-1.0; 2],
+            gather_at: Point::from([-1.0; 2]),
             move_to: None,
         })
     }
@@ -362,8 +358,11 @@ impl GatherAction {
         }
         self.point = position;
         let walk = if 1 < self.stops {
-            let [x, y] = stop_point(position, radius, self.last_stop, rng);
-            self.last_stop = [x, y];
+            let (x, y) = {
+                let p = stop_point(position, radius, self.last_stop, rng);
+                (p.x(), p.y())
+            };
+            self.last_stop = Point::new(x, y);
             let to = Position::new(x, y, position.z());
             self.move_to_point(to, self.task.range, TargetMoved::AsksAgain, mover, walks)?
         } else {

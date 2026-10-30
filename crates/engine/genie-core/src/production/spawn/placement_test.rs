@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
 use crate::objects::masters::ClassId;
@@ -168,7 +169,8 @@ pub trait PlaceMap {
 
 /// The tiles within `REACH` of a point, clamped to the map (`(int)` of each bound, then the map's
 /// edges), row by row.
-pub(super) fn reach(map: [i32; 2], [x, y]: [f32; 2]) -> impl Iterator<Item = (i32, i32)> {
+pub(super) fn reach(map: [i32; 2], at: Point) -> impl Iterator<Item = (i32, i32)> {
+    let (x, y) = (at.x(), at.y());
     let x0 = ((x - REACH) as i32 as i16).max(0);
     let x1 = ((x + REACH) as i32 as i16).min((map[0] - 1) as i16);
     let y0 = ((y - REACH) as i32 as i16).max(0);
@@ -183,7 +185,7 @@ pub(super) type Found = ((i32, i32), Near);
 /// with their tile, in the scan's order.
 pub(super) fn overlapping(
     map: &dyn PlaceMap,
-    p: [f32; 2],
+    p: Point,
     r: Footprint,
     counts: &dyn Fn(&Near) -> Option<bool>,
 ) -> Result<Vec<Found>, GenieError> {
@@ -194,8 +196,8 @@ pub(super) fn overlapping(
             if !(0.0 < o.radius.x() && 0.0 < o.radius.y() && tall) {
                 continue;
             }
-            let dx = (o.position.x() - p[0]).abs();
-            let dy = (o.position.y() - p[1]).abs();
+            let dx = (o.position.x() - p.x()).abs();
+            let dy = (o.position.y() - p.y()).abs();
             if dx < o.radius.x() + r.x() && dy < o.radius.y() + r.y() {
                 out.push(((tx, ty), o));
             }
@@ -224,7 +226,7 @@ pub(super) fn overlapping(
 pub fn build_placement(
     site: &BuildSite<'_>,
     map: &dyn PlaceMap,
-    p: [f32; 2],
+    p: Point,
 ) -> Result<u8, GenieError> {
     if let Some(code) = build_static_test(site, map, p)? {
         return Ok(code);
@@ -234,7 +236,7 @@ pub fn build_placement(
     }
     // FUN_14123aee0's scan
     let [w, h] = map.size();
-    let ((x0, x1), (y0, y1)) = (build_scan_range(p[0], w), build_scan_range(p[1], h));
+    let ((x0, x1), (y0, y1)) = (build_scan_range(p.x(), w), build_scan_range(p.y(), h));
     let player = site.player;
     for ty in y0..=y1 {
         for tx in x0..=x1 {
@@ -263,7 +265,7 @@ pub fn build_placement(
 fn static_scans_find(
     site: &BuildSite<'_>,
     map: &dyn PlaceMap,
-    p: [f32; 2],
+    p: Point,
 ) -> Result<bool, GenieError> {
     let (rx, ry) = (site.radius.x(), site.radius.y());
     if !site.tall || !(0.0 < rx || 0.0 < ry) {
@@ -304,9 +306,9 @@ fn static_scans_find(
 pub(super) fn build_static_test(
     site: &BuildSite<'_>,
     map: &dyn PlaceMap,
-    p: [f32; 2],
+    p: Point,
 ) -> Result<Option<u8>, GenieError> {
-    let [x, y] = p;
+    let (x, y) = (p.x(), p.y());
     let (rx, ry) = (site.radius.x(), site.radius.y());
     let [w, h] = map.size();
     let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);
@@ -412,12 +414,8 @@ pub(super) fn build_sees(
 /// the site's box. Its box is its master's radii and height, for obstruction types 11 to 13 its
 /// outline's ([`Near::outline`]); a height of 0 counts as 1 for a building and for an object
 /// holding food, wood, stone or gold.
-pub(super) fn blocks_build(
-    site: &BuildSite<'_>,
-    map: &dyn PlaceMap,
-    o: &Near,
-    [x, y]: [f32; 2],
-) -> bool {
+pub(super) fn blocks_build(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near, at: Point) -> bool {
+    let (x, y) = (at.x(), at.y());
     if build_ignores(site, map, o) || build_passes(site, map, o) {
         return false;
     }
@@ -489,10 +487,10 @@ pub(super) fn first(found: &[Found]) -> Option<Near> {
 pub fn placement(
     me: &Placing<'_>,
     map: &dyn PlaceMap,
-    p: [f32; 2],
+    p: Point,
     zones: bool,
 ) -> Result<Tested, GenieError> {
-    let [x, y] = p;
+    let (x, y) = (p.x(), p.y());
     let (rx, ry) = (me.radius.x(), me.radius.y());
     let [w, h] = map.size();
     let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);

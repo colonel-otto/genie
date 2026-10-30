@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::motion::NEAR;
+use crate::map::Point;
 use crate::math::fmath;
 use crate::math::fmath::BVector;
 use crate::movement::PathData;
@@ -109,7 +110,7 @@ pub(in crate::groups) fn passes_waypoint(waypoint: BVector, at: BVector, next: B
 
 /// `FUN_1411570c0`'s ends held inside the map: below 0 at 0, from the map's size on at the size
 /// less 0.1, per axis.
-pub(in crate::groups) fn hold(p: BVector, map: [i32; 2]) -> [f32; 2] {
+pub(in crate::groups) fn hold(p: BVector, map: [i32; 2]) -> Point {
     let axis = |v: f32, size: i32| {
         if v < 0.0 {
             0.0
@@ -119,5 +120,5 @@ pub(in crate::groups) fn hold(p: BVector, map: [i32; 2]) -> [f32; 2] {
             v
         }
     };
-    [axis(p.x(), map[0]), axis(p.y(), map[1])]
+    Point::new(axis(p.x(), map[0]), axis(p.y(), map[1]))
 }

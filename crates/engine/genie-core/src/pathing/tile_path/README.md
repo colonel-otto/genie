@@ -33,5 +33,5 @@ passability and the blocked tiles. A change to a building's tiles rebuilds the c
 ## How it connects
 
 <!-- uses -->
-- Uses: [`math`](../../math/).
+- Uses: [`map`](../../map/), [`math`](../../math/).
 <!-- /uses -->

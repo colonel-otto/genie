@@ -106,6 +106,7 @@ pub use self::surroundings::{
     no_search,
 };
 use self::surroundings::{LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_idle};
+use crate::map::Point;
 use crate::map::Position;
 #[cfg(test)]
 use crate::math::rng::Well512;
@@ -292,7 +293,7 @@ pub struct QueuedOrder {
     /// The range.
     pub range: f32,
     /// `+0x24`, `+0x28`: the point the unit's slot 0x2d8 shows (not held).
-    pub shown: [f32; 2],
+    pub shown: Point,
     /// `+0x2c` (a byte): 0 leaves the order in the queue.
     pub ready: bool,
     /// `+0x30`: the target's type (its master id, −1 for none).
@@ -330,7 +331,7 @@ impl QueuedOrder {
             target_owner: w(16)?,
             point: Position::new(f(20)?, f(24)?, f(28)?),
             range: f(32)?,
-            shown: [f(36)?, f(40)?],
+            shown: Point::new(f(36)?, f(40)?),
             ready: le_word(b, 44)?[0] != 0,
             target_type: w(48)?,
         })
@@ -356,7 +357,7 @@ pub enum Effect {
     /// The unit's explore (slot 0x398, `FUN_141084db0`, with its argument 4 set) to the point
     /// (x, y): its Explore takes the point (slot 0x48), else a new Explore to it (`FUN_140a87d30`
     /// at the unit's height) replaces its actions (`FUN_140a98620`, slot 0x808).
-    Explore([f32; 2]),
+    Explore(Point),
     /// The AI's move to an object (slot 0x138, `FUN_140c55490`, with its fourth argument 1): the
     /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
     /// `MoveTo` to the target within `range` showing the master's running sprite (the walking one
@@ -499,7 +500,7 @@ pub struct UnitAi {
     pub formation_type: u8,
     /// `+0x1ac`, `+0x1b0`, `state_position`: where a unit with an order last updated, which a
     /// stance's leash measures from.
-    pub state_position: [f32; 2],
+    pub state_position: Point,
     /// `+0x1d6`: non-zero skips the retarget check.
     pub retarget_disabled: u8,
     /// `+0x1b8`, `alertModeValue`: the last search found enemies.

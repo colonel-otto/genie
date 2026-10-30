@@ -6,6 +6,7 @@ use genie_core::commands::{
     OrderCommand, PatrolCommand, QueueCommand, ResearchCommand, TradeCommand, TributeCommand,
     UnitList, UnitOrderCommand, UnloadCommand,
 };
+use genie_core::map::Axis;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::MasterId;
 use genie_rec::de::command::{self as packets, Command as Packet};
@@ -372,10 +373,10 @@ fn patrol(c: &PatrolCommand) -> Result<Packet, GenieError> {
 /// `ATTACK_MOVE` (0x21): the first x as its f32 bits, the other slots' x and y as bytes.
 fn attack_move(c: &AttackMoveCommand) -> Result<Packet, GenieError> {
     let points = &c.waypoints.points;
-    let tail = |axis: usize| -> [u8; 36] {
+    let tail = |axis: Axis| -> [u8; 36] {
         let mut out = [0; 36];
         for (i, p) in points[1..].iter().enumerate() {
-            out[4 * i..4 * i + 4].copy_from_slice(&p.xy()[axis].to_le_bytes());
+            out[4 * i..4 * i + 4].copy_from_slice(&p.along(axis).to_le_bytes());
         }
         out
     };
@@ -388,9 +389,9 @@ fn attack_move(c: &AttackMoveCommand) -> Result<Packet, GenieError> {
         field_0x0a: u8::from(c.ignore_pending),
         waypoints_count: c.waypoints.count,
         field_0x0c: points[0].x().to_bits(),
-        gap_0x10: tail(0),
+        gap_0x10: tail(Axis::X),
         field_0x34: points[0].y(),
-        gap_0x38: tail(1),
+        gap_0x38: tail(Axis::Y),
         ids: ids(&c.units.ids, packets::AttackMove::FIXED)?,
     }))
 }

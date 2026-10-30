@@ -24,7 +24,7 @@ use self::geometry::{contact_point, ray_rect, shrunk_corner, snap_to_side};
 use self::nodes::{Corner, Foot, cheb, clamp_to_box, clip, corner_emits, in_box};
 
 /// A point in fixed point.
-pub type Point = [i32; 2];
+pub type FixedPoint = [i32; 2];
 
 /// `DAT_142f43b10`, `DAT_142f43a10`: fixed point to float and back.
 const TO_FLOAT: f32 = crate::math::image::short_path::TO_FLOAT;
@@ -71,19 +71,19 @@ fn through_float(v: i32) -> i32 {
 }
 
 /// The Euclidean distance in fixed point through float (`sqrtf` of the float differences).
-fn float_distance(a: Point, b: Point) -> i32 {
+fn float_distance(a: FixedPoint, b: FixedPoint) -> i32 {
     let dy = (a[1].wrapping_sub(b[1])) as f32 * TO_FLOAT;
     let dx = (a[0].wrapping_sub(b[0])) as f32 * TO_FLOAT;
     (fmath::sqrt(dx * dx + dy * dy) * TO_FIXED) as i32
 }
 
 /// `FUN_14087c610`: `p` strictly inside `r` shrunk by `k`.
-const fn strictly_inside(r: Rect, [x, y]: Point, k: i32) -> bool {
+const fn strictly_inside(r: Rect, [x, y]: FixedPoint, k: i32) -> bool {
     r[0] + k < x && r[1] + k < y && x < r[2] - k && y < r[3] - k
 }
 
 /// `FUN_14087c650`: `p` inside `r` shrunk by `k`, edges included.
-const fn inside(r: Rect, [x, y]: Point, k: i32) -> bool {
+const fn inside(r: Rect, [x, y]: FixedPoint, k: i32) -> bool {
     r[0] + k <= x && r[1] + k <= y && x <= r[2] - k && y <= r[3] - k
 }
 
@@ -106,14 +106,14 @@ const COUNT_WITHOUT_HIT: GenieError =
 struct Sweep {
     found: bool,
     shape: Option<u32>,
-    point: Option<Point>,
+    point: Option<FixedPoint>,
     side: Option<u8>,
 }
 
 impl Sweep {
     /// The counted shape with the last hit's side and point: a sweep that counts a shape has
     /// written a point and a side by then (the hit that counts writes them first).
-    const fn counted(&self) -> Result<Option<(u32, u8, Point)>, GenieError> {
+    const fn counted(&self) -> Result<Option<(u32, u8, FixedPoint)>, GenieError> {
         if !self.found {
             return Ok(None);
         }
@@ -154,7 +154,7 @@ const UNSET: i32 = -0x40_0000;
 /// `DAT_143cc1f54`: the outline tracer's step limit.
 const TRACE_STEPS: i32 = 2000;
 /// `DAT_143cc1f60`: the four unit directions (x, y) of a type-3 node's nudges.
-const NUDGES: [Point; 4] = [[0, ONE], [ONE, 0], [0, -ONE], [-ONE, 0]];
+const NUDGES: [FixedPoint; 4] = [[0, ONE], [ONE, 0], [0, -ONE], [-ONE, 0]];
 /// No shape, node or polygon.
 const NONE: u32 = u32::MAX;
 
@@ -162,7 +162,7 @@ const NONE: u32 = u32::MAX;
 /// their sums and the range.
 #[derive(Clone, Copy, Debug)]
 struct Goal {
-    at: Point,
+    at: FixedPoint,
     r: i32,
     rx: i32,
     ry: i32,
@@ -174,7 +174,7 @@ struct Goal {
 
 impl Goal {
     /// The squared distance from `p` to the target's box grown by the radius (`>> 22` each).
-    fn rect_distance2(&self, p: Point) -> i64 {
+    fn rect_distance2(&self, p: FixedPoint) -> i64 {
         let lx = i64::from((p[0].wrapping_sub(self.at[0])).wrapping_abs()) - self.rrx;
         let ly = i64::from((p[1].wrapping_sub(self.at[1])).wrapping_abs()) - self.rry;
         let a = if lx < 0 { 0 } else { lx * lx };
@@ -183,7 +183,7 @@ impl Goal {
     }
 
     /// `FUN_140fa3f10`: the estimate from `p` to the goal.
-    fn heuristic(&self, p: Point) -> i32 {
+    fn heuristic(&self, p: FixedPoint) -> i32 {
         if !RECT_HEURISTIC {
             let fy = (self.at[1].wrapping_sub(p[1])) as f32 * TO_FLOAT;
             let fx = (self.at[0].wrapping_sub(p[0])) as f32 * TO_FLOAT;
@@ -228,14 +228,14 @@ struct Node {
     f: i32,
     idx: u32,
     parent: u32,
-    at: Point,
+    at: FixedPoint,
     kind: Kind,
 }
 
 /// A polygon (`0x68` bytes): the outline of a cluster of touching shapes, held in the bounds.
 #[derive(Clone, Debug, Default)]
 struct Poly {
-    vertices: Vec<Point>,
+    vertices: Vec<FixedPoint>,
     sides: Vec<u8>,
     shapes: Vec<u32>,
     costs: Vec<i32>,

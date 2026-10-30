@@ -1,4 +1,5 @@
 use crate::GenieError;
+use crate::map::Point;
 use crate::math::rng::Well512;
 use crate::movement::explore::Area;
 use crate::movement::explore::InfluenceMap;
@@ -171,7 +172,7 @@ impl SearchArea for Grid {
 fn unit(civilian: bool) -> SearchUnit {
     SearchUnit {
         id: ObjectId::try_from(30).unwrap(),
-        position: [0.5, 0.5],
+        position: Point::new(0.5, 0.5),
         civilian,
     }
 }
@@ -197,7 +198,12 @@ fn a_civilians_flood_picks_the_first_tile_no_search_touched() {
     let mut area = Grid::new(6);
     let mut rng = Well512::default();
     let picked = m
-        .closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([6, 6], &mut rng))
+        .closest_unexplored_tile(
+            &unit(true),
+            Point::new(0.5, 0.5),
+            &mut area,
+            ([6, 6], &mut rng),
+        )
         .unwrap();
     assert_eq!(picked, Some([3, 0]));
     assert_eq!(m.path_map.get(3, 0), Some(EXPLORED));
@@ -213,7 +219,7 @@ fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
     let picked = m
         .closest_unexplored_tile(
             &unit(false),
-            [0.5, 0.5],
+            Point::new(0.5, 0.5),
             &mut Grid::new(6),
             ([6, 6], &mut rng),
         )
@@ -224,7 +230,7 @@ fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
     let none = civilian
         .closest_unexplored_tile(
             &unit(true),
-            [0.5, 0.5],
+            Point::new(0.5, 0.5),
             &mut Grid::new(6),
             ([6, 6], &mut rng),
         )
@@ -244,8 +250,13 @@ fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
         area.other_zone.extend(zone);
         area.blocked.extend(blocked);
         let mut rng = Well512::default();
-        m.closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([4, 1], &mut rng))
-            .unwrap()
+        m.closest_unexplored_tile(
+            &unit(true),
+            Point::new(0.5, 0.5),
+            &mut area,
+            ([4, 1], &mut rng),
+        )
+        .unwrap()
     };
     assert_eq!(row(None, None), Some([3, 0]));
     assert_eq!(row(Some([3, 0]), None), None);
@@ -257,7 +268,12 @@ fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
     area.other_zone = vec![[2, 0]];
     let mut rng = Well512::default();
     let picked = m
-        .closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([4, 1], &mut rng))
+        .closest_unexplored_tile(
+            &unit(true),
+            Point::new(0.5, 0.5),
+            &mut area,
+            ([4, 1], &mut rng),
+        )
         .unwrap();
     assert_eq!(picked, Some([3, 0]));
 }
@@ -269,7 +285,7 @@ fn the_start_tile_is_met_twice() {
     let area = &mut Grid::new(3);
     let mut rng = Well512::default();
     let _ = m
-        .closest_unexplored_tile(&unit(true), [1.5, 1.5], area, ([3, 3], &mut rng))
+        .closest_unexplored_tile(&unit(true), Point::new(1.5, 1.5), area, ([3, 3], &mut rng))
         .unwrap();
     // the flood found nothing, so the dead ends' pass met every tile once more
     let visits = area.visits.borrow();
@@ -290,7 +306,12 @@ fn an_unreachable_tile_is_punted_and_the_search_starts_from_the_unit() {
     // from (3, 3) the flood meets (2, 2) first; (5, 5) after the restart from (0, 0)... both
     // are searched by a civilian, the nearer first
     let picked = m
-        .closest_unexplored_tile(&unit(true), [3.5, 3.5], &mut area, ([6, 6], &mut rng))
+        .closest_unexplored_tile(
+            &unit(true),
+            Point::new(3.5, 3.5),
+            &mut area,
+            ([6, 6], &mut rng),
+        )
         .unwrap();
     assert_eq!(m.path_map.get(2, 2), Some(PUNTED));
     assert_eq!(picked, Some([5, 5]));
@@ -312,7 +333,12 @@ fn a_punt_from_the_units_place_picks_a_corner_of_the_lowest_scored_quadrant() {
     let mut rng = Well512::default();
     let mut shadow = rng.clone();
     let picked = m
-        .closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([8, 8], &mut rng))
+        .closest_unexplored_tile(
+            &unit(true),
+            Point::new(0.5, 0.5),
+            &mut area,
+            ([8, 8], &mut rng),
+        )
         .unwrap()
         .unwrap();
     for _ in 0..16 {
@@ -338,7 +364,12 @@ fn an_exhausted_flood_marks_the_dead_ends() {
     area.blocked = vec![[2, 2]];
     let mut rng = Well512::default();
     let picked = m
-        .closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([3, 3], &mut rng))
+        .closest_unexplored_tile(
+            &unit(true),
+            Point::new(0.5, 0.5),
+            &mut area,
+            ([3, 3], &mut rng),
+        )
         .unwrap();
     assert_eq!(picked, None);
     // (0, 1) is seen, (1, 0) lies in another zone, (2, 2) was never searched
@@ -371,7 +402,7 @@ fn a_ring_pushes_the_points_on_the_map_and_the_stack_gives_minus_one_when_empty(
     let mut m = info(20, UNEXPLORED);
     assert_eq!(m.top_point(), [-1, -1]);
     assert_eq!(m.pop_point(), [-1, -1]);
-    m.push_ring(5.0, [10.7, 10.2]);
+    m.push_ring(5.0, Point::new(10.7, 10.2));
     assert_eq!(m.search.len(), 8);
     // the centre truncates to (10, 10); angle 0 is 5 east, π/2's sine is 1
     assert_eq!(m.search[0], [15, 10]);
@@ -382,7 +413,7 @@ fn a_ring_pushes_the_points_on_the_map_and_the_stack_gives_minus_one_when_empty(
     assert_ne!(top, [-1, -1]);
     // a ring at a corner keeps only the points on the map
     let mut corner = info(20, UNEXPLORED);
-    corner.push_ring(5.0, [1.0, 1.0]);
+    corner.push_ring(5.0, Point::new(1.0, 1.0));
     assert!(corner.search.len() < 8);
     assert!(corner.search.iter().all(|p| 0 <= p[0] && 0 <= p[1]));
 }

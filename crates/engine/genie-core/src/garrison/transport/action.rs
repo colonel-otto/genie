@@ -95,10 +95,10 @@ impl TransportAction {
         match state {
             IDLE => changed.stands = true,
             SAIL_TO_UNLOAD | SAIL => {
-                if let Some([sx, sy]) =
+                if let Some(shore_at) =
                     shore.shore_point(ship.position.ground(), self.point.ground())
                 {
-                    self.point = self.point.with_x(sx).with_y(sy);
+                    self.point = self.point.with_x(shore_at.x()).with_y(shore_at.y());
                 }
                 self.move_to = ship.walk.to_point(self.point, MOVE_RANGE, ship.given)?;
             }

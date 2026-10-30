@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Point;
 
 #[test]
 fn a_search_leaves_the_grid_as_it_was() {
@@ -23,8 +24,8 @@ fn open_map(_: i32, _: i32) -> bool {
 fn a_plan_from_off_the_map_reads_no_start_cell() {
     let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
     let req = Request {
-        from: [-3.0, 2.0],
-        to: [5.5, 2.5],
+        from: Point::new(-3.0, 2.0),
+        to: Point::new(5.5, 2.5),
         radii: 0.2,
         range: 0.0,
         closed: Vec::new(),
@@ -41,11 +42,20 @@ fn the_last_open_point_walks_the_path_back_to_a_tile_with_an_edge() {
     let terrain: Vec<u8> = (0..128).map(|i| u8::from(10 <= i % 16)).collect();
     let mut p = Planner::new([16, 8], terrain, vec![1.0, 0.0], &open_map);
     // a goal on the water: the path's end
-    assert_eq!(p.last_open_point([2.5, 4.5], [7.5, 4.5]), Some([7.5, 4.5]));
+    assert_eq!(
+        p.last_open_point(Point::new(2.5, 4.5), Point::new(7.5, 4.5)),
+        Some(Point::new(7.5, 4.5))
+    );
     // ashore: the path ends at the node nearest the goal, the last water tile
-    assert_eq!(p.last_open_point([2.5, 4.5], [13.5, 4.5]), Some([9.5, 4.5]));
+    assert_eq!(
+        p.last_open_point(Point::new(2.5, 4.5), Point::new(13.5, 4.5)),
+        Some(Point::new(9.5, 4.5))
+    );
     // a goal off the map (result 0): none
-    assert_eq!(p.last_open_point([2.5, 4.5], [16.5, 4.5]), None);
+    assert_eq!(
+        p.last_open_point(Point::new(2.5, 4.5), Point::new(16.5, 4.5)),
+        None
+    );
 }
 
 /// The scan along a boundary for the tile nearest `at` with the edge: the first upward, then
@@ -84,8 +94,8 @@ fn the_nearest_tile_with_the_edge_is_found_up_then_nearer_down() {
 fn the_tile_search_reaches_a_goal_on_an_open_map() {
     let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
     let req = Request {
-        from: [1.5, 2.5],
-        to: [6.5, 5.5],
+        from: Point::new(1.5, 2.5),
+        to: Point::new(6.5, 5.5),
         radii: 0.2,
         range: 0.0,
         closed: Vec::new(),
@@ -108,8 +118,8 @@ fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
     let wall = |x: i32, _: i32| x == 3;
     let mut p = Planner::new([8, 8], vec![0; 64], vec![1.0], &wall);
     let req = Request {
-        from: [1.5, 2.5],
-        to: [6.5, 2.5],
+        from: Point::new(1.5, 2.5),
+        to: Point::new(6.5, 2.5),
         radii: 0.2,
         range: 0.0,
         closed: Vec::new(),
@@ -127,9 +137,9 @@ fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
 #[test]
 fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
     let mut p = Planner::new([64, 8], vec![0; 512], vec![1.0], &open_map);
-    for to in [[6.5, 5.5], [60.5, 5.5]] {
+    for to in [Point::new(6.5, 5.5), Point::new(60.5, 5.5)] {
         let req = Request {
-            from: [1.5, 2.5],
+            from: Point::new(1.5, 2.5),
             to,
             radii: 0.2,
             range: 0.0,
@@ -139,7 +149,7 @@ fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
         let mut out = Path::default();
         assert_eq!(p.plan::<()>(&req, false, &mut out, None), Ok(Found::Goal));
         assert_eq!(out.points.first(), Some(&BVector::new(1.5, 0.0, 2.5)));
-        assert_eq!(out.points.last(), Some(&BVector::new(to[0], 0.0, to[1])));
+        assert_eq!(out.points.last(), Some(&BVector::new(to.x(), 0.0, to.y())));
     }
 }
 
@@ -210,33 +220,37 @@ fn a_stretch_without_points_between_is_left_as_it_is() {
 #[test]
 fn the_smoothing_keeps_the_points_before_a_blocked_walk() {
     let points = [
-        [109.5, 42.5],
-        [108.5, 42.5],
-        [108.5, 43.5],
-        [107.5, 43.5],
-        [107.5, 44.5],
-        [106.5, 44.5],
-        [105.5, 44.5],
-        [104.5, 44.5],
-        [103.5, 44.5],
-        [103.5, 45.5],
-        [103.5, 46.5],
-        [103.604_164, 46.854_168],
+        Point::new(109.5, 42.5),
+        Point::new(108.5, 42.5),
+        Point::new(108.5, 43.5),
+        Point::new(107.5, 43.5),
+        Point::new(107.5, 44.5),
+        Point::new(106.5, 44.5),
+        Point::new(105.5, 44.5),
+        Point::new(104.5, 44.5),
+        Point::new(103.5, 44.5),
+        Point::new(103.5, 45.5),
+        Point::new(103.5, 46.5),
+        Point::new(103.604_164, 46.854_168),
     ];
     let mut path = Path {
         points: points
             .iter()
-            .map(|&[x, y]| BVector::new(x, 0.0, y))
+            .map(|p| BVector::new(p.x(), 0.0, p.y()))
             .collect(),
         length: 0.0,
     };
     // blocked: any walk from the start that ends beyond y = 44.5
     let mut walls = Walls::default();
     smooth(&mut path, &mut walls).unwrap();
-    let ends: Vec<[f32; 2]> = path.points.iter().map(|p| p.ground()).collect();
+    let ends: Vec<Point> = path.points.iter().map(|p| p.ground()).collect();
     assert_eq!(
         ends,
-        [[109.5, 42.5], [103.5, 44.5], [103.604_164, 46.854_168]]
+        [
+            Point::new(109.5, 42.5),
+            Point::new(103.5, 44.5),
+            Point::new(103.604_164, 46.854_168)
+        ]
     );
     assert_eq!(walls.passes, 1);
     // a path of two points tests nothing and ends no pass
@@ -257,9 +271,9 @@ struct Walls {
 }
 
 impl SegmentTest<()> for Walls {
-    fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, ()> {
+    fn blocked(&mut self, a: Point, b: Point) -> Result<bool, ()> {
         self.tests += 1;
-        Ok(a == [109.5, 42.5] && 44.5 < b[1])
+        Ok(a == Point::new(109.5, 42.5) && 44.5 < b.y())
     }
 
     fn pass_ends(&mut self) {

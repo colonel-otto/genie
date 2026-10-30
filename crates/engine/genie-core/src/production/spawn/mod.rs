@@ -32,6 +32,7 @@ pub(crate) use self::world_map::WorldMap;
 #[cfg(test)]
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 #[cfg(test)]
 use crate::objects::lifecycle::Lifecycle;
@@ -79,7 +80,7 @@ pub struct Site {
     pub radius: Footprint,
     /// Its gather point (`+0xc34`, `+0xc38`), when it has one (`+0xc30`) that is not on itself
     /// (`+0xc40`).
-    pub gather: Option<[f32; 2]>,
+    pub gather: Option<Point>,
     /// A wall at its corners (both tiles beside each: left top, right top, right bottom, left
     /// bottom), which closes the sides that meet there.
     pub walls: [bool; 4],

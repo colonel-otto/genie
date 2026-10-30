@@ -2,7 +2,9 @@
 //! candidates.
 
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
+use crate::math::fmath::BVector;
 use crate::objects::masters::class;
 use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
@@ -29,7 +31,7 @@ impl Spatial {
         mask: u8,
         (at, radius): (Position, Footprint),
         farthest: bool,
-    ) -> Result<Option<[f32; 2]>, GenieError> {
+    ) -> Result<Option<Point>, GenieError> {
         /// The footprint's last tile stops short of its edge by this (`DAT_142eb1e9c`).
         const EDGE: f32 = crate::math::image::spatial::FOOTPRINT_EDGE;
         /// A tile's centre (`DAT_142e7f384`).
@@ -80,20 +82,21 @@ impl Spatial {
             if count == Some(0) {
                 empty = true;
             }
-            let centre = [x as f32 + CENTRE, from.z(), y as f32 + CENTRE];
-            let d = [
-                from.x() - centre[0],
-                from.z() - centre[1],
-                from.y() - centre[2],
-            ];
-            let distance = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            // the tile's centre as the game's vector (x, height, y), at the unit's height
+            let centre = BVector::new(x as f32 + CENTRE, from.z(), y as f32 + CENTRE);
+            let d = BVector::new(
+                from.x() - centre.x(),
+                from.z() - centre.height(),
+                from.y() - centre.y(),
+            );
+            let distance = d.x() * d.x() + d.height() * d.height() + d.y() * d.y();
             let beats = if farthest {
                 best < distance
             } else {
                 distance < best
             };
             if (empty && !was_empty) || beats {
-                spot = Some([centre[0], centre[2]]);
+                spot = Some(centre.ground());
                 best = distance;
             }
         }
@@ -204,11 +207,11 @@ impl Spatial {
     pub fn point_clear(
         &mut self,
         me: i32,
-        point: [f32; 2],
+        point: Point,
         grow: f32,
         mask: u8,
     ) -> Result<bool, GenieError> {
-        let [x, y] = point;
+        let (x, y) = (point.x(), point.y());
         let (tx, ty) = (x as i32, y as i32);
         let Some(word) = self.tiles.word(tx, ty) else {
             return Ok(false);
@@ -236,14 +239,14 @@ impl Spatial {
     pub fn point_clear_among(
         &mut self,
         me: i32,
-        point: [f32; 2],
+        point: Point,
         grow: f32,
         mask: u8,
         ignore: &[i32],
     ) -> Result<bool, GenieError> {
         use crate::math::conversions::cvttss2si;
         // CVTTSS2SI: a NaN or huge coordinate is i32::MIN, off the map
-        let Some(word) = self.tiles.word(cvttss2si(point[0]), cvttss2si(point[1])) else {
+        let Some(word) = self.tiles.word(cvttss2si(point.x()), cvttss2si(point.y())) else {
             return Ok(false);
         };
         if word & u64::from(mask ^ 0xff) != 0 {
@@ -272,12 +275,12 @@ impl Spatial {
     /// [`Gait::moving`]: crate::map::spatial::Gait::moving
     pub fn point_hit(
         &self,
-        point: [f32; 2],
+        point: Point,
         grow: f32,
         ignore: &[i32],
         still: bool,
     ) -> Result<bool, GenieError> {
-        let [x, y] = point;
+        let (x, y) = (point.x(), point.y());
         let [w, h] = self.map;
         let rect = [x - grow, y - grow, grow + x, grow + y];
         if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
@@ -312,12 +315,12 @@ impl Spatial {
     /// A record whose place the slice does not know near the point.
     pub fn object_holds(
         &self,
-        point: [f32; 2],
+        point: Point,
         grow: f32,
         ignore: &[i32],
         still: bool,
     ) -> Result<bool, GenieError> {
-        let [x, y] = point;
+        let (x, y) = (point.x(), point.y());
         let rect = [x - grow, y - grow, grow + x, grow + y];
         self.check_known_records(rect)?;
         Ok(self.records_in(rect).any(|(id, p)| {
@@ -339,8 +342,8 @@ impl Spatial {
     /// (`FUN_1410510c0`): the tile is on the map and its word holds neither a terrain class of
     /// `mask` nor a temporary record's bit 0x80 (`mask & 0x7f | 0x80`).
     #[must_use]
-    pub fn makes_tile_record(&self, point: [f32; 2], mask: u8) -> bool {
-        let (x, y) = (point[0] as i32, point[1] as i32);
+    pub fn makes_tile_record(&self, point: Point, mask: u8) -> bool {
+        let (x, y) = (point.x() as i32, point.y() as i32);
         self.tiles
             .word(x, y)
             .is_some_and(|w| w & u64::from(mask & 0x7f | 0x80) == 0)

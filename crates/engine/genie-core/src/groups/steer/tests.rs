@@ -1,6 +1,7 @@
 use super::*;
 use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
@@ -246,7 +247,10 @@ fn a_member_in_place_or_failing_too_often() {
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     let g = t.groups.get(1).unwrap();
     assert_eq!(g.members[0].specific_move.consecutive_move_failures, 0);
-    assert_eq!(unit(&t, 10).ai.as_ref().unwrap().state_position, [5.0, 5.0]);
+    assert_eq!(
+        unit(&t, 10).ai.as_ref().unwrap().state_position,
+        Point::new(5.0, 5.0)
+    );
     let mut t = world();
     t.groups.get_mut(1).unwrap().members[0]
         .specific_move
@@ -262,7 +266,10 @@ fn a_member_in_place_or_failing_too_often() {
     assert_eq!(own.consecutive_move_failures, 11);
     assert_eq!(g.flags & 0x200, 0x200);
     assert_eq!(mover(&t, 10).animated.speed, 0.0);
-    assert_eq!(unit(&t, 10).ai.as_ref().unwrap().state_position, [0.0; 2]);
+    assert_eq!(
+        unit(&t, 10).ai.as_ref().unwrap().state_position,
+        Point::ORIGIN
+    );
     // a NaN gap is not in place
     let mut t = world();
     let m = t.players[1].objects[0].body.mover_mut().unwrap();
@@ -315,7 +322,7 @@ fn a_far_member_turns_and_walks_to_its_slot() {
     assert_eq!(state(&t, 0), 0);
     assert_eq!(
         unit(&t, 10).ai.as_ref().unwrap().state_position,
-        [10.0, 5.0]
+        Point::new(10.0, 5.0)
     );
 }
 
@@ -439,7 +446,10 @@ fn a_due_slot_takes_its_member() {
     s.state = 3;
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     assert_eq!(mover(&t, 10).stats.speed, 0.8);
-    assert_eq!(unit(&t, 10).ai.as_ref().unwrap().state_position, [0.0; 2]);
+    assert_eq!(
+        unit(&t, 10).ai.as_ref().unwrap().state_position,
+        Point::ORIGIN
+    );
 }
 
 /// A record on the line to the slot is the way round (`0x14102683b`): member 10, wide
@@ -465,7 +475,10 @@ fn a_blocked_way_to_the_slot_goes_round() {
         ),
         (1, 0, 3, 1, -1)
     );
-    assert_eq!(walked.points.last().map(|p| p.ground()), Some([10.0, 5.0]));
+    assert_eq!(
+        walked.points.last().map(|p| p.ground()),
+        Some(Point::new(10.0, 5.0))
+    );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!(
         (
@@ -496,7 +509,7 @@ fn a_slot_a_record_holds_takes_a_step_toward_it() {
     let m = mover(&t, 10);
     assert_eq!(
         m.paths[0].points.last().map(|p| p.ground()),
-        Some([6.0, 5.0])
+        Some(Point::new(6.0, 5.0))
     );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!((own.active, own.goal), (1, BVector::new(6.0, 0.0, 5.0)));
@@ -548,11 +561,14 @@ fn the_members_moves_end_wait_or_stop() {
     );
     assert_eq!(
         unit(&t, 10).ai.as_ref().unwrap().state_position,
-        [10.0, 5.0]
+        Point::new(10.0, 5.0)
     );
     assert_eq!(g.members[1].specific_move.timer, 1.0 - DT);
     assert_eq!(g.members[1].specific_move.reason, 0);
-    assert_eq!(unit(&t, 11).ai.as_ref().unwrap().state_position, [0.0; 2]);
+    assert_eq!(
+        unit(&t, 11).ai.as_ref().unwrap().state_position,
+        Point::ORIGIN
+    );
     assert_eq!(mover(&t, 12).animated.speed, 0.0);
     assert_ne!(mover(&t, 11).animated.speed, 0.0);
     // the timer run out (or the distance at 0) ends the move, and the member steers on
@@ -571,7 +587,7 @@ fn the_members_moves_end_wait_or_stop() {
     assert_eq!(mover(&t2, 11).animated.speed, 0.0);
     assert_eq!(
         unit(&t2, 11).ai.as_ref().unwrap().state_position,
-        [6.0, 9.0]
+        Point::new(6.0, 9.0)
     );
 }
 
@@ -687,7 +703,7 @@ fn a_member_with_its_slot_and_step_held_goes_round_to_the_group() {
     let m = mover(&t, 10);
     assert_eq!(
         m.paths[0].points.last().map(|p| p.ground()),
-        Some([5.0, 8.0])
+        Some(Point::new(5.0, 8.0))
     );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!((own.active, own.goal), (1, BVector::new(5.0, 0.0, 8.0)));

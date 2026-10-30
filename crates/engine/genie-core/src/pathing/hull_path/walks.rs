@@ -45,8 +45,8 @@ impl HullPather<'_> {
     /// more by `MAXSS` (0x140f86bcf, 0x140f85a18): an unordered one is 0.
     pub(super) fn target_gap(&self, t: &Target, p: Point) -> f32 {
         let r = self.radius;
-        let gx = maxss((p[0] - t.at[0]).abs() - (t.radius.x() + r), 0.0);
-        let gy = maxss((p[1] - t.at[1]).abs() - (t.radius.y() + r), 0.0);
+        let gx = maxss((p.x() - t.at.x()).abs() - (t.radius.x() + r), 0.0);
+        let gy = maxss((p.y() - t.at.y()).abs() - (t.radius.y() + r), 0.0);
         sqrt(gy * gy + gx * gx)
     }
 
@@ -93,7 +93,7 @@ impl HullPather<'_> {
         if half != (y1 - y0) * HALF {
             return Ok(false);
         }
-        let (mut dx, mut dy) = (from[0] - to[0], from[1] - to[1]);
+        let (mut dx, mut dy) = (from.x() - to.x(), from.y() - to.y());
         let (cx, cy) = ((x1 + x0) * HALF, (y1 + y0) * HALF);
         let len = dy * dy + dx * dx;
         if 0.0 < len {
@@ -105,12 +105,12 @@ impl HullPather<'_> {
         let (px, py) = (-dy * off, off * dx);
         for k in 0..2 {
             let p = if k == 0 {
-                [cx + px, cy + py]
+                Point::new(cx + px, cy + py)
             } else {
-                [cx - px, cy - py]
+                Point::new(cx - px, cy - py)
             };
             let [bx0, by0, bx1, by1] = self.bounds;
-            if !(bx0 <= p[0] && p[0] <= bx1 && by0 <= p[1] && p[1] <= by1) {
+            if !(bx0 <= p.x() && p.x() <= bx1 && by0 <= p.y() && p.y() <= by1) {
                 continue;
             }
             let first = self.hits(from, p)?;
@@ -151,16 +151,16 @@ impl HullPather<'_> {
         let [x0, y0, x1, y1] = b;
         // `COMISS`/`JA`, then `SETBE`; `JBE`, then `CMOVA` (0x140f8d1fc..0x140f8d235,
         // 0x140f893a4..0x140f893d0): an unordered coordinate counts past the box's far side
-        let col = if p[0] < x0 {
+        let col = if p.x() < x0 {
             0
-        } else if p[0] < x1 {
+        } else if p.x() < x1 {
             1
         } else {
             2
         };
-        let row = if p[1] < y0 {
+        let row = if p.y() < y0 {
             0
-        } else if p[1] < y1 {
+        } else if p.y() < y1 {
             3
         } else {
             6
@@ -171,19 +171,19 @@ impl HullPather<'_> {
             2 => [true, true, false, false],
             3 => [false, false, false, true],
             4 => {
-                let (down, right, up) = (p[1] - y0, x1 - p[0], y1 - p[1]);
+                let (down, right, up) = (p.y() - y0, x1 - p.x(), y1 - p.y());
                 let mut m = down;
                 let mut side = usize::from(right < down);
                 if right < down {
                     m = right;
                 }
                 let r = self.radius;
-                let mut sides = [down < r, right < r, up < r, p[0] - x0 < r];
+                let mut sides = [down < r, right < r, up < r, p.x() - x0 < r];
                 if up < m {
                     side = 2;
                     m = up;
                 }
-                if p[0] - x0 < m {
+                if p.x() - x0 < m {
                     side = 3;
                 }
                 sides.get_mut(side).into_iter().for_each(|s| *s = true);
@@ -198,7 +198,7 @@ impl HullPather<'_> {
         let near = |q: Point| {
             reach.is_none_or(|(c, d)| {
                 at_most_or_unordered(
-                    (c[0] - q[0]) * (c[0] - q[0]) + (c[1] - q[1]) * (c[1] - q[1]),
+                    (c.x() - q.x()) * (c.x() - q.x()) + (c.y() - q.y()) * (c.y() - q.y()),
                     d * d,
                 )
             })
@@ -226,7 +226,7 @@ impl HullPather<'_> {
             let mut x = x0 + NUDGE;
             let d = (x1 - x0) * step;
             while x < x1 {
-                add(self, [x, y])?;
+                add(self, Point::new(x, y))?;
                 x += d;
             }
         }
@@ -234,7 +234,7 @@ impl HullPather<'_> {
             let x = x1 + NUDGE;
             let mut y = y0 + NUDGE;
             while y < y1 {
-                add(self, [x, y])?;
+                add(self, Point::new(x, y))?;
                 y += (y1 - y0) * step;
             }
         }
@@ -242,7 +242,7 @@ impl HullPather<'_> {
             let y = y1 + NUDGE;
             let mut x = x1 - NUDGE;
             while x0 <= x {
-                add(self, [x, y])?;
+                add(self, Point::new(x, y))?;
                 x -= (x1 - x0) * step;
             }
         }
@@ -250,7 +250,7 @@ impl HullPather<'_> {
             let x = x0 - NUDGE;
             let mut y = y1 - NUDGE;
             while y0 <= y {
-                add(self, [x, y])?;
+                add(self, Point::new(x, y))?;
                 y -= (y1 - y0) * step;
             }
         }
@@ -269,7 +269,7 @@ impl HullPather<'_> {
         let d = self.radius + self.radius;
         let mut made = false;
         for dir in DIRECTIONS {
-            let mut q = [d * dir[0] + p[0], d * dir[1] + p[1]];
+            let mut q = Point::new(d * dir[0] + p.x(), d * dir[1] + p.y());
             if let Some((at, _)) = self.hulls.checked(hull)?.intersection(false, p, q) {
                 q = at;
             }
@@ -319,8 +319,8 @@ impl HullPather<'_> {
                 .checked(k)?
                 .points
                 .last()
-                .unwrap_or(&[f32::NAN, f32::NAN]);
-            if (at[0] - last[0]).abs() < SAME_END && (at[1] - last[1]).abs() < SAME_END {
+                .unwrap_or(&Point::new(f32::NAN, f32::NAN));
+            if (at.x() - last.x()).abs() < SAME_END && (at.y() - last.y()).abs() < SAME_END {
                 if paths.checked(k)?.cost < cost {
                     return Ok(None);
                 }
@@ -365,7 +365,7 @@ impl HullPather<'_> {
         self.empty(1)?;
         let mut nearest: Option<usize> = None;
         let mut best = goal.map_or(0.0, |g| {
-            sqrt((from[1] - g[1]) * (from[1] - g[1]) + (from[0] - g[0]) * (from[0] - g[0]))
+            sqrt((from.y() - g.y()) * (from.y() - g.y()) + (from.x() - g.x()) * (from.x() - g.x()))
         });
         let (inside, stuck) = self.begin_walk_out(hull, from, goal)?;
         if stuck {
@@ -458,7 +458,7 @@ impl HullPather<'_> {
         match (target, goal) {
             (None, None) => WalkEnd::Going,
             (None, Some(g)) => {
-                let d = (at[1] - g[1]) * (at[1] - g[1]) + (at[0] - g[0]) * (at[0] - g[0]);
+                let d = (at.y() - g.y()) * (at.y() - g.y()) + (at.x() - g.x()) * (at.x() - g.x());
                 if d <= (self.radius + range) * (self.radius + range) + NUDGE {
                     WalkEnd::Goal
                 } else {
@@ -583,7 +583,7 @@ impl HullPather<'_> {
             if *count < most {
                 if nudge {
                     let s = *SIDES.checked(side as usize)?;
-                    q = [q[0] + s[0] * NUDGE, q[1] + s[1] * NUDGE];
+                    q = Point::new(q.x() + s[0] * NUDGE, q.y() + s[1] * NUDGE);
                 }
                 if let Some(end) = self.add_node(NewNode {
                     list: 1,

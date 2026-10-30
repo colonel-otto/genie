@@ -13,6 +13,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
@@ -243,7 +244,7 @@ pub struct Engagement {
     /// The unit AI's stance (`+0x1a9`), whose 1 adds a leash test.
     pub stance: u8,
     /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`), the leash's centre.
-    pub state_position: [f32; 2],
+    pub state_position: Point,
     /// The world's time (`FUN_1415300d0`), which a facing over time reads.
     pub world_time: u32,
     /// The unit's master, of which 1704 and 1706 do not turn to face their target.
@@ -285,7 +286,7 @@ pub(crate) struct AttackReads {
     /// The unit AI's stance (`+0x1a9`).
     pub(crate) stance: u8,
     /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`), the centre of stance 1's leash.
-    pub(crate) state_position: [f32; 2],
+    pub(crate) state_position: Point,
     /// The unit has a unit AI whose order queue is empty (`FUN_140c564a0` is 0).
     pub(crate) queue_empty: bool,
     /// The unit AI's order (`+0x3c`, `FUN_140c4cc20`).
@@ -321,7 +322,7 @@ impl AttackReads {
             world_time: now,
             can_move: ai.is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1),
             stance: ai.map_or(0, |ai| ai.stance),
-            state_position: ai.map_or([0.0; 2], |ai| ai.state_position),
+            state_position: ai.map_or(Point::ORIGIN, |ai| ai.state_position),
             queue_empty: ai.is_some_and(|ai| ai.orders.is_empty()),
             ai_order: AiOrder::of(ai),
             ai_type: ai.map(|ai| ai.ai_type),

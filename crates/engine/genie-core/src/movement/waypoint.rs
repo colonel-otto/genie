@@ -1,6 +1,7 @@
 //! A reached waypoint and what follows it: the next waypoint, a level's end and the moving state.
 
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{Spatial, WalkQuery};
 use crate::math::fmath::BVector;
@@ -142,7 +143,7 @@ impl Mover {
         if d.x() * d.x() + d.height() * d.height() + d.y() * d.y() < TARGET_SHORT_REACH {
             let [x, _, y] = (level.points[level.waypoint as usize]).get();
             let ignore = world.manager_ignore();
-            if world.object_holds([x, y], world.manager_grow(), &ignore, false)? {
+            if world.object_holds(Point::new(x, y), world.manager_grow(), &ignore, false)? {
                 let level = &mut self.paths[0];
                 let removed = remove_point(&mut level.points, level.waypoint);
                 debug_assert!(removed, "the waypoint lies within the path");
@@ -249,10 +250,10 @@ impl Mover {
         let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
         let grow = rx * STRAIGHT_GROW;
         world.check_known_records([
-            from[0].min(to[0]) - grow,
-            from[1].min(to[1]) - grow,
-            from[0].max(to[0]) + grow,
-            from[1].max(to[1]) + grow,
+            from.x().min(to.x()) - grow,
+            from.y().min(to.y()) - grow,
+            from.x().max(to.x()) + grow,
+            from.y().max(to.y()) + grow,
         ])?;
         let blocked = world.segment_blocked(from, to, grow, self.stats.restriction_mask, &ignore);
         // FUN_14114cc60 resets the buffer it set for the query (FUN_1410562d0 with 0)
@@ -287,10 +288,10 @@ impl Mover {
         // the query starts at +0x824, where the unit last moved to
         let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
         let rect = [
-            from[0].min(to[0]),
-            from[1].min(to[1]),
-            from[0].max(to[0]),
-            from[1].max(to[1]),
+            from.x().min(to.x()),
+            from.y().min(to.y()),
+            from.x().max(to.x()),
+            from.y().max(to.y()),
         ];
         world.check_known_records([rect[0] - rx, rect[1] - rx, rect[2] + rx, rect[3] + rx])?;
         if world.tiles_block(from, to, rx, self.stats.restriction_mask) {

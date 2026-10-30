@@ -2,6 +2,7 @@
 //! foundation, annexes and garrison, and the attributes and storage it moves.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::lifecycle::death_parts::count_class;
@@ -360,7 +361,13 @@ impl World {
             let Some(crate::orders::Place::Live(_, bi)) = self.place(id) else {
                 break;
             };
-            if !self.let_out(owner, bi, g, [HANDOVER_NO_POINT; 2], (None, true))? {
+            if !self.let_out(
+                owner,
+                bi,
+                g,
+                Point::from([HANDOVER_NO_POINT; 2]),
+                (None, true),
+            )? {
                 stayed.push(g);
             }
         }

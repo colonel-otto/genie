@@ -1,5 +1,6 @@
 //! A search's request and goal: its ranges and the marks of the cells and tiles within them.
 
+use crate::map::Point;
 use crate::pathing::tile_path::{CLOSED, FAR_SIDE, GOAL, HALF, LONE, NODE, ONE, Planner};
 
 /// A search's request: from a point to a goal with its ranges, as the planner's entry passes
@@ -7,9 +8,9 @@ use crate::pathing::tile_path::{CLOSED, FAR_SIDE, GOAL, HALF, LONE, NODE, ONE, P
 #[derive(Clone, Debug, PartialEq)]
 pub struct Request {
     /// x, y on the map.
-    pub from: [f32; 2],
+    pub from: Point,
     /// x, y of the goal on the map.
-    pub to: [f32; 2],
+    pub to: Point,
     /// The unit's and its target's radii, and how near the goal counts as there (the path
     /// level's range).
     pub radii: f32,
@@ -33,8 +34,8 @@ pub(super) struct Goal {
 impl Request {
     pub(super) const fn goal(&self) -> Goal {
         Goal {
-            x: self.to[0],
-            y: self.to[1],
+            x: self.to.x(),
+            y: self.to.y(),
             radii: self.radii,
             range: self.range,
         }

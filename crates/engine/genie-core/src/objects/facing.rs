@@ -8,6 +8,7 @@
 //! ([`SpriteFacets`]); the slice takes them from the unit's master when every sprite of the
 //! master has the same ([`crate::movement::MoveStats::facets`]).
 
+use crate::map::Point;
 use crate::math::fmath::{self, BVector};
 use genie_diff::Diff;
 
@@ -135,11 +136,11 @@ pub fn facet_of_angle(angle: f32, s: Option<SpriteFacets>) -> (u8, f32) {
 /// facets (at least 8): the angle to it (`atan2f`, 0 to 2π) less the facing angle, wrapped into
 /// −π to π, times the facets over 2π; 0 on the same point (within 1e-7) or without facets.
 #[must_use]
-pub fn facets_to(at: [f32; 2], angle: f32, to: [f32; 2], s: Option<SpriteFacets>) -> f32 {
+pub fn facets_to(at: Point, angle: f32, to: Point, s: Option<SpriteFacets>) -> f32 {
     let Some(s) = s.filter(|s| 0 < s.count) else {
         return 0.0;
     };
-    offset_in_facets(to[0] - at[0], to[1] - at[1], angle, at_least_eight(s))
+    offset_in_facets(to.x() - at.x(), to.y() - at.y(), angle, at_least_eight(s))
 }
 
 /// `FUN_14114eaa0`'s body for `n` facets: the difference `dx`, `dy` within 1e-7 on both axes
@@ -168,7 +169,7 @@ pub fn offset_in_facets(dx: f32, dy: f32, angle: f32, n: i32) -> f32 {
 /// within half a facet it faces; else its angle turns by the facets between at once (held in 0
 /// to 2π) and it faces. Returns the angle.
 #[must_use]
-pub fn face(at: [f32; 2], angle: f32, to: [f32; 2], s: Option<SpriteFacets>) -> f32 {
+pub fn face(at: Point, angle: f32, to: Point, s: Option<SpriteFacets>) -> f32 {
     let n = s.map_or(8, |s| if s.count < 8 { 8 } else { i32::from(s.count) });
     let off = facets_to(at, angle, to, s);
     if (MINUS_HALF..=HALF).contains(&off) {
@@ -188,9 +189,9 @@ const MS_PER_SECOND: f32 = crate::math::image::facing::MS_PER_SECOND;
 /// it faces.
 #[must_use]
 pub fn turn_toward(
-    at: [f32; 2],
+    at: Point,
     angle: f32,
-    to: [f32; 2],
+    to: Point,
     s: Option<SpriteFacets>,
     turn_time: f32,
     last_turn: f32,
@@ -244,10 +245,13 @@ mod tests {
     fn an_unordered_difference_goes_on_to_the_angle() {
         // COMISS/JC at 0x14114ec3e, JNC at 0x14114ec5e: a NaN difference is not "within 1e-7",
         // so atan2f gives NaN; the same point (within 1e-7) still gives 0
-        let at = [10.0, 10.0];
-        assert!(facets_to(at, 0.0, [f32::NAN, 10.0], Some(VILLAGER)).is_nan());
-        assert!(facets_to(at, 0.0, [10.0, f32::NAN], Some(VILLAGER)).is_nan());
-        assert_eq!(facets_to(at, 0.0, [10.0, 10.0], Some(VILLAGER)), 0.0);
+        let at = Point::new(10.0, 10.0);
+        assert!(facets_to(at, 0.0, Point::new(f32::NAN, 10.0), Some(VILLAGER)).is_nan());
+        assert!(facets_to(at, 0.0, Point::new(10.0, f32::NAN), Some(VILLAGER)).is_nan());
+        assert_eq!(
+            facets_to(at, 0.0, Point::new(10.0, 10.0), Some(VILLAGER)),
+            0.0
+        );
     }
 
     #[test]
@@ -267,7 +271,7 @@ mod tests {
 
     #[test]
     fn a_unit_with_a_turn_time_steps_a_facet_a_turn_time_until_it_faces() {
-        let (at, to) = ([10.0, 10.0], [10.0, 14.0]);
+        let (at, to) = (Point::new(10.0, 10.0), Point::new(10.0, 14.0));
         let off = facets_to(at, 0.0, to, Some(VILLAGER));
         assert!(1.5 < off.abs());
         let step = TWO_PI / 16.0;
@@ -279,25 +283,28 @@ mod tests {
         let (b, last2, faces2) = turn_toward(at, a, to, Some(VILLAGER), 0.5, last, 1200);
         assert_eq!((b, last2, faces2), (a, 1.0, false));
         // facing within half a facet it faces at once, whatever the time
-        let facing = turn_toward(at, 0.0, [14.0, 10.0], Some(VILLAGER), 0.5, 0.0, 0);
+        let facing = turn_toward(at, 0.0, Point::new(14.0, 10.0), Some(VILLAGER), 0.5, 0.0, 0);
         assert_eq!(
             facing,
             (
                 0.0,
                 0.0,
-                facets_to(at, 0.0, [14.0, 10.0], Some(VILLAGER)).abs() <= HALF
+                facets_to(at, 0.0, Point::new(14.0, 10.0), Some(VILLAGER)).abs() <= HALF
             )
         );
     }
 
     #[test]
     fn a_unit_faces_within_half_a_facet_or_turns_at_once() {
-        let at = [100.0, 40.0];
+        let at = Point::new(100.0, 40.0);
         let angle = 0.0;
         // straight along its angle: it faces already
-        assert_eq!(face(at, angle, [105.0, 40.0], Some(VILLAGER)), angle);
+        assert_eq!(
+            face(at, angle, Point::new(105.0, 40.0), Some(VILLAGER)),
+            angle
+        );
         // a quarter turn away: it turns by four facets of sixteen
-        let turned = face(at, angle, [100.0, 45.0], Some(VILLAGER));
+        let turned = face(at, angle, Point::new(100.0, 45.0), Some(VILLAGER));
         assert!((turned - TWO_PI / 4.0).abs() < 1e-6);
     }
 

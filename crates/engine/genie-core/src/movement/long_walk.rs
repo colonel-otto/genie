@@ -1,6 +1,7 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
@@ -115,7 +116,7 @@ pub(crate) fn lowered_units(
 /// What the search does not model.
 pub(crate) fn long_path_for(
     walker: &LongWalker<'_>,
-    from: [f32; 2],
+    from: Point,
     world: &Spatial,
     computer: bool,
     (to, range): (BVector, f32),
@@ -134,7 +135,7 @@ pub(crate) fn long_path_for(
         .map(|p| [p.position.x() as i32, p.position.y() as i32])
         .collect();
     let req = crate::pathing::long_path::LongRequest {
-        from: [from[0] as i32, from[1] as i32],
+        from: [from.x() as i32, from.y() as i32],
         to: [to.x() as i32, to.y() as i32],
         range,
         target: long_target,
@@ -194,7 +195,7 @@ pub struct ShortAsk<'a> {
 /// What the planner does not model.
 pub(crate) fn tile_plan_for(
     walker: Walker,
-    from: [f32; 2],
+    from: Point,
     level_target: Option<i32>,
     world: &mut Spatial,
     plan: &mut Planning<'_>,
@@ -316,7 +317,7 @@ pub(super) fn old_pather_for(radius: f32) -> bool {
 /// As [`short_path_including`].
 pub(crate) fn short_path_for(
     walker: Walker,
-    from: [f32; 2],
+    from: Point,
     world: &mut Spatial,
     plan: &mut Planning<'_>,
     goal: (BVector, f32, i32),
@@ -358,7 +359,7 @@ pub(super) fn owner_number(world: &Spatial, id: i32) -> i32 {
 /// What the pathers do not model, or the new pather without the game's mesh.
 pub(crate) fn short_path_including(
     walker: Walker,
-    from: [f32; 2],
+    from: Point,
     world: &mut Spatial,
     plan: &mut Planning<'_>,
     ask: ShortAsk<'_>,
@@ -372,7 +373,7 @@ pub(crate) fn short_path_including(
         ignore,
         include,
     } = ask;
-    let [x, y] = from;
+    let (x, y) = (from.x(), from.y());
     let target_object = match target {
         -1 => None,
         id => world.get_known(id)?.map(|t| short_path::Target {
@@ -389,7 +390,7 @@ pub(crate) fn short_path_including(
         })
         .collect();
     let call = Call {
-        from: [x, y],
+        from: Point::new(x, y),
         to: to.ground(),
         radius: walker.radius,
         range,
@@ -422,8 +423,8 @@ pub(crate) fn short_path_including(
         let mut pather = HullPather::for_list(world, ignore, walker.mask, walker.radius, player)
             .including(include);
         let (result, path) = pather.find(from, to.ground(), target, range)?;
-        for &[px, py] in &path.points {
-            let _ = out.push(BVector::new(px, 0.0, py));
+        for p in &path.points {
+            let _ = out.push(BVector::new(p.x(), 0.0, p.y()));
         }
         return Ok(result);
     }

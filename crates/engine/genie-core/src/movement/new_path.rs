@@ -1,6 +1,7 @@
 //! A new level's path: no path, its link under the walked level, the short pather's ignore list
 //! and a blocked start.
 
+use crate::map::Point;
 use crate::map::spatial::{Placed, Spatial};
 use crate::movement::{
     AfterRequest, CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, ReachAsk,
@@ -146,7 +147,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         target: Option<&Placed>,
         target_id: i32,
-        line: ([f32; 2], [f32; 2]),
+        line: (Point, Point),
     ) -> Result<Vec<i32>, GenieError> {
         let now = plan.now;
         let mut list = vec![me.id];
@@ -232,14 +233,14 @@ impl Mover {
         world: &Spatial,
         plan: &mut Planning<'_>,
         target: &Placed,
-        (from, to): ([f32; 2], [f32; 2]),
+        (from, to): (Point, Point),
     ) -> Result<bool, GenieError> {
         // CVTTSS2SI into a 64-bit register, its low 32 bits kept
         let fixed =
             |f: f32| crate::math::conversions::cvttss2si_64(f * short_path::TO_FIXED) as i32;
         let query = short_path::Query {
-            from: [fixed(from[0]), fixed(from[1])],
-            to: [fixed(to[0]), fixed(to[1])],
+            from: [fixed(from.x()), fixed(from.y())],
+            to: [fixed(to.x()), fixed(to.y())],
             radius: self.stats.radius.x(),
             target_size: target.radius,
             range: self.stats.weapon_range,
@@ -339,7 +340,7 @@ impl Mover {
         me: &Me,
         world: &mut Spatial,
         plan: &mut Planning<'_>,
-        to: [f32; 2],
+        to: Point,
         range: f32,
         master: MasterId,
     ) -> Result<bool, GenieError> {
@@ -409,7 +410,7 @@ impl Mover {
         &self,
         world: &Spatial,
         plan: &mut Planning<'_>,
-        to: [f32; 2],
+        to: Point,
         radii: f32,
     ) -> Result<Option<(u8, f32)>, GenieError> {
         let full = !plan.computer;

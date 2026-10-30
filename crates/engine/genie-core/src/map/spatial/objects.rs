@@ -2,6 +2,7 @@
 //! moves inside and out, and the segment tests.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, SearchCache, Spatial, Tiles, WalkTest, tile_record_id,
@@ -418,7 +419,7 @@ impl Spatial {
             return;
         };
         self.remove(id);
-        p.position = Position::new(at.x(), at.y(), p.position.z());
+        p.position = at.with_z(p.position.z());
         p.obstruction = None;
         let _ = self.inside.insert(id, p);
     }
@@ -466,8 +467,8 @@ impl Spatial {
     /// ([`Spatial::put_tile_records`]), tested ([`Spatial::segment_meets`]) and removed again.
     pub fn segment_blocked(
         &mut self,
-        a: [f32; 2],
-        b: [f32; 2],
+        a: Point,
+        b: Point,
         grow: f32,
         mask: u8,
         ignore: &[i32],
@@ -486,7 +487,7 @@ impl Spatial {
     /// ([`Spatial::put_tile_records`], kind 3) and the objects' static records (kinds 2, 11 and
     /// 13; flag `0x100` passes the kinds of the mask `0x2804` and the records of no object).
     #[must_use]
-    pub fn segment_meets(&self, a: [f32; 2], b: [f32; 2], grow: f32, ignore: &[i32]) -> bool {
+    pub fn segment_meets(&self, a: Point, b: Point, grow: f32, ignore: &[i32]) -> bool {
         let Some(test) = WalkTest::new(a, b, grow, self.map) else {
             return true;
         };
@@ -519,7 +520,7 @@ impl Spatial {
     /// its query, then `FUN_1410561f0`): its temporary tile records
     /// ([`Spatial::put_tile_records`]) tested as [`Spatial::segment_meets`] tests them, and
     /// removed again. A walk whose grown box leaves the map counts as blocked.
-    pub fn tiles_block(&mut self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) -> bool {
+    pub fn tiles_block(&mut self, a: Point, b: Point, grow: f32, mask: u8) -> bool {
         self.put_tile_records(a, b, grow, mask);
         let blocked =
             WalkTest::new(a, b, grow, self.map).is_none_or(|t| self.tile_records_meet(&t, &[]));
@@ -531,15 +532,15 @@ impl Spatial {
     /// `a` and `b` (x, y), grown by `grow` (the manager's buffer) and held on the map, whose word
     /// holds neither a terrain class of `mask` nor a temporary record (`mask & 0x7f | 0x80`), row
     /// by row. The records stay until [`Spatial::clear_tile_records`].
-    pub fn put_tile_records(&mut self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) {
+    pub fn put_tile_records(&mut self, a: Point, b: Point, grow: f32, mask: u8) {
         use crate::math::conversions::cvttss2si;
         let (lo_x, hi_x) = (
-            if b[0] <= a[0] { b[0] } else { a[0] },
-            if a[0] <= b[0] { b[0] } else { a[0] },
+            if b.x() <= a.x() { b.x() } else { a.x() },
+            if a.x() <= b.x() { b.x() } else { a.x() },
         );
         let (lo_y, hi_y) = (
-            if b[1] <= a[1] { b[1] } else { a[1] },
-            if a[1] <= b[1] { b[1] } else { a[1] },
+            if b.y() <= a.y() { b.y() } else { a.y() },
+            if a.y() <= b.y() { b.y() } else { a.y() },
         );
         let [w, h] = self.map;
         let (lo_x, lo_y, hi_x, hi_y) = (

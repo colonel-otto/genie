@@ -1,7 +1,7 @@
 //! The search's run: its main loop and a popped node's expansion by its type.
 
 use crate::pathing::short_path::{
-    Callback, Corner, Ctx, Hit, Kind, NONE, NUDGES, Node, Point, Poly, RECT_HEURISTIC, Search,
+    Callback, Corner, Ctx, FixedPoint, Hit, Kind, NONE, NUDGES, Node, Poly, RECT_HEURISTIC, Search,
     ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits, float_distance, in_box,
     isqrt, through_float,
 };
@@ -279,7 +279,7 @@ impl Search<'_> {
     /// Type 3 when every ray touches: along x toward `t`, then along y; a leg's hit becomes a
     /// side node; with both legs clear, one tile toward `t` (at most) becomes a waypoint that may
     /// be the best (by cost, not estimate).
-    pub(super) fn corner_axis(&mut self, n: Node, t: Point) -> Result<(), GenieError> {
+    pub(super) fn corner_axis(&mut self, n: Node, t: FixedPoint) -> Result<(), GenieError> {
         let p = n.at;
         let dx = t[0].wrapping_sub(p[0]);
         let dy = t[1].wrapping_sub(p[1]);
@@ -322,7 +322,7 @@ impl Search<'_> {
 
 impl Search<'_> {
     /// The search itself, after the prologue: the start, the main loop, the path.
-    pub(super) fn run(&mut self, start: Point) -> Result<ShortPath, GenieError> {
+    pub(super) fn run(&mut self, start: FixedPoint) -> Result<ShortPath, GenieError> {
         let res4410 = self.start(start)?;
         match res4410 {
             3 => {
@@ -352,7 +352,7 @@ impl Search<'_> {
             self.goal_node = self.best;
         }
         // the path from the goal back, without the root
-        let mut pts: Vec<Point> = Vec::new();
+        let mut pts: Vec<FixedPoint> = Vec::new();
         let mut node = *self.arena.checked(self.goal_node as usize)?;
         let mut is_root = node.parent == NONE;
         while !is_root {
@@ -421,7 +421,7 @@ impl Search<'_> {
     pub(super) fn expand(
         &mut self,
         n: Node,
-        start: Point,
+        start: FixedPoint,
     ) -> Result<Option<ShortPath>, GenieError> {
         let p = n.at;
         let d = self.ctx.d;
@@ -484,8 +484,8 @@ impl Search<'_> {
     pub(super) fn touch_from(
         &mut self,
         n: Node,
-        p: Point,
-        t: Point,
+        p: FixedPoint,
+        t: FixedPoint,
         hit_t: i32,
         hit: Hit,
     ) -> Result<(), GenieError> {
@@ -540,7 +540,11 @@ impl Search<'_> {
 
 /// `FUN_140fa31b0`: the point on the circle of `range` around `goal` toward `p` (the goal itself
 /// for no range).
-pub(super) fn range_point(range: i32, p: Point, goal: Point) -> Result<Point, GenieError> {
+pub(super) fn range_point(
+    range: i32,
+    p: FixedPoint,
+    goal: FixedPoint,
+) -> Result<FixedPoint, GenieError> {
     let mut out = goal;
     if range != 0 {
         let dx = i64::from(p[0].wrapping_sub(goal[0]));

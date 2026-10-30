@@ -468,10 +468,10 @@ pub fn target_left(
         let (a, b) = (me.ground(), at.ground());
         let grow = walk.world.manager_grow();
         walk.world.check_known_records([
-            a[0].min(b[0]) - grow,
-            a[1].min(b[1]) - grow,
-            a[0].max(b[0]) + grow,
-            a[1].max(b[1]) + grow,
+            a.x().min(b.x()) - grow,
+            a.y().min(b.y()) - grow,
+            a.x().max(b.x()) + grow,
+            a.y().max(b.y()) + grow,
         ])?;
         let ignore = walk.world.manager_ignore();
         if !walk

@@ -1,9 +1,10 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::Point;
 
 /// A search on an empty mesh toward a point target at `at` within `range` (fixed point), its
 /// start node at the origin with cost 0.
-fn search_toward(mesh: &Mesh, at: Point, range: i32) -> Search<'_> {
+fn search_toward(mesh: &Mesh, at: FixedPoint, range: i32) -> Search<'_> {
     let goal = Goal {
         at,
         r: 0,
@@ -124,7 +125,7 @@ fn the_goal_s_foot_on_a_spanning_edge_is_a_goal_candidate() {
 #[test]
 fn a_contact_point_moves_off_its_side() {
     let p = [100, 200];
-    let moved: Vec<Point> = (0..5)
+    let moved: Vec<FixedPoint> = (0..5)
         .flat_map(|side| [0, 1].map(|flag| contact_point(p, side, 3, flag)))
         .collect();
     assert_eq!(
@@ -149,7 +150,7 @@ fn a_contact_point_moves_off_its_side() {
 #[test]
 fn a_point_snaps_onto_a_side_within_its_corners() {
     let r = [0, 0, 100, 50];
-    let snap = |p: Point, side| {
+    let snap = |p: FixedPoint, side| {
         let mut q = p;
         snap_to_side(&mut q, r, side, 5);
         q
@@ -202,7 +203,7 @@ fn a_ray_crosses_the_side_it_faces_and_reports_how_far() {
 fn a_ray_along_y_crosses_the_bottom_or_the_top() {
     let r = [2 * ONE, 0, 3 * ONE, 2 * ONE];
     let x = 2 * ONE + ONE / 2;
-    let cast = |a: Point, b: Point, t: i32| {
+    let cast = |a: FixedPoint, b: FixedPoint, t: i32| {
         let (mut t, mut side) = (t, 9);
         let k = ray_rect(a, b, r, &mut t, &mut side);
         (k, side, t)
@@ -290,9 +291,9 @@ fn a_start_deep_in_blocked_terrain_is_blocked_unless_in_range() {
 /// 0x140f9e6da): an unordered coordinate is on it.
 #[test]
 fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
-    let call = |from: [f32; 2], target: Option<Target>| Call {
+    let call = |from: Point, target: Option<Target>| Call {
         from,
-        to: [7.0, 5.0],
+        to: Point::new(7.0, 5.0),
         radius: 0.2,
         range: 0.0,
         target,
@@ -302,19 +303,22 @@ fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
     };
     let t = Target {
         id: 9,
-        position: [5.0, 5.0],
+        position: Point::new(5.0, 5.0),
         half_size: Footprint::new(0.5, 0.5),
     };
-    assert_eq!(call([f32::NAN, 5.0], Some(t)).entry(), Entry::InRange);
+    assert_eq!(
+        call(Point::new(f32::NAN, 5.0), Some(t)).entry(),
+        Entry::InRange
+    );
     assert!(matches!(
-        call([f32::NAN, 5.0], None).entry(),
+        call(Point::new(f32::NAN, 5.0), None).entry(),
         Entry::Search { .. }
     ));
-    assert_eq!(call([-0.1, 5.0], None).entry(), Entry::Invalid);
-    assert_eq!(call([16.0, 5.0], None).entry(), Entry::Invalid);
-    assert_eq!(call([5.0, 16.0], None).entry(), Entry::Invalid);
+    assert_eq!(call(Point::new(-0.1, 5.0), None).entry(), Entry::Invalid);
+    assert_eq!(call(Point::new(16.0, 5.0), None).entry(), Entry::Invalid);
+    assert_eq!(call(Point::new(5.0, 16.0), None).entry(), Entry::Invalid);
     assert!(matches!(
-        call([0.0, 15.9], None).entry(),
+        call(Point::new(0.0, 15.9), None).entry(),
         Entry::Search { .. }
     ));
 }
@@ -322,7 +326,7 @@ fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
 /// A search on a 32-tile mesh holding `walls` (tiles, `[x0, y0, x1, y1]`) from `from` to `to`
 /// (tiles) with a radius of a quarter tile; the path's points in tiles. With `ignored`, every
 /// wall is ignored.
-fn around(walls: &[[f32; 4]], from: [f32; 2], to: [f32; 2], ignored: bool) -> (u8, Vec<[f32; 2]>) {
+fn around(walls: &[[f32; 4]], from: Point, to: Point, ignored: bool) -> (u8, Vec<Point>) {
     let fixed = |v: f32| (v * ONE as f32) as i32;
     let mut mesh = Mesh::new(32);
     let ids: Vec<u32> = walls
@@ -330,8 +334,8 @@ fn around(walls: &[[f32; 4]], from: [f32; 2], to: [f32; 2], ignored: bool) -> (u
         .map(|w| mesh.add([fixed(w[0]), fixed(w[1]), fixed(w[2]), fixed(w[3])]))
         .collect();
     let q = Query {
-        from: [fixed(from[0]), fixed(from[1])],
-        to: [fixed(to[0]), fixed(to[1])],
+        from: [fixed(from.x()), fixed(from.y())],
+        to: [fixed(to.x()), fixed(to.y())],
         radius: 0.25,
         target_size: Footprint::new(0.0, 0.0),
         range: 0.0,
@@ -345,7 +349,7 @@ fn around(walls: &[[f32; 4]], from: [f32; 2], to: [f32; 2], ignored: bool) -> (u
     let points = found
         .points
         .iter()
-        .map(|p| [tiles(p[0]), tiles(p[1])])
+        .map(|p| Point::new(tiles(p[0]), tiles(p[1])))
         .collect();
     (found.result, points)
 }
@@ -358,15 +362,27 @@ fn around(walls: &[[f32; 4]], from: [f32; 2], to: [f32; 2], ignored: bool) -> (u
 fn a_path_bends_round_a_wall_at_its_nearer_end() {
     let wall = [[10.0, 4.0, 11.0, 12.0]];
     assert_eq!(
-        around(&wall, [6.5, 8.5], [14.5, 8.5], false),
+        around(&wall, Point::new(6.5, 8.5), Point::new(14.5, 8.5), false),
         (
             1,
-            vec![[6.5, 8.5], [10.25, 11.75], [10.75, 11.75], [14.5, 8.5]]
+            vec![
+                Point::new(6.5, 8.5),
+                Point::new(10.25, 11.75),
+                Point::new(10.75, 11.75),
+                Point::new(14.5, 8.5)
+            ]
         )
     );
     assert_eq!(
-        around(&wall, [6.5, 8.5], [14.5, 8.5], true),
-        (1, vec![[6.5, 8.5], [6.5, 8.5], [14.5, 8.5]])
+        around(&wall, Point::new(6.5, 8.5), Point::new(14.5, 8.5), true),
+        (
+            1,
+            vec![
+                Point::new(6.5, 8.5),
+                Point::new(6.5, 8.5),
+                Point::new(14.5, 8.5)
+            ]
+        )
     );
 }
 
@@ -381,15 +397,15 @@ fn a_path_leaves_a_u_by_its_open_side() {
         [4.0, 11.0, 9.0, 12.0],
     ];
     assert_eq!(
-        around(&u, [6.5, 8.5], [14.5, 8.5], false),
+        around(&u, Point::new(6.5, 8.5), Point::new(14.5, 8.5), false),
         (
             1,
             vec![
-                [6.5, 8.5],
-                [4.25, 11.25],
-                [4.25, 11.75],
-                [8.75, 11.75],
-                [14.5, 8.5]
+                Point::new(6.5, 8.5),
+                Point::new(4.25, 11.25),
+                Point::new(4.25, 11.75),
+                Point::new(8.75, 11.75),
+                Point::new(14.5, 8.5)
             ]
         )
     );
@@ -406,10 +422,13 @@ fn a_goal_shut_in_a_box_gives_a_partial_path_to_its_nearest_point() {
         [14.0, 6.0, 15.0, 11.0],
     ];
     assert_eq!(
-        around(&walls, [6.5, 8.5], [12.5, 8.5], false),
-        (2, vec![[6.5, 8.5], [10.25, 8.5]])
+        around(&walls, Point::new(6.5, 8.5), Point::new(12.5, 8.5), false),
+        (2, vec![Point::new(6.5, 8.5), Point::new(10.25, 8.5)])
     );
-    assert_eq!(around(&walls, [6.5, 8.5], [12.5, 8.5], true).0, 1);
+    assert_eq!(
+        around(&walls, Point::new(6.5, 8.5), Point::new(12.5, 8.5), true).0,
+        1
+    );
 }
 
 /// Two staggered walls: the path reaches the goal over one corner of the second wall (a
@@ -417,11 +436,16 @@ fn a_goal_shut_in_a_box_gives_a_partial_path_to_its_nearest_point() {
 #[test]
 fn a_path_past_staggered_walls_bends_only_at_their_corners() {
     let walls = [[10.0, 4.0, 11.0, 9.0], [12.0, 8.0, 13.0, 14.0]];
-    let (result, points) = around(&walls, [6.5, 6.5], [16.5, 12.5], false);
+    let (result, points) = around(&walls, Point::new(6.5, 6.5), Point::new(16.5, 12.5), false);
     assert_eq!(result, 1);
-    assert_eq!(points.first(), Some(&[6.5, 6.5]));
-    assert_eq!(points.last(), Some(&[16.5, 12.5]));
-    let corners = [[12.25, 8.25], [12.75, 8.25], [12.25, 13.75], [12.75, 13.75]];
+    assert_eq!(points.first(), Some(&Point::new(6.5, 6.5)));
+    assert_eq!(points.last(), Some(&Point::new(16.5, 12.5)));
+    let corners = [
+        Point::new(12.25, 8.25),
+        Point::new(12.75, 8.25),
+        Point::new(12.25, 13.75),
+        Point::new(12.75, 13.75),
+    ];
     let between = &points[1..points.len() - 1];
     assert!(2 < points.len(), "{points:?}");
     assert!(between.iter().all(|p| corners.contains(p)), "{points:?}");
@@ -484,7 +508,7 @@ fn the_edge_holding_a_point_is_the_first_vertex_of_its_side_s_run() {
         [0, 0, 4 * ONE, 4 * ONE],
         [3 * ONE, 3 * ONE, 6 * ONE, 6 * ONE],
     ];
-    let edge = |poly: &Poly, p: Point, side| Search::edge_holding(poly, p, side, &mesh, 0, 0);
+    let edge = |poly: &Poly, p: FixedPoint, side| Search::edge_holding(poly, p, side, &mesh, 0, 0);
     let poly = square(false);
     assert_eq!(edge(&poly, [2 * ONE, 0], 0), Some(0));
     assert_eq!(edge(&poly, [4 * ONE, 2 * ONE], 1), Some(1));
@@ -524,7 +548,7 @@ fn a_vertex_holds_a_point_in_its_shape_s_overlap_with_the_other() {
         [5 * ONE, 5 * ONE, 8 * ONE, 8 * ONE],
     ];
     let p = [3 * ONE, 3 * ONE];
-    let held = |vc: Point, vs, d| Search::vertex_in_overlap(&mesh, (p, vc, vs), 0, d);
+    let held = |vc: FixedPoint, vs, d| Search::vertex_in_overlap(&mesh, (p, vc, vs), 0, d);
     assert!(held(p, 1, 0));
     assert!(held(p, 1, ONE / 2));
     assert!(!held([3 * ONE, 2 * ONE], 1, 0));
@@ -539,7 +563,7 @@ fn a_vertex_holds_a_point_in_its_shape_s_overlap_with_the_other() {
 fn a_point_lies_on_an_edge_between_ends_its_neighbour_sides_open_or_close() {
     let (lo, hi, mid) = (0, 4 * ONE, 2 * ONE);
     // (side, from, to, point, side before, side after, on the edge)
-    let cases: [(u8, Point, Point, Point, u8, u8, bool); 20] = [
+    let cases: [(u8, FixedPoint, FixedPoint, FixedPoint, u8, u8, bool); 20] = [
         (0, [lo, lo], [hi, lo], [mid, lo], 3, 1, true),
         (0, [lo, lo], [hi, lo], [mid, ONE], 3, 1, false),
         (0, [lo, lo], [hi, lo], [lo, lo], 1, 1, true),
@@ -571,7 +595,7 @@ fn a_point_lies_on_an_edge_between_ends_its_neighbour_sides_open_or_close() {
 }
 
 /// The escape candidates a search holds open: each one's place, cost and shape side.
-fn opened(s: &Search<'_>) -> Vec<(Point, i32, Kind)> {
+fn opened(s: &Search<'_>) -> Vec<(FixedPoint, i32, Kind)> {
     s.open.iter().map(|n| (n.at, n.g, n.kind)).collect()
 }
 
@@ -747,7 +771,7 @@ fn a_side_s_contacts_become_candidates_when_wide_free_and_near() {
     let mut mesh = shape_at_2_2();
     let _ = mesh.add([5 * ONE, 0, 9 * ONE, 3 * ONE]);
     let _ = mesh.add([4 * ONE, 2 * ONE, 7 * ONE, 4 * ONE]);
-    let contact = |other, side, at: Point, half| Contact {
+    let contact = |other, side, at: FixedPoint, half| Contact {
         other,
         side,
         at,

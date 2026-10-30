@@ -676,6 +676,7 @@ mod tests {
     use super::*;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Footprint;
+    use crate::map::Point;
     use crate::map::Position;
     use crate::objects::masters::{ClassId, class};
     use crate::objects::masters::{Master, Masters};
@@ -788,10 +789,10 @@ mod tests {
         ];
         let mut r = crate::vision::registry::Registry::new(4, 65);
         for (id, owner, at, class) in [
-            (20, 2, [6.0, 5.0], class::CLASS_6),
-            (21, 2, [5.0, 6.0], class::CLASS_6),
-            (30, 3, [4.0, 5.0], class::CLASS_6),
-            (31, 3, [5.0, 4.0], class::VILLAGER),
+            (20, 2, Point::new(6.0, 5.0), class::CLASS_6),
+            (21, 2, Point::new(5.0, 6.0), class::CLASS_6),
+            (30, 3, Point::new(4.0, 5.0), class::CLASS_6),
+            (31, 3, Point::new(5.0, 4.0), class::VILLAGER),
         ] {
             r.update_unit(UnitUpdate {
                 id,
@@ -881,7 +882,7 @@ mod tests {
                 .update_unit(UnitUpdate {
                     id: 22,
                     owner: 2,
-                    position: [13.0, 5.0],
+                    position: Point::new(13.0, 5.0),
                     radii: Footprint::new(0.2, 0.2),
                     class: class::CLASS_6,
                     old: 0,

@@ -7,6 +7,7 @@ use crate::garrison::transport::{
     TransportAction, in_zone, retry_point,
 };
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
@@ -172,7 +173,7 @@ impl crate::world::World {
                 .as_ref()
                 .ok_or(crate::pathing::zones::NO_TERRAIN)?;
             let rng = self.streams.get(crate::math::rng::Stream::Action);
-            let (point, sails) = retry_point([x, y], ship.map, terrain, rng);
+            let (point, sails) = retry_point(Point::new(x, y), ship.map, terrain, rng);
             let mut shore = MapShore::new(
                 &self.spatial,
                 &mut self.zones,
@@ -184,7 +185,7 @@ impl crate::world::World {
                 .actions
                 .transport_mut()
                 .ok_or(NO_TRANSPORT)?;
-            let [x, y] = point;
+            let (x, y) = (point.x(), point.y());
             t.point = t.point.with_x(x).with_y(y);
             if sails {
                 changes.push(t.set_state(SAIL_TO_UNLOAD, &ship, &mut shore)?);
@@ -230,7 +231,7 @@ impl crate::world::World {
         let ship = &self.players.player(p)?.objects[i];
         let radius = ship.master(&self.masters, p)?.radius;
         let mut spots = [Around {
-            center: [0.0; 2],
+            center: Point::ORIGIN,
             radius: Footprint::ZERO,
         }; SPOTS + 1];
         spots[1] = Around {
@@ -288,8 +289,8 @@ impl crate::world::World {
         made: &crate::objects::masters::Master,
         around: Around,
         zone: u32,
-        last: &mut Option<[f32; 2]>,
-    ) -> Result<Option<[f32; 2]>, GenieError> {
+        last: &mut Option<Point>,
+    ) -> Result<Option<Point>, GenieError> {
         let ship = &self.players.player(p)?.objects[i];
         let restriction = ship.master(&self.masters, p)?.terrain_restriction;
         let terrain = self
@@ -336,8 +337,9 @@ impl crate::world::World {
         let mut draws = DropDraws::new(around, made.radius, [w, h], last, &mut rng);
         let mut found = None;
         // the place's tests, each only after the one before passed
-        while let Some([x, y]) = draws.next_on_map()? {
-            if !in_zone([x, y], zone, zone_map)? {
+        while let Some(spot) = draws.next_on_map()? {
+            let (x, y) = (spot.x(), spot.y());
+            if !in_zone(spot, zone, zone_map)? {
                 continue;
             }
             let (rx, ry) = (made.radius.x(), made.radius.y());
@@ -363,11 +365,11 @@ impl crate::world::World {
                     placement: made.placement,
                 };
                 let map = crate::production::spawn::WorldMap { turns: &*self };
-                crate::production::spawn::placement(&placing, &map, [x, y], false)?
+                crate::production::spawn::placement(&placing, &map, spot, false)?
                     == crate::production::spawn::Tested::Free
             };
-            if free && self.spatial.point_clear(id, [x, y], grow, mask)? {
-                found = Some([x, y]);
+            if free && self.spatial.point_clear(id, spot, grow, mask)? {
+                found = Some(spot);
                 break;
             }
         }
@@ -386,7 +388,7 @@ impl crate::world::World {
         (p, i): (PlayerId, usize),
         id: i32,
         made: &crate::objects::masters::Master,
-        spot: [f32; 2],
+        spot: Point,
     ) -> Result<(), GenieError> {
         let ship = &self.players.player(p)?.objects[i];
         let at = ship.position();
@@ -399,12 +401,7 @@ impl crate::world::World {
         unit.body
             .base_mut()
             .inside_at(inner_id.get(), at, &mut self.spatial);
-        self.leave_container(
-            (p, i),
-            (up.index(), ui),
-            made,
-            Position::new(spot[0], spot[1], at.z()),
-        )?;
+        self.leave_container((p, i), (up.index(), ui), made, spot.with_height(at.z()))?;
         if let Some(ai) = self.players.player_mut(up)?.objects[ui].ai.as_mut() {
             ai.state_position = spot;
         }

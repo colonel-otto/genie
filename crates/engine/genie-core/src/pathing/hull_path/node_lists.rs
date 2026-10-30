@@ -112,7 +112,7 @@ impl HullPather<'_> {
         if open && (by_place || (0 <= hull && 0 <= vertex)) {
             let same = |n: &Node| {
                 if by_place {
-                    (at[0] - n.at[0]).abs() < EPSILON && (at[1] - n.at[1]).abs() < EPSILON
+                    (at.x() - n.at.x()).abs() < EPSILON && (at.y() - n.at.y()).abs() < EPSILON
                 } else {
                     n.hull == hull && n.vertex == vertex
                 }
@@ -214,13 +214,15 @@ impl HullPather<'_> {
         let cost = match parent {
             Some(p) => {
                 let q = *self.nodes.checked(p)?;
-                sqrt((q.at[1] - at[1]) * (q.at[1] - at[1]) + (q.at[0] - at[0]) * (q.at[0] - at[0]))
-                    + q.cost
+                sqrt(
+                    (q.at.y() - at.y()) * (q.at.y() - at.y())
+                        + (q.at.x() - at.x()) * (q.at.x() - at.x()),
+                ) + q.cost
             }
             None => 0.0,
         };
         let to_goal = goal.map_or(0.0, |g| {
-            sqrt((at[1] - g[1]) * (at[1] - g[1]) + (at[0] - g[0]) * (at[0] - g[0]))
+            sqrt((at.y() - g.y()) * (at.y() - g.y()) + (at.x() - g.x()) * (at.x() - g.x()))
         });
         Ok((cost, to_goal))
     }

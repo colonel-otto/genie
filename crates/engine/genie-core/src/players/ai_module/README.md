@@ -39,5 +39,5 @@ points are not saved: the load makes them none and empty.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`unit_ai`](../../unit_ai/), [`vision`](../../vision/), [`world`](../../world/).
+- Uses: [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`objects`](../../objects/), [`unit_ai`](../../unit_ai/), [`vision`](../../vision/), [`world`](../../world/).
 <!-- /uses -->

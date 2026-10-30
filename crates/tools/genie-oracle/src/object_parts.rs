@@ -3,6 +3,7 @@
 use crate::masters::MasterTable;
 use crate::vec3;
 use genie_core::GenieError;
+use genie_core::map::Point;
 use genie_core::map::Position;
 use genie_core::math::game_vector::GameVector;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
@@ -126,7 +127,7 @@ pub(super) fn unit_ai(
         retarget_timer: ai.randomized_retarget_timer,
         stance: ai.state_value,
         formation_type: ai.formation_type,
-        state_position: [ai.state_position_xvalue, ai.state_position_yvalue],
+        state_position: Point::new(ai.state_position_xvalue, ai.state_position_yvalue),
         retarget_disabled: ai.disable_retargeting,
         alert_mode: ai.alert_mode_value != 0,
         time_since_enemy: ai.time_since_enemy_sighting,

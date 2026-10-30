@@ -2,6 +2,7 @@
 //! builders, the placement test and the payment.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -85,7 +86,7 @@ impl World {
         &self,
         player: PlayerId,
         master: MasterId,
-        at: [f32; 2],
+        at: Point,
     ) -> Result<bool, GenieError> {
         let human = !self.players.player(player)?.computer;
         if self.placement_code(player, master, at, human)? != 0 {
@@ -101,7 +102,7 @@ impl World {
         &self,
         player: PlayerId,
         master: MasterId,
-        at: [f32; 2],
+        at: Point,
         human: bool,
     ) -> Result<u8, GenieError> {
         self.placement_code_beside(player, master, at, human, &[])
@@ -113,7 +114,7 @@ impl World {
         &self,
         player: PlayerId,
         master: MasterId,
-        at: [f32; 2],
+        at: Point,
         human: bool,
         own: &[i32],
     ) -> Result<u8, GenieError> {

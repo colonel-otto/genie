@@ -2,6 +2,7 @@
 //! seek and explore; an order on a target and one taken at once.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
@@ -46,7 +47,7 @@ impl UnitAi {
     /// and no defend target.
     pub(super) const fn defend_point(
         &mut self,
-        point: [f32; 2],
+        point: Point,
         range: f32,
         force: bool,
         at: &Surroundings,
@@ -55,7 +56,7 @@ impl UnitAi {
             return false;
         }
         self.set_action(Some(ActionKind::Defend));
-        self.target_at(-1, None, Position::new(point[0], point[1], at.position.z()));
+        self.target_at(-1, None, point.with_height(at.position.z()));
         self.desired_distance = range;
         self.defend_target = -1;
         true
@@ -265,14 +266,14 @@ impl UnitAi {
     /// itself as the target, with its class and place.
     pub(super) fn unload_at(
         &mut self,
-        point: [f32; 2],
+        point: Point,
         (force, over_wall): (bool, bool),
         (at, side): (&Surroundings, &mut dyn UnitSide),
     ) -> Result<bool, GenieError> {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
-        let to = Position::new(point[0], point[1], at.position.z());
+        let to = point.with_height(at.position.z());
         if !side.command(UnitCommand::Unload { to, over_wall })? {
             return Ok(false);
         }
@@ -327,10 +328,10 @@ impl UnitAi {
         if !force && self.current_action.is_some() {
             return Ok(false);
         }
-        let point = [tile[0] as f32, tile[1] as f32];
+        let point = Point::new(tile[0] as f32, tile[1] as f32);
         side.effect_now(Effect::Explore(point), self, rng)?;
         self.set_action(Some(ActionKind::ExploreAndDestroy));
-        self.target_at(-1, None, Position::new(point[0], point[1], EXPLORE_Z));
+        self.target_at(-1, None, point.with_height(EXPLORE_Z));
         Ok(true)
     }
 
@@ -460,10 +461,10 @@ impl UnitAi {
         if !again && self.current_action.is_some() {
             return Ok(false);
         }
-        let point = [x as f32, y as f32];
+        let point = Point::new(x as f32, y as f32);
         side.effect_now(Effect::Explore(point), self, rng)?;
         self.last_action = self.current_action.replace(ActionKind::Explore);
-        self.target_at(-1, None, Position::new(point[0], point[1], EXPLORE_Z));
+        self.target_at(-1, None, point.with_height(EXPLORE_Z));
         Ok(true)
     }
 
@@ -479,7 +480,7 @@ impl UnitAi {
         &mut self,
         unit_state: u8,
         order: QueuedOrder,
-        place: ([f32; 2], Option<ClassId>),
+        place: (Point, Option<ClassId>),
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {

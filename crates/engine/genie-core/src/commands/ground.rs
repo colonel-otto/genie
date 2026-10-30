@@ -2,6 +2,7 @@
 //! clearing and its place.
 
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -127,9 +128,10 @@ impl World {
             (site_at, radius),
             true,
         )?;
-        let Some([x, y]) = spot else {
+        let Some(spot) = spot else {
             return Ok(());
         };
+        let (x, y) = (spot.x(), spot.y());
         let loose = self.loose_units(units)?;
         for id in loose {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
@@ -210,7 +212,7 @@ impl World {
         &mut self,
         player: PlayerId,
         master: MasterId,
-        at: [f32; 2],
+        at: Point,
         trees: bool,
     ) -> Result<(), GenieError> {
         let Some(m) = player_master(&self.masters, player, master) else {

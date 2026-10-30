@@ -8,6 +8,7 @@
 use crate::GenieError;
 use crate::gathering::closest_resource::herded;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
@@ -49,7 +50,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     /// restriction's terrain classes, could stand at `point`.
     ///
     /// [`Spatial::point_clear`]: crate::map::spatial::Spatial::point_clear
-    fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, GenieError> {
+    fn can_stand(&mut self, point: Point) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "a stand test of a unit without movement state",

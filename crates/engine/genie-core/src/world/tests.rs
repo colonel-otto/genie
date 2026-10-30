@@ -735,7 +735,7 @@ fn a_completed_pasture_puts_its_livestock_on_its_edges() {
     for _ in 0..3 {
         let kind = LIVESTOCK[e.rand15() as usize % 2];
         let mut i = e.rand15() as usize % points.len();
-        let tile = |p: [f32; 2]| (p[0] as i32, p[1] as i32);
+        let tile = |p: Point| (p.x() as i32, p.y() as i32);
         while tiles.contains(&tile(points[i])) {
             let _ = points.remove(i);
             i = e.rand15() as usize % points.len();
@@ -748,7 +748,7 @@ fn a_completed_pasture_puts_its_livestock_on_its_edges() {
         }
     }
     t.setup_pasture(PlayerId::new(1), 50).unwrap();
-    let made: Vec<(MasterId, [f32; 2])> = t.players[1].objects[1..]
+    let made: Vec<(MasterId, Point)> = t.players[1].objects[1..]
         .iter()
         .map(|u| (u.life.master_id, u.position().ground()))
         .collect();
@@ -818,7 +818,7 @@ fn a_pasture_counts_each_attempt_and_shares_its_food() {
     for _ in 0..3 {
         let kind = LIVESTOCK[e.rand15() as usize % 2];
         let i = e.rand15() as usize % points.len();
-        let tile = |p: [f32; 2]| (p[0] as i32, p[1] as i32);
+        let tile = |p: Point| (p.x() as i32, p.y() as i32);
         assert!(
             !expected.iter().any(|&q| tile(q) == tile(points[i])),
             "the seed's points"
@@ -832,7 +832,7 @@ fn a_pasture_counts_each_attempt_and_shares_its_food() {
     }
     assert!(expected.len() < 3, "the seed draws an Ibex");
     t.setup_pasture(PlayerId::new(1), 50).unwrap();
-    let made: Vec<[f32; 2]> = t.players[1].objects[1..]
+    let made: Vec<Point> = t.players[1].objects[1..]
         .iter()
         .map(|u| u.position().ground())
         .collect();
@@ -968,7 +968,7 @@ fn a_villager_tends_the_nearest_livestock_with_room() {
     let t = tended_pasture(Position::new(20.0, 20.0, 0.0), 2.0);
     let ids = livestock(&t);
     let near = place(&t, ids[0]);
-    let mut t = tended_pasture(Position::new(near.x(), near.y(), 0.0), 2.0);
+    let mut t = tended_pasture(near.with_z(0.0), 2.0);
     let villager = t.players[1].objects.len() - 1;
     assert_eq!(t.pasture_pick(50, PlayerId::new(1), villager), Ok(ids[0]));
     let mut gaps: Vec<(f32, i32)> = ids
@@ -1622,7 +1622,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     assert_eq!(
         p.objects[1].town_bell.work,
         crate::orders::town_bell::BackToWork {
-            point: [29.0, 99.0],
+            point: Point::new(29.0, 99.0),
             ..crate::orders::town_bell::BackToWork::NONE
         }
     );
@@ -1647,7 +1647,7 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
         target_owner: -1,
         point: Position::new(19.760_416, 101.677_086, 0.0),
         range: 0.0,
-        shown: [19.760_416, 102.177_086],
+        shown: Point::new(19.760_416, 102.177_086),
         ready: true,
         target_type: -1,
     };
@@ -2450,7 +2450,7 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
         target_owner: 1,
         point: Position::ORIGIN,
         range: 0.0,
-        shown: [0.0; 2],
+        shown: Point::ORIGIN,
         ready: true,
         target_type: 80,
     };
@@ -3046,7 +3046,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             target_owner: -1,
             point: Position::new(10.0, 10.0, 0.0),
             range: 0.0,
-            shown: [10.0, 10.0],
+            shown: Point::new(10.0, 10.0),
             ready: true,
             target_type: -1,
         });
@@ -3081,11 +3081,11 @@ fn the_unit_ai_s_explore_walks_to_its_point_or_asks_for_one() {
     use crate::movement::explore::{WAIT, WALK, WANTS_POINT};
     use crate::unit_ai::Effect;
     let mut t = forage_world();
-    with_effects(&mut t, vec![Effect::Explore([40.0, 90.0])]).unwrap();
+    with_effects(&mut t, vec![Effect::Explore(Point::new(40.0, 90.0))]).unwrap();
     let e = t.players[1].objects[0].actions.explore().copied().unwrap();
     assert_eq!((e.state, e.point), (WALK, Position::new(40.0, 90.0, 0.0)));
     assert!(e.move_to.is_some());
-    with_effects(&mut t, vec![Effect::Explore([-1.0, 90.0])]).unwrap();
+    with_effects(&mut t, vec![Effect::Explore(Point::new(-1.0, 90.0))]).unwrap();
     let v = &t.players[1].objects[0];
     let e = v.actions.explore().copied().unwrap();
     assert_eq!((e.state, e.move_to), (WAIT, None));
@@ -3096,7 +3096,7 @@ fn the_unit_ai_s_explore_walks_to_its_point_or_asks_for_one() {
     );
     let mut t = forage_world();
     t.gather_command(PlayerId::new(1), 0, 600).unwrap();
-    assert!(with_effects(&mut t, vec![Effect::Explore([40.0, 90.0])]).is_err());
+    assert!(with_effects(&mut t, vec![Effect::Explore(Point::new(40.0, 90.0))]).is_err());
 }
 
 /// The unit AI's move to an object (slot 0x348, `FUN_141086440`): the forager's Gather goes (its
@@ -3188,7 +3188,7 @@ fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
         target_owner: 1,
         point: Position::ORIGIN,
         range: 0.0,
-        shown: [0.0; 2],
+        shown: Point::ORIGIN,
         ready: true,
         target_type: 80,
     };
@@ -3232,7 +3232,7 @@ fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
         target_owner: 1,
         point: Position::ORIGIN,
         range: 0.0,
-        shown: [0.0; 2],
+        shown: Point::ORIGIN,
         ready: true,
         target_type: 80,
     };
@@ -3331,7 +3331,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
         Ok(())
     })
     .unwrap();
-    assert_eq!(found.unwrap().spot, Some([30.5, 89.5]));
+    assert_eq!(found.unwrap().spot, Some(Point::new(30.5, 89.5)));
 }
 
 /// The auto scout's search from the forager's side ([`UnitSide::seek_unexplored`]): on a map
@@ -4963,7 +4963,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
         target_owner: 1,
         point: Position::new(30.0, 88.0, 0.0),
         range: 0.0,
-        shown: [30.0, 88.0],
+        shown: Point::new(30.0, 88.0),
         ready: true,
         target_type: 80,
     };
@@ -5522,7 +5522,7 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
         target_owner: 1,
         point: Position::new(30.0, 88.0, 0.0),
         range: 0.0,
-        shown: [30.0, 88.0],
+        shown: Point::new(30.0, 88.0),
         ready: true,
         target_type: 80,
     };
@@ -5568,7 +5568,7 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
         target_owner: 1,
         point: Position::new(30.0, 0.0, 0.0),
         range: 0.0,
-        shown: [30.0, 0.0],
+        shown: Point::new(30.0, 0.0),
         ready: true,
         target_type: 70,
     };
@@ -5622,7 +5622,7 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
         target_owner: 1,
         point: Position::new(30.0, 88.0, 0.0),
         range: 0.0,
-        shown: [30.0, 88.0],
+        shown: Point::new(30.0, 88.0),
         ready: true,
         target_type: 70,
     };
@@ -5810,7 +5810,7 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
         target_type: 3,
         action: Some(ActionKind::Build),
         target2: -1,
-        point: [1.0, 2.0],
+        point: Point::new(1.0, 2.0),
     };
     t.players[1].objects[0].town_bell.work = work;
     t.queue_way_back(PlayerId::new(1), 0).unwrap();
@@ -5825,7 +5825,7 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
             target_owner: 1,
             point: Position::new(30.0, 88.0, 0.0),
             range: 0.0,
-            shown: [30.0, 88.0],
+            shown: Point::new(30.0, 88.0),
             ready: true,
             target_type: 70,
         }]
@@ -8007,7 +8007,7 @@ fn hands_world(id: i32, p: PlayerId, class: ClassId, master: MasterId, los: f32)
     r.update_unit(UnitUpdate {
         id,
         owner: p.index() as u8,
-        position: [10.5, 10.5],
+        position: Point::new(10.5, 10.5),
         radii: Footprint::new(0.2, 0.2),
         class,
         old: 0,
@@ -8670,7 +8670,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             quiet: false,
             ..MoveToAction::sub_to_point(Position::new(12.0, 12.0, 0.0), 0.0, None)
         }),
-        home: [10.0, 10.0],
+        home: Point::new(10.0, 10.0),
         task: crate::objects::masters::Task::default(),
     }));
     bird.body.mover_mut().unwrap().stats.speed = 1.3;
@@ -9770,7 +9770,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
     r.update_unit(UnitUpdate {
         id: 500,
         owner: 1,
-        position: [11.5, 10.5],
+        position: Point::new(11.5, 10.5),
         radii: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         old: 0,
@@ -9898,7 +9898,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
     r.update_unit(UnitUpdate {
         id: 500,
         owner: 1,
-        position: [11.5, 10.5],
+        position: Point::new(11.5, 10.5),
         radii: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         old: 0,
@@ -13146,7 +13146,7 @@ fn a_reseed_without_a_farm_to_make_makes_nothing() {
         |t| t.players[1].objects[0].actions.set_gather(None),
         |t| {
             let g = t.players[1].objects[0].actions.gather_mut().unwrap();
-            g.farm = [-1.0, -1.0];
+            g.farm = Point::new(-1.0, -1.0);
         },
         |t| (t.players[1].farm_queue, t.players[1].fish_trap_queue) = (0, 1),
         |t| t.masters[1].get_mut(master_id(259)).unwrap().class = class::FISHING_SHIP,
@@ -13326,16 +13326,20 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
 fn a_resource_search_starts_from_its_point_unless_it_is_none_or_has_a_site() {
     let unit = Position::new(5.0, 6.0, 0.5);
     assert_eq!(
-        search_origin([12.5, 30.5], false, unit),
+        search_origin(Point::new(12.5, 30.5), false, unit),
         Position::new(12.5, 30.5, 0.5)
     );
     assert_eq!(search_origin(crate::unit_ai::NO_POINT, false, unit), unit);
-    assert_eq!(search_origin([12.5, 30.5], true, unit), unit);
+    assert_eq!(search_origin(Point::new(12.5, 30.5), true, unit), unit);
     assert_eq!(
-        search_origin([-1.0, 3.0], false, unit),
+        search_origin(Point::new(-1.0, 3.0), false, unit),
         Position::new(-1.0, 3.0, 0.5)
     );
-    assert!(search_origin([f32::NAN, -1.0], false, unit).x().is_nan());
+    assert!(
+        search_origin(Point::new(f32::NAN, -1.0), false, unit)
+            .x()
+            .is_nan()
+    );
 }
 
 /// Where a stop lands its error names what was running: a command's stop the command, an
@@ -13654,7 +13658,13 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
     t.graphics = std::collections::BTreeMap::from([(300, sprite(300)), (301, sprite(301))]);
     let masters = archer_masters(hit_chance, max_volley, spread);
     t.masters = vec![masters.clone(), masters];
-    walker(&mut t, PlayerId::new(1), 123, master_id(4), [10.0, 10.0]);
+    walker(
+        &mut t,
+        PlayerId::new(1),
+        123,
+        master_id(4),
+        Point::new(10.0, 10.0),
+    );
     let archer = &mut t.players[1].objects[0];
     if let Some(m) = archer.body.mover_mut() {
         m.sprite_facets = Some(crate::objects::facing::SpriteFacets {
@@ -14289,7 +14299,7 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
         target_owner: 0,
         point: Position::new(36.5, 89.5, 0.0),
         range: 0.0,
-        shown: [36.5, 89.5],
+        shown: Point::new(36.5, 89.5),
         ready: true,
         target_type: 7,
     };
@@ -14701,7 +14711,7 @@ fn flown(move_to: MoveTo, setup: impl FnOnce(&mut Unit)) -> Flown {
             quiet: false,
             ..MoveToAction::sub_to_point(Position::new(40.5, 89.5, 0.0), 0.0, None)
         }),
-        home: [29.5, 89.5],
+        home: Point::new(29.5, 89.5),
         task,
     }));
     setup(v);
@@ -14786,7 +14796,7 @@ fn an_explore_s_move_to_shows_the_master_s_walking_sprite_as_it_starts() {
     let master = t.players[1].objects[0].life.master_id;
     t.masters[1].get_mut(master).unwrap().move_sprite = 31;
     let r = in_update(&mut t, (PlayerId::new(1), 0), 50, |unit, c| {
-        unit.explore_to([40.5, 89.5], c)?;
+        unit.explore_to(Point::new(40.5, 89.5), c)?;
         let me = crate::movement::Me {
             id: unit.id.get(),
             group: unit.group.id,
@@ -14871,7 +14881,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
         r.update_unit(UnitUpdate {
             id,
             owner: 0,
-            position: [x, 89.5],
+            position: Point::new(x, 89.5),
             radii: Footprint::new(0.2, 0.2),
             class: class::PREY,
             old: 0,
@@ -14945,7 +14955,7 @@ fn a_hunter_with_a_queued_order_after_the_drop_ends_its_hunt() {
         target_owner: 0,
         point: Position::new(36.5, 89.5, 0.0),
         range: 0.0,
-        shown: [36.5, 89.5],
+        shown: Point::new(36.5, 89.5),
         ready: true,
         target_type: 9,
     };

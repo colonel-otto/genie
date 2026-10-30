@@ -1,6 +1,7 @@
 //! The old short pather's queries, the map's edge records and the segment tests.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::spatial::{QUERY_HITS, Spatial, TESTED_KINDS};
 use crate::objects::masters::class;
 
@@ -41,18 +42,18 @@ impl Spatial {
     /// [`Gait::moving`]: crate::map::spatial::Gait::moving
     pub(super) fn pather_query(
         &mut self,
-        a: [f32; 2],
-        b: [f32; 2],
+        a: Point,
+        b: Point,
         buffer: Option<f32>,
         mask: u8,
         ignore: &[i32],
         first: bool,
     ) -> Result<Vec<Hit>, GenieError> {
         const MOST_HITS: usize = 25;
-        let lo_x = if b[0] <= a[0] { b[0] } else { a[0] };
-        let hi_x = if a[0] <= b[0] { b[0] } else { a[0] };
-        let lo_y = if b[1] <= a[1] { b[1] } else { a[1] };
-        let hi_y = if a[1] <= b[1] { b[1] } else { a[1] };
+        let lo_x = if b.x() <= a.x() { b.x() } else { a.x() };
+        let hi_x = if a.x() <= b.x() { b.x() } else { a.x() };
+        let lo_y = if b.y() <= a.y() { b.y() } else { a.y() };
+        let hi_y = if a.y() <= b.y() { b.y() } else { a.y() };
         let g = buffer.unwrap_or(0.0);
         self.put_tile_records(a, b, g, mask);
         let [w, h] = self.map;
@@ -65,7 +66,7 @@ impl Spatial {
             }
         }
         self.check_known_records(grown)?;
-        let walk = [a[0], a[1], b[0], b[1]];
+        let walk = [a.x(), a.y(), b.x(), b.y()];
         let meets = |kind: u8, bx: [f32; 4]| {
             let r = [bx[0] - g, bx[1] - g, g + bx[2], g + bx[3]];
             lo_x <= r[2]
@@ -128,8 +129,8 @@ impl Spatial {
     /// `FUN_141052b90`, then `FUN_141052350` with flags 0x40).
     pub fn pather_blocked(
         &mut self,
-        a: [f32; 2],
-        b: [f32; 2],
+        a: Point,
+        b: Point,
         buffer: Option<f32>,
         mask: u8,
         ignore: &[i32],
@@ -143,8 +144,8 @@ impl Spatial {
     /// ([`Spatial::pather_query`]: `FUN_141052b90`, then `FUN_141051900` with flags 0x40).
     pub fn pather_hits(
         &mut self,
-        a: [f32; 2],
-        b: [f32; 2],
+        a: Point,
+        b: Point,
         buffer: Option<f32>,
         mask: u8,
         ignore: &[i32],
@@ -211,9 +212,9 @@ impl Spatial {
 
 /// `FUN_1410576a0`, Sedgewick's ccw: 1 when `p0`, `p1`, `p2` turn counter-clockwise (or lie in
 /// a line with `p2` beyond `p1`), -1 clockwise (or `p0` between), 0 when `p2` lies on the segment.
-pub(super) fn ccw(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2]) -> i32 {
-    let (dx1, dy1) = (p1[0] - p0[0], p1[1] - p0[1]);
-    let (dx2, dy2) = (p2[0] - p0[0], p2[1] - p0[1]);
+pub(super) fn ccw(p0: Point, p1: Point, p2: Point) -> i32 {
+    let (dx1, dy1) = (p1.x() - p0.x(), p1.y() - p0.y());
+    let (dx2, dy2) = (p2.x() - p0.x(), p2.y() - p0.y());
     // every test is COMISS/JA (0x1410576ee..0x14105772e): an unordered one falls through, so a
     // NaN reaches the last answer, 0
     if dy2 * dx1 > dx2 * dy1 {
@@ -258,7 +259,7 @@ impl<'a> SmoothingWalls<'a> {
 }
 
 impl<E> crate::pathing::tile_path::SegmentTest<E> for SmoothingWalls<'_> {
-    fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, E> {
+    fn blocked(&mut self, a: Point, b: Point) -> Result<bool, E> {
         self.ran = true;
         // the pass's buffer, the unit's radius (FUN_1410562d0 with 1)
         self.world.set_manager_buffer(Some(self.radius));
@@ -276,8 +277,8 @@ impl<E> crate::pathing::tile_path::SegmentTest<E> for SmoothingWalls<'_> {
 /// (its ends' lower and upper x and y) and the query's box, grown by the manager's buffer.
 pub(super) struct WalkTest {
     pub(super) walk: [f32; 4],
-    pub(super) lo: [f32; 2],
-    pub(super) hi: [f32; 2],
+    pub(super) lo: Point,
+    pub(super) hi: Point,
     pub(super) grow: f32,
     pub(super) query: [f32; 4],
 }
@@ -285,21 +286,21 @@ pub(super) struct WalkTest {
 impl WalkTest {
     /// The walk from `a` to `b` of a unit `grow` wide; None when its grown box leaves a map of
     /// `map` tiles (the query then counts as met).
-    pub(super) fn new(a: [f32; 2], b: [f32; 2], grow: f32, [w, h]: [i32; 2]) -> Option<Self> {
-        let lo = [
-            if b[0] <= a[0] { b[0] } else { a[0] },
-            if b[1] <= a[1] { b[1] } else { a[1] },
-        ];
-        let hi = [
-            if a[0] <= b[0] { b[0] } else { a[0] },
-            if a[1] <= b[1] { b[1] } else { a[1] },
-        ];
-        let query = [lo[0] - grow, lo[1] - grow, grow + hi[0], grow + hi[1]];
+    pub(super) fn new(a: Point, b: Point, grow: f32, [w, h]: [i32; 2]) -> Option<Self> {
+        let lo = Point::new(
+            if b.x() <= a.x() { b.x() } else { a.x() },
+            if b.y() <= a.y() { b.y() } else { a.y() },
+        );
+        let hi = Point::new(
+            if a.x() <= b.x() { b.x() } else { a.x() },
+            if a.y() <= b.y() { b.y() } else { a.y() },
+        );
+        let query = [lo.x() - grow, lo.y() - grow, grow + hi.x(), grow + hi.y()];
         if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
             return None;
         }
         Some(Self {
-            walk: [a[0], a[1], b[0], b[1]],
+            walk: [a.x(), a.y(), b.x(), b.y()],
             lo,
             hi,
             grow,
@@ -312,16 +313,16 @@ impl WalkTest {
     pub(super) fn meets(&self, bx: [f32; 4]) -> bool {
         let g = self.grow;
         let grown = [bx[0] - g, bx[1] - g, g + bx[2], g + bx[3]];
-        self.lo[0] <= grown[2]
-            && grown[0] <= self.hi[0]
-            && self.lo[1] <= grown[3]
-            && grown[1] <= self.hi[1]
+        self.lo.x() <= grown[2]
+            && grown[0] <= self.hi.x()
+            && self.lo.y() <= grown[3]
+            && grown[1] <= self.hi.y()
             && box_meets_segment(bx, g, self.walk)
     }
 }
 
 /// `FUN_141054ec0`: whether segments `p1`–`p2` and `p3`–`p4` meet.
-pub(super) fn segments_meet(p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], p4: [f32; 2]) -> bool {
+pub(super) fn segments_meet(p1: Point, p2: Point, p3: Point, p4: Point) -> bool {
     (ccw(p1, p2, p4) * ccw(p1, p2, p3)) as f32 <= 0.0
         && (ccw(p3, p4, p2) * ccw(p3, p4, p1)) as f32 <= 0.0
 }
@@ -364,12 +365,13 @@ pub(super) fn segment_meets_box(
     walk: [f32; 4],
     [lo_x, lo_y, hi_x, hi_y]: [f32; 4],
 ) -> bool {
-    let (start, end) = ([walk[0], walk[1]], [walk[2], walk[3]]);
+    let [wx0, wy0, wx1, wy1] = walk;
+    let (start, end) = (Point::new(wx0, wy0), Point::new(wx1, wy1));
     let edges = [
-        ([bx0 - r, by0 - r], [r + bx1, by0 - r]),
-        ([r + bx1, by0 - r], [r + bx1, r + by1]),
-        ([r + bx1, r + by1], [bx0 - r, r + by1]),
-        ([bx0 - r, r + by1], [bx0 - r, by0 - r]),
+        (Point::new(bx0 - r, by0 - r), Point::new(r + bx1, by0 - r)),
+        (Point::new(r + bx1, by0 - r), Point::new(r + bx1, r + by1)),
+        (Point::new(r + bx1, r + by1), Point::new(bx0 - r, r + by1)),
+        (Point::new(bx0 - r, r + by1), Point::new(bx0 - r, by0 - r)),
     ];
     if edges
         .iter()
@@ -379,11 +381,11 @@ pub(super) fn segment_meets_box(
     }
     // COMISS/JC (0x141052fb8..0x141052ff9, 0x1410530dc..0x141053119; 0x1410514ad..0x141051620,
     // 0x14105189e..0x1410518f2): a NaN coordinate is out
-    let outside = |p: [f32; 2]| {
-        crate::math::fmath::below_or_unordered(p[0], lo_x - r)
-            || crate::math::fmath::below_or_unordered(r + hi_x, p[0])
-            || crate::math::fmath::below_or_unordered(p[1], lo_y - r)
-            || crate::math::fmath::below_or_unordered(r + hi_y, p[1])
+    let outside = |p: Point| {
+        crate::math::fmath::below_or_unordered(p.x(), lo_x - r)
+            || crate::math::fmath::below_or_unordered(r + hi_x, p.x())
+            || crate::math::fmath::below_or_unordered(p.y(), lo_y - r)
+            || crate::math::fmath::below_or_unordered(r + hi_y, p.y())
     };
     !(outside(start) && outside(end))
 }

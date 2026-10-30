@@ -11,6 +11,7 @@
 //! `FUN_1415e23f0`; the revealed units `FUN_14152bcb0`; the tile list's refill `FUN_141285cb0`.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
@@ -254,7 +255,7 @@ impl World {
         let holder_master = h.master(&self.masters, hp)?;
         if holder_master.kind == master_type::BUILDING {
             let hi = self.live_index(hp, holder)?;
-            if !self.let_out(hp, hi, id, [NO_POINT; 2], (None, true))? {
+            if !self.let_out(hp, hi, id, Point::from([NO_POINT; 2]), (None, true))? {
                 self.destroy(p, id)?;
             }
         } else if holder_master.class == class::SIEGE {
@@ -302,7 +303,7 @@ impl World {
         let bi = self.live_index(p, id)?;
         for &g in garrison.iter().rev() {
             if self.object(g).is_some_and(|(gp, _)| gp == q)
-                && !self.let_out(p, bi, g, [NO_POINT; 2], (None, true))?
+                && !self.let_out(p, bi, g, Point::from([NO_POINT; 2]), (None, true))?
             {
                 self.destroy(q, g)?;
             }

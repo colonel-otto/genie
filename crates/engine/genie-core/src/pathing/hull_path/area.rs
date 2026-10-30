@@ -21,7 +21,7 @@ impl HullPather<'_> {
         if !self.world.point_hit(to, grow, &self.ignore, false)? {
             return Ok(None);
         }
-        let [x, y] = to;
+        let (x, y) = (to.x(), to.y());
         let near: Vec<i32> = self
             .world
             .records()
@@ -73,17 +73,17 @@ impl HullPather<'_> {
         let Some(t) = self.world.get_known(target_id)? else {
             return Ok(false);
         };
-        if t.position.x() != to[0] || t.position.y() != to[1] {
+        if t.position.x() != to.x() || t.position.y() != to.y() {
             return Ok(false);
         }
         let r = self.radius;
         let [w, h] = self.world.map;
         self.bounds = [0.0, 0.0, w as f32 - 0.0, h as f32 - 0.0];
         let [bx0, by0, bx1, by1] = self.bounds;
-        let on_map = at_most_or_unordered(bx0, to[0])
-            && at_most_or_unordered(to[0], bx1)
-            && at_most_or_unordered(by0, to[1])
-            && at_most_or_unordered(to[1], by1);
+        let on_map = at_most_or_unordered(bx0, to.x())
+            && at_most_or_unordered(to.x(), bx1)
+            && at_most_or_unordered(by0, to.y())
+            && at_most_or_unordered(to.y(), by1);
         if on_map {
             self.bounds = [r, r, w as f32 - r, h as f32 - r];
         }
@@ -94,14 +94,21 @@ impl HullPather<'_> {
     /// range of the goal it is a path (1); one that ends no nearer the goal than the start is none.
     pub(super) fn partway(&self, path: &mut Waypoints, from: Point, to: Point, range: f32) -> u8 {
         let mut result = 2;
-        let last = *path.points.last().unwrap_or(&[f32::NAN, f32::NAN]);
-        if (last[0] - self.start[0]).abs() < EPSILON && (last[1] - self.start[1]).abs() < EPSILON {
+        let last = *path
+            .points
+            .last()
+            .unwrap_or(&Point::new(f32::NAN, f32::NAN));
+        if (last.x() - self.start.x()).abs() < EPSILON
+            && (last.y() - self.start.y()).abs() < EPSILON
+        {
             path.points.clear();
             result = 3;
         }
-        let d = (last[1] - to[1]) * (last[1] - to[1]) + (last[0] - to[0]) * (last[0] - to[0]);
+        let d =
+            (last.y() - to.y()) * (last.y() - to.y()) + (last.x() - to.x()) * (last.x() - to.x());
         // `COMISS`/`JC` (0x140f876ca): an unordered distance counts as nearer
-        let start = (from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]);
+        let start =
+            (from.y() - to.y()) * (from.y() - to.y()) + (from.x() - to.x()) * (from.x() - to.x());
         if below_or_unordered(d, start) {
             if d < range * range {
                 result = 1;
@@ -157,14 +164,15 @@ impl HullPather<'_> {
                     .checked(k)?
                     .points
                     .last()
-                    .unwrap_or(&[0.0, 0.0]);
+                    .unwrap_or(&Point::ORIGIN);
                 let i = if *by.checked(k)? == 0 {
                     points.len()
                 } else {
                     *by.checked(k)?
                 };
                 let p = *points.checked(i - 1)?;
-                Ok((last[1] - p[1]) * (last[1] - p[1]) + (last[0] - p[0]) * (last[0] - p[0]))
+                Ok((last.y() - p.y()) * (last.y() - p.y())
+                    + (last.x() - p.x()) * (last.x() - p.x()))
             })
             .collect::<Result<_, GenieError>>()?;
         for a in 0..count {
@@ -186,7 +194,7 @@ impl HullPather<'_> {
                 .checked(e)?
                 .points
                 .last()
-                .unwrap_or(&[0.0, 0.0]);
+                .unwrap_or(&Point::ORIGIN);
             let hull = self.hulls.checked_mut(hull)?;
             let at = if joined + *by.checked(k)? != 0 {
                 joined + *by.checked(k)?

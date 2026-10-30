@@ -60,7 +60,7 @@ impl World {
             own,
             ..
         } = *g;
-        let (player, [x, y]) = (player, point.xy());
+        let (player, [x, y]) = (player, point.get());
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone
             let Some(i) = self.position_of_id(player, id)? else {
@@ -80,7 +80,7 @@ impl World {
                 };
                 Some(GatherPoint {
                     state: 1,
-                    point: Position::new(unit.position().x(), unit.position().y(), z),
+                    point: unit.position().with_z(z),
                     target,
                     target_master,
                 })
@@ -157,37 +157,35 @@ impl World {
         target: Option<ObjectId>,
         point: Point,
     ) -> Result<(), GenieError> {
-        let (player, target, [x, y]) = (player.index(), ObjectId::field(target), point.xy());
-        let step = |turns: &Self,
-                    t: i32,
-                    at: [f32; 2]|
-         -> Result<crate::unit_ai::QueuedOrder, GenieError> {
-            let named = if t == -1 { None } else { turns.object(t) };
-            let (target, owner, class) = match named {
-                Some((tp, u)) => (
-                    t,
-                    tp.index() as i32,
-                    i32::from(u.master(&turns.masters, tp)?.class.get()),
-                ),
-                None => (-1, -1, -1),
+        let (player, target, [x, y]) = (player.index(), ObjectId::field(target), point.get());
+        let step =
+            |turns: &Self, t: i32, at: Point| -> Result<crate::unit_ai::QueuedOrder, GenieError> {
+                let named = if t == -1 { None } else { turns.object(t) };
+                let (target, owner, class) = match named {
+                    Some((tp, u)) => (
+                        t,
+                        tp.index() as i32,
+                        i32::from(u.master(&turns.masters, tp)?.class.get()),
+                    ),
+                    None => (-1, -1, -1),
+                };
+                Ok(crate::unit_ai::QueuedOrder {
+                    issuer: player as i32,
+                    order: if target < 0 {
+                        OrderKind::Move
+                    } else {
+                        OrderKind::OnTarget
+                    },
+                    priority: -1,
+                    target,
+                    target_owner: owner,
+                    point: at.with_height(-1.0),
+                    range: 0.0,
+                    shown: Point::new(-1.0, -1.0),
+                    ready: false,
+                    target_type: class,
+                })
             };
-            Ok(crate::unit_ai::QueuedOrder {
-                issuer: player as i32,
-                order: if target < 0 {
-                    OrderKind::Move
-                } else {
-                    OrderKind::OnTarget
-                },
-                priority: -1,
-                target,
-                target_owner: owner,
-                point: Position::new(at[0], at[1], -1.0),
-                range: 0.0,
-                shown: [-1.0, -1.0],
-                ready: false,
-                target_type: class,
-            })
-        };
         for id in ObjectId::fields(ids) {
             let Some(crate::orders::Place::Live(p, i)) = self.place(id) else {
                 if self.place(id).is_some() {
@@ -216,7 +214,7 @@ impl World {
                 }
                 queued.push(first);
             }
-            queued.push(step(self, target, [x, y])?);
+            queued.push(step(self, target, Point::new(x, y))?);
             let unit = self.players.live_mut(p, i)?;
             if building {
                 unit.gather_point = None;

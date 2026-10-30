@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::msvc;
 use crate::objects::masters::ClassId;
@@ -385,7 +386,7 @@ pub fn closest_resource_at<W>(
     let los = seeker.line_of_sight as i32;
     let unit_tile = (ux as i32, uy as i32);
     // the sort's point, and the box's side (fixed for both passes)
-    let (sort_at, side) = sort_point_and_side([ux, uy], los, site);
+    let (sort_at, side) = sort_point_and_side(Point::new(ux, uy), los, site);
     let half = side / 2;
     let nearer = |a: Cell, b: Cell| {
         let d = |c: Cell| {
@@ -528,10 +529,10 @@ fn push_neighbours(
 /// [`closest_resource_at`]'s sort point and box side: without a site the unit's place and
 /// three times its line of sight plus 10; with one the point a quarter of the way from the
 /// site's place to the unit's, and for a footprint search the larger line of sight of the two.
-fn sort_point_and_side(at: [f32; 2], los: i32, site: Option<&SearchSite>) -> ((f32, f32), i32) {
+fn sort_point_and_side(at: Point, los: i32, site: Option<&SearchSite>) -> ((f32, f32), i32) {
     const SITE_SHARE: f32 = crate::math::image::gather_search::SITE_SHARE;
     const UNIT_SHARE: f32 = crate::math::image::gather_search::UNIT_SHARE;
-    let [ux, uy] = at;
+    let (ux, uy) = (at.x(), at.y());
     site.map_or(((ux, uy), (los + 10) * 3), |s| {
         let (sx, sy) = (s.position.x(), s.position.y());
         let at = (

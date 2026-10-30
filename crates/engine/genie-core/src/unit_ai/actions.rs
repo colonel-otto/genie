@@ -1,6 +1,7 @@
 //! The actions' outcomes, the stops and the order queue.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
@@ -261,7 +262,7 @@ impl UnitAi {
     pub(crate) fn stop_with(
         &mut self,
         keep_order: bool,
-        place: Option<([f32; 2], Option<ClassId>)>,
+        place: Option<(Point, Option<ClassId>)>,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
@@ -324,7 +325,7 @@ impl UnitAi {
         if !crate::math::fmath::below_or_unordered(WALK_BACK, gap) {
             return Ok(false);
         }
-        let [x, y] = self.state_position;
+        let (x, y) = (self.state_position.x(), self.state_position.y());
         side.effect_now(
             Effect::Move(AiMove {
                 point: Position::new(x, y, at.position.z()),

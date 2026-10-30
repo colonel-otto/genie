@@ -33,10 +33,10 @@ pub(crate) fn gate_units(
     };
     let (from, to) = (place(a)?, place(b)?);
     let rect = [
-        from[0].min(to[0]),
-        from[1].min(to[1]),
-        from[0].max(to[0]),
-        from[1].max(to[1]),
+        from.x().min(to.x()),
+        from.y().min(to.y()),
+        from.x().max(to.x()),
+        from.y().max(to.y()),
     ];
     let owner = spatial
         .get(gate)

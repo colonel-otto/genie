@@ -1,6 +1,7 @@
 //! The smoothing of a found path (`FUN_140f7dbb0`): its straight stretches wherever the unit
 //! can walk straight.
 
+use crate::map::Point;
 use crate::math::fmath;
 use crate::math::fmath::BVector;
 use crate::pathing::tile_path::Path;
@@ -22,7 +23,7 @@ pub trait SegmentTest<E> {
     /// # Errors
     ///
     /// What the test cannot answer.
-    fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, E>;
+    fn blocked(&mut self, a: Point, b: Point) -> Result<bool, E>;
 
     /// A pass that tested walks ends (`FUN_1410561f0`): the temporary tile records its walks put
     /// go.

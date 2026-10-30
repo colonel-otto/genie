@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::groups::CommandArgs;
-use crate::map::Position;
+use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
@@ -21,7 +21,7 @@ struct GroupsOrder {
     /// The order's target object, none for a point.
     target: Option<ObjectId>,
     /// The order's point.
-    point: [f32; 2],
+    point: Point,
     /// The command each group takes at the end.
     args: CommandArgs,
     /// The command a queued order's new group first takes on its first unit's target.
@@ -54,7 +54,7 @@ impl World {
         player: PlayerId,
         id: i32,
         others: &[i32],
-        centroid: Option<[f32; 2]>,
+        centroid: Option<Point>,
         order: &Interact,
     ) -> Result<(), GenieError> {
         let Some(place) = self.place(id) else {
@@ -81,7 +81,7 @@ impl World {
         if still {
             // an object that does not move takes slot 0x128 at once with 1 (no carried-resource
             // test, any task) at the order's point, z 0; a queued order then goes on as a mover's
-            self.order_at_once(player, idx, ObjectId::field(order.target), order.point.xy())?;
+            self.order_at_once(player, idx, ObjectId::field(order.target), order.point)?;
             if !order.queued {
                 return Ok(());
             }
@@ -109,8 +109,8 @@ impl World {
             }
         }
         let point = centroid.map_or_else(
-            || order.point.xy(),
-            |c| offset_point(unit.position().ground(), c, order.point.xy(), map),
+            || order.point,
+            |c| offset_point(unit.position().ground(), c, order.point, map),
         );
         let takes_it = unit
             .ai
@@ -126,7 +126,7 @@ impl World {
             if ObjectId::field(order.target) == id {
                 return Ok(());
             }
-            let at = Position::new(point[0], point[1], 0.0);
+            let at = point.with_height(0.0);
             let work = Work {
                 target: ObjectId::field(order.target),
                 point: at,
@@ -148,9 +148,9 @@ impl World {
                 -1
             },
             target_owner,
-            point: Position::new(point[0], point[1], 0.0),
+            point: point.with_height(0.0),
             range: 0.0,
-            shown: order.point.xy(),
+            shown: order.point,
             ready: order.direct,
             target_type,
         };
@@ -177,7 +177,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: i32,
-        point: [f32; 2],
+        point: Point,
     ) -> Result<(), GenieError> {
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
@@ -188,7 +188,7 @@ impl World {
         }
         let work = Work {
             target,
-            point: Position::new(point[0], point[1], 0.0),
+            point: point.with_height(0.0),
             carry_test: false,
             filter: -1,
             notified: true,
@@ -326,7 +326,7 @@ impl World {
                 .filter(|&(j, _)| j != i)
                 .map(|(_, &u)| u)
                 .collect();
-            let cell = narrow.then(|| grid_point(i, loose.len(), order.point.xy(), map));
+            let cell = narrow.then(|| grid_point(i, loose.len(), order.point, map));
             self.move_unit(player, id, &others, cell, order)?;
         }
         Ok(())
@@ -341,7 +341,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let groups = GroupsOrder {
             target: order.target,
-            point: order.point.xy(),
+            point: order.point,
             args: CommandArgs {
                 queued: order.queued,
                 direct: order.direct,
@@ -367,7 +367,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let groups = GroupsOrder {
             target: order.target,
-            point: order.point.xy(),
+            point: order.point,
             args: CommandArgs {
                 queued: order.queued,
                 direct: order.direct,
@@ -467,7 +467,7 @@ impl World {
     /// AI, names its target (`+0x48`, `FUN_140c4cc40`); the object the world holds for it
     /// (`FUN_1415417a0`) gives its id and its place (x, y). The unit AI's retarget flag
     /// (`FUN_140c4ee90`: `+0x1d6` is 0) is the command's seventh argument, as the game passes it.
-    pub(super) fn first_unit_target(&self, units: &[i32]) -> Option<(i32, [f32; 2], bool)> {
+    pub(super) fn first_unit_target(&self, units: &[i32]) -> Option<(i32, Point, bool)> {
         let (_, first) = units.iter().find_map(|&id| self.object(id))?;
         let ai = first.ai.as_ref()?;
         let t = self.world_object(ai.current_target)?;

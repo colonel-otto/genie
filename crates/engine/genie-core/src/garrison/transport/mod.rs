@@ -15,6 +15,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction, MoveToReads};
 use crate::objects::sprite::Graphic;
@@ -143,7 +144,7 @@ pub trait Shore {
     /// `FUN_140f7c390` with the planner of the unit's restriction (`FUN_140f7cb30`, none without
     /// a master): the last point of the planner's path from `from` to `to` whose tile has an edge
     /// ([`crate::pathing::tile_path::Planner::last_open_point`]); None without a planner or such a point.
-    fn shore_point(&mut self, from: [f32; 2], to: [f32; 2]) -> Option<[f32; 2]>;
+    fn shore_point(&mut self, from: Point, to: Point) -> Option<Point>;
 }
 
 /// What a state change leaves to its caller.

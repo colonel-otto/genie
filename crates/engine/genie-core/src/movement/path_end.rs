@@ -1,5 +1,6 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
@@ -25,7 +26,7 @@ const KEPT_BY_MEMBERS: [ClassId; 4] = [class::BUILDING, class::WALL, class::GATE
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ReachAsk {
     /// The goal (x, y on the map).
-    pub(super) goal: [f32; 2],
+    pub(super) goal: Point,
     /// The target object's id.
     pub(super) target: Option<i32>,
     /// How near the goal counts.
@@ -72,7 +73,7 @@ impl Mover {
                 && fmath::below_or_unordered(px, w as f32)
                 && fmath::below_or_unordered(py, h as f32)
         };
-        if !on_map(x, y) || !on_map(to[0], to[1]) {
+        if !on_map(x, y) || !on_map(to.x(), to.y()) {
             return Ok(false);
         }
         let radius = self.stats.radius;
@@ -86,7 +87,7 @@ impl Mover {
         let mut path = Path::default();
         if let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) {
             let req = Request {
-                from: [x, y],
+                from: Point::new(x, y),
                 to,
                 radii: radius.x() + target_radius,
                 range: if bonus { range + WIDE_RANGE } else { range },
@@ -99,13 +100,13 @@ impl Mover {
             }
         }
         let solid = 0.0 < radius.z() && 0.0 < radius.x() && 0.0 < radius.y();
-        let (dx, dy) = (to[0] - x, to[1] - y);
+        let (dx, dy) = (to.x() - x, to.y() - y);
         if solid && fmath::sqrt(dx * dx + 0.0 + dy * dy) <= REACH_SHORT {
-            let goal = BVector::new(to[0], 0.0, to[1]);
+            let goal = BVector::new(to.x(), 0.0, to.y());
             // FUN_140fa0370 hands the start test both vectors' first two floats: x and the
             // height, the unit's (`+0x824`) and the target's (slot 0x520), not x and y
             let height = placed.map_or(0.0, |t| t.position.z());
-            let line = ([x, height_at], [to[0], height]);
+            let line = (Point::new(x, height_at), Point::new(to.x(), height));
             let ignore = self.ignore_list(me, world, plan, placed, target_id, line)?;
             let ask = ShortAsk {
                 goal,
@@ -134,7 +135,7 @@ impl Mover {
             };
             // the gap from the unit's place (its decoded x and y), not +0x824
             let (px, py) = (self.position().x(), self.position().y());
-            let (gx, gy) = (gap(to[0] - px, radius.x()), gap(to[1] - py, radius.y()));
+            let (gx, gy) = (gap(to.x() - px, radius.x()), gap(to.y() - py, radius.y()));
             if gx * gx + gy * gy < REACH_NEAR {
                 return Ok(false);
             }
@@ -163,8 +164,8 @@ impl Mover {
                 crate::math::conversions::cvttss2si(y),
             ],
             to: [
-                crate::math::conversions::cvttss2si(to[0]),
-                crate::math::conversions::cvttss2si(to[1]),
+                crate::math::conversions::cvttss2si(to.x()),
+                crate::math::conversions::cvttss2si(to.y()),
             ],
             range,
             target: long_target,

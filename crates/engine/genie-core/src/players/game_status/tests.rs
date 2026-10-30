@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::TaskId;
@@ -341,7 +342,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             lead: Lead {
                 moved: true,
                 still_time: 2,
-                start: [3.0, 4.0],
+                start: Point::new(3.0, 4.0),
             },
         })),
         ..Unit::default()

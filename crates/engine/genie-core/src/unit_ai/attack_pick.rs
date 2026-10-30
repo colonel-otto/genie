@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::ClassId;
@@ -27,7 +28,7 @@ use crate::unit_ai::{
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Search<'a> {
     /// Where it searches from.
-    pub at: [f32; 2],
+    pub at: Point,
     /// How far.
     pub radius: f32,
     /// The object classes it cares about.
@@ -235,7 +236,7 @@ pub struct Seeker {
     /// `+0x1a9`.
     pub stance: u8,
     /// `+0x1ac`, `+0x1b0`.
-    pub state_position: [f32; 2],
+    pub state_position: Point,
     /// `+0x3c`.
     pub order: Option<OrderKind>,
     /// `+0x44`.
@@ -395,10 +396,10 @@ pub(super) const DEFEND_GROWTH: f32 = crate::math::image::unit_ai::DEFEND_GROWTH
 
 /// The squared gap between a point and an object's footprint (`FUN_140a847c0`: per axis the
 /// distance less the radius, `MAXSS 0` of it, so a gap that is not a number stays one).
-pub(super) fn point_gap_squared(point: [f32; 2], at: Position, radius: Footprint) -> f32 {
+pub(super) fn point_gap_squared(point: Point, at: Position, radius: Footprint) -> f32 {
     let gap = |d: f32, r: f32| crate::math::fmath::maxss(0.0, d.abs() - r);
-    let x = gap(point[0] - at.x(), radius.x());
-    let y = gap(point[1] - at.y(), radius.y());
+    let x = gap(point.x() - at.x(), radius.x());
+    let y = gap(point.y() - at.y(), radius.y());
     y * y + x * x
 }
 

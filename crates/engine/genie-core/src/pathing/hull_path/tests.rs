@@ -13,10 +13,15 @@ use crate::test_ids::object_id;
 /// high left.
 fn square() -> Hull {
     Hull {
-        points: vec![[1.0, 1.0], [1.0, 0.0], [0.0, 0.0], [0.0, 1.0]],
+        points: vec![
+            Point::new(1.0, 1.0),
+            Point::new(1.0, 0.0),
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 1.0),
+        ],
         entrances: vec![-1; 4],
-        min: [0.0, 0.0],
-        max: [1.0, 1.0],
+        min: Point::new(0.0, 0.0),
+        max: Point::new(1.0, 1.0),
         objects: Vec::new(),
     }
 }
@@ -24,9 +29,9 @@ fn square() -> Hull {
 #[test]
 fn a_hull_holds_the_points_inside_it() {
     let h = square();
-    assert!(h.inside([0.5, 0.5]));
-    assert!(!h.inside([1.5, 0.5]));
-    assert!(!h.inside([0.5, -0.25]));
+    assert!(h.inside(Point::new(0.5, 0.5)));
+    assert!(!h.inside(Point::new(1.5, 0.5)));
+    assert!(!h.inside(Point::new(0.5, -0.25)));
 }
 
 #[test]
@@ -34,46 +39,69 @@ fn a_walk_meets_the_nearest_side_it_crosses() {
     let h = square();
     // the side from point 2 (low left) to point 3 (high left)
     assert_eq!(
-        h.intersection(false, [-1.0, 0.5], [2.0, 0.5]),
-        Some(([0.0, 0.5], 3))
+        h.intersection(false, Point::new(-1.0, 0.5), Point::new(2.0, 0.5)),
+        Some((Point::new(0.0, 0.5), 3))
     );
     // the last side ends at point 0: it is side 0
     assert_eq!(
-        h.intersection(false, [0.5, 2.0], [0.5, 0.5]),
-        Some(([0.5, 1.0], 0))
+        h.intersection(false, Point::new(0.5, 2.0), Point::new(0.5, 0.5)),
+        Some((Point::new(0.5, 1.0), 0))
     );
-    assert_eq!(h.intersection(false, [2.0, 2.0], [3.0, 2.0]), None);
+    assert_eq!(
+        h.intersection(false, Point::new(2.0, 2.0), Point::new(3.0, 2.0)),
+        None
+    );
 }
 
 #[test]
 fn the_gift_wrap_turns_clockwise_from_the_highest_point() {
     let mut h = square();
-    h.merge(&[[2.0, 0.5]]).unwrap();
+    h.merge(&[Point::new(2.0, 0.5)]).unwrap();
     assert_eq!(
         h.points,
-        [[1.0, 1.0], [2.0, 0.5], [1.0, 0.0], [0.0, 0.0], [0.0, 1.0]]
+        [
+            Point::new(1.0, 1.0),
+            Point::new(2.0, 0.5),
+            Point::new(1.0, 0.0),
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 1.0)
+        ]
     );
-    assert_eq!((h.min, h.max), ([0.0, 0.0], [2.0, 1.0]));
+    assert_eq!((h.min, h.max), (Point::new(0.0, 0.0), Point::new(2.0, 1.0)));
     // a point inside changes nothing
     let mut inside = square();
-    inside.merge(&[[0.5, 0.5]]).unwrap();
+    inside.merge(&[Point::new(0.5, 0.5)]).unwrap();
     assert_eq!(inside.points, square().points);
 }
 
 #[test]
 fn a_box_overlapping_a_hull_reports_its_corners_outside() {
     let h = square();
-    let (overlap, outside) = h.shape_overlap([0.5, 0.5], [1.5, 1.5]);
+    let (overlap, outside) = h.shape_overlap(Point::new(0.5, 0.5), Point::new(1.5, 1.5));
     assert_eq!((overlap, outside), (2, [false, true, true, true]));
-    assert_eq!(h.shape_overlap([0.25, 0.25], [0.75, 0.75]).0, 3);
-    assert_eq!(h.shape_overlap([2.0, 2.0], [3.0, 3.0]).0, 0);
+    assert_eq!(
+        h.shape_overlap(Point::new(0.25, 0.25), Point::new(0.75, 0.75))
+            .0,
+        3
+    );
+    assert_eq!(
+        h.shape_overlap(Point::new(2.0, 2.0), Point::new(3.0, 3.0))
+            .0,
+        0
+    );
 }
 
 #[test]
 fn a_ray_leaves_a_hull_by_the_side_it_meets() {
     let h = square();
-    assert_eq!(h.ray_to_hull([0.5, 0.5], 0), Some(([0.5, 0.0], 2)));
-    assert_eq!(h.ray_to_hull([0.5, 0.5], 3), Some(([1.0, 0.5], 1)));
+    assert_eq!(
+        h.ray_to_hull(Point::new(0.5, 0.5), 0),
+        Some((Point::new(0.5, 0.0), 2))
+    );
+    assert_eq!(
+        h.ray_to_hull(Point::new(0.5, 0.5), 3),
+        Some((Point::new(1.0, 0.5), 1))
+    );
 }
 
 /// `FUN_140f8ea30`: toward each side, the nearest box whose span holds the point: past it
@@ -92,28 +120,49 @@ fn a_ray_meets_the_nearest_box_side_toward_it() {
         ..Hull::default()
     };
     // down from above both: box 1's top (its side 0) is nearer than box 0's
-    assert_eq!(hull.ray_to_box([1.5, 6.0], 0, -1), Some(([1.5, 5.0], 1, 0)));
+    assert_eq!(
+        hull.ray_to_box(Point::new(1.5, 6.0), 0, -1),
+        Some((Point::new(1.5, 5.0), 1, 0))
+    );
     // down from inside box 1: its bottom (side 2), nearer than box 0's top
-    assert_eq!(hull.ray_to_box([1.5, 4.0], 0, -1), Some(([1.5, 3.0], 1, 2)));
+    assert_eq!(
+        hull.ray_to_box(Point::new(1.5, 4.0), 0, -1),
+        Some((Point::new(1.5, 3.0), 1, 2))
+    );
     // on box 1's top side: past it (its top), unless it is the point's own box (its bottom)
-    assert_eq!(hull.ray_to_box([1.5, 5.0], 0, -1), Some(([1.5, 5.0], 1, 0)));
-    assert_eq!(hull.ray_to_box([1.5, 5.0], 0, 1), Some(([1.5, 3.0], 1, 2)));
+    assert_eq!(
+        hull.ray_to_box(Point::new(1.5, 5.0), 0, -1),
+        Some((Point::new(1.5, 5.0), 1, 0))
+    );
+    assert_eq!(
+        hull.ray_to_box(Point::new(1.5, 5.0), 0, 1),
+        Some((Point::new(1.5, 3.0), 1, 2))
+    );
     // up from below box 0: its bottom; right from box 0's right side, own: box 2's left
     assert_eq!(
-        hull.ray_to_box([0.5, -1.0], 1, -1),
-        Some(([0.5, 0.0], 0, 2))
+        hull.ray_to_box(Point::new(0.5, -1.0), 1, -1),
+        Some((Point::new(0.5, 0.0), 0, 2))
     );
-    assert_eq!(hull.ray_to_box([2.0, 1.5], 3, 0), Some(([4.0, 1.5], 2, 3)));
+    assert_eq!(
+        hull.ray_to_box(Point::new(2.0, 1.5), 3, 0),
+        Some((Point::new(4.0, 1.5), 2, 3))
+    );
     // left from inside box 2: its left side (side 3); from the right of it: its right
-    assert_eq!(hull.ray_to_box([5.0, 1.5], 2, -1), Some(([4.0, 1.5], 2, 3)));
-    assert_eq!(hull.ray_to_box([7.0, 1.5], 2, -1), Some(([6.0, 1.5], 2, 1)));
+    assert_eq!(
+        hull.ray_to_box(Point::new(5.0, 1.5), 2, -1),
+        Some((Point::new(4.0, 1.5), 2, 3))
+    );
+    assert_eq!(
+        hull.ray_to_box(Point::new(7.0, 1.5), 2, -1),
+        Some((Point::new(6.0, 1.5), 2, 1))
+    );
     // right from box 2's right: nothing beyond; an unknown side: nothing
-    assert_eq!(hull.ray_to_box([6.5, 1.5], 3, -1), None);
-    assert_eq!(hull.ray_to_box([1.5, 6.0], 4, -1), None);
+    assert_eq!(hull.ray_to_box(Point::new(6.5, 1.5), 3, -1), None);
+    assert_eq!(hull.ray_to_box(Point::new(1.5, 6.0), 4, -1), None);
     // an unordered x passes every span test of a vertical ray: the nearest top below
-    let (at, k, side) = hull.ray_to_box([f32::NAN, 6.0], 0, -1).unwrap();
-    assert!(at[0].is_nan());
-    assert_eq!((at[1], k, side), (5.0, 1, 0));
+    let (at, k, side) = hull.ray_to_box(Point::new(f32::NAN, 6.0), 0, -1).unwrap();
+    assert!(at.x().is_nan());
+    assert_eq!((at.y(), k, side), (5.0, 1, 0));
 }
 
 fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
@@ -144,16 +193,18 @@ fn the_quick_path_goes_around_one_square_obstruction() {
     w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
     w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
     let mut pather = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let (result, path) = pather.find([2.0, 5.5], [10.5, 5.5], 9149, 0.1).unwrap();
+    let (result, path) = pather
+        .find(Point::new(2.0, 5.5), Point::new(10.5, 5.5), 9149, 0.1)
+        .unwrap();
     assert_eq!(result, 1);
     // by the tree's lower side: (half side + radius) √2 below its middle
     let [start, by, end] = path.points[..] else {
         panic!("{path:?}")
     };
-    assert_eq!(start, [2.0, 5.5]);
-    assert!((by[0] - 5.5).abs() < 1e-5 && (by[1] - (5.5 - 0.7 * SQRT_2)).abs() < 1e-5);
+    assert_eq!(start, Point::new(2.0, 5.5));
+    assert!((by.x() - 5.5).abs() < 1e-5 && (by.y() - (5.5 - 0.7 * SQRT_2)).abs() < 1e-5);
     // the goal moved on by the range
-    assert!((end[0] - 10.6).abs() < 1e-5 && (end[1] - 5.5).abs() < 1e-6);
+    assert!((end.x() - 10.6).abs() < 1e-5 && (end.y() - 5.5).abs() < 1e-6);
 }
 
 /// `FUN_140f8af60`'s merge scan tests the other hull's sides k = 0..n-1 (`cmp edi, esi; jl`
@@ -165,26 +216,38 @@ fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
     let mut pather = HullPather::new(&mut w, -1, -1, 6, 0.2);
     // a thin strip across the box's corner at (0, 0), a vertex of neither inside the other
     let strip = Hull {
-        points: vec![[-0.9, 2.1], [2.1, -0.9], [2.0, -1.0], [-1.0, 2.0]],
+        points: vec![
+            Point::new(-0.9, 2.1),
+            Point::new(2.1, -0.9),
+            Point::new(2.0, -1.0),
+            Point::new(-1.0, 2.0),
+        ],
         entrances: vec![-1; 4],
-        min: [-1.0, -1.0],
-        max: [2.1, 2.1],
+        min: Point::new(-1.0, -1.0),
+        max: Point::new(2.1, 2.1),
         objects: Vec::new(),
     };
     // a new hull's order: max-max, max-min, min-min, min-max; the side min-min to max-min
     // (k = 2 of 4) is the only one the strip crosses that the scan tests
     let square = Hull {
-        points: vec![[10.0, 10.0], [10.0, 0.0], [0.0, 0.0], [0.0, 10.0]],
+        points: vec![
+            Point::new(10.0, 10.0),
+            Point::new(10.0, 0.0),
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 10.0),
+        ],
         entrances: vec![-1; 4],
-        min: [0.0, 0.0],
-        max: [10.0, 10.0],
+        min: Point::new(0.0, 0.0),
+        max: Point::new(10.0, 10.0),
         objects: Vec::new(),
     };
     pather.hulls = vec![strip, square];
     // a box at the strip's far end goes into the strip, which then meets the square
-    let hull = pather.add_shape([-1.2, 1.9], [-0.8, 2.3]).unwrap();
+    let hull = pather
+        .add_shape(Point::new(-1.2, 1.9), Point::new(-0.8, 2.3))
+        .unwrap();
     assert_eq!((hull, pather.hulls.len()), (0, 1));
-    assert!(pather.hulls[0].points.contains(&[10.0, 10.0]));
+    assert!(pather.hulls[0].points.contains(&Point::new(10.0, 10.0)));
 }
 
 /// Slot 0x3e8 (`FUN_14114f790`): the old short pather from the unit's place with its radius
@@ -206,7 +269,9 @@ fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
     };
     let length = mover.short_reach(&me, &mut w, 9149, 0.1).unwrap().unwrap();
     let mut pather = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let (_, path) = pather.find([2.0, 5.5], [10.5, 5.5], 9149, 0.1).unwrap();
+    let (_, path) = pather
+        .find(Point::new(2.0, 5.5), Point::new(10.5, 5.5), 9149, 0.1)
+        .unwrap();
     assert_eq!(length, path.length());
     let by = 5.5 - 0.7 * SQRT_2;
     let expected = (3.5f32 * 3.5 + (5.5 - by) * (5.5 - by)).sqrt()
@@ -237,17 +302,21 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
         Vec::new(),
     ));
     let mut quick = HullPather::new(&mut w, -1, -1, 6, 0.2);
-    let (result, _) = quick.find_quick([2.0, 5.5], [12.5, 5.5], -1, 0.0).unwrap();
+    let (result, _) = quick
+        .find_quick(Point::new(2.0, 5.5), Point::new(12.5, 5.5), -1, 0.0)
+        .unwrap();
     assert_eq!(result, 3);
     assert!(w.tile_records().contains(&[8, 5]), "{:?}", w.tile_records());
     // a search starts without them and leaves none
     let mut full = HullPather::new(&mut w, -1, -1, 6, 0.2);
-    let (result, _) = full.find([2.0, 5.5], [12.5, 5.5], -1, 0.0).unwrap();
+    let (result, _) = full
+        .find(Point::new(2.0, 5.5), Point::new(12.5, 5.5), -1, 0.0)
+        .unwrap();
     assert_ne!(result, 1);
     assert_eq!(w.tile_records(), Vec::<[i32; 2]>::new());
     // slot 0x3e0 removes what its quick path left
     assert_eq!(
-        quick_reach_from(&mut w, -1, [2.0, 5.5], -1, 6, 0.2, 0.0).unwrap(),
+        quick_reach_from(&mut w, -1, Point::new(2.0, 5.5), -1, 6, 0.2, 0.0).unwrap(),
         None
     );
     assert_eq!(w.tile_records(), Vec::<[i32; 2]>::new());
@@ -282,13 +351,13 @@ fn open_nodes(p: &HullPather<'_>, l: usize) -> Vec<usize> {
 fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
     let mut w = open_world();
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
-    let goal = Some([10.0, 0.0]);
+    let goal = Some(Point::new(10.0, 0.0));
     let root = p
         .add_node(NewNode {
             list: 0,
             open: true,
             parent: None,
-            position: [0.0, 0.0],
+            position: Point::new(0.0, 0.0),
             goal,
             hull: -1,
             vertex: -1,
@@ -304,7 +373,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             list: 0,
             open: true,
             parent: Some(root),
-            position: [3.0, 4.0],
+            position: Point::new(3.0, 4.0),
             goal,
             hull: 0,
             vertex: 1,
@@ -324,7 +393,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             list: 0,
             open: true,
             parent: Some(root),
-            position: [6.0, 0.0],
+            position: Point::new(6.0, 0.0),
             goal,
             hull: 0,
             vertex: 2,
@@ -340,7 +409,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             list: 0,
             open: true,
             parent: Some(root),
-            position: [6.0, 0.0],
+            position: Point::new(6.0, 0.0),
             goal,
             hull: -1,
             vertex: -1,
@@ -356,7 +425,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             list: 0,
             open: true,
             parent: Some(root),
-            position: [0.0, 5.0],
+            position: Point::new(0.0, 5.0),
             goal,
             hull: 0,
             vertex: 1,
@@ -372,7 +441,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             list: 0,
             open: true,
             parent: Some(root),
-            position: [3.0, 0.0],
+            position: Point::new(3.0, 0.0),
             goal,
             hull: 0,
             vertex: 1,
@@ -391,7 +460,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             list: 0,
             open: true,
             parent: Some(root),
-            position: [0.0, 7.0],
+            position: Point::new(0.0, 7.0),
             goal,
             hull: 0,
             vertex: 2,
@@ -406,7 +475,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             list: 0,
             open: true,
             parent: Some(root),
-            position: [5.0, 0.0],
+            position: Point::new(5.0, 0.0),
             goal,
             hull: 0,
             vertex: 2,
@@ -422,7 +491,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
             list: 0,
             open: false,
             parent: Some(e),
-            position: [5.0, 0.0],
+            position: Point::new(5.0, 0.0),
             goal: None,
             hull: 0,
             vertex: 2,
@@ -448,7 +517,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             list: 1,
             open: true,
             parent: None,
-            position: [0.0, 0.0],
+            position: Point::new(0.0, 0.0),
             goal: None,
             hull: -1,
             vertex: -1,
@@ -462,7 +531,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             list: 1,
             open: true,
             parent: Some(root),
-            position: [2.0, 0.0],
+            position: Point::new(2.0, 0.0),
             goal: None,
             hull: -1,
             vertex: -1,
@@ -472,7 +541,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
         .unwrap()
         .unwrap();
     // within EPSILON of `a`, dearer: refused; cheaper (from a nearer parent): replaces it
-    let near = [2.0 + EPSILON * 0.5, 0.0];
+    let near = Point::new(2.0 + EPSILON * 0.5, 0.0);
     assert_eq!(
         p.add_node(NewNode {
             list: 1,
@@ -493,7 +562,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             list: 1,
             open: false,
             parent: None,
-            position: [1.5, 0.0],
+            position: Point::new(1.5, 0.0),
             goal: None,
             hull: -1,
             vertex: -1,
@@ -524,7 +593,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             list: 1,
             open: true,
             parent: Some(a),
-            position: [2.0 + EPSILON * 2.0, 0.0],
+            position: Point::new(2.0 + EPSILON * 2.0, 0.0),
             goal: None,
             hull: -1,
             vertex: -1,
@@ -541,7 +610,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             list: 1,
             open: true,
             parent: None,
-            position: [9.0, 9.0],
+            position: Point::new(9.0, 9.0),
             goal: None,
             hull: -1,
             vertex: -1,
@@ -556,7 +625,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             list: 1,
             open: false,
             parent: None,
-            position: [4.0, 4.0],
+            position: Point::new(4.0, 4.0),
             goal: None,
             hull: -1,
             vertex: -1,
@@ -571,7 +640,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             list: 1,
             open: true,
             parent: Some(s),
-            position: [4.0, 4.0],
+            position: Point::new(4.0, 4.0),
             goal: None,
             hull: -1,
             vertex: -1,
@@ -586,7 +655,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
             list: 1,
             open: true,
             parent: Some(s),
-            position: [9.0, 9.0],
+            position: Point::new(9.0, 9.0),
             goal: None,
             hull: -1,
             vertex: -1,
@@ -606,14 +675,14 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
 fn nodes_close_one_by_one_or_all_and_the_lists_empty() {
     let mut w = open_world();
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
-    let goal = Some([10.0, 0.0]);
+    let goal = Some(Point::new(10.0, 0.0));
     let n: Vec<usize> = (0..4)
         .map(|k| {
             p.add_node(NewNode {
                 list: 0,
                 open: true,
                 parent: None,
-                position: [k as f32, 0.0],
+                position: Point::new(k as f32, 0.0),
                 goal,
                 hull: 0,
                 vertex: k,
@@ -650,7 +719,7 @@ fn nodes_close_one_by_one_or_all_and_the_lists_empty() {
             list: 1,
             open: true,
             parent: None,
-            position: [1.0, 1.0],
+            position: Point::new(1.0, 1.0),
             goal,
             hull: 3,
             vertex: 3,
@@ -674,21 +743,25 @@ fn a_point_lies_in_the_first_hull_holding_it() {
     let mut w = open_world();
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
     let shifted = |dx: f32| Hull {
-        points: square().points.iter().map(|q| [q[0] + dx, q[1]]).collect(),
-        min: [dx, 0.0],
-        max: [dx + 1.0, 1.0],
+        points: square()
+            .points
+            .iter()
+            .map(|q| q.with_x(q.x() + dx))
+            .collect(),
+        min: Point::new(dx, 0.0),
+        max: Point::new(dx + 1.0, 1.0),
         ..square()
     };
     p.hulls = vec![Hull::default(), shifted(0.0), shifted(0.5)];
-    assert_eq!(p.hull_of([0.75, 0.5]), 1);
-    assert_eq!(p.hull_of([1.25, 0.5]), 2);
+    assert_eq!(p.hull_of(Point::new(0.75, 0.5)), 1);
+    assert_eq!(p.hull_of(Point::new(1.25, 0.5)), 2);
     // the left side of hull 1 and the right side of hull 2, nudged inward
-    assert_eq!(p.hull_of([0.0, 0.5]), 1);
-    assert_eq!(p.hull_of([1.5, 0.5]), 2);
-    assert_eq!(p.hull_of([1.75, 0.5]), -1);
-    assert_eq!(p.hull_of([f32::NAN, 0.5]), -1);
+    assert_eq!(p.hull_of(Point::new(0.0, 0.5)), 1);
+    assert_eq!(p.hull_of(Point::new(1.5, 0.5)), 2);
+    assert_eq!(p.hull_of(Point::new(1.75, 0.5)), -1);
+    assert_eq!(p.hull_of(Point::new(f32::NAN, 0.5)), -1);
     p.hulls.clear();
-    assert_eq!(p.hull_of([0.75, 0.5]), -1);
+    assert_eq!(p.hull_of(Point::new(0.75, 0.5)), -1);
 }
 
 /// A tall object of class 10 (39 for a gate) without an obstruction record, owned by player 1.
@@ -745,10 +818,15 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     w.insert(object_id(6), tall(5.5, 5.5, 1.0, class::PREDATOR)); // wider than a tile
     w.insert(object_id(7), tall(8.5, 8.5, f32::NAN, class::PREDATOR));
     let far = Hull {
-        points: vec![[1.0, 1.0], [1.0, 0.0], [0.0, 0.0], [0.0, 1.0]],
+        points: vec![
+            Point::new(1.0, 1.0),
+            Point::new(1.0, 0.0),
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 1.0),
+        ],
         entrances: vec![-1; 4],
-        min: [0.0, 0.0],
-        max: [1.0, 1.0],
+        min: Point::new(0.0, 0.0),
+        max: Point::new(1.0, 1.0),
         objects: Vec::new(),
     };
     // a gate for a player, without the world's slot 0x678
@@ -927,9 +1005,15 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
         hull_ids(&p),
         [vec![30], vec![t(3), t(4), 31, t(5)], vec![32, t(9)]]
     );
-    assert_eq!((p.hulls[1].min, p.hulls[1].max), ([2.8, 4.8], [6.2, 6.2]));
+    assert_eq!(
+        (p.hulls[1].min, p.hulls[1].max),
+        (Point::new(2.8, 4.8), Point::new(6.2, 6.2))
+    );
     let x0 = (7.5f32 - 0.2) - 0.2;
-    assert_eq!((p.hulls[2].min, p.hulls[2].max), ([x0, 4.8], [10.2, 6.2]));
+    assert_eq!(
+        (p.hulls[2].min, p.hulls[2].max),
+        (Point::new(x0, 4.8), Point::new(10.2, 6.2))
+    );
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2).including(&[33]);
     p.area = [0, 5, 2, 5];
     p.build_hulls().unwrap();
@@ -952,7 +1036,7 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
             list: 0,
             open: false,
             parent: None,
-            position: [2.0, 2.0],
+            position: Point::new(2.0, 2.0),
             goal: None,
             hull: -1,
             direction: -1,
@@ -963,7 +1047,7 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
             list: 0,
             open: false,
             parent: Some(n0),
-            position: [5.0, 2.0],
+            position: Point::new(5.0, 2.0),
             goal: None,
             hull: -1,
             direction: -1,
@@ -974,7 +1058,7 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
             list: 0,
             open: false,
             parent: Some(n1),
-            position: [5.0, 5.0],
+            position: Point::new(5.0, 5.0),
             goal: None,
             hull: -1,
             direction: -1,
@@ -985,7 +1069,7 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
             list: 0,
             open: false,
             parent: Some(n2),
-            position: [8.0, 5.0],
+            position: Point::new(8.0, 5.0),
             goal: None,
             hull: -1,
             direction: -1,
@@ -994,13 +1078,20 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
     let mut path = Waypoints::default();
     p.build_path(&mut path, n3).unwrap();
     // n3 sees n1 (n2 skipped), not n0; n1 has no grandparent
-    assert_eq!(path.points, [[2.0, 2.0], [5.0, 2.0], [8.0, 5.0]]);
+    assert_eq!(
+        path.points,
+        [
+            Point::new(2.0, 2.0),
+            Point::new(5.0, 2.0),
+            Point::new(8.0, 5.0)
+        ]
+    );
     assert_eq!(p.nodes[n3].parent, Some(n1));
     assert_eq!(p.nodes[n1].parent, Some(n0));
     // a lone node is a path of one point
     let mut one = Waypoints::default();
     p.build_path(&mut one, n0).unwrap();
-    assert_eq!(one.points, [[2.0, 2.0]]);
+    assert_eq!(one.points, [Point::new(2.0, 2.0)]);
 }
 
 /// Slot 0x3e0 (`FUN_1411506e0`): the quick path alone from the unit's place to the target's,
@@ -1013,7 +1104,7 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
     w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
     w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
     let by = 5.5 - 0.7 * SQRT_2;
-    let length = quick_reach_from(&mut w, 9171, [2.0, 5.5], 9149, 6, 0.2, 0.1)
+    let length = quick_reach_from(&mut w, 9171, Point::new(2.0, 5.5), 9149, 6, 0.2, 0.1)
         .unwrap()
         .unwrap();
     let expected = (3.5f32 * 3.5 + (5.5 - by) * (5.5 - by)).sqrt()
@@ -1022,7 +1113,7 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
     assert!(quick_reach(&mut w, 9171, 9149, 6, 0.2, 0.1).unwrap());
     // within range already: no path, length 0
     assert_eq!(
-        quick_reach_from(&mut w, 9171, [9.75, 5.5], 9149, 6, 0.2, 0.1).unwrap(),
+        quick_reach_from(&mut w, 9171, Point::new(9.75, 5.5), 9149, 6, 0.2, 0.1).unwrap(),
         Some(0.0)
     );
     // a target the world does not hold
@@ -1030,7 +1121,7 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
     // a second obstruction in the way: the quick path is blocked (3)
     w.insert(object_id(49), placed(7.5, 5.5, 0.5, 2));
     assert_eq!(
-        quick_reach_from(&mut w, 9171, [2.0, 5.5], 9149, 6, 0.2, 0.1).unwrap(),
+        quick_reach_from(&mut w, 9171, Point::new(2.0, 5.5), 9149, 6, 0.2, 0.1).unwrap(),
         None
     );
 }
@@ -1071,17 +1162,17 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
     let mut w = open_world();
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
     p.area = [2, 2, 5, 5];
-    assert!(p.in_area([f32::NAN, 3.0]));
-    assert!(p.in_area([2.2, 5.8]));
-    assert!(!p.in_area([2.1, 3.0]));
+    assert!(p.in_area(Point::new(f32::NAN, 3.0)));
+    assert!(p.in_area(Point::new(2.2, 5.8)));
+    assert!(!p.in_area(Point::new(2.1, 3.0)));
     let t = Target {
-        at: [10.0, 10.0],
+        at: Point::new(10.0, 10.0),
         radius: Footprint::new(0.5, 0.5),
         speed: 0.0,
     };
     let gy = (13.7f32 - 10.0).abs() - (0.5 + 0.2);
-    assert_eq!(p.target_gap(&t, [f32::NAN, 13.7]), gy);
-    assert_eq!(p.target_gap(&t, [10.2, 10.3]), 0.0);
+    assert_eq!(p.target_gap(&t, Point::new(f32::NAN, 13.7)), gy);
+    assert_eq!(p.target_gap(&t, Point::new(10.2, 10.3)), 0.0);
     // an unordered start: the box's right and top sides (case 8); an unordered reach leaves
     // no side point out
     let b = [4.0, 4.0, 6.0, 6.0];
@@ -1091,14 +1182,14 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
             list: 1,
             open: true,
             parent: None,
-            position: [5.0, 5.0],
+            position: Point::new(5.0, 5.0),
             goal: None,
             hull: -1,
             direction: -1,
         })
         .unwrap();
     assert!(
-        p.side_points(0, root, b, [f32::NAN, f32::NAN], 0.5, None)
+        p.side_points(0, root, b, Point::new(f32::NAN, f32::NAN), 0.5, None)
             .unwrap()
     );
     let mut at: Vec<Point> = open_nodes(&p, 1)
@@ -1106,15 +1197,15 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
         .filter(|&&i| i != root)
         .map(|&i| p.nodes[i].at)
         .collect();
-    at.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    at.sort_by(|a, b| a.get().partial_cmp(&b.get()).unwrap());
     let n = NUDGE;
     let mut expected = vec![
-        [6.0 + n, 4.0 + n],
-        [6.0 + n, (4.0 + n) + 1.0],
-        [6.0 - n, 6.0 + n],
-        [(6.0 - n) - 1.0, 6.0 + n],
+        Point::new(6.0 + n, 4.0 + n),
+        Point::new(6.0 + n, (4.0 + n) + 1.0),
+        Point::new(6.0 - n, 6.0 + n),
+        Point::new((6.0 - n) - 1.0, 6.0 + n),
     ];
-    expected.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    expected.sort_by(|a, b| a.get().partial_cmp(&b.get()).unwrap());
     assert_eq!(at, expected);
     p.empty(1).unwrap();
     let root = p
@@ -1122,29 +1213,35 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
             list: 1,
             open: true,
             parent: None,
-            position: [5.0, 3.0],
+            position: Point::new(5.0, 3.0),
             goal: None,
             hull: -1,
             direction: -1,
         })
         .unwrap();
-    let reach = Some(([5.0, 3.0], f32::NAN));
-    assert!(p.side_points(0, root, b, [5.0, 3.0], 0.5, reach).unwrap());
+    let reach = Some((Point::new(5.0, 3.0), f32::NAN));
+    assert!(
+        p.side_points(0, root, b, Point::new(5.0, 3.0), 0.5, reach)
+            .unwrap()
+    );
     assert_eq!(open_nodes(&p, 1).len(), 3);
     // partway: an unordered end is nearer the goal than the start, and not within range
     let mut path = Waypoints {
-        points: vec![[1.0, 1.0], [f32::NAN, 2.0]],
+        points: vec![Point::new(1.0, 1.0), Point::new(f32::NAN, 2.0)],
         cost: 0.0,
     };
-    p.start = [1.0, 1.0];
-    assert_eq!(p.partway(&mut path, [1.0, 1.0], [9.0, 9.0], 0.5), 2);
+    p.start = Point::new(1.0, 1.0);
+    assert_eq!(
+        p.partway(&mut path, Point::new(1.0, 1.0), Point::new(9.0, 9.0), 0.5),
+        2
+    );
     assert_eq!(path.points.len(), 2);
 }
 
 /// A 20 × 20 map whose tiles (6, 4..=6) or (8, 4..=6) are of a terrain the mask 6 lacks (a
 /// wall), with the map's links, and the unit 9171 and its target 9149 (a tree's size) at
 /// (12.5, 5.5).
-fn walled(wall_x: usize, unit: [f32; 2]) -> Spatial {
+fn walled(wall_x: usize, unit: Point) -> Spatial {
     let mut classes = vec![4; 400];
     for y in 4..=6 {
         classes[y * 20 + wall_x] = 1;
@@ -1159,7 +1256,7 @@ fn walled(wall_x: usize, unit: [f32; 2]) -> Spatial {
         0,
         Vec::new(),
     ));
-    w.insert(object_id(9171), placed(unit[0], unit[1], 0.2, 5));
+    w.insert(object_id(9171), placed(unit.x(), unit.y(), 0.2, 5));
     w.insert(object_id(9149), placed(12.5, 5.5, 0.5, 2));
     w
 }
@@ -1172,25 +1269,39 @@ fn walled(wall_x: usize, unit: [f32; 2]) -> Spatial {
 /// skips every node that sees past its parent.
 #[test]
 fn the_hull_search_goes_around_a_wall_to_the_target() {
-    let mut w = walled(6, [2.0, 5.5]);
+    let mut w = walled(6, Point::new(2.0, 5.5));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let (result, path) = p.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+    let (result, path) = p
+        .find(Point::new(2.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
+        .unwrap();
     assert_eq!(p.area, [0, 3, 14, 7]);
     assert_eq!(
         p.hulls[0].points,
-        [[7.2, 7.2], [7.2, 3.8], [5.8, 3.8], [5.8, 7.2]]
+        [
+            Point::new(7.2, 7.2),
+            Point::new(7.2, 3.8),
+            Point::new(5.8, 3.8),
+            Point::new(5.8, 7.2)
+        ]
     );
     assert_eq!(p.hulls[0].objects.len(), 3);
     // the target's hull took the four entrance ends on its left side, by their distance from
     // the side's first point (11.8, 4.8)
     let x = 11.8 - NUDGE;
     assert_eq!(p.hulls[1].entrances, [-1, -1, -1, 2, 0, 1, 3, -1]);
-    assert_eq!(p.hulls[1].points[3][0], x);
+    assert_eq!(p.hulls[1].points[3].x(), x);
     assert_eq!(result, 1);
-    assert_eq!(path.points[..3], [[2.0, 5.5], [5.8, 7.2], [7.2, 7.2]]);
+    assert_eq!(
+        path.points[..3],
+        [
+            Point::new(2.0, 5.5),
+            Point::new(5.8, 7.2),
+            Point::new(7.2, 7.2)
+        ]
+    );
     let end = path.points[3];
-    assert_eq!((path.points.len(), end[0]), (4, x));
-    assert!((end[1] - (6.2 - NUDGE - 0.35)).abs() < 1e-5);
+    assert_eq!((path.points.len(), end.x()), (4, x));
+    assert!((end.y() - (6.2 - NUDGE - 0.35)).abs() < 1e-5);
 }
 
 /// A start inside a hull: `pathWithinHull` out of it (`FUN_140f8cf00`) gives the exit paths,
@@ -1198,22 +1309,35 @@ fn the_hull_search_goes_around_a_wall_to_the_target() {
 /// hull its entrance paths (`FUN_140f88ee0`) with the target.
 #[test]
 fn a_start_inside_a_hull_leaves_it_by_its_exit_paths() {
-    let mut w = walled(8, [4.9, 5.5]);
+    let mut w = walled(8, Point::new(4.9, 5.5));
     w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let (result, path) = p.find([4.9, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+    let (result, path) = p
+        .find(Point::new(4.9, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
+        .unwrap();
     let ends: Vec<Point> = p.exits.iter().map(|e| e.points[2]).collect();
     let n = 4.8 - NUDGE;
     assert_eq!(
         ends,
-        [[n, 5.5], [n, 5.541_421_4], [n, 5.458_578_6], [n, 5.6]]
+        [
+            Point::new(n, 5.5),
+            Point::new(n, 5.541_421_4),
+            Point::new(n, 5.458_578_6),
+            Point::new(n, 5.6)
+        ]
     );
     let starts: Vec<Point> = p.entrances.iter().map(|e| e.points[0]).collect();
-    assert_eq!(starts, [[12.5, 5.5]; 4]);
+    assert_eq!(starts, [Point::new(12.5, 5.5); 4]);
     assert_eq!(result, 1);
     assert_eq!(
         path.points[..5],
-        [[4.9, 5.5], [4.8, 5.6], [4.8, 6.2], [7.8, 7.2], [9.2, 7.2]]
+        [
+            Point::new(4.9, 5.5),
+            Point::new(4.8, 5.6),
+            Point::new(4.8, 6.2),
+            Point::new(7.8, 7.2),
+            Point::new(9.2, 7.2)
+        ]
     );
 }
 
@@ -1224,10 +1348,12 @@ fn a_start_inside_a_hull_leaves_it_by_its_exit_paths() {
 /// that sees the goal ends the walk there (0).
 #[test]
 fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
-    let mut w = walled(8, [4.9, 5.5]);
+    let mut w = walled(8, Point::new(4.9, 5.5));
     let box_hull = |p: &mut HullPather<'_>| {
         p.area = [0, 0, 19, 19];
-        let h = p.add_shape([4.8, 4.8], [6.2, 6.2]).unwrap();
+        let h = p
+            .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
+            .unwrap();
         p.hulls[h].objects.push(Shape {
             bounds: [4.8, 4.8, 6.2, 6.2],
             id: 48,
@@ -1241,7 +1367,7 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
     let walk = p
         .walk_out(WalkOut {
             hull: h,
-            start: [4.9, 5.5],
+            start: Point::new(4.9, 5.5),
             goal: None,
             target: None,
             range: 0.1,
@@ -1253,19 +1379,19 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
         .unwrap();
     assert_eq!((walk.result, walk.left_boxes, count), (5, true, 4));
     let n = 4.8 - NUDGE;
-    assert_eq!(paths[0].points, [[4.9, 5.5], [n, 5.5]]);
-    assert_eq!(paths[3].points, [[4.9, 5.5], [n, 5.6]]);
+    assert_eq!(paths[0].points, [Point::new(4.9, 5.5), Point::new(n, 5.5)]);
+    assert_eq!(paths[3].points, [Point::new(4.9, 5.5), Point::new(n, 5.6)]);
     assert!(paths[0].cost < paths[1].cost && paths[1].cost <= paths[3].cost);
     // toward a goal it sees from its first step
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     let h = box_hull(&mut p);
     let mut paths = vec![Waypoints::default(); 1];
     let mut count = 0;
-    let goal = Some([3.0, 5.5]);
+    let goal = Some(Point::new(3.0, 5.5));
     let walk = p
         .walk_out(WalkOut {
             hull: h,
-            start: [4.9, 5.5],
+            start: Point::new(4.9, 5.5),
             goal,
             target: None,
             range: 0.1,
@@ -1276,7 +1402,10 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
         })
         .unwrap();
     assert_eq!((walk.result, walk.left_boxes, count), (0, false, 0));
-    assert_eq!(paths[0].points, [[4.9, 5.5], [3.0, 5.5]]);
+    assert_eq!(
+        paths[0].points,
+        [Point::new(4.9, 5.5), Point::new(3.0, 5.5)]
+    );
 }
 
 /// The rays of a walk out's node ([`HullPather::cast_rays`]) at (4.2, 5.5), inside a hull of
@@ -1286,11 +1415,13 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
 /// goal the walk goes on from each end too, keeping none.
 #[test]
 fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
-    let mut w = walled(8, [4.9, 5.5]);
+    let mut w = walled(8, Point::new(4.9, 5.5));
     let mut rays = |goal: Option<Point>, most| {
         let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
         p.area = [0, 0, 19, 19];
-        let h = p.add_shape([4.0, 4.0], [7.0, 7.0]).unwrap();
+        let h = p
+            .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
+            .unwrap();
         p.hulls[h].objects.push(Shape {
             bounds: [4.8, 4.8, 6.2, 6.2],
             id: 48,
@@ -1301,7 +1432,7 @@ fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
                 list: 1,
                 open: true,
                 parent: None,
-                position: [4.2, 5.5],
+                position: Point::new(4.2, 5.5),
                 goal,
                 hull: -1,
                 direction: -1,
@@ -1328,9 +1459,19 @@ fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
     let n = NUDGE;
     let (left, ends, open) = rays(None, PATHS);
     assert_eq!((left, open), (true, 1));
-    assert_eq!(ends, [[4.2, 4.0 - n], [4.2, 7.0 + n], [4.0 - n, 5.5]]);
-    assert_eq!(rays(None, 2).1, [[4.2, 4.0 - n], [4.2, 7.0 + n]]);
-    let (left, ends, open) = rays(Some([3.0, 5.5]), PATHS);
+    assert_eq!(
+        ends,
+        [
+            Point::new(4.2, 4.0 - n),
+            Point::new(4.2, 7.0 + n),
+            Point::new(4.0 - n, 5.5)
+        ]
+    );
+    assert_eq!(
+        rays(None, 2).1,
+        [Point::new(4.2, 4.0 - n), Point::new(4.2, 7.0 + n)]
+    );
+    let (left, ends, open) = rays(Some(Point::new(3.0, 5.5)), PATHS);
     assert_eq!((left, ends.len(), open), (true, 0, 4));
 }
 
@@ -1340,11 +1481,13 @@ fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
 /// of the start the start ends the walk (0).
 #[test]
 fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range() {
-    let mut w = walled(8, [4.9, 5.5]);
+    let mut w = walled(8, Point::new(4.9, 5.5));
     let mut walk = |goal: Option<Point>, range, most| {
         let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
         p.area = [0, 0, 19, 19];
-        let h = p.add_shape([4.0, 4.0], [7.0, 7.0]).unwrap();
+        let h = p
+            .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
+            .unwrap();
         p.hulls[h].objects.push(Shape {
             bounds: [4.8, 4.8, 6.2, 6.2],
             id: 48,
@@ -1354,7 +1497,7 @@ fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range(
         let walk = p
             .walk_out(WalkOut {
                 hull: h,
-                start: [4.2, 5.5],
+                start: Point::new(4.2, 5.5),
                 goal,
                 target: None,
                 range,
@@ -1370,8 +1513,8 @@ fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range(
     assert_eq!((result, left), (4, true));
     assert!(0 < count);
     assert_eq!(walk(None, 0.1, 0), (2, false, 0, vec![]));
-    let (result, _, count, points) = walk(Some([4.4, 5.5]), 0.5, 1);
-    assert_eq!((result, count, points), (0, 0, vec![[4.2, 5.5]]));
+    let (result, _, count, points) = walk(Some(Point::new(4.4, 5.5)), 0.5, 1);
+    assert_eq!((result, count, points), (0, 0, vec![Point::new(4.2, 5.5)]));
 }
 
 /// `pathWithinHull` into a hull (`FUN_140f88ee0`): the walk out of the hull from the goal
@@ -1379,10 +1522,12 @@ fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range(
 /// side it leaves by (result 5: the goal is inside a box).
 #[test]
 fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
-    let mut w = walled(8, [4.9, 5.5]);
+    let mut w = walled(8, Point::new(4.9, 5.5));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     p.area = [0, 0, 19, 19];
-    let h = p.add_shape([4.8, 4.8], [6.2, 6.2]).unwrap();
+    let h = p
+        .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
+        .unwrap();
     p.hulls[h].objects.push(Shape {
         bounds: [4.8, 4.8, 6.2, 6.2],
         id: 48,
@@ -1393,8 +1538,8 @@ fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
     let walk = p
         .walk_in(WalkIn {
             hull: h,
-            goal: [5.0, 5.5],
-            start: [2.0, 5.5],
+            goal: Point::new(5.0, 5.5),
+            start: Point::new(2.0, 5.5),
             target: None,
             paths: &mut paths,
             sides_out: &mut sides,
@@ -1407,7 +1552,7 @@ fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
     assert_eq!(sides, [3; 4]);
     let x = 4.8 + NUDGE;
     // the world holds no record in the box: the end sees the goal, its parent is skipped
-    assert_eq!(paths[0].points, [[5.0, 5.5], [x, 5.5]]);
+    assert_eq!(paths[0].points, [Point::new(5.0, 5.5), Point::new(x, 5.5)]);
 }
 
 /// `FindShortPath` with a goal off the map less the radius: its target must stand on it and
@@ -1419,13 +1564,33 @@ fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
     w.insert(object_id(9149), placed(19.9, 5.5, 0.5, 2));
     w.insert(object_id(9150), placed(20.5, 7.5, 0.5, 2));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let (result, path) = p.find([15.0, 5.5], [19.9, 5.5], 9149, 0.0).unwrap();
-    assert_eq!((result, path.points), (1, vec![[15.0, 5.5], [19.9, 5.5]]));
+    let (result, path) = p
+        .find(Point::new(15.0, 5.5), Point::new(19.9, 5.5), 9149, 0.0)
+        .unwrap();
+    assert_eq!(
+        (result, path.points),
+        (1, vec![Point::new(15.0, 5.5), Point::new(19.9, 5.5)])
+    );
     assert_eq!(p.bounds, [0.2, 0.2, 19.8, 19.8]);
     // no target, a target elsewhere, a goal off the map
-    assert_eq!(p.find([15.0, 5.5], [19.9, 5.5], -1, 0.0).unwrap().0, 4);
-    assert_eq!(p.find([15.0, 5.5], [19.9, 6.5], 9149, 0.0).unwrap().0, 4);
-    assert_eq!(p.find([15.0, 5.5], [20.5, 7.5], 9150, 0.0).unwrap().0, 4);
+    assert_eq!(
+        p.find(Point::new(15.0, 5.5), Point::new(19.9, 5.5), -1, 0.0)
+            .unwrap()
+            .0,
+        4
+    );
+    assert_eq!(
+        p.find(Point::new(15.0, 5.5), Point::new(19.9, 6.5), 9149, 0.0)
+            .unwrap()
+            .0,
+        4
+    );
+    assert_eq!(
+        p.find(Point::new(15.0, 5.5), Point::new(20.5, 7.5), 9150, 0.0)
+            .unwrap()
+            .0,
+        4
+    );
     assert_eq!(p.bounds, [0.0, 0.0, 20.0, 20.0]);
 }
 
@@ -1433,25 +1598,33 @@ fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
 /// no area yet the search makes its own.
 #[test]
 fn a_kept_search_reuses_the_last_area_and_hulls() {
-    let mut w = walled(6, [2.0, 5.5]);
+    let mut w = walled(6, Point::new(2.0, 5.5));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let first = p.find_keeping([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+    let first = p
+        .find_keeping(Point::new(2.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
+        .unwrap();
     assert_eq!(p.area, [0, 3, 14, 7]);
     // one pather borrows the world at a time: the kept state goes on to the next
     let kept = p.kept();
     let mut fresh = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     assert_eq!(
         first,
-        fresh.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap()
+        fresh
+            .find(Point::new(2.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
+            .unwrap()
     );
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2).with_kept(kept);
     // the hulls gone: a kept search builds none and finds no way around the wall
     p.hulls.clear();
     p.area = [0, 2, 14, 8];
-    let (result, _) = p.find_keeping([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+    let (result, _) = p
+        .find_keeping(Point::new(2.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
+        .unwrap();
     assert_eq!((result, p.area, p.hulls.len()), (3, [0, 2, 14, 8], 0));
     // not kept: the area and the hulls anew
-    let (result, _) = p.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+    let (result, _) = p
+        .find(Point::new(2.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
+        .unwrap();
     assert_eq!((result, p.area, p.hulls.len()), (1, [0, 3, 14, 7], 2));
 }
 
@@ -1477,15 +1650,25 @@ fn a_node_beyond_the_area_grows_it_once() {
     w.insert(object_id(9171), placed(5.0, 5.5, 0.2, 5));
     w.insert(object_id(9149), placed(8.5, 5.5, 0.5, 2));
     let mut p = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let (result, path) = p.find([5.0, 5.5], [8.5, 5.5], 9149, 0.1).unwrap();
+    let (result, path) = p
+        .find(Point::new(5.0, 5.5), Point::new(8.5, 5.5), 9149, 0.1)
+        .unwrap();
     // the first area (3..=10, 3..=7) held the wall's rows 3..=7; the corner (5.8, 2.8) lies
     // beyond it: grown, the area took row 8 into the wall's hull
     assert_eq!(p.area, [1, 1, 12, 9]);
-    assert_eq!((p.hulls[0].min, p.hulls[0].max), ([5.8, 2.8], [7.2, 9.2]));
+    assert_eq!(
+        (p.hulls[0].min, p.hulls[0].max),
+        (Point::new(5.8, 2.8), Point::new(7.2, 9.2))
+    );
     assert_eq!(result, 1);
     assert_eq!(
         path.points,
-        [[5.0, 5.5], [5.8, 2.8], [7.2, 2.8], [7.8, 4.8]]
+        [
+            Point::new(5.0, 5.5),
+            Point::new(5.8, 2.8),
+            Point::new(7.2, 2.8),
+            Point::new(7.8, 4.8)
+        ]
     );
 }
 
@@ -1518,18 +1701,26 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
 /// found, a path (1).
 #[test]
 fn a_walk_to_a_point_goes_around_a_wall_without_a_target() {
-    let mut w = walled(6, [2.0, 5.5]);
+    let mut w = walled(6, Point::new(2.0, 5.5));
     let mut p = HullPather::for_list(&mut w, &[9171], 6, 0.2, 1);
-    let (result, path) = p.find([2.0, 5.5], [10.5, 5.5], -1, 0.0).unwrap();
+    let (result, path) = p
+        .find(Point::new(2.0, 5.5), Point::new(10.5, 5.5), -1, 0.0)
+        .unwrap();
     assert_eq!(result, 1);
     assert_eq!(
         path.points,
-        [[2.0, 5.5], [5.8, 7.2], [7.2, 7.2], [10.5, 5.5]]
+        [
+            Point::new(2.0, 5.5),
+            Point::new(5.8, 7.2),
+            Point::new(7.2, 7.2),
+            Point::new(10.5, 5.5)
+        ]
     );
     // a target elsewhere than on the goal is none (its id -1) as well
     let mut q = HullPather::for_list(&mut w, &[9171], 6, 0.2, 1);
     assert_eq!(
-        q.find([2.0, 5.5], [10.5, 5.5], 9149, 0.0).unwrap(),
+        q.find(Point::new(2.0, 5.5), Point::new(10.5, 5.5), 9149, 0.0)
+            .unwrap(),
         (1, path)
     );
 }
@@ -1540,26 +1731,36 @@ fn a_walk_to_a_point_goes_around_a_wall_without_a_target() {
 /// holding the goal need the grid's order, which the slice does not hold.
 #[test]
 fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
-    let mut w = walled(6, [2.0, 5.5]);
+    let mut w = walled(6, Point::new(2.0, 5.5));
     w.insert(object_id(48), placed(10.5, 5.5, 0.5, 2));
     let mut p = HullPather::for_list(&mut w, &[9171], 6, 0.2, 1);
-    let (result, path) = p.find([2.0, 5.5], [10.6, 5.5], -1, 0.0).unwrap();
+    let (result, path) = p
+        .find(Point::new(2.0, 5.5), Point::new(10.6, 5.5), -1, 0.0)
+        .unwrap();
     assert_eq!(result, 2);
     let end = *path.points.last().unwrap();
     let t = Target {
-        at: [10.5, 5.5],
+        at: Point::new(10.5, 5.5),
         radius: Footprint::new(0.5, 0.5),
         speed: 0.0,
     };
     assert!(p.target_gap(&t, end) <= NUDGE, "{path:?}");
     // ignored, the object is no target: the search ends on the goal itself
     let mut q = HullPather::for_list(&mut w, &[9171, 48], 6, 0.2, 1);
-    let (result, path) = q.find([2.0, 5.5], [10.6, 5.5], -1, 0.0).unwrap();
-    assert_eq!((result, path.points.last()), (1, Some(&[10.6, 5.5])));
+    let (result, path) = q
+        .find(Point::new(2.0, 5.5), Point::new(10.6, 5.5), -1, 0.0)
+        .unwrap();
+    assert_eq!(
+        (result, path.points.last()),
+        (1, Some(&Point::new(10.6, 5.5)))
+    );
     // a second object holding the goal
     w.insert(object_id(49), placed(11.5, 5.5, 0.5, 2));
     let mut r = HullPather::for_list(&mut w, &[9171], 6, 0.2, 1);
-    assert!(r.find([2.0, 5.5], [11.0, 5.5], -1, 0.0).is_err());
+    assert!(
+        r.find(Point::new(2.0, 5.5), Point::new(11.0, 5.5), -1, 0.0)
+            .is_err()
+    );
 }
 
 /// The line tests (`FUN_141052350`, `FUN_141051900` with flags 0x40) leave a moving record
@@ -1580,23 +1781,47 @@ fn an_included_moving_unit_blocks_the_line_tests() {
     );
     let mut p = HullPather::for_list(&mut w, &[9171], 6, 0.6, 1);
     p.buffer = Some(0.3);
-    assert!(!p.blocked([2.0, 5.5], [10.0, 5.5]).unwrap());
-    let (result, path) = p.find([2.0, 5.5], [10.0, 5.5], -1, 0.0).unwrap();
-    assert_eq!((result, path.points), (1, vec![[2.0, 5.5], [10.0, 5.5]]));
+    assert!(
+        !p.blocked(Point::new(2.0, 5.5), Point::new(10.0, 5.5))
+            .unwrap()
+    );
+    let (result, path) = p
+        .find(Point::new(2.0, 5.5), Point::new(10.0, 5.5), -1, 0.0)
+        .unwrap();
+    assert_eq!(
+        (result, path.points),
+        (1, vec![Point::new(2.0, 5.5), Point::new(10.0, 5.5)])
+    );
     let mut p = HullPather::for_list(&mut w, &[9171], 6, 0.6, 1).including(&[50]);
     p.buffer = Some(0.3);
-    assert!(p.blocked([2.0, 5.5], [10.0, 5.5]).unwrap());
-    assert_eq!(p.hits([2.0, 5.5], [10.0, 5.5]).unwrap().len(), 1);
-    let (result, path) = p.find([2.0, 5.5], [10.0, 5.5], -1, 0.0).unwrap();
+    assert!(
+        p.blocked(Point::new(2.0, 5.5), Point::new(10.0, 5.5))
+            .unwrap()
+    );
+    assert_eq!(
+        p.hits(Point::new(2.0, 5.5), Point::new(10.0, 5.5))
+            .unwrap()
+            .len(),
+        1
+    );
+    let (result, path) = p
+        .find(Point::new(2.0, 5.5), Point::new(10.0, 5.5), -1, 0.0)
+        .unwrap();
     let off = (0.3 + 0.6) * SQRT_2;
     let [start, by, end] = path.points[..] else {
         panic!("{path:?}")
     };
-    assert_eq!((result, start, end), (1, [2.0, 5.5], [10.0, 5.5]));
-    assert!((by[0] - 6.0).abs() < 1e-5 && (by[1] - (5.5 - off)).abs() < 1e-5);
+    assert_eq!(
+        (result, start, end),
+        (1, Point::new(2.0, 5.5), Point::new(10.0, 5.5))
+    );
+    assert!((by.x() - 6.0).abs() < 1e-5 && (by.y() - (5.5 - off)).abs() < 1e-5);
     let mut q = HullPather::for_list(&mut w, &[9171, 50], 6, 0.6, 1).including(&[50]);
     q.buffer = Some(0.3);
-    assert!(!q.blocked([2.0, 5.5], [10.0, 5.5]).unwrap());
+    assert!(
+        !q.blocked(Point::new(2.0, 5.5), Point::new(10.0, 5.5))
+            .unwrap()
+    );
 }
 
 /// The manager keeps one pather: a search's area and hulls ([`KeptHulls`]) carried into the
@@ -1604,21 +1829,23 @@ fn an_included_moving_unit_blocks_the_line_tests() {
 /// makes; the constructor's state has no area, so a kept search builds its own.
 #[test]
 fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
-    let mut w = walled(6, [2.0, 5.5]);
+    let mut w = walled(6, Point::new(2.0, 5.5));
     let mut first = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let found = first.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+    let found = first
+        .find(Point::new(2.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
+        .unwrap();
     let kept = first.kept();
     assert_eq!((kept.area, kept.hulls.len()), ([0, 3, 14, 7], 2));
     // a kept search from another start reuses them as they are
     let mut next = HullPather::new(&mut w, 9171, 9149, 6, 0.2).with_kept(kept.clone());
-    let from_kept = next.find_keeping([3.0, 5.5], [12.5, 5.5], 9149, 0.1);
+    let from_kept = next.find_keeping(Point::new(3.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1);
     let next_area = next.kept().area;
     let mut same = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
     same.area = kept.area;
     same.hulls = kept.hulls;
     assert_eq!(
         from_kept,
-        same.find_keeping([3.0, 5.5], [12.5, 5.5], 9149, 0.1)
+        same.find_keeping(Point::new(3.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
     );
     assert_eq!(next_area, [0, 3, 14, 7]);
     // the constructor's state: no area, no hulls
@@ -1627,7 +1854,7 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
     let mut fresh = HullPather::new(&mut w, 9171, 9149, 6, 0.2).with_kept(none);
     assert_eq!(
         fresh
-            .find_keeping([2.0, 5.5], [12.5, 5.5], 9149, 0.1)
+            .find_keeping(Point::new(2.0, 5.5), Point::new(12.5, 5.5), 9149, 0.1)
             .unwrap(),
         found
     );
@@ -1639,7 +1866,9 @@ fn a_unit_within_range_needs_no_path() {
     w.insert(object_id(9171), placed(9.75, 5.5, 0.2, 5));
     w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
     let mut pather = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
-    let (result, path) = pather.find([9.75, 5.5], [10.5, 5.5], 9149, 0.1).unwrap();
+    let (result, path) = pather
+        .find(Point::new(9.75, 5.5), Point::new(10.5, 5.5), 9149, 0.1)
+        .unwrap();
     assert_eq!((result, path.length()), (0, 0.0));
 }
 
@@ -1651,19 +1880,23 @@ fn around_triangle(at: Point, taken: &[i32]) -> (Vec<(Point, Option<usize>, i32)
     let mut w = open_world();
     let mut p = HullPather::new(&mut w, 9171, -1, 6, 0.2);
     p.hulls.push(Hull {
-        points: vec![[5.0, 6.0], [5.0, 4.0], [4.0, 5.0]],
+        points: vec![
+            Point::new(5.0, 6.0),
+            Point::new(5.0, 4.0),
+            Point::new(4.0, 5.0),
+        ],
         entrances: vec![-1; 3],
-        min: [4.0, 4.0],
-        max: [5.0, 6.0],
+        min: Point::new(4.0, 4.0),
+        max: Point::new(5.0, 6.0),
         objects: Vec::new(),
     });
-    let to = [9.0, 5.0];
+    let to = Point::new(9.0, 5.0);
     let root = p
         .add_unrefused(UnrefusedNode {
             list: 0,
             open: true,
             parent: None,
-            position: [2.0, 5.0],
+            position: Point::new(2.0, 5.0),
             goal: Some(to),
             hull: -1,
             direction: -1,
@@ -1710,29 +1943,35 @@ fn around_triangle(at: Point, taken: &[i32]) -> (Vec<(Point, Option<usize>, i32)
 /// refused (an open node there costs no more), none when both were.
 #[test]
 fn a_crossed_hull_s_points_go_both_ways_and_an_odd_one_the_cheaper() {
-    let (made, n) = around_triangle([4.5, 5.6], &[]);
+    let (made, n) = around_triangle(Point::new(4.5, 5.6), &[]);
     let a = Some(n + 1);
     assert_eq!(
         made,
         [
-            ([5.0, 6.0], Some(n), 0),
-            ([5.0, 4.0], Some(n), 1),
-            ([4.0, 5.0], a, 2)
+            (Point::new(5.0, 6.0), Some(n), 0),
+            (Point::new(5.0, 4.0), Some(n), 1),
+            (Point::new(4.0, 5.0), a, 2)
         ]
     );
-    let (made, n) = around_triangle([4.5, 5.0], &[]);
-    assert_eq!(made[2], ([4.0, 5.0], Some(n + 2), 2));
-    let (made, n) = around_triangle([4.5, 5.6], &[1]);
+    let (made, n) = around_triangle(Point::new(4.5, 5.0), &[]);
+    assert_eq!(made[2], (Point::new(4.0, 5.0), Some(n + 2), 2));
+    let (made, n) = around_triangle(Point::new(4.5, 5.6), &[1]);
     assert_eq!(
         made,
-        [([5.0, 6.0], Some(n), 0), ([4.0, 5.0], Some(n + 1), 2)]
+        [
+            (Point::new(5.0, 6.0), Some(n), 0),
+            (Point::new(4.0, 5.0), Some(n + 1), 2)
+        ]
     );
-    let (made, n) = around_triangle([4.5, 5.6], &[0]);
+    let (made, n) = around_triangle(Point::new(4.5, 5.6), &[0]);
     assert_eq!(
         made,
-        [([5.0, 4.0], Some(n), 1), ([4.0, 5.0], Some(n + 1), 2)]
+        [
+            (Point::new(5.0, 4.0), Some(n), 1),
+            (Point::new(4.0, 5.0), Some(n + 1), 2)
+        ]
     );
-    assert_eq!(around_triangle([4.5, 5.6], &[0, 1]).0, []);
+    assert_eq!(around_triangle(Point::new(4.5, 5.6), &[0, 1]).0, []);
 }
 
 /// `FindShortPath`'s end of a found path ([`HullPather::found_end`]): without an entrance the
@@ -1741,18 +1980,22 @@ fn a_crossed_hull_s_points_go_both_ways_and_an_odd_one_the_cheaper() {
 /// or the target alone, else the last point goes and the path ends partway.
 #[test]
 fn a_found_path_follows_its_entrance_and_keeps_a_last_leg_on_the_target() {
-    let mut w = walled(8, [2.0, 5.5]);
+    let mut w = walled(8, Point::new(2.0, 5.5));
     let mut p = HullPather::new(&mut w, 9171, -1, 6, 0.2);
-    p.entrances[0].points = vec![[12.5, 5.5], [11.9, 5.5], [11.7, 5.5]];
+    p.entrances[0].points = vec![
+        Point::new(12.5, 5.5),
+        Point::new(11.9, 5.5),
+        Point::new(11.7, 5.5),
+    ];
     let q = HullQuery {
-        from: [2.0, 5.5],
-        to: [12.5, 5.5],
+        from: Point::new(2.0, 5.5),
+        to: Point::new(12.5, 5.5),
         target: None,
         target_id: 9149,
         range: 0.1,
     };
     let walk = || Waypoints {
-        points: vec![[2.0, 5.5], [11.7, 5.5]],
+        points: vec![Point::new(2.0, 5.5), Point::new(11.7, 5.5)],
         cost: 0.0,
     };
     let mut rounds = Rounds::new(0.0);
@@ -1760,7 +2003,12 @@ fn a_found_path_follows_its_entrance_and_keeps_a_last_leg_on_the_target() {
     assert_eq!(p.found_end(&q, &rounds, &mut path), Ok(true));
     assert_eq!(path, walk());
     rounds.entrance = 0;
-    let through = [[2.0, 5.5], [11.7, 5.5], [11.9, 5.5], [12.5, 5.5]];
+    let through = [
+        Point::new(2.0, 5.5),
+        Point::new(11.7, 5.5),
+        Point::new(11.9, 5.5),
+        Point::new(12.5, 5.5),
+    ];
     let mut path = walk();
     assert_eq!(p.found_end(&q, &rounds, &mut path), Ok(true));
     assert_eq!(path.points, through);
@@ -1783,10 +2031,10 @@ fn a_found_path_follows_its_entrance_and_keeps_a_last_leg_on_the_target() {
 fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
     let mut w = open_world();
     let mut p = HullPather::new(&mut w, 9171, -1, 6, 0.2);
-    p.start = [2.0, 5.0];
+    p.start = Point::new(2.0, 5.0);
     let q = HullQuery {
-        from: [2.0, 5.0],
-        to: [9.0, 5.0],
+        from: Point::new(2.0, 5.0),
+        to: Point::new(9.0, 5.0),
         target: None,
         target_id: -1,
         range: 0.1,
@@ -1796,7 +2044,7 @@ fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
             list: 0,
             open: false,
             parent: None,
-            position: [2.0, 5.0],
+            position: Point::new(2.0, 5.0),
             goal: Some(q.to),
             hull: -1,
             direction: -1,
@@ -1807,7 +2055,7 @@ fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
             list: 0,
             open: false,
             parent: Some(root),
-            position: [6.0, 5.0],
+            position: Point::new(6.0, 5.0),
             goal: Some(q.to),
             hull: -1,
             direction: -1,
@@ -1820,17 +2068,17 @@ fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
         points: x.to_vec(),
         cost: 0.0,
     };
-    let to_node = [[2.0, 5.0], [6.0, 5.0]];
-    for walk in [&[[2.0, 5.0], [4.0, 5.0]][..], &[]] {
+    let to_node = [Point::new(2.0, 5.0), Point::new(6.0, 5.0)];
+    for walk in [&[Point::new(2.0, 5.0), Point::new(4.0, 5.0)][..], &[]] {
         let mut path = walked(walk);
         assert_eq!(p.path_end(&q, &rounds, &mut path), Ok(2));
         assert_eq!(path.points, to_node);
     }
-    let mut path = walked(&[[2.0, 5.0], [8.0, 5.0]]);
+    let mut path = walked(&[Point::new(2.0, 5.0), Point::new(8.0, 5.0)]);
     assert_eq!(p.path_end(&q, &rounds, &mut path), Ok(2));
-    assert_eq!(path.points, [[2.0, 5.0], [8.0, 5.0]]);
+    assert_eq!(path.points, [Point::new(2.0, 5.0), Point::new(8.0, 5.0)]);
     rounds.best_node = None;
-    let mut path = walked(&[[2.0, 5.0], [8.0, 5.0]]);
+    let mut path = walked(&[Point::new(2.0, 5.0), Point::new(8.0, 5.0)]);
     assert_eq!(p.path_end(&q, &rounds, &mut path), Ok(2));
     rounds.within = false;
     assert_eq!(p.path_end(&q, &rounds, &mut path), Ok(3));
@@ -1843,20 +2091,22 @@ fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
 /// hull's side (`within`), and the search goes on from the hull's ways out.
 #[test]
 fn a_goal_in_the_start_s_hull_is_walked_to_within_it() {
-    let mut w = walled(8, [4.9, 5.5]);
+    let mut w = walled(8, Point::new(4.9, 5.5));
     w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
     let mut p = HullPather::new(&mut w, 9171, -1, 6, 0.2);
-    let side = [4.799_9, 5.499_899];
-    let (result, path) = p.find([4.9, 5.5], [4.85, 6.15], -1, 0.0).unwrap();
+    let side = Point::new(4.799_9, 5.499_899);
+    let (result, path) = p
+        .find(Point::new(4.9, 5.5), Point::new(4.85, 6.15), -1, 0.0)
+        .unwrap();
     assert_eq!(
         (result, path.points),
-        (1, vec![[4.9, 5.5], side, [4.85, 6.15]])
+        (1, vec![Point::new(4.9, 5.5), side, Point::new(4.85, 6.15)])
     );
-    let to = [6.1, 5.5];
-    let (result, path) = p.find([4.9, 5.5], to, -1, 0.0).unwrap();
-    assert_eq!((result, path.points), (2, vec![[4.9, 5.5], side]));
+    let to = Point::new(6.1, 5.5);
+    let (result, path) = p.find(Point::new(4.9, 5.5), to, -1, 0.0).unwrap();
+    assert_eq!((result, path.points), (2, vec![Point::new(4.9, 5.5), side]));
     let q = HullQuery {
-        from: [4.9, 5.5],
+        from: Point::new(4.9, 5.5),
         to,
         target: None,
         target_id: -1,
@@ -1866,5 +2116,5 @@ fn a_goal_in_the_start_s_hull_is_walked_to_within_it() {
     let mut path = Waypoints::default();
     assert_eq!(p.round_start(&q, true, &mut rounds, &mut path), Ok(None));
     assert!(rounds.within);
-    assert_eq!(path.points, [[4.9, 5.5], side]);
+    assert_eq!(path.points, [Point::new(4.9, 5.5), side]);
 }

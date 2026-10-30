@@ -9,8 +9,8 @@ use crate::test_ids::object_id;
 struct Coast {
     flags: fn(i16, i16) -> u8,
     near: bool,
-    shore: Option<[f32; 2]>,
-    asked: Vec<([f32; 2], [f32; 2])>,
+    shore: Option<Point>,
+    asked: Vec<(Point, Point)>,
 }
 
 impl Shore for Coast {
@@ -26,7 +26,7 @@ impl Shore for Coast {
         (self.flags)(x, y)
     }
 
-    fn shore_point(&mut self, from: [f32; 2], to: [f32; 2]) -> Option<[f32; 2]> {
+    fn shore_point(&mut self, from: Point, to: Point) -> Option<Point> {
         self.asked.push((from, to));
         self.shore
     }
@@ -170,7 +170,7 @@ fn a_new_transport_sails_to_its_own_place_and_a_start_off_the_map_idles() {
         (t.state, t.move_to.map(|m| m.state)),
         (SAIL, Some(MoveTo::Start))
     );
-    assert_eq!(c.asked, [([12.5, 8.5], [12.5, 8.5])]);
+    assert_eq!(c.asked, [(Point::new(12.5, 8.5), Point::new(12.5, 8.5))]);
     // a NaN point sails too (COMISS/JA, JBE)
     let mut nan = TransportAction::new(Position::new(f32::NAN, 1.0, 0.0));
     let _ = nan.start(true, &s, &mut c).unwrap();
@@ -188,7 +188,7 @@ fn a_new_transport_sails_to_its_own_place_and_a_start_off_the_map_idles() {
 fn a_sail_takes_the_shore_point_and_drops_its_old_move_to() {
     let s = ship(true);
     let mut c = coast(true);
-    c.shore = Some([19.5, 8.5]);
+    c.shore = Some(Point::new(19.5, 8.5));
     let mut t = TransportAction::new(s.position);
     let _ = t.start(true, &s, &mut c).unwrap();
     t.point = Position::new(25.0, 8.0, 0.0);
@@ -197,7 +197,7 @@ fn a_sail_takes_the_shore_point_and_drops_its_old_move_to() {
     assert!(changed.stopped && !changed.stands);
     assert_eq!(t.point, Position::new(19.5, 8.5, 0.0));
     assert_eq!(t.move_to.map(|m| m.state), Some(MoveTo::Start));
-    assert_eq!(c.asked[1], ([12.5, 8.5], [25.0, 8.0]));
+    assert_eq!(c.asked[1], (Point::new(12.5, 8.5), Point::new(25.0, 8.0)));
     // a unit without speed: its quiet MoveTo fails at its start
     let still = Ship {
         walk: MoveToReads {
@@ -221,7 +221,7 @@ fn a_sail_takes_the_shore_point_and_drops_its_old_move_to() {
 fn a_move_sails_to_its_point_and_a_stop_idles() {
     let s = ship(true);
     let mut c = coast(true);
-    c.shore = Some([19.5, 8.5]);
+    c.shore = Some(Point::new(19.5, 8.5));
     let mut t = TransportAction {
         state: UNLOAD,
         mode: 1,
@@ -235,7 +235,7 @@ fn a_move_sails_to_its_point_and_a_stop_idles() {
         (t.state, t.mode, t.point, t.move_to.map(|m| m.state)),
         (SAIL, 0, Position::new(19.5, 8.5, 2.0), Some(MoveTo::Start))
     );
-    assert_eq!(c.asked, [([12.5, 8.5], [25.0, 8.0])]);
+    assert_eq!(c.asked, [(Point::new(12.5, 8.5), Point::new(25.0, 8.0))]);
     let stopped = t.stop(&s, &mut c).unwrap();
     assert!(stopped.stopped && stopped.stands);
     assert_eq!((t.state, t.move_to), (IDLE, None));
@@ -603,12 +603,12 @@ fn a_retry_draws_about_the_old_point_until_it_leaves_the_water() {
     // the draws as the game makes them: x then y, each r / 0xccc tiles
     let mut copy = rng();
     let draws: Vec<u32> = (0..6).map(|_| copy.rand15() / RETRY_STEP).collect();
-    let point = [20.0, 20.0];
+    let point = Point::new(20.0, 20.0);
     let at = |i: usize| {
-        [
+        Point::new(
             draws[2 * i] as f32 + 20.0 - 5.0,
             draws[2 * i + 1] as f32 + 20.0 - 5.0,
-        ]
+        )
     };
     // land (terrain 0) everywhere: the first draw leaves the water
     let mut r = rng();
@@ -617,7 +617,7 @@ fn a_retry_draws_about_the_old_point_until_it_leaves_the_water() {
         (at(0), true)
     );
     // water 22, 23 and 1 keep drawing: the third draw's tile is land
-    let first = [at(0), at(1)].map(|p| [p[0] as i16, p[1] as i16]);
+    let first = [at(0), at(1)].map(|p| [p.x() as i16, p.y() as i16]);
     let wet = terrain(40, 0, &[(first[0], 0x17), (first[1], 1)]);
     let mut r = rng();
     let (found, sails) = retry_point(point, [40, 40], &wet, &mut r);
@@ -642,7 +642,7 @@ fn the_99th_draw_leaving_the_water_comes_too_late() {
         let mut r = Well512::default();
         r.set_seed(seed);
         assert_eq!(
-            retry_point([20.0, 20.0], [400, 400], &shore, &mut r).1,
+            retry_point(Point::new(20.0, 20.0), [400, 400], &shore, &mut r).1,
             sails,
             "{n}"
         );
@@ -652,7 +652,7 @@ fn the_99th_draw_leaving_the_water_comes_too_late() {
 #[test]
 fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     let around = Around {
-        center: [10.0, 10.0],
+        center: Point::new(10.0, 10.0),
         radius: Footprint::new(1.0, 1.0),
     };
     // the first draw's side and place, as the game computes them
@@ -662,10 +662,10 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     let along = ((r2 as f32 * 2.0) / 32767.0 - 1.0) + 10.0;
     let gap = 1.0 + (0.5 + DROP_GAP);
     let expected = match side {
-        0 => [10.0 + gap, along],
-        1 => [10.0 - gap, along],
-        2 => [along, 10.0 + gap],
-        _ => [along, 10.0 - gap],
+        0 => Point::new(10.0 + gap, along),
+        1 => Point::new(10.0 - gap, along),
+        2 => Point::new(along, 10.0 + gap),
+        _ => Point::new(along, 10.0 - gap),
     };
     let mut last = None;
     let mut r = rng();
@@ -697,7 +697,7 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     // off the map: those draws use their tries up, and none comes out
     let mut r = rng();
     let edge = Around {
-        center: [0.0, 0.0],
+        center: Point::new(0.0, 0.0),
         radius: Footprint::new(5.0, 5.0),
     };
     let mut none = None;
@@ -705,7 +705,7 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     let mut on_map = 0;
     while let Some(p) = draws.next_on_map().unwrap() {
         on_map += 1;
-        assert!(0.0 <= p[0] && 0.0 <= p[1] && p[0] < 4.0 && p[1] < 4.0);
+        assert!(0.0 <= p.x() && 0.0 <= p.y() && p.x() < 4.0 && p.y() < 4.0);
     }
     assert!(on_map < 50);
     // a first draw of side 4 keeps a place no draw left: not modelled
@@ -732,8 +732,8 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
 /// one beside it on the zone map; without a map only zone 0's tiles, none beside.
 #[test]
 fn a_drop_location_lies_in_the_transport_s_zone_or_beside_it() {
-    assert_eq!(in_zone([3.5, 4.5], u32::MAX, None), Ok(true));
-    assert_eq!(in_zone([3.5, 4.5], 0, None), Ok(true));
-    assert_eq!(in_zone([3.5, 4.5], 2, None), Ok(false));
-    assert_eq!(in_zone([-0.5, 4.5], 0, None), Ok(true));
+    assert_eq!(in_zone(Point::new(3.5, 4.5), u32::MAX, None), Ok(true));
+    assert_eq!(in_zone(Point::new(3.5, 4.5), 0, None), Ok(true));
+    assert_eq!(in_zone(Point::new(3.5, 4.5), 2, None), Ok(false));
+    assert_eq!(in_zone(Point::new(-0.5, 4.5), 0, None), Ok(true));
 }

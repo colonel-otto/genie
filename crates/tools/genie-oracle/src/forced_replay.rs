@@ -8,7 +8,7 @@ use crate::{
     save_header, tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit,
 };
 use genie_core::GenieError;
-use genie_core::map::Position;
+use genie_core::map::Point;
 use genie_core::objects::ObjectId;
 use genie_core::world::World;
 use genie_save::Header;
@@ -52,7 +52,7 @@ pub fn old_pather_paths(
         let z = turns.spatial.get(id).map_or(0.0, |p| p.position.z());
         if let Err(e) = turns
             .spatial
-            .set_position(id, Position::new(from[0], from[1], z))
+            .set_position(id, Point::from(from).with_height(z))
         {
             out.push(Err(e));
             continue;
@@ -72,8 +72,8 @@ pub fn old_pather_paths(
         );
         out.push(
             pather
-                .find(from, to, target, range)
-                .map(|(r, p)| (r, p.points)),
+                .find(Point::from(from), to, target, range)
+                .map(|(r, p)| (r, p.points.iter().map(|q| q.get()).collect())),
         );
     }
     Ok(out)

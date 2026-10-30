@@ -35,10 +35,10 @@ impl World {
         player: PlayerId,
         id: i32,
         others: &[i32],
-        cell: Option<[f32; 2]>,
+        cell: Option<Point>,
         order: &MoveOrder,
     ) -> Result<(), GenieError> {
-        let point2 = cell.unwrap_or_else(|| order.point.xy());
+        let point2 = cell.unwrap_or(order.point);
         let Some(place) = self.place(id) else {
             return Ok(());
         };
@@ -101,9 +101,9 @@ impl World {
                     -1
                 },
                 target_owner,
-                point: Position::new(point2[0], point2[1], 0.0),
+                point: point2.with_height(0.0),
                 range: 0.0,
-                shown: order.point.xy(),
+                shown: order.point,
                 ready: order.direct,
                 target_type,
             };
@@ -127,14 +127,10 @@ impl World {
             return Err(GenieError::unsupported("a move that follows an object"));
         }
         let order = &MoveOrder {
-            point: Point::new(point2[0], point2[1]),
+            point: point2,
             ..*order
         };
-        let taken = self.move_to_point(
-            player,
-            idx,
-            Position::new(order.point.x(), order.point.y(), 0.0),
-        )?;
+        let taken = self.move_to_point(player, idx, order.point.with_height(0.0))?;
         // the order handler's notify: a unit that took the move as a MoveTo gets the move order
         // and action, its target forgotten (FUN_140c4dcb0); every unit then the point
         // (FUN_140c64be0); in a grid every unit gets the order, the action and its cell, its
@@ -143,7 +139,7 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             let ai_stream = self.streams.get(Stream::Ai);
             match cell {
-                None => ai.notify_move(!taken, None, order.point.xy(), ai_stream),
+                None => ai.notify_move(!taken, None, order.point, ai_stream),
                 Some(c) => ai.notify_grid_move(c, ai_stream),
             }
         }

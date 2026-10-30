@@ -17,6 +17,7 @@ use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -143,8 +144,8 @@ pub fn tiles(from: [i32; 2], to: [i32; 2]) -> Result<Vec<[i32; 2]>, GenieError> 
 /// [`MAP_MARGIN`]), then each coordinate snapped: to the nearest whole one for a whole radius, to
 /// the tile's centre for another.
 #[must_use]
-pub fn snap(radius: Footprint, map: [i32; 2], at: [f32; 2]) -> [f32; 2] {
-    let [mut x, mut y] = at;
+pub fn snap(radius: Footprint, map: [i32; 2], at: Point) -> Point {
+    let (mut x, mut y) = (at.x(), at.y());
     let (rx, ry) = (radius.x(), radius.y());
     let (low_x, mut high_x) = (x - rx, rx + x);
     let (low_y, mut high_y) = (y - ry, ry + y);
@@ -166,7 +167,7 @@ pub fn snap(radius: Footprint, map: [i32; 2], at: [f32; 2]) -> [f32; 2] {
     if far_y <= high_y {
         y += far_y - high_y;
     }
-    [snap_one(x, rx), snap_one(y, ry)]
+    Point::new(snap_one(x, rx), snap_one(y, ry))
 }
 
 /// One coordinate of [`snap`].
@@ -283,14 +284,14 @@ impl World {
         let mut placed: Vec<(i32, Position)> = Vec::new();
         for (a, b) in segments([x1, y1], [x2, y2]) {
             for [tx, ty] in tiles(a, b)? {
-                let at = snap(radius, self.spatial.map, [tx as f32, ty as f32]);
+                let at = snap(radius, self.spatial.map, Point::new(tx as f32, ty as f32));
                 if self.placement_code(player, master, at, true)? != 0 {
                     continue;
                 }
                 if !self.affords(player, master)? {
                     break;
                 }
-                placed.push(self.found(player, master, Position::new(at[0], at[1], 0.0))?);
+                placed.push(self.found(player, master, at.with_height(0.0))?);
             }
         }
         Ok(placed)
@@ -465,22 +466,22 @@ mod tests {
     #[test]
     fn a_half_tile_footprint_snaps_to_the_tile_centre() {
         assert_eq!(
-            snap(Footprint::new(0.5, 0.5), [120, 120], [10.0, 20.0]),
-            [10.5, 20.5]
+            snap(Footprint::new(0.5, 0.5), [120, 120], Point::new(10.0, 20.0)),
+            Point::new(10.5, 20.5)
         );
         // a whole radius rounds to the nearest whole point
         assert_eq!(
-            snap(Footprint::new(1.0, 1.0), [120, 120], [10.0, 20.0]),
-            [10.0, 20.0]
+            snap(Footprint::new(1.0, 1.0), [120, 120], Point::new(10.0, 20.0)),
+            Point::new(10.0, 20.0)
         );
         // the map's edges push the footprint in
         assert_eq!(
-            snap(Footprint::new(0.5, 0.5), [120, 120], [0.0, 119.0]),
-            [0.5, 119.5]
+            snap(Footprint::new(0.5, 0.5), [120, 120], Point::new(0.0, 119.0)),
+            Point::new(0.5, 119.5)
         );
         assert_eq!(
-            snap(Footprint::new(1.0, 1.0), [120, 120], [0.0, 119.0]),
-            [1.0, 119.0]
+            snap(Footprint::new(1.0, 1.0), [120, 120], Point::new(0.0, 119.0)),
+            Point::new(1.0, 119.0)
         );
     }
 

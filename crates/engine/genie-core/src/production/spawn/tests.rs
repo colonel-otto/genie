@@ -143,27 +143,34 @@ fn the_tc_spawns_its_villager_below_the_sheep_on_its_right() {
     let site = Site {
         position: Position::new(104.0, 47.0, 0.0),
         radius: Footprint::new(2.0, 2.0),
-        gather: Some([107.2451, 46.075_863]),
+        gather: Some(Point::new(107.2451, 46.075_863)),
         walls: [false; 4],
     };
     let mut tried = Vec::new();
     let p = spawn_point(&site, Footprint::new(0.2, 0.2), &mut |c| {
         tried.push(c);
-        Ok(if c[1] > 46.9 {
+        Ok(if c.y() > 46.9 {
             Tested::Blocked { stays: true }
         } else {
             Tested::Free
         })
     })
     .unwrap();
-    assert_eq!(p, [106.5, 46.5]);
-    assert_eq!(tried, [[106.5, 47.5], [106.5, 47.0], [106.5, 46.5]]);
+    assert_eq!(p, Point::new(106.5, 46.5));
+    assert_eq!(
+        tried,
+        [
+            Point::new(106.5, 47.5),
+            Point::new(106.5, 47.0),
+            Point::new(106.5, 46.5)
+        ]
+    );
 }
 
 #[test]
 fn a_blocker_that_moves_lets_the_spot_try_its_next_candidate() {
     let spot = Spot {
-        at: [1.0, 1.0],
+        at: Point::new(1.0, 1.0),
         step: [0.5, 0.0],
         dir: [1, 0],
         count: 1,
@@ -178,7 +185,7 @@ fn a_blocker_that_moves_lets_the_spot_try_its_next_candidate() {
         })
     })
     .unwrap();
-    assert_eq!(p, Some([1.5, 1.0]));
+    assert_eq!(p, Some(Point::new(1.5, 1.0)));
 }
 
 fn sheep(state: u8) -> Near {
@@ -290,7 +297,7 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
         own: &[],
     };
     let test = |o: Near, masks: [u64; 2]| {
-        build_placement(&site, &Fogged(vec![o], masks), [21.0, 21.0]).unwrap()
+        build_placement(&site, &Fogged(vec![o], masks), Point::new(21.0, 21.0)).unwrap()
     };
     // the house's mask meets what player 1 sees and explored: it blocks
     assert_eq!(test(house, [1 << 1, 1 << 33]), 6);
@@ -363,7 +370,7 @@ fn the_sheep_blocks_the_villager_where_their_boxes_overlap() {
         placement: [-1; 4],
     };
     let map = Flat(vec![sheep(2)]);
-    let at = |x, y| placement(&villager, &map, [x, y], false).unwrap();
+    let at = |x, y| placement(&villager, &map, Point::new(x, y), false).unwrap();
     assert_eq!(at(106.5, 47.5), Tested::Blocked { stays: true });
     assert_eq!(at(106.5, 47.0), Tested::Blocked { stays: true });
     assert_eq!(at(106.5, 46.5), Tested::Free);
@@ -389,7 +396,9 @@ fn the_first_object_of_a_tile_s_list_reports_the_block() {
         master: master_id(4),
         ..sheep(2)
     };
-    let at = |list: Vec<Near>| placement(&villager, &Flat(list), [106.5, 47.5], false).unwrap();
+    let at = |list: Vec<Near>| {
+        placement(&villager, &Flat(list), Point::new(106.5, 47.5), false).unwrap()
+    };
     assert_eq!(at(vec![sheep(2), soldier]), Tested::Blocked { stays: true });
     assert_eq!(
         at(vec![soldier, sheep(2)]),
@@ -461,7 +470,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         target_owner: -1,
         point: Position::new(40.0, 80.0, 7.0),
         range: 2.0,
-        shown: [40.0, 80.0],
+        shown: Point::new(40.0, 80.0),
         ready: false,
         target_type: -1,
     };
@@ -559,7 +568,7 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
 /// Every candidate of `site`'s search for a unit of radius 0.5 (a step of 0.5, no gap), all
 /// blocked by objects that stay: each spot's first candidate in turn, and the error of the
 /// later rings.
-fn all_blocked(site: &Site) -> (Vec<[f32; 2]>, Result<[f32; 2], GenieError>) {
+fn all_blocked(site: &Site) -> (Vec<Point>, Result<Point, GenieError>) {
     let mut tried = Vec::new();
     let r = spawn_point(site, Footprint::new(0.5, 0.5), &mut |c| {
         tried.push(c);
@@ -582,15 +591,43 @@ fn a_spawn_search_without_a_gather_point_walks_the_eight_segments_once() {
         walls: [false; 4],
     };
     let (tried, r) = all_blocked(&site);
-    let top = [[8.5, 11.5], [9.0, 11.5], [9.5, 11.5]];
-    let left = [[8.5, 11.5], [8.5, 11.0], [8.5, 10.5]];
-    let top_right = [[9.75, 11.5], [10.25, 11.5], [10.75, 11.5], [11.25, 11.5]];
-    let left_low = [[8.5, 10.25], [8.5, 9.75], [8.5, 9.25], [8.5, 8.75]];
-    let right = [[11.5, 11.5], [11.5, 11.0]];
-    let right_low = [[11.5, 10.5], [11.5, 10.0], [11.5, 9.5], [11.5, 9.0]];
-    let bottom = [[8.5, 8.5], [9.0, 8.5]];
-    let bottom_right = [[9.5, 8.5], [10.0, 8.5], [10.5, 8.5], [11.0, 8.5]];
-    let segments: [&[[f32; 2]]; 8] = [
+    let top = [
+        Point::new(8.5, 11.5),
+        Point::new(9.0, 11.5),
+        Point::new(9.5, 11.5),
+    ];
+    let left = [
+        Point::new(8.5, 11.5),
+        Point::new(8.5, 11.0),
+        Point::new(8.5, 10.5),
+    ];
+    let top_right = [
+        Point::new(9.75, 11.5),
+        Point::new(10.25, 11.5),
+        Point::new(10.75, 11.5),
+        Point::new(11.25, 11.5),
+    ];
+    let left_low = [
+        Point::new(8.5, 10.25),
+        Point::new(8.5, 9.75),
+        Point::new(8.5, 9.25),
+        Point::new(8.5, 8.75),
+    ];
+    let right = [Point::new(11.5, 11.5), Point::new(11.5, 11.0)];
+    let right_low = [
+        Point::new(11.5, 10.5),
+        Point::new(11.5, 10.0),
+        Point::new(11.5, 9.5),
+        Point::new(11.5, 9.0),
+    ];
+    let bottom = [Point::new(8.5, 8.5), Point::new(9.0, 8.5)];
+    let bottom_right = [
+        Point::new(9.5, 8.5),
+        Point::new(10.0, 8.5),
+        Point::new(10.5, 8.5),
+        Point::new(11.0, 8.5),
+    ];
+    let segments: [&[Point]; 8] = [
         &top,
         &left,
         &top_right,
@@ -617,23 +654,23 @@ fn a_second_pass_between_walled_corners_tries_the_bottom_right_corner() {
     let site = Site {
         position: Position::new(10.0, 10.0, 0.0),
         radius: Footprint::new(1.0, 1.0),
-        gather: Some([20.0, 5.0]),
+        gather: Some(Point::new(20.0, 5.0)),
         walls: [false, true, false, true],
     };
     let (tried, r) = all_blocked(&site);
     assert_eq!(
         tried,
         [
-            [8.5, 11.5],
-            [9.0, 11.5],
-            [9.5, 11.5],
-            [8.5, 11.5],
-            [8.5, 11.0],
-            [8.5, 10.5],
-            [11.5, 8.5],
-            [11.0, 8.5],
-            [11.5, 8.5],
-            [11.5, 9.0]
+            Point::new(8.5, 11.5),
+            Point::new(9.0, 11.5),
+            Point::new(9.5, 11.5),
+            Point::new(8.5, 11.5),
+            Point::new(8.5, 11.0),
+            Point::new(8.5, 10.5),
+            Point::new(11.5, 8.5),
+            Point::new(11.0, 8.5),
+            Point::new(11.5, 8.5),
+            Point::new(11.5, 9.0)
         ]
     );
     assert!(r.is_err());
@@ -649,7 +686,7 @@ fn queued_move() -> crate::unit_ai::QueuedOrder {
         target_owner: -1,
         point: Position::new(40.0, 80.0, 7.0),
         range: 2.0,
-        shown: [40.0, 80.0],
+        shown: Point::new(40.0, 80.0),
         ready: false,
         target_type: -1,
     }
@@ -936,23 +973,38 @@ fn build_s_static_test_answers_the_map_s_edge_terrain_and_exploration() {
     use crate::production::spawn::placement_test::build_static_test;
     let open = house_site(&[1.0], true);
     let flat = Flat(Vec::new());
-    assert_eq!(build_static_test(&open, &flat, [50.0, 50.0]), Ok(None));
-    assert_eq!(build_static_test(&open, &flat, [0.5, 50.0]), Ok(Some(7)));
-    assert_eq!(build_static_test(&open, &flat, [119.5, 50.0]), Ok(Some(7)));
+    assert_eq!(
+        build_static_test(&open, &flat, Point::new(50.0, 50.0)),
+        Ok(None)
+    );
+    assert_eq!(
+        build_static_test(&open, &flat, Point::new(0.5, 50.0)),
+        Ok(Some(7))
+    );
+    assert_eq!(
+        build_static_test(&open, &flat, Point::new(119.5, 50.0)),
+        Ok(Some(7))
+    );
     let forbidden = house_site(&[0.0], true);
     assert_eq!(
-        build_static_test(&forbidden, &flat, [50.0, 50.0]),
+        build_static_test(&forbidden, &flat, Point::new(50.0, 50.0)),
         Ok(Some(2))
     );
-    assert_eq!(build_static_test(&open, &Dark, [50.0, 50.0]), Ok(Some(5)));
+    assert_eq!(
+        build_static_test(&open, &Dark, Point::new(50.0, 50.0)),
+        Ok(Some(5))
+    );
     let computer = house_site(&[1.0], false);
-    assert_eq!(build_static_test(&computer, &Dark, [50.0, 50.0]), Ok(None));
+    assert_eq!(
+        build_static_test(&computer, &Dark, Point::new(50.0, 50.0)),
+        Ok(None)
+    );
     let zoned = BuildSite {
         zones: true,
         ..open
     };
     assert_eq!(
-        build_static_test(&zoned, &flat, [50.0, 50.0])
+        build_static_test(&zoned, &flat, Point::new(50.0, 50.0))
             .unwrap_err()
             .reason(),
         "BUILD's placement test in a zone mode"
@@ -1150,7 +1202,8 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         state: 2,
         ..sheep(2)
     };
-    let blocks = |site: &BuildSite<'_>, o: Near| blocks_build(site, &flat, &o, [21.0, 21.0]);
+    let blocks =
+        |site: &BuildSite<'_>, o: Near| blocks_build(site, &flat, &o, Point::new(21.0, 21.0));
     assert!(blocks(&site, house));
     for passed in [
         Near { state: 3, ..house },
@@ -1225,7 +1278,7 @@ fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
     };
     let build = house_site(&[1.0], false);
     let test = |site: &BuildSite<'_>, o: Near| {
-        build_placement(site, &Flat(vec![o]), [21.0, 21.0]).unwrap()
+        build_placement(site, &Flat(vec![o]), Point::new(21.0, 21.0)).unwrap()
     };
     assert_eq!(test(&build, house), 0);
     let scans = BuildSite {
