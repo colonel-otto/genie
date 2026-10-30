@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::FARM;
@@ -63,13 +64,13 @@ impl World {
         &self,
         player: PlayerId,
         master: MasterId,
-        builders: &[i32],
+        builders: &[Option<ObjectId>],
     ) -> Result<bool, GenieError> {
         if self.players.player(player)?.computer {
             return Ok(true);
         }
         let trained_at = self.master(player, master)?.trained_at.clone();
-        for &id in builders {
+        for &id in builders.iter().flatten() {
             if self.builds((master, &trained_at), id)? {
                 return Ok(true);
             }

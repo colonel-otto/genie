@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::groups::SpecificMove;
 use crate::groups::group_list::member_gone;
 use crate::groups::update::send::Travel;
+use crate::objects::ObjectId;
 use crate::orders::{Place, Work};
 use crate::world::World;
 
@@ -65,6 +66,7 @@ impl World {
         }
         let part = self.gate_part(id, target)?;
         if self.groups.held(group)?.command_queue.is_empty() && !self.target_pending(group)? {
+            let (id, part) = (ObjectId::try_from(id)?, ObjectId::of_field(part));
             let _ = self.remove_unit(group, id, part, false)?;
         }
         self.stand_unit(id)?;

@@ -6,6 +6,7 @@ use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
+use crate::objects::ObjectId;
 use crate::players::PlayerId;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
@@ -56,7 +57,7 @@ impl World {
                 .ai
                 .as_ref()
                 .map_or(-1, |ai| ai.current_target);
-            if target != -1
+            if let Some(target) = ObjectId::of_field(target)
                 && let Some(at) = self.spatial.get(target).map(|o| o.position)
             {
                 self.move_to_object(p, idx, target, at)?;

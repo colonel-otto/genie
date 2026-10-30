@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::commands::Command;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -20,17 +21,17 @@ impl World {
 
     /// `FUN_140e5e780`: each unit of `ids` with a unit AI takes the world time as its last human
     /// order time (`+0x650`).
-    pub(crate) fn human_order(&mut self, ids: &[i32]) {
-        for &id in ids {
+    pub(crate) fn human_order(&mut self, ids: &[Option<ObjectId>]) {
+        for &id in ids.iter().flatten() {
             let unit = self
                 .players
                 .iter_mut()
                 .flat_map(|p| p.objects.iter_mut())
-                .find(|o| o.id.get() == id)
+                .find(|o| o.id == id)
                 .filter(|o| o.ai.is_some());
             if let Some(u) = unit {
                 u.last_human_order = self.world_time;
-                self.spatial.set_gait(u.id.get(), u.gait());
+                self.spatial.set_gait(u.id, u.gait());
             }
         }
     }
@@ -42,7 +43,10 @@ impl World {
     /// ([`UnitAi::reset_for_order`]), in list order.
     ///
     /// [`UnitAi::reset_for_order`]: crate::unit_ai::UnitAi::reset_for_order
-    pub(crate) fn reset_order_units(&mut self, units: &[i32]) -> Result<(), GenieError> {
+    pub(crate) fn reset_order_units(
+        &mut self,
+        units: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
         for &id in units {
             let Some(place) = self.place(id) else {
                 continue;

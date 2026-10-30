@@ -204,8 +204,7 @@ impl World {
         id: ObjectId,
         activate: bool,
     ) -> Result<(), GenieError> {
-        let id = id.get();
-        let Some((owner, _)) = (id != -1).then(|| self.object(id)).flatten() else {
+        let Some((owner, _)) = self.object(id) else {
             return Ok(());
         };
         if owner != player && !self.settings.cheats_enabled {
@@ -226,7 +225,11 @@ impl World {
     /// with its count ([`crate::world::World::garrisoned`]) and its bell flag (`+0x9dc`) set (its
     /// sound, slot 0x4c0, is not simulation); then [`crate::world::World::shelter`] with the
     /// reach (`param_6` 1), no transports, not through the unit AIs.
-    pub(crate) fn ring_town_bell(&mut self, owner: PlayerId, tc: i32) -> Result<(), GenieError> {
+    pub(crate) fn ring_town_bell(
+        &mut self,
+        owner: PlayerId,
+        tc: ObjectId,
+    ) -> Result<(), GenieError> {
         let Some((_, t)) = self.object(tc) else {
             return Ok(());
         };
@@ -252,7 +255,7 @@ impl World {
             let (kind, class, master) = (m.kind, m.class, m.id);
             let takes_villagers = m.building.is_some_and(|b| b.garrison_type & 1 != 0);
             let near = |t: &Self| -> Result<bool, GenieError> {
-                let (o_at, o_radius) = t.ground(id.get())?;
+                let (o_at, o_radius) = t.ground(id)?;
                 let gap = footprint_gap_squared(o_at, o_radius, at, radius);
                 // COMISS REACH, gap; JC: a gap above it, or a NaN, is out
                 Ok(!crate::math::fmath::below_or_unordered(REACH, gap))
@@ -260,10 +263,10 @@ impl World {
             if (class == class::VILLAGER && kind == COMBAT && near(self)?)
                 || (master == MASTER_1808 && near(self)?)
             {
-                units.push(id.get());
+                units.push(id);
             } else if kind == BUILDING && takes_villagers && near(self)? {
-                shelters.buildings.push(id.get());
-                shelters.counts.push(self.garrisoned(id.get())?);
+                shelters.buildings.push(id);
+                shelters.counts.push(self.garrisoned(id)?);
                 self.players.live_mut(owner, k - 1)?.town_bell.flag = true;
             }
         }
@@ -279,7 +282,11 @@ impl World {
     /// 0x4c0, is not simulation). Then every unit its owner's tracker files under class 4
     /// (`FUN_14104f8f0`) and master 1808 (`FUN_14104f960`), in that order, not inside another
     /// (`+0x2f0`) goes back to work from where it is.
-    pub(crate) fn end_town_bell(&mut self, owner: PlayerId, tc: i32) -> Result<(), GenieError> {
+    pub(crate) fn end_town_bell(
+        &mut self,
+        owner: PlayerId,
+        tc: ObjectId,
+    ) -> Result<(), GenieError> {
         let Some((_, t)) = self.object(tc) else {
             return Ok(());
         };
@@ -299,7 +306,7 @@ impl World {
             }
             let id = b.id;
             self.players.live_mut(owner, idx)?.town_bell.flag = false;
-            let (b_at, b_radius) = self.ground(id.get())?;
+            let (b_at, b_radius) = self.ground(id)?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
             if crate::math::fmath::below_or_unordered(REACH, gap) {
@@ -325,7 +332,6 @@ impl World {
         player: PlayerId,
         id: ObjectId,
     ) -> Result<(), GenieError> {
-        let id = id.get();
         let Some((owner, _)) = self.object(id) else {
             return Ok(());
         };
@@ -347,7 +353,7 @@ impl World {
             {
                 continue;
             }
-            let (b_at, b_radius) = self.ground(b.id.get())?;
+            let (b_at, b_radius) = self.ground(b.id)?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
             if crate::math::fmath::below_or_unordered(REACH, gap) {

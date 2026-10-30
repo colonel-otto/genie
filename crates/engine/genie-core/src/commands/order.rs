@@ -80,14 +80,14 @@ impl OrderCommand {
         match order {
             Order::Interact(o) => w.interact(player, &units, &o),
             Order::Move(o) => w.move_order(player, &units, &o),
-            Order::Follow(target) => w.follow(player, &units, target.get()),
-            Order::Guard(target) => w.guard(player, &units, target.get()),
+            Order::Follow(target) => w.follow(player, &units, target),
+            Order::Guard(target) => w.guard(player, &units, target),
             Order::Work(_) | Order::Retreat(_) => Err(ORDER_UNMODELLED),
         }
     }
 
     /// Whether a unit of `units` the world holds belongs to a player who is not a computer.
-    fn any_human_unit(w: &World, units: &[i32]) -> Result<bool, GenieError> {
+    fn any_human_unit(w: &World, units: &[Option<ObjectId>]) -> Result<bool, GenieError> {
         for &id in units {
             if let Some((p, _)) = w.object(id)
                 && !w.players.player(p)?.computer
@@ -102,11 +102,11 @@ impl OrderCommand {
     /// (`FUN_140e55eb0`), MOVE (`FUN_140e553f0`) and RETREAT (`FUN_140e55710`) refuse a count
     /// past the packet's ids but `0xffff`, then read the units ([`World::command_units`]) and
     /// make each one the world does not hold, or of another player without the setting
-    /// `+0x1074`, −1 ([`World::checked_units`]); read from the last commanded units, they leave
-    /// the −1s there. A human player's command left without a unit, or a command of a player
+    /// `+0x1074`, none (the game's −1, [`World::checked_units`]); read from the last commanded
+    /// units, they leave the nones there. A human player's command left without a unit, or a command of a player
     /// the world lacks, does nothing (None). Else the run reads its units again
     /// (`FUN_140e6b290` with 0): a list of the command's own becomes the last commanded units,
-    /// −1s and all. FOLLOW's and GUARD's checks (`FUN_140e54c50`, `FUN_140e550d0`) refuse a
+    /// nones and all. FOLLOW's and GUARD's checks (`FUN_140e54c50`, `FUN_140e550d0`) refuse a
     /// count past the packet's ids, the count `0xffff` too, and they take the first 60 units
     /// of their packet (500 for a computer, [`World::read_units`]); GUARD's check is BUILD's
     /// builders' ([`World::command_check`]), FOLLOW's runs in [`World::follow`].
@@ -114,16 +114,15 @@ impl OrderCommand {
     /// # Errors
     ///
     /// A player the world does not hold.
-    fn units(&self, w: &mut World) -> Result<Option<Vec<i32>>, GenieError> {
+    fn units(&self, w: &mut World) -> Result<Option<Vec<Option<ObjectId>>>, GenieError> {
         let (source, order) = (&self.units, self.order);
         if let Order::Follow(_) | Order::Guard(_) = order {
             let Some(read) = w.read_units(self.player, source) else {
                 return Ok(None);
             };
-            let ids = ObjectId::fields(read);
             return match order {
-                Order::Guard(_) => w.command_check(self.player, &ids),
-                _ => Ok(Some(ids)),
+                Order::Guard(_) => w.command_check(self.player, read),
+                _ => Ok(Some(read.to_vec())),
             };
         }
         let player = self.player;
@@ -138,7 +137,7 @@ impl OrderCommand {
         if last {
             w.set_last_commanded(player.index(), checked.clone());
         }
-        if !computer && checked.iter().all(|&id| id == -1) {
+        if !computer && checked.iter().all(Option::is_none) {
             return Ok(None);
         }
         if !last {

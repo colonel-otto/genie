@@ -17,6 +17,14 @@ impl ObjectId {
         self.0
     }
 
+    /// Its value for a routine or a field that does not take the type yet: the marker of the
+    /// migration (FD-001-D23, T9). Each call goes when its callee or its field takes the type,
+    /// and the method goes with [`ObjectId::field`].
+    #[must_use]
+    pub const fn raw(self) -> i32 {
+        self.0
+    }
+
     /// The id the world gives the next new object (`mNextObjectId` counts up).
     #[must_use]
     pub const fn successor(self) -> Self {
@@ -59,18 +67,18 @@ impl ObjectId {
             None => Self::NONE,
         }
     }
-
-    /// The values of fields that hold −1 for none, for a routine that takes them raw
-    /// (FD-001-D23's migration reaches it later).
-    #[must_use]
-    pub fn fields(ids: &[Option<Self>]) -> Vec<i32> {
-        ids.iter().map(|&id| Self::field(id)).collect()
-    }
 }
 
 impl genie_diff::Diff for ObjectId {
     fn diff(&self, other: &Self, d: &mut genie_diff::Differ) {
         d.equal(self, other);
+    }
+}
+
+/// A map of objects by id hashes the id's value (`std::hash<int>`).
+impl crate::math::msvc::IntKey for ObjectId {
+    fn int(self) -> i32 {
+        self.0
     }
 }
 
@@ -153,6 +161,24 @@ mod tests {
         assert_eq!(id(7).get(), 7);
     }
 
+    /// The migration's marker gives the id's value.
+    #[test]
+    fn the_marker_gives_the_id_s_value() {
+        assert_eq!(id(7).raw(), 7);
+        assert_eq!(id(-2).raw(), -2);
+    }
+
+    /// A map keyed by ids lists them in the order of one keyed by their values: the game hashes
+    /// the value (`std::hash<int>`).
+    #[test]
+    fn a_map_of_ids_lists_them_as_their_values() {
+        use crate::math::msvc::unordered_map_order;
+        let values = [1, 2, 9, 2, -2];
+        let by_value: Vec<ObjectId> = unordered_map_order(values).into_iter().map(id).collect();
+        assert_eq!(unordered_map_order(values.map(id)), by_value);
+        assert_eq!(by_value, [9, 1, 2, -2].map(id));
+    }
+
     /// A lookup key names an id, none or (a raw field) −1 for none.
     #[test]
     fn a_lookup_key_names_its_id_or_none() {
@@ -163,14 +189,5 @@ mod tests {
         assert_eq!(7.key(), Some(id(7)));
         assert_eq!((-1).key(), None);
         assert_eq!((-2).key(), Some(id(-2)));
-    }
-
-    /// A list's values are its ids', none's −1, in its order.
-    #[test]
-    fn a_list_s_values_are_its_ids_in_order() {
-        assert_eq!(
-            ObjectId::fields(&[Some(id(7)), None, Some(id(-2))]),
-            [7, -1, -2]
-        );
     }
 }

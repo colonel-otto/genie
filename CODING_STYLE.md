@@ -165,8 +165,9 @@ King, "Parse, don't validate", 2019.)
   reads) or inside the type's own arithmetic. Two genie functions never pass a value as a raw
   number and parse it again.
 - Migrate from the boundary inward: first the reader or the codec that makes the value, then
-  its callers. Code that is not migrated yet gets a raw number back through a helper
-  (`ObjectId::field`). Such a helper is temporary.
+  its callers. Code that is not migrated yet gets a raw number back through a helper. The
+  helpers are `ObjectId::field` for an `Option` and the marker `ObjectId::raw` for an id. They
+  are temporary. Once a callee or a field takes the type, remove the calls that fed it.
 - Write no `is_valid` function that returns a `bool` for later code to trust. Write a
   constructor that returns the type or an error (`TryFrom`, `of_field`).
 - Put the check into the shape of the type. A required value is `T`, not `Option<T>`. A closed
@@ -194,6 +195,25 @@ fn command(raw: i32) -> Result<(), GenieError> {
 - Use `Option<T>` only where the function works without the value: a target or a point, an
   entry of a unit list. If the function needs the value, take `T`. A missing value becomes an
   error at the boundary that reads it.
+- Find the cutoff: the first function that cannot do its work without the value. That
+  function takes `T`. Its caller unwraps the `Option` once and decides what none does: skip
+  the entry, return, or fail.
+- Do not pass an `Option<T>` down a call chain whose functions all need the value. A `None`
+  that arrives deep in the chain hides where the value went missing.
+- Fail early. If a later step needs a value that is none, return the error where the value
+  is read. A raw field that must name an object converts with `ObjectId::try_from(raw)?`,
+  not with `of_field`.
+- Keep `Option<T>` in a list only where the game's null entries count: their positions, the
+  list's length, a sort. If a routine acts only on the entries that exist, flatten the list
+  at its start (`ids.iter().flatten()`).
+- Some game code turns none into −1 and uses the number: a sort key, a saved field, a
+  comparison, a table index. Write that conversion once, where the game does it, and name
+  the game's routine in its comment. Check each such site against the game's code: a lookup
+  of −1 finds no object, because no object's id is −1 (the world's reusable ids start at
+  −2).
+- A lookup by id (`World::object`, `World::place`, `World::world_object`) takes
+  `impl ObjectKey`: an id, an `Option<ObjectId>`, or a raw field that is not migrated yet. A
+  key that names none finds nothing, as the game's table does.
 - Make a closed set of values an enum and match it whole.
 - Give a public enum of a format crate `#[non_exhaustive]` or an `Unknown(…)` variant. A newer
   game can write a value that the enum does not know yet.

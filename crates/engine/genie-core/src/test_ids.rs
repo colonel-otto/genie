@@ -17,6 +17,11 @@ pub(crate) fn object_ids(values: impl IntoIterator<Item = i32>) -> Vec<Option<Ob
     values.into_iter().map(ObjectId::of_field).collect()
 }
 
+/// The object ids `values` (none of them −1), in order.
+pub(crate) fn object_id_list(values: impl IntoIterator<Item = i32>) -> Vec<ObjectId> {
+    values.into_iter().map(object_id).collect()
+}
+
 /// The player `number`.
 pub(crate) fn player_id(number: u8) -> PlayerId {
     PlayerId::from(number)

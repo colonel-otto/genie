@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::UnitGroup;
+use crate::objects::{ObjectId, ObjectKey};
 use genie_diff::Diff;
 
 /// An object's link to its group: `mGroupID` (`+0x6d0`) and `mGroupFlag` (`+0x6d4`), -1 and -2
@@ -148,8 +149,12 @@ pub(crate) const NO_MOVER: GenieError =
     GenieError::unreachable("a group's member is a unit of type 70 or more, which moves");
 
 /// A member of a group that the world does not hold.
-pub(crate) fn member_gone(id: i32) -> GenieError {
-    GenieError::unreachable("a member of a group that the world does not hold").with("object", id)
+pub(crate) fn member_gone(id: impl ObjectKey) -> GenieError {
+    let gone = GenieError::unreachable("a member of a group that the world does not hold");
+    match id.key() {
+        Some(id) => gone.with("object", id),
+        None => gone.with("object", "none"),
+    }
 }
 
 /// A group the caller holds that the world does not.
@@ -159,17 +164,18 @@ fn group_gone(id: i32) -> GenieError {
 }
 
 /// The group that every listed unit is in (`FUN_14152ece0`), from each unit's group link
-/// (`group_of`, None for a unit the world does not hold, which is passed over): -1 for an empty
-/// list, for a unit in no group, for two groups, and when the first unit is gone (the others
-/// are then compared with no group).
-pub fn common_group(ids: &[i32], group_of: impl Fn(i32) -> Option<i32>) -> i32 {
-    let Some(&first) = ids.first() else {
+/// (`group_of`, None for a unit the world does not hold, which is passed over, as a null
+/// entry is): -1 for an empty list, for a unit in no group, for two groups, and when the first
+/// unit is gone (the others are then compared with no group).
+pub fn common_group<K: ObjectKey>(ids: &[K], group_of: impl Fn(ObjectId) -> Option<i32>) -> i32 {
+    let Some(first) = ids.first().map(|&id| id.key()) else {
         return -1;
     };
-    let first_held = group_of(first).is_some();
+    let first_held = first.and_then(&group_of).is_some();
     let mut common = -1;
     for &id in ids {
-        let Some(group) = group_of(id) else {
+        let id = id.key();
+        let Some(group) = id.and_then(&group_of) else {
             continue;
         };
         if group == -1 {

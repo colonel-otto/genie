@@ -2852,7 +2852,7 @@ fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
     t.players[1].objects[0].actions.gather_mut().unwrap().state = 7;
     let point = Position::new(36.0, 89.0, 0.0);
     assert_eq!(
-        t.move_to_object_with(PlayerId::new(1), 0, 601, point, false),
+        t.move_to_object_with(PlayerId::new(1), 0, object_id(601), point, false),
         Ok(true)
     );
     let g = t.players[1].objects[0].actions.gather().copied().unwrap();
@@ -2879,7 +2879,7 @@ fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         t.move_to_object_with(
             PlayerId::new(1),
             0,
-            700,
+            object_id(700),
             Position::new(20.0, 89.5, 0.0),
             false
         ),
@@ -2897,7 +2897,7 @@ fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         t.move_to_object_with(
             PlayerId::new(1),
             0,
-            700,
+            object_id(700),
             Position::new(20.0, 89.5, 0.0),
             false
         ),
@@ -3942,7 +3942,7 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
     t.hunt_command(PlayerId::new(1), 0, 500).unwrap();
     let point = Position::new(36.0, 89.0, 0.0);
     assert_eq!(
-        t.move_to_object_with(PlayerId::new(1), 0, 501, point, false),
+        t.move_to_object_with(PlayerId::new(1), 0, object_id(501), point, false),
         Ok(true)
     );
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
@@ -3963,7 +3963,7 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         t.move_to_object_with(
             PlayerId::new(1),
             0,
-            700,
+            object_id(700),
             Position::new(20.0, 89.5, 0.0),
             false
         ),
@@ -6684,7 +6684,7 @@ fn an_order_resets_its_units_sleeping_ones_too() {
         vec![0, 0],
         vec![Player::default(), player],
     );
-    t.reset_order_units(&[2, 9, 1]).unwrap();
+    t.reset_order_units(&object_ids([2, 9, 1])).unwrap();
     for u in t.players[1].objects.iter().chain(&t.players[1].sleeping) {
         let ai = u.ai.as_ref().unwrap();
         assert_eq!((ai.patrol_path.is_none(), ai.secondary_timer), (true, 750));
@@ -9110,8 +9110,13 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
         object_id(9149),
         placed(20.0, class::TOWER, ids::TOWN_CENTRE),
     );
-    t.move_to_object(PlayerId::new(1), 2, 50, Position::new(12.5, 10.5, 0.0))
-        .unwrap();
+    t.move_to_object(
+        PlayerId::new(1),
+        2,
+        object_id(50),
+        Position::new(12.5, 10.5, 0.0),
+    )
+    .unwrap();
     assert_eq!(t.players[0].sleeping.len(), 0);
     let tree = &t.players[0].objects[0];
     assert_eq!((tree.id.get(), tree.workers), (50, 1));
@@ -9122,8 +9127,13 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
             .map(|m| ObjectId::field(m.target)),
         Some(50)
     );
-    t.move_to_object(PlayerId::new(1), 2, 9149, Position::new(20.0, 10.5, 0.0))
-        .unwrap();
+    t.move_to_object(
+        PlayerId::new(1),
+        2,
+        object_id(9149),
+        Position::new(20.0, 10.5, 0.0),
+    )
+    .unwrap();
     let tree = &t.players[0].objects[0];
     assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
     assert_eq!(t.players[1].objects[3].workers, 2);
@@ -16659,7 +16669,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             w.cancel_order(&v, 0, true)
         }),
         routes(&t, &unit_order(9, true), PlayerId::new(1), |w| {
-            w.human_order(&ObjectId::fields(&v));
+            w.human_order(&v);
             w.unit_order(player_id(1), &v, 9)
         }),
     ];
@@ -16803,7 +16813,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
 fn the_command_phase_runs_an_order_after_its_check() {
     use crate::commands::Order;
     let t = forage_world();
-    let v = vec![9175];
+    let v = object_ids([9175]);
     let walk = crate::orders::MoveOrder {
         target: None,
         point: Point::new(40.5, 89.5),
@@ -16812,10 +16822,10 @@ fn the_command_phase_runs_an_order_after_its_check() {
         human: true,
         control: false,
     };
-    let order = |units: Vec<i32>, order| {
+    let order = |units: Vec<Option<ObjectId>>, order| {
         Command::Order(OrderCommand {
             player: player_id(1),
-            units: unit_list(object_ids(units)),
+            units: unit_list(units),
             order,
         })
     };
@@ -16830,7 +16840,7 @@ fn the_command_phase_runs_an_order_after_its_check() {
             w.move_order(PlayerId::new(1), &v, &walk)
         }
     ));
-    let none_left = order(vec![600], Order::Move(walk));
+    let none_left = order(object_ids([600]), Order::Move(walk));
     assert!(!routes(&t, &none_left, PlayerId::new(1), |_| Ok(())));
     let lost = order(v.clone(), Order::Follow(object_id(4444)));
     assert!(!routes(&t, &lost, PlayerId::new(1), |_| Ok(())));
@@ -16841,7 +16851,7 @@ fn the_command_phase_runs_an_order_after_its_check() {
         |w| {
             w.reset_order_units(&v).unwrap();
             w.human_order(&v);
-            w.guard(PlayerId::new(1), &v, 700)
+            w.guard(PlayerId::new(1), &v, object_id(700))
         }
     ));
     assert!(routes(
@@ -16883,13 +16893,13 @@ fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
     };
     let mut t = forage_world();
     t.run(&order(unit_list(object_ids([9175, 600]))));
-    assert_eq!(t.last_commanded.get(1), Some(&vec![9175, -1]));
+    assert_eq!(t.last_commanded.get(1), Some(&object_ids([9175, -1])));
     t.run(&order(unit_list(object_ids([600]))));
-    assert_eq!(t.last_commanded.get(1), Some(&vec![9175, -1]));
+    assert_eq!(t.last_commanded.get(1), Some(&object_ids([9175, -1])));
 
     let mut cached = forage_world();
-    cached.set_last_commanded(1, vec![600, 9175]);
-    let checked = vec![-1, 9175];
+    cached.set_last_commanded(1, object_ids([600, 9175]));
+    let checked = object_ids([-1, 9175]);
     assert!(routes(
         &cached,
         &order(UnitList::last_commanded()),
@@ -16901,10 +16911,10 @@ fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
             w.move_order(PlayerId::new(1), &checked, &walk)
         }
     ));
-    cached.set_last_commanded(1, vec![600]);
+    cached.set_last_commanded(1, object_ids([600]));
     let mut refused = cached.clone();
     refused.run(&order(UnitList::last_commanded()));
-    cached.set_last_commanded(1, vec![-1]);
+    cached.set_last_commanded(1, vec![None]);
     assert_eq!(refused, cached);
 }
 
@@ -16914,28 +16924,31 @@ fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
 #[test]
 fn an_order_s_units_are_capped_unless_its_comm_player_is_outside_the_world() {
     use UnitList;
-    let many: Vec<i32> = (0..600).collect();
+    let many = object_ids(0..600);
     let mut t = forage_world();
-    let listed = unit_list(object_ids(many.clone()));
+    let listed = unit_list(many.clone());
     assert_eq!(t.command_units(0, &listed), many);
     assert_eq!(t.command_units(t.players.len(), &listed), many);
     assert_eq!(t.command_units(1, &listed), many[..60]);
     assert_eq!(
         t.command_units(1, &UnitList::last_commanded()),
-        Vec::<i32>::new()
+        Vec::<Option<ObjectId>>::new()
     );
     t.players[1].computer = true;
     assert_eq!(t.command_units(1, &listed), many[..500]);
     assert_eq!(t.most_units(t.players.len()), 0);
-    t.set_last_commanded(0, vec![5]);
-    t.set_last_commanded(t.players.len(), vec![6]);
-    t.set_last_commanded(1, vec![7]);
-    assert_eq!(t.last_commanded, [vec![], vec![7]]);
+    t.set_last_commanded(0, object_ids([5]));
+    t.set_last_commanded(t.players.len(), object_ids([6]));
+    t.set_last_commanded(1, object_ids([7]));
+    assert_eq!(t.last_commanded, [vec![], object_ids([7])]);
     assert_eq!(
         t.command_units(0, &UnitList::last_commanded()),
-        Vec::<i32>::new()
+        Vec::<Option<ObjectId>>::new()
     );
-    assert_eq!(t.command_units(1, &UnitList::last_commanded()), [7]);
+    assert_eq!(
+        t.command_units(1, &UnitList::last_commanded()),
+        object_ids([7])
+    );
 }
 
 /// The command phase runs each building command by its handler ([`World::run`]) on

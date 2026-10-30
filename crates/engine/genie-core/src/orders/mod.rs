@@ -152,7 +152,7 @@ impl Place {
 /// x (`+0x5d8`) and its terrain restriction.
 #[derive(Clone, Copy, Debug)]
 struct Splittable {
-    id: i32,
+    id: ObjectId,
     group: i32,
     kind: MasterKind,
     grouped: bool,
@@ -173,19 +173,19 @@ pub(crate) struct Split {
     /// The owner of the list's first unit (`DAT_143f11960`), whose groups a new group of the
     /// split joins; None for a list whose first unit is gone (the game's −1).
     pub(crate) owner: Option<PlayerId>,
-    pub(crate) loose: Vec<i32>,
-    pub(crate) groups: Vec<Vec<i32>>,
+    pub(crate) loose: Vec<ObjectId>,
+    pub(crate) groups: Vec<Vec<ObjectId>>,
     /// The units a path from them did not join (`+0x3a48`, a `std::unordered_set` the splitter
     /// fills through `FUN_140a3e380` and the kept-group order `FUN_140fd9f40` reads), as a set:
     /// its bucket order is not held.
-    pub(crate) far: std::collections::BTreeSet<i32>,
+    pub(crate) far: std::collections::BTreeSet<ObjectId>,
 }
 
 impl Split {
     /// The splitter keeps a group while it holds fewer than 60 and the group has at most 60
     /// units (`+0x20` below `0x3c`, the count below `0x3d`); else the group and its units are
     /// dropped.
-    fn keep(&mut self, units: Vec<i32>) {
+    fn keep(&mut self, units: Vec<ObjectId>) {
         if self.groups.len() < 60 && units.len() <= 60 {
             self.groups.push(units);
         }
@@ -196,7 +196,7 @@ impl Split {
 /// ground and, for a master with a footprint (`+0x5d8` or `+0x5dc` above 0), its class.
 #[derive(Clone, Copy, Debug)]
 struct Followed {
-    id: i32,
+    id: ObjectId,
     place: Point,
     class: Option<i32>,
 }
@@ -249,7 +249,7 @@ fn splits_together(
     f: crate::world::Formations,
     member: bool,
     path: &mut SplitPath<'_>,
-    far: &mut std::collections::BTreeSet<i32>,
+    far: &mut std::collections::BTreeSet<ObjectId>,
 ) -> Result<bool, GenieError> {
     if a.kind <= MAX_UNGROUPED || b.kind <= MAX_UNGROUPED {
         return Ok(false);
@@ -290,9 +290,12 @@ const WAYPOINT_APART: f32 = crate::math::image::order::WAYPOINT_APART;
 const WAYPOINT_APART_LOW: f32 = crate::math::image::order::WAYPOINT_APART_LOW;
 
 /// An object that a caller found or was given, which the world does not hold.
-pub(crate) fn object_gone(id: i32) -> GenieError {
-    GenieError::unreachable("an object the caller holds that the world does not hold")
-        .with("object", id)
+pub(crate) fn object_gone(id: impl ObjectKey) -> GenieError {
+    let gone = GenieError::unreachable("an object the caller holds that the world does not hold");
+    match id.key() {
+        Some(id) => gone.with("object", id),
+        None => gone.with("object", "none"),
+    }
 }
 
 /// A building the caller found or was given, which holds no production queue.
@@ -559,8 +562,8 @@ fn set_differentiator_groups(g: &mut crate::groups::UnitGroup, list: &[u32]) {
 /// `FUN_14118c790`: unit `id` joins the end of a unit's ignore list (`+0x670`, count `+0x678`);
 /// the list's capacity (`+0x67c`: 24 at first, then twice the count, the new slots −1) is the
 /// `Vec`'s, which no reader sees.
-fn ignore_unit(ignore: &mut Vec<i32>, id: i32) {
-    ignore.push(id);
+fn ignore_unit(ignore: &mut Vec<i32>, id: ObjectId) {
+    ignore.push(id.get());
 }
 
 /// `FUN_1410862c0`: the footprint gap (`FUN_14118f680`) against the unit's ranges: whether it

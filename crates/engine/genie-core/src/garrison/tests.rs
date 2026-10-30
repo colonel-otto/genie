@@ -20,6 +20,7 @@ use crate::orders::action_state::{DONE, FAILED};
 use crate::players::PlayerId;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::test_ids::object_id_list;
 use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
 use crate::test_ids::unit_list;
@@ -1164,7 +1165,8 @@ fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_t
     // FUN_14120eb10
     let mut t = garrison_world();
     let takes = |t: &World, b, p, m, others, unchecked| {
-        t.takes_in_as(b, p, Some(m), others, unchecked).unwrap()
+        t.takes_in_as(object_id(b), p, Some(m), others, unchecked)
+            .unwrap()
     };
     assert!(takes(&t, 100, PlayerId::new(1), VILLAGER, true, true));
     assert!(takes(&t, 100, PlayerId::new(1), VILLAGER, true, false));
@@ -1214,8 +1216,9 @@ fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_t
 fn a_transport_takes_a_combat_unit_with_a_task_on_its_class_and_room() {
     // FUN_14120eb10's object-flag-0 branch: FUN_1415c9240 with 3 and the transport's class
     let mut t = garrison_world();
-    let takes =
-        |t: &World, m, unchecked| t.takes_in_as(200, PlayerId::new(1), Some(m), true, unchecked);
+    let takes = |t: &World, m, unchecked| {
+        t.takes_in_as(object_id(200), PlayerId::new(1), Some(m), true, unchecked)
+    };
     assert_eq!(takes(&t, VILLAGER, false), Ok(true));
     assert_eq!(takes(&t, ARCHER, true), Ok(false));
     let mut v = unit(1000, VILLAGER, 25.0);
@@ -1275,12 +1278,12 @@ fn a_room_test_counts_the_unit_and_what_it_holds_or_one_for_none() {
         t.has_room(bp, b, unit).unwrap()
     };
     assert!(room(&t, None));
-    assert!(room(&t, Some(1000)));
+    assert!(room(&t, Some(object_id(1000))));
     // a unit holding one more needs room for two
     let mut held = unit(1001, ARCHER, 25.0);
     held.life.inside = Some(1000);
     t.players[1].objects.push(held);
-    assert!(!room(&t, Some(1000)));
+    assert!(!room(&t, Some(object_id(1000))));
     assert!(room(&t, None));
 }
 
@@ -1899,9 +1902,9 @@ fn the_shelters_near_a_target_follow_its_owners_tracker_and_count_annexes_and_ga
     t.players[1].objects.push(inside);
     tracked(&mut t, TC, &[104, 102, 101, 100]);
     assert_eq!(
-        t.shelters_near(1, 100, TC).unwrap(),
+        t.shelters_near(1, object_id(100), TC).unwrap(),
         Shelters {
-            buildings: vec![101, 100],
+            buildings: object_id_list([101, 100]),
             transports: Vec::new(),
             counts: vec![1, 0, 0],
         }
@@ -1912,7 +1915,7 @@ fn the_shelters_near_a_target_follow_its_owners_tracker_and_count_annexes_and_ga
         .insert(object_id(300), *t.spatial.get(301).unwrap());
     tracked(&mut t, GATE, &[300, 301]);
     assert_eq!(
-        t.shelters_near(1, 301, GATE).unwrap(),
+        t.shelters_near(1, object_id(301), GATE).unwrap(),
         Shelters {
             buildings: Vec::new(),
             transports: Vec::new(),
@@ -2070,14 +2073,26 @@ fn a_garrison_into_a_transport_pairs_the_units_whose_class_has_the_flags() {
     );
     let shelters = Shelters {
         buildings: Vec::new(),
-        transports: vec![200],
+        transports: object_id_list([200]),
         counts: vec![0],
     };
-    t.shelter(PlayerId::new(1), &[1000], &shelters, true, true)
-        .unwrap();
+    t.shelter(
+        PlayerId::new(1),
+        &object_id_list([1000]),
+        &shelters,
+        true,
+        true,
+    )
+    .unwrap();
     assert_eq!(orders(&t, 1000), Some(vec![]));
-    t.shelter(PlayerId::new(1), &[1000], &shelters, false, true)
-        .unwrap();
+    t.shelter(
+        PlayerId::new(1),
+        &object_id_list([1000]),
+        &shelters,
+        false,
+        true,
+    )
+    .unwrap();
     assert_eq!(orders(&t, 1000), Some(vec![(OrderKind::Enter, 200)]));
     // with no unit the transport is never asked
     assert_eq!(
@@ -3178,16 +3193,16 @@ fn a_buildings_count_takes_relics_in_and_leaves_raiders_unmodelled() {
         u.life.inside = Some(100);
         t.players[p].objects.push(u);
     }
-    assert_eq!(t.garrisoned(100), Ok(3));
+    assert_eq!(t.garrisoned(object_id(100)), Ok(3));
     // a raider inside a building: its +0xc2c share is not kept
     t.object_mut(1000).unwrap().1.raider_countdown = 20;
-    assert!(t.garrisoned(100).is_err());
+    assert!(t.garrisoned(object_id(100)).is_err());
     // a transport has no +0xc2c term
     let mut u = unit(3000, VILLAGER, 25.0);
     u.life.inside = Some(200);
     u.raider_countdown = 20;
     t.players[1].objects.push(u);
-    assert_eq!(t.garrisoned(200), Ok(1));
+    assert_eq!(t.garrisoned(object_id(200)), Ok(1));
 }
 
 /// [`coast_world`] with its ship 200 at `ship`, the mesh built, after UNLOAD to `to`; `set` then

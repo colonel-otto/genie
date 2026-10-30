@@ -70,7 +70,6 @@ impl World {
     ///
     /// What the deletes do not model.
     pub(crate) fn delete(&mut self, player: PlayerId, id: ObjectId) -> Result<(), GenieError> {
-        let id = id.get();
         let Some((owner, unit)) = self.object(id) else {
             return Ok(());
         };
@@ -170,7 +169,7 @@ impl World {
     /// livestock holding some, else `FUN_14118f580`: a sleeping unit wakes to the end of its
     /// player's live list and its hit points go to 0. Not held: the deleted mark, the killer
     /// (`+0x690`, its owner) and the special-object list (`+0x30c` bit 0).
-    fn delete_unit(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
+    fn delete_unit(&mut self, owner: PlayerId, id: ObjectId) -> Result<(), GenieError> {
         let (_, unit) = self.object(id).ok_or_else(|| object_gone(id))?;
         let class = unit.master(&self.masters, owner)?.class;
         if UNDELETABLE.contains(&class) {
@@ -181,7 +180,7 @@ impl World {
         if class == class::RELIC || (class == class::LIVESTOCK && 0.0 < unit.life.amount) {
             return Ok(());
         }
-        let i = self.wake(id)?;
+        let i = self.wake(id.raw())?;
         self.players.live_mut(owner, i)?.life.hp = 0.0;
         Ok(())
     }
@@ -196,13 +195,13 @@ impl World {
     /// zones first ([`World::clear_treaty_zones`]). Not held: the deleted marks (`+0xa0c`, `+0xc`, `+0xb9c`), the
     /// semi-asleep list (`+0xc98`), the killer (`+0x690`) and a computer player's AI event (slot
     /// 0x380).
-    fn delete_building(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
+    fn delete_building(&mut self, owner: PlayerId, id: ObjectId) -> Result<(), GenieError> {
         let (_, unit) = self.object(id).ok_or_else(|| object_gone(id))?;
         let master = unit.master(&self.masters, owner)?;
         if master.id == TOWN_CENTRE_621 {
             self.clear_treaty_zones()?;
         }
-        self.remove_building(owner, id)
+        self.remove_building(owner, id.raw())
     }
 
     /// `FUN_1411ccbb0`, the core of a building's delete ([`World::delete_building`]) and of a

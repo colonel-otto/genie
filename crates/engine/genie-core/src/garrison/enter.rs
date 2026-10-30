@@ -251,7 +251,7 @@ impl World {
             )));
         }
         let (tp, t) = self.object(target).ok_or_else(|| object_gone(target))?;
-        if !self.has_room(tp, t, Some(id.get()))? {
+        if !self.has_room(tp, t, Some(id))? {
             return Err(GenieError::unsupported(
                 "an Enter into a building without room (state 11)",
             ));
@@ -298,7 +298,7 @@ impl World {
         let id = self.players.player(player)?.objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
         let tm = t.master(&self.masters, tp)?.clone();
-        let room = self.has_room(tp, t, Some(id.get()))?;
+        let room = self.has_room(tp, t, Some(id))?;
         let t = placed_object(&self.players, self.place(target))?;
         enter_view(
             &mut self.spatial,
@@ -358,7 +358,7 @@ impl World {
         let id = self.players.player(player)?.objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
         let master = t.master(&self.masters, tp)?.clone();
-        let room = self.has_room(tp, t, Some(id.get()))?;
+        let room = self.has_room(tp, t, Some(id))?;
         let target = placed_object(&self.players, self.place(target))?;
         Meeting {
             spatial: &mut self.spatial,

@@ -140,7 +140,6 @@ impl World {
         id: ObjectId,
         master: MasterId,
     ) -> Result<(), GenieError> {
-        let id = id.get();
         let Some(Place::Live(p, idx)) = self.place(id) else {
             return Ok(());
         };

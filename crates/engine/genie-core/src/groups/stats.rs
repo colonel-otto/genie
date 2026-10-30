@@ -7,6 +7,7 @@ use crate::groups::attack::moved_place;
 use crate::groups::create::FormationUnit;
 use crate::groups::group_list::member_gone;
 use crate::math::fmath::BVector;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::ACTION;
@@ -191,7 +192,7 @@ impl World {
             };
             self.member_objects(id, &mut objects)?;
             if far && self.far_from_slot(group, &view, largest)? {
-                if self.remove_unit(group, id, -1, false)? {
+                if self.remove_unit(group, ObjectId::try_from(id)?, None, false)? {
                     if let Some(m) = self.object_mut(id).and_then(|(_, u)| u.body.mover_mut()) {
                         m.stop()?;
                     }

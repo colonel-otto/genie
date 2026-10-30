@@ -33,8 +33,8 @@ impl World {
     pub(super) fn move_unit(
         &mut self,
         player: PlayerId,
-        id: i32,
-        others: &[i32],
+        id: ObjectId,
+        others: &[ObjectId],
         cell: Option<Point>,
         order: &MoveOrder,
     ) -> Result<(), GenieError> {
@@ -67,7 +67,7 @@ impl World {
             return Ok(());
         }
         let target = self
-            .object(ObjectId::field(order.target))
+            .object(order.target)
             .map(|(tp, t)| (t.life.master_id, tp));
         let unit = self.players.live_mut(player, idx)?;
         // FUN_141197da0, then slot 0x2a0 with 1: it waits to move
@@ -120,10 +120,10 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
-        if ObjectId::field(order.target) == id {
+        if order.target == Some(id) {
             return Ok(());
         }
-        if ObjectId::field(order.target) != -1 {
+        if order.target.is_some() {
             return Err(GenieError::unsupported("a move that follows an object"));
         }
         let order = &MoveOrder {

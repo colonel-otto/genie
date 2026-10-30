@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -159,7 +160,9 @@ impl World {
                 if !keeps
                     && COMBAT <= t_master.kind
                     && t_master.garrison != 0
-                    && self.takes_in(o.target, p, Some(master))?
+                    // a queued order's target −1 is a point: it takes nothing in
+                    && ObjectId::of_field(o.target)
+                        .map_or(Ok(false), |t| self.takes_in(t, p, Some(master)))?
                 {
                     return Err(GenieError::unsupported(
                         "a command queue's order on a building the unit may enter (its room, slot 0x198)",

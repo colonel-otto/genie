@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::garrison::{CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -101,14 +102,14 @@ impl World {
         &self,
         bp: PlayerId,
         b: &crate::objects::unit::Unit,
-        unit: Option<i32>,
+        unit: Option<ObjectId>,
     ) -> Result<bool, GenieError> {
         let capacity = i32::from(b.master(&self.masters, bp)?.garrison);
         let with = match unit {
             Some(u) => self.garrisoned(u)? + 1,
             None => 1,
         };
-        Ok(self.garrisoned(b.id.get())? + with <= capacity)
+        Ok(self.garrisoned(b.id)? + with <= capacity)
     }
 }
 
@@ -116,7 +117,7 @@ impl World {
     /// `FUN_14120eb10(building, player, master, 1, 1)` ([`World::takes_in_as`]).
     pub(crate) fn takes_in(
         &self,
-        building: i32,
+        building: ObjectId,
         player: PlayerId,
         master: Option<MasterId>,
     ) -> Result<bool, GenieError> {
@@ -137,7 +138,7 @@ impl World {
     /// (`param_5` not 0).
     pub(crate) fn takes_in_as(
         &self,
-        building: i32,
+        building: ObjectId,
         player: PlayerId,
         master: Option<MasterId>,
         others: bool,
@@ -204,13 +205,13 @@ impl World {
     /// running `raider_build_countdown` (`+0x9a0`, `FUN_1411cb850`/`FUN_1411d6ad0`). Not
     /// modelled: an object inside that holds others (the slice reads no `+0x9a8`) and, in a
     /// building, a unit with its countdown set (`+0xc2c`, which the slice does not keep).
-    pub(crate) fn garrisoned(&self, building: i32) -> Result<i32, GenieError> {
-        let holds = |id: i32| {
+    pub(crate) fn garrisoned(&self, building: ObjectId) -> Result<i32, GenieError> {
+        let holds = |id: ObjectId| {
             self.players.iter().any(|q| {
                 q.objects
                     .iter()
                     .chain(&q.sleeping)
-                    .any(|v| v.life.inside == Some(id))
+                    .any(|v| v.life.inside == Some(id.raw()))
             })
         };
         let is_building = self
@@ -221,7 +222,7 @@ impl World {
         let mut count = 0;
         for (p, player) in PlayerId::each(self.players.len()).zip(&self.players) {
             for u in player.objects.iter().chain(&player.sleeping) {
-                if u.life.inside != Some(building) {
+                if u.life.inside != Some(building.raw()) {
                     continue;
                 }
                 let kind = u.master(&self.masters, p)?.kind;
@@ -230,7 +231,7 @@ impl World {
                         "a unit inside a building with its raider_build_countdown (+0xc2c)",
                     ));
                 }
-                if holds(u.id.get()) {
+                if holds(u.id) {
                     return Err(GenieError::unsupported(
                         "an object inside a building that holds others (+0x9a8)",
                     ));

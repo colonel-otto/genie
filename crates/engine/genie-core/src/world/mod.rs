@@ -32,6 +32,7 @@ pub(crate) mod step;
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::Masters;
@@ -239,7 +240,7 @@ pub struct World {
     /// The updates run so far.
     pub ticks: u32,
     /// `mNextObjectId`, the id the next new object gets.
-    pub next_object_id: crate::objects::ObjectId,
+    pub next_object_id: ObjectId,
     /// Each player's masters, which BUILD reads; a player without them stops at its own BUILD.
     pub masters: Vec<Masters>,
     /// Every object's place on the map.
@@ -296,7 +297,7 @@ pub struct World {
     /// `+(0xd + n) * 0x18`, not saved): the own list of an INTERACT, WORK, MOVE or RETREAT
     /// whose check let it run, which a count of `0xffff` names
     /// ([`crate::commands::UnitList::LAST_COMMANDED`]).
-    pub last_commanded: Vec<Vec<i32>>,
+    pub last_commanded: Vec<Vec<Option<ObjectId>>>,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
     pub dt_seconds: f32,
     /// The current update's time in milliseconds (`world+0x7c`, set before the commands run).
@@ -328,7 +329,10 @@ pub struct World {
 }
 
 /// The objects of recyclable masters (`+0x680`, the `.dat`'s `recyclable`): a new one takes the
-/// world's next reusable id (`FUN_1415301b0`), counting down from −1; one that leaves its list
+/// world's next reusable id (`FUN_1415301b0`: the value, then one less), which the world's
+/// constructor starts at −2 (`FUN_14152f270` stores `0xfffffffe` at `+0x14c`), so no object's
+/// id is −1. A scenario object takes its own id instead (`+0x150` with the flag `+0x154`,
+/// `FUN_141541b80`), which is 0 or more and so never a reusable one. One that leaves its list
 /// goes to the world's pool for its type (`RGE_Static_Object::recycle_out_of_game`,
 /// `FUN_141546960`), from which the next of that type comes back, the last in first
 /// (`FUN_141546870`), keeping its id (`recycle_in_to_game` gives none). The pools are not saved:
@@ -336,12 +340,12 @@ pub struct World {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Recycling {
     /// `next_reusable_object_id`.
-    pub next_id: crate::objects::ObjectId,
+    pub next_id: ObjectId,
     /// The pool of type 60 (`world+0x1d8`): each missile's id and its flying flag (`+0x994`,
     /// which the object keeps), the last in last.
-    pub missiles: Vec<(crate::objects::ObjectId, bool)>,
+    pub missiles: Vec<(ObjectId, bool)>,
     /// The pool of type 25 (`world+0x1e0`): the ghosts' ids, the last in last.
-    pub ghosts: Vec<crate::objects::ObjectId>,
+    pub ghosts: Vec<ObjectId>,
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::move_to::MoveDefaults;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -422,7 +423,8 @@ impl Unit {
         if group != -1 {
             if c.w.groups.get(group).is_some() {
                 c.lend(self, |w| {
-                    w.remove_unit(group, id.get(), target, false).map(drop)
+                    w.remove_unit(group, id, ObjectId::of_field(target), false)
+                        .map(drop)
                 })?;
             }
             if let Some(m) = self.body.mover_mut() {

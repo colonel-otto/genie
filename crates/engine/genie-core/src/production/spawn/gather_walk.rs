@@ -203,7 +203,7 @@ impl World {
             && let Some((bp, b)) = self.object(building)
         {
             let room = i32::from(b.master(&self.masters, bp)?.garrison);
-            let held = self.garrisoned(building)?;
+            let held = self.garrisoned(b.id)?;
             if held < 10 || held < room {
                 return self.enter_forced(p, new, building);
             }

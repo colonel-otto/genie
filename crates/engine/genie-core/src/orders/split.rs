@@ -21,7 +21,7 @@ impl World {
     pub(crate) fn interact(
         &mut self,
         player: PlayerId,
-        units: &[i32],
+        units: &[Option<ObjectId>],
         order: &Interact,
     ) -> Result<(), GenieError> {
         match units {
@@ -34,7 +34,7 @@ impl World {
             .and_then(|mut s| self.interact_groups(&mut s, order).map(|()| s.loose));
         self.groups.count_command();
         let loose = loose?;
-        self.leave_groups(player, &loose, ObjectId::field(order.target))?;
+        self.leave_groups(player, &loose, order.target)?;
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
         if 1 < loose.len() && self.players.player(player)?.computer {
             return Err(GenieError::unsupported(
@@ -47,7 +47,7 @@ impl World {
             None
         };
         for (i, &id) in loose.iter().enumerate() {
-            let others: Vec<i32> = loose
+            let others: Vec<ObjectId> = loose
                 .iter()
                 .enumerate()
                 .filter(|&(j, _)| j != i)
@@ -60,7 +60,10 @@ impl World {
 
     /// The units of an order that move alone ([`World::split`] without Ctrl held); a group it
     /// makes is not modelled.
-    pub(crate) fn loose_units(&mut self, units: &[i32]) -> Result<Vec<i32>, GenieError> {
+    pub(crate) fn loose_units(
+        &mut self,
+        units: &[Option<ObjectId>],
+    ) -> Result<Vec<ObjectId>, GenieError> {
         self.loose_units_kept(units, &|_| true)
     }
 
@@ -68,9 +71,9 @@ impl World {
     /// test, `FUN_140fd9ae0` for command `0x2713`).
     pub(crate) fn loose_units_kept(
         &mut self,
-        units: &[i32],
-        kept: &dyn Fn(i32) -> bool,
-    ) -> Result<Vec<i32>, GenieError> {
+        units: &[Option<ObjectId>],
+        kept: &dyn Fn(ObjectId) -> bool,
+    ) -> Result<Vec<ObjectId>, GenieError> {
         let split = self.split(units, kept, false)?;
         if !split.groups.is_empty() {
             return Err(GenieError::unsupported(
@@ -104,8 +107,8 @@ impl World {
     /// of 60): an id the next run repeats is in both.
     pub(crate) fn split(
         &mut self,
-        units: &[i32],
-        kept: &dyn Fn(i32) -> bool,
+        units: &[Option<ObjectId>],
+        kept: &dyn Fn(ObjectId) -> bool,
         control: bool,
     ) -> Result<Split, GenieError> {
         // FUN_140fd9ae0 splits only when the list's first unit exists (its owner): else no unit
@@ -115,11 +118,9 @@ impl World {
         };
         // FUN_140fd9dc0's objects, null for a gone id; LAB_140fd89b0 sorts a null as -1, and
         // equal ids are one object, so any sort gives the game's order
-        let mut sorted: Vec<Option<i32>> = units
-            .iter()
-            .map(|&id| self.object(id).map(|_| id))
-            .collect();
-        sorted.sort_unstable_by_key(|u| u.unwrap_or(-1));
+        let mut sorted: Vec<Option<ObjectId>> =
+            units.iter().map(|&id| self.object(id).and(id)).collect();
+        sorted.sort_unstable_by_key(|u| u.map_or(-1, ObjectId::get));
         for u in &mut sorted {
             if u.is_some_and(|id| !kept(id)) {
                 *u = None;
@@ -140,7 +141,7 @@ impl World {
     pub(super) fn split_run(
         &mut self,
         owner: PlayerId,
-        run: &[Option<i32>],
+        run: &[Option<ObjectId>],
         control: bool,
         split: &mut Split,
     ) -> Result<(), GenieError> {
@@ -287,13 +288,14 @@ impl World {
     pub(super) fn leave_groups(
         &mut self,
         player: PlayerId,
-        loose: &[i32],
-        target: i32,
+        loose: &[ObjectId],
+        target: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let target = if 1 < loose.len() && !self.players.player(player)?.computer {
-            -1
+            None
         } else {
-            self.world_object(target).map_or(-1, |t| t.id())
+            self.world_object(target)
+                .and_then(|t| ObjectId::of_field(t.id()))
         };
         for &id in loose {
             self.leave_group_of(id, target)?;
@@ -305,7 +307,7 @@ impl World {
     /// with speed), or all of a queued order.
     pub(super) fn order_spread(
         &self,
-        loose: &[i32],
+        loose: &[ObjectId],
         queued: bool,
     ) -> Result<Option<Point>, GenieError> {
         let mut points = Vec::with_capacity(loose.len());

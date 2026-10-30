@@ -28,7 +28,6 @@ impl World {
         ids: &[Option<ObjectId>],
         state: u8,
     ) -> Result<(), GenieError> {
-        let ids: &[i32] = &ObjectId::fields(ids);
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
@@ -81,7 +80,6 @@ impl World {
     /// lock: slot 0x670 ([`lock_gate`]) with slot 0x668's value negated. Its sound (slot 0x4c0)
     /// and the UI's flag are not held.
     pub(crate) fn gate(&mut self, player: PlayerId, id: ObjectId) -> Result<(), GenieError> {
-        let id = id.get();
         let Some((p, unit)) = self.object(id) else {
             return Ok(());
         };
@@ -118,7 +116,6 @@ impl World {
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         use crate::unit_ai::QueuedOrder;
-        let ids: &[i32] = &ObjectId::fields(ids);
         let cap = if self.players.player(player)?.computer {
             500
         } else {
@@ -200,17 +197,16 @@ impl World {
         player: PlayerId,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let ids: &[i32] = &ObjectId::fields(ids);
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
-        let list: Vec<Option<i32>> = self
+        let list: Vec<Option<ObjectId>> = self
             .lookup(&ids)
             .into_iter()
             .zip(&ids)
-            .map(|(place, &id)| place.map(|_| id))
+            .map(|(place, &id)| place.and(id))
             .collect();
-        let units: Vec<i32> = list.iter().flatten().copied().collect();
+        let units: Vec<ObjectId> = list.iter().flatten().copied().collect();
         for &id in &units {
             let unit = match self.place(id) {
                 Some(Place::Live(p, i)) => self.players.live_mut(p, i)?,
@@ -222,10 +218,8 @@ impl World {
             }
         }
         if 1 < list.len() {
-            let entries: Vec<i32> = list.iter().map(|u| u.unwrap_or(-1)).collect();
-            let group = crate::groups::common_group(&entries, |id| {
-                self.object(id).map(|(_, u)| u.group.id)
-            });
+            let group =
+                crate::groups::common_group(&list, |id| self.object(id).map(|(_, u)| u.group.id));
             if self
                 .groups
                 .get(group)
@@ -239,7 +233,7 @@ impl World {
         for &id in &units {
             let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
             if link != -1 {
-                let _ = self.remove_unit(link, id, -1, false)?;
+                let _ = self.remove_unit(link, id, None, false)?;
             }
             let Some((_, u)) = self.object_mut(id) else {
                 continue;
@@ -267,8 +261,9 @@ impl World {
     /// The check of a command on units (STOP's `FUN_140e55a30` and `UNIT_AI_STATE`'s `FUN_140e55d30`,
     /// twins of `FUN_140e558b0`) of the ids of `player`: of the first 60 (500 for a computer,
     /// `FUN_141659cf0`) an id the world does not hold, or another player's without the setting
-    /// `+0x1074` ([`crate::world::settings::Settings::cheats_enabled`]), becomes -1; the ids past them stay unchecked. A
-    /// human's command whose checked ids all went is refused (None).
+    /// `+0x1074` ([`crate::world::settings::Settings::cheats_enabled`]), becomes none (the game's
+    /// −1); the ids past them stay unchecked. A human's command whose checked ids all went is
+    /// refused (None).
     /// The packet's own tests (its size, a player the game lacks) are
     /// [`World::read_units`]'s, and the world's `+0xb12` (the cheat that would let either
     /// through) is not held.
@@ -279,8 +274,8 @@ impl World {
     pub(crate) fn command_check(
         &self,
         player: PlayerId,
-        ids: &[i32],
-    ) -> Result<Option<Vec<i32>>, GenieError> {
+        ids: &[Option<ObjectId>],
+    ) -> Result<Option<Vec<Option<ObjectId>>>, GenieError> {
         let computer = self.players.player(player)?.computer;
         let checked = ids.len().min(if computer { 500 } else { 60 });
         let mut ids = ids.to_vec();
@@ -289,8 +284,8 @@ impl World {
             let keep = self
                 .object(*id)
                 .is_some_and(|(p, _)| p == player || self.settings.cheats_enabled);
-            if *id == -1 || !keep {
-                *id = -1;
+            if !keep {
+                *id = None;
                 dropped += 1;
             }
         }
@@ -302,7 +297,7 @@ impl World {
 
     /// UNLOAD's check (`FUN_140e6f620`) of the ids of `player`: only the first 60 (500 for a
     /// computer, `FUN_140e6b250`) go on. An id the world does not hold (`FUN_140e6bad0`, live or
-    /// sleeping; −1 none) becomes −1. Its own player's object stays. Another player's stays when
+    /// sleeping) or none becomes none (the game's −1). Its own player's object stays. Another player's stays when
     /// the two count each other as allies ([`World::mutual_allies`]) and the command ties it to
     /// the issuer: `flag` 1 names the issuer (`named`), flags 3 to 6 an object of the issuer's
     /// (`FUN_1415417a0`). Any other stays only with the setting `+0x1074`
@@ -316,12 +311,12 @@ impl World {
     pub(crate) fn unload_check(
         &self,
         player: PlayerId,
-        ids: &[i32],
+        ids: &[Option<ObjectId>],
         flag: u8,
         named: i32,
-    ) -> Result<Option<Vec<i32>>, GenieError> {
+    ) -> Result<Option<Vec<Option<ObjectId>>>, GenieError> {
         let computer = self.players.player(player)?.computer;
-        let mut ids: Vec<i32> = ids
+        let mut ids: Vec<Option<ObjectId>> = ids
             .iter()
             .take(if computer { 500 } else { 60 })
             .copied()
@@ -336,12 +331,11 @@ impl World {
         };
         let mut dropped = 0;
         for id in &mut ids {
-            let keep = (*id != -1)
-                && self.place(*id).is_some_and(|p| {
-                    p.player() == player || tied(p.player()) || self.settings.cheats_enabled
-                });
+            let keep = self.place(*id).is_some_and(|p| {
+                p.player() == player || tied(p.player()) || self.settings.cheats_enabled
+            });
             if !keep {
-                *id = -1;
+                *id = None;
                 dropped += 1;
             }
         }
@@ -365,7 +359,7 @@ impl World {
 
     /// `FUN_140e6b750`: each id's object (`FUN_1415417a0`, live or sleeping), None where the
     /// world holds none; the list keeps the ids' count.
-    pub(crate) fn lookup(&self, ids: &[i32]) -> Vec<Option<Place>> {
+    pub(crate) fn lookup(&self, ids: &[Option<ObjectId>]) -> Vec<Option<Place>> {
         ids.iter().map(|&id| self.place(id)).collect()
     }
 

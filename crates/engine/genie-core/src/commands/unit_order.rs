@@ -105,7 +105,7 @@ impl UnitOrderCommand {
             return Ok(());
         };
         if self.human {
-            w.human_order(&ObjectId::fields(ids));
+            w.human_order(ids);
         }
         match self.action {
             UnitOrderAction::Garrison => {

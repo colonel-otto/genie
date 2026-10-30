@@ -190,8 +190,8 @@ mod tests {
             count: 3,
             ids: object_ids([1, 2, 3, 4]),
         };
-        assert_eq!(ObjectId::fields(list.first(60)), [1, 2, 3]);
-        assert_eq!(ObjectId::fields(list.first(2)), [1, 2]);
+        assert_eq!(list.first(60), object_ids([1, 2, 3]));
+        assert_eq!(list.first(2), object_ids([1, 2]));
         assert!(!list.overruns());
     }
 
@@ -202,7 +202,7 @@ mod tests {
             ids: object_ids([1, 2]),
         };
         assert!(list.overruns());
-        assert_eq!(ObjectId::fields(list.first(60)), [1, 2]);
+        assert_eq!(list.first(60), object_ids([1, 2]));
         assert!(UnitList::last_commanded().overruns());
         assert!(UnitList::last_commanded().names_last_commanded());
     }

@@ -9,6 +9,7 @@ use crate::groups::update::{
 };
 use crate::groups::{SpecificMove, UnitGroup};
 use crate::math::fmath::BVector;
+use crate::objects::ObjectId;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -172,6 +173,8 @@ impl World {
                 let mut kept = 0;
                 for &(unit, state) in &slots {
                     if state == 3 {
+                        let (unit, target) =
+                            (ObjectId::try_from(unit)?, ObjectId::of_field(target));
                         let _ = self.remove_unit(group, unit, target, false)?;
                     } else {
                         kept += 1;

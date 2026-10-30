@@ -7,6 +7,7 @@ use crate::map::spatial::{
     Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
 };
 use crate::map::{Rect, Segment};
+use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 
 /// A walk's obstruction query ([`Spatial::walk_hits`]'s arguments).
@@ -190,7 +191,10 @@ impl Spatial {
     }
 
     /// What the walk reads of a moving object now, None for one without movement state.
-    pub fn set_gait(&mut self, id: i32, gait: Option<Gait>) {
+    pub fn set_gait(&mut self, id: impl ObjectKey, gait: Option<Gait>) {
+        let Some(id) = id.key().map(ObjectId::get) else {
+            return;
+        };
         match gait {
             Some(g) => {
                 let _ = self.gaits.insert(id, g);
@@ -203,7 +207,10 @@ impl Spatial {
 
     /// The walk's view of the moving object `id`'s last human order time (`+0x650`) as the field
     /// changes; nothing for an object without one.
-    pub fn set_human_order(&mut self, id: i32, human_order: u32) {
+    pub fn set_human_order(&mut self, id: impl ObjectKey, human_order: u32) {
+        let Some(id) = id.key().map(ObjectId::get) else {
+            return;
+        };
         if let Some(g) = self.gaits.get_mut(&id) {
             g.human_order = human_order;
         }
@@ -213,7 +220,10 @@ impl Spatial {
     /// the field changes outside its own update (a construction's start, a gate that shuts or
     /// locks): a later walker of the same update reads it at once; nothing for an object without
     /// movement state.
-    pub fn set_last_move(&mut self, id: i32, last_move: u32) {
+    pub fn set_last_move(&mut self, id: impl ObjectKey, last_move: u32) {
+        let Some(id) = id.key().map(ObjectId::get) else {
+            return;
+        };
         if let Some(g) = self.gaits.get_mut(&id) {
             g.last_move = last_move;
         }

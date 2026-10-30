@@ -10,6 +10,7 @@ use crate::objects::masters::{MasterId, ids};
 use crate::objects::unit::Unit;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::test_ids::object_ids;
 use crate::world::World;
 
 /// `BMotion`'s constructor (`FUN_141041850`): the 0x7f7fffff turn limits at `+0x9c`,
@@ -38,22 +39,28 @@ fn a_new_motion_holds_the_constructor_s_values() {
     assert_eq!(m.paths, vec![PathData::without_path()]);
 }
 
-/// `FUN_14152ece0` over units 1, 2 (group 7), 3 (group 8), 4 (no group), 9 (gone).
+/// `FUN_14152ece0` over units 1, 2 (group 7), 3 (group 8), 4 (no group), 9 (gone) and a null
+/// entry.
 #[test]
 fn the_common_group_needs_every_held_unit_in_one_group_and_the_first_held() {
-    let group_of = |id| match id {
+    let group_of = |id: ObjectId| match id.get() {
         1 | 2 => Some(7),
         3 => Some(8),
         4 => Some(-1),
         _ => None,
     };
-    assert_eq!(common_group(&[1, 2], group_of), 7);
-    assert_eq!(common_group(&[1, 9, 2], group_of), 7);
-    assert_eq!(common_group(&[1, 3], group_of), -1);
-    assert_eq!(common_group(&[1, 4], group_of), -1);
-    // the first unit gone: the others are compared with no group
-    assert_eq!(common_group(&[9, 1, 2], group_of), -1);
-    assert_eq!(common_group(&[], group_of), -1);
+    let common = |ids: &[i32]| common_group(&object_ids(ids.iter().copied()), group_of);
+    assert_eq!(common(&[1, 2]), 7);
+    assert_eq!(common(&[1, 9, 2]), 7);
+    assert_eq!(common(&[1, -1, 2]), 7);
+    assert_eq!(common(&[1, 3]), -1);
+    assert_eq!(common(&[1, 4]), -1);
+    // the first unit gone or a null: the others are compared with no group
+    assert_eq!(common(&[9, 1, 2]), -1);
+    assert_eq!(common(&[-1, 1, 2]), -1);
+    assert_eq!(common(&[]), -1);
+    // the splitter's groups list ids without nulls
+    assert_eq!(common_group(&[object_id(1), object_id(2)], group_of), 7);
 }
 
 fn member(id: i32) -> Member {

@@ -34,7 +34,6 @@ impl World {
         waypoints: &[Point],
         reset: bool,
     ) -> Result<(), GenieError> {
-        let ids: &[i32] = &ObjectId::fields(ids);
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
@@ -63,7 +62,6 @@ impl World {
         waypoints: &[Point],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
-        let ids: &[i32] = &ObjectId::fields(ids);
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
         };
@@ -93,7 +91,7 @@ impl World {
     /// [`World::patrol_unit`]: crate::world::World::patrol_unit
     pub(crate) fn patrol_order(
         &mut self,
-        ids: &[i32],
+        ids: &[Option<ObjectId>],
         waypoints: &[Point],
         reset: bool,
     ) -> Result<(), GenieError> {
@@ -108,7 +106,7 @@ impl World {
 
     /// [`World::sweep_order`]'s first step of an attack move: each listed unit's AI, sleeping
     /// or not, resets as for an order.
-    pub(super) fn reset_for_attack_move(&mut self, ids: &[i32]) {
+    pub(super) fn reset_for_attack_move(&mut self, ids: &[Option<ObjectId>]) {
         for &id in ids {
             let ai = self.players.iter_mut().find_map(|player| {
                 let unit = player
@@ -125,7 +123,7 @@ impl World {
 
     /// [`World::sweep_order`]'s timers: each listed unit's AI idles from 0 to its place's patrol
     /// timeout ([`patrol_timeout`]), its patrol zeroed with `reset`.
-    pub(super) fn start_patrol_timers(&mut self, ids: &[i32], reset: bool) {
+    pub(super) fn start_patrol_timers(&mut self, ids: &[Option<ObjectId>], reset: bool) {
         let dt = self.dt;
         for (i, &id) in ids.iter().enumerate() {
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
@@ -151,7 +149,7 @@ impl World {
     /// What the groups' and the units' moves do not model.
     pub(crate) fn sweep_order(
         &mut self,
-        ids: &[i32],
+        ids: &[Option<ObjectId>],
         waypoints: &[Point],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
@@ -339,7 +337,7 @@ impl World {
     /// out.
     pub(super) fn sweep_unit(
         &mut self,
-        loose: &[i32],
+        loose: &[ObjectId],
         i: usize,
         waypoints: &[Point],
         sweep: Sweep,
@@ -356,7 +354,7 @@ impl World {
             return Err(ATTACK_MOVE_QUEUED);
         }
         let kind = u.master(&self.masters, p)?.kind;
-        self.leave_group_of(id, -1)?;
+        self.leave_group_of(id, None)?;
         let (_, u) = self.object_mut(id).ok_or_else(|| object_gone(id))?;
         if let Some(m) = u.body.mover_mut() {
             m.clear_user_waypoints();

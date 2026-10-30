@@ -47,9 +47,10 @@ fn within<T>(tail: &[T], fixed: usize) -> Result<&[T], GenieError> {
     }
 }
 
-/// The ids after a fixed part of `fixed` bytes, if the packet's size holds them.
+/// The ids after a fixed part of `fixed` bytes, if the packet's size holds them: the packet's
+/// values, −1 for none.
 fn ids(ids: &[Option<ObjectId>], fixed: usize) -> Result<Vec<i32>, GenieError> {
-    let raw = ObjectId::fields(ids);
+    let raw: Vec<i32> = ids.iter().map(|&id| ObjectId::field(id)).collect();
     let _ = within(&raw, fixed)?;
     Ok(raw)
 }

@@ -4,6 +4,7 @@
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -132,7 +133,10 @@ impl World {
             return Ok(());
         };
         let (x, y) = (spot.x(), spot.y());
-        let loose = self.loose_units(units)?;
+        // the footprint's units come from the spatial index's raw ids
+        let listed: Vec<Option<ObjectId>> =
+            units.iter().map(|&id| ObjectId::of_field(id)).collect();
+        let loose = self.loose_units(&listed)?;
         for id in loose {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
@@ -306,7 +310,7 @@ impl World {
     pub(crate) fn building_place(
         &mut self,
         player: PlayerId,
-        id: crate::objects::ObjectId,
+        id: ObjectId,
         made: &Master,
         position: Position,
         desolid: bool,

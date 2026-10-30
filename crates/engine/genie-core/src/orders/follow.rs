@@ -5,6 +5,7 @@ use crate::gathering::hunt::HUNT;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::MOVING;
@@ -30,8 +31,8 @@ impl World {
     pub(crate) fn follow(
         &mut self,
         player: PlayerId,
-        units: &[i32],
-        target: i32,
+        units: &[Option<ObjectId>],
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, units)? else {
             return Ok(());
@@ -63,7 +64,7 @@ impl World {
         if 1 < loose.len() {
             let mut points = Vec::with_capacity(loose.len());
             for &id in &loose {
-                self.leave_group_of(id, -1)?;
+                self.leave_group_of(id, None)?;
                 if let Some(at) = self.follower(id)? {
                     points.push(at);
                 }
@@ -93,8 +94,8 @@ impl World {
     pub(crate) fn guard(
         &mut self,
         player: PlayerId,
-        units: &[i32],
-        target: i32,
+        units: &[Option<ObjectId>],
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let Some((tp, t)) = self.object(target) else {
             return Ok(());
@@ -105,7 +106,7 @@ impl World {
             issuer: -1,
             order: OrderKind::Defend,
             priority: 100,
-            target,
+            target: target.raw(),
             target_owner: tp.index() as i32,
             point: Position::new(x, y, z),
             range: GUARD_RANGE,
@@ -118,11 +119,11 @@ impl World {
         } else {
             60
         };
-        for &id in units.iter().take(cap) {
+        for &id in units.iter().take(cap).flatten() {
             let Some(place) = self.place(id) else {
                 continue;
             };
-            self.leave_group_of(id, -1)?;
+            self.leave_group_of(id, None)?;
             let (p, idx) = match place {
                 Place::Live(p, i) => (p, i),
                 // only slot 0x180 puts an object to sleep, one of a type below 30 without a
@@ -150,7 +151,11 @@ impl World {
 
     /// Unit `id` leaves the unit group the world holds of its link (`FUN_14102c160` with `target`
     /// and 0, [`World::remove_unit`]); a unit the world does not hold or in no group, nothing.
-    pub(crate) fn leave_group_of(&mut self, id: i32, target: i32) -> Result<(), GenieError> {
+    pub(crate) fn leave_group_of(
+        &mut self,
+        id: ObjectId,
+        target: Option<ObjectId>,
+    ) -> Result<(), GenieError> {
         let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
         if link != -1 {
             let _ = self.remove_unit(link, id, target, false)?;
@@ -161,7 +166,7 @@ impl World {
     /// FOLLOW's test of a unit (`FUN_14161c920`): one the world holds, of a type of 30 or more
     /// whose master moves (slot 0xe8 above 0; `COMISS`, `JNC`: a NaN speed moves), gives its
     /// place on the ground.
-    pub(super) fn follower(&self, id: i32) -> Result<Option<Point>, GenieError> {
+    pub(super) fn follower(&self, id: ObjectId) -> Result<Option<Point>, GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(None);
         };
@@ -177,7 +182,7 @@ impl World {
     /// (only slot 0x180 puts one to sleep), which [`World::follower`] passed over.
     pub(super) fn follower_start(
         &mut self,
-        loose: &[i32],
+        loose: &[ObjectId],
         i: usize,
     ) -> Result<(PlayerId, usize), GenieError> {
         let Some(Place::Live(p, idx)) = self.place(*loose.checked(i)?) else {
@@ -213,11 +218,11 @@ impl World {
     /// Slot 0x2d8's walk and show targets and `+0x888` are not held.
     pub(super) fn follow_unit(
         &mut self,
-        loose: &[i32],
+        loose: &[ObjectId],
         i: usize,
         followed: Followed,
     ) -> Result<(), GenieError> {
-        self.leave_group_of(*loose.checked(i)?, followed.id)?;
+        self.leave_group_of(*loose.checked(i)?, Some(followed.id))?;
         if self.follower(*loose.checked(i)?)?.is_none() {
             return Ok(());
         }
@@ -231,7 +236,7 @@ impl World {
                 ai.set_order(Some(OrderKind::Follow), rng);
                 ai.set_action(Some(ActionKind::Follow));
             }
-            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
+            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id.raw(), c));
             ai.set_target(t, class, Position::new(x, y, 0.0));
         }
         Ok(())
@@ -246,7 +251,7 @@ impl World {
     /// that place (`FUN_140c64be0`). Slot 0x2d8's walk and show targets are not held.
     pub(super) fn follow_offset(
         &mut self,
-        loose: &[i32],
+        loose: &[ObjectId],
         i: usize,
         followed: Followed,
         mean: Point,
@@ -272,7 +277,7 @@ impl World {
         if let Some(ai) = self.players.live_mut(p, idx)?.ai.as_mut() {
             ai.set_order(Some(OrderKind::Move), rng);
             ai.set_action(Some(ActionKind::Move));
-            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
+            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id.raw(), c));
             ai.set_target(t, class, at);
         }
         Ok(())
@@ -284,7 +289,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         point: Position,
     ) -> Result<(), GenieError> {
         self.move_to_object_with(player, idx, target, point, true)
@@ -309,7 +314,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         point: Position,
         a14: bool,
     ) -> Result<bool, GenieError> {
@@ -327,7 +332,7 @@ impl World {
         if a14 && let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
-        if target == unit.id.get() {
+        if target == unit.id {
             return Ok(false);
         }
         let place = (unit.position().ground(), Some(class));
@@ -360,7 +365,7 @@ impl World {
         let t_state = t.life.state;
         let t_master = t.master(&self.masters, tp)?.id;
         if crate::movement::move_to::holds_object(livestock, t_master, t_state) {
-            self.take(target, self.releaser(player, idx)?)?;
+            self.take(target.raw(), self.releaser(player, idx)?)?;
         }
         self.clear_actions(player, idx)?;
         self.start_object_move(player, idx, (target, t_state), livestock)
@@ -377,7 +382,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, t_state): (i32, u8),
+        (target, t_state): (ObjectId, u8),
         livestock: bool,
     ) -> Result<bool, GenieError> {
         let master = self
@@ -396,7 +401,7 @@ impl World {
             &self.spatial,
             here,
             mover,
-            (target, t_state),
+            (target.raw(), t_state),
             range,
             (sprite, livestock),
         )?;
@@ -424,7 +429,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: Option<i32>,
+        target: Option<ObjectId>,
         point: Position,
     ) -> Result<bool, GenieError> {
         let unit = self.players.live_mut(player, idx)?;
@@ -450,12 +455,12 @@ impl World {
                 | crate::construction::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(false),
             Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
-                self.artifact_take_object(player, idx, target)?;
+                self.artifact_take_object(player, idx, target.raw())?;
                 Ok(true)
             }
-            Some(HUNT) => self.hunt_take_move(player, idx, target, point),
+            Some(HUNT) => self.hunt_take_move(player, idx, target.raw(), point),
             Some(crate::gathering::gather::GATHER) => {
-                self.gather_take_move(player, idx, target, point)
+                self.gather_take_move(player, idx, target.raw(), point)
             }
             // the Repair's slot 0x40 (FUN_140ad9700) walks to the point whatever the target, and
             // the Transport's (0x140aa3e40) sails there

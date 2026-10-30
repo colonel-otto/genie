@@ -15,6 +15,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::orders::action_state::FAILED;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::test_ids::object_id_list;
 use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
 use crate::unit_ai::ActionKind;
@@ -846,18 +847,24 @@ fn the_splitter_groups_soldiers_near_each_other_and_leaves_villagers_loose() {
         (14, 4, Point::new(40.0, 20.0)),
     ];
     let mut t = soldiers(&units, &[]);
-    let split = t.split(&[14, 13, 12, 11, 10], &|_| true, false).unwrap();
+    let split = t
+        .split(&object_ids([14, 13, 12, 11, 10]), &|_| true, false)
+        .unwrap();
     // 12 has two to join it (11 and 13), 11 and 13 one each
-    assert_eq!(split.groups, [vec![12, 11, 13]]);
-    assert_eq!(split.loose, [10, 14]);
-    let split = t.split(&[14, 13, 12, 11, 10], &|_| true, true).unwrap();
-    assert_eq!(split.loose, [10]);
+    assert_eq!(split.groups, [object_id_list([12, 11, 13])]);
+    assert_eq!(split.loose, object_id_list([10, 14]));
+    let split = t
+        .split(&object_ids([14, 13, 12, 11, 10]), &|_| true, true)
+        .unwrap();
+    assert_eq!(split.loose, object_id_list([10]));
     assert_eq!(split.groups.len(), 4);
     // without auto formations every unit moves loose
     t.players[1].formations.auto = false;
-    let split = t.split(&[14, 13, 12, 11, 10], &|_| true, false).unwrap();
-    assert_eq!(split.loose, [10, 11, 12, 13, 14]);
-    assert_eq!(split.groups, Vec::<Vec<i32>>::new());
+    let split = t
+        .split(&object_ids([14, 13, 12, 11, 10]), &|_| true, false)
+        .unwrap();
+    assert_eq!(split.loose, object_id_list([10, 11, 12, 13, 14]));
+    assert_eq!(split.groups, Vec::<Vec<ObjectId>>::new());
 }
 
 /// `FUN_140fd76d0`'s first pass: units in a group the world holds keep their group with the
@@ -871,11 +878,13 @@ fn the_splitter_keeps_the_order_s_members_of_an_existing_group_together() {
     ];
     let mut t = soldiers(&units, &[11, 12]);
     t.players[1].formations.auto = false;
-    let split = t.split(&[13, 12, 11], &|_| true, false).unwrap();
-    assert_eq!(split.groups, [vec![11, 12]]);
-    assert_eq!(split.loose, [13]);
-    let split = t.split(&[12, 13], &|_| true, false).unwrap();
-    assert_eq!(split.loose, [12, 13]);
+    let split = t
+        .split(&object_ids([13, 12, 11]), &|_| true, false)
+        .unwrap();
+    assert_eq!(split.groups, [object_id_list([11, 12])]);
+    assert_eq!(split.loose, object_id_list([13]));
+    let split = t.split(&object_ids([12, 13]), &|_| true, false).unwrap();
+    assert_eq!(split.loose, object_id_list([12, 13]));
 }
 
 /// `FUN_140e55a30`: of the first 60 ids (500 for a computer) one the world lacks or another
@@ -893,30 +902,42 @@ fn the_command_check_drops_gone_units_and_others_units_of_its_first_60() {
         ..Unit::default()
     });
     assert_eq!(
-        t.command_check(PlayerId::new(1), &[11, 30, 99, -1])
+        t.command_check(PlayerId::new(1), &object_ids([11, 30, 99, -1]))
             .unwrap(),
-        Some(vec![11, -1, -1, -1])
+        Some(object_ids([11, -1, -1, -1]))
     );
     t.settings.cheats_enabled = true;
     assert_eq!(
-        t.command_check(PlayerId::new(1), &[11, 30, 99]).unwrap(),
-        Some(vec![11, 30, -1])
+        t.command_check(PlayerId::new(1), &object_ids([11, 30, 99]))
+            .unwrap(),
+        Some(object_ids([11, 30, -1]))
     );
     t.settings.cheats_enabled = false;
-    assert_eq!(t.command_check(PlayerId::new(1), &[30, 99]).unwrap(), None);
+    assert_eq!(
+        t.command_check(PlayerId::new(1), &object_ids([30, 99]))
+            .unwrap(),
+        None
+    );
     t.players[1].computer = true;
     assert_eq!(
-        t.command_check(PlayerId::new(1), &[30, 99]).unwrap(),
-        Some(vec![-1, -1])
+        t.command_check(PlayerId::new(1), &object_ids([30, 99]))
+            .unwrap(),
+        Some(object_ids([-1, -1]))
     );
     t.players[1].computer = false;
     // past the first 60 nothing is checked
     let mut ids = vec![99; 60];
     ids.push(30);
-    assert_eq!(t.command_check(PlayerId::new(1), &ids).unwrap(), None);
+    let check = |t: &World, ids: &[i32]| {
+        t.command_check(PlayerId::new(1), &object_ids(ids.iter().copied()))
+    };
+    assert_eq!(check(&t, &ids).unwrap(), None);
     ids[0] = 11;
-    let checked = t.command_check(PlayerId::new(1), &ids).unwrap().unwrap();
-    assert_eq!((checked[0], checked[1], checked[60]), (11, -1, 30));
+    let checked = check(&t, &ids).unwrap().unwrap();
+    assert_eq!(
+        (checked[0], checked[1], checked[60]),
+        (Some(object_id(11)), None, Some(object_id(30)))
+    );
 }
 
 /// `FUN_140e6f620`: UNLOAD's check of its first 60 ids (500 for a computer), which alone go on.
@@ -942,38 +963,40 @@ fn the_unload_check_keeps_an_ally_s_object_the_command_ties_to_the_issuer() {
     t.players[1].relations = vec![3, 0, 4];
     t.players[2].relations = vec![3, 0, 0];
     let check = |t: &World, flag, named| {
-        t.unload_check(PlayerId::new(1), &[11, 30, 99], flag, named)
+        t.unload_check(PlayerId::new(1), &object_ids([11, 30, 99]), flag, named)
             .unwrap()
     };
-    assert_eq!(check(&t, 3, 12), Some(vec![11, 30, -1]));
-    assert_eq!(check(&t, 6, 12), Some(vec![11, 30, -1]));
-    assert_eq!(check(&t, 1, 1), Some(vec![11, 30, -1]));
+    assert_eq!(check(&t, 3, 12), Some(object_ids([11, 30, -1])));
+    assert_eq!(check(&t, 6, 12), Some(object_ids([11, 30, -1])));
+    assert_eq!(check(&t, 1, 1), Some(object_ids([11, 30, -1])));
     // the named object of another player's, the issuer not named, another flag: out
-    assert_eq!(check(&t, 3, 30), Some(vec![11, -1, -1]));
-    assert_eq!(check(&t, 1, 2), Some(vec![11, -1, -1]));
-    assert_eq!(check(&t, 0, 12), Some(vec![11, -1, -1]));
-    assert_eq!(check(&t, 7, 12), Some(vec![11, -1, -1]));
+    assert_eq!(check(&t, 3, 30), Some(object_ids([11, -1, -1])));
+    assert_eq!(check(&t, 1, 2), Some(object_ids([11, -1, -1])));
+    assert_eq!(check(&t, 0, 12), Some(object_ids([11, -1, -1])));
+    assert_eq!(check(&t, 7, 12), Some(object_ids([11, -1, -1])));
     // allied one way only: out, unless the setting lets any through
     t.players[2].relations = vec![3, 3, 0];
-    assert_eq!(check(&t, 3, 12), Some(vec![11, -1, -1]));
+    assert_eq!(check(&t, 3, 12), Some(object_ids([11, -1, -1])));
     t.settings.cheats_enabled = true;
-    assert_eq!(check(&t, 0, 12), Some(vec![11, 30, -1]));
+    assert_eq!(check(&t, 0, 12), Some(object_ids([11, 30, -1])));
     t.settings.cheats_enabled = false;
     assert_eq!(
-        t.unload_check(PlayerId::new(1), &[30, 99], 3, 12).unwrap(),
+        t.unload_check(PlayerId::new(1), &object_ids([30, 99]), 3, 12)
+            .unwrap(),
         None
     );
     t.players[1].computer = true;
     assert_eq!(
-        t.unload_check(PlayerId::new(1), &[30, 99], 3, 12).unwrap(),
-        Some(vec![-1, -1])
+        t.unload_check(PlayerId::new(1), &object_ids([30, 99]), 3, 12)
+            .unwrap(),
+        Some(object_ids([-1, -1]))
     );
     t.players[1].computer = false;
     // past the first 60 nothing goes on
     let mut ids = vec![11; 60];
     ids.push(12);
     assert_eq!(
-        t.unload_check(PlayerId::new(1), &ids, 3, 12)
+        t.unload_check(PlayerId::new(1), &object_ids(ids), 3, 12)
             .unwrap()
             .map(|c| c.len()),
         Some(60)
@@ -990,7 +1013,7 @@ fn the_lookup_keeps_a_gone_unit_s_entry() {
         ..Unit::default()
     });
     assert_eq!(
-        t.lookup(&[99, 40, 11, -1]),
+        t.lookup(&object_ids([99, 40, 11, -1])),
         [
             None,
             Some(Place::Sleeping(PlayerId::new(1), 0)),
@@ -1066,7 +1089,10 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
     let unit = &mut t.players[1].objects[0];
     unit.body.put_mover(Some(walker));
     unit.ai = Some(crate::unit_ai::UnitAi::default());
-    assert_eq!(t.checked_units(PlayerId::new(2), &[11]), [11]);
+    assert_eq!(
+        t.checked_units(PlayerId::new(2), &object_ids([11])),
+        object_ids([11])
+    );
     let order = MoveOrder {
         target: None,
         point: Point::new(30.0, 30.0),
@@ -1075,7 +1101,8 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
         human: false,
         control: false,
     };
-    t.move_order(PlayerId::new(2), &[11], &order).unwrap();
+    t.move_order(PlayerId::new(2), &object_ids([11]), &order)
+        .unwrap();
     let interact = Interact {
         target: None,
         point: Point::new(25.0, 30.0),
@@ -1085,7 +1112,8 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
         human: false,
         filter: -1,
     };
-    t.interact(PlayerId::new(2), &[11], &interact).unwrap();
+    t.interact(PlayerId::new(2), &object_ids([11]), &interact)
+        .unwrap();
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();
     let queued: Vec<(i32, OrderKind)> = ai.orders.iter().map(|o| (o.issuer, o.order)).collect();
     assert_eq!(queued, [(2, OrderKind::Move), (2, OrderKind::OnTarget)]);
@@ -1109,7 +1137,8 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
         control: false,
     };
     let mut t = soldiers(&units, &[11]);
-    t.move_order(PlayerId::new(1), &[11], &order).unwrap();
+    t.move_order(PlayerId::new(1), &object_ids([11]), &order)
+        .unwrap();
     assert_eq!(t.players[1].objects[0].group.id, -1);
     assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
     // two groups' members ordered alone: both loose
@@ -1127,7 +1156,8 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
         t
     };
     let mut t = two();
-    t.move_order(PlayerId::new(1), &[11, 12], &order).unwrap();
+    t.move_order(PlayerId::new(1), &object_ids([11, 12]), &order)
+        .unwrap();
     assert_eq!(t.players[1].objects[0].group.id, -1);
     assert_eq!(t.players[1].objects[1].group.id, -1);
     assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
@@ -1135,7 +1165,8 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
     // a group link the world does not hold
     let mut t = soldiers(&units, &[]);
     t.players[1].objects[0].group.id = 9;
-    t.move_order(PlayerId::new(1), &[11], &order).unwrap();
+    t.move_order(PlayerId::new(1), &object_ids([11]), &order)
+        .unwrap();
     assert_eq!(t.players[1].objects[0].group.id, 9);
     let interact = Interact {
         target: None,
@@ -1151,7 +1182,8 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
         u.pasture = -1;
         u.my_pasture = -1;
     }
-    t.interact(PlayerId::new(1), &[11, 12], &interact).unwrap();
+    t.interact(PlayerId::new(1), &object_ids([11, 12]), &interact)
+        .unwrap();
     assert_eq!(t.players[1].objects[0].group.id, -1);
     assert_eq!(t.players[1].objects[1].group.id, -1);
 }
@@ -1176,18 +1208,18 @@ fn a_queued_move_s_new_group_takes_its_first_unit_s_target() {
     t.players[1].objects[0].ai = Some(ai(13));
     t.players[1].objects[1].ai = Some(ai(11));
     assert_eq!(
-        t.first_unit_target(&[99, 11, 13]),
+        t.first_unit_target(&object_id_list([99, 11, 13])),
         Some((13, Point::new(21.0, 20.0), true))
     );
     assert_eq!(
-        t.first_unit_target(&[13, 11]),
+        t.first_unit_target(&object_id_list([13, 11])),
         Some((11, Point::new(20.0, 20.0), true))
     );
     t.players[1].objects[0].ai = Some(ai(98));
-    assert_eq!(t.first_unit_target(&[11, 13]), None);
+    assert_eq!(t.first_unit_target(&object_id_list([11, 13])), None);
     t.players[1].objects[0].ai = None;
-    assert_eq!(t.first_unit_target(&[11, 13]), None);
-    assert_eq!(t.first_unit_target(&[99]), None);
+    assert_eq!(t.first_unit_target(&object_id_list([11, 13])), None);
+    assert_eq!(t.first_unit_target(&object_id_list([99])), None);
 }
 
 /// GATE and `FUN_1411dba30`: player 1's building 50 toggles its lock, a lock setting its last
@@ -1316,7 +1348,7 @@ fn a_queued_interact_to_an_object_that_does_not_move_also_queues_it() {
         let unit = &mut t.players[1].objects[0];
         (unit.pasture, unit.my_pasture) = (-1, -1);
         unit.ai = Some(crate::unit_ai::UnitAi::default());
-        t.interact(PlayerId::new(1), &[11], &interact(queued))
+        t.interact(PlayerId::new(1), &object_ids([11]), &interact(queued))
             .unwrap();
         let ai = t.players[1].objects[0].ai.clone().unwrap();
         ai.orders.iter().map(|o| o.order).collect::<Vec<_>>()
@@ -1359,7 +1391,8 @@ fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
         human: false,
         filter: -1,
     };
-    t.interact(PlayerId::new(1), &[11], &interact).unwrap();
+    t.interact(PlayerId::new(1), &object_ids([11]), &interact)
+        .unwrap();
     let ai = t.players[1].objects[0].ai.clone().unwrap();
     let queue: Vec<_> = ai.orders.iter().map(|o| (o.order, o.ready)).collect();
     assert_eq!(
@@ -1399,13 +1432,13 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
         t
     };
     let mut t = mover();
-    t.interact_unit(PlayerId::new(1), 99, &[], None, &interact)
+    t.interact_unit(PlayerId::new(1), object_id(99), &[], None, &interact)
         .unwrap();
     assert_eq!(t, mover());
     t.interact_unit(
         PlayerId::new(1),
-        11,
-        &[12],
+        object_id(11),
+        &[object_id(12)],
         Some(Point::new(21.0, 20.0)),
         &interact,
     )
@@ -1438,7 +1471,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
         direct: true,
         ..interact
     };
-    t.interact_unit(PlayerId::new(1), 11, &[], None, &itself)
+    t.interact_unit(PlayerId::new(1), object_id(11), &[], None, &itself)
         .unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(u.ai.as_ref().unwrap().orders, []);
@@ -1446,7 +1479,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
     let mut t = mover();
     t.players[1].objects[0].body.put_mover(None);
     let reason = |t: &mut World| {
-        t.interact_unit(PlayerId::new(1), 11, &[], None, &interact)
+        t.interact_unit(PlayerId::new(1), object_id(11), &[], None, &interact)
             .unwrap_err()
             .reason()
     };
@@ -2062,7 +2095,7 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
             wait: crate::movement::move_to::MoveWait::default(),
         }));
     assert_eq!(
-        t.head_takes_move(PlayerId::new(1), 0, Some(11), point),
+        t.head_takes_move(PlayerId::new(1), 0, Some(object_id(11)), point),
         Ok(false)
     );
     t.players[1].objects[0].actions.set_move_to(None);
@@ -2197,7 +2230,8 @@ fn a_guard_gives_its_units_the_defend_order_at_once() {
         t.spatial
             .set_position(30, Position::new(x, 20.0, 0.0))
             .unwrap();
-        t.guard(PlayerId::new(1), &[11], 30).unwrap();
+        t.guard(PlayerId::new(1), &object_ids([11]), object_id(30))
+            .unwrap();
         let ai = t.players[1].objects[0].ai.as_ref().unwrap();
         assert_eq!(
             (ai.current_order, ai.current_action, ai.order_priority),
@@ -2217,7 +2251,8 @@ fn a_guard_gives_its_units_the_defend_order_at_once() {
 #[test]
 fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
     let mut t = followers();
-    t.follow(PlayerId::new(1), &[11], 30).unwrap();
+    t.follow(PlayerId::new(1), &object_ids([11]), object_id(30))
+        .unwrap();
     let unit = &t.players[1].objects[0];
     let ai = unit.ai.as_ref().unwrap();
     assert_eq!(
@@ -2238,7 +2273,8 @@ fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
 #[test]
 fn followers_side_by_side_take_their_offsets_from_the_target() {
     let mut t = followers();
-    t.follow(PlayerId::new(1), &[11, 12], 30).unwrap();
+    t.follow(PlayerId::new(1), &object_ids([11, 12]), object_id(30))
+        .unwrap();
     for (i, (other, x)) in [(12, 39.5), (11, 40.5)].into_iter().enumerate() {
         let unit = &t.players[1].objects[i];
         let ai = unit.ai.as_ref().unwrap();
@@ -2263,7 +2299,8 @@ fn followers_side_by_side_take_their_offsets_from_the_target() {
 #[test]
 fn a_follow_of_another_player_s_unit_does_nothing() {
     let mut t = followers();
-    t.follow(PlayerId::new(2), &[11], 30).unwrap();
+    t.follow(PlayerId::new(2), &object_ids([11]), object_id(30))
+        .unwrap();
     assert_eq!(
         t.players[1].objects[0].ai.as_ref().unwrap().current_order,
         None
@@ -2711,7 +2748,7 @@ fn a_group_s_differentiator_groups_are_the_list_given() {
 fn an_ignored_unit_joins_the_end_of_the_ignore_list() {
     let mut ignore = vec![7];
     for id in [9, 8, 9] {
-        ignore_unit(&mut ignore, id);
+        ignore_unit(&mut ignore, object_id(id));
     }
     assert_eq!(ignore, [7, 9, 8, 9]);
 }
@@ -2831,28 +2868,28 @@ fn the_splitter_splits_an_order_to_more_than_60_units_in_runs_of_60() {
         .map(|id| (id, 4, Point::new(20.0, 20.0)))
         .collect();
     let mut t = soldiers(&units, &[]);
-    let ids: Vec<i32> = (100..161).rev().collect();
+    let ids = object_ids((100..161).rev());
     let split = t.split(&ids, &|_| true, false).unwrap();
-    assert_eq!(split.groups, [(100..160).collect::<Vec<_>>()]);
-    assert_eq!(split.loose, [160]);
+    assert_eq!(split.groups, [object_id_list(100..160)]);
+    assert_eq!(split.loose, object_id_list([160]));
     // the gone 999 is the first run's first entry
-    let gone: Vec<i32> = ids.iter().copied().chain([999]).collect();
+    let gone: Vec<_> = ids.iter().copied().chain(object_ids([999])).collect();
     let split = t.split(&gone, &|_| true, false).unwrap();
     assert_eq!(
         split.groups,
-        [(100..159).collect::<Vec<_>>(), vec![159, 160]]
+        [object_id_list(100..159), object_id_list([159, 160])]
     );
-    assert_eq!(split.loose, Vec::<i32>::new());
+    assert_eq!(split.loose, Vec::<ObjectId>::new());
     // 159 twice: the first run's last entry has no next one to repeat it
-    let twice: Vec<i32> = (100..160).chain([159]).collect();
+    let twice = object_ids((100..160).chain([159]));
     let split = t.split(&twice, &|_| true, false).unwrap();
-    assert_eq!(split.groups, [(100..160).collect::<Vec<_>>()]);
-    assert_eq!(split.loose, [159]);
+    assert_eq!(split.groups, [object_id_list(100..160)]);
+    assert_eq!(split.loose, object_id_list([159]));
     // with Ctrl held the first run fills the 60 groups, the second's group is dropped
     let split = t.split(&ids, &|_| true, true).unwrap();
     assert_eq!(split.groups.len(), 60);
-    assert_eq!(split.groups[59], [159]);
-    assert_eq!(split.loose, Vec::<i32>::new());
+    assert_eq!(split.groups[59], [object_id(159)]);
+    assert_eq!(split.loose, Vec::<ObjectId>::new());
 }
 
 /// MarvinBlue/426048731's MOVE of 1569: player 2's villagers 9175 and 9177 (by id) take a
@@ -2935,7 +2972,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
         ..crate::world::Formations::default()
     };
     let unit = |id, grouped, position: Position| Splittable {
-        id,
+        id: object_id(id),
         group: -1,
         kind: master_type::COMBAT,
         grouped,
@@ -2963,7 +3000,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
     let mut nearest = |_: &Splittable, _: &Splittable| Ok(Some((2, 2.5)));
     assert!(!splits_together(&scout, &other, f, false, &mut nearest, &mut away).unwrap());
     // a path that did not join puts the unit among the far ones; a NaN length joins
-    assert_eq!(away, [9186].into());
+    assert_eq!(away, [object_id(9186)].into());
     let mut lost = |_: &Splittable, _: &Splittable| Ok(Some((1, f32::NAN)));
     assert!(splits_together(&scout, &other, f, false, &mut lost, &mut away).unwrap());
     // a NaN distance takes no path and is within the influence distance
@@ -3422,12 +3459,12 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
     t.groups.get_mut(5).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
     let mut split = Split {
         owner: Some(PlayerId::new(1)),
-        loose: vec![13, 14, 15],
-        groups: vec![vec![11, 12]],
-        far: [15].into(),
+        loose: object_id_list([13, 14, 15]),
+        groups: vec![object_id_list([11, 12])],
+        far: [object_id(15)].into(),
     };
     t.keep_group(&mut split, 5, None).unwrap();
-    assert_eq!(split.loose, [14, 15]);
+    assert_eq!(split.loose, object_id_list([14, 15]));
     let g = t.groups.get(5).unwrap();
     assert!(g.has(13));
     assert_eq!(g.flags & 0x2_0000, 0x2_0000);
@@ -3436,11 +3473,11 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
     t.groups.get_mut(5).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
     let mut split = Split {
         owner: Some(PlayerId::new(1)),
-        loose: vec![13, 15],
+        loose: object_id_list([13, 15]),
         ..Split::default()
     };
     t.keep_group(&mut split, 5, None).unwrap();
-    assert_eq!(split.loose, [15]);
+    assert_eq!(split.loose, object_id_list([15]));
 }
 
 /// `FUN_140fd9f40` with a target the world holds: a loose soldier joins the kept group only when
@@ -3484,8 +3521,8 @@ fn a_kept_group_takes_only_the_soldiers_that_do_not_see_the_target() {
         let mut t = world(target_x);
         let mut split = Split {
             owner: Some(PlayerId::new(1)),
-            loose: vec![13],
-            groups: vec![vec![11, 12]],
+            loose: object_id_list([13]),
+            groups: vec![object_id_list([11, 12])],
             ..Split::default()
         };
         t.keep_group(&mut split, 5, Some(object_id(60))).unwrap();
@@ -3623,7 +3660,7 @@ fn a_move_of_soldiers_in_no_group_forms_new_groups() {
     };
     let world = || searchable(patrollers(&units, &[]));
     let mut t = world();
-    t.move_order(PlayerId::new(1), &[11, 12, 13], &order)
+    t.move_order(PlayerId::new(1), &object_ids([11, 12, 13]), &order)
         .unwrap();
     let g = &t.groups.groups;
     assert_eq!(g.len(), 1);
@@ -3635,7 +3672,7 @@ fn a_move_of_soldiers_in_no_group_forms_new_groups() {
         control: true,
         ..order
     };
-    t.move_order(PlayerId::new(1), &[11, 12, 13], &ctrl)
+    t.move_order(PlayerId::new(1), &object_ids([11, 12, 13]), &ctrl)
         .unwrap();
     let g = &t.groups.groups;
     assert_eq!(g.len(), 3);
@@ -3669,7 +3706,7 @@ fn a_move_of_a_whole_group_keeps_it() {
         t
     };
     let mut t = kept();
-    t.move_order(PlayerId::new(1), &[11, 12, 13], &order)
+    t.move_order(PlayerId::new(1), &object_ids([11, 12, 13]), &order)
         .unwrap();
     assert_eq!(t.groups.groups.len(), 1);
     let g = t.groups.get(5).unwrap();
@@ -3685,7 +3722,7 @@ fn a_move_of_a_whole_group_keeps_it() {
         ..order
     };
     assert!(
-        t.move_order(PlayerId::new(1), &[11, 12, 13], &at_12)
+        t.move_order(PlayerId::new(1), &object_ids([11, 12, 13]), &at_12)
             .is_ok()
     );
 }
@@ -4281,7 +4318,8 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
         human: true,
         filter: -1,
     };
-    t.interact(PlayerId::new(1), &[11, 12, 13], &order).unwrap();
+    t.interact(PlayerId::new(1), &object_ids([11, 12, 13]), &order)
+        .unwrap();
     let g = &t.groups.groups;
     assert_eq!(g.len(), 1);
     let ids: Vec<i32> = g[0].members.iter().map(|m| m.id).collect();

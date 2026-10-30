@@ -280,14 +280,18 @@ const COMPUTER_UNITS: usize = 500;
 impl World {
     /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
     /// (`FUN_1415417a0`, live or sleeping) that is the player's own, or any while players may
-    /// order each other's units ([`crate::world::settings::Settings::cheats_enabled`]); −1 for
-    /// the others.
-    pub(crate) fn checked_units(&self, player: PlayerId, units: &[i32]) -> Vec<i32> {
+    /// order each other's units ([`crate::world::settings::Settings::cheats_enabled`]); none
+    /// (the game's −1) for the others.
+    pub(crate) fn checked_units(
+        &self,
+        player: PlayerId,
+        units: &[Option<ObjectId>],
+    ) -> Vec<Option<ObjectId>> {
         units
             .iter()
             .map(|&id| match self.place(id) {
                 Some(p) if p.player() == player || self.settings.cheats_enabled => id,
-                _ => -1,
+                _ => None,
             })
             .collect()
     }
@@ -297,11 +301,11 @@ impl World {
     /// past the packet (no units here). Any other takes its first [`World::most_units`], or
     /// for a count of `0xffff` its last commanded units ([`World::last_commanded`], none before
     /// its first).
-    pub(crate) fn command_units(&self, player: usize, units: &UnitList) -> Vec<i32> {
+    pub(crate) fn command_units(&self, player: usize, units: &UnitList) -> Vec<Option<ObjectId>> {
         let inside = player == 0 || self.players.len() <= player;
         match units.names_last_commanded() {
-            false if inside => ObjectId::fields(units.first(usize::MAX)),
-            false => ObjectId::fields(units.first(self.most_units(player))),
+            false if inside => units.first(usize::MAX).to_vec(),
+            false => units.first(self.most_units(player)).to_vec(),
             true if inside => Vec::new(),
             true => self.last_commanded.get(player).cloned().unwrap_or_default(),
         }
@@ -321,7 +325,7 @@ impl World {
     /// Comm player `player`'s last commanded units become `units` (`FUN_140e6d140` and the
     /// copy after it, `FUN_140e6b290` with 0); nothing for comm player 0 or one past the
     /// world's.
-    pub(crate) fn set_last_commanded(&mut self, player: usize, units: Vec<i32>) {
+    pub(crate) fn set_last_commanded(&mut self, player: usize, units: Vec<Option<ObjectId>>) {
         if player == 0 || self.players.len() <= player {
             return;
         }

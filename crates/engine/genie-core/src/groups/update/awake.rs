@@ -8,6 +8,7 @@ use crate::groups::update::{
     ATTACK, DIFFERENTIATORS, FRONT_AHEAD, NO_COMMAND, OTHER_COMMANDS, RELAYOUT_SPACING, TURN_LIMIT,
 };
 use crate::math::fmath::BVector;
+use crate::objects::ObjectId;
 use crate::world::World;
 
 impl World {
@@ -96,7 +97,7 @@ impl World {
             && g.flags >> 11 & 1 == 0
         {
             while let Some(&id) = self.groups.held(group)?.objects.first() {
-                if !self.remove_unit(group, id, -1, false)? {
+                if !self.remove_unit(group, ObjectId::try_from(id)?, None, false)? {
                     let _ = self.groups.held_mut(group)?.objects.remove(0);
                 }
             }

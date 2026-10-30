@@ -539,10 +539,11 @@ impl World {
             self.remember_order(player, idx, (order, action))?;
         }
         if alive || class == class::CLASS_51 {
-            if target == -1 {
-                self.move_point_order_with(player, idx, point, notified)?;
-            } else {
-                let _ = self.move_to_object_with(player, idx, target, point, notified)?;
+            match ObjectId::of_field(target) {
+                None => self.move_point_order_with(player, idx, point, notified)?,
+                Some(target) => {
+                    let _ = self.move_to_object_with(player, idx, target, point, notified)?;
+                }
             }
         }
         Ok(())

@@ -170,10 +170,9 @@ impl World {
         if q != p {
             return Err(GenieError::unsupported("a led animal of another player"));
         }
-        let point = self
-            .spatial
-            .get(site)
-            .map(|s| s.position)
+        // the hunt's drop site is a raw field yet
+        let (site, point) = ObjectId::of_field(site)
+            .and_then(|id| self.spatial.get(id).map(|s| (id, s.position)))
             .ok_or(GenieError::unsupported("a drop site without a place"))?;
         self.move_to_object(p, idx, site, point)
     }
@@ -188,8 +187,7 @@ impl World {
         index: u32,
         all: bool,
     ) -> Result<(), GenieError> {
-        let ids: &[i32] = &ObjectId::fields(ids);
-        for &id in ids {
+        for &id in ids.iter().flatten() {
             let Some(place) = self.place(id) else {
                 continue;
             };
@@ -223,7 +221,6 @@ impl World {
         ids: &[Option<ObjectId>],
         action: u8,
     ) -> Result<(), GenieError> {
-        let ids: &[i32] = &ObjectId::fields(ids);
         if !matches!(action, 6..=8) {
             return Err(GenieError::unsupported(
                 "a UNIT_ORDER other than the garrison (5) and the drop-offs (6 to 8)",

@@ -52,8 +52,8 @@ impl World {
     pub(super) fn interact_unit(
         &mut self,
         player: PlayerId,
-        id: i32,
-        others: &[i32],
+        id: ObjectId,
+        others: &[ObjectId],
         centroid: Option<Point>,
         order: &Interact,
     ) -> Result<(), GenieError> {
@@ -87,7 +87,7 @@ impl World {
             }
         }
         let target = self
-            .object(ObjectId::field(order.target))
+            .object(order.target)
             .map(|(tp, t)| (t.life.master_id, tp));
         let map = self.spatial.map;
         let unit = self.players.live_mut(player, idx)?;
@@ -123,7 +123,7 @@ impl World {
             if let Some(ai) = unit.ai.as_mut() {
                 ai.orders.clear();
             }
-            if ObjectId::field(order.target) == id {
+            if order.target == Some(id) {
                 return Ok(());
             }
             let at = point.with_height(0.0);
@@ -287,7 +287,7 @@ impl World {
     pub(crate) fn move_order(
         &mut self,
         player: PlayerId,
-        units: &[i32],
+        units: &[Option<ObjectId>],
         order: &MoveOrder,
     ) -> Result<(), GenieError> {
         // the groups take the command count, which then counts up whatever the units do
@@ -298,7 +298,11 @@ impl World {
             }
             &[id] if !order.control => {
                 self.groups.count_command();
-                self.leave_groups(player, &[id], ObjectId::field(order.target))?;
+                // a gone unit (the check's none) leaves no group and takes no move
+                let Some(id) = id else {
+                    return Ok(());
+                };
+                self.leave_groups(player, &[id], order.target)?;
                 return self.move_unit(player, id, &[], None, order);
             }
             _ => {
@@ -307,7 +311,7 @@ impl World {
                     .and_then(|mut s| self.move_groups(&mut s, order).map(|()| s.loose));
                 self.groups.count_command();
                 let loose = loose?;
-                self.leave_groups(player, &loose, ObjectId::field(order.target))?;
+                self.leave_groups(player, &loose, order.target)?;
                 loose
             }
         };
@@ -320,7 +324,7 @@ impl World {
         let narrow = 1 < loose.len() && self.order_spread(&loose, order.queued)?.is_some();
         let map = self.spatial.map;
         for (i, &id) in loose.iter().enumerate() {
-            let others: Vec<i32> = loose
+            let others: Vec<ObjectId> = loose
                 .iter()
                 .enumerate()
                 .filter(|&(j, _)| j != i)
@@ -420,9 +424,7 @@ impl World {
                 id
             } else {
                 // FUN_140e6b820's target: the order's object while the world holds it
-                let held = order
-                    .target
-                    .filter(|t| self.world_object(t.get()).is_some());
+                let held = order.target.filter(|&t| self.world_object(t).is_some());
                 self.keep_group(split, common, held)?;
                 common
             };
@@ -467,7 +469,7 @@ impl World {
     /// AI, names its target (`+0x48`, `FUN_140c4cc40`); the object the world holds for it
     /// (`FUN_1415417a0`) gives its id and its place (x, y). The unit AI's retarget flag
     /// (`FUN_140c4ee90`: `+0x1d6` is 0) is the command's seventh argument, as the game passes it.
-    pub(super) fn first_unit_target(&self, units: &[i32]) -> Option<(i32, Point, bool)> {
+    pub(super) fn first_unit_target(&self, units: &[ObjectId]) -> Option<(i32, Point, bool)> {
         let (_, first) = units.iter().find_map(|&id| self.object(id))?;
         let ai = first.ai.as_ref()?;
         let t = self.world_object(ai.current_target)?;

@@ -292,7 +292,7 @@ impl World {
         }
         let id = self.players.live(p, idx)?.id;
         let site = (p, foundation, master);
-        let task = self.build_task(p, id.get(), site, at)?;
+        let task = self.build_task(p, id, site, at)?;
         self.build_directly(p, idx, task, site, at)?;
         Ok(true)
     }

@@ -80,7 +80,7 @@ impl BuildWallCommand {
         let Some(listed) = w.read_units(self.player, &self.builders) else {
             return Ok(());
         };
-        let Some(builders) = w.command_check(self.player, &ObjectId::fields(listed))? else {
+        let Some(builders) = w.command_check(self.player, listed)? else {
             return Ok(());
         };
         w.build_wall(self, &builders)
@@ -224,7 +224,7 @@ impl World {
     pub(crate) fn build_wall(
         &mut self,
         w: &BuildWallCommand,
-        builders: &[i32],
+        builders: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         let (player, master) = (w.player, w.master);
         if w.q_id != -1 {
@@ -239,13 +239,13 @@ impl World {
         }
         let (radius, trained_at) = (site.radius, site.trained_at.clone());
         let computer = self.players.player(player)?.computer;
-        let builders: &[i32] = if computer && builders.first() == Some(&-1) {
+        let builders: &[Option<ObjectId>] = if computer && builders.first() == Some(&None) {
             &[]
         } else {
             builders
         };
         let mut capable = 0;
-        for &id in builders {
+        for &id in builders.iter().flatten() {
             if self.builds((master, &trained_at), id)? {
                 capable += 1;
             }
@@ -313,10 +313,10 @@ impl World {
     fn builders_by_gap(
         &self,
         w: &BuildWallCommand,
-        builders: &[i32],
-    ) -> Result<Vec<(i32, f32)>, GenieError> {
+        builders: &[Option<ObjectId>],
+    ) -> Result<Vec<(ObjectId, f32)>, GenieError> {
         let mut sorted = Vec::new();
-        for id in self.checked_units(w.player, builders) {
+        for id in self.checked_units(w.player, builders).into_iter().flatten() {
             let Some((owner, u)) = self.object(id) else {
                 continue;
             };
@@ -350,7 +350,7 @@ impl World {
     fn wall_builder_takes(
         &mut self,
         w: &BuildWallCommand,
-        id: i32,
+        id: ObjectId,
         placed: &[(i32, Position)],
         (foundation, at): (i32, Position),
     ) -> Result<(), GenieError> {
@@ -392,11 +392,8 @@ impl World {
     pub(crate) fn builds(
         &self,
         (building, trained_at): (MasterId, &[MasterId]),
-        id: i32,
+        id: ObjectId,
     ) -> Result<bool, GenieError> {
-        if id == -1 {
-            return Ok(false);
-        }
         let Some((owner, u)) = self.object(id) else {
             return Ok(false);
         };

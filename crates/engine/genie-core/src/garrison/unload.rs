@@ -49,7 +49,6 @@ impl World {
         u: &UnloadCommand,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let ids: &[i32] = &ObjectId::fields(ids);
         let UnloadCommand {
             player,
             point,
@@ -65,7 +64,7 @@ impl World {
         let mut last = None;
         for (&id, place) in checked.iter().zip(self.lookup(&checked)) {
             // any player's object the check kept; a sleeping one (below type 30) is not held
-            let Some(crate::orders::Place::Live(player, idx)) = place else {
+            let (Some(id), Some(crate::orders::Place::Live(player, idx))) = (id, place) else {
                 continue;
             };
             let unit = &self.players.player(player)?.objects[idx];
@@ -88,7 +87,7 @@ impl World {
             if let Some((c, kind)) = container
                 && BUILDING <= kind
             {
-                self.leave_building(c, id, point)?;
+                self.leave_building(c, id.raw(), point)?;
                 continue;
             }
             let unit = &self.players.player(player)?.objects[idx];
@@ -285,7 +284,7 @@ impl World {
         point: Point,
     ) -> Result<(), GenieError> {
         let id = self.players.player(player)?.objects[idx].id;
-        self.leave_group_of(id.get(), -1)?;
+        self.leave_group_of(id, None)?;
         let unit = &mut self.players.player_mut(player)?.objects[idx];
         if let Some(m) = unit.body.mover_mut() {
             m.ignore_units.clear();
@@ -328,8 +327,7 @@ impl World {
         player: PlayerId,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let ids: &[i32] = &ObjectId::fields(ids);
-        for id in self.checked_units(player, ids) {
+        for id in self.checked_units(player, ids).into_iter().flatten() {
             let Some((p, _)) = self.object(id) else {
                 continue;
             };

@@ -38,11 +38,10 @@ impl World {
         ids: &[Option<ObjectId>],
         formation: i32,
     ) -> Result<(), GenieError> {
-        let ids = ObjectId::fields(ids);
-        let Some(units) = self.command_check(player, &ids)? else {
+        let Some(units) = self.command_check(player, ids)? else {
             return Ok(());
         };
-        for &id in &units {
+        for &id in units.iter().flatten() {
             self.stop_marcher(id)?;
         }
         let mut split = self.split(&units, &|_| true, false)?;
@@ -99,7 +98,7 @@ impl World {
     fn form_group(
         &mut self,
         split: &crate::orders::Split,
-        units: &[i32],
+        units: &[ObjectId],
         number: usize,
     ) -> Result<i32, GenieError> {
         let owner = split.owner.map_or(u32::MAX, |p| p.index() as u32);
@@ -122,7 +121,7 @@ impl World {
     /// # Errors
     ///
     /// What the stop does not model.
-    fn stop_marcher(&mut self, id: i32) -> Result<(), GenieError> {
+    fn stop_marcher(&mut self, id: ObjectId) -> Result<(), GenieError> {
         let Some(Place::Live(p, idx)) = self.place(id) else {
             return Ok(());
         };

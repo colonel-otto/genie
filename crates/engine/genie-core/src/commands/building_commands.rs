@@ -186,7 +186,7 @@ impl World {
                     target_type: class,
                 })
             };
-        for id in ObjectId::fields(ids) {
+        for &id in ids {
             let Some(crate::orders::Place::Live(p, i)) = self.place(id) else {
                 if self.place(id).is_some() {
                     return Err(GenieError::unsupported(
@@ -247,7 +247,7 @@ impl World {
             return Ok(None);
         }
         let own = self
-            .object(ObjectId::field(r.building))
+            .object(r.building)
             .map(|(p, _)| p == player || self.settings.cheats_enabled);
         match own {
             Some(false) => return Ok(None),
@@ -258,15 +258,11 @@ impl World {
             return Ok(Some(r.buildings.clone()));
         }
         let (listed_ids, rest) = r.buildings.split_at(listed.min(r.buildings.len()));
-        let Some(checked) = self.command_check(player, &ObjectId::fields(listed_ids))? else {
+        let Some(checked) = self.command_check(player, listed_ids)? else {
             return Ok(None);
         };
         Ok(Some(
-            checked
-                .into_iter()
-                .map(ObjectId::of_field)
-                .chain(rest.iter().copied())
-                .collect(),
+            checked.into_iter().chain(rest.iter().copied()).collect(),
         ))
     }
 

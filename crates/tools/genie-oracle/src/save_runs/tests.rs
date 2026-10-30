@@ -305,7 +305,7 @@ fn priming_sets_the_update_count_and_the_last_commanded_units() {
     }];
     let _ = primed(&mut turns, &frames, 3);
     assert_eq!(turns.ticks, 3);
-    assert_eq!(turns.last_commanded, [vec![], vec![7]]);
+    assert_eq!(turns.last_commanded, [vec![], vec![Some(object_id(7))]]);
 }
 
 /// A frame's command phase moves the world's time on; without a frame nothing happens.

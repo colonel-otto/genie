@@ -4,7 +4,6 @@ use crate::GenieError;
 use crate::commands::UnitList;
 use crate::map::Point;
 use crate::map::Position;
-use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::HOUSE;
 use crate::players::PlayerId;
@@ -56,7 +55,7 @@ impl BuildCommand {
             return Ok(());
         };
         let player = self.player;
-        let Some(builders) = w.command_check(player, &ObjectId::fields(listed))? else {
+        let Some(builders) = w.command_check(player, listed)? else {
             return Ok(());
         };
         if self.q_id != -1 && !w.players.player(player)?.computer {

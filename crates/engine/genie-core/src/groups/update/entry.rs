@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::groups::WorldObject;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::update::{ATTACK, BUILD, DELIVER_RELIC, NO_COMMAND, PICK_UP_RELIC, REPAIR};
+use crate::objects::ObjectId;
 use crate::players::PlayerId;
 use crate::world::World;
 
@@ -152,7 +153,7 @@ impl World {
                     u.ai.is_none() || u.life.hp < 1.0 || p.index() as u32 != owner
                 }
             };
-            if leaves && self.remove_unit(group, id, -1, false)? {
+            if leaves && self.remove_unit(group, ObjectId::try_from(id)?, None, false)? {
                 if let Some((_, u)) = self.object_mut(id)
                     && let Some(mover) = u.body.mover_mut()
                 {

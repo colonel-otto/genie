@@ -15,6 +15,7 @@
 use crate::GenieError;
 use crate::math::fmath::BVector;
 use crate::movement::PathData;
+use crate::objects::ObjectKey;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
 
@@ -507,8 +508,9 @@ impl UnitGroup {
 
     /// Whether unit `id` is a member (`FUN_1410112b0`).
     #[must_use]
-    pub fn has(&self, id: i32) -> bool {
-        self.members.iter().any(|m| m.id == id)
+    pub fn has(&self, id: impl ObjectKey) -> bool {
+        let id = id.key();
+        self.members.iter().any(|m| m.id.key() == id)
     }
 
     /// Unit `id`'s place among the members (`FUN_1410175f0`: its index in `+0xf0`), −1 when it is

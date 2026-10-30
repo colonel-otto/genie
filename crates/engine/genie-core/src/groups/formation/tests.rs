@@ -221,7 +221,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
     }
     t.players[1].kind = 1;
     t.players[1].ghosts = vec![crate::vision::ghost::Ghost {
-        id: -1,
+        id: -2,
         original: None,
         original_id: -1,
         original_master: None,
@@ -236,7 +236,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
     }];
     assert_eq!(t.unit_category(None).unwrap(), -1);
     assert_eq!(t.unit_category(t.world_object(99)).unwrap(), -1);
-    let ghost = t.world_object(-1);
+    let ghost = t.world_object(object_id(-2));
     assert!(matches!(
         ghost,
         Some(crate::groups::WorldObject::Ghost(p, _)) if p == PlayerId::new(1)
@@ -244,7 +244,9 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
     assert_eq!(t.unit_category(ghost).unwrap(), -1);
     assert_eq!(t.unit_category(t.world_object(35)).unwrap(), 2);
     assert_eq!(t.unit_category(t.world_object(10)).unwrap(), 5);
-    // the world's table holds ghosts only in its negative half, and none for i32::MIN
+    // the world's table holds ghosts only in its negative half, none for −1 (no object takes
+    // it) and none for i32::MIN
+    assert!(t.world_object(None).is_none());
     assert!(t.world_object(i32::MIN).is_none());
 }
 
@@ -522,10 +524,10 @@ pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::vision::ghost::Ghost {
     }
 }
 
-/// `FUN_1410465d0` for the constructor's lead -1 finds the world's object -1: a ghost there
-/// (master 243, its restriction 1 standing on class 2 only) tests the slots, stands on none
-/// of them nor on the group's place, so nothing moves; without it the first active slot's
-/// unit tests them, and slot 1 moves as with that unit as the lead.
+/// `FUN_1410465d0` for the constructor's lead −1 finds no object: no id is −1 (the world's
+/// reusable ids start at −2), so a ghost (master 243, its restriction 1 standing on class 2
+/// only, at −2) changes nothing. The first active slot's unit tests the slots, and slot 1
+/// moves as with that unit as the lead.
 #[test]
 fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
     use crate::map::terrain::{Terrain, TerrainKind};
@@ -554,7 +556,7 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
                 crate::objects::masters::Masters::new(masters.iter().cloned().chain([ghost]));
         }
         if ghost {
-            t.players[1].ghosts = vec![ghost_at(-1, 1.0, 1.0)];
+            t.players[1].ghosts = vec![ghost_at(-2, 1.0, 1.0)];
         }
         t.groups.groups[0].motion.position[0] = BVector::new(5.5, 0.0, 5.5);
         assert_eq!(t.groups.groups[0].motion.lead, -1);
@@ -579,10 +581,7 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
         run(false),
         [BVector::new(5.5, 0.0, 5.5), BVector::new(5.5, 0.0, 5.5)]
     );
-    assert_eq!(
-        run(true),
-        [BVector::new(5.5, 0.0, 5.5), BVector::new(8.5, 0.0, 5.5)]
-    );
+    assert_eq!(run(true), run(false));
 }
 
 /// The passability's extra step: slot 1's unit at (7.5, 7.5) finds slot 2's cell (6, 7)

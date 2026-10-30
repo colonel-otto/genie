@@ -244,12 +244,25 @@ const MIN_BUCKETS: usize = 8;
 /// Below this many buckets a rehash grows them eightfold (`0x1ff < buckets` grows to the need).
 const GROW_EIGHTFOLD_BELOW: usize = 512;
 
+/// A key of a `std::unordered_map<int, …>`: a value the game keeps as a 32-bit integer.
+pub trait IntKey: Copy + PartialEq {
+    /// The integer `std::hash<int>` hashes.
+    fn int(self) -> i32;
+}
+
+impl IntKey for i32 {
+    fn int(self) -> i32 {
+        self
+    }
+}
+
 /// The bucket of a 32-bit key: `std::hash<int>`, FNV-1a over its four bytes (little-endian), and
 /// the bucket mask.
-fn bucket(key: i32, mask: u64) -> u64 {
+fn bucket(key: impl IntKey, mask: u64) -> u64 {
     const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
     const PRIME: u64 = 0x0100_0000_01b3;
     let hash = key
+        .int()
         .to_le_bytes()
         .iter()
         .fold(OFFSET, |h, &b| (h ^ u64::from(b)).wrapping_mul(PRIME));
@@ -258,7 +271,7 @@ fn bucket(key: i32, mask: u64) -> u64 {
 
 /// A new key goes in front of its bucket's elements, or at the list's end when its bucket is
 /// empty (`_Find_last`'s insertion point, then `_Insert_new_node_before`).
-fn insert_in_bucket(list: &mut Vec<i32>, key: i32, mask: u64) {
+fn insert_in_bucket<K: IntKey>(list: &mut Vec<K>, key: K, mask: u64) {
     let b = bucket(key, mask);
     match list.iter().position(|&k| bucket(k, mask) == b) {
         Some(lo) => list.insert(lo, key),
@@ -273,9 +286,9 @@ fn insert_in_bucket(list: &mut Vec<i32>, key: i32, mask: u64) {
 /// to the need, then each element in list order goes in front of its new bucket's (where it
 /// already leads its bucket, it stays).
 #[must_use]
-pub fn unordered_map_order(keys: impl IntoIterator<Item = i32>) -> Vec<i32> {
+pub fn unordered_map_order<K: IntKey>(keys: impl IntoIterator<Item = K>) -> Vec<K> {
     let mut buckets = MIN_BUCKETS;
-    let mut list: Vec<i32> = Vec::new();
+    let mut list: Vec<K> = Vec::new();
     for key in keys {
         if list.contains(&key) {
             continue;

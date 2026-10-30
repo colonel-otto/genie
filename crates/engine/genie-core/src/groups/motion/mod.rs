@@ -234,8 +234,8 @@ impl Motion {
 
 impl World {
     /// `FUN_1410465d0`: the object the world's table holds for `motion`'s lead (`+0xc4`,
-    /// [`World::world_object`]). The constructor's lead -1 finds the object of id -1, a
-    /// recyclable master's (a missile or a ghost), while one is in a player's list.
+    /// [`World::world_object`]). The constructor's lead −1 finds none: the table's slot for −1
+    /// stays empty, as the world's reusable ids start at −2 ([`crate::world::Recycling`]).
     pub(crate) fn lead_object(&self, motion: &Motion) -> Option<crate::groups::WorldObject<'_>> {
         self.world_object(motion.lead)
     }

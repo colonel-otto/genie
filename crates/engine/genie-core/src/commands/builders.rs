@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::action_type;
@@ -47,13 +48,13 @@ impl World {
         foundation: i32,
         master: MasterId,
         position: Position,
-        builders: &[i32],
+        builders: &[Option<ObjectId>],
         (queued, commits): (bool, bool),
     ) -> Result<(), GenieError> {
         // the builders go through the order splitter, which counts the command
         self.groups.count_command();
         let site = (player, foundation, master);
-        for &id in builders {
+        for &id in builders.iter().flatten() {
             let Some((q, unit)) = self.object(id) else {
                 continue;
             };
@@ -84,7 +85,7 @@ impl World {
     fn direct_builder(
         &mut self,
         (q, idx): (PlayerId, usize),
-        (id, kind): (i32, MasterKind),
+        (id, kind): (ObjectId, MasterKind),
         (site, position): ((PlayerId, i32, MasterId), Position),
         (to_queue, commits): (bool, bool),
     ) -> Result<(), GenieError> {
@@ -157,7 +158,7 @@ impl World {
     pub(crate) fn build_task(
         &self,
         q: PlayerId,
-        id: i32,
+        id: ObjectId,
         (fp, foundation, master): (PlayerId, i32, MasterId),
         position: Position,
     ) -> Result<(MasterId, BuildAction), GenieError> {
@@ -197,7 +198,7 @@ impl World {
             ));
         }
         let actor = Actor {
-            id,
+            id: id.raw(),
             master: unit.master_in(Some(masters))?,
             player: q,
             held: (unit.life.attribute_type, unit.life.amount),

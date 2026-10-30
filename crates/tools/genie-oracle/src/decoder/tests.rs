@@ -1,4 +1,5 @@
 use crate::decoder::Decoder;
+use crate::test_ids::object_id;
 use genie_core::commands::{Command, UnitList};
 use genie_rec::de::command as packets;
 
@@ -30,12 +31,18 @@ fn an_interact_notes_its_own_list_and_a_later_one_keeps_it() {
         d.command(&interact(2, vec![10, 11, 12])),
         Some(Command::Order(_))
     ));
-    assert_eq!(d.last_commanded.get(&2), Some(&vec![10, 11]));
+    assert_eq!(
+        d.last_commanded.get(&2),
+        Some(&vec![Some(object_id(10)), Some(object_id(11))])
+    );
     assert!(matches!(
         d.command(&interact(UnitList::LAST_COMMANDED, vec![])),
         Some(Command::Order(_))
     ));
-    assert_eq!(d.last_commanded.get(&2), Some(&vec![10, 11]));
+    assert_eq!(
+        d.last_commanded.get(&2),
+        Some(&vec![Some(object_id(10)), Some(object_id(11))])
+    );
 }
 
 /// FOLLOW and GUARD list their units without the unit-list reader: no note.
