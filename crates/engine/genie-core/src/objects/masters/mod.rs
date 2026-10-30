@@ -6,6 +6,7 @@
 //! `.dat`'s values for what the save does not carry.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Offset;
 use crate::movement::MoveStats;
 use crate::technology::TechId;
@@ -219,7 +220,7 @@ pub struct Master {
     /// `+0x7b8`, the `.dat`'s `TaskSwapGroup` (the save does not carry it); 0 for none.
     pub task_by_group: u8,
     /// `radius_x`, `radius_y` (`+0x5d8`, `+0x5dc`).
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// `radius_z` (`+0x5e0`) is above 0: its objects count as tall on their tiles.
     pub tall: bool,
     /// `radius_z` (`+0x5e0`): how high a missile may pass over its objects and hit them
@@ -283,13 +284,13 @@ pub struct Master {
     pub spacing_modifier: f32,
     /// `+0x688`, `+0x68c`: the `.dat`'s `outline_size` (x, y), an obstruction-type-11 object's
     /// shape radii (`FUN_141054fe0`).
-    pub outline: [f32; 2],
+    pub outline: Footprint,
     /// `+0x690`: the `.dat`'s `outline_size` z, the height BUILD's scan takes for an object of
     /// obstruction types 11 to 13 (`FUN_14123aee0`).
     pub outline_height: f32,
     /// `+0x5fc`, `clearance_size`: a completed building's foundation terrain covers its position
     /// plus and minus this.
-    pub clearance: [f32; 2],
+    pub clearance: Footprint,
     /// `+0x820`, the `.dat`'s `defense_terrain_bonus` (a terrain restriction): a completed
     /// building keeps to restore a tile's terrain whose value in it is neither 0 nor 1.
     pub terrain_bonus: i16,

@@ -9,6 +9,7 @@ use crate::combat::attack::{
 use crate::combat::damage::Victim;
 use crate::combat::victims::write_strike_back;
 use crate::combat::volley::Aimed;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
@@ -43,7 +44,7 @@ impl Attack {
         me: Me,
         f: &Fight,
         r: &AttackReads,
-        (target, radius): (Position, [f32; 2]),
+        (target, radius): (Position, Footprint),
     ) -> Result<u8, GenieError> {
         let gives_up = GiveUp {
             waits: !r.computer && f.own.class == class::VILLAGER,
@@ -73,12 +74,12 @@ impl Attack {
         unit: &mut Unit,
         f: &Fight,
         r: &AttackReads,
-        (target, radius): (Position, [f32; 2]),
+        (target, radius): (Position, Footprint),
     ) -> Result<u8, GenieError> {
         let ground = unit
             .body
             .mover()
-            .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+            .map(|m| m.stats.radius.ground())
             .ok_or(crate::world::ATTACKER_UNMOVING)?;
         let at = unit.body.position();
         let reach = squared_reach(self.range);

@@ -168,7 +168,7 @@ impl World {
                     .mover()
                     .map_or_else(|| u.position().ground(), |m| m.moved_at.ground()),
                 state: u.life.state,
-                radius: master.radius[0],
+                radius: master.radius.x(),
                 restriction: u.body.mover().map(|m| m.stats.restriction),
             });
         }

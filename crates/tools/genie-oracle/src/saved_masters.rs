@@ -4,7 +4,9 @@
 use crate::masters::MasterTable;
 use crate::{animated_master, combat_master, moving_master};
 use genie_core::GenieError;
+use genie_core::map::Footprint;
 use genie_core::map::Offset;
+use genie_core::map::Radii;
 use genie_core::objects::masters::{ClassId, MasterId};
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
@@ -151,7 +153,7 @@ pub(super) fn work_masters(
         let mut work = table.work(civ, s.copy_id())?.clone();
         work.id = MasterId::of_data(s.id())?;
         work.class = ClassId::of_master(s.read_temp_5);
-        work.radius = [s.radius_x, s.radius_y];
+        work.radius = Footprint::new(s.radius_x, s.radius_y);
         work.tall = 0.0 < s.radius_z;
         work.height = s.radius_z;
         work.obstruction_type = s.obstruction_type;
@@ -281,7 +283,7 @@ pub(super) fn work_masters(
                 vanish_mode: mm.missile_die_info,
                 arc: mm.ballistics_ratio,
                 speed: animated_master(m).map_or(0.0, |a| a.max_speed),
-                radius: [s.radius_x, s.radius_y, s.radius_z],
+                radius: Radii::new(s.radius_x, s.radius_y, s.radius_z),
                 fly_mode: table.fly_mode(civ, s.copy_id()).unwrap_or(0),
             });
         }
@@ -362,7 +364,7 @@ pub(super) fn moving_stats(
         turn_rate: genie_core::movement::turn_rate(moving.turn_speed, facets),
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
-        radius: [s.radius_x, s.radius_y, s.radius_z],
+        radius: Radii::new(s.radius_x, s.radius_y, s.radius_z),
         restriction,
         restriction_mask: *table.terrain.masks().get(restriction)?,
         turn_time: moving.turn_speed,
@@ -422,7 +424,7 @@ pub(super) fn moving_speed(
 
 /// What movement and sight read of an object's master (its own or its player's).
 pub(super) struct Placement {
-    pub(super) radius: [f32; 3],
+    pub(super) radius: Radii,
     pub(super) class: ClassId,
     pub(super) obstruction_type: u8,
     pub(super) obstruction_class: u8,
@@ -435,7 +437,7 @@ pub(super) fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<
         // an own master's second readTemp is its class (its first the id, its third the hit
         // points: as the shared masters' of the same id read)
         return Some(Placement {
-            radius: [own.radius_x, own.radius_y, own.radius_z],
+            radius: Radii::new(own.radius_x, own.radius_y, own.radius_z),
             class: ClassId::of_master(own.read_temp_2),
             obstruction_type: own.obstruction_type,
             obstruction_class: own.obstruction_class,
@@ -445,7 +447,7 @@ pub(super) fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<
     }
     let m = objects.master(s.master_obj)?.static_part()?;
     Some(Placement {
-        radius: [m.radius_x, m.radius_y, m.radius_z],
+        radius: Radii::new(m.radius_x, m.radius_y, m.radius_z),
         class: ClassId::of_master(m.read_temp_5),
         obstruction_type: m.obstruction_type,
         obstruction_class: m.obstruction_class,

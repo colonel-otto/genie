@@ -308,8 +308,8 @@ pub(super) fn blast_distance2(t: &Victim, center: Position, r: f32) -> Option<f3
             d - radius
         }
     };
-    let dx = gap((t.position.x() - center.x()).abs(), t.radius[0]);
-    let dy = gap((t.position.y() - center.y()).abs(), t.radius[1]);
+    let dx = gap((t.position.x() - center.x()).abs(), t.radius.x());
+    let dy = gap((t.position.y() - center.y()).abs(), t.radius.y());
     let d2 = dy * dy + dx * dx;
     if fmath::at_most_or_unordered(r * r, d2) {
         None

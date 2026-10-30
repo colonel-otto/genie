@@ -14,6 +14,7 @@
 //! (HD's `next_to_drop_off_terrain`).
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction, MoveToReads};
 use crate::objects::sprite::Graphic;
@@ -112,7 +113,7 @@ pub struct Ship<'a> {
     /// The unit's place.
     pub position: Position,
     /// Its master's radii (x, y).
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// An object is inside it (`+0x2f8` holds one).
     pub loaded: bool,
     /// The map's size in tiles (the owner's world's map, `+0x18`, `+0x1c`).
@@ -162,7 +163,7 @@ pub struct Changed {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TransportReads {
     /// The master's radii (x, y).
-    pub(crate) radius: [f32; 2],
+    pub(crate) radius: Footprint,
     /// The master's terrain restriction (`+0x606`).
     pub(crate) restriction: i16,
     /// The sprites a `MoveTo` the update's `set_state` makes takes when its maker gives none.

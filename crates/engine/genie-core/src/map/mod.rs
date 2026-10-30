@@ -4,9 +4,11 @@
 mod offset;
 mod point;
 mod position;
+mod radii;
 pub mod spatial;
 pub mod terrain;
 
 pub use self::offset::Offset;
 pub use self::point::Point;
 pub use self::position::Position;
+pub use self::radii::{Footprint, Radii};

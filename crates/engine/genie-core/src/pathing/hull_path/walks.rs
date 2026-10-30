@@ -45,8 +45,8 @@ impl HullPather<'_> {
     /// more by `MAXSS` (0x140f86bcf, 0x140f85a18): an unordered one is 0.
     pub(super) fn target_gap(&self, t: &Target, p: Point) -> f32 {
         let r = self.radius;
-        let gx = maxss((p[0] - t.at[0]).abs() - (t.radius[0] + r), 0.0);
-        let gy = maxss((p[1] - t.at[1]).abs() - (t.radius[1] + r), 0.0);
+        let gx = maxss((p[0] - t.at[0]).abs() - (t.radius.x() + r), 0.0);
+        let gy = maxss((p[1] - t.at[1]).abs() - (t.radius.y() + r), 0.0);
         sqrt(gy * gy + gx * gx)
     }
 

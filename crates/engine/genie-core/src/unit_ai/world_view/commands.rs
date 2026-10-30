@@ -1,6 +1,7 @@
 //! The repair and enter commands of the unit AI and the auto scout's area.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover, Planning};
@@ -301,7 +302,7 @@ pub(crate) struct ScoutArea<'a> {
     pub(crate) me: Me,
     pub(crate) player: PlayerId,
     pub(crate) master: MasterId,
-    pub(crate) radius: [f32; 2],
+    pub(crate) radius: Footprint,
     /// The reach of slot 0x3d8: the line of sight less a tile.
     pub(crate) reach: f32,
     /// The search reads the player's scout map for the tiles seen (`FUN_140c4b130` with one).
@@ -333,7 +334,7 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
     fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
         let mask = self.mover.stats.restriction_mask;
         self.spatial
-            .point_clear(self.me.id, [x as f32, y as f32], self.radius[0], mask)
+            .point_clear(self.me.id, [x as f32, y as f32], self.radius.x(), mask)
     }
 
     fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
@@ -354,8 +355,8 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
             let g = d.abs() - r;
             if g <= 0.0 { 0.0 } else { g }
         };
-        let gx = gap(x as f32 - self.mover.position().x(), self.radius[0]);
-        let gy = gap(y as f32 - self.mover.position().y(), self.radius[1]);
+        let gx = gap(x as f32 - self.mover.position().x(), self.radius.x());
+        let gy = gap(y as f32 - self.mover.position().y(), self.radius.y());
         crate::math::fmath::sqrt(gy * gy + gx * gx)
     }
 }

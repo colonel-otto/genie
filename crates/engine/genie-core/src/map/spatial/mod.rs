@@ -12,6 +12,7 @@
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -190,7 +191,7 @@ pub struct Placed {
     /// x, y, z on the map.
     pub position: Position,
     /// The master's radii on the ground (master `+0x5d8`, `+0x5dc`).
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// The master's class (`+0x410`, decoded): the motion step treats gates (39) apart.
     pub class: ClassId,
     /// The owning player.
@@ -245,7 +246,7 @@ impl Placed {
     #[must_use]
     pub fn bounds(&self) -> [f32; 4] {
         let (x, y) = (self.position.x(), self.position.y());
-        let [rx, ry] = self.radius;
+        let (rx, ry) = (self.radius.x(), self.radius.y());
         [x - rx, y - ry, x + rx, y + ry]
     }
 }
@@ -445,7 +446,7 @@ impl Tiles {
         p: &Placed,
     ) -> (std::ops::RangeInclusive<i32>, std::ops::RangeInclusive<i32>) {
         let (x, y) = (p.position.x(), p.position.y());
-        let [rx, ry] = p.radius;
+        let (rx, ry) = (p.radius.x(), p.radius.y());
         let hold = |v: i32, size: i32| v.clamp(0, size - 1);
         let xs = hold((x - rx) as i32, self.width)..=hold(((x + rx) - 0.001) as i32, self.width);
         let ys = hold((y - ry) as i32, self.height)..=hold(((y + ry) - 0.001) as i32, self.height);

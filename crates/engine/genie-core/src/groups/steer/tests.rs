@@ -1,6 +1,8 @@
 use super::*;
 use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
+use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::Radii;
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
@@ -92,7 +94,7 @@ fn world() -> World {
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         standing_sprite: 6,
         move_sprite: 7,
         run_sprite: 8,
@@ -130,14 +132,13 @@ fn widen(t: &mut World, r: f32) {
     for m in &mut t.masters {
         let mut all: Vec<Master> = m.iter().cloned().collect();
         for a in &mut all {
-            a.radius = [r, r];
+            a.radius = Footprint::new(r, r);
         }
         *m = Masters::new(all);
     }
     for u in &mut t.players[1].objects {
         if let Some(m) = u.body.mover_mut() {
-            m.stats.radius[0] = r;
-            m.stats.radius[1] = r;
+            m.stats.radius = Radii::new(r, r, m.stats.radius.z());
         }
     }
 }
@@ -146,7 +147,7 @@ fn widen(t: &mut World, r: f32) {
 fn post(x: f32, y: f32) -> Placed {
     Placed {
         position: Position::new(x, y, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         player: PlayerId::new(2),
         master: ids::ID_0,
@@ -392,12 +393,8 @@ fn a_due_slot_takes_its_member() {
     assert_eq!(mover(&t, 10).animated.speed, 0.0);
     assert_eq!(unit(&t, 10).position(), Position::new(5.0, 5.0, 0.0));
     let mut t = world();
-    t.players[1].objects[0]
-        .body
-        .mover_mut()
-        .unwrap()
-        .stats
-        .radius[2] = 0.0;
+    let m = t.players[1].objects[0].body.mover_mut().unwrap();
+    m.stats.radius = m.stats.radius.with_z(0.0);
     t.spatial.insert(
         object_id(10),
         Placed {
@@ -595,7 +592,7 @@ fn rounder(at: BVector) -> detour::Rounder<'static> {
         mask: 2,
         restriction: 0,
         grow: 0.1,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         height: 0.5,
         solid: true,
         differentiators: &[],

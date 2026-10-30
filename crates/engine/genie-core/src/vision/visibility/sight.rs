@@ -2,6 +2,7 @@
 //! its master's change.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::MARKET;
@@ -20,7 +21,7 @@ pub(super) struct SightOn {
     /// Its place (x, y, z).
     pub(super) position: Position,
     /// Its master's radii (x, y).
-    pub(super) radius: [f32; 2],
+    pub(super) radius: Footprint,
     /// Whether it explores its footprint as a rectangle.
     pub(super) square: bool,
     /// Its line of sight.
@@ -37,7 +38,7 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         square: bool,
         offset: bool,
     ) -> Result<i32, GenieError> {
@@ -53,7 +54,7 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         square: bool,
         los: i32,
         offset: bool,
@@ -117,7 +118,7 @@ impl Visibility {
         }
         let (x, y) = (position.x(), position.y());
         let newly = if square {
-            let [rx, ry] = radius;
+            let (rx, ry) = (radius.x(), radius.y());
             if rx <= 0.0 || ry <= 0.0 {
                 return Ok(0);
             }
@@ -143,7 +144,7 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         square: bool,
         offset: bool,
     ) -> Result<(), GenieError> {
@@ -160,7 +161,7 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         square: bool,
         los: i32,
         offset: bool,
@@ -185,7 +186,7 @@ impl Visibility {
         }
         let (x, y) = (position.x(), position.y());
         if square {
-            let [rx, ry] = radius;
+            let (rx, ry) = (radius.x(), radius.y());
             if rx <= 0.0 || ry <= 0.0 {
                 return Ok(());
             }
@@ -209,7 +210,7 @@ impl Visibility {
         id: i32,
         from: Position,
         to: Position,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<(), GenieError> {
         let tile = |p: Position| [tile_of(p.x(), self.width), tile_of(p.y(), self.height)];
         if tile(from) == tile(to) {
@@ -228,7 +229,7 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         new: u8,
     ) -> Result<(), GenieError> {
         let Some(old) = self.seers.get(&id).map(|s| s.state) else {
@@ -259,8 +260,8 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        old_radius: [f32; 2],
-        new_radius: [f32; 2],
+        old_radius: Footprint,
+        new_radius: Footprint,
         master: MasterId,
         los: f32,
     ) -> Result<(), GenieError> {

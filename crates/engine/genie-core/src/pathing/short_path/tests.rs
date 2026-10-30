@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 
 /// A search on an empty mesh toward a point target at `at` within `range` (fixed point), its
 /// start node at the origin with cost 0.
@@ -267,7 +268,7 @@ fn a_start_deep_in_blocked_terrain_is_blocked_unless_in_range() {
         from: [5 * ONE + ONE / 2, 5 * ONE + ONE / 2],
         to: [8 * ONE + ONE / 2, 5 * ONE + ONE / 2],
         radius: 0.25,
-        target_size: [0.0, 0.0],
+        target_size: Footprint::new(0.0, 0.0),
         range: 0.0,
         blocked: 1,
     };
@@ -302,7 +303,7 @@ fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
     let t = Target {
         id: 9,
         position: [5.0, 5.0],
-        half_size: [0.5, 0.5],
+        half_size: Footprint::new(0.5, 0.5),
     };
     assert_eq!(call([f32::NAN, 5.0], Some(t)).entry(), Entry::InRange);
     assert!(matches!(
@@ -332,7 +333,7 @@ fn around(walls: &[[f32; 4]], from: [f32; 2], to: [f32; 2], ignored: bool) -> (u
         from: [fixed(from[0]), fixed(from[1])],
         to: [fixed(to[0]), fixed(to[1])],
         radius: 0.25,
-        target_size: [0.0, 0.0],
+        target_size: Footprint::new(0.0, 0.0),
         range: 0.0,
         blocked: 0,
     };
@@ -432,7 +433,7 @@ fn range_query(range: f32) -> Query {
         from: [5 * ONE, 5 * ONE],
         to: [7 * ONE, 5 * ONE],
         radius: 0.25,
-        target_size: [0.0, 0.0],
+        target_size: Footprint::new(0.0, 0.0),
         range,
         blocked: 0,
     }

@@ -139,7 +139,7 @@ static NO_GRAPHICS: std::collections::BTreeMap<i16, Graphic> = std::collections:
 fn ship(loaded: bool) -> Ship<'static> {
     Ship {
         position: Position::new(12.5, 8.5, 0.0),
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         loaded,
         map: [40, 30],
         walk: MoveToReads {
@@ -150,7 +150,7 @@ fn ship(loaded: bool) -> Ship<'static> {
             state: 2,
             speed: 1.0,
             at: Position::new(12.5, 8.5, 0.0),
-            ground: [0.5, 0.5],
+            ground: Footprint::new(0.5, 0.5),
         },
         given: None,
     }
@@ -287,7 +287,7 @@ fn a_work_order_near_its_zone_unloads_at_once_else_sails_there() {
     // a NaN gap stays NaN (MAXSS) and is not within (COMISS/JC): it sails
     let mut t = TransportAction::new(s.position);
     let nan_ship = Ship {
-        radius: [f32::NAN, 0.5],
+        radius: Footprint::new(f32::NAN, 0.5),
         ..s
     };
     let _ = t
@@ -653,7 +653,7 @@ fn the_99th_draw_leaving_the_water_comes_too_late() {
 fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     let around = Around {
         center: [10.0, 10.0],
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
     };
     // the first draw's side and place, as the game computes them
     let mut copy = rng();
@@ -669,13 +669,26 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     };
     let mut last = None;
     let mut r = rng();
-    let first = DropDraws::new(around, [0.5, 0.5], [40, 40], &mut last, &mut r).next_on_map();
+    let first = DropDraws::new(
+        around,
+        Footprint::new(0.5, 0.5),
+        [40, 40],
+        &mut last,
+        &mut r,
+    )
+    .next_on_map();
     assert_eq!(first, Ok(Some(expected)));
     assert_eq!(last, Some(expected));
     assert_eq!(r, copy);
     // 50 draws in all, the last place kept for the next call
     let mut r = rng();
-    let mut draws = DropDraws::new(around, [0.5, 0.5], [40, 40], &mut last, &mut r);
+    let mut draws = DropDraws::new(
+        around,
+        Footprint::new(0.5, 0.5),
+        [40, 40],
+        &mut last,
+        &mut r,
+    );
     let mut tries = 0;
     while draws.next_on_map().unwrap().is_some() {
         tries += 1;
@@ -685,10 +698,10 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     let mut r = rng();
     let edge = Around {
         center: [0.0, 0.0],
-        radius: [5.0, 5.0],
+        radius: Footprint::new(5.0, 5.0),
     };
     let mut none = None;
-    let mut draws = DropDraws::new(edge, [0.5, 0.5], [4, 4], &mut none, &mut r);
+    let mut draws = DropDraws::new(edge, Footprint::new(0.5, 0.5), [4, 4], &mut none, &mut r);
     let mut on_map = 0;
     while let Some(p) = draws.next_on_map().unwrap() {
         on_map += 1;
@@ -705,7 +718,13 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
         .expect("a seed whose first draw is 0x7fff");
     stack.set_seed(seed);
     let mut none = None;
-    let mut draws = DropDraws::new(around, [0.5, 0.5], [40, 40], &mut none, &mut stack);
+    let mut draws = DropDraws::new(
+        around,
+        Footprint::new(0.5, 0.5),
+        [40, 40],
+        &mut none,
+        &mut stack,
+    );
     assert_eq!(draws.next_on_map(), Err(STACK_PLACE));
 }
 

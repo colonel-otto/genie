@@ -428,7 +428,7 @@ impl Unit {
         if site == -1 {
             return Ok((-1, 0.0));
         }
-        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let ground = mover.stats.radius.ground();
         let s = c
             .spatial
             .get_known(site)?

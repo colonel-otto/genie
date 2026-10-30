@@ -2,6 +2,7 @@
 //! terrains and the tiles beside a box.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::production::spawn::PlaceMap;
@@ -15,7 +16,7 @@ pub struct BuildSite<'a> {
     pub human: bool,
     /// The master's radii the test measures by (`p9`): its clearance radii (`+0x5fc`, `+0x600`)
     /// for BUILD, its size radii (`+0x5d8`, `+0x5dc`) for the Build's test of its foundation.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// The master's height radius (`+0x5e0`) is above 0, which the static scans need.
     pub tall: bool,
     /// `p13` 1: `FUN_141123f80`'s and `FUN_141264db0`'s own scans run, the latter passing over the

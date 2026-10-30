@@ -2,6 +2,7 @@
 //! the explorers' search.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
@@ -350,7 +351,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let radius = [n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE];
+        let radius = Footprint::new(n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE);
         let off = side.off_footprint(n.p[2], radius)?;
         if let Some([x, y]) = off.spot {
             let _ = self.move_aside(

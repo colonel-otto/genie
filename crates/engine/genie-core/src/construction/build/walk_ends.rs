@@ -39,7 +39,7 @@ impl BuildAction {
             let ground = builder
                 .body
                 .mover()
-                .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+                .map(|m| m.stats.radius.ground())
                 .ok_or(BUILDER_UNMOVING)?;
             let t = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
             let gap = crate::movement::footprint_gap_squared(at, ground, t.position, t.radius);
@@ -96,7 +96,7 @@ impl BuildAction {
         let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
         let (restriction, ground, moved_at) = (
             mover.stats.restriction,
-            mover.stats.radius[0],
+            mover.stats.radius.x(),
             mover.moved_at,
         );
         let mut code = 3;
@@ -104,12 +104,12 @@ impl BuildAction {
         let known = c.w.spatial.get_known(self.target).map(Option::<&_>::copied);
         let master_radius = Self::site_unit(c, reads)
             .and_then(|s| s.master(&c.w.masters, c.player).ok())
-            .map(|m| m.radius[0]);
+            .map(|m| m.radius.x());
         if self.target != -1
             && let Some(planner) = c.w.pathing.planner(restriction, c.w.spatial.tiles())
         {
             let t = known?.ok_or(SITE_GONE)?;
-            let radius = master_radius.unwrap_or(t.radius[0]);
+            let radius = master_radius.unwrap_or_else(|| t.radius.x());
             let req = crate::pathing::tile_path::Request {
                 from: moved_at.ground(),
                 to: t.position.ground(),

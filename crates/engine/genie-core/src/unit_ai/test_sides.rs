@@ -3,6 +3,7 @@
 //! standing for a side without a unit, and [`With`] around another test side.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
@@ -234,7 +235,7 @@ impl UnitSide for With<'_> {
         self.side.reaches(target, range)
     }
 
-    fn off_footprint(&mut self, site: i32, radius: [f32; 2]) -> Result<OffFootprint, GenieError> {
+    fn off_footprint(&mut self, site: i32, radius: Footprint) -> Result<OffFootprint, GenieError> {
         self.side.off_footprint(site, radius)
     }
 

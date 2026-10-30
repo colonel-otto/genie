@@ -3,6 +3,7 @@
 //! and the default task's action. They are game data, which patches and DLCs change, so they come
 //! from the `.dat` of the recording's game, never from constants.
 
+use genie_core::map::{Footprint, Radii};
 use genie_core::objects::lifecycle::MasterData;
 use genie_core::objects::masters as work;
 use genie_core::objects::masters::MasterId;
@@ -158,9 +159,9 @@ fn dat_work(
         class: genie_core::objects::masters::ClassId::of_master(unit.class),
         terrain_restriction: unit.terrain_restriction,
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
-        radius: [unit.collision_size[0], unit.collision_size[1]],
-        tall: 0.0 < unit.collision_size[2],
-        height: unit.collision_size[2],
+        radius: Radii::from(unit.collision_size).ground(),
+        tall: 0.0 < Radii::from(unit.collision_size).z(),
+        height: Radii::from(unit.collision_size).z(),
         obstruction_type: unit.obstruction_type,
         buildable_on: unit.can_be_built_on,
         obstruction_class: unit.obstruction_class,
@@ -218,9 +219,9 @@ fn dat_work(
             .as_ref()
             .and_then(|c| c.idle_attack_graphic)
             .unwrap_or(-1),
-        clearance: unit.clearance_size,
-        outline: [unit.outline_size[0], unit.outline_size[1]],
-        outline_height: unit.outline_size[2],
+        clearance: Footprint::from(unit.clearance_size),
+        outline: Radii::from(unit.outline_size).ground(),
+        outline_height: Radii::from(unit.outline_size).z(),
         terrain_bonus: unit.type50.as_ref().map_or(-1, |t| t.defense_terrain_bonus),
         building: unit.building.as_ref().map(|b| work::BuildingMaster {
             adjacent_mode: b.adjacent_mode,

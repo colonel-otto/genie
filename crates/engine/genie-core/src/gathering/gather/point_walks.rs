@@ -161,7 +161,7 @@ impl GatherAction {
             if STOP_FARMS.contains(&t.master_id) {
                 0.0
             } else {
-                t.radius[0]
+                t.radius.x()
             }
         });
         if !self.worked {

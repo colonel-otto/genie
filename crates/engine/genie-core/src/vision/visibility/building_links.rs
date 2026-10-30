@@ -1,6 +1,7 @@
 //! A building's tile links (the map tile's `+0x19` bits) and its UMV extent entry.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::vision::visibility::{ANCHOR, EDGE, Extent, LINKED, STEP, Visibility};
 use crate::world::slots::CheckedIndex;
@@ -224,9 +225,9 @@ impl Visibility {
 
     /// A building's footprint as `FUN_1411e6780` links it: from its low edge to its high edge
     /// less 0.01, around the tile of its centre.
-    pub(super) fn footprint(position: Position, radius: [f32; 2]) -> ([i32; 2], [i32; 4]) {
+    pub(super) fn footprint(position: Position, radius: Footprint) -> ([i32; 2], [i32; 4]) {
         let (x, y) = (position.x(), position.y());
-        let [rx, ry] = radius;
+        let (rx, ry) = (radius.x(), radius.y());
         (
             [x as i32, y as i32],
             [
@@ -243,7 +244,7 @@ impl Visibility {
     pub fn link_building(
         &mut self,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<i32, GenieError> {
         let ([ax, ay], [x0, y0, x1, y1]) = Self::footprint(position, radius);
         self.link_tiles(ax, ay, x0, y0, x1, y1)
@@ -251,7 +252,7 @@ impl Visibility {
 
     /// A building's UMV entry for its footprint (`FUN_1411e6780`'s `FUN_140f68650`), without
     /// linking its tiles.
-    pub fn building_entry(&mut self, position: Position, radius: [f32; 2]) -> i32 {
+    pub fn building_entry(&mut self, position: Position, radius: Footprint) -> i32 {
         let ([ax, ay], [x0, y0, x1, y1]) = Self::footprint(position, radius);
         self.extent_entry(ax, ay, x0, y0, x1, y1)
     }
@@ -260,7 +261,7 @@ impl Visibility {
     pub fn unlink_building(
         &mut self,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<(), GenieError> {
         let (_, [x0, y0, x1, y1]) = Self::footprint(position, radius);
         self.unlink_tiles(x0, y0, x1, y1)
@@ -271,8 +272,8 @@ impl Visibility {
     /// A building's slots pick the table: one whose radii add up to an odd whole number centres
     /// on a tile (the caller's table), any other on a tile corner (`DAT_143f51790`, probed 0,
     /// would pick the centred one).
-    pub(super) fn building_offset(radius: [f32; 2], offset: bool) -> bool {
-        if ((radius[0] + radius[1]) as i32) & 1 != 0 {
+    pub(super) fn building_offset(radius: Footprint, offset: bool) -> bool {
+        if ((radius.x() + radius.y()) as i32) & 1 != 0 {
             offset
         } else {
             true

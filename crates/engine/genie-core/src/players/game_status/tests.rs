@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::TaskId;
@@ -181,7 +182,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         drop_site: false,
         gap: 1.2,
         state: 2,
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
     };
     let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
@@ -241,7 +242,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
                     state: 2,
                     speed: 1.0,
                     at: Position::new(3.5, 3.5, 0.0),
-                    ground: [0.2, 0.2],
+                    ground: Footprint::new(0.2, 0.2),
                 },
             )
             .unwrap(),

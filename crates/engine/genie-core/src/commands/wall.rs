@@ -16,6 +16,7 @@
 use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -141,9 +142,9 @@ pub fn tiles(from: [i32; 2], to: [i32; 2]) -> Result<Vec<[i32; 2]>, GenieError> 
 /// [`MAP_MARGIN`]), then each coordinate snapped: to the nearest whole one for a whole radius, to
 /// the tile's centre for another.
 #[must_use]
-pub fn snap(radius: [f32; 2], map: [i32; 2], at: [f32; 2]) -> [f32; 2] {
+pub fn snap(radius: Footprint, map: [i32; 2], at: [f32; 2]) -> [f32; 2] {
     let [mut x, mut y] = at;
-    let [rx, ry] = radius;
+    let (rx, ry) = (radius.x(), radius.y());
     let (low_x, mut high_x) = (x - rx, rx + x);
     let (low_y, mut high_y) = (y - ry, ry + y);
     let far_x = map[0] as f32 - MAP_MARGIN;
@@ -274,7 +275,7 @@ impl World {
     fn wall_foundations(
         &mut self,
         w: &BuildWallCommand,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<Vec<(i32, Position)>, GenieError> {
         let (player, master) = (w.player, w.master);
         let ([x1, y1], [x2, y2]) = (w.from.map(i32::from), w.to.map(i32::from));
@@ -316,8 +317,8 @@ impl World {
                 let g = ((f32::from(end) + HALF) - at).abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
             };
-            let gx = gap(w.to[0], u.position().x(), r[0]);
-            let gy = gap(w.to[1], u.position().y(), r[1]);
+            let gx = gap(w.to[0], u.position().x(), r.x());
+            let gy = gap(w.to[1], u.position().y(), r.y());
             sorted.push((id, gy * gy + gx * gx));
         }
         if INSERTION_SORT_MAX < sorted.len() {
@@ -460,12 +461,24 @@ mod tests {
 
     #[test]
     fn a_half_tile_footprint_snaps_to_the_tile_centre() {
-        assert_eq!(snap([0.5, 0.5], [120, 120], [10.0, 20.0]), [10.5, 20.5]);
+        assert_eq!(
+            snap(Footprint::new(0.5, 0.5), [120, 120], [10.0, 20.0]),
+            [10.5, 20.5]
+        );
         // a whole radius rounds to the nearest whole point
-        assert_eq!(snap([1.0, 1.0], [120, 120], [10.0, 20.0]), [10.0, 20.0]);
+        assert_eq!(
+            snap(Footprint::new(1.0, 1.0), [120, 120], [10.0, 20.0]),
+            [10.0, 20.0]
+        );
         // the map's edges push the footprint in
-        assert_eq!(snap([0.5, 0.5], [120, 120], [0.0, 119.0]), [0.5, 119.5]);
-        assert_eq!(snap([1.0, 1.0], [120, 120], [0.0, 119.0]), [1.0, 119.0]);
+        assert_eq!(
+            snap(Footprint::new(0.5, 0.5), [120, 120], [0.0, 119.0]),
+            [0.5, 119.5]
+        );
+        assert_eq!(
+            snap(Footprint::new(1.0, 1.0), [120, 120], [0.0, 119.0]),
+            [1.0, 119.0]
+        );
     }
 
     #[test]

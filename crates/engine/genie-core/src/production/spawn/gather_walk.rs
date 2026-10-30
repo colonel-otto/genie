@@ -145,12 +145,15 @@ impl World {
             let Some((u, _)) = best else {
                 return Ok(None);
             };
-            let [rx, ry] = u.master(&self.masters, PlayerId::GAIA)?.radius;
+            let radius = u.master(&self.masters, PlayerId::GAIA)?.radius;
             let gap = |d: f32, r: f32| {
                 let g = d.abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
             };
-            let (gx, gy) = (gap(x - u.position().x(), rx), gap(y - u.position().y(), ry));
+            let (gx, gy) = (
+                gap(x - u.position().x(), radius.x()),
+                gap(y - u.position().y(), radius.y()),
+            );
             Ok((gy * gy + gx * gx <= los * los).then_some(u.id.get()))
         };
         if let Some(id) = closest(&gaia.objects)? {

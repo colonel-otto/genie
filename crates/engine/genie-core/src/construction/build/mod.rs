@@ -408,6 +408,8 @@ pub(crate) const DROPPED_ORDERS: [OrderKind; 3] =
 #[cfg(test)]
 mod stack_tests {
     use super::*;
+    use crate::map::Footprint;
+    use crate::map::Radii;
     use crate::map::spatial::{Placed, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::master_type;
@@ -438,7 +440,7 @@ mod stack_tests {
             id: master_id(id),
             kind: master_type::BUILDING,
             class: class::BUILDING,
-            radius: [r, r],
+            radius: Footprint::new(r, r),
             height: z,
             tall: 0.0 < z,
             obstruction_type: kind,
@@ -565,7 +567,7 @@ mod stack_tests {
             object_id(8759),
             Placed {
                 position: Position::new(54.0, 147.0, 0.0),
-                radius: [2.0, 2.0],
+                radius: Footprint::new(2.0, 2.0),
                 class: class::BUILDING,
                 player: PlayerId::new(1),
                 master: ids::TOWN_CENTRE_621,
@@ -731,7 +733,7 @@ mod stack_tests {
                         turn_rate: 0.0,
                         turn_radius: 0.0,
                         turn_radius_speed: f32::MAX,
-                        radius: [2.0, 2.0, 0.0],
+                        radius: Radii::new(2.0, 2.0, 0.0),
                         restriction: 0,
                         restriction_mask: 255,
                         turn_time: 0.0,

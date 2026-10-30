@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::groups::Motion;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::{self, BVector};
 use crate::movement::Walker;
@@ -62,7 +63,7 @@ pub(crate) struct Lead {
     /// Its own place (x, y, height), from which the long pather measures its target.
     pub(crate) position: Position,
     /// Its master's radii on the ground.
-    pub(crate) radius: [f32; 2],
+    pub(crate) radius: Footprint,
     /// It moves (slot 0x208 not 0, or master 42), as the long pather reads it.
     pub(crate) moves: bool,
     /// Its master has a footprint and a height (`FUN_141194060` with 1): the short pather serves it.
@@ -252,9 +253,9 @@ impl World {
         Some(Lead {
             walker: mover.walker(id),
             position: u.position(),
-            radius: [mover.stats.radius[0], mover.stats.radius[1]],
+            radius: mover.stats.radius.ground(),
             moves: mover.stats.speed != 0.0 || u.life.master_id == crate::movement::LONG_PATH_MOVER,
-            solid: mover.stats.radius.iter().all(|&r| 0.0 < r),
+            solid: mover.stats.radius.sized(),
             ignore_units: mover.ignore_units.clone(),
             player: p,
             computer: self.players.get(p.index()).is_some_and(|q| q.computer),

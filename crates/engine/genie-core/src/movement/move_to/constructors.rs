@@ -3,6 +3,7 @@
 //! object (`FUN_140aa0df0`), to a point (`FUN_140aa0d30`) and to none.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{
@@ -39,7 +40,7 @@ pub struct MoveToReads<'a> {
     /// The unit's place.
     pub at: Position,
     /// Its master's x and y radii (`+0x5d8`, `+0x5dc`).
-    pub ground: [f32; 2],
+    pub ground: Footprint,
 }
 
 /// An object a `MoveTo` walks to: its id, its place, the unit's footprint gap to it
@@ -107,7 +108,7 @@ impl<'g> MoveToReads<'g> {
             state: unit.life.state,
             speed: mover.map_or(0.0, |m| m.stats.speed),
             at: unit.position(),
-            ground: mover.map_or([0.0; 2], |m| [m.stats.radius[0], m.stats.radius[1]]),
+            ground: mover.map_or(Footprint::ZERO, |m| m.stats.radius.ground()),
         }
     }
 
@@ -271,7 +272,7 @@ mod tests {
             state: 2,
             speed: 1.0,
             at: Position::new(10.0, 10.0, 0.0),
-            ground: [0.2, 0.2],
+            ground: Footprint::new(0.2, 0.2),
         };
         let house = WalkTo {
             id: 10028,

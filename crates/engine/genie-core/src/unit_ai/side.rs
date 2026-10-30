@@ -1,6 +1,7 @@
 //! What the unit AI asks of the world ([`UnitSide`]) and the commands it gives its unit.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
@@ -182,7 +183,11 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the spot's search does not model.
-    fn off_footprint(&mut self, _site: i32, _radius: [f32; 2]) -> Result<OffFootprint, GenieError> {
+    fn off_footprint(
+        &mut self,
+        _site: i32,
+        _radius: Footprint,
+    ) -> Result<OffFootprint, GenieError> {
         Err(GenieError::unsupported(
             "a unit sent off a footprint without the world",
         ))

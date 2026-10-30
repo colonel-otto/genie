@@ -2,6 +2,7 @@
 //! candidates (`FUN_1411c5b60`) and the corners' wall checks.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::production::spawn::{GAP, NONE, SIDE_SHARE, SMALL, Site, Tested};
 
@@ -41,7 +42,7 @@ pub(super) fn try_spot(
 /// and its first test under `DAT_143f01833` (`FUN_1411c52f0`, probed 0) are not modelled.
 pub fn spawn_point(
     site: &Site,
-    unit: [f32; 2],
+    unit: Footprint,
     test: &mut dyn FnMut([f32; 2]) -> Result<Tested, GenieError>,
 ) -> Result<[f32; 2], GenieError> {
     let frame = Frame::new(site, unit);
@@ -107,13 +108,13 @@ struct Frame {
 
 impl Frame {
     /// The frame beside `site` for a unit of radii `unit`.
-    fn new(site: &Site, unit: [f32; 2]) -> Self {
-        let [mut sx, mut sy] = unit;
+    fn new(site: &Site, unit: Footprint) -> Self {
+        let (mut sx, mut sy) = (unit.x(), unit.y());
         if sx < SMALL && sy < SMALL {
             sx = sx + sx + GAP;
             sy = sy + sy + GAP;
         }
-        let [bx, by] = site.radius;
+        let (bx, by) = (site.radius.x(), site.radius.y());
         let (x, y) = (site.position.x(), site.position.y());
         let [gx, gy] = site.gather.unwrap_or([NONE, NONE]);
         Self {
@@ -262,16 +263,16 @@ const fn run(side: Side, (start, step, end): (f32, f32, f32), rising: bool, fixe
 /// left bottom) for a unit of radii `unit` beside `site`.
 pub(super) fn corner_tiles(
     position: Position,
-    radius: [f32; 2],
-    unit: [f32; 2],
+    radius: Footprint,
+    unit: Footprint,
 ) -> [[(i32, i32); 2]; 4] {
-    let [mut sx, mut sy] = unit;
+    let (mut sx, mut sy) = (unit.x(), unit.y());
     if sx < SMALL && sy < SMALL {
         sx = sx + sx + GAP;
         sy = sy + sy + GAP;
     }
     let (x, y) = (position.x(), position.y());
-    let [bx, by] = radius;
+    let (bx, by) = (radius.x(), radius.y());
     let left = (x - (bx + sx)) as i32;
     let right = (x + bx + sx) as i32;
     let top = (y + by + sy) as i32;

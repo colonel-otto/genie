@@ -9,6 +9,8 @@
 //! (update `0x14113e520`).
 
 use crate::GenieError;
+use crate::map::Footprint;
+use crate::map::Radii;
 use crate::map::{Offset, Position};
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
@@ -70,7 +72,7 @@ pub struct MissileStats {
     /// Its master's speed (slot 0xe8).
     pub speed: f32,
     /// Its master's radii (`+0x5d8`..`+0x5e0`).
-    pub radius: [f32; 3],
+    pub radius: Radii,
     /// The `.dat`'s `fly_mode` (`+0x608`): 0 holds it on the ground, 1 above it.
     pub fly_mode: u8,
 }
@@ -83,7 +85,7 @@ pub struct Origin {
     /// The firing object's place.
     pub position: Position,
     /// The missile master's radii on the ground.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// The firing object's master, −1 without one.
     pub master: i32,
     /// Its owner, −1 without one.
@@ -94,7 +96,7 @@ impl Origin {
     /// `FUN_140aa8720`: no origin.
     pub const NONE: Self = Self {
         position: Position::ORIGIN,
-        radius: [0.0; 2],
+        radius: Footprint::ZERO,
         master: -1,
         owner: -1,
     };
@@ -106,7 +108,7 @@ impl Origin {
         let f = |i: usize| f32::from_bits(w(i));
         Self {
             position: Position::new(f(0), f(1), f(2)),
-            radius: [f(3), f(4)],
+            radius: Footprint::new(f(3), f(4)),
             master: w(5) as i32,
             owner: w(6) as i32,
         }
@@ -177,8 +179,8 @@ pub fn spawn_point(at: Position, angle: f32, offset: Offset) -> Position {
 
 /// `FUN_141081020`'s reach: the firing master's radii's length plus its range plus 2.
 #[must_use]
-pub fn reach(radius: [f32; 2], range: f32) -> f32 {
-    fmath::sqrt(radius[0] * radius[0] + radius[1] * radius[1]) + range + REACH_MARGIN
+pub fn reach(radius: Footprint, range: f32) -> f32 {
+    fmath::sqrt(radius.x() * radius.x() + radius.y() * radius.y()) + range + REACH_MARGIN
 }
 
 /// `FUN_141203140` (no charge): a volley's missiles, the object's firepower (`+0xa00`, in whole
@@ -234,8 +236,8 @@ pub fn volley_spawn_point(
 
 /// `FUN_141226690`'s reach: the firing master's radii's length plus its range plus 6.
 #[must_use]
-pub fn volley_reach(radius: [f32; 2], range: f32) -> f32 {
-    fmath::sqrt(radius[0] * radius[0] + radius[1] * radius[1]) + range + VOLLEY_REACH_MARGIN
+pub fn volley_reach(radius: Footprint, range: f32) -> f32 {
+    fmath::sqrt(radius.x() * radius.x() + radius.y() * radius.y()) + range + VOLLEY_REACH_MARGIN
 }
 
 /// The missile master whose miss strays by its attack count's share (`0x62ac` raw; the game
@@ -263,7 +265,7 @@ pub struct AimAt<'a> {
     /// Where the missile is.
     pub from: Position,
     /// The target's radii and class, none without a target.
-    pub target: Option<([f32; 3], ClassId)>,
+    pub target: Option<(Radii, ClassId)>,
     /// The firing object's hit chance, spread and class.
     pub aimer: Aimer,
     /// The missile's master's id.
@@ -294,14 +296,14 @@ pub fn aim(at: AimAt<'_>, draw: &mut dyn FnMut() -> u32) -> Result<Position, Gen
     } = at;
     let (mut x, mut y, mut z) = (point.x(), point.y(), point.z());
     if let Some((radius, _)) = target {
-        z += radius[2] / HEIGHT_SHARE;
+        z += radius.z() / HEIGHT_SHARE;
     }
     let dx = x - from.x();
     let mut gap = fmath::sqrt((y - from.y()) * (y - from.y()) + dx * dx);
     let mut chance = aimer.hit_chance;
     if let Some((radius, class)) = target
         && aimer.class == class::CLASS_54
-        && radius[0] < 1.0
+        && radius.x() < 1.0
         && matches!(class, class::WALL | class::TOWER | class::BUILDING)
     {
         chance = 0x50;
@@ -452,15 +454,10 @@ pub fn meets_height(z: f32, height: f32, missile_z: f32, missile_height: f32) ->
 /// the target at `target` with radii `target_radius` when it is nearer on each axis than the
 /// two radii together.
 #[must_use]
-pub fn on_target(
-    at: Position,
-    radius: [f32; 3],
-    target: Position,
-    target_radius: [f32; 2],
-) -> bool {
+pub fn on_target(at: Position, radius: Radii, target: Position, target_radius: Footprint) -> bool {
     let dx = (at.x() - target.x()).abs();
     let dy = (at.y() - target.y()).abs();
-    dx < target_radius[0] + radius[0] && dy < target_radius[1] + radius[1]
+    dx < target_radius.x() + radius.x() && dy < target_radius.y() + radius.y()
 }
 
 /// The height a missile's place takes on the ground (slot 0x60, `FUN_14113eb60`, with the
@@ -492,7 +489,7 @@ mod tests {
             projectile_type: 0,
             arc: -0.06,
             speed: 7.0,
-            radius: [0.1, 0.1, 0.0],
+            radius: Radii::new(0.1, 0.1, 0.0),
             ..MissileStats::default()
         };
         let mut a = MissileAction {
@@ -544,7 +541,7 @@ mod tests {
         // the target 3 east and 4 north: a ground distance of 5
         let point = Position::new(13.0, 14.0, 0.0);
         let from = Position::new(10.0, 10.0, 1.0);
-        let target = Some(([0.2, 0.2, 1.5], class::CLASS_6));
+        let target = Some((Radii::new(0.2, 0.2, 1.5), class::CLASS_6));
         let aim_with = |draws: [u32; 3], master: MasterId, count: i32, mode: &mut u8| {
             let mut d = draws.into_iter();
             aim(
@@ -599,7 +596,7 @@ mod tests {
             ..aimer
         };
         let mut d = std::iter::once(26213u32);
-        let narrow = Some(([0.5, 0.5, 0.0], class::BUILDING));
+        let narrow = Some((Radii::new(0.5, 0.5, 0.0), class::BUILDING));
         assert_eq!(
             aim(
                 AimAt {
@@ -626,7 +623,10 @@ mod tests {
             Offset::new(0.0, 0.5, 1.5),
         );
         assert_eq!(p, Position::new(10.5, 20.0, 1.5));
-        assert_eq!(reach([0.2, 0.2], 3.0), 0.282_842_73 + 3.0 + 2.0);
+        assert_eq!(
+            reach(Footprint::new(0.2, 0.2), 3.0),
+            0.282_842_73 + 3.0 + 2.0
+        );
     }
 
     /// MarvinBlue/426048731's spears (fly mode 1) in the update that made the save after 3148:
@@ -650,15 +650,15 @@ mod tests {
         // the box test: nearer than the radii together on both axes
         assert!(on_target(
             Position::new(10.0, 10.0, 0.0),
-            [0.1, 0.1, 0.0],
+            Radii::new(0.1, 0.1, 0.0),
             Position::new(10.25, 9.8, 0.0),
-            [0.2, 0.2]
+            Footprint::new(0.2, 0.2)
         ));
         assert!(!on_target(
             Position::new(10.0, 10.0, 0.0),
-            [0.1, 0.1, 0.0],
+            Radii::new(0.1, 0.1, 0.0),
             Position::new(10.3, 9.8, 0.0),
-            [0.2, 0.2]
+            Footprint::new(0.2, 0.2)
         ));
     }
 
@@ -672,7 +672,7 @@ mod tests {
         assert_eq!(scatter(0, 0.5), -0.25);
         assert_eq!(scatter(0x7fff, 0.5), 0.25);
         // the reach adds 6 to the range
-        assert_eq!(volley_reach([2.0, 0.0], 6.0), 14.0);
+        assert_eq!(volley_reach(Footprint::new(2.0, 0.0), 6.0), 14.0);
     }
 
     #[test]

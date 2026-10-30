@@ -83,7 +83,7 @@ impl World {
         let map = WorldMap { turns: self };
         let spatial = &self.spatial;
         spawn_point(&site, made.radius, &mut |[x, y]| {
-            let [rx, ry] = made.radius;
+            let (rx, ry) = (made.radius.x(), made.radius.y());
             spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
             placement(&placing, &map, [x, y], false)
         })
@@ -253,7 +253,7 @@ impl World {
         } else {
             None
         };
-        let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
+        let solid = 0.0 < made.radius.x() && 0.0 < made.radius.y() && made.tall;
         let placed = Placed {
             position: at,
             radius: made.radius,

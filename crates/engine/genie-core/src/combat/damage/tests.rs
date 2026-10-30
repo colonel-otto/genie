@@ -599,7 +599,7 @@ fn a_blast_s_nan_paths_are_the_game_s() {
     };
     // a NaN radius on x: the gap on x is 0, the falloff takes the gap on y alone
     let mut t = Victim {
-        radius: [f32::NAN, 0.0],
+        radius: Footprint::new(f32::NAN, 0.0),
         ..enemy(10.8, 11.5)
     };
     assert_eq!(
@@ -998,7 +998,7 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
         id: 20,
         hp: 100.0,
         position: Position::new(11.5, 10.5, 0.0),
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         blast_defense: 2,
         building: Some(Building {
             annexes: vec![21],
@@ -1012,7 +1012,7 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
         id: 21,
         hp: 100.0,
         position: Position::new(10.5, 10.5, 0.0),
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         blast_defense: 0,
         building: Some(Building {
             main: Some(20),
@@ -1165,19 +1165,19 @@ fn a_blast_measures_to_an_object_s_box_within_its_radius() {
     };
     let center = Position::new(10.0, 10.0, 0.0);
     assert_eq!(
-        blast_distance2(&at(10.2, 10.0, [0.5, 0.5]), center, 1.0),
+        blast_distance2(&at(10.2, 10.0, Footprint::new(0.5, 0.5)), center, 1.0),
         Some(0.0)
     );
     assert_eq!(
-        blast_distance2(&at(11.0, 10.0, [0.5, 0.5]), center, 1.0),
+        blast_distance2(&at(11.0, 10.0, Footprint::new(0.5, 0.5)), center, 1.0),
         Some(0.25)
     );
     assert_eq!(
-        blast_distance2(&at(11.5, 10.0, [0.5, 0.5]), center, 1.0),
+        blast_distance2(&at(11.5, 10.0, Footprint::new(0.5, 0.5)), center, 1.0),
         None
     );
     assert_eq!(
-        blast_distance2(&at(12.0, 10.5, [f32::NAN, 0.25]), center, 1.0),
+        blast_distance2(&at(12.0, 10.5, Footprint::new(f32::NAN, 0.25)), center, 1.0),
         Some(0.0625)
     );
 }

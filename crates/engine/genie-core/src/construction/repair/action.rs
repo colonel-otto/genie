@@ -295,7 +295,7 @@ impl RepairAction {
             repairer.id.get(),
             self.target,
             mask,
-            reads.radius[0],
+            reads.radius.x(),
             REACH,
         )
     }

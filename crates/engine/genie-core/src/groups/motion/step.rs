@@ -5,6 +5,7 @@ use crate::groups::motion::{
     CLOSE, EPSILON, GroupView, Lead, LeadGroup, NEAR, PASSES, looping_next, point, request,
     reset_level, set_flag, steer,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
 use crate::movement::{Planning, footprint_gap, footprint_gap_squared};
@@ -113,7 +114,7 @@ pub(super) fn pass(
             t.position,
             t.radius,
             Position::new(at.x(), at.y(), 0.0),
-            [0.0, 0.0],
+            Footprint::new(0.0, 0.0),
         )
     });
     let flags = level.flags;
@@ -196,7 +197,7 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) -> Result<()
                 t.position,
                 t.radius,
                 Position::new(at.x(), at.y(), 0.0),
-                [0.0, 0.0],
+                Footprint::new(0.0, 0.0),
             ) - level.range)
                 - NEAR
         }

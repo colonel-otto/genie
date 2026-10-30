@@ -1,5 +1,6 @@
 //! Path points, the gaps between footprints and the position setter's tests.
 
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Placed;
 use crate::math::fmath;
@@ -272,20 +273,20 @@ pub(crate) enum AfterRequest {
 #[must_use]
 pub fn footprint_gap_squared(
     a: Position,
-    a_radius: [f32; 2],
+    a_radius: Footprint,
     b: Position,
-    b_radius: [f32; 2],
+    b_radius: Footprint,
 ) -> f32 {
-    let x = ((b.x() - a.x()).abs() - (a_radius[0] + b_radius[0])).max(0.0);
-    let y = ((b.y() - a.y()).abs() - (a_radius[1] + b_radius[1])).max(0.0);
+    let x = ((b.x() - a.x()).abs() - (a_radius.x() + b_radius.x())).max(0.0);
+    let y = ((b.y() - a.y()).abs() - (a_radius.y() + b_radius.y())).max(0.0);
     x * x + y * y
 }
 
 /// The distance between two footprints on the ground (`FUN_14118f680`): per axis the centre
 /// distance minus both radii, at least 0, then the length of the two.
 #[must_use]
-pub fn footprint_gap(a: Position, a_radius: [f32; 2], b: Position, b_radius: [f32; 2]) -> f32 {
-    let x = ((b.x() - a.x()).abs() - (b_radius[0] + a_radius[0])).max(0.0);
-    let y = ((b.y() - a.y()).abs() - (b_radius[1] + a_radius[1])).max(0.0);
+pub fn footprint_gap(a: Position, a_radius: Footprint, b: Position, b_radius: Footprint) -> f32 {
+    let x = ((b.x() - a.x()).abs() - (b_radius.x() + a_radius.x())).max(0.0);
+    let y = ((b.y() - a.y()).abs() - (b_radius.y() + a_radius.y())).max(0.0);
     fmath::sqrt(x * x + y * y)
 }

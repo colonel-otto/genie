@@ -6,6 +6,7 @@ use crate::garrison::transport::{
     Around, Changed, DropDraws, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT,
     TransportAction, in_zone, retry_point,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
@@ -229,7 +230,7 @@ impl crate::world::World {
         let radius = ship.master(&self.masters, p)?.radius;
         let mut spots = [Around {
             center: [0.0; 2],
-            radius: [0.0; 2],
+            radius: Footprint::ZERO,
         }; SPOTS + 1];
         spots[1] = Around {
             center: ship.position().ground(),
@@ -321,8 +322,13 @@ impl crate::world::World {
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let unit = self.object(id).map(|(_, u)| u);
         let (grow, mask) = unit.and_then(|u| u.body.mover()).map_or_else(
-            || (made.radius[0], terrain.restriction_mask(moving.restriction)),
-            |m| (m.stats.radius[0], m.stats.restriction_mask),
+            || {
+                (
+                    made.radius.x(),
+                    terrain.restriction_mask(moving.restriction),
+                )
+            },
+            |m| (m.stats.radius.x(), m.stats.restriction_mask),
         );
         let zone_map = zone_map.map(|k| self.zones.map(k)).transpose()?;
         let mut rng = self.streams.get(crate::math::rng::Stream::Object).clone();
@@ -333,7 +339,7 @@ impl crate::world::World {
             if !in_zone([x, y], zone, zone_map)? {
                 continue;
             }
-            let [rx, ry] = made.radius;
+            let (rx, ry) = (made.radius.x(), made.radius.y());
             self.spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
             // the placing reads the terrain, which `point_clear` below borrows with the map
             let free = {

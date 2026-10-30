@@ -3,6 +3,7 @@
 
 use crate::combat::abilities::{ALWAYS_REACHED, ONE, Own, STRUCK_BUILDING_CLASSES};
 use crate::combat::damage::Victim;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
@@ -71,7 +72,7 @@ pub struct Bystander {
     /// Its place (`+0x3c8`, `+0x4c8`).
     pub position: Position,
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
-    pub radius: [f32; 2],
+    pub radius: Footprint,
 }
 
 /// What a movement damage reads of its hitter: its id, its master's `area_effect_level`
@@ -85,7 +86,7 @@ pub struct Hitter {
     /// Its place.
     pub position: Position,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
 }
 
 /// Whether a movement damage of `range` hits `b` (`0x141207a29`..`0x141207c0d`): not the hitter

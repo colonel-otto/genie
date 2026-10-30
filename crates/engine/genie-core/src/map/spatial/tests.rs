@@ -23,7 +23,7 @@ fn the_record_cells_answer_as_the_full_scan_does() {
     let kinds = [1u8, 2, 3, 5, 10, 11, 13];
     let placed = |position: [f32; 2], r: f32, kind: Option<u8>| Placed {
         position: Position::new(position[0], position[1], 0.0),
-        radius: [r, r * 0.5],
+        radius: Footprint::new(r, r * 0.5),
         class: class::CLASS_0,
         player: PlayerId::new(1),
         master: master_id(4),
@@ -126,7 +126,7 @@ fn a_circle_record_s_box_is_read_unordered_and_another_s_ordered() {
 fn villager(x: f32, y: f32) -> Placed {
     Placed {
         position: Position::new(x, y, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         player: PlayerId::new(2),
         master: ids::ID_0,
@@ -153,7 +153,7 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
         id: 1,
         owner: 1,
         position: [12.0, 10.0],
-        radii: [0.2, 0.2],
+        radii: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         old: 0,
         new: 1 << 2,
@@ -166,7 +166,7 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
         at,
         radius: 3.0,
         classes: &[4],
-        size: [0.2, 0.2],
+        size: Footprint::new(0.2, 0.2),
         pick: Pick::Look,
         memory: crate::unit_ai::Memory::default(),
     };
@@ -436,7 +436,7 @@ fn a_query_finds_the_boxes_its_rectangle_meets_but_not_the_ignored_or_unobstruct
     s.insert(object_id(9177), villager(28.0, 89.0));
     s.insert(object_id(9175), villager(30.0, 89.0));
     let mut foundation = villager(30.0, 88.0);
-    foundation.radius = [1.0, 1.0];
+    foundation.radius = Footprint::new(1.0, 1.0);
     foundation.obstruction = None;
     foundation.class = class::BUILDING;
     s.insert(object_id(10028), foundation);
@@ -467,7 +467,7 @@ fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
     let mut s = Spatial::with_tiles([220, 220], Tiles::new(220, 220, vec![1; 220 * 220]));
     assert_eq!(s.grid, Grid { levels: 6 });
     let mut bush = villager(31.5, 154.5);
-    bush.radius = [0.5, 0.5];
+    bush.radius = Footprint::new(0.5, 0.5);
     bush.player = PlayerId::new(0);
     bush.obstruction = Some(Obstruction { kind: 2, class: 1 });
     s.insert(object_id(13594), bush);
@@ -489,7 +489,7 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
     // nothing
     let mut s = Spatial::with_tiles([220, 220], Tiles::new(220, 220, vec![1; 220 * 220]));
     let mut bush = villager(140.5, 3.5);
-    bush.radius = [0.5, 0.5];
+    bush.radius = Footprint::new(0.5, 0.5);
     bush.player = PlayerId::new(0);
     bush.obstruction = Some(Obstruction { kind: 2, class: 1 });
     s.insert(object_id(808), bush);
@@ -511,7 +511,7 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
 fn a_record_goes_by_its_master_s_obstruction_type() {
     let mut s = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![1; 400]));
     let mut rock = villager(5.5, 5.5);
-    rock.radius = [0.5, 0.5];
+    rock.radius = Footprint::new(0.5, 0.5);
     rock.obstruction_type = 1;
     rock.obstruction = Some(Obstruction { kind: 1, class: 1 });
     s.insert(object_id(1), rock);
@@ -636,7 +636,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
     let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
     let centre = Placed {
         position: Position::new(2.0, 2.0, 0.0),
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         class: class::BUILDING,
         player: PlayerId::new(2),
         master: ids::ID_0,
@@ -650,7 +650,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
     s.insert(object_id(9157), centre);
     let tree = Placed {
         position: Position::new(0.5, 0.5, 0.0),
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         class: class::TREE,
         player: PlayerId::new(0),
         master: ids::ID_0,
@@ -763,7 +763,7 @@ fn site() -> (Spatial, Placed) {
     let mut s = Spatial::with_tiles([40, 120], Tiles::new(40, 120, vec![4; 40 * 120]));
     s.insert(object_id(9175), villager(30.0, 89.0));
     let mut house = villager(30.0, 88.0);
-    house.radius = [1.0, 1.0];
+    house.radius = Footprint::new(1.0, 1.0);
     house.class = class::BUILDING;
     house.master = ids::HOUSE;
     house.obstruction_type = 2;
@@ -779,7 +779,7 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
     assert_eq!(s.passable(29, 89, 1, 1, 0.2), Ok(false));
     assert_eq!(s.passable(-1, 89, 6, 1, 0.2), Ok(false));
     let mut tree = villager(29.5, 90.5);
-    tree.radius = [0.5, 0.5];
+    tree.radius = Footprint::new(0.5, 0.5);
     tree.obstruction = Some(Obstruction { kind: 2, class: 1 });
     s.insert(object_id(48), tree);
     assert_eq!(s.passable(29, 90, 6, 1, 0.2), Ok(false));
@@ -958,7 +958,7 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     s.relations = vec![vec![0; 4], vec![0; 4], vec![0, 3, 1, 0], vec![0, 3, 3, 1]];
     let mut wall = villager(30.5, 88.5);
     wall.player = PlayerId::new(3);
-    wall.radius = [0.5, 0.5];
+    wall.radius = Footprint::new(0.5, 0.5);
     s.insert(object_id(33990), wall);
     let look = |state: u8, kind: MasterKind, desolid: bool| ClearLook {
         hp: 1.0,
@@ -1029,7 +1029,7 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
     // tiles of class 1 everywhere: a unit with mask 1 crosses them all
     let mut s = Spatial::with_tiles([16, 16], Tiles::new(16, 16, vec![1; 256]));
     let mut house = villager(8.0, 8.0);
-    house.radius = [1.0, 1.0];
+    house.radius = Footprint::new(1.0, 1.0);
     house.obstruction = Some(Obstruction { kind: 2, class: 3 });
     s.insert(object_id(7), house);
     assert!(s.segment_blocked([4.0, 8.0], [12.0, 8.0], 0.2, 1, &[]));
@@ -1094,7 +1094,7 @@ fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
 fn a_pather_walk_off_the_map_meets_its_edge_first() {
     let mut s = Spatial::with_tiles([16, 16], Tiles::new(16, 16, vec![1; 256]));
     let mut house = villager(4.0, 8.0);
-    house.radius = [1.0, 1.0];
+    house.radius = Footprint::new(1.0, 1.0);
     house.obstruction = Some(Obstruction { kind: 2, class: 3 });
     s.insert(object_id(7), house);
     let mut beside = villager(12.0, 2.0);

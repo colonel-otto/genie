@@ -639,7 +639,7 @@ pub(crate) fn bare_walk() -> ExploreMove<'static> {
             state: 2,
             speed: 1.0,
             at: Position::ORIGIN,
-            ground: [0.0; 2],
+            ground: crate::map::Footprint::ZERO,
         },
         given: None,
     }
@@ -648,6 +648,7 @@ pub(crate) fn bare_walk() -> ExploreMove<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Footprint;
 
     const WALKING: Graphic = Graphic {
         id: 7,
@@ -672,7 +673,7 @@ mod tests {
                 state: 2,
                 speed: 1.0,
                 at: Position::ORIGIN,
-                ground: [0.0; 2],
+                ground: Footprint::ZERO,
             },
             given,
         }

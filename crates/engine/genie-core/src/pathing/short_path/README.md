@@ -40,5 +40,5 @@ tiles test which points see each other. The files follow the search:
 ## How it connects
 
 <!-- uses -->
-- Uses: [`math`](../../math/), [`world`](../../world/).
+- Uses: [`map`](../../map/), [`math`](../../math/), [`world`](../../world/).
 <!-- /uses -->

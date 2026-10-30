@@ -1,6 +1,7 @@
 //! A footprint's spots, occupants and clearing, foreign marks, clear points and obstruction
 //! candidates.
 
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::class;
 use crate::world::slots::CheckedIndex;
@@ -26,7 +27,7 @@ impl Spatial {
         from: Position,
         (me, radius_x): (i32, f32),
         mask: u8,
-        (at, radius): (Position, [f32; 2]),
+        (at, radius): (Position, Footprint),
         farthest: bool,
     ) -> Result<Option<[f32; 2]>, GenieError> {
         /// The footprint's last tile stops short of its edge by this (`DAT_142eb1e9c`).
@@ -36,7 +37,7 @@ impl Spatial {
         /// The closest search's first best (`DAT_14330ebf4`).
         const NO_SPOT: f32 = crate::math::image::spatial::NO_SPOT;
         let (tx, ty) = (at.x(), at.y());
-        let [rx, ry] = radius;
+        let (rx, ry) = (radius.x(), radius.y());
         let size = (((ry + rx) as i32) + 2).max(1) * 2;
         let half = size / 2;
         let (cx, cy) = (tx as i32, ty as i32);
@@ -118,7 +119,7 @@ impl Spatial {
     ) -> Result<Vec<i32>, GenieError> {
         use crate::objects::masters::master_type::BUILDING;
         let (sx, sy) = (site.position.x(), site.position.y());
-        let [rx, ry] = site.radius;
+        let (rx, ry) = (site.radius.x(), site.radius.y());
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
         let counts = |id: i32, o: &Placed| {
             looks.get(&id).is_none_or(|l| {
@@ -138,7 +139,7 @@ impl Spatial {
                     && (obstructs || o.speed <= 0.0)
                     && o.buildable_on != 1
                     && o.tall
-                    && o.radius.iter().all(|&r| 0.0 < r)
+                    && o.radius.sized()
                     && (o.position.x() - sx).abs() <= rx
                     && (o.position.y() - sy).abs() <= ry
                     && counts(id, o)
@@ -153,7 +154,7 @@ impl Spatial {
     /// points are at most 1).
     pub fn footprint_clearing(&self, site_id: i32, site: &Placed) -> Result<Vec<i32>, GenieError> {
         let (sx, sy) = (site.position.x(), site.position.y());
-        let [rx, ry] = site.radius;
+        let (rx, ry) = (site.radius.x(), site.radius.y());
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
         Ok(self
             .objects
@@ -162,8 +163,8 @@ impl Spatial {
                 id != site_id
                     && o.master != site.master
                     && (o.buildable_on != 0 || o.class == class::TREE)
-                    && (o.position.x() - sx).abs() < o.radius[0] + rx
-                    && (o.position.y() - sy).abs() < o.radius[1] + ry
+                    && (o.position.x() - sx).abs() < o.radius.x() + rx
+                    && (o.position.y() - sy).abs() < o.radius.y() + ry
             })
             .map(|(&id, _)| id)
             .collect())
@@ -178,7 +179,7 @@ impl Spatial {
     pub fn foreign_marks(&self, site: &Placed) -> bool {
         use crate::math::conversions::cvttss2si;
         let (sx, sy) = (site.position.x(), site.position.y());
-        let [rx, ry] = site.radius;
+        let (rx, ry) = (site.radius.x(), site.radius.y());
         let (w, h) = (self.tiles.width, self.tiles.height);
         let (x0, y0) = (cvttss2si(sx - rx).max(0), cvttss2si(sy - ry).max(0));
         let x1 = cvttss2si((sx + rx) - 0.001).min(w - 1);

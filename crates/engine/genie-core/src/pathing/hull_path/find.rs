@@ -242,8 +242,8 @@ impl HullPather<'_> {
             if t.speed != 0.0 || d <= NEAR_TARGET {
                 let len = sqrt(d);
                 goal = [
-                    goal[0] - (dx / len) * (r + t.radius[0]),
-                    goal[1] - (dy / len) * (r + t.radius[1]),
+                    goal[0] - (dx / len) * (r + t.radius.x()),
+                    goal[1] - (dy / len) * (r + t.radius.y()),
                 ];
             }
         }

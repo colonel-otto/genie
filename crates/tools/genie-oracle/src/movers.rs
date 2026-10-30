@@ -4,7 +4,7 @@
 use crate::masters::MasterTable;
 use crate::{combat_master, master_facets};
 use genie_core::GenieError;
-use genie_core::map::Position;
+use genie_core::map::{Position, Radii};
 use genie_core::math::fmath::BVector;
 use genie_save::generated::world::{
     Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
@@ -166,7 +166,7 @@ pub(super) fn mover(
     let (radius, restriction, base, turn, flags, sprite_facets) =
         match (s.own_master(), s.own_animated_master()) {
             (Some(own), Some(animated)) => (
-                [own.radius_x, own.radius_y, own.radius_z],
+                Radii::new(own.radius_x, own.radius_y, own.radius_z),
                 own.terrain_restriction_mask_id,
                 animated.max_speed,
                 s.own_moving_master()
@@ -196,7 +196,7 @@ pub(super) fn mover(
                     ))?
                     .max_speed;
                 (
-                    [placement.radius_x, placement.radius_y, placement.radius_z],
+                    Radii::new(placement.radius_x, placement.radius_y, placement.radius_z),
                     placement.terrain_restriction_mask_id,
                     base,
                     moving_master(master).map(|m| (m.turn_speed, m.move_sprite_id)),

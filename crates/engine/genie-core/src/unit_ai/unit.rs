@@ -1,6 +1,7 @@
 //! The unit AI's part of the update: its surroundings, its side and its run.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Mover, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
@@ -118,7 +119,7 @@ impl Unit {
             },
             combat_level: master.map_or(0, |m| m.combat_level),
             attack_priority: master.map_or(0, |m| m.attack_priority),
-            size: master.map_or([0.0; 2], |m| m.radius),
+            size: master.map_or(Footprint::ZERO, |m| m.radius),
             los: master.map_or(0.0, |m| m.line_of_sight),
             search_radius: master.map_or(0.0, |m| m.search_radius),
             weapon_range: master.map_or(0.0, |m| m.weapon_range),

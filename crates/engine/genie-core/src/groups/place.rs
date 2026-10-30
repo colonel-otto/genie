@@ -275,7 +275,7 @@ impl World {
             if self.spatial.point_clear_among(
                 lead.id(),
                 centre.ground(),
-                FRONT_SHARE * master.radius[0],
+                FRONT_SHARE * master.radius.x(),
                 mask,
                 &members,
             )? {
@@ -326,7 +326,7 @@ impl World {
                 if !in_front.is_empty()
                     || ground_squared(u.moved_vector().xhy(), front) <= nearest_d
                     || {
-                        let r = u.master(&self.masters, p)?.radius[0];
+                        let r = u.master(&self.masters, p)?.radius.x();
                         beside <= (r + r) * (r + r)
                     } =>
             {
@@ -384,6 +384,7 @@ fn ground_squared(p: BVector, q: BVector) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Footprint;
     use crate::map::Position;
     use crate::objects::masters::class;
     use crate::test_ids::master_id;
@@ -440,7 +441,7 @@ mod tests {
         t.masters = vec![crate::objects::masters::Masters::new([
             crate::objects::masters::Master {
                 id: master_id(4),
-                radius: [0.4, 0.4],
+                radius: Footprint::new(0.4, 0.4),
                 terrain_restriction: 0,
                 ..crate::objects::masters::Master::default()
             },
@@ -463,7 +464,7 @@ mod tests {
                 u.id,
                 Placed {
                     position: u.position(),
-                    radius: [0.4, 0.4],
+                    radius: Footprint::new(0.4, 0.4),
                     class: class::CLASS_6,
                     player: PlayerId::new(0),
                     master: master_id(4),

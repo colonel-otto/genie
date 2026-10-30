@@ -2,6 +2,7 @@
 //! construction's start and completion.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
@@ -56,7 +57,7 @@ impl Visibility {
         id: i32,
         owner: PlayerId,
         at: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         class: ClassId,
         main: Option<(Position, u8)>,
     ) -> Result<Option<u64>, GenieError> {
@@ -125,8 +126,8 @@ impl Visibility {
         id: i32,
         owner: PlayerId,
         at: Position,
-        old: ([f32; 2], ClassId),
-        new: ([f32; 2], ClassId),
+        old: (Footprint, ClassId),
+        new: (Footprint, ClassId),
     ) -> Result<(), GenieError> {
         let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
             return Ok(());
@@ -159,7 +160,7 @@ impl Visibility {
         id: i32,
         owner: PlayerId,
         at: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         class: ClassId,
     ) -> Result<(), GenieError> {
         let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
@@ -198,7 +199,7 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         (new, los): (PlayerId, f32),
         sees: bool,
     ) -> Result<(), GenieError> {
@@ -225,7 +226,7 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<(), GenieError> {
         let Some(b) = self.seers.get_mut(&id).and_then(|s| s.building.as_mut()) else {
             return Ok(());
@@ -245,7 +246,7 @@ impl Visibility {
         &mut self,
         id: i32,
         position: Position,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<(), GenieError> {
         if let Some(b) = self.seers.get_mut(&id).and_then(|s| s.building.as_mut()) {
             b.started = true;

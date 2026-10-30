@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::missile::AimAt;
+use crate::map::Radii;
 use crate::map::spatial::Placed;
 use crate::map::{Offset, Position};
 use crate::math::fmath::BVector;
@@ -429,7 +430,7 @@ impl Unit {
             ));
         }
         mover.mark_move(position, c.w.world_time);
-        let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
+        let solid = 0.0 < made.radius.x() && 0.0 < made.radius.y() && made.tall;
         let placed = Placed {
             position,
             radius: made.radius,
@@ -571,7 +572,7 @@ impl Unit {
 pub(crate) struct Aimed {
     pub(crate) target: i32,
     pub(crate) position: Position,
-    pub(crate) radius: [f32; 3],
+    pub(crate) radius: Radii,
     pub(crate) class: ClassId,
     pub(crate) player: PlayerId,
 }
@@ -583,7 +584,7 @@ impl Aimed {
         Self {
             target,
             position: v.position,
-            radius: [v.radius[0], v.radius[1], v.height],
+            radius: v.radius.with_height(v.height),
             class: v.class,
             player: v.player,
         }

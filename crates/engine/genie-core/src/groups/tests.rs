@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
@@ -475,11 +476,11 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         class,
         formation_category: 1,
         weapon_range: 4.0,
-        radius: [0.3, 0.3],
+        radius: Footprint::new(0.3, 0.3),
         ..Master::default()
     };
     let building = Master {
-        radius: [2.0, 2.0],
+        radius: Footprint::new(2.0, 2.0),
         ..building_master()
     };
     let masters = Masters::new([

@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::construction::repair::payment::PaidAttributes;
 use crate::construction::repair::{CountedIn, RepairReads, Repairee};
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::BVector;
@@ -114,7 +115,7 @@ impl Unit {
             blast_level: master.map_or(0, |m| m.blast_level),
             los: master.map_or(0.0, |m| m.line_of_sight),
             position: self.position(),
-            radius: master.map_or([0.0; 2], |m| m.radius),
+            radius: master.map_or(Footprint::ZERO, |m| m.radius),
             speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
             scenario,
             firepower: self.firepower,

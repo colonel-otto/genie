@@ -8,6 +8,7 @@ use crate::groups::group_list::member_gone;
 use crate::groups::stats::weapon_range;
 use crate::groups::update::{ATTACK, NO_COMMAND};
 use crate::groups::{UnitTypeStatistic, WorldObject};
+use crate::map::Footprint;
 use crate::math::fmath;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::math::image::group::{CHASING_SLACK, CLOSE, CONTACT_SLACK, FARTHEST, RANGED_SLACK};
@@ -390,12 +391,12 @@ impl World {
 
 /// `FUN_14118faf0`: the ground length of the gap from a footprint of radii `radius` at `at` to
 /// the point `to`, each axis's gap at least 0 (an unordered one stays).
-fn point_gap(at: [f32; 2], radius: [f32; 2], to: [f32; 2]) -> f32 {
+fn point_gap(at: [f32; 2], radius: Footprint, to: [f32; 2]) -> f32 {
     let gap = |d: f32, r: f32| {
         let g = d.abs() - r;
         if g <= 0.0 { 0.0 } else { g }
     };
-    let gx = gap(to[0] - at[0], radius[0]);
-    let gy = gap(to[1] - at[1], radius[1]);
+    let gx = gap(to[0] - at[0], radius.x());
+    let gy = gap(to[1] - at[1], radius.y());
     fmath::sqrt(gy * gy + gx * gx)
 }

@@ -675,6 +675,7 @@ pub(crate) fn weapon_range(master: &crate::objects::masters::Master) -> f32 {
 mod tests {
     use super::*;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
+    use crate::map::Footprint;
     use crate::map::Position;
     use crate::objects::masters::{ClassId, class};
     use crate::objects::masters::{Master, Masters};
@@ -762,7 +763,7 @@ mod tests {
             formation_category: 1,
             line_of_sight: 4.0,
             weapon_range: 1.0,
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             ..Master::default()
         };
         t.masters = vec![
@@ -796,7 +797,7 @@ mod tests {
                 id,
                 owner,
                 position: at,
-                radii: [0.2, 0.2],
+                radii: Footprint::new(0.2, 0.2),
                 class,
                 old: 0,
                 new: 1 << 1,
@@ -881,7 +882,7 @@ mod tests {
                     id: 22,
                     owner: 2,
                     position: [13.0, 5.0],
-                    radii: [0.2, 0.2],
+                    radii: Footprint::new(0.2, 0.2),
                     class: class::CLASS_6,
                     old: 0,
                     new: 1 << 1,
@@ -923,7 +924,7 @@ mod tests {
                 kind: master_type::COMBAT,
                 class: class::CLASS_0,
                 weapon_range: 6.0,
-                radius: [0.3, 0.3],
+                radius: Footprint::new(0.3, 0.3),
                 ..Master::default()
             };
             *masters = Masters::new(masters.iter().cloned().chain([archer]));

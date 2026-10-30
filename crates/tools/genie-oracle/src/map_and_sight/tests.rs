@@ -107,16 +107,17 @@ mod spatial {
     };
     use crate::map_and_sight::spatial;
     use crate::masters::TerrainTable;
+    use genie_core::map::Radii;
     use genie_core::map::spatial::Spatial;
     use genie_core::objects::masters::class;
     use genie_core::players::PlayerId;
     use genie_save::generated::world::{Object, RgeMapRow, RgeTile};
 
     /// A master of id `id`, its radius `radius` and an obstruction of kind `kind`.
-    fn master(id: i16, radius: [f32; 3], kind: u8) -> genie_save::generated::world::Master {
+    fn master(id: i16, radius: Radii, kind: u8) -> genie_save::generated::world::Master {
         let mut m = combat_master(id);
         let s = master_static_mut(&mut m);
-        [s.radius_x, s.radius_y, s.radius_z] = radius;
+        (s.radius_x, s.radius_y, s.radius_z) = (radius.x(), radius.y(), radius.z());
         s.los = 4.0;
         s.obstruction_type = kind;
         s.obstruction_class = 3;
@@ -163,8 +164,8 @@ mod spatial {
             .unwrap()
             .player_objects;
         let masters = with_masters(vec![
-            master(83, [0.2, 0.2, 1.0], 2),
-            master(70, [1.0, 1.0, 2.0], 5),
+            master(83, Radii::new(0.2, 0.2, 1.0), 2),
+            master(70, Radii::new(1.0, 1.0, 2.0), 5),
         ]);
         objects.masters = masters.masters;
         objects.doppleganger_objects.object_type_list =

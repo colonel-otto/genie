@@ -1,4 +1,6 @@
 use super::*;
+use crate::map::Footprint;
+use crate::map::Radii;
 use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Me;
@@ -77,7 +79,7 @@ fn walking_reads(
         state,
         speed,
         at: Position::ORIGIN,
-        ground: [0.0; 2],
+        ground: Footprint::ZERO,
     }
 }
 
@@ -160,7 +162,7 @@ fn mark(id: i32, x: f32) -> Mark {
         class: class::PREY,
         state: 2,
         position: Position::new(x, 10.0, 0.5),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
     }
 }
 
@@ -169,7 +171,7 @@ const LION: Wielder = Wielder {
     area_effect: 0.0,
     speed: 1.2,
     position: Position::new(10.0, 10.0, 0.0),
-    radius: [0.4, 0.4],
+    radius: Footprint::new(0.4, 0.4),
 };
 
 /// `FUN_140a841d0`: the Attack's own target in states 4 to 7 or 11 is kept as it is; in
@@ -280,7 +282,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
     let main = Mark {
         id: 31,
         position: Position::new(12.0, 10.0, 0.0),
-        radius: [1.5, 1.5],
+        radius: Footprint::new(1.5, 1.5),
         ..annex
     };
     let mangonel = Wielder {
@@ -400,7 +402,7 @@ fn soldier_mover(speed: f32) -> Mover {
             turn_rate: f32::MAX,
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,
-            radius: [0.2, 0.2, 0.5],
+            radius: Radii::new(0.2, 0.2, 0.5),
             restriction: 7,
             restriction_mask: 6,
             turn_time: 0.0,
@@ -651,7 +653,7 @@ fn struck_building(id: i32, at: Position, building: damage::Building) -> Victim 
         class: class::BUILDING,
         player: PlayerId::new(2),
         position: at,
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         blast_defense: 2,
         master_hp: 100,
         armored: Some(damage::Armored {
@@ -859,7 +861,7 @@ fn world_with(id: i32, player: PlayerId, class: ClassId, at: Position) -> Spatia
         object_id(id),
         crate::map::spatial::Placed {
             position: at,
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class,
             player,
             master: master_id(4),
@@ -2045,7 +2047,7 @@ fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
         id: 50,
         hp: 5.0,
         position: Position::new(13.0, 10.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         player: PlayerId::new(0),
         ..Victim::default()
     };
@@ -2344,7 +2346,7 @@ fn an_attack_s_walk_walks_waits_arrives_or_fails() {
         a.move_to = move_to.map(|state| walk_to_house(state, wait));
         let code = rig
             .run(100, |c, u, f, r| {
-                a.walk(c, u, me(9177, 4), f, r, (HOUSE, [1.0, 1.0]))
+                a.walk(c, u, me(9177, 4), f, r, (HOUSE, Footprint::new(1.0, 1.0)))
             })
             .map_err(|e| e.reason().to_owned());
         (code, a, rig.posted(), rig.mover().animated.speed == 0.0)

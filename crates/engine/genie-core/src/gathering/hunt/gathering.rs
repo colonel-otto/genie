@@ -56,7 +56,7 @@ impl HuntAction {
             self.task.range
         };
         let mover = body.mover().ok_or(crate::world::HUNTER_UNMOVING)?;
-        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let ground = mover.stats.radius.ground();
         let gap = footprint_gap(body.position(), ground, t.position, t.radius);
         let to = WalkTo {
             id: self.target,
@@ -123,7 +123,7 @@ impl HuntAction {
             let ground = unit
                 .body
                 .mover()
-                .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+                .map(|m| m.stats.radius.ground())
                 .ok_or(crate::world::HUNTER_UNMOVING)?;
             if self.task.range + GAP
                 < footprint_gap(unit.body.position(), ground, t.position, t.radius)

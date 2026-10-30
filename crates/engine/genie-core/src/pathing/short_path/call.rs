@@ -1,6 +1,7 @@
 //! The short pather's call ([`Call`], [`Query`]) and its state between searches
 //! ([`Pather`]): the terrain's shapes, the start test and the core.
 
+use crate::map::Footprint;
 use crate::math::fmath::BVector;
 use crate::pathing::mesh::{Mesh, ONE};
 use crate::pathing::short_path::{
@@ -23,7 +24,7 @@ pub struct Query {
     /// The unit's radius (`+0xc`).
     pub radius: f32,
     /// The target's half sizes, when the goal is its own position (`+0x10`, `+0x14`).
-    pub target_size: [f32; 2],
+    pub target_size: Footprint,
     /// The range (`+0x18`).
     pub range: f32,
     /// The terrain classes the unit cannot cross, as a tile mask (`+0x1c`).
@@ -39,7 +40,7 @@ impl Query {
             from: self.from,
             to: self.to,
             radius: fixed(self.radius),
-            target_size: [fixed(self.target_size[0]), fixed(self.target_size[1])],
+            target_size: [fixed(self.target_size.x()), fixed(self.target_size.y())],
             range: fixed(self.range),
             blocked: self.blocked,
         }
@@ -76,7 +77,7 @@ pub struct Target {
     /// Its place.
     pub position: [f32; 2],
     /// Its master's half sizes (`+0x5d8`, `+0x5dc`).
-    pub half_size: [f32; 2],
+    pub half_size: Footprint,
 }
 
 /// An object the call is asked to ignore (arguments 6 and 7): its id and its shape in the mesh
@@ -139,8 +140,8 @@ impl Call {
     #[must_use]
     pub fn entry(&self) -> Entry {
         if let Some(t) = self.target {
-            let fx = fmath::maxss((self.from[0] - t.position[0]).abs() - t.half_size[0], 0.0);
-            let fy = fmath::maxss((self.from[1] - t.position[1]).abs() - t.half_size[1], 0.0);
+            let fx = fmath::maxss((self.from[0] - t.position[0]).abs() - t.half_size.x(), 0.0);
+            let fy = fmath::maxss((self.from[1] - t.position[1]).abs() - t.half_size.y(), 0.0);
             if fmath::sqrt(fy * fy + fx * fx) - self.radius <= self.range {
                 return Entry::InRange;
             }
@@ -166,7 +167,7 @@ impl Call {
             .filter(|l| at_target.is_none_or(|t| l.id != t.id))
             .filter_map(|l| l.shape)
             .collect();
-        let size = at_target.map_or([0.0, 0.0], |t| t.half_size);
+        let size = at_target.map_or(Footprint::ZERO, |t| t.half_size);
         Entry::Search {
             query: Query {
                 from: [fixed(self.from[0]), fixed(self.from[1])],

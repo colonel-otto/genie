@@ -1,5 +1,6 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
+use crate::map::Footprint;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -26,7 +27,7 @@ pub struct ClearingSite {
     /// Its master's class (`+0x410`).
     pub class: ClassId,
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its place.
     pub at: [f32; 2],
     /// `param_6`: the builder's call (the Build's `set_state(7)`) or a new object's
@@ -106,7 +107,7 @@ pub(crate) fn footprint_clearing(
     looks: &BTreeMap<i32, ClearLook>,
 ) -> Result<Vec<Cleared>, GenieError> {
     use crate::math::fmath::below_or_unordered;
-    let [rx, ry] = site.radius;
+    let (rx, ry) = (site.radius.x(), site.radius.y());
     if !below_or_unordered(0.0, rx) && !below_or_unordered(0.0, ry) {
         return Ok(Vec::new());
     }
@@ -209,10 +210,10 @@ pub(super) fn clearing_takes(
     if o.buildable_on == 0 && !own_wall && below_or_unordered(STUMP_HP, seen.hp) {
         return Ok(None);
     }
-    let [rx, ry] = site.radius;
+    let (rx, ry) = (site.radius.x(), site.radius.y());
     let dx = (o.position.x() - site.at[0]).abs();
     let dy = (o.position.y() - site.at[1]).abs();
-    if !(dx < o.radius[0] + rx && dy < o.radius[1] + ry) {
+    if !(dx < o.radius.x() + rx && dy < o.radius.y() + ry) {
         return Ok(None);
     }
     // COMISS 0 against the height, JNC: a flag master of height 0 or less stays

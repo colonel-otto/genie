@@ -310,6 +310,7 @@ impl Body {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Footprint;
     use crate::map::spatial::Placed;
     use crate::objects::masters::class;
     use crate::objects::masters::ids;
@@ -327,7 +328,7 @@ mod tests {
             object_id(7),
             Placed {
                 position: at,
-                radius: [0.2, 0.2],
+                radius: Footprint::new(0.2, 0.2),
                 class: class::VILLAGER,
                 player: PlayerId::new(1),
                 master: ids::VILLAGER_MALE,

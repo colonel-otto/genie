@@ -111,7 +111,7 @@ impl World {
             return Ok(());
         };
         let (x, y) = (site.position.x(), site.position.y());
-        let [rx, ry] = site.radius;
+        let (rx, ry) = (site.radius.x(), site.radius.y());
         let [w, h] = self.spatial.map;
         let (x0, y0) = (
             (((x - rx) as i32) - AROUND).max(0),
@@ -147,7 +147,7 @@ impl World {
                     }
                     let dx = (o.position.x() - x).abs();
                     let dy = (o.position.y() - y).abs();
-                    if dx < o.radius[0] + rx && dy < ry + o.radius[1] {
+                    if dx < o.radius.x() + rx && dy < ry + o.radius.y() {
                         gone.push((owner, oid));
                     }
                 }
@@ -737,6 +737,7 @@ mod tests {
 #[cfg(test)]
 mod clearing_tests {
     use super::*;
+    use crate::map::Footprint;
     use crate::map::Position;
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
@@ -789,7 +790,7 @@ mod clearing_tests {
             id,
             kind: master_type::STATIC,
             class: class::CLASS_5,
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             buildable_on: 1,
             ..Master::default()
         };
@@ -798,7 +799,7 @@ mod clearing_tests {
                 id: ids::HOUSE,
                 kind: BUILDING,
                 class: class::BUILDING,
-                radius: [1.0, 1.0],
+                radius: Footprint::new(1.0, 1.0),
                 ..Master::default()
             },
             deco(master_id(1351)),
@@ -807,7 +808,7 @@ mod clearing_tests {
                 id: master_id(43),
                 kind: master_type::MOVING,
                 class: class::CLASS_11,
-                radius: [0.2, 0.2],
+                radius: Footprint::new(0.2, 0.2),
                 buildable_on: 1,
                 storage: vec![(7, 1.0, 32)],
                 ..Master::default()
@@ -816,7 +817,7 @@ mod clearing_tests {
                 id: master_id(254),
                 kind: COMBAT,
                 class: class::CLASS_40,
-                radius: [0.5, 0.5],
+                radius: Footprint::new(0.5, 0.5),
                 height: 1.0,
                 tall: true,
                 obstruction_type: 2,
@@ -827,7 +828,7 @@ mod clearing_tests {
                 id: ids::ID_357,
                 kind: BUILDING,
                 class: class::CLASS_11,
-                radius: [1.5, 1.5],
+                radius: Footprint::new(1.5, 1.5),
                 buildable_on: 1,
                 building: Some(crate::objects::masters::BuildingMaster {
                     stack_unit: None,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::math::fmath::BVector;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::ClassId;
@@ -265,7 +266,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
                 id: ids::VILLAGER_MALE,
                 kind: master_type::COMBAT,
                 class: class::VILLAGER,
-                radius: [0.2, 0.2],
+                radius: Footprint::new(0.2, 0.2),
                 // no sprites (the world's sprites' table is empty)
                 standing_sprite: -1,
                 move_sprite: -1,
@@ -276,14 +277,14 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
                 id: ids::HOUSE,
                 kind: BUILDING,
                 class: class::BUILDING,
-                radius: [1.0, 1.0],
+                radius: Footprint::new(1.0, 1.0),
                 ..Master::default()
             },
             Master {
                 id: master_id(68),
                 kind: BUILDING,
                 class: class::BUILDING,
-                radius: [1.0, 1.0],
+                radius: Footprint::new(1.0, 1.0),
                 ..Master::default()
             },
         ])];
@@ -292,16 +293,24 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             placed(
                 Position::new(10.0, 10.0, 0.0),
                 ids::VILLAGER_MALE,
-                [0.2, 0.2],
+                Footprint::new(0.2, 0.2),
             ),
         );
         t.spatial.insert(
             object_id(600),
-            placed(Position::new(5.0, 10.0, 0.0), ids::HOUSE, [1.0, 1.0]),
+            placed(
+                Position::new(5.0, 10.0, 0.0),
+                ids::HOUSE,
+                Footprint::new(1.0, 1.0),
+            ),
         );
         t.spatial.insert(
             object_id(503),
-            placed(Position::new(15.0, 10.0, 0.0), master_id(68), [1.0, 1.0]),
+            placed(
+                Position::new(15.0, 10.0, 0.0),
+                master_id(68),
+                Footprint::new(1.0, 1.0),
+            ),
         );
         t.track_add(PlayerId::new(0), 503, master_id(68)).unwrap();
         let key = t.tracker_key(PlayerId::new(0), master_id(68));
@@ -659,7 +668,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     });
     let placed = |x: f32, class, player, master| Placed {
         position: Position::new(x, 10.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class,
         player,
         master,
@@ -1665,7 +1674,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 40,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         standing_sprite: -1,
         ..Master::default()
     };
@@ -1674,7 +1683,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,
-        radius: [0.3, 0.3],
+        radius: Footprint::new(0.3, 0.3),
         standing_sprite: -1,
         ..Master::default()
     };
@@ -1683,7 +1692,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
         object_id(7),
         crate::map::spatial::Placed {
             position: Position::new(3.5, 3.5, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::CLASS_6,
             player: PlayerId::new(1),
             master: master_id(4),
@@ -1720,7 +1729,10 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     assert!(switched.promoted);
     assert_eq!((unit.life.master_id, unit.life.hp), (master_id(5), 30.0));
     let record = spatial.get(7).copied().unwrap();
-    assert_eq!((record.master, record.radius), (master_id(5), [0.3, 0.3]));
+    assert_eq!(
+        (record.master, record.radius),
+        (master_id(5), Footprint::new(0.3, 0.3))
+    );
     assert!(!spatial.tile_list(5, 5).contains(&7));
 }
 
@@ -1786,7 +1798,7 @@ fn switch_masters() -> (Master, Master) {
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 40,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         standing_sprite: 10,
         storage: vec![
             (4, 1.0, 2),
@@ -1802,7 +1814,7 @@ fn switch_masters() -> (Master, Master) {
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,
-        radius: [0.3, 0.3],
+        radius: Footprint::new(0.3, 0.3),
         standing_sprite: 11,
         storage: vec![(4, 1.0, 2), (14, 1.0, 16)],
         volley_fire: 3.0,
@@ -1859,7 +1871,7 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
     assert_eq!(u.sprite.map(|s| s.graphic.id), Some(11));
     assert_eq!(
         (record.master, record.radius, record.obstruction_type),
-        (master_id(5), [0.3, 0.3], 3)
+        (master_id(5), Footprint::new(0.3, 0.3), 3)
     );
     assert_eq!(
         record.obstruction,
@@ -2051,7 +2063,7 @@ fn followers() -> World {
             id: master_id(5),
             kind: master_type::COMBAT,
             class: class::CLASS_6,
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             ..Master::default()
         }]));
     t.players[2].objects.push(Unit {
@@ -2068,7 +2080,7 @@ fn followers() -> World {
         object_id(30),
         crate::map::spatial::Placed {
             position: Position::new(40.0, 20.0, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             class: class::CLASS_6,
             player: PlayerId::new(2),
             master: master_id(5),
@@ -2513,7 +2525,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         id: master_id(594),
         kind: master_type::COMBAT,
         class: class::LIVESTOCK,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         moving: Some(walker.stats),
         ..Master::default()
     };
@@ -2522,7 +2534,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         Master {
             id: master_id(4),
             kind: master_type::COMBAT,
-            radius: [1.5, 1.5],
+            radius: Footprint::new(1.5, 1.5),
             ..Master::default()
         },
     ]);
@@ -2551,7 +2563,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     t.players[2].objects.push(sheep(object_id(23), 11.5, 10.5));
     let placed = |player, master, at: [f32; 2], radius| crate::map::spatial::Placed {
         position: Position::new(at[0], at[1], 0.0),
-        radius: [radius, radius],
+        radius: Footprint::new(radius, radius),
         class: class::LIVESTOCK,
         player,
         master,
@@ -2670,7 +2682,7 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
         class,
         weapon_range: 5.0,
         min_range: 2.0,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         ..Master::default()
     };
     t.masters = vec![
@@ -2683,7 +2695,7 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
             object_id(id),
             crate::map::spatial::Placed {
                 position: Position::new(x, 10.0, 0.0),
-                radius: [0.2, 0.2],
+                radius: Footprint::new(0.2, 0.2),
                 class,
                 player: PlayerId::from(player),
                 master: master_id(4),
@@ -3550,7 +3562,7 @@ fn a_gather_takes_a_farm_but_no_other_building() {
             id: ids::FARM,
             kind: BUILDING,
             class: class::FARM,
-            radius: [1.5, 1.5],
+            radius: Footprint::new(1.5, 1.5),
             ..Master::default()
         }]));
     let farm = |id, state, annex_of| Unit {
@@ -4096,7 +4108,7 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
         id: ids::HOUSE,
         kind: BUILDING,
         class: class::BUILDING,
-        radius: [2.0, 2.0],
+        radius: Footprint::new(2.0, 2.0),
         hit_points: 550,
         ..Master::default()
     };

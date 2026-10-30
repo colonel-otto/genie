@@ -167,7 +167,7 @@ pub fn walled_off(
                 || spatial.point_clear(
                     id,
                     [x as f32, y as f32],
-                    stats.radius[0],
+                    stats.radius.x(),
                     stats.restriction_mask,
                 )?
             {
@@ -320,7 +320,9 @@ fn shore(
             continue;
         }
         let zone = if x < 0 || y < 0 { 0 } else { map.zone(x, y) };
-        if zone == own && spatial.point_clear(id, place, stats.radius[0], stats.restriction_mask)? {
+        if zone == own
+            && spatial.point_clear(id, place, stats.radius.x(), stats.restriction_mask)?
+        {
             return Ok(Some(tile));
         }
     }

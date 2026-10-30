@@ -4,6 +4,7 @@
 //! (`0x140ab0370` case 0xdf).
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::msvc;
 use crate::objects::masters::ClassId;
@@ -250,7 +251,7 @@ pub struct SearchSite {
     /// The site's place.
     pub position: Position,
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its master's line of sight (`+0x5d0`).
     pub line_of_sight: f32,
     /// The search starts from the site's footprint: the site's tile lies in the unit's zone (its
@@ -563,7 +564,7 @@ fn footprint_seeds(
     passable: &dyn Fn(i32, i32) -> bool,
 ) -> Vec<Cell> {
     let (sx, sy) = (s.position.x(), s.position.y());
-    let [rx, ry] = s.radius;
+    let (rx, ry) = (s.radius.x(), s.radius.y());
     let x0 = ((sx - rx) as i32).max(1) - 1;
     let x1 = ((sx + rx) as i32).min(map[0] - 1);
     let y0 = ((sy - ry) as i32).max(1) - 1;
@@ -865,7 +866,7 @@ mod tests {
         // a 2x2 site at (14, 10): its own tiles are blocked
         let site = SearchSite {
             position: Position::new(14.0, 10.0, 0.0),
-            radius: [1.0, 1.0],
+            radius: Footprint::new(1.0, 1.0),
             line_of_sight: 6.0,
             footprint: true,
         };

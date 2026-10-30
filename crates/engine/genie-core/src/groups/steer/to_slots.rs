@@ -183,7 +183,7 @@ impl World {
             "a steered member the world does not hold",
         ))?;
         let mover = u.body.mover().ok_or(NO_MOVER)?;
-        let (radius, mask) = (mover.stats.radius[0], mover.stats.restriction_mask);
+        let (radius, mask) = (mover.stats.radius.x(), mover.stats.restriction_mask);
         let own = [id];
         let ignore = if ignore.is_empty() { &own[..] } else { ignore };
         // FUN_1411570c0 sets the manager's ignore list to it (FUN_1410562e0)

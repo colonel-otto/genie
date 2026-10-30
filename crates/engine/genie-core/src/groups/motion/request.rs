@@ -167,7 +167,7 @@ fn tile_plan(
     plan: &mut PathSoFar,
 ) -> Result<(), GenieError> {
     let spatial = &mut *world.spatial;
-    let radii = target.map_or(0.0, |t| t.radius[0]) + lead.walker.radius;
+    let radii = target.map_or(0.0, |t| t.radius.x()) + lead.walker.radius;
     let mut planning = world.plan.reborrow();
     planning.computer = lead.computer;
     let r = tile_plan_for(

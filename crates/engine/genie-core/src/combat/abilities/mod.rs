@@ -33,6 +33,7 @@
 //! hold.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::math::fmath;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -162,7 +163,7 @@ struct Own {
     /// Its `area_effect_level` (`+0x830`).
     blast_level: u8,
     /// Its radii (`+0x5d8`, `+0x5dc`).
-    radius: [f32; 2],
+    radius: Footprint,
 }
 
 impl World {

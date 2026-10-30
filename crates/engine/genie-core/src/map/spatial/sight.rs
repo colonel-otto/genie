@@ -2,6 +2,7 @@
 //! spots.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Spatial};
 use crate::objects::masters::ClassId;
@@ -58,7 +59,7 @@ impl Spatial {
             .ok_or(GenieError::unsupported(
                 "an owner search of an object the world does not hold",
             ))?;
-        let reach = (p.radius[0] as i32 as i16).wrapping_add(3);
+        let reach = (p.radius.x() as i32 as i16).wrapping_add(3);
         let (x, y) = (p.position.x(), p.position.y());
         let (x0, x1) = (
             (x as i32 as i16).wrapping_sub(reach),
@@ -399,7 +400,7 @@ impl Spatial {
     pub fn sight_master(
         &mut self,
         id: i32,
-        radius: [f32; 2],
+        radius: Footprint,
         class: ClassId,
         master: MasterId,
         los: f32,
@@ -526,7 +527,7 @@ impl Spatial {
         from: Position,
         me: (i32, f32),
         mask: u8,
-        site: (Position, [f32; 2]),
+        site: (Position, Footprint),
     ) -> Result<Option<[f32; 2]>, GenieError> {
         self.spot_off(from, me, mask, site, false)
     }

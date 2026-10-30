@@ -138,10 +138,10 @@ impl HullPather<'_> {
             Some(t) => {
                 let r = self.radius;
                 [
-                    (t.at[0] - t.radius[0]) - r,
-                    (t.at[1] - t.radius[1]) - r,
-                    t.at[0] + t.radius[0] + r,
-                    t.at[1] + t.radius[1] + r,
+                    (t.at[0] - t.radius.x()) - r,
+                    (t.at[1] - t.radius.y()) - r,
+                    t.at[0] + t.radius.x() + r,
+                    t.at[1] + t.radius.y() + r,
                 ]
             }
         };

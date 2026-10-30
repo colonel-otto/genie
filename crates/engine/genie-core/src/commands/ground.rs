@@ -1,6 +1,7 @@
 //! A new building's ground: the units on its foundation sent off, its terrain, the footprint
 //! clearing and its place.
 
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -40,8 +41,8 @@ impl World {
         ))?;
         let radius = site.master(&self.masters, site_owner)?.radius;
         let p = [
-            (radius[0] * RADIUS_SCALE) as i32,
-            (radius[1] * RADIUS_SCALE) as i32,
+            (radius.x() * RADIUS_SCALE) as i32,
+            (radius.y() * RADIUS_SCALE) as i32,
             foundation,
         ];
         let mut together = Vec::new();
@@ -102,7 +103,7 @@ impl World {
     pub(crate) fn evacuate_together(
         &mut self,
         foundation: i32,
-        radius: [f32; 2],
+        radius: Footprint,
         units: &[i32],
     ) -> Result<(), GenieError> {
         let site_at = self
@@ -120,7 +121,7 @@ impl World {
         ))?;
         let spot = self.spatial.spot_off(
             first.position(),
-            (first.id.get(), mover.stats.radius[0]),
+            (first.id.get(), mover.stats.radius.x()),
             mover.stats.restriction_mask,
             (site_at, radius),
             true,

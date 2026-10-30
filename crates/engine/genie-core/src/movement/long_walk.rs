@@ -1,5 +1,6 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
@@ -56,7 +57,7 @@ pub(super) fn reach(waypoint: BVector, position: BVector, projected: BVector) ->
 pub(crate) struct LongWalker<'a> {
     pub(crate) id: i32,
     pub(crate) position: Position,
-    pub(crate) radius: [f32; 2],
+    pub(crate) radius: Footprint,
     pub(crate) mask: u8,
     pub(crate) moves: bool,
     pub(crate) ignore_units: &'a [i32],

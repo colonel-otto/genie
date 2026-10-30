@@ -58,7 +58,7 @@ impl Unit {
         let reach = if held <= REACH_CAP { held } else { REACH_CAP };
         let builder = gather_search::Builder {
             position: self.position(),
-            radius: master.radius[0],
+            radius: master.radius.x(),
             building: at.position,
             range: reach as i32 as i16,
         };

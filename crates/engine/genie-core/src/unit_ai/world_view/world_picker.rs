@@ -448,7 +448,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
             self.me,
             id,
             mask,
-            self.attacker.radius[0],
+            self.attacker.radius.x(),
             range,
         )
     }

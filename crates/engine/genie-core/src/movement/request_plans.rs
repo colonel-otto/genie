@@ -168,7 +168,7 @@ impl Mover {
             .goal
             .target
             .filter(|_| !target_moves)
-            .map_or(0.0, |t| t.radius[0]);
+            .map_or(0.0, |t| t.radius.x());
         let ask = TileAsk {
             goal: w.waypoint,
             radii: target_radius + w.radius,
@@ -346,7 +346,7 @@ impl Mover {
         if !(LONG_PATHER && (w.trade_cart || SHORT_REACH < w.distance)) {
             return Ok(None);
         }
-        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
+        let ground_radius = self.stats.radius.ground();
         let far = far_waypoint(
             w.distance,
             w.goal.target.map(|t| {
@@ -392,7 +392,7 @@ impl Mover {
             .goal
             .target
             .filter(|t| t.speed <= 0.0)
-            .map_or(0.0, |t| t.radius[0]);
+            .map_or(0.0, |t| t.radius.x());
         let mut other = Path::default();
         let ask = TileAsk {
             goal: w.waypoint,

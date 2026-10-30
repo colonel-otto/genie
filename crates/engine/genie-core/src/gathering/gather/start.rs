@@ -7,6 +7,7 @@ use crate::gathering::gather::{
     SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, Walks, food,
 };
 use crate::gathering::hunt::HuntTask;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
@@ -114,20 +115,20 @@ pub fn productivity_of(attribute_type2: i16, attributes: &[f32]) -> f32 {
 #[must_use]
 pub fn stop_point(
     position: Position,
-    radius: [f32; 2],
+    radius: Footprint,
     last: [f32; 2],
     rng: &mut Well512,
 ) -> [f32; 2] {
     let (mut ix, mut iy) = (
-        (radius[0] + radius[0]) as i32,
-        (radius[1] + radius[1]) as i32,
+        (radius.x() + radius.x()) as i32,
+        (radius.y() + radius.y()) as i32,
     );
     if ix == 0 || iy == 0 {
         (ix, iy) = (1, 1);
     }
     let (left, bottom) = (
-        (position.x() - radius[0]) as i32,
-        (position.y() - radius[1]) as i32,
+        (position.x() - radius.x()) as i32,
+        (position.y() - radius.y()) as i32,
     );
     let [mut x, mut y] = last;
     let mut draws = 0;
@@ -233,7 +234,7 @@ impl GatherAction {
             let radius = if STOP_FARMS.contains(&target.master) {
                 0.0
             } else {
-                target.radius[0]
+                target.radius.x()
             };
             self.set_walk_back(radius, mover, &walks)?;
             self.target = -1;
@@ -318,7 +319,7 @@ impl GatherAction {
             let radius = if STOP_FARMS.contains(&target.master) {
                 0.0
             } else {
-                target.radius[0]
+                target.radius.x()
             };
             self.set_walk_back(radius, mover, &walks)?;
             self.target = -1;
@@ -345,7 +346,7 @@ impl GatherAction {
     pub fn set_walk(
         &mut self,
         to: WalkTo,
-        radius: [f32; 2],
+        radius: Footprint,
         mover: &mut Mover,
         rng: &mut Well512,
         walks: &Walks<'_>,

@@ -54,7 +54,7 @@ impl Mover {
         if let Some(step) = self.in_reach(goal, position) {
             return Ok(step);
         }
-        let solid = self.stats.radius.iter().all(|&r| 0.0 < r);
+        let solid = self.stats.radius.sized();
         let trade_cart = world
             .get(me.id)
             // The trade cart's class (19), whose path requests the owner's budget limits (`FUN_14165d6f0`).
@@ -80,7 +80,7 @@ impl Mover {
                 position,
                 waypoint,
                 distance: ground(waypoint, position),
-                radius: self.stats.radius[0],
+                radius: self.stats.radius.x(),
                 level: level.level,
                 range: level.range,
                 target_id: level.target,
@@ -103,7 +103,7 @@ impl Mover {
     /// (flag 1, and 2 when away from the target's footprint by more than [`EPSILON`] or
     /// without one). Both go again.
     pub(super) fn in_reach(&mut self, goal: Goal<'_>, position: BVector) -> Option<AfterRequest> {
-        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
+        let ground_radius = self.stats.radius.ground();
         let here = self.position();
         let level = &mut self.paths[0];
         let reach = if level.range <= 0.0 {
@@ -233,7 +233,7 @@ impl Mover {
         let walker = LongWalker {
             id: me.id,
             position: self.position(),
-            radius: [self.stats.radius[0], self.stats.radius[1]],
+            radius: self.stats.radius.ground(),
             mask: self.stats.restriction_mask,
             moves: self.stats.speed != 0.0 || master == Some(LONG_PATH_MOVER),
             ignore_units: &self.ignore_units,
@@ -287,7 +287,7 @@ impl Mover {
         }
         let player = me_at.map(|p| p.player);
         let ignore = world.query_ignore(&[me.id, target_id]);
-        let grow = self.stats.radius[0] * LONG_PATH_GROW;
+        let grow = self.stats.radius.x() * LONG_PATH_GROW;
         for i in 0..path.points.len().saturating_sub(1) {
             let (from, to) = self.query_ends(path.points[i], path.points[i + 1], world.map);
             let rect = [

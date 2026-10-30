@@ -230,7 +230,7 @@ fn hitter() -> Hitter {
         id: 1,
         blast_level: 1,
         position: Position::new(10.0, 10.0, 0.0),
-        radius: [0.4, 0.4],
+        radius: Footprint::new(0.4, 0.4),
     }
 }
 
@@ -244,7 +244,7 @@ fn bystander() -> Bystander {
         state: 2,
         blast_defense: 1,
         position: Position::new(11.5, 10.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
     }
 }
 
@@ -492,7 +492,7 @@ fn give_master(t: &mut World, id: MasterId, kind: MasterKind, class: ClassId, ta
         kind,
         class,
         tasks,
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         hit_points: 100,
         ..Master::default()
     };
@@ -515,7 +515,9 @@ fn put(t: &mut World, p: PlayerId, id: i32, m: MasterId, hp: f32, [x, y]: [f32; 
     u.life.hp = hp;
     u.life.state = 2;
     t.players[p.index()].objects.push(u);
-    let radius = t.masters[p.index()].get(m).map_or([0.5; 2], |m| m.radius);
+    let radius = t.masters[p.index()]
+        .get(m)
+        .map_or(Footprint::new(0.5, 0.5), |m| m.radius);
     t.spatial.insert(
         object_id(id),
         Placed {

@@ -6,6 +6,7 @@
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
@@ -228,12 +229,12 @@ pub fn ask_walk(
                 .ok_or(GenieError::unsupported("a MoveTo whose target is gone"))?;
             (t.position, Some(id), t.radius)
         }
-        Goal::Point(p) => (p, None, [0.0, 0.0]),
+        Goal::Point(p) => (p, None, Footprint::ZERO),
     };
     let now = walk.plan.as_ref().map_or(0, |p| p.now);
     let mover = walk.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
     let here = mover.position();
-    let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+    let ground = mover.stats.radius.ground();
     let squared = if target.is_none() {
         let gap = footprint_gap(here, ground, point, radius);
         gap * gap
@@ -580,7 +581,7 @@ mod tests {
     pub(super) fn sheep(x: f32, y: f32) -> Placed {
         Placed {
             position: Position::new(x, y, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::PREDATOR,
             player: PlayerId::new(1),
             master: master_id(594),

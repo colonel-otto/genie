@@ -81,7 +81,7 @@ impl World {
         let mover = u.body.mover().ok_or(NO_MOVER)?;
         let g = self.groups.held(group)?;
         let computer = self.players.get(p.index()).is_some_and(|q| q.computer);
-        let solid = mover.stats.radius.iter().all(|&r| 0.0 < r);
+        let solid = mover.stats.radius.sized();
         let found = if solid {
             let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
             let at = u.moved_vector().xhy();
@@ -109,7 +109,7 @@ impl World {
             let walker = crate::movement::LongWalker {
                 id,
                 position: u.position(),
-                radius: [mover.stats.radius[0], mover.stats.radius[1]],
+                radius: mover.stats.radius.ground(),
                 mask: mover.stats.restriction_mask,
                 moves: mover.stats.speed != 0.0
                     || u.life.master_id == crate::movement::LONG_PATH_MOVER,
@@ -164,7 +164,7 @@ impl World {
         mover.yaw(turn, facets)?;
         let next = mover.projected(direction, dt);
         let state = i32::from(passes_waypoint(to, at, next));
-        let radius = mover.stats.radius[0];
+        let radius = mover.stats.radius.x();
         let speed = mover.stats.speed;
         self.set_slot_state(group, slot, state)?;
         let within = !below_or_unordered(radius, gap);
@@ -330,10 +330,10 @@ impl World {
             // The types of action objects (`RGE_Action_Object`) and of buildings (`TRIBE_Building_Object`).
             && kind < BUILDING
             && speed == 0.0
-            && (LINKED_RADIUS < radius[0] || LINKED_RADIUS < radius[1])
+            && (LINKED_RADIUS < radius.x() || LINKED_RADIUS < radius.y())
             && let Some(v) = self.spatial.sight.as_mut()
         {
-            let _ = v.link_building(at, [radius[0], radius[1]])?;
+            let _ = v.link_building(at, radius.ground())?;
         }
         Ok(())
     }

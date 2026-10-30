@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Radii;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::test_ids::master_id;
@@ -19,7 +20,7 @@ fn master(id: MasterId, task_by_group: u8, tasks: Vec<Task>) -> Master {
         kind: master_type::COMBAT,
         class: class::VILLAGER,
         task_by_group,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         tall: true,
         obstruction_type: 0,
         buildable_on: 0,
@@ -41,7 +42,7 @@ fn house() -> Master {
         kind: master_type::BUILDING,
         class: class::BUILDING,
         task_by_group: 0,
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         tall: true,
         obstruction_type: 0,
         buildable_on: 0,
@@ -155,8 +156,8 @@ fn each_static_attribute_sets_adds_and_multiplies_its_field() {
             |m| f32::from(m.garrison),
             [3.0, 5.0, 10.0],
         ),
-        (a::SIZE_X, |m| m.radius[0], [3.0, 5.0, 10.0]),
-        (a::SIZE_Y, |m| m.radius[1], [3.0, 5.0, 10.0]),
+        (a::SIZE_X, |m| m.radius.x(), [3.0, 5.0, 10.0]),
+        (a::SIZE_Y, |m| m.radius.y(), [3.0, 5.0, 10.0]),
         (
             a::CARRY_CAPACITY,
             |m| f32::from(m.capacity),
@@ -733,7 +734,7 @@ fn a_missile_s_smart_mode_multiply_sets_it() {
         vanish_mode: 0,
         arc: 0.5,
         speed: 7.0,
-        radius: [0.0; 3],
+        radius: Radii::ZERO,
         fly_mode: 0,
     });
     m.reload = 2.0;
@@ -895,7 +896,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.move_sprite = 2;
     m.run_sprite = -1;
     m.max_speed = 1.0;
-    m.radius = [0.2, 0.2];
+    m.radius = Footprint::new(0.2, 0.2);
     m.moving = Some(MoveStats {
         fly_mode: 0,
         speed: 1.5,
@@ -903,7 +904,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
         turn_rate: 1.0,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
-        radius: [0.2, 0.2, 2.0],
+        radius: Radii::new(0.2, 0.2, 2.0),
         restriction: 7,
         restriction_mask: 1,
         turn_time: 0.0,
@@ -920,7 +921,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.set_attribute(attribute::SIZE_Z, 1.0, &world(false));
     m.follow(attribute::SIZE_Z, &graphics, None);
     assert!(m.tall);
-    assert_eq!(m.moving.unwrap().radius, [0.2, 0.2, 1.0]);
+    assert_eq!(m.moving.unwrap().radius, Radii::new(0.2, 0.2, 1.0));
     m.set_attribute(attribute::RUNNING_GRAPHIC, 3.0, &world(false));
     m.follow(attribute::RUNNING_GRAPHIC, &graphics, None);
     let s = m.moving.unwrap();
@@ -1031,7 +1032,7 @@ fn the_missile_building_and_animated_setters() {
         vanish_mode: 0,
         arc: 0.25,
         speed: 7.0,
-        radius: [0.0; 3],
+        radius: Radii::ZERO,
         fly_mode: 0,
     });
     m.add_attribute(attribute::PROJECTILE_SMART_MODE, 1.0, &world(false));

@@ -193,8 +193,8 @@ impl World {
     /// The target master's two radii as one length (`+0xb57`, `+0xb5b`: `sqrt(x² + y²)`).
     pub(super) fn target_radius(&self, id: i32) -> Result<f32, GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
-        let [x, y] = u.master(&self.masters, p)?.radius;
-        Ok(fmath::sqrt(x * x + y * y))
+        let r = u.master(&self.masters, p)?.radius;
+        Ok(fmath::sqrt(r.x() * r.x() + r.y() * r.y()))
     }
 
     /// Whether every member of `g` the world holds that has a top action's target (slot 0x190,

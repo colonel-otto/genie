@@ -48,7 +48,7 @@ pub fn old_pather_paths(
             out.push(Err(GenieError::unsupported("a caller that does not move")));
             continue;
         };
-        let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius[0]);
+        let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius.x());
         let z = turns.spatial.get(id).map_or(0.0, |p| p.position.z());
         if let Err(e) = turns
             .spatial

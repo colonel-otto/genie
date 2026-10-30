@@ -11,6 +11,7 @@
 //! reaches ([`repair_target`]).
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::ClassId;
@@ -142,7 +143,7 @@ pub struct Repairee {
     /// Its place and its master's radii.
     pub position: Position,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its master's class.
     pub class: ClassId,
     /// It moves (`FUN_140fdd080`: a master of type 30 and up with a speed above 0).
@@ -164,7 +165,7 @@ pub(crate) struct RepairReads {
     /// The object `FUN_140ad9050` counts the repairers in and their count.
     pub(crate) counted_in: CountedIn,
     /// The repairer's master's radii.
-    pub(crate) radius: [f32; 2],
+    pub(crate) radius: Footprint,
     /// The game mode is one of `FUN_141302540`'s ([`crate::world::scenario_mode`]).
     pub(crate) scenario: bool,
     /// The repairer's work rate: its `mWorkRatePowerup` (`+0xa30`, slot 0x6e8) plus its

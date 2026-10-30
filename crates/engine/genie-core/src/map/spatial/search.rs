@@ -238,7 +238,7 @@ impl Spatial {
         if SEARCH_REUSE_SQUARED < dy * dy + dx * dx || !self.search_cache.holds {
             self.search_cache.hold(search.at);
             let radius = search.radius.min(1000.0);
-            let [rx, ry] = search.size;
+            let (rx, ry) = (search.size.x(), search.size.y());
             let rect = [
                 (x - (radius + rx)) - 0.001,
                 (y - (radius + ry)) - 0.001,

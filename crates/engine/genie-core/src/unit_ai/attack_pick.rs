@@ -1,6 +1,7 @@
 //! Which object a unit may attack: the attack search, its picks and each type's rules.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::ClassId;
@@ -32,7 +33,7 @@ pub struct Search<'a> {
     /// The object classes it cares about.
     pub classes: &'a [i32],
     /// The searcher's radii.
-    pub size: [f32; 2],
+    pub size: Footprint,
     /// What it picks of what it finds.
     pub pick: Pick,
     /// What an attack pick reads of the unit AI's memory.
@@ -181,7 +182,7 @@ pub struct Attacker {
     /// Its place.
     pub position: Position,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its top speed (slot 0x208).
     pub speed: f32,
     /// The game mode is a scenario's.
@@ -223,7 +224,7 @@ pub struct Target {
     /// Its place.
     pub position: Position,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
 }
 
 /// What `bestUnitToAttack` reads of the unit AI that searches: its stance (`+0x1a9`), state
@@ -394,10 +395,10 @@ pub(super) const DEFEND_GROWTH: f32 = crate::math::image::unit_ai::DEFEND_GROWTH
 
 /// The squared gap between a point and an object's footprint (`FUN_140a847c0`: per axis the
 /// distance less the radius, `MAXSS 0` of it, so a gap that is not a number stays one).
-pub(super) fn point_gap_squared(point: [f32; 2], at: Position, radius: [f32; 2]) -> f32 {
+pub(super) fn point_gap_squared(point: [f32; 2], at: Position, radius: Footprint) -> f32 {
     let gap = |d: f32, r: f32| crate::math::fmath::maxss(0.0, d.abs() - r);
-    let x = gap(point[0] - at.x(), radius[0]);
-    let y = gap(point[1] - at.y(), radius[1]);
+    let x = gap(point[0] - at.x(), radius.x());
+    let y = gap(point[1] - at.y(), radius.y());
     y * y + x * x
 }
 

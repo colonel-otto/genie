@@ -13,9 +13,11 @@ use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::construction::gates::gate_units;
 use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::unit::give_load;
+use crate::map::Footprint;
 use crate::map::Offset;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Radii;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
 use crate::math::rng::{Stream, Streams, Well512};
@@ -322,7 +324,7 @@ pub(crate) fn builder_masters() -> Masters {
         kind: master_type::COMBAT,
         class: class::VILLAGER,
         task_by_group: group,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         tall: true,
         obstruction_type: 0,
         buildable_on: 0,
@@ -342,7 +344,7 @@ pub(crate) fn builder_masters() -> Masters {
             turn_rate: f32::MAX,
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,
-            radius: [0.2, 0.2, 0.5],
+            radius: Radii::new(0.2, 0.2, 0.5),
             restriction: 7,
             restriction_mask: 6,
             turn_time: 0.0,
@@ -370,7 +372,7 @@ pub(crate) fn builder_masters() -> Masters {
             kind: BUILDING,
             class: class::BUILDING,
             task_by_group: 0,
-            radius: [1.0, 1.0],
+            radius: Footprint::new(1.0, 1.0),
             tall: true,
             obstruction_type: 0,
             buildable_on: 0,
@@ -383,7 +385,7 @@ pub(crate) fn builder_masters() -> Masters {
             hit_points: 550,
             build_time: 25,
             // a house's clearance, which BUILD's placement test reads
-            clearance: [1.0, 1.0],
+            clearance: Footprint::new(1.0, 1.0),
             // built by the villagers (the builders' test, FUN_141262270)
             trained_at: vec![ids::BUILDER],
             // a house's building part: no annexes, no stack unit, not an annex
@@ -642,7 +644,7 @@ fn pasture_game(at: Position, livestock: f32, livestock_masters: &[MasterId]) ->
         id: ids::PASTURE,
         kind: BUILDING,
         class: class::FARM,
-        radius: [2.0, 2.0],
+        radius: Footprint::new(2.0, 2.0),
         ..Master::default()
     };
     let animal = |id: MasterId, standing_sprite| Master {
@@ -650,7 +652,7 @@ fn pasture_game(at: Position, livestock: f32, livestock_masters: &[MasterId]) ->
         kind: MOVING,
         class: class::FARM,
         hit_points: 1,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         standing_sprite,
         storage: vec![(0, 100.0, 0)],
         moving: Some(crate::gathering::hunt::tests::walker().stats),
@@ -897,7 +899,7 @@ fn tended_pasture(at: Position, room: f32) -> World {
         id: VILLAGER_MALE,
         kind: master_type::COMBAT,
         class: class::VILLAGER,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         ..Master::default()
     };
     for m in &mut t.masters {
@@ -937,7 +939,12 @@ fn a_villager_tends_the_nearest_livestock_with_room() {
         .iter()
         .map(|&id| {
             let p = place(&t, id);
-            let g = crate::movement::footprint_gap_squared(p, [0.2, 0.2], near, [0.2, 0.2]);
+            let g = crate::movement::footprint_gap_squared(
+                p,
+                Footprint::new(0.2, 0.2),
+                near,
+                Footprint::new(0.2, 0.2),
+            );
             (g, id)
         })
         .collect();
@@ -1136,7 +1143,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
             u.id,
             Placed {
                 position: u.position(),
-                radius: [0.5, 0.5],
+                radius: Footprint::new(0.5, 0.5),
                 class: class::TREE,
                 player: PlayerId::new(0),
                 master: u.life.master_id,
@@ -1995,7 +2002,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
             object_id(id),
             Placed {
                 position: Position::new(x, 88.0, 0.0),
-                radius: [1.0, 1.0],
+                radius: Footprint::new(1.0, 1.0),
                 class: class::BUILDING,
                 player: PlayerId::new(1),
                 master: ids::HOUSE,
@@ -2213,7 +2220,7 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
     let at = Position::new(26.5, 89.5, 0.0);
     t.spatial.insert(
         object_id(9175),
-        placed(at, class::VILLAGER, VILLAGER_MALE, [0.2, 0.2]),
+        placed(at, class::VILLAGER, VILLAGER_MALE, Footprint::new(0.2, 0.2)),
     );
     t.spatial.insert(
         object_id(10028),
@@ -2221,7 +2228,7 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
             Position::new(30.0, 88.0, 0.0),
             class::BUILDING,
             ids::HOUSE,
-            [1.0, 1.0],
+            Footprint::new(1.0, 1.0),
         ),
     );
     let v = &mut t.players[1].objects[0];
@@ -2478,14 +2485,14 @@ pub(crate) fn forage_world() -> World {
             id: master_id(59),
             kind: master_type::MOVING,
             class: class::CLASS_7,
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             ..Master::default()
         };
         let centre = Master {
             id: ids::TOWN_CENTRE,
             kind: BUILDING,
             class: class::BUILDING,
-            radius: [2.0, 2.0],
+            radius: Footprint::new(2.0, 2.0),
             ..Master::default()
         };
         *masters = Masters::new(masters.iter().cloned().chain([forager, bush, centre]));
@@ -2551,7 +2558,7 @@ pub(crate) fn forage_world() -> World {
             class::VILLAGER,
             PlayerId::new(1),
             VILLAGER_MALE,
-            [0.2, 0.2],
+            Footprint::new(0.2, 0.2),
         ),
     );
     t.spatial.insert(
@@ -2561,7 +2568,7 @@ pub(crate) fn forage_world() -> World {
             class::CLASS_7,
             PlayerId::new(0),
             master_id(59),
-            [0.5, 0.5],
+            Footprint::new(0.5, 0.5),
         ),
     );
     t.spatial.insert(
@@ -2571,7 +2578,7 @@ pub(crate) fn forage_world() -> World {
             class::CLASS_7,
             PlayerId::new(0),
             master_id(59),
-            [0.5, 0.5],
+            Footprint::new(0.5, 0.5),
         ),
     );
     t.spatial.insert(
@@ -2581,7 +2588,7 @@ pub(crate) fn forage_world() -> World {
             class::BUILDING,
             PlayerId::new(1),
             ids::TOWN_CENTRE,
-            [2.0, 2.0],
+            Footprint::new(2.0, 2.0),
         ),
     );
     // the drop-site table: villagers drop berries at the town centre
@@ -2928,7 +2935,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             id: ids::FARM,
             kind: BUILDING,
             class: class::FARM,
-            radius: [1.5, 1.5],
+            radius: Footprint::new(1.5, 1.5),
             ..Master::default()
         };
         let fishing = Master {
@@ -2957,7 +2964,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
         object_id(800),
         Placed {
             position: Position::new(29.5, 89.5, 0.0),
-            radius: [1.5, 1.5],
+            radius: Footprint::new(1.5, 1.5),
             class: class::FARM,
             player: PlayerId::new(1),
             master: ids::FARM,
@@ -3198,7 +3205,7 @@ fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
         let p = *t.spatial.get(700).unwrap();
         let site = Placed {
             position: Position::new(30.0, 88.0, 0.0),
-            radius: [1.0, 1.0],
+            radius: Footprint::new(1.0, 1.0),
             class: ClassId::of_master(80),
             master: ids::HOUSE,
             ..p
@@ -3249,7 +3256,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
     t.gather_command(PlayerId::new(1), 0, 600).unwrap();
     let mut found = None;
     t.run_unit_ai((PlayerId::new(1), 0), |_, _, side, _, _| {
-        found = Some(side.off_footprint(10028, [1.0, 1.0])?);
+        found = Some(side.off_footprint(10028, Footprint::new(1.0, 1.0))?);
         Ok(())
     })
     .unwrap();
@@ -3270,7 +3277,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
         object_id(10028),
         Placed {
             position: Position::new(30.0, 88.0, 0.0),
-            radius: [1.0, 1.0],
+            radius: Footprint::new(1.0, 1.0),
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::HOUSE,
@@ -3284,7 +3291,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
     );
     let mut found = None;
     t.run_unit_ai((PlayerId::new(1), 0), |_, _, side, _, _| {
-        found = Some(side.off_footprint(10028, [1.0, 1.0])?);
+        found = Some(side.off_footprint(10028, Footprint::new(1.0, 1.0))?);
         Ok(())
     })
     .unwrap();
@@ -3384,7 +3391,7 @@ fn cart_world() -> World {
             id: ids::MASTER_1808,
             kind: BUILDING,
             class: class::BUILDING,
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             line_of_sight: 4.0,
             moving: Some(crate::gathering::hunt::tests::walker().stats),
             tasks: vec![crate::objects::masters::Task {
@@ -3423,7 +3430,7 @@ fn cart_world() -> World {
         object_id(750),
         Placed {
             position: Position::new(24.5, 89.5, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::MASTER_1808,
@@ -3468,7 +3475,7 @@ fn footprint_world() -> World {
         object_id(10028),
         Placed {
             position: Position::new(30.0, 88.0, 0.0),
-            radius: [1.0, 1.0],
+            radius: Footprint::new(1.0, 1.0),
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::HOUSE,
@@ -3565,7 +3572,7 @@ fn a_built_castle_s_death_takes_its_headroom_and_its_count() {
         id: ids::CASTLE,
         kind: BUILDING,
         class: class::BUILDING,
-        radius: [2.0, 2.0],
+        radius: Footprint::new(2.0, 2.0),
         hit_points: 4800,
         storage: vec![(4, 20.0, 4)],
         building: Some(crate::objects::masters::BuildingMaster {
@@ -3678,7 +3685,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
         id,
         kind: BUILDING,
         class: class::BUILDING,
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         tall: true,
         obstruction_type: 2,
         obstruction_class,
@@ -3694,7 +3701,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
             object_id(id),
             Placed {
                 position: Position::new(10.5, 10.5, 0.0),
-                radius: [1.0, 1.0],
+                radius: Footprint::new(1.0, 1.0),
                 class: class::BUILDING,
                 player: PlayerId::new(0),
                 master: ids::HOUSE,
@@ -3735,14 +3742,14 @@ pub(crate) fn hunt_world() -> World {
             id: master_id(65),
             kind: master_type::COMBAT,
             class: class::PREY,
-            radius: [0.4, 0.4],
+            radius: Footprint::new(0.4, 0.4),
             ..Master::default()
         };
         let centre = Master {
             id: ids::TOWN_CENTRE,
             kind: BUILDING,
             class: class::BUILDING,
-            radius: [2.0, 2.0],
+            radius: Footprint::new(2.0, 2.0),
             ..Master::default()
         };
         *masters = Masters::new(masters.iter().cloned().chain([hunter, deer, centre]));
@@ -3795,7 +3802,7 @@ pub(crate) fn hunt_world() -> World {
             class::VILLAGER,
             PlayerId::new(1),
             master_id(122),
-            [0.2, 0.2],
+            Footprint::new(0.2, 0.2),
         ),
     );
     t.spatial.insert(
@@ -3805,7 +3812,7 @@ pub(crate) fn hunt_world() -> World {
             class::PREY,
             PlayerId::new(0),
             master_id(65),
-            [0.4, 0.4],
+            Footprint::new(0.4, 0.4),
         ),
     );
     t.spatial.insert(
@@ -3815,7 +3822,7 @@ pub(crate) fn hunt_world() -> World {
             class::PREY,
             PlayerId::new(0),
             master_id(65),
-            [0.4, 0.4],
+            Footprint::new(0.4, 0.4),
         ),
     );
     t.spatial.insert(
@@ -3825,7 +3832,7 @@ pub(crate) fn hunt_world() -> World {
             class::BUILDING,
             PlayerId::new(1),
             ids::TOWN_CENTRE,
-            [2.0, 2.0],
+            Footprint::new(2.0, 2.0),
         ),
     );
     let v = &mut t.players[1].objects[0];
@@ -4318,7 +4325,7 @@ fn shepherd_world(x: f32) -> World {
             id: master_id(594),
             kind: master_type::COMBAT,
             class: class::LIVESTOCK,
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             moving: Some(crate::gathering::hunt::tests::walker().stats),
             ..Master::default()
         };
@@ -4357,7 +4364,7 @@ fn shepherd_world(x: f32) -> World {
         object_id(510),
         Placed {
             position: Position::new(x, 89.5, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::LIVESTOCK,
             player: PlayerId::new(1),
             master: master_id(594),
@@ -4439,7 +4446,7 @@ fn lumber_world(near: f32) -> World {
             id: master_id(349),
             kind: master_type::STATIC,
             class: class::TREE,
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             auto_gather: true,
             gather_group: 0,
             ..Master::default()
@@ -4477,7 +4484,7 @@ fn lumber_world(near: f32) -> World {
             object_id(id),
             Placed {
                 position: Position::new(x, 89.5, 0.0),
-                radius: [0.5, 0.5],
+                radius: Footprint::new(0.5, 0.5),
                 class: class::TREE,
                 player: PlayerId::new(0),
                 master: master_id(349),
@@ -4979,7 +4986,7 @@ fn the_unit_ai_s_repair_command_is_the_unit_s_within_its_run() {
     let mut t = repairer_world(vec![], true);
     let house = Placed {
         position: Position::new(30.0, 88.0, 0.0),
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         class: class::BUILDING,
         player: PlayerId::new(1),
         master: ids::HOUSE,
@@ -5067,7 +5074,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
         object_id(10028),
         Placed {
             position: Position::new(30.0, 88.0, 0.0),
-            radius: [1.0, 1.0],
+            radius: Footprint::new(1.0, 1.0),
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::HOUSE,
@@ -5083,7 +5090,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
         object_id(9175),
         Placed {
             position: Position::new(29.5, 89.5, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER_MALE,
@@ -5191,7 +5198,7 @@ fn livestock_enter_world() -> World {
         id: master_id(594),
         kind: master_type::COMBAT,
         class: class::LIVESTOCK,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         tasks: vec![crate::objects::masters::Task {
             id: TaskId::test(1),
             action_type: crate::garrison::ENTER,
@@ -5874,7 +5881,7 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
             id: master_id(65),
             kind: master_type::COMBAT,
             class: class::PREY,
-            radius: [0.4, 0.4],
+            radius: Footprint::new(0.4, 0.4),
             ..Master::default()
         };
         *masters = Masters::new(masters.iter().cloned().chain([hunter, deer]));
@@ -5892,7 +5899,7 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
     });
     let placed = |x: f32, class, player, master| Placed {
         position: Position::new(x, 89.5, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class,
         player,
         master,
@@ -6348,7 +6355,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
     placeable(&mut t);
     let placed = Placed {
         position: Position::new(10.5, 10.5, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class: class::LIVESTOCK,
         player: PlayerId::new(1),
         master: master_id(594),
@@ -6711,7 +6718,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         object_id(27687),
         Placed {
             position: Position::new(10.0, 10.5, 0.0),
-            radius: [1.0, 0.5],
+            radius: Footprint::new(1.0, 0.5),
             class: class::GATE,
             player: PlayerId::new(2),
             master: master_id(64),
@@ -6770,7 +6777,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
     s.relations = vec![vec![0, 3, 3], vec![3, 0, 3], vec![3, 3, 0]];
     let placed = |x: f32, class, player, speed, kind| Placed {
         position: Position::new(x, 20.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class,
         player,
         master: ids::ID_0,
@@ -6899,7 +6906,7 @@ fn gate_world() -> World {
     t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
     let placed = |x: f32, class, speed, kind| Placed {
         position: Position::new(x, 20.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class,
         player: PlayerId::new(1),
         master: ids::ID_0,
@@ -7932,7 +7939,7 @@ fn hands_world(id: i32, p: PlayerId, class: ClassId, master: MasterId, los: f32)
         id,
         owner: p.index() as u8,
         position: [10.5, 10.5],
-        radii: [0.2, 0.2],
+        radii: Footprint::new(0.2, 0.2),
         class,
         old: 0,
         new: 1 << p.get(),
@@ -7954,13 +7961,13 @@ fn hands_world(id: i32, p: PlayerId, class: ClassId, master: MasterId, los: f32)
             kind: master_type::COMBAT,
         },
     );
-    let _ = v.sight_on(id, at, [0.2, 0.2], false, false);
+    let _ = v.sight_on(id, at, Footprint::new(0.2, 0.2), false, false);
     s.sight = Some(v);
     s.insert(
         object_id(id),
         Placed {
             position: at,
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class,
             player: p,
             master,
@@ -8103,7 +8110,7 @@ fn owner_search_unit(s: &mut Spatial, id: i32, p: PlayerId, x: f32) {
         object_id(id),
         Placed {
             position: Position::new(x, 10.5, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::CLASS_0,
             player: p,
             master: master_id(4),
@@ -8306,7 +8313,7 @@ fn an_owner_search_counts_only_the_units_on_the_tiles_lists() {
             object_id(id),
             Placed {
                 position: Position::new(11.5, 10.5, 0.0),
-                radius: [0.2, 0.2],
+                radius: Footprint::new(0.2, 0.2),
                 class: class::CLASS_0,
                 player: PlayerId::new(0),
                 master: master_id(4),
@@ -8732,7 +8739,7 @@ fn deaths_world() -> World {
         drop_site: false,
         gap: 1.0,
         state: 2,
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
     };
     let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
@@ -8959,7 +8966,7 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
     }
     let placed = |x: f32, class, master| Placed {
         position: Position::new(x, 10.5, 0.0),
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         class,
         player: PlayerId::new(0),
         master,
@@ -9044,7 +9051,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
         object_id(50),
         Placed {
             position: Position::new(12.5, 10.5, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             class: class::TREE,
             player: PlayerId::new(0),
             master: master_id(349),
@@ -9166,7 +9173,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
             id: VILLAGER_MALE,
             kind: master_type::COMBAT,
             class: class::VILLAGER,
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             drop_sites: vec![ids::TOWN_CENTRE],
             // no sprites: the sprites' table holds none
             move_sprite: -1,
@@ -9177,13 +9184,13 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
             id: ids::TOWN_CENTRE,
             kind: BUILDING,
             class: class::TOWER,
-            radius: [2.0, 2.0],
+            radius: Footprint::new(2.0, 2.0),
             ..Master::default()
         },
     ]);
     let placed = |x: f32, radius: f32, class, master| Placed {
         position: Position::new(x, x, 0.0),
-        radius: [radius, radius],
+        radius: Footprint::new(radius, radius),
         class,
         player: PlayerId::new(1),
         master,
@@ -9276,7 +9283,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
         object_id(9149),
         Placed {
             position: Position::new(20.0, 20.0, 0.0),
-            radius: [2.0, 2.0],
+            radius: Footprint::new(2.0, 2.0),
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::HOUSE,
@@ -9520,7 +9527,7 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
             object_id(id),
             Placed {
                 position: Position::new(at[0], at[1], 0.0),
-                radius: [2.0, 2.0],
+                radius: Footprint::new(2.0, 2.0),
                 class: class::TOWER,
                 player: PlayerId::new(1),
                 master: ids::TOWN_CENTRE,
@@ -9567,7 +9574,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         kind: master_type::COMBAT,
         class,
         line_of_sight: los,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         ..Master::default()
     };
     let workshop = Master {
@@ -9662,7 +9669,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         object_id(500),
         Placed {
             position: Position::new(11.5, 10.5, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER_MALE,
@@ -9695,7 +9702,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         id: 500,
         owner: 1,
         position: [11.5, 10.5],
-        radii: [0.2, 0.2],
+        radii: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         old: 0,
         new: 0b11,
@@ -9736,7 +9743,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
         kind: master_type::COMBAT,
         class,
         line_of_sight: los,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         ..Master::default()
     };
     let table = Masters::new([
@@ -9790,7 +9797,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
         object_id(500),
         Placed {
             position: Position::new(11.5, 10.5, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER_MALE,
@@ -9823,7 +9830,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
         id: 500,
         owner: 1,
         position: [11.5, 10.5],
-        radii: [0.2, 0.2],
+        radii: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         old: 0,
         new: 0b11,
@@ -9893,7 +9900,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
             id: VILLAGER_MALE,
             kind: master_type::COMBAT,
             class: class::VILLAGER,
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             ..Master::default()
         }]));
     }
@@ -9910,7 +9917,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         object_id(500),
         Placed {
             position: Position::new(11.5, 10.5, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER_MALE,
@@ -10149,7 +10156,7 @@ fn killed_sheep(killer_last: bool) -> (World, crate::combat::damage::Victim) {
         object_id(9520),
         Placed {
             position: Position::new(107.0, 48.0, 0.0),
-            radius: [0.35, 0.35],
+            radius: Footprint::new(0.35, 0.35),
             class: class::LIVESTOCK,
             player: PlayerId::new(1),
             master: master_id(705),
@@ -11092,7 +11099,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
     )]);
     let placed = |x: f32, class, player, master| Placed {
         position: Position::new(x, 158.5, 0.0),
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         class,
         player,
         master,
@@ -11820,7 +11827,7 @@ fn an_ai_move_hands_the_point_to_the_gather() {
         drop_site: false,
         gap: 1.2,
         state: 2,
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
     };
     let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
@@ -12091,7 +12098,7 @@ fn on_side<R>(
                 blast_level: 0,
                 los: 4.0,
                 position: Position::new(10.0, 10.0, 0.0),
-                radius: [0.2, 0.2],
+                radius: Footprint::new(0.2, 0.2),
                 speed: 1.2,
                 scenario: false,
                 firepower: 0.0,
@@ -12154,7 +12161,7 @@ fn scout_attack_on(
     };
     let placed = |x: f32, class, player, master| Placed {
         position: Position::new(x, 10.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class,
         player,
         master,
@@ -12280,7 +12287,7 @@ fn attack_by(
     };
     let placed = |x: f32, class, player, master| Placed {
         position: Position::new(x, 10.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class,
         player,
         master,
@@ -12434,7 +12441,7 @@ fn help_view<R>(
     };
     let placed = |x: f32, class, player, master| Placed {
         position: Position::new(x, 10.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class,
         player,
         master,
@@ -12688,7 +12695,7 @@ const fn house_moves() -> crate::movement::MoveStats {
         turn_rate: f32::MAX,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
-        radius: [1.0, 1.0, 1.0],
+        radius: Radii::new(1.0, 1.0, 1.0),
         restriction: 7,
         restriction_mask: 6,
         turn_time: 0.0,
@@ -12898,8 +12905,8 @@ fn farm_masters() -> Masters {
         base_id: Some(ids::FARM),
         class: class::FARM,
         available: true,
-        radius: [1.5, 1.5],
-        clearance: [1.5, 1.5],
+        radius: Footprint::new(1.5, 1.5),
+        clearance: Footprint::new(1.5, 1.5),
         tall: false,
         cost: vec![(1, 60, true)],
         hit_points: 480,
@@ -12931,7 +12938,7 @@ fn reseed_world() -> World {
         drop_site: false,
         gap: 0.0,
         state: 2,
-        radius: [1.5, 1.5],
+        radius: Footprint::new(1.5, 1.5),
     };
     let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
@@ -13138,7 +13145,7 @@ fn a_reseed_s_placement_passes_over_the_old_farm() {
             open_map(t);
             let at = Placed {
                 position: Position::new(30.5, 88.5, 0.0),
-                radius: [1.5, 1.5],
+                radius: Footprint::new(1.5, 1.5),
                 class: class::FARM,
                 player: PlayerId::new(1),
                 master: ids::FARM,
@@ -13489,7 +13496,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         kind: master_type::COMBAT,
         class: class::CLASS_0,
         hit_points: 30,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         standing_sprite: 300,
         attack_sprite: 301,
         missile: Some(master_id(363)),
@@ -13507,7 +13514,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         kind: master_type::MISSILE,
         class: class::WALL,
         hit_points: 1,
-        radius: [0.1, 0.1],
+        radius: Footprint::new(0.1, 0.1),
         standing_sprite: -1,
         death_sprite: -1,
         death_spawns: [None, None],
@@ -13520,7 +13527,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         }),
         missile_stats: Some(crate::combat::missile::MissileStats {
             speed: 7.0,
-            radius: [0.1, 0.1, 0.0],
+            radius: Radii::new(0.1, 0.1, 0.0),
             ..crate::combat::missile::MissileStats::default()
         }),
         ..Master::default()
@@ -13530,7 +13537,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         kind: master_type::COMBAT,
         class: class::PREDATOR,
         hit_points: 5,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         height: 1.5,
         terrain_bonus: -1,
         ..Master::default()
@@ -13596,7 +13603,7 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
         object_id(50),
         Placed {
             position: Position::new(13.0, 10.0, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::PREDATOR,
             player: PlayerId::new(0),
             master: master_id(65),
@@ -13631,7 +13638,7 @@ fn a_hit_s_flare_is_made_where_the_volley_runs() {
     let aimed = crate::combat::volley::Aimed {
         target: 50,
         position: Position::new(13.0, 10.0, 0.0),
-        radius: [0.2, 0.2, 1.0],
+        radius: Radii::new(0.2, 0.2, 1.0),
         class: class::PREDATOR,
         player: PlayerId::new(1),
     };
@@ -14360,7 +14367,7 @@ fn house_builder() -> World {
     let p = *t.spatial.get(700).unwrap();
     let site = Placed {
         position: Position::new(30.0, 88.0, 0.0),
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         class: ClassId::of_master(80),
         master: ids::HOUSE,
         ..p
@@ -14791,7 +14798,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
             id,
             owner: 0,
             position: [x, 89.5],
-            radii: [0.2, 0.2],
+            radii: Footprint::new(0.2, 0.2),
             class: class::PREY,
             old: 0,
             new: 1 << 1,
@@ -15400,11 +15407,16 @@ pub(crate) fn repairing(at: Position) -> World {
     };
     t.spatial.insert(
         object_id(9175),
-        placed(at, class::VILLAGER, ids::BUILDER, [0.2, 0.2]),
+        placed(at, class::VILLAGER, ids::BUILDER, Footprint::new(0.2, 0.2)),
     );
     t.spatial.insert(
         object_id(9175),
-        placed(at, class::VILLAGER, master_id(118), [0.2, 0.2]),
+        placed(
+            at,
+            class::VILLAGER,
+            master_id(118),
+            Footprint::new(0.2, 0.2),
+        ),
     );
     t.spatial.insert(
         object_id(10028),
@@ -15412,7 +15424,7 @@ pub(crate) fn repairing(at: Position) -> World {
             Position::new(30.0, 88.0, 0.0),
             class::BUILDING,
             ids::HOUSE,
-            [1.0, 1.0],
+            Footprint::new(1.0, 1.0),
         ),
     );
     let v = &mut t.players[1].objects[0];

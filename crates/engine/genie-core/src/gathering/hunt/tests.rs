@@ -1,5 +1,7 @@
 use super::*;
 use crate::gathering::gather::Walks;
+use crate::map::Footprint;
+use crate::map::Radii;
 use crate::math::fmath::BVector;
 use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
@@ -51,7 +53,7 @@ pub(crate) fn walks(held: (i16, f32)) -> Walks<'static> {
             state: 2,
             speed: 1.0,
             at: Position::ORIGIN,
-            ground: [0.0; 2],
+            ground: Footprint::ZERO,
         },
         held,
     }
@@ -213,7 +215,7 @@ pub(crate) fn walker() -> Mover {
             turn_rate: f32::MAX,
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,
-            radius: [0.2, 0.2, 0.5],
+            radius: Radii::new(0.2, 0.2, 0.5),
             restriction: 7,
             restriction_mask: 6,
             turn_time: 0.0,

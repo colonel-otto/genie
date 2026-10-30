@@ -168,13 +168,13 @@ impl Mover {
             && !self.is_moving()
             && me.action_state == 8
         {
-            let grow = self.stats.radius[0] + RANGE_FLOOR;
+            let grow = self.stats.radius.x() + RANGE_FLOOR;
             // the query's point: slot 0x520, +0x824
             let (x, y) = (self.moved_at.x(), self.moved_at.y());
             let rect = [x, y, x, y];
             world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
             let owner = world.get(me.id).map(|p| p.player);
-            let r = self.stats.radius[0];
+            let r = self.stats.radius.x();
             let skip = [me.id, target_id];
             for id in world.obstruction_candidates(rect, grow, &skip) {
                 let Some(p) = world.get(id) else { continue };
@@ -240,7 +240,7 @@ impl Mover {
         let query = short_path::Query {
             from: [fixed(from[0]), fixed(from[1])],
             to: [fixed(to[0]), fixed(to[1])],
-            radius: self.stats.radius[0],
+            radius: self.stats.radius.x(),
             target_size: target.radius,
             range: self.stats.weapon_range,
             blocked: u64::from(self.stats.restriction_mask ^ 0xff),
@@ -293,7 +293,7 @@ impl Mover {
     pub(crate) const fn walker(&self, id: i32) -> Walker {
         Walker {
             id,
-            radius: self.stats.radius[0],
+            radius: self.stats.radius.x(),
             restriction: self.stats.restriction,
             mask: self.stats.restriction_mask,
         }
@@ -395,7 +395,7 @@ impl Mover {
         };
         let to = t.position.ground();
         let mask = self.stats.restriction_mask;
-        let mut pather = HullPather::new(world, me.id, target, mask, self.stats.radius[0]);
+        let mut pather = HullPather::new(world, me.id, target, mask, self.stats.radius.x());
         let (result, path) = pather.find(self.position().ground(), to, target, range)?;
         // the slot removes the manager's temporary tile records after (FUN_1410561f0)
         world.clear_tile_records();

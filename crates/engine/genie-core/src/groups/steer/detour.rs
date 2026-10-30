@@ -6,6 +6,7 @@ use crate::groups::steer::{
     BLOCKED, EPSILON, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
     ROUND_STILL, ROUND_TIMER,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::{BVector, at_most_or_unordered};
 use crate::pathing::tile_path::Path;
@@ -149,7 +150,7 @@ impl World {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let master = u.master(&self.masters, p)?;
         let mover = u.body.mover().ok_or(NO_MOVER)?;
-        let grow = master.radius[0] * ROUND_RADIUS;
+        let grow = master.radius.x() * ROUND_RADIUS;
         Ok(Rounder {
             id,
             walker: crate::movement::Walker {
@@ -164,7 +165,7 @@ impl World {
             grow,
             radius: master.radius,
             height: master.height,
-            solid: mover.stats.radius.iter().all(|&r| 0.0 < r),
+            solid: mover.stats.radius.sized(),
             differentiators,
         })
     }
@@ -377,7 +378,7 @@ impl World {
         let walker = crate::movement::LongWalker {
             id,
             position: u.position(),
-            radius: [mover.stats.radius[0], mover.stats.radius[1]],
+            radius: mover.stats.radius.ground(),
             mask: mover.stats.restriction_mask,
             moves: mover.stats.speed != 0.0 || u.life.master_id == crate::movement::LONG_PATH_MOVER,
             ignore_units: &mover.ignore_units,
@@ -428,7 +429,7 @@ pub(super) struct Rounder<'d> {
     pub(super) mask: u8,
     pub(super) restriction: usize,
     pub(super) grow: f32,
-    pub(super) radius: [f32; 2],
+    pub(super) radius: Footprint,
     pub(super) height: f32,
     pub(super) solid: bool,
     pub(super) differentiators: &'d [i32],
@@ -438,8 +439,8 @@ impl Rounder<'_> {
     /// `FUN_140a847c0`: the squared gap from the member's footprint (its place) to (`x`, `y`)
     /// is below [`ROUND_REACH`].
     pub(super) fn near(&self, x: f32, y: f32) -> bool {
-        let gx = ((x - self.here.x()).abs() - self.radius[0]).max(0.0);
-        let gy = ((y - self.here.y()).abs() - self.radius[1]).max(0.0);
+        let gx = ((x - self.here.x()).abs() - self.radius.x()).max(0.0);
+        let gy = ((y - self.here.y()).abs() - self.radius.y()).max(0.0);
         gy * gy + gx * gx < ROUND_REACH
     }
 }
@@ -473,9 +474,9 @@ pub(super) fn one_step_toward(
     let dir = BVector::new(dir.x() / len, dir.height() / len, dir.y() / len);
     let mut step = fmath::add(r.at, fmath::scale(1.0, dir));
     let [w, h] = map;
-    let (top_x, top_y) = (w as f32 - r.radius[0], h as f32 - r.height);
-    if r.radius[0] > step.x() {
-        step = step.with_x(r.radius[0]);
+    let (top_x, top_y) = (w as f32 - r.radius.x(), h as f32 - r.height);
+    if r.radius.x() > step.x() {
+        step = step.with_x(r.radius.x());
     } else if step.x() > top_x {
         step = step.with_x(top_x);
     }

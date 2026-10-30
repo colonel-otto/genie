@@ -2,7 +2,9 @@
 //! test and the spawn's.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::Radii;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -23,7 +25,7 @@ pub struct Near {
     /// Its place.
     pub position: Position,
     /// Its master's radii on the ground and whether its height radius is above 0.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its master's height radius is above 0.
     pub tall: bool,
     /// Its master's type (`+0x8`), class, id, `can_be_built_on` (`+0x5e9`), `obstruction_type`
@@ -62,7 +64,7 @@ pub struct Near {
     pub forest_tile: bool,
     /// Its master's outline radii and height (`+0x688`, `+0x68c`, `+0x690`), BUILD's box for
     /// obstruction types 11 to 13.
-    pub outline: [f32; 3],
+    pub outline: Radii,
 }
 
 impl Near {
@@ -117,7 +119,7 @@ pub struct Placing<'a> {
     /// The unit's player.
     pub player: PlayerId,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its master's height radius is above 0.
     pub tall: bool,
     /// Its master's class.
@@ -182,19 +184,19 @@ pub(super) type Found = ((i32, i32), Near);
 pub(super) fn overlapping(
     map: &dyn PlaceMap,
     p: [f32; 2],
-    r: [f32; 2],
+    r: Footprint,
     counts: &dyn Fn(&Near) -> Option<bool>,
 ) -> Result<Vec<Found>, GenieError> {
     let mut out = Vec::new();
     for (tx, ty) in reach(map.size(), p) {
         for o in map.objects(tx, ty)? {
             let Some(tall) = counts(&o) else { continue };
-            if !(0.0 < o.radius[0] && 0.0 < o.radius[1] && tall) {
+            if !(0.0 < o.radius.x() && 0.0 < o.radius.y() && tall) {
                 continue;
             }
             let dx = (o.position.x() - p[0]).abs();
             let dy = (o.position.y() - p[1]).abs();
-            if dx < o.radius[0] + r[0] && dy < o.radius[1] + r[1] {
+            if dx < o.radius.x() + r.x() && dy < o.radius.y() + r.y() {
                 out.push(((tx, ty), o));
             }
         }
@@ -263,7 +265,7 @@ fn static_scans_find(
     map: &dyn PlaceMap,
     p: [f32; 2],
 ) -> Result<bool, GenieError> {
-    let [rx, ry] = site.radius;
+    let (rx, ry) = (site.radius.x(), site.radius.y());
     if !site.tall || !(0.0 < rx || 0.0 < ry) {
         return Ok(false);
     }
@@ -305,7 +307,7 @@ pub(super) fn build_static_test(
     p: [f32; 2],
 ) -> Result<Option<u8>, GenieError> {
     let [x, y] = p;
-    let [rx, ry] = site.radius;
+    let (rx, ry) = (site.radius.x(), site.radius.y());
     let [w, h] = map.size();
     let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);
     if x - rx < 0.0 || w as f32 <= far_x || y - ry < 0.0 || h as f32 <= far_y {
@@ -419,21 +421,21 @@ pub(super) fn blocks_build(
     if build_ignores(site, map, o) || build_passes(site, map, o) {
         return false;
     }
-    let ([orx, ory], tall) = if (11..=13).contains(&o.obstruction_type) {
-        let [ox, oy, oz] = o.outline;
+    let (or, tall) = if (11..=13).contains(&o.obstruction_type) {
+        let oz = o.outline.z();
         (
-            [ox, oy],
+            o.outline.ground(),
             0.0 < oz || (oz == 0.0 && (o.kind == BUILDING || o.holds)),
         )
     } else {
         (o.radius, o.tall || o.kind == BUILDING || o.holds)
     };
-    let [rx, ry] = site.radius;
-    0.0 < orx
-        && 0.0 < ory
+    let r = site.radius;
+    0.0 < or.x()
+        && 0.0 < or.y()
         && tall
-        && (o.position.x() - x).abs() < orx + rx
-        && (o.position.y() - y).abs() < ory + ry
+        && (o.position.x() - x).abs() < or.x() + r.x()
+        && (o.position.y() - y).abs() < or.y() + r.y()
 }
 
 /// The objects BUILD's scan ignores: one dead, a moving one where the site does not obstruct,
@@ -491,7 +493,7 @@ pub fn placement(
     zones: bool,
 ) -> Result<Tested, GenieError> {
     let [x, y] = p;
-    let [rx, ry] = me.radius;
+    let (rx, ry) = (me.radius.x(), me.radius.y());
     let [w, h] = map.size();
     let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);
     // FUN_141123f80's own result: 0 free; the objects of its scan report the blocker (6)

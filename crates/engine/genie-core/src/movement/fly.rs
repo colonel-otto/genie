@@ -4,6 +4,7 @@
 //! the `MoveTo` ends; then it rests for its task's wait time, or picks the next flight at once.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::{Stream, Well512};
@@ -197,7 +198,7 @@ impl Fly {
     ) -> Result<bool, GenieError> {
         let t = self.task;
         let (speed, position) = (mover.stats.speed, mover.position());
-        let radius = [mover.stats.radius[0], mover.stats.radius[1]];
+        let radius = mover.stats.radius.ground();
         let leash = f32::from(t.holding_attr) * f32::from(t.holding_attr);
         let mut angle = action.below_checked(360) as i32;
         let factor = if t.work_val1 < EPSILON {
@@ -285,14 +286,14 @@ impl Fly {
 
     /// The leash test of state 3: the bird within it of the centre (the squared footprint
     /// distance, `FUN_140a847c0`), or the point within it, or no farther than the bird.
-    fn near_home(&self, at: Position, radius: [f32; 2], point: [f32; 2], leash: f32) -> bool {
+    fn near_home(&self, at: Position, radius: Footprint, point: [f32; 2], leash: f32) -> bool {
         let [hx, hy] = self.home;
         let gap = |d: f32, r: f32| {
             let g = d.abs() - r;
             if 0.0 <= g { g } else { 0.0 }
         };
-        let gx = gap(hx - at.x(), radius[0]);
-        let gy = gap(hy - at.y(), radius[1]);
+        let gx = gap(hx - at.x(), radius.x());
+        let gy = gap(hy - at.y(), radius.y());
         let bird = gy * gy + gx * gx;
         if bird <= leash {
             return true;
@@ -361,6 +362,7 @@ impl Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Radii;
     use crate::movement::move_to::MoveTo;
     use crate::objects::layers::Body;
     use crate::objects::lifecycle::Lifecycle;
@@ -377,7 +379,7 @@ mod tests {
     fn wings(speed: f32) -> Mover {
         let mut m = crate::gathering::hunt::tests::walker();
         m.stats.speed = speed;
-        m.stats.radius = [0.2, 0.2, 0.5];
+        m.stats.radius = Radii::new(0.2, 0.2, 0.5);
         m
     }
 
@@ -711,8 +713,23 @@ mod tests {
         };
         // the bird 5 tiles off with a leash of 3 (9 squared): a point nearer home passes, one
         // farther does not
-        assert!(fly.near_home(Position::new(15.0, 10.0, 0.0), [0.0; 2], [12.0, 10.0], 9.0));
-        assert!(!fly.near_home(Position::new(15.0, 10.0, 0.0), [0.0; 2], [16.0, 10.0], 9.0));
-        assert!(fly.near_home(Position::new(12.0, 10.0, 0.0), [0.0; 2], [40.0, 10.0], 9.0));
+        assert!(fly.near_home(
+            Position::new(15.0, 10.0, 0.0),
+            Footprint::ZERO,
+            [12.0, 10.0],
+            9.0
+        ));
+        assert!(!fly.near_home(
+            Position::new(15.0, 10.0, 0.0),
+            Footprint::ZERO,
+            [16.0, 10.0],
+            9.0
+        ));
+        assert!(fly.near_home(
+            Position::new(12.0, 10.0, 0.0),
+            Footprint::ZERO,
+            [40.0, 10.0],
+            9.0
+        ));
     }
 }

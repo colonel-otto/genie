@@ -186,7 +186,7 @@ impl World {
                 .with("unit", id)
                 .with("building", bid)
         })?;
-        let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
+        let solid = 0.0 < made.radius.x() && 0.0 < made.radius.y() && made.tall;
         placed.obstruction =
             (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
                 kind: made.obstruction_type,
@@ -309,7 +309,7 @@ impl World {
         let from = placed.position;
         self.pathing.removed(id.get());
         self.spatial.remove(id.get());
-        let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
+        let solid = 0.0 < made.radius.x() && 0.0 < made.radius.y() && made.tall;
         placed.obstruction =
             (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
                 kind: made.obstruction_type,

@@ -22,6 +22,7 @@
 //! pather's ignore list: the caller's objects (slot 0x3e8's the unit and its target) and the tile
 //! under a listed one-tile object that the unit's terrain cannot cross.
 
+use crate::map::Footprint;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::sqrt;
 use std::collections::BTreeSet;
@@ -217,7 +218,7 @@ impl Waypoints {
 #[derive(Clone, Copy, Debug)]
 struct Target {
     at: Point,
-    radius: [f32; 2],
+    radius: Footprint,
     speed: f32,
 }
 

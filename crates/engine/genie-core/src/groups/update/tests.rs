@@ -1,4 +1,5 @@
 use crate::groups::{Member, UnitGroup, UnitGroups};
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
@@ -69,7 +70,7 @@ fn world() -> World {
         hit_points: 60,
         line_of_sight: 4.0,
         search_radius: 3.0,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         standing_sprite: -1,
         formation_category: 1,
         ..Master::default()
@@ -499,7 +500,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
             kind: master_type::COMBAT,
             class,
             hit_points: 60,
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             standing_sprite: sprites[0],
             move_sprite: sprites[1],
             run_sprite: sprites[2],
@@ -985,7 +986,7 @@ fn a_member_s_own_move_walks_its_path() {
         object_id(10),
         crate::map::spatial::Placed {
             position: Position::new(1.0, 1.0, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::CLASS_6,
             player: PlayerId::new(1),
             master: master_id(4),
@@ -1414,7 +1415,7 @@ fn grounded() -> World {
                 u.id,
                 crate::map::spatial::Placed {
                     position: u.position(),
-                    radius: [0.2, 0.2],
+                    radius: Footprint::new(0.2, 0.2),
                     class: class::CLASS_6,
                     player: p,
                     master: master_id(4),
@@ -1748,7 +1749,7 @@ fn gate_world() -> World {
         id: master_id(5),
         kind: master_type::BUILDING,
         class: class::GATE,
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         standing_sprite: -1,
         ..Master::default()
     };

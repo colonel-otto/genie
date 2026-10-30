@@ -28,6 +28,7 @@
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Tiles};
 use crate::math::fmath::BVector;
@@ -108,15 +109,15 @@ pub struct LongTarget {
 impl LongTarget {
     /// The target at `position` with radii `radius`, `gap` and `gap_squared` from the unit.
     #[must_use]
-    pub fn new(position: Position, radius: [f32; 2], gap: f32, gap_squared: f32) -> Self {
+    pub fn new(position: Position, radius: Footprint, gap: f32, gap_squared: f32) -> Self {
         let (x, y) = (position.x(), position.y());
         Self {
             tile: [x as i32, y as i32],
             rect: [
-                (x - radius[0]) as i32,
-                (y - radius[1]) as i32,
-                ((x + radius[0]) - EDGE_GAP) as i32,
-                ((y + radius[1]) - EDGE_GAP) as i32,
+                (x - radius.x()) as i32,
+                (y - radius.y()) as i32,
+                ((x + radius.x()) - EDGE_GAP) as i32,
+                ((y + radius.y()) - EDGE_GAP) as i32,
             ],
             gap_squared,
             gap,

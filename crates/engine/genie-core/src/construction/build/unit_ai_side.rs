@@ -3,6 +3,7 @@
 //! spot off a foundation's footprint.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
@@ -126,7 +127,7 @@ impl UnitView<'_, '_> {
     pub(crate) fn spot_off_footprint(
         &mut self,
         site: i32,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<crate::unit_ai::OffFootprint, GenieError> {
         let unit = &*self.unit;
         let master = unit.master(&self.c.w.masters, self.player)?;
@@ -154,7 +155,7 @@ impl UnitView<'_, '_> {
                 ))?;
                 self.c.w.spatial.spot_off(
                     unit.position(),
-                    (unit.id.get(), mover.stats.radius[0]),
+                    (unit.id.get(), mover.stats.radius.x()),
                     mover.stats.restriction_mask,
                     (placed.position, radius),
                     false,

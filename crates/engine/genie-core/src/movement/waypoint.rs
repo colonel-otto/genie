@@ -1,5 +1,6 @@
 //! A reached waypoint and what follows it: the next waypoint, a level's end and the moving state.
 
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Spatial, WalkQuery};
 use crate::math::fmath::BVector;
@@ -31,7 +32,7 @@ impl Mover {
         goal: Goal<'_>,
         now: u32,
     ) -> Result<Next, GenieError> {
-        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
+        let ground_radius = self.stats.radius.ground();
         if self.paths[0].flags & 2 != 0 {
             self.take_waypoint_place(me, world, pathing, now)?;
         }
@@ -64,7 +65,7 @@ impl Mover {
             self.position(),
             ground_radius,
             Position::new(left.x(), left.y(), 0.0),
-            [0.0, 0.0],
+            Footprint::new(0.0, 0.0),
         );
         let range = level.range;
         let mut beyond = goal.target.map_or((back - range) - RANGE_FLOOR, |t| {
@@ -233,7 +234,11 @@ impl Mover {
         target: i32,
         world: &mut Spatial,
     ) -> Result<bool, GenieError> {
-        let [rx, ry, rz] = self.stats.radius;
+        let (rx, ry, rz) = (
+            self.stats.radius.x(),
+            self.stats.radius.y(),
+            self.stats.radius.z(),
+        );
         let [w, h] = world.map;
         let (x, y) = (p.x(), p.y());
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
@@ -268,7 +273,11 @@ impl Mover {
         target: i32,
         world: &mut Spatial,
     ) -> Result<bool, GenieError> {
-        let [rx, ry, rz] = self.stats.radius;
+        let (rx, ry, rz) = (
+            self.stats.radius.x(),
+            self.stats.radius.y(),
+            self.stats.radius.z(),
+        );
         let [w, h] = world.map;
         let (x, y) = (p.x(), p.y());
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {

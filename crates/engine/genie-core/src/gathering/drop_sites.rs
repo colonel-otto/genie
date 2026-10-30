@@ -60,9 +60,9 @@ impl Seeker<'_, '_> {
         squared: f32,
         last: &mut f32,
     ) -> Result<Option<f32>, GenieError> {
-        let radii = self.mover.stats.radius[0] + master.radius[0];
+        let radii = self.mover.stats.radius.x() + master.radius.x();
         let to = o.position().ground();
-        let ground = [self.mover.stats.radius[0], self.mover.stats.radius[1]];
+        let ground = self.mover.stats.radius.ground();
         let near = || {
             footprint_gap_squared(self.mover.position(), ground, o.position(), master.radius)
                 <= FISHING_REACH
@@ -245,6 +245,7 @@ pub(crate) fn nearest_drop_site(
 mod tests {
     use super::*;
     use crate::construction::build::BuildTask;
+    use crate::map::Footprint;
     use crate::map::spatial::Placed;
     use crate::math::rng::Well512;
     use crate::objects::actions::ActionList;
@@ -288,7 +289,7 @@ mod tests {
             id,
             kind: master_type::BUILDING,
             class,
-            radius: [radius, radius],
+            radius: Footprint::new(radius, radius),
             ..Master::default()
         };
         Masters::new([
@@ -325,7 +326,7 @@ mod tests {
     fn spatial(farm: [f32; 2]) -> Spatial {
         let placed = |at: [f32; 2], class| Placed {
             position: Position::new(at[0], at[1], 0.0),
-            radius: [1.5, 1.5],
+            radius: Footprint::new(1.5, 1.5),
             class,
             player: PlayerId::new(1),
             master: ids::FARM,

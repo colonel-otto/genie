@@ -16,8 +16,8 @@ impl Master {
             a::HIT_POINTS => self.hit_points = low16(v),
             a::LINE_OF_SIGHT => self.line_of_sight = v,
             a::GARRISON_CAPACITY => self.garrison = low8(v),
-            a::SIZE_X => self.radius[0] = v,
-            a::SIZE_Y => self.radius[1] = v,
+            a::SIZE_X => self.radius = self.radius.with_x(v),
+            a::SIZE_Y => self.radius = self.radius.with_y(v),
             a::CARRY_CAPACITY => self.capacity = low16(v),
             a::STORAGE_1 | a::STORAGE_2 | a::STORAGE_3 => {
                 if let Some(amount) = self.storage_mut(attribute) {
@@ -146,8 +146,8 @@ impl Master {
             a::HIT_POINTS => self.hit_points = add_short(self.hit_points, v, world.capped),
             a::LINE_OF_SIGHT => self.line_of_sight += v,
             a::GARRISON_CAPACITY => self.garrison = self.garrison.wrapping_add(low8(v)),
-            a::SIZE_X => self.radius[0] += v,
-            a::SIZE_Y => self.radius[1] += v,
+            a::SIZE_X => self.radius = self.radius.with_x(self.radius.x() + v),
+            a::SIZE_Y => self.radius = self.radius.with_y(self.radius.y() + v),
             a::CARRY_CAPACITY => self.capacity = add_short(self.capacity, v, world.capped),
             a::STORAGE_1 | a::STORAGE_2 | a::STORAGE_3 => {
                 if let Some(amount) = self.storage_mut(attribute) {
@@ -249,8 +249,8 @@ impl Master {
             a::HIT_POINTS => self.hit_points = multiply_short(self.hit_points, v, world.capped),
             a::LINE_OF_SIGHT => self.line_of_sight *= v,
             a::GARRISON_CAPACITY => self.garrison = low8(f32::from(self.garrison) * v + ROUND),
-            a::SIZE_X => self.radius[0] *= v,
-            a::SIZE_Y => self.radius[1] *= v,
+            a::SIZE_X => self.radius = self.radius.with_x(self.radius.x() * v),
+            a::SIZE_Y => self.radius = self.radius.with_y(self.radius.y() * v),
             a::CARRY_CAPACITY => self.capacity = multiply_short(self.capacity, v, world.capped),
             a::STORAGE_1 | a::STORAGE_2 | a::STORAGE_3 => {
                 if let Some(amount) = self.storage_mut(attribute) {

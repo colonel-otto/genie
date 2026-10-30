@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::commands::unload::UnloadCommand;
 use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -238,10 +239,10 @@ impl World {
         };
         let h = &self.players[hp.index()].objects[hi];
         let at = h.position();
-        let [rx, ry] = h.master(&self.masters, hp)?.radius;
+        let r = h.master(&self.masters, hp)?.radius;
         let around = crate::garrison::transport::Around {
             center: at.ground(),
-            radius: [rx + rx, ry + ry],
+            radius: Footprint::new(r.x() + r.x(), r.y() + r.y()),
         };
         let Some(spot) = self.drop_location((hp, hi), inner, &made, around, u32::MAX, last)? else {
             return Ok(());

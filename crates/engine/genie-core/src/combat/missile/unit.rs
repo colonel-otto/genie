@@ -182,7 +182,7 @@ impl Unit {
         old: Position,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
-        if !(0.0 < stats.radius[0] && 0.0 < stats.radius[1]) {
+        if !(0.0 < stats.radius.x() && 0.0 < stats.radius.y()) {
             return Ok(());
         }
         let blast_level = self
@@ -267,7 +267,7 @@ impl Unit {
             from[0].max(to[0]),
             from[1].max(to[1]),
         ];
-        let grow = stats.radius[0];
+        let grow = stats.radius.x();
         c.w.spatial.check_known_records([
             rect[0] - grow,
             rect[1] - grow,
@@ -296,7 +296,7 @@ impl Unit {
                 p.position.z(),
                 m.height,
                 at.z(),
-                stats.radius[2],
+                stats.radius.z(),
             ) {
                 met.push((id, p.player, m.kind, m.blast_defense));
             }

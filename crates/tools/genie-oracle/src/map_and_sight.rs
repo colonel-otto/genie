@@ -172,10 +172,14 @@ pub(super) fn spatial(
             // not move and is more than a tile wide (FUN_14108c320). A building keeps its
             // footprint's UMV entry (+0x904)
             let place = Position::new(s.t_x, s.t_y, s.t_z);
-            let footprint = [m.radius[0], m.radius[1]];
+            let footprint = m.radius.ground();
             let speed = moving_speed(o, s, section.objects());
             let links = building.map_or_else(
-                || o.combat().is_some() && speed == 0.0 && (0.5 < m.radius[0] || 0.5 < m.radius[1]),
+                || {
+                    o.combat().is_some()
+                        && speed == 0.0
+                        && (0.5 < m.radius.x() || 0.5 < m.radius.y())
+                },
                 |b| b.mupt_linked_object_references_linked_owner_id == -1 && b.desolid_flag == 0,
             );
             let umv = match (links, building.is_some()) {
@@ -221,7 +225,7 @@ pub(super) fn spatial(
                 .tribe_building_object
                 .as_deref()
                 .is_some_and(|b| b.desolid_flag != 0);
-            let solid = m.radius.iter().all(|&r| 0.0 < r) && !desolid;
+            let solid = m.radius.sized() && !desolid;
             let obstruction = (m.obstruction_type != 0 && solid).then_some(Obstruction {
                 kind: m.obstruction_type,
                 class: m.obstruction_class,
@@ -230,13 +234,13 @@ pub(super) fn spatial(
                 ObjectId::try_from(s.id)?,
                 Placed {
                     position: Position::new(s.t_x, s.t_y, s.t_z),
-                    radius: [m.radius[0], m.radius[1]],
+                    radius: m.radius.ground(),
                     class: m.class,
                     player,
                     master,
                     obstruction_type: m.obstruction_type,
                     buildable_on: m.buildable_on,
-                    tall: 0.0 < m.radius[2],
+                    tall: 0.0 < m.radius.z(),
                     speed: moving_speed(o, s, section.objects()),
                     unknown: None,
                     obstruction,

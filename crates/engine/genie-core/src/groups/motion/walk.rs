@@ -6,6 +6,7 @@ use crate::groups::motion::{
     EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, StepWorld, ground,
     hold, passes_waypoint, path_step, point, reset_level, set_flag,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
@@ -191,7 +192,7 @@ fn walk_ends(
                 t.position,
                 t.radius,
                 Position::new(at.x(), at.y(), 0.0),
-                [0.0, 0.0],
+                Footprint::new(0.0, 0.0),
             );
             if (gap - level.range).abs() < EPSILON {
                 return Ok(Some(Pass::Reached));

@@ -192,7 +192,7 @@ impl GatherAction {
             let radius = if STOP_FARMS.contains(&target.master_id) {
                 0.0
             } else {
-                target.radius[0]
+                target.radius.x()
             };
             self.set_walk_back(radius, mover, &walks)?;
         } else {
@@ -302,7 +302,7 @@ impl GatherAction {
             // waits a random while (LAB_140a8ef80)
             3 => {
                 let mover = unit.body.mover().ok_or(UNMOVING)?;
-                let me = [mover.stats.radius[0], mover.stats.radius[1]];
+                let me = mover.stats.radius.ground();
                 let at = unit.body.position();
                 let gap =
                     crate::movement::footprint_gap_squared(at, me, target.position, target.radius);

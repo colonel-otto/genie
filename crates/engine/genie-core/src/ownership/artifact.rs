@@ -564,6 +564,7 @@ impl Unit {
 mod tests {
     use super::*;
     use crate::combat::attack::tests::Rig;
+    use crate::map::Footprint;
     use crate::movement::move_to::{MoveDefaults, MoveToReads, MoveWait, SpriteReads, WalkTo};
     use crate::objects::ObjectId;
     use crate::objects::masters::class;
@@ -1043,7 +1044,7 @@ mod tests {
             state: 2,
             speed: 1.0,
             at: Position::ORIGIN,
-            ground: [0.0; 2],
+            ground: Footprint::ZERO,
         }
     }
 

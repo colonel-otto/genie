@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Lifecycle;
@@ -34,7 +35,7 @@ fn on_map(
 ) -> crate::map::spatial::Placed {
     crate::map::spatial::Placed {
         position: Position::new(x, y, 0.0),
-        radius: [r, r],
+        radius: Footprint::new(r, r),
         class,
         player: PlayerId::new(1),
         master,
@@ -129,7 +130,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
         player: PlayerId::new(1),
         master: ids::HOUSE,
         class,
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         at: [10.5, 10.5],
         trees,
     };
@@ -154,9 +155,9 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     assert_eq!(ids(&world, site(class::GATE, false)), [5, 3, 7]);
     // a master without radii clears nothing; a NaN radius is not 0 or less
     let mut none = site(class::BUILDING, true);
-    none.radius = [0.0, 0.0];
+    none.radius = Footprint::new(0.0, 0.0);
     assert_eq!(ids(&world, none), Vec::<i32>::new());
-    none.radius = [f32::NAN, 0.0];
+    none.radius = Footprint::new(f32::NAN, 0.0);
     assert_eq!(ids(&world, none), Vec::<i32>::new());
 }
 
@@ -249,7 +250,7 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
             player: PlayerId::new(1),
             master: ids::HOUSE,
             class: class::BUILDING,
-            radius: [1.0, 1.0],
+            radius: Footprint::new(1.0, 1.0),
             at: [10.5, 10.5],
             trees,
         };
@@ -396,7 +397,7 @@ pub(crate) fn started(id: i32, at: Position, gap: f32, task: BuildTask) -> Build
         state: 2,
         speed: 1.0,
         at: Position::new(at.x() - gap, at.y(), 0.0),
-        ground: [0.2, 0.2],
+        ground: Footprint::new(0.2, 0.2),
     };
     let to = WalkTo {
         id,
@@ -419,7 +420,7 @@ fn a_build_s_move_to_takes_its_task_s_moving_sprite() {
 fn house() -> crate::map::spatial::Placed {
     crate::map::spatial::Placed {
         position: Position::new(30.0, 88.0, 0.0),
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         class: class::BUILDING,
         player: PlayerId::new(2),
         master: ids::HOUSE,
@@ -669,7 +670,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
     ));
     let mut master = built_master(ids::HOUSE, vec![(1, 25, true), (4, 5, false)]);
     // a house's cost: 25 wood paid; the unpaid entry does not count
-    master.clearance = [1.0, 1.0];
+    master.clearance = Footprint::new(1.0, 1.0);
     master.terrain_bonus = 4;
     master.storage = vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)];
     if let Some(b) = master.building.as_mut() {

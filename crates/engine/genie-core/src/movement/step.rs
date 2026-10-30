@@ -1,5 +1,6 @@
 //! The velocity step, a new object's setup, the position setter and the motion step's loop.
 
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
@@ -250,8 +251,8 @@ impl Mover {
         // square the y clamp takes the width
         let (x, y) = if EPSILON < self.stats.speed {
             (
-                inside(x, self.stats.radius[0], map[0]),
-                inside(y, self.stats.radius[1], map[0]),
+                inside(x, self.stats.radius.x(), map[0]),
+                inside(y, self.stats.radius.y(), map[0]),
             )
         } else {
             (x, y)
@@ -303,7 +304,7 @@ impl Mover {
         &self,
         world: &Spatial,
         target_id: i32,
-        ground_radius: [f32; 2],
+        ground_radius: Footprint,
     ) -> Result<(Option<Placed>, f32, f32), GenieError> {
         // FUN_1415417a0 on the level's target: none for -1 and for an object that is gone,
         // which then measures as a walk to a point (LAB_1411512df)
@@ -327,7 +328,7 @@ impl Mover {
                     self.position(),
                     ground_radius,
                     end.position().with_z(0.0),
-                    [0.0, 0.0],
+                    Footprint::new(0.0, 0.0),
                 )
             }),
         };
@@ -388,7 +389,7 @@ impl Mover {
             self.stop()?;
             return Ok(Motion::Moving);
         }
-        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
+        let ground_radius = self.stats.radius.ground();
         let mut plans = 0;
         // the walk's kept hits, which the step's short paths include (`DAT_143f4a000`, its count
         // `local_19bc`, 0 at the step's start)
@@ -471,7 +472,7 @@ impl Mover {
             walked,
             heading,
         } = step;
-        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
+        let ground_radius = self.stats.radius.ground();
         // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
         // (slot 0x638) and its query (FUN_14114cc60) start at +0x824, where the unit last moved to
         let position = self.moved_at.vector();
@@ -494,7 +495,7 @@ impl Mover {
             Reach::Short => {}
         }
         *walked = waypoint;
-        if self.stats.radius.iter().all(|&r| 0.0 < r) {
+        if self.stats.radius.sized() {
             // FUN_14114e8a0 ignores the unit itself (and a building's annexes), then
             // FUN_14114cc60 asks for the step's hits, grown by the unit's radius times 1
             let (from, to) = self.query_ends(position, projected, world.map);
@@ -504,7 +505,7 @@ impl Mover {
                 from[0].max(to[0]),
                 from[1].max(to[1]),
             ];
-            let grow = self.stats.radius[0];
+            let grow = self.stats.radius.x();
             world.check_known_records([
                 rect[0] - grow,
                 rect[1] - grow,
@@ -566,7 +567,7 @@ impl Mover {
                         self.position(),
                         ground_radius,
                         end.position().with_z(0.0),
-                        [0.0, 0.0],
+                        Footprint::new(0.0, 0.0),
                     );
                     if gap - level.range < EPSILON {
                         self.reset_level();

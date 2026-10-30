@@ -213,7 +213,7 @@ impl MoveToAction {
         sprite: Option<Graphic>,
     ) -> Result<Self, GenieError> {
         let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
-        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let ground = mover.stats.radius.ground();
         let state = if footprint_gap(me, ground, t.position, t.radius) <= ARRIVED {
             MoveTo::Arrived
         } else if mover.stats.speed == 0.0 {
@@ -498,6 +498,7 @@ impl MoveToAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Footprint;
     use crate::map::spatial::Placed;
     use crate::movement::move_to::tests::sheep;
     use crate::test_ids::object_id;
@@ -808,7 +809,7 @@ mod tests {
             object_id(9149),
             Placed {
                 master: TOWN_CENTRE,
-                radius: [2.0, 2.0],
+                radius: Footprint::new(2.0, 2.0),
                 ..sheep(50.0, 40.0)
             },
         );

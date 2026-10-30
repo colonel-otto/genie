@@ -303,7 +303,7 @@ impl World {
         let ai = UnitAi::constructed(ai_type, &new_object, self.streams.get(Stream::Ai));
         let _ = self.streams.get(Stream::Object).rand15();
         // its place, record, mesh shape and sight (new_position, slot 0x58, and FUN_141054fe0)
-        let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
+        let solid = 0.0 < made.radius.x() && 0.0 < made.radius.y() && made.tall;
         let placed = Placed {
             position,
             radius: made.radius,

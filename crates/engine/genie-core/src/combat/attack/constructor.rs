@@ -6,6 +6,7 @@ use crate::combat::attack::{
     Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, Fight, GOTO_SEEN, Ground,
     LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveToReads, TargetMoved};
@@ -119,7 +120,7 @@ impl Attack {
         let t = *world
             .get_known(cmd.target)?
             .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
-        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let ground = mover.stats.radius.ground();
         let reach_gap =
             crate::movement::gate_gap(world, (e.position, ground), (cmd.target, &t), e.gap, |g| g);
         let mut attack = Self::own(cmd.target, e, cmd.arms);
@@ -404,7 +405,7 @@ pub fn engagement(
 
 /// The gap between two footprints, for an [`Engagement`].
 #[must_use]
-pub fn gaps(a: Position, a_radius: [f32; 2], b: Position, b_radius: [f32; 2]) -> (f32, f32) {
+pub fn gaps(a: Position, a_radius: Footprint, b: Position, b_radius: Footprint) -> (f32, f32) {
     let squared = footprint_gap_squared(a, a_radius, b, b_radius);
     (squared, footprint_gap(a, a_radius, b, b_radius))
 }

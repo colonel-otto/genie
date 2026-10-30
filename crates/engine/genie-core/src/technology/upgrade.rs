@@ -673,6 +673,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Footprint;
     use crate::map::Position;
     use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
@@ -1337,7 +1338,7 @@ mod tests {
                 object_id(10),
                 crate::map::spatial::Placed {
                     position: Position::new(5.5, 5.5, 0.0),
-                    radius: [0.2, 0.2],
+                    radius: Footprint::new(0.2, 0.2),
                     class: class::CLASS_6,
                     player: PlayerId::new(0),
                     master: master_id(4),

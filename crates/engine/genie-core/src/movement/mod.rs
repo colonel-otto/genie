@@ -15,7 +15,9 @@ use self::path_points::{
     ground, ground_line, moved_far, point_or_zero, point_or_zero_of, short_range, split, too_short,
 };
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::Radii;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, BVector};
 use crate::objects::layers::Animated;
@@ -177,7 +179,7 @@ pub struct MoveStats {
     pub turn_radius_speed: f32,
     /// Master `+0x5d8`, `+0x5dc`, `+0x5e0`.
     #[diff(gap = "an own master's radius (a foundation's, a dying annex's) is not modelled")]
-    pub radius: [f32; 3],
+    pub radius: Radii,
     /// The master's terrain restriction (`+0x606`) and the terrain classes it lets the unit stand
     /// on (its mask).
     pub restriction: usize,
@@ -339,7 +341,8 @@ const PUSHED: f32 = crate::math::image::movement::PUSHED;
 
 /// `FUN_1411615a0`: how deep two boxes (centre, radii on the ground) overlap, the lesser of the
 /// two axes; 0 when they do not.
-fn overlap(a: BVector, [ar, ad]: [f32; 2], b: BVector, [br, bd]: [f32; 2]) -> f32 {
+fn overlap(a: BVector, a_radius: Footprint, b: BVector, b_radius: Footprint) -> f32 {
+    let (ar, ad, br, bd) = (a_radius.x(), a_radius.y(), b_radius.x(), b_radius.y());
     let (ax1, ax0, ay0, ay1) = (a.x() + ar, a.x() - ar, a.y() - ad, a.y() + ad);
     let (by0, by1, bx0, bx1) = (b.y() - bd, b.y() + bd, b.x() - br, b.x() + br);
     // COMISS/JNC at 0x1411615fd..0x141161610: only an ordered `>=` leaves, a NaN goes on
@@ -487,7 +490,7 @@ fn pause_holds(level: &mut PathData, dt: f32) -> bool {
 /// its place and radii) through `annex`; for anything else `own`.
 pub(crate) fn gate_gap(
     world: &Spatial,
-    (at, radius): (Position, [f32; 2]),
+    (at, radius): (Position, Footprint),
     (id, target): (i32, &Placed),
     own: f32,
     annex: impl Fn(f32) -> f32,
@@ -561,8 +564,8 @@ fn pause_rank(
 /// [`Mover::reached`]'s waypoints too near the map's edge for the unit (`FUN_140f98d50`): from
 /// the level's waypoint on, each whose x or y lies within the unit's radius (`radius`) of an
 /// edge of the map (`map`) goes, until one lies inside.
-fn drop_edge_waypoints(level: &mut PathData, radius: [f32; 3], map: [i32; 2]) {
-    let [rx, ry, _] = radius;
+fn drop_edge_waypoints(level: &mut PathData, radius: Radii, map: [i32; 2]) {
+    let (rx, ry) = (radius.x(), radius.y());
     let [w, h] = map;
     while level.waypoint < level.points.len() as i32 {
         let [x, _, y] = level.point(level.waypoint).get();

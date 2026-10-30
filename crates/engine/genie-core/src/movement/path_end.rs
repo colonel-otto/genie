@@ -76,19 +76,19 @@ impl Mover {
             return Ok(false);
         }
         let radius = self.stats.radius;
-        let ground = [radius[0], radius[1]];
+        let ground = radius.ground();
         // the target is read where it is tested: the short path below is handed the spatial
         // index, which it writes
         let placed = target_placed(world, target)?;
         let target_id = target.unwrap_or(-1);
-        let target_radius = placed.map_or(0.0, |t| t.radius[0]);
+        let target_radius = placed.map_or(0.0, |t| t.radius.x());
         let bonus = placed.is_some_and(|t| t.master == ID_45 || t.class == WIDE_CLASS);
         let mut path = Path::default();
         if let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) {
             let req = Request {
                 from: [x, y],
                 to,
-                radii: radius[0] + target_radius,
+                radii: radius.x() + target_radius,
                 range: if bonus { range + WIDE_RANGE } else { range },
                 closed: Vec::new(),
                 full: false,
@@ -98,7 +98,7 @@ impl Mover {
                 return Ok(false);
             }
         }
-        let solid = 0.0 < radius[2] && 0.0 < radius[0] && 0.0 < radius[1];
+        let solid = 0.0 < radius.z() && 0.0 < radius.x() && 0.0 < radius.y();
         let (dx, dy) = (to[0] - x, to[1] - y);
         if solid && fmath::sqrt(dx * dx + 0.0 + dy * dy) <= REACH_SHORT {
             let goal = BVector::new(to[0], 0.0, to[1]);
@@ -134,7 +134,7 @@ impl Mover {
             };
             // the gap from the unit's place (its decoded x and y), not +0x824
             let (px, py) = (self.position().x(), self.position().y());
-            let (gx, gy) = (gap(to[0] - px, radius[0]), gap(to[1] - py, radius[1]));
+            let (gx, gy) = (gap(to[0] - px, radius.x()), gap(to[1] - py, radius.y()));
             if gx * gx + gy * gy < REACH_NEAR {
                 return Ok(false);
             }
@@ -415,14 +415,17 @@ impl Mover {
     ) -> bool {
         let level = &self.paths[0];
         let top = self.paths.last().filter(|l| !l.points.is_empty());
-        let [rx, ry, _] = self.stats.radius;
+        let ground = self.stats.radius.ground();
         let o = other.position.vector();
-        let now_overlap = overlap(self.position().vector(), [rx, ry], o, other.radius);
-        let next_overlap = overlap(projected, [rx, ry], o, other.radius);
+        let now_overlap = overlap(self.position().vector(), ground, o, other.radius);
+        let next_overlap = overlap(projected, ground, o, other.radius);
         let last_move = world.gait(id).map_or(0, |g| g.last_move);
         let mut pushed = false;
         if let Some(top) = top.filter(|_| now_overlap <= next_overlap) {
-            if top.created == now && rx * PUSHED < next_overlap && level.ignored.contains(&id) {
+            if top.created == now
+                && ground.x() * PUSHED < next_overlap
+                && level.ignored.contains(&id)
+            {
                 pushed = true;
             }
             if top.created < now && level.ignored.contains(&id) {

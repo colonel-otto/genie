@@ -41,6 +41,7 @@ use self::taking::kill_bonus;
 pub use self::taking::take;
 #[cfg(test)]
 use self::taking::take_static;
+use crate::map::Footprint;
 use crate::map::Position;
 #[cfg(test)]
 use crate::math::fmath;
@@ -134,7 +135,7 @@ pub struct Victim {
     /// Its master.
     pub master_id: MasterId,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its master's `radius_z` (`+0x5e0`): a missile meets it within that height above it
     /// (`FUN_14113f740`).
     pub height: f32,

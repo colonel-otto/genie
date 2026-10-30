@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -79,7 +80,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         blast_level: 0,
         los: 4.0,
         position: Position::new(10.0, 10.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         speed: 0.8,
         scenario: false,
         firepower: 0.0,
@@ -160,10 +161,10 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
     let before = [gaia];
     let every = [
         Masters::default(),
-        Masters::new([master(master_id(4), [0.3, 0.3])]),
+        Masters::new([master(master_id(4), Footprint::new(0.3, 0.3))]),
         Masters::new([
-            master(master_id(5), [0.3, 0.3]),
-            master(ids::ID_6, [1.3, 0.3]),
+            master(master_id(5), Footprint::new(0.3, 0.3)),
+            master(ids::ID_6, Footprint::new(1.3, 0.3)),
         ]),
     ];
     let attacker = crate::unit_ai::Attacker {
@@ -185,7 +186,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         blast_level: 0,
         los: 4.0,
         position: Position::new(10.0, 10.0, 0.0),
-        radius: [0.3, 0.3],
+        radius: Footprint::new(0.3, 0.3),
         speed: 1.0,
         scenario: false,
         firepower: 0.0,
@@ -263,7 +264,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         id,
         kind: master_type::COMBAT,
         class,
-        radius: [0.3, 0.3],
+        radius: Footprint::new(0.3, 0.3),
         weapons,
         reload: 2.0,
         // no terrain defense bonus: the damage reads no terrain
@@ -313,7 +314,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         blast_level: 0,
         los: 4.0,
         position: Position::new(10.0, 10.0, 0.0),
-        radius: [0.3, 0.3],
+        radius: Footprint::new(0.3, 0.3),
         speed: 1.0,
         scenario: false,
         firepower: 0.0,

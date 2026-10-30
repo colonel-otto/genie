@@ -31,6 +31,7 @@ pub use self::terrains::{BuildSite, placement_terrains};
 pub(crate) use self::world_map::WorldMap;
 #[cfg(test)]
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 #[cfg(test)]
 use crate::objects::lifecycle::Lifecycle;
@@ -75,7 +76,7 @@ pub struct Site {
     /// The building's place.
     pub position: Position,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its gather point (`+0xc34`, `+0xc38`), when it has one (`+0xc30`) that is not on itself
     /// (`+0xc40`).
     pub gather: Option<[f32; 2]>,

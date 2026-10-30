@@ -63,7 +63,7 @@ const fn move_reads(
         state: 2,
         speed: 1.0,
         at: Position::new(10.0, 10.0, 0.0),
-        ground: [0.2, 0.2],
+        ground: Footprint::new(0.2, 0.2),
     }
 }
 

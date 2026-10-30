@@ -6,6 +6,7 @@ use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
     HALTED, MAX_WAITS, PLACE, SITE_GONE, WAIT, WONDER_RATE, footprint_clearing,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Placed;
 use crate::objects::lifecycle::seconds;
@@ -112,7 +113,7 @@ impl BuildAction {
         }
         let (bx, by) = (builder.position().x(), builder.position().y());
         let (sx, sy) = (placed.position.x(), placed.position.y());
-        let inside = (bx - sx).abs() <= placed.radius[0] && (by - sy).abs() <= placed.radius[1];
+        let inside = (bx - sx).abs() <= placed.radius.x() && (by - sy).abs() <= placed.radius.y();
         if inside {
             return self.clear(c, builder);
         }
@@ -190,14 +191,14 @@ impl BuildAction {
         &self,
         c: &Step<'_>,
         builder: &Unit,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<Option<i32>, GenieError> {
         let (bx, by) = (builder.position().x(), builder.position().y());
         for annex in c.w.spatial.annexes_of(self.target) {
             let placed = c.w.spatial.get_known(annex)?.ok_or(SITE_GONE)?;
             let (ax, ay) = (placed.position.x(), placed.position.y());
-            let sized = EPSILON < placed.radius[0] && EPSILON < placed.radius[1];
-            if sized && (bx - ax).abs() < radius[0] && (by - ay).abs() < radius[1] {
+            let sized = EPSILON < placed.radius.x() && EPSILON < placed.radius.y();
+            if sized && (bx - ax).abs() < radius.x() && (by - ay).abs() < radius.y() {
                 return Ok(Some(annex));
             }
         }
@@ -260,7 +261,7 @@ impl BuildAction {
         let placed = *c.w.spatial.get(self.target).ok_or(SITE_GONE)?;
         let [bx, by] = [builder.position().x() as i32, builder.position().y() as i32];
         let [tx, mut ty] = [placed.position.x() as i32, placed.position.y() as i32];
-        let [rx, ry] = placed.radius;
+        let (rx, ry) = (placed.radius.x(), placed.radius.y());
         if (rx as i32) as f32 == rx && (ry as i32) as f32 == ry {
             if by < ty {
                 if tx < bx {
@@ -351,7 +352,7 @@ impl BuildAction {
             c.w.spatial
                 .spot_beside(
                     at,
-                    (builder.id.get(), mover.stats.radius[0]),
+                    (builder.id.get(), mover.stats.radius.x()),
                     mover.stats.restriction_mask,
                     site,
                 )?

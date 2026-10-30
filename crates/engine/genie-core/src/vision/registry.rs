@@ -8,6 +8,7 @@
 //! leave by a swap with its last.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
@@ -74,7 +75,7 @@ pub struct UnitUpdate {
     /// Its place (x, y).
     pub position: [f32; 2],
     /// Its master's radii (x, y).
-    pub radii: [f32; 2],
+    pub radii: Footprint,
     /// Its master's class.
     pub class: ClassId,
     /// The mask of the players that saw it.
@@ -100,7 +101,7 @@ pub struct VisibleQuery<'a> {
     /// What the owners are to the player (0 Gaia, 1 self, 2 friend, 3 neutral, 4 enemy).
     pub relations: &'a [u32],
     /// The searcher's radii (x, y).
-    pub size: [f32; 2],
+    pub size: Footprint,
     /// The relations kept, one bit each.
     pub wanted: u8,
 }
@@ -144,11 +145,12 @@ impl Registry {
             id,
             owner,
             position: [x, y],
-            radii: [rx, ry],
+            radii,
             class,
             old,
             new,
         } = unit;
+        let (rx, ry) = (radii.x(), radii.y());
         let mut changed = (old ^ new) & 0xffff;
         let mut seen = new;
         let Some(class) = class.index() else {
@@ -271,9 +273,10 @@ impl Registry {
             mode,
             classes,
             relations,
-            size: [rx, ry],
+            size,
             wanted,
         } = query;
+        let (rx, ry) = (size.x(), size.y());
         if classes.is_empty() || self.players <= player.index() {
             return Ok(None);
         }
@@ -358,7 +361,7 @@ mod tests {
                 id,
                 owner: 1,
                 position: [id as f32, 5.0],
-                radii: [0.2, 0.2],
+                radii: Footprint::new(0.2, 0.2),
                 class: class::VILLAGER,
                 old: 0,
                 new: 0b101,
@@ -376,7 +379,7 @@ mod tests {
             id: 1,
             owner: 1,
             position: [1.0, 5.0],
-            radii: [0.2, 0.2],
+            radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0b101,
             new: 0b100,
@@ -400,7 +403,7 @@ mod tests {
             id: 1,
             owner: 1,
             position: [12.0, 10.0],
-            radii: [0.2, 0.2],
+            radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
             new: 1,
@@ -410,7 +413,7 @@ mod tests {
             id: 2,
             owner: 2,
             position: [10.0, 13.5],
-            radii: [0.2, 0.2],
+            radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
             new: 1,
@@ -420,7 +423,7 @@ mod tests {
             id: 3,
             owner: 2,
             position: [13.0, 13.0],
-            radii: [0.2, 0.2],
+            radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
             new: 1,
@@ -430,7 +433,7 @@ mod tests {
             id: 4,
             owner: 0,
             position: [10.5, 10.5],
-            radii: [0.2, 0.2],
+            radii: Footprint::new(0.2, 0.2),
             class: class::PREY,
             old: 0,
             new: 1,
@@ -445,7 +448,7 @@ mod tests {
                 mode: 0,
                 classes: &[4, 9],
                 relations: &relations,
-                size: [0.2, 0.2],
+                size: Footprint::new(0.2, 0.2),
                 wanted: 0xff,
             })
             .unwrap()
@@ -464,7 +467,7 @@ mod tests {
                 mode: 0,
                 classes: &[],
                 relations: &relations,
-                size: [0.2, 0.2],
+                size: Footprint::new(0.2, 0.2),
                 wanted: 0xff
             })
             .unwrap(),
@@ -479,7 +482,7 @@ mod tests {
             id: 1,
             owner: 1,
             position: [53.5, 10.0],
-            radii: [0.2, 0.2],
+            radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
             new: 1,
@@ -489,7 +492,7 @@ mod tests {
             id: 2,
             owner: 1,
             position: [60.0, 10.0],
-            radii: [0.2, 0.2],
+            radii: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             old: 0,
             new: 1,
@@ -503,7 +506,7 @@ mod tests {
                 mode: 1,
                 classes: &[4],
                 relations: &[1, 4, 4],
-                size: [0.2, 0.2],
+                size: Footprint::new(0.2, 0.2),
                 wanted: 0xff,
             })
             .unwrap()
@@ -519,7 +522,7 @@ mod tests {
             id: 1,
             owner: 1,
             position: [15.0, 10.0],
-            radii: [2.0, 2.0],
+            radii: Footprint::new(2.0, 2.0),
             class: class::VILLAGER,
             old: 0,
             new: 1,
@@ -533,7 +536,7 @@ mod tests {
                 mode: 0,
                 classes: &[4],
                 relations: &[1, 4, 4],
-                size: [0.2, 0.2],
+                size: Footprint::new(0.2, 0.2),
                 wanted: 0xff,
             })
             .unwrap()

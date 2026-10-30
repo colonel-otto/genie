@@ -351,7 +351,7 @@ fn lead() -> Lead {
             mask: 0xff,
         },
         position: Position::new(5.0, 5.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         moves: true,
         solid: true,
         ignore_units: Vec::new(),
@@ -457,7 +457,7 @@ fn requesting(n: u8, y: f32) -> Motion {
 fn target_at(y: f32) -> Placed {
     Placed {
         position: Position::new(5.0, y, 0.0),
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         class: class::CLASS_0,
         player: PlayerId::new(0),
         master: ids::ID_0,
@@ -833,7 +833,7 @@ fn an_arrived_level_hands_over_by_its_link() {
 fn placed_at(x: f32, y: f32) -> Placed {
     Placed {
         position: Position::new(x, y, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         obstruction: Some(crate::map::spatial::Obstruction { kind: 5, class: 2 }),
         ..target_at(y)
     }
@@ -904,7 +904,7 @@ fn a_walk_in_range_of_its_end_stops() {
     fx.spatial.insert(
         object_id(7),
         Placed {
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             ..placed_at(5.0, 3.0)
         },
     );

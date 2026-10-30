@@ -3,6 +3,7 @@
 
 use super::tests::{MOVING_TASK, TASK, started};
 use super::*;
+use crate::map::Footprint;
 use crate::map::spatial::{Placed, Tiles};
 use crate::math::rng::Well512;
 use crate::movement::Me;
@@ -68,7 +69,7 @@ fn house_as(masters: &Masters, id: MasterId, class: ClassId) -> Master {
 const fn placed(at: Position, r: f32, class: ClassId, master: MasterId) -> Placed {
     Placed {
         position: at,
-        radius: [r, r],
+        radius: Footprint::new(r, r),
         class,
         player: PlayerId::new(1),
         master,
@@ -780,7 +781,7 @@ fn stump(t: &mut World) {
         id: master_id(349),
         kind: master_type::STATIC,
         class: class::TREE,
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         height: 1.0,
         ..Master::default()
     };

@@ -42,7 +42,8 @@ impl World {
         let followed = Followed {
             id: target,
             place: t.position().ground(),
-            class: (0.0 < tm.radius[0] || 0.0 < tm.radius[1]).then_some(i32::from(tm.class.get())),
+            class: (0.0 < tm.radius.x() || 0.0 < tm.radius.y())
+                .then_some(i32::from(tm.class.get())),
         };
         let cap = if self.players.player(player)?.computer {
             500

@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -56,7 +57,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         kind: master_type::COMBAT,
         formation_category: category,
         terrain_restriction: 0,
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         ..crate::objects::masters::Master::default()
     };
     let masters = crate::objects::masters::Masters::new([
@@ -94,7 +95,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
             u.id,
             Placed {
                 position: u.position(),
-                radius: [0.2, 0.2],
+                radius: Footprint::new(0.2, 0.2),
                 class: class::CLASS_6,
                 player: PlayerId::new(1),
                 master: u.life.master_id,

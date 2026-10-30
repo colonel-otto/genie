@@ -7,6 +7,7 @@ use crate::garrison::transport::{
     SAIL_TO_UNLOAD, SHORE_MARGIN, Ship, Shore, TransportAction, TransportReads, UNLOAD,
     UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::{Stream, Well512};
@@ -158,8 +159,8 @@ impl TransportAction {
         let zone = shore.zone(cvttss2si(x), cvttss2si(y))?;
         let (ux, uy) = (ship.position.x(), ship.position.y());
         // MAXSS 0, gap: the gap when it is not below 0, a NaN gap too
-        let dx = crate::math::fmath::maxss(0.0, (x - ux).abs() - ship.radius[0]);
-        let dy = crate::math::fmath::maxss(0.0, (y - uy).abs() - ship.radius[1]);
+        let dx = crate::math::fmath::maxss(0.0, (x - ux).abs() - ship.radius.x());
+        let dy = crate::math::fmath::maxss(0.0, (y - uy).abs() - ship.radius.y());
         let near = shore.near(zone as u8, NEAR)?;
         let within =
             !crate::math::fmath::below_or_unordered(UNLOAD_REACH_SQUARED, dy * dy + dx * dx);
@@ -408,7 +409,7 @@ impl TransportAction {
         shore: &mut impl Shore,
     ) -> Result<bool, GenieError> {
         let (ux, uy) = (ship.position.x(), ship.position.y());
-        let [rx, ry] = ship.radius;
+        let (rx, ry) = (ship.radius.x(), ship.radius.y());
         let [w, h] = ship.map;
         let x0 = cvttss2si((ux - rx) - SHORE_MARGIN).max(0);
         let y0 = cvttss2si((uy - ry) - SHORE_MARGIN).max(0);
@@ -492,7 +493,7 @@ impl<'a> Ship<'a> {
     /// sprite `given`.
     pub(crate) const fn of(
         unit: &Unit,
-        radius: [f32; 2],
+        radius: Footprint,
         map: [i32; 2],
         walk: MoveToReads<'a>,
         given: Option<i16>,

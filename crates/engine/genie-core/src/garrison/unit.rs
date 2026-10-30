@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::gather::unit::give_load;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
@@ -479,7 +480,7 @@ impl Unit {
         c: &mut Step<'_>,
         target: i32,
         at: Position,
-        radius: [f32; 2],
+        radius: Footprint,
         placed: crate::map::spatial::Placed,
         bm: &Master,
     ) -> Result<(), GenieError> {

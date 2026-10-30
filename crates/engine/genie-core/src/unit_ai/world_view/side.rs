@@ -7,6 +7,7 @@
 
 use crate::GenieError;
 use crate::gathering::closest_resource::herded;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
@@ -61,7 +62,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         self.c.w.spatial.point_clear(
             unit.id.get(),
             point,
-            mover.stats.radius[0],
+            mover.stats.radius.x(),
             mover.stats.restriction_mask,
         )
     }
@@ -69,7 +70,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     fn off_footprint(
         &mut self,
         site: i32,
-        radius: [f32; 2],
+        radius: Footprint,
     ) -> Result<crate::unit_ai::OffFootprint, GenieError> {
         self.spot_off_footprint(site, radius)
     }

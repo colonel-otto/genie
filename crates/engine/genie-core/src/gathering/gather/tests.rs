@@ -50,7 +50,7 @@ fn walks(held: (i16, f32)) -> Walks<'static> {
             state: 2,
             speed: 1.0,
             at: Position::ORIGIN,
-            ground: [0.0; 2],
+            ground: Footprint::ZERO,
         },
         held,
     }
@@ -194,7 +194,7 @@ fn bush() -> Resource {
         drop_site: false,
         gap: 1.2,
         state: 2,
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
     }
 }
 
@@ -231,7 +231,7 @@ fn farm() -> Resource {
         drop_site: false,
         gap: 0.0,
         state: 2,
-        radius: [1.5, 1.5],
+        radius: Footprint::new(1.5, 1.5),
     }
 }
 
@@ -241,7 +241,12 @@ fn a_farm_s_stop_is_a_tile_centre_of_its_footprint_other_than_the_last() {
     rng.set_seed(29910);
     let mut last = [0.0; 2];
     for _ in 0..50 {
-        let [x, y] = stop_point(Position::new(112.5, 173.5, 3.0), [1.5, 1.5], last, &mut rng);
+        let [x, y] = stop_point(
+            Position::new(112.5, 173.5, 3.0),
+            Footprint::new(1.5, 1.5),
+            last,
+            &mut rng,
+        );
         assert!([111.5, 112.5, 113.5].contains(&x) && [172.5, 173.5, 174.5].contains(&y));
         assert_ne!([x, y], last);
         last = [x, y];
@@ -250,7 +255,7 @@ fn a_farm_s_stop_is_a_tile_centre_of_its_footprint_other_than_the_last() {
     let mut rng = Well512::default();
     let at = stop_point(
         Position::new(10.0, 20.0, 0.0),
-        [0.0, 0.0],
+        Footprint::new(0.0, 0.0),
         [10.5, 20.5],
         &mut rng,
     );
@@ -355,7 +360,7 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
     let mut rng = Well512::default();
     let at = stop_point(
         Position::new(112.5, 173.5, 3.0),
-        [1.5, 1.5],
+        Footprint::new(1.5, 1.5),
         [0.0; 2],
         &mut rng.clone(),
     );
@@ -366,7 +371,7 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
         gap: 0.0,
         state: Some(2),
     };
-    g.set_walk(to, [1.5, 1.5], &mut mover, &mut rng, &walks)
+    g.set_walk(to, Footprint::new(1.5, 1.5), &mut mover, &mut rng, &walks)
         .unwrap();
     // a farm's stop: a quiet MoveTo to a point of the farm within the task's range, which asks
     // again when it moves (`+0x61` 1)
@@ -744,7 +749,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
     let house = |workers| Victim {
         id: 10028,
         position: Position::new(30.0, 88.0, 0.0),
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
         workers,
         ..target(10.0)
     };
@@ -977,7 +982,7 @@ fn a_farmer_at_a_farm_another_works_walks_back_to_search() {
         state: 2,
         class: class::FARM,
         master_id: ids::FARM,
-        radius: [1.5, 1.5],
+        radius: Footprint::new(1.5, 1.5),
         workers: 2,
         ..Victim::default()
     };

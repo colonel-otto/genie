@@ -1,7 +1,9 @@
 use super::*;
 use crate::commands::{GatherPoint, UnloadCommand};
+use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Radii;
 use crate::math::fmath::BVector;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::BuildingMaster;
@@ -753,7 +755,7 @@ fn walled_map(
     let mut spatial = Spatial::with_tiles(size, Tiles::new(w, h, words));
     let at = |(x, y): (i32, i32), master: MasterId| Placed {
         position: Position::new(x as f32 + 0.5, y as f32 + 0.5, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class: class::CLASS_0,
         player: PlayerId::new(1),
         master,
@@ -778,7 +780,7 @@ fn walled_map(
         turn_rate: f32::MAX,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
-        radius: [0.2, 0.2, 0.5],
+        radius: Radii::new(0.2, 0.2, 0.5),
         restriction: 0,
         restriction_mask: 1,
         turn_time: 0.0,
@@ -1308,7 +1310,7 @@ fn standing() -> crate::movement::MoveStats {
         turn_rate: 0.0,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
-        radius: [0.2, 0.2, 2.0],
+        radius: Radii::new(0.2, 0.2, 2.0),
         restriction: 0,
         restriction_mask: 255,
         turn_time: 0.0,
@@ -1331,7 +1333,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
     let mut t = garrison_world();
     let mut masters = garrison_masters();
     if let Some(tc) = masters.get_mut(TC) {
-        tc.radius = [2.0, 2.0];
+        tc.radius = Footprint::new(2.0, 2.0);
         tc.tall = true;
         tc.volley_fire = 1.0;
         // no stack unit, head or annexes: the tracker files it under its own id
@@ -1342,7 +1344,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
         }
     }
     if let Some(v) = masters.get_mut(VILLAGER) {
-        v.radius = [0.2, 0.2];
+        v.radius = Footprint::new(0.2, 0.2);
         v.tall = true;
         v.moving = Some(standing());
     }
@@ -1387,7 +1389,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
         object_id(100),
         crate::map::spatial::Placed {
             position: Position::new(10.0, 10.0, 0.0),
-            radius: [2.0, 2.0],
+            radius: Footprint::new(2.0, 2.0),
             class: class::TOWER,
             player: PlayerId::new(1),
             master: TC,
@@ -1452,7 +1454,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
         object_id(400),
         crate::map::spatial::Placed {
             position: Position::new(12.5, 10.0, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER,
@@ -1516,7 +1518,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
     t.players[1].attributes = vec![0.0; 250];
     let placed = crate::map::spatial::Placed {
         position: Position::new(12.5, 10.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         player: PlayerId::new(1),
         master: VILLAGER,
@@ -1623,7 +1625,7 @@ pub(crate) fn inside_tc(t: &mut World, p: PlayerId, id: i32, m: MasterId) {
         object_id(id),
         crate::map::spatial::Placed {
             position: Position::new(10.0, 10.0, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: p,
             master: m,
@@ -1795,7 +1797,7 @@ pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: MasterId, at: [f32;
         object_id(id),
         crate::map::spatial::Placed {
             position: Position::new(at[0], at[1], 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: p,
             master: m,
@@ -1825,7 +1827,7 @@ pub(crate) fn building_at(
         object_id(id),
         crate::map::spatial::Placed {
             position: Position::new(at[0], at[1], 0.0),
-            radius: [2.0, 2.0],
+            radius: Footprint::new(2.0, 2.0),
             class: class::TOWER,
             player: PlayerId::new(1),
             master: m,
@@ -1961,7 +1963,7 @@ fn ship_at(t: &mut World, at: [f32; 2]) {
         object_id(200),
         crate::map::spatial::Placed {
             position: Position::new(at[0], at[1], 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             class: class::TRANSPORT,
             player: PlayerId::new(1),
             master: SHIP,
@@ -2242,14 +2244,14 @@ fn coast_world(ship: [f32; 2]) -> World {
     let sails = crate::movement::MoveStats {
         speed: 1.1,
         base: 1.1,
-        radius: [0.5, 0.5, 2.0],
+        radius: Radii::new(0.5, 0.5, 2.0),
         restriction: 1,
         ..standing()
     };
     for m in &mut t.masters {
         if let Some(s) = m.get_mut(SHIP) {
             s.terrain_restriction = 1;
-            s.radius = [0.5, 0.5];
+            s.radius = Footprint::new(0.5, 0.5);
             s.tall = true;
             s.garrison = 5;
             s.moving = Some(sails);

@@ -15,6 +15,7 @@
 //! walk or a drop-off out of reach (the Action stream's `"update"` draws) are in `work.rs`.
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
@@ -194,7 +195,7 @@ pub struct Resource {
     /// Its object state (`+0x640`), which a `MoveTo` to it reads (`FUN_140a7a230`).
     pub state: u8,
     /// Its master's radii (`+0x5d8`, `+0x5dc`), over which a farm's stops spread.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
 }
 
 impl Resource {

@@ -12,6 +12,7 @@
 //! and every change of a static record's tiles rebuilds the planners' cells over them (the
 //! manager's callback `FUN_140f7d4b0` -> `FUN_140f7e4b0`).
 
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Placed, Tiles};
 use crate::pathing::mesh::{Mesh, ONE, Rect};
@@ -119,7 +120,7 @@ impl Pathing {
 #[must_use]
 pub fn shape_rect(p: &Placed) -> Rect {
     let (x, y) = (p.position.x(), p.position.y());
-    let [rx, ry] = p.radius;
+    let (rx, ry) = (p.radius.x(), p.radius.y());
     let fixed = |v: f32| (v * ONE as f32) as i64 as i32;
     [
         fixed((x - rx) - 0.5),
@@ -132,10 +133,10 @@ pub fn shape_rect(p: &Placed) -> Rect {
 /// A shape's rectangle at the end of an action object's update (`FUN_141054fe0`): the place and
 /// the radii each in fixed point by truncation, the box grown by half a tile (`0x200000`).
 #[must_use]
-pub fn refreshed_rect(position: Position, radius: [f32; 2]) -> Rect {
+pub fn refreshed_rect(position: Position, radius: Footprint) -> Rect {
     let fixed = |v: f32| (v * ONE as f32) as i64 as i32;
     let (x, y) = (position.x(), position.y());
-    let (rx, ry) = (fixed(radius[0]), fixed(radius[1]));
+    let (rx, ry) = (fixed(radius.x()), fixed(radius.y()));
     let half = ONE / 2;
     [
         (fixed(x) - rx) - half,
@@ -333,7 +334,7 @@ impl Pathing {
     /// ([`refreshed_rect`]), added or replaced (an odd box always replaces: its shape is removed
     /// and added again); none while it moves. The record's moving flag (byte 3, 0x10) is not
     /// held: the walk reads the gait. Without the game's mesh nothing is kept.
-    pub fn refresh(&mut self, id: i32, p: &Placed, moving: bool, outline: [f32; 2]) {
+    pub fn refresh(&mut self, id: i32, p: &Placed, moving: bool, outline: Footprint) {
         let Some(mesh) = self.mesh.as_mut() else {
             return;
         };
@@ -489,7 +490,7 @@ mod tests {
     fn villager(x: f32, y: f32) -> Placed {
         Placed {
             position: Position::new(x, y, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: PlayerId::new(2),
             master: ids::BUILDER,
@@ -523,7 +524,7 @@ mod tests {
         let mut p = Pathing::default();
         p.set_mesh(Mesh::new(120), []);
         let hunter = villager(106.53662, 46.65576);
-        p.refresh(10029, &hunter, false, [0.0; 2]);
+        p.refresh(10029, &hunter, false, Footprint::ZERO);
         let s = p.shape(10029).unwrap();
         let r = refreshed_rect(hunter.position, hunter.radius);
         assert_eq!(
@@ -535,11 +536,11 @@ mod tests {
             [r[0] & !1, r[1] & !1, (r[2] + 1) & !1, (r[3] + 1) & !1]
         );
         // moving, it has none; without a record, none either
-        p.refresh(10029, &hunter, true, [0.0; 2]);
+        p.refresh(10029, &hunter, true, Footprint::ZERO);
         assert_eq!(p.shape(10029), None);
         let mut bare = hunter;
         bare.obstruction = None;
-        p.refresh(10029, &bare, false, [0.0; 2]);
+        p.refresh(10029, &bare, false, Footprint::ZERO);
         assert_eq!(p.shape(10029), None);
     }
 

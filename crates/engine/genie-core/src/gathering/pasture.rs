@@ -94,7 +94,7 @@ impl World {
             .object(id)
             .map(|(_, u)| (u.position(), u.life.master_id))
             .ok_or(GenieError::unreachable("a pasture its completion names"))?;
-        let radius_x = self.master(p, master)?.radius[0];
+        let radius_x = self.master(p, master)?.radius.x();
         let mut points = edge_points(at, radius_x);
         let owner = &self.players[p.index()];
         let count = cvttss2si(Attributes::get(owner, PASTURE_LIVESTOCK)?);

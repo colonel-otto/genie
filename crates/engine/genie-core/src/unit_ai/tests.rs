@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -511,7 +512,7 @@ fn a_call_for_help_searches_what_the_unit_cares_about_then_walks_the_lists() {
 }
 
 /// A unit sent off a footprint: what [`UnitSide::off_footprint`] answers.
-struct OffSide(OffFootprint, Vec<(i32, [f32; 2])>);
+struct OffSide(OffFootprint, Vec<(i32, Footprint)>);
 
 impl UnitSide for OffSide {
     fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
@@ -544,7 +545,7 @@ impl UnitSide for OffSide {
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn off_footprint(&mut self, site: i32, radius: [f32; 2]) -> Result<OffFootprint, GenieError> {
+    fn off_footprint(&mut self, site: i32, radius: Footprint) -> Result<OffFootprint, GenieError> {
         self.1.push((site, radius));
         Ok(self.0)
     }
@@ -592,7 +593,7 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
         ai.sent_off(n, &mut With::new(&mut side, &mut fx), &mut rng()),
         Ok(GO_ON)
     );
-    assert_eq!(side.1, vec![(10028, [1.0, 1.5])]);
+    assert_eq!(side.1, vec![(10028, Footprint::new(1.0, 1.5))]);
     assert_eq!(
         fx,
         vec![Effect::Command(AiCommand::MoveAside(AiMove {
@@ -3565,7 +3566,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
         };
         let at = Surroundings {
             position: Position::new(x, 10.0, 0.0),
-            size: [0.5, 0.5],
+            size: Footprint::new(0.5, 0.5),
             ..Surroundings::default()
         };
         (u, at)
@@ -4127,7 +4128,7 @@ fn rock_church() -> (UnitAi, Surroundings) {
     };
     let at = Surroundings {
         position: Position::new(136.0, 100.0, 0.0),
-        size: [2.0, 2.0],
+        size: Footprint::new(2.0, 2.0),
         los: 5.0,
         search_radius: 5.0,
         player: PlayerId::new(0),
@@ -4939,7 +4940,7 @@ fn deer_at(position: Position) -> Surroundings {
     Surroundings {
         position,
         class: Some(class::PREY),
-        size: [0.2, 0.2],
+        size: Footprint::new(0.2, 0.2),
         los: 2.0,
         search_radius: 1.0,
         ..Surroundings::default()
@@ -4974,7 +4975,10 @@ fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
         .unwrap();
     assert_eq!(moved, None);
     // the search reaches the line of sight plus 1, the search radius being shorter
-    assert_eq!(searched, vec![([31.5, 106.5], 3.0, 28, [0.2, 0.2])]);
+    assert_eq!(
+        searched,
+        vec![([31.5, 106.5], 3.0, 28, Footprint::new(0.2, 0.2))]
+    );
     assert_eq!(r.draws, 1);
 
     let mut u = deer();
@@ -5863,7 +5867,7 @@ fn follower(deer: Position, visible: bool) -> (UnitAi, Surroundings) {
     };
     let at = Surroundings {
         position: Position::new(110.0, 40.0, 0.0),
-        size: [0.2, 0.2],
+        size: Footprint::new(0.2, 0.2),
         state: 2,
         busy: true,
         class: Some(class::CLASS_12),
@@ -5872,7 +5876,7 @@ fn follower(deer: Position, visible: bool) -> (UnitAi, Surroundings) {
             kind: master_type::COMBAT,
             class: class::PREY,
             position: deer,
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             visible,
             ..Seen::default()
         }),
@@ -5965,7 +5969,7 @@ fn idle_scout() -> (UnitAi, Surroundings) {
         position: Position::new(21.947_916, 92.489_586, 0.0),
         player: PlayerId::new(2),
         class: Some(class::CLASS_12),
-        size: [0.2, 0.2],
+        size: Footprint::new(0.2, 0.2),
         los: 4.0,
         search_radius: 4.0,
         state: 2,
@@ -6072,7 +6076,7 @@ const TC: Attacker = Attacker {
     blast_level: 0,
     los: 8.0,
     position: Position::new(29.0, 94.0, 0.0),
-    radius: [2.0, 2.0],
+    radius: Footprint::new(2.0, 2.0),
     speed: 0.0,
     scenario: false,
     firepower: 0.0,
@@ -6093,7 +6097,7 @@ const BOAR: Target = Target {
     attackable: true,
     desolid: false,
     position: Position::new(30.0, 98.0, 0.0),
-    radius: [0.5, 0.5],
+    radius: Footprint::new(0.5, 0.5),
 };
 
 /// A unit AI without an order or a target, in the aggressive stance.
@@ -6243,7 +6247,7 @@ const SCOUT: Attacker = Attacker {
     range: 0.0,
     los: 4.0,
     position: Position::new(118.5, 183.5, 0.0),
-    radius: [0.4, 0.4],
+    radius: Footprint::new(0.4, 0.4),
     speed: 1.2,
     ..TC
 };
@@ -6260,7 +6264,7 @@ fn a_soldier_standing_its_ground_attacks_within_its_range_of_its_state_position(
         class: class::VILLAGER,
         master: ids::VILLAGER_MALE,
         position: Position::new(x, 183.5, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         ..BOAR
     };
     // the range against it plus 0.5 from the state position to its footprint
@@ -6310,7 +6314,7 @@ fn an_idle_tower_searches_with_its_classes() {
     let at = Surroundings {
         position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
-        size: [2.0, 2.0],
+        size: Footprint::new(2.0, 2.0),
         los: 8.0,
         search_radius: 0.0,
         state: 2,
@@ -6643,7 +6647,7 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
     };
     let at = |x: f32| Surroundings {
         position: Position::new(x, 10.0, 2.5),
-        size: [0.5, 0.5],
+        size: Footprint::new(0.5, 0.5),
         ..Surroundings::default()
     };
     let mut fx = Vec::new();
@@ -6679,10 +6683,12 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
 #[test]
 fn the_point_gap_keeps_a_gap_that_is_not_a_number() {
     assert_eq!(
-        point_gap_squared([3.0, 0.0], Position::ORIGIN, [1.0, 1.0]),
+        point_gap_squared([3.0, 0.0], Position::ORIGIN, Footprint::new(1.0, 1.0)),
         4.0
     );
-    assert!(point_gap_squared([f32::NAN, 0.0], Position::ORIGIN, [1.0, 1.0]).is_nan());
+    assert!(
+        point_gap_squared([f32::NAN, 0.0], Position::ORIGIN, Footprint::new(1.0, 1.0)).is_nan()
+    );
 }
 
 /// `FUN_140c20db0` in `NoAttack` ("searching and returning to state pos."): the search alone
@@ -6818,7 +6824,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         owner: PlayerId::new(2),
         class: class::CLASS_6,
         position: Position::new(5.0, 5.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         visible: true,
         flags: 0,
         sight: 0xf,
@@ -7008,7 +7014,7 @@ fn a_no_attack_tower_only_searches() {
     let at = Surroundings {
         position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
-        size: [2.0, 2.0],
+        size: Footprint::new(2.0, 2.0),
         los: 8.0,
         state: 2,
         kind: BUILDING,
@@ -7047,7 +7053,7 @@ fn an_idle_tower_attacks_what_its_search_found() {
     let at = Surroundings {
         position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
-        size: [2.0, 2.0],
+        size: Footprint::new(2.0, 2.0),
         los: 8.0,
         state: 2,
         kind: BUILDING,
@@ -7329,13 +7335,13 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
     // the villager 700 the lion attacks (class 4, which it attacks by its classes)
     let at = |x: f32| Surroundings {
         position: Position::new(10.0, 10.0, 0.0),
-        size: [0.5, 0.5],
+        size: Footprint::new(0.5, 0.5),
         los: 4.0,
         target: Some(Seen {
             state: 2,
             class: class::VILLAGER,
             position: Position::new(x, 10.0, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             ..Seen::default()
         }),
         units: vec![UnitSeen {
@@ -8189,7 +8195,7 @@ fn patroller(secondary: u32) -> (UnitAi, Surroundings) {
         player: PlayerId::new(1),
         kind: master_type::COMBAT,
         state: 2,
-        size: [0.2, 0.2],
+        size: Footprint::new(0.2, 0.2),
         los: 4.0,
         weapon_range: 1.0,
         busy: true,
@@ -8260,7 +8266,7 @@ fn a_patrol_attacking_a_building_keeps_at_it() {
         id: 50,
         kind: BUILDING,
         position: Position::new(30.0, 30.0, 0.0),
-        radius: [1.0, 1.0],
+        radius: Footprint::new(1.0, 1.0),
     });
     let mut side = SoldierSide {
         found: 77,
@@ -8286,7 +8292,7 @@ fn a_soldier_s_idle_check_attacks_its_top_action_s_target_in_range() {
         id: 50,
         kind: master_type::COMBAT,
         position: Position::new(21.0, 20.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
     };
     at.top_target = Some(near);
     let mut side = SoldierSide {
@@ -8393,7 +8399,7 @@ fn a_soldier_stopped_in_the_update_finds_no_top_action_s_target() {
         id: 50,
         kind: master_type::COMBAT,
         position: Position::new(21.0, 20.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
     });
     let mut side = SoldierSide {
         found: 77,
@@ -9415,7 +9421,7 @@ const MANGONEL: Attacker = Attacker {
     range: 7.0,
     los: 9.0,
     position: Position::new(20.0, 20.0, 0.0),
-    radius: [0.6, 0.6],
+    radius: Footprint::new(0.6, 0.6),
     speed: 0.6,
     ..TC
 };
@@ -9473,7 +9479,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         class: class::VILLAGER,
         master: ids::VILLAGER_MALE,
         position: Position::new(x, 20.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         ..BOAR
     };
     let seeker = |stance| Seeker {
@@ -9748,7 +9754,7 @@ fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
             id: 88,
             kind: master_type::COMBAT,
             position: Position::new(24.0, 20.0, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
         }),
         ..Surroundings::default()
     };
@@ -11900,7 +11906,7 @@ fn packed_siege() -> (UnitAi, Surroundings) {
             id: 90,
             kind: master_type::COMBAT,
             position: Position::new(25.0, 30.0, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
         }),
         ..Surroundings::default()
     };

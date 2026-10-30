@@ -123,7 +123,7 @@ impl PlaceMap for WorldMap<'_> {
                     holds: 0.0 < unit.life.amount
                         && matches!(unit.life.attribute_type, 0..=3 | 15..=17),
                     hp: unit.life.hp,
-                    outline: [master.outline[0], master.outline[1], master.outline_height],
+                    outline: master.outline.with_height(master.outline_height),
                     forest_tile: t.spatial.terrain.as_ref().is_some_and(|ter| {
                         ter.kind(placed.position.x() as i32, placed.position.y() as i32)
                             .and_then(|k| ter.terrains.get(usize::from(k)))

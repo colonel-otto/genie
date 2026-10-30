@@ -6,6 +6,7 @@ use crate::garrison::transport::{
     DEEP_WATER, DRAW_SCALE, DROP_GAP, DROP_TRIES, RETRIES, RETRY_SPREAD, RETRY_STEP, STACK_PLACE,
     Shore, WATER,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::terrain::Terrain;
 use crate::math::conversions::cvttss2si;
@@ -54,7 +55,7 @@ pub struct Around {
     /// The centre (x, y).
     pub center: [f32; 2],
     /// The radii (x, y).
-    pub radius: [f32; 2],
+    pub radius: Footprint,
 }
 
 /// `FUN_141192d10`'s draws (`find_drop_location`) for a unit of master radii `unit_radius` about
@@ -67,7 +68,7 @@ pub struct Around {
 /// unit could stand on is the drop location.
 pub(crate) struct DropDraws<'a> {
     around: Around,
-    unit_radius: [f32; 2],
+    unit_radius: Footprint,
     map: [i32; 2],
     last: &'a mut Option<[f32; 2]>,
     rng: &'a mut Well512,
@@ -79,7 +80,7 @@ impl<'a> DropDraws<'a> {
     /// tiles, the place the last draw left in `last`, drawing from `rng`.
     pub(crate) const fn new(
         around: Around,
-        unit_radius: [f32; 2],
+        unit_radius: Footprint,
         map: [i32; 2],
         last: &'a mut Option<[f32; 2]>,
         rng: &'a mut Well512,
@@ -116,9 +117,9 @@ impl<'a> DropDraws<'a> {
     /// One draw: its side, then its place along it, which `last` keeps.
     fn draw(&mut self) -> Result<[f32; 2], GenieError> {
         let [cx, cy] = self.around.center;
-        let [rx, ry] = self.around.radius;
-        let off_x = rx + (self.unit_radius[0] + DROP_GAP);
-        let off_y = ry + (self.unit_radius[1] + DROP_GAP);
+        let (rx, ry) = (self.around.radius.x(), self.around.radius.y());
+        let off_x = rx + (self.unit_radius.x() + DROP_GAP);
+        let off_y = ry + (self.unit_radius.y() + DROP_GAP);
         let along = |r: u32, radius: f32, centre: f32| {
             ((r as i32 as f32 * (radius + radius)) / DRAW_SCALE - radius) + centre
         };

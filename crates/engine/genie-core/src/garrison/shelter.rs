@@ -6,6 +6,7 @@ use crate::garrison::{
     COMPUTER_IDS, FAR, HUMAN_IDS, NEARBY, TOWN_BELL_REACH, TRANSPORTED, class_has_flags,
     has_garrison_task,
 };
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
@@ -213,7 +214,7 @@ impl World {
     }
 
     /// The place and master radii of the object `id` (what `FUN_14118f8c0` reads of it).
-    pub(crate) fn ground(&self, id: i32) -> Result<(Position, [f32; 2]), GenieError> {
+    pub(crate) fn ground(&self, id: i32) -> Result<(Position, Footprint), GenieError> {
         self.spatial
             .get_known(id)?
             .map(|p| (p.position, p.radius))

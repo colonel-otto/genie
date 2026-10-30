@@ -2,6 +2,7 @@
 //! and what it has seen.
 
 use crate::GenieError;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
@@ -135,7 +136,7 @@ pub struct Surroundings {
     pub attack_priority: u8,
     /// The master's radii (`+0x5d8`, `+0x5dc`), line of sight (`+0x5d0`) and search radius
     /// (`+0x794`, the unit's slot 0x2c8).
-    pub size: [f32; 2],
+    pub size: Footprint,
     /// The master's line of sight (`+0x5d0`).
     pub los: f32,
     /// The search radius (`+0x794`, the unit's slot 0x2c8).
@@ -234,7 +235,7 @@ pub struct TopTarget {
     /// Its place.
     pub position: Position,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
 }
 
 /// The target of the unit's top action as the full update stands ([`UnitAi::top_target_live`]).
@@ -350,7 +351,7 @@ pub struct Seen {
     /// Its place.
     pub position: Position,
     /// Its master's radii.
-    pub radius: [f32; 2],
+    pub radius: Footprint,
     /// Its tile is visible to the viewer.
     pub visible: bool,
     /// Its master's `object_flags` (`+0x654`).

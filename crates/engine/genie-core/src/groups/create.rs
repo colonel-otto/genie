@@ -47,9 +47,9 @@ impl FormationUnit {
     /// and a height (`FUN_141194060` with 1) has its spacing modifier (`+0x8b8`) times its radius
     /// on x (`+0x5d8`), any other [`DEFAULT_RADIUS`].
     pub(crate) fn of(master: &crate::objects::masters::Master) -> Self {
-        let full = 0.0 < master.height && 0.0 < master.radius[0] && 0.0 < master.radius[1];
+        let full = 0.0 < master.height && 0.0 < master.radius.x() && 0.0 < master.radius.y();
         let radius = if COMBAT <= master.kind && full {
-            master.spacing_modifier * master.radius[0]
+            master.spacing_modifier * master.radius.x()
         } else {
             DEFAULT_RADIUS
         };
@@ -417,6 +417,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
+    use crate::map::Footprint;
     use crate::map::Position;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
@@ -689,7 +690,7 @@ mod tests {
         for masters in &mut t.masters {
             for (id, r) in [(4, 0.2f32), (6, 0.5)] {
                 let m = masters.get_mut(master_id(id)).unwrap();
-                m.radius = [r, r];
+                m.radius = Footprint::new(r, r);
                 m.height = 1.0;
                 m.spacing_modifier = 1.0;
             }

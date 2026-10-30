@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
 use crate::vision::registry::UnitUpdate;
@@ -116,15 +117,36 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
     v.unified[i] = 0b011;
     let at = Position::new(10.5, 10.5, 0.0);
     assert_eq!(
-        v.combat_sight(7, PlayerId::new(0), at, [0.2, 0.2], class::CLASS_6, None),
+        v.combat_sight(
+            7,
+            PlayerId::new(0),
+            at,
+            Footprint::new(0.2, 0.2),
+            class::CLASS_6,
+            None
+        ),
         Ok(Some(0b011))
     );
     assert_eq!(
-        v.combat_sight(7, PlayerId::new(0), at, [0.2, 0.2], class::CLASS_6, None),
+        v.combat_sight(
+            7,
+            PlayerId::new(0),
+            at,
+            Footprint::new(0.2, 0.2),
+            class::CLASS_6,
+            None
+        ),
         Ok(None)
     );
     assert_eq!(
-        v.combat_sight(8, PlayerId::new(0), at, [0.2, 0.2], class::CLASS_6, None),
+        v.combat_sight(
+            8,
+            PlayerId::new(0),
+            at,
+            Footprint::new(0.2, 0.2),
+            class::CLASS_6,
+            None
+        ),
         Ok(None)
     );
     let r = v.registry.as_ref().unwrap();
@@ -143,7 +165,7 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
         id: 7,
         owner: 0,
         position: [10.5, 10.5],
-        radii: [0.2, 0.2],
+        radii: Footprint::new(0.2, 0.2),
         class: class::CLASS_6,
         old: 0,
         new: 0b11,
@@ -166,18 +188,32 @@ fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
     let at = Position::new(10.5, 10.5, 0.0);
     let mut v = world(PlayerId::new(3));
     v.add_seer(7, unit(PlayerId::new(0), 2.0));
-    let _ = v.sight_on(7, at, [0.2, 0.2], false, false).unwrap();
+    let _ = v
+        .sight_on(7, at, Footprint::new(0.2, 0.2), false, false)
+        .unwrap();
     let tile = |x: i32, y: i32| (y * 120 + x) as usize;
     assert_eq!(v.maps[0].counts[tile(12, 10)], 1);
-    v.owner_changed(7, at, [0.2, 0.2], (PlayerId::new(1), 3.0), true)
-        .unwrap();
+    v.owner_changed(
+        7,
+        at,
+        Footprint::new(0.2, 0.2),
+        (PlayerId::new(1), 3.0),
+        true,
+    )
+    .unwrap();
     assert_eq!(v.maps[0].counts[tile(12, 10)], 0);
     assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
     assert_eq!(v.maps[1].counts[tile(14, 10)], -1);
     let s = v.seer(7).copied().unwrap();
     assert_eq!((s.player, s.los), (PlayerId::new(1), 3.0));
-    v.owner_changed(7, at, [0.2, 0.2], (PlayerId::new(2), 4.0), false)
-        .unwrap();
+    v.owner_changed(
+        7,
+        at,
+        Footprint::new(0.2, 0.2),
+        (PlayerId::new(2), 4.0),
+        false,
+    )
+    .unwrap();
     assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
     assert_eq!(v.maps[2].counts[tile(10, 10)], -1);
     let s = v.seer(7).copied().unwrap();
@@ -317,7 +353,7 @@ fn a_sight_counts_its_circle_explored_then_visible_and_leaves_it_explored() {
 fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies() {
     let mut v = world(PlayerId::new(3));
     v.add_seer(7, unit(PlayerId::new(1), 2.0));
-    let r = [0.5, 0.5];
+    let r = Footprint::new(0.5, 0.5);
     let _ = v
         .sight_on(7, Position::new(5.5, 5.5, 0.0), r, false, false)
         .unwrap();
@@ -406,7 +442,7 @@ fn the_extent_list_matches_the_saved_entries_of_a_town_centre_and_a_house() {
 fn a_first_sight_of_a_building_s_tile_explores_the_building() {
     let mut v = world(PlayerId::new(3));
     assert_eq!(
-        v.link_building(Position::new(29.0, 94.0, 0.0), [2.0, 2.0])
+        v.link_building(Position::new(29.0, 94.0, 0.0), Footprint::new(2.0, 2.0))
             .unwrap(),
         1
     );
@@ -420,7 +456,7 @@ fn a_first_sight_of_a_building_s_tile_explores_the_building() {
     assert_eq!(v.maps[1].counts[v.index(27, 92)], 1);
     assert_eq!(v.maps[1].counts[v.index(30, 95)], 0);
     assert_eq!(v.maps[1].explored, 16);
-    v.unlink_building(Position::new(29.0, 94.0, 0.0), [2.0, 2.0])
+    v.unlink_building(Position::new(29.0, 94.0, 0.0), Footprint::new(2.0, 2.0))
         .unwrap();
     assert_eq!(v.link(29, 94).unwrap(), (0, 0));
 }
@@ -436,7 +472,7 @@ fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner(
         ..unit(PlayerId::new(2), 2.0)
     };
     v.add_seer(9, site);
-    let (at, r) = (Position::new(10.0, 10.0, 0.0), [1.0, 1.0]);
+    let (at, r) = (Position::new(10.0, 10.0, 0.0), Footprint::new(1.0, 1.0));
     assert_eq!(
         v.sight_on(9, at, r, false, false).unwrap(),
         0,

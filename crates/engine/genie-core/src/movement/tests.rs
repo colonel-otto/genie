@@ -59,7 +59,7 @@ fn stats() -> MoveStats {
         turn_rate: f32::MAX,
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
-        radius: [0.2, 0.2, 0.5],
+        radius: Radii::new(0.2, 0.2, 0.5),
         restriction: 7,
         restriction_mask: 6,
         turn_time: 0.0,
@@ -200,7 +200,7 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, PlayerId)]) -
     );
     let placed = |[x, y]: [f32; 2], r: f32, class, player| Placed {
         position: Position::new(x, y, 0.0),
-        radius: [r, r],
+        radius: Footprint::new(r, r),
         class,
         player,
         master: master_id(class.get()),
@@ -351,7 +351,7 @@ fn walled(radius: f32) -> Spatial {
         object_id(9171),
         Placed {
             position: Position::new(4.5, 5.5, 0.0),
-            radius: [radius, radius],
+            radius: Footprint::new(radius, radius),
             class: class::VILLAGER,
             player: PlayerId::new(2),
             master: ids::ID_0,
@@ -624,7 +624,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
     );
     let unit = |x: f32, r: f32| Placed {
         position: Position::new(x, 5.5, 0.0),
-        radius: [r, r],
+        radius: Footprint::new(r, r),
         class: class::VILLAGER,
         player: PlayerId::new(2),
         master: ids::ID_0,
@@ -667,7 +667,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
     };
     let mut request = |include: &[i32]| {
         let mut m = builder_9177().placed(Position::new(4.5, 5.5, 0.0));
-        m.stats.radius = [0.6; 3];
+        m.stats.radius = Radii::from([0.6; 3]);
         m.moved_at = Position::new(4.5, 5.5, 0.0);
         m.request_path(
             Position::new(4.5, 5.5, 0.0),
@@ -716,7 +716,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
         object_id(9177),
         Placed {
             position: Position::new(5.5, 5.5, 0.0),
-            radius: [0.2, 0.2],
+            radius: Footprint::new(0.2, 0.2),
             class: class::VILLAGER,
             player: PlayerId::new(2),
             master: ids::VILLAGER_MALE,
@@ -1020,7 +1020,7 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
     let mut world = Spatial::new([40, 40]);
     let wall = |x: f32, class: ClassId| Placed {
         position: Position::new(x, 10.0, 0.0),
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         class,
         player: PlayerId::new(1),
         master: ids::ID_0,
@@ -1036,13 +1036,18 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
     world.insert(object_id(102), wall(8.0, class::WALL));
     world.set_annex(101, Some(100));
     world.set_annex(102, Some(100));
-    let near = (Position::new(13.5, 10.0, 0.0), [0.2, 0.2]);
+    let near = (Position::new(13.5, 10.0, 0.0), Footprint::new(0.2, 0.2));
     let gate = *world.get(100).unwrap();
     let own = footprint_gap(near.0, near.1, gate.position, gate.radius);
     assert!((own - 2.8).abs() < 1e-6);
     // annex 101 lies 0.8 away, less 0.1
     let gap = gate_gap(&world, near, (100, &gate), own, |g| g - ANNEX_GAP);
-    let annex = footprint_gap(near.0, near.1, Position::new(12.0, 10.0, 0.0), [0.5, 0.5]);
+    let annex = footprint_gap(
+        near.0,
+        near.1,
+        Position::new(12.0, 10.0, 0.0),
+        Footprint::new(0.5, 0.5),
+    );
     assert!((annex - 0.8).abs() < 1e-6);
     assert_eq!(gap, annex - ANNEX_GAP);
     // not a gate: its own
@@ -1176,11 +1181,19 @@ fn two_boxes_overlap_by_the_lesser_of_their_axes() {
     // the cow 9517 at (21.8, 92.2) and Gaia's cow 9519 at (22.5, 91.5), radii 0.5 and 0.5
     let a = BVector::new(21.8, 0.0, 92.2);
     let b = BVector::new(22.5, 0.0, 91.5);
-    let d = overlap(a, [0.5, 0.5], b, [0.5, 0.5]);
+    let d = overlap(a, Footprint::new(0.5, 0.5), b, Footprint::new(0.5, 0.5));
     assert_eq!(d, (21.8f32 + 0.5) - (22.5 - 0.5));
-    assert_eq!(overlap(a, [0.2, 0.2], b, [0.2, 0.2]), 0.0);
+    assert_eq!(
+        overlap(a, Footprint::new(0.2, 0.2), b, Footprint::new(0.2, 0.2)),
+        0.0
+    );
     // a NaN goes past the four tests (COMISS/JNC) into MINSS/MAXSS, whose second operand wins
-    let nan = overlap(BVector::new(f32::NAN, 0.0, 92.2), [0.5, 0.5], b, [0.5, 0.5]);
+    let nan = overlap(
+        BVector::new(f32::NAN, 0.0, 92.2),
+        Footprint::new(0.5, 0.5),
+        b,
+        Footprint::new(0.5, 0.5),
+    );
     assert_eq!(
         nan,
         fmath::minss(
@@ -1233,7 +1246,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
         object_id(9357),
         Placed {
             position: Position::new(25.0, 93.0, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             class: class::TREE,
             player: PlayerId::new(0),
             master: ids::ID_0,
@@ -1283,7 +1296,7 @@ fn the_long_pather_lowers_the_walker_or_its_groups_units_and_the_target() {
     let mut walker = LongWalker {
         id: 9177,
         position: Position::new(28.0, 89.0, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         mask: 1,
         moves: true,
         ignore_units: &ignore,
@@ -1306,7 +1319,7 @@ pub(crate) fn world() -> Spatial {
     let mut s = Spatial::new([120, 120]);
     let unit = |x, y| Placed {
         position: Position::new(x, y, 0.0),
-        radius: [0.2, 0.2],
+        radius: Footprint::new(0.2, 0.2),
         class: class::VILLAGER,
         player: PlayerId::new(2),
         master: ids::ID_0,
@@ -1323,7 +1336,7 @@ pub(crate) fn world() -> Spatial {
         object_id(10028),
         Placed {
             position: Position::new(30.0, 88.0, 0.0),
-            radius: [1.0, 1.0],
+            radius: Footprint::new(1.0, 1.0),
             class: class::BUILDING,
             player: PlayerId::new(2),
             master: ids::ID_0,
@@ -1416,7 +1429,7 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
     };
     let obstacle = |class, speed, y| Placed {
         position: Position::new(28.0, y, 0.0),
-        radius: [0.5, 0.5],
+        radius: Footprint::new(0.5, 0.5),
         class,
         player: PlayerId::new(1),
         master: master_id(72),
@@ -1833,7 +1846,7 @@ fn the_second_tick_turns_toward_the_waypoint_from_where_the_first_step_ended() {
 #[test]
 fn the_gap_is_the_distance_between_the_footprints() {
     // MarvinBlue/426048731: a house at (30, 88), builders at (30, 89), (28, 89), (29, 99)
-    let (villager, house) = ([0.2, 0.2], [1.0, 1.0]);
+    let (villager, house) = (Footprint::new(0.2, 0.2), Footprint::new(1.0, 1.0));
     let gap = |x, y| {
         footprint_gap(
             Position::new(x, y, 0.0),
@@ -1915,7 +1928,7 @@ fn a_top_level_short_of_its_moved_target_arrives() {
         let mut world = Spatial::new([120, 120]);
         let placed = Placed {
             position: Position::new(40.0, 88.0, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             class: class::CLASS_6,
             player: target_player,
             master: master_id(74),
@@ -2003,7 +2016,7 @@ fn a_next_waypoint_an_object_stands_on_goes() {
         object_id(500),
         Placed {
             position: Position::new(31.0, 88.5, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             class: class::BUILDING,
             player: PlayerId::new(2),
             master: ids::HOUSE,

@@ -100,7 +100,7 @@ impl HuntAction {
         let ground = unit
             .body
             .mover()
-            .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+            .map(|m| m.stats.radius.ground())
             .ok_or(crate::world::HUNTER_UNMOVING)?;
         if footprint_gap_squared(unit.body.position(), ground, v, f.victim.radius) <= LEAD_REACH {
             self.lead.start = v.ground();

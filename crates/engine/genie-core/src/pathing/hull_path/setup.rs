@@ -1,5 +1,6 @@
 //! The pather's construction ([`HullPather`]) and `canQuickPath` (object slot 0x3e0).
 
+use crate::map::Footprint;
 use std::collections::BTreeSet;
 
 use crate::GenieError;
@@ -114,7 +115,7 @@ impl<'w> HullPather<'w> {
                 continue;
             };
             let (x, y) = (p.position.x(), p.position.y());
-            if p.radius == [HALF, HALF] && x % ONE == HALF && y % ONE == HALF {
+            if p.radius == Footprint::new(HALF, HALF) && x % ONE == HALF && y % ONE == HALF {
                 let (tx, ty) = (cvttss2si(x.floor()), cvttss2si(y.floor()));
                 let word = world.tiles().word(tx, ty).unwrap_or(0);
                 if word & u64::from(mask ^ 0xff) != 0 {

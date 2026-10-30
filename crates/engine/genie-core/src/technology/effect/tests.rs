@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -193,7 +194,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
             object_id(id),
             crate::map::spatial::Placed {
                 position: Position::new(5.5, 5.5, 0.0),
-                radius: [0.5, 0.5],
+                radius: Footprint::new(0.5, 0.5),
                 class: class::CLASS_0,
                 player: PlayerId::new(0),
                 master: ids::HOUSE,
@@ -641,7 +642,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         };
         v.add_seer(1, seer);
         let position = Position::new(10.5, 10.5, 0.0);
-        let radius = [0.5, 0.5];
+        let radius = Footprint::new(0.5, 0.5);
         let _ = v.sight_on(1, position, radius, false, false);
         t.spatial.sight = Some(v);
         t.spatial.insert(
@@ -666,12 +667,18 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     let circle = |los| {
         let mut t = world();
         let v = t.spatial.sight.as_mut().unwrap();
-        v.sight_off(1, Position::new(10.5, 10.5, 0.0), [0.5, 0.5], false, false)
-            .unwrap();
+        v.sight_off(
+            1,
+            Position::new(10.5, 10.5, 0.0),
+            Footprint::new(0.5, 0.5),
+            false,
+            false,
+        )
+        .unwrap();
         let _ = v.sight_on_los(
             1,
             Position::new(10.5, 10.5, 0.0),
-            [0.5, 0.5],
+            Footprint::new(0.5, 0.5),
             false,
             los,
             false,
@@ -780,7 +787,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
             object_id(id),
             crate::map::spatial::Placed {
                 position: Position::new(5.5, 5.5, 0.0),
-                radius: [0.5, 0.5],
+                radius: Footprint::new(0.5, 0.5),
                 class: class::CLASS_6,
                 player: PlayerId::new(0),
                 master: master_id(4),
@@ -1711,7 +1718,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
             kind: master_type::BUILDING,
             class: class::BUILDING,
             hit_points: 550,
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             obstruction_type: 2,
             obstruction_class: 2,
             ..Master::default()
@@ -1722,7 +1729,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         object_id(1),
         crate::map::spatial::Placed {
             position: Position::new(5.5, 5.5, 0.0),
-            radius: [0.5, 0.5],
+            radius: Footprint::new(0.5, 0.5),
             class: class::BUILDING,
             player: PlayerId::new(0),
             master: ids::HOUSE,
