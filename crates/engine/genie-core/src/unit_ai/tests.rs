@@ -3902,7 +3902,8 @@ fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
     };
     let seek = |u: &mut UnitAi, side: &mut ScoutSide, computer| {
         let mut fx = Vec::new();
-        let r = u.seek_unexplored(&at, computer, &mut rng(), &mut With::new(side, &mut fx));
+        let n = Notify::own(30, 0x202, [605, 0, 0]);
+        let r = u.seek_unexplored(n, &at, computer, &mut rng(), &mut With::new(side, &mut fx));
         (r, fx)
     };
     let mut u = scout(Some(OrderKind::AutoScout));
@@ -3943,6 +3944,14 @@ fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
         ..scout(None)
     };
     assert!(seek(&mut u, &mut ScoutSide::default(), false).0.is_err());
+    // a computer player's explorer finds no tile (slot 0x90 gives none for it): the target goes,
+    // the action stops and its owner hears the notify
+    let mut u = UnitAi {
+        current_action: Some(ActionKind::Explore),
+        ..scout(None)
+    };
+    assert_eq!(seek(&mut u, &mut ScoutSide::default(), true).0, Ok(GO_ON));
+    assert_eq!((u.current_target, u.current_action), (-1, None));
 }
 
 /// A Gaia rock church (MarvinBlue/426048706's 7108: line of sight 5, no speed) and what it

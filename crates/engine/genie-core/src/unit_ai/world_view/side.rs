@@ -390,6 +390,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         crate::movement::explore::closest_undiscovered(&mut area, seeker, map, rng)
     }
 
+    fn owner_hears(&mut self, n: crate::unit_ai::Notify) -> Result<(), GenieError> {
+        self.hears(n)
+    }
+
     fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
         let (at, player) = (self.unit.position(), self.player);
         let scouted = self.c.w.spatial.scout_map(player).is_some();

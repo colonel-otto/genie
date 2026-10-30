@@ -17,7 +17,7 @@ mod side;
 mod unit_view;
 mod world_picker;
 
-pub(crate) use self::commands::town_centre;
+pub(crate) use self::commands::{town_centre, town_centre_unit};
 pub(crate) use self::world_picker::NOT_HELD;
 #[cfg(test)]
 use self::world_picker::attacks;

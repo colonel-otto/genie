@@ -567,6 +567,7 @@ pub fn ai_module(
                 limit: grid.unchangeable_limit_value,
                 cells,
             },
+            quadrants: info.quadrant_scores,
             explorer: None,
             search: Vec::new(),
         },

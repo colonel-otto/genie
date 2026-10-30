@@ -2399,9 +2399,8 @@ pub struct TribeInformationAiState {
     /// read at 0x140b5054c
     #[br(count = unnamed_at_0x140b5050a as usize)]
     pub unnamed_at_0x140b5054c: Vec<u8>,
-    /// unnamed in the binary
-    /// read at 0x140b505f1 into a local (local_3440)
-    pub unnamed_at_0x140b505f1: [u8; 192],
+    /// 16 records of 3 words at +0x19484 of the information module (`FUN_140b71990`'s punt search scores record i by `a + draw % 100 + b * 25` over the map's 4 by 4 quadrants, i = 4 * column + row; the third word is not read)
+    pub quadrant_scores: [[i32; 3]; 16],
     /// 16 bytes: the entry count of each of the four lists below (`*local_34e8`, advanced by one per list)
     #[brw(magic = b"\xa0\x0a")]
     pub list_counts: [i32; 4],
@@ -2546,7 +2545,7 @@ impl Default for TribeInformationAiState {
             unnamed_at_0x140b504c6: Default::default(),
             unnamed_at_0x140b5050a: Default::default(),
             unnamed_at_0x140b5054c: Default::default(),
-            unnamed_at_0x140b505f1: [Default::default(); 192],
+            quadrant_scores: Default::default(),
             list_counts: Default::default(),
             list_capacities: Default::default(),
             lists: Default::default(),

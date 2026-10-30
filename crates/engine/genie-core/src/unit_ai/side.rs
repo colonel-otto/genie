@@ -2,7 +2,9 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
-use crate::unit_ai::{Attacked, Duel, Effect, Found, PatrolPath, Search, Seeker, UnitAi, UnitSeen};
+use crate::unit_ai::{
+    Attacked, Duel, Effect, Found, Notify, PatrolPath, Search, Seeker, UnitAi, UnitSeen,
+};
 
 /// The caller's answer to a [`Search`].
 /// What the unit AI asks of its unit and the world while it runs, each answered at once (the game
@@ -125,6 +127,17 @@ pub trait UnitSide {
     ///
     /// What the search does not model.
     fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError>;
+
+    /// The unit AI hands the notify it handled to its owner (slot 0x48, then the owner's slot
+    /// 0x2e8, whose hear logic a computer player's AI runs). A human player's owner does nothing
+    /// the simulation reads; a side of searches alone has no owner.
+    ///
+    /// # Errors
+    ///
+    /// What the AI's hear logic does not model.
+    fn owner_hears(&mut self, _n: Notify) -> Result<(), GenieError> {
+        Ok(())
+    }
 
     /// The player's scout map, made when the auto scout's last search found nothing
     /// (`FUN_140c589c0`'s case 0x202).

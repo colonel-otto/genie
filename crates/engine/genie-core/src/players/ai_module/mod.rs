@@ -11,6 +11,10 @@
 //! [`InfoModule::search`] empty).
 
 mod explored;
+mod search;
+mod unit_ai_side;
+
+pub(crate) use self::search::{SearchArea, SearchUnit};
 
 use crate::movement::explore::InfluenceMap;
 use crate::objects::ObjectId;
@@ -33,6 +37,9 @@ pub struct InfoModule {
     pub path_map: InfluenceMap,
     /// The unit the AI sent to explore (`+0x19848`, not saved: the load makes it -1).
     pub explorer: Option<ObjectId>,
+    /// The punt search's scores (`+0x19484`, 16 records of 3 words, saved): record `4 * column +
+    /// row` of the map's 4 by 4 quadrants gives its first two words ([`InfoModule::punt`]).
+    pub quadrants: [[i32; 3]; 16],
     /// The explorer's points still to try (`+0x19828`, a stack of tile pairs, not saved).
     pub search: Vec<[i32; 2]>,
 }
@@ -79,6 +86,17 @@ impl AiModules {
             self.modules.resize(player + 1, None);
         }
         self.modules[player] = Some(module);
+    }
+
+    /// Player `player`'s module, out of the table until [`AiModules::put_back`] (a search that
+    /// reads the rest of the world holds it meanwhile).
+    pub fn take(&mut self, player: usize) -> Option<AiModule> {
+        self.modules.get_mut(player).and_then(Option::take)
+    }
+
+    /// Player `player`'s module taken out by [`AiModules::take`] goes back.
+    pub fn put_back(&mut self, player: usize, module: AiModule) {
+        self.set(player, module);
     }
 
     /// Player `player`'s module.

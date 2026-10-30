@@ -435,16 +435,24 @@ impl UnitAi {
     /// processing goes on. The other explorers' search is not modelled.
     pub(super) fn seek_unexplored(
         &mut self,
+        n: Notify,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {
         let action = self.current_action;
-        if action != Some(ActionKind::AutoScout) {
+        let auto = action == Some(ActionKind::AutoScout);
+        // a computer player's unit AI finds no tile (slot 0x90 gives 0 without a draw)
+        if !auto && !computer {
             closest_undiscovered_tile()?;
         }
-        if let Some([x, y]) = side.seek_unexplored(self, ai_rng)? {
+        let found = if computer && !auto {
+            None
+        } else {
+            side.seek_unexplored(self, ai_rng)?
+        };
+        if let Some([x, y]) = found {
             let _ = self.explore_at(x, y, true, side, ai_rng)?;
             self.last_action = self.current_action;
             self.current_action = action;
@@ -477,6 +485,7 @@ impl UnitAi {
             _ => {
                 self.remove_target();
                 self.stop_current(true, at, side, ai_rng)?;
+                side.owner_hears(n)?;
                 Ok(GO_ON)
             }
         }

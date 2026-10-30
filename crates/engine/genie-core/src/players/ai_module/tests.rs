@@ -1,5 +1,12 @@
+use crate::GenieError;
+use crate::math::rng::Well512;
+use crate::movement::explore::Area;
 use crate::movement::explore::InfluenceMap;
-use crate::players::ai_module::{AiModule, AiModules, InfoModule, SLOTS, TacticalModule};
+use crate::objects::ObjectId;
+use crate::players::ai_module::search::{DEAD_END, EXPLORED, PUNTED, UNEXPLORED};
+use crate::players::ai_module::{
+    AiModule, AiModules, InfoModule, SLOTS, SearchArea, SearchUnit, TacticalModule,
+};
 
 fn module() -> AiModule {
     AiModule {
@@ -7,6 +14,7 @@ fn module() -> AiModule {
             width: 4,
             height: 3,
             path_map: InfluenceMap::new([4, 3], 0xff),
+            quadrants: [[0; 3]; 16],
             explorer: None,
             search: Vec::new(),
         },
@@ -96,4 +104,278 @@ fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
     assert!(t.take_sight_unsupported().is_none());
     assert_eq!(t.ai.get(1).unwrap().info.path_map.get(3, 2), Some(0));
     assert_eq!(t.ai.get(1).unwrap().info.path_map.get(5, 5), Some(0xff));
+}
+
+/// A map of `size` by `size` tiles for the search: what it sees now, which tiles are in the
+/// unit's zone, where the unit could stand and which it reaches.
+struct Grid {
+    seen: Vec<[i32; 2]>,
+    other_zone: Vec<[i32; 2]>,
+    blocked: Vec<[i32; 2]>,
+    unreachable: Vec<[i32; 2]>,
+    visits: std::cell::RefCell<Vec<[i32; 2]>>,
+}
+
+impl Grid {
+    fn new(_size: i32) -> Self {
+        Self {
+            seen: Vec::new(),
+            other_zone: Vec::new(),
+            blocked: Vec::new(),
+            unreachable: Vec::new(),
+            visits: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl Area for Grid {
+    fn explored(&self, _: i32, _: i32) -> Result<bool, GenieError> {
+        Ok(false)
+    }
+    fn zone(&mut self, x: i32, y: i32) -> u16 {
+        // the byte past the zone's own one is not read
+        if self.other_zone.contains(&[x, y]) {
+            0x108
+        } else {
+            0x207
+        }
+    }
+    fn own_zone(&mut self) -> u16 {
+        0x307
+    }
+    fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
+        Ok(!self.blocked.contains(&[x, y]))
+    }
+    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
+        Ok(!self.unreachable.contains(&[x, y]))
+    }
+    fn distance(&self, _: i32, _: i32) -> f32 {
+        0.0
+    }
+}
+
+impl SearchArea for Grid {
+    fn visible_now(&self, x: i32, y: i32) -> bool {
+        self.visits.borrow_mut().push([x, y]);
+        self.seen.contains(&[x, y])
+    }
+}
+
+fn unit(civilian: bool) -> SearchUnit {
+    SearchUnit {
+        id: ObjectId::try_from(30).unwrap(),
+        position: [0.5, 0.5],
+        civilian,
+    }
+}
+
+fn info(size: i32, fill: u8) -> InfoModule {
+    InfoModule {
+        width: size,
+        height: size,
+        path_map: InfluenceMap::new([size, size], fill),
+        quadrants: [[0; 3]; 16],
+        explorer: None,
+        search: Vec::new(),
+    }
+}
+
+/// The search starts at the unit's tile and finds the first tile a civilian never searched:
+/// an explored tile (0) is passed through, the picked tile becomes explored.
+#[test]
+fn a_civilians_flood_picks_the_first_tile_no_search_touched() {
+    let mut m = info(6, EXPLORED);
+    m.path_map.set(3, 0, UNEXPLORED);
+    m.path_map.set(0, 3, UNEXPLORED);
+    let mut area = Grid::new(6);
+    let mut rng = Well512::default();
+    let picked = m
+        .closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([6, 6], &mut rng))
+        .unwrap();
+    assert_eq!(picked, Some([3, 0]));
+    assert_eq!(m.path_map.get(3, 0), Some(EXPLORED));
+}
+
+/// Another unit takes a tile that is not explored: a punted tile (1) counts for it, not for a
+/// civilian.
+#[test]
+fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
+    let mut m = info(6, EXPLORED);
+    m.path_map.set(2, 0, PUNTED);
+    let mut rng = Well512::default();
+    let picked = m
+        .closest_unexplored_tile(
+            &unit(false),
+            [0.5, 0.5],
+            &mut Grid::new(6),
+            ([6, 6], &mut rng),
+        )
+        .unwrap();
+    assert_eq!(picked, Some([2, 0]));
+    let mut civilian = info(6, EXPLORED);
+    civilian.path_map.set(2, 0, PUNTED);
+    let none = civilian
+        .closest_unexplored_tile(
+            &unit(true),
+            [0.5, 0.5],
+            &mut Grid::new(6),
+            ([6, 6], &mut rng),
+        )
+        .unwrap();
+    assert_eq!(none, None);
+}
+
+/// A tile the player sees now is passed through; one of another zone, or where the unit
+/// cannot stand, ends its branch (its neighbours are not met through it). The map is one row.
+#[test]
+fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
+    let row = |zone: Option<[i32; 2]>, blocked: Option<[i32; 2]>| {
+        let mut m = info(4, EXPLORED);
+        m.path_map.set(3, 0, UNEXPLORED);
+        let mut area = Grid::new(4);
+        area.seen = vec![[0, 0], [1, 0]];
+        area.other_zone.extend(zone);
+        area.blocked.extend(blocked);
+        let mut rng = Well512::default();
+        m.closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([4, 1], &mut rng))
+            .unwrap()
+    };
+    assert_eq!(row(None, None), Some([3, 0]));
+    assert_eq!(row(Some([3, 0]), None), None);
+    assert_eq!(row(None, Some([3, 0])), None);
+    // a wanted tile in another zone ends the branch; an unwanted one does not
+    let mut m = info(4, EXPLORED);
+    m.path_map.set(3, 0, UNEXPLORED);
+    let mut area = Grid::new(4);
+    area.other_zone = vec![[2, 0]];
+    let mut rng = Well512::default();
+    let picked = m
+        .closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([4, 1], &mut rng))
+        .unwrap();
+    assert_eq!(picked, Some([3, 0]));
+}
+
+/// The start tile is not marked met: a neighbour meets it again.
+#[test]
+fn the_start_tile_is_met_twice() {
+    let mut m = info(3, EXPLORED);
+    let area = &mut Grid::new(3);
+    let mut rng = Well512::default();
+    let _ = m
+        .closest_unexplored_tile(&unit(true), [1.5, 1.5], area, ([3, 3], &mut rng))
+        .unwrap();
+    // the flood found nothing, so the dead ends' pass met every tile once more
+    let visits = area.visits.borrow();
+    assert_eq!(visits.iter().filter(|&&t| t == [1, 1]).count() - 1, 2);
+    assert_eq!(visits.iter().filter(|&&t| t == [0, 0]).count() - 1, 1);
+}
+
+/// A tile the unit cannot reach is punted (1) and the search starts again from the unit's own
+/// place, with a fresh flood, which picks the next tile.
+#[test]
+fn an_unreachable_tile_is_punted_and_the_search_starts_from_the_unit() {
+    let mut m = info(6, EXPLORED);
+    m.path_map.set(2, 2, UNEXPLORED);
+    m.path_map.set(5, 5, UNEXPLORED);
+    let mut area = Grid::new(6);
+    area.unreachable = vec![[2, 2]];
+    let mut rng = Well512::default();
+    // from (3, 3) the flood meets (2, 2) first; (5, 5) after the restart from (0, 0)... both
+    // are searched by a civilian, the nearer first
+    let picked = m
+        .closest_unexplored_tile(&unit(true), [3.5, 3.5], &mut area, ([6, 6], &mut rng))
+        .unwrap();
+    assert_eq!(m.path_map.get(2, 2), Some(PUNTED));
+    assert_eq!(picked, Some([5, 5]));
+    assert_eq!(m.path_map.get(5, 5), Some(EXPLORED));
+}
+
+/// A search that already starts at the unit's place punts to a corner of the best quadrant: 16
+/// draws for the scores and one for the corner.
+#[test]
+fn a_punt_from_the_units_place_picks_a_corner_of_the_lowest_scored_quadrant() {
+    let mut m = info(8, EXPLORED);
+    m.path_map.set(4, 4, UNEXPLORED);
+    // quadrant 6 (column 1, row 2) scores far below the others
+    for (i, q) in m.quadrants.iter_mut().enumerate() {
+        q[0] = if i == 6 { 0 } else { 1000 };
+    }
+    let mut area = Grid::new(8);
+    area.unreachable = vec![[4, 4]];
+    let mut rng = Well512::default();
+    let mut shadow = rng.clone();
+    let picked = m
+        .closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([8, 8], &mut rng))
+        .unwrap()
+        .unwrap();
+    for _ in 0..16 {
+        let _ = shadow.rand15();
+    }
+    let corner = shadow.rand15() & 3;
+    // column 1 starts at x 2, row 2 at y 4; each quadrant is 2 wide and high
+    let expected = [[2, 4], [2, 5], [3, 5], [3, 4]][corner as usize];
+    assert_eq!(picked, expected);
+    assert_eq!(rng.rand15(), shadow.rand15());
+}
+
+/// A flood that meets nothing marks every searched tile of the unit's zone it does not see
+/// now as a dead end (2), and gives none.
+#[test]
+fn an_exhausted_flood_marks_the_dead_ends() {
+    let mut m = info(3, EXPLORED);
+    m.path_map.set(1, 1, PUNTED);
+    m.path_map.set(2, 2, UNEXPLORED);
+    let mut area = Grid::new(3);
+    area.seen = vec![[0, 1]];
+    area.other_zone = vec![[1, 0]];
+    area.blocked = vec![[2, 2]];
+    let mut rng = Well512::default();
+    let picked = m
+        .closest_unexplored_tile(&unit(true), [0.5, 0.5], &mut area, ([3, 3], &mut rng))
+        .unwrap();
+    assert_eq!(picked, None);
+    // (0, 1) is seen, (1, 0) lies in another zone, (2, 2) was never searched
+    assert_eq!(m.path_map.get(0, 1), Some(EXPLORED));
+    assert_eq!(m.path_map.get(1, 0), Some(EXPLORED));
+    assert_eq!(m.path_map.get(2, 2), Some(UNEXPLORED));
+    assert_eq!(m.path_map.get(0, 0), Some(DEAD_END));
+    assert_eq!(m.path_map.get(1, 1), Some(DEAD_END));
+}
+
+#[test]
+fn tile_uncovered_is_false_off_the_map_and_for_unexplored_and_dead_ends() {
+    let mut m = info(3, EXPLORED);
+    m.path_map.set(0, 0, UNEXPLORED);
+    m.path_map.set(1, 0, DEAD_END);
+    m.path_map.set(2, 0, PUNTED);
+    assert!(!m.tile_uncovered(0, 0).unwrap());
+    assert!(!m.tile_uncovered(1, 0).unwrap());
+    assert!(m.tile_uncovered(2, 0).unwrap());
+    assert!(m.tile_uncovered(0, 1).unwrap());
+    for (x, y) in [(-1, 0), (0, -1), (3, 0), (0, 3)] {
+        assert!(!m.tile_uncovered(x, y).unwrap());
+    }
+}
+
+/// A ring's points that lie on the map join the stack, from the angle 0 on; the top of an
+/// empty stack and its pop are (-1, -1).
+#[test]
+fn a_ring_pushes_the_points_on_the_map_and_the_stack_gives_minus_one_when_empty() {
+    let mut m = info(20, UNEXPLORED);
+    assert_eq!(m.top_point(), [-1, -1]);
+    assert_eq!(m.pop_point(), [-1, -1]);
+    m.push_ring(5.0, [10.7, 10.2]);
+    assert_eq!(m.search.len(), 8);
+    // the centre truncates to (10, 10); angle 0 is 5 east, π/2's sine is 1
+    assert_eq!(m.search[0], [15, 10]);
+    assert_eq!(m.search[2], [10, 15]);
+    assert_eq!(m.top_point(), m.search[7]);
+    let top = m.pop_point();
+    assert_eq!(m.search.len(), 7);
+    assert_ne!(top, [-1, -1]);
+    // a ring at a corner keeps only the points on the map
+    let mut corner = info(20, UNEXPLORED);
+    corner.push_ring(5.0, [1.0, 1.0]);
+    assert!(corner.search.len() < 8);
+    assert!(corner.search.iter().all(|p| 0 <= p[0] && 0 <= p[1]));
 }

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover, Planning};
+use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::owner_view;
@@ -265,6 +266,11 @@ pub(crate) const TOWN_CENTRES: [i16; 2] = [109, 444];
 /// index's order within a master is not held: two objects of the first master found are not
 /// modelled.
 pub(crate) fn town_centre(units: OthersRef<'_>) -> Result<Option<[i32; 2]>, GenieError> {
+    Ok(town_centre_unit(units)?.map(|u| [u.position()[0] as i32, u.position()[1] as i32]))
+}
+
+/// [`town_centre`] as the object.
+pub(crate) fn town_centre_unit(units: OthersRef<'_>) -> Result<Option<&Unit>, GenieError> {
     for master in TOWN_CENTRES {
         let mut found = units.own_iter().filter(|u| u.life.master_id == master);
         let Some(first) = found.next() else { continue };
@@ -273,12 +279,15 @@ pub(crate) fn town_centre(units: OthersRef<'_>) -> Result<Option<[i32; 2]>, Geni
                 "two town centres (the order of the player's index)",
             ));
         }
-        return Ok(Some([
-            first.position()[0] as i32,
-            first.position()[1] as i32,
-        ]));
+        return Ok(Some(first));
     }
     Ok(None)
+}
+
+impl crate::players::ai_module::SearchArea for ScoutArea<'_> {
+    fn visible_now(&self, x: i32, y: i32) -> bool {
+        self.spatial.scout_sight(self.player, x, y) == Some(0xf)
+    }
 }
 
 /// What the auto scout's search asks of the world for one unit ([`crate::movement::explore::Area`]).

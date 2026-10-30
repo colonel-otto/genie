@@ -16035,3 +16035,94 @@ fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
 fn research_listed(t: &mut World, r: &ResearchCommand) -> Result<(), GenieError> {
     t.research(r, &r.buildings)
 }
+
+/// [`forage_world`] with player 1 a computer player whose AI module (`player+0x7a8`) holds a
+/// path map of the map's size, explored (0) but for the tiles `open` (-1), and the tactical
+/// module's slots `slots`.
+fn explorer_world(open: &[[i32; 2]], slots: Vec<i32>) -> World {
+    use crate::players::ai_module::{AiModule, InfoModule, TacticalModule};
+    let mut t = forage_world();
+    t.players[1].computer = true;
+    let mut path_map = crate::movement::explore::InfluenceMap::new([120, 120], 0);
+    for &[x, y] in open {
+        path_map.set(x, y, 0xff);
+    }
+    t.ai.set(
+        1,
+        AiModule {
+            info: InfoModule {
+                width: 120,
+                height: 120,
+                path_map,
+                quadrants: [[0; 3]; 16],
+                explorer: None,
+                search: Vec::new(),
+            },
+            tactical: TacticalModule { slot_times: slots },
+        },
+    );
+    t
+}
+
+/// Player 1's villager 9175 asks its owner to hear that its Explore (605) waits for a point
+/// (the base handler's case 0x202 hands the notify on): what the AI decided, as the stop that
+/// its tasking or detasking ends in names it.
+fn explorer_hears(t: &mut World) -> String {
+    let heard = t.run_unit_ai((1, 0), |_, _, side, _, _| {
+        side.owner_hears(Notify::own(9175, 0x202, [605, 0, 0]))
+    });
+    format!("{:?}", heard.unwrap_err())
+}
+
+/// A computer player's AI hears its explorer wanting a point: with the wait slot -1 early in
+/// the game it pushes the rings about its town centre (700 at (20, 89.5), line of sight 5; the
+/// explorer's 4, so the rings lie 12, 19, 26, 33 and 40 tiles out), takes the top point, (28, 80),
+/// which the path map holds unexplored, and searches from it: the explorer reaches it, so the AI
+/// takes the explorer's place and tasks the unit to it, and the tile becomes explored (0).
+#[test]
+fn a_computer_players_ai_tasks_its_explorer_to_the_unexplored_tile() {
+    let mut t = explorer_world(&[[28, 80]], vec![]);
+    for masters in &mut t.masters {
+        masters.get_mut(120).unwrap().line_of_sight = 4.0;
+        masters.get_mut(109).unwrap().line_of_sight = 5.0;
+    }
+    // no sight: the player sees no tile now
+    t.spatial.sight = None;
+    let said = explorer_hears(&mut t);
+    assert!(said.contains("tasks explorer"), "{said}");
+    assert!(said.contains("(28, 80)"), "{said}");
+    let info = &t.ai.get(1).unwrap().info;
+    assert_eq!(info.explorer, ObjectId::of_field(9175));
+    assert_eq!(info.path_map.get(28, 80), Some(0));
+    // the rings' other points wait for the next notify
+    assert_eq!(info.search.len(), 30);
+}
+
+/// With every tile explored the search finds none and the AI detasks the explorer.
+#[test]
+fn a_computer_players_ai_detasks_an_explorer_with_nothing_left_to_explore() {
+    let mut t = explorer_world(&[], vec![]);
+    let said = explorer_hears(&mut t);
+    assert!(said.contains("detasks explorer"), "{said}");
+}
+
+/// A human player's owner hears nothing the simulation reads, and a notify of another
+/// kind is not the explore case.
+#[test]
+fn only_a_computer_players_explorer_notify_reaches_the_ai() {
+    let mut human = explorer_world(&[[31, 89]], vec![]);
+    human.players[1].computer = false;
+    let before = human.ai.clone();
+    human
+        .run_unit_ai((1, 0), |_, _, side, _, _| {
+            side.owner_hears(Notify::own(9175, 0x202, [605, 0, 0]))
+        })
+        .unwrap();
+    assert_eq!(human.ai, before);
+    let mut t = explorer_world(&[[31, 89]], vec![]);
+    t.run_unit_ai((1, 0), |_, _, side, _, _| {
+        side.owner_hears(Notify::own(9175, 0x201, [605, 0, 0]))?;
+        side.owner_hears(Notify::own(9175, 0x202, [999, 0, 0]))
+    })
+    .unwrap();
+}
