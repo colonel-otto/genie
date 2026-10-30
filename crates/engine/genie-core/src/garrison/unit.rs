@@ -402,7 +402,7 @@ impl Unit {
                 .copied()
                 .ok_or(GenieError::unsupported("an entering unit without a place"))?;
         if let Some(v) = c.w.spatial.sight.as_mut() {
-            v.sight_off(id, self.position(), placed.radius, false, false);
+            v.sight_off(id, self.position(), placed.radius, false, false)?;
         }
         let (bp, building) = c.w.object(target).ok_or(GenieError::unreachable(
             "an enter into a building the world does not hold",
@@ -495,7 +495,7 @@ impl Unit {
         }
         // a building's sight takes a circle of 5 (FUN_141212e10, type 80 only)
         if bm.kind == BUILDING {
-            let _ = v.sight_on_los(target, at, radius, false, 5, false);
+            let _ = v.sight_on_los(target, at, radius, false, 5, false)?;
         }
         Ok(())
     }

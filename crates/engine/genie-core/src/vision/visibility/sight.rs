@@ -1,9 +1,11 @@
 //! An object's sight on and off (slots 0x1d0 and 0x1d8), and after its move, its state's and
 //! its master's change.
 
+use crate::GenieError;
 use crate::objects::masters::ids::MARKET;
 use crate::vision::registry::MASK;
 use crate::vision::visibility::{CIRCLE_MASTER, EDGE, Seer, Visibility, tile_of};
+use crate::world::slots::CheckedIndex;
 
 /// An object's own sight, as the base class explores it ([`Visibility::base_sight_on`]'s
 /// arguments, `FUN_141192560`'s).
@@ -36,9 +38,9 @@ impl Visibility {
         radius: [f32; 2],
         square: bool,
         offset: bool,
-    ) -> i32 {
+    ) -> Result<i32, GenieError> {
         let Some(s) = self.seers.get(&id).copied() else {
-            return 0;
+            return Ok(0);
         };
         self.sight_on_los(id, position, radius, square, s.los as i32, offset)
     }
@@ -53,9 +55,9 @@ impl Visibility {
         square: bool,
         los: i32,
         offset: bool,
-    ) -> i32 {
+    ) -> Result<i32, GenieError> {
         let Some(s) = self.seers.get(&id).copied() else {
-            return 0;
+            return Ok(0);
         };
         let (square, offset) = match s.building {
             Some(b) if !b.built => {
@@ -63,7 +65,7 @@ impl Visibility {
                     if let Some(s) = self.seers.get_mut(&id) {
                         s.explored = false;
                     }
-                    return 0;
+                    return Ok(0);
                 }
                 (true, offset)
             }
@@ -91,7 +93,7 @@ impl Visibility {
     }
 
     /// `FUN_141192560`.
-    pub(super) fn base_sight_on(&mut self, on: SightOn) -> i32 {
+    pub(super) fn base_sight_on(&mut self, on: SightOn) -> Result<i32, GenieError> {
         let SightOn {
             id,
             seer: s,
@@ -103,13 +105,13 @@ impl Visibility {
         } = on;
         let square = square && s.master != CIRCLE_MASTER;
         if los <= 0 {
-            return 0;
+            return Ok(0);
         }
         let [x, y, _] = position;
         let newly = if square {
             let [rx, ry] = radius;
             if rx <= 0.0 || ry <= 0.0 {
-                return 0;
+                return Ok(0);
             }
             self.explore_rect(
                 s.player,
@@ -117,14 +119,14 @@ impl Visibility {
                 (y - ry) as i32,
                 ((x + rx) - EDGE) as i32,
                 ((y + ry) - EDGE) as i32,
-            )
+            )?
         } else {
-            self.explore(s.player, x as i32, y as i32, los, offset)
+            self.explore(s.player, x as i32, y as i32, los, offset)?
         };
         if let Some(s) = self.seers.get_mut(&id) {
             s.explored = true;
         }
-        newly
+        Ok(newly)
     }
 
     /// Slot 0x1d8: the object's sight goes (`FUN_1411a6f90`; a building's `FUN_1411e6f60`, which
@@ -136,11 +138,12 @@ impl Visibility {
         radius: [f32; 2],
         square: bool,
         offset: bool,
-    ) {
+    ) -> Result<(), GenieError> {
         let Some(s) = self.seers.get(&id).copied() else {
-            return;
+            return Ok(());
         };
-        self.sight_off_los(id, position, radius, square, s.los as i32, offset);
+        self.sight_off_los(id, position, radius, square, s.los as i32, offset)?;
+        Ok(())
     }
 
     /// Slot 0x1d8 with a line of sight of its own (its fourth argument not −1): a building lets 5
@@ -153,15 +156,15 @@ impl Visibility {
         square: bool,
         los: i32,
         offset: bool,
-    ) {
+    ) -> Result<(), GenieError> {
         let Some(s) = self.seers.get(&id).copied() else {
-            return;
+            return Ok(());
         };
         let offset = match s.building {
-            Some(_) if !s.explored => return,
+            Some(_) if !s.explored => return Ok(()),
             Some(b) if !b.built => {
                 if !b.started {
-                    return;
+                    return Ok(());
                 }
                 offset
             }
@@ -170,13 +173,13 @@ impl Visibility {
         };
         let square = square && s.master != CIRCLE_MASTER;
         if los <= 0 {
-            return;
+            return Ok(());
         }
         let [x, y, _] = position;
         if square {
             let [rx, ry] = radius;
             if rx <= 0.0 || ry <= 0.0 {
-                return;
+                return Ok(());
             }
             self.unexplore_rect(
                 s.player,
@@ -184,47 +187,62 @@ impl Visibility {
                 (y - ry) as i32,
                 ((x + rx) - EDGE) as i32,
                 ((y + ry) - EDGE) as i32,
-            );
+            )?;
         } else {
-            self.unexplore(s.player, x as i32, y as i32, los, offset);
+            self.unexplore(s.player, x as i32, y as i32, los, offset)?;
         }
+        Ok(())
     }
 
     /// `new_position`'s sight (`0x1411a58b0`): when the object's tile changes, its sight leaves
     /// the old tile (whatever its state) and, in state 2, comes to the new one.
-    pub fn moved(&mut self, id: i32, from: [f32; 3], to: [f32; 3], radius: [f32; 2]) {
+    pub fn moved(
+        &mut self,
+        id: i32,
+        from: [f32; 3],
+        to: [f32; 3],
+        radius: [f32; 2],
+    ) -> Result<(), GenieError> {
         let tile = |p: [f32; 3]| [tile_of(p[0], self.width), tile_of(p[1], self.height)];
         if tile(from) == tile(to) {
-            return;
+            return Ok(());
         }
-        self.sight_off(id, from, radius, false, false);
+        self.sight_off(id, from, radius, false, false)?;
         if self.seers.get(&id).is_some_and(|s| s.state == 2) {
-            let _ = self.sight_on(id, to, radius, false, false);
+            let _ = self.sight_on(id, to, radius, false, false)?;
         }
+        Ok(())
     }
 
     /// `set_state`'s sight (`FUN_14119d710`): leaving state 2 for a higher one (or 0), the
     /// object's sight shrinks to its footprint, which goes with state 7.
-    pub fn state_changed(&mut self, id: i32, position: [f32; 3], radius: [f32; 2], new: u8) {
+    pub fn state_changed(
+        &mut self,
+        id: i32,
+        position: [f32; 3],
+        radius: [f32; 2],
+        new: u8,
+    ) -> Result<(), GenieError> {
         let Some(old) = self.seers.get(&id).map(|s| s.state) else {
-            return;
+            return Ok(());
         };
         if old == new || (new < old && new != 0) {
-            return;
+            return Ok(());
         }
         let master_sees = self.seers.get(&id).is_some_and(|s| 0.0 < s.los);
         if old == 2 && (2 < new || new == 0) {
-            self.sight_off(id, position, radius, false, false);
+            self.sight_off(id, position, radius, false, false)?;
             if master_sees {
-                let _ = self.sight_on(id, position, radius, true, false);
+                let _ = self.sight_on(id, position, radius, true, false)?;
             }
         }
         if old < 7 && new == 7 && master_sees {
-            self.sight_off(id, position, radius, true, false);
+            self.sight_off(id, position, radius, true, false)?;
         }
         if let Some(s) = self.seers.get_mut(&id) {
             s.state = new;
         }
+        Ok(())
     }
 
     /// A master change in a state below 3 (`FUN_1411a6a70`): the old master's sight goes and the
@@ -237,13 +255,14 @@ impl Visibility {
         new_radius: [f32; 2],
         master: i16,
         los: f32,
-    ) {
-        self.sight_off(id, position, old_radius, false, false);
+    ) -> Result<(), GenieError> {
+        self.sight_off(id, position, old_radius, false, false)?;
         if let Some(s) = self.seers.get_mut(&id) {
             s.master = master;
             s.los = los;
         }
-        let _ = self.sight_on(id, position, new_radius, false, false);
+        let _ = self.sight_on(id, position, new_radius, false, false)?;
+        Ok(())
     }
 
     /// The master and line of sight of seer `id` without its sight (a master change inside
@@ -256,7 +275,7 @@ impl Visibility {
     }
 
     /// The unified map's word at tile (`x`, `y`) of a position, masked ([`MASK`]).
-    pub(super) fn word_at(&self, x: f32, y: f32) -> u64 {
-        self.unified[self.index(x as i32, y as i32)] & MASK
+    pub(super) fn word_at(&self, x: f32, y: f32) -> Result<u64, GenieError> {
+        Ok(*self.unified.checked(self.index(x as i32, y as i32))? & MASK)
     }
 }

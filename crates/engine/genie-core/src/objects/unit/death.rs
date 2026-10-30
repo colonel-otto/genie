@@ -32,9 +32,9 @@ impl Unit {
         c.w.players
             .player_mut(c.player)?
             .add_attributes(death.adds)?;
-        c.w.unwatch(c.player, self.id);
+        c.w.unwatch(c.player, self.id)?;
         if let (Some(v), Some(at)) = (c.w.spatial.sight.as_mut(), death.unlink) {
-            v.unlink_building(at, master.radius);
+            v.unlink_building(at, master.radius)?;
         }
         if let Some(kind) = death.building.count {
             c.w.players

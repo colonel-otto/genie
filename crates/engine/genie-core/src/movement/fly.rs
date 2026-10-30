@@ -346,13 +346,19 @@ impl Unit {
             c.w.streams.get(Stream::Action),
         )));
         if fly_mode == 1 {
-            let [x, y, _] = self.position();
-            let at = [x, y, HEIGHT];
-            self.new_position(at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
-            // the position setter marks the move (`+0x824`, `+0x870`)
-            if let Some(m) = self.body.mover_mut() {
-                m.mark_move(at, c.w.world_time);
-            }
+            self.lift_to_fly_height(c)?;
+        }
+        Ok(())
+    }
+
+    /// The bird goes to the fly height on its tile (slot 0x58, the position setter), which marks
+    /// the move (`+0x824`, `+0x870`).
+    fn lift_to_fly_height(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
+        let [x, y, _] = self.position();
+        let at = [x, y, HEIGHT];
+        self.new_position(at, (&mut c.w.spatial, Some(&mut c.w.pathing)))?;
+        if let Some(m) = self.body.mover_mut() {
+            m.mark_move(at, c.w.world_time);
         }
         Ok(())
     }

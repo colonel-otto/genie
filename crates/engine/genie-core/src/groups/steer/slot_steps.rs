@@ -280,7 +280,7 @@ impl World {
         let at = mover.grounded(at, self.spatial.terrain.as_ref());
         mover.mark_move(at, self.world_time);
         let (speed, radius) = (mover.stats.speed, mover.stats.radius);
-        mover.new_position(id, at, (&mut self.spatial, Some(&mut self.pathing)));
+        mover.new_position(id, at, (&mut self.spatial, Some(&mut self.pathing)))?;
         if 0 <= id
             // The types of action objects (`RGE_Action_Object`) and of buildings (`TRIBE_Building_Object`).
             && kind < BUILDING
@@ -288,7 +288,7 @@ impl World {
             && (LINKED_RADIUS < radius[0] || LINKED_RADIUS < radius[1])
             && let Some(v) = self.spatial.sight.as_mut()
         {
-            let _ = v.link_building(at, [radius[0], radius[1]]);
+            let _ = v.link_building(at, [radius[0], radius[1]])?;
         }
         Ok(())
     }

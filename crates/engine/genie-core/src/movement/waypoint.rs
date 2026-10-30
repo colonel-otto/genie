@@ -32,7 +32,7 @@ impl Mover {
     ) -> Result<Next, GenieError> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         if self.paths[0].flags & 2 != 0 {
-            self.take_waypoint_place(me, world, pathing, now);
+            self.take_waypoint_place(me, world, pathing, now)?;
         }
         let level = &mut self.paths[0];
         level.flags &= !1;
@@ -107,15 +107,16 @@ impl Mover {
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
         now: u32,
-    ) {
+    ) -> Result<(), GenieError> {
         let level = &self.paths[0];
         if level.waypoint < level.points.len() as i32 {
             let p = level.point(level.waypoint);
             let at = self.set_position(map_position(p), world.map);
             let at = self.grounded(at, world.terrain.as_ref());
-            self.moved_to(me, at, world, pathing, now);
+            self.moved_to(me, at, world, pathing, now)?;
         }
         self.paths[0].flags &= !2;
+        Ok(())
     }
 
     /// [`Mover::reached`]'s next waypoint on a level but 0: when the unit lies within
@@ -412,9 +413,10 @@ impl Mover {
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
         now: u32,
-    ) {
+    ) -> Result<(), GenieError> {
         self.mark_move(at, now);
-        self.new_position(me.id, at, (world, pathing));
+        self.new_position(me.id, at, (world, pathing))?;
+        Ok(())
     }
 
     /// `FUN_140f96050` on the walked level: up its parents (`+0x8`) to the top level, the last of

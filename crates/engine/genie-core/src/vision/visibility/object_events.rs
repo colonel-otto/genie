@@ -69,7 +69,7 @@ impl Visibility {
             Some((place, umv)) => (place, umv, false),
             None => (at, s.umv, true),
         };
-        let mut mask = self.word_at(x, y);
+        let mut mask = self.word_at(x, y)?;
         if umv != 0 {
             let offsets = self
                 .extents
@@ -83,7 +83,7 @@ impl Visibility {
                 let on_map =
                     0.0 <= fx && 0.0 <= fy && fx < self.width as f32 && fy < self.height as f32;
                 if on_map || !edge {
-                    mask |= self.word_at(fx, fy);
+                    mask |= self.word_at(fx, fy)?;
                 }
             }
         }
@@ -198,44 +198,57 @@ impl Visibility {
         radius: [f32; 2],
         (new, los): (usize, f32),
         sees: bool,
-    ) {
+    ) -> Result<(), GenieError> {
         if !self.seers.contains_key(&id) {
-            return;
+            return Ok(());
         }
         if sees {
-            self.sight_off(id, position, radius, false, false);
+            self.sight_off(id, position, radius, false, false)?;
         }
         if let Some(s) = self.seers.get_mut(&id) {
             s.player = new;
             s.los = los;
         }
         if sees {
-            let _ = self.sight_on(id, position, radius, false, false);
+            let _ = self.sight_on(id, position, radius, false, false)?;
         }
+        Ok(())
     }
 
     /// A building's construction completes (`FUN_1411dbb70` with 2): once built, the sight of its
     /// footprint goes (slot 0x1d8, square) and that of its line of sight comes (slot 0x1d0), each
     /// on a tile corner when its radii add up to an even number.
-    pub fn construction_completed(&mut self, id: i32, position: [f32; 3], radius: [f32; 2]) {
+    pub fn construction_completed(
+        &mut self,
+        id: i32,
+        position: [f32; 3],
+        radius: [f32; 2],
+    ) -> Result<(), GenieError> {
         let Some(b) = self.seers.get_mut(&id).and_then(|s| s.building.as_mut()) else {
-            return;
+            return Ok(());
         };
         if b.built {
-            return;
+            return Ok(());
         }
         b.built = true;
-        self.sight_off(id, position, radius, true, false);
-        let _ = self.sight_on(id, position, radius, false, false);
+        self.sight_off(id, position, radius, true, false)?;
+        let _ = self.sight_on(id, position, radius, false, false)?;
+        Ok(())
     }
 
     /// A foundation's construction starts (`FUN_1411e5670`): its build points become a sliver,
     /// its footprint comes into sight and its tiles link again.
-    pub fn construction_started(&mut self, id: i32, position: [f32; 3], radius: [f32; 2]) {
+    pub fn construction_started(
+        &mut self,
+        id: i32,
+        position: [f32; 3],
+        radius: [f32; 2],
+    ) -> Result<(), GenieError> {
         if let Some(b) = self.seers.get_mut(&id).and_then(|s| s.building.as_mut()) {
             b.started = true;
         }
-        let _ = self.sight_on(id, position, radius, true, false);
-        let _ = self.link_building(position, radius);
+        let _ = self.sight_on(id, position, radius, true, false)?;
+        let _ = self.link_building(position, radius)?;
+        Ok(())
     }
 }

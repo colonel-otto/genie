@@ -276,7 +276,7 @@ impl World {
         }
         self.base_destroy(owner, id)?;
         if master.kind == BUILDING {
-            self.unwatch(owner, id);
+            self.unwatch(owner, id)?;
         }
         Ok(())
     }
@@ -465,9 +465,9 @@ impl World {
                 Some(master),
                 id,
                 position,
-            );
+            )?;
         }
-        self.spatial.sight_state(id, new);
+        self.spatial.sight_state(id, new)?;
         if old < 7 && new == 7 {
             for &(kind, amount, flag) in &master.storage {
                 if 0 <= kind && flag == 32 {
@@ -501,9 +501,9 @@ impl World {
         for &(kind, amount) in &death.adds {
             self.players[owner].add_attribute(kind, amount)?;
         }
-        self.unwatch(owner, id);
+        self.unwatch(owner, id)?;
         if let (Some(v), Some(at)) = (self.spatial.sight.as_mut(), death.unlink) {
-            v.unlink_building(at, master.radius);
+            v.unlink_building(at, master.radius)?;
         }
         self.combat_set_state(owner, id, 3, master)?;
         if let Some(kind) = death.building.count {

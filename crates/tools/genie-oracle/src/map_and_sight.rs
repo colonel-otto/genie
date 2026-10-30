@@ -136,7 +136,7 @@ impl SavedStep {
 pub(super) fn spatial(
     header: &Header,
     terrain: &TerrainTable,
-) -> genie_core::map::spatial::Spatial {
+) -> Result<genie_core::map::spatial::Spatial, genie_core::GenieError> {
     use genie_core::map::spatial::{Obstruction, Placed, Spatial, Tiles};
     let map = &header.world.base_world.map;
     let classes = map
@@ -175,9 +175,9 @@ pub(super) fn spatial(
                 |b| b.mupt_linked_object_references_linked_owner_id == -1 && b.desolid_flag == 0,
             );
             let umv = match (links, building.is_some()) {
-                (true, true) => sight.link_building(place, footprint),
+                (true, true) => sight.link_building(place, footprint)?,
                 (true, false) => {
-                    let _ = sight.link_building(place, footprint);
+                    let _ = sight.link_building(place, footprint)?;
                     0
                 }
                 (false, true) => sight.building_entry(place, footprint),
@@ -251,7 +251,7 @@ pub(super) fn spatial(
         }
     }
     out.sight = Some(sight);
-    out
+    Ok(out)
 }
 
 /// What the players see in a save: each player's visible map, the map's unified map and UMV list

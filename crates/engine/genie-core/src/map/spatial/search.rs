@@ -96,7 +96,7 @@ impl Spatial {
     /// through the object's place setter ([`crate::objects::layers::Static::new_position`]),
     /// which moves the object with it (FD-045-D15); a tool that asks a query from another place
     /// moves the index alone.
-    pub fn set_position(&mut self, id: i32, position: [f32; 3]) {
+    pub fn set_position(&mut self, id: i32, position: [f32; 3]) -> Result<(), GenieError> {
         if let Some(p) = self.objects.get_mut(&id) {
             let from = p.position;
             p.position = position;
@@ -112,13 +112,14 @@ impl Spatial {
             }
             self.refile(id);
             let Some(p) = self.objects.get(&id) else {
-                return;
+                return Ok(());
             };
             if let Some(v) = self.sight.as_mut() {
-                v.moved(id, from, position, p.radius);
+                v.moved(id, from, position, p.radius)?;
                 v.registry_moved(id, p.class, from, position);
             }
         }
+        Ok(())
     }
 
     /// Fails when a frozen object of `player` that may have moved sees, or saw, near `rect`: the

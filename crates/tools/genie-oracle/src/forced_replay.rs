@@ -48,7 +48,10 @@ pub fn old_pather_paths(
         };
         let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius[0]);
         let z = turns.spatial.get(id).map_or(0.0, |p| p.position[2]);
-        turns.spatial.set_position(id, [from[0], from[1], z]);
+        if let Err(e) = turns.spatial.set_position(id, [from[0], from[1], z]) {
+            out.push(Err(e));
+            continue;
+        }
         let Some(to) = turns
             .spatial
             .get(target)

@@ -187,7 +187,10 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
     }
     let none = TerrainTable::default();
     let terrain = masters.map_or(&none, |t| &t.terrain);
-    turns.spatial = spatial(header, terrain);
+    match spatial(header, terrain) {
+        Ok(s) => turns.spatial = s,
+        Err(e) => stop_all(&mut turns, &e),
+    }
     // the players' scout maps (`mIsScoutMapEnabled` and its InfluenceMap, player+0x1370)
     for (i, p) in header.players().iter().enumerate() {
         let wp = p.world_player();
@@ -269,12 +272,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
     turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
     match groups::unit_groups(world) {
         Ok(g) => turns.groups = g,
-        Err(e) => {
-            for p in &mut turns.players {
-                let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
-                p.stopped = true;
-            }
-        }
+        Err(e) => stop_all(&mut turns, &e),
     }
     if let Some(table) = masters {
         turns.drop_sites.clone_from(&table.drop_sites);
@@ -319,12 +317,17 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
     // the players' object trackers, which the objects' loads fill
     // the players' vision masks, which the world's load rebuilds (its slot 0x78)
     if let Err(e) = turns.load_trackers().and_then(|()| turns.rebuild_vision()) {
-        for p in &mut turns.players {
-            let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
-            p.stopped = true;
-        }
+        stop_all(&mut turns, &e);
     }
     turns
+}
+
+/// Every player stops on `e`, which the slice does not model of the save.
+fn stop_all(turns: &mut World, e: &genie_core::GenieError) {
+    for p in &mut turns.players {
+        let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
+        p.stopped = true;
+    }
 }
 
 /// The game's wonder countdown of a player (the game object's `+0x4ec[id]`) after a load: the

@@ -25,6 +25,7 @@
 use crate::GenieError;
 use crate::objects::masters::class;
 use crate::vision::registry::{MASK, Registry};
+use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
 
 mod building_links;
@@ -204,7 +205,7 @@ impl VisibleResources {
             }
         }
         if let Some(i) = best {
-            list[i].distance = crate::math::fmath::sqrt(nearest);
+            list.get_mut(i)?.distance = crate::math::fmath::sqrt(nearest);
         }
         best
     }
@@ -353,12 +354,17 @@ impl Visibility {
     /// found in the explored bits of the unified map at its tile (bits 32 to 56), each player
     /// there (`FUN_14152b700`: one the world has) loses the object from its list
     /// ([`VisibleResources::remove`]).
-    pub fn forget_resource(&mut self, id: i32, position: [f32; 3], group: u8) {
+    pub fn forget_resource(
+        &mut self,
+        id: i32,
+        position: [f32; 3],
+        group: u8,
+    ) -> Result<(), GenieError> {
         let (x, y) = (position[0] as i32, position[1] as i32);
         if x < 0 || y < 0 || self.width <= x || self.height <= y {
-            return;
+            return Ok(());
         }
-        let mut explored = (self.unified[self.index(x, y)] & MASK) >> 32;
+        let mut explored = (*self.unified.checked(self.index(x, y))? & MASK) >> 32;
         let mut p = 0;
         while explored != 0 {
             if explored & 1 != 0 {
@@ -370,6 +376,7 @@ impl Visibility {
             p += 1;
             explored >>= 1;
         }
+        Ok(())
     }
 
     /// The object `id` comes into the players' sight with `seer`.
@@ -394,9 +401,8 @@ impl Visibility {
     }
 
     /// The link bits and byte of tile (`x`, `y`).
-    #[must_use]
-    pub fn link(&self, x: i32, y: i32) -> (u8, u8) {
-        self.links[self.index(x, y)]
+    pub fn link(&self, x: i32, y: i32) -> Result<(u8, u8), GenieError> {
+        Ok(*self.links.checked(self.index(x, y))?)
     }
 }
 

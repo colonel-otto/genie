@@ -129,6 +129,34 @@ impl World {
         Ok(())
     }
 
+    /// The plain object's sight: its seer joins its owner's map and its sight comes on.
+    fn seer_comes(
+        &mut self,
+        id: i32,
+        (p, master): (usize, i16),
+        made: &crate::objects::masters::Master,
+        at: [f32; 3],
+    ) -> Result<(), GenieError> {
+        if let Some(v) = self.spatial.sight.as_mut() {
+            v.add_seer(
+                id,
+                Seer {
+                    player: p,
+                    master,
+                    los: made.line_of_sight,
+                    state: 2,
+                    explored: false,
+                    building: None,
+                    umv: 0,
+                    capture: capture_kind(p, made.class, master),
+                    kind: made.kind,
+                },
+            );
+            let _ = v.sight_on(id, at, made.radius, false, false)?;
+        }
+        Ok(())
+    }
+
     /// The master's slot 0x40 for a static object (type 10) or an animated or moving one (types
     /// 20 to 39) of `made` (id `master`) for player `p` at `at`, with the setups' draws (static
     /// `FUN_1411a45a0`: its standing sprite, [`ActiveSprite::start`] on the Sprite stream, then
@@ -241,23 +269,7 @@ impl World {
         self.spatial.insert(id, placed);
         self.pathing.moved(id, &placed, false);
         self.pathing.tiles_changed(self.spatial.take_changes());
-        if let Some(v) = self.spatial.sight.as_mut() {
-            v.add_seer(
-                id,
-                Seer {
-                    player: p,
-                    master,
-                    los: made.line_of_sight,
-                    state: 2,
-                    explored: false,
-                    building: None,
-                    umv: 0,
-                    capture: capture_kind(p, made.class, master),
-                    kind: made.kind,
-                },
-            );
-            let _ = v.sight_on(id, at, made.radius, false, false);
-        }
+        self.seer_comes(id, (p, master), made, at)?;
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
         }

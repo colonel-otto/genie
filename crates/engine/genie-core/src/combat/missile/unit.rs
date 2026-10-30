@@ -136,7 +136,7 @@ impl Unit {
                 .ground(at[0], at[1])?;
         at[2] = crate::combat::missile::grounded(at[2], ground, flying, stats.fly_mode);
         mover.mark_move(at, c.w.world_time);
-        mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
+        mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)))?;
         if matches!(stats.projectile_type, 0..=2) {
             let fired = Fired {
                 charge: missile.charge,
@@ -532,10 +532,10 @@ impl Unit {
             self.life.hp = 0.0;
             self.life.goto_sleep = false;
             self.life.state = 7;
-            c.w.spatial.sight_state(self.id, 7);
+            c.w.spatial.sight_state(self.id, 7)?;
             if before < 4 {
                 let master = self.master(&c.w.masters, c.player).ok();
-                forget_resource(&mut c.w.spatial, master, self.id, self.position());
+                forget_resource(&mut c.w.spatial, master, self.id, self.position())?;
             }
         }
         Ok(())

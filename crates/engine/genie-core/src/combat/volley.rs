@@ -436,7 +436,7 @@ impl Unit {
                     kind: made.kind,
                 },
             );
-            let _ = v.sight_on(id, position, made.radius, false, false);
+            let _ = v.sight_on(id, position, made.radius, false, false)?;
         }
         let held = missile_storage(&mut c.w.players[c.player], &made.storage)?;
         // its action: the target and the shooter taken (slot 0x178), then the start

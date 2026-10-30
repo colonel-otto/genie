@@ -125,14 +125,9 @@ impl World {
             lose_built_storage(&mut self.players[old], &master, held, amount)?;
         }
         if state == 0 {
-            self.foundation_sight_off(id, placed);
+            self.foundation_sight_off(id, placed)?;
         }
-        self.clear_actions(old, idx)?;
-        self.end_production_action(old, idx)?;
-        self.cancel_queue(old, idx)?;
-        if watched {
-            self.unwatch(old, id);
-        }
+        self.clear_for_hand_over(old, (idx, id), watched)?;
         let owner = self.hand_building_over(old, idx, new, id)?;
         if built {
             self.track_complete(new, id, master.id)?;
@@ -146,7 +141,7 @@ impl World {
             )?;
         }
         if state == 0 {
-            self.foundation_sight_on(id, placed);
+            self.foundation_sight_on(id, placed)?;
         }
         if state == 2 {
             self.built_with_new_owner(owner, id, &master, rice)?;
@@ -162,16 +157,34 @@ impl World {
         Ok(())
     }
 
+    /// [`World::building_changes_hands`]'s end of the building `id`'s work at `idx` of its old
+    /// owner `old`: its actions, its production action and its queue, and its watched entry.
+    fn clear_for_hand_over(
+        &mut self,
+        old: usize,
+        (idx, id): (usize, i32),
+        watched: bool,
+    ) -> Result<(), GenieError> {
+        self.clear_actions(old, idx)?;
+        self.end_production_action(old, idx)?;
+        self.cancel_queue(old, idx)?;
+        if watched {
+            self.unwatch(old, id)?;
+        }
+        Ok(())
+    }
+
     /// [`World::building_changes_hands`]'s foundation (state 0) `placed` leaving its old owner's
     /// map (slot 0x1d8).
     pub(crate) fn foundation_sight_off(
         &mut self,
         id: i32,
         placed: Option<crate::map::spatial::Placed>,
-    ) {
+    ) -> Result<(), GenieError> {
         if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
-            v.sight_off(id, p.position, p.radius, true, false);
+            v.sight_off(id, p.position, p.radius, true, false)?;
         }
+        Ok(())
     }
 
     /// [`World::building_changes_hands`]'s foundation (state 0) `placed` coming on its new
@@ -180,10 +193,11 @@ impl World {
         &mut self,
         id: i32,
         placed: Option<crate::map::spatial::Placed>,
-    ) {
+    ) -> Result<(), GenieError> {
         if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
-            let _ = v.sight_on(id, p.position, p.radius, true, false);
+            let _ = v.sight_on(id, p.position, p.radius, true, false)?;
         }
+        Ok(())
     }
 
     /// [`World::building_changes_hands`] below state 3: the building's record and mesh shape of
@@ -223,7 +237,7 @@ impl World {
             }
             let annex_watched = self.players[old].watched.iter().any(|w| w.id == annex);
             if annex_watched {
-                self.unwatch(old, annex);
+                self.unwatch(old, annex)?;
             }
             self.building_changes_hands(q, annex, new, false)?;
         }

@@ -166,7 +166,7 @@ impl World {
         if bm.kind == BUILDING
             && let Some(v) = self.spatial.sight.as_mut()
         {
-            v.sight_off_los(bid, b_at, b_radius, false, 5, false);
+            v.sight_off_los(bid, b_at, b_radius, false, 5, false)?;
         }
         // slot 0x58: on the map at the spot (new_position: its tile's list, its sight)
         let mut placed = self.spatial.come_out(id).ok_or_else(|| {
@@ -198,7 +198,7 @@ impl World {
         if let Some(v) = self.spatial.sight.as_mut()
             && state == 2
         {
-            let _ = v.sight_on(id, at, made.radius, false, false);
+            let _ = v.sight_on(id, at, made.radius, false, false)?;
         }
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
@@ -311,7 +311,7 @@ impl World {
                 .put_down(id, at, placed, (&mut self.spatial, &mut self.pathing));
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {
-            v.moved(id, from, at, placed.radius);
+            v.moved(id, from, at, placed.radius)?;
             v.registry_moved(id, placed.class, from, at);
         }
         let unit = &mut self.players[up].objects[ui];

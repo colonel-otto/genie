@@ -1,6 +1,8 @@
 //! A building's tile links (the map tile's `+0x19` bits) and its UMV extent entry.
 
+use crate::GenieError;
 use crate::vision::visibility::{ANCHOR, EDGE, Extent, LINKED, STEP, Visibility};
+use crate::world::slots::CheckedIndex;
 
 impl Visibility {
     // The map's building links (`RGE_Map`).
@@ -10,14 +12,17 @@ impl Visibility {
     #[must_use]
     pub fn anchor_of(&self, mut x: i32, mut y: i32) -> Option<[i32; 2]> {
         while 0 <= x && x < self.width && 0 <= y && y < self.height {
-            let (bits, byte) = self.links[self.index(x, y)];
+            let (bits, byte) = *self.links.get(self.index(x, y))?;
             if bits & LINKED == 0 {
                 return Some([x, y]);
             }
             if bits & (LINKED | ANCHOR) != LINKED {
                 return None;
             }
-            let (sx, sy) = (STEP[usize::from(byte & 0xf)], STEP[usize::from(byte >> 4)]);
+            let (sx, sy) = (
+                *STEP.get(usize::from(byte & 0xf))?,
+                *STEP.get(usize::from(byte >> 4))?,
+            );
             x -= sx;
             y -= sy;
             if sx == 0 && sy == 0 {
@@ -35,20 +40,24 @@ impl Visibility {
             if x < 0 || self.width <= x || y < 0 || self.height <= y {
                 return None;
             }
-            let (bits, byte) = self.links[self.index(x, y)];
+            let (bits, byte) = *self.links.get(self.index(x, y))?;
             match bits & (LINKED | ANCHOR) {
                 ANCHOR => {
                     if byte == 0 {
                         return None;
                     }
-                    let g = self.extents.get(usize::from(byte) - 1)?.guid.to_le_bytes();
-                    let b = |k: usize| i32::from(g[k] as i8);
-                    return Some([x - b(0), y - b(1), x + b(2), y + b(3)]);
+                    let [g0, g1, g2, g3, ..] =
+                        self.extents.get(usize::from(byte) - 1)?.guid.to_le_bytes();
+                    let b = |v: u8| i32::from(v as i8);
+                    return Some([x - b(g0), y - b(g1), x + b(g2), y + b(g3)]);
                 }
                 LINKED => {}
                 _ => return None,
             }
-            let (sx, sy) = (STEP[usize::from(byte & 0xf)], STEP[usize::from(byte >> 4)]);
+            let (sx, sy) = (
+                *STEP.get(usize::from(byte & 0xf))?,
+                *STEP.get(usize::from(byte >> 4))?,
+            );
             x -= sx;
             y -= sy;
             if sx == 0 && sy == 0 {
@@ -151,15 +160,23 @@ impl Visibility {
     /// `FUN_140f73900`: a building's tiles, `x0`..=`x1` by `y0`..=`y1` (held on the map), link
     /// to its anchor (`ax`, `ay`), which takes the building's UMV entry. A building of one tile
     /// links nothing; nor does an anchor outside the rectangle. Returns the anchor's entry.
-    pub fn link_tiles(&mut self, ax: i32, ay: i32, x0: i32, y0: i32, x1: i32, y1: i32) -> i32 {
+    pub fn link_tiles(
+        &mut self,
+        ax: i32,
+        ay: i32,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+    ) -> Result<i32, GenieError> {
         if x0 == x1 && y0 == y1 {
-            return 0;
+            return Ok(0);
         }
         let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
         let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
         let inside = lo_x <= ax && ax <= hi_x && lo_y <= ay && ay <= hi_y;
         let Some((x0, y0, x1, y1)) = self.held(lo_x, lo_y, hi_x, hi_y).filter(|_| inside) else {
-            return 0;
+            return Ok(0);
         };
         let nibble = |v: i32| (v.clamp(-8, 7) & 0xf) as u8;
         let mut entry = 0;
@@ -170,32 +187,38 @@ impl Visibility {
                 let i = self.index(x, y);
                 if dx == 0 && dy == 0 {
                     entry = self.extent_entry(ax, ay, x0, y0, x1, y1);
-                    self.links[i] = ((self.links[i].0 & !LINKED) | ANCHOR, entry as u8);
+                    *self.links.checked_mut(i)? = (
+                        (self.links.checked_mut(i)?.0 & !LINKED) | ANCHOR,
+                        entry as u8,
+                    );
                 } else {
                     let byte = nibble(dx) | nibble(dy) << 4;
-                    self.links[i] = ((self.links[i].0 & !ANCHOR) | LINKED, byte);
+                    *self.links.checked_mut(i)? =
+                        ((self.links.checked_mut(i)?.0 & !ANCHOR) | LINKED, byte);
                 }
             }
         }
-        entry
+        Ok(entry)
     }
 
     /// `FUN_140f65580`: the rectangle's tiles lose their links.
-    pub fn unlink_tiles(&mut self, x0: i32, y0: i32, x1: i32, y1: i32) {
+    pub fn unlink_tiles(&mut self, x0: i32, y0: i32, x1: i32, y1: i32) -> Result<(), GenieError> {
         if x0 == x1 && y0 == y1 {
-            return;
+            return Ok(());
         }
         let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
         let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
         let Some((x0, y0, x1, y1)) = self.held(lo_x, lo_y, hi_x, hi_y) else {
-            return;
+            return Ok(());
         };
         for y in y0..=y1 {
             for x in x0..=x1 {
                 let i = self.index(x, y);
-                self.links[i] = (self.links[i].0 & !(LINKED | ANCHOR), 0);
+                *self.links.checked_mut(i)? =
+                    (self.links.checked_mut(i)?.0 & !(LINKED | ANCHOR), 0);
             }
         }
+        Ok(())
     }
 
     /// A building's footprint as `FUN_1411e6780` links it: from its low edge to its high edge
@@ -216,7 +239,11 @@ impl Visibility {
 
     /// A building (not an annex) on its tile links its footprint (`FUN_1411e6780`, after the
     /// base `new_position`); returns its UMV entry (`+0x904`).
-    pub fn link_building(&mut self, position: [f32; 3], radius: [f32; 2]) -> i32 {
+    pub fn link_building(
+        &mut self,
+        position: [f32; 3],
+        radius: [f32; 2],
+    ) -> Result<i32, GenieError> {
         let ([ax, ay], [x0, y0, x1, y1]) = Self::footprint(position, radius);
         self.link_tiles(ax, ay, x0, y0, x1, y1)
     }
@@ -229,9 +256,13 @@ impl Visibility {
     }
 
     /// The building leaves its tiles (`FUN_1411e6780` before a move, `FUN_1411dbb70`).
-    pub fn unlink_building(&mut self, position: [f32; 3], radius: [f32; 2]) {
+    pub fn unlink_building(
+        &mut self,
+        position: [f32; 3],
+        radius: [f32; 2],
+    ) -> Result<(), GenieError> {
         let (_, [x0, y0, x1, y1]) = Self::footprint(position, radius);
-        self.unlink_tiles(x0, y0, x1, y1);
+        self.unlink_tiles(x0, y0, x1, y1)
     }
 
     // An object's sight (its slots 0x1d0 and 0x1d8).

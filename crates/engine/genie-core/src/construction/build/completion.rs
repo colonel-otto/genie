@@ -65,7 +65,7 @@ impl crate::world::World {
         if building.disappears_when_built {
             u.life.hp = 0.0;
         }
-        self.spatial.sight_state(id, 2);
+        self.spatial.sight_state(id, 2)?;
         if 0 <= building.tech {
             self.research_built(p, building.tech)?;
         }
@@ -109,7 +109,7 @@ impl crate::world::World {
         if !matches!(master.class, class::CLASS_51 | class::CLASS_54)
             && let Some(v) = self.spatial.sight.as_mut()
         {
-            v.construction_completed(id, placed.position, placed.radius);
+            v.construction_completed(id, placed.position, placed.radius)?;
         }
         let place = self.place(id).ok_or(NOT_HELD)?;
         let Self {
@@ -157,7 +157,7 @@ impl crate::world::World {
         let (main, rice, hp) = (u.annex_of.is_some(), u.rice, u.life.hp);
         u.roo_called = true;
         if !main && let Some(v) = self.spatial.sight.as_mut() {
-            v.unlink_building(placed.position, master.radius);
+            v.unlink_building(placed.position, master.radius)?;
         }
         let stack = StackUnit {
             master: stack_master(master, building, rice),

@@ -85,8 +85,8 @@ fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
         0,
         vec![false, true, false],
     );
-    assert_eq!(v.explore(1, 3, 2, 0, false), 1);
-    assert_eq!(v.explore(2, 5, 5, 0, false), 1);
+    assert_eq!(v.explore(1, 3, 2, 0, false), Ok(1));
+    assert_eq!(v.explore(2, 5, 5, 0, false), Ok(1));
     t.spatial.sight = Some(v);
     let mut m = module();
     m.info.width = 16;

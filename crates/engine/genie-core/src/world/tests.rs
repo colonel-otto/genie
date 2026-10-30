@@ -3264,7 +3264,7 @@ fn footprint_world() -> World {
         },
     );
     t.players[1].objects[0].place_for_test([30.0, 88.5, 0.0]);
-    t.spatial.set_position(9175, [30.0, 88.5, 0.0]);
+    t.spatial.set_position(9175, [30.0, 88.5, 0.0]).unwrap();
     t
 }
 
@@ -3750,7 +3750,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
         let v = &mut t.players[1].objects[0];
         (v.life.attribute_type, v.life.amount) = (15, 5.0);
         v.place_for_test([22.3, 89.5, 0.0]);
-        t.spatial.set_position(9175, [22.3, 89.5, 0.0]);
+        t.spatial.set_position(9175, [22.3, 89.5, 0.0]).unwrap();
         t.drop_sites = vec![DropSite {
             building: 109,
             worker_class: 4,
@@ -3942,7 +3942,7 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         let v = &mut t.players[1].objects[0];
         (v.life.attribute_type, v.life.amount) = (15, held);
         v.place_for_test([31.9, 89.5, 0.0]);
-        t.spatial.set_position(9175, [31.9, 89.5, 0.0]);
+        t.spatial.set_position(9175, [31.9, 89.5, 0.0]).unwrap();
         t
     };
     let mut t = gathering(5.0);
@@ -3983,7 +3983,7 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
     let v = &mut t.players[1].objects[0];
     (v.life.attribute_type, v.life.amount) = (15, 5.0);
     v.place_for_test([31.9, 89.5, 0.0]);
-    t.spatial.set_position(9175, [31.9, 89.5, 0.0]);
+    t.spatial.set_position(9175, [31.9, 89.5, 0.0]).unwrap();
     let left = in_update(&mut t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
@@ -4125,7 +4125,7 @@ fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
     );
     let mut t = shepherd_world(22.6);
     t.players[1].objects[0].place_for_test([23.2, 89.5, 0.0]);
-    t.spatial.set_position(9175, [23.2, 89.5, 0.0]);
+    t.spatial.set_position(9175, [23.2, 89.5, 0.0]).unwrap();
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.attack.map(|a| a.target)), (ATTACK, Some(510)));
@@ -4750,7 +4750,7 @@ fn the_enter_command_enters_or_keeps_the_enter_on_its_target() {
     let mut t = enter_world(vec![], 5);
     // the villager out of reach, so that it walks
     t.players[1].objects[0].place_for_test([20.0, 80.0, 0.0]);
-    t.spatial.set_position(9175, [20.0, 80.0, 0.0]);
+    t.spatial.set_position(9175, [20.0, 80.0, 0.0]).unwrap();
     assert_eq!(t.enter_command(1, 0, 4242, true), Ok(false));
     assert_eq!(t.players[1].objects[0].actions.enter().copied(), None);
     assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
@@ -12607,7 +12607,7 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
             velocity: [0.0; 3],
             acceleration: [0.0; 3],
         });
-        t.spatial.set_position(9175, at);
+        t.spatial.set_position(9175, at).unwrap();
     };
     place(&mut t, [30.0, 91.0, 0.0]);
     assert_eq!(t.enter_command(1, 0, 10028, false), Ok(true));
@@ -13770,7 +13770,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
         (Ok(()), Some(MoveTo::Moving), vec![])
     );
     // the bush moves two tiles off the point the walk goes to
-    t.spatial.set_position(600, [32.5, 91.5, 0.0]);
+    t.spatial.set_position(600, [32.5, 91.5, 0.0]).unwrap();
     let (r, _, heard, _) = own_move(&mut t);
     assert_eq!(r, Ok(()));
     assert_eq!(heard, [(TARGET_MOVED, [0, 0, 0])]);

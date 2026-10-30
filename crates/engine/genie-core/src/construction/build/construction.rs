@@ -187,7 +187,7 @@ impl Construction {
         c.desolid = false;
         c.progress = f32::from_bits(STARTED);
         if let Some(v) = world.sight.as_mut() {
-            v.construction_started(id, placed.position, placed.radius);
+            v.construction_started(id, placed.position, placed.radius)?;
         }
         // a master of obstruction kind 0 or 12, or of class 0, gets no record (FUN_141056460)
         if c.record.recorded() {

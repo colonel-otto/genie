@@ -390,7 +390,7 @@ pub fn spatial_with_tiles(
 ) -> Result<genie_core::map::spatial::Spatial, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
-    Ok(spatial(&header, terrain))
+    spatial(&header, terrain).map_err(Error::Unmodelled)
 }
 
 #[cfg(test)]

@@ -270,7 +270,7 @@ impl World {
         if !keep {
             self.hand_in_load(p, place, old)?;
         }
-        self.upgrade_sight(place, (old, new), keep);
+        self.upgrade_sight(place, (old, new), keep)?;
         self.upgrade_hit_points(place, (old, new))?;
         if !keep {
             self.object_at_mut(place).life.master_id = new.id;
@@ -378,7 +378,12 @@ impl World {
     /// An upgrade's sight (`FUN_141186580`): an object in state 2 on the map, not inside
     /// another, takes its sight off and on again with its line of sight moved by the change
     /// from `old`'s to `new`'s (slots 0x1d8 and 0x1d0); without `keep` its seer takes `new`'s id.
-    fn upgrade_sight(&mut self, place: Place, (old, new): (&Master, &Master), keep: bool) {
+    fn upgrade_sight(
+        &mut self,
+        place: Place,
+        (old, new): (&Master, &Master),
+        keep: bool,
+    ) -> Result<(), GenieError> {
         let id = self.object_at(place).id;
         let u = self.object_at(place);
         if u.life.state == 2
@@ -388,7 +393,7 @@ impl World {
         {
             let now = sight.seer(id).map_or(old.line_of_sight, |s| s.los);
             let los = (now - old.line_of_sight) + new.line_of_sight;
-            sight.sight_off(id, placed.position, placed.radius, false, false);
+            sight.sight_off(id, placed.position, placed.radius, false, false)?;
             let _ = sight.sight_on_los(
                 id,
                 placed.position,
@@ -396,7 +401,7 @@ impl World {
                 false,
                 crate::math::conversions::cvttss2si(los),
                 false,
-            );
+            )?;
             if let Some(s) = sight.seer_mut(id) {
                 s.los = los;
                 if !keep {
@@ -404,6 +409,7 @@ impl World {
                 }
             }
         }
+        Ok(())
     }
 
     /// An upgrade's hit points and sprites (`FUN_141186580`): the hit points take their share of
@@ -1265,7 +1271,8 @@ mod tests {
                 },
             );
             t.spatial.sight = Some(v);
-            t.upgrade_sight(Place::Live(0, 0), (&old, &new), keep);
+            t.upgrade_sight(Place::Live(0, 0), (&old, &new), keep)
+                .unwrap();
             let seer = t.spatial.sight.as_ref().and_then(|v| v.seer(10)).copied();
             seer.map(|s| (s.los, s.master))
         };

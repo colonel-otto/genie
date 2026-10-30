@@ -15,6 +15,7 @@
 use crate::GenieError;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 pub(crate) mod explored;
 pub mod ghost;
@@ -71,21 +72,23 @@ impl World {
         let mut flares = Vec::new();
         for (p, me) in self.players.iter().enumerate().skip(1) {
             let attribute = |i: usize| me.attributes.get(i).copied().unwrap_or(0.0);
+            let allies = |q: usize| {
+                me.relations.get(q) == Some(&0)
+                    && self.players.get(q).and_then(|o| o.relations.get(p)) == Some(&0)
+            };
+            let mine = masks.checked_mut(p)?;
             if me.allied_vision {
                 for q in 1..n {
-                    if q != p
-                        && me.relations.get(q) == Some(&0)
-                        && self.players[q].relations.get(p) == Some(&0)
-                    {
-                        masks[p][0] |= 1 << q;
-                        masks[p][1] |= 1 << (32 + q);
+                    if q != p && allies(q) {
+                        mine[0] |= 1 << q;
+                        mine[1] |= 1 << (32 + q);
                     }
                 }
             }
             if attribute(REVEAL_ALL) != 0.0 {
                 for q in 1..n {
-                    masks[p][0] |= 1 << q;
-                    masks[p][1] |= 1 << (32 + q);
+                    mine[0] |= 1 << q;
+                    mine[1] |= 1 << (32 + q);
                 }
             }
             // attribute 209 does not touch the masks: it flares the town centres of the players
@@ -94,13 +97,12 @@ impl World {
             // playback has no such screen, the probe reads 0)
             if REVEAL_CENTRES < me.attributes.len() && 0.0 < attribute(REVEAL_CENTRES) {
                 for q in 1..n {
-                    let allied = me.relations.get(q) == Some(&0)
-                        && self.players[q].relations.get(p) == Some(&0);
-                    if allied || me.tc_flared.get(q).copied().unwrap_or(false) {
+                    if allies(q) || me.tc_flared.get(q).copied().unwrap_or(false) {
                         continue;
                     }
                     flares.extend(
-                        self.players[q]
+                        self.players
+                            .player(q)?
                             .objects
                             .iter()
                             // The town centre the reveal finds (`0x6d`) and the flare it makes there (`0x2b9`).
@@ -123,11 +125,11 @@ impl World {
         for (p, q, at) in flares {
             self.remains(p, FLARE4, at, None)?;
             self.made_new_object(p)?;
-            let flared = &mut self.players[p].tc_flared;
+            let flared = &mut self.players.player_mut(p)?.tc_flared;
             if flared.len() <= q {
                 flared.resize(q + 1, false);
             }
-            flared[q] = true;
+            *flared.checked_mut(q)? = true;
         }
         Ok(())
     }

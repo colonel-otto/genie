@@ -296,7 +296,7 @@ impl World {
         made: &Master,
         position: [f32; 3],
         desolid: bool,
-    ) {
+    ) -> Result<(), GenieError> {
         let record = crate::map::spatial::Obstruction {
             kind: made.obstruction_type,
             class: made.obstruction_class,
@@ -323,9 +323,9 @@ impl World {
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
         if let Some(v) = self.spatial.sight.as_mut() {
-            let umv = v.link_building(position, made.radius);
+            let umv = v.link_building(position, made.radius)?;
             if desolid {
-                v.unlink_building(position, made.radius);
+                v.unlink_building(position, made.radius)?;
             }
             v.add_seer(
                 id,
@@ -342,5 +342,6 @@ impl World {
                 },
             );
         }
+        Ok(())
     }
 }

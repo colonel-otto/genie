@@ -7,6 +7,7 @@
 //! step moves the object's place through the static layer's setter ([`Static::new_position`]).
 //! The layers below the action layer an object has are its [`Body`].
 
+use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
 use crate::pathing::Pathing;
@@ -47,12 +48,13 @@ impl Static {
         at: [f32; 3],
         moving: bool,
         (world, pathing): (&mut Spatial, Option<&mut Pathing>),
-    ) {
+    ) -> Result<(), GenieError> {
         self.position = at;
-        world.set_position(id, at);
+        world.set_position(id, at)?;
         if let (Some(pathing), Some(p)) = (pathing, world.get(id)) {
             pathing.moved(id, p, moving);
         }
+        Ok(())
     }
 
     /// The object goes inside one at `at` (`FUN_14118c890`): it takes the container's x and y
@@ -223,9 +225,10 @@ impl Body {
         id: i32,
         at: [f32; 3],
         places: (&mut Spatial, Option<&mut Pathing>),
-    ) {
+    ) -> Result<(), GenieError> {
         let moving = self.mover().is_some_and(Mover::is_moving);
-        self.base_mut().new_position(id, at, moving, places);
+        self.base_mut().new_position(id, at, moving, places)?;
+        Ok(())
     }
 
     /// The moving layer, if the object moves.
@@ -401,7 +404,8 @@ mod tests {
     fn the_place_setter_moves_the_object_and_its_index_together() {
         let mut world = indexed([1.5, 1.5, 0.0]);
         let mut body = Body::new([1.5, 1.5, 0.0], None, Some(mover()));
-        body.new_position(7, [2.5, 1.25, 0.0], (&mut world, None));
+        body.new_position(7, [2.5, 1.25, 0.0], (&mut world, None))
+            .unwrap();
         assert_eq!(body.position(), [2.5, 1.25, 0.0]);
         assert_eq!(world.get(7).map(|p| p.position), Some([2.5, 1.25, 0.0]));
         assert_eq!(

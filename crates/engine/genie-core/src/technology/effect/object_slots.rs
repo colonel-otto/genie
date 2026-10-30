@@ -158,7 +158,7 @@ impl World {
                     Change::Add => v + master.line_of_sight,
                     Change::Multiply => v * master.line_of_sight,
                 };
-                self.sight_again(id, crate::math::conversions::cvttss2si(los));
+                self.sight_again(id, crate::math::conversions::cvttss2si(los))?;
             }
             a::STORAGE_1 | a::STORAGE_2 | a::STORAGE_3 if change == Change::Set => {
                 let j = match attribute {
@@ -183,20 +183,21 @@ impl World {
     /// The line of sight's change on object `id` (`FUN_141195a50`'s attribute 1): an object on
     /// the map (its tile `+0x2e8`, which one inside another has not) in state 2 lets its circle go
     /// (slot 0x1d8, its master's line of sight) and takes one of `los` (slot 0x1d0).
-    pub(super) fn sight_again(&mut self, id: i32, los: i32) {
+    pub(super) fn sight_again(&mut self, id: i32, los: i32) -> Result<(), GenieError> {
         let Some((_, u)) = self.object(id) else {
-            return;
+            return Ok(());
         };
         if u.life.state != 2 || u.life.inside.is_some() {
-            return;
+            return Ok(());
         }
         let Some(placed) = self.spatial.get(id).copied() else {
-            return;
+            return Ok(());
         };
         if let Some(sight) = self.spatial.sight.as_mut() {
-            sight.sight_off(id, placed.position, placed.radius, false, false);
-            let _ = sight.sight_on_los(id, placed.position, placed.radius, false, los, false);
+            sight.sight_off(id, placed.position, placed.radius, false, false)?;
+            let _ = sight.sight_on_los(id, placed.position, placed.radius, false, los, false)?;
         }
+        Ok(())
     }
 
     /// `FUN_1412163c0`, `FUN_1412167d0`, `FUN_141216970`: a combat unit's slots. Its charge

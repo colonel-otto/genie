@@ -8,6 +8,7 @@
 //! leave by a swap with its last.
 
 use crate::GenieError;
+use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
 
 /// The unified map bits an object's mask keeps (`0x1ffffff01ffffff`): 25 visible and 25 explored.
@@ -170,7 +171,7 @@ impl Registry {
                     .get(p)
                     .copied()
                     .flatten();
-                let list = &mut self.lists[p][class];
+                let list = self.lists.checked_mut(p)?.checked_mut(class)?;
                 if seen & 1 == 0 {
                     if !list.is_empty() {
                         let i = slot.ok_or(GenieError::unsupported(
@@ -179,7 +180,7 @@ impl Registry {
                         let last = list.len() - 1;
                         if i != last {
                             list.swap(i, last);
-                            let moved = list[i].id;
+                            let moved = list.checked(i)?.id;
                             if let Some(s) = self
                                 .entries
                                 .get_mut(&moved)
@@ -188,7 +189,7 @@ impl Registry {
                                 *s = Some(i);
                             }
                         }
-                        let _ = self.lists[p][class].pop();
+                        let _ = self.lists.checked_mut(p)?.checked_mut(class)?.pop();
                     }
                     if let Some(s) = self.entries.get_mut(&id).and_then(|e| e.slots.get_mut(p)) {
                         *s = None;
@@ -222,7 +223,9 @@ impl Registry {
         };
         for (p, slot) in e.slots.iter().enumerate().take(self.players) {
             let Some(i) = *slot else { continue };
-            let record = self.lists[p]
+            let record = self
+                .lists
+                .checked_mut(p)?
                 .iter_mut()
                 .filter_map(|list| list.get_mut(i))
                 .find(|r| r.id == id)
@@ -243,7 +246,7 @@ impl Registry {
             return;
         };
         for (p, slot) in e.slots.iter().enumerate().take(self.players) {
-            if let Some(r) = slot.and_then(|i| self.lists[p].get_mut(class)?.get_mut(i)) {
+            if let Some(r) = slot.and_then(|i| self.lists.get_mut(p)?.get_mut(class)?.get_mut(i)) {
                 r.x = x;
                 r.y = y;
             }
@@ -287,7 +290,7 @@ impl Registry {
         for &class in classes {
             let list = usize::try_from(class)
                 .ok()
-                .and_then(|c| self.lists[player].get(c))
+                .and_then(|c| self.lists.get(player)?.get(c))
                 .ok_or(GenieError::unsupported(
                     "a query of a class beyond the registry's",
                 ))?;
@@ -324,7 +327,7 @@ impl Registry {
                 if !inside {
                     continue;
                 }
-                let out = &mut found[relation as usize];
+                let out = found.checked_mut(relation as usize)?;
                 if out.len() < MOST_FOUND {
                     out.push(Record {
                         distance: (dy * dy + dx * dx).sqrt(),

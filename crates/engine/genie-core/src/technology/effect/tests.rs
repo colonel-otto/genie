@@ -631,7 +631,8 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     let circle = |los| {
         let mut t = world();
         let v = t.spatial.sight.as_mut().unwrap();
-        v.sight_off(1, [10.5, 10.5, 0.0], [0.5, 0.5], false, false);
+        v.sight_off(1, [10.5, 10.5, 0.0], [0.5, 0.5], false, false)
+            .unwrap();
         let _ = v.sight_on_los(1, [10.5, 10.5, 0.0], [0.5, 0.5], false, los, false);
         sight(&t)
     };

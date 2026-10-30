@@ -1949,7 +1949,7 @@ fn a_guard_gives_its_units_the_defend_order_at_once() {
     for x in [20.3, 40.0] {
         let mut t = followers();
         t.players[2].objects[0].place_for_test([x, 20.0, 0.0]);
-        t.spatial.set_position(30, [x, 20.0, 0.0]);
+        t.spatial.set_position(30, [x, 20.0, 0.0]).unwrap();
         t.guard(1, &[11], 30).unwrap();
         let ai = t.players[1].objects[0].ai.as_ref().unwrap();
         assert_eq!(

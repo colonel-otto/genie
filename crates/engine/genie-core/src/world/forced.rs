@@ -266,18 +266,18 @@ impl World {
         }
         let (before, state) = (unit.life.state, forced.life.state);
         if forced.position() != unit.position() {
-            self.spatial.set_position(id, forced.position());
+            self.spatial.set_position(id, forced.position())?;
         }
         if state != before {
             if before <= 2 && 3 <= state {
-                self.spatial.sight_state(id, 3);
+                self.spatial.sight_state(id, 3)?;
             }
             if state != 3 {
-                self.spatial.sight_state(id, state);
+                self.spatial.sight_state(id, state)?;
             }
             if before < 4 && 6 < state {
                 let master = forced.master(&self.masters, p).ok();
-                forget_resource(&mut self.spatial, master, id, forced.position());
+                forget_resource(&mut self.spatial, master, id, forced.position())?;
             }
         }
         self.spatial.unfreeze(id);

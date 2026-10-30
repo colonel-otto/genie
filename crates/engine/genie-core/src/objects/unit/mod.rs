@@ -305,8 +305,9 @@ impl Unit {
             &mut crate::map::spatial::Spatial,
             Option<&mut crate::pathing::Pathing>,
         ),
-    ) {
-        self.body.new_position(self.id, at, places);
+    ) -> Result<(), GenieError> {
+        self.body.new_position(self.id, at, places)?;
+        Ok(())
     }
 
     /// A test's fixture puts the object at `at` without the world's index, which the test sets

@@ -35,13 +35,14 @@ pub(crate) fn forget_resource(
     master: Option<&Master>,
     id: i32,
     position: [f32; 3],
-) {
+) -> Result<(), GenieError> {
     if id < 0 {
-        return;
+        return Ok(());
     }
     if let (Some(m), Some(v)) = (master.filter(|m| m.auto_gather), spatial.sight.as_mut()) {
-        v.forget_resource(id, position, m.gather_group);
+        v.forget_resource(id, position, m.gather_group)?;
     }
+    Ok(())
 }
 
 /// The combat object's death part (`FUN_14121cc40`'s block for a state of 3 or more from below
@@ -89,7 +90,7 @@ pub(crate) fn combat_dies(
         && u.life.inside.is_none()
         && let Some(v) = spatial.sight.as_mut()
     {
-        v.unlink_building(u.position(), master.radius);
+        v.unlink_building(u.position(), master.radius)?;
     }
     u.roo_called = true;
     Ok(())

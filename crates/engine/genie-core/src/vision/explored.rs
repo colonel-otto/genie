@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// `Process_New_Tiles` (`FUN_1412899a0`, the end of `WorldPlayerBase::update`): on each tile
@@ -63,7 +64,7 @@ impl World {
     ///
     /// [`Spatial::explored`]: crate::map::spatial::Spatial::explored
     pub(crate) fn made_new_object(&mut self, p: usize) -> Result<(), GenieError> {
-        let Some(u) = self.players[p].objects.last() else {
+        let Some(u) = self.players.player(p)?.objects.last() else {
             return Ok(());
         };
         let (id, [x, y, _]) = (u.id, u.position());

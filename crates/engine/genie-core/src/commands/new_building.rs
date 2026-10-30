@@ -372,7 +372,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let master = made.id;
         self.track_add(player, id, master)?;
-        self.building_place(player, id, made, position, desolid);
+        self.building_place(player, id, made, position, desolid)?;
         if foundation && 0 < made.build_time {
             self.construction_terrain(player, master, position)?;
         }
@@ -398,7 +398,7 @@ impl World {
         a.annex_of = Some(id);
         self.spatial.set_annex(aid, Some(id));
         if made.class != class::GATE {
-            self.unwatch(player, aid);
+            self.unwatch(player, aid)?;
         }
         if 0.0 < am.height {
             let (_, a) = self.object_mut(aid).ok_or_else(|| not_held.clone())?;
@@ -412,7 +412,7 @@ impl World {
                 self.spatial.drop_record(aid);
                 self.spatial.set_tall(aid, false);
                 self.pathing.tiles_changed(self.spatial.take_changes());
-                self.unwatch(player, aid);
+                self.unwatch(player, aid)?;
             }
         }
         Ok(())

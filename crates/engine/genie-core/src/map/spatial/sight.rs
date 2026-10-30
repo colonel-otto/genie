@@ -180,7 +180,7 @@ impl Spatial {
         p.player = new;
         let (position, radius) = (p.position, p.radius);
         if let Some(v) = self.sight.as_mut() {
-            v.owner_changed(id, position, radius, (new, los), sees);
+            v.owner_changed(id, position, radius, (new, los), sees)?;
         }
         Ok(())
     }
@@ -364,10 +364,11 @@ impl Spatial {
     }
 
     /// The object's `set_state` to `state` ([`Visibility::state_changed`]).
-    pub fn sight_state(&mut self, id: i32, state: u8) {
+    pub fn sight_state(&mut self, id: i32, state: u8) -> Result<(), GenieError> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
-            v.state_changed(id, p.position, p.radius, state);
+            v.state_changed(id, p.position, p.radius, state)?;
         }
+        Ok(())
     }
 
     /// The object's master changes to `master` with radii `radius`, class `class` and line of
@@ -383,7 +384,7 @@ impl Spatial {
         los: f32,
     ) -> Result<(), GenieError> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
-            v.master_changed(id, p.position, p.radius, radius, master, los);
+            v.master_changed(id, p.position, p.radius, radius, master, los)?;
             v.registry_master(
                 id,
                 p.player,

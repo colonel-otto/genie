@@ -50,7 +50,7 @@ impl Unit {
                 (c.w.world_time, group),
             );
             if at != here {
-                mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)));
+                mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)))?;
             }
             // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
             if let Some(v) = mover.velocity.as_ref() {

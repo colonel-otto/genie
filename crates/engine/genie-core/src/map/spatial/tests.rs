@@ -45,7 +45,7 @@ fn the_record_cells_answer_as_the_full_scan_does() {
         let kind = (next() % 8 != 0).then(|| kinds[(next() % 7) as usize]);
         match next() % 7 {
             0 | 1 => s.insert(id, placed(position, r, kind)),
-            2 | 3 => s.set_position(id, [position[0], position[1], 0.0]),
+            2 | 3 => s.set_position(id, [position[0], position[1], 0.0]).unwrap(),
             4 => {
                 let here = s
                     .objects
@@ -676,7 +676,7 @@ fn a_unit_counts_on_the_tile_its_centre_is_on_and_marks_nothing() {
     s.insert(9177, villager(1.9, 1.0));
     assert_eq!(s.tiles().objects(1, 1), Some(1));
     assert_eq!(s.tiles().word(1, 1), Some(4));
-    s.set_position(9177, [2.05, 1.0, 0.0]);
+    s.set_position(9177, [2.05, 1.0, 0.0]).unwrap();
     assert_eq!(
         (s.tiles().objects(1, 1), s.tiles().objects(2, 1)),
         (Some(0), Some(1))
@@ -693,14 +693,14 @@ fn a_tile_s_list_keeps_the_game_s_order() {
     assert_eq!(s.tiles().list(1, 1), [9171, 10029, 9173]);
     assert_eq!(s.tile_place(9173), 2);
     // the leaving object's slot goes to the last
-    s.set_position(9171, [2.1, 1.0, 0.0]);
+    s.set_position(9171, [2.1, 1.0, 0.0]).unwrap();
     assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
     assert_eq!((s.tile_place(9173), s.tile_place(9171)), (0, 0));
     // a move within the tile and a master change keep the slot
-    s.set_position(9173, [1.2, 1.0, 0.0]);
+    s.set_position(9173, [1.2, 1.0, 0.0]).unwrap();
     s.change_master(9173, villager(1.2, 1.0));
     assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
-    s.set_position(9171, [1.0, 1.0, 0.0]);
+    s.set_position(9171, [1.0, 1.0, 0.0]).unwrap();
     assert_eq!(s.tiles().list(1, 1), [9173, 10029, 9171]);
     assert_eq!(
         (s.tiles().objects(1, 1), s.tiles().tall(1, 1)),

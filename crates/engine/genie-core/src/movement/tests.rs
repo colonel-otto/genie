@@ -1583,7 +1583,7 @@ pub(crate) fn path_world(owner: crate::world::Player) -> crate::world::World {
 /// One tick of the walker: the velocity step, then the motion step from where it got.
 fn tick(m: &mut Mover, at: [f32; 3], world: &mut Spatial) -> ([f32; 3], Motion) {
     let at = m.step_velocity(at, DT, world.map, None, (0, None));
-    m.new_position(9177, at, (world, None));
+    m.new_position(9177, at, (world, None)).unwrap();
     let motion = m
         .motion(
             &Me {

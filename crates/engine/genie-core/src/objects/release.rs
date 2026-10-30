@@ -82,13 +82,13 @@ impl World {
     pub(crate) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
         self.track_remove(p, gone.id, gone.life.master_id)?;
         let master = gone.master(&self.masters, p).ok();
-        forget_resource(&mut self.spatial, master, gone.id, gone.position());
+        forget_resource(&mut self.spatial, master, gone.id, gone.position())?;
         if let Some(m) = master.filter(|m| COMBAT <= m.kind) {
             count_class(&mut self.players.player_mut(p)?.attributes, m, -1.0);
         }
         let recyclable = master.is_some_and(|m| m.recyclable);
         let left = self.spatial.leave(gone.id);
-        self.unwatch(p, gone.id);
+        self.unwatch(p, gone.id)?;
         if let Some(m) = gone.missile.as_ref().filter(|_| recyclable) {
             self.recycling.missiles.push((gone.id, m.flying));
         }

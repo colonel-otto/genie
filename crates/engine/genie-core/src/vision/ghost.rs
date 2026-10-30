@@ -21,6 +21,7 @@ use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
 use crate::vision::registry::MASK;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// The ghosts' master in every player's list (`player+0x28`'s entry 243, "DOPL").
 pub const GHOST_MASTER: i16 = 243;
@@ -108,14 +109,14 @@ impl World {
 
     /// The unified map's visible and explored bits at tile (`x`, `y`) (`map+0x5e30`, masked);
     /// 0 off the map or without the players' sight.
-    fn tile_bits(&self, x: i32, y: i32) -> u64 {
+    fn tile_bits(&self, x: i32, y: i32) -> Result<u64, GenieError> {
         let Some(v) = self.spatial.sight.as_ref() else {
-            return 0;
+            return Ok(0);
         };
         if x < 0 || y < 0 || v.width <= x || v.height <= y {
-            return 0;
+            return Ok(0);
         }
-        v.unified[(y * v.width + x) as usize] & MASK
+        Ok(*v.unified.checked((y * v.width + x) as usize)? & MASK)
     }
 
     /// The tile index of (`x`, `y`) in the unified map.
@@ -161,7 +162,14 @@ impl World {
         let Some((p, u)) = self.object(id) else {
             return Ok(false);
         };
-        if p != owner || self.players[owner].watched.iter().any(|w| w.id == id) {
+        if p != owner
+            || self
+                .players
+                .player(owner)?
+                .watched
+                .iter()
+                .any(|w| w.id == id)
+        {
             return Ok(false);
         }
         // the game takes the tile's word without a bounds test: every caller passes the
@@ -169,7 +177,7 @@ impl World {
         let Some(tile) = self.tile_index(x, y) else {
             return Ok(false);
         };
-        let bits = self.tile_bits(x, y);
+        let bits = self.tile_bits(x, y)?;
         let kind = u.master(&self.masters, p)?.kind;
         let umv = self
             .spatial
@@ -182,7 +190,10 @@ impl World {
         } else {
             Cell::Tile(tile)
         };
-        self.players[owner].watched.push(Watched { id, cell, bits });
+        self.players
+            .player_mut(owner)?
+            .watched
+            .push(Watched { id, cell, bits });
         Ok(true)
     }
 
@@ -193,11 +204,12 @@ impl World {
 
     /// `FUN_141091310`: the watched list of player `owner` lets object `id` go (the last entry
     /// takes its place).
-    pub(crate) fn unwatch(&mut self, owner: usize, id: i32) {
-        let list = &mut self.players[owner].watched;
+    pub(crate) fn unwatch(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+        let list = &mut self.players.player_mut(owner)?.watched;
         if let Some(k) = list.iter().position(|w| w.id == id) {
             let _ = list.swap_remove(k);
         }
+        Ok(())
     }
 
     /// `FUN_1411cc980`: a building its owner watches: not of class 51 or 54, not desolid
@@ -257,11 +269,13 @@ impl World {
             }
         }
         for p in 0..self.players.len() {
-            self.players[p].watched.clear();
-            let ids: Vec<i32> = self.players[p]
+            self.players.player_mut(p)?.watched.clear();
+            let ids: Vec<i32> = self
+                .players
+                .player(p)?
                 .objects
                 .iter()
-                .chain(&self.players[p].sleeping)
+                .chain(&self.players.player(p)?.sleeping)
                 .map(|u| u.id)
                 .collect();
             for id in ids {
@@ -269,9 +283,9 @@ impl World {
                     continue;
                 };
                 let u = if sleeping {
-                    &self.players[q].sleeping[k]
+                    &self.players.asleep(q, k)?
                 } else {
-                    &self.players[q].objects[k]
+                    &self.players.live(q, k)?
                 };
                 let Ok(m) = u.master(&self.masters, p) else {
                     continue;
@@ -291,9 +305,9 @@ impl World {
             }
             for list in [false, true] {
                 let annexes: Vec<i32> = if list {
-                    &self.players[p].sleeping
+                    &self.players.player(p)?.sleeping
                 } else {
-                    &self.players[p].objects
+                    &self.players.player(p)?.objects
                 }
                 .iter()
                 .filter(|u| u.annex_of.is_some())
@@ -304,7 +318,7 @@ impl World {
                 .map(|u| u.id)
                 .collect();
                 for id in annexes {
-                    self.unwatch(p, id);
+                    self.unwatch(p, id)?;
                 }
             }
         }
@@ -334,7 +348,7 @@ impl World {
             return Ok(());
         }
         let [x, y] = Self::tile_at(position);
-        let bits = self.tile_bits(x, y);
+        let bits = self.tile_bits(x, y)?;
         let (mut explored, mut visible) = (bits >> 32, bits & 0x1ff_ffff);
         let mut i = 0usize;
         while explored != 0 {
@@ -407,8 +421,8 @@ impl World {
             state: 2,
         };
         self.spatial.insert_ghost(id, at);
-        self.check_twins(viewer, &mut ghost);
-        self.players[viewer].ghosts.push(ghost);
+        self.check_twins(viewer, &mut ghost)?;
+        self.players.player_mut(viewer)?.ghosts.push(ghost);
         Ok(())
     }
 
@@ -418,11 +432,11 @@ impl World {
     /// the new ghost note each other's player as one who cannot see it (`+0x7f0`). The game walks
     /// the tile's list; the effects are ORs and destroys that change no other ghost's test, so the
     /// players' lists in their order give the same.
-    fn check_twins(&mut self, viewer: usize, ghost: &mut Ghost) {
+    fn check_twins(&mut self, viewer: usize, ghost: &mut Ghost) -> Result<(), GenieError> {
         let tile = Self::tile_at(ghost.position);
         for q in 0..self.players.len() {
-            for k in 0..self.players[q].ghosts.len() {
-                let g = self.players[q].ghosts[k];
+            for k in 0..self.players.player(q)?.ghosts.len() {
+                let g = *self.players.player(q)?.ghosts.checked(k)?;
                 if Self::tile_at(g.position) != tile
                     || g.id == ghost.id
                     || g.original_id != ghost.original_id
@@ -431,22 +445,24 @@ impl World {
                     continue;
                 }
                 if q == viewer {
-                    self.destroy_ghost(q, k);
+                    self.destroy_ghost(q, k)?;
                 } else {
-                    self.players[q].ghosts[k].cant_see |= 1 << viewer;
+                    self.players.player_mut(q)?.ghosts.checked_mut(k)?.cant_see |= 1 << viewer;
                     ghost.cant_see |= 1 << q;
                 }
             }
         }
+        Ok(())
     }
 
     /// The destroy (slot 0xd0, `FUN_14118f1e0`) of ghost `k` of player `p`: below state 7, its
     /// hit points go and it goes to state 7.
-    fn destroy_ghost(&mut self, p: usize, k: usize) {
-        let g = &mut self.players[p].ghosts[k];
+    fn destroy_ghost(&mut self, p: usize, k: usize) -> Result<(), GenieError> {
+        let g = self.players.player_mut(p)?.ghosts.checked_mut(k)?;
         if g.state < 7 {
             g.state = 7;
         }
+        Ok(())
     }
 
     /// The ghosts of player `p` in their list's order (`FUN_141166550` on `+0x40`), each one's
@@ -462,10 +478,10 @@ impl World {
     /// deleted. The viewer's `+0x2b0` table is not held (empty).
     pub(crate) fn update_ghosts(&mut self, p: usize) -> Result<(), GenieError> {
         let mut k = 0;
-        while k < self.players[p].ghosts.len() {
+        while k < self.players.player(p)?.ghosts.len() {
             let leaves = self.update_ghost(p, k)?;
             if leaves {
-                let g = self.players[p].ghosts.swap_remove(k);
+                let g = self.players.player_mut(p)?.ghosts.swap_remove(k);
                 if g.original_master
                     .is_some_and(|m| TERRAIN_ORIGINALS.contains(&m))
                 {
@@ -484,34 +500,29 @@ impl World {
         Ok(())
     }
 
-    fn update_ghost(&mut self, p: usize, k: usize) -> Result<bool, GenieError> {
-        let g = self.players[p].ghosts[k];
-        let leaves = match g.state {
-            7 => {
-                self.players[p].ghosts[k].state = 8;
-                false
-            }
-            8 => true,
-            _ => false,
-        };
-        if g.seen && g.state < 3 {
-            self.destroy_ghost(p, k);
-            return Ok(leaves);
+    /// An original past state 6 is forgotten with its master; without one only the id goes.
+    fn forget_original(
+        &mut self,
+        p: usize,
+        k: usize,
+        original: Option<i32>,
+    ) -> Result<(), GenieError> {
+        let live = original.is_some_and(|o| self.object(o).is_some_and(|(_, u)| u.life.state < 7));
+        let g = self.players.player_mut(p)?.ghosts.checked_mut(k)?;
+        if original.is_none() {
+            g.original_id = -1;
+        } else if !live {
+            g.original = None;
+            g.original_master = None;
+            g.original_id = -1;
         }
-        // an original past state 6 is forgotten with its master; without one only the id goes
-        match g.original {
-            Some(o) if self.object(o).is_some_and(|(_, u)| u.life.state < 7) => {}
-            Some(_) => {
-                let g = &mut self.players[p].ghosts[k];
-                g.original = None;
-                g.original_master = None;
-                g.original_id = -1;
-            }
-            None => self.players[p].ghosts[k].original_id = -1,
-        }
-        let g = self.players[p].ghosts[k];
+        Ok(())
+    }
+
+    /// The bits of the ghost's tile and, for a building's ghost, of its footprint's tiles.
+    fn ghost_bits(&self, g: &Ghost) -> Result<u64, GenieError> {
         let [px, py, _] = g.position;
-        let mut bits = self.tile_bits(g.tile[0], g.tile[1]);
+        let mut bits = self.tile_bits(g.tile[0], g.tile[1])?;
         if g.footprint != 0 {
             let offsets = self
                 .spatial
@@ -523,12 +534,15 @@ impl World {
                     "a building's ghost without its UMV entry",
                 ))?;
             for [ox, oy] in offsets {
-                bits |= self.tile_bits(px as i32 + ox, py as i32 + oy);
+                bits |= self.tile_bits(px as i32 + ox, py as i32 + oy)?;
             }
         }
-        if bits == g.bits {
-            return Ok(leaves);
-        }
+        Ok(bits)
+    }
+
+    /// Whether the ghost is unseen by a player that sees its original's tile no more, and the
+    /// players who cannot see it: those sharing the original owner's sight note themselves.
+    fn ghost_viewers(&self, p: usize, g: &Ghost, bits: u64) -> (bool, u32) {
         let mut unseen = false;
         let mut cant_see = g.cant_see;
         for i in 1..self.players.len() {
@@ -538,10 +552,21 @@ impl World {
                     unseen = true;
                 }
             } else {
-                // a player sharing the original owner's sight notes itself
                 cant_see |= 1 << i;
             }
         }
+        (unseen, cant_see)
+    }
+
+    /// Whether the viewer `p` has now seen the ghost's tile while its original's mask had not,
+    /// and whether the ghost is destroyed for it.
+    fn ghost_seen(
+        &self,
+        p: usize,
+        g: &Ghost,
+        bits: u64,
+        unseen: bool,
+    ) -> Result<(bool, bool), GenieError> {
         let viewer = self.vision_mask(p);
         let mut seen = g.seen;
         let mut destroy = false;
@@ -550,19 +575,45 @@ impl World {
                 && let Some(o) = g.original
             {
                 let original_mask = self.cell_bits(Cell::Mask(o))?;
-                if original_mask & viewer == 0 && self.tile_bits(g.tile[0], g.tile[1]) & viewer == 0
+                if original_mask & viewer == 0
+                    && self.tile_bits(g.tile[0], g.tile[1])? & viewer == 0
                 {
                     seen = true;
                 }
             }
             destroy = !seen;
         }
-        let g = &mut self.players[p].ghosts[k];
+        Ok((seen, destroy))
+    }
+
+    fn update_ghost(&mut self, p: usize, k: usize) -> Result<bool, GenieError> {
+        let g = *self.players.player(p)?.ghosts.checked(k)?;
+        let leaves = match g.state {
+            7 => {
+                self.players.player_mut(p)?.ghosts.checked_mut(k)?.state = 8;
+                false
+            }
+            8 => true,
+            _ => false,
+        };
+        if g.seen && g.state < 3 {
+            self.destroy_ghost(p, k)?;
+            return Ok(leaves);
+        }
+        self.forget_original(p, k, g.original)?;
+        let g = *self.players.player(p)?.ghosts.checked(k)?;
+        let bits = self.ghost_bits(&g)?;
+        if bits == g.bits {
+            return Ok(leaves);
+        }
+        let (unseen, cant_see) = self.ghost_viewers(p, &g, bits);
+        let (seen, destroy) = self.ghost_seen(p, &g, bits, unseen)?;
+        let g = self.players.player_mut(p)?.ghosts.checked_mut(k)?;
         g.seen = seen;
         g.cant_see = cant_see;
         g.bits = bits;
         if destroy {
-            self.destroy_ghost(p, k);
+            self.destroy_ghost(p, k)?;
         }
         Ok(leaves)
     }
@@ -575,8 +626,8 @@ impl World {
     /// (its slot 0x2e8 with notify 0x20d), which is not modelled.
     pub(crate) fn watch_pass(&mut self, p: usize) -> Result<(), GenieError> {
         let mut gone = None;
-        for k in 0..self.players[p].watched.len() {
-            let w = self.players[p].watched[k];
+        for k in 0..self.players.player(p)?.watched.len() {
+            let w = *self.players.player(p)?.watched.checked(k)?;
             let bits = self.cell_bits(w.cell)?;
             if bits == w.bits {
                 continue;
@@ -607,10 +658,10 @@ impl World {
                     }
                 }
             }
-            self.players[p].watched[k].bits = bits;
+            self.players.player_mut(p)?.watched.checked_mut(k)?.bits = bits;
         }
         if let Some(id) = gone {
-            self.unwatch(p, id);
+            self.unwatch(p, id)?;
         }
         Ok(())
     }
@@ -852,7 +903,7 @@ mod tests {
             },
         ];
         let mut ghost = twin(-30, 9, [2.5, 1.5, 0.0], 2);
-        t.check_twins(2, &mut ghost);
+        t.check_twins(2, &mut ghost).unwrap();
         // the viewer's own twins on the tile are destroyed
         let states: Vec<u8> = t.players[2].ghosts.iter().map(|g| g.state).collect();
         assert_eq!(states, [7, 2, 2, 7, 7]);

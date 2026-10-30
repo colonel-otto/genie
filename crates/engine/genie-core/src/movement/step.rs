@@ -222,11 +222,12 @@ impl Mover {
         id: i32,
         at: [f32; 3],
         places: (&mut Spatial, Option<&mut Pathing>),
-    ) {
+    ) -> Result<(), GenieError> {
         let moving = self.is_moving();
         self.animated
             .base_mut()
-            .new_position(id, at, moving, places);
+            .new_position(id, at, moving, places)?;
+        Ok(())
     }
 
     /// The position setter (slot 11 -> `FUN_141161950` -> `0x1411a58b0`): a unit that can move

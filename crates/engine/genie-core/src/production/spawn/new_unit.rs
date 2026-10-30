@@ -330,7 +330,7 @@ impl World {
                     kind: made.kind,
                 },
             );
-            let _ = v.sight_on(id, position, made.radius, false, false);
+            let _ = v.sight_on(id, position, made.radius, false, false)?;
         }
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);

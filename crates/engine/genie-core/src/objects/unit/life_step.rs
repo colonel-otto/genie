@@ -86,7 +86,7 @@ impl Unit {
             }
         }
         self.annexes_follow(c, before, after)?;
-        self.sight_follows(c, before, after);
+        self.sight_follows(c, before, after)?;
         if before == 4 && after == 5 {
             self.dying_sprite_ended(c)?;
         }
@@ -130,20 +130,26 @@ impl Unit {
     /// The sight follows a changed state: a death through state 3 first, then the new state but
     /// 3; an object that went from below 4 to above 6 leaves the resource records
     /// ([`forget_resource`]).
-    pub(crate) fn sight_follows(&self, c: &mut Step<'_>, before: u8, after: u8) {
+    pub(crate) fn sight_follows(
+        &self,
+        c: &mut Step<'_>,
+        before: u8,
+        after: u8,
+    ) -> Result<(), GenieError> {
         if after == before {
-            return;
+            return Ok(());
         }
         if before <= 2 && 3 <= after {
-            c.w.spatial.sight_state(self.id, 3);
+            c.w.spatial.sight_state(self.id, 3)?;
         }
         if after != 3 {
-            c.w.spatial.sight_state(self.id, after);
+            c.w.spatial.sight_state(self.id, after)?;
         }
         if before < 4 && 6 < after {
             let master = self.master(&c.w.masters, c.player).ok();
-            forget_resource(&mut c.w.spatial, master, self.id, self.position());
+            forget_resource(&mut c.w.spatial, master, self.id, self.position())?;
         }
+        Ok(())
     }
 
     /// The dying sprite ended (`RGE_Animated_Object::update`): the animation stops and an object
