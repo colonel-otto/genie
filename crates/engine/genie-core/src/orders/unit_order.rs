@@ -47,9 +47,9 @@ impl World {
         let unit = &self.players.live(player, idx)?;
         // what its MoveTo's constructor (FUN_140aa0df0) reads of the unit and the target
         let reads = unit.move_to_reads(&self.masters, player, &self.graphics)?;
-        let to = reads.walk_to(self, target)?.ok_or(GenieError::unsupported(
-            "an Artifact's move to an object the slice does not hold",
-        ))?;
+        let to = reads
+            .walk_to(self, target)?
+            .ok_or(crate::construction::build::NOT_HELD)?;
         let to = crate::movement::move_to::WalkTo { at, ..to };
         let unit = self.players.live_mut(player, idx)?;
         let (targets, gone) = match unit.actions.artifact_mut() {
