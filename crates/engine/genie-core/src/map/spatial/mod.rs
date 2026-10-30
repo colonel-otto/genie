@@ -340,25 +340,29 @@ impl Tiles {
     /// Tile (`x`, `y`)'s word: its terrain class and the obstruction manager's marks.
     #[must_use]
     pub fn word(&self, x: i32, y: i32) -> Option<u64> {
-        self.index(x, y).map(|i| self.words[i])
+        self.index(x, y).and_then(|i| self.words.get(i).copied())
     }
 
     /// How many tall objects stand on tile (`x`, `y`).
     #[must_use]
     pub fn tall(&self, x: i32, y: i32) -> Option<u8> {
-        self.index(x, y).map(|i| self.tall[i])
+        self.index(x, y).and_then(|i| self.tall.get(i).copied())
     }
 
     /// How many objects stand on tile (`x`, `y`).
     #[must_use]
     pub fn objects(&self, x: i32, y: i32) -> Option<u8> {
-        self.index(x, y).map(|i| self.lists[i].len() as u8)
+        self.index(x, y)
+            .and_then(|i| self.lists.get(i))
+            .map(|l| l.len() as u8)
     }
 
     /// The objects on tile (`x`, `y`) in the tile's order; none off the map.
     #[must_use]
     pub fn list(&self, x: i32, y: i32) -> &[i32] {
-        self.index(x, y).map_or(&[], |i| &self.lists[i])
+        self.index(x, y)
+            .and_then(|i| self.lists.get(i))
+            .map_or(&[], Vec::as_slice)
     }
 
     /// The tile of a centre, if it is on the map.
@@ -372,35 +376,43 @@ impl Tiles {
     /// last and the tall count is redone over the list, each object by `tall` (its master's
     /// height radius above 0 now).
     fn append(&mut self, i: usize, id: i32, tall: impl Fn(i32) -> bool) {
-        let n = self.lists[i].len();
+        let (Some(list), Some(count)) = (self.lists.get_mut(i), self.tall.get_mut(i)) else {
+            return;
+        };
+        let n = list.len();
         if n == 0 {
-            self.lists[i].push(id);
+            list.push(id);
             if tall(id) {
-                self.tall[i] = 1;
+                *count = 1;
             }
             return;
         }
         if MOST_ON_TILE <= n {
             return;
         }
-        self.lists[i].push(id);
+        list.push(id);
         self.recount(i, tall);
     }
 
     /// The object leaves tile `i` (`FUN_140f5f560`): one not on the list changes nothing; else
     /// the last object takes its slot and the tall count is redone over the list.
     fn take_off(&mut self, i: usize, id: i32, tall: impl Fn(i32) -> bool) {
-        let Some(k) = self.lists[i].iter().position(|&o| o == id) else {
+        let Some(list) = self.lists.get_mut(i) else {
             return;
         };
-        let _ = self.lists[i].swap_remove(k);
+        let Some(k) = list.iter().position(|&o| o == id) else {
+            return;
+        };
+        let _ = list.swap_remove(k);
         self.recount(i, tall);
     }
 
     /// Tile `i`'s tall count over its list, each object by `tall` (a byte, as the game counts).
     fn recount(&mut self, i: usize, tall: impl Fn(i32) -> bool) {
-        let count = self.lists[i].iter().filter(|&&o| tall(o)).count();
-        self.tall[i] = count as u8;
+        let (Some(list), Some(count)) = (self.lists.get(i), self.tall.get_mut(i)) else {
+            return;
+        };
+        *count = list.iter().filter(|&&o| tall(o)).count() as u8;
     }
 
     /// Marks (`bits`) on tile (`x`, `y`)'s word, for a test's map.
@@ -462,8 +474,10 @@ impl Tiles {
             bits |= 0x8000;
         }
         for i in self.covered_indices(p) {
-            if self.words[i] < 0x80_0000 {
-                self.words[i] = (self.words[i] & !0xff_ff00) | bits;
+            if let Some(word) = self.words.get_mut(i)
+                && *word < 0x80_0000
+            {
+                *word = (*word & !0xff_ff00) | bits;
             }
         }
     }
@@ -475,11 +489,17 @@ impl Tiles {
     fn unmark(&mut self, p: &Placed, me: i32, static_record: impl Fn(i32) -> bool) -> bool {
         let own = 1u64 << p.player;
         for i in self.covered_indices(p) {
-            if self.lists[i].iter().any(|&o| o != me && static_record(o)) {
+            if self
+                .lists
+                .get(i)
+                .is_some_and(|l| l.iter().any(|&o| o != me && static_record(o)))
+            {
                 return false;
             }
-            if self.words[i] >> 23 == own {
-                self.words[i] &= 0xff;
+            if let Some(word) = self.words.get_mut(i)
+                && *word >> 23 == own
+            {
+                *word &= 0xff;
             }
         }
         true

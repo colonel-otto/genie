@@ -13,6 +13,7 @@ use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
 use crate::vision::registry::VisibleQuery;
 use crate::vision::visibility::Seer;
+use crate::world::slots::CheckedIndex;
 
 impl Spatial {
     /// `FormationTransform`'s line query (`FUN_141051900` with flags 0x40, any player, the
@@ -381,7 +382,7 @@ impl Spatial {
             // each record is read where it is tested: the reachability check is handed the
             // spatial index, which it writes
             let mut next = 0;
-            while let Some(record) = self.last_found()?[kind].get(next).copied() {
+            while let Some(record) = self.last_found()?.checked(kind)?.get(next).copied() {
                 next += 1;
                 if record.id == me {
                     continue;
@@ -425,7 +426,7 @@ impl Spatial {
     ) -> Result<crate::unit_ai::best_target::Choice, GenieError> {
         let me = attack.searcher(memory)?;
         let found = self.last_found()?;
-        let lists: [Vec<i32>; 5] = std::array::from_fn(|k| found[k].iter().map(|r| r.id).collect());
+        let lists: [Vec<i32>; 5] = found.each_ref().map(|v| v.iter().map(|r| r.id).collect());
         let mut field = AttackField {
             picker: attack,
             reach,

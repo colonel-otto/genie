@@ -96,35 +96,41 @@ impl Spatial {
                 continue;
             }
             let o = q.player;
-            if players <= o {
+            let (Some(count), Some(near)) = (counts.get_mut(o), nearest.get_mut(o)) else {
                 return Err(GenieError::unsupported(
                     "an owner search's unit of a player beyond the list",
                 ));
-            }
+            };
             let strong = livestock && attribute_97(o).is_some_and(|a| 0.0 < a);
             if o == p.player {
                 if strong {
                     return Ok(None);
                 }
                 own_seen = true;
-                counts[o] += 1;
+                *count += 1;
             } else {
-                counts[o] += 1;
+                *count += 1;
                 if strong {
                     taker = true;
-                    counts[o] += 100;
+                    *count += 100;
                 }
             }
             let gap =
                 crate::movement::footprint_gap_squared(q.position, q.radius, p.position, p.radius);
-            if gap < nearest[o] {
-                nearest[o] = gap;
+            if gap < *near {
+                *near = gap;
             }
         }
         if own_seen && !taker {
             return Ok(None);
         }
-        let takers: Vec<usize> = (0..players).filter(|&o| 0 < counts[o] && !out(o)).collect();
+        let takers: Vec<usize> = counts
+            .iter()
+            .enumerate()
+            .take(players)
+            .filter(|&(o, &c)| 0 < c && !out(o))
+            .map(|(o, _)| o)
+            .collect();
         match takers[..] {
             [] => Ok(None),
             [one] => Ok(Some(one)),
@@ -206,7 +212,7 @@ impl Spatial {
         if x < 0 || y < 0 || v.width <= x || v.height <= y {
             return None;
         }
-        Some(v.unified[(y * v.width + x) as usize])
+        Some(*v.unified.get((y * v.width + x) as usize)?)
     }
 
     /// `FUN_141663500`, the player's tile test: what player `player` knows of tile (`x`, `y`).
@@ -427,18 +433,22 @@ impl Spatial {
     ) -> Vec<(i32, i32, Vec<i32>)> {
         let mut differ = Vec::new();
         for (x, y, ids) in lists {
-            let Some(i) = self.tiles.index(*x, *y) else {
+            let Some(tile) = self
+                .tiles
+                .index(*x, *y)
+                .and_then(|i| self.tiles.lists.get_mut(i))
+            else {
                 differ.push((*x, *y, Vec::new()));
                 continue;
             };
-            let mut mine = self.tiles.lists[i].clone();
+            let mut mine = tile.clone();
             let mut theirs = ids.clone();
             mine.sort_unstable();
             theirs.sort_unstable();
             if mine == theirs {
-                self.tiles.lists[i].clone_from(ids);
+                tile.clone_from(ids);
             } else {
-                differ.push((*x, *y, self.tiles.lists[i].clone()));
+                differ.push((*x, *y, tile.clone()));
             }
         }
         differ

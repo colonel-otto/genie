@@ -2,6 +2,7 @@
 //! candidates.
 
 use crate::objects::masters::class;
+use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -50,12 +51,12 @@ impl Spatial {
         let reach = half - 1;
         let mut i = 0;
         while i < list.len() {
-            let (x, y) = list[i];
+            let (x, y) = *list.checked(i)?;
             if (cx - x).abs() < reach && (cy - y).abs() < reach {
                 for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
                     let at = ((ox + nx) * size + ny + oy) as usize;
-                    if !visited[at] && self.passable(nx, ny, mask, me, radius_x)? {
-                        visited[at] = true;
+                    if !*visited.checked(at)? && self.passable(nx, ny, mask, me, radius_x)? {
+                        *visited.checked_mut(at)? = true;
                         list.push((nx, ny));
                     }
                 }

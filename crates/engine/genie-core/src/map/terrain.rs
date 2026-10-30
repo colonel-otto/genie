@@ -9,6 +9,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::ids::TOWN_CENTRE;
+use crate::world::slots::CheckedIndex;
 
 /// A foundation's tile off the map after the clamp to it.
 const TILE_OFF_MAP: GenieError =
@@ -285,7 +286,7 @@ impl Terrain {
     /// A tile's terrain (the map tile's `+0x9`), None off the map.
     #[must_use]
     pub fn kind(&self, x: i32, y: i32) -> Option<u8> {
-        self.index(x, y).map(|i| self.kinds[i])
+        self.index(x, y).and_then(|i| self.kinds.get(i).copied())
     }
 
     /// The ground's height under (`x`, `y`) on the map (the static `new_position`'s,
@@ -300,7 +301,7 @@ impl Terrain {
                 "the ground's height where the elevations are not known",
             ))?;
         let (fx, fy) = (x - tx as f32, y - ty as f32);
-        Ok(f32::from(self.elevations[i]) + slope_share(self.shapes[i], fx, fy))
+        Ok(f32::from(*self.elevations.checked(i)?) + slope_share(*self.shapes.checked(i)?, fx, fy))
     }
 
     /// The terrain defense of an object on tile (`x`, `y`) whose master has `defense_terrain_bonus`
@@ -312,8 +313,8 @@ impl Terrain {
         let Some(i) = self.index(x, y) else {
             return Some(1.0);
         };
-        let t = match self.restore[i] {
-            255 => self.kinds[i],
+        let t = match *self.restore.get(i)? {
+            255 => *self.kinds.get(i)?,
             t => t,
         };
         let v = *self
@@ -344,7 +345,10 @@ impl Terrain {
     /// `.dat`'s `is_water` 16: a wet beach, where land units and ships meet).
     #[must_use]
     pub fn beach(&self, x: i32, y: i32) -> bool {
-        let t = self.index(x, y).map_or(0, |i| self.seen(self.kinds[i]));
+        let t = self
+            .index(x, y)
+            .and_then(|i| self.kinds.get(i))
+            .map_or(0, |&k| self.seen(k));
         self.terrains
             .get(usize::from(t))
             .is_some_and(|k| k.flags & 0x10 != 0)
@@ -382,7 +386,8 @@ impl Terrain {
     #[must_use]
     pub fn read(&self, x: i16, y: i16) -> u8 {
         self.index(i32::from(x), i32::from(y))
-            .map_or(0, |i| self.seen(self.kinds[i]))
+            .and_then(|i| self.kinds.get(i))
+            .map_or(0, |&k| self.seen(k))
     }
 
     /// The snow check of a completed building on tile (`x`, `y`) (`FUN_1411dbb70`'s "pick snow"):
@@ -394,15 +399,17 @@ impl Terrain {
         let i = self
             .index(x, y)
             .ok_or(GenieError::unsupported("a building off the map's tiles"))?;
-        let kind = self.seen(self.kinds[i]);
-        let layer = self.seen(self.layers[i] as u8);
+        let kind = self.seen(*self.kinds.checked(i)?);
+        let layer = self.seen(*self.layers.checked(i)? as u8);
         Ok(self.snowy(kind) || self.snowy(layer))
     }
 
     /// [`Terrain::cover`]'s test for the foundation terrain: tile `i` of terrain `t` takes it
     /// over a plain or farm terrain whose layer is empty, plain or a farm too.
     fn foundation_covers(&self, i: usize, t: u8) -> bool {
-        let l = self.layers[i];
+        let Some(&l) = self.layers.get(i) else {
+            return false;
+        };
         (plain(i16::from(t)) || (t < 200 && is_farm_terrain(t)))
             && (l < 0 || plain(l) || (l < 200 && is_farm_terrain(l as u8)))
     }
@@ -468,11 +475,11 @@ impl Terrain {
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 let i = self.index(tx, ty).ok_or(TILE_OFF_MAP)?;
-                let t = self.kinds[i];
+                let t = *self.kinds.checked(i)?;
                 if let Some(values) = bonus.as_ref() {
                     let v = values.get(usize::from(t)).copied().unwrap_or(0.0);
                     if v != 0.0 && v != 1.0 {
-                        self.restore[i] = t;
+                        *self.restore.checked_mut(i)? = t;
                     }
                 }
                 if UNCOVERED.contains(&t) {
@@ -486,11 +493,12 @@ impl Terrain {
                 if !covered || gap(tx, ty) {
                     continue;
                 }
-                self.layers[i] = layer;
+                let cell = self.layers.checked_mut(i)?;
+                *cell = layer;
                 if into_terrain || layer != -1 || f.mode_680 != 1 {
-                    self.kinds[i] = kind;
+                    *self.kinds.checked_mut(i)? = kind;
                 } else {
-                    self.layers[i] = i16::from(kind);
+                    *cell = i16::from(kind);
                 }
             }
         }
