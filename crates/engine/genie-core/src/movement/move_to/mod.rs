@@ -247,8 +247,8 @@ pub fn ask_walk(
     Ok((walk_or_give_up(walk.reborrow())?, Some(point)))
 }
 
-/// [`ask_walk`] for an owner that keeps its own `MoveTo` fields until T3 reaches it (the Build,
-/// the Gather, the Hunt, the Attack): the target's place it asked toward goes to
+/// [`ask_walk`] for an owner that keeps its own `MoveTo` fields until T3 reaches it (the
+/// Build): the target's place it asked toward goes to
 /// [`crate::movement::Mover::move_to_point`] (None for a point), where [`target_moved`] reads
 /// it. Returns the `MoveTo`'s state after it.
 ///
@@ -428,7 +428,7 @@ pub enum Follow {
     /// The path's end did not follow ([`TargetMoved::Follows`]): the `MoveTo` tells the unit
     /// (notify 0x1fc), turns to state 3 and the motion step runs on.
     Blocked,
-    /// The path's end follows the target to this point ([`follow_path_end`]); the walk goes on.
+    /// The path's end follows the target to this point ([`Mover::follow_path_end`]); the walk goes on.
     PathEnd([f32; 3]),
 }
 
@@ -438,20 +438,6 @@ impl Follow {
     pub const fn again(self) -> bool {
         matches!(self, Self::Again)
     }
-}
-
-/// [`Follow::PathEnd`] for an owner that keeps its own `MoveTo` fields until T3 reaches it: the
-/// unit's paths end at `point` ([`Mover::follow_path_end`]) and the `MoveTo`'s point on the mover
-/// ([`Mover::move_to_point`]) becomes it.
-///
-/// # Errors
-///
-/// A walker without movement state.
-pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), GenieError> {
-    let mover = walk.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
-    mover.follow_path_end(point);
-    mover.move_to_point = Some(point);
-    Ok(())
 }
 
 /// The moving `MoveTo`'s check of its target object (`0x140aa2a70` in state 4, before the motion

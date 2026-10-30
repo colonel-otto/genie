@@ -441,7 +441,7 @@ impl MoveToAction {
 
     /// A moving `MoveTo`'s check of its target object (`0x140aa2a70` in state 4, before the
     /// motion step; none for a `MoveTo` to a point) by its `+0x61` ([`target_moved`]): the path's
-    /// end follows the target ([`follow_path_end`]), or the `MoveTo` turns to state 3 (the
+    /// end follows the target ([`Mover::follow_path_end`]), or the `MoveTo` turns to state 3 (the
     /// slice's [`MoveTo::Start`]) when it asks again or its path's end could not follow.
     ///
     /// # Errors
