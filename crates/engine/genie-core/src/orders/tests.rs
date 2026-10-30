@@ -129,7 +129,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         (503, 15.0, 2),
     ] {
         t.players[0].objects.push(pen(id, x, state));
-        t.track_add(0, id, 1897);
+        t.track_add(0, id, 1897).unwrap();
     }
     // the tracker's done list: the foundation 501 waits, 503 is the nearest standing one
     let key = t.tracker_key(0, 1897);
@@ -269,7 +269,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             .insert(600, placed([5.0, 10.0, 0.0], 70, [1.0, 1.0]));
         t.spatial
             .insert(503, placed([15.0, 10.0, 0.0], 68, [1.0, 1.0]));
-        t.track_add(0, 503, 68);
+        t.track_add(0, 503, 68).unwrap();
         let key = t.tracker_key(0, 68);
         t.players[0].tracker.complete(503, key);
         t

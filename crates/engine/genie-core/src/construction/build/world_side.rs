@@ -57,7 +57,7 @@ impl crate::world::World {
         };
         let part = completion.first_part(&construction)?;
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
-        self.track_complete(owner, id, master.id);
+        self.track_complete(owner, id, master.id)?;
         for (kind, amount) in part.attributes {
             self.players[owner].add_attribute(kind, amount)?;
         }

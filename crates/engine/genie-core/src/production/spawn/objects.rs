@@ -321,8 +321,7 @@ impl World {
         });
         let idx = owner.objects.len() - 1;
         // the static init's add to its player (slot 0x2d0) files it in the tracker
-        self.track_add(p, id, master);
-        Ok(idx)
+        self.track_add(p, id, master).map(|()| idx)
     }
 
     /// FLARE's objects (`0x140e7bfd0`): with `players` at most the world's players, each player

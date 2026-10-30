@@ -16,6 +16,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::master_type;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The reveal of a player's units of a kind to the others (its attribute 204 not 0,
 /// `FUN_14152bcb0`): their per-player marks (`+0x798`, `+0x79c`) and flares are not modelled.
@@ -74,6 +75,16 @@ pub const fn unit_kind(p: usize, q: usize, relation: u8) -> i32 {
     }
 }
 
+/// Lane `q` of a per-player row takes `value`; a row shorter than `q` grows (with 0) first.
+fn set_lane<T: Copy + Default>(row: &mut Vec<T>, q: usize, value: T) {
+    if let Some(lane) = row.get_mut(q) {
+        *lane = value;
+    } else {
+        row.resize(q, T::default());
+        row.push(value);
+    }
+}
+
 impl World {
     /// Slot 0x30 (`FUN_141639690`) of player `p` toward player `other` with the command's
     /// relation `relation`: 0 makes the stance an ally's (4), 1 a neutral's (3), 3 and 4 an
@@ -102,7 +113,15 @@ impl World {
         else {
             return Ok(());
         };
-        if self.players[p].diplomacy.get(q).copied().unwrap_or(0) != stance {
+        if self
+            .players
+            .player(p)?
+            .diplomacy
+            .get(q)
+            .copied()
+            .unwrap_or(0)
+            != stance
+        {
             self.set_stance(p, q, stance)?;
             self.rebuild_vision()?;
             if let Some(v) = self.spatial.sight.as_mut() {
@@ -119,11 +138,7 @@ impl World {
     /// `FUN_1416397d0`: player `p`'s stance toward `q` takes `stance`; one that makes a relation
     /// ([`relation_of_stance`]) sets it ([`World::set_relation`]).
     pub(crate) fn set_stance(&mut self, p: usize, q: usize, stance: u8) -> Result<(), GenieError> {
-        let diplomacy = &mut self.players[p].diplomacy;
-        if diplomacy.len() <= q {
-            diplomacy.resize(q + 1, 0);
-        }
-        diplomacy[q] = stance;
+        set_lane(&mut self.players.player_mut(p)?.diplomacy, q, stance);
         relation_of_stance(stance).map_or(Ok(()), |relation| self.set_relation(p, q, relation))
     }
 
@@ -137,25 +152,16 @@ impl World {
         q: usize,
         relation: u8,
     ) -> Result<(), GenieError> {
-        let set = |row: &mut Vec<u8>| {
-            if row.len() <= q {
-                row.resize(q + 1, 0);
-            }
-            row[q] = relation;
-        };
-        set(&mut self.players[p].relations);
+        set_lane(&mut self.players.player_mut(p)?.relations, q, relation);
         if let Some(row) = self.spatial.relations.get_mut(p) {
-            set(row);
+            set_lane(row, q, relation);
         }
         if let Some(row) = self.spatial.unit_diplomacy.get_mut(p) {
-            if row.len() <= q {
-                row.resize(q + 1, 0);
-            }
-            row[q] = unit_kind(p, q, relation);
+            set_lane(row, q, unit_kind(p, q, relation));
         }
         let mut i = 0;
-        while i < self.players[p].objects.len() {
-            let id = self.players[p].objects[i].id;
+        while i < self.players.player(p)?.objects.len() {
+            let id = self.players.live(p, i)?.id;
             self.notify_of_relation(p, id, q, relation)?;
             i += 1;
         }
@@ -210,7 +216,7 @@ impl World {
         }
         if relation == ALLY {
             if master_id == MARKET {
-                self.market_tells(p, id, q, position);
+                self.market_tells(p, id, q, position)?;
             }
             return Ok(());
         }
@@ -253,12 +259,18 @@ impl World {
     /// computer player `q` of its tile (its tile list, `FUN_14165d500`), unless the lobby's rule
     /// table (`FUN_14152fbb0`'s, key 1) says not; the table's settings of a scenario are not
     /// held (taken as absent, the rule on).
-    fn market_tells(&mut self, p: usize, id: i32, q: usize, position: [f32; 3]) {
-        if self.players[p].computer
+    fn market_tells(
+        &mut self,
+        p: usize,
+        id: i32,
+        q: usize,
+        position: [f32; 3],
+    ) -> Result<(), GenieError> {
+        if self.players.player(p)?.computer
             || i32::try_from(q).ok() == Some(id)
-            || !self.players[q].computer
+            || !self.players.player(q)?.computer
         {
-            return;
+            return Ok(());
         }
         if let Some(v) = self.spatial.sight.as_mut() {
             let tile = [cvttss2si(position[0]), cvttss2si(position[1])];
@@ -266,6 +278,7 @@ impl World {
                 list.push(tile);
             }
         }
+        Ok(())
     }
 
     /// The building's part with a relation other than an ally's: the units of `q` inside the
@@ -291,7 +304,8 @@ impl World {
 
     /// The index of object `id` in player `p`'s live list.
     fn live_index(&self, p: usize, id: i32) -> Result<usize, GenieError> {
-        self.players[p]
+        self.players
+            .player(p)?
             .objects
             .position_of(id)
             .ok_or(GenieError::unsupported(
@@ -306,9 +320,9 @@ impl World {
         let [visible, explored] = self.spatial.vision(p);
         if let Some(sight) = self.spatial.sight.as_mut() {
             let (w, h) = (sight.width, sight.height);
-            for y in 0..h {
-                for x in 0..w {
-                    let word = sight.unified[(y * w + x) as usize];
+            let rows = sight.unified.chunks(usize::try_from(w).unwrap_or(0).max(1));
+            for (y, row) in (0..h).zip(rows) {
+                for (x, &word) in (0..w).zip(row) {
                     let seen =
                         (visible & word & PLAYER_BITS) != 0 || (explored & word & PLAYER_BITS) != 0;
                     if seen && let Some(list) = sight.new_tiles.get_mut(p) {
@@ -339,8 +353,9 @@ impl World {
             let mut joined = 0;
             for j in 1..n {
                 let both = |a: usize, b: usize| {
-                    self.players[a].relations.get(b) == Some(&ALLY)
-                        && self.players[a].allied_victory == 1
+                    self.players.get(a).is_some_and(|pl| {
+                        pl.relations.get(b) == Some(&ALLY) && pl.allied_victory == 1
+                    })
                 };
                 if j != i && self.team(j) < 2 && both(i, j) && both(j, i) {
                     joined += 1;
@@ -372,10 +387,11 @@ impl World {
     /// player with attribute 204 (`+0x660`, truncated, `CVTTSS2SI`) not 0 reveals its units of
     /// that kind to the others: not modelled ([`REVEAL_UNITS`]); without one nothing happens.
     pub(crate) fn reveal_units(&self) -> Result<(), GenieError> {
-        let reveals = self
-            .players
-            .iter()
-            .any(|q| REVEAL_UNIT < q.attributes.len() && cvttss2si(q.attributes[REVEAL_UNIT]) != 0);
+        let reveals = self.players.iter().any(|q| {
+            q.attributes
+                .get(REVEAL_UNIT)
+                .is_some_and(|&v| cvttss2si(v) != 0)
+        });
         if reveals {
             return Err(REVEAL_UNITS);
         }

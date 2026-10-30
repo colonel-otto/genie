@@ -80,7 +80,7 @@ impl World {
     /// type 60 (the world's `+0x1d8`), and it leaves the mesh. Every step runs; returns the
     /// world's leave of the place that the slice does not model.
     pub(crate) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
-        self.track_remove(p, gone.id, gone.life.master_id);
+        self.track_remove(p, gone.id, gone.life.master_id)?;
         let master = gone.master(&self.masters, p).ok();
         forget_resource(&mut self.spatial, master, gone.id, gone.position());
         if let Some(m) = master.filter(|m| COMBAT <= m.kind) {

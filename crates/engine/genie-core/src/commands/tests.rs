@@ -262,7 +262,8 @@ fn a_trade_of_another_commodity_does_nothing() {
             market: None,
             buy: true,
         }
-        .run(&mut w);
+        .run(&mut w)
+        .unwrap();
     }
     assert_eq!(w, before);
 }

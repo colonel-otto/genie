@@ -7,6 +7,7 @@ use crate::players::game_status::{
     BATTLE_ROYALE, Count, DEFEAT_IDS, KILLS_OF, LOST, PLAYING, STOP_AFTER_MS, WON,
 };
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// The relations of players `a` and `b` each way (`player+0x260`).
@@ -68,11 +69,11 @@ impl World {
     /// give its resources and units away while the game goes on, which is not modelled. A
     /// newly lost player's history takes its defeat ([`World::defeat_event`]).
     pub(crate) fn set_status(&mut self, p: usize, status: u8) -> Result<(), GenieError> {
-        let old = self.players[p].game_status;
-        if status != old && (!self.players[p].resigned || status == LOST) {
-            self.players[p].game_status = status;
+        let old = self.players.player(p)?.game_status;
+        if status != old && (!self.players.player(p)?.resigned || status == LOST) {
+            self.players.player_mut(p)?.game_status = status;
         }
-        let now = self.players[p].game_status;
+        let now = self.players.player(p)?.game_status;
         if now != old && matches!(now, WON | LOST) && !self.game_ended() {
             // the map revealed to the player (FUN_1412847b0 with 0x4000000040000000): every
             // tile of the unified map and the player's masks take the ended bits; the view's
@@ -89,9 +90,9 @@ impl World {
                 self.stop_everything(p)?;
             }
             if old != LOST {
-                self.defeat_event(p);
+                self.defeat_event(p)?;
             }
-            if old != LOST && 0 < self.players[p].fealty && self.game_state == 0 {
+            if old != LOST && 0 < self.players.player(p)?.fealty && self.game_state == 0 {
                 return Err(GenieError::unsupported(
                     "a defeated player's fealty (its resources and units given away)",
                 ));
@@ -105,9 +106,9 @@ impl World {
     /// their attribute 300 + their own id (the game reads each one's own, not the defeated
     /// player's); the first strictly above the best so far (`COMISS` with `JBE`, from 0) is the
     /// event's `data1`, its value through `CVTTSS2SI` its `data2`; none gives player 1 and 0.
-    pub(crate) fn defeat_event(&mut self, p: usize) {
-        if self.players[p].resigned || p == 0 {
-            return;
+    pub(crate) fn defeat_event(&mut self, p: usize) -> Result<(), GenieError> {
+        if self.players.player(p)?.resigned || p == 0 {
+            return Ok(());
         }
         let mut killer = 1u8;
         let mut most = 0i32;
@@ -122,20 +123,21 @@ impl World {
             }
         }
         let now = self.world_time;
-        self.players[p].history.add_event(
+        self.players.player_mut(p)?.history.add_event(
             crate::players::history::DEFEAT,
             f32::from(killer),
             most as f32,
             0,
             now,
         );
+        Ok(())
     }
 
     /// `FUN_14165d720`: player `i`'s status for the victory check. A player still playing whose
     /// victory conditions are met (`FUN_1414f35d0`) wins (slot 1 with won; the world's `+0x8c`,
     /// 2, is not held); one counting its allies' victory as its own is not modelled.
     pub(super) fn own_victory(&mut self, i: usize) -> Result<u8, GenieError> {
-        let p = &self.players[i];
+        let p = &self.players.player(i)?;
         if p.game_status == LOST || p.victory != 2 {
             return Ok(p.game_status);
         }
@@ -145,7 +147,7 @@ impl World {
             ));
         }
         self.set_status(i, WON)?;
-        Ok(self.players[i].game_status)
+        Ok(self.players.player(i)?.game_status)
     }
 
     /// The world's victory check after every update (`TRIBE_World` slot 0x68, `FUN_1415c9480`):
@@ -155,18 +157,18 @@ impl World {
     /// playing lose (`FUN_141666590`). Else under the conquest victory, one side left with
     /// someone lost, or nobody playing: the game is over and those still playing win
     /// (`FUN_1416778c0`; the world's `+0x8c`, 1, is not held).
-    pub(crate) fn victory_check(&mut self) {
+    pub(crate) fn victory_check(&mut self) -> Result<(), GenieError> {
         let mut count = Count::default();
         for i in 1..self.players.len() {
             let status = match self.own_victory(i) {
                 Ok(s) => s,
                 Err(e) => {
                     self.stop_player(i, e);
-                    return;
+                    return Ok(());
                 }
             };
             let rel = self.relations(count.first, i);
-            let allied_victory = self.players[i].allied_victory;
+            let allied_victory = self.players.player(i)?.allied_victory;
             count.add(i, status, allied_victory, rel);
         }
         let outcome = if 0 < count.won {
@@ -176,15 +178,16 @@ impl World {
         {
             WON
         } else {
-            return;
+            return Ok(());
         };
         self.game_state = 1;
         for i in 1..self.players.len() {
-            if self.players[i].game_status == PLAYING
+            if self.players.player(i)?.game_status == PLAYING
                 && let Err(e) = self.set_status(i, outcome)
             {
                 self.stop_player(i, e);
             }
         }
+        Ok(())
     }
 }

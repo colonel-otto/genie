@@ -4359,8 +4359,8 @@ fn an_own_object_taken_out_leaves_the_world_until_it_goes_back() {
         Some((1, 8.0, false))
     );
     assert_eq!(t.locate(521).map(|(q, _, s)| (q, s)), Some((0, true)));
-    assert!(t.wake_sleeper(521));
-    assert!(!t.wake_sleeper(521), "awake already");
+    assert!(t.wake_sleeper(521).unwrap());
+    assert!(!t.wake_sleeper(521).unwrap(), "awake already");
     assert_eq!(t.locate(521).map(|(q, _, s)| (q, s)), Some((0, false)));
 }
 
@@ -15495,7 +15495,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
             }),
             1,
             |w| {
-                w.buy(player_id(1), 1, 1);
+                w.buy(player_id(1), 1, 1).unwrap();
                 Ok(())
             },
         ),
@@ -15510,7 +15510,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
             }),
             1,
             |w| {
-                w.sell(player_id(1), 1, 1);
+                w.sell(player_id(1), 1, 1).unwrap();
                 Ok(())
             },
         ),

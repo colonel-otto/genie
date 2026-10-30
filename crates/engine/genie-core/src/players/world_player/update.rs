@@ -11,6 +11,7 @@ use crate::players::world_player::{
     set,
 };
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// Player `p`'s slot 0x100 up to `WorldPlayerBase::update`. Gaia (`WorldPlayerGaia::update`)
@@ -24,18 +25,18 @@ impl World {
     /// The second's work met a part of the game the slice does not model.
     pub fn update_world_player(&mut self, p: usize) -> Result<(), GenieError> {
         let dt = self.dt_seconds;
-        let player = &mut self.players[p];
+        let player = self.players.player_mut(p)?;
         if player.kind == GAIA_TYPE {
             player.gaia_update_time += dt;
             return Ok(());
         }
         player.update_time += dt;
         loop {
-            let time = self.players[p].update_time;
+            let time = self.players.player(p)?.update_time;
             if below_or_unordered(time, SECOND) {
                 return Ok(());
             }
-            self.players[p].update_time = time - SECOND;
+            self.players.player_mut(p)?.update_time = time - SECOND;
             self.world_player_second(p, time)?;
         }
     }
@@ -56,16 +57,16 @@ impl World {
     /// The defeat check's ([`World::defeat_check`]).
     pub(super) fn world_player_second(&mut self, p: usize, time: f32) -> Result<(), GenieError> {
         let (world_time, period) = (self.world_time, self.history_period);
-        let player = &mut self.players[p];
+        let player = self.players.player_mut(p)?;
         player
             .history
-            .update(&player.attributes, world_time, period);
+            .update(&player.attributes, world_time, period)?;
         let explored = if self.settings.explored_all() {
             Some(PERCENT)
         } else {
             self.explored_share(p).map(|share| share * PERCENT)
         };
-        let player = &mut self.players[p];
+        let player = self.players.player_mut(p)?;
         if let Some(e) = explored {
             set(&mut player.attributes, attribute::EXPLORED, e);
         }
@@ -80,9 +81,9 @@ impl World {
             return Ok(());
         }
         self.defeat_check(p)?;
-        if self.players[p].game_status == crate::players::game_status::PLAYING {
-            self.trickles(p);
-            self.mill_food(p, time);
+        if self.players.player(p)?.game_status == crate::players::game_status::PLAYING {
+            self.trickles(p)?;
+            self.mill_food(p, time)?;
         }
         Ok(())
     }
@@ -115,9 +116,9 @@ impl World {
     ///
     /// [`VictoryTimes::running`]: crate::players::world_player::VictoryTimes::running
     pub fn defeat_check(&mut self, p: usize) -> Result<(), GenieError> {
-        let mut stays = self.players[p].victory_times.running();
+        let mut stays = self.players.player(p)?.victory_times.running();
         if !stays {
-            for unit in &self.players[p].objects {
+            for unit in &self.players.player(p)?.objects {
                 if self.keeps_alive(p, unit)? {
                     stays = true;
                     break;
@@ -126,20 +127,25 @@ impl World {
         }
         if stays && self.settings.sudden_death() {
             let centre = self.first_town_centre(p).is_some();
-            let player = &mut self.players[p];
+            let player = self.players.player_mut(p)?;
             if player.sudden_death_eliminable {
                 stays = centre;
             } else if centre {
                 player.sudden_death_eliminable = true;
             }
         }
-        if self.players[p].game_status == crate::players::game_status::LOST {
+        if self.players.player(p)?.game_status == crate::players::game_status::LOST {
             return Ok(());
         }
-        let kingless = self.settings.regicide() && self.players[p].tracker.list(KING).is_empty();
+        let kingless =
+            self.settings.regicide() && self.players.player(p)?.tracker.list(KING).is_empty();
         if !stays || kingless {
             self.set_status(p, crate::players::game_status::LOST)?;
-            set(&mut self.players[p].attributes, attribute::SURVIVAL, 0.0);
+            set(
+                &mut self.players.player_mut(p)?.attributes,
+                attribute::SURVIVAL,
+                0.0,
+            );
         }
         Ok(())
     }

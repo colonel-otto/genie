@@ -51,10 +51,10 @@ impl World {
                 .construction
                 .is_some_and(|c| f32::from(c.build_time) <= c.progress);
         self.players[0].objects.push(unit);
-        self.track_remove(q, id, master_id);
-        self.track_add(0, id, master_id);
+        self.track_remove(q, id, master_id)?;
+        self.track_add(0, id, master_id)?;
         if built {
-            self.track_complete(0, id, master_id);
+            self.track_complete(0, id, master_id)?;
         }
         handed
     }
@@ -135,7 +135,7 @@ impl World {
         }
         let owner = self.hand_building_over(old, idx, new, id)?;
         if built {
-            self.track_complete(new, id, master.id);
+            self.track_complete(new, id, master.id)?;
         }
         if watched && let Some(p) = placed {
             let _ = self.watch(
@@ -259,8 +259,8 @@ impl World {
             let handed = self.hand_over_attributes(old, new, &unit);
             let master_id = unit.life.master_id;
             self.players[new].objects.push(unit);
-            self.track_remove(old, id, master_id);
-            self.track_add(new, id, master_id);
+            self.track_remove(old, id, master_id)?;
+            self.track_add(new, id, master_id)?;
             handed?;
             new
         } else {

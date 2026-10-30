@@ -122,7 +122,7 @@ fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
     t.players[1].attributes[301] = 50.0;
     t.players[1].history.entries = vec![[1, 0]; 4];
     t.world_time = 5_000;
-    t.defeat_event(1);
+    t.defeat_event(1).unwrap();
     assert_eq!(
         t.players[1].history.events,
         [crate::players::history::Event {
@@ -136,7 +136,7 @@ fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
     );
     t.players[2].resigned = true;
     t.players[2].history.entries = vec![[1, 0]];
-    t.defeat_event(2);
+    t.defeat_event(2).unwrap();
     assert_eq!(t.players[2].history.events, []);
 }
 
@@ -675,7 +675,7 @@ fn a_resignation_cancels_the_queues_and_the_last_side_wins() {
     );
     assert_eq!(ai.notifies.len(), 1);
     assert_eq!(t.game_state, 0);
-    t.victory_check();
+    t.victory_check().unwrap();
     assert_eq!(t.game_state, 1);
     assert_eq!(
         (t.players[1].game_status, t.players[2].game_status),

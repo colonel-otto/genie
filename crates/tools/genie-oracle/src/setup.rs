@@ -311,9 +311,8 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         turns.build_mesh();
     }
     // the players' object trackers, which the objects' loads fill
-    turns.load_trackers();
     // the players' vision masks, which the world's load rebuilds (its slot 0x78)
-    if let Err(e) = turns.rebuild_vision() {
+    if let Err(e) = turns.load_trackers().and_then(|()| turns.rebuild_vision()) {
         for p in &mut turns.players {
             let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
             p.stopped = true;

@@ -116,14 +116,20 @@ impl World {
             }
         }
         // the upgrades to 0x67f and 0x6a1 move the tracker's list of `from` (FUN_14104fd10)
-        if matches!(to, 0x67f | 0x6a1) {
-            self.track_move_all(p, from, to);
-        }
+        self.track_move_upgraded(p, from, to)?;
         if keep
             && old.kind == new.kind
             && let Some(m) = self.masters[p].get_mut(from)
         {
             m.copy_from(&new);
+        }
+        Ok(())
+    }
+
+    /// The upgrades to 0x67f and 0x6a1 move the tracker's list of `from` (`FUN_14104fd10`).
+    fn track_move_upgraded(&mut self, p: usize, from: i16, to: i16) -> Result<(), GenieError> {
+        if matches!(to, 0x67f | 0x6a1) {
+            self.track_move_all(p, from, to)?;
         }
         Ok(())
     }

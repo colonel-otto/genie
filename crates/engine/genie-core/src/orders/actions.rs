@@ -251,7 +251,7 @@ impl World {
                 let (id, master) = (woken.id, woken.life.master_id);
                 self.players.player_mut(p)?.objects.push(woken);
                 // the wake's remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
-                self.track_relist(p, id, master);
+                self.track_relist(p, id, master)?;
                 self.players
                     .player_mut(p)?
                     .objects
@@ -299,7 +299,7 @@ impl World {
             // the tracker's promotion (FUN_14104fb20): last in its new key master's list and
             // class's
             let id = self.players.live(player, idx)?.id;
-            self.track_promote(player, id, old.id, new);
+            self.track_promote(player, id, old.id, new)?;
         }
         let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.coming {

@@ -1,6 +1,7 @@
 //! The income: the trickles, the mills' food, the attribute adds and their sharing, and the
 //! update's tail.
 
+use crate::GenieError;
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::attribute;
@@ -8,19 +9,24 @@ use crate::players::world_player::{
     COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, get, set,
 };
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 impl World {
     /// The trickles of player `p`: each of attributes 230 to 233 above 0 (`COMISS` with 0,
     /// `JBE` skips a NaN) adds its sixtieth to food, wood, stone and gold in turn, through the
     /// attribute add with its statistic and its sharing ([`World::add_resource`] with 1 and 1).
-    pub fn trickles(&mut self, p: usize) {
+    pub fn trickles(&mut self, p: usize) -> Result<(), GenieError> {
         for kind in 0..4 {
-            let rate = get(&self.players[p].attributes, attribute::TRICKLES + kind);
+            let rate = get(
+                &self.players.player(p)?.attributes,
+                attribute::TRICKLES + kind,
+            );
             if at_most_or_unordered(rate, 0.0) {
                 continue;
             }
-            self.add_resource(p, kind, rate / MINUTE, 1, true);
+            self.add_resource(p, kind, rate / MINUTE, 1, true)?;
         }
+        Ok(())
     }
 
     /// The food of player `p`'s mills' livestock: over the ids its tracker files under the mill
@@ -29,9 +35,9 @@ impl World {
     /// 0); food grows by attribute 254 over 60 times (`time` times logf(sum / 200 + 1))
     /// ([`crate::math::fmath::log`]), with its statistic and its sharing ([`World::add_resource`]),
     /// also when that is 0. `time` is the update time before the loop's step.
-    pub fn mill_food(&mut self, p: usize, time: f32) {
+    pub fn mill_food(&mut self, p: usize, time: f32) -> Result<(), GenieError> {
         let mut sum = 0.0;
-        for &id in self.players[p].tracker.list(MILL) {
+        for &id in self.players.player(p)?.tracker.list(MILL) {
             let Some((owner, unit)) = self.object(id) else {
                 continue;
             };
@@ -44,8 +50,9 @@ impl World {
             }
         }
         let grows = crate::math::fmath::log(sum / LIVESTOCK_SCALE + SECOND);
-        let rate = get(&self.players[p].attributes, attribute::MILL_FOOD) / MINUTE;
-        self.add_resource(p, attribute::FOOD, rate * (time * grows), 1, true);
+        let rate = get(&self.players.player(p)?.attributes, attribute::MILL_FOOD) / MINUTE;
+        self.add_resource(p, attribute::FOOD, rate * (time * grows), 1, true)?;
+        Ok(())
     }
 
     /// The world player's attribute add (slot 0xf8, `FUN_141616820`) of `amount` to resource
@@ -55,20 +62,28 @@ impl World {
     /// ([`World::add_attribute_base`]). The resource panel's event when a resource crosses 100
     /// (`FUN_140c898a0` 0x80) is the interface's. The kinds 50, 183 and 196 and the others are
     /// not resources: their branches are [`crate::world::Player::add_attribute`]'s.
-    pub fn add_resource(&mut self, p: usize, kind: usize, amount: f32, stat: u8, share: bool) {
+    pub fn add_resource(
+        &mut self,
+        p: usize,
+        kind: usize,
+        amount: f32,
+        stat: u8,
+        share: bool,
+    ) -> Result<(), GenieError> {
         if kind == attribute::GOLD {
             if stat != 0 {
-                let a = &mut self.players[p].attributes;
+                let a = &mut self.players.player_mut(p)?.attributes;
                 let counter = get(a, attribute::GOLD_COUNTER);
                 set(a, attribute::GOLD_COUNTER, amount + counter);
                 if stat == 1 {
-                    self.add_attribute_base(p, attribute::GOLD_GATHERED, amount, 1, share);
+                    self.add_attribute_base(p, attribute::GOLD_GATHERED, amount, 1, share)?;
                 }
             }
         } else if stat == 1 {
-            self.add_attribute_base(p, attribute::GATHERED + kind, amount, 1, share);
+            self.add_attribute_base(p, attribute::GATHERED + kind, amount, 1, share)?;
         }
-        self.add_attribute_base(p, kind, amount, stat, share);
+        self.add_attribute_base(p, kind, amount, stat, share)?;
+        Ok(())
     }
 
     /// The base player's attribute add (`FUN_14165d040`) of `amount` to attribute `kind` of
@@ -88,25 +103,25 @@ impl World {
         amount: f32,
         stat: u8,
         share: bool,
-    ) {
-        let player = &mut self.players[p];
+    ) -> Result<(), GenieError> {
+        let player = self.players.player_mut(p)?;
         if player.attributes.len() <= kind {
-            return;
+            return Ok(());
         }
         let value = if kind < 4 {
-            &mut player.resources[kind]
+            player.resources.checked_mut(kind)?
         } else {
-            &mut player.attributes[kind]
+            player.attributes.checked_mut(kind)?
         };
         *value += amount;
         if player.kind == COMPUTER_TYPE && kind < 4 {
-            let pct = player.escrow_percentage[kind];
+            let pct = *player.escrow_percentage.checked(kind)?;
             if !at_most_or_unordered(amount, 0.0) && !at_most_or_unordered(pct, 0.0) {
-                player.escrow[kind] += pct * amount;
+                *player.escrow.checked_mut(kind)? += pct * amount;
             }
-            let held = player.resources[kind];
-            if !at_most_or_unordered(player.escrow[kind], held) {
-                player.escrow[kind] = if at_most_or_unordered(0.0, held) {
+            let held = *player.resources.checked(kind)?;
+            if !at_most_or_unordered(*player.escrow.checked(kind)?, held) {
+                *player.escrow.checked_mut(kind)? = if at_most_or_unordered(0.0, held) {
                     held
                 } else {
                     0.0
@@ -116,10 +131,11 @@ impl World {
         if share && player.sharing && kind < 4 {
             for q in 0..self.players.len() {
                 if q != p && self.shares_with(p, q) {
-                    self.add_resource(q, kind, amount, stat, false);
+                    self.add_resource(q, kind, amount, stat, false)?;
                 }
             }
         }
+        Ok(())
     }
 
     /// `FUN_14165d040`'s test of the players a sharing player `p` gives to: player `q` is not
@@ -133,15 +149,19 @@ impl World {
         if q == 0 || n <= q || p == q {
             return false;
         }
-        let mine = self.players[p].relations.get(q).copied();
+        let mine = self
+            .players
+            .get(p)
+            .and_then(|pl| pl.relations.get(q).copied());
         if !matches!(mine, Some(0 | 4)) {
             return false;
         }
         p != 0
             && p < n
-            && self.players[q]
-                .relations
-                .get(p)
+            && self
+                .players
+                .get(q)
+                .and_then(|pl| pl.relations.get(p))
                 .is_some_and(|&r| r & 0xfb == 0)
     }
 
@@ -152,9 +172,9 @@ impl World {
     /// clears, is the list's length: only the AI's `FUN_140b90b90`, which a playback does not
     /// run, reads it too, and the player's update ends with the list emptied (`FUN_141661030`).
     /// Gaia's update has no tail.
-    pub fn world_player_tail(&mut self, p: usize) {
-        if self.players[p].kind == GAIA_TYPE || self.spatial.scout_map(p).is_none() {
-            return;
+    pub fn world_player_tail(&mut self, p: usize) -> Result<(), GenieError> {
+        if self.players.player(p)?.kind == GAIA_TYPE || self.spatial.scout_map(p).is_none() {
+            return Ok(());
         }
         let Some(tiles) = self
             .spatial
@@ -163,7 +183,7 @@ impl World {
             .and_then(|v| v.new_tiles.get(p))
             .cloned()
         else {
-            return;
+            return Ok(());
         };
         for [x, y] in tiles {
             let seen = self.spatial.scout_sight(p, x, y) == Some(0xf);
@@ -172,5 +192,6 @@ impl World {
                 self.spatial.scout(p, x, y);
             }
         }
+        Ok(())
     }
 }

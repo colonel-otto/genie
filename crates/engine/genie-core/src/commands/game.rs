@@ -368,8 +368,8 @@ mod tests {
             ..Master::default()
         };
         t.masters = vec![Masters::new([]), Masters::new([castle])];
-        t.track_add(1, 500, CASTLE);
-        t.track_complete(1, 500, CASTLE);
+        t.track_add(1, 500, CASTLE).unwrap();
+        t.track_complete(1, 500, CASTLE).unwrap();
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
         assert_eq!(t.players[1].pending_debit[attribute::GOLD], -TREASON_COST);
     }

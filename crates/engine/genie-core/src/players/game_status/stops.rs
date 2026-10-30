@@ -9,6 +9,7 @@ use crate::objects::release::Releaser;
 use crate::players::game_status::{KEEPING_TYPES, UNSTOPPED_BUILDINGS};
 use crate::unit_ai::ActionKind;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A halt of a top action finds the unit without that action.
 const NO_TOP_ACTION: GenieError =
@@ -23,8 +24,8 @@ impl World {
     /// back its queue ([`World::cancel_queue`]); every unit AI's orders go (`FUN_140c5e010`). The
     /// slice holds no unit groups (`+0x6d0`).
     pub(super) fn stop_everything(&mut self, p: usize) -> Result<(), GenieError> {
-        for idx in 0..self.players[p].objects.len() {
-            let unit = &self.players[p].objects[idx];
+        for idx in 0..self.players.player(p)?.objects.len() {
+            let unit = &self.players.live(p, idx)?;
             let master = unit.master(&self.masters, p)?;
             let (class, id) = (master.class, master.id);
             let explorer = unit.ai.as_ref().is_some_and(|ai| {
@@ -35,11 +36,11 @@ impl World {
             });
             // The classes a defeat stops besides explorers: villagers (4) and fishing boats (21).
             if matches!(class, class::VILLAGER | class::FISHING_SHIP) || explorer {
-                if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
+                if let Some(m) = self.players.live_mut(p, idx)?.body.mover_mut() {
                     m.ignore_units.clear();
                 }
                 self.object_stop(p, idx)?;
-                if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
+                if let Some(m) = self.players.live_mut(p, idx)?.body.mover_mut() {
                     m.stand()?;
                 }
             }
@@ -49,7 +50,7 @@ impl World {
                 }
                 self.cancel_queue(p, idx)?;
             }
-            if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
+            if let Some(ai) = self.players.live_mut(p, idx)?.ai.as_mut() {
                 ai.orders.clear();
             }
         }
@@ -64,7 +65,7 @@ impl World {
     /// (0x6f) with a load stops (slot 0xb0 with 0: the order ends, and stopAction, slot 0x3c0)
     /// and forgets its target and its last target (`FUN_140c4dcb0`).
     pub(crate) fn object_stop(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
-        let unit = &self.players[p].objects[idx];
+        let unit = &self.players.live(p, idx)?;
         let master = unit.master(&self.masters, p)?;
         let class = master.class;
         if unit
@@ -89,7 +90,7 @@ impl World {
         if !keeps {
             self.clear_actions(p, idx)?;
         }
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         let place = ([unit.position()[0], unit.position()[1]], class);
         // slot 0x438 is the top action's type: a trade (0x6f) with a load held (COMISS 0, held;
         // JNC at 0x14108c11e: a NaN load counts) keeps the unit AI going
@@ -121,11 +122,11 @@ impl World {
     /// missile's, the Make and the wait for a foundation keep the base's too; the Gather, the
     /// Build, the Attack and the Artifact halt ([`World::halt_other`]).
     pub(super) fn halt_top_action(&mut self, p: usize, idx: usize) -> Result<bool, GenieError> {
-        let computer = self.players[p].computer;
+        let computer = self.players.player(p)?.computer;
         let by = self.releaser(p, idx);
-        let master_id = self.players[p].objects[idx].life.master_id;
+        let master_id = self.players.live(p, idx)?.life.master_id;
         let standing = self.master(p, master_id)?.standing_sprite;
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         let Some(kind) = unit.top_action_kind() else {
             return Ok(false);
         };
@@ -201,14 +202,14 @@ impl World {
         kind: i16,
     ) -> Result<bool, GenieError> {
         let by = self.releaser(p, idx);
-        let master_id = self.players[p].objects[idx].life.master_id;
+        let master_id = self.players.live(p, idx)?.life.master_id;
         let standing = self.master(p, master_id)?.standing_sprite;
         match kind {
             crate::gathering::gather::GATHER => self.halt_gather(p, idx, standing, by)?,
             action_type::BUILD => self.halt_build(p, idx, by)?,
             crate::construction::repair::REPAIR => self.halt_repair(p, idx)?,
             crate::combat::attack::ATTACK => {
-                let unit = &mut self.players[p].objects[idx];
+                let unit = self.players.live_mut(p, idx)?;
                 let attack = unit.actions.attack_mut().ok_or(NO_TOP_ACTION)?;
                 attack.halt(
                     &mut unit.body,
@@ -236,7 +237,7 @@ impl World {
         standing: i16,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         let gather = unit.actions.gather_mut().ok_or(NO_TOP_ACTION)?;
         let stand = crate::gathering::hunt::stand_sprite(
             &gather.task,
@@ -267,7 +268,7 @@ impl World {
         idx: usize,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         let build = unit.actions.build_mut().ok_or(NO_TOP_ACTION)?;
         let foundation = build.target;
         let (counted, targets) = build.halt(unit.body.mover_mut())?;
@@ -286,7 +287,7 @@ impl World {
     /// [`World::halt_other`] of a Repair (`FUN_140adaa00`): `set_state(2)`, a counted repairer
     /// out of its target's repairers, the standing sprite; the target stays.
     pub(super) fn halt_repair(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         let repair = unit.actions.repair_mut().ok_or(NO_TOP_ACTION)?;
         let target = repair.target;
         if repair.halt(unit.body.mover_mut())? {
@@ -303,7 +304,7 @@ impl World {
         idx: usize,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        let unit = &mut self.players[p].objects[idx];
+        let unit = self.players.live_mut(p, idx)?;
         let artifact = unit.actions.artifact_mut().ok_or(NO_TOP_ACTION)?;
         let (gone, released) = artifact.stop();
         if gone.stops {

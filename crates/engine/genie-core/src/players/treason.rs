@@ -10,6 +10,7 @@ use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::KING;
 use crate::players::attribute;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The building of the content mode 1 (`0xd1`) that stands for the castle (`FUN_140fe0ec0`).
 const CASTLE_MODE_1: i16 = 0xd1;
@@ -35,7 +36,10 @@ impl World {
         self.masters
             .get(p)
             .is_some_and(|ms| ms.get(castle).is_some())
-            && !self.players[p].tracker.list(i32::from(castle)).is_empty()
+            && self
+                .players
+                .get(p)
+                .is_some_and(|pl| !pl.tracker.list(i32::from(castle)).is_empty())
     }
 
     /// `FUN_141620400`: player `p`'s treason. It costs 400 gold, 200 with attribute 197 above 0
@@ -49,23 +53,26 @@ impl World {
     /// slot 0x1c0 with master 697, [`World::remains`]); the sound and the minimap's mark
     /// (`FUN_140c7d6c0`, the game's `+0xa78`) are the interface's, as the local player's message.
     pub(crate) fn treason(&mut self, p: usize) -> Result<(), GenieError> {
-        let discount = self.players[p].attribute(DISCOUNT).unwrap_or(0.0);
+        let discount = self.players.player(p)?.attribute(DISCOUNT).unwrap_or(0.0);
         let cost = if 0.0 < discount {
             TREASON_DISCOUNT_COST
         } else {
             TREASON_COST
         };
-        let gold = self.players[p].resources[attribute::GOLD];
+        let gold = self.players.player(p)?.resources[attribute::GOLD];
         if cost > gold || !self.settings.regicide() {
             return Ok(());
         }
-        self.players[p].resources[attribute::GOLD] = gold - cost;
+        self.players.player_mut(p)?.resources[attribute::GOLD] = gold - cost;
         let n = self.players.len();
         for i in 1..n {
-            if crate::unit_ai::task_finder::allied(&self.players[p].relations, p, i, false) {
+            if crate::unit_ai::task_finder::allied(&self.players.player(p)?.relations, p, i, false)
+            {
                 continue;
             }
-            let Some(king) = self.players[i]
+            let Some(king) = self
+                .players
+                .player(i)?
                 .objects
                 .iter()
                 // The king (`0x1b2`), whom the treason reveals.
@@ -78,7 +85,12 @@ impl World {
                 None => king.position(),
             };
             for j in 1..n {
-                if crate::unit_ai::task_finder::allied(&self.players[p].relations, p, j, false) {
+                if crate::unit_ai::task_finder::allied(
+                    &self.players.player(p)?.relations,
+                    p,
+                    j,
+                    false,
+                ) {
                     self.remains(j, FLARE4, at, None)?;
                     self.made_new_object(j)?;
                 }

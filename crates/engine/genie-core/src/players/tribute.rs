@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::math::fmath::maxss;
 use crate::players::PlayerId;
 use crate::world::World;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// The masters one of which a player needs to pay tribute (`FUN_1416259e0`: its tracker's count
 /// of the market, 84, or of 1647 above 0).
@@ -55,9 +56,13 @@ impl World {
     #[must_use]
     pub fn pays_tribute(&self, p: usize) -> bool {
         let has = |m: i16| self.masters.get(p).is_some_and(|ms| ms.get(m).is_some());
-        MARKETS
-            .iter()
-            .any(|&m| has(m) && !self.players[p].tracker.list(i32::from(m)).is_empty())
+        MARKETS.iter().any(|&m| {
+            has(m)
+                && self
+                    .players
+                    .get(p)
+                    .is_some_and(|pl| !pl.tracker.list(i32::from(m)).is_empty())
+        })
     }
 
     /// `FUN_140e7d040`: player `from` gives player `to` its `gifts` ([`settle`]), unless the two
@@ -90,15 +95,19 @@ impl World {
                 continue;
             }
             let kind = gift.attribute as i16;
-            let have = self.players[from].resources[usize::from(gift.attribute)];
+            let have = *self
+                .players
+                .player(from)?
+                .resources
+                .checked(usize::from(gift.attribute))?;
             let (given, paid) = settle(have, gift);
-            self.players[to].add_attribute(kind, given)?;
-            self.players[from].add_attribute(kind, -paid)?;
-            let giver = &mut self.players[from];
+            self.players.player_mut(to)?.add_attribute(kind, given)?;
+            self.players.player_mut(from)?.add_attribute(kind, -paid)?;
+            let giver = self.players.player_mut(from)?;
             giver.add_attribute(TRIBUTE_GIVEN, given)?;
             giver.add_attribute(TRIBUTE_PAID, paid)?;
             giver.add_attribute(TRIBUTE_TO + i16::from(to as u8), given)?;
-            let receiver = &mut self.players[to];
+            let receiver = self.players.player_mut(to)?;
             receiver.add_attribute(TRIBUTE_RECEIVED, given)?;
             receiver.add_attribute(TRIBUTE_FROM + i16::from(from as u8), given)?;
             if receiver.computer {

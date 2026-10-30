@@ -204,12 +204,12 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
     let mut t = world();
     t.players[1].kind = COMPUTER_TYPE;
     t.players[1].escrow_percentage = [0.5, 0.0, 0.0, 0.0];
-    t.add_resource(1, 0, 10.0, 1, true);
+    t.add_resource(1, 0, 10.0, 1, true).unwrap();
     assert_eq!(
         (t.players[1].resources[0], t.players[1].escrow[0]),
         (10.0, 5.0)
     );
-    t.add_resource(1, 0, -20.0, 1, true);
+    t.add_resource(1, 0, -20.0, 1, true).unwrap();
     assert_eq!(t.players[1].escrow[0], 0.0);
     // sharing: 1 and 2 count each other, 3 counts 1 but not the other way round
     let mut t = world();
@@ -217,7 +217,7 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
     t.players[1].relations = vec![1, 0, 0, 3];
     t.players[2].relations = vec![1, 0, 0, 3];
     t.players[3].relations = vec![1, 0, 3, 0];
-    t.add_resource(1, 1, 4.0, 1, true);
+    t.add_resource(1, 1, 4.0, 1, true).unwrap();
     assert_eq!(
         [1, 2, 3].map(|p| (t.players[p].resources[1], t.players[p].attributes[167])),
         [(4.0, 4.0), (4.0, 4.0), (0.0, 0.0)]
@@ -606,14 +606,14 @@ fn the_scout_map_takes_the_new_tiles() {
     );
     sight.new_tiles[1] = vec![[0, 0], [1, 0]];
     t.spatial.sight = Some(sight);
-    t.world_player_tail(1);
+    t.world_player_tail(1).unwrap();
     t.spatial
         .set_scout_map(1, crate::movement::explore::InfluenceMap::new([10, 10], 0));
     t.world_time = 4999;
-    t.world_player_tail(1);
+    t.world_player_tail(1).unwrap();
     let m = t.spatial.scout_map(1).unwrap();
     assert_eq!((m.get(0, 0), m.get(1, 0)), (Some(1), Some(0)));
     t.world_time = 5000;
-    t.world_player_tail(1);
+    t.world_player_tail(1).unwrap();
     assert_eq!(t.spatial.scout_map(1).unwrap().get(1, 0), Some(1));
 }

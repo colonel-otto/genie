@@ -1038,7 +1038,7 @@ mod tests {
             soldier(5, 60),
             soldier(0x67f, 60),
         ])];
-        t.track_add(0, 10, 4);
+        t.track_add(0, 10, 4).unwrap();
         t
     }
 

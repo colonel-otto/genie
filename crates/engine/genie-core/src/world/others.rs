@@ -306,7 +306,7 @@ impl World {
     /// list for the end of the live one, no longer flagged to sleep, and the remove and add
     /// (slots 0x2d8, 0x2d0) file it last in its player's tracker. False when no sleeping list
     /// holds it.
-    pub(crate) fn wake_sleeper(&mut self, id: i32) -> bool {
+    pub(crate) fn wake_sleeper(&mut self, id: i32) -> Result<bool, GenieError> {
         let woken = self.players.iter_mut().enumerate().find_map(|(p, player)| {
             let mut woken = player.sleeping.swap_remove_id(id)?;
             woken.life.goto_sleep = false;
@@ -315,10 +315,10 @@ impl World {
             Some((p, master))
         });
         let Some((p, master)) = woken else {
-            return false;
+            return Ok(false);
         };
-        self.track_relist(p, id, master);
-        true
+        self.track_relist(p, id, master)?;
+        Ok(true)
     }
 
     /// Player `p`'s live object `id` out of its slot (its stand-in, [`TAKEN_OUT`], holds it),

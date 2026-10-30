@@ -338,14 +338,7 @@ impl World {
             stack_made: None,
             attacking_units: Vec::new(),
         });
-        // the static init's add to its player (slot 0x2d0): it waits in the tracker's pending
-        // lists
-        self.track_add(player, id, master);
-        self.building_place(player, id, &made, position, desolid);
-        if foundation && 0 < made.build_time {
-            self.construction_terrain(player, master, position)?;
-        }
-        self.clear_footprint(player, master, [position[0], position[1]], false)?;
+        self.settle_building(player, id, &made, (position, desolid), foundation)?;
         for (slot, &annex) in building.annexes.iter().enumerate() {
             if annex == -1 {
                 continue;
@@ -365,6 +358,25 @@ impl World {
         }
         self.watch_started(player, id)?;
         Ok((id, position))
+    }
+
+    /// The static init's add of the new building `id` to its player (slot 0x2d0: it waits in the
+    /// tracker's pending lists), its place, a foundation's terrain and its footprint.
+    fn settle_building(
+        &mut self,
+        player: usize,
+        id: i32,
+        made: &Master,
+        (position, desolid): ([f32; 3], bool),
+        foundation: bool,
+    ) -> Result<(), GenieError> {
+        let master = made.id;
+        self.track_add(player, id, master)?;
+        self.building_place(player, id, made, position, desolid);
+        if foundation && 0 < made.build_time {
+            self.construction_terrain(player, master, position)?;
+        }
+        self.clear_footprint(player, master, [position[0], position[1]], false)
     }
 
     /// The building constructor's link of a new annex `aid` (master `am`) to its building `id`

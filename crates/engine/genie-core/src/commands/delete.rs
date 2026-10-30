@@ -537,7 +537,7 @@ impl World {
                 let (id, master) = (woken.id, woken.life.master_id);
                 self.players[p].objects.push(woken);
                 // the remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
-                self.track_relist(p, id, master);
+                self.track_relist(p, id, master)?;
                 self.players[p].objects.len() - 1
             }
         })

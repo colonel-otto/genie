@@ -18,7 +18,7 @@ impl World {
     /// the second), the objects the world holds.
     #[must_use]
     pub fn first_town_centre(&self, p: usize) -> Option<i32> {
-        let tracker = &self.players[p].tracker;
+        let tracker = &self.players.get(p)?.tracker;
         TOWN_CENTRES
             .iter()
             .flat_map(|&k| tracker.list(k).iter().copied())
@@ -30,7 +30,7 @@ impl World {
     /// `FUN_14104f4b0`: the first list, then the second).
     #[must_use]
     pub fn town_centre_at(&self, p: usize, n: usize) -> Option<i32> {
-        let tracker = &self.players[p].tracker;
+        let tracker = &self.players.get(p)?.tracker;
         TOWN_CENTRES
             .iter()
             .flat_map(|&k| tracker.list(k).iter().copied())
@@ -43,7 +43,10 @@ impl World {
     /// (`FUN_14104fa50`, key + 90000).
     #[must_use]
     pub fn town_centre_count(&self, p: usize) -> i32 {
-        let tracker = &self.players[p].tracker;
+        let Some(player) = self.players.get(p) else {
+            return 0;
+        };
+        let tracker = &player.tracker;
         let pending = tracker.list(TOWN_CENTRES[0] + crate::players::tracker::PENDING);
         TOWN_CENTRES
             .iter()
@@ -79,7 +82,10 @@ impl World {
         // The builder's master (`FUN_141625a20`'s 0x76).
         // The town centre a builder may place (`FUN_141625a20`'s 0x26d).
         if building == BUILDER {
-            let a = &self.players[p].attributes;
+            let Some(player) = self.players.get(p) else {
+                return 0;
+            };
+            let a = &player.attributes;
             let centre = masters.get(TOWN_CENTRE_621);
             if get(a, attribute::NO_TOWN_CENTRE) == 0.0
                 && centre.is_some_and(|c| !c.disabled && !c.available)
@@ -111,7 +117,9 @@ impl World {
         let Some(masters) = self.masters.get(p) else {
             return 0;
         };
-        let player = &self.players[p];
+        let Some(player) = self.players.get(p) else {
+            return 0;
+        };
         let full = self.settings.full_tech_tree;
         let fallback = full_tree_civ(self.mode_680);
         let civ = if full {

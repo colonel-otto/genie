@@ -316,7 +316,7 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
         },
     ];
     // the load files the objects in the players' trackers
-    t.load_trackers();
+    t.load_trackers().unwrap();
     t.do_effect(0, &loom, None).unwrap();
     let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
     // (25 + 15) × 10 / 25 = 16
@@ -383,7 +383,7 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
     ])];
     // set master 4's hit points to 90: its unit keeps its share, 30 × 90 / 60 = 45
     // the load files the objects in the players' trackers
-    t.load_trackers();
+    t.load_trackers().unwrap();
     t.do_effect(0, &[attribute(0, 4, 6, 0, 90.0)], None)
         .unwrap();
     let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
@@ -472,7 +472,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
     ])];
     // multiply the class's hit points by 1.5: every object's hit points × 1.5 + 0.5
     // the load files the objects in the players' trackers
-    t.load_trackers();
+    t.load_trackers().unwrap();
     t.do_effect(0, &[attribute(5, -1, 3, 0, 1.5)], None)
         .unwrap();
     let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
@@ -544,7 +544,7 @@ fn a_storage_set_moves_the_player_s_attribute_by_each_object() {
     t.masters = vec![Masters::new([house])];
     t.players[0].attributes[4] = 10.0;
     // the load files the objects in the players' trackers
-    t.load_trackers();
+    t.load_trackers().unwrap();
     t.do_effect(0, &[attribute(0, 70, -1, 21, 15.0)], None)
         .unwrap();
     assert_eq!(t.players[0].attributes[4], 30.0);
@@ -580,7 +580,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             ..Master::default()
         };
         t.masters = vec![Masters::new([stone])];
-        t.load_trackers();
+        t.load_trackers().unwrap();
         let mut v = crate::vision::visibility::Visibility::new(
             w,
             h,
@@ -896,7 +896,7 @@ fn a_farm_food_change_grows_the_farms_food() {
     t.players[0].attributes[31] = 1.0;
     t.players[0].attributes[36] = 175.0;
     // the load files the objects in the players' trackers
-    t.load_trackers();
+    t.load_trackers().unwrap();
     t.do_effect(0, &[attribute(1, 36, 1, -1, 75.0)], None)
         .unwrap();
     assert_eq!(t.players[0].attributes[36], 250.0);
@@ -1575,7 +1575,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
     t.graphics = [(300, graphic(300)), (301, graphic(301))]
         .into_iter()
         .collect();
-    t.load_trackers();
+    t.load_trackers().unwrap();
     t.do_effect(0, &[attribute(0, 4, -1, 71, 301.0)], None)
         .unwrap();
     let sprite = |i: usize| {
@@ -1640,7 +1640,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
             obstruction: None,
         },
     );
-    t.load_trackers();
+    t.load_trackers().unwrap();
     let record = |t: &World| t.spatial.get(1).and_then(|p| p.obstruction);
     t.do_effect(0, &[attribute(0, 70, -1, 32, 2.0)], None)
         .unwrap();

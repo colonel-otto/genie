@@ -19,9 +19,11 @@
 //! first event of a kind `FUN_141560e20`, `get_history_event_by_time` `FUN_141560ea0`,
 //! `mark_new_battle` `FUN_141565470`, `update` `FUN_141569450`; the names are the 2016 HD PDB's.
 
+use crate::GenieError;
 use crate::math::conversions::{cvttss2si, cvttss2si_64};
 use crate::math::image::history::{BATTLE_RECORD, BATTLE_START};
 use crate::players::attribute;
+use crate::world::slots::CheckedIndex;
 
 /// Feudal Age reached (research 101).
 pub const FEUDAL_AGE: u8 = 0;
@@ -271,10 +273,15 @@ impl History {
     ///   over the player's value plus kills' value (400 + i) since the battle began is the
     ///   largest (the first of equals, none above 0 gives player 0),
     /// - and the attributes are kept for the next period, the per-player ones outside a battle.
-    pub fn update(&mut self, attributes: &[f32], world_time: u32, period: i32) {
+    pub fn update(
+        &mut self,
+        attributes: &[f32],
+        world_time: u32,
+        period: i32,
+    ) -> Result<(), GenieError> {
         self.update_count = self.update_count.wrapping_add(1);
         if self.update_count < period {
-            return;
+            return Ok(());
         }
         self.update_count = self.update_count.wrapping_sub(period);
         // the save holds every attribute of the .dat's count, these among them
@@ -322,7 +329,7 @@ impl History {
             true
         } else {
             if f64::from(self.running_ave_bv_percent) >= BATTLE_RECORD {
-                self.record_battle(attributes, value, world_time);
+                self.record_battle(attributes, value, world_time)?;
             }
             self.battle_flag = 0;
             self.running_total_bv_kills = 0;
@@ -359,25 +366,32 @@ impl History {
         self.old_current_build_value_units = int(attribute::UNITS_VALUE);
         self.old_current_build_value_buildings = int(attribute::BUILDINGS_VALUE);
         if self.battle_flag == 0 {
-            for i in 0..self.old_player_kill_bv.len() {
-                self.old_player_kill_bv[i] = cvttss2si_64(a(KILL_VALUE_OF + i)) as i32;
+            for (i, kill) in self.old_player_kill_bv.iter_mut().enumerate() {
+                *kill = cvttss2si_64(a(KILL_VALUE_OF + i)) as i32;
                 if let Some(r) = self.old_player_razing_bv.get_mut(i) {
                     *r = cvttss2si_64(a(RAZING_VALUE_OF + i)) as i32;
                 }
             }
         }
+        Ok(())
     }
 
     /// The end of a battle worth recording (`FUN_141569450` from `0x141569a2a`): each player's
     /// kills' and razings' value since the battle began (`CVTTSS2SI` into 64 bits, the low 32
     /// kept), the opponent and the event, with the summed share as its `data2`.
-    fn record_battle(&mut self, attributes: &[f32], value: i32, world_time: u32) {
+    fn record_battle(
+        &mut self,
+        attributes: &[f32],
+        value: i32,
+        world_time: u32,
+    ) -> Result<(), GenieError> {
         let a = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
         let players = self.old_player_kill_bv.len();
-        let kills: Vec<i32> = (0..players)
-            .map(|i| {
-                (cvttss2si_64(a(KILL_VALUE_OF + i)) as i32).wrapping_sub(self.old_player_kill_bv[i])
-            })
+        let kills: Vec<i32> = self
+            .old_player_kill_bv
+            .iter()
+            .enumerate()
+            .map(|(i, &old)| (cvttss2si_64(a(KILL_VALUE_OF + i)) as i32).wrapping_sub(old))
             .collect();
         let razings: Vec<i32> = (0..players)
             .map(|i| {
@@ -388,14 +402,14 @@ impl History {
         let mut best = 0.0f32;
         let mut opponent = 0i32;
         for i in 0..players {
-            let weight = razings[i] as f32 / value as f32 + kills[i] as f32;
+            let weight = *razings.checked(i)? as f32 / value as f32 + *kills.checked(i)? as f32;
             if weight > best {
                 best = weight;
                 opponent = i as i32;
             }
         }
         if self.entries.is_empty() {
-            return;
+            return Ok(());
         }
         self.events.insert(
             0,
@@ -409,6 +423,7 @@ impl History {
             },
         );
         let _ = self.mark_new_battle();
+        Ok(())
     }
 }
 
@@ -600,9 +615,9 @@ mod tests {
         a[attribute::BUILDINGS_VALUE] = 900.7;
         a[KILL_VALUE_OF + 2] = 45.0;
         a[RAZING_VALUE_OF + 1] = 5_000_000_000.0;
-        h.update(&a, 0, 30);
+        h.update(&a, 0, 30).unwrap();
         assert_eq!((h.update_count, h.entries.len()), (29, 0));
-        h.update(&a, 0, 30);
+        h.update(&a, 0, 30).unwrap();
         assert_eq!((h.update_count, h.entries.clone()), (0, vec![[12, 3]]));
         assert_eq!(
             (h.old_total_kills, h.old_current_build_value_buildings),
@@ -614,7 +629,7 @@ mod tests {
         // a negative population sum gives an entry of zeros
         a[attribute::MILITARY_POPULATION] = -13.0;
         h.update_count = 29;
-        h.update(&a, 0, 30);
+        h.update(&a, 0, 30).unwrap();
         assert_eq!(h.entries[1], [0, 0]);
     }
 
@@ -644,7 +659,7 @@ mod tests {
         a[KILL_VALUE_OF + 2] = 40.0;
         a[RAZING_VALUE_OF + 2] = 20_000.0;
         // (30 + 100) / 1000: the battle starts; all four: 160 / 1000
-        h.update(&a, 30_000, 30);
+        h.update(&a, 30_000, 30).unwrap();
         assert_eq!(h.battle_flag, 1);
         assert_eq!(
             (h.running_total_bv_kills, h.running_total_bv_razings),
@@ -660,7 +675,7 @@ mod tests {
         // nothing more: the share falls to 0, the battle ends with its event; player 2's
         // 20000 / 1000 + 40 outweighs player 1's 50
         h.update_count = 29;
-        h.update(&a, 60_000, 30);
+        h.update(&a, 60_000, 30).unwrap();
         assert_eq!(h.battle_flag, 0);
         assert_eq!(h.running_ave_bv_percent, 0.0);
         assert_eq!(
@@ -694,17 +709,17 @@ mod tests {
         let mut a = attributes();
         a[attribute::UNITS_VALUE] = 1000.0;
         a[attribute::KILLS_VALUE] = 130.0;
-        h.update(&a, 0, 30);
+        h.update(&a, 0, 30).unwrap();
         assert_eq!(h.battle_flag, 2);
         h.update_count = 29;
         h.running_ave_bv_percent = 0.149_999;
-        h.update(&a, 0, 30);
+        h.update(&a, 0, 30).unwrap();
         assert_eq!((h.battle_flag, h.events.len()), (0, 0));
         // a NaN sum fails the record's COMISD (JC): no event either
         h.update_count = 29;
         h.battle_flag = 1;
         h.running_ave_bv_percent = f32::NAN;
-        h.update(&a, 0, 30);
+        h.update(&a, 0, 30).unwrap();
         assert_eq!((h.battle_flag, h.events.len()), (0, 0));
         assert_eq!(h.running_ave_bv_percent, 0.0);
     }
@@ -721,7 +736,7 @@ mod tests {
         let mut a = attributes();
         a[attribute::UNITS_VALUE] = 1000.0;
         a[attribute::KILLS_VALUE] = 120.0;
-        h.update(&a, 0, 30);
+        h.update(&a, 0, 30).unwrap();
         assert_eq!(h.battle_flag, 0);
     }
 }

@@ -309,7 +309,7 @@ impl World {
                 *self.clock_mut(self.player_turn)? = 0;
                 self.player_turn = (self.player_turn + 1) % self.players.len();
             }
-            WorldStep::Victory => self.victory_check(),
+            WorldStep::Victory => self.victory_check()?,
             WorldStep::FrameSeed => self.frame_seed = self.streams.get(Stream::World).rand15(),
             // setLastRandoms (0x140d3ce20): the multiplayer sync's draws
             WorldStep::LastRandoms => {
@@ -359,7 +359,7 @@ impl World {
                 self.update_objects(p, (run.dt, turn))?;
             }
             PlayerStep::NewTiles => self.process_new_tiles(p)?,
-            PlayerStep::ScoutMap => self.world_player_tail(p),
+            PlayerStep::ScoutMap => self.world_player_tail(p)?,
             PlayerStep::CloseGates => self.close_gates(p, &mut run.gates_open),
             PlayerStep::ClearTiles => {
                 if let Some(v) = self.spatial.sight.as_mut() {

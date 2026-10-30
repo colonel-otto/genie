@@ -239,7 +239,7 @@ pub(crate) fn write_back(c: &mut Step<'_>, v: &mut Victim) -> Result<Option<Kill
         if crate::math::fmath::at_most_or_unordered(1.0, v.hp) {
             return Ok(None);
         }
-        let _ = c.w.wake_sleeper(v.id);
+        let _ = c.w.wake_sleeper(v.id)?;
     }
     let (_, u) = c.w.object_mut(v.id).expect("located");
     u.life.hp = v.hp;

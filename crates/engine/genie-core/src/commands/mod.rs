@@ -178,10 +178,7 @@ impl Command {
             Self::Delete(c) => c.run(w),
             Self::Flare(c) => c.run(w),
             Self::Tribute(c) => c.run(w),
-            Self::Trade(c) => {
-                c.run(w);
-                Ok(())
-            }
+            Self::Trade(c) => c.run(w),
             Self::Gate(c) => c.run(w),
             Self::Unload(c) => c.run(w),
             Self::TransformObject(c) => c.run(w),
