@@ -10,6 +10,7 @@ use crate::pathing::Pathing;
 use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::player::Player;
+use crate::world::slots::PlayerSlots;
 
 mod commands;
 mod side;
@@ -121,29 +122,38 @@ pub(crate) struct OwnerView {
 impl OwnerView {
     /// The owner's side: player `new`'s when the unit changed hands to it in its update, else
     /// the updating player's (`c`).
-    pub(crate) fn of(c: &Step<'_>, new: Option<usize>) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    pub(crate) fn of(c: &Step<'_>, new: Option<usize>) -> Result<Self, GenieError> {
         let taker = new.filter(|&n| n != c.player);
         let Some((new, q)) = taker.and_then(|n| Some((n, c.w.players.get(n)?))) else {
-            return Self {
+            let owner = c.w.players.player(c.player)?;
+            return Ok(Self {
                 player: c.player,
                 new_owner: None,
-                civ: c.w.players[c.player].civ,
-                construction_rate: c.w.players[c.player].construction_rate,
-                ai_settings: c.w.players[c.player].ai_settings,
-            };
+                civ: owner.civ,
+                construction_rate: owner.construction_rate,
+                ai_settings: owner.ai_settings,
+            });
         };
-        Self {
+        Ok(Self {
             player: new,
             new_owner: Some(new),
             civ: q.civ,
             construction_rate: q.construction_rate,
             ai_settings: q.ai_settings,
-        }
+        })
     }
 
     /// The side's diplomacy (`player+0x260`).
-    pub(crate) fn relations(self, w: &World) -> &[u8] {
-        &w.players[self.player].relations
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    pub(crate) fn relations(self, w: &World) -> Result<&[u8], GenieError> {
+        Ok(&w.players.player(self.player)?.relations)
     }
 }
 

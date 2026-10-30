@@ -12,6 +12,7 @@ use crate::unit_ai::world_view::{OwnerView, UnitView, changed_view};
 use crate::unit_ai::{AfterOrder, Surroundings, UnitAi};
 use crate::world::others::OthersRef;
 use crate::world::scenario_mode;
+use crate::world::slots::PlayerSlots;
 use crate::world::standard_mode;
 use crate::world::step::Step;
 
@@ -262,8 +263,8 @@ impl Unit {
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
         let master = self.master(&c.w.masters, c.player).ok();
         let class = master.map(|ms| ms.class);
-        let (player, computer) = (c.player, c.w.players[c.player].computer);
-        let view = OwnerView::of(c, None);
+        let (player, computer) = (c.player, c.w.players.player(c.player)?.computer);
+        let view = OwnerView::of(c, None)?;
         let interruptible = self.interruptible()?;
         let at = self.surroundings(c, &view, (master, class), (player, busy, interruptible))?;
         let attacker = self.attacker_of(
@@ -301,8 +302,8 @@ impl Unit {
             ));
         };
         let master = self.master(&c.w.masters, c.player).ok();
-        let (player, computer) = (c.player, c.w.players[c.player].computer);
-        let view = OwnerView::of(c, None);
+        let (player, computer) = (c.player, c.w.players.player(c.player)?.computer);
+        let view = OwnerView::of(c, None)?;
         let attacker = self.attacker_of(
             ai_type,
             master,
@@ -358,9 +359,9 @@ impl Unit {
                 k.new,
                 c.w.players.get(k.new).is_some_and(|q| q.computer),
             ),
-            _ => (c.turn, c.player, c.w.players[c.player].computer),
+            _ => (c.turn, c.player, c.w.players.player(c.player)?.computer),
         };
-        let view = OwnerView::of(c, captured.filter(|k| k.main).map(|k| k.new));
+        let view = OwnerView::of(c, captured.filter(|k| k.main).map(|k| k.new))?;
         // RGE_Combat_Object::update: on the owner's turn the full update (slot 4), else
         // FUN_140c68980 for a unit not inside another; a dead unit's full update only adds the
         // world's dt to its time since the last enemy sighting (`+0x1b4`) before it returns
@@ -495,7 +496,7 @@ impl Unit {
                 kind: m.kind,
                 main: u.annex_of,
                 allied: crate::unit_ai::task_finder::allied(
-                    view.relations(c.w),
+                    view.relations(c.w)?,
                     view.player,
                     owner,
                     true,

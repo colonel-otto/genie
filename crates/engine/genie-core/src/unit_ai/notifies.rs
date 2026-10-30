@@ -7,6 +7,7 @@ use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, GO_ON, NO_LONGER_ON_ME, Notify, PRODUCED,
     Surroundings, UnitAi, UnitSide,
 };
+use crate::world::slots::CheckedIndex;
 
 /// A unit's notifies to itself (its slot 0x328, [`UnitAi::post`]), borrowed beside its body: its
 /// unit AI (None for a unit without one), its id and its state.
@@ -63,7 +64,7 @@ impl UnitAi {
             self.processing = true;
             let mut i = 0;
             while i < self.notifies.len() {
-                let n = self.notifies[i];
+                let n = *self.notifies.checked(i)?;
                 result = self.handle(n, dt, at, computer, ai_rng, side)?;
                 if result == DEAD {
                     // "I'm dead, purging notifyQueue and returning FALSE.": the full update ends

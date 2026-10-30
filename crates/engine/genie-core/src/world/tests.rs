@@ -4378,7 +4378,7 @@ fn a_side_s_own_release_tells_the_unit_ai_as_the_side_returns() {
     let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
         (unit.workers, unit.combat) = (1, true);
         let by = unit.releaser(c);
-        let view = OwnerView::of(c, None);
+        let view = OwnerView::of(c, None).unwrap();
         let attacker = unit.attacker_of(13, None, (1, false), false, 0);
         let inside = unit.with_side(c, &view, attacker, (1, false), |ai, side, _| {
             side.release(by.id, by)?;
@@ -4407,7 +4407,7 @@ fn a_step_s_own_notify_waits_for_the_unit_ai_s_side_to_return() {
     let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
         c.notify_own(unit, n)?;
         let at_once = unit.ai.as_ref().map(|ai| ai.notifies.len());
-        let view = OwnerView::of(c, None);
+        let view = OwnerView::of(c, None).unwrap();
         let attacker = unit.attacker_of(13, None, (1, false), false, 0);
         let inside = unit.with_side(c, &view, attacker, (1, false), |ai, side, _| {
             side.c.notify_own(side.unit, n)?;
@@ -4434,7 +4434,7 @@ fn the_ai_stream_is_the_unit_ai_s_while_its_side_runs() {
     let first = drawn.rand15();
     let run = |t: &mut World, world_draws: bool| {
         in_update(t, (1, 0), 50, |unit, c| {
-            let view = OwnerView::of(c, None);
+            let view = OwnerView::of(c, None).unwrap();
             let attacker = unit.attacker_of(13, None, (1, false), false, 0);
             unit.with_side(c, &view, attacker, (1, false), |_, side, rng| {
                 if world_draws {
@@ -4597,7 +4597,7 @@ fn villager_side<R>(
 ) -> Result<(R, Option<UnitAi>), GenieError> {
     use crate::unit_ai::world_view::OwnerView;
     in_update(t, (1, 0), 0, |unit, c| {
-        let view = OwnerView::of(c, None);
+        let view = OwnerView::of(c, None).unwrap();
         let attacker = unit.attacker_of(4, None, (1, false), false, 0);
         let answer = unit.with_side(c, &view, attacker, (1, false), |_, side, _| f(side))?;
         Ok((answer, unit.ai.clone()))
@@ -5294,7 +5294,7 @@ fn the_unit_ai_reads_the_target_its_unit_s_update_left() {
             let master = unit.master(&c.w.masters, 1).ok();
             let at = unit.surroundings(
                 c,
-                &OwnerView::of(c, None),
+                &OwnerView::of(c, None).unwrap(),
                 (master, master.map(|m| m.class)),
                 (1, false, false),
             )?;
