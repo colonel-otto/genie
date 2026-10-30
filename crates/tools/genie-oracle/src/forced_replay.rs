@@ -14,7 +14,21 @@ use genie_core::world::World;
 use genie_save::Header;
 
 /// The old short pather's result and path for one call ([`old_pather_paths`]).
-pub type PatherAnswer = (u8, Vec<[f32; 2]>);
+pub type PatherAnswer = (u8, Vec<Point>);
+
+/// One call of the old short pather ([`old_pather_paths`]): the unit, its place then, the target
+/// and the range.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PatherCall {
+    /// The unit that asks for the path.
+    pub unit: ObjectId,
+    /// Where it stands for the call.
+    pub from: Point,
+    /// The object the path leads to.
+    pub target: ObjectId,
+    /// How near the target the path ends.
+    pub range: f32,
+}
 
 /// The old short pather's answers (slot 0x3e8, [`genie_core::pathing::hull_path::HullPather::find`]) in
 /// the world of the slice started from the tick oracle's save at tick `start_tick` with `dumps`,
@@ -28,16 +42,22 @@ pub fn old_pather_paths(
     start_tick: usize,
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
-    calls: &[(i32, [f32; 2], i32, f32)],
+    calls: &[PatherCall],
 ) -> Result<Vec<Result<PatherAnswer, GenieError>>, Error> {
     let mut turns = turns_from_save(save, recording, start_tick, masters, dumps)?;
     let mut out = Vec::new();
-    for &(id, from, target, range) in calls {
+    for &PatherCall {
+        unit: id,
+        from,
+        target,
+        range,
+    } in calls
+    {
         let Some(unit) = turns
             .players
             .iter()
             .flat_map(|p| &p.objects)
-            .find(|u| u.id.get() == id)
+            .find(|u| u.id == id)
         else {
             out.push(Err(GenieError::unsupported(
                 "a caller the save does not hold",
@@ -50,10 +70,7 @@ pub fn old_pather_paths(
         };
         let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius.x());
         let z = turns.spatial.get(id).map_or(0.0, |p| p.position.z());
-        if let Err(e) = turns
-            .spatial
-            .set_position(id, Point::from(from).with_height(z))
-        {
+        if let Err(e) = turns.spatial.set_position(id.get(), from.with_height(z)) {
             out.push(Err(e));
             continue;
         }
@@ -65,15 +82,15 @@ pub fn old_pather_paths(
         };
         let mut pather = genie_core::pathing::hull_path::HullPather::new(
             &mut turns.spatial,
-            id,
-            target,
+            id.get(),
+            target.get(),
             mask,
             radius,
         );
         out.push(
             pather
-                .find(Point::from(from), to, target, range)
-                .map(|(r, p)| (r, p.points.iter().map(|q| q.get()).collect())),
+                .find(from, to, target.get(), range)
+                .map(|(r, p)| (r, p.points)),
         );
     }
     Ok(out)

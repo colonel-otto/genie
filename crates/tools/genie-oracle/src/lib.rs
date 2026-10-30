@@ -99,7 +99,8 @@ pub use self::first_checkpoint::{
 use self::first_checkpoint::{listed, live};
 use self::forced_replay::game_state;
 pub use self::forced_replay::{
-    PatherAnswer, TickReport, Times, command_phase, forced_run, forced_ticks, old_pather_paths,
+    PatherAnswer, PatherCall, TickReport, Times, command_phase, forced_run, forced_ticks,
+    old_pather_paths,
 };
 pub use self::game_tables::{DropSitesError, UnitLinesError, drop_sites, linked_techs, unit_lines};
 #[cfg(test)]
