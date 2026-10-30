@@ -13,6 +13,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Inbox;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
 use crate::world::step::Step;
@@ -110,6 +111,9 @@ impl Unit {
         c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
+        if let Some(code) = self.own_move_held(c)? {
+            return Ok(HeadCode::of(code));
+        }
         let step = self.own_move_step(c, me)?;
         if step.gave_up {
             let villager = self
@@ -134,6 +138,28 @@ impl Unit {
             self.own_move_end(step.failed)?;
         }
         Ok(HeadCode::ended(ended))
+    }
+
+    /// The own `MoveTo`'s first check of its target (`0x140aa2a70`, [`MoveToAction::check_held`])
+    /// by the target's state as the world holds it: a target let go is released at once (slot
+    /// 0x180 from slot 0x68: an own `MoveTo` is not quiet). Returns the update's code when it
+    /// ends there (4: the list keeps it).
+    ///
+    /// [`MoveToAction::check_held`]: crate::movement::move_to::MoveToAction::check_held
+    fn own_move_held(&mut self, c: &mut Step<'_>) -> Result<Option<u8>, GenieError> {
+        let Some(move_to) = self.actions.move_to_mut() else {
+            return Ok(None);
+        };
+        let target = move_to.target;
+        let state = c.w.object_state(target);
+        let mut inbox = Inbox::of(&mut self.ai, self.id, self.life.state);
+        let code = move_to.check_held(state, &mut inbox)?;
+        let releases = code.is_some() && !move_to.quiet;
+        if releases {
+            let by = self.releaser(c);
+            crate::world::lets::release(c, self, target, by)?;
+        }
+        Ok(code)
     }
 
     /// The own `MoveTo`'s update (`0x140aa2a70`): its state 3 asks the unit's AI for a path to

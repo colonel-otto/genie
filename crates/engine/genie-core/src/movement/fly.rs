@@ -152,6 +152,7 @@ impl Fly {
                     None => 1,
                     Some(move_to) => {
                         // its set_state(4) shows its sprite (+0x58) before the motion step
+                        let held = c.w.object_state(move_to.target);
                         let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut bird.body, me);
                         let shown = (move_to.state == MoveTo::Start).then_some(Shown {
                             sprite: &mut bird.sprite,
@@ -164,6 +165,7 @@ impl Fly {
                             &mut walk,
                             PathAsk::default(),
                             gives_up,
+                            held,
                             shown,
                             &mut inbox,
                         )?

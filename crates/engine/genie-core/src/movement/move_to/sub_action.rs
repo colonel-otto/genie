@@ -9,6 +9,11 @@ use crate::movement::move_to::{
 use crate::objects::sprite::Graphic;
 use crate::unit_ai::{Inbox, TARGET_MOVED};
 
+/// A sub-action `MoveTo` that is not quiet letting its target go: its release (slot 0x180) would
+/// be its owner's, and no owner makes one.
+const SUB_RELEASE: GenieError =
+    GenieError::unreachable("a sub-action MoveTo that is not quiet letting its target go");
+
 /// What the motion step's giving up reads of the unit ([`MoveWait::give_up`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GiveUp {
@@ -38,7 +43,9 @@ impl MoveToAction {
     }
 
     /// Its update as an action's sub-action (`0x140aa2a70`, which the action's sub-action list
-    /// runs, `FUN_140a992b0`) and the code the action reads: a start asks for its path toward
+    /// runs, `FUN_140a992b0`) and the code the action reads. First the check of its target by
+    /// the target's object state (`target_state`, [`MoveToAction::check_held`]): a target let go
+    /// ends the update with 5 (a sub-action `MoveTo` is quiet). Then a start asks for its path toward
     /// its target or point within its range by what the unit's AI asks (`ask`; a `MoveTo` that
     /// waited once, `+0x6c` 1, counts as having asked again, 2), shows its sprite (`shown`,
     /// [`start_walk_shown`]) and walks; a
@@ -49,7 +56,7 @@ impl MoveToAction {
     /// step giving up makes it wait or fail ([`MoveWait::give_up`] with `gives_up`). A wait adds
     /// the walk's dt onto its timer and at its delay asks again (`set_state(3)`; `COMISS`, `JC`: a
     /// NaN timer waits on). The code: 0 while it walks or waits, 1 once it ended, 3 once it
-    /// failed.
+    /// failed, 5 once its target was let go.
     ///
     /// # Errors
     ///
@@ -60,9 +67,19 @@ impl MoveToAction {
         walk: &mut Walk<'_>,
         ask: PathAsk,
         gives_up: GiveUp,
+        target_state: Option<u8>,
         shown: Option<Shown<'_>>,
         inbox: &mut Inbox<'_>,
     ) -> Result<u8, GenieError> {
+        let target = self.target;
+        if let Some(code) = self.check_held(target_state, inbox)? {
+            // no owner makes a sub-action MoveTo to an object that is not quiet, which would
+            // owe its target the release (FUN_140a7a230)
+            if !self.quiet {
+                return Err(SUB_RELEASE.with("target", target));
+            }
+            return Ok(code);
+        }
         let GiveUp { waits, stance } = gives_up;
         Ok(match self.state {
             MoveTo::Start => {

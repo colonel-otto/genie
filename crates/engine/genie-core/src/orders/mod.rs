@@ -326,6 +326,16 @@ impl World {
         }
     }
 
+    /// The object state (`+0x640`) of the object `id`, live or sleeping, None for −1 or an id the
+    /// world no longer holds: what a `MoveTo`'s first check reads of its target
+    /// ([`crate::movement::move_to::MoveToAction::check_held`]).
+    pub(crate) fn object_state(&self, id: i32) -> Option<u8> {
+        if id == -1 {
+            return None;
+        }
+        self.object(id).map(|(_, u)| u.life.state)
+    }
+
     /// The object `id`, live or sleeping, to change (`FUN_1415417a0`'s object).
     pub(crate) fn object_mut(&mut self, id: i32) -> Option<(usize, &mut Unit)> {
         match self.place(id)? {

@@ -346,6 +346,7 @@ impl TransportAction {
         } else {
             PathAsk::default()
         };
+        let held = c.w.object_state(move_to.target);
         let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
         let shown = start.then_some(Shown {
             sprite: &mut unit.sprite,
@@ -353,7 +354,8 @@ impl TransportAction {
             graphic: move_to.sprite,
         });
         let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-        let code = move_to.sub_update(&mut walk, ask, GiveUp::default(), shown, &mut inbox)?;
+        let gives_up = GiveUp::default();
+        let code = move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?;
         if walks {
             unit.post_in_the_way()?;
         }

@@ -575,10 +575,12 @@ mod tests {
         let mut ai = None;
         let mut update = |m: &mut MoveToAction| {
             let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+            // the house 10028 stands (state 2)
             m.sub_update(
                 &mut rig.walk(4),
                 PathAsk::default(),
                 gives_up,
+                Some(2),
                 None,
                 &mut inbox,
             )
@@ -675,6 +677,7 @@ mod tests {
                 &mut rig.walk(4),
                 PathAsk::default(),
                 GiveUp::default(),
+                Some(2),
                 None,
                 &mut inbox,
             );
@@ -705,6 +708,74 @@ mod tests {
                 off
             )
         );
+    }
+
+    /// `0x140aa2a70`'s first check of its target by the target's state: a `MoveTo` to a point
+    /// checks nothing; a target the world no longer holds is cleared without a code or a
+    /// notify (`FUN_140a78450`); one in state 6 or below stays; one above 6 is let go, a quiet
+    /// `MoveTo`'s update ending with 5, another's with 4 after notify 0x1fb (the move action
+    /// value, the id let go, −1, and 0). A sub-action `MoveTo` runs it first and gives its 5.
+    #[test]
+    fn a_move_to_lets_a_dying_target_go_and_walks_on_from_one_the_world_lost() {
+        let checked = |quiet: bool, target: i32, state: Option<u8>| {
+            let mut m = MoveToAction {
+                target,
+                quiet,
+                ..MoveToAction::sub_in(MoveTo::Moving)
+            };
+            // a moving unit's AI: an invalidation of its move joins its queue
+            let mut ai = Some(crate::unit_ai::UnitAi {
+                current_action: Some(crate::unit_ai::ActionKind::Move),
+                ..crate::unit_ai::UnitAi::default()
+            });
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+            let code = m.check_held(state, &mut inbox).unwrap();
+            let posted: Vec<(i32, [i32; 3])> = ai.map_or(vec![], |ai| {
+                ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
+            });
+            (code, m.target, posted)
+        };
+        assert_eq!(checked(true, -1, Some(9)), (None, -1, vec![]));
+        assert_eq!(checked(false, 10028, None), (None, -1, vec![]));
+        assert_eq!(checked(false, 10028, Some(6)), (None, 10028, vec![]));
+        assert_eq!(checked(true, 10028, Some(7)), (Some(5), -1, vec![]));
+        let invalidated = (crate::unit_ai::ACTION_INVALIDATED, [0x262, -1, 0]);
+        assert_eq!(
+            checked(false, 10028, Some(7)),
+            (Some(4), -1, vec![invalidated])
+        );
+        // through the sub-action's update, before its state's case
+        let mut rig = crate::movement::tests::WalkRig::on_the_path();
+        let mut m = MoveToAction {
+            target: 10028,
+            ..MoveToAction::sub_in(MoveTo::Moving)
+        };
+        let mut ai = None;
+        let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+        let ask = PathAsk::default();
+        let code = m.sub_update(
+            &mut rig.walk(4),
+            ask,
+            GiveUp::default(),
+            Some(8),
+            None,
+            &mut inbox,
+        );
+        assert_eq!((code, m.target, m.state), (Ok(5), -1, MoveTo::Moving));
+        let mut loud = MoveToAction {
+            target: 10028,
+            quiet: false,
+            ..MoveToAction::sub_in(MoveTo::Moving)
+        };
+        let code = loud.sub_update(
+            &mut rig.walk(4),
+            ask,
+            GiveUp::default(),
+            Some(8),
+            None,
+            &mut inbox,
+        );
+        assert!(code.is_err());
     }
 
     /// `+0x61` from the save: 0 follows, 1 asks again, 2 ignores; any other value is the save's

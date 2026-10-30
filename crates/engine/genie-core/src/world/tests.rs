@@ -8486,6 +8486,56 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
     assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
 }
 
+/// A `MoveTo` of its own checks its target first (`0x140aa2a70`,
+/// [`MoveToAction::check_held`]): a dying one (state 7) is let go and released (slot 0x180: the
+/// tree counts a worker less), and the list keeps the `MoveTo` (code 4), now to its point; one
+/// the world no longer holds is cleared, with nothing released.
+#[test]
+fn a_move_to_of_its_own_lets_a_dying_target_go_and_forgets_a_lost_one() {
+    let run = |target: i32, tree_state: u8| {
+        let mut t = deaths_world();
+        t.players[0].objects[0].workers = 2;
+        t.players[0].objects[0].life.state = tree_state;
+        let mover = crate::gathering::hunt::tests::walker();
+        let walker = Unit {
+            id: 44,
+            body: crate::objects::layers::Body::new([11.5, 10.5, 0.0], None, Some(mover)),
+            actions: ActionList::default().with_move_to(Some(MoveToAction {
+                state: MoveTo::Waiting,
+                point: [12.5, 10.5, 0.0],
+                target,
+                range: 0.0,
+                sprite: None,
+                quiet: false,
+                on_target_moved: crate::movement::move_to::TargetMoved::Follows,
+                wait: crate::movement::move_to::MoveWait {
+                    state: 1,
+                    timer: 0.0,
+                    delay: 60.0,
+                },
+            })),
+            pasture: -1,
+            my_pasture: -1,
+            life: Lifecycle {
+                class: Class::Animated,
+                master_id: 83,
+                master: Some(MasterData::default()),
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects = vec![walker].into();
+        t.tick(100);
+        assert_eq!(t.players[1].unsupported.clone(), None);
+        let m = t.players[1].objects[0].actions.move_to().copied();
+        let workers = t.players[0].objects[0].workers;
+        (m.map(|m| (m.state, m.target)), workers)
+    };
+    assert_eq!(run(50, 7), (Some((MoveTo::Waiting, -1)), 1));
+    assert_eq!(run(51, 2), (Some((MoveTo::Waiting, -1)), 2));
+    assert_eq!(run(50, 2), (Some((MoveTo::Waiting, 50)), 2));
+}
+
 /// The hunt's `set_state(8)` (`0x140ac60e0` case 8): without a second target its search
 /// (`FUN_1411671e0`; without planners by distance) finds the town centre, which becomes the
 /// second target (`FUN_140a7a190`): the caller takes it (slot 0x178). With the drop site held

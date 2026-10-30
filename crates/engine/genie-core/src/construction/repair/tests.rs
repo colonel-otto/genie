@@ -425,6 +425,30 @@ fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
     }
 }
 
+/// State 4 when its `MoveTo`'s target died (its first check: code 5,
+/// [`MoveToAction::check_held`]): the Repair lets its target go (slot 0x68 with none) and ends
+/// (`set_state(1)`: notify 0x1fa, the standing sprite).
+#[test]
+fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
+    let mut t = repair_at(NEAR, |r| {
+        r.move_to = Some(MoveToAction {
+            target: 777,
+            ..MoveToAction::sub_in(MoveTo::Moving)
+        });
+    });
+    let mut dying = crate::objects::unit::Unit {
+        id: 777,
+        ..crate::objects::unit::Unit::default()
+    };
+    dying.life.state = 7;
+    t.players[1].objects.push(dying);
+    assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
+    let r = repair_of(&t);
+    assert_eq!((r.state, r.target, r.move_to), (DONE, -1, None));
+    assert_eq!(heard(&t), [crate::unit_ai::ACTION_COMPLETED]);
+    assert_eq!(the_house(&t).2, 0, "the house let go");
+}
+
 /// Gaia's object is repaired: the repairer faces it, then works and joins its repairers.
 #[test]
 fn gaia_s_object_is_repaired() {

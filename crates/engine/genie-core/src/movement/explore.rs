@@ -187,6 +187,10 @@ impl ExploreAction {
             waits: villager && !c.w.players[c.player].computer,
             stance: explorer.ai.as_ref().map_or(0, |ai| ai.stance),
         };
+        let held = self
+            .move_to
+            .as_ref()
+            .and_then(|m| c.w.object_state(m.target));
         let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut explorer.body, me);
         let code = match &mut self.move_to {
             Some(move_to) => {
@@ -196,7 +200,8 @@ impl ExploreAction {
                     graphic: move_to.sprite,
                 });
                 let mut inbox = Inbox::of(&mut explorer.ai, explorer.id, explorer.life.state);
-                move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown, &mut inbox)?
+                let ask = PathAsk::default();
+                move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?
             }
             None => 1,
         };

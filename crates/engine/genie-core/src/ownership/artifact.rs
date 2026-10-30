@@ -343,11 +343,12 @@ impl Artifact {
             return Ok(());
         };
         let notify = match move_to.state {
-            MoveTo::Arrived => crate::unit_ai::ACTION_COMPLETED,
-            MoveTo::Failed => crate::unit_ai::ACTION_FAILED,
+            MoveTo::Arrived => Some(crate::unit_ai::ACTION_COMPLETED),
+            MoveTo::Failed => Some(crate::unit_ai::ACTION_FAILED),
             state => {
                 // a motion step that gives up in the start's update fails the MoveTo, as in
                 // its moving state
+                let held = c.w.object_state(move_to.target);
                 let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
                 let shown = (state == MoveTo::Start).then_some(Shown {
                     sprite: &mut unit.sprite,
@@ -356,11 +357,17 @@ impl Artifact {
                 });
                 let ask = PathAsk::default();
                 let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-                let _ = move_to.sub_update(&mut walk, ask, GiveUp::default(), shown, &mut inbox)?;
+                let gives_up = GiveUp::default();
+                let code = move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?;
                 if state != MoveTo::Waiting {
                     unit.post_in_the_way()?;
                 }
-                return Ok(());
+                // its target let go (4, 5): it ends now, as at 1 to 3, its notify posted by the
+                // check
+                if !matches!(code, 4 | 5) {
+                    return Ok(());
+                }
+                None
             }
         };
         let (quiet, released) = self.end_walk();
@@ -370,7 +377,7 @@ impl Artifact {
         if let Some(t) = released {
             crate::world::lets::release(c, unit, t, r.by)?;
         }
-        if !quiet {
+        if let Some(notify) = notify.filter(|_| !quiet) {
             unit.post_own(notify, [ActionKind::Move.value(), 0, 0])?;
         }
         Ok(())
@@ -1158,7 +1165,7 @@ mod tests {
             waiting.move_to.map(|m| (m.state, m.wait.timer)),
             Some((MoveTo::Start, 0.0))
         );
-        // a MoveTo to a target the world lacks is an error
+        // a target the world lost is cleared: the MoveTo walks on to its point
         let mut lost = Artifact {
             move_to: Some(MoveToAction {
                 target: 4242,
@@ -1166,10 +1173,26 @@ mod tests {
             }),
             ..Artifact::new(false, None)
         };
-        assert!(
-            rig.run(50, |c, u, _, _| lost.walk(c, u, me(), &reads()))
-                .is_err()
-        );
+        rig.run(50, |c, u, _, _| lost.walk(c, u, me(), &reads()))
+            .unwrap();
+        assert_eq!(lost.move_to.map(|m| m.target), Some(-1));
+        // a target that died (state 7) is let go, and the walk ends at once (code 5)
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default()).holding(600, 1);
+        if let Some(u) = rig.t.players[1].objects.last_mut() {
+            u.life.state = 7;
+        }
+        let mut dying = Artifact {
+            move_to: Some(MoveToAction {
+                target: 600,
+                ..MoveToAction::sub_in(MoveTo::Moving)
+            }),
+            target: 600,
+            ..Artifact::new(false, None)
+        };
+        rig.run(50, |c, u, _, _| dying.walk(c, u, me(), &reads()))
+            .unwrap();
+        assert_eq!((dying.move_to, dying.target), (None, -1));
+        assert_eq!(rig.posted(), vec![]);
     }
 
     /// A `MoveTo` that ended goes with the point and lets the target go at once (slot 0x68 with

@@ -13,6 +13,7 @@ use crate::movement::{Mover, PathAsk, footprint_gap};
 use crate::objects::masters::Master;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite, sprite_id, standing, walking};
+use crate::unit_ai::{ACTION_INVALIDATED, ActionKind, Inbox};
 use genie_diff::Diff;
 
 /// A `MoveTo` (`RGE_Action_Move_To`): a unit's own top action (a wandering animal's, a moved or
@@ -346,11 +347,11 @@ impl MoveToAction {
         }
     }
 
-    /// One update (`0x140aa2240`) of the unit whose sprite `shows` holds, its state 3 with what
-    /// the unit's AI says (`ask`, [`crate::movement::move_to::start_walk_shown`]): a walk goes on ([`MoveToAction::update_moving`]), a start asks for
-    /// its path ([`MoveToAction::update_start`]), a wait runs by dt and at its end the `MoveTo`
-    /// asks again (`set_state` 3). A target that is gone (the update's first check: notify
-    /// 0x1fb, code 4) is not modelled.
+    /// One update (`0x140aa2a70`) of a `MoveTo` of its own, of the unit whose sprite `shows`
+    /// holds, after its first check of its target ([`MoveToAction::check_held`], the caller's,
+    /// which holds the world): a walk goes on ([`MoveToAction::update_moving`]), a start asks for
+    /// its path with what the unit's AI says (`ask`, [`MoveToAction::update_start`]), a wait runs
+    /// by dt and at its end the `MoveTo` asks again (`set_state` 3).
     pub fn update(
         &mut self,
         mut walk: Walk<'_>,
@@ -358,11 +359,6 @@ impl MoveToAction {
         mut shows: Shows<'_>,
     ) -> Result<MoveStep, GenieError> {
         let mut step = MoveStep::default();
-        if self.target != -1 && walk.world.get_known(self.target)?.is_none() {
-            return Err(GenieError::unsupported(
-                "a MoveTo of its own whose target is gone",
-            ));
-        }
         match self.state {
             MoveTo::Moving => self.update_moving(&mut walk, &mut step, &mut shows)?,
             MoveTo::Start => self.update_start(&mut walk, ask, &mut step, &mut shows)?,
@@ -404,6 +400,43 @@ impl MoveToAction {
         }
         self.ended(walk, shows);
         Ok(())
+    }
+
+    /// The update's first check of its target object (`0x140aa2a70`, before its state's case),
+    /// with the target's object state (`state`, `+0x640`; None when the world holds no object of
+    /// its id). A target the world no longer holds is cleared (`FUN_140a78450` finds none: slot
+    /// 0x68 with none releases nothing, as its lookup fails) and the `MoveTo` walks on to its
+    /// point. A held one in a state above 6 is let go (slot 0x68 with none, `FUN_140a7a230`; a
+    /// `MoveTo` that is not quiet owes it the release, slot 0x180, its caller's) and the update
+    /// ends there: 5 when quiet, else 4 after notify 0x1fb through `inbox` (the move action
+    /// value, the id let go, −1, and 0). Returns that code.
+    ///
+    /// # Errors
+    ///
+    /// The notify's.
+    pub fn check_held(
+        &mut self,
+        state: Option<u8>,
+        inbox: &mut Inbox<'_>,
+    ) -> Result<Option<u8>, GenieError> {
+        if self.target == -1 {
+            return Ok(None);
+        }
+        match state {
+            None => {
+                self.target = -1;
+                Ok(None)
+            }
+            Some(s) if 6 < s => {
+                self.target = -1;
+                if self.quiet {
+                    return Ok(Some(5));
+                }
+                inbox.post(ACTION_INVALIDATED, [ActionKind::Move.value(), -1, 0])?;
+                Ok(Some(4))
+            }
+            Some(_) => Ok(None),
+        }
     }
 
     /// A moving `MoveTo`'s check of its target object (`0x140aa2a70` in state 4, before the
@@ -531,12 +564,12 @@ mod tests {
         }
     }
 
-    /// A `MoveTo` of its own (`0x140aa2240`) with [`WalkRig`]'s walker (its master's speed
+    /// A `MoveTo` of its own (`0x140aa2a70`) with [`WalkRig`]'s walker (its master's speed
     /// 0.8): a start counts a wait's ask (`+0x6c` 1 to 2), asks for its path and turns to state
     /// 4, whose `set_state` (`0x140aa29e0`) shows its sprite (the running one: top speed 0.8 ×
     /// 1.5) before the motion step; a move runs the motion step and keeps moving; one at its
     /// target is done, a failed one reports it; a wait runs by the walk's dt and asks again at
-    /// its delay. A target that is gone is not modelled.
+    /// its delay. A target that is gone fails its check (the caller clears it first, [`MoveToAction::check_held`]).
     ///
     /// [`WalkRig`]: crate::movement::tests::WalkRig
     #[test]
@@ -600,7 +633,7 @@ mod tests {
         };
         assert_eq!(
             reason(own_move_to(MoveTo::Moving, Some(WALKING), 77)),
-            "a MoveTo of its own whose target is gone"
+            "a MoveTo whose target is gone"
         );
     }
 
@@ -683,7 +716,7 @@ mod tests {
         assert_eq!(point_sprite(&still, Some(&standing_look), false), Some(501));
     }
 
-    /// The walk of a `MoveTo` of its own on the house 10028 (`0x140aa2240`, state 4): a target
+    /// The walk of a `MoveTo` of its own on the house 10028 (`0x140aa2a70`, state 4): a target
     /// that stays walks on; one that left the `MoveTo`'s point (by more than the tolerance) has
     /// a walker on its path's last stretch follow it there, and any other tell the unit and turn
     /// the `MoveTo` to state 3 before the motion step.

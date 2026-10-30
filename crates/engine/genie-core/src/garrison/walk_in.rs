@@ -28,6 +28,10 @@ pub const ENTER: i16 = 3;
 /// The gap below which the Enter's `MoveTo` starts arrived (`0x140aa2100`, `DAT_142eb99cc`).
 pub(super) const ARRIVED: f32 = crate::math::image::move_to::ARRIVED;
 
+/// An Enter whose target died or is not allied: the update lets it go and turns to state 11
+/// (`FUN_140a87320` case 11: a quiet `MoveTo` to the meeting point), which is not modelled.
+const ENTER_TARGET_DIED: GenieError =
+    GenieError::unsupported("an Enter whose building died or is not allied (state 11)");
 pub(super) const WAIT: u8 = 2;
 pub(super) const WALK: u8 = 4;
 /// `set_state(2)`'s wait before the Enter walks again, in seconds (`FUN_140a87320`, the constant
@@ -349,7 +353,9 @@ impl EnterAction {
     /// 1 and 2 enter in
     /// reach, a unit that entered in the walk again enters again ([`Unit::entered_again`]), else
     /// they wait (`set_state(2)`); code 3 (a `MoveTo` that failed) walks again once (`+0x68`),
-    /// then waits; codes 4 and 5 let the target go (state 11), which is not modelled.
+    /// then waits; codes 4 and 5 (its target in a state above 6 let go) let the Enter's target go
+    /// and turn to state 11, which is not modelled ([`ENTER_TARGET_DIED`]: the update's own test
+    /// of its target, [`EnterAction::held_target`], stops on a target in state 3 first).
     ///
     /// # Errors
     ///
@@ -376,6 +382,7 @@ impl EnterAction {
                 self.again(c, unit, t, reads).map(|_| ())
             }
             1..=3 => self.wait(c, unit),
+            4 | 5 => Err(ENTER_TARGET_DIED),
             _ => Ok(()),
         }
     }
@@ -400,6 +407,7 @@ impl EnterAction {
             waits: reads.waits,
             stance: reads.stance,
         };
+        let held = c.w.object_state(move_to.target);
         let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
         let shown = (move_to.state == MoveTo::Start).then_some(Shown {
             sprite: &mut unit.sprite,
@@ -407,7 +415,8 @@ impl EnterAction {
             graphic: move_to.sprite,
         });
         let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
-        move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown, &mut inbox)
+        let ask = PathAsk::default();
+        move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)
     }
 
     /// The update's test of its target first (`FUN_140a87a80`): one gone, dead (state 3 or
@@ -422,9 +431,7 @@ impl EnterAction {
             ));
         };
         if 3 <= t.state || !t.allied {
-            return Err(GenieError::unsupported(
-                "an Enter whose building died or is not allied (state 11)",
-            ));
+            return Err(ENTER_TARGET_DIED);
         }
         if !t.room {
             return Err(GenieError::unsupported(
