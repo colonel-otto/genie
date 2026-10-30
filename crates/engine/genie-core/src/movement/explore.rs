@@ -734,7 +734,7 @@ mod tests {
         let made = MoveToAction {
             state: crate::movement::move_to::MoveTo::Start,
             point: Position::new(19.0, 84.0, 0.0),
-            target: -1,
+            target: None,
             range: 0.0,
             sprite: Some(walking),
             quiet: true,

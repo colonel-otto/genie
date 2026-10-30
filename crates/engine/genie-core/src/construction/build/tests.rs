@@ -1,5 +1,6 @@
 use super::*;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -469,7 +470,12 @@ fn a_build_s_point_is_its_foundation_s_place() {
     let b = started(10913, Position::new(61.5, 92.5, 1.0), 0.8, TASK);
     let walk = b.move_to.unwrap();
     assert_eq!(
-        (b.point, walk.target, walk.point, walk.state),
+        (
+            b.point,
+            ObjectId::field(walk.target),
+            walk.point,
+            walk.state
+        ),
         (
             Position::new(61.5, 92.5, 1.0),
             10913,

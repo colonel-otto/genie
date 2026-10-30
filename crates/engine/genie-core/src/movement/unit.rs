@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::movement::ASIDE;
 use crate::movement::move_to::{MoveTo, Shows};
 use crate::movement::{GroupSpeed, Me};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{sprite_id, standing};
@@ -161,7 +162,7 @@ impl Unit {
         let releases = code.is_some() && !move_to.quiet;
         if releases {
             let by = self.releaser(c);
-            crate::world::lets::release(c, self, target, by)?;
+            crate::world::lets::release(c, self, ObjectId::field(target), by)?;
         }
         Ok(code)
     }
@@ -178,8 +179,8 @@ impl Unit {
                 // its state 3 reads the unit's AI for the path it asks (0x140aa2a70), with its
                 // point: its own, or the target's place (a target gone fails the update first)
                 let point = match move_to.target {
-                    -1 => Some(move_to.point.ground()),
-                    id => c.w.spatial.get(id).map(|t| t.position.ground()),
+                    None => Some(move_to.point.ground()),
+                    Some(id) => c.w.spatial.get(id).map(|t| t.position.ground()),
                 };
                 let ask = match point {
                     Some(p) if move_to.state == MoveTo::Start => {

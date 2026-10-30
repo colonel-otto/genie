@@ -53,8 +53,11 @@ impl ObjectId {
 
     /// The value of a field that holds −1 for none.
     #[must_use]
-    pub fn field(id: Option<Self>) -> i32 {
-        id.map_or(Self::NONE, |id| id.0)
+    pub const fn field(id: Option<Self>) -> i32 {
+        match id {
+            Some(id) => id.0,
+            None => Self::NONE,
+        }
     }
 
     /// The values of fields that hold −1 for none, for a routine that takes them raw

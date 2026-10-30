@@ -5,6 +5,7 @@ use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::movement::{Me, Mover};
+use crate::objects::ObjectId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -60,7 +61,7 @@ fn walks(held: (i16, f32)) -> Walks<'static> {
 fn to_house(state: MoveTo) -> MoveToAction {
     MoveToAction {
         point: Position::new(30.0, 88.0, 0.0),
-        target: 10028,
+        target: Some(object_id(10028)),
         range: task().range,
         on_target_moved: TargetMoved::AsksAgain,
         ..MoveToAction::sub_in(state)
@@ -330,7 +331,7 @@ fn a_gather_s_move_to_refuses_a_target_past_state_6() {
     let walk = |state| {
         g.move_to_object(to(state), &mover, &walks((-1, 0.0)))
             .unwrap()
-            .map(|m| (m.target, m.point, m.state))
+            .map(|m| (ObjectId::field(m.target), m.point, m.state))
     };
     assert_eq!(
         walk(6),
@@ -458,7 +459,7 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
     let to_mill = MoveToAction {
         state: MoveTo::Start,
         point: Position::new(12.5, 5.5, 0.0),
-        target: 500,
+        target: Some(object_id(500)),
         range: task().range,
         sprite: None,
         quiet: true,
@@ -686,7 +687,7 @@ fn a_drop_off_whose_site_was_let_go_waits_a_random_while() {
     });
     assert_eq!(dropped, Ok(Dropped::Going));
     assert_eq!(g.timer, draw);
-    assert_eq!(g.move_to.map(|m| m.target), Some(-1));
+    assert_eq!(g.move_to.map(|m| ObjectId::field(m.target)), Some(-1));
     assert!(rig.anim_stopped());
 }
 
@@ -835,7 +836,7 @@ fn a_walk_to_a_point_ends_on_its_target_let_go_as_on_its_arrival() {
         state,
         target: -1,
         move_to: Some(MoveToAction {
-            target,
+            target: ObjectId::of_field(target),
             ..MoveToAction::sub_in(MoveTo::Moving)
         }),
         ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
@@ -1085,7 +1086,7 @@ fn a_forager_walks_to_its_bush() {
     // a quiet MoveTo to the bush that asks again when it moves
     let to_bush = MoveToAction {
         point: Position::new(23.5, 93.5, 0.0),
-        target: 28222,
+        target: Some(object_id(28222)),
         range: task().range,
         on_target_moved: TargetMoved::AsksAgain,
         ..MoveToAction::sub_in(MoveTo::Start)
@@ -1142,7 +1143,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
     );
     let to_bush = MoveToAction {
         point: Position::new(23.5, 93.5, 0.0),
-        target: 28222,
+        target: Some(object_id(28222)),
         range: task().range,
         on_target_moved: TargetMoved::AsksAgain,
         ..MoveToAction::sub_in(MoveTo::Start)

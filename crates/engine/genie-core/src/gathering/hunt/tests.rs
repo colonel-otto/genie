@@ -4,12 +4,14 @@ use crate::math::fmath::BVector;
 use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::sprite::Graphic;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::test_ids::object_id;
 
 use crate::combat::attack::tests::Rig;
 use crate::movement::{Me, MoveStats, Velocity};
@@ -70,7 +72,7 @@ fn a_hunt_s_move_to_refuses_a_target_past_state_6() {
         };
         h.move_to_object(to, 1.0, &mover, &walks((-1, 0.0)))
             .unwrap()
-            .map(|m| (m.target, m.point, m.state))
+            .map(|m| (ObjectId::field(m.target), m.point, m.state))
     };
     assert_eq!(
         walk(6),
@@ -87,7 +89,7 @@ fn a_hunt_s_move_to_refuses_a_target_past_state_6() {
 fn to_house(state: MoveTo, range: f32) -> MoveToAction {
     MoveToAction {
         point: Position::new(30.0, 88.0, 0.0),
-        target: 10028,
+        target: Some(object_id(10028)),
         range,
         on_target_moved: TargetMoved::AsksAgain,
         ..MoveToAction::sub_in(state)
@@ -626,9 +628,15 @@ fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
         )
         .unwrap();
         // a quiet MoveTo to the target that asks again when it moves (`+0x61` 1)
-        let walk = hunt
-            .move_to
-            .map(|m| (m.state, m.target, m.range, m.on_target_moved, m.quiet));
+        let walk = hunt.move_to.map(|m| {
+            (
+                m.state,
+                ObjectId::field(m.target),
+                m.range,
+                m.on_target_moved,
+                m.quiet,
+            )
+        });
         assert_eq!(
             (hunt.state, walk, hunt.attack),
             (
@@ -961,7 +969,7 @@ fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
                 carry_to: 10028,
                 point: Position::new(35.5, 88.5, 0.0),
                 move_to: Some(MoveToAction {
-                    target: if state == DROP { 10028 } else { -1 },
+                    target: (state == DROP).then(|| object_id(10028)),
                     ..to_point(move_to, Position::new(35.5, 88.5, 0.0), CHOP.range)
                 }),
                 ..hunting(-1)
@@ -1197,7 +1205,11 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
     let mut h = walking(-1, 0.0, MoveTo::Moving);
     assert_eq!(update(&mut h, &mut lost, false, 0.0), Ok(HuntNext::Stay));
     assert_eq!(
-        (h.state, h.target, h.move_to.map(|m| (m.state, m.target))),
+        (
+            h.state,
+            h.target,
+            h.move_to.map(|m| (m.state, ObjectId::field(m.target)))
+        ),
         (WALK_SEARCH, -1, Some((MoveTo::Start, -1)))
     );
     // a walk that gave up waits its time, then walks to the point

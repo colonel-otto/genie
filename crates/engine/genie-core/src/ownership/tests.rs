@@ -22,7 +22,7 @@ fn walking_forager() -> World {
         sprite: None,
         state: MoveTo::Moving,
         point: Position::new(40.0, 80.0, 0.0),
-        target: -1,
+        target: None,
         range: 0.0,
         quiet: false,
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,

@@ -7,6 +7,7 @@ use crate::map::spatial::{Placed, Tiles};
 use crate::math::rng::Well512;
 use crate::movement::Me;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait, TargetMoved};
+use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::{Class, Lifecycle};
@@ -411,7 +412,12 @@ fn a_builder_whose_foundation_dies_walks_to_its_point() {
     assert_eq!((b.state, b.target, b.added), (WALK_POINT, -1, false));
     let walk = b.move_to.unwrap();
     assert_eq!(
-        (walk.state, walk.target, walk.point, b.point),
+        (
+            walk.state,
+            ObjectId::field(walk.target),
+            walk.point,
+            b.point
+        ),
         (MoveTo::Start, -1, AT_HOUSE, AT_HOUSE)
     );
     // the task gives no sprite: FUN_140aa0d30's default, the master's walking one
@@ -453,7 +459,7 @@ fn a_builder_without_its_foundation_walks_on_then_waits() {
             state: WALK_POINT,
             target: -1,
             move_to: end.map(|state| MoveToAction {
-                target: -1,
+                target: None,
                 ..walk_in(state)
             }),
             ..started(HOUSE, AT_HOUSE, 0.8, TASK)
@@ -489,7 +495,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
     let b = build(&t);
     let walk = b.move_to.unwrap();
     assert_eq!(
-        (b.state, b.target, walk.target, walk.point),
+        (b.state, b.target, ObjectId::field(walk.target), walk.point),
         (MOVE, -1, -1, AT_HOUSE)
     );
     // the MoveTo ran in the same update
@@ -502,7 +508,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
         on_build(t, |b, c, u, _| {
             b.restart(c, u)?;
             let walk = b.move_to.unwrap();
-            Ok((walk.target, walk.point, walk.state))
+            Ok((ObjectId::field(walk.target), walk.point, walk.state))
         })
         .unwrap()
     };
@@ -552,7 +558,12 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
     let b = build(&t);
     let walk = b.move_to.unwrap();
     assert_eq!(
-        (b.state, walk.state, walk.target, walk.point),
+        (
+            b.state,
+            walk.state,
+            ObjectId::field(walk.target),
+            walk.point
+        ),
         (CLEAR, MoveTo::Start, -1, Position::new(29.5, 89.5, 0.0))
     );
     assert_eq!(walk.sprite.map(|g| g.id), Some(TASK_SPRITE));
@@ -718,7 +729,7 @@ fn a_build_s_other_cases_end_walk_to_a_point_go_back_or_wait() {
         let b = BuildAction {
             state,
             move_to: Some(MoveToAction {
-                target: -1,
+                target: None,
                 point: Position::new(6.5, 2.5, 0.0),
                 ..walk_in(MoveTo::Start)
             }),
@@ -1166,7 +1177,13 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     let b = drop(&mut t, site(Some(7)));
     let walk = b.move_to.unwrap();
     assert_eq!(
-        (b.state, b.site, walk.target, walk.range, walk.state),
+        (
+            b.state,
+            b.site,
+            ObjectId::field(walk.target),
+            walk.range,
+            walk.state
+        ),
         (DROP, 300, 300, 0.5, MoveTo::Start)
     );
     // the drop task's carrying sprite; +0x61 1: it asks again when its target moves
@@ -1181,7 +1198,13 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     let b = drop(&mut t, DropSearch::Nothing);
     let walk = b.move_to.unwrap();
     assert_eq!(
-        (b.state, b.site, walk.target, walk.state, walk.point),
+        (
+            b.state,
+            b.site,
+            ObjectId::field(walk.target),
+            walk.state,
+            walk.point
+        ),
         (MOVE, -1, HOUSE, MoveTo::Start, AT_HOUSE)
     );
     let no_site = (
@@ -1206,7 +1229,13 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     let lost = drop(&mut t, DropSearch::Empty);
     let walk = lost.move_to.unwrap();
     assert_eq!(
-        (lost.state, walk.target, walk.point, walk.state, lost.site),
+        (
+            lost.state,
+            ObjectId::field(walk.target),
+            walk.point,
+            walk.state,
+            lost.site
+        ),
         (MOVE, -1, Position::ORIGIN, MoveTo::Start, 300)
     );
 }
@@ -1217,7 +1246,7 @@ fn at_the_mill(state: MoveTo) -> BuildAction {
     BuildAction {
         state: DROP,
         move_to: Some(MoveToAction {
-            target: 300,
+            target: Some(object_id(300)),
             point: Position::new(15.5, 10.5, 0.0),
             range: 0.5,
             on_target_moved: TargetMoved::AsksAgain,
@@ -1384,7 +1413,11 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
     let _ = code(&mut t, 250);
     let b = build(&t);
     assert_eq!(
-        (b.move_to.map(|m| m.target), b.state, b.site),
+        (
+            b.move_to.map(|m| ObjectId::field(m.target)),
+            b.state,
+            b.site
+        ),
         (Some(HOUSE), MOVE, -1)
     );
     let no_site = (

@@ -11,6 +11,7 @@ use crate::movement::move_to::{
     Follow, Goal, MoveTo, MoveWait, TargetMoved, Walk, ask_walk, target_left, walk_or_give_up,
 };
 use crate::movement::{Mover, PathAsk, footprint_gap};
+use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::TOWN_CENTRE;
@@ -31,8 +32,8 @@ pub struct MoveToAction {
     /// follows the target moves ([`TargetMoved::Follows`]). A target the world removed leaves the
     /// `MoveTo` walking to it.
     pub point: Position,
-    /// The target object it walks to (`+0x20`, its id at `+0x30`), −1 for a point.
-    pub target: i32,
+    /// The target object it walks to (`+0x20`, its id at `+0x30`), None for a point (−1).
+    pub target: Option<ObjectId>,
     /// `+0x68`.
     pub range: f32,
     /// The sprite it shows when it turns to state 4 (`+0x58`, the save's second `short_val`):
@@ -223,7 +224,7 @@ impl MoveToAction {
         Ok(Self {
             state,
             point: t.position,
-            target,
+            target: ObjectId::of_field(target),
             range,
             sprite,
             quiet: false,
@@ -289,7 +290,7 @@ impl MoveToAction {
         Self {
             state,
             point,
-            target: -1,
+            target: None,
             range,
             sprite,
             quiet: false,
@@ -302,8 +303,8 @@ impl MoveToAction {
     #[must_use]
     pub const fn walks_to(&self) -> Goal {
         match self.target {
-            -1 => Goal::Point(self.point),
-            id => Goal::Target(id),
+            None => Goal::Point(self.point),
+            Some(id) => Goal::Target(id),
         }
     }
 
@@ -311,7 +312,7 @@ impl MoveToAction {
     /// tests compare.
     #[cfg(test)]
     pub(crate) const fn goal(&self) -> Option<Position> {
-        if self.target == -1 {
+        if self.target.is_none() {
             Some(self.point)
         } else {
             None
@@ -415,16 +416,16 @@ impl MoveToAction {
         state: Option<u8>,
         inbox: &mut Inbox<'_>,
     ) -> Result<Option<u8>, GenieError> {
-        if self.target == -1 {
+        if self.target.is_none() {
             return Ok(None);
         }
         match state {
             None => {
-                self.target = -1;
+                self.target = None;
                 Ok(None)
             }
             Some(s) if 6 < s => {
-                self.target = -1;
+                self.target = None;
                 if self.quiet {
                     return Ok(Some(5));
                 }
@@ -444,10 +445,10 @@ impl MoveToAction {
     ///
     /// [`target_moved`]'s.
     pub(crate) fn check_target(&mut self, walk: &mut Walk<'_>) -> Result<Follow, GenieError> {
-        if self.target == -1 {
+        let Some(target) = self.target else {
             return Ok(Follow::Stays);
-        }
-        let follow = target_left(walk, self.target, self.point, self.on_target_moved)?;
+        };
+        let follow = target_left(walk, target, self.point, self.on_target_moved)?;
         match follow {
             Follow::PathEnd(p) => {
                 let mover = walk.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
@@ -525,7 +526,7 @@ mod tests {
             sprite,
             state,
             point: Position::new(30.0, 88.0, 0.0),
-            target,
+            target: ObjectId::of_field(target),
             range: 0.1,
             quiet: false,
             on_target_moved: TargetMoved::Follows,
@@ -820,20 +821,20 @@ mod tests {
         };
         let held = to((9186, 2), false, 0.8);
         assert_eq!(
-            (held.target, held.goal(), held.state),
+            (ObjectId::field(held.target), held.goal(), held.state),
             (9186, None, MoveTo::Start)
         );
         let gone = to((9186, 7), false, 0.8);
         assert_eq!(
-            (gone.target, gone.goal(), gone.state),
+            (ObjectId::field(gone.target), gone.goal(), gone.state),
             (-1, Some(Position::new(35.0, 40.0, 0.0)), MoveTo::Start)
         );
         assert_eq!(to((9186, 7), false, 0.0).state, MoveTo::Failed);
         // a villager to the town centre holds it; livestock walks beside it
-        assert_eq!(to((9149, 2), false, 0.8).target, 9149);
+        assert_eq!(to((9149, 2), false, 0.8).target, Some(object_id(9149)));
         let beside = to((9149, 2), true, 0.8);
         assert_eq!(
-            (beside.target, beside.goal()),
+            (ObjectId::field(beside.target), beside.goal()),
             (-1, Some(Position::new(50.0 - 0.2, 40.0 - 0.2, 0.0)))
         );
     }
@@ -856,7 +857,7 @@ mod tests {
             (
                 moving.state,
                 moving.goal(),
-                moving.target,
+                ObjectId::field(moving.target),
                 moving.range,
                 moving.sprite
             ),

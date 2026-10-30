@@ -319,7 +319,12 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let build = t.players[0].objects[0].actions.build().copied().unwrap();
     let walk = build.move_to.unwrap();
     assert_eq!(
-        (build.state, build.site, walk.target, walk.range),
+        (
+            build.state,
+            build.site,
+            ObjectId::field(walk.target),
+            walk.range
+        ),
         (crate::construction::build::DROP, 503, 503, 0.1)
     );
     assert_eq!(
@@ -340,7 +345,11 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
     let build = t.players[0].objects[0].actions.build().copied().unwrap();
     assert_eq!(
-        (build.state, build.site, build.move_to.map(|m| m.target)),
+        (
+            build.state,
+            build.site,
+            build.move_to.map(|m| ObjectId::field(m.target))
+        ),
         (4, -1, Some(600))
     );
     // carrying nothing: not ordered
@@ -1958,7 +1967,7 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
             sprite: None,
             state: crate::movement::move_to::MoveTo::Start,
             point: Position::new(30.0, 30.0, 0.0),
-            target: -1,
+            target: None,
             range: 0.0,
             quiet: false,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
@@ -2116,7 +2125,10 @@ fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
     );
     assert_eq!((ai.current_target, ai.target_type), (30, 6));
     assert_eq!(ai.target_point, Position::new(40.0, 20.0, 0.0));
-    assert_eq!(unit.actions.move_to().copied().unwrap().target, 30);
+    assert_eq!(
+        ObjectId::field(unit.actions.move_to().copied().unwrap().target),
+        30
+    );
     assert_eq!(t.players[1].objects[1].actions.move_to().copied(), None);
 }
 
@@ -2138,7 +2150,10 @@ fn followers_side_by_side_take_their_offsets_from_the_target() {
             (30, Position::new(x, 20.0, 0.0))
         );
         assert_eq!(unit.body.mover().unwrap().ignore_units, [other]);
-        assert_eq!(unit.actions.move_to().copied().unwrap().target, 30);
+        assert_eq!(
+            ObjectId::field(unit.actions.move_to().copied().unwrap().target),
+            30
+        );
     }
 }
 
@@ -2569,7 +2584,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
             .iter()
             .find(|u| u.id == object_id(id))
             .and_then(|u| u.actions.move_to().copied())
-            .map(|m| m.target)
+            .map(|m| ObjectId::field(m.target))
     };
     assert_eq!(goes(1, 20), Some(11));
     assert_eq!(goes(1, 21), Some(11));
@@ -2985,7 +3000,11 @@ fn a_lone_unit_patrols_to_its_waypoint() {
     let u = &t.players[1].objects[0];
     let move_to = u.actions.move_to().copied().unwrap();
     assert_eq!(
-        (move_to.goal(), move_to.target, move_to.range),
+        (
+            move_to.goal(),
+            ObjectId::field(move_to.target),
+            move_to.range
+        ),
         (Some(Position::new(30.0, 20.0, 1.5)), -1, 0.0)
     );
     let m = u.body.mover().unwrap();
@@ -3958,7 +3977,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
             sprite: None,
             state: crate::movement::move_to::MoveTo::Moving,
             point: Position::new(40.0, 89.5, 0.0),
-            target: -1,
+            target: None,
             range: 0.0,
             quiet: false,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,

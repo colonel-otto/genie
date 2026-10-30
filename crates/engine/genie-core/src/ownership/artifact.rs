@@ -565,8 +565,10 @@ mod tests {
     use super::*;
     use crate::combat::attack::tests::Rig;
     use crate::movement::move_to::{MoveDefaults, MoveToReads, MoveWait, SpriteReads, WalkTo};
+    use crate::objects::ObjectId;
     use crate::objects::masters::class;
     use crate::objects::sprite::Graphic;
+    use crate::test_ids::object_id;
     use std::collections::BTreeMap;
 
     #[test]
@@ -937,7 +939,10 @@ mod tests {
         );
         // not a building: within 0; a target in state 7 is not held (`FUN_140a7a230`)
         assert_eq!(
-            (a.target, a.move_to.map(|m| (m.target, m.range))),
+            (
+                a.target,
+                a.move_to.map(|m| (ObjectId::field(m.target), m.range))
+            ),
             (-1, Some((-1, 0.0)))
         );
         a.target = 9149;
@@ -1024,7 +1029,7 @@ mod tests {
     fn to_object(target: i32, state: MoveTo) -> MoveToAction {
         MoveToAction {
             point: Position::new(10.0, 12.0, 0.0),
-            target,
+            target: ObjectId::of_field(target),
             range: 1.0,
             ..MoveToAction::sub_in(state)
         }
@@ -1132,7 +1137,8 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            a.move_to.map(|m| (m.goal(), m.target, m.range, m.quiet)),
+            a.move_to
+                .map(|m| (m.goal(), ObjectId::field(m.target), m.range, m.quiet)),
             Some((Some(Position::new(9.8, 11.8, 0.0)), -1, 1.0, true))
         );
         assert_eq!(a.target, 9149);
@@ -1216,14 +1222,14 @@ mod tests {
         // a target the world lost is cleared: the MoveTo walks on to its point
         let mut lost = Artifact {
             move_to: Some(MoveToAction {
-                target: 4242,
+                target: Some(object_id(4242)),
                 ..MoveToAction::sub_in(MoveTo::Start)
             }),
             ..Artifact::new(false, None)
         };
         rig.run(50, |c, u, _, _| lost.walk(c, u, me(), &reads()))
             .unwrap();
-        assert_eq!(lost.move_to.map(|m| m.target), Some(-1));
+        assert_eq!(lost.move_to.map(|m| ObjectId::field(m.target)), Some(-1));
         // a target that died (state 7) is let go, and the walk ends at once (code 5)
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default())
             .holding(600, PlayerId::new(1));
@@ -1232,7 +1238,7 @@ mod tests {
         }
         let mut dying = Artifact {
             move_to: Some(MoveToAction {
-                target: 600,
+                target: Some(object_id(600)),
                 ..MoveToAction::sub_in(MoveTo::Moving)
             }),
             target: 600,

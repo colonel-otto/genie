@@ -11,6 +11,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::movement::{Me, Motion, Planning, footprint_gap, footprint_gap_squared};
 use crate::movement::{MoveStats, PathAsk};
+use crate::objects::ObjectId;
 use crate::objects::layers::Body;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite};
 use genie_diff::Diff;
@@ -186,7 +187,7 @@ impl Walk<'_> {
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub enum Goal {
     /// A target object.
-    Target(i32),
+    Target(ObjectId),
     /// A point.
     Point(Position),
 }
@@ -225,15 +226,15 @@ pub fn ask_walk(
                 .world
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a MoveTo whose target is gone"))?;
-            (t.position, id, t.radius)
+            (t.position, Some(id), t.radius)
         }
-        Goal::Point(p) => (p, -1, [0.0, 0.0]),
+        Goal::Point(p) => (p, None, [0.0, 0.0]),
     };
     let now = walk.plan.as_ref().map_or(0, |p| p.now);
     let mover = walk.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
     let here = mover.position();
     let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-    let squared = if target == -1 {
+    let squared = if target.is_none() {
         let gap = footprint_gap(here, ground, point, radius);
         gap * gap
     } else {
@@ -242,7 +243,7 @@ pub fn ask_walk(
     if ask.ends_in_range && squared <= range * range {
         return Ok((Some(MoveTo::Arrived), None));
     }
-    mover.request_path_asked(here, point, range, target, now, ask);
+    mover.request_path_asked(here, point, range, ObjectId::field(target), now, ask);
     if let Some(mut shown) = shown {
         shown.show(walk.body.move_stats_mut());
     }
@@ -441,7 +442,7 @@ impl Follow {
 /// A target the world lacks, a walker without movement state.
 pub fn target_left(
     walk: &mut Walk<'_>,
-    target: i32,
+    target: ObjectId,
     point: Position,
     mode: TargetMoved,
 ) -> Result<Follow, GenieError> {
@@ -489,6 +490,7 @@ mod tests {
     use crate::objects::masters::class;
     use crate::players::PlayerId;
     use crate::test_ids::master_id;
+    use crate::test_ids::object_id;
 
     /// A `MoveTo` sub-action ([`MoveToAction::sub_update`]) on house 10028 within 0.1 (the
     /// walker 0.8 off it) with [`WalkRig`]'s walker: a start asks for its path (a `MoveTo` that
@@ -504,7 +506,7 @@ mod tests {
         let mut rig = WalkRig::on_the_path();
         let mut m = MoveToAction {
             point: Position::new(30.0, 88.0, 0.0),
-            target: 10028,
+            target: Some(object_id(10028)),
             range: 0.1,
             wait: MoveWait {
                 state: 1,
@@ -554,7 +556,7 @@ mod tests {
             assert_eq!(update(&mut m), Ok(code));
         }
         let mut lost = MoveToAction {
-            target: 4242,
+            target: Some(object_id(4242)),
             ..MoveToAction::sub_in(MoveTo::Start)
         };
         assert!(update(&mut lost).is_err());
@@ -611,7 +613,7 @@ mod tests {
             }
             let mut m = MoveToAction {
                 point: Position::new(30.6, 88.0, 0.0),
-                target: 10028,
+                target: Some(object_id(10028)),
                 range: 0.1,
                 on_target_moved: mode,
                 ..MoveToAction::sub_in(MoveTo::Moving)
@@ -670,7 +672,7 @@ mod tests {
     fn a_move_to_lets_a_dying_target_go_and_walks_on_from_one_the_world_lost() {
         let checked = |quiet: bool, target: i32, state: Option<u8>| {
             let mut m = MoveToAction {
-                target,
+                target: ObjectId::of_field(target),
                 quiet,
                 ..MoveToAction::sub_in(MoveTo::Moving)
             };
@@ -684,7 +686,7 @@ mod tests {
             let posted: Vec<(i32, [i32; 3])> = ai.map_or(vec![], |ai| {
                 ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
             });
-            (code, m.target, posted)
+            (code, ObjectId::field(m.target), posted)
         };
         assert_eq!(checked(true, -1, Some(9)), (None, -1, vec![]));
         assert_eq!(checked(false, 10028, None), (None, -1, vec![]));
@@ -698,7 +700,7 @@ mod tests {
         // through the sub-action's update, before its state's case
         let mut rig = crate::movement::tests::WalkRig::on_the_path();
         let mut m = MoveToAction {
-            target: 10028,
+            target: Some(object_id(10028)),
             ..MoveToAction::sub_in(MoveTo::Moving)
         };
         let mut ai = None;
@@ -712,9 +714,12 @@ mod tests {
             None,
             &mut inbox,
         );
-        assert_eq!((code, m.target, m.state), (Ok(5), -1, MoveTo::Moving));
+        assert_eq!(
+            (code, ObjectId::field(m.target), m.state),
+            (Ok(5), -1, MoveTo::Moving)
+        );
         let mut loud = MoveToAction {
-            target: 10028,
+            target: Some(object_id(10028)),
             quiet: false,
             ..MoveToAction::sub_in(MoveTo::Moving)
         };
@@ -832,7 +837,7 @@ mod tests {
                 world: &mut world,
                 plan: None,
             };
-            target_left(&mut walk, target, point, mode)
+            target_left(&mut walk, object_id(target), point, mode)
         };
         let (again, follows) = (TargetMoved::AsksAgain, TargetMoved::Follows);
         let on = Position::new(30.4, 88.0, 0.0);

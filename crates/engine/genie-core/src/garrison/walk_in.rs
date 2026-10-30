@@ -224,7 +224,7 @@ impl EnterAction {
         self.move_to = Some(MoveToAction {
             state,
             point: Position::ORIGIN,
-            target: self.target,
+            target: crate::objects::ObjectId::of_field(self.target),
             range: self.range,
             sprite: None,
             quiet: true,

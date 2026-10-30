@@ -3,6 +3,7 @@ use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWait, SpriteReads};
+use crate::objects::ObjectId;
 use crate::objects::layers::Animated;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -2257,7 +2258,14 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
     let m = m.unwrap();
     assert_eq!((arrived, timer), (false, 0.0));
     assert_eq!(
-        (m.state, m.point, m.target, m.range, m.sprite, m.quiet),
+        (
+            m.state,
+            m.point,
+            ObjectId::field(m.target),
+            m.range,
+            m.sprite,
+            m.quiet
+        ),
         (MoveTo::Start, at, 7, 2.0, Some(STANDING), true)
     );
     assert_eq!(m.on_target_moved, TargetMoved::AsksAgain);
@@ -2301,7 +2309,8 @@ fn an_attack_s_move_to_where_it_saw_the_target_walks_within_its_range_or_onto_it
         a.walk_to_seen(&reads).unwrap();
         (
             a.timer,
-            a.move_to.map(|m| (m.state, m.point, m.range, m.target)),
+            a.move_to
+                .map(|m| (m.state, m.point, m.range, ObjectId::field(m.target))),
         )
     };
     assert_eq!(

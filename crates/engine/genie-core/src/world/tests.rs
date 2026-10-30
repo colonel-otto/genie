@@ -2154,7 +2154,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
         (
             b.target,
             b.state,
-            b.move_to.map(|m| m.target),
+            b.move_to.map(|m| ObjectId::field(m.target)),
             b.point,
             b.move_to.map(|m| m.state),
             b.added
@@ -2373,7 +2373,7 @@ fn a_work_command_on_another_foundation_moves_the_build_there() {
             b.state,
             b.added,
             b.point,
-            b.move_to.map(|m| m.target)
+            b.move_to.map(|m| ObjectId::field(m.target))
         ),
         (10031, 4, false, Position::new(34.0, 88.0, 0.0), Some(10031))
     );
@@ -8574,7 +8574,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         goal: Some(Position::new(20.0, 20.0, 0.0)),
         move_to: Some(MoveToAction {
             point: Position::ORIGIN,
-            target: 9149,
+            target: Some(object_id(9149)),
             range: 1.0,
             ..MoveToAction::sub_in(MoveTo::Moving)
         }),
@@ -8982,7 +8982,10 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
     let tree = &t.players[0].objects[0];
     assert_eq!((tree.id.get(), tree.workers), (50, 1));
     assert_eq!(
-        t.players[1].objects[2].actions.move_to().map(|m| m.target),
+        t.players[1].objects[2]
+            .actions
+            .move_to()
+            .map(|m| ObjectId::field(m.target)),
         Some(50)
     );
     t.move_to_object(PlayerId::new(1), 2, 9149, Position::new(20.0, 10.5, 0.0))
@@ -9012,7 +9015,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
         actions: ActionList::default().with_move_to(Some(MoveToAction {
             state: MoveTo::Arrived,
             point: Position::ORIGIN,
-            target: 50,
+            target: Some(object_id(50)),
             range: 0.0,
             sprite: None,
             quiet: false,
@@ -9088,7 +9091,7 @@ fn a_move_to_of_its_own_lets_a_dying_target_go_and_forgets_a_lost_one() {
             actions: ActionList::default().with_move_to(Some(MoveToAction {
                 state: MoveTo::Waiting,
                 point: Position::new(12.5, 10.5, 0.0),
-                target,
+                target: ObjectId::of_field(target),
                 range: 0.0,
                 sprite: None,
                 quiet: false,
@@ -9114,7 +9117,7 @@ fn a_move_to_of_its_own_lets_a_dying_target_go_and_forgets_a_lost_one() {
         assert_eq!(t.players[1].unsupported.clone(), None);
         let m = t.players[1].objects[0].actions.move_to().copied();
         let workers = t.players[0].objects[0].workers;
-        (m.map(|m| (m.state, m.target)), workers)
+        (m.map(|m| (m.state, ObjectId::field(m.target))), workers)
     };
     assert_eq!(run(50, 7), (Some((MoveTo::Waiting, -1)), 1));
     assert_eq!(run(51, 2), (Some((MoveTo::Waiting, -1)), 2));
@@ -10947,7 +10950,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
         actions: ActionList::default().with_move_to(Some(MoveToAction {
             state: MoveTo::Moving,
             point: Position::ORIGIN,
-            target: 77,
+            target: Some(object_id(77)),
             range: 0.0,
             sprite: None,
             quiet: false,
@@ -11777,7 +11780,7 @@ fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
         (
             mt.state,
             mt.goal(),
-            mt.target,
+            ObjectId::field(mt.target),
             mt.range,
             mt.sprite.map(|g| g.id)
         ),
@@ -11897,7 +11900,7 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
     assert_eq!(u.actions.move_to().copied(), Some(old));
     let to_object = MoveToAction {
         point: AI_POINT,
-        target: 9149,
+        target: Some(object_id(9149)),
         ..old
     };
     u.actions.set_move_to(Some(to_object));
@@ -11908,7 +11911,9 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
         Ok(vec![9149])
     );
     assert_eq!(
-        u.actions.move_to().map(|m| (m.target, m.range)),
+        u.actions
+            .move_to()
+            .map(|m| (ObjectId::field(m.target), m.range)),
         Some((-1, 0.5))
     );
     u.actions.set_move_to(Some(old));
@@ -14549,7 +14554,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
     let to_bush = |state| MoveToAction {
         state,
         point: Position::ORIGIN,
-        target: 600,
+        target: Some(object_id(600)),
         range: 0.25,
         sprite: None,
         quiet: false,
@@ -14585,7 +14590,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
     assert_eq!(arrived(Some(ActionKind::Gather)).2, []);
     let to_point = MoveToAction {
         point: Position::new(40.5, 89.5, 0.0),
-        target: -1,
+        target: None,
         ..to_bush(MoveTo::Failed)
     };
     let (r, m, heard, _) = own_move(&mut own_move_world(to_point));

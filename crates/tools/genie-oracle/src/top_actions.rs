@@ -226,7 +226,7 @@ pub(crate) fn saved_move_to(
         state: move_to_state(base.state)?,
         // its point (`+0x38`..`+0x40`), for a target object the target's place it last took
         point: Position::new(base.target_x, base.target_y, base.target_z),
-        target: base.target_id,
+        target: genie_core::objects::ObjectId::of_field(base.target_id),
         range: sub_range(action)?,
         // its sprite (`+0x58`, the save's second `short_val`; −1 for none)
         sprite: saved_move_to_sprite(base.short_val_2, graphics)?,

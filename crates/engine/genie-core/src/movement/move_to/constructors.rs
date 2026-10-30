@@ -8,6 +8,7 @@ use crate::movement::footprint_gap;
 use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveWait, NO_TARGET_GAP, SpriteReads, TargetMoved,
 };
+use crate::objects::ObjectId;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
@@ -73,10 +74,10 @@ impl WalkTo {
     /// The target the `MoveTo` takes (slot 0x68, `FUN_140a7a230`) and the gap its start measures:
     /// an object in a state above [`LAST_TAKEN`] is refused (the id -1) and far
     /// ([`NO_TARGET_GAP`]).
-    const fn held(&self) -> (i32, f32) {
+    const fn held(&self) -> (Option<ObjectId>, f32) {
         match self.state {
-            Some(s) if LAST_TAKEN < s => (-1, NO_TARGET_GAP),
-            _ => (self.id, self.gap),
+            Some(s) if LAST_TAKEN < s => (None, NO_TARGET_GAP),
+            _ => (ObjectId::of_field(self.id), self.gap),
         }
     }
 }
@@ -200,7 +201,7 @@ impl<'g> MoveToReads<'g> {
         let walk = MoveToAction {
             state: MoveTo::Start,
             point: NO_TARGET_POINT,
-            target: -1,
+            target: None,
             range,
             sprite: self.sprites.to_object(given)?,
             quiet: true,
@@ -285,7 +286,7 @@ mod tests {
         };
         let m = to(&move_reads, house, None);
         assert_eq!(
-            (m.state, m.target, m.point, m.range),
+            (m.state, ObjectId::field(m.target), m.point, m.range),
             (MoveTo::Start, 10028, Position::new(10.5, 10.5, 0.0), 0.1)
         );
         assert_eq!(
@@ -305,7 +306,11 @@ mod tests {
         };
         let refused = to(&move_reads, gone, None);
         assert_eq!(
-            (refused.state, refused.target, refused.point),
+            (
+                refused.state,
+                ObjectId::field(refused.target),
+                refused.point
+            ),
             (MoveTo::Start, -1, house.at)
         );
         let stuck = MoveToReads {
@@ -315,7 +320,11 @@ mod tests {
         assert_eq!(to(&stuck, house, None).state, MoveTo::Failed);
         let nothing = move_reads.to_nothing(0.1, None).unwrap().unwrap();
         assert_eq!(
-            (nothing.state, nothing.target, nothing.point),
+            (
+                nothing.state,
+                ObjectId::field(nothing.target),
+                nothing.point
+            ),
             (MoveTo::Start, -1, Position::ORIGIN)
         );
         let point = move_reads
@@ -325,7 +334,7 @@ mod tests {
         assert_eq!(
             (
                 point.state,
-                point.target,
+                ObjectId::field(point.target),
                 point.range,
                 point.sprite.map(|g| g.id)
             ),

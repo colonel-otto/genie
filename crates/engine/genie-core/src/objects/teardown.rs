@@ -2,6 +2,7 @@
 //! (its slot 0): what they leave the unit's world to apply.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::actions::{Action, ActionList};
 use crate::objects::layers::Body;
 use crate::objects::release::Releaser;
@@ -119,7 +120,7 @@ impl Action {
             }
             Self::MoveTo(m) => {
                 stop_if_moving(body, true)?;
-                torn.release(m.target);
+                torn.release(ObjectId::field(m.target));
             }
             Self::Missile(m) => {
                 torn.release(m.target);

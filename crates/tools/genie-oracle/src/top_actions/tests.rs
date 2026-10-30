@@ -224,11 +224,11 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
     assert_eq!(m.state, MoveTo::Moving);
     assert_eq!(
         (m.target, bits3(m.point)),
-        (-1, bits3(Position::new(1.0, 2.0, 0.0)))
+        (None, bits3(Position::new(1.0, 2.0, 0.0)))
     );
     assert_eq!(
         (m.target, m.range.to_bits(), m.sprite),
-        (-1, 0.5_f32.to_bits(), None)
+        (None, 0.5_f32.to_bits(), None)
     );
     assert_eq!(
         (m.wait.state, m.wait.timer.to_bits(), m.wait.delay.to_bits()),
@@ -363,10 +363,10 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .artifact()
     .copied()
     .unwrap();
-    assert!(matches!(
+    assert_eq!(
         a.move_to.map(|m| m.walks_to()),
-        Some(Goal::Target(9))
-    ));
+        Some(Goal::Target(crate::test_ids::object_id(9)))
+    );
     // the target's place is its goal however near the origin; an unset place (-1) is none
     let mut near = base(5);
     near.target_id = 9;
@@ -556,7 +556,7 @@ fn a_birds_fly_takes_its_home_and_move_to() {
     assert_eq!((flight.state, flight.quiet), (MoveTo::Moving, false));
     assert_eq!(
         (flight.target, bits3(flight.point)),
-        (-1, bits3(Position::new(1.0, 2.0, 0.0)))
+        (None, bits3(Position::new(1.0, 2.0, 0.0)))
     );
     assert_eq!(
         imported(FLY, bird(with_sub(base(3), 4, explore(base(3))))).unwrap_err(),
@@ -596,7 +596,7 @@ fn a_build_takes_its_task_move_to_and_site() {
     let walk = a.move_to.unwrap();
     assert_eq!(
         (a.target, a.site, walk.target, walk.state, walk.quiet),
-        (30, 31, -1, MoveTo::Moving, true)
+        (30, 31, None, MoveTo::Moving, true)
     );
     assert!(a.added);
     assert_eq!(a.task.work_rate.to_bits(), 2.5_f32.to_bits());

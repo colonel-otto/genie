@@ -22,6 +22,7 @@ use crate::gathering::make::MakeAction;
 use crate::movement::explore::ExploreAction;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::ownership::artifact::Artifact;
 use genie_diff::Diff;
@@ -172,7 +173,7 @@ impl Action {
             Self::Artifact(a) => a.target,
             Self::Build(a) => a.target,
             Self::Repair(a) => a.target,
-            Self::MoveTo(a) => a.target,
+            Self::MoveTo(a) => ObjectId::field(a.target),
             Self::Hunt(a) => a.target,
             Self::Gather(a) => a.target,
             Self::Attack(a) => a.target,

@@ -349,7 +349,7 @@ fn a_repair_s_move_tos_are_quiet() {
     let to_target = MoveToAction {
         state: MoveTo::Start,
         point: Position::new(11.0, 10.0, 0.0),
-        target: 20,
+        target: Some(object_id(20)),
         range: 1.5,
         sprite: Some(g[&21]),
         quiet: true,
@@ -395,7 +395,7 @@ fn a_repair_s_move_to_starts_as_its_list_adds_it() {
     };
     assert_eq!(state(TARGET, dying), None);
     let none = started().walk(&move_reads(&g), None).unwrap().unwrap();
-    assert_eq!((none.target, none.point), (-1, Position::ORIGIN));
+    assert_eq!((none.target, none.point), (None, Position::ORIGIN));
 }
 
 /// Its states show the task's sprites (slot 0x68, `set_state` `0x140ad9c60`): the turn toward
@@ -489,7 +489,7 @@ fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
 fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
     let mut t = repair_at(NEAR, |r| {
         r.move_to = Some(MoveToAction {
-            target: 777,
+            target: Some(object_id(777)),
             ..MoveToAction::sub_in(MoveTo::Moving)
         });
     });

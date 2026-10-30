@@ -8,6 +8,7 @@ use crate::movement::move_to::action::ARRIVED;
 use crate::movement::move_to::{
     Follow, MoveTo, MoveToAction, MoveWait, Shown, TargetMoved, Walk, ask_walk, walk_or_give_up,
 };
+use crate::objects::ObjectId;
 use crate::objects::sprite::Graphic;
 use crate::unit_ai::{ACTION_COMPLETED, ACTION_FAILED, ActionKind, Inbox, TARGET_MOVED};
 
@@ -39,7 +40,7 @@ impl MoveToAction {
         Self {
             state: MoveTo::Start,
             point,
-            target: -1,
+            target: None,
             range,
             sprite,
             quiet: true,
@@ -104,7 +105,7 @@ impl MoveToAction {
             // no owner makes a sub-action MoveTo to an object that is not quiet, which would
             // owe its target the release (FUN_140a7a230)
             if !self.quiet {
-                return Err(SUB_RELEASE.with("target", target));
+                return Err(SUB_RELEASE.with("target", ObjectId::field(target)));
             }
             return Ok(code);
         }

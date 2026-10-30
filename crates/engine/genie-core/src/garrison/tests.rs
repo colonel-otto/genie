@@ -328,7 +328,7 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
             sprite: None,
             state: MoveTo::Start,
             point: Position::new(9.5, 19.5, 0.0),
-            target: -1,
+            target: None,
             range: 0.0,
             quiet: false,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
@@ -2119,7 +2119,7 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
             ship.goal(),
             ship.range,
             ship.sprite.map(|g| g.id),
-            ship.target
+            crate::objects::ObjectId::field(ship.target)
         ),
         (Some(Position::new(5.5, 17.5, 0.0)), 0.0, Some(2001), -1)
     );
@@ -2155,7 +2155,7 @@ fn a_villager_meets_a_moving_ship_where_it_goes() {
         sprite: None,
         state: MoveTo::Start,
         point: Position::new(9.5, 19.5, 0.0),
-        target: -1,
+        target: None,
         range: 0.0,
         quiet: false,
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,

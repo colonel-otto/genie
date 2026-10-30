@@ -75,7 +75,8 @@ impl Unit {
                 && 0.0 <= h.timer
                 && h.move_to.is_some_and(|m| {
                     m.state == MoveTo::Failed
-                        || (m.target != -1 && c.w.object_state(m.target).is_some_and(|s| 6 < s))
+                        || m.target
+                            .is_some_and(|t| c.w.object_state(t).is_some_and(|s| 6 < s))
                 })
         }) && self.ai.as_ref().is_some_and(|ai| {
             let class = if ai.target_type == -1 {
