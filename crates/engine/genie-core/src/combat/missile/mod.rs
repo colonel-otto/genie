@@ -9,7 +9,7 @@
 //! (update `0x14113e520`).
 
 use crate::GenieError;
-use crate::map::Position;
+use crate::map::{Offset, Position};
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -127,7 +127,7 @@ pub struct MissileAction {
     /// `+0x44`: the way flown so far (a straight missile's).
     pub timer: f32,
     /// `+0x68`..`+0x70`: the direction, a unit vector for a straight missile.
-    pub direction: [f32; 3],
+    pub direction: Offset,
     /// `+0x74`, `+0x78`: the arc's vertical speed and acceleration.
     pub ballistic_velocity: f32,
     /// `+0x78`: the arc's vertical acceleration.
@@ -159,19 +159,19 @@ pub struct Missile {
     #[diff(unsaved)]
     pub flying: bool,
     /// `+0x7dc`..`+0x7e4`: this update's step (the moving object's `velocity_x`..`_z`).
-    pub step: [f32; 3],
+    pub step: Offset,
 }
 
 /// `FUN_141081020`'s place for a new missile: the firing object's place plus its master's weapon
 /// offset (`+0x844`..`+0x84c`) turned by its facing (`+0x7e8`): x by cos·oy − sin·ox, y by
 /// cos·ox + sin·oy, the height by oz.
 #[must_use]
-pub fn spawn_point(at: Position, angle: f32, offset: [f32; 3]) -> Position {
+pub fn spawn_point(at: Position, angle: f32, offset: Offset) -> Position {
     let (c, s) = (fmath::cos(angle), fmath::sin(angle));
-    let [ox, oy, oz] = offset;
+    let (ox, oy) = (offset.x(), offset.y());
     let y = c * ox + s * oy + at.y();
     let x = (c * oy - s * ox) + at.x();
-    Position::new(x, y, at.z() + oz)
+    Position::new(x, y, at.z() + offset.z())
 }
 
 /// `FUN_141081020`'s reach: the firing master's radii's length plus its range plus 2.
@@ -204,18 +204,18 @@ pub fn scatter(draw: u32, spread: f32) -> f32 {
 pub fn volley_spawn_point(
     at: Position,
     angle: f32,
-    offset: [f32; 3],
+    offset: Offset,
     adjustment: f32,
     scatter: [f32; 2],
     building_at: Option<[f32; 2]>,
 ) -> Position {
-    let [ox, oy, oz] = offset;
+    let (ox, oy) = (offset.x(), offset.y());
     let offset = if 0.0 < adjustment {
-        [
+        Offset::new(
             scatter[0] / adjustment + ox,
             scatter[1] / adjustment + oy,
-            0.0 / adjustment + oz,
-        ]
+            0.0 / adjustment + offset.z(),
+        )
     } else {
         offset
     };
@@ -354,15 +354,15 @@ impl MissileAction {
         let angle = match stats.projectile_type {
             0 => {
                 self.direction = if way <= 0.0 {
-                    [0.0; 3]
+                    Offset::ZERO
                 } else {
-                    [dx / way, dy / way, dz / way]
+                    Offset::new(dx / way, dy / way, dz / way)
                 };
                 self.timer = 0.0;
-                Some(fmath::atan2(self.direction[1], self.direction[0]))
+                Some(fmath::atan2(self.direction.y(), self.direction.x()))
             }
             3 => {
-                self.direction = [dx, dy, dz];
+                self.direction = Offset::new(dx, dy, dz);
                 Some(fmath::atan2(dy, dx))
             }
             _ => {
@@ -405,15 +405,11 @@ impl MissileAction {
         dt: f32,
         max_range: f32,
         stats: &MissileStats,
-    ) -> Result<([f32; 3], bool), GenieError> {
+    ) -> Result<(Offset, bool), GenieError> {
         let mut step = match stats.projectile_type {
             0 => {
                 let way = stats.speed * dt;
-                let d = [
-                    way * self.direction[0],
-                    way * self.direction[1],
-                    way * self.direction[2],
-                ];
+                let d = self.direction.scaled(way);
                 self.timer += way;
                 self.distance -= way;
                 if max_range <= self.timer && self.distance < BEYOND {
@@ -433,7 +429,9 @@ impl MissileAction {
             }
         };
         if stats.arc != 0.0 {
-            step[2] += (dt * self.ballistic_acceleration * HALF + self.ballistic_velocity) * dt;
+            step = step.with_z(
+                step.z() + (dt * self.ballistic_acceleration * HALF + self.ballistic_velocity) * dt,
+            );
             self.ballistic_velocity += dt * self.ballistic_acceleration;
         }
         Ok((step, LANDING < self.distance))
@@ -500,7 +498,7 @@ mod tests {
             fired_from: 9171,
             point: Position::ORIGIN,
             timer: 0.0,
-            direction: [0.0; 3],
+            direction: Offset::ZERO,
             ballistic_velocity: 0.0,
             ballistic_acceleration: 0.0,
             distance: 0.0,
@@ -525,7 +523,7 @@ mod tests {
         let (step, flying) = a.fly(0.052, 5.282_842_6, &stats).unwrap();
         assert!((a.timer - 0.364).abs() < 1e-6);
         assert!((a.distance - 2.44257).abs() < 1e-5);
-        assert!((step[0] - 0.364).abs() < 1e-6);
+        assert!((step.x() - 0.364).abs() < 1e-6);
         assert!(flying);
     }
 
@@ -610,7 +608,11 @@ mod tests {
     #[test]
     fn a_shot_turns_its_offset_by_the_facing() {
         // facing along x: the offset's y is ahead, its x to the side
-        let p = spawn_point(Position::new(10.0, 20.0, 0.0), 0.0, [0.0, 0.5, 1.5]);
+        let p = spawn_point(
+            Position::new(10.0, 20.0, 0.0),
+            0.0,
+            Offset::new(0.0, 0.5, 1.5),
+        );
         assert_eq!(p, Position::new(10.5, 20.0, 1.5));
         assert_eq!(reach([0.2, 0.2], 3.0), 0.282_842_73 + 3.0 + 2.0);
     }
@@ -666,16 +668,16 @@ mod tests {
     {
         let at = Position::new(10.0, 10.0, 0.0);
         // facing x (angle 0): the offset's x goes along -y, its y along x
-        let p = volley_spawn_point(at, 0.0, [0.0, 2.0, 1.0], 0.0, [0.0, 0.0], None);
+        let p = volley_spawn_point(at, 0.0, Offset::new(0.0, 2.0, 1.0), 0.0, [0.0, 0.0], None);
         assert_eq!(p, Position::new(12.0, 10.0, 1.0));
         // the scatter over the adjustment adds to the offset
-        let p = volley_spawn_point(at, 0.0, [0.0, 2.0, 1.0], 0.5, [0.0, 0.25], None);
+        let p = volley_spawn_point(at, 0.0, Offset::new(0.0, 2.0, 1.0), 0.5, [0.0, 0.25], None);
         assert_eq!(p, Position::new(12.5, 10.0, 1.0));
         // a building's target a tile off: nearer than the offset's 2
         let p = volley_spawn_point(
             at,
             0.0,
-            [0.0, 2.0, 1.0],
+            Offset::new(0.0, 2.0, 1.0),
             0.0,
             [0.0, 0.0],
             Some([11.0, 10.0]),
@@ -684,7 +686,7 @@ mod tests {
         let p = volley_spawn_point(
             at,
             0.0,
-            [0.0, 2.0, 1.0],
+            Offset::new(0.0, 2.0, 1.0),
             0.0,
             [0.0, 0.0],
             Some([13.0, 10.0]),

@@ -118,8 +118,7 @@ impl Unit {
         missile.step = step;
         missile.flying = flying;
         let old = self.position();
-        let [sx, sy, sz] = step;
-        let to = Position::new(old.x() + sx, old.y() + sy, old.z() + sz);
+        let to = old.moved(step);
         let [w, h] = c.w.spatial.map;
         if to.x() < 0.0 || w as f32 <= to.x() || to.y() < 0.0 || h as f32 <= to.y() {
             self.life.hp = 0.0;

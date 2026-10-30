@@ -13,6 +13,7 @@ use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::construction::gates::gate_units;
 use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::unit::give_load;
+use crate::map::Offset;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
@@ -6928,7 +6929,7 @@ fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
             fired_from: -1,
             charge: false,
             flying: true,
-            step: [0.0; 3],
+            step: Offset::ZERO,
         }),
         life: Lifecycle {
             master_id: 54,
@@ -13149,7 +13150,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         standing_sprite: 300,
         attack_sprite: 301,
         missile: 363,
-        weapon_offset: [0.0, 0.0, 1.0],
+        weapon_offset: Offset::new(0.0, 0.0, 1.0),
         weapon_range: 4.0,
         reload: 2.0,
         hit_chance,

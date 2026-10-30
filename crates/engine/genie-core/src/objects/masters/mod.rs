@@ -6,6 +6,7 @@
 //! `.dat`'s values for what the save does not carry.
 
 use crate::GenieError;
+use crate::map::Offset;
 use crate::movement::MoveStats;
 use genie_diff::Diff;
 
@@ -423,7 +424,7 @@ pub struct Master {
     /// Where its missile starts from its place, turned by its facing (`+0x844`..`+0x84c`,
     /// `weapon_offset`), and how far a missed missile strays per tile of the way
     /// (`missed_missile_spread`, `+0x860`).
-    pub weapon_offset: [f32; 3],
+    pub weapon_offset: Offset,
     /// How far a missed missile strays per tile of the way (`missed_missile_spread`, `+0x860`).
     pub missed_spread: f32,
     /// `garrison_firepower` (`+0x870`): what a unit adds to the volleys of a building it is

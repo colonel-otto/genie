@@ -3,7 +3,7 @@
 use crate::{OTHER_SUB_ACTION, combat_master, saved_attack, saved_move_wait, saved_sprite};
 use genie_core::GenieError;
 use genie_core::construction::build::{BuildAction, BuildTask};
-use genie_core::map::Position;
+use genie_core::map::{Offset, Position};
 use genie_core::movement::fly::{FLY, Fly};
 use genie_core::movement::move_to::{MOVE_TO, MoveTo, MoveToAction, TargetMoved};
 use genie_core::objects::masters::Task;
@@ -291,7 +291,7 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
         fired_from: mo.fired_from_id,
         charge: mo.is_charge_projectile != 0,
         flying: genie_core::combat::missile::LANDING < ma.distance,
-        step: [moving.velocity_x, moving.velocity_y, moving.velocity_z],
+        step: Offset::new(moving.velocity_x, moving.velocity_y, moving.velocity_z),
     });
     unit.actions
         .set_missile(Some(genie_core::combat::missile::MissileAction {
@@ -300,7 +300,7 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
             fired_from: base.target2_id,
             point: saved.point(),
             timer: base.timer,
-            direction: [ma.velocity_x, ma.velocity_y, ma.velocity_z],
+            direction: Offset::new(ma.velocity_x, ma.velocity_y, ma.velocity_z),
             ballistic_velocity: ma.ballistic_velocity,
             ballistic_acceleration: ma.ballistic_acceleration,
             distance: ma.distance,

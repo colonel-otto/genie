@@ -20,6 +20,7 @@ vision and the unit AI's searches read it.
 | File | What it holds |
 | --- | --- |
 | [`mod.rs`](mod.rs) | The map: the terrain of each tile and where the world's objects stand (their places, radii, footprints and the grid that finds them). |
+| [`offset.rs`](offset.rs) | A displacement on the map as one type (`Offset`): x, y and z, apart from a place (`crate::map::Position`) and the game's vectors (x, height, y, `crate::math::fmath::BVector`). |
 | [`point.rs`](point.rs) | A point on the map as one type: where a command sends its units, builds, unloads or flares. |
 | [`position.rs`](position.rs) | A place on the map as one type (`Position`): x, y and z, apart from the game's vectors (x, height, y, `crate::math::fmath::BVector`). |
 | [`terrain.rs`](terrain.rs) | The map's terrain per tile (`RGE_Map`'s tiles, 0x40 bytes each: `+0x9` the terrain, `+0xa` the terrain to restore, `+0xc` the layer) and what the `.dat` says of each terrain, as far as the slice reads them: a completed building's snow check and its foundation terrain (`FUN_1411dbb70`, `FUN_1411ddd90`). |

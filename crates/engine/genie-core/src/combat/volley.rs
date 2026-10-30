@@ -3,8 +3,8 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::missile::AimAt;
-use crate::map::Position;
 use crate::map::spatial::Placed;
+use crate::map::{Offset, Position};
 use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
@@ -299,7 +299,7 @@ impl Unit {
             point: crate::combat::missile::spawn_point(
                 aimed.position,
                 facing,
-                [scatter[0], scatter[1], 0.0],
+                Offset::new(scatter[0], scatter[1], 0.0),
             ),
             reach: crate::combat::missile::volley_reach(master.radius, master.weapon_range),
             shooter,
@@ -465,7 +465,7 @@ impl Unit {
             fired_from: if shot.shooter { self.id.get() } else { -1 },
             point: shot.point,
             timer: 0.0,
-            direction: [0.0; 3],
+            direction: Offset::ZERO,
             ballistic_velocity: 0.0,
             ballistic_acceleration: 0.0,
             distance: 0.0,
@@ -525,7 +525,7 @@ impl Unit {
                 fired_from: self.id.get(),
                 charge: false,
                 flying,
-                step: [0.0; 3],
+                step: Offset::ZERO,
             }),
             // its +0x900, the firing object's attack count when fired
             attack_count: self.attack_count,

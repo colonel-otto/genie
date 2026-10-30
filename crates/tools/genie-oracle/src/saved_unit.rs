@@ -7,7 +7,7 @@ use crate::{
     production, saved_actions, saved_sprite, task_at, unit_ai,
 };
 use genie_core::GenieError;
-use genie_core::map::Position;
+use genie_core::map::{Offset, Position};
 use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
@@ -235,9 +235,9 @@ pub(super) fn unit(
             .as_deref()
             .and_then(|r| r.rge_missile_object.as_deref())
     {
-        let step = object
-            .moving_part()
-            .map_or([0.0; 3], |m| [m.velocity_x, m.velocity_y, m.velocity_z]);
+        let step = object.moving_part().map_or(Offset::ZERO, |m| {
+            Offset::new(m.velocity_x, m.velocity_y, m.velocity_z)
+        });
         unit.missile = Some(genie_core::combat::missile::Missile {
             max_range: mo.max_range,
             fired_from: mo.fired_from_id,

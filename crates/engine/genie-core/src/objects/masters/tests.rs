@@ -414,8 +414,8 @@ fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
             |m| m.garrison_firepower,
             [3.0, 5.0, 10.0],
         ),
-        (a::DISPLACEMENT_X, |m| m.weapon_offset[0], [3.0, 5.0, 10.0]),
-        (a::DISPLACEMENT_Z, |m| m.weapon_offset[2], [3.0, 5.0, 10.0]),
+        (a::DISPLACEMENT_X, |m| m.weapon_offset.x(), [3.0, 5.0, 10.0]),
+        (a::DISPLACEMENT_Z, |m| m.weapon_offset.z(), [3.0, 5.0, 10.0]),
     ];
     sets_adds_multiplies(master_type::RGE_COMBAT, rows);
 }
@@ -717,7 +717,7 @@ fn some_combat_shorts_multiply_by_the_truncated_amount() {
     m.add_attribute(attribute::ROTATION_SPEED, 0.25, &world(false));
     assert_eq!(m.turn_speed, 0.25);
     m.set_attribute(attribute::DISPLACEMENT_X + 1, 0.75, &world(false));
-    assert_eq!(m.weapon_offset, [0.0, 0.75, 0.0]);
+    assert_eq!(m.weapon_offset, Offset::new(0.0, 0.75, 0.0));
 }
 
 /// `FUN_1410d5b50`: a missile master's smart mode takes the multiply's amount; its arc

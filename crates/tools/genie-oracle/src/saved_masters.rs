@@ -4,6 +4,7 @@
 use crate::masters::MasterTable;
 use crate::{animated_master, combat_master, moving_master};
 use genie_core::GenieError;
+use genie_core::map::Offset;
 use genie_core::objects::masters::ClassId;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
@@ -208,7 +209,8 @@ pub(super) fn work_masters(
             work.weapon_range = rc.weapon_range;
             work.min_range = rc.minimum_weapon_range;
             work.missile = rc.missile_id;
-            work.weapon_offset = [rc.weapon_offset_x, rc.weapon_offset_y, rc.weapon_offset_z];
+            work.weapon_offset =
+                Offset::new(rc.weapon_offset_x, rc.weapon_offset_y, rc.weapon_offset_z);
             work.missed_spread = rc.missed_missile_spread;
             work.attack_sprite = rc.fight_sprite_id;
             work.fire_frame = rc.fire_missile_at_frame;

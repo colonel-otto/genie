@@ -40,13 +40,9 @@ impl Master {
             a::DAMAGE_REFLECTION => self.reflection = v,
             a::FRIENDLY_FIRE_DAMAGE => self.friendly_fire = v,
             a::GARRISON_FIREPOWER => self.garrison_firepower = v,
-            a::DISPLACEMENT_X..=a::DISPLACEMENT_Z => {
-                *a::lane_mut(
-                    &mut self.weapon_offset,
-                    attribute,
-                    (a::DISPLACEMENT_X, a::DISPLACEMENT_Y),
-                ) = v;
-            }
+            a::DISPLACEMENT_X => self.weapon_offset = self.weapon_offset.with_x(v),
+            a::DISPLACEMENT_Y => self.weapon_offset = self.weapon_offset.with_y(v),
+            a::DISPLACEMENT_Z => self.weapon_offset = self.weapon_offset.with_z(v),
             _ => self.set_action(attribute, v, world),
         }
     }
@@ -110,12 +106,14 @@ impl Master {
             a::DAMAGE_REFLECTION => self.reflection += v,
             a::FRIENDLY_FIRE_DAMAGE => self.friendly_fire += v,
             a::GARRISON_FIREPOWER => self.garrison_firepower += v,
-            a::DISPLACEMENT_X..=a::DISPLACEMENT_Z => {
-                *a::lane_mut(
-                    &mut self.weapon_offset,
-                    attribute,
-                    (a::DISPLACEMENT_X, a::DISPLACEMENT_Y),
-                ) += v;
+            a::DISPLACEMENT_X => {
+                self.weapon_offset = self.weapon_offset.with_x(self.weapon_offset.x() + v);
+            }
+            a::DISPLACEMENT_Y => {
+                self.weapon_offset = self.weapon_offset.with_y(self.weapon_offset.y() + v);
+            }
+            a::DISPLACEMENT_Z => {
+                self.weapon_offset = self.weapon_offset.with_z(self.weapon_offset.z() + v);
             }
             _ => self.add_action(attribute, v, world),
         }
@@ -178,12 +176,14 @@ impl Master {
             a::DAMAGE_REFLECTION => self.reflection *= v,
             a::FRIENDLY_FIRE_DAMAGE => self.friendly_fire *= v,
             a::GARRISON_FIREPOWER => self.garrison_firepower *= v,
-            a::DISPLACEMENT_X..=a::DISPLACEMENT_Z => {
-                *a::lane_mut(
-                    &mut self.weapon_offset,
-                    attribute,
-                    (a::DISPLACEMENT_X, a::DISPLACEMENT_Y),
-                ) *= v;
+            a::DISPLACEMENT_X => {
+                self.weapon_offset = self.weapon_offset.with_x(self.weapon_offset.x() * v);
+            }
+            a::DISPLACEMENT_Y => {
+                self.weapon_offset = self.weapon_offset.with_y(self.weapon_offset.y() * v);
+            }
+            a::DISPLACEMENT_Z => {
+                self.weapon_offset = self.weapon_offset.with_z(self.weapon_offset.z() * v);
             }
             _ => self.multiply_action(attribute, v, world),
         }

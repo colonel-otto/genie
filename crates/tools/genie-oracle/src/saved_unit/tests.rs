@@ -105,7 +105,7 @@ fn a_missile_without_its_action_keeps_flying() {
     let flying = u.missile.unwrap();
     assert_eq!(flying.fired_from, 900);
     assert!(flying.flying);
-    assert_eq!(flying.step[0].to_bits(), 0.5_f32.to_bits());
+    assert_eq!(flying.step.x().to_bits(), 0.5_f32.to_bits());
     assert_eq!(u.attack_count, 2);
 }
 
