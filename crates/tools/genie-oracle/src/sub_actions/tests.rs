@@ -54,7 +54,14 @@ fn a_building_s_production_holds_its_slots_and_make_action() {
     let Some(Making::Unit(made)) = p.action else {
         panic!("a make action")
     };
-    assert_eq!((made.state, made.paid, made.master), (4, true, 83));
+    assert_eq!(
+        (made.state, made.paid, made.master),
+        (
+            4,
+            true,
+            Some(genie_core::objects::masters::ids::VILLAGER_MALE)
+        )
+    );
 }
 
 #[test]

@@ -7,6 +7,7 @@ use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::master_type::COMBAT;
@@ -43,7 +44,7 @@ impl World {
         &mut self,
         p: PlayerId,
         i: usize,
-        master: i16,
+        master: MasterId,
         pop: f32,
     ) -> Result<(), GenieError> {
         if self.players[p.index()].computer {
@@ -95,7 +96,7 @@ impl World {
         owner.add_attribute(IN_PRODUCTION, -pop)?;
         // its queue place goes (FUN_14104fb00 with -1, FUN_14104f330)
         owner.tracker.count_queued(-1);
-        owner.tracker.unplace(master, class);
+        owner.tracker.unplace(Some(master), class);
         let (building_id, state) = (owner.objects[i].id, owner.objects[i].life.state);
         if let Some(ai) = owner.objects[i].ai.as_mut() {
             ai.post(
@@ -161,7 +162,7 @@ impl World {
                 if !keeps
                     && COMBAT <= t_master.kind
                     && t_master.garrison != 0
-                    && self.takes_in(o.target, p, master)?
+                    && self.takes_in(o.target, p, Some(master))?
                 {
                     return Err(GenieError::unsupported(
                         "a command queue's order on a building the unit may enter (its room, slot 0x198)",
@@ -194,7 +195,7 @@ impl World {
     pub(crate) fn new_object(
         &self,
         p: PlayerId,
-        master: i16,
+        master: MasterId,
         made: &crate::objects::masters::Master,
         position: Position,
     ) -> Result<NewObject, GenieError> {
@@ -254,7 +255,7 @@ impl World {
     pub(crate) fn combat_object(
         &mut self,
         p: PlayerId,
-        master: i16,
+        master: MasterId,
         made: &crate::objects::masters::Master,
         position: Position,
     ) -> Result<usize, GenieError> {
@@ -371,7 +372,7 @@ impl World {
                 attribute_type: -1,
                 amount: 0.0,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
-                death_spawn: 0 <= made.death_spawns[0],
+                death_spawn: made.death_spawns[0].is_some(),
                 remains: made.death_spawns[1],
                 death_facets: None,
                 inside: None,

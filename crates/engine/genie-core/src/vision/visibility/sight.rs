@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Position;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::MARKET;
 use crate::vision::registry::MASK;
 use crate::vision::visibility::{CIRCLE_MASTER, EDGE, Seer, Visibility, tile_of};
@@ -260,7 +261,7 @@ impl Visibility {
         position: Position,
         old_radius: [f32; 2],
         new_radius: [f32; 2],
-        master: i16,
+        master: MasterId,
         los: f32,
     ) -> Result<(), GenieError> {
         self.sight_off(id, position, old_radius, false, false)?;
@@ -274,7 +275,7 @@ impl Visibility {
 
     /// The master and line of sight of seer `id` without its sight (a master change inside
     /// another, whose unit has no tile, `+0x2e8` 0: its sight comes with them on its way out).
-    pub fn seer_master(&mut self, id: i32, master: i16, los: f32) {
+    pub fn seer_master(&mut self, id: i32, master: MasterId, los: f32) {
         if let Some(s) = self.seers.get_mut(&id) {
             s.master = master;
             s.los = los;

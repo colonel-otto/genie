@@ -30,7 +30,7 @@ pub struct FinderObject {
     /// Its player.
     pub player: PlayerId,
     /// Its master.
-    pub master: i16,
+    pub master: genie_core::objects::masters::MasterId,
     /// Its state.
     pub state: u8,
     /// What it holds: the attribute and the amount.
@@ -73,7 +73,11 @@ impl genie_core::unit_ai::task_finder::Diplomacy for FinderWorld {
         }
     }
 
-    fn drops_at(&self, building: i16, actor: &genie_core::unit_ai::task_finder::Actor<'_>) -> bool {
+    fn drops_at(
+        &self,
+        building: genie_core::objects::masters::MasterId,
+        actor: &genie_core::unit_ai::task_finder::Actor<'_>,
+    ) -> bool {
         genie_core::unit_ai::task_finder::drops_at(&self.drop_sites, building, actor)
     }
 }
@@ -146,45 +150,7 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
         .iter()
         .map(|p| work_masters(p.objects(), p.world_player().base.civ_id, table))
         .collect();
-    let mut objects = std::collections::HashMap::new();
-    for (player, section) in PlayerId::each(sections.len()).zip(&sections) {
-        for o in section.live_objects().chain(section.sleeping_objects()) {
-            let Some(s) = o.static_part() else { continue };
-            let combat = o.combat();
-            let powerup = |f: fn(&genie_save::generated::world::TribeCombatObject) -> f32| {
-                combat.map_or(0.0, f)
-            };
-            let master_hp = section
-                .objects()
-                .master(s.master_obj)
-                .and_then(|m| m.static_part())
-                .map_or(0.0, |m| f32::from(m.read_temp_6));
-            let _ = objects.insert(
-                s.id,
-                FinderObject {
-                    player,
-                    master: s.master_obj,
-                    state: s.object_state,
-                    held: (s.attribute_type_held, s.attribute_amount_held),
-                    hp: s.hp
-                        + (powerup(|c| c.hitpoints_max_powerup) - powerup(|c| c.hitpoints_powerup)),
-                    max_hp: master_hp + powerup(|c| c.hitpoints_max_powerup),
-                    attackable: s.unit_attackable_flag != 0,
-                    pasture: s.parent_pasture_id,
-                    annex_of: o
-                        .tribe_building_object
-                        .as_deref()
-                        .map(|b| b.mupt_linked_object_references_linked_owner_id)
-                        .filter(|&owner| owner != -1),
-                    top_action: o
-                        .actions()
-                        .and_then(|a| a.entries().next())
-                        .map(|(kind, _)| kind),
-                    position: [s.t_x, s.t_y, s.t_z],
-                },
-            );
-        }
-    }
+    let objects = finder_objects(&sections)?;
     Ok(FinderWorld {
         masters,
         objects,
@@ -208,6 +174,60 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
             .map(|p| p.world_player().base.civ_id)
             .collect(),
         drop_sites: table.drop_sites.clone(),
+    })
+}
+
+/// The finder's view of every live and sleeping object of the players' `sections`, by id.
+fn finder_objects(
+    sections: &[genie_save::PlayerSection<'_>],
+) -> Result<std::collections::HashMap<i32, FinderObject>, Error> {
+    let mut objects = std::collections::HashMap::new();
+    for (player, section) in PlayerId::each(sections.len()).zip(sections) {
+        for o in section.live_objects().chain(section.sleeping_objects()) {
+            if let Some(s) = o.static_part() {
+                let _ = objects.insert(s.id, finder_object(player, section, (o, s))?);
+            }
+        }
+    }
+    Ok(objects)
+}
+
+/// The finder's view of one saved object `o` (its static part `s`) of player `player`'s section.
+fn finder_object(
+    player: PlayerId,
+    section: &genie_save::PlayerSection<'_>,
+    (o, s): (
+        &genie_save::Object,
+        &genie_save::generated::world::RgeStaticObject,
+    ),
+) -> Result<FinderObject, Error> {
+    let combat = o.combat();
+    let powerup =
+        |f: fn(&genie_save::generated::world::TribeCombatObject) -> f32| combat.map_or(0.0, f);
+    let master_hp = section
+        .objects()
+        .master(s.master_obj)
+        .and_then(|m| m.static_part())
+        .map_or(0.0, |m| f32::from(m.read_temp_6));
+    Ok(FinderObject {
+        player,
+        master: genie_core::objects::masters::MasterId::try_from(s.master_obj)?,
+        state: s.object_state,
+        held: (s.attribute_type_held, s.attribute_amount_held),
+        hp: s.hp + (powerup(|c| c.hitpoints_max_powerup) - powerup(|c| c.hitpoints_powerup)),
+        max_hp: master_hp + powerup(|c| c.hitpoints_max_powerup),
+        attackable: s.unit_attackable_flag != 0,
+        pasture: s.parent_pasture_id,
+        annex_of: o
+            .tribe_building_object
+            .as_deref()
+            .map(|b| b.mupt_linked_object_references_linked_owner_id)
+            .filter(|&owner| owner != -1),
+        top_action: o
+            .actions()
+            .and_then(|a| a.entries().next())
+            .map(|(kind, _)| kind),
+        position: [s.t_x, s.t_y, s.t_z],
     })
 }
 

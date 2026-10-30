@@ -2,12 +2,14 @@
 //! `UNIT_ORDER`'s cancel of one, five or some.
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::game_status::{ONE_UNIT_AGE, ONE_UNIT_MODE};
+use crate::players::tracker::Key;
 use crate::production::{Making, refund, refund_research};
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -60,8 +62,11 @@ impl World {
         count: i16,
     ) -> Result<(), GenieError> {
         use crate::production::{QUEUED, population};
-        let class = self.tracker_key(p, e.master).class;
-        let master = player_master(&self.masters, p, e.master).cloned();
+        let class = e.master.map_or(Key::NONE, |m| self.tracker_key(p, m)).class;
+        let master = e
+            .master
+            .and_then(|m| player_master(&self.masters, p, m))
+            .cloned();
         let owner = self.players.player_mut(p)?;
         for _ in 0..count.max(0) {
             if let Some(m) = &master {
@@ -168,7 +173,7 @@ impl World {
                 }
             }
             let count = i16::from(all) * 4 + 1;
-            return self.cancel_some(p, idx, (-1, count), e as i32, entry.tech);
+            return self.cancel_some(p, idx, (None, count), e as i32, entry.tech);
         }
         let owner = self.players.player_mut(p)?;
         let queue = &mut owner
@@ -198,8 +203,14 @@ impl World {
         p: PlayerId,
         entry: &crate::production::Entry,
     ) -> Result<(), GenieError> {
-        let class = self.tracker_key(p, entry.master).class;
-        let master = player_master(&self.masters, p, entry.master).cloned();
+        let class = entry
+            .master
+            .map_or(Key::NONE, |m| self.tracker_key(p, m))
+            .class;
+        let master = entry
+            .master
+            .and_then(|m| player_master(&self.masters, p, m))
+            .cloned();
         let owner = self.players.player_mut(p)?;
         if let Some(m) = &master {
             refund(m, &entry.costs, owner)?;
@@ -264,7 +275,7 @@ impl World {
             }
             // The villager's masters, whose two sexes a cancel of five counts as one kind
             // (`FUN_1411d66b0`, `FUN_1411d61e0`).
-            if master != kind && master != VILLAGER_MALE && master != VILLAGER_FEMALE {
+            if master != kind && master != Some(VILLAGER_MALE) && master != Some(VILLAGER_FEMALE) {
                 return Ok(());
             }
             let take = if left <= slot.count { left } else { slot.count };
@@ -281,7 +292,7 @@ impl World {
                 // before the buffer: no master of the kind
                 master = match usize::try_from(e) {
                     Ok(e) => q.slots.checked(e)?.master,
-                    Err(_) => -1,
+                    Err(_) => None,
                 };
             } else {
                 left = take;
@@ -309,7 +320,7 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-        (master, count): (i16, i16),
+        (master, count): (Option<MasterId>, i16),
         from: i32,
         tech: i16,
     ) -> Result<(), GenieError> {
@@ -357,7 +368,7 @@ impl World {
         if 0 < queue.slots.checked(i)?.count {
             return Ok(());
         }
-        let villager = |m: i16| m == VILLAGER_MALE || m == VILLAGER_FEMALE;
+        let villager = |m: Option<MasterId>| m == Some(VILLAGER_MALE) || m == Some(VILLAGER_FEMALE);
         // the game reads the next slot before the move; it matters for the first entry alone
         let pair = tech == -1
             && i == 0
@@ -400,7 +411,7 @@ impl World {
             .production
             .as_ref()
             .and_then(|q| q.queue.slots.get(index as i32 as usize))
-            .map(|s| s.master);
+            .and_then(|s| s.master);
         if let Some(master) = master
             && self.tracker_key(p, master).military
         {

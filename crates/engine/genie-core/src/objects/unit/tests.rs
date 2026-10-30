@@ -8,6 +8,7 @@ use crate::objects::masters::TaskId;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::others::OthersRef;
 use crate::world::tests::{forage_world, in_update};
@@ -426,7 +427,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
 fn a_unit_reads_its_own_master_before_its_player_s() {
     use crate::objects::masters::{Master, Masters};
     let shared = Master {
-        id: 4,
+        id: master_id(4),
         hit_points: 25,
         ..Master::default()
     };
@@ -434,7 +435,7 @@ fn a_unit_reads_its_own_master_before_its_player_s() {
     let mut u = Unit {
         id: object_id(7),
         life: Lifecycle {
-            master_id: 4,
+            master_id: master_id(4),
             ..Lifecycle::default()
         },
         ..Unit::default()
@@ -444,7 +445,7 @@ fn a_unit_reads_its_own_master_before_its_player_s() {
         Ok(25)
     );
     u.own_master = Some(Box::new(Master {
-        id: 4,
+        id: master_id(4),
         hit_points: 40,
         ..Master::default()
     }));

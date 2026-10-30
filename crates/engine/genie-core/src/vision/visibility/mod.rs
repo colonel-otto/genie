@@ -25,7 +25,9 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::players::PlayerId;
 use crate::vision::registry::{MASK, Registry};
 use crate::world::slots::CheckedIndex;
@@ -51,7 +53,7 @@ const STEP: [i32; 16] = [0, 1, 2, 3, 4, 5, 6, 7, -8, -7, -6, -5, -4, -3, -2, -1]
 const MOST: i16 = 0x7ffe;
 
 /// The master whose footprint sight is a circle (`FUN_141192560`: id 112).
-const CIRCLE_MASTER: i16 = 112;
+const CIRCLE_MASTER: MasterId = MasterId::named(112);
 
 /// `DAT_142eb99cc`: a footprint's high edge, less this, is its last tile.
 const EDGE: f32 = crate::math::image::visibility::EDGE;
@@ -82,7 +84,7 @@ pub struct Seer {
     /// The object's player.
     pub player: PlayerId,
     /// The master's id (`+0x58`, decoded).
-    pub master: i16,
+    pub master: MasterId,
     /// The master's `line_of_sight` (`+0x5d0`); slot 0x210 adds the object's powerup (`+0xad4`).
     pub los: f32,
     /// `object_state` (`+0x640`): only state 2 sees from a new tile.
@@ -258,7 +260,7 @@ pub struct Visibility {
 /// and 10, and master 826), and for masters 854 and Gaia's 814, which another player takes over
 /// by seeing them; 3 for classes 58 and 1 (livestock).
 #[must_use]
-pub fn capture_kind(player: PlayerId, class: ClassId, master: i16) -> u8 {
+pub fn capture_kind(player: PlayerId, class: ClassId, master: MasterId) -> u8 {
     const KEPT: [ClassId; 11] = [
         class::CLASS_40,
         class::RELIC,
@@ -273,10 +275,12 @@ pub fn capture_kind(player: PlayerId, class: ClassId, master: i16) -> u8 {
         class::PREDATOR,
     ];
     let mut kind = 0;
-    if (player == PlayerId::GAIA && !KEPT.contains(&class) && master != 826) || master == 854 {
+    if (player == PlayerId::GAIA && !KEPT.contains(&class) && master != ids::ID_826)
+        || master == ids::ID_854
+    {
         kind = 1;
     }
-    if player == PlayerId::GAIA && master == 814 {
+    if player == PlayerId::GAIA && master == ids::ID_814 {
         kind = 1;
     }
     if class == class::LIVESTOCK || class == class::ARTIFACT {

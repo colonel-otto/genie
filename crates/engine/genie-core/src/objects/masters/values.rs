@@ -1,6 +1,7 @@
 //! What the attribute setters share: the caps, the truncations, the sprite and class amounts,
 //! the damage sprites' and train locations' entries.
 
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{DamageGraphic, TrainLocation, attribute};
 
 /// 32767.0 (`DAT_142eb69cc`): a capped add or multiply holds hit points and carry capacity
@@ -65,8 +66,8 @@ pub(super) fn low8(v: f32) -> u8 {
 
 /// A saved id (an `int` field) as the slice holds it: None for one below 0 or beyond a short,
 /// as the save's (`volley_missile_id`, `mChargeProjectileUnit`).
-pub(super) fn id_of(id: i32) -> Option<i16> {
-    i16::try_from(id).ok().filter(|&id| 0 <= id)
+pub(super) fn id_of(id: i32) -> Option<MasterId> {
+    i16::try_from(id).ok().and_then(MasterId::of_data)
 }
 
 /// `FUN_14152e360`: the sprite `id`, when the world's table holds one there; else the field keeps

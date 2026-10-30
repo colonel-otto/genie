@@ -10,7 +10,9 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::world::slots::CheckedIndex;
 
@@ -165,7 +167,7 @@ pub struct Foundation {
     /// The building's `snow_flag` (`+0xc61`).
     pub snow: bool,
     /// The master's id and class, its `defense_terrain_bonus` (`+0x820`).
-    pub master: i16,
+    pub master: MasterId,
     /// The master's class.
     pub class: ClassId,
     /// The master's `defense_terrain_bonus` (`+0x820`).
@@ -473,8 +475,9 @@ impl Terrain {
             .cloned();
         // a farm's terrain, masters 357 and 1188 (taken as farms, `DAT_143f69454` 0 leaving
         // nothing deferred), or a building of class 14 always goes into the terrain
-        let into_terrain =
-            is_farm_terrain(wanted) || matches!(f.master, 357 | 1188) || f.class == CLASS_14;
+        let into_terrain = is_farm_terrain(wanted)
+            || matches!(f.master, ids::ID_357 | ids::ID_1188)
+            || f.class == CLASS_14;
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 let i = self.index(tx, ty).ok_or(TILE_OFF_MAP)?;
@@ -512,6 +515,7 @@ impl Terrain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::master_id;
 
     fn map(kinds: Vec<u8>, layers: Vec<i16>) -> Terrain {
         let n = kinds.len();
@@ -678,7 +682,7 @@ mod tests {
             clearance: [1.0, 1.0],
             terrain: FOUNDATION,
             snow: true,
-            master: 70,
+            master: ids::HOUSE,
             class: class::BUILDING,
             terrain_bonus: 4,
             mode_680: 0,
@@ -707,7 +711,7 @@ mod tests {
             clearance: [2.0, 2.0],
             terrain: FOUNDATION,
             snow: false,
-            master: 109,
+            master: TOWN_CENTRE,
             class: class::BUILDING,
             terrain_bonus: 4,
             mode_680: 0,
@@ -733,7 +737,7 @@ mod tests {
             clearance: [1.0, 1.0],
             terrain: FOUNDATION,
             snow: false,
-            master: 70,
+            master: ids::HOUSE,
             class: class::BUILDING,
             terrain_bonus: -1,
             mode_680: 0,
@@ -753,7 +757,7 @@ mod tests {
             clearance: [1.0, 1.0],
             terrain: 29,
             snow: false,
-            master: 50,
+            master: ids::FARM,
             class: class::FARM,
             terrain_bonus: -1,
             mode_680: 1,
@@ -786,7 +790,7 @@ mod tests {
             terrain_bonus: -1,
             mode_680: 1,
         };
-        for master in [357, 1188] {
+        for master in [master_id(357), master_id(1188)] {
             let mut t = map(vec![0, 3, 29, 47], vec![-1, -1, -1, -1]);
             t.cover(&site(master)).unwrap();
             assert_eq!(
@@ -795,7 +799,7 @@ mod tests {
             );
         }
         let mut t = map(vec![0, 3, 29, 47], vec![-1, -1, -1, -1]);
-        t.cover(&site(70)).unwrap();
+        t.cover(&site(ids::HOUSE)).unwrap();
         assert_eq!(t.kinds, [0, 3, 29, 47]);
         assert_eq!(t.layers, [14, 14, 14, -1]);
     }

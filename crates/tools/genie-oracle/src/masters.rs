@@ -5,6 +5,7 @@
 
 use genie_core::objects::lifecycle::MasterData;
 use genie_core::objects::masters as work;
+use genie_core::objects::masters::MasterId;
 use genie_dat::de::DatFile;
 use std::collections::HashMap;
 
@@ -89,7 +90,7 @@ fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::T
         id: genie_core::objects::masters::TaskId::of_task(t.id),
         action_type: t.action_type,
         object_group: t.class_id,
-        object_id: t.unit_id,
+        object_id: MasterId::of_data(t.unit_id),
         combat_level: t.enable_targeting,
         combat_level_flag: t.combat_level_flag,
         terrain: t.terrain_id,
@@ -137,7 +138,11 @@ const fn base_id(id: i16) -> i16 {
 }
 
 /// The work-command values of a `.dat` unit, with the world's sound table its tasks read.
-fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]) -> work::Master {
+fn dat_work(
+    id: MasterId,
+    unit: &genie_dat::de::Unit,
+    sounds: &[genie_dat::de::Sound],
+) -> work::Master {
     let cost = unit.creatable.as_ref().map_or_else(Vec::new, |c| {
         c.resource_costs
             .iter()
@@ -148,8 +153,8 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
     work::Master {
         id,
         kind: unit.unit_type,
-        copy_id: unit.copy_id,
-        base_id: base_id(unit.base_id),
+        copy_id: MasterId::of_data(unit.copy_id),
+        base_id: MasterId::of_data(base_id(unit.base_id)),
         class: genie_core::objects::masters::ClassId::of_master(unit.class),
         terrain_restriction: unit.terrain_restriction,
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
@@ -171,10 +176,12 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
             .filter(|&t| 0 <= t),
         cost,
         work_rate: unit.bird.as_ref().map_or(0.0, |b| b.work_rate),
-        drop_sites: unit
-            .bird
-            .as_ref()
-            .map_or_else(Vec::new, |b| b.drop_sites.clone()),
+        drop_sites: unit.bird.as_ref().map_or_else(Vec::new, |b| {
+            b.drop_sites
+                .iter()
+                .filter_map(|&d| MasterId::of_data(d))
+                .collect()
+        }),
         hit_points: unit.hit_points,
         capacity: unit.resource_capacity,
         build_time: unit
@@ -183,7 +190,10 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
             .and_then(|c| c.train_locations.first())
             .map_or(0, |t| t.queue_time),
         trained_at: unit.creatable.as_ref().map_or_else(Vec::new, |c| {
-            c.train_locations.iter().map(|t| t.location_id).collect()
+            c.train_locations
+                .iter()
+                .filter_map(|t| MasterId::of_data(t.location_id))
+                .collect()
         }),
         // the whole entries, which the attribute setters change (a .dat before VER 8.7 holds no
         // hotkey: 0)
@@ -191,7 +201,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
             c.train_locations
                 .iter()
                 .map(|t| work::TrainLocation {
-                    location: t.location_id,
+                    location: MasterId::of_data(t.location_id),
                     time: t.queue_time,
                     button: t.button_id,
                     hotkey: t.hot_key_id.unwrap_or_default(),
@@ -215,16 +225,16 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
         building: unit.building.as_ref().map(|b| work::BuildingMaster {
             adjacent_mode: b.adjacent_mode,
             disappears_when_built: b.disappears_when_built != 0,
-            stack_unit: b.stack_unit_id,
+            stack_unit: MasterId::of_data(b.stack_unit_id),
             foundation_terrain: b.foundation_terrain_id,
             tech: b.tech_id,
             garrison_type: b.garrison_type,
             garrison_heal_rate: b.garrison_heal_rate,
             garrison_repair_rate: b.garrison_repair_rate,
-            annexes: b.annexes.map(|a| a.unit_id),
+            annexes: b.annexes.map(|a| MasterId::of_data(a.unit_id)),
             annex_offsets: b.annexes.map(|a| a.misplacement),
-            head_unit: b.head_unit,
-            transform_unit: b.transform_unit,
+            head_unit: MasterId::of_data(b.head_unit),
+            transform_unit: MasterId::of_data(b.transform_unit),
             destruction_sprite: b.destruction_graphic_id,
             construction_sprite: b.construction_graphic_id,
         }),
@@ -252,7 +262,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
             .as_ref()
             .map_or(-1, |c| i16::try_from(c.special_graphic).unwrap_or(-1)),
         death_sprite: unit.dying_graphic,
-        death_spawns: [unit.dead_unit_id, unit.blood_unit_id],
+        death_spawns: [unit.dead_unit_id, unit.blood_unit_id].map(MasterId::of_data),
         garrison_firepower: unit
             .type50
             .as_ref()
@@ -276,13 +286,13 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
             .creatable
             .as_ref()
             .and_then(|c| i16::try_from(c.secondary_projectile_unit).ok())
-            .filter(|&id| 0 <= id),
+            .and_then(MasterId::of_data),
         charge_projectile: unit
             .creatable
             .as_ref()
             .and_then(|c| c.charge_projectile_unit)
             .and_then(|id| i16::try_from(id).ok())
-            .filter(|&id| 0 <= id),
+            .and_then(MasterId::of_data),
         ..work::Master::default()
     }
 }
@@ -554,7 +564,7 @@ impl MasterTable {
                     (c as u8, m as i16),
                     data,
                     action,
-                    dat_work(m as i16, unit, &dat.sounds),
+                    dat_work(MasterId::of_data(m as i16)?, unit, &dat.sounds),
                     turning,
                     flight,
                 ))

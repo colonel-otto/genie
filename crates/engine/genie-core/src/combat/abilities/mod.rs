@@ -36,6 +36,7 @@ use crate::GenieError;
 use crate::math::fmath;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -154,7 +155,7 @@ pub const ACTIONS: [i16; 4] = [GENERATE, MOVEMENT_DAMAGE, TERRAIN_LOOK, REMOVAL_
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Own {
     /// The master's id (`+0x58`).
-    id: i16,
+    id: MasterId,
     /// Its type (`+0x8`).
     kind: u8,
     /// Its `area_effect_level` (`+0x830`).

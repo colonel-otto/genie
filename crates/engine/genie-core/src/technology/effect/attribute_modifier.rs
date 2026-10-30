@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{AttributeWorld, Master, master_type, player_master};
 use crate::players::PlayerId;
 use crate::technology::effect::{
@@ -22,7 +23,7 @@ impl World {
         &mut self,
         p: PlayerId,
         change: Change,
-        unit: i16,
+        unit: Option<MasterId>,
         class: Option<ClassId>,
         v: f32,
         attribute: u8,
@@ -50,7 +51,7 @@ impl World {
         &mut self,
         p: PlayerId,
         after: bool,
-        unit: i16,
+        unit: Option<MasterId>,
         class: Option<ClassId>,
         attribute: u8,
     ) -> Result<(), GenieError> {
@@ -72,7 +73,7 @@ impl World {
             }
             if after
                 && shows_sprite(attribute)
-                && (Some(master_class) == class || master_id == unit)
+                && (Some(master_class) == class || Some(master_id) == unit)
             {
                 self.show_changed_sprite(p, id, attribute)?;
             }
@@ -212,7 +213,7 @@ impl World {
         &mut self,
         p: PlayerId,
         change: Change,
-        unit: i16,
+        unit: Option<MasterId>,
         class: Option<ClassId>,
         v: f32,
         attribute: u8,
@@ -220,7 +221,7 @@ impl World {
         let Some(masters) = self.masters.get(p.index()) else {
             return Ok(());
         };
-        if within_table(masters, unit) {
+        if let Some(unit) = unit.filter(|&u| within_table(masters, u)) {
             return match masters.get(unit) {
                 Some(_) => self.change_master_attribute(p, change, unit, v, attribute),
                 None => Ok(()),
@@ -267,13 +268,13 @@ impl World {
     pub(super) fn reached_masters(
         &self,
         p: PlayerId,
-        unit: i16,
+        unit: Option<MasterId>,
         class: Option<ClassId>,
-    ) -> Vec<i16> {
+    ) -> Vec<MasterId> {
         let Some(masters) = self.masters.get(p.index()) else {
             return Vec::new();
         };
-        if within_table(masters, unit) {
+        if let Some(unit) = unit.filter(|&u| within_table(masters, u)) {
             return masters.get(unit).map(|m| m.id).into_iter().collect();
         }
         let Some(class) = class else {
@@ -299,7 +300,7 @@ impl World {
         &mut self,
         p: PlayerId,
         change: Change,
-        unit: i16,
+        unit: MasterId,
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
@@ -409,7 +410,7 @@ impl World {
     pub(super) fn change_one_master(
         &mut self,
         p: PlayerId,
-        id: i16,
+        id: MasterId,
         change: Change,
         v: f32,
         attribute: u8,
@@ -443,7 +444,7 @@ impl World {
     pub(super) fn master_followers(
         &mut self,
         p: PlayerId,
-        id: i16,
+        id: MasterId,
         attribute: u8,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
@@ -471,7 +472,7 @@ impl World {
                 a::DYING_GRAPHIC => {
                     u.life.dying_sprite = (0 <= master.death_sprite).then_some(master.death_sprite);
                 }
-                a::DEAD_UNIT_ID => u.life.death_spawn = 0 <= master.death_spawns[0],
+                a::DEAD_UNIT_ID => u.life.death_spawn = master.death_spawns[0].is_some(),
                 a::BLOOD_UNIT => u.life.remains = master.death_spawns[1],
                 _ => {}
             }

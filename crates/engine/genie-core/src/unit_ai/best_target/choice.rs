@@ -1,6 +1,7 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
@@ -28,10 +29,23 @@ pub(super) const NOT_ANY: [ClassId; 5] = [
 ];
 /// The masters whose units attack by priority 0 without the moving rule: the rams, the siege
 /// masters 1744 and 1746, 420 and 691.
-pub(super) const PRIORITY_0_MASTERS: [i16; 8] = [35, 422, 548, 1258, 1744, 1746, 420, 691];
+pub(super) const PRIORITY_0_MASTERS: [MasterId; 8] = [
+    MasterId::named(35),
+    MasterId::named(422),
+    MasterId::named(548),
+    MasterId::named(1258),
+    MasterId::named(1744),
+    MasterId::named(1746),
+    MasterId::named(420),
+    MasterId::named(691),
+];
 /// A computer player's unit of these masters passes no boat over: the castle, 45, the town
 /// centre.
-pub(super) const BOAT_HUNTERS: [i16; 3] = [82, 45, 109];
+pub(super) const BOAT_HUNTERS: [MasterId; 3] = [
+    MasterId::named(82),
+    MasterId::named(45),
+    MasterId::named(109),
+];
 /// The moving targets past which the current target and the closest moving one answer.
 pub(super) const FEW_MOVING: i32 = 5;
 /// The retarget entries' times: a moving object's 1 s, another's 2 s.

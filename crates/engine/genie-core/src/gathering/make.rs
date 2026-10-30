@@ -12,6 +12,7 @@
 use crate::GenieError;
 use crate::objects::lifecycle::{Lifecycle, seconds};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::Task;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
@@ -42,7 +43,7 @@ pub const FISH_TRAP_FOOD: usize = 88;
 
 /// The masters whose exhaustion the update does not check (`FUN_140a99e30`: the master id, not
 /// 0x765 and not 0x769): the pastures.
-pub const UNEXHAUSTED: [i16; 2] = [1893, 1897];
+pub const UNEXHAUSTED: [MasterId; 2] = [MasterId::named(1893), MasterId::named(1897)];
 
 /// The class whose slot 0xd8 (`FUN_141211340`, a combat object's or building's) does nothing
 /// (decoded 42); class 58 is spared only while it holds some, which an exhausted farm does not.
@@ -181,8 +182,10 @@ impl Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ids;
     use crate::objects::masters::{Master, Masters};
     use crate::players::PlayerId;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::world::{Player, World};
 
@@ -198,7 +201,7 @@ mod tests {
     }
 
     /// A farm's master `id` (type 80, class 49, work rate 0.4, capacity 15).
-    fn farm_master(id: i16) -> Master {
+    fn farm_master(id: MasterId) -> Master {
         Master {
             id,
             kind: 80,
@@ -217,7 +220,7 @@ mod tests {
 
     /// Player 1's farm 600 of `master` holding `amount` of food under `make`, its masters the
     /// farms 50 and 1897 and the class-42 master 7.
-    fn farm_world(make: MakeAction, master: i16, amount: f32) -> World {
+    fn farm_world(make: MakeAction, master: MasterId, amount: f32) -> World {
         let mut farm = Unit {
             id: object_id(600),
             life: Lifecycle {
@@ -245,9 +248,9 @@ mod tests {
         );
         let wall = Master {
             class: NEVER_EXHAUSTED_CLASS,
-            ..farm_master(7)
+            ..farm_master(ids::ID_7)
         };
-        let masters = Masters::new([farm_master(50), farm_master(1897), wall]);
+        let masters = Masters::new([farm_master(ids::FARM), farm_master(ids::PASTURE), wall]);
         t.masters = vec![Masters::default(), masters];
         t
     }
@@ -310,7 +313,7 @@ mod tests {
 
     #[test]
     fn the_update_fills_the_farm_within_its_capacity_and_counts_what_it_made() {
-        let mut t = farm_world(making(100.0, 175.0, farm_task()), 50, 14.98);
+        let mut t = farm_world(making(100.0, 175.0, farm_task()), ids::FARM, 14.98);
         let (code, make, amount, _) = made(&mut t);
         let gained = 15.0f32 - 14.98;
         assert_eq!(
@@ -331,7 +334,7 @@ mod tests {
     /// The farm's powerup (slot 0x6e8, `+0xa30`) adds to its master's work rate.
     #[test]
     fn the_farm_s_powerup_adds_to_the_rate() {
-        let mut t = farm_world(making(100.0, 175.0, farm_task()), 50, 0.0);
+        let mut t = farm_world(making(100.0, 175.0, farm_task()), ids::FARM, 0.0);
         t.players[1].objects[0].work_rate_powerup = 0.1;
         let (_, _, amount, _) = made(&mut t);
         assert_eq!(amount, (0.4f32 + 0.1) * 1.0 * 0.104);
@@ -339,14 +342,14 @@ mod tests {
 
     #[test]
     fn a_farm_with_nothing_left_to_make_and_nothing_held_is_exhausted_unless_a_pasture() {
-        let exhausted = |master: i16, amount: f32| {
+        let exhausted = |master: MasterId, amount: f32| {
             let mut t = farm_world(making(0.0, 175.0, farm_task()), master, amount);
             made(&mut t).3 == 0.0
         };
-        assert!(exhausted(50, 0.0));
-        assert!(!exhausted(1897, 0.0));
-        assert!(!exhausted(7, 0.0));
-        assert!(!exhausted(50, 3.0));
+        assert!(exhausted(ids::FARM, 0.0));
+        assert!(!exhausted(ids::PASTURE, 0.0));
+        assert!(!exhausted(ids::ID_7, 0.0));
+        assert!(!exhausted(ids::FARM, 3.0));
     }
 
     #[test]
@@ -355,7 +358,7 @@ mod tests {
             work_flag: 1,
             ..farm_task()
         };
-        let mut t = farm_world(making(5.0, 5.0, task), 50, 0.0);
+        let mut t = farm_world(making(5.0, 5.0, task), ids::FARM, 0.0);
         let (_, make, amount, _) = made(&mut t);
         let food = t.players[1].attributes[usize::from(FARM_FOOD_KIND as u8)];
         assert_eq!(food, 0.4 * 0.104);
@@ -368,14 +371,14 @@ mod tests {
             state: DONE,
             ..making(0.0, 0.0, farm_task())
         };
-        let mut t = farm_world(done, 50, 0.0);
+        let mut t = farm_world(done, ids::FARM, 0.0);
         assert_eq!(made(&mut t).0, HeadCode::Deletes);
     }
 
     /// A farm whose master the slice lacks stops its update, in any state.
     #[test]
     fn a_farm_without_its_master_fails() {
-        let mut t = farm_world(making(0.0, 0.0, farm_task()), 99, 0.0);
+        let mut t = farm_world(making(0.0, 0.0, farm_task()), master_id(99), 0.0);
         let r = crate::world::tests::in_update(&mut t, (PlayerId::new(1), 0), 104, Unit::make_part);
         assert!(r.is_err());
     }

@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::masters::MasterId;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -53,7 +54,7 @@ pub(crate) fn closest_resource_of(
 ) -> Result<(i32, Option<i32>), GenieError> {
     use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
     /// The site masters whose search starts from their footprint in any zone.
-    const DOCKS: [i16; 2] = [45, 2172];
+    const DOCKS: [MasterId; 2] = [MasterId::named(45), MasterId::named(2172)];
     let site = if site == -1 || c.spatial.get(site).is_none() {
         None
     } else {

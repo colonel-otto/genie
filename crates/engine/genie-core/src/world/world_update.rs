@@ -134,7 +134,8 @@ impl World {
             }
             let (id, master) = (unit.id.get(), unit.life.master_id);
             let _object =
-                tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master).entered();
+                tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master = %master)
+                    .entered();
             match self.step_object((p, i), (dt, turn, true), Unit::update) {
                 Ok(s) => i += usize::from(self.file_step(p, s.slot, s.outcome)?),
                 Err(e) => {

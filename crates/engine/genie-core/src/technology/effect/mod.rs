@@ -23,6 +23,7 @@ use self::object_slots::{CAPPED, ONE, ROUND, has_actions, shows_sprite, within_t
 use self::object_slots::{POPULATION, RESOURCE_19, charge_after};
 #[cfg(test)]
 use crate::math::rng::Stream;
+use crate::objects::masters::MasterId;
 #[cfg(test)]
 use crate::technology::EffectCommand;
 #[cfg(test)]
@@ -40,7 +41,7 @@ const RESEARCH_SPENT: i16 = 0x63;
 const ATTRIBUTE_39: usize = 39;
 /// The master whose enabling first asks the game's mode (`0x26d`, `FUN_1416665b0`), and the
 /// mode that never enables it (11).
-const MODE_TESTED_MASTER: i16 = 0x26d;
+const MODE_TESTED_MASTER: MasterId = MasterId::named(0x26d);
 const MODE_WITHOUT_0X26D: i32 = 11;
 /// The `TRIBE_Effects` command kinds that change technologies (`'e'`, `'f'`, `'g'`): a cost, the
 /// disabling and a research time.

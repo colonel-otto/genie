@@ -18,6 +18,7 @@ use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use genie_diff::Diff;
 
@@ -77,10 +78,19 @@ const FARM_WAIT_TIME: f32 = -1.0;
 const NO_GATHER_POINT: f32 = crate::math::image::gather::NO_GATHER_POINT;
 /// The gatherers whose gather without a target waits for another farm (`set_state(0xf3)`,
 /// `0x140a8e1d0`'s cases 3, 5 and 6: masters 259, 214, 1891 and 1892).
-const FARM_WAITERS: [i16; 4] = [259, 214, 1891, 1892];
+const FARM_WAITERS: [MasterId; 4] = [
+    MasterId::named(259),
+    MasterId::named(214),
+    MasterId::named(1891),
+    MasterId::named(1892),
+];
 /// The gatherers that wait so on a target of the farm class (masters 13, 2356 and 2171, the raw
 /// `0x60a9`, `0x69d0`, `0x6917` of the same cases).
-const TRAP_WAITERS: [i16; 3] = [13, 2356, 2171];
+const TRAP_WAITERS: [MasterId; 3] = [
+    MasterId::named(13),
+    MasterId::named(2356),
+    MasterId::named(2171),
+];
 
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
 const REMAINDER: f32 = crate::math::image::gather::REMAINDER;
@@ -97,12 +107,16 @@ const WAIT_WORKERS: f32 = crate::math::image::gather::WAIT_WORKERS;
 const WAIT_GAP: f32 = crate::math::image::gather::WAIT_GAP;
 /// The masters a gatherer may gather from while they hold nothing (the combat object's slot
 /// 0x2b8, `FUN_141216390`: the farm, the rice farm and master 45).
-const REGATHERED: [i16; 3] = [50, 1187, 45];
+const REGATHERED: [MasterId; 3] = [
+    MasterId::named(50),
+    MasterId::named(1187),
+    MasterId::named(45),
+];
 /// Masters the constructor and `set_state(6)` treat apart (357 and 1188, `FUN_140a8b140`).
-const SPECIAL_TARGETS: [i16; 2] = [357, 1188];
+const SPECIAL_TARGETS: [MasterId; 2] = [MasterId::named(357), MasterId::named(1188)];
 /// The farms whose gather goes in stops under the game's farm setting, and whose time per stop
 /// each update renews: the farm and the rice farm (the constructor's and the update's masters).
-const STOP_FARMS: [i16; 2] = [50, 1187];
+const STOP_FARMS: [MasterId; 2] = [MasterId::named(50), MasterId::named(1187)];
 /// A farm's stops under the game's farm setting (the constructor's `mNumberStops`).
 const FARM_STOPS: u8 = 4;
 /// A stop's point lies this far into its tile (`DAT_142e7f384`).
@@ -166,7 +180,7 @@ pub struct Resource {
     /// Its master's class.
     pub class: ClassId,
     /// Its master's id.
-    pub master: i16,
+    pub master: MasterId,
     /// Its owner.
     pub player: PlayerId,
     /// How many actions work on it (`+0x644`).
@@ -214,7 +228,7 @@ pub(crate) struct GatherReads {
     pub(crate) defaults: MoveDefaults,
     /// The unit's master: a farmer's gather without a target waits for another farm
     /// (`set_state(0xf3)`, [`FARM_WAITERS`]).
-    pub(crate) master: i16,
+    pub(crate) master: MasterId,
     /// The unit AI's stance (`+0x1a9`), 0 without a unit AI.
     pub(crate) stance: u8,
     /// The game's setting at `FUN_140c87b90()`'s `+0x69` (farmers walk their farm's stops); with

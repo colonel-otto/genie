@@ -66,7 +66,8 @@ fn trade_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&
             first(list, |task| {
                 // The trade task's action type (`0x6f`).
                 task.action_type == action_type::TRADE
-                    && (task.object_id == t.master.id || task.object_group == t.master.class.get())
+                    && (task.object_id == Some(t.master.id)
+                        || task.object_group == t.master.class.get())
                     && wanted(filter, task)
             })
         })
@@ -187,13 +188,13 @@ pub(super) fn repair_finding<'m>(
             if task.action_type != crate::construction::repair::REPAIR || !wanted(filter, task) {
                 continue;
             }
-            if task.object_group == -1 && task.object_id == -1 {
+            if task.object_group == -1 && task.object_id.is_none() {
                 any = Some(task);
             }
             if task.object_group == t.master.class.get() {
                 by_class = Some(task);
             }
-            if task.object_id == t.master.id {
+            if task.object_id == Some(t.master.id) {
                 return Finding::Answer(Some(task));
             }
         }
@@ -220,13 +221,13 @@ fn build_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&
         .iter()
         .filter(|t| t.action_type == 0x65 && wanted(filter, t))
     {
-        if task.object_id == t.master.id {
+        if task.object_id == Some(t.master.id) {
             return (0.0 < task.work_val1).then_some(task);
         }
         if task.object_group == t.master.class.get() {
             by_class = Some(task);
         }
-        if task.object_group == -1 && task.object_id == -1 {
+        if task.object_group == -1 && task.object_id.is_none() {
             generic = Some(task);
         }
     }

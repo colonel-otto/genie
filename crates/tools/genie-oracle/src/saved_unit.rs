@@ -9,6 +9,7 @@ use crate::{
 use genie_core::GenieError;
 use genie_core::map::{Offset, Position};
 use genie_core::objects::ObjectId;
+use genie_core::objects::masters::MasterId;
 use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
 use genie_core::unit_ai::{ActionKind, UnitAi};
@@ -34,6 +35,13 @@ pub(super) fn unit(
             ..Unit::default()
         };
     };
+    let Ok(master) = MasterId::try_from(s.master_obj) else {
+        return Unit {
+            id,
+            unmodelled_action: Some(GenieError::invalid_input("an object's master is negative")),
+            ..Unit::default()
+        };
+    };
     let saved = object
         .actions()
         .is_some_and(|a| a.entries().next().is_some());
@@ -44,7 +52,7 @@ pub(super) fn unit(
     };
     let mut unit = Unit {
         id,
-        life: lifecycle(object, s, objects, civ, masters),
+        life: lifecycle(object, (s, master), objects, civ, masters),
         ai,
         construction: construction(object, s, objects),
         work_rate_powerup: object.combat().map_or(0.0, |c| c.work_rate_powerup),

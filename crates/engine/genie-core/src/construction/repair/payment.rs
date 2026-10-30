@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::construction::repair::ONE;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 
 /// The classes whose repair pays its unit share (`FUN_1412143b0`: the ships 20, 21, 22, 2 and
@@ -38,7 +39,7 @@ pub struct Repaired {
     /// Its master's class.
     pub class: ClassId,
     /// Its master.
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's hit points (`+0x530`).
     pub master_hp: i16,
     /// Its hit points (`+0x278`).

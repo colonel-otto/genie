@@ -219,7 +219,11 @@ impl GatherAction {
             if target.state < 2 {
                 return self.begin_search(c, unit, r);
             }
-            if (target.master_id - 0x765) & !4 == 0 {
+            if matches!(
+                target.master_id,
+                crate::objects::masters::ids::PASTURE_MANGROVE
+                    | crate::objects::masters::ids::PASTURE
+            ) {
                 return Err(GenieError::unsupported(
                     "a gather facing a pasture (its animals, slot 0x780)",
                 ));

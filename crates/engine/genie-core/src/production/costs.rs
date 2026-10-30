@@ -2,6 +2,7 @@
 //! their refunds when an entry is cancelled (`FUN_141630530` and the cancels' calls).
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
@@ -137,15 +138,15 @@ pub fn costed<'m>(masters: &'m Masters, m: &'m Master) -> (&'m Master, bool) {
     let Some(head) = m
         .building
         .as_ref()
-        .filter(|b| b.head_unit != -1)
-        .and_then(|b| masters.get(b.head_unit))
+        .and_then(|b| b.head_unit)
+        .and_then(|head| masters.get(head))
     else {
         return (m, false);
     };
     head.building
         .as_ref()
-        .filter(|b| b.stack_unit != -1)
-        .and_then(|b| masters.get(b.stack_unit))
+        .and_then(|b| b.stack_unit)
+        .and_then(|stack| masters.get(stack))
         .map_or((head, false), |stack| (stack, true))
 }
 
@@ -159,7 +160,7 @@ pub fn costed<'m>(masters: &'m Masters, m: &'m Master) -> (&'m Master, bool) {
 /// headroom (4) plus the population, the smaller.
 pub fn cost_test(
     masters: &Masters,
-    master: i16,
+    master: MasterId,
     count: f32,
     population: bool,
     attributes: &dyn crate::technology::Attributes,
@@ -206,7 +207,7 @@ pub fn cost_test(
 /// (straight into the attribute; the statistics `FUN_14097daf0` are not the simulation's).
 pub fn pay(
     masters: &Masters,
-    master: i16,
+    master: MasterId,
     count: f32,
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
@@ -236,7 +237,7 @@ pub fn pay(
 /// A master the player lacks or of a type below 70 lists none.
 pub fn master_costs(
     masters: &Masters,
-    master: i16,
+    master: MasterId,
     attributes: &dyn crate::technology::Attributes,
 ) -> Result<[(i16, i16); 3], GenieError> {
     use crate::math::conversions::cvttss2si;

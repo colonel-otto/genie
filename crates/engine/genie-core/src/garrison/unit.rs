@@ -355,7 +355,7 @@ impl Unit {
             .tasks
             .iter()
             .find(|t| t.action_type == 0x88)
-            .is_some_and(|t| t.object_id == bm.id)
+            .is_some_and(|t| t.object_id == Some(bm.id))
         {
             return Err(GenieError::unsupported(
                 "an enter of a master that transforms (task 0x88)",

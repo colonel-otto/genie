@@ -13,6 +13,7 @@ use crate::math::rng::Well512;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
@@ -24,7 +25,7 @@ use crate::world::step::Step;
 /// another farm where another would search (`set_state(0xf3)`, `0x140a8e1d0`): the farmers'
 /// masters, and the fishing ships' on a farm-class target (a fish trap).
 #[must_use]
-pub fn waits_for_a_farm(master: i16, target_type: i32) -> bool {
+pub fn waits_for_a_farm(master: MasterId, target_type: i32) -> bool {
     FARM_WAITERS.contains(&master)
         // The farm class, whose gather the slice does not model yet.
         // The villagers' class, whose `MoveTo` waits once when the motion step gives up.

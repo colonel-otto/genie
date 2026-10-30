@@ -5,6 +5,7 @@ use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
 use genie_core::map::Position;
 use genie_core::objects::ObjectId;
+use genie_core::objects::masters::MasterId;
 use genie_core::players::PlayerId;
 use genie_core::world::{Player, World};
 use genie_save::{Header, PlayerSection};
@@ -34,13 +35,13 @@ pub(super) fn tech_state(
         pending: t.tech_player_tree_pending_count as i16,
         enabled: t.tech_player_tree_enabled_tech != 0,
         effect_override: t.tech_player_tree_effect_override as i16,
-        building_master: t.tech_player_tree_research_building_master_id as i16,
+        building_master: MasterId::of_data(t.tech_player_tree_research_building_master_id as i16),
         locations: t
             .location
             .iter()
             .flatten()
             .map(|l| genie_core::technology::Location {
-                building: l.location_research_location_id as i16,
+                building: MasterId::of_data(l.location_research_location_id as i16),
                 time: l.location_research_time,
                 button: l.location_button_location_id,
                 adjustment: f32::from_bits(l.location_research_adjustment),
@@ -492,7 +493,7 @@ pub(super) fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::visio
                 id: s.id,
                 original: (original != -1).then_some(original),
                 original_id: original,
-                original_master: (d.long_val_2 as i32 != -1).then_some(d.long_val_2 as i16),
+                original_master: MasterId::of_data(d.long_val_2 as i16),
                 original_owner: usize::try_from(d.doppled_player).unwrap_or(0),
                 position: Position::new(s.t_x, s.t_y, s.t_z),
                 tile: [s.t_x as i32, s.t_y as i32],
@@ -517,7 +518,7 @@ pub(super) fn garrison_firepower(turns: &mut World) {
         let Some(masters) = turns.masters.get(p) else {
             continue;
         };
-        let units: Vec<(i32, i32, i16, f32)> = player
+        let units: Vec<(i32, i32, MasterId, f32)> = player
             .objects
             .iter()
             .chain(&player.sleeping)

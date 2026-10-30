@@ -1,5 +1,6 @@
 //! The static, animated, moving and action masters' setters.
 
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{
     AttributeWorld, MISSILE_SPEED_CAP, Master, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short,
     add_sprite, attribute, insert_damage_graphic, low8, low16, master_type, multiply_short,
@@ -33,8 +34,8 @@ impl Master {
             a::TRAIT_PIECE => {
                 self.object_flags = ((cvttss2si_64(v) as u32) << 16) | (self.object_flags & 0xffff);
             }
-            a::DEAD_UNIT_ID => self.death_spawns[0] = low16(v),
-            a::BLOOD_UNIT => self.death_spawns[1] = low16(v),
+            a::DEAD_UNIT_ID => self.death_spawns[0] = MasterId::of_data(low16(v)),
+            a::BLOOD_UNIT => self.death_spawns[1] = MasterId::of_data(low16(v)),
             a::STANDING_GRAPHIC | a::STANDING_GRAPHIC_2 | a::DYING_GRAPHIC | a::UNDEAD_GRAPHIC => {
                 self.set_static_sprite(attribute, v, world);
             }
@@ -327,7 +328,7 @@ impl Master {
             a::ROTATION_SPEED => self.turn_speed = v,
             a::WALKING_GRAPHIC => set_sprite(&mut self.move_sprite, cvttss2si(v), world),
             a::RUNNING_GRAPHIC => set_sprite(&mut self.run_sprite, cvttss2si(v), world),
-            a::TRAILING_UNIT => self.trail.unit = low16(v),
+            a::TRAILING_UNIT => self.trail.unit = MasterId::of_data(low16(v)),
             a::TRAIL_MODE => self.trail.mode = low8(v),
             a::TRAIL_DENSITY => self.trail.density = v,
             _ => self.set_animated(attribute, v, world),
@@ -341,7 +342,10 @@ impl Master {
             a::ROTATION_SPEED => self.turn_speed += v,
             a::WALKING_GRAPHIC => add_sprite(&mut self.move_sprite, v, world),
             a::RUNNING_GRAPHIC => add_sprite(&mut self.run_sprite, v, world),
-            a::TRAILING_UNIT => self.trail.unit = self.trail.unit.wrapping_add(low16(v)),
+            a::TRAILING_UNIT => {
+                self.trail.unit =
+                    MasterId::of_data(MasterId::field(self.trail.unit).wrapping_add(low16(v)));
+            }
             a::TRAIL_MODE => self.trail.mode = self.trail.mode.wrapping_add(low8(v)),
             a::TRAIL_DENSITY => self.trail.density += v,
             _ => self.add_animated(attribute, v, world),

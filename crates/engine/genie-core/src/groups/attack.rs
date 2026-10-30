@@ -11,6 +11,7 @@ use crate::math::fmath;
 use crate::math::fmath::{BVector, below_or_unordered};
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
@@ -27,7 +28,7 @@ const SPECIAL_MOST: usize = 4;
 /// What each of the refill's two first-pass lists holds (`auStack_68`, `auStack_58`).
 const FIRST_PASS_MOST: usize = 3;
 /// The masters of the refill's second first-pass list (`FUN_14100c6c0`).
-const LISTED_MASTERS: [i16; 4] = [ids::ID_329, ids::ID_330, ids::ID_282, ids::ID_556];
+const LISTED_MASTERS: [MasterId; 4] = [ids::ID_329, ids::ID_330, ids::ID_282, ids::ID_556];
 /// A target of one of these classes takes both first-pass lists, the masters' first
 /// (`FUN_14100c6c0`).
 const BOTH_LISTS_CLASSES: [ClassId; 4] = [
@@ -37,7 +38,7 @@ const BOTH_LISTS_CLASSES: [ClassId; 4] = [
     class::CLASS_47,
 ];
 /// A target of one of these masters takes the class list only (`FUN_14100c6c0`).
-const CLASS_LIST_MASTERS: [i16; 2] = [ids::ID_6, ids::ID_7];
+const CLASS_LIST_MASTERS: [MasterId; 2] = [ids::ID_6, ids::ID_7];
 /// A target of one of these classes takes the group's units by formation category
 /// (`FUN_14100c6c0`).
 const CATEGORY_LIST_CLASSES: [ClassId; 12] = [
@@ -282,7 +283,7 @@ impl World {
     pub(super) fn task_reach(
         &self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         filter: i16,
     ) -> Result<f32, GenieError> {
         if filter < 0 {

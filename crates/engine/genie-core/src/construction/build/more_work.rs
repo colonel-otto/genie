@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -26,7 +27,7 @@ impl Unit {
         &self,
         c: &mut Step<'_>,
         building: i32,
-        built: i16,
+        built: MasterId,
     ) -> Result<Option<crate::orders::Work>, GenieError> {
         use crate::gathering::gather_search::{self, Candidate};
         use crate::math::image::gather_search::{REACH_CAP, REACH_FLOOR};

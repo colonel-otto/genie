@@ -1,18 +1,19 @@
 use super::*;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 
 fn task(action_type: i16, object_group: i16, object_id: i16, work_val1: f32) -> Task {
     Task {
         action_type,
         object_group,
-        object_id,
+        object_id: crate::test_ids::opt_master(object_id),
         work_val1,
         ..Task::default()
     }
 }
 
-fn master(id: i16, task_by_group: u8, tasks: Vec<Task>) -> Master {
+fn master(id: MasterId, task_by_group: u8, tasks: Vec<Task>) -> Master {
     Master {
         id,
         kind: 70,
@@ -36,7 +37,7 @@ fn master(id: i16, task_by_group: u8, tasks: Vec<Task>) -> Master {
 
 fn house() -> Master {
     Master {
-        id: 70,
+        id: ids::HOUSE,
         kind: 80,
         class: class::BUILDING,
         task_by_group: 0,
@@ -68,11 +69,11 @@ fn villagers() -> Masters {
     };
     let builder = || vec![task(101, -1, -1, 1.0), task(3, 3, -1, 0.0)];
     Masters::new([
-        master(56, 1, vec![task(5, -1, 53, 1.0)]),
-        master(83, 1, base()),
-        master(118, 1, builder()),
-        master(212, 2, builder()),
-        master(293, 2, base()),
+        master(master_id(56), 1, vec![task(5, -1, 53, 1.0)]),
+        master(ids::VILLAGER_MALE, 1, base()),
+        master(ids::BUILDER, 1, builder()),
+        master(master_id(212), 2, builder()),
+        master(ids::VILLAGER_FEMALE, 2, base()),
         house(),
     ])
 }
@@ -85,7 +86,7 @@ impl Diplomacy for Alone {
         from == to
     }
 
-    fn drops_at(&self, _: i16, _: &Actor<'_>) -> bool {
+    fn drops_at(&self, _: MasterId, _: &Actor<'_>) -> bool {
         false
     }
 }
@@ -198,12 +199,12 @@ fn each_static_attribute_sets_adds_and_multiplies_its_field() {
         ),
         (
             a::DEAD_UNIT_ID,
-            |m| f32::from(m.death_spawns[0]),
+            |m| f32::from(MasterId::field(m.death_spawns[0])),
             [3.0, 3.0, 3.0],
         ),
         (
             a::BLOOD_UNIT,
-            |m| f32::from(m.death_spawns[1]),
+            |m| f32::from(MasterId::field(m.death_spawns[1])),
             [3.0, 3.0, 3.0],
         ),
         (
@@ -355,7 +356,7 @@ fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
         (a::BASE_ARMOR, |m| f32::from(m.base_armor), [3.0, 5.0, 10.0]),
         (
             a::PROJECTILE_UNIT,
-            |m| f32::from(m.missile),
+            |m| f32::from(MasterId::field(m.missile)),
             [3.0, 5.0, 10.0],
         ),
         (
@@ -430,7 +431,7 @@ fn each_tribe_combat_attribute_sets_adds_and_multiplies_its_field() {
         (a::HERO_STATUS, |m| f32::from(m.hero_flag), [3.0, 5.0, 5.0]),
         (
             a::TRAIN_LOCATION,
-            |m| f32::from(m.train_locations[1].location),
+            |m| f32::from(MasterId::field(m.train_locations[1].location)),
             [3.0; 3],
         ),
         (
@@ -458,7 +459,7 @@ fn each_tribe_combat_attribute_sets_adds_and_multiplies_its_field() {
         (a::CHARGE_TYPE, |m| f32::from(m.charge_type), [3.0; 3]),
         (
             a::SECONDARY_PROJECTILE_UNIT,
-            |m| f32::from(m.volley_missile.unwrap_or(-1)),
+            |m| f32::from(MasterId::field(m.volley_missile)),
             [3.0; 3],
         ),
         (
@@ -522,7 +523,7 @@ fn each_tribe_combat_attribute_sets_adds_and_multiplies_its_field() {
         ),
         (
             a::CHARGE_PROJECTILE_UNIT,
-            |m| f32::from(m.charge_projectile.unwrap_or(-1)),
+            |m| f32::from(MasterId::field(m.charge_projectile)),
             [3.0; 3],
         ),
         (
@@ -769,7 +770,7 @@ fn the_cost_attributes_change_their_resource_s_entries() {
 #[test]
 fn the_train_location_attributes_change_the_selected_entry() {
     let barracks = |time| TrainLocation {
-        location: 12,
+        location: Some(master_id(12)),
         time,
         button: 1,
         hotkey: 16_000,
@@ -804,7 +805,10 @@ fn the_train_location_attributes_change_the_selected_entry() {
         &std::collections::BTreeMap::new(),
         None,
     );
-    assert_eq!((m.trained_at.clone(), m.build_time), (vec![12, 12], 30));
+    assert_eq!(
+        (m.trained_at.clone(), m.build_time),
+        (vec![master_id(12), master_id(12)], 30)
+    );
 }
 
 /// The damage sprites: a resize zeroes new entries (a NaN count is the most, `MAXSS`); with
@@ -963,7 +967,7 @@ fn the_action_and_moving_setters_change_their_values() {
     assert_eq!(
         m.trail,
         Trail {
-            unit: 1302,
+            unit: Some(master_id(1302)),
             mode: 3,
             density: 3.0
         }
@@ -1008,7 +1012,10 @@ fn the_combat_master_s_own_values_change() {
         (2.0, 0, 12)
     );
     assert_eq!(m.volley_spread, [0.0, 0.0, 0.5]);
-    assert_eq!((m.volley_missile, m.charge_projectile), (None, Some(1500)));
+    assert_eq!(
+        (m.volley_missile, m.charge_projectile),
+        (None, Some(master_id(1500)))
+    );
 }
 
 /// The missile master's add (`FUN_1410d5ab0`) adds to its own bytes and arc, then runs the
@@ -1051,18 +1058,22 @@ fn the_missile_building_and_animated_setters() {
 /// availability, disabling and base id (`+0x260`).
 #[test]
 fn a_master_copy_keeps_its_id_class_and_flags() {
-    let mut militia = master(74, 1, vec![task(7, -1, -1, 0.0)]);
+    let mut militia = master(master_id(74), 1, vec![task(7, -1, -1, 0.0)]);
     militia.class = class::CLASS_6;
     militia.available = true;
-    militia.base_id = 74;
-    let mut man = master(75, 2, vec![task(7, -1, -1, 0.0), task(3, 3, -1, 0.0)]);
+    militia.base_id = Some(master_id(74));
+    let mut man = master(
+        master_id(75),
+        2,
+        vec![task(7, -1, -1, 0.0), task(3, 3, -1, 0.0)],
+    );
     man.class = class::CLASS_7;
     man.hit_points = 45;
     man.disabled = true;
     militia.copy_from(&man);
     assert_eq!(
         (militia.id, militia.class, militia.base_id),
-        (74, class::CLASS_6, 74)
+        (master_id(74), class::CLASS_6, Some(master_id(74)))
     );
     assert!(militia.available && !militia.disabled);
     assert_eq!((militia.hit_points, militia.tasks.len()), (45, 2));
@@ -1077,21 +1088,21 @@ fn a_master_copy_keeps_its_id_class_and_flags() {
 #[test]
 fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
     let farm = Master {
-        id: 50,
+        id: ids::FARM,
         kind: 80,
         class: class::FARM,
         ..Master::default()
     };
     let gather = |group, id, work| task(0x6a, group, id, work);
     let with = |own: Vec<Task>, others: Vec<Master>| {
-        let mut all = vec![master(83, 1, own), farm.clone()];
+        let mut all = vec![master(ids::VILLAGER_MALE, 1, own), farm.clone()];
         all.extend(others);
         Masters::new(all)
     };
     let pick = |m: &Masters, own: &Master| {
         let site = TaskTarget {
             id: 12557,
-            master: m.get(50).unwrap(),
+            master: m.get(ids::FARM).unwrap(),
             player: PlayerId::new(2),
             state: 2,
             held: (-1, 0.0),
@@ -1115,25 +1126,25 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             terrain: None,
         };
         m.work_master(&actor, &on, -1, &Alone)
-            .map(|w| w.map(|(id, t)| (id, t.object_group, t.object_id)))
+            .map(|w| w.map(|(id, t)| (id.get(), t.object_group, MasterId::field(t.object_id))))
     };
-    let own = |m: &Masters| m.get(83).unwrap().clone();
-    let generic = master(120, 1, vec![gather(-1, -1, 1.0)]);
-    let by_class = master(122, 1, vec![gather(49, -1, 0.5)]);
+    let own = |m: &Masters| m.get(ids::VILLAGER_MALE).unwrap().clone();
+    let generic = master(master_id(120), 1, vec![gather(-1, -1, 1.0)]);
+    let by_class = master(master_id(122), 1, vec![gather(49, -1, 0.5)]);
     let m = with(vec![], vec![generic.clone(), by_class.clone()]);
     assert_eq!(pick(&m, &own(&m)), Ok(Some((122, 49, -1))));
     let m = with(vec![], vec![generic]);
     assert_eq!(pick(&m, &own(&m)), Ok(Some((120, -1, -1))));
-    let idle = master(122, 1, vec![gather(49, -1, 0.0)]);
+    let idle = master(master_id(122), 1, vec![gather(49, -1, 0.0)]);
     let m = with(vec![], vec![idle]);
     assert_eq!(pick(&m, &own(&m)), Ok(None));
-    let named = master(120, 1, vec![gather(-1, 50, 0.0)]);
+    let named = master(master_id(120), 1, vec![gather(-1, ids::FARM.get(), 0.0)]);
     let m = with(vec![], vec![named, by_class.clone()]);
     assert_eq!(pick(&m, &own(&m)), Ok(Some((120, -1, 50))));
-    let attacker = master(120, 1, vec![task(7, -1, -1, 0.0)]);
+    let attacker = master(master_id(120), 1, vec![task(7, -1, -1, 0.0)]);
     let m = with(vec![task(7, -1, -1, 0.0)], vec![attacker, by_class]);
     assert_eq!(pick(&m, &own(&m)), Ok(Some((122, 49, -1))));
-    let stranger = master(999, 1, vec![]);
+    let stranger = master(master_id(999), 1, vec![]);
     assert!(pick(&m, &stranger).is_err());
 }
 
@@ -1142,7 +1153,7 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
     let m = villagers();
     let site = TaskTarget {
         id: 10028,
-        master: m.get(70).unwrap(),
+        master: m.get(ids::HOUSE).unwrap(),
         player: PlayerId::new(2),
         state: 0,
         held: (-1, 0.0),
@@ -1167,11 +1178,11 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
             terrain: None,
         };
         m.work_master(&actor, &on, -1, &Alone)
-            .map(|w| w.map(|(id, t)| (id, t.action_type)))
+            .map(|w| w.map(|(id, t)| (id.get(), t.action_type)))
     };
-    assert_eq!(pick(83), Ok(Some((118, 101))));
-    assert_eq!(pick(293), Ok(Some((212, 101))));
-    assert_eq!(pick(118), Ok(Some((118, 101))));
+    assert_eq!(pick(ids::VILLAGER_MALE), Ok(Some((118, 101))));
+    assert_eq!(pick(ids::VILLAGER_FEMALE), Ok(Some((212, 101))));
+    assert_eq!(pick(ids::BUILDER), Ok(Some((118, 101))));
 }
 
 #[test]
@@ -1183,16 +1194,25 @@ fn a_master_s_unit_ai_type_reads_its_class_volley_missile_and_combat_level() {
         ..Master::default()
     };
     // a building without a volley missile, with one (the tower's), and a boar's combat level
-    assert_eq!(master(class::BUILDING, None, 0).unit_ai_type(70), Some(17));
     assert_eq!(
-        master(class::BUILDING, Some(5), 0).unit_ai_type(79),
+        master(class::BUILDING, None, 0).unit_ai_type(ids::HOUSE),
+        Some(17)
+    );
+    assert_eq!(
+        master(class::BUILDING, Some(master_id(5)), 0).unit_ai_type(master_id(79)),
         Some(0xf)
     );
-    assert_eq!(master(class::PREDATOR, None, 1).unit_ai_type(48), Some(4));
-    assert_eq!(master(class::PREDATOR, None, 0).unit_ai_type(126), Some(5));
+    assert_eq!(
+        master(class::PREDATOR, None, 1).unit_ai_type(master_id(48)),
+        Some(4)
+    );
+    assert_eq!(
+        master(class::PREDATOR, None, 0).unit_ai_type(master_id(126)),
+        Some(5)
+    );
     // the factory's own ids first
     assert_eq!(
-        master(class::BUILDING, None, 0).unit_ai_type(1105),
+        master(class::BUILDING, None, 0).unit_ai_type(ids::ID_1105),
         Some(0x12)
     );
 }
@@ -1202,9 +1222,8 @@ fn a_master_s_unit_ai_type_reads_its_class_volley_missile_and_combat_level() {
 #[test]
 fn a_master_is_found_by_its_player_and_id() {
     let every = vec![Masters::default(), villagers()];
-    let found = player_master(&every, PlayerId::new(1), 83).map(|m| m.id);
-    assert_eq!(found, Some(83));
-    assert!(player_master(&every, PlayerId::new(0), 83).is_none());
-    assert!(player_master(&every, PlayerId::new(1), -1).is_none());
-    assert!(player_master(&every, PlayerId::new(2), 83).is_none());
+    let found = player_master(&every, PlayerId::new(1), ids::VILLAGER_MALE).map(|m| m.id);
+    assert_eq!(found, Some(ids::VILLAGER_MALE));
+    assert!(player_master(&every, PlayerId::new(0), ids::VILLAGER_MALE).is_none());
+    assert!(player_master(&every, PlayerId::new(2), ids::VILLAGER_MALE).is_none());
 }

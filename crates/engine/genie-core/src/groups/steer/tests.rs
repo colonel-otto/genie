@@ -5,10 +5,12 @@ use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
@@ -51,7 +53,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
         body: crate::objects::layers::Body::new(Position::new(x, y, 0.0), None, Some(mover)),
         ..Unit::default()
     };
-    u.life.master_id = 4;
+    u.life.master_id = master_id(4);
     u.life.state = 2;
     u.life.hp = 50.0;
     u.group.id = 1;
@@ -85,7 +87,7 @@ fn world() -> World {
     t.world_time = 100;
     t.dt_seconds = DT;
     let master = Master {
-        id: 4,
+        id: master_id(4),
         kind: 70,
         class: class::CLASS_6,
         hit_points: 60,
@@ -146,7 +148,7 @@ fn post(x: f32, y: f32) -> Placed {
         radius: [0.2, 0.2],
         class: class::VILLAGER,
         player: PlayerId::new(2),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: 0,
         buildable_on: 0,
         tall: true,

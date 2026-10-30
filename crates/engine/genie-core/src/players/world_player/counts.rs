@@ -1,6 +1,7 @@
 //! The counts the update reads: the town centres, the trainable and the upgradable masters,
 //! and where a master trains.
 
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::master_type::COMBAT;
@@ -66,7 +67,7 @@ impl World {
     /// [`crate::objects::masters::Master::disabled`]), a set one as 1: the limit bits 1 to 3 are none, and
     /// the limited units' tests not reached.
     #[must_use]
-    pub fn trainable_count(&self, p: PlayerId, building: i16) -> i16 {
+    pub fn trainable_count(&self, p: PlayerId, building: MasterId) -> i16 {
         let Some(masters) = self.masters.get(p.index()) else {
             return 0;
         };
@@ -112,7 +113,7 @@ impl World {
     /// [`TechTree::tech`]: crate::players::world_player::tech_tree::TechTree::tech
     /// [`TechTree`]: crate::players::world_player::tech_tree::TechTree
     #[must_use]
-    pub fn upgradable_count(&self, p: PlayerId, building: i16) -> i16 {
+    pub fn upgradable_count(&self, p: PlayerId, building: MasterId) -> i16 {
         let Some(masters) = self.masters.get(p.index()) else {
             return 0;
         };
@@ -157,18 +158,19 @@ impl World {
             }
             let q = TreeQuery {
                 civ,
-                building: i32::from(building),
-                unit: i32::from(m.id),
+                building: i32::from(building.get()),
+                unit: i32::from(m.id.get()),
                 ages_out,
                 settings: &self.settings,
                 fallback,
             };
-            if (!full || i32::from(m.id) != unique) && !self.tech_tree.has(&q) {
+            if (!full || i32::from(m.id.get()) != unique) && !self.tech_tree.has(&q) {
                 continue;
             }
             let link = self.tech_tree.link(&q);
             let had = i16::try_from(link)
                 .ok()
+                .and_then(MasterId::of_data)
                 .and_then(|l| masters.get(l))
                 .map(|l| l.available);
             if had.is_none_or(|a| a) {
@@ -196,7 +198,7 @@ impl World {
     /// it ([`World::local_player`], `FUN_140c88440`) is of class 3, disappears when built
     /// (`+0x984`) and has one (0 or more). A master without train locations trains nowhere.
     #[must_use]
-    pub fn trains_at(&self, m: &crate::objects::masters::Master, building: i16) -> bool {
+    pub fn trains_at(&self, m: &crate::objects::masters::Master, building: MasterId) -> bool {
         if m.trained_at.is_empty() {
             return false;
         }
@@ -205,9 +207,9 @@ impl World {
         if let Some(b) = local.filter(|b| b.class == crate::objects::masters::class::BUILDING)
             && let Some(site) = b.building.as_ref()
             && site.disappears_when_built
-            && 0 <= site.stack_unit
+            && let Some(stack) = site.stack_unit
         {
-            at = site.stack_unit;
+            at = stack;
         }
         m.trained_at.contains(&at)
     }

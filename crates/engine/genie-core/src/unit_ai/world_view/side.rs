@@ -12,6 +12,7 @@ use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
 use crate::orders::object_gone;
@@ -81,7 +82,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         /// The classes that never help: 1 to 3, 18 to 21, 27 and 39.
         const NO_HELP_CLASSES: u64 = 0x0080_083c_000e;
         /// The siege tower master (`FUN_141194f10`'s 0x451).
-        const SIEGE_TOWER: i16 = 0x451;
+        const SIEGE_TOWER: MasterId = MasterId::named(0x451);
         /// `AskForHelp`'s reach (`DAT_142ecccc4`): the squared footprint gap of 3 tiles.
         const HELP_REACH: f32 = crate::math::image::unit_ai::HELP_REACH;
         let lists = self.c.w.spatial.searched().ok_or(GenieError::unsupported(
@@ -193,7 +194,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let class = usize::try_from(player)
             .ok()
             .and_then(|p| self.c.w.masters.get(p))
-            .zip(i16::try_from(master).ok())
+            .zip(i16::try_from(master).ok().and_then(MasterId::of_data))
             .and_then(|(ms, id)| ms.get(id))
             .map(|m| m.class);
         Ok(class)

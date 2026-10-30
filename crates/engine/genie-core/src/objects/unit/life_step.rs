@@ -164,12 +164,14 @@ impl Unit {
             .ok_or(GenieError::unsupported(
                 "a dead object of a master the slice does not have",
             ))?;
-        if kind < BUILDING && 0 <= self.life.remains {
+        if kind < BUILDING
+            && let Some(remains) = self.life.remains
+        {
             let facet = self
                 .body
                 .mover()
                 .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
-            let (p, remains, at) = (c.player, self.life.remains, self.position());
+            let (p, at) = (c.player, self.position());
             c.lend(self, |w| w.remains(p, remains, at, facet))?;
         }
         Ok(())
@@ -187,6 +189,9 @@ impl Unit {
             .ok_or(GenieError::unsupported(
                 "a dead object of a master the slice does not have",
             ))?;
+        let spawn = spawn.ok_or(GenieError::missing_data(
+            "a death spawn the dead object's master no longer names",
+        ))?;
         let facet = self
             .body
             .mover()

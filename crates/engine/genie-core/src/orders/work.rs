@@ -6,6 +6,7 @@ use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
@@ -237,7 +238,7 @@ impl World {
         idx: usize,
         (target, point): (i32, Position),
         filter: i16,
-    ) -> Result<Option<(i16, crate::objects::masters::Task)>, GenieError> {
+    ) -> Result<Option<(MasterId, crate::objects::masters::Task)>, GenieError> {
         let unit = &self.players.live(player, idx)?;
         let masters = self
             .masters

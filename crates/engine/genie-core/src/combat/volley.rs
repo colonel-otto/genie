@@ -11,7 +11,9 @@ use crate::movement::Mover;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::release::Releaser;
@@ -102,8 +104,10 @@ impl Unit {
             (self.id.get(), self.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
-        if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135)
-            || matches!(master.class, class::CLASS_35 | class::CLASS_64))
+        if (matches!(
+            master.id,
+            ids::ID_527 | ids::ID_528 | ids::ID_1104 | ids::ID_2133 | ids::ID_2134 | ids::ID_2135
+        ) || matches!(master.class, class::CLASS_35 | class::CLASS_64))
             && self.life.state == 2
         {
             return Err(GenieError::unsupported(
@@ -115,9 +119,9 @@ impl Unit {
                 "a charged hit (slot 0x2f8 with charge types 6 and 7)",
             ));
         }
-        let missile = 0 <= master.missile;
+        let missile = master.missile.is_some();
         // what the rest reads of the master, before the notify changes the unit
-        let notifies = matches!(master.id, 73 | 559);
+        let notifies = matches!(master.id, ids::ID_73 | ids::ID_559);
         let (trebuchet, [x_spread, y_spread, _]) =
             (master.class == class::CLASS_54, master.volley_spread);
         let (first, extra) = if master.max_volley == 0 {
@@ -207,7 +211,9 @@ impl Unit {
             .map(|m| m.angle)
             .ok_or(GenieError::unsupported("a ranged unit that does not move"))?;
         let shot = Shot {
-            made: master.missile,
+            made: master.missile.ok_or(GenieError::missing_data(
+                "a ranged unit whose master has no missile",
+            ))?,
             at: crate::combat::missile::spawn_point(self.position(), facing, master.weapon_offset),
             point: aimed.position,
             reach: crate::combat::missile::reach(master.radius, master.weapon_range),
@@ -221,7 +227,7 @@ impl Unit {
         };
         let (weapon_range, blast_level) = (master.weapon_range, master.blast_level);
         self.launch(c, aimed, &shot)?;
-        if !matches!(self.life.master_id, 73 | 559) {
+        if !matches!(self.life.master_id, ids::ID_73 | ids::ID_559) {
             self.post_own(ACTION_EXECUTED, [600, aimed.target, 0])?;
         }
         // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
@@ -275,18 +281,22 @@ impl Unit {
             building.then_some(aimed.position.ground()),
         );
         let volley = master.volley_missile.and_then(|id| masters.get(id));
-        let made = match volley {
-            Some(v) => v,
-            None if 0 <= master.missile => masters.get(master.missile).ok_or(
-                GenieError::unsupported("a missile its player's masters do not have"),
-            )?,
-            None => {
-                return Err(GenieError::unsupported(
-                    "a volley's extra missile of a master without a missile",
-                ));
-            }
-        };
-        if matches!(made.id, 527 | 528) {
+        let made =
+            match volley {
+                Some(v) => v,
+                None if master.missile.is_some() => master
+                    .missile
+                    .and_then(|m| masters.get(m))
+                    .ok_or(GenieError::unsupported(
+                        "a missile its player's masters do not have",
+                    ))?,
+                None => {
+                    return Err(GenieError::unsupported(
+                        "a volley's extra missile of a master without a missile",
+                    ));
+                }
+            };
+        if matches!(made.id, ids::ID_527 | ids::ID_528) {
             return Err(GenieError::unsupported(
                 "a volley's extra missile of master 527 or 528 (its attack count)",
             ));
@@ -311,7 +321,7 @@ impl Unit {
             attack_count: 0,
         };
         self.launch(c, aimed, &shot)?;
-        if !matches!(self.life.master_id, 73 | 559) {
+        if !matches!(self.life.master_id, ids::ID_73 | ids::ID_559) {
             self.post_own(ACTION_EXECUTED, [600, -1, 0])?;
         }
         Ok(())
@@ -475,7 +485,7 @@ impl Unit {
                 crate::combat::missile::Origin {
                     position: self.position(),
                     radius: made.radius,
-                    master: i32::from(self.life.master_id),
+                    master: i32::from(self.life.master_id.get()),
                     owner: c.player.index() as i32,
                 }
             } else {
@@ -511,7 +521,7 @@ impl Unit {
                 attribute_type: held.0,
                 amount: held.1,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
-                death_spawn: 0 <= made.death_spawns[0],
+                death_spawn: made.death_spawns[0].is_some(),
                 remains,
                 death_facets: None,
                 inside: None,
@@ -585,7 +595,7 @@ impl Aimed {
 pub(crate) fn armed(master: &Master, firepower: f32) -> bool {
     master.kind != BUILDING
         || matches!(master.class, class::CLASS_51 | class::CLASS_54)
-        || master.missile != -1
+        || master.missile.is_some()
         || ARMED_FIREPOWER < firepower
 }
 
@@ -609,7 +619,7 @@ pub(crate) struct Fired {
 /// its reach (`+0x990`), whether its action has the object as its shooter (else none), what its
 /// aim reads of the firing object (or the missile) and the attack count the aim sees.
 pub(crate) struct Shot {
-    pub(crate) made: i16,
+    pub(crate) made: MasterId,
     pub(crate) at: Position,
     pub(crate) point: Position,
     pub(crate) reach: f32,

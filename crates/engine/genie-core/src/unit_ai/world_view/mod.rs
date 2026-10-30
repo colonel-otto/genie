@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
@@ -52,7 +53,7 @@ pub(crate) struct DropWorld<'a> {
 pub(crate) struct Wait {
     pub(crate) target: i32,
     pub(crate) task: crate::objects::masters::Task,
-    pub(crate) switch: Option<i16>,
+    pub(crate) switch: Option<MasterId>,
 }
 
 /// The unit's repair command (slot 0x378, `FUN_141217c00`) as its unit AI gave it
@@ -65,7 +66,7 @@ pub(crate) enum RepairOrder {
     /// then the one the task search's swap group gave; then a Repair on the task found, if any.
     Start {
         target: i32,
-        switches: [Option<i16>; 2],
+        switches: [Option<MasterId>; 2],
         task: Option<crate::objects::masters::Task>,
     },
 }
@@ -79,7 +80,7 @@ pub(crate) enum RepairOrder {
 pub(crate) struct EnterOrder {
     pub(crate) target: i32,
     pub(crate) task: crate::objects::masters::Task,
-    pub(crate) switch: Option<i16>,
+    pub(crate) switch: Option<MasterId>,
     pub(crate) under_artifact: bool,
 }
 

@@ -3,7 +3,8 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::objects::masters::ids::{RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
+use crate::objects::masters::MasterId;
+use crate::objects::masters::ids::{self, RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
 use crate::objects::masters::{ClassId, Master, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -28,13 +29,14 @@ impl World {
     pub(super) fn upgrade_master(
         &mut self,
         p: PlayerId,
-        from: i16,
-        to: i16,
+        (from, to): (Option<MasterId>, Option<MasterId>),
         mode: i16,
         object: Option<i32>,
     ) -> Result<(), GenieError> {
         self.all_garrison_volleys(p, false)?;
-        self.upgrade_objects(p, from, to, mode, object)?;
+        if let (Some(from), Some(to)) = (from, to) {
+            self.upgrade_objects(p, from, to, mode, object)?;
+        }
         self.all_garrison_volleys(p, true)
     }
 
@@ -56,8 +58,8 @@ impl World {
     pub(crate) fn upgrade_objects(
         &mut self,
         p: PlayerId,
-        from: i16,
-        to: i16,
+        from: MasterId,
+        to: MasterId,
         mode: i16,
         object: Option<i32>,
     ) -> Result<(), GenieError> {
@@ -69,11 +71,13 @@ impl World {
         };
         // the dead unit master whose objects take masters of their own: `from`'s when `to`'s
         // differs by its copy id
-        let dead = masters.get(old.death_spawns[0]).filter(|d| {
-            masters
-                .get(new.death_spawns[0])
-                .is_some_and(|e| d.copy_id != e.copy_id)
-        });
+        let dead = old.death_spawns[0]
+            .and_then(|id| masters.get(id))
+            .filter(|d| {
+                new.death_spawns[0]
+                    .and_then(|id| masters.get(id))
+                    .is_some_and(|e| d.copy_id != e.copy_id)
+            });
         let dead = dead.cloned();
         let keep = mode == -1 || mode == 3;
         let (old, new) = (old.clone(), new.clone());
@@ -125,7 +129,7 @@ impl World {
     fn upgrade_walk(
         &mut self,
         p: PlayerId,
-        (from, mode, keep): (i16, i16, bool),
+        (from, mode, keep): (MasterId, i16, bool),
         Masters { old, new, dead }: Masters<'_>,
     ) -> Result<(), GenieError> {
         use crate::orders::Place;
@@ -164,8 +168,13 @@ impl World {
     }
 
     /// The upgrades to 0x67f and 0x6a1 move the tracker's list of `from` (`FUN_14104fd10`).
-    fn track_move_upgraded(&mut self, p: PlayerId, from: i16, to: i16) -> Result<(), GenieError> {
-        if matches!(to, 0x67f | 0x6a1) {
+    fn track_move_upgraded(
+        &mut self,
+        p: PlayerId,
+        from: MasterId,
+        to: MasterId,
+    ) -> Result<(), GenieError> {
+        if matches!(to, ids::ID_1663 | ids::ID_1697) {
             self.track_move_all(p, from, to)?;
         }
         Ok(())
@@ -188,12 +197,14 @@ impl World {
         i: usize,
         old: &Master,
     ) -> Result<(), GenieError> {
-        let dead = player_master(&self.masters, p, old.death_spawns[0]).cloned();
+        let dead = old.death_spawns[0]
+            .and_then(|id| player_master(&self.masters, p, id))
+            .cloned();
         let u = self.players.live_mut(p, i)?;
         if u.own_master.is_none() {
             u.own_master = Some(Box::new(old.clone()));
         }
-        if u.dead_master.is_none() && 0 <= old.death_spawns[0] {
+        if u.dead_master.is_none() && old.death_spawns[0].is_some() {
             u.dead_master = dead
                 .filter(|d| crate::ownership::change::DEAD_COPY_TYPES.contains(&d.kind))
                 .map(Box::new);
@@ -215,13 +226,16 @@ impl World {
     pub(super) fn spawn_at(
         &mut self,
         p: PlayerId,
-        master: i16,
-        at: i16,
+        (master, at): (Option<MasterId>, Option<MasterId>),
         count: i16,
     ) -> Result<(), GenieError> {
-        let has = |q: usize, id: i16| self.masters.get(q).is_some_and(|m| m.get(id).is_some());
-        let building =
-            player_master(&self.masters, p, at).is_some_and(|m| m.kind == master_type::BUILDING);
+        let has = |q: usize, id: MasterId| self.masters.get(q).is_some_and(|m| m.get(id).is_some());
+        let building = at
+            .and_then(|at| player_master(&self.masters, p, at))
+            .is_some_and(|m| m.kind == master_type::BUILDING);
+        let (Some(master), Some(at)) = (master, at) else {
+            return Ok(());
+        };
         if !building || !(has(p.index(), master) || has(0, master)) || count <= 0 {
             return Ok(());
         }
@@ -334,7 +348,7 @@ impl World {
             .then(|| ClassId::try_from(unit - 900).ok())
             .flatten();
         for m in masters.iter_mut() {
-            let named = class.map_or(m.id == unit, |c| m.class == c);
+            let named = class.map_or_else(|| m.id.get() == unit, |c| m.class == c);
             if !named || m.kind < master_type::COMBAT {
                 continue;
             }

@@ -7,7 +7,7 @@ use getset::CopyGetters;
 /// A master's id: the `.dat`'s unit id, the place of the master in a player's masters
 /// ([`crate::objects::masters::Master::id`]), so 0 or more. A field that holds −1 for none
 /// holds `Option<MasterId>` ([`MasterId::of_field`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, CopyGetters)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, CopyGetters)]
 pub struct MasterId(
     /// Its value, the master's place in a player's masters.
     #[getset(get_copy = "pub")]
@@ -17,6 +17,18 @@ pub struct MasterId(
 impl MasterId {
     /// The value a field takes for none.
     const NONE: i16 = -1;
+
+    /// A master the code names, in a constant: only [`crate::objects::masters::ids`] makes them.
+    pub(crate) const fn named(value: i16) -> Self {
+        assert!(0 <= value, "a negative master id");
+        Self(value)
+    }
+
+    /// Its place in a table by master id.
+    #[must_use]
+    pub const fn index(self) -> usize {
+        self.0.unsigned_abs() as usize
+    }
 
     /// The master of a raw field that holds −1 for none.
     ///
@@ -29,10 +41,32 @@ impl MasterId {
             .transpose()
     }
 
+    /// The master a data field names, none for a negative value: the `.dat` and the save hold −1
+    /// for a master that is not there, and the game's lookup of a negative id finds none.
+    #[must_use]
+    pub fn of_data(value: i16) -> Option<Self> {
+        (0 <= value).then_some(Self(value))
+    }
+
     /// The value of a field that holds −1 for none.
     #[must_use]
-    pub fn field(master: Option<Self>) -> i16 {
-        master.map_or(Self::NONE, |m| m.0)
+    pub const fn field(master: Option<Self>) -> i16 {
+        match master {
+            Some(m) => m.0,
+            None => Self::NONE,
+        }
+    }
+}
+
+impl std::fmt::Display for MasterId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl genie_diff::Diff for MasterId {
+    fn diff(&self, other: &Self, d: &mut genie_diff::Differ) {
+        d.equal(self, other);
     }
 }
 

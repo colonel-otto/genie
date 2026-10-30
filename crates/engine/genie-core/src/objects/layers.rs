@@ -312,6 +312,7 @@ mod tests {
     use super::*;
     use crate::map::spatial::Placed;
     use crate::objects::masters::class;
+    use crate::objects::masters::ids;
     use crate::players::PlayerId;
     use crate::test_ids::object_id;
 
@@ -329,7 +330,7 @@ mod tests {
                 radius: [0.2, 0.2],
                 class: class::VILLAGER,
                 player: PlayerId::new(1),
-                master: 83,
+                master: ids::VILLAGER_MALE,
                 obstruction_type: 0,
                 buildable_on: 0,
                 tall: true,

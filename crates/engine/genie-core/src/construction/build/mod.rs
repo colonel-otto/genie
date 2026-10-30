@@ -17,6 +17,7 @@ use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
+use crate::objects::masters::{MasterId, ids};
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -228,6 +229,7 @@ impl Completion<'_> {
             if 0 <= resource && 0 <= near {
                 let has = i16::try_from(near)
                     .ok()
+                    .and_then(MasterId::of_data)
                     .and_then(|m| self.masters?.get(m))
                     .is_some();
                 if has {
@@ -238,7 +240,7 @@ impl Completion<'_> {
                 part.attributes.push((resource as i16, amount));
             }
             // the game mode is not the editor's (4) in a game
-            part.pasture = matches!(master.id, 1893 | 1897);
+            part.pasture = matches!(master.id, ids::PASTURE_MANGROVE | ids::PASTURE);
         }
         part.cart = self.ai && master.tasks.iter().any(|t| t.action_type == CART_TASK);
         Ok(part)
@@ -255,7 +257,7 @@ pub const CART_TASK: i16 = 0x99;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StackUnit {
     /// The master (`+0x986`; master 1889 on mangrove or rice terrain, `+0xcd0`, makes 1893).
-    pub master: i16,
+    pub master: MasterId,
     /// The building's place.
     pub at: Position,
     /// Its master's hit points (`+0x530`, a short) less its own.
@@ -288,6 +290,7 @@ pub(crate) fn show_built(
 #[cfg(test)]
 mod built_sprite_tests {
     use super::*;
+
     use crate::objects::sprite::{ActiveSprite, Graphic};
 
     /// The completion's sprite (`FUN_1411dbb70`): the foundation's construction sprite gives way
@@ -329,7 +332,7 @@ pub(crate) struct BuildReads {
     /// construction: the update reads and works it through the world.
     pub(crate) site: Option<i32>,
     /// The foundation's master, when the builder's player holds the foundation.
-    pub(crate) built: Option<i16>,
+    pub(crate) built: Option<MasterId>,
     /// The foundation's `+0xcb0`: the object its completion's stack unit made
     /// ([`crate::objects::unit::Unit::stack_made`]).
     pub(crate) stack_made: Option<i32>,
@@ -355,7 +358,11 @@ pub(crate) struct BuildReads {
 }
 
 /// The fishing ships that work the fish traps they build (`FUN_1411945a0`: 13, 2356, 2171).
-const FISHING_SHIPS: [i16; 3] = [13, 2356, 2171];
+const FISHING_SHIPS: [MasterId; 3] = [
+    MasterId::named(13),
+    MasterId::named(2356),
+    MasterId::named(2171),
+];
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
 const EXTRA_BUILDER: f32 = crate::math::image::build::EXTRA_BUILDER;
@@ -405,7 +412,9 @@ mod stack_tests {
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{BuildingMaster, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::test_ids::opt_master;
     use crate::world::{Player, World};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
@@ -417,14 +426,14 @@ mod stack_tests {
         head: i16,
         annexes: &[(i16, [f32; 2])],
     ) -> Master {
-        let mut slots = [-1; 4];
+        let mut slots = [None; 4];
         let mut offsets = [[0.0; 2]; 4];
         for (k, &(a, o)) in annexes.iter().enumerate() {
-            slots[k] = a;
+            slots[k] = opt_master(a);
             offsets[k] = o;
         }
         Master {
-            id,
+            id: master_id(id),
             kind: 80,
             class: class::BUILDING,
             radius: [r, r],
@@ -433,16 +442,16 @@ mod stack_tests {
             obstruction_type: kind,
             obstruction_class: 2,
             build_time: bt,
-            trained_at: vec![-1],
+            trained_at: vec![master_id(9999)],
             hit_points: hp,
             building: Some(BuildingMaster {
-                stack_unit: -1,
+                stack_unit: None,
                 foundation_terrain: -1,
                 tech: -1,
                 annexes: slots,
                 annex_offsets: offsets,
-                head_unit: head,
-                transform_unit: -1,
+                head_unit: opt_master(head),
+                transform_unit: None,
                 ..BuildingMaster::default()
             }),
             ..Master::default()
@@ -457,7 +466,7 @@ mod stack_tests {
     fn masters() -> Masters {
         let mut foundation = building(621, (2.0, 4.0, 2), (150, 2400), -1, &[]);
         if let Some(b) = foundation.building.as_mut() {
-            b.stack_unit = 109;
+            b.stack_unit = Some(ids::TOWN_CENTRE);
             b.disappears_when_built = true;
         }
         let mut tc = building(
@@ -473,7 +482,7 @@ mod stack_tests {
             ],
         );
         tc.storage = vec![(4, 5.0, 4), (506, 1.0, 16), (-1, 0.0, 0)];
-        tc.volley_missile = Some(54);
+        tc.volley_missile = Some(master_id(54));
         let mut empty = building(890, (0.0, 4.0, 5), (-10, -1), 109, &[]);
         empty.class = class::WALL;
         Masters::new([
@@ -504,7 +513,7 @@ mod stack_tests {
                 class: Class::Animated,
                 state: 0,
                 hp: 2399.0,
-                master_id: 621,
+                master_id: ids::TOWN_CENTRE_621,
                 ..Lifecycle::default()
             },
             construction: Some(Construction {
@@ -557,7 +566,7 @@ mod stack_tests {
                 radius: [2.0, 2.0],
                 class: class::BUILDING,
                 player: PlayerId::new(1),
-                master: 621,
+                master: ids::TOWN_CENTRE_621,
                 obstruction_type: 2,
                 buildable_on: 0,
                 tall: true,
@@ -583,7 +592,7 @@ mod stack_tests {
             let castle = building(82, (2.0, 4.0, 2), (150, 2400), -1, &[]);
             *ms = Masters::new(ms.iter().cloned().chain([castle]));
         }
-        t.players[1].objects[0].life.master_id = 82;
+        t.players[1].objects[0].life.master_id = ids::CASTLE;
         assert_eq!(t.work_building(8759, 1.0), Ok(false));
         assert_eq!(
             t.players[1].history.events,
@@ -615,7 +624,7 @@ mod stack_tests {
         let ids: Vec<(i32, i16, u8)> = t.players[1]
             .objects
             .iter()
-            .map(|u| (u.id.get(), u.life.master_id, u.life.state))
+            .map(|u| (u.id.get(), u.life.master_id.get(), u.life.state))
             .collect();
         assert_eq!(
             ids,
@@ -672,17 +681,17 @@ mod stack_tests {
         for (height, record) in [(0.0, None), (1.0, Some((5, 2)))] {
             let mut t = world();
             for ms in &mut t.masters {
-                let m = ms.get_mut(109).unwrap();
+                let m = ms.get_mut(ids::TOWN_CENTRE).unwrap();
                 m.build_time = 0;
                 m.obstruction_type = 5;
                 m.obstruction_class = 2;
                 m.height = height;
-                m.building.as_mut().unwrap().annexes = [-1; 4];
+                m.building.as_mut().unwrap().annexes = [None; 4];
             }
             let (id, _) = t
                 .make_building(
                     PlayerId::new(1),
-                    109,
+                    ids::TOWN_CENTRE,
                     Ok(None),
                     Position::new(80.0, 80.0, 0.0),
                 )
@@ -702,7 +711,7 @@ mod stack_tests {
             t.world_time = 5000;
             for ms in &mut t.masters {
                 for id in [621, 109] {
-                    let m = ms.get_mut(id).unwrap();
+                    let m = ms.get_mut(master_id(id)).unwrap();
                     m.class = class::GATE;
                     m.storage.clear();
                     m.volley_missile = None;
@@ -725,7 +734,7 @@ mod stack_tests {
                         weapon_range: 0.0,
                     });
                     if let Some(b) = m.building.as_mut() {
-                        b.annexes = [-1; 4];
+                        b.annexes = [None; 4];
                     }
                 }
             }
@@ -737,7 +746,7 @@ mod stack_tests {
                 PlayerId::new(1),
                 8759,
                 StackUnit {
-                    master: 109,
+                    master: ids::TOWN_CENTRE,
                     at: Position::new(54.0, 147.0, 0.0),
                     hp_lost: 0.0,
                 },

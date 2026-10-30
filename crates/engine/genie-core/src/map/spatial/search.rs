@@ -522,7 +522,7 @@ pub(super) fn closest_kept(
     if filter.group != -1 && i32::from(p.class.get()) != filter.group {
         return Ok(false);
     }
-    if filter.master != -1 && i32::from(p.master) != filter.master {
+    if filter.master != -1 && i32::from(p.master.get()) != filter.master {
         return Ok(false);
     }
     if filter.state != -1 && i32::from(seer.state) != filter.state {

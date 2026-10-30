@@ -1,6 +1,7 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
 use crate::map::Position;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::MISSILE;
 use crate::objects::masters::master_type::TREE;
@@ -361,7 +362,7 @@ pub(crate) const fn second_target_checked(
 /// No master of its own and none of `master_id` in `table`.
 pub(crate) fn object_master<'a>(
     own: Option<&'a Master>,
-    (id, master_id): (i32, i16),
+    (id, master_id): (i32, MasterId),
     table: Option<&'a Masters>,
 ) -> Result<&'a Master, GenieError> {
     own.or_else(|| table?.get(master_id)).ok_or_else(|| {
@@ -374,7 +375,11 @@ pub(crate) fn object_master<'a>(
 /// `RGE_Action_Object::update` (`0x14106ac90`): the action list of an object past state 2 goes
 /// (`FUN_140a98620`), the Wonder's (master 276, `0x61b0` raw) only past state 5.
 pub(crate) const fn loses_actions(life: &Lifecycle) -> bool {
-    let last = if life.master_id == WONDER { 5 } else { 2 };
+    let last = if matches!(life.master_id, WONDER) {
+        5
+    } else {
+        2
+    };
     last < life.state
 }
 

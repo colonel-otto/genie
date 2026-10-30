@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::construction::build::construction::{completion_counts, hand_storage, lay_foundation};
 use crate::construction::build::{NO_CONSTRUCTION, NOT_HELD, StackUnit, held, show_built};
 use crate::map::spatial::Placed;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::ids::PASTURE_MANGROVE;
@@ -153,7 +154,7 @@ impl crate::world::World {
         building: &BuildingMaster,
         placed: &Placed,
     ) -> Result<(), GenieError> {
-        if building.stack_unit < 0 {
+        if building.stack_unit.is_none() {
             return Ok(());
         }
         self.pathing.removed(id);
@@ -166,7 +167,9 @@ impl crate::world::World {
             v.unlink_building(placed.position, master.radius)?;
         }
         let stack = StackUnit {
-            master: stack_master(master, building, rice),
+            master: stack_master(master, building, rice).ok_or(GenieError::unreachable(
+                "a completed stack unit without a master",
+            ))?,
             at: placed.position,
             hp_lost: f32::from(master.hit_points) - hp,
         };
@@ -215,13 +218,13 @@ impl crate::world::World {
 
 /// The master a completed building's stack unit takes (`+0x986`): [`PASTURE_MANGROVE`] for master
 /// 1889 on mangrove or rice terrain (`rice`, `+0xcd0`), else its own.
-const fn stack_master(master: &Master, building: &BuildingMaster, rice: bool) -> i16 {
+fn stack_master(master: &Master, building: &BuildingMaster, rice: bool) -> Option<MasterId> {
     // The buildings' master type (80).
     // The masters and the class the end of the work treats apart: 621 and 1889 among the
     // foundations, class 39 among the builders, 1893 and 1897 (`id - 0x765 & !4 == 0`), the fish
     // trap 199 and farms (class 49, `FUN_141194b20`).
-    if master.id == PASTURE_1889 && 0 <= building.stack_unit && rice {
-        PASTURE_MANGROVE
+    if master.id == PASTURE_1889 && building.stack_unit.is_some() && rice {
+        Some(PASTURE_MANGROVE)
     } else {
         building.stack_unit
     }

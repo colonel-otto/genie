@@ -5,6 +5,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::{Player, World};
 use std::collections::BTreeMap;
@@ -24,7 +25,7 @@ fn the_tiles_beside_a_diagonal_follow_its_quarter() {
 fn on_map(
     x: f32,
     y: f32,
-    master: i16,
+    master: MasterId,
     class: ClassId,
     r: f32,
     buildable: u8,
@@ -69,52 +70,52 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     let objects = [
         (
             5,
-            on_map(10.5, 10.5, 1358, class::CLASS_5, 0.5, 1),
+            on_map(10.5, 10.5, master_id(1358), class::CLASS_5, 0.5, 1),
             seen(1.0, 0.0),
         ),
         (
             3,
-            on_map(10.2, 10.2, 1351, class::CLASS_5, 0.5, 1),
+            on_map(10.2, 10.2, master_id(1351), class::CLASS_5, 0.5, 1),
             seen(1.0, 0.0),
         ),
         (
             8,
-            on_map(11.2, 10.5, 349, class::TREE, 0.5, 0),
+            on_map(11.2, 10.5, master_id(349), class::TREE, 0.5, 0),
             seen(0.5, 1.0),
         ),
         (
             9,
-            on_map(11.5, 9.5, 350, class::TREE, 0.5, 0),
+            on_map(11.5, 9.5, master_id(350), class::TREE, 0.5, 0),
             seen(100.0, 1.0),
         ),
         (
             11,
-            on_map(11.7, 9.7, 350, class::TREE, 0.5, 0),
+            on_map(11.7, 9.7, master_id(350), class::TREE, 0.5, 0),
             seen(f32::NAN, 1.0),
         ),
         (
             4,
-            on_map(9.5, 10.5, 72, class::WALL, 0.5, 0),
+            on_map(9.5, 10.5, master_id(72), class::WALL, 0.5, 0),
             seen(100.0, 1.0),
         ),
         (
             6,
-            on_map(10.2, 11.5, 0x112, class::CLASS_11, 0.5, 1),
+            on_map(10.2, 11.5, master_id(0x112), class::CLASS_11, 0.5, 1),
             seen(1.0, 0.0),
         ),
         (
             7,
-            on_map(11.5, 11.5, 0x112, class::CLASS_11, 0.5, 1),
+            on_map(11.5, 11.5, master_id(0x112), class::CLASS_11, 0.5, 1),
             seen(1.0, 2.0),
         ),
         (
             10,
-            on_map(13.6, 10.5, 1358, class::CLASS_5, 0.5, 1),
+            on_map(13.6, 10.5, master_id(1358), class::CLASS_5, 0.5, 1),
             seen(1.0, 0.0),
         ),
         (
             12,
-            on_map(10.6, 10.6, 70, class::BUILDING, 1.0, 1),
+            on_map(10.6, 10.6, ids::HOUSE, class::BUILDING, 1.0, 1),
             seen(1.0, 0.0),
         ),
     ];
@@ -124,7 +125,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     let look: BTreeMap<i32, ClearLook> = objects.iter().map(|o| (o.0, o.2)).collect();
     let site = |class: ClassId, trees: bool| ClearingSite {
         player: PlayerId::new(1),
-        master: 70,
+        master: ids::HOUSE,
         class,
         radius: [1.0, 1.0],
         at: [10.5, 10.5],
@@ -172,7 +173,10 @@ fn the_clearing_reads_the_objects_on_its_tiles() {
         (5, 10.5, 5.9),
         (6, 10.5, 14.5),
     ] {
-        world.insert(object_id(id), on_map(x, y, 1358, class::CLASS_5, 0.5, 1));
+        world.insert(
+            object_id(id),
+            on_map(x, y, master_id(1358), class::CLASS_5, 0.5, 1),
+        );
     }
     assert_eq!(clearing_objects(&world, [10.5, 10.5]), [2, 3, 1, 6]);
     // at the map's corner the tiles start at 0 and end at its last
@@ -234,14 +238,14 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
         let x = 9.5 + 0.1 * k as f32;
         world.insert(
             object_id(*id),
-            on_map(x, 10.5, 1358, class::CLASS_5, 0.5, 1),
+            on_map(x, 10.5, master_id(1358), class::CLASS_5, 0.5, 1),
         );
     }
     let look: BTreeMap<i32, ClearLook> = looks.iter().copied().collect();
     let goes = |trees: bool| -> Vec<i32> {
         let s = ClearingSite {
             player: PlayerId::new(1),
-            master: 70,
+            master: ids::HOUSE,
             class: class::BUILDING,
             radius: [1.0, 1.0],
             at: [10.5, 10.5],
@@ -265,12 +269,12 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
 #[test]
 fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
     let farm = Master {
-        id: 50,
+        id: ids::FARM,
         class: class::FARM,
         ..Master::default()
     };
     let masters = crate::objects::masters::Masters::new([Master {
-        id: 68,
+        id: master_id(68),
         ..Master::default()
     }]);
     let built = Construction {
@@ -416,7 +420,7 @@ fn house() -> crate::map::spatial::Placed {
         radius: [1.0, 1.0],
         class: class::BUILDING,
         player: PlayerId::new(2),
-        master: 70,
+        master: ids::HOUSE,
         obstruction_type: 2,
         buildable_on: 0,
         tall: true,
@@ -577,7 +581,7 @@ fn foundation_at(id: i32, at: Position, life: Lifecycle, construction: Construct
 
 /// A building master `id` of class 3 without a stack unit, a foundation terrain or a
 /// technology, costing `cost`.
-fn built_master(id: i16, cost: Vec<(i16, i16, bool)>) -> Master {
+fn built_master(id: MasterId, cost: Vec<(i16, i16, bool)>) -> Master {
     Master {
         id,
         kind: 80,
@@ -586,16 +590,16 @@ fn built_master(id: i16, cost: Vec<(i16, i16, bool)>) -> Master {
         building: Some(crate::objects::masters::BuildingMaster {
             adjacent_mode: 0,
             disappears_when_built: false,
-            stack_unit: -1,
+            stack_unit: None,
             foundation_terrain: -1,
             tech: -1,
             garrison_type: 0,
             garrison_heal_rate: 0.0,
             garrison_repair_rate: 0.0,
-            annexes: [-1; 4],
+            annexes: [None; 4],
             annex_offsets: [[0.0; 2]; 4],
-            head_unit: -1,
-            transform_unit: -1,
+            head_unit: None,
+            transform_unit: None,
             destruction_sprite: -1,
             construction_sprite: -1,
         }),
@@ -656,7 +660,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         kinds,
         vec![vec![0.0; 40]; 5],
     ));
-    let mut master = built_master(70, vec![(1, 25, true), (4, 5, false)]);
+    let mut master = built_master(ids::HOUSE, vec![(1, 25, true), (4, 5, false)]);
     // a house's cost: 25 wood paid; the unpaid entry does not count
     master.clearance = [1.0, 1.0];
     master.terrain_bonus = 4;
@@ -667,7 +671,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
     let life = Lifecycle {
         state: 0,
         hp: 548.0,
-        master_id: 70,
+        master_id: ids::HOUSE,
         ..Lifecycle::default()
     };
     let c = Construction {
@@ -704,7 +708,11 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
 fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
     use crate::players::history::{CASTLE_BUILT, WONDER_BUILT};
     /// The attributes the completion of master `id` gave, by index, and its history events.
-    fn complete(id: i16, cost: Vec<(i16, i16, bool)>, main: bool) -> (Vec<(usize, f32)>, Vec<u8>) {
+    fn complete(
+        id: MasterId,
+        cost: Vec<(i16, i16, bool)>,
+        main: bool,
+    ) -> (Vec<(usize, f32)>, Vec<u8>) {
         let mut world = small_map();
         world.insert(
             object_id(10026),
@@ -751,14 +759,14 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
     let wonder = || vec![(0, 1000, true), (1, 1000, true), (2, 1000, false)];
     for main in [false, true] {
         assert_eq!(
-            complete(82, castle(), main),
+            complete(ids::CASTLE, castle(), main),
             (
                 vec![(134, 1.0), (173, 1.0), (184, 650.0)],
                 vec![CASTLE_BUILT]
             )
         );
         assert_eq!(
-            complete(276, wonder(), main),
+            complete(ids::WONDER, wonder(), main),
             (
                 vec![(42, 1.0), (174, 1.0), (184, 2000.0)],
                 vec![WONDER_BUILT]
@@ -766,11 +774,11 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
         );
     }
     assert_eq!(
-        complete(104, vec![(1, 175, true)], false),
+        complete(ids::MONASTERY, vec![(1, 175, true)], false),
         (vec![(52, 1.0), (98, 175.0), (165, 175.0)], vec![])
     );
     assert_eq!(
-        complete(104, vec![(1, 175, true)], true),
+        complete(ids::MONASTERY, vec![(1, 175, true)], true),
         (vec![(52, 1.0)], vec![])
     );
 }
@@ -786,7 +794,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     let life = Lifecycle {
         state: 0,
         hp: 1.0,
-        master_id: 70,
+        master_id: ids::HOUSE,
         ..Lifecycle::default()
     };
     let c = Construction {
@@ -800,7 +808,11 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
         sprite_override: false,
     };
     let site = foundation_at(10028, house().position, life, c);
-    let mut t = site_world(world, vec![built_master(70, Vec::new())], vec![site]);
+    let mut t = site_world(
+        world,
+        vec![built_master(ids::HOUSE, Vec::new())],
+        vec![site],
+    );
     let rate = 1.0f32 * 1.0 * 0.021;
     assert_eq!(t.work_building(10028, rate), Ok(true));
     let h = t.players[1].objects.by_id(10028).unwrap();
@@ -819,14 +831,14 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
 fn the_work_starts_the_desolid_annexes_first() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
-    let at = |x: f32, id: i16| crate::map::spatial::Placed {
+    let at = |x: f32, id: MasterId| crate::map::spatial::Placed {
         position: Position::new(x, 88.0, 0.0),
         master: id,
         ..house()
     };
-    world.insert(object_id(10028), at(30.0, 665));
-    world.insert(object_id(10029), at(28.5, 1192));
-    world.insert(object_id(10030), at(31.5, 1192));
+    world.insert(object_id(10028), at(30.0, master_id(665)));
+    world.insert(object_id(10029), at(28.5, master_id(1192)));
+    world.insert(object_id(10030), at(31.5, master_id(1192)));
     world.set_annex(10029, Some(10028));
     world.set_annex(10030, Some(10028));
     let foundation = |desolid| Construction {
@@ -852,18 +864,18 @@ fn the_work_starts_the_desolid_annexes_first() {
             life(master),
             foundation(desolid),
         );
-        u.annex_of = (master == 1192).then_some(10028);
+        u.annex_of = (master == master_id(1192)).then_some(10028);
         u
     };
-    let mut post = built_master(1192, Vec::new());
+    let mut post = built_master(master_id(1192), Vec::new());
     post.volley_fire = 2.0;
     let mut t = site_world(
         world,
-        vec![built_master(665, Vec::new()), post],
+        vec![built_master(master_id(665), Vec::new()), post],
         vec![
-            unit(10028, 30.0, 665, true),
-            unit(10029, 28.5, 1192, true),
-            unit(10030, 31.5, 1192, false),
+            unit(10028, 30.0, master_id(665), true),
+            unit(10029, 28.5, master_id(1192), true),
+            unit(10030, 31.5, master_id(1192), false),
         ],
     );
     assert_eq!(t.work_building(10028, 0.021), Ok(true));
@@ -948,14 +960,14 @@ fn an_annex_s_work_goes_to_its_main_building() {
             object_id(10028),
             crate::map::spatial::Placed {
                 position: Position::new(2.0, 2.0, 0.0),
-                master: 665,
+                master: master_id(665),
                 ..house()
             },
         );
         let life = Lifecycle {
             state: 0,
             hp: 1.0,
-            master_id: 1192,
+            master_id: master_id(1192),
             ..Lifecycle::default()
         };
         let mut post = foundation_at(10029, Position::new(1.0, 2.0, 0.0), life, foundation);
@@ -964,14 +976,14 @@ fn an_annex_s_work_goes_to_its_main_building() {
             10028,
             Position::new(2.0, 2.0, 0.0),
             Lifecycle {
-                master_id: 665,
+                master_id: master_id(665),
                 ..life
             },
             main,
         );
         let masters = vec![
-            built_master(665, Vec::new()),
-            built_master(1192, Vec::new()),
+            built_master(master_id(665), Vec::new()),
+            built_master(master_id(1192), Vec::new()),
         ];
         let mut t = site_world(world, masters, vec![gate, post]);
         let going = t.work_building(10029, amount);

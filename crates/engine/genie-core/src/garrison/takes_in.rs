@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::garrison::{CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -27,11 +28,11 @@ pub fn class_has_flags(class: ClassId, flags: u32) -> bool {
 
 /// The unit masters whose own rules `FUN_14120eb10` keeps apart from their class's (the game
 /// compares their ids, + 0x609c).
-pub(super) const MASTER_1263: i16 = 1263;
-pub(super) const MASTER_775: i16 = 775;
-pub(super) const MASTER_1715: i16 = 1715;
-pub(super) const MASTER_1811: i16 = 1811;
-pub(super) const MASTER_1822: i16 = 1822;
+pub(super) const MASTER_1263: MasterId = MasterId::named(1263);
+pub(super) const MASTER_775: MasterId = MasterId::named(775);
+pub(super) const MASTER_1715: MasterId = MasterId::named(1715);
+pub(super) const MASTER_1811: MasterId = MasterId::named(1811);
+pub(super) const MASTER_1822: MasterId = MasterId::named(1822);
 
 /// Whether `garrison_type` (a building master's `+0x9bc`) takes in a unit of `class` and master
 /// `id` (the switch of `FUN_14120eb10` on the class): bit 0 villagers (classes 4, 19, 59), bit 1
@@ -41,7 +42,7 @@ pub(super) const MASTER_1822: i16 = 1822;
 /// 1263, 775, 1715 and 1822 and bit 3 for masters 1811 and 1808, whatever their class. The task
 /// finder's copy of the switch (`FUN_1412784d0`) leaves class 42 out (`with_42` false).
 #[must_use]
-pub fn garrison_type_takes(garrison_type: u8, class: ClassId, id: i16, with_42: bool) -> bool {
+pub fn garrison_type_takes(garrison_type: u8, class: ClassId, id: MasterId, with_42: bool) -> bool {
     let bit = |b: u8| garrison_type & (1 << b) != 0;
     let by_class = match class {
         class::CLASS_0 | class::CLASS_44 => bit(1),
@@ -117,7 +118,7 @@ impl World {
         &self,
         building: i32,
         player: PlayerId,
-        master: i16,
+        master: Option<MasterId>,
     ) -> Result<bool, GenieError> {
         self.takes_in_as(building, player, master, true, true)
     }
@@ -138,11 +139,12 @@ impl World {
         &self,
         building: i32,
         player: PlayerId,
-        master: i16,
+        master: Option<MasterId>,
         others: bool,
         unchecked: bool,
     ) -> Result<bool, GenieError> {
-        let Some(unit) = player_master(&self.masters, player, master) else {
+        let Some(unit) = master.and_then(|master| player_master(&self.masters, player, master))
+        else {
             return Ok(false);
         };
         let Some((bp, b)) = self.object(building) else {

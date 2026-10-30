@@ -1,6 +1,7 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -20,7 +21,7 @@ pub struct ClearingSite {
     /// The building's owner.
     pub player: PlayerId,
     /// Its master's id.
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's class (`+0x410`).
     pub class: ClassId,
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
@@ -71,7 +72,11 @@ pub struct Cleared {
 
 /// The flag masters (`FUN_140fde270`: 274, 1689 and 1785), which the footprint clearing leaves
 /// alone unless their master has height.
-pub(super) const FLAG_MASTERS: [i16; 3] = [0x112, 0x699, 0x6f9];
+pub(super) const FLAG_MASTERS: [MasterId; 3] = [
+    MasterId::named(0x112),
+    MasterId::named(0x699),
+    MasterId::named(0x6f9),
+];
 /// The tiles the footprint clearing scans each way of the building's place (`DAT_142eb0f48`).
 pub(crate) const CLEARING_REACH: f32 = crate::math::image::build::CLEARING_REACH;
 /// The hit points a tree at most has that the builder's clearing takes (`DAT_14330eb8c`).

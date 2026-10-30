@@ -561,8 +561,10 @@ mod tests {
     use super::*;
     use crate::construction::build::Construction;
     use crate::map::spatial::Obstruction;
+    use crate::objects::masters::ids;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
     use crate::world::Player;
@@ -623,7 +625,7 @@ mod tests {
         ] {
             for &(i, master) in objects {
                 let u = &mut t.players[p].objects[i];
-                u.life.master_id = master;
+                u.life.master_id = master_id(master);
                 u.life.hp = 25.0;
                 u.pasture = -1;
                 u.my_pasture = -1;
@@ -633,20 +635,20 @@ mod tests {
         t.players[1].objects[2].life.amount = 100.0;
         let masters = Masters::new([
             Master {
-                id: 83,
+                id: ids::VILLAGER_MALE,
                 class: class::VILLAGER,
                 kind: 70,
                 ..Master::default()
             },
             Master {
-                id: 70,
+                id: ids::HOUSE,
                 class: class::BUILDING,
                 kind: 80,
                 cost: vec![(1, 25, true), (4, 1, false)],
                 ..Master::default()
             },
             Master {
-                id: 594,
+                id: master_id(594),
                 class: class::LIVESTOCK,
                 kind: 70,
                 ..Master::default()
@@ -708,7 +710,7 @@ mod tests {
     fn a_deleted_town_centre_foundation_clears_no_zones_without_a_treaty() {
         let town_centre = |t: &mut World| {
             for m in &mut t.masters {
-                let mut tc = m.get(70).unwrap().clone();
+                let mut tc = m.get(ids::HOUSE).unwrap().clone();
                 tc.id = TOWN_CENTRE_621;
                 *m = Masters::new(m.iter().cloned().chain([tc]));
             }
@@ -738,12 +740,14 @@ mod clearing_tests {
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{Master, Masters};
+    use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::world::Player;
 
     /// A live object `id` of `master` at `x`, `y`, outside any pasture.
-    fn object(id: i32, master: i16, x: f32, y: f32) -> Unit {
+    fn object(id: i32, master: MasterId, x: f32, y: f32) -> Unit {
         Unit {
             id: object_id(id),
             body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
@@ -789,16 +793,16 @@ mod clearing_tests {
         };
         Masters::new([
             Master {
-                id: 70,
+                id: ids::HOUSE,
                 kind: 80,
                 class: class::BUILDING,
                 radius: [1.0, 1.0],
                 ..Master::default()
             },
-            deco(1351),
-            deco(1358),
+            deco(master_id(1351)),
+            deco(master_id(1358)),
             Master {
-                id: 43,
+                id: master_id(43),
                 kind: 30,
                 class: class::CLASS_11,
                 radius: [0.2, 0.2],
@@ -807,7 +811,7 @@ mod clearing_tests {
                 ..Master::default()
             },
             Master {
-                id: 254,
+                id: master_id(254),
                 kind: 70,
                 class: class::CLASS_40,
                 radius: [0.5, 0.5],
@@ -818,18 +822,18 @@ mod clearing_tests {
                 ..Master::default()
             },
             Master {
-                id: 357,
+                id: ids::ID_357,
                 kind: 80,
                 class: class::CLASS_11,
                 radius: [1.5, 1.5],
                 buildable_on: 1,
                 building: Some(crate::objects::masters::BuildingMaster {
-                    stack_unit: -1,
+                    stack_unit: None,
                     foundation_terrain: -1,
                     tech: -1,
-                    annexes: [-1; 4],
-                    head_unit: -1,
-                    transform_unit: -1,
+                    annexes: [None; 4],
+                    head_unit: None,
+                    transform_unit: None,
                     ..crate::objects::masters::BuildingMaster::default()
                 }),
                 ..Master::default()
@@ -887,15 +891,15 @@ mod clearing_tests {
     #[test]
     fn a_footprint_clearing_wakes_two_sleeping_decorations_in_their_tile_s_order() {
         let mut t = world(
-            vec![object(1, 1351, 3.5, 3.5)],
+            vec![object(1, master_id(1351), 3.5, 3.5)],
             vec![
-                object(6084, 1358, 10.6, 10.6),
-                object(6083, 1351, 10.4, 10.4),
+                object(6084, master_id(1358), 10.6, 10.6),
+                object(6083, master_id(1351), 10.4, 10.4),
             ],
             vec![],
         );
         assert_eq!(t.spatial.tiles().list(10, 10), [6084, 6083]);
-        t.clear_footprint(PlayerId::new(1), 70, [10.5, 10.5], false)
+        t.clear_footprint(PlayerId::new(1), ids::HOUSE, [10.5, 10.5], false)
             .unwrap();
         let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id.get()).collect();
         assert_eq!(ids, [1, 6084, 6083]);
@@ -911,12 +915,12 @@ mod clearing_tests {
     /// its owner (`FUN_14119d710`).
     #[test]
     fn a_cleared_corpse_goes_to_state_7_and_its_flag_32_storage_leaves() {
-        let mut corpse = object(30, 43, 10.5, 10.5);
+        let mut corpse = object(30, master_id(43), 10.5, 10.5);
         corpse.life.state = 5;
         corpse.life.class = Class::Animated;
         let mut t = world(vec![], vec![], vec![corpse]);
         t.players[1].attributes[7] = 3.0;
-        t.clear_footprint(PlayerId::new(1), 70, [10.5, 10.5], false)
+        t.clear_footprint(PlayerId::new(1), ids::HOUSE, [10.5, 10.5], false)
             .unwrap();
         let u = &t.players[1].objects[0];
         assert_eq!((u.life.state, u.life.hp), (7, 0.0));
@@ -928,10 +932,10 @@ mod clearing_tests {
     /// record and its height and sets `+0x686`; it gets no refund (only state 3 from 2 does).
     #[test]
     fn a_cleared_pile_loses_its_record_in_its_destroy() {
-        let mut t = world(vec![object(40, 254, 10.5, 10.5)], vec![], vec![]);
+        let mut t = world(vec![object(40, master_id(254), 10.5, 10.5)], vec![], vec![]);
         t.players[0].attributes[98] = 5.0;
         assert!(t.spatial.get(40).unwrap().obstruction.is_some());
-        t.clear_footprint(PlayerId::new(1), 70, [10.5, 10.5], true)
+        t.clear_footprint(PlayerId::new(1), ids::HOUSE, [10.5, 10.5], true)
             .unwrap();
         let u = &t.players[0].objects[0];
         assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
@@ -946,8 +950,8 @@ mod clearing_tests {
     /// `set_state`, and its owner's watched list lets it go.
     #[test]
     fn a_cleared_dead_farm_goes_through_the_building_s_destroy() {
-        let mut t = world(vec![], vec![], vec![object(50, 357, 10.5, 10.5)]);
-        t.clear_footprint(PlayerId::new(1), 70, [10.5, 10.5], false)
+        let mut t = world(vec![], vec![], vec![object(50, ids::ID_357, 10.5, 10.5)]);
+        t.clear_footprint(PlayerId::new(1), ids::HOUSE, [10.5, 10.5], false)
             .unwrap();
         let u = &t.players[1].objects[0];
         assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
@@ -960,12 +964,15 @@ mod clearing_tests {
     #[test]
     fn the_base_set_state_lets_its_storage_go_and_wakes_a_sleeper() {
         let mut t = world(
-            vec![object(1, 1351, 3.5, 3.5)],
-            vec![object(2, 1358, 5.5, 5.5), object(3, 1358, 7.5, 7.5)],
+            vec![object(1, master_id(1351), 3.5, 3.5)],
+            vec![
+                object(2, master_id(1358), 5.5, 5.5),
+                object(3, master_id(1358), 7.5, 7.5),
+            ],
             vec![],
         );
         for m in [1351, 1358] {
-            t.masters[0].get_mut(m).unwrap().storage =
+            t.masters[0].get_mut(master_id(m)).unwrap().storage =
                 vec![(4, 2.0, 2), (5, 3.0, 16), (7, 1.0, 32), (-1, 9.0, 2)];
         }
         let at = |t: &World| [4, 5, 7].map(|i| t.players[0].attributes[i]);
@@ -1008,7 +1015,7 @@ mod clearing_tests {
             [(98, 70.0), (164, 70.0)]
         );
         let house = Master {
-            id: 70,
+            id: ids::HOUSE,
             kind: 80,
             ..unit
         };
@@ -1020,7 +1027,10 @@ mod clearing_tests {
             crate::objects::lifecycle::death_parts::refund_of(&house, Some(9)),
             []
         );
-        let castle = Master { id: 82, ..house };
+        let castle = Master {
+            id: ids::CASTLE,
+            ..house
+        };
         assert_eq!(
             crate::objects::lifecycle::death_parts::refund_of(&castle, None),
             [(98, 70.0)]

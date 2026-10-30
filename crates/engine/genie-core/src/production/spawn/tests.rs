@@ -1,7 +1,9 @@
 use super::*;
 use crate::commands::GatherPoint;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::unit::Unit;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -29,26 +31,26 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         vec![
             crate::world::Player {
                 sleeping: vec![
-                    unit(object_id(10), 349, 20.5, 20.5),
-                    unit(object_id(11), 349, 22.5, 20.5),
+                    unit(object_id(10), master_id(349), 20.5, 20.5),
+                    unit(object_id(11), master_id(349), 22.5, 20.5),
                 ]
                 .into(),
                 ..crate::world::Player::default()
             },
             crate::world::Player {
-                objects: vec![unit(object_id(99), 83, 18.0, 18.0)].into(),
+                objects: vec![unit(object_id(99), ids::VILLAGER_MALE, 18.0, 18.0)].into(),
                 ..crate::world::Player::default()
             },
         ],
     );
     let tree = crate::objects::masters::Master {
-        id: 349,
+        id: master_id(349),
         class: class::TREE,
         radius: [0.5, 0.5],
         ..crate::objects::masters::Master::default()
     };
     let villager = crate::objects::masters::Master {
-        id: 83,
+        id: ids::VILLAGER_MALE,
         class: class::VILLAGER,
         line_of_sight: 4.0,
         ..crate::objects::masters::Master::default()
@@ -61,7 +63,7 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         state: 1,
         point: Position::new(21.0, 21.0, 0.0),
         target: 5,
-        target_master: 349,
+        target_master: Some(master_id(349)),
     };
     assert_eq!(
         t.lost_gather_target(PlayerId::new(1), 0, g).unwrap(),
@@ -184,7 +186,7 @@ fn sheep(state: u8) -> Near {
         tall: true,
         kind: 70,
         class: class::LIVESTOCK,
-        master: 705,
+        master: master_id(705),
         buildable_on: 0,
         obstruction_type: 5,
         auto_gather: false,
@@ -262,7 +264,7 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
         radius: [1.0, 1.0],
         kind: 80,
         class: class::BUILDING,
-        master: 70,
+        master: ids::HOUSE,
         obstruction_type: 2,
         moving: false,
         player: PlayerId::new(2),
@@ -381,7 +383,7 @@ fn the_first_object_of_a_tile_s_list_reports_the_block() {
     let soldier = Near {
         id: 9521,
         class: class::CLASS_6,
-        master: 4,
+        master: master_id(4),
         ..sheep(2)
     };
     let at = |list: Vec<Near>| placement(&villager, &Flat(list), [106.5, 47.5], false).unwrap();
@@ -404,7 +406,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         let mut t = crate::world::tests::forage_world();
         // the villager's standing sprite (a graphic of ten frames, eight facets)
         for masters in &mut t.masters {
-            masters.get_mut(83).unwrap().standing_sprite = 300;
+            masters.get_mut(ids::VILLAGER_MALE).unwrap().standing_sprite = 300;
         }
         let _ = t.graphics.insert(
             300,
@@ -431,11 +433,12 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     };
     let mut t = world();
     let before = t.players[1].objects.len();
-    t.spawn(PlayerId::new(1), 2, 83, 1.0).unwrap();
+    t.spawn(PlayerId::new(1), 2, ids::VILLAGER_MALE, 1.0)
+        .unwrap();
     let p = &t.players[1];
     assert_eq!(p.objects.len(), before + 1);
     let made = p.objects.last().unwrap();
-    assert_eq!(made.life.master_id, 83);
+    assert_eq!(made.life.master_id, ids::VILLAGER_MALE);
     assert_eq!(
         p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()],
         2.0
@@ -468,7 +471,8 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         .unwrap()
         .building_orders
         .push(order);
-    t.spawn(PlayerId::new(1), 2, 83, 1.0).unwrap();
+    t.spawn(PlayerId::new(1), 2, ids::VILLAGER_MALE, 1.0)
+        .unwrap();
     let made = t.players[1].objects.last().unwrap();
     let queued = made
         .ai
@@ -490,12 +494,18 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     );
     let mut t = world();
     t.players[1].computer = true;
-    assert!(t.spawn(PlayerId::new(1), 2, 83, 1.0).is_err());
+    assert!(
+        t.spawn(PlayerId::new(1), 2, ids::VILLAGER_MALE, 1.0)
+            .is_err()
+    );
     let mut t = world();
     t.spatial.sight = None;
-    assert!(t.spawn(PlayerId::new(1), 2, 83, 1.0).is_err());
+    assert!(
+        t.spawn(PlayerId::new(1), 2, ids::VILLAGER_MALE, 1.0)
+            .is_err()
+    );
     let mut t = world();
-    assert!(t.spawn(PlayerId::new(1), 2, 59, 1.0).is_err());
+    assert!(t.spawn(PlayerId::new(1), 2, master_id(59), 1.0).is_err());
 }
 
 /// `FUN_140ace9c0` sends the new unit to its building's gather point only for a state of 1
@@ -506,7 +516,7 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
     let waits = |state| {
         let mut t = crate::world::tests::forage_world();
         for masters in &mut t.masters {
-            masters.get_mut(83).unwrap().standing_sprite = 300;
+            masters.get_mut(ids::VILLAGER_MALE).unwrap().standing_sprite = 300;
         }
         let _ = t.graphics.insert(
             300,
@@ -533,9 +543,10 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
             state,
             point: Position::new(40.0, 80.0, 0.0),
             target: -1,
-            target_master: -1,
+            target_master: None,
         });
-        t.spawn(PlayerId::new(1), 2, 83, 1.0).unwrap();
+        t.spawn(PlayerId::new(1), 2, ids::VILLAGER_MALE, 1.0)
+            .unwrap();
         t.players[1]
             .objects
             .last()
@@ -752,7 +763,7 @@ fn remains_world() -> World {
         let _ = t.graphics.insert(id, graphic(id, flags));
     }
     let static_remains = Master {
-        id: 800,
+        id: master_id(800),
         kind: 10,
         death_sprite: 20,
         standing_sprite: -1,
@@ -760,7 +771,7 @@ fn remains_world() -> World {
         ..Master::default()
     };
     let moving_remains = Master {
-        id: 801,
+        id: master_id(801),
         kind: 30,
         standing_sprite: 21,
         moving: Some(crate::gathering::hunt::tests::walker().stats),
@@ -791,8 +802,8 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
     let i = t
         .plain_object(
             PlayerId::new(1),
-            800,
-            &made(&t, 800),
+            master_id(800),
+            &made(&t, master_id(800)),
             Position::new(30.5, 85.5, 0.0),
             Facing::Dead(None),
         )
@@ -807,8 +818,8 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
     let i = t
         .plain_object(
             PlayerId::new(1),
-            801,
-            &made(&t, 801),
+            master_id(801),
+            &made(&t, master_id(801)),
             Position::new(31.5, 85.5, 0.0),
             Facing::Dead(Some(2)),
         )
@@ -824,7 +835,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
     );
     let reason = |change: &dyn Fn(&mut crate::objects::masters::Master), facing| {
         let mut t = remains_world();
-        let mut m = made(&t, 801);
+        let mut m = made(&t, master_id(801));
         change(&mut m);
         t.plain_object(
             PlayerId::new(1),
@@ -1132,7 +1143,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         radius: [1.0, 1.0],
         kind: 80,
         class: class::BUILDING,
-        master: 70,
+        master: ids::HOUSE,
         obstruction_type: 2,
         moving: false,
         player: PlayerId::new(2),

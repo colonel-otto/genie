@@ -1,7 +1,8 @@
 use super::*;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
-use crate::test_ids::object_id;
+use crate::test_ids::{master_id, object_id};
 use crate::vision::registry::UnitUpdate;
 
 /// The record cells (FD-030-D03) give every query the objects whose record is filed in a
@@ -23,7 +24,7 @@ fn the_record_cells_answer_as_the_full_scan_does() {
         radius: [r, r * 0.5],
         class: class::CLASS_0,
         player: PlayerId::new(1),
-        master: 4,
+        master: master_id(4),
         obstruction_type: 0,
         buildable_on: 0,
         tall: false,
@@ -126,7 +127,7 @@ fn villager(x: f32, y: f32) -> Placed {
         radius: [0.2, 0.2],
         class: class::VILLAGER,
         player: PlayerId::new(2),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: 0,
         buildable_on: 0,
         tall: true,
@@ -636,7 +637,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
         radius: [1.0, 1.0],
         class: class::BUILDING,
         player: PlayerId::new(2),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: 0,
         buildable_on: 0,
         tall: true,
@@ -650,7 +651,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
         radius: [0.5, 0.5],
         class: class::TREE,
         player: PlayerId::new(0),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: 0,
         buildable_on: 0,
         tall: true,
@@ -762,7 +763,7 @@ fn site() -> (Spatial, Placed) {
     let mut house = villager(30.0, 88.0);
     house.radius = [1.0, 1.0];
     house.class = class::BUILDING;
-    house.master = 70;
+    house.master = ids::HOUSE;
     house.obstruction_type = 2;
     house.obstruction = None;
     s.insert(object_id(10028), house);
@@ -1247,7 +1248,7 @@ const fn any_filter() -> Filter {
 const fn seer_in(state: u8) -> crate::vision::visibility::Seer {
     crate::vision::visibility::Seer {
         player: PlayerId::new(2),
-        master: 0,
+        master: ids::ID_0,
         los: 4.0,
         state,
         explored: true,
@@ -1392,7 +1393,7 @@ fn closest_object_takes_a_free_farm_its_searcher_gathers_from() {
         trapper: true,
         ..Searcher::default()
     };
-    let (farm, trap) = (farm_of(50), farm_of(FISH_TRAP));
+    let (farm, trap) = (farm_of(ids::FARM), farm_of(FISH_TRAP));
     assert!(farm_kept(1, &farm, filter, farmer, &look).unwrap());
     assert!(!farm_kept(1, &farm, filter, trapper, &look).unwrap());
     assert!(farm_kept(1, &trap, filter, trapper, &look).unwrap());

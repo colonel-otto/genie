@@ -10,6 +10,7 @@
 
 use crate::GenieError;
 use crate::map::Position;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FARM;
 use crate::objects::masters::ids::FISH_TRAP;
@@ -23,7 +24,7 @@ use crate::world::World;
 /// A queue takes a purchase only below this count (`0x28`).
 pub const QUEUE_LIMIT: i32 = 40;
 /// The pasture a mill's queue buys (`0x761`, GAME 0x15 and 0x16).
-pub const PASTURE: i16 = 0x761;
+pub const PASTURE: MasterId = MasterId::named(0x761);
 
 /// A reseeding gatherer's farm spot of none (`DAT_14330ec20`, −1.0, read at `0x140a8aa9e`).
 const NO_FARM: f32 = crate::math::image::farm_queue::NO_FARM;
@@ -47,7 +48,7 @@ impl World {
         &mut self,
         p: PlayerId,
         count: i32,
-        master: i16,
+        master: MasterId,
     ) -> Result<bool, GenieError> {
         self.buy_ahead(p, count, master, Queue::Farms)
     }
@@ -66,7 +67,7 @@ impl World {
         &mut self,
         p: PlayerId,
         count: i32,
-        master: i16,
+        master: MasterId,
     ) -> Result<bool, GenieError> {
         self.give_back(p, count, master, Queue::Farms)
     }
@@ -91,7 +92,7 @@ impl World {
         &mut self,
         p: PlayerId,
         count: i32,
-        master: i16,
+        master: MasterId,
         queue: Queue,
     ) -> Result<bool, GenieError> {
         if count < 1 || QUEUE_LIMIT <= self.queued(p, queue) {
@@ -128,7 +129,7 @@ impl World {
         &mut self,
         p: PlayerId,
         count: i32,
-        master: i16,
+        master: MasterId,
         queue: Queue,
     ) -> Result<bool, GenieError> {
         let n = count.min(self.queued(p, queue));
@@ -155,27 +156,26 @@ impl World {
     /// (`CVTSI2SS`, `COMISS`). A base id the player lacks makes none (the game reads its table's
     /// slot unchecked; the `.dat`'s masters name their own).
     #[must_use]
-    pub fn can_make(&self, p: PlayerId, master: i16) -> bool {
+    pub fn can_make(&self, p: PlayerId, master: MasterId) -> bool {
         let Some(ms) = self.masters.get(p.index()) else {
             return false;
         };
         let Some(m) = ms.get(master) else {
             return false;
         };
-        let Some(based) = ms.get(m.base_id) else {
+        let Some(based) = m.base_id.and_then(|b| ms.get(b)) else {
             return false;
         };
         let mut base = m.base_id;
         if based.kind == crate::objects::masters::master_type::BUILDING
-            && let Some(head) = based.building.as_ref().map(|b| b.head_unit)
-            && head != -1
+            && let Some(head) = based.building.as_ref().and_then(|b| b.head_unit)
         {
             let Some(h) = ms.get(head) else {
                 return false;
             };
             base = h.base_id;
         }
-        let Some(b) = ms.get(base) else {
+        let Some(b) = base.and_then(|b| ms.get(b)) else {
             return false;
         };
         // The farm class (49), whose masters the reseed takes (`FUN_141658b40`'s `-0xe7b`).
@@ -183,7 +183,7 @@ impl World {
         // which reseeds fish traps.
         // The town centre (621, `0x26d`), whose availability also counts the town centres standing
         // against attribute 218 (`FUN_141663f80`).
-        if base == TOWN_CENTRE_621 {
+        if base == Some(TOWN_CENTRE_621) {
             let limit = self.players[p.index()]
                 .attribute(attribute::TOWN_CENTRE_LIMIT)
                 .unwrap_or(0.0);
@@ -198,7 +198,7 @@ impl World {
     /// the player can make it ([`World::can_make`]) and it is of the farm class, else the pasture
     /// (0x761) so; else none.
     #[must_use]
-    pub fn reseed_master(&self, p: PlayerId) -> Option<i16> {
+    pub fn reseed_master(&self, p: PlayerId) -> Option<MasterId> {
         [FARM, PASTURE].into_iter().find(|&m| {
             self.can_make(p, m)
                 && player_master(&self.masters, p, m).is_some_and(|m| m.class == class::FARM)
@@ -367,11 +367,14 @@ impl World {
 mod tests {
     use super::*;
     use crate::objects::masters::ClassId;
+    use crate::objects::masters::ids;
     use crate::objects::masters::{Master, Masters, master_type};
+    use crate::test_ids::master_id;
+    use crate::test_ids::opt_master;
     use crate::world::Player;
 
     /// A master of type 70 costing `cost` (attribute, amount, paid).
-    fn master(id: i16, cost: Vec<(i16, i16, bool)>) -> Master {
+    fn master(id: MasterId, cost: Vec<(i16, i16, bool)>) -> Master {
         Master {
             id,
             kind: master_type::COMBAT,
@@ -450,23 +453,29 @@ mod tests {
     #[test]
     fn a_master_the_player_lacks_buys_nothing() {
         let mut t = world(1000.0);
-        assert!(!t.queue_farms(PlayerId::new(1), 2, 1187).unwrap());
+        assert!(!t.queue_farms(PlayerId::new(1), 2, ids::ID_1187).unwrap());
         assert_eq!(t.players[1].resources[1], 1000.0);
     }
 
     /// A building master `id` of class `class` and base id `base`, available or not, heading
     /// `head` (−1 for none).
-    fn building(id: i16, class: ClassId, base: i16, available: bool, head: i16) -> Master {
+    fn building(
+        id: MasterId,
+        class: ClassId,
+        base: MasterId,
+        available: bool,
+        head: i16,
+    ) -> Master {
         Master {
             id,
             kind: master_type::BUILDING,
             class,
-            base_id: base,
+            base_id: Some(base),
             available,
             building: Some(crate::objects::masters::BuildingMaster {
-                head_unit: head,
-                stack_unit: -1,
-                annexes: [-1; 4],
+                head_unit: opt_master(head),
+                stack_unit: None,
+                annexes: [None; 4],
                 ..crate::objects::masters::BuildingMaster::default()
             }),
             ..Master::default()
@@ -480,17 +489,17 @@ mod tests {
         let mut t = world(0.0);
         t.masters[1] = Masters::new([
             building(FARM, class::FARM, FARM, true, -1),
-            building(PASTURE, class::FARM, 300, false, -1),
-            building(300, class::BUILDING, 300, true, 301),
-            building(301, class::BUILDING, 302, false, -1),
-            building(302, class::BUILDING, 302, true, -1),
-            building(303, class::BUILDING, 999, true, -1),
+            building(PASTURE, class::FARM, master_id(300), false, -1),
+            building(master_id(300), class::BUILDING, master_id(300), true, 301),
+            building(master_id(301), class::BUILDING, master_id(302), false, -1),
+            building(master_id(302), class::BUILDING, master_id(302), true, -1),
+            building(master_id(303), class::BUILDING, master_id(999), true, -1),
         ]);
         assert!(t.can_make(PlayerId::new(1), FARM));
         // the pasture's base 300 heads 301, whose base 302 is available
         assert!(t.can_make(PlayerId::new(1), PASTURE));
-        assert!(!t.can_make(PlayerId::new(1), 1187));
-        assert!(!t.can_make(PlayerId::new(1), 303));
+        assert!(!t.can_make(PlayerId::new(1), ids::ID_1187));
+        assert!(!t.can_make(PlayerId::new(1), master_id(303)));
         t.masters[1] = Masters::new([building(FARM, class::FARM, FARM, false, -1)]);
         assert!(!t.can_make(PlayerId::new(1), FARM));
     }

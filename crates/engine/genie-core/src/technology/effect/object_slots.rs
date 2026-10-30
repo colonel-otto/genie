@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{Master, Masters, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -78,25 +79,26 @@ impl World {
         };
         let done: Vec<i32> = player
             .tracker
-            .list(i32::from(master.id))
+            .list(i32::from(master.id.get()))
             .iter()
             .copied()
             .filter(of_master)
             .collect();
         let mut pending = Vec::new();
         if master_type::BUILDING <= master.kind {
-            let stack = master.building.as_ref().map_or(-1, |b| b.stack_unit);
-            let key = player_master(&self.masters, p, stack)
+            let stack = master.building.as_ref().and_then(|b| b.stack_unit);
+            let key = stack
+                .and_then(|stack| player_master(&self.masters, p, stack))
                 .filter(|s| {
                     s.kind == master_type::BUILDING
                         && s.building
                             .as_ref()
-                            .is_some_and(|b| b.head_unit == master.id)
+                            .is_some_and(|b| b.head_unit == Some(master.id))
                 })
                 .map_or(master.id, |s| s.id);
             pending = player
                 .tracker
-                .list(i32::from(key) + crate::players::tracker::PENDING)
+                .list(i32::from(key.get()) + crate::players::tracker::PENDING)
                 .to_vec();
         }
         Ok((done, pending))
@@ -347,8 +349,8 @@ pub(super) fn build_points_after(points: f32, time: i16, change: Change, v: f32)
 
 /// `unit` lies within the player's master table (`0 <= unit < player+0x20`): the slice's
 /// [`Masters`] hold no count past their last master, which stands for the table's end.
-pub(super) fn within_table(masters: &Masters, unit: i16) -> bool {
-    0 <= unit && masters.iter().any(|m| unit <= m.id)
+pub(super) fn within_table(masters: &Masters, unit: MasterId) -> bool {
+    masters.iter().any(|m| unit <= m.id)
 }
 
 /// The sprite attributes whose change shows on the objects after it (`FUN_140fde290`: 70 to 77,

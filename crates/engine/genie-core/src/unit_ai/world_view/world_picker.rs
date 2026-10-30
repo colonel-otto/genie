@@ -172,7 +172,7 @@ impl WorldPicker<'_> {
     /// counts when the world holds it.
     pub(crate) fn harmless(&self, spatial: &Spatial, other: i32) -> Result<bool, GenieError> {
         let (q, o, attributes, om) = self.held(other).ok_or(NOT_HELD)?;
-        if om.object_flags & 0x10 == 0 || om.copy_id != om.id {
+        if om.object_flags & 0x10 == 0 || om.copy_id != Some(om.id) {
             return Ok(false);
         }
         let terrain = spatial.terrain.as_ref();

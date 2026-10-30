@@ -10,7 +10,9 @@ use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::FARM;
 use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::master_type::BUILDING;
@@ -28,7 +30,7 @@ impl World {
     pub(crate) fn found(
         &mut self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         position: Position,
     ) -> Result<(i32, Position), GenieError> {
         let unit_ai = self.master(player, master)?.unit_ai_type(master);
@@ -56,14 +58,14 @@ impl World {
     pub(super) fn building_combat_setup(
         &mut self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
     ) -> Result<(), GenieError> {
         if let Some(m) = player_master(&self.masters, player, master) {
             count_class(&mut self.players[player.index()].attributes, m, 1.0);
         }
         let _ = self.streams.get(Stream::Object).rand15();
         if let Some(m) = player_master(&self.masters, player, master)
-            .filter(|m| m.kind == BUILDING && m.trained_at.iter().any(|&t| t != -1))
+            .filter(|m| m.kind == BUILDING && !m.trained_at.is_empty())
         {
             let paid: i32 = m
                 .cost
@@ -82,7 +84,7 @@ impl World {
     pub(super) fn building_storage(
         &mut self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
     ) -> Result<(i16, f32), GenieError> {
         let storage = player_master(&self.masters, player, master)
             .map(|m| m.storage.clone())
@@ -132,7 +134,7 @@ impl World {
     pub(crate) fn make_building(
         &mut self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         unit_ai: Result<Option<u32>, GenieError>,
         position: Position,
     ) -> Result<(i32, Position), GenieError> {
@@ -174,10 +176,10 @@ impl World {
         let held = self.building_storage(player, master)?;
         // what its death reads of the master: its dying sprite, death spawns and decay
         let death =
-            player_master(&self.masters, player, master).map_or((None, false, -1, None), |m| {
+            player_master(&self.masters, player, master).map_or((None, false, None, None), |m| {
                 (
                     (0 <= m.death_sprite).then_some(m.death_sprite),
-                    0 <= m.death_spawns[0],
+                    m.death_spawns[0].is_some(),
                     m.death_spawns[1],
                     m.life,
                 )
@@ -205,8 +207,8 @@ impl World {
         // +0xcd0 (FUN_141188db0): mangrove or rice terrain under its place
         let rice = terrain.is_some_and(|t| matches!(t.kind(tx, ty), Some(54 | 55 | 63..=67)));
         let foundation = !matches!(made.class, class::CLASS_51 | class::CLASS_54)
-            && !matches!(master, 357 | 1188)
-            && building.head_unit == -1;
+            && !matches!(master, ids::ID_357 | ids::ID_1188)
+            && building.head_unit.is_none();
         let hp = if foundation && 0 < made.build_time {
             1.0
         } else {
@@ -343,9 +345,9 @@ impl World {
         });
         self.settle_building(player, id, &made, (position, desolid), foundation)?;
         for (slot, &annex) in building.annexes.iter().enumerate() {
-            if annex == -1 {
+            let Some(annex) = annex else {
                 continue;
-            }
+            };
             // a master the player has not got makes nothing (its slot 0x40 is not called)
             let Some(am) = player_master(&self.masters, player, annex).cloned() else {
                 continue;

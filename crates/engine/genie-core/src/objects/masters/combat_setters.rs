@@ -1,5 +1,6 @@
 //! The RGE combat and missile masters' setters: the armor and attack amounts.
 
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{
     AttributeWorld, Master, PERCENT, ROUND, add_sprite, attribute, class_amount, handicapped, low8,
     low16, set_sprite,
@@ -23,7 +24,7 @@ impl Master {
             a::ACCURACY_PERCENT => self.hit_chance = low16(v),
             a::MAXIMUM_RANGE => self.weapon_range = v,
             a::BASE_ARMOR => self.base_armor = low16(v),
-            a::PROJECTILE_UNIT => self.missile = low16(v),
+            a::PROJECTILE_UNIT => self.missile = MasterId::of_data(low16(v)),
             a::TERRAIN_DEFENSE_BONUS => self.terrain_bonus = low16(v),
             a::MINIMUM_RANGE => self.min_range = v,
             a::BLAST_WIDTH => self.area_effect = v,
@@ -83,7 +84,10 @@ impl Master {
             a::ACCURACY_PERCENT => self.hit_chance = self.hit_chance.wrapping_add(low16(v)),
             a::MAXIMUM_RANGE => self.weapon_range += v,
             a::BASE_ARMOR => self.base_armor = self.base_armor.wrapping_add(low16(v)),
-            a::PROJECTILE_UNIT => self.missile = self.missile.wrapping_add(low16(v)),
+            a::PROJECTILE_UNIT => {
+                self.missile =
+                    MasterId::of_data(MasterId::field(self.missile).wrapping_add(low16(v)));
+            }
             a::TERRAIN_DEFENSE_BONUS => {
                 self.terrain_bonus = self.terrain_bonus.wrapping_add(low16(v));
             }
@@ -156,7 +160,10 @@ impl Master {
             a::ACCURACY_PERCENT => self.hit_chance = low16(f32::from(self.hit_chance) * v + ROUND),
             a::MAXIMUM_RANGE => self.weapon_range *= v,
             a::BASE_ARMOR => self.base_armor = low16(f32::from(self.base_armor) * v + ROUND),
-            a::PROJECTILE_UNIT => self.missile = low16(f32::from(self.missile) * v + ROUND),
+            a::PROJECTILE_UNIT => {
+                self.missile =
+                    MasterId::of_data(low16(f32::from(MasterId::field(self.missile)) * v + ROUND));
+            }
             a::TERRAIN_DEFENSE_BONUS => {
                 self.terrain_bonus = low16(f32::from(self.terrain_bonus) * v + ROUND);
             }

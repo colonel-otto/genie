@@ -229,13 +229,13 @@ impl Mover {
             range,
             target,
         } = ask;
-        let master = world.get(me.id).map_or(-1, |p| p.master);
+        let master = world.get(me.id).map(|p| p.master);
         let walker = LongWalker {
             id: me.id,
             position: self.position(),
             radius: [self.stats.radius[0], self.stats.radius[1]],
             mask: self.stats.restriction_mask,
-            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            moves: self.stats.speed != 0.0 || master == Some(LONG_PATH_MOVER),
             ignore_units: &self.ignore_units,
             group_units: plan.groups.group_units(me.group),
         };

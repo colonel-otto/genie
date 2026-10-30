@@ -78,7 +78,8 @@ impl World {
                 continue;
             }
             if sub_category != -1
-                && i32::from(self.master(object.player(), object.master_id())?.id) != sub_category
+                && i32::from(self.master(object.player(), object.master_id())?.id.get())
+                    != sub_category
             {
                 continue;
             }
@@ -249,7 +250,7 @@ impl World {
                 continue;
             }
             let category = self.unit_category(Some(object))?;
-            let master = i32::from(object.master_id());
+            let master = i32::from(object.master_id().get());
             let at = object.moved_vector().xhy();
             for (j, slot) in formation.slots.iter().enumerate() {
                 let mut skip = slot.transformed == 0 || slot.active == 0;
@@ -320,7 +321,7 @@ impl World {
                     continue;
                 }
                 if sub_category != -1
-                    && i32::from(self.master(object.player(), object.master_id())?.id)
+                    && i32::from(self.master(object.player(), object.master_id())?.id.get())
                         != sub_category
                 {
                     continue;

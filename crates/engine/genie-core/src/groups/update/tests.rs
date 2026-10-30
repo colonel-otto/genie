@@ -3,10 +3,13 @@ use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -26,7 +29,7 @@ fn soldier(id: i32, x: f32, y: f32) -> Unit {
         }),
         ..Unit::default()
     };
-    u.life.master_id = 4;
+    u.life.master_id = master_id(4);
     u.life.state = 2;
     u.life.hp = 50.0;
     u
@@ -58,7 +61,7 @@ fn world() -> World {
     ];
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
     let master = Master {
-        id: 4,
+        id: master_id(4),
         kind: 70,
         class: class::CLASS_6,
         hit_points: 60,
@@ -236,7 +239,7 @@ fn a_target_is_pending_while_seen_and_no_ally_s() {
     light(&mut t, 1, 3, 3, false);
     assert!(!t.target_pending(1).unwrap());
     for m in &mut t.masters {
-        let mut master = m.get(4).unwrap().clone();
+        let mut master = m.get(master_id(4)).unwrap().clone();
         master.fog_visibility = 1;
         *m = Masters::new([master]);
     }
@@ -270,13 +273,13 @@ fn a_target_is_pending_while_seen_and_no_ally_s() {
 fn relic_carriers_keep_their_command_pending() {
     let mut t = world();
     let relic = Master {
-        id: 285,
+        id: ids::RELIC,
         kind: 70,
         class: class::RELIC,
         ..Master::default()
     };
     let monastery = Master {
-        id: 104,
+        id: ids::MONASTERY,
         kind: 80,
         class: class::BUILDING,
         ..Master::default()
@@ -286,7 +289,7 @@ fn relic_carriers_keep_their_command_pending() {
         ..Task::default()
     };
     let monk = |tasks: Vec<Task>| Master {
-        id: 4,
+        id: master_id(4),
         kind: 70,
         class: class::MONK,
         tasks,
@@ -296,9 +299,9 @@ fn relic_carriers_keep_their_command_pending() {
         t.masters = vec![Masters::new([monk(tasks), relic.clone(), monastery.clone()]); 4];
     };
     let mut r = soldier(40, 6.0, 6.0);
-    r.life.master_id = 285;
+    r.life.master_id = ids::RELIC;
     let mut m = soldier(41, 7.0, 7.0);
-    m.life.master_id = 104;
+    m.life.master_id = ids::MONASTERY;
     t.players[0].objects.extend([r, m]);
     let ai = |t: &mut World, order: Option<OrderKind>, action: Option<ActionKind>, target: i32| {
         let a = t.players[1].objects[0].ai.as_mut().unwrap();
@@ -375,7 +378,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
             second_sprite: None,
             idle_sprite: None,
             idle_attack_sprite: None,
-            missile: -1,
+            missile: None,
             fire_frame: -1,
             interrupt_frame: -1,
         },
@@ -392,7 +395,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     // a trade cart's state 2 is free, whatever its action
     t.players[1].objects[0].actions.set_attack(Some(attack(2)));
     for m in &mut t.masters {
-        let mut master = m.get(4).unwrap().clone();
+        let mut master = m.get(master_id(4)).unwrap().clone();
         master.class = class::TRADE_CART;
         *m = Masters::new([master]);
     }
@@ -490,7 +493,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
     let speed = |t: &World| t.object(10).unwrap().1.body.mover().unwrap().stats.speed;
     let master = |t: &mut World, class: ClassId, sprites: [i16; 3]| {
         let m = Master {
-            id: 4,
+            id: master_id(4),
             kind: 70,
             class,
             hit_points: 60,
@@ -613,15 +616,22 @@ fn the_centroid_front_is_the_members_mean_place() {
 #[test]
 fn each_line_takes_its_units_least_range() {
     let mut t = world();
-    let combat = |id: i16, kind: u8, range: f32| Master {
+    let combat = |id: MasterId, kind: u8, range: f32| Master {
         id,
         kind,
         weapon_range: range,
         ..Master::default()
     };
-    t.masters = vec![Masters::new([combat(4, 70, 3.0), combat(5, 70, 1.5), combat(6, 30, 2.0)]); 4];
-    t.players[1].objects[1].life.master_id = 5;
-    t.players[1].objects[2].life.master_id = 6;
+    t.masters = vec![
+        Masters::new([
+            combat(master_id(4), 70, 3.0),
+            combat(master_id(5), 70, 1.5),
+            combat(ids::ID_6, 30, 2.0)
+        ]);
+        4
+    ];
+    t.players[1].objects[1].life.master_id = master_id(5);
+    t.players[1].objects[2].life.master_id = ids::ID_6;
     let slot = |unit| crate::groups::Slot {
         unit_id: unit,
         ..crate::groups::Slot::default()
@@ -976,7 +986,7 @@ fn a_member_s_own_move_walks_its_path() {
             radius: [0.2, 0.2],
             class: class::CLASS_6,
             player: PlayerId::new(1),
-            master: 4,
+            master: master_id(4),
             obstruction_type: 0,
             buildable_on: 0,
             tall: false,
@@ -1405,7 +1415,7 @@ fn grounded() -> World {
                     radius: [0.2, 0.2],
                     class: class::CLASS_6,
                     player: p,
-                    master: 4,
+                    master: master_id(4),
                     obstruction_type: 0,
                     buildable_on: 0,
                     tall: true,
@@ -1731,9 +1741,9 @@ fn an_attack_follows_a_target_that_moved() {
 /// is the gate, with 21 its annex at (2.5, 2.5).
 fn gate_world() -> World {
     let mut t = world();
-    let m4 = t.masters[2].get(4).unwrap().clone();
+    let m4 = t.masters[2].get(master_id(4)).unwrap().clone();
     let gate = Master {
-        id: 5,
+        id: master_id(5),
         kind: 80,
         class: class::GATE,
         radius: [0.5, 0.5],
@@ -1741,9 +1751,9 @@ fn gate_world() -> World {
         ..Master::default()
     };
     t.masters[2] = Masters::new([m4, gate]);
-    t.players[2].objects[0].life.master_id = 5;
+    t.players[2].objects[0].life.master_id = master_id(5);
     let mut annex = soldier(21, 2.5, 2.5);
-    annex.life.master_id = 5;
+    annex.life.master_id = master_id(5);
     annex.annex_of = Some(20);
     t.players[2].objects.push(annex);
     t.spatial.set_annex(21, Some(20));
@@ -1762,7 +1772,7 @@ fn a_gate_out_of_reach_is_struck_at_its_nearest_part() {
     assert_eq!(t.gate_part(11, 20).unwrap(), 20);
     // within its weapon range and above the least one: the gate itself
     t.spatial.set_annex(21, Some(20));
-    let mut m4 = t.masters[1].get(4).unwrap().clone();
+    let mut m4 = t.masters[1].get(master_id(4)).unwrap().clone();
     m4.weapon_range = 10.0;
     t.masters[1] = Masters::new([m4.clone()]);
     assert_eq!(t.gate_part(11, 20).unwrap(), 20);
@@ -1771,7 +1781,7 @@ fn a_gate_out_of_reach_is_struck_at_its_nearest_part() {
     t.masters[1] = Masters::new([m4]);
     assert_eq!(t.gate_part(11, 20).unwrap(), 21);
     // a target that is no gate
-    t.players[2].objects[0].life.master_id = 4;
+    t.players[2].objects[0].life.master_id = master_id(4);
     assert_eq!(t.gate_part(11, 20).unwrap(), 20);
 }
 
@@ -1789,7 +1799,7 @@ fn a_unit_s_speed_is_its_movers_unless_a_charge_runs() {
     };
     assert_eq!(speed(&t, 11).unwrap(), 0.0);
     assert_eq!(speed(&t, 10).unwrap(), 0.8);
-    let mut m4 = t.masters[1].get(4).unwrap().clone();
+    let mut m4 = t.masters[1].get(master_id(4)).unwrap().clone();
     m4.max_charge = 1.0;
     t.masters[1] = Masters::new([m4.clone()]);
     assert_eq!(speed(&t, 10).unwrap(), 0.8);

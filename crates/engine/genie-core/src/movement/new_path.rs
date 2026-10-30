@@ -7,6 +7,7 @@ use crate::movement::{
     SHORT_PATHER, SPLIT, STUCK_PAUSE, ShortAsk, TileAsk, Walker, footprint_gap_squared,
     owner_number, short_path_including, split, tile_plan_for,
 };
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::pathing::hull_path::HullPather;
 use crate::pathing::tile_path::{Path, Request};
@@ -340,7 +341,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         to: [f32; 2],
         range: f32,
-        master: i16,
+        master: MasterId,
     ) -> Result<bool, GenieError> {
         let ask = ReachAsk {
             goal: to,
@@ -361,7 +362,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         target: i32,
         range: f32,
-        master: i16,
+        master: MasterId,
     ) -> Result<bool, GenieError> {
         let Some(t) = world.get_known(target)? else {
             return Ok(false);

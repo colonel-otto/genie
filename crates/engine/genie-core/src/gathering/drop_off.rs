@@ -407,7 +407,7 @@ impl Unit {
             .mover()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let mut site = carry_to;
-        if site == -1 && master.drop_sites.first().is_some_and(|&d| d != -1) {
+        if site == -1 && !master.drop_sites.is_empty() {
             let masters = c.masters.ok_or(GenieError::unsupported(
                 "a drop-off of a player without masters",
             ))?;

@@ -187,7 +187,11 @@ mod spatial {
         let unit = out.get(10).unwrap();
         assert_eq!(
             (unit.player, unit.master, unit.class),
-            (PlayerId::new(1), 83, class::CLASS_6)
+            (
+                PlayerId::new(1),
+                genie_core::objects::masters::ids::VILLAGER_MALE,
+                class::CLASS_6
+            )
         );
         assert!(unit.tall);
         let obstruction = unit.obstruction.unwrap();

@@ -12,6 +12,7 @@ mod cancels;
 mod stops;
 mod victory;
 
+use crate::objects::masters::MasterId;
 #[cfg(test)]
 use crate::world::World;
 
@@ -34,7 +35,12 @@ const KILLS_OF: usize = 300;
 /// The action types whose stop keeps a value of the unit's (`+0x88a`, `FUN_14106fa60`).
 const KEEPING_TYPES: [i16; 2] = [0x7c, 0x7d];
 /// The buildings a stop leaves alone (`FUN_1411e6290`).
-const UNSTOPPED_BUILDINGS: [i16; 4] = [50, 199, 276, 1187];
+const UNSTOPPED_BUILDINGS: [MasterId; 4] = [
+    MasterId::named(50),
+    MasterId::named(199),
+    MasterId::named(276),
+    MasterId::named(1187),
+];
 /// The game mode whose QUEUE trains one military unit at a time early on (16, the settings'
 /// `+0x34`).
 const ONE_UNIT_MODE: i32 = 16;

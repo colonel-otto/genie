@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::construction::build::{Completion, Construction, StackUnit};
 use crate::map::Position;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -262,14 +263,14 @@ impl crate::world::World {
                         state: 1,
                         point: Position::new(t.position().x(), t.position().y(), 0.0),
                         target,
-                        target_master: t.life.master_id,
+                        target_master: Some(t.life.master_id),
                     }),
                     None => (g.point.x() != -1.0 && g.point.y() != -1.0).then_some(
                         crate::commands::GatherPoint {
                             state: 1,
                             point: Position::new(g.point.x(), g.point.y(), 0.0),
                             target: -1,
-                            target_master: -1,
+                            target_master: None,
                         },
                     ),
                 }
@@ -315,7 +316,7 @@ impl crate::world::World {
     pub(crate) fn make_new_object(
         &mut self,
         p: PlayerId,
-        master: i16,
+        master: MasterId,
         at: Position,
         flagged: bool,
     ) -> Result<Option<i32>, GenieError> {

@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Spatial};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
@@ -400,7 +401,7 @@ impl Spatial {
         id: i32,
         radius: [f32; 2],
         class: ClassId,
-        master: i16,
+        master: MasterId,
         los: f32,
     ) -> Result<(), GenieError> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {

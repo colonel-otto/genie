@@ -47,6 +47,7 @@ use crate::map::Position;
 #[cfg(test)]
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 
@@ -86,7 +87,12 @@ const WIDE_CONE: f32 = crate::math::image::damage::WIDE_CONE;
 const ELEPHANT_ARCHER: ClassId = class::CLASS_64;
 /// The rams (masters 35, 422, 548 and 1258): their blast reaches only buildings and their
 /// target.
-const RAMS: [i16; 4] = [35, 422, 548, 1258];
+const RAMS: [MasterId; 4] = [
+    MasterId::named(35),
+    MasterId::named(422),
+    MasterId::named(548),
+    MasterId::named(1258),
+];
 /// 1 (`DAT_14330eb8c`, read into `XMM9` at `0x1411cec8e`): a building's least hit, the hit
 /// points below which a hit razes a building or kills a unit, and what each razing count adds.
 const ONE: f32 = crate::math::image::damage::ONE;
@@ -127,7 +133,7 @@ pub struct Victim {
     /// Its master's class.
     pub class: ClassId,
     /// Its master.
-    pub master_id: i16,
+    pub master_id: MasterId,
     /// Its master's radii.
     pub radius: [f32; 2],
     /// Its master's `radius_z` (`+0x5e0`): a missile meets it within that height above it
@@ -317,11 +323,11 @@ pub struct Attacker {
     /// Its master's class.
     pub class: ClassId,
     /// Its master.
-    pub master_id: i16,
+    pub master_id: MasterId,
     /// Its master's `combat_ability`.
     pub ability: u8,
     /// Its master's missile, −1 for none.
-    pub missile: i16,
+    pub missile: Option<MasterId>,
     /// Its master's weapon range (`+0x828`), `area_effect_range` (`+0x82c`: the blast's radius),
     /// `area_effect_level` (`+0x830`: the levels it reaches, bit 2 its friends too, bit 5 a wide
     /// cone, bit 6 a falloff, bit 7 a cone) and `area_damage` (`+0x834`: the share of the damage

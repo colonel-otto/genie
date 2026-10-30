@@ -9,6 +9,7 @@ use crate::movement::{
     footprint_gap_squared, lowered_units, overlap, pause_rank, point_or_zero, point_or_zero_of,
 };
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
 use crate::pathing::tile_path::{Path, Request};
@@ -30,7 +31,7 @@ pub(super) struct ReachAsk {
     /// How near the goal counts.
     pub(super) range: f32,
     /// The unit's master's id.
-    pub(super) master: i16,
+    pub(super) master: MasterId,
 }
 
 impl Mover {

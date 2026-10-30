@@ -4,13 +4,14 @@
 
 use crate::GenieError;
 use crate::math::fmath::maxss;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// The masters one of which a player needs to pay tribute (`FUN_1416259e0`: its tracker's count
 /// of the market, 84, or of 1647 above 0).
-const MARKETS: [i16; 2] = [84, 1647];
+const MARKETS: [MasterId; 2] = [MasterId::named(84), MasterId::named(1647)];
 /// The giver's tribute paid (53), with the fee (175), and to each player (450 + the receiver's
 /// id); the receiver's tribute received (171) and from each player (475 + the giver's id).
 const TRIBUTE_GIVEN: i16 = 53;
@@ -55,7 +56,7 @@ impl World {
     /// done list, `FUN_14104eea0`).
     #[must_use]
     pub fn pays_tribute(&self, p: PlayerId) -> bool {
-        let has = |m: i16| {
+        let has = |m: MasterId| {
             self.masters
                 .get(p.index())
                 .is_some_and(|ms| ms.get(m).is_some())
@@ -65,7 +66,7 @@ impl World {
                 && self
                     .players
                     .get(p.index())
-                    .is_some_and(|pl| !pl.tracker.list(i32::from(m)).is_empty())
+                    .is_some_and(|pl| !pl.tracker.list(i32::from(m.get())).is_empty())
         })
     }
 
@@ -126,6 +127,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::objects::masters::class;
+    use crate::objects::masters::ids;
     use crate::objects::masters::{Master, Masters};
     use crate::test_ids::player_id;
     use crate::world::Player;
@@ -175,7 +177,7 @@ mod tests {
             vec![Player::default(), player(), player()],
         );
         let masters = Masters::new([Master {
-            id: 84,
+            id: ids::MARKET,
             kind: 80,
             class: class::BUILDING,
             ..Master::default()

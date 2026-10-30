@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -154,7 +155,7 @@ pub struct Attacker {
     /// Its top action's type, if any.
     pub top_action: Option<i32>,
     /// Its master's id.
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's type.
     pub kind: u8,
     /// Its master's class.
@@ -162,7 +163,7 @@ pub struct Attacker {
     /// Its master's `attack_priority`.
     pub attack_priority: u8,
     /// Its master's missile, −1 for none.
-    pub missile: i16,
+    pub missile: Option<MasterId>,
     /// Its master's weapon range (slot 0x230, `+0x828`).
     pub range: f32,
     /// Its master's least range (slot 0x240, `+0x850`).
@@ -202,7 +203,7 @@ pub struct Target {
     /// Its master's type.
     pub kind: u8,
     /// Its master.
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's `combat_level`.
     pub combat_level: u8,
     /// The object's `+0x924`.
@@ -271,7 +272,7 @@ pub(super) const PRIORITY_3_CLASSES: [ClassId; 6] = [
 ];
 
 /// The masters a tower never attacks (`FUN_140c1a760`, raw `0x60ce`, `0x653f`).
-pub(super) const TOWER_SPARED: [i16; 2] = [50, 1187];
+pub(super) const TOWER_SPARED: [MasterId; 2] = [MasterId::named(50), MasterId::named(1187)];
 
 /// Slot 0xa0 of `me`'s unit AI with 0, `CanAttack`: whether it may attack `t`, by type: the
 /// hunted animal's (`FUN_140c18d00`) while its action list holds an Attack (type 9) or a type 7
@@ -357,7 +358,7 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
         return Ok(t.combat_level == 4);
     }
     if !matches!(me.class, Some(class::CLASS_51 | class::CLASS_54))
-        && me.missile == -1
+        && me.missile.is_none()
         && me.firepower <= ARMED_FIREPOWER
     {
         return Ok(false);
@@ -369,10 +370,10 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
 /// `DAT_14330eb8c`).
 pub(super) const ARMED_FIREPOWER: f32 = crate::math::image::unit_ai::ARMED_FIREPOWER;
 /// A soldier never attacks with this master (raw `0x6258`).
-pub(super) const SOLDIER_NEVER: i16 = 444;
+pub(super) const SOLDIER_NEVER: MasterId = MasterId::named(444);
 /// The master and class whose packed state (top action 124 or 125) attacks nothing (raw
 /// `0x6109`; class 54).
-pub(super) const PACKED_MASTER: i16 = 109;
+pub(super) const PACKED_MASTER: MasterId = MasterId::named(109);
 pub(super) const PACKED_CLASS: ClassId = class::CLASS_54;
 /// What a unit carrying it never attacks with (`+0x308`).
 pub(super) const HELD_NO_ATTACK: i16 = 57;

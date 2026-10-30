@@ -1,6 +1,7 @@
 //! The TRIBE combat and building masters' setters: the costs, the charge, the sprites and the
 //! train locations.
 
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{
     AttributeWorld, Master, ROUND, add_sprite, attribute, cost_resource, id_of,
     insert_train_location, low8, low16, resize_train_locations, select_entry, set_sprite,
@@ -133,7 +134,7 @@ impl Master {
         match attribute {
             a::TRAIN_LOCATION => {
                 if let Some(t) = self.train_location_mut() {
-                    t.location = low16(v);
+                    t.location = MasterId::of_data(low16(v));
                 }
             }
             a::TRAIN_BUTTON => {

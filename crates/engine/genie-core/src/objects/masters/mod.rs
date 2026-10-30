@@ -42,7 +42,7 @@ pub struct Task {
     /// `+0x10`: the target class the task is for, -1 for any.
     pub object_group: i16,
     /// `+0x12`: the target master, -1 for any.
-    pub object_id: i16,
+    pub object_id: Option<MasterId>,
     /// `+0x14`, `combat_level` (`enable_targeting`): the task is for a target's combat level.
     pub combat_level: u8,
     /// `+0x15`, `combat_level_flag`: a generation task (151, [`crate::combat::abilities`]) of a combat
@@ -94,7 +94,7 @@ impl Default for Task {
             id: TaskId::default(),
             action_type: 0,
             object_group: -1,
-            object_id: -1,
+            object_id: None,
             combat_level: 0,
             combat_level_flag: 0,
             terrain: -1,
@@ -153,12 +153,8 @@ impl Master {
     /// The unit AI type the factory (`FUN_141215a90`) gives a new object of this master, by
     /// the master's id `id` ([`crate::unit_ai::factory_type`]).
     #[must_use]
-    pub const fn unit_ai_type(&self, id: i16) -> Option<u32> {
-        let missile = match self.volley_missile {
-            Some(m) => m,
-            None => -1,
-        };
-        crate::unit_ai::factory_type(self.class, id, missile, self.combat_level)
+    pub const fn unit_ai_type(&self, id: MasterId) -> Option<u32> {
+        crate::unit_ai::factory_type(self.class, id, self.volley_missile, self.combat_level)
     }
 }
 
@@ -171,7 +167,7 @@ pub struct BuildingMaster {
     /// `+0x984`, `disappears_when_built`.
     pub disappears_when_built: bool,
     /// `+0x986`, `stack_unit_id`: the building becomes another (−1 for none).
-    pub stack_unit: i16,
+    pub stack_unit: Option<MasterId>,
     /// `+0x988`, `foundation_terrain_id` (the save's `on_build_make_tile`; −1 for none).
     pub foundation_terrain: i16,
     /// `+0x98c`, `tech_id`: the technology its completion researches (−1 for none).
@@ -183,16 +179,16 @@ pub struct BuildingMaster {
     /// `+0x9c4`, `garrison_repair_rate`: its repair a second per villager inside.
     pub garrison_repair_rate: f32,
     /// `+0x990`, the masters of its annexes (−1 for none; their places beside it at `+0x998`).
-    pub annexes: [i16; 4],
+    pub annexes: [Option<MasterId>; 4],
     /// `+0x998` (x) and `+0x9a8` (y), each annex slot's place off the building's (the `.dat`'s
     /// building annexes' `misplacement`), which the building constructor (`FUN_1411de5f0`) makes
     /// its annexes at.
     pub annex_offsets: [[f32; 2]; 4],
     /// `+0x9b8`, `head_unit`: the building it is an annex of (−1 for none).
-    pub head_unit: i16,
+    pub head_unit: Option<MasterId>,
     /// `+0x9ba`, `transform_unit`: the master it transforms into (−1 for none); a gate with one
     /// is in its player's gate list (`+0x1360`, `FUN_141616200`).
-    pub transform_unit: i16,
+    pub transform_unit: Option<MasterId>,
     /// `+0x960`, the `.dat`'s `destruction_graphic_id` (the save's third building sprite): the
     /// sprite a building that dies before it is built shows (`RGE_Static_Object::update`), −1
     /// for none.
@@ -206,16 +202,16 @@ pub struct BuildingMaster {
 #[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct Master {
     /// The master's id.
-    pub id: i16,
+    pub id: MasterId,
     /// The master's type (`+0x8`): 70 for a combat unit, 80 (`'P'`) for a building.
     pub kind: u8,
     /// `+0x158`, the `.dat`'s `copy_id`: the master a garrison order asks a building about
     /// (`FUN_141621220`).
-    pub copy_id: i16,
+    pub copy_id: Option<MasterId>,
     /// `+0x260`, the `.dat`'s `base_id` (the master load `FUN_1411319f0` turns 768 into 420 and
     /// 770 into 691): the master whose availability says whether the player can make this one
     /// (`FUN_141663f80`, [`crate::world::World::can_make`]); an upgrade's copy keeps it.
-    pub base_id: i16,
+    pub base_id: Option<MasterId>,
     /// `+0x410`.
     pub class: ClassId,
     /// `+0x7b8`, the `.dat`'s `TaskSwapGroup` (the save does not carry it); 0 for none.
@@ -255,7 +251,7 @@ pub struct Master {
     pub search_radius: f32,
     /// The `.dat`'s `drop_sites` (`+0x7a0`..`+0x7a8`, `FUN_14109d4f0`): the buildings a unit of
     /// this master takes its load to.
-    pub drop_sites: Vec<i16>,
+    pub drop_sites: Vec<MasterId>,
     /// The hit points (`+0x530`) and the build time: the first train location's train time
     /// (`+0x898`'s first entry), 0 without one.
     pub hit_points: i16,
@@ -263,7 +259,7 @@ pub struct Master {
     pub build_time: i16,
     /// The train locations' ids (`+0x898`, each entry's first short): the units that build a
     /// building, the buildings that train a unit (`FUN_141263610`).
-    pub trained_at: Vec<i16>,
+    pub trained_at: Vec<MasterId>,
     /// The combat master's `weapon_range` (`+0x828`, object slot 0x230) and
     /// `minimum_weapon_range` (`+0x850`, slot 0x240).
     pub weapon_range: f32,
@@ -385,7 +381,7 @@ pub struct Master {
     /// ([`crate::objects::lifecycle::MasterData`]), for a new object's [`crate::objects::lifecycle::Lifecycle`].
     pub death_sprite: i16,
     /// The death spawns (`+0x5e4`, `+0x5e6`, −1 for none).
-    pub death_spawns: [i16; 2],
+    pub death_spawns: [Option<MasterId>; 2],
     /// What a dead object's steps read of the master.
     pub life: Option<crate::objects::lifecycle::MasterData>,
     /// What a combat master's attack reads: its standing sprite (`+0x470`), its attack sprite
@@ -410,7 +406,7 @@ pub struct Master {
     /// A second attack sprite (`+0x878`).
     pub attack_sprite2: i16,
     /// `missile_id`, −1 for none.
-    pub missile: i16,
+    pub missile: Option<MasterId>,
     /// `fire_missile_at_frame`.
     pub fire_frame: i16,
     /// `interrupt_frame`.
@@ -439,9 +435,9 @@ pub struct Master {
     /// `+0x8d0`, the `.dat`'s projectile spawning area): how far a volley's missiles scatter.
     pub volley_spread: [f32; 3],
     /// `volley_missile_id` (`+0x8d4`, the `.dat`'s secondary projectile), None for −1.
-    pub volley_missile: Option<i16>,
+    pub volley_missile: Option<MasterId>,
     /// `mChargeProjectileUnit` (`+0x928`), None for −1.
-    pub charge_projectile: Option<i16>,
+    pub charge_projectile: Option<MasterId>,
     /// A missile master's flight (type 60, [`crate::combat::missile::MissileStats`]).
     pub missile_stats: Option<crate::combat::missile::MissileStats>,
     /// What a unit of this master moves with, its speed with the master's walking sprite (the
@@ -530,7 +526,7 @@ impl Default for DamageGraphic {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Diff)]
 pub struct TrainLocation {
     /// `+0x0`, `trainLocationID`: the master that makes it.
-    pub location: i16,
+    pub location: Option<MasterId>,
     /// `+0x2`, `trainTime`.
     pub time: i16,
     /// `+0x4`, `buttonLocationID`.
@@ -544,7 +540,7 @@ pub struct TrainLocation {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Trail {
     /// `+0x75e`: the master it leaves behind.
-    pub unit: i16,
+    pub unit: Option<MasterId>,
     /// `+0x760`.
     pub mode: u8,
     /// `+0x764`.

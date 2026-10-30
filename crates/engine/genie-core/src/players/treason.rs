@@ -6,6 +6,7 @@
 //! player's slot 0x1c0 with master 697 ([`World::remains`]).
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::KING;
 use crate::players::PlayerId;
@@ -14,9 +15,9 @@ use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
 /// The building of the content mode 1 (`0xd1`) that stands for the castle (`FUN_140fe0ec0`).
-const CASTLE_MODE_1: i16 = 0xd1;
+const CASTLE_MODE_1: MasterId = MasterId::named(0xd1);
 /// The flare each ally gets at a king (`0x2b9`).
-const FLARE4: i16 = 0x2b9;
+const FLARE4: MasterId = MasterId::named(0x2b9);
 /// The gold ([`attribute::GOLD`]) the treason costs: 400 (`DAT_142eb5bd4`, read at `0x141620446`),
 /// 200 (`DAT_142eb0f54`, read at `0x1416204d5`) with attribute 197 above 0.
 const TREASON_COST: f32 = crate::math::image::treason::TREASON_COST;
@@ -40,7 +41,7 @@ impl World {
             && self
                 .players
                 .get(p.index())
-                .is_some_and(|pl| !pl.tracker.list(i32::from(castle)).is_empty())
+                .is_some_and(|pl| !pl.tracker.list(i32::from(castle.get())).is_empty())
     }
 
     /// `FUN_141620400`: player `p`'s treason. It costs 400 gold, 200 with attribute 197 above 0

@@ -19,6 +19,7 @@ use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -28,14 +29,14 @@ use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// The ghosts' master in every player's list (`player+0x28`'s entry 243, "DOPL").
-pub const GHOST_MASTER: i16 = 243;
+pub const GHOST_MASTER: MasterId = MasterId::named(243);
 /// A master's `create_doppelganger_on_death` that leaves ghosts.
 pub const LEAVES_GHOSTS: u8 = 2;
 /// The classes a building's watch leaves out (`FUN_1411cc980`) and the gates' class, whose annex
 /// stays watched.
 const UNWATCHED_CLASSES: [ClassId; 2] = [class::CLASS_51, class::CLASS_54];
 /// The originals whose ghost's leaving changes the local player's terrain (`FUN_141090ad0`).
-const TERRAIN_ORIGINALS: [i16; 2] = [357, 1188];
+const TERRAIN_ORIGINALS: [MasterId; 2] = [MasterId::named(357), MasterId::named(1188)];
 /// The type from which an object's entry and its ghost follow its footprint's UMV entry
 /// (`FUN_141090430`, `FUN_14108f9b0`: master type above 0x31).
 const MASKED_KIND: u8 = 50;
@@ -72,7 +73,7 @@ pub(crate) struct Original {
     /// Its state (`+0x640`).
     pub state: u8,
     /// Its master (`+0xa0`).
-    pub master: i16,
+    pub master: MasterId,
 }
 
 /// A ghost.
@@ -85,7 +86,7 @@ pub struct Ghost {
     /// The original's id (`+0x7f8`, the save's `long_val`), −1 once it is gone.
     pub original_id: i32,
     /// The original's master (`+0x7d0`), while it is known.
-    pub original_master: Option<i16>,
+    pub original_master: Option<MasterId>,
     /// The original's owner (`+0x7d8`, the save's `doppled_player`).
     pub original_owner: usize,
     /// Its place.
@@ -675,17 +676,19 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ids;
     use crate::objects::masters::ids::HOUSE;
     use crate::objects::masters::master_type::DOPPELGANGER;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::vision::visibility::{Seer, Visibility};
     use crate::world::Player;
 
     /// A gold mine's master (it leaves ghosts), a house's and the ghosts' own.
-    const MINE: i16 = 66;
-    const TREE: i16 = 411;
+    const MINE: MasterId = MasterId::named(66);
+    const TREE: MasterId = MasterId::named(411);
 
     fn masters(recyclable: bool) -> Masters {
         Masters::new([
@@ -717,7 +720,7 @@ mod tests {
         ])
     }
 
-    fn object(id: i32, master: i16, state: u8, position: Position) -> Unit {
+    fn object(id: i32, master: MasterId, state: u8, position: Position) -> Unit {
         let mut u = Unit {
             id: object_id(id),
             body: crate::objects::layers::Body::at(position),
@@ -1117,19 +1120,19 @@ mod tests {
         // then the rehook drops every annex but a gate's
         let mut t = world(true);
         let gate = Master {
-            id: 88,
+            id: master_id(88),
             kind: 80,
             class: class::GATE,
             ..Master::default()
         };
         let annex_master = Master {
-            id: 89,
+            id: master_id(89),
             kind: 80,
             class: class::BUILDING,
             ..Master::default()
         };
         let wonder = Master {
-            id: 276,
+            id: ids::WONDER,
             kind: 80,
             class: class::CLASS_51,
             ..Master::default()
@@ -1153,14 +1156,14 @@ mod tests {
         // Gaia's mine 5 dead (state 3), house 9's annexes 10 (a gate) and 11, a class-51
         // building 12, master 1808's 13, a desolid foundation 14 in the sleeping list
         t.players[0].objects[0].life.state = 3;
-        let mut g = object(10, 88, 2, Position::new(2.5, 2.5, 0.0));
+        let mut g = object(10, master_id(88), 2, Position::new(2.5, 2.5, 0.0));
         g.annex_of = Some(9);
-        let mut a = object(11, 89, 2, Position::new(3.5, 2.5, 0.0));
+        let mut a = object(11, master_id(89), 2, Position::new(3.5, 2.5, 0.0));
         a.annex_of = Some(9);
         t.players[1].objects.extend([
             g,
             a,
-            object(12, 276, 2, Position::new(0.5, 0.5, 0.0)),
+            object(12, ids::WONDER, 2, Position::new(0.5, 0.5, 0.0)),
             object(13, MASTER_1808, 2, Position::new(0.5, 1.5, 0.0)),
         ]);
         let mut foundation = object(14, HOUSE, 2, Position::new(0.5, 3.5, 0.0));

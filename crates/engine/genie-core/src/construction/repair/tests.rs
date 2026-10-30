@@ -4,6 +4,7 @@ use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, WalkTo,
 };
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::teardown::HeadCode;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
@@ -109,7 +110,7 @@ impl crate::technology::Attributes for Held {
 fn masters() -> crate::objects::masters::Masters {
     crate::objects::masters::Masters::new([
         crate::objects::masters::Master {
-            id: 70,
+            id: ids::HOUSE,
             kind: 80,
             class: class::BUILDING,
             hit_points: 550,
@@ -117,7 +118,7 @@ fn masters() -> crate::objects::masters::Masters {
             ..crate::objects::masters::Master::default()
         },
         crate::objects::masters::Master {
-            id: 35,
+            id: ids::ID_35,
             kind: 70,
             class: class::SIEGE,
             hit_points: 175,
@@ -132,7 +133,7 @@ fn house(id: i32, hp: f32) -> Repaired {
         id,
         kind: 80,
         class: class::BUILDING,
-        master: 70,
+        master: ids::HOUSE,
         master_hp: 550,
         hp,
         hp_powerups: [0.0; 2],
@@ -209,7 +210,7 @@ fn a_siege_unit_s_repair_pays_its_unit_share() {
     let mut set = vec![Repaired {
         kind: 70,
         class: class::SIEGE,
-        master: 35,
+        master: ids::ID_35,
         master_hp: 175,
         ..house(5, 100.0)
     }];
@@ -239,7 +240,7 @@ fn repair_at(at: Position, set: impl FnOnce(&mut RepairAction)) -> crate::world:
     let mut t = crate::world::tests::repairing(at);
     t.graphics = graphics();
     for masters in &mut t.masters {
-        let m = masters.get_mut(118).unwrap();
+        let m = masters.get_mut(ids::BUILDER).unwrap();
         (m.standing_sprite, m.move_sprite) = (5, 20);
     }
     let work = crate::orders::Work {

@@ -7,6 +7,7 @@ use crate::commands::queue::QueueCommand;
 use crate::commands::research::ResearchCommand;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -54,7 +55,7 @@ impl World {
         q: &QueueCommand,
         buildings: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
-        let (player, unit_id) = (q.player, q.unit.get());
+        let (player, unit_id) = (q.player, q.unit);
         let Some(ids) = self.command_check(player, &ObjectId::fields(buildings))? else {
             return Ok(());
         };
@@ -167,7 +168,7 @@ impl World {
                         "QUEUE at a sleeping object the unit trains at",
                     ));
                 };
-                let _ = self.queue_at(p, i, unit_id, counts[k], -1, q.button)?;
+                let _ = self.queue_at(p, i, Some(unit_id), counts[k], -1, q.button)?;
             }
         }
         Ok(())
@@ -239,8 +240,8 @@ impl World {
             .min(queue.slots.len());
         let mut queued = 0.0f32;
         for e in &queue.slots[..entries] {
-            if e.master != -1 {
-                let time = player_master(&self.masters, p, e.master)
+            if let Some(master) = e.master {
+                let time = player_master(&self.masters, p, master)
                     .and_then(|m| m.train_locations.first())
                     .map_or(0, |l| l.time);
                 queued += (i32::from(e.count) * i32::from(time)) as f32;
@@ -277,21 +278,21 @@ impl World {
         &mut self,
         player: PlayerId,
         i: usize,
-        unit: i16,
+        unit: Option<MasterId>,
         count: u16,
         tech: i16,
         button: i32,
     ) -> Result<bool, GenieError> {
-        let mut master = if unit == VILLAGER_ANY {
-            VILLAGER_MALE
+        let mut master = if unit == Some(VILLAGER_ANY) {
+            Some(VILLAGER_MALE)
         } else {
             unit
         };
         let mut count = count;
-        if master == VILLAGER_MALE {
-            master = villager(self.streams.get(Stream::Action).raw64());
+        if master == Some(VILLAGER_MALE) {
+            master = Some(villager(self.streams.get(Stream::Action).raw64()));
             if 0 < count.wrapping_sub(1) as i16 {
-                let _ = self.queue_at(player, i, VILLAGER_MALE, count - 1, -1, button)?;
+                let _ = self.queue_at(player, i, Some(VILLAGER_MALE), count - 1, -1, button)?;
             }
             count = 1;
         }
@@ -308,6 +309,9 @@ impl World {
             crate::production::ROOM - total
         };
         if tech == -1 {
+            let master = master.ok_or(GenieError::invalid_input(
+                "a unit queue entry that names no master",
+            ))?;
             self.queue_units(player, i, master, n, button)
         } else {
             self.queue_techs(player, i, (master, tech), n, button)
@@ -328,7 +332,7 @@ impl World {
         &mut self,
         player: PlayerId,
         i: usize,
-        master: i16,
+        master: MasterId,
         count: i16,
         button: i32,
     ) -> Result<bool, GenieError> {
@@ -359,14 +363,14 @@ impl World {
         let costs = as_entry_costs(master_costs(masters, master, &*owner)?);
         owner.tracker.count_queued(n);
         for _ in 0..n {
-            owner.tracker.place(master, class);
+            owner.tracker.place(Some(master), class);
         }
         let building = owner.objects[i].life.master_id;
         let production = owner.objects[i]
             .production
             .get_or_insert_with(Production::default);
         if let Some(last) = production.queue.last()
-            && last.master == master
+            && last.master == Some(master)
             && last.button == button
             && crate::production::same_costs(&last.costs, &costs)
         {
@@ -380,7 +384,7 @@ impl World {
         let time = made
             .filter(|m| COMBAT <= m.kind)
             .map(|m| crate::production::train_time(&m.train_locations, building, button));
-        self.new_entry(player, i, (master, -1), n, button, time)?;
+        self.new_entry(player, i, (Some(master), -1), n, button, time)?;
         Ok(true)
     }
 
@@ -396,7 +400,7 @@ impl World {
         &mut self,
         player: PlayerId,
         i: usize,
-        (master, tech): (i16, i16),
+        (master, tech): (Option<MasterId>, i16),
         count: i16,
         button: i32,
     ) -> Result<bool, GenieError> {
@@ -469,7 +473,7 @@ impl World {
         &mut self,
         player: PlayerId,
         i: usize,
-        (master, tech): (i16, i16),
+        (master, tech): (Option<MasterId>, i16),
         n: i16,
         button: i32,
         time: Option<i16>,
@@ -518,11 +522,11 @@ impl World {
         &self,
         player: PlayerId,
         tech: i16,
-        master: i16,
+        master: Option<MasterId>,
     ) -> Result<[(i32, f32); 3], GenieError> {
         use crate::production::{NO_COSTS, as_entry_costs, master_costs};
         let owner = &self.players[player.index()];
-        if master != -1 {
+        if let Some(master) = master {
             let empty = Masters::default();
             let masters = self.masters.get(player.index()).unwrap_or(&empty);
             return Ok(as_entry_costs(master_costs(masters, master, owner)?));

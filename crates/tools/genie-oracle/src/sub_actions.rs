@@ -8,6 +8,7 @@ use genie_core::GenieError;
 use genie_core::map::Position;
 use genie_core::movement::move_to::TargetMoved;
 use genie_core::objects::masters::ACTION_FACTORY_TYPES;
+use genie_core::objects::masters::MasterId;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
@@ -132,7 +133,7 @@ pub(super) fn saved_attack(
             second_sprite: None,
             idle_sprite: g(a.short_val_3),
             idle_attack_sprite: g(a.short_val_4),
-            missile: a.missile_id,
+            missile: MasterId::of_data(a.missile_id),
             fire_frame: a.frame_delay,
             interrupt_frame: a.interrupt_animation_at_frame,
         },
@@ -259,7 +260,7 @@ pub(super) fn production(
                 )
             };
             Entry {
-                master: e.production_queue_master_unit_id,
+                master: MasterId::of_data(e.production_queue_master_unit_id),
                 count: e.production_queue_unit_count,
                 tech: e.production_queue_tech_id,
                 costs: [cost(0), cost(1), cost(2)],
@@ -284,7 +285,7 @@ pub(super) fn production(
             Some(Making::Unit(MakeObj {
                 state: base.state,
                 paid: base.sub_action_value != 0,
-                master: make.obj_id,
+                master: MasterId::of_data(make.obj_id),
                 progress: make.work_done,
                 unique_id: make.unique_id,
                 button: make.button_location_id,
@@ -338,7 +339,10 @@ pub(super) fn production(
         action,
         disabled_techs: disabled.clone(),
         researched_techs: researched.clone(),
-        available_units: available.clone(),
+        available_units: available
+            .iter()
+            .filter_map(|&m| MasterId::of_data(m))
+            .collect(),
     }))
 }
 
@@ -354,7 +358,7 @@ pub(super) fn gather_point(
         state: b.gather_point_exists,
         point: Position::new(b.gather_point_x, b.gather_point_y, b.gather_point_z),
         target: b.gather_point_target,
-        target_master: b.gather_point_target_master,
+        target_master: MasterId::of_data(b.gather_point_target_master),
     })
 }
 

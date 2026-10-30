@@ -303,7 +303,7 @@ impl World {
         rice: bool,
     ) -> Result<(), GenieError> {
         let building = master.building.as_ref();
-        if let Some(stack) = building.map(|b| b.stack_unit).filter(|&s| 0 <= s) {
+        if let Some(stack) = building.and_then(|b| b.stack_unit) {
             let stack = if master.id == PASTURE_1889 && rice {
                 PASTURE_MANGROVE
             } else {
@@ -426,9 +426,9 @@ pub(crate) fn change_hands(
         ),
     };
     // the dead master comes before the copy (FUN_141186d10), from the master it reads
-    if u.dead_master.is_none() && 0 <= own.death_spawns[0] {
+    if u.dead_master.is_none() && own.death_spawns[0].is_some() {
         u.dead_master = old_table
-            .and_then(|m| m.get(own.death_spawns[0]))
+            .and_then(|m| own.death_spawns[0].and_then(|id| m.get(id)))
             .filter(|d| DEAD_COPY_TYPES.contains(&d.kind))
             .map(|d| Box::new(d.clone()));
     }

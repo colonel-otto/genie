@@ -1,9 +1,12 @@
 use super::*;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::BUILDING;
+use crate::test_ids::master_id;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::test_sides::With;
@@ -303,7 +306,7 @@ impl UnitSide for HelpSide {
             gap_squared: 0.0,
             position: Position::new(101.5, 158.5, 0.0),
             hp: 0.0,
-            master: 0,
+            master: ids::ID_0,
             kind: 0,
             main: None,
             allied: false,
@@ -340,7 +343,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
     ];
     let monk = Converter {
         class: class::MONK,
-        master: 125,
+        master: master_id(125),
         faith: 100.0,
         attributes: &attributes,
         tasks: &tasks,
@@ -348,7 +351,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
     let knight = Convertee {
         owner: PlayerId::new(2),
         class: class::CLASS_12,
-        master: 38,
+        master: master_id(38),
         hero: 0,
     };
     assert!(can_convert(&monk, Some(&knight), false));
@@ -371,7 +374,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
     assert!(!can_convert(&monk, Some(&sheep), true));
     let tc = Convertee {
         class: class::BUILDING,
-        master: 109,
+        master: ids::TOWN_CENTRE,
         ..knight
     };
     assert!(!can_convert(&monk, Some(&tc), true));
@@ -380,7 +383,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
     // a building's task names attribute 28, which the owner holds at 0
     let house = Convertee {
         class: class::BUILDING,
-        master: 70,
+        master: ids::HOUSE,
         ..knight
     };
     assert!(!can_convert(&monk, Some(&house), true));
@@ -3144,7 +3147,7 @@ fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
         let at = Surroundings {
             player: PlayerId::new(1),
             kind: 70,
-            master: 448,
+            master: ids::ID_448,
             class: Some(class::CLASS_47),
             weapon_range: 0.0,
             action_state: Some(0),
@@ -4319,8 +4322,8 @@ fn a_new_tower_unit_ai_draws_four_timers() {
 fn placed(position: Position, class: ClassId) -> NewObject {
     NewObject {
         position,
-        master: 83,
-        copy_id: 83,
+        master: ids::VILLAGER_MALE,
+        copy_id: Some(ids::VILLAGER_MALE),
         class,
         ..NewObject::default()
     }
@@ -4513,7 +4516,7 @@ fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
     assert_eq!(
         stance(&|n| {
             n.object_flags = 0x10;
-            n.copy_id = 448;
+            n.copy_id = Some(ids::ID_448);
         }),
         0
     );
@@ -4529,14 +4532,14 @@ fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
         assert_eq!(
             stance(&|n| {
                 n.master = master;
-                n.copy_id = master;
+                n.copy_id = Some(master);
             }),
             1
         );
     }
     assert_eq!(
         stance(&|n| {
-            n.master = 527;
+            n.master = ids::ID_527;
             n.computer = true;
         }),
         0
@@ -4607,20 +4610,20 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
         ..crate::objects::masters::Task::default()
     };
     let made = crate::objects::masters::Master {
-        copy_id: 1240,
+        copy_id: Some(master_id(1240)),
         class: class::PREY,
         object_flags: 0x30,
         hero_flag: 4,
         tasks: vec![task(6, 2.0), task(7, 9.0), task(6, 3.5), task(5, 1.0)],
         ..crate::objects::masters::Master::default()
     };
-    let new = NewObject::of(Position::new(1.0, 2.0, 3.0), 1239, &made);
+    let new = NewObject::of(Position::new(1.0, 2.0, 3.0), master_id(1239), &made);
     assert_eq!(
         new,
         NewObject {
             position: Position::new(1.0, 2.0, 3.0),
-            master: 1239,
-            copy_id: 1240,
+            master: master_id(1239),
+            copy_id: Some(master_id(1240)),
             class: class::PREY,
             object_flags: 0x30,
             hero_flag: 4,
@@ -4630,7 +4633,7 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
     );
     let none = NewObject::of(
         Position::ORIGIN,
-        1,
+        master_id(1),
         &crate::objects::masters::Master::default(),
     );
     assert_eq!(none.hunt_range, 0.0);
@@ -5951,7 +5954,7 @@ fn idle_scout() -> (UnitAi, Surroundings) {
         search_radius: 4.0,
         state: 2,
         kind: 70,
-        master: 448,
+        master: ids::ID_448,
         ..Surroundings::default()
     };
     (u, at)
@@ -6041,11 +6044,11 @@ const TC: Attacker = Attacker {
     state: 2,
     held: -1,
     top_action: None,
-    master: 109,
+    master: ids::TOWN_CENTRE,
     kind: 80,
     class: Some(class::BUILDING),
     attack_priority: 0,
-    missile: 54,
+    missile: Some(MasterId::named(54)),
     range: 6.0,
     min_range: 0.0,
     charge_type: 0,
@@ -6065,7 +6068,7 @@ const BOAR: Target = Target {
     owner: PlayerId::new(0),
     class: class::PREDATOR,
     kind: 70,
-    master: 48,
+    master: MasterId::named(48),
     combat_level: 0,
     capture: 0,
     has_ai: true,
@@ -6183,7 +6186,10 @@ fn a_tower_passes_a_boar_but_not_a_wolf() {
         .is_err()
     );
     // a tower without a missile is armed only by the firepower of the units inside it
-    let bare = Attacker { missile: -1, ..TC };
+    let bare = Attacker {
+        missile: None,
+        ..TC
+    };
     let enemy = Target {
         owner: PlayerId::new(1),
         class: class::CLASS_6,
@@ -6204,8 +6210,8 @@ const SCOUT: Attacker = Attacker {
     player: PlayerId::new(1),
     kind: 70,
     class: Some(class::CLASS_47),
-    master: 448,
-    missile: -1,
+    master: ids::ID_448,
+    missile: None,
     range: 0.0,
     los: 4.0,
     position: Position::new(118.5, 183.5, 0.0),
@@ -6224,7 +6230,7 @@ fn a_soldier_standing_its_ground_attacks_within_its_range_of_its_state_position(
     let villager = |x: f32| Target {
         owner: PlayerId::new(2),
         class: class::VILLAGER,
-        master: 83,
+        master: ids::VILLAGER_MALE,
         position: Position::new(x, 183.5, 0.0),
         radius: [0.2, 0.2],
         ..BOAR
@@ -6381,7 +6387,7 @@ fn a_tower_attacks_a_started_building_but_not_a_desolid_foundation() {
         owner: PlayerId::new(1),
         class: class::BUILDING,
         kind: 80,
-        master: 70,
+        master: ids::HOUSE,
         ..BOAR
     };
     assert_eq!(tower_can_attack(&TC, &house), Ok(true));
@@ -7046,7 +7052,7 @@ fn a_human_player_s_king_s_idle_check_only_caps() {
         position: Position::new(31.5, 106.5, 0.0),
         player: PlayerId::new(1),
         class: Some(class::KING),
-        master: 434,
+        master: ids::KING,
         ..Surroundings::default()
     };
     let mut u = UnitAi {
@@ -7734,9 +7740,18 @@ fn a_villager_on_the_attack_order_without_a_target_gives_it_up() {
 /// (`FUN_140fde4f0`: the boar's for 1, else the lion's).
 #[test]
 fn the_factory_picks_the_unit_ai_type_by_master_and_class() {
-    assert_eq!(factory_type(class::CLASS_6, 1105, -1, 0), Some(0x12));
-    assert_eq!(factory_type(class::CLASS_6, 1744, -1, 0), Some(0x10));
-    assert_eq!(factory_type(class::CLASS_6, 1746, -1, 0), Some(0x10));
+    assert_eq!(
+        factory_type(class::CLASS_6, master_id(1105), None, 0),
+        Some(0x12)
+    );
+    assert_eq!(
+        factory_type(class::CLASS_6, master_id(1744), None, 0),
+        Some(0x10)
+    );
+    assert_eq!(
+        factory_type(class::CLASS_6, master_id(1746), None, 0),
+        Some(0x10)
+    );
     let by_class = [
         (ClassId::of_master(1), 0xe),
         (ClassId::of_master(2), 0xa),
@@ -7762,24 +7777,36 @@ fn the_factory_picks_the_unit_ai_type_by_master_and_class() {
     ];
     for (class, ai_type) in by_class {
         assert_eq!(
-            factory_type(class, 83, -1, 0),
+            factory_type(class, master_id(83), None, 0),
             Some(ai_type),
             "class {class}"
         );
     }
     for class in [3, 27, 39, 49, 60].map(ClassId::of_master) {
-        assert_eq!(factory_type(class, 70, -1, 0), Some(17));
-        assert_eq!(factory_type(class, 70, 5, 0), Some(0xf));
+        assert_eq!(factory_type(class, master_id(70), None, 0), Some(17));
+        assert_eq!(
+            factory_type(class, master_id(70), Some(master_id(5)), 0),
+            Some(0xf)
+        );
     }
     for class in
         [5, 7, 8, 11, 14, 15, 16, 30, 31, 32, 33, 34, 38, 42, 48, 63].map(ClassId::of_master)
     {
-        assert_eq!(factory_type(class, 83, -1, 0), None);
+        assert_eq!(factory_type(class, master_id(83), None, 0), None);
     }
     // class 10: the boar's for combat level 1, else the lion's
-    assert_eq!(factory_type(class::PREDATOR, 48, -1, 1), Some(BOAR_AI));
-    assert_eq!(factory_type(class::PREDATOR, 126, -1, 0), Some(5));
-    assert_eq!(factory_type(class::PREDATOR, 126, -1, 4), Some(5));
+    assert_eq!(
+        factory_type(class::PREDATOR, master_id(48), None, 1),
+        Some(BOAR_AI)
+    );
+    assert_eq!(
+        factory_type(class::PREDATOR, master_id(126), None, 0),
+        Some(5)
+    );
+    assert_eq!(
+        factory_type(class::PREDATOR, master_id(126), None, 4),
+        Some(5)
+    );
 }
 
 /// The building's cared classes (`FUN_140c11470`) are the soldier's in another order.
@@ -9340,8 +9367,8 @@ const MANGONEL: Attacker = Attacker {
     player: PlayerId::new(1),
     kind: 70,
     class: Some(class::SIEGE),
-    master: 280,
-    missile: 656,
+    master: MasterId::named(280),
+    missile: Some(MasterId::named(656)),
     range: 7.0,
     los: 9.0,
     position: Position::new(20.0, 20.0, 0.0),
@@ -9401,7 +9428,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     let villager = |x: f32| Target {
         owner: PlayerId::new(2),
         class: class::VILLAGER,
-        master: 83,
+        master: ids::VILLAGER_MALE,
         position: Position::new(x, 20.0, 0.0),
         radius: [0.2, 0.2],
         ..BOAR
@@ -9472,7 +9499,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     assert_eq!(check(&packing, &seeker(0), &villager(30.0)), Ok(false));
     // a ram attacks buildings and siege, a trebuchet buildings only
     let ram = Attacker {
-        master: 35,
+        master: ids::ID_35,
         ..MANGONEL
     };
     let siege = Target {
@@ -9494,7 +9521,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     assert_eq!(check(&trebuchet, &seeker(0), &house), Ok(true));
     // masters 1744 and 1746 on a building: priority 1 or 4 and up only
     let elephant = |attack_priority| Attacker {
-        master: 1744,
+        master: ids::ID_1744,
         attack_priority,
         ..MANGONEL
     };
@@ -10572,7 +10599,7 @@ fn run_order(
         position: Position::new(5.0, 6.0, 0.25),
         map: [100, 100],
         class: Some(class),
-        master: 4,
+        master: master_id(4),
         player: PlayerId::new(1),
         state: 2,
         ..Surroundings::default()

@@ -12,6 +12,7 @@ use crate::movement::move_to::{
 };
 use crate::movement::{Mover, PathAsk, footprint_gap};
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite, sprite_id, standing, walking};
 use crate::unit_ai::{ACTION_INVALIDATED, ActionKind, Inbox};
@@ -65,9 +66,9 @@ const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET
 /// and no `MoveTo` holds a target in state 7 or later (`FUN_140a7a230`); any other target is
 /// held, and a `MoveTo` of its own (not quiet) takes it (slot 0x178).
 #[must_use]
-pub const fn holds_object(livestock: bool, master: i16, state: u8) -> bool {
+pub const fn holds_object(livestock: bool, master: MasterId, state: u8) -> bool {
     // The town centre's master (`FUN_140aa0df0`'s `0x6109` raw), to which livestock walks beside.
-    !(livestock && master == TOWN_CENTRE) && state < 7
+    !(livestock && matches!(master, TOWN_CENTRE)) && state < 7
 }
 
 /// What one update of a [`MoveToAction`] did.
@@ -804,7 +805,7 @@ mod tests {
         world.insert(
             object_id(9149),
             Placed {
-                master: 109,
+                master: TOWN_CENTRE,
                 radius: [2.0, 2.0],
                 ..sheep(50.0, 40.0)
             },

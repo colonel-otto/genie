@@ -15,6 +15,7 @@ use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::sprite::{ActiveSprite, new_sprite};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
@@ -140,7 +141,7 @@ impl Attack {
         r: &AttackReads,
         sprite: ActiveSprite,
     ) -> Result<(), GenieError> {
-        let ranged = self.arms.missile != -1;
+        let ranged = self.arms.missile.is_some();
         if f.own.class == class::CLASS_51
             || (!ranged && matches!(f.own.class, class::CLASS_35 | class::CLASS_64))
         {
@@ -182,7 +183,7 @@ impl Attack {
         r: &AttackReads,
         sprite: ActiveSprite,
     ) -> Result<(), GenieError> {
-        let ranged = self.arms.missile != -1;
+        let ranged = self.arms.missile.is_some();
         let frame = if self.arms.fire_frame == 0 && !ranged {
             sprite.graphic.frames / 2
         } else {
@@ -198,7 +199,15 @@ impl Attack {
         if ranged || r.volleys {
             unit.volley(c, Aimed::at(self.target, &f.victim))?;
         } else {
-            if matches!(f.own.master_id, 527 | 528 | 1104 | 2133..=2135) {
+            if matches!(
+                f.own.master_id,
+                ids::ID_527
+                    | ids::ID_528
+                    | ids::ID_1104
+                    | ids::ID_2133
+                    | ids::ID_2134
+                    | ids::ID_2135
+            ) {
                 return Err(GenieError::unsupported(
                     "a self-destructing attacker's hit (masters 527, 528, 1104, 2133..2135)",
                 ));
@@ -238,7 +247,7 @@ impl Attack {
         r: &AttackReads,
         sprite: ActiveSprite,
     ) -> Result<(), GenieError> {
-        let ranged = self.arms.missile != -1;
+        let ranged = self.arms.missile.is_some();
         let mut g = c.w.attack_ground();
         match after_hit(
             ranged,

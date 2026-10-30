@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::technology::EffectCommand;
 use crate::technology::effect::{
@@ -92,7 +93,7 @@ impl World {
                         self.disable_tech(p, tech, object)?;
                     }
                 }
-                TECH_TIME => self.research_time(p, c.a, c.d, mode, -1)?,
+                TECH_TIME => self.research_time(p, c.a, c.d, mode, None)?,
                 _ => {}
             }
         }
@@ -164,7 +165,14 @@ impl World {
                 let unit = if c.b < 0 { c.a } else { c.b };
                 self.cost_entries(q, unit, c.c, crate::math::conversions::cvttss2si(c.d));
             } else {
-                self.modify_attribute(q, change, c.a, ClassId::of_field(c.b)?, c.d, attribute)?;
+                self.modify_attribute(
+                    q,
+                    change,
+                    MasterId::of_data(c.a),
+                    ClassId::of_field(c.b)?,
+                    c.d,
+                    attribute,
+                )?;
             }
         }
         Ok(())
@@ -216,7 +224,7 @@ impl World {
         let own = party == Party::Own;
         match c.kind % 10 {
             kind::ENABLE => {
-                if 0 <= c.a {
+                if let Some(unit) = MasterId::of_data(c.a) {
                     let enable = (c.b & 0xff) as u8;
                     for q in self.party(p, party) {
                         let (one, object) = if own {
@@ -224,19 +232,24 @@ impl World {
                         } else {
                             (false, None)
                         };
-                        self.enable_master(q, c.a, enable, one, object)?;
+                        self.enable_master(q, unit, enable, one, object)?;
                     }
                 }
             }
             kind::UPGRADE => {
                 for q in self.party(p, party) {
                     let object = object.filter(|_| own);
-                    self.upgrade_master(q, c.a, c.b, c.c, object)?;
+                    self.upgrade_master(
+                        q,
+                        (MasterId::of_data(c.a), MasterId::of_data(c.b)),
+                        c.c,
+                        object,
+                    )?;
                 }
             }
             kind::SPAWN => {
                 for q in self.party(p, party) {
-                    self.spawn_at(q, c.a, c.b, c.c)?;
+                    self.spawn_at(q, (MasterId::of_data(c.a), MasterId::of_data(c.b)), c.c)?;
                 }
             }
             _ => {

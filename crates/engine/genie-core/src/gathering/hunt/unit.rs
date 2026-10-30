@@ -116,7 +116,7 @@ impl Unit {
         let master = self.master(&c.w.masters, c.player)?;
         let site = if carry_to != -1 {
             carry_to
-        } else if master.drop_sites.first().is_none_or(|&d| d == -1) {
+        } else if master.drop_sites.is_empty() {
             -1
         } else {
             let mut w = DropWorld {
@@ -431,7 +431,10 @@ impl Unit {
                 .relations
                 .get(c.player.index())
                 .map_or(&[][..], |r| &r[..]);
-        if matches!(t.life.master_id, 1893 | 1897) {
+        if matches!(
+            t.life.master_id,
+            crate::objects::masters::ids::PASTURE_MANGROVE | crate::objects::masters::ids::PASTURE
+        ) {
             return Err(GenieError::unsupported(
                 "a hunt finding a farm (FUN_1411c7670)",
             ));

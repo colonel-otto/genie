@@ -488,6 +488,7 @@ mod tests {
     use crate::map::spatial::Placed;
     use crate::objects::masters::class;
     use crate::players::PlayerId;
+    use crate::test_ids::master_id;
 
     /// A `MoveTo` sub-action ([`MoveToAction::sub_update`]) on house 10028 within 0.1 (the
     /// walker 0.8 off it) with [`WalkRig`]'s walker: a start asks for its path (a `MoveTo` that
@@ -580,7 +581,7 @@ mod tests {
             radius: [0.2, 0.2],
             class: class::PREDATOR,
             player: PlayerId::new(1),
-            master: 594,
+            master: master_id(594),
             obstruction_type: 0,
             buildable_on: 0,
             tall: true,

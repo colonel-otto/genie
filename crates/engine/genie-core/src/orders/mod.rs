@@ -14,6 +14,7 @@ use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
@@ -277,7 +278,7 @@ fn splits_together(
 }
 
 /// The trophy master `TRANSFORM_OBJECT` changes ("Trophy None") and the trophies it may take.
-const TROPHY: i16 = 1649;
+const TROPHY: MasterId = MasterId::named(1649);
 const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;
 /// A patrol's waypoint counts when it is this far from the last one on x or y
 /// (`FUN_14161b970`, `DAT_14330eb8c`), or this far the other way (`DAT_14330ec20`).
@@ -374,7 +375,7 @@ impl World {
     ///
     /// A player without a table or a table without the master ([`crate::world::OBJECT_MASTER`],
     /// with the player and the master).
-    pub(crate) fn master(&self, player: PlayerId, master: i16) -> Result<&Master, GenieError> {
+    pub(crate) fn master(&self, player: PlayerId, master: MasterId) -> Result<&Master, GenieError> {
         player_master(&self.masters, player, master).ok_or_else(|| {
             crate::world::OBJECT_MASTER
                 .with("player", player)
@@ -627,7 +628,7 @@ pub(crate) fn nearest_table_site(
         crate::unit_ai::task_finder::table_drop_buildings(table, held, Some(class), civ);
     let mut best = (None, TABLE_DROP_FAR);
     for m in buildings {
-        for &id in tracker.list(i32::from(m)) {
+        for &id in tracker.list(i32::from(m.get())) {
             let Some((state, position)) = look(id) else {
                 continue;
             };

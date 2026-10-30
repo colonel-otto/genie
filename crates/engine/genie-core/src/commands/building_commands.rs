@@ -7,7 +7,6 @@ use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
-use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::tech_outside;
 use crate::players::PlayerId;
@@ -61,7 +60,7 @@ impl World {
             let gather = if own {
                 let (target, target_master) = match old {
                     Some(g) if kept => (g.target, g.target_master),
-                    _ => (unit.id.get(), unit.life.master_id),
+                    _ => (unit.id.get(), Some(unit.life.master_id)),
                 };
                 Some(GatherPoint {
                     state: 1,
@@ -74,7 +73,7 @@ impl World {
             } else {
                 let (target, target_master) = match old {
                     Some(g) if kept => (g.target, g.target_master),
-                    _ => (ObjectId::field(target), MasterId::field(target_master)),
+                    _ => (ObjectId::field(target), target_master),
                 };
                 Some(GatherPoint {
                     state: if kept { GatherPoint::KEPT } else { 1 },
@@ -118,7 +117,7 @@ impl World {
                     state: i32::from(state),
                     point: unit.position(),
                     target: unit.id.get(),
-                    target_master: unit.life.master_id,
+                    target_master: Some(unit.life.master_id),
                 })
             } else {
                 continue;
@@ -340,7 +339,7 @@ impl World {
         let at = state
             .locations
             .iter()
-            .any(|l| l.building == building.life.master_id);
+            .any(|l| l.building == Some(building.life.master_id));
         if master.kind != BUILDING || building.life.state != 2 || !at {
             return Ok(());
         }
@@ -391,6 +390,6 @@ impl World {
         let state = &self.players[player.index()].techs[t];
         let one = !state.allow_multiple || def.upgrades();
         let count: u16 = if !shift || one { 1 } else { 5 };
-        self.queue_at(player, i, -1, count, tech, -1)
+        self.queue_at(player, i, None, count, tech, -1)
     }
 }

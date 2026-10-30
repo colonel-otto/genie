@@ -357,7 +357,7 @@ impl Unit {
         let master = self.master(&c.w.masters, c.player)?;
         let site = if carry_to != -1 {
             carry_to
-        } else if master.drop_sites.first().is_some_and(|&d| d != -1) {
+        } else if !master.drop_sites.is_empty() {
             let mut w = DropWorld {
                 masters: c.w.masters.get(c.player.index()),
                 spatial: &mut c.w.spatial,

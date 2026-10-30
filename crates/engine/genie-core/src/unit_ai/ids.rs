@@ -4,7 +4,9 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::unit_ai::{
     ARTIFACT_AI, ActionKind, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
@@ -90,7 +92,7 @@ pub(super) const INVALID_POINT: f32 = crate::math::image::unit_ai::INVALID_POINT
 /// What the defend order adds to its desired distance before it follows (`DAT_14330eb8c`, 1).
 pub(super) const DEFEND_SLACK: f32 = crate::math::image::unit_ai::DEFEND_SLACK;
 /// The master whose unit takes no defend order (slot 0x230's case 0x2bd: raw `0x611c`).
-pub(super) const DEFENDLESS_MASTER: i16 = 128;
+pub(super) const DEFENDLESS_MASTER: MasterId = MasterId::named(128);
 
 /// An order on an object run without the unit AI's update (its surroundings and side), as
 /// [`UnitAi::take_order_now`] runs one.
@@ -132,7 +134,7 @@ pub(super) const HUNTED_SIGHT_GROWTH: f32 = 1.0;
 /// which the moving object's update counts it down.
 pub const HUMAN_ORDER_CAP: u32 = 5000;
 /// The master whose idle soldier does nothing (`FUN_140c20db0`, raw `0x635e`).
-pub(super) const SOLDIER_IDLE_MASTER: i16 = 706;
+pub(super) const SOLDIER_IDLE_MASTER: MasterId = MasterId::named(706);
 /// The lion's idle timeout (`FUN_140c1fb70`, as its constructor `FUN_140c11bd0`).
 pub(super) const LION_IDLE_TIMEOUT: u32 = 6000;
 /// The lion's idle timeout once its attack completed (`FUN_140c266f0`).
@@ -144,7 +146,7 @@ pub(super) const LION_SIGHT_SHARE: f32 = crate::math::image::unit_ai::LION_SIGHT
 /// (`FUN_140c1fb70`, `DAT_142eb1c98`).
 pub(super) const LION_SIGHT_DIVISOR: f32 = crate::math::image::unit_ai::LION_SIGHT_DIVISOR;
 /// The king's master that the branch passes over (raw `0x635c`).
-pub(super) const KING_UNLED: i16 = 704;
+pub(super) const KING_UNLED: MasterId = MasterId::named(704);
 
 /// The walk back's gap and range (`FUN_140c5e7d0`: `DAT_14330eb8c`, 1.0, whose image role in
 /// the unit AI's table is [`RUN_ONE`]'s).
@@ -196,13 +198,13 @@ pub(super) struct RetargetSearch {
 #[must_use]
 pub const fn factory_type(
     class: ClassId,
-    master: i16,
-    missile: i16,
+    master: MasterId,
+    missile: Option<MasterId>,
     combat_level: u8,
 ) -> Option<u32> {
     match master {
-        1105 => return Some(0x12),
-        1744 | 1746 => return Some(0x10),
+        ids::ID_1105 => return Some(0x12),
+        ids::ID_1744 | ids::ID_1746 => return Some(0x10),
         _ => {}
     }
     Some(match class {
@@ -225,7 +227,7 @@ pub const fn factory_type(
         class::ARTIFACT => 0xe,
         class::TRADE_BOAT | class::TRADE_CART => 0xa,
         class::BUILDING | class::WALL | class::GATE | class::FARM | class::CLASS_60
-            if missile < 0 =>
+            if missile.is_none() =>
         {
             17
         }
@@ -258,9 +260,9 @@ pub struct NewObject {
     /// animal's and the boar's origin.
     pub position: Position,
     /// Its master's id (`+0x58`).
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's `copy_id` (`+0x158`).
-    pub copy_id: i16,
+    pub copy_id: Option<MasterId>,
     /// Its master's class (`+0x410`).
     pub class: ClassId,
     /// Its master's `object_flags` (`+0x654`).
@@ -284,7 +286,11 @@ impl NewObject {
     /// human player's in the Dark Age with posture 0 ([`NewObject::computer`],
     /// [`NewObject::posture`], [`NewObject::age`] are the caller's).
     #[must_use]
-    pub fn of(position: Position, master: i16, made: &crate::objects::masters::Master) -> Self {
+    pub fn of(
+        position: Position,
+        master: MasterId,
+        made: &crate::objects::masters::Master,
+    ) -> Self {
         Self {
             position,
             master,
@@ -320,7 +326,11 @@ pub(super) const COMPUTER_SOLDIER_IDLE_TIMEOUT: u32 = 1500;
 /// The siege unit's idle timeout (`FUN_140c12040`'s `FUN_140c41bc0` with 1000).
 pub(super) const SIEGE_IDLE_TIMEOUT: u32 = 1000;
 /// The masters whose soldier is defensive (`FUN_140c12300`, raw `0x62ab`, `0x62ac`, `0x64ec`).
-pub(super) const DEFENSIVE_MASTERS: [i16; 3] = [527, 528, 1104];
+pub(super) const DEFENSIVE_MASTERS: [MasterId; 3] = [
+    MasterId::named(527),
+    MasterId::named(528),
+    MasterId::named(1104),
+];
 /// The classes of a human player's soldier in `NoAttack` (`FUN_140c12300`: `-0xe89`, `-0xe6c`
 /// raw).
 pub(super) const NO_ATTACK_CLASSES: [ClassId; 2] = [class::CLASS_35, class::CLASS_64];
@@ -340,7 +350,7 @@ pub(super) fn soldier_stance(new: &NewObject) -> u8 {
     // UCOMISS with JP, JNZ: the age equals 0 (a NaN does not)
     if !new.computer
         && new.object_flags & STAND_GROUND_FLAG != 0
-        && new.copy_id == new.master
+        && new.copy_id == Some(new.master)
         && new.age == 0.0
     {
         return 2;

@@ -12,6 +12,7 @@ use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{TargetMoved, WalkTo};
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
@@ -309,7 +310,7 @@ impl GatherAction {
                 self.current_stop = 0;
                 self.time_per_stop = rate.time_per_stop(self.task.work_value, FARM_STOPS);
                 self.time_at_stop = 0.0;
-            } else if target.master == 199 {
+            } else if target.master == ids::FISH_TRAP {
                 self.farm = target.position.ground();
             }
         }

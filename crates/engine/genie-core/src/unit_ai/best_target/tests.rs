@@ -2,6 +2,7 @@ use super::*;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 use crate::unit_ai::best_target::choice::{add_extra, kept_by_owner_and_class, may_attack};
 
 fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
@@ -199,7 +200,7 @@ fn soldier() -> Searcher {
         target_types: [-1, -1],
         order: None,
         action: None,
-        master: 74,
+        master: master_id(74),
         class: Some(class::CLASS_6),
         kind: 70,
         attack_priority: 1,
@@ -219,7 +220,7 @@ fn enemy(id: i32, class: ClassId, distance: f32, hp: f32) -> (Thing, Candidate) 
             owner: PlayerId::new(2),
             state: 2,
             has_ai: true,
-            master: 4,
+            master: master_id(4),
             class,
             kind: 70,
             targetable: true,
@@ -385,20 +386,20 @@ fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
 /// table is −1.
 #[test]
 fn the_categories_follow_the_classes_and_their_exceptions() {
-    assert_eq!(category(4, class::CLASS_0), 3);
-    assert_eq!(category(6, class::CLASS_0), 4);
-    assert_eq!(category(7, class::CLASS_23), 4);
-    assert_eq!(category(83, class::VILLAGER), 7);
-    assert_eq!(category(74, class::CLASS_6), 1);
-    assert_eq!(category(1744, class::CLASS_6), 5);
-    assert_eq!(category(280, class::SIEGE), 6);
-    assert_eq!(category(35, class::SIEGE), 5);
-    assert_eq!(category(1258, class::CLASS_55), 5);
-    assert_eq!(category(109, class::BUILDING), 0);
-    assert_eq!(category(448, class::CLASS_47), 1);
-    assert_eq!(category(1, class::ARTIFACT), -1);
-    assert_eq!(category(1, class::CLASS_63), -1);
-    assert_eq!(category(1, class::NO_CLASS), -1);
+    assert_eq!(category(master_id(4), class::CLASS_0), 3);
+    assert_eq!(category(ids::ID_6, class::CLASS_0), 4);
+    assert_eq!(category(ids::ID_7, class::CLASS_23), 4);
+    assert_eq!(category(ids::VILLAGER_MALE, class::VILLAGER), 7);
+    assert_eq!(category(master_id(74), class::CLASS_6), 1);
+    assert_eq!(category(ids::ID_1744, class::CLASS_6), 5);
+    assert_eq!(category(master_id(280), class::SIEGE), 6);
+    assert_eq!(category(ids::ID_35, class::SIEGE), 5);
+    assert_eq!(category(ids::ID_1258, class::CLASS_55), 5);
+    assert_eq!(category(ids::TOWN_CENTRE, class::BUILDING), 0);
+    assert_eq!(category(ids::ID_448, class::CLASS_47), 1);
+    assert_eq!(category(master_id(1), class::ARTIFACT), -1);
+    assert_eq!(category(master_id(1), class::CLASS_63), -1);
+    assert_eq!(category(master_id(1), class::NO_CLASS), -1);
 }
 
 /// `bestUnitToAttack`'s extra objects ([`add_extra`]): each the world holds but
@@ -603,7 +604,7 @@ fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
             ..computer.clone()
         },
         Searcher {
-            master: 82,
+            master: ids::CASTLE,
             ..computer.clone()
         },
         Searcher {

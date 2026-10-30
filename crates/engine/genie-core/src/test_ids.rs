@@ -26,6 +26,11 @@ pub(crate) fn master_id(value: i16) -> MasterId {
     MasterId::try_from(value).expect("a test's master is 0 or more")
 }
 
+/// The master `value`, or none for −1 (a field the game fills with −1).
+pub(crate) fn opt_master(value: i16) -> Option<MasterId> {
+    MasterId::of_data(value)
+}
+
 /// The unit list of `ids`, its count theirs (fewer than `0xffff`).
 pub(crate) fn unit_list(ids: Vec<Option<ObjectId>>) -> UnitList {
     UnitList::try_from(ids).expect("a test's unit list is shorter than 0xffff ids")

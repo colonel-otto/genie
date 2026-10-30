@@ -165,6 +165,7 @@ pub(super) fn spatial(
             let Some(m) = placement(s, section.objects()) else {
                 continue;
             };
+            let master = genie_core::objects::masters::MasterId::try_from(s.master_obj)?;
             let building = o.tribe_building_object.as_deref();
             // a building's place links its tiles (FUN_1411e6780), an annex's does not, and a
             // foundation made desolid lost them (FUN_1411cf770); so do a combat unit's that does
@@ -190,7 +191,7 @@ pub(super) fn spatial(
                 s.id,
                 Seer {
                     player,
-                    master: s.master_obj,
+                    master,
                     los: m.los,
                     state: s.object_state,
                     // a foundation made in the game explores first when its construction starts
@@ -203,7 +204,7 @@ pub(super) fn spatial(
                     // the save's +0x924 (a map's objects keep what the map gave them, as
                     // 426048706's Gaia petards their 0); the setup's rule without a combat part
                     capture: o.combat().map_or_else(
-                        || capture_kind(player, m.class, s.master_obj),
+                        || capture_kind(player, m.class, master),
                         |c| c.rge_combat_object.capture_flag,
                     ),
                     // the object's type: the save's factory types 70 and 80, any other below
@@ -232,7 +233,7 @@ pub(super) fn spatial(
                     radius: [m.radius[0], m.radius[1]],
                     class: m.class,
                     player,
-                    master: s.master_obj,
+                    master,
                     obstruction_type: m.obstruction_type,
                     buildable_on: m.buildable_on,
                     tall: 0.0 < m.radius[2],

@@ -14,6 +14,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::Task;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
@@ -68,7 +69,7 @@ pub const SHIPS: [ClassId; 5] = [
 /// The masters a unit of task swap group 1 or 2 (`+0x7b8`) becomes for a repair command (slot
 /// 0x378): its player's master table's entries at `+0x4e0` and `+0x6f0`, the repairers 156
 /// and 222, when the player has them.
-pub const REPAIRERS: [(u8, i16); 2] = [(1, 156), (2, 222)];
+pub const REPAIRERS: [(u8, MasterId); 2] = [(1, MasterId::named(156)), (2, MasterId::named(222))];
 /// The repair of a ship (its meeting point, `FUN_140ad9120`), which is not modelled.
 pub const SHIP_REPAIR: GenieError =
     GenieError::unsupported("the task finder's repair (106) of a ship (FUN_140ad9120)");

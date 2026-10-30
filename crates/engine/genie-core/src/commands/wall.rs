@@ -220,7 +220,7 @@ impl World {
         w: &BuildWallCommand,
         builders: &[i32],
     ) -> Result<(), GenieError> {
-        let (player, master) = (w.player, w.master.get());
+        let (player, master) = (w.player, w.master);
         if w.q_id != -1 {
             return Ok(());
         }
@@ -275,7 +275,7 @@ impl World {
         w: &BuildWallCommand,
         radius: [f32; 2],
     ) -> Result<Vec<(i32, Position)>, GenieError> {
-        let (player, master) = (w.player, w.master.get());
+        let (player, master) = (w.player, w.master);
         let ([x1, y1], [x2, y2]) = (w.from.map(i32::from), w.to.map(i32::from));
         let mut placed: Vec<(i32, Position)> = Vec::new();
         for (a, b) in segments([x1, y1], [x2, y2]) {
@@ -344,7 +344,7 @@ impl World {
         placed: &[(i32, Position)],
         (foundation, at): (i32, Position),
     ) -> Result<(), GenieError> {
-        let (player, master) = (w.player, w.master.get());
+        let (player, master) = (w.player, w.master);
         let Some(Place::Live(q, idx)) = self.place(id) else {
             return Err(GenieError::unsupported(
                 "a wall builder the slice does not have",
@@ -355,7 +355,7 @@ impl World {
             .as_ref()
             .is_none_or(|ai| !w.queued && (!w.commits || !ai.has_unready_order()));
         if direct {
-            let task: (i16, BuildAction) =
+            let task: (MasterId, BuildAction) =
                 self.build_task(q, id, (player, foundation, master), at)?;
             self.build_directly(q, idx, task, (player, foundation, master), at)?;
         } else {
@@ -379,7 +379,7 @@ impl World {
     /// building (`+0x12`, its object id).
     pub(crate) fn builds(
         &self,
-        (building, trained_at): (i16, &[i16]),
+        (building, trained_at): (MasterId, &[MasterId]),
         id: i32,
     ) -> Result<bool, GenieError> {
         if id == -1 {
@@ -399,7 +399,7 @@ impl World {
                 // The builder the train locations name for every villager (`FUN_141262270`: `0x76`).
                 // The action type of the task another unit builds with (`FUN_141262270`: `0x65`).
                 .find(|t| t.action_type == action_type::BUILD)
-                .is_some_and(|t| t.object_id == building));
+                .is_some_and(|t| t.object_id == Some(building)));
         }
         Ok(trained_at.contains(&BUILDER) || trained_at.contains(&m.id))
     }

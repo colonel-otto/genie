@@ -26,7 +26,7 @@ fn task(id: i16, range: f32) -> Task {
         id: TaskId::of_task(id),
         action_type: 0,
         object_group: 3,
-        object_id: -1,
+        object_id: None,
         combat_level: 0,
         combat_level_flag: 0,
         terrain: -1,

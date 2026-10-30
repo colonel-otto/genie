@@ -8,6 +8,7 @@ use crate::construction::build::{
 };
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::ids::PASTURE_MANGROVE;
@@ -58,7 +59,7 @@ pub(super) fn lay_foundation(
     placed: &crate::map::spatial::Placed,
     master: &Master,
     building: &crate::objects::masters::BuildingMaster,
-    stack_master: i16,
+    stack_master: Option<MasterId>,
     mode_680: i32,
 ) -> Result<(), GenieError> {
     /// The terrain the pasture master 1889's stack unit on mangrove or rice terrain lays
@@ -72,7 +73,7 @@ pub(super) fn lay_foundation(
         c.snow = true;
     }
     if 0 <= building.foundation_terrain {
-        let laid = if stack_master == PASTURE_MANGROVE {
+        let laid = if stack_master == Some(PASTURE_MANGROVE) {
             RICE_PASTURE_TERRAIN
         } else {
             building.foundation_terrain as u8
@@ -127,7 +128,7 @@ pub(super) fn completion_counts(
         .sum();
     if matches!(master.id, CASTLE | WONDER) {
         attributes.push((CASTLE_WONDER_COST, paid as f32));
-    } else if !main && building.stack_unit == -1 {
+    } else if !main && building.stack_unit.is_none() {
         attributes.push((98, paid as f32));
         attributes.push((165, paid as f32));
     }

@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::MONASTERY;
@@ -265,7 +266,7 @@ pub(crate) const MILITARY_CLASSES: [ClassId; 24] = [
     class::CLASS_57,
 ];
 /// The masters whose objects count in attribute 235 besides 40 (`FUN_141226060`).
-pub(crate) const MILITARY_235: [i16; 2] = [1663, 1697];
+pub(crate) const MILITARY_235: [MasterId; 2] = [MasterId::named(1663), MasterId::named(1697)];
 /// The classes that count in attribute 37 (`FUN_141226060`); the villagers' (4) too.
 pub(crate) const CIVILIAN_CLASSES: [ClassId; 4] = [
     class::TRADE_BOAT,

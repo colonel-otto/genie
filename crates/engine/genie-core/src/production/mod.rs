@@ -17,6 +17,7 @@
 //! value, and the buffer's regrowth by ten copies them with the rest.
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, TrainLocation};
 use crate::players::attribute;
@@ -35,7 +36,7 @@ pub use self::costs::{
 #[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Entry {
     /// `+0x0`, `mMasterUnitId`: the master it makes; −1 for a research.
-    pub master: i16,
+    pub master: Option<MasterId>,
     /// `+0x2`, `mUnitCount`: how many.
     pub count: i16,
     /// `+0x4`, `mTechId`: the technology it researches; −1 for a unit.
@@ -205,7 +206,7 @@ impl Queue {
     /// master, count, technology, button and serial (`+0xcd8`, which grows), and `costs`; its
     /// train time is the caller's. The count, the total and the change counter are the
     /// caller's too. Returns the slot.
-    pub fn open(&mut self, master: i16, count: i16, tech: i16, button: i32) -> usize {
+    pub fn open(&mut self, master: Option<MasterId>, count: i16, tech: i16, button: i32) -> usize {
         let i = usize::try_from(self.count).unwrap_or(0);
         let serial = self.next_serial;
         self.next_serial += 1;
@@ -242,14 +243,14 @@ impl Queue {
 /// that building whose button is the button's low byte, else the first location's; 0 without
 /// locations.
 #[must_use]
-pub fn train_time(locations: &[TrainLocation], building: i16, button: i32) -> i16 {
+pub fn train_time(locations: &[TrainLocation], building: MasterId, button: i32) -> i16 {
     let first = locations.first().map_or(0, |l| l.time);
     if button == -1 {
         return first;
     }
     locations
         .iter()
-        .find(|l| l.location == building && l.button == button as u8)
+        .find(|l| l.location == Some(building) && l.button == button as u8)
         .map_or(first, |l| l.time)
 }
 
@@ -269,7 +270,7 @@ pub struct MakeObj {
     /// (`FUN_141630770`).
     pub paid: bool,
     /// `+0x68`, `obj_id`: the master it makes.
-    pub master: i16,
+    pub master: Option<MasterId>,
     /// `+0x6c`, `work_done`: the seconds of work done.
     pub progress: f32,
     /// `+0x70`, `unique_id` (−1 from the building's update).
@@ -306,7 +307,7 @@ impl MakeObj {
     /// `building` and the action's button ([`train_time`]); 0 for a master that is not a
     /// combat master (`TRIBE_Master_Combat_Object`, type 70 and up).
     #[must_use]
-    pub fn time(&self, master: Option<&Master>, building: i16) -> i16 {
+    pub fn time(&self, master: Option<&Master>, building: MasterId) -> i16 {
         // The first master type that is a `TRIBE_Master_Combat_Object` (the dynamic casts of
         // `FUN_1411cbc40` and `FUN_140acf280`).
         let Some(m) = master.filter(|m| COMBAT <= m.kind) else {
@@ -373,7 +374,7 @@ pub struct Production {
     pub researched_techs: Vec<i16>,
     /// `+0xd30`, `localAvailableUnits`: masters QUEUE takes at this building though they are
     /// not available to the player (`FUN_1411c8fd0`).
-    pub available_units: Vec<i16>,
+    pub available_units: Vec<MasterId>,
 }
 
 impl Production {
@@ -436,10 +437,13 @@ pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
 mod tests {
     use super::*;
     use crate::objects::masters::Masters;
+    use crate::objects::masters::ids;
+    use crate::test_ids::master_id;
+    use crate::test_ids::opt_master;
 
-    fn unit(master: i16, count: i16, food: f32) -> Entry {
+    fn unit(master: MasterId, count: i16, food: f32) -> Entry {
         Entry {
-            master,
+            master: Some(master),
             count,
             tech: -1,
             costs: [(0, food), (-1, 0.0), (-1, 0.0)],
@@ -468,7 +472,10 @@ mod tests {
     /// the second villager, index 5 none.
     #[test]
     fn a_unit_index_walks_the_entries_counts() {
-        let q = queue(&[unit(4, 3, 25.0), unit(83, 2, 50.0)]);
+        let q = queue(&[
+            unit(master_id(4), 3, 25.0),
+            unit(ids::VILLAGER_MALE, 2, 50.0),
+        ]);
         let at: Vec<_> = (0..6).map(|i| q.entry_of_unit(i)).collect();
         assert_eq!(at, [Some(0), Some(0), Some(0), Some(1), Some(1), None]);
         assert_eq!(Queue::default().entry_of_unit(0), None);
@@ -478,7 +485,11 @@ mod tests {
     /// old last slot keeps its copy; without `time` the train times stay as they were.
     #[test]
     fn closing_an_entry_moves_the_later_ones_down_but_not_their_serials() {
-        let mut q = queue(&[unit(4, 0, 25.0), unit(83, 2, 50.0), unit(5, 1, 30.0)]);
+        let mut q = queue(&[
+            unit(master_id(4), 0, 25.0),
+            unit(ids::VILLAGER_MALE, 2, 50.0),
+            unit(master_id(5), 1, 30.0),
+        ]);
         q.slots[2].train_time = 40;
         q.close(0, true);
         assert_eq!(q.count, 2);
@@ -487,27 +498,37 @@ mod tests {
                 .iter()
                 .map(|s| (s.master, s.count, s.serial, s.train_time))
                 .collect::<Vec<_>>(),
-            [(83, 2, 0, 25), (5, 1, 1, 40), (5, 1, 2, 40)]
+            [
+                (Some(ids::VILLAGER_MALE), 2, 0, 25),
+                (Some(master_id(5)), 1, 1, 40),
+                (Some(master_id(5)), 1, 2, 40)
+            ]
         );
         // a research's cancel (FUN_1411d61e0) leaves the train times in their slots
-        let mut q = queue(&[unit(4, 0, 25.0), unit(83, 2, 50.0)]);
+        let mut q = queue(&[
+            unit(master_id(4), 0, 25.0),
+            unit(ids::VILLAGER_MALE, 2, 50.0),
+        ]);
         q.slots[0].train_time = 7;
         q.close(0, false);
-        assert_eq!((q.slots[0].master, q.slots[0].train_time), (83, 7));
+        assert_eq!(
+            (q.slots[0].master, q.slots[0].train_time),
+            (Some(ids::VILLAGER_MALE), 7)
+        );
     }
 
     /// The regrowth by ten keeps every old slot but its costs, which it fills anew.
     #[test]
     fn a_full_buffer_grows_by_ten_and_fills_the_old_costs_anew() {
-        let mut q = queue(&[unit(83, 1, 50.0)]);
-        q.slots[3] = unit(7, 0, 9.0);
+        let mut q = queue(&[unit(ids::VILLAGER_MALE, 1, 50.0)]);
+        q.slots[3] = unit(ids::ID_7, 0, 9.0);
         assert!(!q.full());
         let refill: Vec<_> = q
             .slots
             .iter()
             .map(|s| {
                 [
-                    (i32::from(s.master), f32::from(s.tech)),
+                    (i32::from(MasterId::field(s.master)), f32::from(s.tech)),
                     NO_COSTS[1],
                     NO_COSTS[2],
                 ]
@@ -516,17 +537,23 @@ mod tests {
         q.grow(&refill);
         assert_eq!(q.slots.len(), 20);
         assert_eq!(q.slots[0].costs[0], (83, -1.0));
-        assert_eq!((q.slots[3].master, q.slots[3].costs[0]), (7, (7, -1.0)));
+        assert_eq!(
+            (q.slots[3].master, q.slots[3].costs[0]),
+            (Some(ids::ID_7), (7, -1.0))
+        );
         assert_eq!(q.slots[15], Entry::default());
         // a new entry takes the next serial and no costs
-        let i = q.open(5, 2, -1, 3);
+        let i = q.open(Some(master_id(5)), 2, -1, 3);
         assert_eq!((i, q.slots[1].serial, q.slots[1].costs), (1, 10, NO_COSTS));
         assert_eq!(q.next_serial, 11);
     }
 
     #[test]
     fn the_first_entry_lets_one_unit_go_and_then_itself() {
-        let mut q = queue(&[unit(83, 2, 50.0), unit(4, 1, 25.0)]);
+        let mut q = queue(&[
+            unit(ids::VILLAGER_MALE, 2, 50.0),
+            unit(master_id(4), 1, 25.0),
+        ]);
         q.release_first();
         assert_eq!(
             (q.count, q.total, q.changes, q.slots[0].count),
@@ -535,7 +562,7 @@ mod tests {
         q.release_first();
         assert_eq!(
             (q.count, q.total, q.changes, q.slots[0].master),
-            (1, 1, 2, 4)
+            (1, 1, 2, Some(master_id(4)))
         );
     }
 
@@ -559,31 +586,34 @@ mod tests {
             button,
             hotkey: 0,
         };
-        let locations = [at(82, 30, 2), at(109, 25, 1)];
-        assert_eq!(train_time(&locations, 109, 1), 25);
-        assert_eq!(train_time(&locations, 109, 2), 30);
-        assert_eq!(train_time(&locations, 109, -1), 30);
-        assert_eq!(train_time(&locations, 109, 0x101), 25);
-        assert_eq!(train_time(&[], 109, 1), 0);
+        let locations = [
+            at(Some(ids::CASTLE), 30, 2),
+            at(Some(ids::TOWN_CENTRE), 25, 1),
+        ];
+        assert_eq!(train_time(&locations, ids::TOWN_CENTRE, 1), 25);
+        assert_eq!(train_time(&locations, ids::TOWN_CENTRE, 2), 30);
+        assert_eq!(train_time(&locations, ids::TOWN_CENTRE, -1), 30);
+        assert_eq!(train_time(&locations, ids::TOWN_CENTRE, 0x101), 25);
+        assert_eq!(train_time(&[], ids::TOWN_CENTRE, 1), 0);
         let mut m = Master {
             kind: 70,
             train_locations: locations.to_vec(),
             ..Master::default()
         };
         let mut make = MakeObj::for_entry(&Entry {
-            master: 83,
+            master: Some(ids::VILLAGER_MALE),
             button: 1,
             train_time: 99,
             ..Entry::default()
         });
-        assert_eq!(make.time(Some(&m), 109), 25);
+        assert_eq!(make.time(Some(&m), ids::TOWN_CENTRE), 25);
         m.object_flags = 0x80;
-        assert_eq!(make.time(Some(&m), 109), 99);
+        assert_eq!(make.time(Some(&m), ids::TOWN_CENTRE), 99);
         m.kind = 60;
-        assert_eq!(make.time(Some(&m), 109), 0);
+        assert_eq!(make.time(Some(&m), ids::TOWN_CENTRE), 0);
         make.button = -1;
         assert_eq!(
-            (make.time(None, 109), make.paid, make.unique_id),
+            (make.time(None, ids::TOWN_CENTRE), make.paid, make.unique_id),
             (0, true, -1)
         );
     }
@@ -698,7 +728,7 @@ mod tests {
 
     fn villager(cost: Vec<(i16, i16, bool)>) -> Master {
         Master {
-            id: 83,
+            id: ids::VILLAGER_MALE,
             kind: 70,
             cost,
             ..Master::default()
@@ -719,26 +749,26 @@ mod tests {
     fn the_cost_test_reads_each_entry_and_the_population_only_when_asked() {
         let ms = Masters::new([villager(vec![(0, 50, true), (4, 1, false), (-1, 0, false)])]);
         let mut h = held();
-        assert!(cost_test(&ms, 83, 2.0, true, &h).unwrap());
-        assert!(!cost_test(&ms, 83, 3.0, true, &h).unwrap());
+        assert!(cost_test(&ms, ids::VILLAGER_MALE, 2.0, true, &h).unwrap());
+        assert!(!cost_test(&ms, ids::VILLAGER_MALE, 3.0, true, &h).unwrap());
         // 4 queued: 4 + 4 + 1 is the headroom's 9; one more queued is not
         h.0[80] = 4.0;
-        assert!(cost_test(&ms, 83, 1.0, true, &h).unwrap());
+        assert!(cost_test(&ms, ids::VILLAGER_MALE, 1.0, true, &h).unwrap());
         h.0[80] = 5.0;
-        assert!(!cost_test(&ms, 83, 1.0, true, &h).unwrap());
-        assert!(cost_test(&ms, 83, 1.0, false, &h).unwrap());
+        assert!(!cost_test(&ms, ids::VILLAGER_MALE, 1.0, true, &h).unwrap());
+        assert!(cost_test(&ms, ids::VILLAGER_MALE, 1.0, false, &h).unwrap());
         // a population at the cap
         let mut h = held();
         h.0[32] = 4.0;
-        assert!(!cost_test(&ms, 83, 1.0, true, &h).unwrap());
+        assert!(!cost_test(&ms, ids::VILLAGER_MALE, 1.0, true, &h).unwrap());
         // a NaN need passes, a master the player lacks or below type 70 fails
-        assert!(cost_test(&ms, 83, f32::NAN, false, &h).unwrap());
-        assert!(!cost_test(&ms, 84, 1.0, false, &h).unwrap());
+        assert!(cost_test(&ms, ids::VILLAGER_MALE, f32::NAN, false, &h).unwrap());
+        assert!(!cost_test(&ms, ids::MARKET, 1.0, false, &h).unwrap());
         let low = Masters::new([Master {
             kind: 60,
             ..villager(vec![])
         }]);
-        assert!(!cost_test(&low, 83, 1.0, false, &h).unwrap());
+        assert!(!cost_test(&low, ids::VILLAGER_MALE, 1.0, false, &h).unwrap());
     }
 
     /// `FUN_14162fb60` pays the paid entries times the count in one subtraction.
@@ -747,9 +777,9 @@ mod tests {
         let ms = Masters::new([villager(vec![(0, 50, true), (4, 1, false), (1, 7, true)])]);
         let mut h = held();
         h.0[1] = 30.0;
-        assert!(pay(&ms, 83, 2.0, &mut h).unwrap());
+        assert!(pay(&ms, ids::VILLAGER_MALE, 2.0, &mut h).unwrap());
         assert_eq!((h.0[0], h.0[1], h.0[4]), (0.0, 16.0, 5.0));
-        assert!(!pay(&ms, 83, 1.0, &mut h).unwrap());
+        assert!(!pay(&ms, ids::VILLAGER_MALE, 1.0, &mut h).unwrap());
         assert_eq!(h.0[0], 0.0);
     }
 
@@ -760,13 +790,13 @@ mod tests {
     #[test]
     fn listed_costs_move_what_the_player_lacks_to_gold() {
         use crate::objects::masters::BuildingMaster;
-        let building = |id, head, stack, cost| Master {
-            id,
+        let building = |id: i16, head: i16, stack: i16, cost| Master {
+            id: master_id(id),
             kind: 80,
             cost,
             building: Some(BuildingMaster {
-                head_unit: head,
-                stack_unit: stack,
+                head_unit: opt_master(head),
+                stack_unit: opt_master(stack),
                 ..BuildingMaster::default()
             }),
             ..Master::default()
@@ -783,9 +813,12 @@ mod tests {
         ]);
         let mut h = held();
         (h.0[0], h.0[1], h.0[2]) = (20.0, 100.0, 5.5);
-        assert_eq!(costed(&ms, ms.get(2).unwrap()).0.id, 4);
         assert_eq!(
-            master_costs(&ms, 2, &h).unwrap(),
+            costed(&ms, ms.get(master_id(2)).unwrap()).0.id,
+            master_id(4)
+        );
+        assert_eq!(
+            master_costs(&ms, master_id(2), &h).unwrap(),
             [(0, 20), (2, 5), (3, 55)]
         );
         // a gold entry first takes the difference on what it holds
@@ -801,7 +834,7 @@ mod tests {
         ]);
         (h.0[3], h.0[0]) = (20.0, 10.0);
         assert_eq!(
-            master_costs(&ms, 2, &h).unwrap(),
+            master_costs(&ms, master_id(2), &h).unwrap(),
             [(3, 70), (0, 10), (-1, 0)]
         );
         // a unit the player cannot pay for one more of moves nothing
@@ -811,10 +844,10 @@ mod tests {
             (-1, 0, false),
         ])]);
         assert_eq!(
-            master_costs(&ms, 83, &h).unwrap(),
+            master_costs(&ms, ids::VILLAGER_MALE, &h).unwrap(),
             [(3, 50), (-1, 0), (-1, 0)]
         );
-        assert_eq!(master_costs(&ms, 7, &h).unwrap(), [(-1, 0); 3]);
+        assert_eq!(master_costs(&ms, ids::ID_7, &h).unwrap(), [(-1, 0); 3]);
         assert_eq!(
             as_entry_costs([(3, 50), (-1, 0), (-1, -2)]),
             [(3, 50.0), (-1, 0.0), (-1, -2.0)]

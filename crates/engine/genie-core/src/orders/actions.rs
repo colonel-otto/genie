@@ -138,7 +138,6 @@ impl World {
         master: MasterId,
     ) -> Result<(), GenieError> {
         let id = id.get();
-        let master = master.get();
         let Some(Place::Live(p, idx)) = self.place(id) else {
             return Ok(());
         };
@@ -146,7 +145,7 @@ impl World {
             return Ok(());
         }
         let unit = &self.players.live(p, idx)?;
-        if unit.life.master_id != TROPHY || !TROPHIES.contains(&master) {
+        if unit.life.master_id != TROPHY || !TROPHIES.contains(&master.get()) {
             return Ok(());
         }
         self.transform_building(p, idx, master)
@@ -160,7 +159,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        new: i16,
+        new: MasterId,
     ) -> Result<(), GenieError> {
         self.change_master(player, idx, new)?;
         let build_time = self.master(player, new)?.build_time;
@@ -186,14 +185,14 @@ impl World {
                 "a gate's toggle to a master of its own or its original owner's",
             ));
         }
-        let new = unit
+        let Some(new) = unit
             .master(&self.masters, player)?
             .building
             .as_ref()
-            .map_or(-1, |b| b.transform_unit);
-        if new == -1 {
+            .and_then(|b| b.transform_unit)
+        else {
             return Ok(());
-        }
+        };
         self.transform_building(player, idx, new)?;
         let height = self.master(player, new)?.height;
         let now = self.world_time;
@@ -277,7 +276,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        new: i16,
+        new: MasterId,
     ) -> Result<(), GenieError> {
         self.clear_actions(player, idx)?;
         let unit = &self.players.live(player, idx)?;

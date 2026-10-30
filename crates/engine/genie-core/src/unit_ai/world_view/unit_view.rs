@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
@@ -157,7 +158,7 @@ impl UnitView<'_, '_> {
     pub(crate) fn switch_unit_master(
         &mut self,
         own: &crate::objects::masters::Master,
-        next: i16,
+        next: MasterId,
     ) -> Result<(), GenieError> {
         let by = Releaser {
             id: self.unit.id.get(),

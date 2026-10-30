@@ -6,6 +6,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::world::World;
 use genie_diff::Diff;
@@ -96,7 +97,7 @@ pub struct GatherPoint {
     /// The object it is on, −1 for none.
     pub target: i32,
     /// The target's master, −1 without a target.
-    pub target_master: i16,
+    pub target_master: Option<MasterId>,
 }
 
 impl GatherPoint {

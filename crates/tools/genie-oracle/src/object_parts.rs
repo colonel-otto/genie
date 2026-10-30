@@ -6,6 +6,7 @@ use genie_core::GenieError;
 use genie_core::map::Position;
 use genie_core::math::game_vector::GameVector;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
+use genie_core::objects::masters::MasterId;
 use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_save::generated::world::{
     PlayerObjects, RgeStaticObject, TribeCombatObject, UnitAiModule,
@@ -16,7 +17,7 @@ use genie_save::generated::world::{
 /// and undead flag from the table, which the save lacks.
 pub(super) fn lifecycle(
     object: &genie_save::Object,
-    s: &RgeStaticObject,
+    (s, master_id): (&RgeStaticObject, MasterId),
     objects: &PlayerObjects,
     civ: u8,
     masters: Option<&MasterTable>,
@@ -76,11 +77,11 @@ pub(super) fn lifecycle(
         amount: s.attribute_amount_held,
         dying_sprite,
         death_spawn: death_spawn >= 0,
-        remains,
+        remains: MasterId::of_data(remains),
         death_facets,
         inside: (s.inside_obj != -1).then_some(s.inside_obj),
         goto_sleep: s.goto_sleep_flag != 0,
-        master_id: s.master_obj,
+        master_id,
         master,
     }
 }

@@ -7,6 +7,7 @@ use crate::groups::Motion;
 use crate::groups::formation::on_map;
 use crate::math::fmath::BVector;
 use crate::math::fmath::{self, cross, normalize};
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
@@ -350,7 +351,7 @@ impl World {
     ///
     /// No such master, a master without a restriction (the game indexes before the table) and a
     /// map without its terrain.
-    pub(crate) fn master_mask(&self, p: PlayerId, master: i16) -> Result<u8, GenieError> {
+    pub(crate) fn master_mask(&self, p: PlayerId, master: MasterId) -> Result<u8, GenieError> {
         let restriction =
             usize::try_from(self.master(p, master)?.terrain_restriction).map_err(|_| {
                 GenieError::unsupported("a terrain mask of a master without a restriction")
@@ -385,6 +386,7 @@ mod tests {
     use super::*;
     use crate::map::Position;
     use crate::objects::masters::class;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
 
     /// `FUN_141049e10` facing x with up y: right is `y × x`, (0, 0, -1), the constructor's.
@@ -416,7 +418,7 @@ mod tests {
             body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
             ..crate::objects::unit::Unit::default()
         };
-        u.life.master_id = 4;
+        u.life.master_id = master_id(4);
         u
     }
 
@@ -437,7 +439,7 @@ mod tests {
         );
         t.masters = vec![crate::objects::masters::Masters::new([
             crate::objects::masters::Master {
-                id: 4,
+                id: master_id(4),
                 radius: [0.4, 0.4],
                 terrain_restriction: 0,
                 ..crate::objects::masters::Master::default()
@@ -464,7 +466,7 @@ mod tests {
                     radius: [0.4, 0.4],
                     class: class::CLASS_6,
                     player: PlayerId::new(0),
-                    master: 4,
+                    master: master_id(4),
                     obstruction_type: 0,
                     buildable_on: 0,
                     tall: true,

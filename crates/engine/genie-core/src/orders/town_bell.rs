@@ -379,7 +379,7 @@ impl World {
     fn workers_back(&mut self, owner: PlayerId) -> Result<(), GenieError> {
         let tracker = &self.players.player(owner)?.tracker;
         let mut ids = tracker.class_list(class::VILLAGER).to_vec();
-        ids.extend_from_slice(tracker.list(i32::from(MASTER_1808)));
+        ids.extend_from_slice(tracker.list(i32::from(MASTER_1808.get())));
         for id in ids {
             // the tracker's keepers follow every object its player gains and loses: the world
             // holds each (the game reads it without a test)

@@ -129,7 +129,11 @@ impl Master {
             | a::TRAIN_TIME
             | a::TRAIN_LOCATIONS_ENTRY_MOD
             | a::TRAIN_LOCATIONS_TOTAL_NUM => {
-                self.trained_at = self.train_locations.iter().map(|t| t.location).collect();
+                self.trained_at = self
+                    .train_locations
+                    .iter()
+                    .filter_map(|t| t.location)
+                    .collect();
                 self.build_time = self.train_locations.first().map_or(0, |t| t.time);
             }
             _ => {}

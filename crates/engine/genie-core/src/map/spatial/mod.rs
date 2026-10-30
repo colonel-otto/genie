@@ -14,6 +14,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
@@ -143,12 +144,16 @@ fn players_seen(found: &[Vec<Record>; 5]) -> u32 {
 
 /// The pastures, whose workers and livestock `ClosestObject` counts (`FUN_140c488b0`, raw
 /// `0x6801`, `0x6805`).
-const PASTURES: [i16; 2] = [
+const PASTURES: [MasterId; 2] = [
     crate::objects::masters::ids::PASTURE_MANGROVE,
     crate::objects::masters::ids::PASTURE,
 ];
 /// The fishing ships' masters (`FUN_1411945a0`: 13, 2356, 2171).
-const TRAPPERS: [i16; 3] = [13, 2356, 2171];
+const TRAPPERS: [MasterId; 3] = [
+    MasterId::named(13),
+    MasterId::named(2356),
+    MasterId::named(2171),
+];
 
 /// Obstruction kinds the query tests (`FUN_141051e00`): boxes (2, 3, 11, 13) and circles (5).
 const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];
@@ -191,7 +196,7 @@ pub struct Placed {
     /// The owning player.
     pub player: PlayerId,
     /// The master's id.
-    pub master: i16,
+    pub master: MasterId,
     /// The master's `obstruction_type` (`+0x651`), whether or not the object has its record yet.
     pub obstruction_type: u8,
     /// The master's `can_be_built_on` (`+0x5e9`): a foundation clears such objects off its
@@ -576,7 +581,7 @@ pub struct Spatial {
     /// Each player's masters with a task of action type 0x99, which a building's slot 0x4f0
     /// reads (`FUN_1411d4980` -> `FUN_1415c60b0`): a drop-off walker counts such a building
     /// among the workers near it.
-    pub task_0x99: Vec<Vec<i16>>,
+    pub task_0x99: Vec<Vec<MasterId>>,
     /// What the players see, when the slice holds it: the objects' sight follows their tiles
     /// ([`Spatial::set_position`]).
     pub sight: Option<Visibility>,

@@ -2,6 +2,7 @@
 //! its destructor.
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::production::spawn::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeObj, MakeTech, Making};
@@ -26,7 +27,7 @@ impl World {
             state: 0,
             paid: true,
             tech: first.tech,
-            master: first.master as i32,
+            master: MasterId::field(first.master) as i32,
             progress: 0.0,
         })
     }
@@ -145,7 +146,7 @@ impl World {
         p: PlayerId,
         i: usize,
         t: usize,
-        master: i16,
+        master: MasterId,
         repeat: bool,
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;
@@ -156,7 +157,7 @@ impl World {
             let mut time = def
                 .locations
                 .iter()
-                .find(|l| l.0 == master)
+                .find(|l| l.0 == master.get())
                 .map_or(-1.0, |l| f32::from(l.1));
             let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
             if !crate::technology::is_age(t as i16) && 0.0 < modifier {
@@ -264,7 +265,7 @@ impl World {
         let mut time = def
             .locations
             .iter()
-            .find(|l| l.0 == master)
+            .find(|l| l.0 == master.get())
             .map_or(-1.0, |l| f32::from(l.1));
         let adjustment = state.location(master).map_or(0.0, |l| l.adjustment);
         let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;

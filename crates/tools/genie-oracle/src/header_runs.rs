@@ -146,7 +146,7 @@ pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Playe
         .filter(|unit| listed(unit))
         .map(|unit| ObjectState {
             id: unit.id.get(),
-            main_id: unit.life.master_id,
+            main_id: unit.life.master_id.get(),
             state: unit.life.state,
             amount_held: unit.life.amount,
             position: unit.position(),

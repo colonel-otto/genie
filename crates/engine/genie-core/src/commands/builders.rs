@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
+use crate::objects::masters::MasterId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::player_master;
@@ -42,7 +43,7 @@ impl World {
         &mut self,
         player: PlayerId,
         foundation: i32,
-        master: i16,
+        master: MasterId,
         position: Position,
         builders: &[i32],
         (queued, commits): (bool, bool),
@@ -122,9 +123,9 @@ impl World {
         &self,
         q: PlayerId,
         id: i32,
-        (fp, foundation, master): (PlayerId, i32, i16),
+        (fp, foundation, master): (PlayerId, i32, MasterId),
         position: Position,
-    ) -> Result<(i16, BuildAction), GenieError> {
+    ) -> Result<(MasterId, BuildAction), GenieError> {
         let masters = self.masters.get(q.index()).ok_or(GenieError::unsupported(
             "BUILD tasks the builders: no master table",
         ))?;
@@ -213,7 +214,7 @@ impl World {
         &mut self,
         q: PlayerId,
         idx: usize,
-        (fp, foundation, master): (PlayerId, i32, i16),
+        (fp, foundation, master): (PlayerId, i32, MasterId),
         position: Position,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[q.index()].objects[idx];
@@ -231,7 +232,7 @@ impl World {
             range: 0.0,
             shown: position.ground(),
             ready: true,
-            target_type: i32::from(master),
+            target_type: i32::from(master.get()),
         };
         let ai = unit.ai.as_mut().ok_or(GenieError::unsupported(
             "a queued build order without a unit AI",
@@ -249,8 +250,8 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (with, build): (i16, BuildAction),
-        (fp, foundation, master): (PlayerId, i32, i16),
+        (with, build): (MasterId, BuildAction),
+        (fp, foundation, master): (PlayerId, i32, MasterId),
         position: Position,
     ) -> Result<(), GenieError> {
         let site_class = i32::from(self.master(fp, master)?.class.get());

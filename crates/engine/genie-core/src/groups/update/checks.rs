@@ -9,6 +9,7 @@ use crate::groups::update::{
 };
 use crate::groups::{UnitGroup, WorldObject};
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::master_type::ACTION;
@@ -327,7 +328,7 @@ impl World {
     pub(crate) fn has_task(
         &self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         action: i16,
     ) -> Result<bool, GenieError> {
         let Some(masters) = self.masters.get(player.index()) else {

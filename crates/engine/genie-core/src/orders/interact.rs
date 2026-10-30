@@ -137,7 +137,7 @@ impl World {
             return self.order_work(player, idx, &work);
         }
         let (target_type, target_owner) =
-            target.map_or((-1, -1), |(m, o)| (i32::from(m), o.index() as i32));
+            target.map_or((-1, -1), |(m, o)| (i32::from(m.get()), o.index() as i32));
         let queued = crate::unit_ai::QueuedOrder {
             issuer: issuer.index() as i32,
             order: OrderKind::OnTarget,

@@ -19,6 +19,7 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveDefaults, MoveToAction, TargetMoved};
 use crate::objects::layers::Body;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
@@ -113,7 +114,7 @@ pub struct Arms {
     /// `+0x98`, the master's missile (`missile_id`, -1 for a melee unit); `+0x9a`, the frame that
     /// fires (`fire_missile_at_frame`); `+0x9c`, the frame that may interrupt
     /// (`interrupt_frame`), -1 for none.
-    pub missile: i16,
+    pub missile: Option<MasterId>,
     /// `+0x98`: the frame it fires at (`fire_missile_at_frame`).
     pub fire_frame: i16,
     /// `+0x9c`: the frame that may interrupt (`interrupt_frame`), −1 for none.
@@ -245,7 +246,7 @@ pub struct Engagement {
     /// The world's time (`FUN_1415300d0`), which a facing over time reads.
     pub world_time: u32,
     /// The unit's master, of which 1704 and 1706 do not turn to face their target.
-    pub master: i16,
+    pub master: MasterId,
     /// The target's master's class, whose 39 (a gate) readyToAttack measures by its parts.
     pub target_class: ClassId,
     /// The target is the unit's player's (the constructor's `+0x9f`, [`Attack::same_owner`]).
@@ -447,11 +448,11 @@ const SHORT_RANGE_GAP: f32 = crate::math::image::attack::SHORT_RANGE_GAP;
 const LEASH_SLACK: f32 = crate::math::image::attack::LEASH_SLACK;
 
 /// The masters readyToAttack does not turn to face their target (`0x6744`, `0x6746` raw).
-const MASTER_1704: i16 = 1704;
-const MASTER_1706: i16 = 1706;
+const MASTER_1704: MasterId = MasterId::named(1704);
+const MASTER_1706: MasterId = MasterId::named(1706);
 
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
-const QUIET_SWINGS: [i16; 2] = [73, 559];
+const QUIET_SWINGS: [MasterId; 2] = [MasterId::named(73), MasterId::named(559)];
 
 /// The class an Attack does not take as its target (`-0xe70` raw, [`Attack::set_target`]).
 const CLASS_60: ClassId = class::CLASS_60;

@@ -4,7 +4,9 @@ use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::ID_45;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
 const DT: f32 = 0.02;
@@ -201,7 +203,7 @@ fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, ClassId, PlayerId)]) -
         radius: [r, r],
         class,
         player,
-        master: class.get(),
+        master: master_id(class.get()),
         obstruction_type: 5,
         buildable_on: 0,
         tall: true,
@@ -259,7 +261,7 @@ fn a_drop_off_walker_ignores_the_allied_workers_standing_beside_it() {
     world.set_gait(4, gait(false, Some(100)));
     world.set_gait(1, gait(false, Some(99)));
     // player 2's master 27 (a building of class 27) has a task of action type 0x99; 39 none
-    world.task_0x99 = vec![vec![], vec![], vec![27]];
+    world.task_0x99 = vec![vec![], vec![], vec![master_id(27)]];
     let mut pathing = Pathing::default();
     pathing.start_mesh(16);
     let mut object = Well512::default();
@@ -352,7 +354,7 @@ fn walled(radius: f32) -> Spatial {
             radius: [radius, radius],
             class: class::VILLAGER,
             player: PlayerId::new(2),
-            master: 0,
+            master: ids::ID_0,
             obstruction_type: 5,
             buildable_on: 0,
             tall: true,
@@ -625,7 +627,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
         radius: [r, r],
         class: class::VILLAGER,
         player: PlayerId::new(2),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: 5,
         buildable_on: 0,
         tall: true,
@@ -717,7 +719,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
             radius: [0.2, 0.2],
             class: class::VILLAGER,
             player: PlayerId::new(2),
-            master: 83,
+            master: ids::VILLAGER_MALE,
             obstruction_type: 0,
             buildable_on: 0,
             tall: true,
@@ -747,18 +749,18 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
     // 25 tiles away on open land: the long pather's answer
     let far = [30.5, 5.5];
     assert_eq!(
-        m.reaches(&me, &mut world, &mut plan, far, 0.0, 83),
+        m.reaches(&me, &mut world, &mut plan, far, 0.0, ids::VILLAGER_MALE),
         Ok(true)
     );
     // with ignore units the long pather lowers those that wait or move (none here)
     m.ignore_units = vec![5, 6];
     assert_eq!(
-        m.reaches(&me, &mut world, &mut plan, far, 0.0, 83),
+        m.reaches(&me, &mut world, &mut plan, far, 0.0, ids::VILLAGER_MALE),
         Ok(true)
     );
     m.moved_at = Position::new(-1.0, 5.5, 0.0);
     assert_eq!(
-        m.reaches(&me, &mut world, &mut plan, far, 0.0, 83),
+        m.reaches(&me, &mut world, &mut plan, far, 0.0, ids::VILLAGER_MALE),
         Ok(false)
     );
 }
@@ -872,10 +874,10 @@ fn the_orientation_speed_and_pause_slots() {
 #[test]
 fn a_far_waypoint_or_a_target_of_master_45_takes_the_long_pather() {
     assert!(far_waypoint(1.0, None) && !far_waypoint(0.5, None));
-    assert!(far_waypoint(0.0, Some((1.0, 4))));
-    assert!(!far_waypoint(30.0, Some((0.5, 4))));
+    assert!(far_waypoint(0.0, Some((1.0, master_id(4)))));
+    assert!(!far_waypoint(30.0, Some((0.5, master_id(4)))));
     assert!(far_waypoint(30.0, Some((0.5, ID_45))));
-    assert!(!far_waypoint(30.0, Some((f32::NAN, 4))));
+    assert!(!far_waypoint(30.0, Some((f32::NAN, master_id(4)))));
 }
 
 /// `FUN_141161950`: a moving unit's footprint stays 0.01 inside the map, its y by the map's
@@ -1021,7 +1023,7 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
         radius: [0.5, 0.5],
         class,
         player: PlayerId::new(1),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: 2,
         buildable_on: 0,
         tall: true,
@@ -1234,7 +1236,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
             radius: [0.5, 0.5],
             class: class::TREE,
             player: PlayerId::new(0),
-            master: 0,
+            master: ids::ID_0,
             obstruction_type: 2,
             buildable_on: 0,
             tall: true,
@@ -1307,7 +1309,7 @@ pub(crate) fn world() -> Spatial {
         radius: [0.2, 0.2],
         class: class::VILLAGER,
         player: PlayerId::new(2),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: 0,
         buildable_on: 0,
         tall: true,
@@ -1324,7 +1326,7 @@ pub(crate) fn world() -> Spatial {
             radius: [1.0, 1.0],
             class: class::BUILDING,
             player: PlayerId::new(2),
-            master: 0,
+            master: ids::ID_0,
             obstruction_type: 0,
             buildable_on: 0,
             tall: true,
@@ -1417,7 +1419,7 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
         radius: [0.5, 0.5],
         class,
         player: PlayerId::new(1),
-        master: 72,
+        master: master_id(72),
         obstruction_type: 0,
         buildable_on: 0,
         tall: true,
@@ -1916,7 +1918,7 @@ fn a_top_level_short_of_its_moved_target_arrives() {
             radius: [0.5, 0.5],
             class: class::CLASS_6,
             player: target_player,
-            master: 74,
+            master: master_id(74),
             obstruction_type: 0,
             buildable_on: 0,
             tall: false,
@@ -2004,7 +2006,7 @@ fn a_next_waypoint_an_object_stands_on_goes() {
             radius: [0.5, 0.5],
             class: class::BUILDING,
             player: PlayerId::new(2),
-            master: 70,
+            master: ids::HOUSE,
             obstruction_type: 2,
             buildable_on: 0,
             tall: true,

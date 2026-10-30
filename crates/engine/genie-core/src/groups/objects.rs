@@ -3,6 +3,7 @@
 
 use crate::map::Position;
 use crate::math::fmath::BVector;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 
@@ -29,7 +30,7 @@ impl WorldObject<'_> {
     }
 
     /// Its master's id (`+0xa0`'s): a ghost's is its player's [`crate::vision::ghost::GHOST_MASTER`].
-    pub(crate) const fn master_id(&self) -> i16 {
+    pub(crate) const fn master_id(&self) -> MasterId {
         match *self {
             Self::Unit(_, u) => u.life.master_id,
             Self::Ghost(..) => crate::vision::ghost::GHOST_MASTER,

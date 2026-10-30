@@ -4,11 +4,13 @@ use crate::objects::actions::ActionList;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::players::PlayerId;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
@@ -18,7 +20,7 @@ use crate::unit_ai::UnitAi;
 use crate::world::Player;
 
 /// An entry of `count` villagers of master `master` that paid `food` each.
-fn villager(master: i16, count: i16, food: f32) -> Entry {
+fn villager(master: Option<MasterId>, count: i16, food: f32) -> Entry {
     Entry {
         master,
         count,
@@ -57,11 +59,11 @@ fn game() -> World {
             ..UnitAi::default()
         }),
         production: Some(Production {
-            queue: queue(&[villager(83, 1, 46.0)]),
+            queue: queue(&[villager(Some(ids::VILLAGER_MALE), 1, 46.0)]),
             action: Some(Making::Unit(MakeObj {
                 state: MakeObj::MAKING,
                 progress: 3.0,
-                ..MakeObj::for_entry(&villager(83, 1, 46.0))
+                ..MakeObj::for_entry(&villager(Some(ids::VILLAGER_MALE), 1, 46.0))
             })),
             ..Production::default()
         }),
@@ -86,13 +88,13 @@ fn game() -> World {
     );
     let masters = Masters::new([
         Master {
-            id: 109,
+            id: ids::TOWN_CENTRE,
             class: class::BUILDING,
             kind: 80,
             ..Master::default()
         },
         Master {
-            id: 83,
+            id: ids::VILLAGER_MALE,
             class: class::VILLAGER,
             kind: 70,
             cost: vec![(0, 46, true), (4, 1, false)],
@@ -100,7 +102,7 @@ fn game() -> World {
             ..Master::default()
         },
     ]);
-    t.players[1].objects[0].life.master_id = 109;
+    t.players[1].objects[0].life.master_id = ids::TOWN_CENTRE;
     t.masters = vec![masters.clone(), masters.clone(), masters];
     t.victory_conquest = true;
     t
@@ -154,7 +156,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let mut t = game();
     let mut add = |unit: Unit| {
         let mut unit = unit;
-        unit.life.master_id = 109;
+        unit.life.master_id = ids::TOWN_CENTRE;
         t.players[1].objects.push(unit);
         t.players[1].objects.len() - 1
     };
@@ -171,7 +173,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         id: -1,
         position: Position::new(3.5, 3.5, 0.0),
         class: class::CLASS_7,
-        master: 59,
+        master: master_id(59),
         player: PlayerId::new(0),
         workers: 0,
         drop_site: false,
@@ -344,7 +346,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     let mut t = game();
     let mut hunter = hunter;
     // game()'s villager master
-    hunter.life.master_id = 109;
+    hunter.life.master_id = ids::TOWN_CENTRE;
     hunter.my_pasture = -1;
     t.players[1].objects.push(hunter);
     let idx = t.players[1].objects.len() - 1;
@@ -374,7 +376,10 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
 fn a_cancel_gives_back_one_queued_unit() {
     let mut t = game();
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
-    tc.queue = queue(&[villager(83, 1, 46.0), villager(83, 1, 45.0)]);
+    tc.queue = queue(&[
+        villager(Some(ids::VILLAGER_MALE), 1, 46.0),
+        villager(Some(ids::VILLAGER_MALE), 1, 45.0),
+    ]);
     t.players[1].attributes[80] = 2.0;
     t.cancel_order(&object_ids([9]), 1, false).unwrap();
     let p = &t.players[1];
@@ -406,7 +411,7 @@ fn a_cancel_gives_back_one_queued_unit() {
 fn a_dying_building_cancels_its_queue_in_its_update() {
     let mut t = game();
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
-    tc.queue = queue(&[villager(83, 4, 50.0)]);
+    tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 4, 50.0)]);
     t.players[1].attributes[80] = 4.0;
     t.players[1].objects[0].life.state = 3;
     t.building_production(PlayerId::new(1), 0, 0.05).unwrap();
@@ -419,7 +424,7 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
     assert_eq!((q.count, q.changes), (0, 2));
     let mut t = game();
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
-    tc.queue = queue(&[villager(83, 4, 50.0)]);
+    tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 4, 50.0)]);
     t.players[1].attributes[80] = 4.0;
     t.players[1].objects[0].life.state = 2;
     // a disabled queue (+0xbf6): the production step does nothing
@@ -441,7 +446,7 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
 fn a_cancel_of_the_first_unit_drops_the_make_action_of_an_entry_that_stays() {
     let mut t = game();
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
-    tc.queue = queue(&[villager(83, 3, 46.0)]);
+    tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 3, 46.0)]);
     t.players[1].attributes[80] = 3.0;
     t.cancel_queued(PlayerId::new(1), 0, 0, false).unwrap();
     let p = &t.players[1];
@@ -463,14 +468,23 @@ fn a_cancel_of_the_first_unit_drops_the_make_action_of_an_entry_that_stays() {
 fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     let mut t = game();
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
-    tc.queue = queue(&[villager(83, 3, 46.0), villager(293, 4, 46.0)]);
+    tc.queue = queue(&[
+        villager(Some(ids::VILLAGER_MALE), 3, 46.0),
+        villager(Some(ids::VILLAGER_FEMALE), 4, 46.0),
+    ]);
     t.players[1].attributes[80] = 7.0;
     t.masters[1] = Masters::new([
-        t.master(PlayerId::new(1), 109).unwrap().clone(),
-        t.master(PlayerId::new(1), 83).unwrap().clone(),
+        t.master(PlayerId::new(1), ids::TOWN_CENTRE)
+            .unwrap()
+            .clone(),
+        t.master(PlayerId::new(1), ids::VILLAGER_MALE)
+            .unwrap()
+            .clone(),
         Master {
-            id: 293,
-            ..t.master(PlayerId::new(1), 83).unwrap().clone()
+            id: ids::VILLAGER_FEMALE,
+            ..t.master(PlayerId::new(1), ids::VILLAGER_MALE)
+                .unwrap()
+                .clone()
         },
     ]);
     t.cancel_order(&object_ids([9]), 0, true).unwrap();
@@ -480,7 +494,7 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     let q = &production.queue;
     assert_eq!(
         (q.count, q.total, q.slots[0].master, q.slots[0].count),
-        (1, 2, 293, 2)
+        (1, 2, Some(master_id(293)), 2)
     );
     assert_eq!(q.changes, 2);
     assert!(production.action.is_none());
@@ -489,7 +503,10 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     let mut t2 = game();
     t2.masters = t.masters.clone();
     let tc = t2.players[1].objects[0].production.as_mut().unwrap();
-    tc.queue = queue(&[villager(83, 3, 46.0), villager(293, 4, 46.0)]);
+    tc.queue = queue(&[
+        villager(Some(ids::VILLAGER_MALE), 3, 46.0),
+        villager(Some(ids::VILLAGER_FEMALE), 4, 46.0),
+    ]);
     t2.players[1].attributes[80] = 7.0;
     t2.cancel_order(&object_ids([9]), 1, true).unwrap();
     let production = t2.players[1].objects[0].production.as_ref().unwrap();
@@ -505,14 +522,14 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
 #[test]
 fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     let archer = |count| Entry {
-        master: 4,
+        master: Some(master_id(4)),
         costs: [(1, 25.0), (3, 45.0), (4, 1.0)],
-        ..villager(4, count, 0.0)
+        ..villager(Some(master_id(4)), count, 0.0)
     };
     let mut t = game();
     let ms = &mut t.masters[1];
     *ms = Masters::new(ms.iter().cloned().chain([Master {
-        id: 4,
+        id: master_id(4),
         kind: 70,
         cost: vec![(1, 25, true), (3, 45, true), (4, 1, false)],
         storage: vec![(4, -1.0, 2)],
@@ -520,7 +537,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     }]));
     t.players[1].attributes[80] = 4.0;
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
-    tc.queue = queue(&[archer(2), villager(83, 2, 46.0)]);
+    tc.queue = queue(&[archer(2), villager(Some(ids::VILLAGER_MALE), 2, 46.0)]);
     t.cancel_queued(PlayerId::new(1), 0, 0, true).unwrap();
     let p = &t.players[1];
     assert_eq!(p.resources, [92.0, 50.0, 0.0, 90.0]);
@@ -529,13 +546,13 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     // [2 villagers, a research]: the research moved into the slot ends it
     let mut t = game();
     let research = Entry {
-        master: -1,
+        master: None,
         tech: 22,
         costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
-        ..villager(-1, 1, 0.0)
+        ..villager(None, 1, 0.0)
     };
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
-    tc.queue = queue(&[villager(83, 2, 46.0), research]);
+    tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 2, 46.0), research]);
     t.players[1].attributes[80] = 2.0;
     t.cancel_queued(PlayerId::new(1), 0, 0, true).unwrap();
     let q = &t.players[1].objects[0].production.as_ref().unwrap().queue;
@@ -552,10 +569,10 @@ fn researching(progress: f32) -> World {
     use crate::technology::{Cost, Location, TechDef, TechState};
     let mut t = game();
     let entry = Entry {
-        master: -1,
+        master: None,
         tech: 22,
         costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
-        ..villager(-1, 3, 0.0)
+        ..villager(None, 3, 0.0)
     };
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[entry]);
@@ -576,7 +593,7 @@ fn researching(progress: f32) -> World {
         research_cap: -1,
         overrides: [(-1, -1, -2); 3],
         locations: vec![Location {
-            building: 109,
+            building: Some(ids::TOWN_CENTRE),
             time: 25,
             button: 1,
             adjustment: 0.0,
@@ -703,13 +720,16 @@ fn a_cancel_in_game_mode_16_clears_the_military_flag() {
         t.players[1].one_military_queued = true;
         let ms = &mut t.masters[1];
         *ms = Masters::new(ms.iter().cloned().chain([Master {
-            id: 4,
+            id: master_id(4),
             class: class::CLASS_6,
             kind: 70,
             ..Master::default()
         }]));
         let tc = t.players[1].objects[0].production.as_mut().unwrap();
-        tc.queue = queue(&[villager(83, 1, 46.0), villager(4, 1, 0.0)]);
+        tc.queue = queue(&[
+            villager(Some(ids::VILLAGER_MALE), 1, 46.0),
+            villager(Some(master_id(4)), 1, 0.0),
+        ]);
         t.cancel_order(&object_ids([9]), 1, false).unwrap();
         t.players[1].one_military_queued
     };

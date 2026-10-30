@@ -125,7 +125,7 @@ pub(crate) fn strike(
     }
     let draw = object_rng.raw64();
     let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
-    if i64::from(hit.chance) < r && a.missile < 0 {
+    if i64::from(hit.chance) < r && a.missile.is_none() {
         return Ok(struck);
     }
     // a building's slot 0x1f0 (FUN_1411cc890) scales the factor by its relics and a building

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover, Planning};
+use crate::objects::masters::MasterId;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::unit_ai::task_finder::Actor;
@@ -260,7 +261,7 @@ impl UnitView<'_, '_> {
 pub(crate) const LOS_MARGIN: f32 = crate::math::image::explore::LOS_MARGIN;
 
 /// The masters of a town centre (`FUN_1416597e0`: 109, then 444).
-pub(crate) const TOWN_CENTRES: [i16; 2] = [109, 444];
+pub(crate) const TOWN_CENTRES: [MasterId; 2] = [MasterId::named(109), MasterId::named(444)];
 
 /// `FUN_1416597e0` with 0: the player's first town centre, by the player's index of objects by
 /// master (`player+0x18`, `FUN_14104f560`: those of master 109, then 444), as its tile. The
@@ -299,7 +300,7 @@ pub(crate) struct ScoutArea<'a> {
     pub(crate) mover: &'a Mover,
     pub(crate) me: Me,
     pub(crate) player: PlayerId,
-    pub(crate) master: i16,
+    pub(crate) master: MasterId,
     pub(crate) radius: [f32; 2],
     /// The reach of slot 0x3d8: the line of sight less a tile.
     pub(crate) reach: f32,

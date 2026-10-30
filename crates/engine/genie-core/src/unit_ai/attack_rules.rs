@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -24,7 +25,7 @@ pub struct Converter<'a> {
     /// Its master's class.
     pub class: ClassId,
     /// Its master's id.
-    pub master: i16,
+    pub master: MasterId,
     /// Its faith (`+0x310`, what it holds).
     pub faith: f32,
     /// Its owner's attributes (`player+0x100`, count `+0x90`).
@@ -42,7 +43,7 @@ pub struct Convertee {
     /// Its master's class.
     pub class: ClassId,
     /// Its master's id.
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's hero flag (`hero_flag`, `+0x8d9`).
     pub hero: u8,
 }
@@ -51,9 +52,19 @@ pub struct Convertee {
 pub(super) const FULL_FAITH: f32 = crate::math::image::unit_ai::FULL_FAITH;
 /// The town centres a priest never converts (109, 618 to 621), the relic cart's master 159, the
 /// farms and fish trap (50, 1187, 199).
-pub(super) const NEVER_CONVERTED: [i16; 9] = [109, 618, 619, 620, 621, 159, 50, 1187, 199];
+pub(super) const NEVER_CONVERTED: [MasterId; 9] = [
+    MasterId::named(109),
+    MasterId::named(618),
+    MasterId::named(619),
+    MasterId::named(620),
+    MasterId::named(621),
+    MasterId::named(159),
+    MasterId::named(50),
+    MasterId::named(1187),
+    MasterId::named(199),
+];
 /// The priest master that converts only boats (53).
-pub(super) const BOAT_CONVERTER: i16 = 53;
+pub(super) const BOAT_CONVERTER: MasterId = MasterId::named(53);
 
 /// The priest's slot 0x1b8 (`FUN_140c1af00`, "CanConvert"): whether priest `p` may convert
 /// object `t` (None: one the world does not hold), with `any` its faith not asked. Never for
@@ -105,10 +116,10 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
     }
     let mut task = None;
     for k in p.tasks.iter().filter(|k| k.action_type == 0x68) {
-        if k.object_group == -1 && k.object_id == -1 {
+        if k.object_group == -1 && k.object_id.is_none() {
             task = Some(k);
         }
-        if k.object_id == t.master || k.object_group == t.class.get() {
+        if k.object_id == Some(t.master) || k.object_group == t.class.get() {
             task = Some(k);
             break;
         }
@@ -247,7 +258,12 @@ pub fn siege_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
 
 /// The rams (masters 35, 422, 548 and 1258, raw `0x60bf`, `0x6242`, `0x62c0`, `0x6586`), which
 /// by attack priority 0 attack only [`RAM_TARGETS`].
-pub(super) const RAM_MASTERS: [i16; 4] = [35, 422, 548, 1258];
+pub(super) const RAM_MASTERS: [MasterId; 4] = [
+    MasterId::named(35),
+    MasterId::named(422),
+    MasterId::named(548),
+    MasterId::named(1258),
+];
 /// What a ram attacks by its own choice: buildings, siege, walls, gates, farms, the packed
 /// units, towers, the unpacked siege and the scorpions.
 pub(super) const RAM_TARGETS: [ClassId; 9] = [
@@ -274,7 +290,8 @@ pub(super) const TREBUCHET_TARGETS: [ClassId; 7] = [
 ];
 /// The siege masters whose current building target decides by attack priority alone (1744,
 /// 1746, raw `0x676c`, `0x676e`).
-pub(super) const SIEGE_BUILDING_MASTERS: [i16; 2] = [1744, 1746];
+pub(super) const SIEGE_BUILDING_MASTERS: [MasterId; 2] =
+    [MasterId::named(1744), MasterId::named(1746)];
 /// A Gaia target lets the siege unit's range grow by this (`DAT_142eb4838`).
 pub(super) const GAIA_TARGET_REACH: f32 = crate::math::image::unit_ai::GAIA_TARGET_REACH;
 /// The packed unit's class (51), which a human player's siege attack check passes over unless

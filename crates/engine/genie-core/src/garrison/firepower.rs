@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, maxss};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
@@ -65,8 +66,8 @@ pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f
 /// Whether the player's master table has a slot for `id` (`0 <= id < player+0x20`), as far as
 /// [`Masters`] knows it: up to its last master. The game's count can run past the last master
 /// with null slots, which [`Masters`] does not keep.
-pub(super) fn in_table(masters: &Masters, id: i16) -> bool {
-    0 <= id && masters.iter().any(|m| id <= m.id)
+pub(super) fn in_table(masters: &Masters, id: MasterId) -> bool {
+    masters.iter().any(|m| id <= m.id)
 }
 
 /// `FUN_14120e1a0`: what a unit of `master` (its reload powerup `reload_powerup`) fires inside a
@@ -90,7 +91,8 @@ pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32
         let missile = master
             .volley_missile
             .filter(|&id| in_table(masters, id))
-            .map_or_else(|| masters.get(master.missile), |id| masters.get(id));
+            .or(master.missile)
+            .and_then(|id| masters.get(id));
         if let Some(m) = missile {
             let extra = cvttss2si(master.volley_fire - ONE_MISSILE);
             for &(class, amount) in &m.weapons {
@@ -136,7 +138,10 @@ pub fn share(
         // MOVZX of the ushort at +0x656; the game reads the slot without a test, so a null one
         // would crash it: a master the player has is the only case it runs
         let other = u16::try_from(master.object_flags >> 16).unwrap_or(u16::MAX);
-        if let Some(m) = i16::try_from(other).ok().and_then(|id| masters.get(id))
+        if let Some(m) = i16::try_from(other)
+            .ok()
+            .and_then(MasterId::of_data)
+            .and_then(|id| masters.get(id))
             // `SEEK_SHELTER`'s villagers: class 4 of type 70.
             // The type of a combat unit: the master a transforming master names (`+0x656`), and a unit a
             // transport takes in (`FUN_14120eb10`).

@@ -1,4 +1,5 @@
 use crate::task_finder::{FinderObject, FinderWorld};
+use genie_core::objects::masters::ids;
 use genie_core::objects::masters::{Master, Masters};
 use genie_core::players::PlayerId;
 use genie_core::unit_ai::task_finder::Diplomacy;
@@ -7,7 +8,7 @@ use genie_core::unit_ai::task_finder::Diplomacy;
 fn object(annex_of: Option<i32>) -> FinderObject {
     FinderObject {
         player: PlayerId::new(1),
-        master: 83,
+        master: ids::VILLAGER_MALE,
         state: 2,
         held: (0, 5.0),
         hp: 25.0,
@@ -23,7 +24,7 @@ fn object(annex_of: Option<i32>) -> FinderObject {
 /// Gaia and two players: player 1's relation to player 2 is `relation`.
 fn world(relation: u8) -> FinderWorld {
     let master = Master {
-        id: 83,
+        id: ids::VILLAGER_MALE,
         ..Master::default()
     };
     FinderWorld {

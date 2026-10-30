@@ -32,7 +32,9 @@ fn a_building_s_relics_scale_its_elevation_factor() {
 
 use super::*;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
+use crate::test_ids::master_id;
 
 fn sheep() -> Victim {
     Victim {
@@ -40,7 +42,7 @@ fn sheep() -> Victim {
         hp: 14.0,
         kind: 70,
         class: class::LIVESTOCK,
-        master_id: 705,
+        master_id: master_id(705),
         player: PlayerId::new(1),
         position: Position::new(10.5, 10.5, 0.0),
         master_hp: 14,
@@ -60,15 +62,15 @@ fn hunter() -> Victim {
         hp: 25.0,
         kind: 70,
         class: class::VILLAGER,
-        master_id: 592,
+        master_id: master_id(592),
         player: PlayerId::new(1),
         position: Position::new(10.5, 11.0, 0.0),
         source: Attacker {
             id: 10029,
             kind: 70,
             class: class::VILLAGER,
-            master_id: 592,
-            missile: -1,
+            master_id: master_id(592),
+            missile: None,
             player: PlayerId::new(1),
             ..Attacker::default()
         },
@@ -242,7 +244,7 @@ fn a_hit_point_share_reads_the_powerups_and_the_master() {
 /// share lacking with `attribute_type4`), and the sum is at least 0.
 #[test]
 fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
-    let task = |object_group: i16, object_id: i16, range: f32, lacking: i16| {
+    let task = |object_group: i16, object_id: Option<MasterId>, range: f32, lacking: i16| {
         crate::objects::masters::Task {
             action_type: BONUS_DAMAGE,
             object_group,
@@ -257,44 +259,44 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     let (mut sheep, mut hunter) = (sheep(), hunter());
     sheep.hp = 7.0;
     // any target below type 80: the sheep lacks half its hit points, two steps of 0.25
-    hunter.bonus_tasks = vec![task(-1, -1, 1.0, 1)];
+    hunter.bonus_tasks = vec![task(-1, None, 1.0, 1)];
     let steps = libm::floorf(0.5 / 0.25 + EPSILON);
     assert_eq!(bonus_damage(&hunter, &sheep), steps * 2.0);
     // the attacker's share (a work range of 0), whole: four steps
-    hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+    hunter.bonus_tasks = vec![task(-1, None, 0.0, 0)];
     assert_eq!(bonus_damage(&hunter, &sheep), 4.0 * 2.0);
     // by class or master; another class, master or action type adds nothing
     hunter.bonus_tasks = vec![
-        task(class::LIVESTOCK.get(), 0, 0.0, 0),
-        task(-1, 705, 0.0, 0),
-        task(3, 0, 0.0, 0),
-        task(-1, 9, 0.0, 0),
+        task(class::LIVESTOCK.get(), Some(ids::ID_0), 0.0, 0),
+        task(-1, Some(master_id(705)), 0.0, 0),
+        task(3, Some(ids::ID_0), 0.0, 0),
+        task(-1, Some(master_id(9)), 0.0, 0),
         crate::objects::masters::Task {
             action_type: 0xa1,
-            ..task(-1, -1, 0.0, 0)
+            ..task(-1, None, 0.0, 0)
         },
     ];
     assert_eq!(bonus_damage(&hunter, &sheep), 16.0);
     // a building of another class than 51 and 54 needs its class or master
     let mut tc = sheep.clone();
     (tc.kind, tc.class) = (BUILDING, class::BUILDING);
-    hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+    hunter.bonus_tasks = vec![task(-1, None, 0.0, 0)];
     assert_eq!(bonus_damage(&hunter, &tc), 0.0);
     tc.class = class::CLASS_51;
     assert_eq!(bonus_damage(&hunter, &tc), 8.0);
     // no step, no target hit points, or a negative sum: 0
     hunter.bonus_tasks = vec![crate::objects::masters::Task {
         work_val2: 0.0,
-        ..task(-1, -1, 0.0, 0)
+        ..task(-1, None, 0.0, 0)
     }];
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
-    hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+    hunter.bonus_tasks = vec![task(-1, None, 0.0, 0)];
     sheep.hp = 0.0;
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
     sheep.hp = 7.0;
     hunter.bonus_tasks = vec![crate::objects::masters::Task {
         work_val1: -3.0,
-        ..task(-1, -1, 0.0, 0)
+        ..task(-1, None, 0.0, 0)
     }];
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
 }
@@ -703,7 +705,7 @@ fn house() -> Victim {
         hp: 550.0,
         kind: BUILDING,
         class: class::BUILDING,
-        master_id: 70,
+        master_id: ids::HOUSE,
         player: PlayerId::new(2),
         position: Position::new(20.5, 20.5, 0.0),
         master_hp: 550,
@@ -839,7 +841,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
     let mut villager = hunter();
     let mut castle = Victim {
         hp: 1.5,
-        master_id: 82,
+        master_id: ids::CASTLE,
         ..house()
     };
     take(&mut castle, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
@@ -867,7 +869,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
     );
     let mut wonder = Victim {
         hp: 1.5,
-        master_id: 276,
+        master_id: ids::WONDER,
         class: class::WALL,
         ..house()
     };
@@ -894,7 +896,7 @@ fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
     let trebuchet = |hp| Victim {
         hp,
         class: class::CLASS_54,
-        master_id: 42,
+        master_id: ids::ID_42,
         building: Some(Building {
             trebuchet: true,
             cost: 400.0,
@@ -1201,7 +1203,7 @@ fn a_blast_s_factor_takes_the_friendly_fire_and_the_falloff() {
         1.0
     );
     let missile = Attacker {
-        missile: 5,
+        missile: Some(master_id(5)),
         ..melee
     };
     assert_eq!(

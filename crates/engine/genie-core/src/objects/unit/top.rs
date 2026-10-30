@@ -38,7 +38,7 @@ impl Unit {
     pub(crate) fn lists_taker(&self, master: &Master, allied: bool) -> bool {
         master.kind == BUILDING
             && self.life.state < 2
-            && master.building.is_some_and(|b| b.stack_unit != -1)
+            && master.building.is_some_and(|b| b.stack_unit.is_some())
             && !allied
     }
 

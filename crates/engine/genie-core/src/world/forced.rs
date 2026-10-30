@@ -298,6 +298,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::map::Position;
+    use crate::objects::masters::ids;
     use crate::test_ids::object_id;
     use crate::world::tests::forage_world;
 
@@ -421,7 +422,7 @@ mod tests {
             0,
             Unit {
                 life: crate::objects::lifecycle::Lifecycle {
-                    master_id: 83,
+                    master_id: ids::VILLAGER_MALE,
                     ..forager.life
                 },
                 ..forager

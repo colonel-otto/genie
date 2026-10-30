@@ -1,7 +1,8 @@
 //! A player's masters by id ([`Masters`]) and the work command's choice of master and task.
 
 use crate::GenieError;
-use crate::objects::masters::{Master, Masters, Task};
+use crate::objects::masters::ids;
+use crate::objects::masters::{Master, MasterId, Masters, Task};
 use crate::players::PlayerId;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskOn, find_task};
 
@@ -11,7 +12,7 @@ use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskOn, find_task};
 /// player and id: an object's master goes through [`crate::objects::unit::Unit::master`], an
 /// invariant one through [`crate::world::World::master`].
 #[must_use]
-pub fn player_master(every: &[Masters], player: PlayerId, id: i16) -> Option<&Master> {
+pub fn player_master(every: &[Masters], player: PlayerId, id: MasterId) -> Option<&Master> {
     every.get(player.index())?.get(id)
 }
 
@@ -20,7 +21,7 @@ impl Masters {
     pub fn new(masters: impl IntoIterator<Item = Master>) -> Self {
         let mut by_id: Vec<Option<Master>> = Vec::new();
         for m in masters {
-            let i = m.id as usize;
+            let i = m.id.index();
             if let Some(slot) = by_id.get_mut(i) {
                 *slot = Some(m);
             } else {
@@ -33,8 +34,8 @@ impl Masters {
 
     /// The master `id`, if the player has it.
     #[must_use]
-    pub fn get(&self, id: i16) -> Option<&Master> {
-        self.by_id.get(usize::try_from(id).ok()?)?.as_ref()
+    pub fn get(&self, id: MasterId) -> Option<&Master> {
+        self.by_id.get(id.index())?.as_ref()
     }
 
     /// Every master, by id.
@@ -48,8 +49,8 @@ impl Masters {
     }
 
     /// The master `id` to change, if the player has it.
-    pub fn get_mut(&mut self, id: i16) -> Option<&mut Master> {
-        self.by_id.get_mut(usize::try_from(id).ok()?)?.as_mut()
+    pub fn get_mut(&mut self, id: MasterId) -> Option<&mut Master> {
+        self.by_id.get_mut(id.index())?.as_mut()
     }
 
     /// The work command's choice of master and task (`FUN_14106ff70` up to the task's
@@ -66,7 +67,7 @@ impl Masters {
         on: &TaskOn<'_, '_>,
         filter: i16,
         dip: &impl Diplomacy,
-    ) -> Result<Option<(i16, &'m Task)>, GenieError> {
+    ) -> Result<Option<(MasterId, &'m Task)>, GenieError> {
         let own = actor.master;
         let own_list = self.get(own.id).ok_or(GenieError::unsupported(
             "a unit of a master the player does not have",
@@ -95,13 +96,20 @@ impl Masters {
                 let listed = on.target.filter(|t| {
                     matches!(
                         t.master.id,
-                        50 | 357 | 1187 | 1188 | 1893 | 1894 | 1897 | 1898
+                        ids::FARM
+                            | ids::ID_357
+                            | ids::ID_1187
+                            | ids::ID_1188
+                            | ids::PASTURE_MANGROVE
+                            | ids::ID_1894
+                            | ids::PASTURE
+                            | ids::ID_1898
                     )
                 });
                 let Some(target) = listed.filter(|t| {
                     task.action_type == 0x6a
                         && (filter == -1 || filter == 0x6a)
-                        && task.object_id != t.master.id
+                        && task.object_id != Some(t.master.id)
                 }) else {
                     return Ok(Some((candidate.id, task)));
                 };
@@ -110,7 +118,7 @@ impl Masters {
                     && 0.0 < task.work_val1
                 {
                     by_class = Some((candidate.id, task));
-                } else if generic.is_none() && task.object_group == -1 && task.object_id == -1 {
+                } else if generic.is_none() && task.object_group == -1 && task.object_id.is_none() {
                     generic = Some((candidate.id, task));
                 }
             }

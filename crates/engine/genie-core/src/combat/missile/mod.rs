@@ -12,6 +12,7 @@ use crate::GenieError;
 use crate::map::{Offset, Position};
 use crate::math::fmath;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::orders::action_state::DONE;
 use genie_diff::Diff;
@@ -239,7 +240,7 @@ pub fn volley_reach(radius: [f32; 2], range: f32) -> f32 {
 
 /// The missile master whose miss strays by its attack count's share (`0x62ac` raw; the game
 /// tests master 527, `0x62ab`, first, which keeps all of it as any other).
-const MASTER_528: i16 = 528;
+const MASTER_528: MasterId = MasterId::named(528);
 
 /// What the aim reads of the firing object (`+0x28`, else the missile): its master's
 /// `base_hit_chance` (`+0x83e`) and `missed_missile_spread` (`+0x860`), its class and the
@@ -266,7 +267,7 @@ pub struct AimAt<'a> {
     /// The firing object's hit chance, spread and class.
     pub aimer: Aimer,
     /// The missile's master's id.
-    pub master_id: i16,
+    pub master_id: MasterId,
     /// The missile's attack count (`+0x900`).
     pub attack_count: i32,
     /// The hit mode, which a miss sets to 1.
@@ -479,6 +480,8 @@ pub fn grounded(z: f32, ground: f32, flying: bool, fly_mode: u8) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ids;
+    use crate::test_ids::master_id;
 
     /// MarvinBlue/426048731's spear -28 (master 509: speed 7, arc −0.06), fired at the deer 9655
     /// in the update that made the save after 3137: 2.80657 to go when `set_state(3)` ran, and its
@@ -542,7 +545,7 @@ mod tests {
         let point = Position::new(13.0, 14.0, 0.0);
         let from = Position::new(10.0, 10.0, 1.0);
         let target = Some(([0.2, 0.2, 1.5], class::CLASS_6));
-        let aim_with = |draws: [u32; 3], master: i16, count: i32, mode: &mut u8| {
+        let aim_with = |draws: [u32; 3], master: MasterId, count: i32, mode: &mut u8| {
             let mut d = draws.into_iter();
             aim(
                 AimAt {
@@ -560,17 +563,20 @@ mod tests {
         // a draw of 70% or less hits: the target's height rises by 1.5 / 3
         let mut mode = 0;
         assert_eq!(
-            aim_with([22937, 0, 0], 4, 0, &mut mode),
+            aim_with([22937, 0, 0], master_id(4), 0, &mut mode),
             Ok(Position::new(13.0, 14.0, 0.5))
         );
         assert_eq!(mode, 0);
         // a miss: 5 × 0.5 = 2.5; the draws 32767 and 0 stray 1.25 one way and the other
-        let missed = aim_with([32767, 32767, 0], 4, 3, &mut mode).unwrap();
+        let missed = aim_with([32767, 32767, 0], master_id(4), 3, &mut mode).unwrap();
         assert_eq!(mode, 1);
         assert_eq!(missed, Position::new(13.0 + 1.25, 14.0 - 1.25, 0.5));
         // master 527 keeps the distance with an attack count; 528 divides it by the count
         let mut mode = 2;
-        assert_eq!(aim_with([32767, 32767, 0], 527, 3, &mut mode), Ok(missed));
+        assert_eq!(
+            aim_with([32767, 32767, 0], ids::ID_527, 3, &mut mode),
+            Ok(missed)
+        );
         assert_eq!(mode, 2);
         let share = 2.5f32 / 3.0 + 0.0;
         let expected = Position::new(
@@ -578,9 +584,15 @@ mod tests {
             (0.0 * share) / 32767.0 - share * 0.5 + 14.0,
             0.5,
         );
-        assert_eq!(aim_with([32767, 32767, 0], 528, 3, &mut mode), Ok(expected));
+        assert_eq!(
+            aim_with([32767, 32767, 0], ids::ID_528, 3, &mut mode),
+            Ok(expected)
+        );
         // without an attack count master 528 strays by all of it
-        assert_eq!(aim_with([32767, 32767, 0], 528, 0, &mut mode), Ok(missed));
+        assert_eq!(
+            aim_with([32767, 32767, 0], ids::ID_528, 0, &mut mode),
+            Ok(missed)
+        );
         // a class-54 shooter at a narrow building hits at 80
         let siege = Aimer {
             class: class::CLASS_54,
@@ -595,7 +607,7 @@ mod tests {
                     from,
                     target: narrow,
                     aimer: siege,
-                    master_id: 4,
+                    master_id: master_id(4),
                     attack_count: 0,
                     hit_mode: &mut mode
                 },

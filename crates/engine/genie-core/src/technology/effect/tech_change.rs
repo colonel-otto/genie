@@ -1,6 +1,7 @@
 //! A technology's change (kind 8): its state, a forced research and its research time.
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::technology::RESEARCHED;
 use crate::technology::effect::{ONE, RESEARCH_SPENT, ROUND, TECHS_RESEARCHED};
@@ -42,6 +43,9 @@ pub(super) const STATE_AVAILABLE: f32 = crate::math::image::effect::STATE_AVAILA
 pub(super) const STATE_RESEARCHED: f32 = crate::math::image::effect::STATE_RESEARCHED;
 /// −1.0 (`DAT_14330ec20`): a research time without a `.dat` location, and a set's "none".
 pub(super) const NO_TIME: f32 = crate::math::image::effect::NO_TIME;
+
+/// A technology location a modify command names: its index and its building.
+type LocationAt = (Option<usize>, Option<MasterId>);
 
 impl World {
     /// `FUN_1415c3f20`'s technology change (kind 8, its `0x6f` case) for player `p`'s technology
@@ -88,8 +92,8 @@ impl World {
         p: PlayerId,
         t: usize,
         location: i16,
-    ) -> Result<Option<(Option<usize>, i16)>, GenieError> {
-        let (mut at, mut building) = (None, -1);
+    ) -> Result<Option<LocationAt>, GenieError> {
+        let (mut at, mut building) = (None, None);
         if 0 < location {
             let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
             let i =
@@ -105,7 +109,7 @@ impl World {
                 };
                 at = Some(state.locations.len());
                 state.locations.push(crate::technology::Location {
-                    building: -1,
+                    building: None,
                     ..last
                 });
             }
@@ -166,16 +170,17 @@ impl World {
         v: f32,
         at: Option<usize>,
     ) -> Result<(), GenieError> {
-        let short = crate::math::conversions::cvttss2si(v) as i16;
-        if self
-            .masters
-            .get(p.index())
-            .is_some_and(|m| m.get(short).is_some())
+        let short = MasterId::of_data(crate::math::conversions::cvttss2si(v) as i16);
+        if let Some(short) = short
+            && self
+                .masters
+                .get(p.index())
+                .is_some_and(|m| m.get(short).is_some())
         {
             let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
             for (i, l) in state.locations.iter_mut().enumerate() {
                 if at.is_none_or(|a| a == i) {
-                    l.building = short;
+                    l.building = Some(short);
                 }
             }
         }
@@ -235,13 +240,13 @@ impl World {
         tech: i16,
         v: f32,
         mode: u8,
-        location: i16,
+        location: Option<MasterId>,
     ) -> Result<(), GenieError> {
         let tree = self.players.player(p)?.techs.len();
         let Some(t) = usize::try_from(tech).ok().filter(|&t| t < tree) else {
             return Ok(());
         };
-        let buildings: Vec<i16> = if location == -1 {
+        let buildings: Vec<Option<MasterId>> = if location.is_none() {
             self.players
                 .player(p)?
                 .techs
@@ -257,7 +262,11 @@ impl World {
             let time = self
                 .techs
                 .get(t)
-                .and_then(|d| d.locations.iter().find(|&&(b, _)| b == building))
+                .and_then(|d| {
+                    d.locations
+                        .iter()
+                        .find(|&&(b, _)| MasterId::of_data(b) == building)
+                })
                 .map_or(NO_TIME, |&(_, time)| f32::from(time));
             let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
             let i = state

@@ -10,6 +10,7 @@ use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -169,7 +170,7 @@ impl BuildAction {
         // a pasture is a farm to the test, so a villager works it as any farm; another builder
         // works it when its livestock's workers (slot 0x780, FUN_1411c5dd0) are its owner's
         // attribute 290
-        if !works_it && matches!(master.id, 1893 | 1897) {
+        if !works_it && matches!(master.id, ids::PASTURE_MANGROVE | ids::PASTURE) {
             return Err(GenieError::unsupported(
                 "the end of a Build on a pasture (its animals, slot 0x780)",
             ));

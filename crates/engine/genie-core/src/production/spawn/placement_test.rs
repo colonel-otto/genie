@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::RELIC;
 use crate::objects::masters::master_type::{BUILDING, COMBAT};
@@ -29,7 +30,7 @@ pub struct Near {
     /// Its master's class.
     pub class: ClassId,
     /// Its master.
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's `can_be_built_on` (`+0x5e9`).
     pub buildable_on: u8,
     /// Its master's `obstruction_type` (`+0x651`).

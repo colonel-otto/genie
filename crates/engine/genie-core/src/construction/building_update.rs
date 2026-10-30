@@ -11,7 +11,9 @@ use crate::objects::lifecycle::Lifecycle;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::HOUSE;
 use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::master_type::COMBAT;
@@ -51,7 +53,7 @@ impl Unit {
         let transforms = master
             .building
             .as_ref()
-            .is_some_and(|b| b.transform_unit != -1);
+            .is_some_and(|b| b.transform_unit.is_some());
         if master.class != class::GATE || !transforms || self.life.state != 2 {
             return Ok(());
         }
@@ -244,7 +246,7 @@ impl Unit {
         if c.w.players[c.player.index()]
             .attributes
             .get(BUILDING_TERRAIN)
-            == Some(&f32::from(master.id))
+            == Some(&f32::from(master.id.get()))
         {
             return Err(GenieError::unsupported(
                 "a building whose master attribute 255 names (FUN_1411c39b0)",
@@ -426,7 +428,7 @@ impl Unit {
 /// mangrove or rice (`rice`), else onto its `foundation` terrain plus 2 (bytes); None for
 /// another master.
 pub(crate) fn farm_stage_terrain(
-    master: i16,
+    master: MasterId,
     (rice, foundation): (bool, i16),
     progress: f32,
     build_time: i16,
@@ -439,9 +441,11 @@ pub(crate) fn farm_stage_terrain(
     const RICE_STAGE: u8 = 65;
     let stage = (((progress * STAGES) / f32::from(build_time)) as i32 as u8).min(2);
     match master {
-        50 => Some(FIRST_STAGE + stage),
-        1187 | 1889 if rice => Some(RICE_STAGE + stage),
-        1187 | 1889 => Some((foundation as u8).wrapping_add(2).wrapping_add(stage)),
+        ids::FARM => Some(FIRST_STAGE + stage),
+        ids::ID_1187 | ids::PASTURE_1889 if rice => Some(RICE_STAGE + stage),
+        ids::ID_1187 | ids::PASTURE_1889 => {
+            Some((foundation as u8).wrapping_add(2).wrapping_add(stage))
+        }
         _ => None,
     }
 }
@@ -449,7 +453,14 @@ pub(crate) fn farm_stage_terrain(
 /// The masters whose units blast about themselves below 1 hit point
 /// (`TRIBE_Combat_Object::update`, `0x141208440`): the demolition ships 527 and 528, the
 /// demolition raft 1104 and the incendiary raft and ships 2133 to 2135.
-pub(crate) const DEATH_BLAST_MASTERS: [i16; 6] = [527, 528, 1104, 2133, 2134, 2135];
+pub(crate) const DEATH_BLAST_MASTERS: [MasterId; 6] = [
+    MasterId::named(527),
+    MasterId::named(528),
+    MasterId::named(1104),
+    MasterId::named(2133),
+    MasterId::named(2134),
+    MasterId::named(2135),
+];
 /// The classes whose units blast so: 35 (petards) and 64.
 pub(crate) const DEATH_BLAST_CLASSES: [ClassId; 2] = [class::CLASS_35, class::CLASS_64];
 /// The hit points below which they blast (`DAT_14330eb8c`; `COMISS`, a NaN does not).

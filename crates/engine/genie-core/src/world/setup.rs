@@ -5,6 +5,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
+use crate::objects::masters::MasterId;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
 use crate::world::player::Player;
@@ -14,7 +15,7 @@ impl World {
     /// The world's next object id (`FUN_14152fd70`) for a new object of `master` for `player`: it
     /// counts on, and the id goes to the trace ([`crate::trace::new_object`]).
     #[track_caller]
-    pub(crate) fn take_object_id(&mut self, player: PlayerId, master: i16) -> ObjectId {
+    pub(crate) fn take_object_id(&mut self, player: PlayerId, master: MasterId) -> ObjectId {
         let id = self.next_object_id;
         self.next_object_id = id.successor();
         crate::trace::new_object(self.ticks, player, id.get(), master);

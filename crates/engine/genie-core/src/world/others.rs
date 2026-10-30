@@ -377,6 +377,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ids;
     use crate::test_ids::object_id;
 
     fn unit(id: i32) -> Unit {
@@ -526,7 +527,7 @@ mod tests {
         let mut asleep = ObjectList::from(vec![unit(13)]);
         asleep[0].life.goto_sleep = true;
         let lines = UnitLines::default();
-        let k = key(None, &lines, 0);
+        let k = key(None, &lines, ids::ID_0);
         let mut tracker = Tracker::default();
         for id in [13, 10] {
             tracker.add(id, k);

@@ -120,7 +120,7 @@ impl World {
         let class = self
             .masters
             .first()
-            .and_then(|m| m.get(g.target_master))
+            .and_then(|m| g.target_master.and_then(|t| m.get(t)))
             .map(|m| m.class);
         let los = self.players[p.index()].objects[new]
             .master(&self.masters, p)?

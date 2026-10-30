@@ -312,7 +312,7 @@ impl World {
             range: UNLOAD_RANGE,
             shown: to,
             ready: true,
-            target_type: i32::from(master.id),
+            target_type: i32::from(master.id.get()),
         };
         if unit.ai.is_none() {
             return Ok(());

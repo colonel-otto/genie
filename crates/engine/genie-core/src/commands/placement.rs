@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::FARM;
 use crate::objects::masters::player_master;
 use crate::players::PlayerId;
@@ -13,7 +14,7 @@ impl World {
     /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is
     /// mangrove shallows or forest (terrains 54, 55, `FUN_1413fc100`) or a rice farm's (63 to 67,
     /// `FUN_1413fc220`) is a rice farm (1187); a point off the map keeps the farm.
-    pub(crate) fn farm_on_rice_terrain(&self, master: i16, position: Position) -> i16 {
+    pub(crate) fn farm_on_rice_terrain(&self, master: MasterId, position: Position) -> MasterId {
         if master != FARM {
             return master;
         }
@@ -27,7 +28,11 @@ impl World {
 
     /// BUILD's pending debit (`FUN_141630d10` with 0, before its placement test): every cost
     /// entry of the master, paid or not, by resource, comes off the player's pending debit.
-    pub(crate) fn debit_listed(&mut self, player: PlayerId, master: i16) -> Result<(), GenieError> {
+    pub(crate) fn debit_listed(
+        &mut self,
+        player: PlayerId,
+        master: MasterId,
+    ) -> Result<(), GenieError> {
         let site = player_master(&self.masters, player, master).ok_or(GenieError::unsupported(
             "BUILD of a master the player does not have",
         ))?;
@@ -53,7 +58,7 @@ impl World {
     pub(crate) fn build_has_builder(
         &self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         builders: &[i32],
     ) -> Result<bool, GenieError> {
         if self.players[player.index()].computer {
@@ -76,7 +81,7 @@ impl World {
     pub(crate) fn build_allowed(
         &self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         at: [f32; 2],
     ) -> Result<bool, GenieError> {
         let human = !self.players[player.index()].computer;
@@ -92,7 +97,7 @@ impl World {
     pub(crate) fn placement_code(
         &self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         at: [f32; 2],
         human: bool,
     ) -> Result<u8, GenieError> {
@@ -104,7 +109,7 @@ impl World {
     pub(crate) fn placement_code_beside(
         &self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         at: [f32; 2],
         human: bool,
         own: &[i32],
@@ -195,7 +200,7 @@ impl World {
     /// The payment's test of a foundation of `master` for `player` (`FUN_14162fb60` ->
     /// `FUN_141618db0`): every cost entry of a resource, paid or not, at most what the player
     /// holds. A cost in population (attribute 4) is not modelled.
-    pub(crate) fn affords(&self, player: PlayerId, master: i16) -> Result<bool, GenieError> {
+    pub(crate) fn affords(&self, player: PlayerId, master: MasterId) -> Result<bool, GenieError> {
         let site = self.master(player, master)?;
         let owner = &self.players[player.index()];
         for &(resource, amount, _) in &site.cost {

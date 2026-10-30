@@ -28,6 +28,7 @@
 //!   stream's draws part from the game's.
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 
@@ -55,13 +56,13 @@ pub(crate) fn draw(stream: u8, draw: u32, value: u32) {
 /// A new object of `master` for `player` took the world's next object id `object` in update
 /// `tick` ([`STATE`]); `at` is the line of the engine that made it.
 #[track_caller]
-pub(crate) fn new_object(tick: u32, player: PlayerId, object: i32, master: i16) {
+pub(crate) fn new_object(tick: u32, player: PlayerId, object: i32, master: MasterId) {
     tracing::debug!(
         target: STATE,
         tick,
         player = player.index(),
         object,
-        master,
+        master = %master,
         at = %std::panic::Location::caller(),
         "new_object"
     );
@@ -386,7 +387,7 @@ mod tests {
                 "TRACE genie_core::update step step=Groups",
                 "TRACE genie_core::update step step=WorldPlayer",
                 "TRACE genie_core::update step step=Objects",
-                "TRACE genie_core::update object id=7 master=-1",
+                "TRACE genie_core::update object id=7 master=0",
             ]
         );
     }
@@ -408,7 +409,7 @@ mod tests {
             [&format!(
                 "WARN genie_core::unsupported an object freezes tick=1 player=0 object=5 \
                  why=\"a default task the slice does not model\" at={at} \
-                 context=\"site: 1, object: 5, master: -1\""
+                 context=\"site: 1, object: 5, master: 0\""
             )]
         );
     }

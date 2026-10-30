@@ -62,7 +62,7 @@ impl BuildCommand {
             return Ok(());
         }
         let [x, y] = self.position.xy();
-        let master = w.farm_on_rice_terrain(self.master.get(), Position::new(x, y, 0.0));
+        let master = w.farm_on_rice_terrain(self.master, Position::new(x, y, 0.0));
         w.debit_listed(player, master)?;
         if !w.build_has_builder(player, master, &builders)? {
             return Ok(());
@@ -94,7 +94,7 @@ impl BuildCommand {
     pub fn sprite_override_of(&self, civ: u8) -> i32 {
         const CIV: u8 = 0xc;
         let kept = self.sprite_override.wrapping_sub(0x2c9).cast_unsigned() <= 5;
-        if self.sprite_override != -1 && kept && self.master.get() == HOUSE && civ == CIV {
+        if self.sprite_override != -1 && kept && self.master == HOUSE && civ == CIV {
             self.sprite_override
         } else {
             -1

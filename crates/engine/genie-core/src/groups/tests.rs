@@ -2,7 +2,9 @@ use super::*;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::{ClassId, class};
+use crate::objects::masters::{MasterId, ids};
 use crate::objects::unit::Unit;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::World;
 
@@ -250,8 +252,8 @@ fn tasked_world(masters: Vec<crate::objects::masters::Master>, owner_range: f32)
             crate::world::Player::default(),
             crate::world::Player {
                 objects: vec![
-                    unit(object_id(11), 83, 2, 25.0),
-                    unit(object_id(60), 70, 0, 550.0),
+                    unit(object_id(11), ids::VILLAGER_MALE, 2, 25.0),
+                    unit(object_id(60), ids::HOUSE, 0, 550.0),
                 ]
                 .into(),
                 attributes,
@@ -267,7 +269,7 @@ fn tasked_world(masters: Vec<crate::objects::masters::Master>, owner_range: f32)
 }
 
 fn task_master(
-    id: i16,
+    id: MasterId,
     tasks: Vec<crate::objects::masters::Task>,
 ) -> crate::objects::masters::Master {
     crate::objects::masters::Master {
@@ -283,7 +285,7 @@ fn task_master(
 
 fn building_master() -> crate::objects::masters::Master {
     crate::objects::masters::Master {
-        id: 70,
+        id: ids::HOUSE,
         kind: 80,
         class: class::BUILDING,
         hit_points: 550,
@@ -319,7 +321,7 @@ fn member_11() -> ObjectId {
 fn a_member_s_own_task_is_the_command_with_the_task_s_range() {
     let t = tasked_world(
         vec![
-            task_master(83, vec![plain_task(101, 2.5)]),
+            task_master(ids::VILLAGER_MALE, vec![plain_task(101, 2.5)]),
             building_master(),
         ],
         9.0,
@@ -339,7 +341,7 @@ fn a_member_s_own_task_is_the_command_with_the_task_s_range() {
 fn a_member_has_no_task_on_itself() {
     let t = tasked_world(
         vec![
-            task_master(83, vec![plain_task(101, 2.5)]),
+            task_master(ids::VILLAGER_MALE, vec![plain_task(101, 2.5)]),
             building_master(),
         ],
         9.0,
@@ -352,7 +354,10 @@ fn a_member_has_no_task_on_itself() {
 /// find 0x68 and 0x69 yet, so the answer is built from a task given.)
 #[test]
 fn the_ranges_of_tasks_0x69_and_0x68_do_not_come_from_the_task() {
-    let t = tasked_world(vec![task_master(83, vec![]), building_master()], 9.0);
+    let t = tasked_world(
+        vec![task_master(ids::VILLAGER_MALE, vec![]), building_master()],
+        9.0,
+    );
     let target = t.task_target(60, 1).unwrap();
     let range = |action| {
         t.task_range(&plain_task(action, 2.5), &target)
@@ -369,9 +374,9 @@ fn the_ranges_of_tasks_0x69_and_0x68_do_not_come_from_the_task() {
 fn a_member_without_a_task_takes_the_swap_group_s_first_with_one() {
     let t = tasked_world(
         vec![
-            task_master(83, vec![]),
-            task_master(118, vec![plain_task(101, 1.5)]),
-            task_master(119, vec![plain_task(101, 1.0)]),
+            task_master(ids::VILLAGER_MALE, vec![]),
+            task_master(ids::BUILDER, vec![plain_task(101, 1.5)]),
+            task_master(master_id(119), vec![plain_task(101, 1.0)]),
             building_master(),
         ],
         9.0,
@@ -383,12 +388,12 @@ fn a_member_without_a_task_takes_the_swap_group_s_first_with_one() {
 /// A master of a swap group 0 does not search the others; none found is none.
 #[test]
 fn a_master_without_a_swap_group_has_no_other_to_try() {
-    let mut own = task_master(83, vec![]);
+    let mut own = task_master(ids::VILLAGER_MALE, vec![]);
     own.task_by_group = 0;
     let t = tasked_world(
         vec![
             own,
-            task_master(118, vec![plain_task(101, 1.5)]),
+            task_master(ids::BUILDER, vec![plain_task(101, 1.5)]),
             building_master(),
         ],
         9.0,
@@ -400,10 +405,10 @@ fn a_master_without_a_swap_group_has_no_other_to_try() {
 /// when it finds no task, which is not modelled; a type below does not.
 #[test]
 fn a_master_with_a_board_task_and_no_task_found_is_not_modelled() {
-    let mut own = task_master(83, vec![plain_task(0x84, 1.0)]);
+    let mut own = task_master(ids::VILLAGER_MALE, vec![plain_task(0x84, 1.0)]);
     own.task_by_group = 0;
     // its own list finds the board task for any target, so give it one for another object
-    own.tasks[0].object_id = 999;
+    own.tasks[0].object_id = Some(master_id(999));
     let t = tasked_world(vec![own.clone(), building_master()], 9.0);
     assert!(t.member_task(member_11(), &query_on(60)).is_err());
     own.kind = 0x27;
@@ -425,7 +430,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
             body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
             group: GroupLink { id: 1, flag: -2 },
             life: Lifecycle {
-                master_id: master,
+                master_id: master_id(master),
                 state: 2,
                 hp: 25.0,
                 ..Lifecycle::default()
@@ -438,7 +443,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         body: crate::objects::layers::Body::at(Position::new(40.0, 45.0, 0.0)),
         attackable: true,
         life: Lifecycle {
-            master_id: 70,
+            master_id: ids::HOUSE,
             state: 2,
             hp: 550.0,
             ..Lifecycle::default()
@@ -476,9 +481,9 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         ..building_master()
     };
     let masters = Masters::new([
-        soldier(4, class::CLASS_6),
-        soldier(5, class::CLASS_46),
-        soldier(329, class::CLASS_6),
+        soldier(master_id(4), class::CLASS_6),
+        soldier(master_id(5), class::CLASS_46),
+        soldier(ids::ID_329, class::CLASS_6),
         building,
     ]);
     t.masters = vec![Masters::new([]), masters.clone(), masters];
@@ -642,16 +647,31 @@ fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
 #[test]
 fn a_filter_takes_the_range_of_the_members_task_of_that_type() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
-    for master in t.masters.iter_mut().filter_map(|m| m.get_mut(4)) {
+    for master in t.masters.iter_mut().filter_map(|m| m.get_mut(master_id(4))) {
         master.tasks = vec![plain_task(5, 6.0), plain_task(0x68, 1.5)];
     }
     t.players[1].attributes = vec![0.0; 300];
     t.players[1].attributes[280] = 2.0;
-    assert_eq!(t.task_reach(PlayerId::new(1), 4, -1).unwrap(), -1.0);
-    assert_eq!(t.task_reach(PlayerId::new(1), 4, 5).unwrap(), 6.0);
-    assert_eq!(t.task_reach(PlayerId::new(1), 4, 0x68).unwrap(), 3.5);
-    assert_eq!(t.task_reach(PlayerId::new(1), 4, 9).unwrap(), -1.0);
-    assert_eq!(t.task_reach(PlayerId::new(1), 99, 5).unwrap(), 0.0);
+    assert_eq!(
+        t.task_reach(PlayerId::new(1), master_id(4), -1).unwrap(),
+        -1.0
+    );
+    assert_eq!(
+        t.task_reach(PlayerId::new(1), master_id(4), 5).unwrap(),
+        6.0
+    );
+    assert_eq!(
+        t.task_reach(PlayerId::new(1), master_id(4), 0x68).unwrap(),
+        3.5
+    );
+    assert_eq!(
+        t.task_reach(PlayerId::new(1), master_id(4), 9).unwrap(),
+        -1.0
+    );
+    assert_eq!(
+        t.task_reach(PlayerId::new(1), master_id(99), 5).unwrap(),
+        0.0
+    );
     // the range is the task's with the filter: the pass raises the group's range to it
     let mut range = -1.0;
     t.reach_pass(1, 60, attack_on(5), &mut range).unwrap();
@@ -781,18 +801,18 @@ fn the_special_units_follow_the_target_s_class() {
         (10, 329, 0.0, 0.0),
         (11, 5, 0.0, 0.0),
     ];
-    let special = |target_class: ClassId, target_master: i16, take: usize| {
+    let special = |target_class: ClassId, target_master: MasterId, take: usize| {
         let mut t = attack_world(&units[..take]);
-        for b in t.masters.iter_mut().filter_map(|m| m.get_mut(70)) {
+        for b in t.masters.iter_mut().filter_map(|m| m.get_mut(ids::HOUSE)) {
             b.class = target_class;
         }
         let _ = target_master;
         t.refill_special_units(1, 60).unwrap();
         t.groups.get(1).unwrap().special_units.clone()
     };
-    assert_eq!(special(class::CLASS_24, 70, 5), [9, 10, 8, 11]);
-    assert_eq!(special(class::CLASS_24, 70, 4), [9]);
-    assert_eq!(special(class::BUILDING, 70, 5), Vec::<i32>::new());
+    assert_eq!(special(class::CLASS_24, ids::HOUSE, 5), [9, 10, 8, 11]);
+    assert_eq!(special(class::CLASS_24, ids::HOUSE, 4), [9]);
+    assert_eq!(special(class::BUILDING, ids::HOUSE, 5), Vec::<i32>::new());
 }
 
 /// `FUN_141007ba0`: each formation category's attack range rises to the largest range its members
@@ -845,7 +865,7 @@ fn attack_task() -> crate::objects::masters::Task {
 /// [`attack_world`] whose soldiers (master 4) have the attack task.
 fn attack_world_with_task(members: &[(i32, i16, f32, f32)]) -> World {
     let mut t = attack_world(members);
-    for master in t.masters.iter_mut().filter_map(|m| m.get_mut(4)) {
+    for master in t.masters.iter_mut().filter_map(|m| m.get_mut(master_id(4))) {
         master.tasks = vec![attack_task()];
     }
     t
@@ -879,7 +899,7 @@ fn a_group_ordered_on_an_enemy_building_runs_the_attack_path() {
 #[test]
 fn a_group_ordered_with_a_general_task_runs_the_general_command() {
     let mut t = attack_world_with_task(&[(7, 4, 10.0, 10.0)]);
-    for master in t.masters.iter_mut().filter_map(|m| m.get_mut(4)) {
+    for master in t.masters.iter_mut().filter_map(|m| m.get_mut(master_id(4))) {
         master.tasks = vec![crate::objects::masters::Task {
             action_type: 5,
             work_range: 6.0,
@@ -1003,7 +1023,7 @@ fn the_special_units_of_masters_6_and_7_and_of_the_category_classes() {
         (10, 5, 0.0, 0.0),
         (11, 4, 0.0, 0.0),
     ];
-    let world = |target_class: ClassId, target_master: i16| {
+    let world = |target_class: ClassId, target_master: MasterId| {
         let mut t = attack_world(&units);
         t.players[2].objects[0].life.master_id = target_master;
         for masters in &mut t.masters {
@@ -1011,15 +1031,19 @@ fn the_special_units_of_masters_6_and_7_and_of_the_category_classes() {
             b.id = target_master;
             b.class = target_class;
             *masters = crate::objects::masters::Masters::new(
-                masters.iter().filter(|m| m.id != 70).cloned().chain([b]),
+                masters
+                    .iter()
+                    .filter(|m| m.id != ids::HOUSE)
+                    .cloned()
+                    .chain([b]),
             );
         }
         t
     };
-    let mut t = world(class::BUILDING, 7);
+    let mut t = world(class::BUILDING, ids::ID_7);
     t.refill_special_units(1, 60).unwrap();
     assert_eq!(t.groups.get(1).unwrap().special_units, [8, 10]);
-    let mut t = world(class::VILLAGER, 70);
+    let mut t = world(class::VILLAGER, ids::HOUSE);
     t.groups.get_mut(1).unwrap().unit_types = vec![
         UnitTypeStatistic {
             formation_category: 2,
@@ -1035,7 +1059,7 @@ fn the_special_units_of_masters_6_and_7_and_of_the_category_classes() {
     t.refill_special_units(1, 60).unwrap();
     // category 1 first, then 2, up to four
     assert_eq!(t.groups.get(1).unwrap().special_units, [7, 8, 11, 9]);
-    let mut t = world(class::CLASS_57, 70);
+    let mut t = world(class::CLASS_57, ids::HOUSE);
     t.refill_special_units(1, 60).unwrap();
     assert_eq!(t.groups.get(1).unwrap().special_units, [9, 8, 10]);
 }

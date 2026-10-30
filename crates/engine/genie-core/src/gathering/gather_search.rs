@@ -7,6 +7,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::msvc;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::unit_ai::task_finder::DropSite;
@@ -21,7 +22,7 @@ pub struct Candidate {
     /// Its master's class (`+0x410`, decoded).
     pub class: ClassId,
     /// Its master's id.
-    pub master: i16,
+    pub master: MasterId,
     /// `+0x640`.
     pub state: u8,
     /// `+0x644`, `worker_num`.
@@ -639,6 +640,7 @@ pub const fn gather_group(attribute: i16) -> (u8, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::master_id;
     use crate::unit_ai::task_finder::DropTarget;
 
     fn tree(id: i32, x: f32, y: f32) -> Candidate {
@@ -646,7 +648,7 @@ mod tests {
             id,
             player: PlayerId::new(0),
             class: class::TREE,
-            master: 349,
+            master: master_id(349),
             state: 2,
             workers: 0,
             position: Position::new(x, y, 0.0),
@@ -661,7 +663,7 @@ mod tests {
 
     fn lumber_camp() -> DropSite {
         DropSite {
-            building: 562,
+            building: master_id(562),
             worker_class: Some(class::VILLAGER),
             workers: Vec::new(),
             civs: Vec::new(),

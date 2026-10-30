@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::death_parts::{built_death, combat_dies, farm_bonus, refund_of};
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::{NO_DYING_SPRITE, Unit};
@@ -24,7 +25,7 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         master: &Master,
-    ) -> Result<Option<(i16, i16)>, GenieError> {
+    ) -> Result<Option<(MasterId, i16)>, GenieError> {
         // FUN_1411dbb70 to state 3 from 2: the storage leaves (FUN_1411e63f0), the owner's
         // watched list lets it go (FUN_141091310), the tiles unlink (FUN_140f65580), and
         // a monastery's, wonder's or castle's count leaves, at least 0 left

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::groups::group_list::member_gone;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
+use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -32,7 +33,7 @@ const CLEARED_ACTIONS: [ActionKind; 3] = [
 /// What a group reads of a unit's master for its formation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FormationUnit {
-    pub(crate) master: i16,
+    pub(crate) master: MasterId,
     pub(crate) kind: u8,
     pub(crate) hero_flag: u8,
     pub(crate) formation_category: u8,
@@ -105,7 +106,7 @@ impl UnitGroup {
         sub: i32,
         id: i32,
         unit: FormationUnit,
-        masters_of: &dyn Fn(i32) -> Option<i16>,
+        masters_of: &dyn Fn(i32) -> Option<MasterId>,
         scratch: &mut Vec<u32>,
     ) -> Result<(), GenieError> {
         let at = self
@@ -140,7 +141,7 @@ impl UnitGroup {
         &mut self,
         id: i32,
         category: Option<i32>,
-        masters_of: &dyn Fn(i32) -> Option<i16>,
+        masters_of: &dyn Fn(i32) -> Option<MasterId>,
         scratch: &mut Vec<u32>,
     ) -> bool {
         let leave = |stat: &mut UnitTypeStatistic, scratch: &mut Vec<u32>| {
@@ -251,7 +252,7 @@ impl World {
             Some(object) => Some(self.unit_category(Some(object))?),
             None => None,
         };
-        let masters: Vec<(i32, i16)> = self
+        let masters: Vec<(i32, MasterId)> = self
             .players
             .iter()
             .flat_map(|q| q.objects.iter().chain(&q.sleeping))
@@ -276,7 +277,7 @@ impl World {
 /// world does not hold is passed over; past 51 types the count stops.
 pub(crate) fn count_unit_types(
     stat: &mut UnitTypeStatistic,
-    masters_of: &dyn Fn(i32) -> Option<i16>,
+    masters_of: &dyn Fn(i32) -> Option<MasterId>,
     scratch: &mut Vec<u32>,
 ) {
     scratch.resize(50, 0);
@@ -286,7 +287,7 @@ pub(crate) fn count_unit_types(
         let Some(master) = masters_of(id) else {
             continue;
         };
-        let master = i32::from(master) as u32;
+        let master = i32::from(master.get()) as u32;
         if let Some(k) = scratch.iter().take(n).position(|&t| t == master) {
             // k < n <= 50, the counts' length
             if let Some(count) = counts.get_mut(k) {
@@ -379,7 +380,7 @@ impl World {
         // the walks that meet it read its group
         let gait = u.gait();
         self.spatial.set_gait(id, gait);
-        let masters: Vec<(i32, i16)> = self
+        let masters: Vec<(i32, MasterId)> = self
             .players
             .iter()
             .flat_map(|q| q.objects.iter().chain(&q.sleeping))
@@ -417,15 +418,17 @@ mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Position;
     use crate::objects::masters::{Master, Masters};
+    use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::world::{Player, World};
 
     /// Group 1 of player 1's units 10, 11 (master 4, category 1) and 12 (master 6, category 3),
     /// their seconds since attacking 1, 2 and 3, 11 the lead and walking.
     fn three() -> World {
-        let unit = |id: i32, master: i16, x: f32| {
+        let unit = |id: i32, master: MasterId, x: f32| {
             let mut u = Unit {
                 id: object_id(id),
                 body: crate::objects::layers::Body::at(Position::new(x, 0.0, 0.0)),
@@ -435,7 +438,7 @@ mod tests {
             u.group.id = 1;
             u
         };
-        let mut walking = unit(11, 4, 2.0);
+        let mut walking = unit(11, master_id(4), 2.0);
         let mut mover = crate::gathering::hunt::tests::walker();
         mover.paths = vec![
             mover
@@ -447,7 +450,12 @@ mod tests {
         mover.paths[0].state = 3;
         walking.body.put_mover(Some(mover));
         let player = Player {
-            objects: vec![unit(10, 4, 1.0), walking, unit(12, 6, 3.0)].into(),
+            objects: vec![
+                unit(10, master_id(4), 1.0),
+                walking,
+                unit(12, ids::ID_6, 3.0),
+            ]
+            .into(),
             ..Player::default()
         };
         let mut t = World::new(
@@ -457,13 +465,13 @@ mod tests {
             vec![0, 0],
             vec![Player::default(), player],
         );
-        let master = |id: i16, category: u8| Master {
+        let master = |id: MasterId, category: u8| Master {
             id,
             kind: 70,
             formation_category: category,
             ..Master::default()
         };
-        let masters = Masters::new([master(4, 1), master(6, 3)]);
+        let masters = Masters::new([master(master_id(4), 1), master(ids::ID_6, 3)]);
         t.masters = vec![masters.clone(), masters];
         let mut g = UnitGroup::new(1);
         g.members = [(10, 1.0), (11, 2.0), (12, 3.0)]
@@ -533,7 +541,7 @@ mod tests {
             id: object_id(13),
             ..Unit::default()
         };
-        asleep.life.master_id = 4;
+        asleep.life.master_id = master_id(4);
         t.players[1].sleeping.push(asleep);
         assert!(t.add_to_group(1, 13).unwrap());
         assert_eq!(t.players[1].sleeping[0].group.id, 1);
@@ -549,7 +557,7 @@ mod tests {
     #[test]
     fn a_unit_leaves_only_its_own_sub_formation_s_statistic() {
         let mut t = three();
-        let unit = |id: i32, master: i16| {
+        let unit = |id: i32, master: MasterId| {
             let mut u = Unit {
                 id: object_id(id),
                 ..Unit::default()
@@ -557,18 +565,18 @@ mod tests {
             u.life.master_id = master;
             u
         };
-        t.players[1].objects.push(unit(14, 7));
-        t.players[1].objects.push(unit(15, 8));
+        t.players[1].objects.push(unit(14, ids::ID_7));
+        t.players[1].objects.push(unit(15, master_id(8)));
         for masters in &mut t.masters {
             let extra = [
                 Master {
-                    id: 7,
+                    id: ids::ID_7,
                     kind: 60,
                     formation_category: 1,
                     ..Master::default()
                 },
                 Master {
-                    id: 8,
+                    id: master_id(8),
                     kind: 70,
                     formation_category: 2,
                     ..Master::default()
@@ -678,7 +686,7 @@ mod tests {
         let mut t = three();
         for masters in &mut t.masters {
             for (id, r) in [(4, 0.2f32), (6, 0.5)] {
-                let m = masters.get_mut(id).unwrap();
+                let m = masters.get_mut(master_id(id)).unwrap();
                 m.radius = [r, r];
                 m.height = 1.0;
                 m.spacing_modifier = 1.0;

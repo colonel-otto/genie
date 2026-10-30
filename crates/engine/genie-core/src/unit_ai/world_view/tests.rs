@@ -1,7 +1,9 @@
 use super::*;
 use crate::map::Position;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::object_list::ObjectList;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::others::OthersRef;
 
@@ -30,7 +32,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
     let me = Unit {
         id: object_id(123),
         life: crate::objects::lifecycle::Lifecycle {
-            master_id: 83,
+            master_id: ids::VILLAGER_MALE,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -63,11 +65,11 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         state: 2,
         held: -1,
         top_action: None,
-        master: 83,
+        master: ids::VILLAGER_MALE,
         kind: 70,
         class: Some(class::VILLAGER),
         attack_priority: 0,
-        missile: -1,
+        missile: None,
         range: 0.0,
         min_range: 0.0,
         charge_type: 0,
@@ -131,18 +133,23 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         attackers,
         ..UnitAi::default()
     };
-    let me = unit(object_id(123), 10.0, 4, None);
+    let me = unit(object_id(123), 10.0, master_id(4), None);
     let others = ObjectList::from(vec![
-        unit(object_id(20), 12.0, 4, Some(attacked(vec![50, 51, 52, 53]))),
-        unit(object_id(21), 12.0, 4, None),
-        unit(object_id(22), 12.0, 4, Some(attacked(vec![99]))),
+        unit(
+            object_id(20),
+            12.0,
+            master_id(4),
+            Some(attacked(vec![50, 51, 52, 53])),
+        ),
+        unit(object_id(21), 12.0, master_id(4), None),
+        unit(object_id(22), 12.0, master_id(4), Some(attacked(vec![99]))),
     ]);
     let enemy = Player {
         // 50 at a gap of 4.4, 51 of 2.4 (its radius 1), 53 of 2.4 too
         objects: vec![
-            unit(object_id(50), 17.0, 5, None),
-            unit(object_id(51), 16.0, 6, None),
-            unit(object_id(53), 16.0, 6, None),
+            unit(object_id(50), 17.0, master_id(5), None),
+            unit(object_id(51), 16.0, ids::ID_6, None),
+            unit(object_id(53), 16.0, ids::ID_6, None),
         ]
         .into(),
         ..Player::default()
@@ -151,8 +158,11 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
     let before = [gaia];
     let every = [
         Masters::default(),
-        Masters::new([master(4, [0.3, 0.3])]),
-        Masters::new([master(5, [0.3, 0.3]), master(6, [1.3, 0.3])]),
+        Masters::new([master(master_id(4), [0.3, 0.3])]),
+        Masters::new([
+            master(master_id(5), [0.3, 0.3]),
+            master(ids::ID_6, [1.3, 0.3]),
+        ]),
     ];
     let attacker = crate::unit_ai::Attacker {
         ai_type: 13,
@@ -161,11 +171,11 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         state: 2,
         held: -1,
         top_action: None,
-        master: 4,
+        master: master_id(4),
         kind: 70,
         class: Some(class::CLASS_6),
         attack_priority: 0,
-        missile: -1,
+        missile: None,
         range: 0.0,
         min_range: 0.0,
         charge_type: 0,
@@ -209,8 +219,8 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
 #[test]
 fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
     let villager = crate::objects::masters::Master {
-        id: 83,
-        copy_id: 83,
+        id: ids::VILLAGER_MALE,
+        copy_id: Some(ids::VILLAGER_MALE),
         kind: 70,
         class: class::VILLAGER,
         object_flags: 0x10,
@@ -227,7 +237,7 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
         harmless(m)
     };
     assert!(!with(&|m| m.object_flags = 0));
-    assert!(!with(&|m| m.copy_id = 293));
+    assert!(!with(&|m| m.copy_id = Some(ids::VILLAGER_FEMALE)));
     assert!(!with(&|m| m.weapons = vec![(4, 5)]));
     // an attack of 4 below 60 hit points
     assert!(with(&|m| m.weapons = vec![(4, 4)]));
@@ -269,17 +279,17 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         },
         ..Unit::default()
     };
-    let me = unit(object_id(123), 10.0, 4);
+    let me = unit(object_id(123), 10.0, master_id(4));
     let enemy = Player {
-        objects: vec![unit(object_id(50), 12.0, 5)].into(),
+        objects: vec![unit(object_id(50), 12.0, master_id(5))].into(),
         ..Player::default()
     };
     let (gaia, after) = (Player::default(), [enemy]);
     let before = [gaia];
     let every = [
         Masters::default(),
-        Masters::new([master(4, class::CLASS_6, vec![(4, 6)])]),
-        Masters::new([master(5, class::CLASS_6, vec![(4, 3)])]),
+        Masters::new([master(master_id(4), class::CLASS_6, vec![(4, 6)])]),
+        Masters::new([master(master_id(5), class::CLASS_6, vec![(4, 3)])]),
     ];
     let spatial = Spatial::new([120, 120]);
     let attacker = crate::unit_ai::Attacker {
@@ -289,11 +299,11 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         state: 2,
         held: -1,
         top_action: None,
-        master: 4,
+        master: master_id(4),
         kind: 70,
         class: Some(class::CLASS_6),
         attack_priority: 0,
-        missile: -1,
+        missile: None,
         range: 0.5,
         min_range: 0.0,
         charge_type: 0,

@@ -675,7 +675,10 @@ mod tests {
     use crate::map::Position;
     use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
+    use crate::objects::masters::{MasterId, ids};
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::test_ids::opt_master;
 
     /// An animated graphic of `frames` frames with a random first frame (flags 5).
     const fn graphic(id: i16) -> Graphic {
@@ -694,12 +697,12 @@ mod tests {
     /// standing sprite `id + 1000`, its death spawn `dead`.
     fn building(id: i16, hp: i16, mode: u8, dead: i16) -> Master {
         Master {
-            id,
+            id: master_id(id),
             kind: master_type::BUILDING,
             class: class::BUILDING,
             hit_points: hp,
             standing_sprite: id + 1000,
-            death_spawns: [dead, -1],
+            death_spawns: [opt_master(dead), None],
             damage_graphics: [25, 50, 75]
                 .map(|percent| DamageGraphic {
                     sprite: id + 2000 + i16::from(percent),
@@ -717,7 +720,7 @@ mod tests {
     }
 
     /// A unit of master `master` in `state` with `hp`.
-    fn object(id: i32, master: i16, state: u8, hp: f32) -> Unit {
+    fn object(id: i32, master: MasterId, state: u8, hp: f32) -> Unit {
         Unit {
             id: object_id(id),
             life: crate::objects::lifecycle::Lifecycle {
@@ -816,7 +819,7 @@ mod tests {
     }
 
     fn object_of(hp: f32) -> Unit {
-        object(1, 70, 2, hp)
+        object(1, ids::HOUSE, 2, hp)
     }
 
     /// `FUN_141193590`: a dead tree's share is that of its storage left (the entry of the kind
@@ -834,7 +837,7 @@ mod tests {
             }],
             ..Master::default()
         };
-        let mut u = object(1, 1, 3, 20.0);
+        let mut u = object(1, master_id(1), 3, 20.0);
         (u.life.attribute_type, u.life.amount) = (1, 25.0);
         assert_eq!(share_of(&u, &tree), Some((75, 20.0)));
         u.life.attribute_type = 2;
@@ -892,27 +895,32 @@ mod tests {
     #[test]
     fn an_age_s_upgrade_keeps_a_house_s_share_of_its_hit_points() {
         let old = Master {
-            death_spawns: [1403, -1],
+            death_spawns: [Some(master_id(1403)), None],
             ..building(70, 550, SPRITE_PLACED, 1403)
         };
         let new = Master {
             class: class::BUILDING,
             ..building(464, 900, SPRITE_PLACED, 1435)
         };
-        let rubble = |id, copy| Master {
-            id,
-            copy_id: copy,
+        let rubble = |id: i16, copy: i16| Master {
+            id: master_id(id),
+            copy_id: opt_master(copy),
             kind: master_type::STATIC,
             ..Master::default()
         };
-        let mut house = object(10, 70, 2, 275.0);
+        let mut house = object(10, ids::HOUSE, 2, 275.0);
         let mut sprites = Well512::default();
         house.sprite = Some(crate::objects::sprite::ActiveSprite::start(
             graphic(1070),
             &mut sprites,
         ));
         let player = crate::world::Player {
-            objects: vec![house, object(11, 70, 4, 0.0), object(12, 1403, 2, 1.0)].into(),
+            objects: vec![
+                house,
+                object(11, ids::HOUSE, 4, 0.0),
+                object(12, master_id(1403), 2, 1.0),
+            ]
+            .into(),
             ..crate::world::Player::default()
         };
         let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
@@ -926,21 +934,30 @@ mod tests {
             .map(|id| (id, graphic(id)))
             .into_iter()
             .collect();
-        t.upgrade_objects(PlayerId::new(0), 70, 464, -1, None)
+        t.upgrade_objects(PlayerId::new(0), master_id(70), master_id(464), -1, None)
             .unwrap();
         let [house, dead, rubble] = &t.players[0].objects[..] else {
             panic!("three objects");
         };
-        assert_eq!((house.life.master_id, house.life.hp), (70, 450.0));
+        assert_eq!(
+            (house.life.master_id, house.life.hp),
+            (master_id(70), 450.0)
+        );
         assert_eq!(house.sprite.map(|s| s.graphic.id), Some(1464));
         assert!(house.own_master.is_none());
         assert_eq!(dead.own_master.as_deref().map(|m| m.hit_points), Some(550));
-        assert_eq!(dead.dead_master.as_deref().map(|m| m.id), Some(1403));
-        assert_eq!(rubble.own_master.as_deref().map(|m| m.id), Some(1403));
-        let master = t.masters[0].get(70).unwrap();
+        assert_eq!(
+            dead.dead_master.as_deref().map(|m| m.id),
+            Some(master_id(1403))
+        );
+        assert_eq!(
+            rubble.own_master.as_deref().map(|m| m.id),
+            Some(master_id(1403))
+        );
+        let master = t.masters[0].get(ids::HOUSE).unwrap();
         assert_eq!(
             (master.id, master.hit_points, master.death_spawns[0]),
-            (70, 900, 1435)
+            (master_id(70), 900, Some(master_id(1435)))
         );
     }
 
@@ -950,7 +967,7 @@ mod tests {
     #[test]
     fn an_upgrade_to_another_master_moves_the_class_counters_and_the_load() {
         let old = Master {
-            id: 83,
+            id: ids::VILLAGER_MALE,
             kind: master_type::COMBAT,
             class: class::VILLAGER,
             hit_points: 25,
@@ -958,14 +975,14 @@ mod tests {
             ..Master::default()
         };
         let new = Master {
-            id: 6,
+            id: ids::ID_6,
             kind: master_type::COMBAT,
             class: class::CLASS_6,
             hit_points: 50,
             volley_fire: 3.0,
             ..Master::default()
         };
-        let mut v = object(10, 83, 2, 25.0);
+        let mut v = object(10, ids::VILLAGER_MALE, 2, 25.0);
         (v.life.attribute_type, v.life.amount) = (17, 10.0);
         v.firepower = 1.0;
         let player = crate::world::Player {
@@ -976,14 +993,21 @@ mod tests {
         let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
         t.masters = vec![Masters::new([old, new])];
         t.players[0].attributes[37] = 1.0;
-        t.upgrade_objects(PlayerId::new(0), 83, 6, 0, None).unwrap();
+        t.upgrade_objects(PlayerId::new(0), master_id(83), master_id(6), 0, None)
+            .unwrap();
         let v = &t.players[0].objects[0];
-        assert_eq!((v.life.master_id, v.life.hp, v.firepower), (6, 50.0, 3.0));
+        assert_eq!(
+            (v.life.master_id, v.life.hp, v.firepower),
+            (master_id(6), 50.0, 3.0)
+        );
         assert_eq!((v.life.attribute_type, v.life.amount), (-1, 0.0));
         let a = &t.players[0].attributes;
         assert_eq!((a[37], a[40]), (0.0, 1.0));
         assert_eq!(t.players[0].resources[0], 10.0);
-        assert_eq!(t.masters[0].get(83).map(|m| m.class), Some(class::VILLAGER));
+        assert_eq!(
+            t.masters[0].get(ids::VILLAGER_MALE).map(|m| m.class),
+            Some(class::VILLAGER)
+        );
     }
 
     /// `FUN_140a97970` -> `FUN_140a78150`: each action finds its old task's match among the new
@@ -1006,13 +1030,13 @@ mod tests {
         };
         let mut t = crate::world::tests::forage_world();
         t.gather_command(PlayerId::new(1), 0, 600).unwrap();
-        let mut old = t.masters[1].get(120).unwrap().clone();
+        let mut old = t.masters[1].get(master_id(120)).unwrap().clone();
         old.tasks
             .push(task(TaskId::test(3), action_type::BUILD, 3, 0.25));
         let make = task(TaskId::test(4), crate::gathering::make::MAKE, -1, 0.0);
         let waiting = task(TaskId::test(9), 0x9a, 3, 0.0);
         let new = Master {
-            id: 121,
+            id: master_id(121),
             tasks: vec![
                 task(TaskId::test(5), GATHER, 7, 0.5),
                 task(TaskId::test(6), GATHER, 7, 0.75),
@@ -1100,21 +1124,21 @@ mod tests {
             hit_points,
             ..Master::default()
         };
-        let mut own = object(11, 4, 2, 20.0);
-        own.own_master = Some(Box::new(soldier(4, 40)));
+        let mut own = object(11, master_id(4), 2, 20.0);
+        own.own_master = Some(Box::new(soldier(master_id(4), 40)));
         let player = crate::world::Player {
-            objects: vec![object(10, 4, 2, 20.0), own].into(),
-            sleeping: vec![object(12, 4, 2, 20.0)].into(),
+            objects: vec![object(10, master_id(4), 2, 20.0), own].into(),
+            sleeping: vec![object(12, master_id(4), 2, 20.0)].into(),
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
         let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
         t.masters = vec![Masters::new([
-            soldier(4, 40),
-            soldier(5, 60),
-            soldier(0x67f, 60),
+            soldier(master_id(4), 40),
+            soldier(master_id(5), 60),
+            soldier(master_id(0x67f), 60),
         ])];
-        t.track_add(PlayerId::new(0), 10, 4).unwrap();
+        t.track_add(PlayerId::new(0), 10, master_id(4)).unwrap();
         t
     }
 
@@ -1133,21 +1157,28 @@ mod tests {
                 .collect()
         };
         let mut t = upgrade_world();
-        t.upgrade_objects(PlayerId::new(0), 4, 5, 2, Some(10))
+        t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(5), 2, Some(10))
             .unwrap();
         let own = t.players[0].objects[0].own_master.as_deref().unwrap();
-        assert_eq!((own.id, own.hit_points), (4, 60));
+        assert_eq!((own.id, own.hit_points), (master_id(4), 60));
         assert_eq!(hp(&t), [30.0, 20.0, 20.0]);
-        assert_eq!(t.masters[0].get(4).map(|m| m.hit_points), Some(40));
+        assert_eq!(
+            t.masters[0].get(master_id(4)).map(|m| m.hit_points),
+            Some(40)
+        );
         let mut t = upgrade_world();
-        t.upgrade_objects(PlayerId::new(0), 4, 5, 3, None).unwrap();
+        t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(5), 3, None)
+            .unwrap();
         assert_eq!(hp(&t), [30.0, 30.0, 30.0]);
         let own = t.players[0].objects[1].own_master.as_deref().unwrap();
-        assert_eq!((own.id, own.hit_points), (4, 60));
-        assert_eq!(t.masters[0].get(4).map(|m| m.hit_points), Some(60));
+        assert_eq!((own.id, own.hit_points), (master_id(4), 60));
+        assert_eq!(
+            t.masters[0].get(master_id(4)).map(|m| m.hit_points),
+            Some(60)
+        );
         for (p, to) in [(0, 99), (3, 5)] {
             let mut t = upgrade_world();
-            t.upgrade_objects(PlayerId::from(p), 4, to, 0, None)
+            t.upgrade_objects(PlayerId::from(p), master_id(4), master_id(to), 0, None)
                 .unwrap();
             assert_eq!(t, upgrade_world());
         }
@@ -1158,12 +1189,13 @@ mod tests {
     #[test]
     fn an_upgrade_to_0x67f_moves_the_tracker_s_list() {
         let mut t = upgrade_world();
-        t.upgrade_objects(PlayerId::new(0), 4, 0x67f, 0, None)
+        t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(0x67f), 0, None)
             .unwrap();
         let tracker = &t.players[0].tracker;
         assert_eq!((tracker.list(0x67f), tracker.list(4)), (&[10][..], &[][..]));
         let mut t = upgrade_world();
-        t.upgrade_objects(PlayerId::new(0), 4, 5, 0, None).unwrap();
+        t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(5), 0, None)
+            .unwrap();
         assert_eq!(t.players[0].tracker.list(4), [10]);
     }
     /// A world of player 0 holding `objects`, its masters `masters`, its graphics `graphics`
@@ -1186,9 +1218,9 @@ mod tests {
     fn an_upgrade_stops_a_top_action_the_new_master_has_no_task_for() {
         let mut t = crate::world::tests::forage_world();
         t.gather_command(PlayerId::new(1), 0, 600).unwrap();
-        let old = t.masters[1].get(120).unwrap().clone();
+        let old = t.masters[1].get(master_id(120)).unwrap().clone();
         let bare = Master {
-            id: 121,
+            id: master_id(121),
             tasks: Vec::new(),
             ..old.clone()
         };
@@ -1209,19 +1241,19 @@ mod tests {
     #[test]
     fn an_upgrade_s_moving_object_shows_the_new_walking_or_running_sprite() {
         let old = Master {
-            id: 4,
+            id: master_id(4),
             move_sprite: 100,
             run_sprite: 101,
             ..Master::default()
         };
         let new = Master {
-            id: 5,
+            id: master_id(5),
             move_sprite: 200,
             run_sprite: 201,
             ..Master::default()
         };
         let shown = |at: i16, new: &Master| {
-            let mut u = object(10, 4, 2, 10.0);
+            let mut u = object(10, master_id(4), 2, 10.0);
             u.sprite = Some(crate::objects::sprite::ActiveSprite::start(
                 graphic(at),
                 &mut Well512::default(),
@@ -1247,14 +1279,14 @@ mod tests {
     #[test]
     fn an_upgrade_hands_a_villager_s_load_to_its_player() {
         let villager = Master {
-            id: 83,
+            id: ids::VILLAGER_MALE,
             kind: master_type::COMBAT,
             class: class::VILLAGER,
             hit_points: 25,
             ..Master::default()
         };
         let soldier = Master {
-            id: 4,
+            id: master_id(4),
             class: class::CLASS_6,
             ..villager.clone()
         };
@@ -1285,17 +1317,17 @@ mod tests {
     #[test]
     fn an_upgrade_moves_the_line_of_sight_by_the_masters_change() {
         let old = Master {
-            id: 4,
+            id: master_id(4),
             line_of_sight: 4.0,
             ..Master::default()
         };
         let new = Master {
-            id: 5,
+            id: master_id(5),
             line_of_sight: 6.0,
             ..Master::default()
         };
         let sighted = |state: u8, inside: Option<i32>, keep: bool| {
-            let mut u = object(10, 4, state, 10.0);
+            let mut u = object(10, master_id(4), state, 10.0);
             u.place_for_test(Position::new(5.5, 5.5, 0.0));
             u.life.inside = inside;
             let mut t = one_player(vec![u], vec![old.clone()], &[]);
@@ -1307,7 +1339,7 @@ mod tests {
                     radius: [0.2, 0.2],
                     class: class::CLASS_6,
                     player: PlayerId::new(0),
-                    master: 4,
+                    master: master_id(4),
                     obstruction_type: 0,
                     buildable_on: 0,
                     tall: true,
@@ -1333,7 +1365,7 @@ mod tests {
                 10,
                 crate::vision::visibility::Seer {
                     player: PlayerId::new(0),
-                    master: 4,
+                    master: master_id(4),
                     los: 5.0,
                     state: 2,
                     explored: true,
@@ -1349,10 +1381,10 @@ mod tests {
             let seer = t.spatial.sight.as_ref().and_then(|v| v.seer(10)).copied();
             seer.map(|s| (s.los, s.master))
         };
-        assert_eq!(sighted(2, None, false), Some((7.0, 5)));
-        assert_eq!(sighted(2, None, true), Some((7.0, 4)));
-        assert_eq!(sighted(2, Some(99), false), Some((5.0, 4)));
-        assert_eq!(sighted(4, None, false), Some((5.0, 4)));
+        assert_eq!(sighted(2, None, false), Some((7.0, master_id(5))));
+        assert_eq!(sighted(2, None, true), Some((7.0, master_id(4))));
+        assert_eq!(sighted(2, Some(99), false), Some((5.0, master_id(4))));
+        assert_eq!(sighted(4, None, false), Some((5.0, master_id(4))));
     }
 
     /// The upgrade's hit points: the share of the old maximum carries to the new one (none
@@ -1362,7 +1394,7 @@ mod tests {
     #[test]
     fn an_upgrade_carries_the_hit_points_share_the_sprites_and_the_charge() {
         let old = Master {
-            id: 4,
+            id: master_id(4),
             kind: master_type::COMBAT,
             hit_points: 40,
             standing_sprite: 300,
@@ -1374,7 +1406,7 @@ mod tests {
             ..Master::default()
         };
         let new = Master {
-            id: 5,
+            id: master_id(5),
             hit_points: 60,
             standing_sprite: 400,
             standing_sprite_2: None,
@@ -1384,7 +1416,7 @@ mod tests {
             ..old.clone()
         };
         let upgraded = |old: &Master, new: &Master, at: i16| {
-            let mut u = object(10, 4, 4, 20.0);
+            let mut u = object(10, master_id(4), 4, 20.0);
             u.sprite = Some(crate::objects::sprite::ActiveSprite::start(
                 graphic(at),
                 &mut Well512::default(),

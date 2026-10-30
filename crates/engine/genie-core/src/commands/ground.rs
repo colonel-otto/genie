@@ -2,7 +2,9 @@
 //! clearing and its place.
 
 use crate::map::Position;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
 use crate::players::PlayerId;
@@ -161,11 +163,11 @@ impl World {
     pub(crate) fn construction_terrain(
         &mut self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         position: Position,
     ) -> Result<(), GenieError> {
         /// The farms and the terrain their foundations lay (`0x1d`, `0x41`).
-        const LAID: [(i16, u8); 2] = [(50, 29), (1187, 65)];
+        const LAID: [(MasterId, u8); 2] = [(ids::FARM, 29), (ids::ID_1187, 65)];
         let Some(&(_, laid)) = LAID.iter().find(|(m, _)| *m == master) else {
             return Ok(());
         };
@@ -204,7 +206,7 @@ impl World {
     pub(crate) fn clear_footprint(
         &mut self,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
         at: [f32; 2],
         trees: bool,
     ) -> Result<(), GenieError> {

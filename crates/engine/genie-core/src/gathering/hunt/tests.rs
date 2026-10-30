@@ -5,6 +5,7 @@ use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::sprite::Graphic;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
@@ -268,7 +269,7 @@ fn engagement() -> Engagement {
         stance: 0,
         state_position: [0.0; 2],
         world_time: 0,
-        master: 83,
+        master: ids::VILLAGER_MALE,
         target_class: class::TREE,
         same_owner: false,
     }
@@ -280,7 +281,7 @@ const ARMS: Arms = Arms {
     second_sprite: None,
     idle_sprite: None,
     idle_attack_sprite: None,
-    missile: -1,
+    missile: None,
     fire_frame: 0,
     interrupt_frame: -1,
 };

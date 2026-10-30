@@ -18,6 +18,7 @@ use crate::math::fmath;
 use crate::math::rng::Well512;
 use crate::movement::MoveStats;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use genie_diff::Diff;
@@ -336,7 +337,7 @@ impl ActiveSprite {
     }
 }
 
-const TRADE_TARGET: i16 = 0x54;
+const TRADE_TARGET: MasterId = MasterId::named(0x54);
 
 /// A master's sprite id as the master's sprite pointer has it: −1 (or below) is none.
 pub(crate) const fn sprite_id(id: i16) -> Option<i16> {
@@ -353,7 +354,7 @@ pub fn trade_sprite(master: &Master) -> Option<i16> {
         // A trade cart's class (`FUN_14106a940`, decoded 0x13).
         // The trade task whose carrying sprite a trade cart with goods shows (`FUN_1412028a0`: action
         // type 0x6f, `object_id` 0x54).
-        .find(|t| t.action_type == action_type::TRADE && t.object_id == TRADE_TARGET)
+        .find(|t| t.action_type == action_type::TRADE && t.object_id == Some(TRADE_TARGET))
         .and_then(|t| sprite_id(t.sprites[3]))
 }
 
@@ -434,6 +435,7 @@ pub fn building_death(master: &Master, look: Option<&Look>, build_points: f32) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::master_id;
 
     /// Build 158041's Lumberjack Female (Attack), graphic 1239: 45 frames of 0.0444 s, animated.
     const CHOP: Graphic = Graphic {
@@ -628,7 +630,7 @@ mod tests {
     /// destruction 389, a build time of 50; walking, running and attack sprites for the slots.
     fn barracks() -> Master {
         Master {
-            id: 12,
+            id: master_id(12),
             kind: 80,
             class: class::BUILDING,
             standing_sprite: 2575,
@@ -681,12 +683,12 @@ mod tests {
     fn a_loaded_trade_cart_shows_its_trade_task_s_carrying_sprite() {
         let trade = crate::objects::masters::Task {
             action_type: 0x6f,
-            object_id: 0x54,
+            object_id: Some(master_id(0x54)),
             sprites: [1, 2, 3, 4],
             ..crate::objects::masters::Task::default()
         };
         let other = crate::objects::masters::Task {
-            object_id: 0x55,
+            object_id: Some(master_id(0x55)),
             sprites: [9; 4],
             ..trade
         };

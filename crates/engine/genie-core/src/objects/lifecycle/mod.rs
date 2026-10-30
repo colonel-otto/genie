@@ -9,6 +9,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::masters::MasterId;
 use genie_diff::Diff;
 
 pub(crate) mod death_parts;
@@ -56,7 +57,7 @@ pub struct Lifecycle {
     /// The master's `death_spawn_obj_id2` (`+0x5e6`, the `.dat`'s `blood_unit_id`, −1 for none):
     /// what an object below type 80 leaves when its dying sprite ends (`FUN_1411a4e90`, the
     /// caller's).
-    pub remains: i16,
+    pub remains: Option<MasterId>,
     /// A static object's sprite after its death (the master's dying sprite, else its current
     /// one) starts on a random facet (sequence flag 4) of this many (more than one): its death
     /// draws the facet from the Object stream.
@@ -66,7 +67,7 @@ pub struct Lifecycle {
     /// `+0x643`: the next update moves the object to the sleeping list.
     pub goto_sleep: bool,
     /// The master's id.
-    pub master_id: i16,
+    pub master_id: MasterId,
     /// What the dead-object steps read of the master.
     pub master: Option<MasterData>,
 }
@@ -82,11 +83,11 @@ impl Default for Lifecycle {
             amount: 0.0,
             dying_sprite: None,
             death_spawn: false,
-            remains: -1,
+            remains: None,
             death_facets: None,
             inside: None,
             goto_sleep: false,
-            master_id: -1,
+            master_id: MasterId::default(),
             master: None,
         }
     }
@@ -209,6 +210,7 @@ impl Lifecycle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::master_id;
 
     /// The states after each update until the object leaves, and the update (1-based) it leaves in.
     fn run(mut life: Lifecycle, dt: u32, limit: usize) -> (Vec<u8>, Option<usize>) {
@@ -326,7 +328,7 @@ mod tests {
     #[test]
     fn a_marlin_goes_to_state_5_at_once() {
         let mut marlin = Lifecycle {
-            master_id: 61,
+            master_id: master_id(61),
             dying_sprite: None,
             ..dead(Class::Animated)
         };

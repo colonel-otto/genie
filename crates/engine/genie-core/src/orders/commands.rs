@@ -5,6 +5,7 @@ use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::object_gone;
 use crate::orders::{Place, lock_gate, set_stance};
@@ -57,7 +58,7 @@ impl World {
             let master = unit.master(&self.masters, p)?;
             if matches!(state, 1 | 2)
                 && (matches!(master.class, class::CLASS_51 | class::CLASS_54)
-                    || matches!(master.id, 42 | 331))
+                    || matches!(master.id, ids::ID_42 | ids::ID_331))
             {
                 continue;
             }

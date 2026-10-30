@@ -7,6 +7,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Stream;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
 use crate::technology::Attributes;
@@ -14,7 +15,7 @@ use crate::world::World;
 
 /// The livestock a pasture holds (`DAT_143f51db0`, which the static constructor `FUN_140174900`
 /// fills): the Argali and the Ibex (Pasture).
-pub const LIVESTOCK: [i16; 2] = [1899, 1900];
+pub const LIVESTOCK: [MasterId; 2] = [MasterId::named(1899), MasterId::named(1900)];
 
 /// The owner's attribute of a pasture's food, which its livestock share.
 pub const PASTURE_FOOD: i16 = 288;

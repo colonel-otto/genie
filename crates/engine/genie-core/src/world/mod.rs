@@ -32,6 +32,7 @@ pub(crate) mod step;
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::Masters;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
@@ -141,7 +142,7 @@ pub(crate) const STATIC_TYPES_END: u8 = 40;
 pub(crate) const BUILDING_COST: i16 = 247;
 /// The masters whose restrictions the world's load gives planners (`World::load_world`'s two
 /// calls of `FUN_140f7d310`: Gaia's entries `+0x298` and `+0x10b8`).
-const PLANNED_MASTERS: [i16; 2] = [83, 535];
+const PLANNED_MASTERS: [MasterId; 2] = [MasterId::named(83), MasterId::named(535)];
 
 pub(crate) const MONASTERIES: i16 = 52;
 pub(crate) const WONDERS: i16 = 42;
@@ -157,21 +158,30 @@ pub(crate) const RESTORED_FOUNDATION: i16 = 28;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BuildingDeath {
     pub(crate) count: Option<i16>,
-    pub(crate) tech: Option<(i16, i16)>,
+    pub(crate) tech: Option<(MasterId, i16)>,
 }
 
-pub(crate) const RICE_FARM: i16 = 1187;
-pub(crate) const VILLAGER_ANY: i16 = 0x712;
+pub(crate) const RICE_FARM: MasterId = MasterId::named(1187);
+pub(crate) const VILLAGER_ANY: MasterId = MasterId::named(0x712);
 /// The attribute naming a building master that changes the terrain around its buildings
 /// (`FUN_1411c39b0`, the player's attribute 255).
 pub(crate) const BUILDING_TERRAIN: usize = 255;
 /// A building at most this share of its hit points lets its garrison out (`DAT_142eae8d0`).
 pub(crate) const EJECT_SHARE: f32 = crate::math::image::turn::EJECT_SHARE;
 /// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
-pub(crate) const PETARD: i16 = 440;
+pub(crate) const PETARD: MasterId = MasterId::named(440);
 /// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:
 /// 562, 584 and 621 (`0x232` plus the bits of `0x800000000400001`), 68, 1808, 50, 1187 and 199.
-pub(crate) const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];
+pub(crate) const DROP_SITE_MASTERS: [MasterId; 8] = [
+    MasterId::named(562),
+    MasterId::named(584),
+    MasterId::named(621),
+    MasterId::named(68),
+    MasterId::named(1808),
+    MasterId::named(50),
+    MasterId::named(1187),
+    MasterId::named(199),
+];
 /// A building's queue holds at most 15 units (`FUN_1411cbc40`).
 pub(crate) const QUEUE_LIMIT: usize = 15;
 /// A computer player's QUEUE fills a building's queue to at most 2 (`FUN_141614450`).
@@ -198,7 +208,7 @@ pub(crate) const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWE
 
 /// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
 /// modulo 100.
-pub(crate) const fn villager(draw: u64) -> i16 {
+pub(crate) const fn villager(draw: u64) -> MasterId {
     if draw.wrapping_mul(100) % 100 < 50 {
         // The villager master QUEUE draws a sex for (`0x53`), and the generic villager id that becomes
         // 0x53 first (`0x712`), both in `FUN_1411cbc40`.

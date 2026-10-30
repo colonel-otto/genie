@@ -7,9 +7,11 @@ use crate::movement::move_to::{
 use crate::movement::{Me, Mover};
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::step::Step;
 use crate::world::{Player, World};
@@ -24,7 +26,7 @@ fn reads() -> GatherReads {
         sprites: HuntSprites::default(),
         class: class::VILLAGER,
         defaults: MoveDefaults::default(),
-        master: 83,
+        master: ids::VILLAGER_MALE,
         stance: 0,
         farm_stops: false,
         computer: false,
@@ -102,7 +104,7 @@ impl Rig {
         };
         rig.mover_mut().animated.speed = 1.0;
         let unit = rig.unit_mut();
-        unit.life.master_id = 83;
+        unit.life.master_id = ids::VILLAGER_MALE;
         (unit.life.attribute_type, unit.life.amount) = (17, 3.0);
         rig
     }
@@ -185,7 +187,7 @@ fn bush() -> Resource {
         id: 28222,
         position: Position::new(23.5, 93.5, 0.0),
         class: class::CLASS_7,
-        master: 59,
+        master: master_id(59),
         player: PlayerId::new(0),
         workers: 0,
         drop_site: false,
@@ -210,7 +212,7 @@ fn target(amount: f32) -> Victim {
         amount,
         state: 2,
         class: class::CLASS_7,
-        master_id: 59,
+        master_id: master_id(59),
         storage: 125.0,
         ..Victim::default()
     }
@@ -222,7 +224,7 @@ fn farm() -> Resource {
         id: 12557,
         position: Position::new(112.5, 173.5, 3.0),
         class: class::FARM,
-        master: 50,
+        master: ids::FARM,
         player: PlayerId::new(1),
         workers: 0,
         drop_site: false,
@@ -269,7 +271,7 @@ fn under_the_farm_setting_a_farm_s_gather_goes_in_four_timed_stops() {
     // without the setting, or on a fish trap, one stop
     let one = GatherAction::new(task(), &farm(), false, rate).unwrap();
     let trap = Resource {
-        master: 199,
+        master: ids::FISH_TRAP,
         ..farm()
     };
     let trap = GatherAction::new(task(), &trap, true, rate).unwrap();
@@ -384,7 +386,7 @@ fn a_farm_s_food_sold_at_once_goes_to_the_player_and_the_gathering_goes_on() {
     rig.set_load(FARM_FOOD_KIND, 0.0);
     let mut field = Victim {
         class: class::FARM,
-        master_id: 50,
+        master_id: ids::FARM,
         ..target(15.0)
     };
     let r = GatherReads {
@@ -513,7 +515,7 @@ fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
 #[test]
 fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
     // the 4v4's forager 31237 at update 10820: its bush went while it walked there
-    let run = |master: i16, g: &mut GatherAction, dt: u32| {
+    let run = |master: MasterId, g: &mut GatherAction, dt: u32| {
         let mut rig = Rig::on_the_path();
         rig.set_load(-1, 0.0);
         let r = GatherReads { master, ..reads() };
@@ -525,12 +527,12 @@ fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         ..GatherAction::new(task(), &bush(), false, rate()).unwrap()
     };
-    assert_eq!(run(120, &mut g, 20), Ok(Next::Search));
+    assert_eq!(run(master_id(120), &mut g, 20), Ok(Next::Search));
     assert_eq!((g.state, g.timer, g.move_to), (SEARCH, -10.0, None));
     // state 3 counts the world's dt up to 0, then waits 10 seconds again and asks again
     g.timer = -0.03;
-    assert_eq!(run(120, &mut g, 20), Ok(Next::Stay));
-    assert_eq!(run(120, &mut g, 20), Ok(Next::Search));
+    assert_eq!(run(master_id(120), &mut g, 20), Ok(Next::Stay));
+    assert_eq!(run(master_id(120), &mut g, 20), Ok(Next::Search));
     assert_eq!(g.timer, -10.0);
     // a farmer waits a second for another farm instead (set_state 0xf3), its unit AI asked
     let mut g = GatherAction {
@@ -538,7 +540,7 @@ fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
         target: -1,
         ..GatherAction::new(task(), &bush(), false, rate()).unwrap()
     };
-    assert_eq!(run(259, &mut g, 20), Ok(Next::Search));
+    assert_eq!(run(master_id(259), &mut g, 20), Ok(Next::Search));
     assert_eq!((g.state, g.timer), (FARM_WAIT, -1.0));
 }
 
@@ -553,7 +555,7 @@ fn farm_update(
     let mut rig = Rig::on_the_path();
     rig.set_load(-1, 0.0);
     let r = GatherReads {
-        master: 259,
+        master: master_id(259),
         computer,
         ..reads()
     };
@@ -583,7 +585,7 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
     rig.unit_mut().body =
         crate::objects::layers::Body::new(Position::new(30.0, 40.0, 0.0), None, Some(mover));
     let r = GatherReads {
-        master: 259,
+        master: master_id(259),
         ..reads()
     };
     // the bush straight behind the unit (the angle 0 faces +x)
@@ -973,7 +975,7 @@ fn a_farmer_at_a_farm_another_works_walks_back_to_search() {
         amount: 175.0,
         state: 2,
         class: class::FARM,
-        master_id: 50,
+        master_id: ids::FARM,
         radius: [1.5, 1.5],
         workers: 2,
         ..Victim::default()

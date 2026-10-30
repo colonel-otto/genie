@@ -109,7 +109,7 @@ impl World {
             range: GUARD_RANGE,
             shown: [x, y],
             ready: true,
-            target_type: i32::from(tm.id),
+            target_type: i32::from(tm.id.get()),
         };
         let cap = if self.players.player(player)?.computer {
             500

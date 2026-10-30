@@ -6,11 +6,13 @@ use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWa
 use crate::objects::layers::Animated;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::BOAR_AI;
@@ -103,7 +105,7 @@ pub(crate) fn own_attack(target: i32, state: u8, range: f32) -> Attack {
             second_sprite: None,
             idle_sprite: None,
             idle_attack_sprite: None,
-            missile: -1,
+            missile: None,
             fire_frame: 0,
             interrupt_frame: -1,
         },
@@ -513,7 +515,7 @@ impl Rig {
 
     fn with_unit(mut t: World, victim: Victim, own: Victim) -> Self {
         let master = Master {
-            id: 4,
+            id: master_id(4),
             kind: 70,
             class: class::CLASS_6,
             move_sprite: -1,
@@ -523,7 +525,7 @@ impl Rig {
         t.masters = vec![Masters::new([master]); t.players.len()];
         let unit = &mut t.players[1].objects[0];
         unit.life.state = 2;
-        unit.life.master_id = 4;
+        unit.life.master_id = master_id(4);
         unit.ai = Some(UnitAi {
             current_action: Some(ActionKind::Attack),
             ..UnitAi::default()
@@ -544,7 +546,7 @@ impl Rig {
             ..Unit::default()
         };
         u.life.state = 2;
-        u.life.master_id = 4;
+        u.life.master_id = master_id(4);
         self.t.players[player.index()].objects.push(u);
         self
     }
@@ -691,7 +693,7 @@ fn a_strike_on_an_annex_hits_its_main_building() {
             id: 1,
             kind: 70,
             class: class::CLASS_6,
-            missile: -1,
+            missile: None,
             player: PlayerId::new(1),
             ..damage::Attacker::default()
         },
@@ -738,7 +740,7 @@ fn a_building_s_relic_raises_its_missile_s_hit() {
                 id: 1,
                 kind: BUILDING,
                 class: class::TOWER,
-                missile: 50,
+                missile: Some(ids::FARM),
                 player: PlayerId::new(1),
                 ..damage::Attacker::default()
             },
@@ -799,7 +801,7 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
                 id: 1,
                 kind: 70,
                 class: class::CLASS_6,
-                missile: -1,
+                missile: None,
                 player: PlayerId::new(1),
                 area_effect: 1.0,
                 blast_level: 2,
@@ -858,7 +860,7 @@ fn world_with(id: i32, player: PlayerId, class: ClassId, at: Position) -> Spatia
             radius: [0.2, 0.2],
             class,
             player,
-            master: 4,
+            master: master_id(4),
             obstruction_type: 0,
             buildable_on: 0,
             tall: false,
@@ -1427,7 +1429,7 @@ fn a_disarmed_building_s_targetless_attack_ends_with_its_notify() {
             second_sprite: None,
             idle_sprite: Some(standing),
             idle_attack_sprite: None,
-            missile: -1,
+            missile: None,
             fire_frame: 0,
             interrupt_frame: -1,
         },
@@ -1514,7 +1516,7 @@ fn engaged(gap: f32, speed: f32, can_move: bool, stance: u8) -> Engagement {
         stance,
         state_position: [10.0, 10.0],
         world_time: 0,
-        master: 4,
+        master: master_id(4),
         target_class: class::CLASS_6,
         same_owner: false,
     }
@@ -1714,9 +1716,9 @@ fn the_start_faces_the_target_but_for_masters_1704_and_1706() {
         .unwrap();
         mover.angle
     };
-    assert_ne!(angle(4), 0.0);
-    assert_eq!(angle(1704), 0.0);
-    assert_eq!(angle(1706), 0.0);
+    assert_ne!(angle(master_id(4)), 0.0);
+    assert_eq!(angle(master_id(1704)), 0.0);
+    assert_eq!(angle(master_id(1706)), 0.0);
 }
 
 /// A gate's reach (class 39): the nearest of it and its first two parts (slot 0x680 in id
@@ -1950,7 +1952,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
     let mut t = forage_world();
     // the town centre's master without a missile cannot attack
     for masters in &mut t.masters {
-        masters.get_mut(109).unwrap().missile = -1;
+        masters.get_mut(ids::TOWN_CENTRE).unwrap().missile = None;
     }
     let centre = &mut t.players[1].objects[2];
     let mut attack = own_attack(-1, 1, 0.0);
@@ -2013,7 +2015,7 @@ fn swinging_attack(state: u8, ranged: bool, fire: i16) -> Attack {
     let mut a = own_attack(10028, state, 0.1);
     a.pending = true;
     a.arms.idle_sprite = Some(STANDING);
-    a.arms.missile = if ranged { 5 } else { -1 };
+    a.arms.missile = if ranged { Some(master_id(5)) } else { None };
     a.arms.fire_frame = fire;
     a
 }
@@ -2099,19 +2101,19 @@ fn a_swing_s_unmodelled_parts_fail_and_a_killing_hit_ends_it() {
             .to_owned()
     };
     assert_eq!(
-        reason(class::CLASS_51, 4, true, 3),
+        reason(class::CLASS_51, master_id(4), true, 3),
         "a swing of class 35, 51 or 64"
     );
     assert_eq!(
-        reason(class::CLASS_35, 4, false, 0),
+        reason(class::CLASS_35, master_id(4), false, 0),
         "a swing of class 35, 51 or 64"
     );
     assert_eq!(
-        reason(class::CLASS_6, 4, true, -1),
+        reason(class::CLASS_6, master_id(4), true, -1),
         "a ranged swing without a firing frame"
     );
     assert_eq!(
-        reason(class::CLASS_6, 527, false, 0),
+        reason(class::CLASS_6, ids::ID_527, false, 0),
         "a self-destructing attacker's hit (masters 527, 528, 1104, 2133..2135)"
     );
     let mut t = crate::world::tests::archer_world(100, 0, 0.0);

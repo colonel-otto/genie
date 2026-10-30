@@ -334,7 +334,7 @@ pub(super) fn blast_falloff(
     if COMBAT <= t.kind && (t.player == attacker.player || t.allied[1]) {
         f *= t.armored.as_ref().map_or(1.0, |x| x.friendly_fire);
     }
-    if a.missile < 0 {
+    if a.missile.is_none() {
         if a.blast_level & 0x40 != 0 && !is_main {
             f *= (r - fmath::sqrt(d2)) / r;
         }

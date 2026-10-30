@@ -8,6 +8,7 @@
 //! `FUN_14162fd90`), the repeat test `FUN_1413d1050`.
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::players::attribute;
 use crate::world::slots::CheckedIndex;
 
@@ -133,8 +134,8 @@ impl TechDef {
 /// the seconds it takes there, its button and the seconds added (`+0xc`, `FUN_1413cec90`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Location {
-    /// The building's master.
-    pub building: i16,
+    /// The building's master, none for an entry the data leaves open (−1).
+    pub building: Option<MasterId>,
     /// The seconds it takes there.
     pub time: u16,
     /// Its button.
@@ -170,7 +171,7 @@ pub struct TechState {
     /// `+0x62`: the effect it gives instead of its own (−1 none).
     pub effect_override: i16,
     /// `+0x64`: the master of the building it was last queued at.
-    pub building_master: i16,
+    pub building_master: Option<MasterId>,
     /// `+0x68`.
     pub locations: Vec<Location>,
 }
@@ -202,10 +203,10 @@ pub fn factors(
 impl TechState {
     /// `FUN_1413cbd20`: the location at the building's master `building`, else the first.
     #[must_use]
-    pub fn location(&self, building: i16) -> Option<&Location> {
+    pub fn location(&self, building: MasterId) -> Option<&Location> {
         self.locations
             .iter()
-            .find(|l| l.building == building)
+            .find(|l| l.building == Some(building))
             .or_else(|| self.locations.first())
     }
 
@@ -409,7 +410,7 @@ impl TechState {
         def: &TechDef,
         factors: (f32, i16),
         repeat: bool,
-        building: i16,
+        building: MasterId,
         attributes: &mut dyn Attributes,
     ) -> Result<bool, GenieError> {
         if !self.can_research(def, factors, repeat, &|i| attributes.get(i))? {
@@ -439,7 +440,7 @@ impl TechState {
             ));
         }
         self.state = 4;
-        self.building_master = building;
+        self.building_master = Some(building);
         Ok(true)
     }
 
@@ -482,6 +483,8 @@ pub trait Attributes {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ids;
+    use crate::test_ids::master_id;
 
     /// Loom (22) as player 2 of MarvinBlue/426048731 holds it before its RESEARCH in 3842.
     fn loom() -> (TechState, TechDef) {
@@ -490,9 +493,9 @@ mod tests {
             allow_multiple: true,
             overrides: [(-1, -1, -2); 3],
             research_cap: -1,
-            building_master: -1,
+            building_master: None,
             locations: vec![Location {
-                building: 109,
+                building: Some(ids::TOWN_CENTRE),
                 time: 25,
                 button: 6,
                 adjustment: 0.0,
@@ -538,11 +541,17 @@ mod tests {
         assert!(!s.repeatable(&d, false));
         // the game's attributes in 3842 (80 food, 157 wood, 200 stone, 100 gold) and after it
         let mut held = Held([79.956_116, 157.05705, 200.0, 100.0]);
-        assert_eq!(s.pay(&d, (0.0, 1), false, 109, &mut held), Ok(true));
+        assert_eq!(
+            s.pay(&d, (0.0, 1), false, ids::TOWN_CENTRE, &mut held),
+            Ok(true)
+        );
         assert_eq!(held.0, [79.956_116, 157.05705, 200.0, 50.0]);
-        assert_eq!((s.state, s.building_master), (4, 109));
+        assert_eq!((s.state, s.building_master), (4, Some(master_id(109))));
         // queued, it may not be researched again
-        assert_eq!(s.pay(&d, (0.0, 1), false, 109, &mut held), Ok(false));
+        assert_eq!(
+            s.pay(&d, (0.0, 1), false, ids::TOWN_CENTRE, &mut held),
+            Ok(false)
+        );
         // its queue entry records the 50 gold, which its start finds paid
         let paid = s.entry_costs(&d, (0.0, 1)).unwrap();
         assert_eq!(paid, [(3, 50.0), (-1, 0.0), (-1, 0.0)]);
@@ -551,7 +560,7 @@ mod tests {
         // without the entry's payment the 50 gold left would do too, but that difference is
         // the game's FUN_1411c68b0
         assert!(s.start_test(&d, (0.0, 1), &[(-1, 0.0); 3], &get).is_err());
-        assert_eq!(s.location(109).map(|l| l.time), Some(25));
+        assert_eq!(s.location(ids::TOWN_CENTRE).map(|l| l.time), Some(25));
     }
 
     #[test]
@@ -560,9 +569,15 @@ mod tests {
         d.costs[0].attribute = 1;
         let mut held = Held([0.0, 30.0, 0.0, 100.0]);
         // the test asks for 50 wood: 30 is too little
-        assert_eq!(s.pay(&d, (0.0, 1), false, 109, &mut held), Ok(false));
+        assert_eq!(
+            s.pay(&d, (0.0, 1), false, ids::TOWN_CENTRE, &mut held),
+            Ok(false)
+        );
         // the modifier scales the amount (truncated) before the test
-        assert_eq!(s.pay(&d, (0.5, 1), false, 109, &mut held), Ok(true));
+        assert_eq!(
+            s.pay(&d, (0.5, 1), false, ids::TOWN_CENTRE, &mut held),
+            Ok(true)
+        );
         assert_eq!(held.0, [0.0, 5.0, 0.0, 100.0]);
         assert_eq!(
             s.listed_costs(&d, (0.5, 1)).unwrap(),

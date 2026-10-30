@@ -57,7 +57,8 @@ pub(crate) fn volleys(
     master: &crate::objects::masters::Master,
     masters: &crate::objects::masters::Masters,
 ) -> bool {
-    let has = |id: Option<i16>| id.and_then(|id| masters.get(id)).is_some();
+    let has =
+        |id: Option<crate::objects::masters::MasterId>| id.and_then(|id| masters.get(id)).is_some();
     has(master.volley_missile) || has(master.charge_projectile)
 }
 

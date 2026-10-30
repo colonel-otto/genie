@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::object_gone;
@@ -37,7 +38,7 @@ impl World {
         let (kind, class, at) = (master.kind, master.class, unit.position().ground());
         let held = unit.life.attribute_type;
         let mut site = None;
-        if master.drop_sites.iter().any(|&d| 0 <= d) {
+        if !master.drop_sites.is_empty() {
             site = self.ordered_drop_site(p, idx)?;
         }
         if site.is_none() {
@@ -81,7 +82,10 @@ impl World {
         let unit = &self.players.live(p, idx)?;
         let master = unit.master(&self.masters, p)?;
         let seeks = master.kind < COMBAT
-            || (!master.drop_sites.iter().any(|&d| d == 45 || d == 2172)
+            || (!master
+                .drop_sites
+                .iter()
+                .any(|&d| d == ids::ID_45 || d == ids::ID_2172)
                 && !matches!(master.class, class::FISHING_SHIP | class::TRADE_BOAT));
         let masters = self.masters.get(p.index()).ok_or(GenieError::unsupported(
             "a drop-off of a player without masters",
@@ -261,7 +265,7 @@ impl World {
                 range: 0.0,
                 shown: place.ground(),
                 ready: true,
-                target_type: i32::from(master),
+                target_type: i32::from(master.get()),
             };
             let _ = ai.queue_order(state, order, false, false)?;
         }
@@ -298,7 +302,7 @@ impl World {
                 let master = o.master(&self.masters, op)?.id;
                 (
                     f.id,
-                    i32::from(master),
+                    i32::from(master.get()),
                     op.index() as i32,
                     o.position().ground(),
                 )

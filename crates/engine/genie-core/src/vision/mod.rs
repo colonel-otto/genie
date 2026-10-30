@@ -13,6 +13,7 @@
 //! 158041: the rebuild `FUN_141552df0`; the attribute setter `FUN_141616820` (attributes 50, 183).
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -40,7 +41,7 @@ pub const REVEAL_ALL: usize = 183;
 /// master 697 (FLARE4, slot 0x1c0) at each of their town centres (master 109, `FUN_141165d30`),
 /// each player's once, recorded in `mTCFlared` ([`crate::world::Player::tc_flared`]).
 const REVEAL_CENTRES: usize = 209;
-const FLARE4: i16 = 697;
+const FLARE4: MasterId = MasterId::named(697);
 /// The attributes that add a scenario's masks of visible and explored players, not modelled.
 const SHARED_MASKS: [usize; 2] = [285, 286];
 

@@ -49,7 +49,10 @@ impl GatherAction {
         if target.state < 2 {
             return Ok(Next::Build);
         }
-        if (target.master_id - 0x765) & !4 == 0 {
+        if matches!(
+            target.master_id,
+            crate::objects::masters::ids::PASTURE_MANGROVE | crate::objects::masters::ids::PASTURE
+        ) {
             return Err(GenieError::unsupported(
                 "a gather's set_state 6 on master 1893 or 1897",
             ));

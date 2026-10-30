@@ -2,6 +2,7 @@
 //! setters and the side effects of allied vision and the farms' food.
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
 use crate::technology::effect::OBJECT_GONE;
@@ -25,7 +26,12 @@ pub(super) const EFFECT_FUNCTION: i16 = 0x21;
 pub(super) const FARM_EXPONENT: i16 = 31;
 /// The masters whose objects' food a farm-food change grows (`DAT_142f925d0`'s keys: 50, 1187,
 /// 1897, 1893), in that order.
-pub(super) const FARMS: [i16; 4] = [50, 1187, 1897, 1893];
+pub(super) const FARMS: [MasterId; 4] = [
+    MasterId::named(50),
+    MasterId::named(1187),
+    MasterId::named(1897),
+    MasterId::named(1893),
+];
 
 impl World {
     /// Slot 0x1b0 (`FUN_141620c70`) of player `p` on resource `attribute` with `amount`: every
@@ -215,7 +221,7 @@ impl World {
         }
         let mut ids = Vec::new();
         for farm in FARMS {
-            ids.extend(self.tracked_key(p, farm)?);
+            ids.extend(self.tracked_key(p, farm.get())?);
         }
         for id in ids {
             let Some((q, u)) = self.object(id) else {

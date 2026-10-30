@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::unit_ai::Search;
 use genie_diff::Diff;
@@ -159,7 +160,7 @@ pub struct Surroundings {
     /// The unit's `+0x924`.
     pub capture: u8,
     /// The unit's master.
-    pub master: i16,
+    pub master: MasterId,
     /// The game mode (the save's `mGameMode`, options `+0x34`) is one of `FUN_141302540`'s:
     /// Scenario (3), Campaign (4), King of the Hill (5), Co-op Campaign (15).
     pub scenario: bool,
@@ -300,7 +301,7 @@ pub struct UnitSeen {
     /// Its hit points (`+0x278`).
     pub hp: f32,
     /// Its master's id and type (`+0xf`).
-    pub master: i16,
+    pub master: MasterId,
     /// Its type (`+0xf`).
     pub kind: u8,
     /// An annex's main building (`+0xbb8`).

@@ -8,10 +8,12 @@ use crate::objects::masters::BuildingMaster;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
+use crate::objects::masters::{MasterId, ids};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::{DONE, FAILED};
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
@@ -29,11 +31,11 @@ pub(crate) fn enter_task(range: f32, class: ClassId) -> Task {
     }
 }
 
-pub(crate) const TC: i16 = 109;
-pub(crate) const VILLAGER: i16 = 83;
-pub(crate) const ARCHER: i16 = 4;
-const SHIP: i16 = 545;
-const GATE: i16 = 88;
+pub(crate) const TC: MasterId = MasterId::named(109);
+pub(crate) const VILLAGER: MasterId = MasterId::named(83);
+pub(crate) const ARCHER: MasterId = MasterId::named(4);
+const SHIP: MasterId = MasterId::named(545);
+const GATE: MasterId = MasterId::named(88);
 
 fn task(action_type: i16, object_group: i16) -> Task {
     Task {
@@ -63,7 +65,7 @@ fn garrison_masters() -> Masters {
             id: VILLAGER,
             kind: 70,
             class: class::VILLAGER,
-            copy_id: VILLAGER,
+            copy_id: Some(VILLAGER),
             tasks: vec![task(GARRISON, 3), task(GARRISON, 20)],
             // no walking or standing sprite: a MoveTo the villager makes takes none (the
             // world's sprites' table holds none)
@@ -101,7 +103,7 @@ fn garrison_masters() -> Masters {
     ])
 }
 
-pub(crate) fn unit(id: i32, master: i16, hp: f32) -> Unit {
+pub(crate) fn unit(id: i32, master: MasterId, hp: f32) -> Unit {
     let mut u = Unit {
         id: object_id(id),
         pasture: -1,
@@ -747,7 +749,7 @@ fn walled_map(
         words[(y * w + x) as usize] = 0x02;
     }
     let mut spatial = Spatial::with_tiles(size, Tiles::new(w, h, words));
-    let at = |(x, y): (i32, i32), master: i16| Placed {
+    let at = |(x, y): (i32, i32), master: MasterId| Placed {
         position: Position::new(x as f32 + 0.5, y as f32 + 0.5, 0.0),
         radius: [0.2, 0.2],
         class: class::CLASS_0,
@@ -843,17 +845,27 @@ fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
 #[test]
 fn a_town_center_takes_villagers_infantry_cavalry_and_monks() {
     // a town center's garrison_type 11: bits 0, 1 and 3
-    assert!(garrison_type_takes(11, class::VILLAGER, 83, true));
-    assert!(garrison_type_takes(11, class::CLASS_6, 74, true));
-    assert!(!garrison_type_takes(11, class::CLASS_12, 38, true));
-    assert!(garrison_type_takes(11, class::MONK, 125, true));
+    assert!(garrison_type_takes(
+        11,
+        class::VILLAGER,
+        ids::VILLAGER_MALE,
+        true
+    ));
+    assert!(garrison_type_takes(11, class::CLASS_6, master_id(74), true));
+    assert!(!garrison_type_takes(
+        11,
+        class::CLASS_12,
+        master_id(38),
+        true
+    ));
+    assert!(garrison_type_takes(11, class::MONK, master_id(125), true));
     // master 1811 is no infantry, but a monk
     assert!(garrison_type_takes(11, class::CLASS_6, MASTER_1811, true));
     assert!(!garrison_type_takes(2, class::CLASS_6, MASTER_1811, true));
     // a tower's 3 takes no monk; the task finder takes no class 42
-    assert!(!garrison_type_takes(3, class::MONK, 125, true));
-    assert!(garrison_type_takes(8, class::RELIC, 1, true));
-    assert!(!garrison_type_takes(8, class::RELIC, 1, false));
+    assert!(!garrison_type_takes(3, class::MONK, master_id(125), true));
+    assert!(garrison_type_takes(8, class::RELIC, master_id(1), true));
+    assert!(!garrison_type_takes(8, class::RELIC, master_id(1), false));
 }
 
 #[test]
@@ -861,25 +873,25 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
     // MarvinBlue/426048731's town center 9149 (the tick oracle, update 4439): pierce 5 by its
     // volley missile 54 every 2 s; its 7 villagers made its firepower 1 + 7
     let arrow = Master {
-        id: 54,
+        id: master_id(54),
         kind: 60,
         weapons: vec![(3, 5)],
         ..Master::default()
     };
     let tc = Master {
-        id: 109,
+        id: ids::TOWN_CENTRE,
         kind: 80,
         class: class::BUILDING,
         reload: 2.0,
         weapon_range: 6.0,
         weapons: vec![(3, 5)],
-        volley_missile: Some(54),
+        volley_missile: Some(master_id(54)),
         volley_fire: 1.0,
         max_volley: 11,
         ..Master::default()
     };
     let villager = Master {
-        id: 83,
+        id: ids::VILLAGER_MALE,
         kind: 70,
         class: class::VILLAGER,
         reload: 2.0,
@@ -906,13 +918,13 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
 /// has it.
 fn town_center() -> Master {
     Master {
-        id: 109,
+        id: ids::TOWN_CENTRE,
         kind: 80,
         class: class::BUILDING,
         reload: 2.0,
         weapon_range: 6.0,
         weapons: vec![(3, 5)],
-        volley_missile: Some(54),
+        volley_missile: Some(master_id(54)),
         volley_fire: 1.0,
         ..Master::default()
     }
@@ -923,7 +935,7 @@ fn an_attack_rate_needs_a_reload_and_a_range_that_compare_above_their_limits() {
     // FUN_14120dc10: COMISS reload, 0 and COMISS range, 1.0, each with JBE: an unordered
     // value gives no rate, as one at the limit does
     let arrow = Master {
-        id: 54,
+        id: master_id(54),
         kind: 60,
         weapons: vec![(3, 5), (4, 7), (38, 2)],
         ..Master::default()
@@ -952,28 +964,28 @@ fn a_volley_missile_slot_the_table_holds_is_taken_even_when_it_is_empty() {
     // FUN_14120e1a0: the volley missile when 0 <= id < the player's master count, else the
     // missile; a null slot or one without weapons adds nothing, with no fallback
     let missile = Master {
-        id: 50,
+        id: ids::FARM,
         kind: 60,
         weapons: vec![(3, 6)],
         ..Master::default()
     };
     let volley = Master {
-        id: 54,
+        id: master_id(54),
         kind: 60,
         weapons: vec![(3, 2), (38, 1), (4, 9)],
         ..Master::default()
     };
     let unarmed = Master {
-        id: 55,
+        id: master_id(55),
         kind: 60,
         ..Master::default()
     };
     let archer = |volley_missile| Master {
-        id: 4,
+        id: master_id(4),
         kind: 70,
         reload: 2.0,
         weapons: vec![(3, 4)],
-        missile: 50,
+        missile: Some(ids::FARM),
         garrison_firepower: 1.0,
         volley_fire: 3.0,
         volley_missile,
@@ -981,15 +993,15 @@ fn a_volley_missile_slot_the_table_holds_is_taken_even_when_it_is_empty() {
     };
     let masters = Masters::new([missile, volley, unarmed]);
     // (2 + 1) * 2 extra missiles, plus its own 4, over its reload 2
-    assert_eq!(firepower(&archer(Some(54)), &masters, 0.0), 5.0);
+    assert_eq!(firepower(&archer(Some(master_id(54))), &masters, 0.0), 5.0);
     // no volley missile: the missile's (6 * 2 + 4) / 2
     assert_eq!(firepower(&archer(None), &masters, 0.0), 8.0);
     // a volley missile without weapons adds nothing
-    assert_eq!(firepower(&archer(Some(55)), &masters, 0.0), 2.0);
+    assert_eq!(firepower(&archer(Some(master_id(55))), &masters, 0.0), 2.0);
     // a null slot of the player's table (id 52 below its last master) adds nothing either
-    assert_eq!(firepower(&archer(Some(52)), &masters, 0.0), 2.0);
-    // a negative id is no slot: the missile's
-    assert_eq!(firepower(&archer(Some(-2)), &masters, 0.0), 8.0);
+    assert_eq!(firepower(&archer(Some(master_id(52))), &masters, 0.0), 2.0);
+    // no missile: the weapons' own
+    assert_eq!(firepower(&archer(None), &masters, 0.0), 8.0);
 }
 
 #[test]
@@ -997,18 +1009,18 @@ fn the_extra_missiles_truncate_and_multiply_as_the_game_does() {
     // FUN_14120e1a0: CVTTSS2SI R8D gives i32::MIN past the i32 range, and IMUL EAX, R8D
     // wraps: amount 1 adds -2^31, amount 2 adds 0
     let volley = |amount| Master {
-        id: 54,
+        id: master_id(54),
         kind: 60,
         weapons: vec![(3, amount)],
         ..Master::default()
     };
     let tower = Master {
-        id: 79,
+        id: master_id(79),
         kind: 70,
         reload: 1.0,
         garrison_firepower: 1.0,
         volley_fire: 1e10,
-        volley_missile: Some(54),
+        volley_missile: Some(master_id(54)),
         ..Master::default()
     };
     let masters = Masters::new([volley(1)]);
@@ -1029,7 +1041,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
     // FUN_141213520: MAXSS(own / rate, floor), the floor 0.0 unless object flag 3 names (in
     // its upper half, +0x656) a master of type 70: that master's firepower over the rate
     let foot = Master {
-        id: 1120,
+        id: master_id(1120),
         kind: 70,
         class: class::CLASS_0,
         reload: 2.0,
@@ -1039,7 +1051,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
         ..Master::default()
     };
     let mounted = Master {
-        id: 1122,
+        id: master_id(1122),
         kind: 70,
         class: class::CLASS_36,
         reload: 2.0,
@@ -1111,12 +1123,20 @@ fn a_garrison_task_compares_the_bytes_the_game_passes_widened() {
 fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_type() {
     // FUN_14120eb10
     let mut t = garrison_world();
-    let takes =
-        |t: &World, b, p, m, others, unchecked| t.takes_in_as(b, p, m, others, unchecked).unwrap();
+    let takes = |t: &World, b, p, m, others, unchecked| {
+        t.takes_in_as(b, p, Some(m), others, unchecked).unwrap()
+    };
     assert!(takes(&t, 100, PlayerId::new(1), VILLAGER, true, true));
     assert!(takes(&t, 100, PlayerId::new(1), VILLAGER, true, false));
     // a master the player does not have, a building the world does not hold
-    assert!(!takes(&t, 100, PlayerId::new(1), 999, true, true));
+    assert!(!takes(
+        &t,
+        100,
+        PlayerId::new(1),
+        master_id(999),
+        true,
+        true
+    ));
     assert!(!takes(&t, 101, PlayerId::new(1), VILLAGER, true, true));
     // an ally's building only with param_4 1; an enemy's never
     assert!(takes(&t, 100, PlayerId::new(2), VILLAGER, true, true));
@@ -1154,7 +1174,8 @@ fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_t
 fn a_transport_takes_a_combat_unit_with_a_task_on_its_class_and_room() {
     // FUN_14120eb10's object-flag-0 branch: FUN_1415c9240 with 3 and the transport's class
     let mut t = garrison_world();
-    let takes = |t: &World, m, unchecked| t.takes_in_as(200, PlayerId::new(1), m, true, unchecked);
+    let takes =
+        |t: &World, m, unchecked| t.takes_in_as(200, PlayerId::new(1), Some(m), true, unchecked);
     assert_eq!(takes(&t, VILLAGER, false), Ok(true));
     assert_eq!(takes(&t, ARCHER, true), Ok(false));
     let mut v = unit(1000, VILLAGER, 25.0);
@@ -1168,16 +1189,16 @@ fn a_transport_takes_a_combat_unit_with_a_task_on_its_class_and_room() {
     // a unit of a type below 70 whose class has them (13: 0x3) takes the transport's branch
     let mut masters = garrison_masters();
     masters = Masters::new(masters.iter().cloned().chain([Master {
-        id: 1500,
+        id: master_id(1500),
         kind: 60,
         class: class::SIEGE,
         tasks: vec![task(GARRISON, 20)],
         ..Master::default()
     }]));
     t.masters = (0..4).map(|_| masters.clone()).collect();
-    assert_eq!(takes(&t, 1500, true), Ok(true));
+    assert_eq!(takes(&t, master_id(1500), true), Ok(true));
     // full: no room for one more
-    assert_eq!(takes(&t, 1500, false), Ok(false));
+    assert_eq!(takes(&t, master_id(1500), false), Ok(false));
 }
 
 #[test]
@@ -1230,7 +1251,7 @@ fn unload_picks_the_units_its_flag_names_of_any_player() {
     let mut t = garrison_world();
     let mut relic = garrison_masters();
     relic = Masters::new(relic.iter().cloned().chain([Master {
-        id: 285,
+        id: ids::RELIC,
         kind: 70,
         class: WHOLE_SHARE_CLASS,
         ..Master::default()
@@ -1239,7 +1260,7 @@ fn unload_picks_the_units_its_flag_names_of_any_player() {
     for (p, id, m) in [
         (1, 1000, VILLAGER),
         (1, 1001, ARCHER),
-        (1, 1002, 285),
+        (1, 1002, ids::RELIC),
         (2, 2000, VILLAGER),
         (3, 3000, ARCHER),
     ] {
@@ -1313,9 +1334,9 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
         tc.volley_fire = 1.0;
         // no stack unit, head or annexes: the tracker files it under its own id
         if let Some(b) = tc.building.as_mut() {
-            b.stack_unit = -1;
-            b.head_unit = -1;
-            b.annexes = [-1; 4];
+            b.stack_unit = None;
+            b.head_unit = None;
+            b.annexes = [None; 4];
         }
     }
     if let Some(v) = masters.get_mut(VILLAGER) {
@@ -1397,7 +1418,7 @@ fn a_gather_point_on_its_own_building_takes_the_new_unit_in() {
         state: 1,
         point: Position::new(10.0, 10.0, 0.0),
         target: 100,
-        target_master: TC,
+        target_master: Some(TC),
     };
     t.gather(PlayerId::new(1), idx, g, 100, true, true).unwrap();
     let v = &t.players[1].objects[idx];
@@ -1570,7 +1591,7 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
         for m in &mut t.masters {
             let v = m.get_mut(VILLAGER).unwrap();
             v.tasks.push(Task {
-                object_id: TC,
+                object_id: Some(TC),
                 ..task(0x88, -1)
             });
         }
@@ -1591,7 +1612,7 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
 }
 
 /// Puts unit `id` of player `p` and master `m` inside the town centre.
-pub(crate) fn inside_tc(t: &mut World, p: PlayerId, id: i32, m: i16) {
+pub(crate) fn inside_tc(t: &mut World, p: PlayerId, id: i32, m: MasterId) {
     let mut u = unit(id, m, 25.0);
     u.place_for_test(Position::new(10.0, 10.0, 0.0));
     u.life.inside = Some(100);
@@ -1709,14 +1730,14 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
     let mut t = garrison_world();
     let mut masters = garrison_masters();
     masters = Masters::new(masters.iter().cloned().chain([Master {
-        id: 59,
+        id: master_id(59),
         kind: 60,
         class: class::BUILDING,
         garrison: 5,
         ..Master::default()
     }]));
     t.masters = (0..4).map(|_| masters.clone()).collect();
-    t.players[1].objects.push(unit(400, 59, 10.0));
+    t.players[1].objects.push(unit(400, master_id(59), 10.0));
     let takes = |t: &World, b, p, m| {
         let (bp, bu) = t.object(b).unwrap();
         t.ai_takes(bp, bu, p, m)
@@ -1731,7 +1752,7 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
 }
 
 /// A villager of player `p` with a unit AI and speed at (`x`, `y`).
-pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: i16, at: [f32; 2]) {
+pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: MasterId, at: [f32; 2]) {
     let mut v = unit(id, m, 25.0);
     v.place_for_test(Position::new(at[0], at[1], 0.0));
     v.ai = Some(crate::unit_ai::UnitAi {
@@ -1787,7 +1808,13 @@ pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: i16, at: [f32; 2]) 
 }
 
 /// A building of player 1 of master `m` (radius 2) at `at`, `annex_of` its main building.
-pub(crate) fn building_at(t: &mut World, id: i32, m: i16, at: [f32; 2], annex_of: Option<i32>) {
+pub(crate) fn building_at(
+    t: &mut World,
+    id: i32,
+    m: MasterId,
+    at: [f32; 2],
+    annex_of: Option<i32>,
+) {
     let mut b = unit(id, m, 2400.0);
     b.place_for_test(Position::new(at[0], at[1], 0.0));
     b.annex_of = annex_of;
@@ -1811,7 +1838,7 @@ pub(crate) fn building_at(t: &mut World, id: i32, m: i16, at: [f32; 2], annex_of
 }
 
 /// Player 1's tracker files `ids` under master `m`'s key, done, in that order.
-pub(crate) fn tracked(t: &mut World, m: i16, ids: &[i32]) {
+pub(crate) fn tracked(t: &mut World, m: MasterId, ids: &[i32]) {
     let k = t.tracker_key(PlayerId::new(1), m);
     for &id in ids {
         t.players[1].tracker.add(id, k);
@@ -1919,7 +1946,7 @@ fn a_garrison_through_the_unit_ais_queues_their_enter_orders() {
             range: 0.0,
             shown: [10.0, 10.0],
             ready: true,
-            target_type: i32::from(TC),
+            target_type: i32::from(TC.get()),
         }]
     );
 }
@@ -2396,7 +2423,7 @@ fn transport_task_world() -> (World, usize) {
     let mut t = coast_world([10.5, 10.5]);
     for m in &mut t.masters {
         let market = Master {
-            id: 84,
+            id: ids::MARKET,
             ..m.get(TC).expect("the town centre").clone()
         };
         let mut all: Vec<Master> = m.iter().cloned().collect();
@@ -2407,13 +2434,13 @@ fn transport_task_world() -> (World, usize) {
                 id: TaskId::test(7),
                 action_type: transport::TRANSPORT,
                 object_group: -1,
-                object_id: -1,
+                object_id: None,
                 terrain: 0,
                 ..Task::default()
             });
         }
     }
-    building_at(&mut t, 4000, 84, [18.5, 12.5], None);
+    building_at(&mut t, 4000, ids::MARKET, [18.5, 12.5], None);
     let idx = t.players[1]
         .objects
         .iter()
@@ -3052,13 +3079,17 @@ fn a_buildings_count_takes_relics_in_and_leaves_raiders_unmodelled() {
     let mut t = garrison_world();
     let mut masters = garrison_masters();
     masters = Masters::new(masters.iter().cloned().chain([Master {
-        id: 285,
+        id: ids::RELIC,
         kind: 20,
         class: class::ARTIFACT,
         ..Master::default()
     }]));
     t.masters = (0..4).map(|_| masters.clone()).collect();
-    for (p, id, m) in [(0, 900, 285), (1, 1000, VILLAGER), (2, 2000, VILLAGER)] {
+    for (p, id, m) in [
+        (0, 900, master_id(285)),
+        (1, 1000, VILLAGER),
+        (2, 2000, VILLAGER),
+    ] {
         let mut u = unit(id, m, 25.0);
         u.life.inside = Some(100);
         t.players[p].objects.push(u);
@@ -3294,7 +3325,7 @@ fn a_unit_let_out_works_its_record_or_the_gather_point_s_target() {
             state: 1,
             target: 101,
             point: Position::new(16.0, 4.0, 0.0),
-            target_master: TC,
+            target_master: Some(TC),
         });
     };
     let (r, t) = let_out_beside_a_second_centre(gather, [NO_POINT, NO_POINT], None);
@@ -3316,7 +3347,7 @@ fn a_gather_point_of_state_0xff_replaces_the_point_of_a_let_out() {
             state,
             target,
             point: Position::new(16.0, 4.0, 0.0),
-            target_master: TC,
+            target_master: Some(TC),
         })
     };
     let given = [4.5, 4.5];
@@ -3402,10 +3433,10 @@ fn a_market_tells_a_computer_ally_of_its_tile() {
         let mut t = let_out_world();
         for m in &mut t.masters {
             let mut market = m.get(TC).unwrap().clone();
-            market.id = 84;
+            market.id = ids::MARKET;
             *m = Masters::new(m.iter().cloned().chain([market]));
         }
-        t.players[1].objects[0].life.master_id = 84;
+        t.players[1].objects[0].life.master_id = ids::MARKET;
         t.players[1].objects[0].place_for_test(Position::new(10.5, 12.5, 0.0));
         t.players[2].computer = computer_ally;
         t.players[1].computer = own_computer;

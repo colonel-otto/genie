@@ -1,8 +1,11 @@
 use super::*;
 use crate::map::Position;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::players::PlayerId;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
 /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
@@ -32,7 +35,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
                 body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
                 ..crate::objects::unit::Unit::default()
             };
-            u.life.master_id = master;
+            u.life.master_id = master_id(master);
             u
         })
         .collect();
@@ -47,7 +50,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         vec![0, 0],
         vec![crate::world::Player::default(), player],
     );
-    let master = |id: i16, category: u8| crate::objects::masters::Master {
+    let master = |id: MasterId, category: u8| crate::objects::masters::Master {
         id,
         kind: 70,
         formation_category: category,
@@ -55,7 +58,11 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         radius: [0.2, 0.2],
         ..crate::objects::masters::Master::default()
     };
-    let masters = crate::objects::masters::Masters::new([master(4, 1), master(5, 1), master(6, 3)]);
+    let masters = crate::objects::masters::Masters::new([
+        master(master_id(4), 1),
+        master(master_id(5), 1),
+        master(ids::ID_6, 3),
+    ]);
     t.masters = vec![masters.clone(), masters];
     let mut classes = vec![1u8; 400];
     for &(x, y) in blocked {
@@ -186,14 +193,14 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
     for masters in &mut t.masters {
         *masters = crate::objects::masters::Masters::new([
             crate::objects::masters::Master {
-                id: 4,
+                id: master_id(4),
                 kind: 70,
                 formation_category: 1,
                 hero_flag: 0x10,
                 ..crate::objects::masters::Master::default()
             },
             crate::objects::masters::Master {
-                id: 35,
+                id: ids::ID_35,
                 kind: 70,
                 class: class::SIEGE,
                 formation_category: 2,
@@ -783,7 +790,7 @@ fn type_world(paths: Vec<PathData>) -> World {
         id: object_id(7),
         ..crate::objects::unit::Unit::default()
     };
-    u.life.master_id = 4;
+    u.life.master_id = master_id(4);
     let player = crate::world::Player {
         objects: vec![u].into(),
         formations: crate::world::Formations {
@@ -801,7 +808,7 @@ fn type_world(paths: Vec<PathData>) -> World {
         vec![crate::world::Player::default(), player],
     );
     let masters = crate::objects::masters::Masters::new([crate::objects::masters::Master {
-        id: 4,
+        id: master_id(4),
         kind: 70,
         formation_category: 1,
         ..crate::objects::masters::Master::default()
@@ -899,7 +906,7 @@ fn a_lock_or_a_given_type_overrides_the_groups_own_choice() {
     t.groups.groups[0].flags |= 4;
     assert_eq!(own(&t), LINE);
     t.masters[1] = crate::objects::masters::Masters::new([crate::objects::masters::Master {
-        id: 4,
+        id: master_id(4),
         kind: 70,
         ..crate::objects::masters::Master::default()
     }]);

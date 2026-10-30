@@ -364,6 +364,7 @@ mod tests {
     use crate::movement::move_to::MoveTo;
     use crate::objects::layers::Body;
     use crate::objects::lifecycle::Lifecycle;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::unit_ai::UnitAi;
     use crate::world::{Player, World};
@@ -415,7 +416,7 @@ mod tests {
             body: Body::new(AT, None, Some(wings(speed))),
             life: Lifecycle {
                 state: 2,
-                master_id: 96,
+                master_id: master_id(96),
                 ..Lifecycle::default()
             },
             ai: Some(UnitAi::default()),
@@ -432,7 +433,7 @@ mod tests {
         t.graphics = hawk_graphics();
         t.masters = vec![crate::objects::masters::Masters::new([
             crate::objects::masters::Master {
-                id: 96,
+                id: master_id(96),
                 move_sprite: 846,
                 ..crate::objects::masters::Master::default()
             },

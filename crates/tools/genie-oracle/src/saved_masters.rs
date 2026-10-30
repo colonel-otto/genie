@@ -5,7 +5,7 @@ use crate::masters::MasterTable;
 use crate::{animated_master, combat_master, moving_master};
 use genie_core::GenieError;
 use genie_core::map::Offset;
-use genie_core::objects::masters::ClassId;
+use genie_core::objects::masters::{ClassId, MasterId};
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
 /// The facets every sprite a live object of a saved master shows ([`genie_core::objects::facing::SpriteFacets`]):
@@ -104,14 +104,14 @@ pub(super) fn task_at(
         ))
 }
 
-pub(super) const fn core_task(
+pub(super) fn core_task(
     t: &genie_save::generated::world::Task,
 ) -> genie_core::objects::masters::Task {
     genie_core::objects::masters::Task {
         id: genie_core::objects::masters::TaskId::of_task(t.id),
         action_type: t.action_type,
         object_group: t.object_group,
-        object_id: t.object_id,
+        object_id: MasterId::of_data(t.object_id),
         combat_level: t.combat_level,
         combat_level_flag: t.combat_level_flag,
         terrain: t.terrain_id,
@@ -149,7 +149,7 @@ pub(super) fn work_masters(
         let s = m.static_part()?;
         // the `.dat` values of the master it copies (an upgraded one's), under its own id
         let mut work = table.work(civ, s.copy_id())?.clone();
-        work.id = s.id();
+        work.id = MasterId::of_data(s.id())?;
         work.class = ClassId::of_master(s.read_temp_5);
         work.radius = [s.radius_x, s.radius_y];
         work.tall = 0.0 < s.radius_z;
@@ -189,7 +189,7 @@ pub(super) fn work_masters(
                 c.volley_y_spread,
                 c.volley_start_spread_adjustment,
             ];
-            let id = |id: i32| i16::try_from(id).ok().filter(|&id| 0 <= id);
+            let id = |id: i32| i16::try_from(id).ok().and_then(MasterId::of_data);
             work.volley_missile = id(c.volley_missile_id);
             work.charge_projectile = id(c.charge_projectile_unit);
             work.invulnerability = c.invulnerability_level;
@@ -208,7 +208,7 @@ pub(super) fn work_masters(
         if let Some(rc) = rge_combat {
             work.weapon_range = rc.weapon_range;
             work.min_range = rc.minimum_weapon_range;
-            work.missile = rc.missile_id;
+            work.missile = MasterId::of_data(rc.missile_id);
             work.weapon_offset =
                 Offset::new(rc.weapon_offset_x, rc.weapon_offset_y, rc.weapon_offset_z);
             work.missed_spread = rc.missed_missile_spread;
@@ -304,14 +304,18 @@ pub(super) fn work_masters(
             c.train_location
                 .iter()
                 .map(|t| genie_core::objects::masters::TrainLocation {
-                    location: t.train_location_id,
+                    location: MasterId::of_data(t.train_location_id),
                     time: t.train_time,
                     button: t.button_location_id,
                     hotkey: t.hotkey_id,
                 })
                 .collect()
         });
-        work.trained_at = work.train_locations.iter().map(|t| t.location).collect();
+        work.trained_at = work
+            .train_locations
+            .iter()
+            .filter_map(|t| t.location)
+            .collect();
         work.fly_mode = table.fly_mode(civ, s.copy_id()).unwrap_or(0);
         work.standing_sprite = s.idle_sprite_id;
         work.standing_sprite_2 = (0 <= s.idle2_sprite_id).then_some(s.idle2_sprite_id);
@@ -319,7 +323,10 @@ pub(super) fn work_masters(
             moving_master(m).map_or((-1, -1), |mv| (mv.move_sprite_id, mv.run_sprite_id));
         work.death_sprite = s.death_sprite_id;
         work.garrison = s.obj_max;
-        work.death_spawns = [s.death_spawn_obj_id, s.death_spawn_obj_id2];
+        work.death_spawns = [
+            MasterId::of_data(s.death_spawn_obj_id),
+            MasterId::of_data(s.death_spawn_obj_id2),
+        ];
         work.terrain_restriction = s.terrain_restriction_mask_id;
         work.life = table.get(civ, s.copy_id());
         work.moving = moving_stats(m, s, civ, table);

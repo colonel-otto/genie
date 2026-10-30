@@ -671,8 +671,10 @@ mod tests {
     use crate::map::Position;
     use crate::objects::masters::{ClassId, class};
     use crate::objects::masters::{Master, Masters};
+    use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::vision::registry::UnitUpdate;
     use crate::world::Player;
@@ -685,7 +687,7 @@ mod tests {
     fn a_ready_charge_of_type_6_adds_its_charge_event_to_the_range() {
         let mut t = searched_world();
         let charging = |t: &mut World, charge_type: i16, charge_target: i16| {
-            let m = t.masters[1].get_mut(4).unwrap();
+            let m = t.masters[1].get_mut(master_id(4)).unwrap();
             (m.charge_type, m.charge_target, m.charge_event) = (charge_type, charge_target, 2);
         };
         let range = |t: &World, target: Option<i32>| {
@@ -708,7 +710,7 @@ mod tests {
     /// holds 20 at (6, 5) and 21 (state 3) at (5, 6); player 3 (neutral) holds 30 (class 6) at
     /// (4, 5) and 31 (class 4, a villager) at (5, 4); every one of them in player 1's sight.
     fn searched_world() -> World {
-        let unit = |id: i32, master: i16, x: f32, y: f32| {
+        let unit = |id: i32, master: MasterId, x: f32, y: f32| {
             let mut u = Unit {
                 id: object_id(id),
                 body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
@@ -718,12 +720,12 @@ mod tests {
             u.life.state = 2;
             u
         };
-        let mut soldier = unit(10, 4, 5.0, 5.0);
+        let mut soldier = unit(10, master_id(4), 5.0, 5.0);
         soldier.ai = Some(crate::unit_ai::UnitAi {
             ai_type: crate::unit_ai::SOLDIER_AI,
             ..crate::unit_ai::UnitAi::default()
         });
-        let mut dying = unit(21, 4, 5.0, 6.0);
+        let mut dying = unit(21, master_id(4), 5.0, 6.0);
         dying.life.state = 3;
         let players = vec![
             Player::default(),
@@ -732,16 +734,20 @@ mod tests {
                 ..Player::default()
             },
             Player {
-                objects: vec![unit(20, 4, 6.0, 5.0), dying].into(),
+                objects: vec![unit(20, master_id(4), 6.0, 5.0), dying].into(),
                 ..Player::default()
             },
             Player {
-                objects: vec![unit(30, 4, 4.0, 5.0), unit(31, 6, 5.0, 4.0)].into(),
+                objects: vec![
+                    unit(30, master_id(4), 4.0, 5.0),
+                    unit(31, ids::ID_6, 5.0, 4.0),
+                ]
+                .into(),
                 ..Player::default()
             },
         ];
         let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
-        let master = |id: i16, class: ClassId| Master {
+        let master = |id: MasterId, class: ClassId| Master {
             id,
             kind: 70,
             class,
@@ -751,7 +757,13 @@ mod tests {
             radius: [0.2, 0.2],
             ..Master::default()
         };
-        t.masters = vec![Masters::new([master(4, class::CLASS_6), master(6, class::VILLAGER)]); 4];
+        t.masters = vec![
+            Masters::new([
+                master(master_id(4), class::CLASS_6),
+                master(ids::ID_6, class::VILLAGER)
+            ]);
+            4
+        ];
         let mut s = crate::map::spatial::Spatial::new([20, 20]);
         s.relations = vec![
             vec![0, 3, 3, 3],
@@ -895,11 +907,11 @@ mod tests {
             id: object_id(50),
             ..Unit::default()
         };
-        far.life.master_id = 7;
+        far.life.master_id = ids::ID_7;
         t.players[1].objects.push(far);
         for masters in &mut t.masters {
             let archer = Master {
-                id: 7,
+                id: ids::ID_7,
                 kind: 70,
                 class: class::CLASS_0,
                 weapon_range: 6.0,

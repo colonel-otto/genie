@@ -10,6 +10,7 @@ use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -183,10 +184,10 @@ impl World {
         &self,
         tp: usize,
         target: i32,
-        master: i16,
+        master: MasterId,
     ) -> Result<Shelters, GenieError> {
         let mut shelters = Shelters::default();
-        let key = self.lines.base(i32::from(master));
+        let key = self.lines.base(i32::from(master.get()));
         let (at, radius) = self.ground(target)?;
         for &id in self.players[tp].tracker.list(key) {
             // the tracker's keepers follow every object its player gains and loses, so the
@@ -322,12 +323,12 @@ impl World {
         bp: PlayerId,
         b: &crate::objects::unit::Unit,
         player: PlayerId,
-        master: i16,
+        master: MasterId,
     ) -> Result<bool, GenieError> {
         if b.master(&self.masters, bp)?.kind < COMBAT {
             return Ok(false);
         }
-        self.takes_in(b.id.get(), player, master)
+        self.takes_in(b.id.get(), player, Some(master))
     }
 
     /// One shelter's part of [`World::shelter`]: the order splitter (`FUN_140fd9dc0` with
@@ -386,7 +387,7 @@ impl World {
                     range: 0.0,
                     shown: point.ground(),
                     ready: true,
-                    target_type: i32::from(master),
+                    target_type: i32::from(master.get()),
                 };
                 let ai = self.players[p.index()].objects[idx]
                     .ai

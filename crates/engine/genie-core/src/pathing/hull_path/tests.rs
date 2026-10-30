@@ -3,6 +3,7 @@ use crate::map::Position;
 use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::pathing::hull_path::rounds::Rounds;
 use crate::players::PlayerId;
 use crate::test_ids::object_id;
@@ -124,7 +125,7 @@ fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
             class::PREDATOR
         },
         player: PlayerId::new(1),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: kind,
         buildable_on: 0,
         tall: true,
@@ -696,7 +697,7 @@ fn tall(x: f32, y: f32, r: f32, class: ClassId) -> Placed {
         radius: [r, r],
         class,
         player: PlayerId::new(1),
-        master: 0,
+        master: ids::ID_0,
         obstruction_type: 0,
         buildable_on: 0,
         tall: true,

@@ -9,6 +9,7 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::ANIMATED;
 use crate::objects::masters::master_type::BUILDING;
@@ -97,7 +98,7 @@ impl World {
     pub(crate) fn remains(
         &mut self,
         p: PlayerId,
-        master: i16,
+        master: MasterId,
         at: Position,
         facet: Option<u8>,
     ) -> Result<(), GenieError> {
@@ -135,7 +136,7 @@ impl World {
     fn seer_comes(
         &mut self,
         id: i32,
-        (p, master): (PlayerId, i16),
+        (p, master): (PlayerId, MasterId),
         made: &crate::objects::masters::Master,
         at: Position,
     ) -> Result<(), GenieError> {
@@ -182,7 +183,7 @@ impl World {
     pub(crate) fn plain_object(
         &mut self,
         p: PlayerId,
-        master: i16,
+        master: MasterId,
         made: &crate::objects::masters::Master,
         at: Position,
         facing: Facing,
@@ -313,7 +314,7 @@ impl World {
                 attribute_type: held.0,
                 amount: held.1,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
-                death_spawn: 0 <= made.death_spawns[0],
+                death_spawn: made.death_spawns[0].is_some(),
                 remains: made.death_spawns[1],
                 death_facets,
                 inside: None,
@@ -353,7 +354,7 @@ impl World {
         players: u8,
     ) -> Result<(), GenieError> {
         /// The flare's master (`0x112`, FLARE2).
-        const FLARE: i16 = 274;
+        const FLARE: MasterId = MasterId::named(274);
         let target = ObjectId::field(target);
         let point = point.xy();
         if self.players.len() < usize::from(players) {
@@ -387,7 +388,7 @@ impl World {
         doubled: bool,
     ) -> Result<(), GenieError> {
         /// The flare a hit leaves (`0x70`, FLARE).
-        const HIT_FLARE: i16 = 112;
+        const HIT_FLARE: MasterId = MasterId::named(112);
         let before = self.players[p.index()].objects.len();
         self.remains(p, HIT_FLARE, at, None)?;
         self.made_new_object(p)?;

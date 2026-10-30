@@ -108,6 +108,8 @@ pub enum DropSitesError {
     Json(serde_json::Error),
     /// A class value that is no master class: the entry's index and the key.
     Class(usize, &'static str),
+    /// A `building_id` that is no master: the entry's index.
+    Building(usize),
 }
 
 impl std::fmt::Display for DropSitesError {
@@ -115,6 +117,7 @@ impl std::fmt::Display for DropSitesError {
         match self {
             Self::Json(e) => write!(f, "{e}"),
             Self::Class(i, key) => write!(f, "drop_site_list[{i}]: {key} is no master class"),
+            Self::Building(i) => write!(f, "drop_site_list[{i}]: building_id is no master"),
         }
     }
 }
@@ -132,7 +135,7 @@ impl std::error::Error for DropSitesError {}
 pub fn drop_sites(
     json: &str,
 ) -> Result<Vec<genie_core::unit_ai::task_finder::DropSite>, DropSitesError> {
-    use genie_core::objects::masters::ClassId;
+    use genie_core::objects::masters::{ClassId, MasterId};
     let v: serde_json::Value = serde_json::from_str(json).map_err(DropSitesError::Json)?;
     let num = |v: &serde_json::Value| v.as_i64().unwrap_or(-1);
     let list = |e: &serde_json::Value, key: &str| -> Vec<i64> {
@@ -172,11 +175,12 @@ pub fn drop_sites(
                 })
                 .collect::<Result<Vec<_>, DropSitesError>>()?;
             Ok(genie_core::unit_ai::task_finder::DropSite {
-                building: num(&e["building_id"]) as i16,
+                building: MasterId::try_from(num(&e["building_id"]) as i16)
+                    .map_err(|_| DropSitesError::Building(i))?,
                 worker_class,
                 workers: list(e, "worker_object_list")
                     .into_iter()
-                    .map(|w| w as i16)
+                    .filter_map(|w| MasterId::of_data(w as i16))
                     .collect(),
                 civs: list(e, "target_civs")
                     .into_iter()

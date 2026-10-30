@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::ACTION;
@@ -142,7 +143,7 @@ pub(crate) fn counted(code: u8, by_path: bool, fishing: bool, near: impl FnOnce(
 pub(crate) fn drop_site_search<'u>(
     units: impl IntoIterator<Item = &'u Unit>,
     masters: &Masters,
-    sites: &[i16],
+    sites: &[MasterId],
     at: Position,
     mut seeker: Option<Seeker<'_, '_>>,
     (outside, at_work): (bool, i16),
@@ -222,7 +223,7 @@ pub(crate) const NO_DROP_DISTANCE: f32 = crate::math::image::turn::NO_DROP_DISTA
 /// distance, the first of equals), with that distance.
 pub(crate) fn nearest_drop_site(
     others: OthersRef<'_>,
-    sites: &[i16],
+    sites: &[MasterId],
     at: Position,
 ) -> Option<(i32, f32)> {
     let mut best: Option<(i32, f32)> = None;
@@ -250,15 +251,17 @@ mod tests {
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::masters::Master;
     use crate::objects::masters::TaskId;
+    use crate::objects::masters::ids;
     use crate::pathing::Pathing;
     use crate::pathing::zones::ZoneMap;
     use crate::players::PlayerId;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
 
     /// The town centre (master 109) and the mill (master 68), the villager's drop sites.
-    const SITES: [i16; 2] = [109, 68];
+    const SITES: [MasterId; 2] = [MasterId::named(109), MasterId::named(68)];
 
-    fn object(id: i32, master_id: i16, at: [f32; 2]) -> Unit {
+    fn object(id: i32, master_id: MasterId, at: [f32; 2]) -> Unit {
         Unit {
             id: object_id(id),
             body: crate::objects::layers::Body::at(Position::new(at[0], at[1], 0.0)),
@@ -274,8 +277,8 @@ mod tests {
     /// The player's town centre 700 at (20, 14) and mill 701 at (20, 25), in that order.
     fn sites() -> Vec<Unit> {
         vec![
-            object(700, 109, [20.0, 14.0]),
-            object(701, 68, [20.0, 25.0]),
+            object(700, ids::TOWN_CENTRE, [20.0, 14.0]),
+            object(701, master_id(68), [20.0, 25.0]),
         ]
     }
 
@@ -288,9 +291,9 @@ mod tests {
             ..Master::default()
         };
         Masters::new([
-            master(109, class::BUILDING, 2.0),
-            master(68, class::BUILDING, 1.0),
-            master(50, class::FARM, 1.5),
+            master(ids::TOWN_CENTRE, class::BUILDING, 2.0),
+            master(master_id(68), class::BUILDING, 1.0),
+            master(ids::FARM, class::FARM, 1.5),
         ])
     }
 
@@ -313,7 +316,7 @@ mod tests {
                     task,
                 )
             })),
-            ..object(10, 83, [20.0, 20.0])
+            ..object(10, ids::VILLAGER_MALE, [20.0, 20.0])
         }
     }
 
@@ -324,7 +327,7 @@ mod tests {
             radius: [1.5, 1.5],
             class,
             player: PlayerId::new(1),
-            master: 50,
+            master: ids::FARM,
             obstruction_type: 0,
             buildable_on: 0,
             tall: false,

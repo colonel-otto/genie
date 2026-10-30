@@ -1,6 +1,8 @@
 use super::*;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::{BuildingMaster, Master, Masters};
 use crate::objects::unit::Unit;
@@ -8,6 +10,7 @@ use crate::players::PlayerId;
 use crate::players::game_status::{LOST, PLAYING};
 use crate::players::tracker::Key;
 use crate::technology::RESEARCHED;
+use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::vision::visibility::{Visibility, VisibleMap};
 use crate::world::Player;
@@ -51,7 +54,7 @@ fn world() -> World {
 }
 
 /// A master of `kind` and `class`, `id`.
-fn master(id: i16, kind: u8, class: ClassId) -> Master {
+fn master(id: MasterId, kind: u8, class: ClassId) -> Master {
     Master {
         id,
         kind,
@@ -62,7 +65,7 @@ fn master(id: i16, kind: u8, class: ClassId) -> Master {
 }
 
 /// An object `id` of master `m` in `state`.
-fn object(id: i32, m: i16, state: u8) -> Unit {
+fn object(id: i32, m: MasterId, state: u8) -> Unit {
     let mut u = Unit {
         id: object_id(id),
         ..Unit::default()
@@ -173,15 +176,15 @@ fn the_trickles_give_a_sixtieth_of_their_rate_each_second() {
 fn a_mill_s_livestock_makes_food() {
     let mut t = world();
     let masters = Masters::new([
-        master(68, 80, class::BUILDING),
-        master(5, 70, class::LIVESTOCK),
+        master(master_id(68), 80, class::BUILDING),
+        master(master_id(5), 70, class::LIVESTOCK),
     ]);
     t.masters = vec![masters.clone(), masters.clone(), masters.clone(), masters];
-    let mut mill = object(10, 68, 2);
+    let mut mill = object(10, master_id(68), 2);
     mill.livestock_summation = 100.0;
-    let mut other = object(11, 68, 2);
+    let mut other = object(11, master_id(68), 2);
     other.livestock_summation = 300.0;
-    let mut sheep = object(12, 5, 2);
+    let mut sheep = object(12, master_id(5), 2);
     sheep.livestock_summation = 1000.0;
     let key = Key {
         master: 68,
@@ -244,20 +247,20 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
 #[test]
 fn a_player_without_an_object_that_keeps_it_loses() {
     let masters = Masters::new([
-        master(83, 70, class::VILLAGER),
-        master(117, 80, class::WALL),
-        master(50, 80, class::FARM),
-        master(109, 80, class::BUILDING),
-        master(12, 80, class::BUILDING),
-        master(331, 70, class::CLASS_51),
-        master(276, 80, class::BUILDING),
+        master(ids::VILLAGER_MALE, 70, class::VILLAGER),
+        master(master_id(117), 80, class::WALL),
+        master(ids::FARM, 80, class::FARM),
+        master(ids::TOWN_CENTRE, 80, class::BUILDING),
+        master(master_id(12), 80, class::BUILDING),
+        master(ids::ID_331, 70, class::CLASS_51),
+        master(ids::WONDER, 80, class::BUILDING),
         Master {
             storage: vec![(11, 1.0, 0x20), (-1, 0.0, 0), (-1, 0.0, 0)],
-            ..master(900, 70, class::CLASS_11)
+            ..master(master_id(900), 70, class::CLASS_11)
         },
         Master {
-            trained_at: vec![109],
-            ..master(84, 70, class::VILLAGER)
+            trained_at: vec![ids::TOWN_CENTRE],
+            ..master(ids::MARKET, 70, class::VILLAGER)
         },
     ]);
     let keeps = |objects: Vec<Unit>, game_mode: i32| {
@@ -276,17 +279,17 @@ fn a_player_without_an_object_that_keeps_it_loses() {
     assert_eq!(
         keeps(
             vec![
-                object(1, 83, 2),
-                object(2, 83, 3),
-                object(3, 117, 2),
-                object(4, 50, 2),
-                object(5, 109, 2),
-                object(6, 12, 2),
-                object(7, 331, 0),
-                object(8, 331, 1),
-                object(9, 276, 2),
-                object(10, 900, 3),
-                object(11, 900, 5),
+                object(1, ids::VILLAGER_MALE, 2),
+                object(2, ids::VILLAGER_MALE, 3),
+                object(3, master_id(117), 2),
+                object(4, ids::FARM, 2),
+                object(5, ids::TOWN_CENTRE, 2),
+                object(6, master_id(12), 2),
+                object(7, ids::ID_331, 0),
+                object(8, ids::ID_331, 1),
+                object(9, ids::WONDER, 2),
+                object(10, master_id(900), 3),
+                object(11, master_id(900), 5),
             ],
             0
         ),
@@ -294,13 +297,13 @@ fn a_player_without_an_object_that_keeps_it_loses() {
             true, false, false, false, true, false, true, false, false, true, false
         ]
     );
-    assert_eq!(keeps(vec![object(9, 276, 2)], 3), [true]);
-    assert_eq!(keeps(vec![object(9, 276, 0)], 3), [false]);
+    assert_eq!(keeps(vec![object(9, ids::WONDER, 2)], 3), [true]);
+    assert_eq!(keeps(vec![object(9, ids::WONDER, 0)], 3), [false]);
     // a player with only a wall loses, attribute 45 cleared
     let mut t = world();
     t.masters = vec![masters.clone(); 4];
     t.players[1].victory_times = VictoryTimes::default();
-    t.players[1].objects = vec![object(3, 117, 2)].into();
+    t.players[1].objects = vec![object(3, master_id(117), 2)].into();
     t.players[1].attributes[45] = 1.0;
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert_eq!(t.players[1].game_status, LOST);
@@ -309,7 +312,11 @@ fn a_player_without_an_object_that_keeps_it_loses() {
     let mut t = world();
     t.masters = vec![masters; 4];
     t.players[1].victory_times = VictoryTimes::default();
-    t.players[1].objects = vec![object(3, 117, 2), object(1, 83, 2)].into();
+    t.players[1].objects = vec![
+        object(3, master_id(117), 2),
+        object(1, ids::VILLAGER_MALE, 2),
+    ]
+    .into();
     t.players[1].attributes[45] = 1.0;
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert_eq!(t.players[1].game_status, PLAYING);
@@ -354,7 +361,12 @@ fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
         military: false,
     };
     let mut t = world();
-    t.players[1].objects = vec![object(7, 444, 2), object(5, 109, 3), object(6, 109, 2)].into();
+    t.players[1].objects = vec![
+        object(7, master_id(444), 2),
+        object(5, ids::TOWN_CENTRE, 3),
+        object(6, ids::TOWN_CENTRE, 2),
+    ]
+    .into();
     // 9 is filed but gone from the world
     for (id, master) in [(5, 109), (9, 109), (6, 109), (7, 444)] {
         t.players[1].tracker.add(id, key(master));
@@ -371,8 +383,8 @@ fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
 #[test]
 fn sudden_death_and_regicide_end_a_player_their_ways() {
     let masters = Masters::new([
-        master(83, 70, class::VILLAGER),
-        master(109, 80, class::BUILDING),
+        master(ids::VILLAGER_MALE, 70, class::VILLAGER),
+        master(ids::TOWN_CENTRE, 80, class::BUILDING),
     ]);
     let tc_key = Key {
         master: 109,
@@ -384,7 +396,11 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     t.masters = vec![masters.clone(); 4];
     t.settings.game_mode = 11;
     t.players[1].victory_times = VictoryTimes::default();
-    t.players[1].objects = vec![object(1, 83, 2), object(5, 109, 2)].into();
+    t.players[1].objects = vec![
+        object(1, ids::VILLAGER_MALE, 2),
+        object(5, ids::TOWN_CENTRE, 2),
+    ]
+    .into();
     t.players[1].tracker.add(5, tc_key);
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert!(t.players[1].sudden_death_eliminable);
@@ -399,7 +415,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     let mut t = world();
     t.masters = vec![masters; 4];
     t.settings.sub_game_mode_flag = 4;
-    t.players[1].objects = vec![object(1, 83, 2)].into();
+    t.players[1].objects = vec![object(1, ids::VILLAGER_MALE, 2)].into();
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert_eq!(t.players[1].game_status, LOST);
     let mut t2 = world();
@@ -425,48 +441,48 @@ fn the_trainable_count_takes_the_had_masters_trained_at_the_building() {
     let mut t = world();
     let site = BuildingMaster {
         disappears_when_built: true,
-        stack_unit: 109,
+        stack_unit: Some(ids::TOWN_CENTRE),
         ..BuildingMaster::default()
     };
     let masters = Masters::new([
         Master {
-            trained_at: vec![109],
-            ..master(83, 70, class::VILLAGER)
+            trained_at: vec![ids::TOWN_CENTRE],
+            ..master(ids::VILLAGER_MALE, 70, class::VILLAGER)
         },
         Master {
-            trained_at: vec![109],
+            trained_at: vec![ids::TOWN_CENTRE],
             available: false,
-            ..master(84, 70, class::VILLAGER)
+            ..master(ids::MARKET, 70, class::VILLAGER)
         },
         Master {
-            trained_at: vec![109],
+            trained_at: vec![ids::TOWN_CENTRE],
             disabled: true,
-            ..master(85, 70, class::VILLAGER)
+            ..master(master_id(85), 70, class::VILLAGER)
         },
         Master {
-            trained_at: vec![109],
-            ..master(86, 60, class::VILLAGER)
+            trained_at: vec![ids::TOWN_CENTRE],
+            ..master(master_id(86), 60, class::VILLAGER)
         },
         Master {
-            trained_at: vec![12],
-            ..master(74, 70, class::CLASS_6)
+            trained_at: vec![master_id(12)],
+            ..master(master_id(74), 70, class::CLASS_6)
         },
-        master(109, 80, class::BUILDING),
+        master(ids::TOWN_CENTRE, 80, class::BUILDING),
         Master {
             building: Some(site),
-            ..master(621, 80, class::BUILDING)
+            ..master(ids::TOWN_CENTRE_621, 80, class::BUILDING)
         },
     ]);
     t.masters = vec![masters.clone(); 4];
-    assert_eq!(t.trainable_count(PlayerId::new(1), 109), 1);
-    assert_eq!(t.trainable_count(PlayerId::new(1), 12), 1);
-    assert_eq!(t.trainable_count(PlayerId::new(1), 101), 0);
+    assert_eq!(t.trainable_count(PlayerId::new(1), ids::TOWN_CENTRE), 1);
+    assert_eq!(t.trainable_count(PlayerId::new(1), master_id(12)), 1);
+    assert_eq!(t.trainable_count(PlayerId::new(1), master_id(101)), 0);
     // the local player's 621 stands for 109
-    assert_eq!(t.trainable_count(PlayerId::new(1), 621), 1);
+    assert_eq!(t.trainable_count(PlayerId::new(1), ids::TOWN_CENTRE_621), 1);
     // a builder with attribute 48 at 0 and the town centre not had: one more below the
     // town centre limit (218)
     let mut builder = masters;
-    builder.get_mut(621).unwrap().available = false;
+    builder.get_mut(ids::TOWN_CENTRE_621).unwrap().available = false;
     t.masters[1] = builder;
     t.players[1].attributes[218] = 1.0;
     assert_eq!(t.trainable_count(PlayerId::new(1), BUILDER), 1);
@@ -554,16 +570,16 @@ fn the_upgradable_count_follows_the_tech_tree() {
     let mut t = world();
     let masters = Masters::new([
         Master {
-            trained_at: vec![12],
+            trained_at: vec![master_id(12)],
             available: false,
-            ..master(74, 70, class::CLASS_6)
+            ..master(master_id(74), 70, class::CLASS_6)
         },
         Master {
-            trained_at: vec![12],
+            trained_at: vec![master_id(12)],
             available: false,
-            ..master(75, 70, class::CLASS_6)
+            ..master(master_id(75), 70, class::CLASS_6)
         },
-        master(12, 80, class::BUILDING),
+        master(master_id(12), 80, class::BUILDING),
     ]);
     t.masters = vec![masters; 4];
     t.players[1].civ = 0;
@@ -589,15 +605,15 @@ fn the_upgradable_count_follows_the_tech_tree() {
         unique_units: Vec::new(),
     };
     // 74 counts (no link, no technology); 75's link 74 is not had
-    assert_eq!(t.upgradable_count(PlayerId::new(1), 12), 1);
-    t.masters[1].get_mut(74).unwrap().available = true;
+    assert_eq!(t.upgradable_count(PlayerId::new(1), master_id(12)), 1);
+    t.masters[1].get_mut(master_id(74)).unwrap().available = true;
     // 75: its link had, its technology not researched
-    assert_eq!(t.upgradable_count(PlayerId::new(1), 12), 1);
+    assert_eq!(t.upgradable_count(PlayerId::new(1), master_id(12)), 1);
     t.players[1].techs[150].state = RESEARCHED;
-    assert_eq!(t.upgradable_count(PlayerId::new(1), 12), 2);
+    assert_eq!(t.upgradable_count(PlayerId::new(1), master_id(12)), 2);
     // the Feudal Age out of reach puts 75 out
     t.players[1].techs[101].state = -1;
-    assert_eq!(t.upgradable_count(PlayerId::new(1), 12), 1);
+    assert_eq!(t.upgradable_count(PlayerId::new(1), master_id(12)), 1);
 }
 
 /// The scout map takes the tiles of the player's tile list: before 5000 ms only those it

@@ -3,6 +3,7 @@
 //! out of the action list, and the work, which runs on the world with the builder lent: the
 //! foundation's work, its starts and its completion.
 
+use crate::objects::masters::MasterId;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -236,7 +237,7 @@ impl BuildAction {
 
 /// `FUN_140fde180`: the foundation's master `built` is a drop site (the masters 562, 584, 621,
 /// 68, 1808, 50, 1187 and 199, or one the drop-site table has for every civ or the builder's).
-fn drop_site_master(c: &Step<'_>, built: Option<i16>) -> bool {
+fn drop_site_master(c: &Step<'_>, built: Option<MasterId>) -> bool {
     built.is_some_and(|m| {
         DROP_SITE_MASTERS.contains(&m)
             || c.w.drop_sites.iter().any(|d| {

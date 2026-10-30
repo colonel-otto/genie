@@ -125,7 +125,7 @@ impl Unit {
             garrisoned: self.life.inside.is_some(),
             state: self.life.state,
             kind: master.map_or(0, |m| m.kind),
-            ranged: master.is_some_and(|m| 0 <= m.missile),
+            ranged: master.is_some_and(|m| m.missile.is_some()),
             firepower: self.firepower,
             capture: self.capture_kind(c),
             master: self.life.master_id,

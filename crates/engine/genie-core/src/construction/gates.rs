@@ -94,7 +94,9 @@ impl World {
             .filter(|&i| {
                 owner.objects[i].master_in(masters).is_ok_and(|m| {
                     m.class == class::GATE
-                        && m.building.as_ref().is_some_and(|b| 0 <= b.transform_unit)
+                        && m.building
+                            .as_ref()
+                            .is_some_and(|b| b.transform_unit.is_some())
                 })
             })
             .collect()
@@ -107,7 +109,10 @@ impl World {
     pub(crate) fn gate_passes(&self, q: PlayerId, i: usize, p: PlayerId) -> bool {
         let gate = &self.players[q.index()].objects[i];
         let transforming = gate.master(&self.masters, q).is_ok_and(|m| {
-            m.class == class::GATE && m.building.as_ref().is_some_and(|b| b.transform_unit != -1)
+            m.class == class::GATE
+                && m.building
+                    .as_ref()
+                    .is_some_and(|b| b.transform_unit.is_some())
         });
         gate.life.state < 3
             && transforming

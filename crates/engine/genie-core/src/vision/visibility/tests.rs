@@ -24,7 +24,7 @@ fn world(players: PlayerId) -> Visibility {
 fn unit(player: PlayerId, los: f32) -> Seer {
     Seer {
         player,
-        master: 83,
+        master: ids::VILLAGER_MALE,
         los,
         state: 2,
         explored: true,
@@ -428,7 +428,7 @@ fn a_first_sight_of_a_building_s_tile_explores_the_building() {
 fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner() {
     let mut v = world(PlayerId::new(3));
     let site = Seer {
-        master: 70,
+        master: ids::HOUSE,
         explored: false,
         state: 0,
         building: Some(BuildingSight::default()),

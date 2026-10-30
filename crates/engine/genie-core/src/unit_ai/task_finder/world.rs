@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::terrain::Terrain;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -35,7 +36,7 @@ impl Diplomacy for TaskWorld<'_> {
         crate::unit_ai::task_finder::allied(relations, from, to, with_ally)
     }
 
-    fn drops_at(&self, building: i16, actor: &Actor<'_>) -> bool {
+    fn drops_at(&self, building: MasterId, actor: &Actor<'_>) -> bool {
         crate::unit_ai::task_finder::drops_at(self.drop_sites, building, actor)
     }
 }
@@ -62,7 +63,7 @@ impl Diplomacy for SideWorld<'_> {
         crate::unit_ai::task_finder::allied(relations, from, to, with_ally)
     }
 
-    fn drops_at(&self, building: i16, actor: &Actor<'_>) -> bool {
+    fn drops_at(&self, building: MasterId, actor: &Actor<'_>) -> bool {
         crate::unit_ai::task_finder::drops_at(self.drop_sites, building, actor)
     }
 }

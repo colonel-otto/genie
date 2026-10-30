@@ -12,6 +12,7 @@ use crate::movement::move_to::{MoveDefaults, MoveTo};
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
@@ -195,7 +196,7 @@ impl Unit {
                     "a computer player's hunt of its livestock (its drop-site search)",
                 ));
             }
-            let sites: Vec<i16> =
+            let sites: Vec<MasterId> =
                 c.w.drop_sites
                     .iter()
                     .filter(|d| d.livestock)

@@ -2,6 +2,7 @@
 //! world ([`Battlefield`]).
 
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::unit_ai::best_target::Candidate;
 
@@ -22,7 +23,7 @@ pub struct Searcher {
     /// The AI's action (`+0x44`).
     pub action: Option<crate::unit_ai::ActionKind>,
     /// The unit's master's id, class and type (`+0x5d7`, `+0x98f`, the master's `+0x8`).
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's class.
     pub class: Option<ClassId>,
     /// Its master's type (`'F'`, 70: the combat type).
@@ -90,7 +91,7 @@ pub struct Thing {
     /// It is inside another (`+0x2f0`).
     pub inside: bool,
     /// Its master's id, class and type.
-    pub master: i16,
+    pub master: MasterId,
     /// Its master's class.
     pub class: ClassId,
     /// Its master's type.

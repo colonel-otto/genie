@@ -2,6 +2,7 @@
 //! it, a built building's technologies, the cost modifier and the disable and enable commands.
 
 use crate::GenieError;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
 use crate::technology::EffectCommand;
@@ -34,7 +35,7 @@ impl World {
         &mut self,
         p: PlayerId,
         t: usize,
-        building: Option<i16>,
+        building: Option<MasterId>,
     ) -> Result<bool, GenieError> {
         use crate::technology::Attributes;
         let def = self.techs.checked(t)?.clone();
@@ -54,7 +55,7 @@ impl World {
         let owner = &self.players.player(p)?;
         let state = owner.techs.checked(t)?;
         let location = building.map_or_else(|| state.locations.first(), |b| state.location(b));
-        if location.is_some_and(|l| 0 <= l.building && l.button != 0) {
+        if location.is_some_and(|l| l.building.is_some() && l.button != 0) {
             let get = |k: i16| owner.get(k);
             let factors = crate::technology::factors(t as i16, &get)?;
             let listed = state.listed_costs(&def, factors)?;
@@ -136,7 +137,7 @@ impl World {
     pub(crate) fn withdraw_tech(
         &mut self,
         p: PlayerId,
-        master: i16,
+        master: MasterId,
         tech: i16,
     ) -> Result<(), GenieError> {
         let owner = &self.players.player(p)?;
@@ -263,14 +264,23 @@ impl World {
         let mut counted = 0;
         let state = self.players.player_mut(p)?.techs.checked_mut(d)?;
         let reached = |l: &crate::technology::Location| {
-            let at = state.location(l.building).copied().unwrap_or(*l);
+            let at = l
+                .building
+                .and_then(|b| state.location(b))
+                .copied()
+                .unwrap_or(*l);
             f32::from(l.time as i16) + at.adjustment <= state.research_done
         };
         // its research done already: it completes (`FUN_1413cdcd0` with `param_3` 0 and no
         // building), once per location reached without a building of its own (each
         // uncounting it; past the first the technology is done and the call does nothing),
         // else once for its building's
-        if state.building_master == -1 {
+        if let Some(building_master) = state.building_master {
+            if state.location(building_master).is_some_and(reached) {
+                let _ = self.complete_research(p, d, None)?;
+                return Ok(counted);
+            }
+        } else {
             let reached = state.locations.iter().filter(|l| reached(l)).count();
             if 0 < reached {
                 for _ in 0..reached {
@@ -279,9 +289,6 @@ impl World {
                 }
                 return Ok(counted);
             }
-        } else if state.location(state.building_master).is_some_and(reached) {
-            let _ = self.complete_research(p, d, None)?;
-            return Ok(counted);
         }
         let state = self.players.player_mut(p)?.techs.checked_mut(d)?;
         if state.state < 1 {
@@ -399,7 +406,7 @@ impl World {
     pub(super) fn enable_master(
         &mut self,
         p: PlayerId,
-        master: i16,
+        master: MasterId,
         enable: u8,
         one: bool,
         object: Option<i32>,

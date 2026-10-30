@@ -641,6 +641,7 @@ mod tests {
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+    use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::world::Player;
 
@@ -652,7 +653,7 @@ mod tests {
             id: object_id(7),
             ..Unit::default()
         };
-        u.life.master_id = 4;
+        u.life.master_id = master_id(4);
         let players = vec![
             Player::default(),
             Player {
@@ -662,7 +663,7 @@ mod tests {
         ];
         let mut t = World::new(50, 0, PlayerId::new(0), vec![0, 0], players);
         let master = Master {
-            id: 4,
+            id: master_id(4),
             kind: 70,
             formation_category: 1,
             ..Master::default()
