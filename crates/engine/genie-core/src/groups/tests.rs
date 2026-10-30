@@ -649,6 +649,116 @@ fn a_filter_takes_the_range_of_the_members_task_of_that_type() {
     assert_eq!(range, 6.0);
 }
 
+fn general(queued: bool, direct: bool) -> CommandArgs {
+    CommandArgs {
+        queued,
+        direct,
+        disable_retargeting: false,
+        filter: -1,
+    }
+}
+
+/// `FUN_14100fc50`, not queued: the group moves to the target within the range and takes the
+/// command (5) with the target's data (kind 1, where it last moved to, the range, the radii's
+/// length, no retargeting, certain action -1); the members' seconds since attacking are the
+/// maximum.
+#[test]
+fn a_general_command_moves_the_group_to_the_target_and_takes_the_command() {
+    let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
+    let moved = t
+        .general_command(
+            1,
+            (5, building_60()),
+            [40.0, 45.0],
+            3.0,
+            general(false, true),
+        )
+        .unwrap();
+    assert!(moved);
+    let g = t.groups.get(1).unwrap();
+    assert_eq!(g.current_command, 5);
+    assert_eq!(
+        g.current_target,
+        TargetData {
+            target: 60,
+            kind: 1,
+            original_position: [40.0, 0.0, 45.0],
+            range: 3.0,
+            target_radius: crate::math::fmath::sqrt(8.0),
+            disable_retargeting: 0,
+            certain_action: -1,
+        }
+    );
+    assert!(
+        g.members
+            .iter()
+            .all(|m| m.seconds_since_attacking == f32::MAX)
+    );
+}
+
+/// A group that cannot move (its top speed below the tolerance) takes no command (false).
+#[test]
+fn a_general_command_of_a_group_that_cannot_move_does_nothing() {
+    let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
+    t.groups.get_mut(1).unwrap().motion.maximum_velocity_forward = 0.0;
+    assert!(
+        !t.general_command(
+            1,
+            (5, building_60()),
+            [40.0, 45.0],
+            3.0,
+            general(false, true)
+        )
+        .unwrap()
+    );
+    assert_eq!(t.groups.get(1).unwrap().current_command, -1);
+}
+
+/// Queued, the command joins the queue approved by `direct` and a group without a command told
+/// directly hibernates; not direct behind queued commands it joins unapproved, the queue is
+/// approved and runs, and a general command on a held target in it is run (the group takes it).
+#[test]
+fn a_general_command_queues_or_runs_the_queue() {
+    let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
+    assert!(
+        !t.general_command(
+            1,
+            (5, building_60()),
+            [40.0, 45.0],
+            3.0,
+            general(true, true)
+        )
+        .unwrap()
+    );
+    let g = t.groups.get(1).unwrap();
+    assert_eq!((g.command_queue.len(), g.hibernating), (1, 1));
+    let node = g.command_queue[0];
+    assert_eq!(
+        (
+            node.command,
+            node.target_id,
+            node.range,
+            node.point,
+            node.approved,
+            node.approved_2
+        ),
+        (5, 60, 3.0, [40.0, 0.0, 45.0], 1, u16::MAX)
+    );
+    assert!(
+        t.general_command(
+            1,
+            (5, building_60()),
+            [40.0, 45.0],
+            3.0,
+            general(false, false)
+        )
+        .unwrap()
+    );
+    let g = t.groups.get(1).unwrap();
+    assert_eq!(g.command_queue, []);
+    assert_eq!(g.current_command, 5);
+}
+
 /// `FUN_14100c6c0`: a group of fewer than five members lists one special unit, of five or more
 /// four. A target of class 24 (and 57, 12, 47) takes the listed masters' members then the class
 /// 46 ones; a target of master 6 or 7 the class 46 ones only; a target of a villager's class the
@@ -753,6 +863,27 @@ fn a_group_ordered_on_an_enemy_building_runs_the_attack_path() {
     let g = t.groups.get(1).unwrap();
     assert_eq!((g.current_command, g.current_target.target), (9, 60));
     assert_eq!(g.flags & 0x2_0000, 0);
+}
+
+/// `FUN_14100efd0`: a member whose task on the building is action 5 gives the general command: the
+/// group moves to it within the task's range and is in command 5 with the target's data.
+#[test]
+fn a_group_ordered_with_a_general_task_runs_the_general_command() {
+    let mut t = attack_world_with_task(&[(7, 4, 10.0, 10.0)]);
+    for master in t.masters.iter_mut().filter_map(|m| m.get_mut(4)) {
+        master.tasks = vec![crate::objects::masters::Task {
+            action_type: 5,
+            work_range: 6.0,
+            ..attack_task()
+        }];
+    }
+    assert!(
+        t.group_command(1, 60, [40.0, 45.0], command_args(false, true))
+            .unwrap()
+    );
+    let g = t.groups.get(1).unwrap();
+    assert_eq!((g.current_command, g.current_target.target), (5, 60));
+    assert_eq!(g.current_target.range, 6.0);
 }
 
 /// A target the world does not hold is a null object for the command: the plain move.

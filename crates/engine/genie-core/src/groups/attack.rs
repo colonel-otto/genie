@@ -180,13 +180,13 @@ impl World {
     }
 
     /// Slot 0x520 (`FUN_14106d530`) of object `id`: where it last moved to ([`moved_place`]).
-    fn moved_place_of(&self, id: i32) -> Result<[f32; 3], GenieError> {
+    pub(super) fn moved_place_of(&self, id: i32) -> Result<[f32; 3], GenieError> {
         let (_, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         Ok(moved_place(u))
     }
 
     /// The target master's two radii as one length (`+0xb57`, `+0xb5b`: `sqrt(x² + y²)`).
-    fn target_radius(&self, id: i32) -> Result<f32, GenieError> {
+    pub(super) fn target_radius(&self, id: i32) -> Result<f32, GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let [x, y] = u.master(&self.masters, p)?.radius;
         Ok(fmath::sqrt(x * x + y * y))

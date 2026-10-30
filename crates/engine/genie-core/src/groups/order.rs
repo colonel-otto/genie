@@ -28,11 +28,6 @@ pub struct CommandArgs {
     pub filter: i16,
 }
 
-/// The group's command on a task whose command is not modelled: the game's general command
-/// (`FUN_14100fc50`) or a member's attack at once (`FUN_14102bbd0`).
-pub(super) const TARGET_COMMAND_GAP: GenieError =
-    GenieError::unsupported("a group's command on a target (its task, slot 0x130)");
-
 impl World {
     /// `BUnitGroup::command` (`FUN_14100efd0`) of group `group` on `target` (-1 for none, or an
     /// object the world does not hold: the game passes a null object) at `point`, with the
@@ -44,13 +39,13 @@ impl World {
     /// queued (`+0x13d`, [`crate::groups::UnitGroup::replaces_queue`]) and runs the command by the
     /// task's action type: without a task, or for 1, a move ([`World::command_move_to`] with its
     /// target forgotten); for 1, 7, 9, `0x68` and `0x7d` the attack path
-    /// ([`World::command_attack`], or a queue entry); the other tasks' general command is not
-    /// modelled. A move begun stops the members (`stopAllUnits` with 0, [`World::stop_all_units`]),
+    /// ([`World::command_attack`], or a queue entry); the other tasks' general command
+    /// ([`World::general_command`]) runs. A move begun stops the members (`stopAllUnits` with 0, [`World::stop_all_units`]),
     /// and flags bit 17 clears. True when the move began.
     ///
     /// # Errors
     ///
-    /// A horde, the general command, and what the paths do not model.
+    /// A horde, and what the paths and the general command do not model.
     pub fn group_command(
         &mut self,
         group: i32,
@@ -92,7 +87,13 @@ impl World {
             if ATTACK_COMMANDS.contains(&i32::from(task.command)) {
                 moved = self.attack_command(group, held, point, (task, order), moved)?;
             } else if GENERAL_COMMANDS.contains(&i32::from(task.command)) {
-                return Err(TARGET_COMMAND_GAP);
+                moved = self.general_command(
+                    group,
+                    (i32::from(task.command), held),
+                    point,
+                    task.range.unwrap_or(0.0),
+                    order,
+                )?;
             }
         }
         if moved {
@@ -101,6 +102,92 @@ impl World {
         let g = self.groups.held_mut(group)?;
         g.flags &= !0x2_0000;
         Ok(moved)
+    }
+
+    /// The general command (`FUN_14100fc50`) of group `group`: `command` on `target` at `point`
+    /// within `range`, for the tasks that are no attack. Not queued, not direct and with commands
+    /// queued, it joins the queue unapproved, the approved ones go and the queue runs (true);
+    /// queued, it joins the queue (approved when direct), and a group without a command that is
+    /// told directly hibernates (false). Else a group whose last command was not queued empties
+    /// its queue, its target's data resets (the range too), each member's seconds since
+    /// attacking are `f32::MAX`, and the group moves to the point ([`World::command_move_to`]
+    /// with `range`, the target forgotten, direct). A move begun without a target sets the
+    /// target data to the point (range, no radius); with one it raises the categories' attack
+    /// ranges ([`World::raise_attack_ranges`]) and sets the target (kind 1, the place it last
+    /// moved to, the range, the radii's length, no retargeting, certain action -1). Either
+    /// way the group is in `command`. True when the move began.
+    ///
+    /// # Errors
+    ///
+    /// What the queue, the move and the target's ranges do not model.
+    pub(super) fn general_command(
+        &mut self,
+        group: i32,
+        (command, target): (i32, ObjectId),
+        point: [f32; 2],
+        range: f32,
+        order: CommandArgs,
+    ) -> Result<bool, GenieError> {
+        let g = self.groups.held_mut(group)?;
+        let entry = |approved: u8| GroupCommand {
+            command,
+            target_id: target.get(),
+            range,
+            point: [point[0], 0.0, point[1]],
+            approved,
+            disable_retargeting: 0,
+            approved_2: u16::MAX,
+        };
+        if order.queued {
+            g.queue_command(entry(u8::from(order.direct)));
+            if g.current_command == -1 && order.direct && g.hibernating != 1 {
+                g.hibernating = 1;
+            }
+            return Ok(false);
+        }
+        if !order.direct && !g.command_queue.is_empty() {
+            g.queue_command(entry(0));
+            g.approve_queued();
+            self.check_queued_orders(group)?;
+            return Ok(true);
+        }
+        if g.replaces_queue != 0 {
+            g.clear_command_queue();
+        }
+        g.forget_target_data();
+        g.current_target.range = 0.0;
+        for m in &mut g.members {
+            m.seconds_since_attacking = f32::MAX;
+        }
+        let moved = self.command_move_to(
+            group,
+            target.get(),
+            point,
+            MoveTo {
+                range,
+                forget_target: true,
+                direct: true,
+                ..MoveTo::default()
+            },
+        )?;
+        if !moved {
+            return Ok(false);
+        }
+        self.raise_attack_ranges(group, target.get())?;
+        let at = self.moved_place_of(target.get())?;
+        let radius = self.target_radius(target.get())?;
+        let g = self.groups.held_mut(group)?;
+        g.current_target = crate::groups::TargetData {
+            target: target.get(),
+            kind: 1,
+            original_position: at,
+            range,
+            target_radius: radius,
+            disable_retargeting: 0,
+            certain_action: -1,
+        };
+        g.current_command = command;
+        Ok(true)
     }
 
     /// `BUnitGroup::command`'s attack tasks (1, 7, 9, `0x68`, `0x7d`) on `target`, `moved` what

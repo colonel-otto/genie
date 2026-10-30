@@ -2,8 +2,9 @@
 //! (`FUN_141010a80`) and `stopAllUnits` (`FUN_14103a0d0`), the HD PDB's names.
 
 use crate::GenieError;
+use crate::groups::CommandArgs;
 use crate::groups::attack::AttackOrder;
-use crate::groups::order::TARGET_COMMAND_GAP;
+use crate::groups::group_list::member_gone;
 use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
@@ -370,8 +371,7 @@ impl World {
     ///
     /// # Errors
     ///
-    /// A general command on a target the world holds (`FUN_14100fc50`, not modelled), a run
-    /// whose last command the game frees before its move (it reads a null command: the
+    /// A run whose last command the game frees before its move (it reads a null command: the
     /// run's commands equal an unapproved one behind them), and what the move does not model.
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
@@ -449,8 +449,7 @@ impl World {
     ///
     /// # Errors
     ///
-    /// A general command on a held target (`FUN_14100fc50`, not modelled) and what the attack
-    /// does not model.
+    /// What the general command and the attack do not model.
     fn run_queued_node(
         &mut self,
         group: i32,
@@ -459,11 +458,23 @@ impl World {
     ) -> Result<bool, GenieError> {
         let held = self.world_object(node.target_id).is_some();
         match node.command {
-            c if TARGET_COMMANDS.contains(&c) && held => Err(GenieError::unsupported(
-                "a queued command on a target (FUN_14100fc50)",
-            )),
+            c if TARGET_COMMANDS.contains(&c) && held => {
+                let target = held_id(node.target_id)?;
+                let [x, y, _] = self
+                    .world_object(node.target_id)
+                    .ok_or_else(|| member_gone(node.target_id))?
+                    .position();
+                let order = CommandArgs {
+                    queued: false,
+                    direct: true,
+                    disable_retargeting: false,
+                    filter: -1,
+                };
+                let _ = self.general_command(group, (c, target), [x, y], node.range, order)?;
+                Ok(true)
+            }
             c if ATTACK_COMMANDS.contains(&c) && held => {
-                let target = ObjectId::of_field(node.target_id).ok_or(TARGET_COMMAND_GAP)?;
+                let target = held_id(node.target_id)?;
                 let order = AttackOrder {
                     disable_retargeting: node.disable_retargeting != 0,
                     filter: node.approved_2 as i16,
@@ -605,6 +616,13 @@ fn move_level(
     level.level = 2;
     level
 }
+/// The id of a queued command's target, which the world holds.
+fn held_id(id: i32) -> Result<ObjectId, GenieError> {
+    ObjectId::of_field(id).ok_or_else(|| {
+        GenieError::unreachable("a held queued target without an id").with("target", id)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -723,10 +741,13 @@ mod tests {
             g.motion.paths[0].points,
             [[0.0; 3], [5.0, 0.0, 5.0], [8.0, 0.0, 8.0]]
         );
-        // a command on a target the world holds
+        // a general command on a target the world holds is the group's command and ends the run
         let mut t = moving_world();
         t.groups.get_mut(1).unwrap().command_queue = vec![command(3, 7, 1.0, 1.0, 1)];
-        assert!(t.check_queued_orders(1).is_err());
+        t.check_queued_orders(1).unwrap();
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.command_queue, []);
+        assert_eq!((g.current_command, g.current_target.target), (3, 7));
         // nothing queued: a hibernating group wakes
         let mut t = moving_world();
         t.groups.get_mut(1).unwrap().hibernating = 1;
